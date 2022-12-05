@@ -117,7 +117,7 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	pg.rsInformer = opt.SharedInformerFactory.Apps().V1().ReplicaSets()
 	pg.rsLister = pg.rsInformer.Lister()
-	pg.rsSynced = pg.pgInformer.Informer().HasSynced
+	pg.rsSynced = pg.rsInformer.Informer().HasSynced
 	pg.rsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: pg.deleteReplicaSet,
 	})

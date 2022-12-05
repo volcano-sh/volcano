@@ -70,6 +70,7 @@ func (pg *pgcontroller) deleteReplicaSet(obj interface{}) {
 		klog.Errorf("Failed to convert %v to apps.ReplicaSet", obj)
 		return
 	}
+	klog.V(4).Infof("ReplicaSet %v is delete, rs UID: %s", rs.Name, string(rs.UID))
 
 	pg.lock.Lock()
 	defer pg.lock.Unlock()
@@ -97,6 +98,7 @@ func (pg *pgcontroller) addPodGroup(obj interface{}) {
 	}
 	podGroupKey := fmt.Sprintf("%s/%s/%s",
 		podGroup.Annotations["owner-reference-kind"], podGroup.Annotations["owner-reference-name"], podGroup.Annotations["owner-reference-uuid"])
+	klog.V(4).Infof("PodGroup %s is created by pg_controller and has owner reference", podGroupKey)
 	if _, ok := pg.podgroups[podGroupKey]; ok {
 		return
 	}
@@ -118,6 +120,7 @@ func (pg *pgcontroller) deletePodGroup(obj interface{}) {
 	}
 	podGroupKey := fmt.Sprintf("%s/%s/%s",
 		podGroup.Annotations["owner-reference-kind"], podGroup.Annotations["owner-reference-name"], podGroup.Annotations["owner-reference-uuid"])
+	klog.V(4).Infof("Delete PodGroup %s internally ", podGroupKey)
 	delete(pg.podgroups, podGroupKey)
 }
 
