@@ -827,5 +827,5 @@ sigs.k8s.io/yaml v1.3.0 h1:a2VclLzOGrwOHDiV8EfBGhvjHvP46CtW5j6POvhYGGo=
 sigs.k8s.io/yaml v1.3.0/go.mod h1:GeOyir5tyXNByN85N/dRIT9es5UQNerPYEKK56eTBm8=
 stathat.com/c/consistent v1.0.0 h1:ezyc51EGcRPJUxfHGSgJjWzJdj3NiMU9pNfLNGiXV0c=
 stathat.com/c/consistent v1.0.0/go.mod h1:QkzMWzcbB+yQBL2AttO6sgsQS/JSTapcDISJalmCDS0=
-volcano.sh/apis v1.6.0-alpha.0.0.20221021034835-d3a04f5cfc7c h1:s7K9ouTNVr6OWyH9AX4aG4crc7XvuT8Dcfeaqt6gzkg=
-volcano.sh/apis v1.6.0-alpha.0.0.20221021034835-d3a04f5cfc7c/go.mod h1:xe38GChdXXam/g/FkQXIsR0vhqp4twoZdY2gaGkEP24=
+volcano.sh/apis v1.6.0-alpha.0.0.20221206071715-99768c621d1d h1:3ThPUKyWZxJTOHBRHv1VGDzaLGl+Bb/g362xNG749zE=
+volcano.sh/apis v1.6.0-alpha.0.0.20221206071715-99768c621d1d/go.mod h1:xe38GChdXXam/g/FkQXIsR0vhqp4twoZdY2gaGkEP24=
