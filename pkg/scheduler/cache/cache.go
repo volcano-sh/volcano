@@ -1218,6 +1218,22 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG b
 	return job, nil
 }
 
+// UpdateQueueStatus update the status of queue.
+func (sc *SchedulerCache) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
+	var newQueue = &vcv1beta1.Queue{}
+	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
+		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
+		return err
+	}
+
+	_, err := sc.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("error occurred in updating Queue <%s>: %s", newQueue.Name, err.Error())
+		return err
+	}
+	return nil
+}
+
 func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {
 	if podGroup == nil {
 		return
