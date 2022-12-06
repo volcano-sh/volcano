@@ -23,6 +23,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
@@ -79,6 +80,11 @@ type NodeInfo struct {
 
 	// Resource Oversubscription feature: the Oversubscription Resource reported in annotation
 	OversubscriptionResource *Resource
+
+	// ImageStates holds the entry of an image if and only if this image is on the node. The entry can be used for
+	// checking an image's existence and advanced usage (e.g., image locality scheduling policy) based on the image
+	// state information.
+	ImageStates map[string]*k8sframework.ImageStateSummary
 }
 
 // FutureIdle returns resources that will be idle in the future:
@@ -134,7 +140,8 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		OversubscriptionResource: EmptyResource(),
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
-		GPUDevices: make(map[int]*GPUDevice),
+		GPUDevices:  make(map[int]*GPUDevice),
+		ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 	}
 
 	nodeInfo.setOversubscription(node)
@@ -201,6 +208,8 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 
 		klog.V(5).Infof("current Policies : %v", res.NumaSchedulerInfo.Policies)
 	}
+
+	klog.V(5).Infof("imageStates is %v", res.ImageStates)
 
 	res.Others = ni.Others
 	return res
@@ -526,8 +535,8 @@ func (ni NodeInfo) String() string {
 	}
 
 	return fmt.Sprintf("Node (%s): allocatable<%v> idle <%v>, used <%v>, releasing <%v>, oversubscribution <%v>, "+
-		"state <phase %s, reaseon %s>, oversubscributionNode <%v>, offlineJobEvicting <%v>,taints <%v>%s",
-		ni.Name, ni.Allocatable, ni.Idle, ni.Used, ni.Releasing, ni.OversubscriptionResource, ni.State.Phase, ni.State.Reason, ni.OversubscriptionNode, ni.OfflineJobEvicting, ni.Node.Spec.Taints, tasks)
+		"state <phase %s, reaseon %s>, oversubscributionNode <%v>, offlineJobEvicting <%v>,taints <%v>%s, imageStates %v",
+		ni.Name, ni.Allocatable, ni.Idle, ni.Used, ni.Releasing, ni.OversubscriptionResource, ni.State.Phase, ni.State.Reason, ni.OversubscriptionNode, ni.OfflineJobEvicting, ni.Node.Spec.Taints, tasks, ni.ImageStates)
 }
 
 // Pods returns all pods running in that node
@@ -626,6 +635,19 @@ func (ni *NodeInfo) getUnhealthyGPUs(node *v1.Node) (unhealthyGPUs []int) {
 		}
 	}
 	return
+}
+
+// Clone Image State
+func (ni *NodeInfo) CloneImageSumary() map[string]*k8sframework.ImageStateSummary {
+	nodeImageStates := make(map[string]*k8sframework.ImageStateSummary)
+	for imageName, summary := range ni.ImageStates {
+		newImageSummary := &k8sframework.ImageStateSummary{
+			Size:     summary.Size,
+			NumNodes: summary.NumNodes,
+		}
+		nodeImageStates[imageName] = newImageSummary
+	}
+	return nodeImageStates
 }
 
 func (cs *CSINodeStatusInfo) Clone() *CSINodeStatusInfo {
