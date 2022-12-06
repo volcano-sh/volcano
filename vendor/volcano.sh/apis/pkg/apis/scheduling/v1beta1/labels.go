@@ -64,3 +64,6 @@ const NumaPolicyKey = "volcano.sh/numa-topology-policy"
 
 // TopologyDecisionAnnotation is the key of topology decision about pod request resource
 const TopologyDecisionAnnotation = "volcano.sh/topology-decision"
+
+// PodQosLevel is the key of pod qos level
+const PodQosLevel = "volcano.sh/qos-level"

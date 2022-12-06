@@ -35,7 +35,7 @@ require (
 	k8s.io/utils v0.0.0-20220728103510-ee6ede2d64ed
 	sigs.k8s.io/yaml v1.3.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.6.0-alpha.0.0.20221021034835-d3a04f5cfc7c
+	volcano.sh/apis v1.6.0-alpha.0.0.20221206071715-99768c621d1d
 )
 
 require (

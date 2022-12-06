@@ -298,10 +298,13 @@ type QueueStatus struct {
 	// The number of `Inqueue` PodGroup in this queue.
 	Inqueue int32 `json:"inqueue,omitempty" protobuf:"bytes,5,opt,name=inqueue"`
 	// The number of `Completed` PodGroup in this queue.
-	Completed int32 `json:"completed,omitempty" protobuf:"bytes,7,opt,name=completed"`
+	Completed int32 `json:"completed,omitempty" protobuf:"bytes,6,opt,name=completed"`
 
 	// Reservation is the profile of resource reservation for queue
-	Reservation Reservation `json:"reservation,omitempty" protobuf:"bytes,6,opt,name=reservation"`
+	Reservation Reservation `json:"reservation,omitempty" protobuf:"bytes,7,opt,name=reservation"`
+
+	// Allocated is allocated resources in queue
+	Allocated v1.ResourceList `json:"allocated" protobuf:"bytes,8,opt,name=allocated"`
 }
 
 // CluterSpec represents the template of Cluster
