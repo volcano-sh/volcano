@@ -21,7 +21,7 @@ import (
 	"math"
 	"testing"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
@@ -81,6 +81,14 @@ func TestArguments(t *testing.T) {
 		case "example.com/foo":
 			if weight != 1 {
 				t.Errorf("example.com/foo should be 1, but not %v", weight)
+			}
+		case v1.ResourceCPU:
+			if weight != 5 {
+				t.Errorf("%v should be 5, but not %v", v1.ResourceCPU, weight)
+			}
+		case v1.ResourceMemory:
+			if weight != 2 {
+				t.Errorf("%v should be 2, but not %v", v1.ResourceMemory, weight)
 			}
 		default:
 			t.Errorf("resource %s with weight %d should not appear", name, weight)
