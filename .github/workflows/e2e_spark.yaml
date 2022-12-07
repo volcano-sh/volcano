@@ -10,26 +10,45 @@ on:
 jobs:
   k8s-integration-tests:
     name: "E2E about Spark Integration test"
-    runs-on: ubuntu-20.04-spark
+    runs-on: ubuntu-20.04
     steps:
 
     - name: Checkout current Volcano repository
       if: github.event.inputs.volcano-branch==''
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Checkout Spark repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         fetch-depth: 0
         repository: apache/spark
         ref: branch-3.3
         path: ${{ github.workspace }}/spark
-    - name: Install Java 8
-      uses: actions/setup-java@v1
+    - name: Cache Scala, SBT and Maven
+      uses: actions/cache@v3
       with:
+        path: |
+          build/apache-maven-*
+          build/scala-*
+          build/*.jar
+          ~/.sbt
+        key: build-${{ hashFiles('**/pom.xml', 'project/build.properties', 'build/mvn', 'build/sbt', 'build/sbt-launch-lib.bash', 'build/spark-build-info') }}
+        restore-keys: |
+          build-
+    - name: Cache Coursier local repository
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/coursier
+        key: k8s-integration-coursier-${{ hashFiles('**/pom.xml', '**/plugins.sbt') }}
+        restore-keys: |
+          k8s-integration-coursier-
+    - name: Install Java 8
+      uses: actions/setup-java@v3
+      with:
+        distribution: temurin
         java-version: 8
     - name: Install Go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v3
       with:
         go-version: 1.18.x
     - name: Set up Docker Buildx
@@ -52,25 +71,29 @@ jobs:
         # Use minikube kubectl
         minikube kubectl -- get pods -A
         minikube kubectl -- get nodes -oyaml
-    - name: Replace mirror
-      run: |
-        mirror="RUN sed -i 's/deb.debian.org/repo.huaweicloud.com/g' /etc/apt/sources.list\nRUN sed -i 's|security.debian.org/debian-security|repo.huaweicloud.com/debian-security|g' /etc/apt/sources.list\n"
-        sed -i "30 i ${mirror}" resource-managers/kubernetes/docker/src/main/dockerfiles/spark/Dockerfile.java17
-      working-directory: ${{ github.workspace }}/spark
     - name: Run K8S integration test
       run: |
         eval $(minikube docker-env)
         minikube kubectl -- create clusterrolebinding serviceaccounts-cluster-admin --clusterrole=cluster-admin --group=system:serviceaccounts || true
-        build/sbt -Pvolcano -Pkubernetes -Pkubernetes-integration-tests -Dtest.include.tags=volcano "kubernetes-integration-tests/test"
+        build/sbt -Pvolcano -Pkubernetes -Pkubernetes-integration-tests -Dspark.kubernetes.test.driverRequestCores=0.5 -Dspark.kubernetes.test.executorRequestCores=0.2 -Dspark.kubernetes.test.volcanoMaxConcurrencyJobNum=1 -Dtest.include.tags=volcano "kubernetes-integration-tests/test"
       working-directory: ${{ github.workspace }}/spark
-    - name: Upload spark integration tests log files
+    - name: Collect Volcano logs
+      if: failure()
+      run: |
+        kubectl logs $(kubectl get po -nvolcano-system | grep volcano-scheduler |cut -d" " -f1) -nvolcano-system > volcano-scheduler.log
+        kubectl logs $(kubectl get po -nvolcano-system | grep volcano-admission |cut -d" " -f1 | grep -v init) -nvolcano-system > volcano-admission.log
+        kubectl logs $(kubectl get po -nvolcano-system | grep volcano-controllers |cut -d" " -f1) -nvolcano-system > volcano-controllers.log
+        kubectl get pod -A
+        kubectl describe node
+    - name: Upload Spark on K8S integration tests log files
       if: failure()
       uses: actions/upload-artifact@v2
       with:
-        name: spark-on-kubernetes-with-volcano-it-log
-        path: "**/target/integration-tests.log"
+        name: spark-on-kubernetes-it-log
+        path: |
+          **/target/integration-tests.log
+          **/volcano-*.log
     - name: Cleanup minikube
       if: always()
       run: |
         minikube delete
-
