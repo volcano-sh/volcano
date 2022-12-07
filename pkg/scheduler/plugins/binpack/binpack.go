@@ -151,6 +151,9 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 		weight.BinPackingResources[v1.ResourceName(resource)] = resourceWeight
 	}
 
+	weight.BinPackingResources[v1.ResourceCPU] = weight.BinPackingCPU
+	weight.BinPackingResources[v1.ResourceMemory] = weight.BinPackingMemory
+
 	return weight
 }
 
@@ -216,18 +219,7 @@ func BinPackingScore(task *api.TaskInfo, node *api.NodeInfo, weight priorityWeig
 		allocate := allocatable.Get(resource)
 		nodeUsed := used.Get(resource)
 
-		resourceWeight := 0
-		found := false
-		switch resource {
-		case v1.ResourceCPU:
-			resourceWeight = weight.BinPackingCPU
-			found = true
-		case v1.ResourceMemory:
-			resourceWeight = weight.BinPackingMemory
-			found = true
-		default:
-			resourceWeight, found = weight.BinPackingResources[resource]
-		}
+		resourceWeight, found := weight.BinPackingResources[resource]
 		if !found {
 			continue
 		}
