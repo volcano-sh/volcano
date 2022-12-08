@@ -74,14 +74,14 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 
 		workerLock.Lock()
 		for plugin, score := range mapScores {
-			nodeScoreMap, ok := pluginNodeScoreMap[plugin]
+			nodeScoreList, ok := pluginNodeScoreMap[plugin]
 			if !ok {
-				nodeScoreMap = k8sframework.NodeScoreList{}
+				nodeScoreList = k8sframework.NodeScoreList{}
 			}
 			hp := k8sframework.NodeScore{}
 			hp.Name = node.Name
 			hp.Score = int64(math.Floor(score))
-			pluginNodeScoreMap[plugin] = append(nodeScoreMap, hp)
+			pluginNodeScoreMap[plugin] = append(nodeScoreList, hp)
 		}
 		nodeOrderScoreMap[node.Name] = orderScore
 		workerLock.Unlock()
