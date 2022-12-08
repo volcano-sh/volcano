@@ -43,6 +43,23 @@ type viewFlags struct {
 	JobName   string
 }
 
+func (vflags *viewFlags) GetMasterUrl() string {
+	return vflags.Master
+}
+
+func (vflags *viewFlags) GetKubeconfigPath() string {
+	return vflags.Kubeconfig
+}
+
+func (vflags *viewFlags) GetNamespace() string {
+	return vflags.Namespace
+}
+
+func (vflags *viewFlags) SetNamespace(ns string) error {
+	vflags.Namespace = ns
+	return nil
+}
+
 // level of print indent.
 const (
 	Level0 = iota
@@ -56,7 +73,7 @@ var viewJobFlags = &viewFlags{}
 func InitViewFlags(cmd *cobra.Command) {
 	initFlags(cmd, &viewJobFlags.commonFlags)
 
-	cmd.Flags().StringVarP(&viewJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&viewJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&viewJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
@@ -68,6 +85,10 @@ func ViewJob() error {
 	}
 	if viewJobFlags.JobName == "" {
 		err := fmt.Errorf("job name (specified by --name or -N) is mandatory to view a particular job")
+		return err
+	}
+
+	if err := util.UpdateNamespace(viewJobFlags); err != nil {
 		return err
 	}
 

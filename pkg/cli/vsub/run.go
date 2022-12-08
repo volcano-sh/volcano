@@ -48,6 +48,23 @@ type runFlags struct {
 	Command       string
 }
 
+func (runflags *runFlags) GetMasterUrl() string {
+	return runflags.Master
+}
+
+func (runflags *runFlags) GetKubeconfigPath() string {
+	return runflags.Kubeconfig
+}
+
+func (runflags *runFlags) GetNamespace() string {
+	return runflags.Namespace
+}
+
+func (runflags *runFlags) SetNamespace(ns string) error {
+	runflags.Namespace = ns
+	return nil
+}
+
 var launchJobFlags = &runFlags{}
 
 const (
@@ -114,7 +131,7 @@ func setDefaultArgs() {
 		if namespace != "" {
 			launchJobFlags.Namespace = namespace
 		} else {
-			launchJobFlags.Namespace = defaultJobNamespace
+			util.UpdateNamespace(launchJobFlags)
 		}
 	}
 }

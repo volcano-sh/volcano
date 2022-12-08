@@ -41,6 +41,23 @@ type listFlags struct {
 	selector      string
 }
 
+func (lflags *listFlags) GetMasterUrl() string {
+	return lflags.Master
+}
+
+func (lflags *listFlags) GetKubeconfigPath() string {
+	return lflags.Kubeconfig
+}
+
+func (lflags *listFlags) GetNamespace() string {
+	return lflags.Namespace
+}
+
+func (lflags *listFlags) SetNamespace(ns string) error {
+	lflags.Namespace = ns
+	return nil
+}
+
 const (
 
 	// Name  name etc below key words are used in job print format
@@ -83,7 +100,7 @@ var listJobFlags = &listFlags{}
 func InitListFlags(cmd *cobra.Command) {
 	initFlags(cmd, &listJobFlags.commonFlags)
 
-	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
 	cmd.Flags().BoolVarP(&listJobFlags.allNamespace, "all-namespaces", "", false, "list jobs in all namespaces")
 	cmd.Flags().StringVarP(&listJobFlags.selector, "selector", "", "", "fuzzy matching jobName")
@@ -95,9 +112,10 @@ func ListJobs() error {
 	if err != nil {
 		return err
 	}
-	if listJobFlags.allNamespace {
-		listJobFlags.Namespace = ""
+	if !listJobFlags.allNamespace {
+		util.UpdateNamespace(listJobFlags)
 	}
+
 	jobClient := versioned.NewForConfigOrDie(config)
 	jobs, err := jobClient.BatchV1alpha1().Jobs(listJobFlags.Namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {

@@ -35,13 +35,30 @@ type deleteFlags struct {
 	JobName   string
 }
 
+func (dflags *deleteFlags) GetMasterUrl() string {
+	return dflags.Master
+}
+
+func (dflags *deleteFlags) GetKubeconfigPath() string {
+	return dflags.Kubeconfig
+}
+
+func (dflags *deleteFlags) GetNamespace() string {
+	return dflags.Namespace
+}
+
+func (dflags *deleteFlags) SetNamespace(ns string) error {
+	dflags.Namespace = ns
+	return nil
+}
+
 var deleteJobFlags = &deleteFlags{}
 
 // InitDeleteFlags init the delete command flags.
 func InitDeleteFlags(cmd *cobra.Command) {
 	initFlags(cmd, &deleteJobFlags.commonFlags)
 
-	cmd.Flags().StringVarP(&deleteJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&deleteJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&deleteJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
@@ -54,6 +71,9 @@ func DeleteJob() error {
 
 	if deleteJobFlags.JobName == "" {
 		err := fmt.Errorf("job name is mandatory to delete a particular job")
+		return err
+	}
+	if err := util.UpdateNamespace(deleteJobFlags); err != nil {
 		return err
 	}
 

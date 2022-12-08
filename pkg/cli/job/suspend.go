@@ -32,13 +32,30 @@ type suspendFlags struct {
 	JobName   string
 }
 
+func (sflags *suspendFlags) GetMasterUrl() string {
+	return sflags.Master
+}
+
+func (sflags *suspendFlags) GetKubeconfigPath() string {
+	return sflags.Kubeconfig
+}
+
+func (sflags *suspendFlags) GetNamespace() string {
+	return sflags.Namespace
+}
+
+func (sflags *suspendFlags) SetNamespace(ns string) error {
+	sflags.Namespace = ns
+	return nil
+}
+
 var suspendJobFlags = &suspendFlags{}
 
 // InitSuspendFlags init suspend related flags.
 func InitSuspendFlags(cmd *cobra.Command) {
 	initFlags(cmd, &suspendJobFlags.commonFlags)
 
-	cmd.Flags().StringVarP(&suspendJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&suspendJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&suspendJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
@@ -51,6 +68,10 @@ func SuspendJob() error {
 
 	if suspendJobFlags.JobName == "" {
 		err := fmt.Errorf("job name is mandatory to suspend a particular job")
+		return err
+	}
+
+	if err := util.UpdateNamespace(suspendJobFlags); err != nil {
 		return err
 	}
 

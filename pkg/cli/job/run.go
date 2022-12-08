@@ -48,6 +48,23 @@ type runFlags struct {
 	FileName      string
 }
 
+func (runflags *runFlags) GetMasterUrl() string {
+	return runflags.Master
+}
+
+func (runflags *runFlags) GetKubeconfigPath() string {
+	return runflags.Kubeconfig
+}
+
+func (runflags *runFlags) GetNamespace() string {
+	return runflags.Namespace
+}
+
+func (runflags *runFlags) SetNamespace(ns string) error {
+	runflags.Namespace = ns
+	return nil
+}
+
 var launchJobFlags = &runFlags{}
 
 // InitRunFlags init the run flags.
@@ -55,7 +72,7 @@ func InitRunFlags(cmd *cobra.Command) {
 	initFlags(cmd, &launchJobFlags.commonFlags)
 
 	cmd.Flags().StringVarP(&launchJobFlags.Image, "image", "i", "busybox", "the container image of job")
-	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&launchJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&launchJobFlags.Name, "name", "N", "", "the name of job")
 	cmd.Flags().IntVarP(&launchJobFlags.MinAvailable, "min", "m", 1, "the minimal available tasks of job")
 	cmd.Flags().IntVarP(&launchJobFlags.Replicas, "replicas", "r", 1, "the total tasks of job")
@@ -76,6 +93,10 @@ func RunJob() error {
 
 	if launchJobFlags.Name == "" && launchJobFlags.FileName == "" {
 		err = fmt.Errorf("job name cannot be left blank")
+		return err
+	}
+
+	if err := util.UpdateNamespace(launchJobFlags); err != nil {
 		return err
 	}
 

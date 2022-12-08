@@ -35,13 +35,30 @@ type cancelFlags struct {
 	JobName   string
 }
 
+func (cflags *cancelFlags) GetMasterUrl() string {
+	return cflags.Master
+}
+
+func (cflags *cancelFlags) GetKubeconfigPath() string {
+	return cflags.Kubeconfig
+}
+
+func (cflags *cancelFlags) GetNamespace() string {
+	return cflags.Namespace
+}
+
+func (cflags *cancelFlags) SetNamespace(ns string) error {
+	cflags.Namespace = ns
+	return nil
+}
+
 var cancelJobFlags = &cancelFlags{}
 
 // InitCancelFlags init the cancel command flags.
 func InitCancelFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &cancelJobFlags.CommonFlags)
 
-	cmd.Flags().StringVarP(&cancelJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&cancelJobFlags.Namespace, "namespace", "N", "", "the namespace of job")
 	cmd.Flags().StringVarP(&cancelJobFlags.JobName, "name", "n", "", "the name of job")
 }
 
@@ -54,6 +71,10 @@ func CancelJob() error {
 
 	if cancelJobFlags.JobName == "" {
 		err := fmt.Errorf("job name is mandatory to cancel a particular job")
+		return err
+	}
+
+	if err := util.UpdateNamespace(cancelJobFlags); err != nil {
 		return err
 	}
 

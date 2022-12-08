@@ -93,7 +93,7 @@ Flags:
   -h, --help                help for list
   -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
   -s, --master string       the address of apiserver
-  -n, --namespace string    the namespace of job (default "default")
+  -n, --namespace string    the namespace of job
   -S, --scheduler string    list job with specified scheduler name
       --selector string     fuzzy matching jobName
 
@@ -120,7 +120,7 @@ Flags:
   -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
   -s, --master string       the address of apiserver
   -N, --name string         the name of job
-  -n, --namespace string    the namespace of job (default "default")
+  -n, --namespace string    the namespace of job
 
 Global Flags:
       --log-flush-frequency duration   Maximum number of seconds between log flushes (default 5s)
@@ -145,7 +145,7 @@ Flags:
   -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
   -s, --master string       the address of apiserver
   -N, --name string         the name of job
-  -n, --namespace string    the namespace of job (default "default")
+  -n, --namespace string    the namespace of job
 
 Global Flags:
       --log-flush-frequency duration   Maximum number of seconds between log flushes (default 5s)
@@ -174,7 +174,7 @@ Flags:
   -s, --master string       the address of apiserver
   -m, --min int             the minimal available tasks of job (default 1)
   -N, --name string         the name of job
-  -n, --namespace string    the namespace of job (default "default")
+  -n, --namespace string    the namespace of job
   -r, --replicas int        the total tasks of job (default 1)
   -R, --requests string     the resource request of the task (default "cpu=1000m,memory=100Mi")
   -S, --scheduler string    the scheduler for this job (default "volcano")

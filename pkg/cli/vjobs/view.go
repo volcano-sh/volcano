@@ -46,6 +46,23 @@ type viewFlags struct {
 	selector      string
 }
 
+func (vflags *viewFlags) GetMasterUrl() string {
+	return vflags.Master
+}
+
+func (vflags *viewFlags) GetKubeconfigPath() string {
+	return vflags.Kubeconfig
+}
+
+func (vflags *viewFlags) GetNamespace() string {
+	return vflags.Namespace
+}
+
+func (vflags *viewFlags) SetNamespace(ns string) error {
+	vflags.Namespace = ns
+	return nil
+}
+
 const (
 	// Level0 is the level of print indent
 	Level0 = iota
@@ -94,7 +111,7 @@ var viewJobFlags = &viewFlags{}
 func InitViewFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &viewJobFlags.CommonFlags)
 
-	cmd.Flags().StringVarP(&viewJobFlags.Namespace, "namespace", "N", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&viewJobFlags.Namespace, "namespace", "N", "", "the namespace of job")
 	cmd.Flags().StringVarP(&viewJobFlags.JobName, "name", "n", "", "the name of job")
 	cmd.Flags().StringVarP(&viewJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
 	cmd.Flags().BoolVarP(&viewJobFlags.allNamespace, "all-namespaces", "", false, "list jobs in all namespaces")
@@ -109,6 +126,10 @@ func ViewJob() error {
 	}
 	if viewJobFlags.JobName == "" {
 		err := ListJobs()
+		return err
+	}
+
+	if err := util.UpdateNamespace(viewJobFlags); err != nil {
 		return err
 	}
 
@@ -300,8 +321,8 @@ func ListJobs() error {
 	if err != nil {
 		return err
 	}
-	if viewJobFlags.allNamespace {
-		viewJobFlags.Namespace = ""
+	if !viewJobFlags.allNamespace {
+		util.UpdateNamespace(viewJobFlags)
 	}
 	jobClient := versioned.NewForConfigOrDie(config)
 	jobs, err := jobClient.BatchV1alpha1().Jobs(viewJobFlags.Namespace).List(context.TODO(), metav1.ListOptions{})

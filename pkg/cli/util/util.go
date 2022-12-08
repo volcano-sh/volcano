@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
@@ -67,6 +68,36 @@ func HomeDir() string {
 // BuildConfig builds the configure file for command lines.
 func BuildConfig(master, kubeconfig string) (*rest.Config, error) {
 	return clientcmd.BuildConfigFromFlags(master, kubeconfig)
+}
+
+// Update the information set in kubeconfig to the flag of the Volcano client, for example, namespace.
+type CmdFlags interface {
+	GetMasterUrl() string
+	GetKubeconfigPath() string
+	GetNamespace() string
+	SetNamespace(ns string) error
+}
+
+// If ns is specified on the vcctl command line, the ns specified on the command line is used as the default value.
+// If ns is not specified in the vcctl command but is specified in kubeconfig, ns in kubeconfig is used as the default value.
+// If ns is not specified in the vcctl command line and kubeconfig, the default value default is used for ns.
+func UpdateNamespace(cmdFlags CmdFlags) error {
+	clientConfig := newNonInteractiveDeferred(cmdFlags.GetMasterUrl(), cmdFlags.GetKubeconfigPath())
+	ns, _, err := clientConfig.Namespace()
+	if err != nil {
+		fmt.Printf("clientConfig get namespace err %v\n", err)
+		ns = "default"
+	}
+	if cmdFlags.GetNamespace() == "" {
+		return cmdFlags.SetNamespace(ns)
+	}
+	return nil
+}
+
+func newNonInteractiveDeferred(masterUrl, kubeconfigPath string) clientcmd.ClientConfig {
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfigPath},
+		&clientcmd.ConfigOverrides{ClusterInfo: clientcmdapi.Cluster{Server: masterUrl}})
 }
 
 // PopulateResourceListV1 takes strings of form <resourceName1>=<value1>,<resourceName1>=<value2> and returns ResourceList.

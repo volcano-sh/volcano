@@ -32,13 +32,30 @@ type resumeFlags struct {
 	JobName   string
 }
 
+func (reflags *resumeFlags) GetMasterUrl() string {
+	return reflags.Master
+}
+
+func (reflags *resumeFlags) GetKubeconfigPath() string {
+	return reflags.Kubeconfig
+}
+
+func (reflags *resumeFlags) GetNamespace() string {
+	return reflags.Namespace
+}
+
+func (reflags *resumeFlags) SetNamespace(ns string) error {
+	reflags.Namespace = ns
+	return nil
+}
+
 var resumeJobFlags = &resumeFlags{}
 
 // InitResumeFlags init resume command flags.
 func InitResumeFlags(cmd *cobra.Command) {
 	initFlags(cmd, &resumeJobFlags.commonFlags)
 
-	cmd.Flags().StringVarP(&resumeJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
+	cmd.Flags().StringVarP(&resumeJobFlags.Namespace, "namespace", "n", "", "the namespace of job")
 	cmd.Flags().StringVarP(&resumeJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
@@ -50,6 +67,10 @@ func ResumeJob() error {
 	}
 	if resumeJobFlags.JobName == "" {
 		err := fmt.Errorf("job name is mandatory to resume a particular job")
+		return err
+	}
+
+	if util.UpdateNamespace(resumeJobFlags); err != nil {
 		return err
 	}
 
