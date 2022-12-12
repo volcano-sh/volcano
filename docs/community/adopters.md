@@ -28,3 +28,4 @@ please feel free to add yourself into the following list by a pull request. Ther
 | [GrandOmics](https://www.grandomics.com/) |[@alartin](https://github.com/alartin)| Evaluation | Infrastructure of Hanwell (Huawei Cloud backend of Cromwell which is a Broad Institute implementation of WDL) |
 | [kt NexR](https://www.ktnexr.com) |[@minyk](https://github.com/minyk), [@dieselnexr](https://github.com/dieselnexr)| Evaluation | spark scheduler of our next cloud native product. |
 | [QTT Bigdata Infra](https://ir.qutoutiao.net/) |[@yuzhaojing](https://github.com/yuzhaojing) | Evaluation | Spark and AI on K8S. |
+| [Predibase](https://predibase.com/) |[@tgaddair](https://github.com/tgaddair) | Staging | Ray on K8s. |
