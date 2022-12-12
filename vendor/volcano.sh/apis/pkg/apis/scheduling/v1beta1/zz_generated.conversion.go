@@ -555,6 +555,7 @@ func autoConvert_v1beta1_QueueStatus_To_scheduling_QueueStatus(in *QueueStatus, 
 	if err := Convert_v1beta1_Reservation_To_scheduling_Reservation(&in.Reservation, &out.Reservation, s); err != nil {
 		return err
 	}
+	out.Allocated = *(*v1.ResourceList)(unsafe.Pointer(&in.Allocated))
 	return nil
 }
 
@@ -573,6 +574,7 @@ func autoConvert_scheduling_QueueStatus_To_v1beta1_QueueStatus(in *scheduling.Qu
 	if err := Convert_scheduling_Reservation_To_v1beta1_Reservation(&in.Reservation, &out.Reservation, s); err != nil {
 		return err
 	}
+	out.Allocated = *(*v1.ResourceList)(unsafe.Pointer(&in.Allocated))
 	return nil
 }
 

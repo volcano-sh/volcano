@@ -66,6 +66,8 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 		queueStatus.State = queue.Status.State
 	}
 
+	queueStatus.Allocated = queue.Status.Allocated.DeepCopy()
+
 	// ignore update when status does not change
 	if reflect.DeepEqual(queueStatus, queue.Status) {
 		return nil
