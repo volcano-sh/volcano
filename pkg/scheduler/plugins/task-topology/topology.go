@@ -88,7 +88,6 @@ func (p *taskTopologyPlugin) TaskOrderFn(l interface{}, r interface{}) int {
 		return 0
 	}
 
-
 	lvBucket := lvJobManager.GetBucket(lv)
 	rvBucket := rvJobManager.GetBucket(rv)
 	// the one have bucket would always prior to another
