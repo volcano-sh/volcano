@@ -15,7 +15,7 @@
 [Volcano](https://volcano.sh/) is a batch system built on Kubernetes. It provides a suite of mechanisms that are commonly required by
 many classes of batch & elastic workload including: machine learning/deep learning, bioinformatics/genomics and
 other "big data" applications. These types of applications typically run on generalized domain frameworks like
-TensorFlow, Spark, PyTorch, MPI, etc, which Volcano integrates with.
+TensorFlow, Spark, Ray, PyTorch, MPI, etc, which Volcano integrates with.
 
 Volcano builds upon a decade and a half of experience running a wide
 variety of high performance workloads at scale using several systems
@@ -56,6 +56,7 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 - [Horovod/MPI](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mpi)
 - [paddlepaddle](https://github.com/volcano-sh/volcano/tree/master/example/integrations/paddlepaddle)
 - [cromwell](https://github.com/broadinstitute/cromwell/blob/develop/docs/backends/Volcano.md)
+- [KubeRay](https://ray-project.github.io/kuberay/guidance/volcano-integration)
 
 ## Quick Start Guide
 
