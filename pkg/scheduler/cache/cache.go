@@ -19,6 +19,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"os"
 	"strconv"
 	"strings"
@@ -35,6 +36,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
@@ -144,6 +146,16 @@ type SchedulerCache struct {
 	BindFlowChannel chan *schedulingapi.TaskInfo
 	bindCache       []*schedulingapi.TaskInfo
 	batchNum        int
+
+	// A map from image name to its imageState.
+	imageStates map[string]*imageState
+}
+
+type imageState struct {
+	// Size of the image
+	size int64
+	// A set of node names for nodes having this image present
+	nodes sets.String
 }
 
 type DefaultBinder struct {
@@ -434,6 +446,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		nodeSelectorLabels:  make(map[string]string),
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
+		imageStates:         make(map[string]*imageState),
 
 		NodeList: []string{},
 	}
@@ -1055,6 +1068,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		}
 
 		snapshot.Nodes[value.Name] = value.Clone()
+		snapshot.Nodes[value.Name].ImageStates = value.CloneImageSumary()
 
 		if value.RevocableZone != "" {
 			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
@@ -1329,5 +1343,13 @@ func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*schedulingapi.Nod
 			klog.V(3).Infof("node: %s, ResourceUsage: %+v => %+v", k, *nodeInfo.ResourceUsage, *usageInfo[k])
 			nodeInfo.ResourceUsage = usageInfo[k]
 		}
+	}
+}
+
+// createImageStateSummary returns a summarizing snapshot of the given image's state.
+func (sc *SchedulerCache) createImageStateSummary(state *imageState) *framework.ImageStateSummary {
+	return &framework.ImageStateSummary{
+		Size:     state.size,
+		NumNodes: len(state.nodes),
 	}
 }
