@@ -855,3 +855,8 @@ func (ji *JobInfo) IsPending() bool {
 		ji.PodGroup.Status.Phase == scheduling.PodGroupPending ||
 		ji.PodGroup.Status.Phase == ""
 }
+
+// HasPendingTasks return whether job has pending tasks
+func (ji *JobInfo) HasPendingTasks() bool {
+	return len(ji.TaskStatusIndex[Pending]) != 0
+}
