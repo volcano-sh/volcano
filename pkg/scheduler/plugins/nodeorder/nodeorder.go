@@ -262,66 +262,66 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		if weight.imageLocalityWeight != 0 {
 			score, status := imageLocality.Score(context.TODO(), state, task.Pod, node.Name)
 			if !status.IsSuccess() {
-				klog.Warningf("Image Locality Priority Failed because of Error: %v", status.AsError())
+				klog.Warningf("Node: %s, Image Locality Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
 			}
 
 			// If imageLocalityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
 			nodeScore += float64(score) * float64(weight.imageLocalityWeight)
-			klog.V(4).Infof("Image Locality score: %f", nodeScore)
+			klog.V(4).Infof("Node: %s, Image Locality score: %f", node.Name, nodeScore)
 		}
 
 		// NodeResourcesLeastAllocated
 		if weight.leastReqWeight != 0 {
 			score, status := leastAllocated.Score(context.TODO(), state, task.Pod, node.Name)
 			if !status.IsSuccess() {
-				klog.Warningf("Least Allocated Priority Failed because of Error: %v", status.AsError())
+				klog.Warningf("Node: %s, Least Allocated Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
 			}
 
 			// If leastReqWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
 			nodeScore += float64(score) * float64(weight.leastReqWeight)
-			klog.V(4).Infof("Least Request score: %f", nodeScore)
+			klog.V(4).Infof("Node: %s, Least Request score: %f", node.Name, nodeScore)
 		}
 
 		// NodeResourcesMostAllocated
 		if weight.mostReqWeight != 0 {
 			score, status := mostAllocation.Score(context.TODO(), state, task.Pod, node.Name)
 			if !status.IsSuccess() {
-				klog.Warningf("Most Allocated Priority Failed because of Error: %v", status.AsError())
+				klog.Warningf("Node: %s, Most Allocated Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
 			}
 
 			// If mostRequestedWeight is provided, host.Score is multiplied with weight, it's 0 by default
 			nodeScore += float64(score) * float64(weight.mostReqWeight)
-			klog.V(4).Infof("Most Request score: %f", nodeScore)
+			klog.V(4).Infof("Node: %s, Most Request score: %f", node.Name, nodeScore)
 		}
 
 		// NodeResourcesBalancedAllocation
 		if weight.balancedResourceWeight != 0 {
 			score, status := balancedAllocation.Score(context.TODO(), state, task.Pod, node.Name)
 			if !status.IsSuccess() {
-				klog.Warningf("Balanced Resource Allocation Priority Failed because of Error: %v", status.AsError())
+				klog.Warningf("Node: %s, Balanced Resource Allocation Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
 			}
 
 			// If balancedResourceWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
 			nodeScore += float64(score) * float64(weight.balancedResourceWeight)
-			klog.V(4).Infof("Balanced Request score: %f", nodeScore)
+			klog.V(4).Infof("Node: %s, Balanced Request score: %f", node.Name, nodeScore)
 		}
 
 		// NodeAffinity
 		if weight.nodeAffinityWeight != 0 {
 			score, status := nodeAffinity.Score(context.TODO(), state, task.Pod, node.Name)
 			if !status.IsSuccess() {
-				klog.Warningf("Calculate Node Affinity Priority Failed because of Error: %v", status.AsError())
+				klog.Warningf("Node: %s, Calculate Node Affinity Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
 			}
 
 			// TODO: should we normalize the score
 			// If nodeAffinityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
 			nodeScore += float64(score) * float64(weight.nodeAffinityWeight)
-			klog.V(4).Infof("Node Affinity score: %f", nodeScore)
+			klog.V(4).Infof("Node: %s, Node Affinity score: %f", node.Name, nodeScore)
 		}
 
 		klog.V(4).Infof("Total Score for task %s/%s on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)
