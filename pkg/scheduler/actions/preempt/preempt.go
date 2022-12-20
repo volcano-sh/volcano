@@ -243,6 +243,11 @@ func preempt(
 		}
 
 		victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
+			lv := l.(*api.TaskInfo)
+			rv := r.(*api.TaskInfo)
+			if lv.Job != rv.Job {
+				return !ssn.JobOrderFn(ssn.Jobs[lv.Job], ssn.Jobs[rv.Job])
+			}
 			return !ssn.TaskOrderFn(l, r)
 		})
 		for _, victim := range victims {
@@ -293,11 +298,7 @@ func victimTasks(ssn *framework.Session) {
 	stmt := framework.NewStatement(ssn)
 	tasks := make([]*api.TaskInfo, 0)
 	victimTasksMap := ssn.VictimTasks(tasks)
-	victimTasks := make([]*api.TaskInfo, 0)
-	for task := range victimTasksMap {
-		victimTasks = append(victimTasks, task)
-	}
-	for _, victim := range victimTasks {
+	for victim := range victimTasksMap {
 		if err := stmt.Evict(victim.Clone(), "evict"); err != nil {
 			klog.Errorf("Failed to evict Task <%s/%s>: %v",
 				victim.Namespace, victim.Name, err)
