@@ -19,6 +19,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"reflect"
 	"strconv"
 
@@ -26,6 +27,7 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
@@ -288,13 +290,66 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 	klog.V(3).Infof("Deleted pod <%s/%v> from cache.", pod.Namespace, pod.Name)
 }
 
+// addNodeImageStates adds states of the images on given node to the given nodeInfo and update the imageStates in
+// scheduler cache. This function assumes the lock to scheduler cache has been acquired.
+func (sc *SchedulerCache) addNodeImageStates(node *v1.Node, nodeInfo *schedulingapi.NodeInfo) {
+	newSum := make(map[string]*framework.ImageStateSummary)
+
+	for _, image := range node.Status.Images {
+		for _, name := range image.Names {
+			// update the entry in imageStates
+			state, ok := sc.imageStates[name]
+			if !ok {
+				state = &imageState{
+					size:  image.SizeBytes,
+					nodes: sets.NewString(node.Name),
+				}
+				sc.imageStates[name] = state
+			} else {
+				state.nodes.Insert(node.Name)
+			}
+			// create the imageStateSummary for this image
+			if _, ok := newSum[name]; !ok {
+				newSum[name] = sc.createImageStateSummary(state)
+			}
+		}
+	}
+	nodeInfo.ImageStates = newSum
+}
+
+// removeNodeImageStates removes the given node record from image entries having the node
+// in imageStates cache. After the removal, if any image becomes free, i.e., the image
+// is no longer available on any node, the image entry will be removed from imageStates.
+func (sc *SchedulerCache) removeNodeImageStates(node *v1.Node) {
+	if node == nil {
+		return
+	}
+
+	for _, image := range node.Status.Images {
+		for _, name := range image.Names {
+			state, ok := sc.imageStates[name]
+			if ok {
+				state.nodes.Delete(node.Name)
+				if len(state.nodes) == 0 {
+					// Remove the unused image to make sure the length of
+					// imageStates represents the total number of different
+					// images on all nodes
+					delete(sc.imageStates, name)
+				}
+			}
+		}
+	}
+}
+
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) addNode(node *v1.Node) error {
 	if sc.Nodes[node.Name] != nil {
 		sc.Nodes[node.Name].SetNode(node)
+		sc.removeNodeImageStates(node)
 	} else {
 		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
 	}
+	sc.addNodeImageStates(node, sc.Nodes[node.Name])
 	return nil
 }
 
@@ -302,6 +357,8 @@ func (sc *SchedulerCache) addNode(node *v1.Node) error {
 func (sc *SchedulerCache) updateNode(oldNode, newNode *v1.Node) error {
 	if sc.Nodes[newNode.Name] != nil {
 		sc.Nodes[newNode.Name].SetNode(newNode)
+		sc.removeNodeImageStates(newNode)
+		sc.addNodeImageStates(newNode, sc.Nodes[newNode.Name])
 		return nil
 	}
 
@@ -322,7 +379,7 @@ func (sc *SchedulerCache) deleteNode(node *v1.Node) error {
 			klog.Errorf("delete numatopo <%s/%s> failed.", numaInfo.Namespace, numaInfo.Name)
 		}
 	}
-
+	sc.removeNodeImageStates(node)
 	delete(sc.Nodes, node.Name)
 
 	return nil
