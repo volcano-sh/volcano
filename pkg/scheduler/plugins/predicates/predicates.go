@@ -175,8 +175,8 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
-	pl := util.NewPodListerFromNode(ssn)
-	nodeMap := util.GenerateNodeMapAndSlice(ssn.Nodes)
+	pl := ssn.PodLister
+	nodeMap := ssn.NodeMap
 
 	pCache := predicateCacheNew()
 	predicate := enablePredicate(pp.pluginArguments)
