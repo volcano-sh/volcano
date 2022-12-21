@@ -18,6 +18,7 @@ package framework
 
 import (
 	"fmt"
+	"reflect"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,6 +29,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
+
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -185,9 +187,42 @@ func openSession(cache cache.Cache) *Session {
 	return ssn
 }
 
+// updateQueueStatus updates allocated field in queue status on session close.
+func updateQueueStatus(ssn *Session) {
+	// calculate allocated resources on each queue
+	var allocatedResources = make(map[api.QueueID]*api.Resource, len(ssn.Queues))
+	for queueID := range ssn.Queues {
+		allocatedResources[queueID] = &api.Resource{}
+	}
+	for _, job := range ssn.Jobs {
+		for _, runningTask := range job.TaskStatusIndex[api.Running] {
+			allocatedResources[job.Queue].Add(runningTask.Resreq)
+		}
+	}
+
+	// update queue status
+	for queueID := range ssn.Queues {
+		// convert api.Resource to v1.ResourceList
+		var queueStatus = util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
+		if reflect.DeepEqual(ssn.Queues[queueID].Queue.Status.Allocated, queueStatus) {
+			klog.V(5).Infof("Queue <%s> allocated resource keeps equal, no need to update queue status <%v>.",
+				queueID, ssn.Queues[queueID].Queue.Status.Allocated)
+			continue
+		}
+
+		ssn.Queues[queueID].Queue.Status.Allocated = queueStatus
+
+		if err := ssn.cache.UpdateQueueStatus(ssn.Queues[queueID]); err != nil {
+			klog.Errorf("failed to update queue <%s> status: %s", ssn.Queues[queueID].Name, err.Error())
+		}
+	}
+}
+
 func closeSession(ssn *Session) {
 	ju := newJobUpdater(ssn)
 	ju.UpdateAll()
+
+	updateQueueStatus(ssn)
 
 	ssn.Jobs = nil
 	ssn.Nodes = nil

@@ -19,13 +19,16 @@ package util
 import (
 	"context"
 	"fmt"
-	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"math"
 	"math/rand"
 	"sort"
 	"sync"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -198,4 +201,15 @@ func GetMinInt(vals ...int) int {
 		}
 	}
 	return min
+}
+
+// ConvertRes2ResList convert resource type from api.Resource in scheduler to v1.ResourceList in yaml
+func ConvertRes2ResList(res *api.Resource) v1.ResourceList {
+	var rl = v1.ResourceList{}
+	rl[v1.ResourceCPU] = *resource.NewMilliQuantity(int64(res.MilliCPU), resource.DecimalSI)
+	rl[v1.ResourceMemory] = *resource.NewQuantity(int64(res.Memory), resource.BinarySI)
+	for resourceName, f := range res.ScalarResources {
+		rl[resourceName] = *resource.NewMilliQuantity(int64(f), resource.DecimalSI)
+	}
+	return rl
 }

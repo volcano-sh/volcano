@@ -285,7 +285,10 @@ type QueueStatus struct {
 	Completed int32
 
 	// Reservation is the profile of resource reservation for queue
-	Reservation Reservation `json:"reservation,omitempty" protobuf:"bytes,6,opt,name=reservation"`
+	Reservation Reservation
+
+	// Allocated is allocated resources in queue
+	Allocated v1.ResourceList
 }
 
 // CluterSpec represents the template of Cluster
