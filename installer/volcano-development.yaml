@@ -8630,10 +8630,12 @@ data:
     - plugins:
       - name: priority
       - name: gang
+        enablePreemptable: false
       - name: conformance
     - plugins:
       - name: overcommit
       - name: drf
+        enablePreemptable: false
       - name: predicates
       - name: proportion
       - name: nodeorder
