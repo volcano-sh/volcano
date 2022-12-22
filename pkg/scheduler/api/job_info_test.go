@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -30,6 +31,55 @@ import (
 
 func jobInfoEqual(l, r *JobInfo) bool {
 	return reflect.DeepEqual(l, r)
+}
+
+func TestGetMinResources(t *testing.T) {
+	tests := []struct {
+		uid          JobID
+		minResources *v1.ResourceList
+		expected     *Resource
+	}{
+		{
+			uid: JobID("case1"),
+			minResources: &v1.ResourceList{
+				v1.ResourceRequestsCPU:    *resource.NewMilliQuantity(2000, resource.DecimalSI),
+				v1.ResourceRequestsMemory: *resource.NewQuantity(4000, resource.DecimalSI),
+			},
+			expected: &Resource{
+				MilliCPU: 2000,
+				Memory:   4000,
+			},
+		},
+		{
+			uid: JobID("case2"),
+			minResources: &v1.ResourceList{
+				v1.ResourceRequestsCPU:         *resource.NewMilliQuantity(2000, resource.DecimalSI),
+				v1.ResourceRequestsMemory:      *resource.NewQuantity(4000, resource.DecimalSI),
+				"requests.scalar.test/scalar1": *resource.NewQuantity(1000, resource.DecimalSI),
+			},
+			expected: &Resource{
+				MilliCPU:        2000,
+				Memory:          4000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000000},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		ps := NewJobInfo(test.uid)
+		ps.SetPodGroup(&PodGroup{
+			PodGroup: scheduling.PodGroup{
+				Spec: scheduling.PodGroupSpec{
+					MinResources: test.minResources,
+				},
+			},
+		})
+		minResources := ps.GetMinResources()
+		if !minResources.Equal(test.expected) {
+			t.Errorf("min resources %d: \n expected: %v, \n got: %v \n",
+				i, test.expected, ps)
+		}
+	}
 }
 
 func TestAddTaskInfo(t *testing.T) {

@@ -481,7 +481,17 @@ func (ji *JobInfo) GetMinResources() *Resource {
 		return EmptyResource()
 	}
 
-	return NewResource(*ji.PodGroup.Spec.MinResources)
+	resources := v1.ResourceList{}
+
+	for k, v := range *ji.PodGroup.Spec.MinResources {
+		if !strings.HasPrefix(string(k), v1.DefaultResourceRequestsPrefix) {
+			continue
+		}
+		k = v1.ResourceName(strings.TrimPrefix(string(k), v1.DefaultResourceRequestsPrefix))
+		resources[k] = v
+	}
+
+	return NewResource(resources)
 }
 
 func (ji *JobInfo) GetElasticResources() *Resource {

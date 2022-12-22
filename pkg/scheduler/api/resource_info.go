@@ -432,8 +432,7 @@ func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultVa
 
 // Equal returns true only on condition that values in all dimension are equal with each other for r and rr
 // Otherwise returns false.
-// @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
-func (r *Resource) Equal(rr *Resource, defaultValue DimensionDefaultValue) bool {
+func (r *Resource) Equal(rr *Resource) bool {
 	equalFunc := func(l, r, diff float64) bool {
 		return l == r || math.Abs(l-r) < diff
 	}

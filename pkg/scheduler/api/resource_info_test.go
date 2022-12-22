@@ -1089,7 +1089,7 @@ func TestEqual(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		flag := test.resource1.Equal(test.resource2, Zero)
+		flag := test.resource1.Equal(test.resource2)
 		if !reflect.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
