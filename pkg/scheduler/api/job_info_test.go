@@ -225,9 +225,9 @@ func TestTaskSchedulingReason(t *testing.T) {
 				},
 			},
 			expected: map[types.UID]string{
-				"pg":   "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Unschedulable, 3 Schedulable",
-				t1.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Unschedulable, 3 Schedulable",
-				t2.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Unschedulable, 3 Schedulable",
+				"pg":   "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable",
+				t1.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable",
+				t2.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable",
 				t3.UID: "Pod ns1/task-3 can possibly be assigned to node1",
 				t4.UID: "Pod ns1/task-4 can possibly be assigned to node2",
 				t5.UID: "Pod ns1/task-5 can possibly be assigned to node3",
