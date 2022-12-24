@@ -32,6 +32,9 @@ const (
 
 	// OnSessionClose label
 	OnSessionClose = "OnSessionClose"
+
+	// SessionRun label
+	SessionRun = "SessionRun"
 )
 
 var (
@@ -104,6 +107,15 @@ var (
 			Name:      "task_scheduling_latency_milliseconds",
 			Help:      "Task scheduling latency in milliseconds",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
+		},
+	)
+
+	taskBindingLatency = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "task_binding_latency_milliseconds",
+			Help:      "Task binding latency in milliseconds",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 10),
 		},
 	)
 
@@ -182,6 +194,11 @@ func UpdateE2eSchedulingLastTimeByJob(jobName string, queue string, namespace st
 // UpdateTaskScheduleDuration updates single task scheduling latency
 func UpdateTaskScheduleDuration(duration time.Duration) {
 	taskSchedulingLatency.Observe(DurationInMilliseconds(duration))
+}
+
+// UpdateTaskScheduleDuration updates single task scheduling latency
+func UpdateTaskBindDuration(duration time.Duration) {
+	taskBindingLatency.Observe(DurationInMilliseconds(duration))
 }
 
 // UpdatePodScheduleStatus update pod schedule decision, could be Success, Failure, Error

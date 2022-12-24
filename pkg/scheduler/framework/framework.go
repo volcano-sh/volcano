@@ -28,6 +28,7 @@ import (
 
 // OpenSession start the session
 func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration) *Session {
+	sessionStartTs := time.Now()
 	ssn := openSession(cache)
 	ssn.Tiers = tiers
 	ssn.Configurations = configurations
@@ -45,11 +46,13 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Con
 			}
 		}
 	}
+	metrics.UpdatePluginDuration("total", metrics.OnSessionOpen, metrics.Duration(sessionStartTs))
 	return ssn
 }
 
 // CloseSession close the session
 func CloseSession(ssn *Session) {
+	sessionStartTs := time.Now()
 	for _, plugin := range ssn.plugins {
 		onSessionCloseStart := time.Now()
 		plugin.OnSessionClose(ssn)
@@ -57,4 +60,5 @@ func CloseSession(ssn *Session) {
 	}
 
 	closeSession(ssn)
+	metrics.UpdatePluginDuration("total", metrics.OnSessionClose, metrics.Duration(sessionStartTs))
 }

@@ -17,11 +17,14 @@ limitations under the License.
 package framework
 
 import (
+	"time"
+
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 // AddJobOrderFn add job order function
@@ -641,10 +644,12 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 			if !found {
 				continue
 			}
+			startTime := time.Now()
 			err := pfn(task, node)
 			if err != nil {
 				return err
 			}
+			metrics.UpdatePluginDuration(plugin.Name, metrics.SessionRun+":Predicate", metrics.Duration(startTime))
 		}
 	}
 	return nil
@@ -662,10 +667,12 @@ func (ssn *Session) PrePredicateFn(task *api.TaskInfo) error {
 			if !found {
 				continue
 			}
+			startTime := time.Now()
 			err := pfn(task)
 			if err != nil {
 				return err
 			}
+			metrics.UpdatePluginDuration(plugin.Name, metrics.SessionRun+":PrePredicate", metrics.Duration(startTime))
 		}
 	}
 	return nil
@@ -682,8 +689,10 @@ func (ssn *Session) BestNodeFn(task *api.TaskInfo, nodeScores map[float64][]*api
 			if !found {
 				continue
 			}
+			startTime := time.Now()
 			// Only the first plugin that enables and realizes bestNodeFn is allowed to choose best node for task
 			if bestNode := pfn(task, nodeScores); bestNode != nil {
+				metrics.UpdatePluginDuration(plugin.Name, metrics.SessionRun+":BestNode", metrics.Duration(startTime))
 				return bestNode
 			}
 		}
@@ -703,10 +712,12 @@ func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64
 			if !found {
 				continue
 			}
+			startTime := time.Now()
 			score, err := pfn(task, node)
 			if err != nil {
 				return 0, err
 			}
+			metrics.UpdatePluginDuration(plugin.Name, metrics.SessionRun+":NodeOrder", metrics.Duration(startTime))
 			priorityScore += score
 		}
 	}
@@ -725,10 +736,12 @@ func (ssn *Session) BatchNodeOrderFn(task *api.TaskInfo, nodes []*api.NodeInfo) 
 			if !found {
 				continue
 			}
+			startTime := time.Now()
 			score, err := pfn(task, nodes)
 			if err != nil {
 				return nil, err
 			}
+			metrics.UpdatePluginDuration(plugin.Name, metrics.SessionRun+":BatchNodeOrder", metrics.Duration(startTime))
 			for nodeName, score := range score {
 				priorityScore[nodeName] += score
 			}

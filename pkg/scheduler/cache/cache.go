@@ -19,12 +19,13 @@ package cache
 import (
 	"context"
 	"fmt"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"github.com/prometheus/client_golang/api"
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
@@ -770,6 +771,7 @@ func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) error {
 		errTasks, err := sc.Binder.Bind(sc.kubeClient, taskArray)
 		if err == nil {
 			klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
+			metrics.UpdateTaskBindDuration(metrics.Duration(tmp))
 			for _, task := range tasks {
 				sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v",
 					task.Namespace, task.Name, task.NodeName)
