@@ -216,7 +216,7 @@ func (p *taskTopologyPlugin) AllocateFunc(event *framework.Event) {
 
 func (p *taskTopologyPlugin) initBucket(ssn *framework.Session) {
 	for jobID, job := range ssn.Jobs {
-		if noPendingTasks(job) {
+		if !job.HasPendingTasks() {
 			klog.V(4).Infof("No pending tasks in job <%s/%s> by plugin %s.",
 				job.Namespace, job.Name, PluginName)
 			continue

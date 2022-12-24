@@ -665,8 +665,8 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason string, msg string) 
 			// Pod is not schedulable
 			return PodReasonUnschedulable, fe.Error()
 		}
-		// Pod is not scheduled yet
-		return PodReasonUndetermined, msg
+		// Pod is not scheduled yet, keep UNSCHEDULABLE as the reason to support cluster autoscaler
+		return PodReasonUnschedulable, msg
 	default:
 		return status.String(), msg
 	}
@@ -854,4 +854,9 @@ func (ji *JobInfo) IsPending() bool {
 	return ji.PodGroup == nil ||
 		ji.PodGroup.Status.Phase == scheduling.PodGroupPending ||
 		ji.PodGroup.Status.Phase == ""
+}
+
+// HasPendingTasks return whether job has pending tasks
+func (ji *JobInfo) HasPendingTasks() bool {
+	return len(ji.TaskStatusIndex[Pending]) != 0
 }
