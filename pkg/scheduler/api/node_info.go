@@ -18,6 +18,7 @@ package api
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -410,6 +411,17 @@ func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo) error {
 	if ti.Resreq.LessEqual(ni.Idle, Zero) {
 		ni.Idle.Sub(ti.Resreq)
 		return nil
+	}
+	// if resReq larger than node idle, set node idle to zero
+	ni.Idle.MilliCPU = math.Max(0.0, ni.Idle.MilliCPU-ti.Resreq.MilliCPU)
+	ni.Idle.Memory = math.Max(0.0, ni.Idle.Memory-ti.Resreq.Memory)
+	for resourceName, leftValue := range ti.Resreq.ScalarResources {
+		rightValue, ok := ni.Idle.ScalarResources[resourceName]
+		if !ok {
+			continue
+		}
+
+		ni.Idle.ScalarResources[resourceName] = math.Max(0.0, rightValue-leftValue)
 	}
 
 	return &AllocateFailError{Reason: fmt.Sprintf(
