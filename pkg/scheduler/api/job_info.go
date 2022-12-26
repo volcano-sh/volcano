@@ -665,8 +665,8 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason string, msg string) 
 			// Pod is not schedulable
 			return PodReasonUnschedulable, fe.Error()
 		}
-		// Pod is not scheduled yet
-		return PodReasonUndetermined, msg
+		// Pod is not scheduled yet, keep UNSCHEDULABLE as the reason to support cluster autoscaler
+		return PodReasonUnschedulable, msg
 	default:
 		return status.String(), msg
 	}
