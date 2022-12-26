@@ -8,7 +8,7 @@ Kubernetes that are commonly required by many classes of batch & elastic workloa
 3. other "big data" applications.
 
 These types of applications typically run on generalized domain
-frameworks like TensorFlow, Spark, PyTorch, MPI, etc, which Volcano integrates with.
+frameworks like TensorFlow, Spark, Ray, PyTorch, MPI, etc, which Volcano integrates with.
 
 ### Why Volcano?
 - // TODO better to add separate md file & Link
