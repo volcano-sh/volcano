@@ -36,7 +36,7 @@ jobs:
       - name: Run verify test
         run: |
           make verify
-          make TAG=latest generate-yaml
+          make TAG=v1.7.0-beta.0 generate-yaml
           make verify-generated-yaml
           make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
@@ -48,7 +48,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Daily Release
-        run: docker buildx create --use && make TAG=latest RELEASE_VER=latest DOCKER_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} DOCKER_PASSWORD=${{ secrets.DOCKERHUB_TOKEN }} CC=/usr/local/musl/bin/musl-gcc DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry release
+        run: docker buildx create --use && make TAG=v1.7.0-beta.0 RELEASE_VER=v1.7.0-beta.0 DOCKER_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} DOCKER_PASSWORD=${{ secrets.DOCKERHUB_TOKEN }} CC=/usr/local/musl/bin/musl-gcc DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry release
         working-directory: ./src/github.com/${{ github.repository }}
 
       - name: Loginout DockerHub
