@@ -145,7 +145,7 @@ spec:
             - --port=8443
             - -v=4
             - 2>&1
-          image: volcanosh/vc-webhook-manager:latest
+          image: volcanosh/vc-webhook-manager:v1.7.0-beta.0
           imagePullPolicy: IfNotPresent
           name: admission
           volumeMounts:
@@ -180,7 +180,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
-          image: volcanosh/vc-webhook-manager:latest
+          image: volcanosh/vc-webhook-manager:v1.7.0-beta.0
           imagePullPolicy: IfNotPresent
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
@@ -8602,7 +8602,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
           - name: volcano-controllers
-            image: volcanosh/vc-controller-manager:latest
+            image: volcanosh/vc-controller-manager:v1.7.0-beta.0
             args:
               - --logtostderr
               - --enable-healthz=true
@@ -8763,7 +8763,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-scheduler
-          image: volcanosh/vc-scheduler:latest
+          image: volcanosh/vc-scheduler:v1.7.0-beta.0
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
