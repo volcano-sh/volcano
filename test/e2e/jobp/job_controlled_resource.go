@@ -189,11 +189,11 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		pGroup, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		for name, q := range *pGroup.Spec.MinResources {
-			value, ok := expected[string(name)]
+		minReq := *pGroup.Spec.MinResources
+		for name, q := range expected {
+			value, ok := minReq[v12.ResourceName(name)]
 			Expect(ok).To(Equal(true), "Resource %s should exists in PodGroup", name)
-			Expect(q.Value()).To(Equal(value), "Resource %s 's value should equal to %d", name, value)
+			Expect(q).To(Equal(value.Value()), "Resource %s 's value should equal to %d", name, value)
 		}
-
 	})
 })
