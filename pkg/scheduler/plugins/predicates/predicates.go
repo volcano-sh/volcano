@@ -51,6 +51,7 @@ const (
 
 	// GPUSharingPredicate is the key for enabling GPU Sharing Predicate in YAML
 	GPUSharingPredicate = "predicate.GPUSharingEnable"
+	NodeLockEnable      = "predicate.NodeLockEnable"
 	GPUNumberPredicate  = "predicate.GPUNumberEnable"
 
 	// CachePredicate control cache predicate feature
@@ -85,6 +86,7 @@ type baseResource struct {
 
 type predicateEnable struct {
 	gpuSharingEnable   bool
+	nodeLockEnable     bool
 	gpuNumberEnable    bool
 	cacheEnable        bool
 	proportionalEnable bool
@@ -119,6 +121,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 
 	predicate := predicateEnable{
 		gpuSharingEnable:   false,
+		nodeLockEnable:     false,
 		gpuNumberEnable:    false,
 		cacheEnable:        false,
 		proportionalEnable: false,
@@ -127,6 +130,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
 	args.GetBool(&predicate.gpuSharingEnable, GPUSharingPredicate)
 	args.GetBool(&predicate.gpuNumberEnable, GPUNumberPredicate)
+	args.GetBool(&predicate.nodeLockEnable, NodeLockEnable)
 
 	if predicate.gpuSharingEnable && predicate.gpuNumberEnable {
 		klog.Fatal("can not define true in both gpu sharing and gpu number")
@@ -182,7 +186,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
 			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
-
 			nodeName := event.Task.NodeName
 			node, found := nodeMap[nodeName]
 			if !found {
@@ -192,6 +195,16 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			//predicate gpu sharing
 			if predicate.gpuSharingEnable && api.GetGPUMemoryOfPod(pod) > 0 {
+
+				if predicate.nodeLockEnable {
+					util.UseClient(ssn.KubeClient())
+					err := util.LockNode(nodeName, "gpu")
+					if err != nil {
+						klog.Errorf("node %s locked for lockname gpushare %s\n", nodeName, err.Error())
+						return
+					}
+				}
+
 				nodeInfo, ok := ssn.Nodes[nodeName]
 				if !ok {
 					klog.Errorf("Failed to get node %s info from cache", nodeName)
@@ -333,6 +346,44 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	plugin, _ = podtopologyspread.New(ptsArgs, handle, features)
 	podTopologySpreadFilter := plugin.(*podtopologyspread.PodTopologySpread)
 
+	state := k8sframework.NewCycleState()
+
+	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {
+		// Check NodePorts
+		nodePortFilter.PreFilter(context.TODO(), state, task.Pod)
+
+		// InterPodAffinity Predicate
+		// TODO: Update the node information to be processed by the filer based on the node list returned by the prefilter.
+		// In K8S V1.25, the return value result is added to the Prefile interface,
+		// indicating the list of nodes that meet filtering conditions.
+		// If the value of result is nil, all nodes meet the conditions.
+		// If the specified node information exists, only the node information in result meets the conditions.
+		// The value of Prefile in the current InterPodAffinity package always returns nil.
+		// The outer layer does not need to be processed temporarily.
+		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
+		// the processing logic needs to be added to the return value result.
+		_, status := podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
+		}
+
+		// Check PodTopologySpread
+		// TODO: Update the node information to be processed by the filer based on the node list returned by the prefilter.
+		// In K8S V1.25, the return value result is added to the Prefile interface,
+		// indicating the list of nodes that meet filtering conditions.
+		// If the value of result is nil, all nodes meet the conditions.
+		// If the specified node information exists, only the node information in result meets the conditions.
+		// The value of Prefile in the current PodTopologySpread package always returns nil.
+		// The outer layer does not need to be processed temporarily.
+		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
+		// the processing logic needs to be added to the return value result.
+		_, status = podTopologySpreadFilter.PreFilter(context.TODO(), state, task.Pod)
+		if !status.IsSuccess() {
+			return fmt.Errorf("plugin %s pre-predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
+		}
+		return nil
+	})
+
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
@@ -345,7 +396,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return api.NewFitError(task, node, api.NodePodNumberExceeded)
 		}
 
-		state := k8sframework.NewCycleState()
 		predicateByStablefilter := func(pod *v1.Pod, nodeInfo *k8sframework.NodeInfo) (bool, error) {
 			// CheckNodeUnschedulable
 			status := nodeUnscheduleFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
@@ -389,26 +439,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return err
 		}
 
-		// Check NodePorts
-		nodePortFilter.PreFilter(context.TODO(), state, task.Pod)
 		status := nodePortFilter.Filter(context.TODO(), state, nil, nodeInfo)
 		if !status.IsSuccess() {
-			return fmt.Errorf("plugin %s predicates failed %s", nodeaffinity.Name, status.Message())
-		}
-
-		// InterPodAffinity Predicate
-		// TODO: Update the node information to be processed by the filer based on the node list returned by the prefilter.
-		// In K8S V1.25, the return value result is added to the Prefile interface,
-		// indicating the list of nodes that meet filtering conditions.
-		// If the value of result is nil, all nodes meet the conditions.
-		// If the specified node information exists, only the node information in result meets the conditions.
-		// The value of Prefile in the current InterPodAffinity package always returns nil.
-		// The outer layer does not need to be processed temporarily.
-		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
-		// the processing logic needs to be added to the return value result.
-		_, status = podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
-		if !status.IsSuccess() {
-			return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
+			return fmt.Errorf("plugin %s predicates failed %s", nodeports.Name, status.Message())
 		}
 
 		status = podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
@@ -428,20 +461,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return fmt.Errorf("plugin %s predicates failed %s", volumeZoneFilter.Name(), status.Message())
 		}
 
-		// Check PodTopologySpread
-		// TODO: Update the node information to be processed by the filer based on the node list returned by the prefilter.
-		// In K8S V1.25, the return value result is added to the Prefile interface,
-		// indicating the list of nodes that meet filtering conditions.
-		// If the value of result is nil, all nodes meet the conditions.
-		// If the specified node information exists, only the node information in result meets the conditions.
-		// The value of Prefile in the current PodTopologySpread package always returns nil.
-		// The outer layer does not need to be processed temporarily.
-		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
-		// the processing logic needs to be added to the return value result.
-		_, status = podTopologySpreadFilter.PreFilter(context.TODO(), state, task.Pod)
-		if !status.IsSuccess() {
-			return fmt.Errorf("plugin %s pre-predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
-		}
 		status = podTopologySpreadFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 		if !status.IsSuccess() {
 			return fmt.Errorf("plugin %s predicates failed %s", podTopologySpreadFilter.Name(), status.Message())

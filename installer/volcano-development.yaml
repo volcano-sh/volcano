@@ -8630,10 +8630,12 @@ data:
     - plugins:
       - name: priority
       - name: gang
+        enablePreemptable: false
       - name: conformance
     - plugins:
       - name: overcommit
       - name: drf
+        enablePreemptable: false
       - name: predicates
       - name: proportion
       - name: nodeorder
@@ -8677,7 +8679,7 @@ rules:
     verbs: ["list", "watch"]
   - apiGroups: [""]
     resources: ["nodes"]
-    verbs: ["list", "watch"]
+    verbs: ["get","list", "watch","update","patch"]
   - apiGroups: [ "storage.k8s.io" ]
     resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
     verbs: [ "list", "watch" ]
@@ -8690,6 +8692,9 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
     verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
+    resources: ["queues/status"]
+    verbs: ["update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["list", "watch", "update"]
@@ -9067,6 +9072,15 @@ spec:
           status:
             description: The status of queue.
             properties:
+              allocated:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                description: Allocated is allocated resources in queue
+                type: object
               completed:
                 description: The number of `Completed` PodGroup in this queue.
                 format: int32
@@ -9110,6 +9124,8 @@ spec:
                 description: The number of 'Unknown' PodGroup in this queue.
                 format: int32
                 type: integer
+            required:
+            - allocated
             type: object
         type: object
     served: true

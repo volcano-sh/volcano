@@ -58,6 +58,15 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 				allocated := false
 				fe := api.NewFitErrors()
 
+				if err := ssn.PrePredicateFn(task); err != nil {
+					klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+					for _, ni := range ssn.Nodes {
+						fe.SetNodeError(ni.Name, err)
+					}
+					job.NodesFitErrors[task.UID] = fe
+					break
+				}
+
 				// As task did not request resources, so it only need to meet predicates.
 				// TODO (k82cn): need to prioritize nodes to avoid pod hole.
 				for _, node := range ssn.Nodes {

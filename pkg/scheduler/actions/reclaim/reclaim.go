@@ -69,7 +69,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			queues.Push(queue)
 		}
 
-		if len(job.TaskStatusIndex[api.Pending]) != 0 {
+		if job.HasPendingTasks() {
 			if _, found := preemptorsMap[job.Queue]; !found {
 				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
@@ -113,6 +113,11 @@ func (ra *Action) Execute(ssn *framework.Session) {
 
 		if !ssn.Allocatable(queue, task) {
 			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
+			continue
+		}
+
+		if err := ssn.PrePredicateFn(task); err != nil {
+			klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
 			continue
 		}
 

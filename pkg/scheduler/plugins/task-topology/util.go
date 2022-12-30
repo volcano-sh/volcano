@@ -79,10 +79,6 @@ func addAffinity(m map[string]map[string]struct{}, src, dst string) {
 	srcMap[dst] = struct{}{}
 }
 
-func noPendingTasks(job *api.JobInfo) bool {
-	return len(job.TaskStatusIndex[api.Pending]) == 0
-}
-
 // TaskOrder is struct used to save task order
 type TaskOrder struct {
 	tasks   []*api.TaskInfo

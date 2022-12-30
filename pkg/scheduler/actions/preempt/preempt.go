@@ -206,6 +206,9 @@ func preempt(
 
 	allNodes := ssn.NodeList
 
+	if err := ssn.PrePredicateFn(preemptor); err != nil {
+		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
+	}
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
@@ -240,6 +243,11 @@ func preempt(
 		}
 
 		victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
+			lv := l.(*api.TaskInfo)
+			rv := r.(*api.TaskInfo)
+			if lv.Job != rv.Job {
+				return !ssn.JobOrderFn(ssn.Jobs[lv.Job], ssn.Jobs[rv.Job])
+			}
 			return !ssn.TaskOrderFn(l, r)
 		})
 		for _, victim := range victims {

@@ -21,13 +21,14 @@ import (
 	"math"
 	"testing"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -81,6 +82,14 @@ func TestArguments(t *testing.T) {
 		case "example.com/foo":
 			if weight != 1 {
 				t.Errorf("example.com/foo should be 1, but not %v", weight)
+			}
+		case v1.ResourceCPU:
+			if weight != 5 {
+				t.Errorf("%v should be 5, but not %v", v1.ResourceCPU, weight)
+			}
+		case v1.ResourceMemory:
+			if weight != 2 {
+				t.Errorf("%v should be 2, but not %v", v1.ResourceMemory, weight)
 			}
 		default:
 			t.Errorf("resource %s with weight %d should not appear", name, weight)
@@ -235,16 +244,21 @@ func TestNode(t *testing.T) {
 			Binds:   map[string]string{},
 			Channel: make(chan string),
 		}
-		schedulerCache := &cache.SchedulerCache{
-			Nodes:         make(map[string]*api.NodeInfo),
-			Jobs:          make(map[api.JobID]*api.JobInfo),
-			Queues:        make(map[api.QueueID]*api.QueueInfo),
-			Binder:        binder,
-			StatusUpdater: &util.FakeStatusUpdater{},
-			VolumeBinder:  &util.FakeVolumeBinder{},
 
-			Recorder: record.NewFakeRecorder(100),
+		option := options.NewServerOption()
+		option.RegisterOptions()
+		config, err := kube.BuildConfig(option.KubeClientOptions)
+		if err != nil {
+			return
 		}
+
+		sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
+		schedulerCache := sc.(*cache.SchedulerCache)
+		schedulerCache.Binder = binder
+		schedulerCache.StatusUpdater = &util.FakeStatusUpdater{}
+		schedulerCache.VolumeBinder = &util.FakeVolumeBinder{}
+		schedulerCache.Recorder = record.NewFakeRecorder(100)
+
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)
 		}

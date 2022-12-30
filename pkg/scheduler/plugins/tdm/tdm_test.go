@@ -27,6 +27,8 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -232,16 +234,21 @@ func Test_TDM(t *testing.T) {
 				Binds:   map[string]string{},
 				Channel: make(chan string),
 			}
-			schedulerCache := &cache.SchedulerCache{
-				Nodes:         make(map[string]*api.NodeInfo),
-				Jobs:          make(map[api.JobID]*api.JobInfo),
-				Queues:        make(map[api.QueueID]*api.QueueInfo),
-				Binder:        binder,
-				StatusUpdater: &util.FakeStatusUpdater{},
-				VolumeBinder:  &util.FakeVolumeBinder{},
 
-				Recorder: record.NewFakeRecorder(100),
+			option := options.NewServerOption()
+			option.RegisterOptions()
+			config, err := kube.BuildConfig(option.KubeClientOptions)
+			if err != nil {
+				return
 			}
+
+			sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
+			schedulerCache := sc.(*cache.SchedulerCache)
+			schedulerCache.Binder = binder
+			schedulerCache.StatusUpdater = &util.FakeStatusUpdater{}
+			schedulerCache.VolumeBinder = &util.FakeVolumeBinder{}
+			schedulerCache.Recorder = record.NewFakeRecorder(100)
+
 			for _, node := range test.nodes {
 				schedulerCache.AddNode(node)
 			}
@@ -329,6 +336,9 @@ func Test_TDM_victimsFn(t *testing.T) {
 	p1.Annotations[schedulingv2.PodPreemptable] = "true"
 	p2.Annotations[schedulingv2.PodPreemptable] = "true"
 	p3.Annotations[schedulingv2.PodPreemptable] = "true"
+
+	p4.Annotations[schedulingv2.PodPreemptable] = "false"
+	p5.Annotations[schedulingv2.PodPreemptable] = "false"
 
 	p6.Annotations[schedulingv2.PodPreemptable] = "true"
 	p7.Annotations[schedulingv2.PodPreemptable] = "true"
@@ -674,16 +684,21 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Binds:   map[string]string{},
 				Channel: make(chan string),
 			}
-			schedulerCache := &cache.SchedulerCache{
-				Nodes:         make(map[string]*api.NodeInfo),
-				Jobs:          make(map[api.JobID]*api.JobInfo),
-				Queues:        make(map[api.QueueID]*api.QueueInfo),
-				Binder:        binder,
-				StatusUpdater: &util.FakeStatusUpdater{},
-				VolumeBinder:  &util.FakeVolumeBinder{},
 
-				Recorder: record.NewFakeRecorder(100),
+			option := options.NewServerOption()
+			option.RegisterOptions()
+			config, err := kube.BuildConfig(option.KubeClientOptions)
+			if err != nil {
+				return
 			}
+
+			sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
+			schedulerCache := sc.(*cache.SchedulerCache)
+			schedulerCache.Binder = binder
+			schedulerCache.StatusUpdater = &util.FakeStatusUpdater{}
+			schedulerCache.VolumeBinder = &util.FakeVolumeBinder{}
+			schedulerCache.Recorder = record.NewFakeRecorder(100)
+
 			for _, node := range test.nodes {
 				schedulerCache.AddNode(node)
 			}

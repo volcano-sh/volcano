@@ -69,29 +69,27 @@ func (p *taskTopologyPlugin) TaskOrderFn(l interface{}, r interface{}) int {
 	lv, ok := l.(*api.TaskInfo)
 	if !ok {
 		klog.Errorf("Object is not a taskinfo")
+		return 0
 	}
 	rv, ok := r.(*api.TaskInfo)
 	if !ok {
 		klog.Errorf("Object is not a taskinfo")
+		return 0
 	}
 
 	lvJobManager := p.managers[lv.Job]
 	rvJobManager := p.managers[rv.Job]
-
-	var lvBucket, rvBucket *Bucket
-	if lvJobManager != nil {
-		lvBucket = lvJobManager.GetBucket(lv)
-	} else {
+	if lvJobManager == nil {
 		klog.V(4).Infof("No job manager for job <ID: %s>, do not return task order.", lv.Job)
 		return 0
 	}
-	if rvJobManager != nil {
-		rvBucket = rvJobManager.GetBucket(rv)
-	} else {
+	if rvJobManager == nil {
 		klog.V(4).Infof("No job manager for job <ID: %s>, do not return task order.", rv.Job)
 		return 0
 	}
 
+	lvBucket := lvJobManager.GetBucket(lv)
+	rvBucket := rvJobManager.GetBucket(rv)
 	// the one have bucket would always prior to another
 	lvInBucket := lvBucket != nil
 	rvInBucket := rvBucket != nil
@@ -218,7 +216,7 @@ func (p *taskTopologyPlugin) AllocateFunc(event *framework.Event) {
 
 func (p *taskTopologyPlugin) initBucket(ssn *framework.Session) {
 	for jobID, job := range ssn.Jobs {
-		if noPendingTasks(job) {
+		if !job.HasPendingTasks() {
 			klog.V(4).Infof("No pending tasks in job <%s/%s> by plugin %s.",
 				job.Namespace, job.Name, PluginName)
 			continue
