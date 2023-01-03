@@ -38,7 +38,7 @@ const (
 )
 
 // DimensionDefaultValue means default value for black resource dimension
-type DimensionDefaultValue int
+type DimensionDefaultValue float64
 
 const (
 	// Zero means resource dimension not defined will be treated as zero
@@ -476,12 +476,12 @@ func (r *Resource) Diff(rr *Resource, defaultValue DimensionDefaultValue) (*Reso
 	decreasedVal.ScalarResources = make(map[v1.ResourceName]float64)
 	for lName, lQuant := range leftRes.ScalarResources {
 		rQuant := rightRes.ScalarResources[lName]
-		if lQuant == -1 {
-			increasedVal.ScalarResources[lName] = -1
+		if lQuant == float64(Infinity) {
+			increasedVal.ScalarResources[lName] = lQuant
 			continue
 		}
-		if rQuant == -1 {
-			decreasedVal.ScalarResources[lName] = -1
+		if rQuant == float64(Infinity) {
+			decreasedVal.ScalarResources[lName] = lQuant
 			continue
 		}
 		if lQuant > rQuant {
@@ -563,22 +563,14 @@ func (r *Resource) setDefaultValue(leftResource, rightResource *Resource, defaul
 	for resourceName := range leftResource.ScalarResources {
 		_, ok := rightResource.ScalarResources[resourceName]
 		if !ok {
-			if defaultValue == Zero {
-				rightResource.ScalarResources[resourceName] = 0
-			} else if defaultValue == Infinity {
-				rightResource.ScalarResources[resourceName] = -1
-			}
+			rightResource.ScalarResources[resourceName] = float64(defaultValue)
 		}
 	}
 
 	for resourceName := range rightResource.ScalarResources {
 		_, ok := leftResource.ScalarResources[resourceName]
 		if !ok {
-			if defaultValue == Zero {
-				leftResource.ScalarResources[resourceName] = 0
-			} else if defaultValue == Infinity {
-				leftResource.ScalarResources[resourceName] = -1
-			}
+			leftResource.ScalarResources[resourceName] = float64(defaultValue)
 		}
 	}
 }
