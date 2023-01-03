@@ -557,7 +557,7 @@ func TestLess(t *testing.T) {
 				Memory:          2000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
 			},
-			expected: true,
+			expected: false,
 		},
 		{
 			resource1: &Resource{
@@ -701,7 +701,7 @@ func TestLessEqual(t *testing.T) {
 				Memory:          2000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
 			},
-			expected: true,
+			expected: false,
 		},
 		{
 			resource1: &Resource{
@@ -711,6 +711,30 @@ func TestLessEqual(t *testing.T) {
 			},
 			resource2: &Resource{},
 			expected:  false,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 4000,
+				Memory:   2000,
+			},
+			resource2: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			expected: false,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU: 4000,
+				Memory:   2000,
+			},
+			expected: true,
 		},
 	}
 
@@ -807,7 +831,7 @@ func TestLessPartly(t *testing.T) {
 				Memory:          2000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
 			},
-			expected: false,
+			expected: true,
 		},
 		{
 			resource1: &Resource{
