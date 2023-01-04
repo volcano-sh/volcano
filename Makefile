@@ -32,29 +32,31 @@ endif
 # Get OS architecture
 OSARCH=$(shell uname -m)
 ifeq ($(OSARCH),x86_64)
-REL_OSARCH=linux/amd64
+GOARCH?=amd64
 else ifeq ($(OSARCH),x64)
-REL_OSARCH=linux/amd64
+GOARCH?=amd64
 else ifeq ($(OSARCH),aarch64)
-REL_OSARCH=linux/arm64
+GOARCH?=arm64
 else ifeq ($(OSARCH),aarch64_be)
-REL_OSARCH=linux/arm64
+GOARCH?=arm64
 else ifeq ($(OSARCH),armv8b)
-REL_OSARCH=linux/arm64
+GOARCH?=arm64
 else ifeq ($(OSARCH),armv8l)
-REL_OSARCH=linux/arm64
+GOARCH?=arm64
 else ifeq ($(OSARCH),i386)
-REL_OSARCH=linux/x86
+GOARCH?=x86
 else ifeq ($(OSARCH),i686)
-REL_OSARCH=linux/x86
+GOARCH?=x86
 else ifeq ($(OSARCH),arm)
-REL_OSARCH=linux/arm
+GOARCH?=arm
 else
-REL_OSARCH=linux/$(OSARCH)
+GOARCH?=$(OSARCH)
 endif
 
 # Run `make images DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry IMAGE_PREFIX=[yourregistry]` to push multi-platform
-DOCKER_PLATFORMS ?= "${REL_OSARCH}"
+DOCKER_PLATFORMS ?= "linux/${GOARCH}"
+
+GOOS ?= linux
 
 include Makefile.def
 
@@ -67,41 +69,26 @@ init:
 	mkdir -p ${RELEASE_DIR}
 
 vc-scheduler: init
-	GO111MODULE=off go get github.com/mitchellh/gox
 	if [ ${SUPPORT_PLUGINS} = "yes" ];then\
-		CC=${CC} CGO_ENABLED=1 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
+		CC=${CC} CGO_ENABLED=1 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
 	else\
-		CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
+		CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
 	fi;
 
 vc-controller-manager: init
-	GO111MODULE=off go get github.com/mitchellh/gox
-	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/vc-controller-manager ./cmd/controller-manager
+	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-controller-manager ./cmd/controller-manager
 
 vc-webhook-manager: init
-	GO111MODULE=off go get github.com/mitchellh/gox
-	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
+	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
 
 vcctl: init
-	GO111MODULE=off go get github.com/mitchellh/gox
-	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/vcctl ./cmd/cli
+	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli
 
-image_bins: init
-	GO111MODULE=off go get github.com/mitchellh/gox
-	CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vcctl ./cmd/cli
-	for name in controller-manager webhook-manager; do\
-		CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-$$name ./cmd/$$name; \
-	done
-
-	if [ ${SUPPORT_PLUGINS} = "yes" ];then\
-		CC=${CC} CGO_ENABLED=1 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
-	else\
-		CC=${CC} CGO_ENABLED=0 $(GOBIN)/gox -osarch=${REL_OSARCH} -ldflags ${LD_FLAGS} -output ${BIN_DIR}/${REL_OSARCH}/vc-scheduler ./cmd/scheduler;\
-  	fi;
+image_bins: vc-scheduler vc-controller-manager vc-webhook-manager
 
 images:
 	for name in controller-manager scheduler webhook-manager; do\
-		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type="${BUILDX_OUTPUT_TYPE}" --platform "${DOCKER_PLATFORMS}"; \
+		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS}; \
 	done
 
 generate-code:
