@@ -481,7 +481,7 @@ func (r *Resource) Diff(rr *Resource, defaultValue DimensionDefaultValue) (*Reso
 			continue
 		}
 		if rQuant == float64(Infinity) {
-			decreasedVal.ScalarResources[lName] = lQuant
+			decreasedVal.ScalarResources[lName] = rQuant
 			continue
 		}
 		if lQuant > rQuant {
