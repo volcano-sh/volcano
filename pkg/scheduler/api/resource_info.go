@@ -39,6 +39,7 @@ const (
 
 // DimensionDefaultValue means default value for black resource dimension
 type DimensionDefaultValue float64
+type DimensionDefaultValue float64
 
 const (
 	// Zero means resource dimension not defined will be treated as zero
@@ -478,6 +479,8 @@ func (r *Resource) Diff(rr *Resource, defaultValue DimensionDefaultValue) (*Reso
 		rQuant := rightRes.ScalarResources[lName]
 		if lQuant == float64(Infinity) {
 			increasedVal.ScalarResources[lName] = lQuant
+		if lQuant == float64(Infinity) {
+			increasedVal.ScalarResources[lName] = lQuant
 			continue
 		}
 		if rQuant == float64(Infinity) {
@@ -570,6 +573,7 @@ func (r *Resource) setDefaultValue(leftResource, rightResource *Resource, defaul
 	for resourceName := range rightResource.ScalarResources {
 		_, ok := leftResource.ScalarResources[resourceName]
 		if !ok {
+			leftResource.ScalarResources[resourceName] = float64(defaultValue)
 			leftResource.ScalarResources[resourceName] = float64(defaultValue)
 		}
 	}
