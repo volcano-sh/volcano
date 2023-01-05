@@ -24,6 +24,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 )
 
 func TestGetPodResourceRequest(t *testing.T) {
@@ -234,7 +235,7 @@ func TestGetGPUIndex(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := GetGPUIndex(tc.pod)
+			got := gpushare.GetGPUIndex(tc.pod)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Errorf("Unexpected result (-want +got):\n%s", diff)
 			}
