@@ -201,9 +201,11 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 		}
 
 		if _, err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(context.TODO(), obj, metav1.CreateOptions{}); err != nil {
-			klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
-				pod.Namespace, pod.Name, err)
-			return err
+			if !apierrors.IsAlreadyExists(err) {
+				klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
+					pod.Namespace, pod.Name, err)
+				return err
+			}
 		}
 	}
 

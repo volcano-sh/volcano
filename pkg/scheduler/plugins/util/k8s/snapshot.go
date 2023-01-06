@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
-	"volcano.sh/volcano/pkg/scheduler/plugins/util"
+	scheduler "volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 // Snapshot is a snapshot of cache NodeInfo and NodeTree order. The scheduler takes a
@@ -77,7 +77,7 @@ func NewSnapshot(nodeInfoMap map[string]*framework.NodeInfo) *Snapshot {
 }
 
 // Pods returns a PodLister
-func (s *Snapshot) Pods() util.PodsLister {
+func (s *Snapshot) Pods() scheduler.PodsLister {
 	return podLister(s.nodeInfoList)
 }
 
@@ -100,7 +100,7 @@ func (p podLister) List(selector labels.Selector) ([]*v1.Pod, error) {
 }
 
 // FilteredList returns a filtered list of pods in the snapshot.
-func (p podLister) FilteredList(filter util.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
+func (p podLister) FilteredList(filter scheduler.PodFilter, selector labels.Selector) ([]*v1.Pod, error) {
 	// podFilter is expected to return true for most or all of the pods. We
 	// can avoid expensive array growth without wasting too much memory by
 	// pre-allocating capacity.
