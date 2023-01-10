@@ -20,9 +20,10 @@ import (
 	"testing"
 	"time"
 
+	"io/ioutil"
+
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"io/ioutil"
 
 	apiv1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"

@@ -19,7 +19,7 @@ package ssh
 import (
 	"testing"
 
-	"volcano.sh/volcano/pkg/controllers/job/plugins/interface"
+	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
 func TestSSHPlugin(t *testing.T) {

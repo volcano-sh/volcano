@@ -195,7 +195,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			//predicate gpu sharing
 			if predicate.gpuSharingEnable && api.GetGPUMemoryOfPod(pod) > 0 {
-
 				if predicate.nodeLockEnable {
 					util.UseClient(ssn.KubeClient())
 					err := util.LockNode(nodeName, "gpu")

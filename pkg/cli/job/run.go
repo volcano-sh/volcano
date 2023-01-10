@@ -19,7 +19,7 @@ package job
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -122,7 +122,7 @@ func readFile(filename string) (*vcbatch.Job, error) {
 		return nil, fmt.Errorf("only support yaml file")
 	}
 
-	file, err := ioutil.ReadFile(filename)
+	file, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file, err: %v", err)
 	}

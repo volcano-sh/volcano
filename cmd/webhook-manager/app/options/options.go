@@ -18,7 +18,7 @@ package options
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/spf13/pflag"
 
@@ -96,17 +96,17 @@ func (c *Config) CheckPortOrDie() error {
 // readCAFiles read data from ca file path
 func (c *Config) readCAFiles() error {
 	var err error
-	c.CaCertData, err = ioutil.ReadFile(c.CaCertFile)
+	c.CaCertData, err = os.ReadFile(c.CaCertFile)
 	if err != nil {
 		return fmt.Errorf("failed to read cacert file (%s): %v", c.CaCertFile, err)
 	}
 
-	c.CertData, err = ioutil.ReadFile(c.CertFile)
+	c.CertData, err = os.ReadFile(c.CertFile)
 	if err != nil {
 		return fmt.Errorf("failed to read cert file (%s): %v", c.CertFile, err)
 	}
 
-	c.KeyData, err = ioutil.ReadFile(c.KeyFile)
+	c.KeyData, err = os.ReadFile(c.KeyFile)
 	if err != nil {
 		return fmt.Errorf("failed to read key file (%s): %v", c.KeyFile, err)
 	}

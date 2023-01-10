@@ -21,9 +21,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
-	"volcano.sh/volcano/pkg/scheduler/api"
 
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/framework"
+
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 // PodFilter is a function to filter a pod. If pod passed return true else return false.
