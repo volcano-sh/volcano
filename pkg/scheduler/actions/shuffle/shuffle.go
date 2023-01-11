@@ -18,6 +18,7 @@ package shuffle
 
 import (
 	"k8s.io/klog"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )

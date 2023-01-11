@@ -17,7 +17,6 @@ limitations under the License.
 package config
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -59,7 +58,7 @@ func LoadAdmissionConf(confPath string) *AdmissionConfiguration {
 		return nil
 	}
 
-	configBytes, err := ioutil.ReadFile(confPath)
+	configBytes, err := os.ReadFile(confPath)
 	if err != nil {
 		klog.Errorf("read admission file failed, err=%v", err)
 		return nil

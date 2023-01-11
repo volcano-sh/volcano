@@ -156,10 +156,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		ji := obj.(*api.JobInfo)
 		occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
 		// In the preemption scenario, the taskMinAvailble configuration is not concerned, only the jobMinAvailble is concerned
-		if occupied < ji.MinAvailable {
-			return true
-		}
-		return false
+		return occupied < ji.MinAvailable
 	}
 	ssn.AddJobStarvingFns(gp.Name(), jobStarvingFn)
 }

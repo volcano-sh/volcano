@@ -19,7 +19,6 @@ package router
 import (
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net/http"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -40,7 +39,7 @@ var APPLICATIONJSON = "application/json"
 func Serve(w io.Writer, r *http.Request, admit AdmitFunc) {
 	var body []byte
 	if r.Body != nil {
-		if data, err := ioutil.ReadAll(r.Body); err == nil {
+		if data, err := io.ReadAll(r.Body); err == nil {
 			body = data
 		}
 	}
