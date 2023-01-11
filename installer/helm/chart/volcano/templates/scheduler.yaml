@@ -102,7 +102,7 @@ metadata:
   labels:
     app: volcano-scheduler
 spec:
-  replicas: 1
+  replicas: {{ .Values.custom.scheduler_replicas }}
   selector:
     matchLabels:
       app: volcano-scheduler
