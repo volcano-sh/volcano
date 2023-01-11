@@ -24,7 +24,7 @@ import (
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
-var _ = Describe("MPI Plugin E2E Test", func() {
+var _ = Describe("ssh Plugin E2E Test", func() {
 	It("will run and complete finally", func() {
 		context := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(context)
@@ -32,8 +32,7 @@ var _ = Describe("MPI Plugin E2E Test", func() {
 		slot := e2eutil.OneCPU
 
 		spec := &e2eutil.JobSpec{
-			Name: "mpi",
-			Min:  1,
+			Name: "ssh",
 			Policies: []vcbatch.LifecyclePolicy{
 				{
 					Action: vcbus.CompleteJobAction,
@@ -41,29 +40,28 @@ var _ = Describe("MPI Plugin E2E Test", func() {
 				},
 			},
 			Plugins: map[string][]string{
-				"mpi": {"--master=mpimaster", "--worker=mpiworker", "--port=22"},
+				"ssh": {"--port=1000"},
+				"svc": {},
 			},
 			Tasks: []e2eutil.TaskSpec{
 				{
-					Name:       "mpimaster",
-					Img:        e2eutil.DefaultMPIImage,
-					Req:        slot,
-					Min:        1,
-					Rep:        1,
-					WorkingDir: "/home",
+					Name: "client",
+					Img:  e2eutil.DefaultMPIImage,
+					Req:  slot,
+					Min:  1,
+					Rep:  1,
 					// Need sometime waiting for worker node ready
 					Command: `sleep 5;
-mkdir -p /var/run/sshd; /usr/sbin/sshd;
-mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hello_world > /home/re`,
+touch a.txt;
+scp -P 1000 a.txt ssh-server-0.ssh:~;`,
 				},
 				{
-					Name:       "mpiworker",
-					Img:        e2eutil.DefaultMPIImage,
-					Req:        slot,
-					Min:        2,
-					Rep:        2,
-					WorkingDir: "/home",
-					Command:    "mkdir -p /var/run/sshd; /usr/sbin/sshd -D;",
+					Name:    "server",
+					Img:     e2eutil.DefaultMPIImage,
+					Req:     slot,
+					Min:     1,
+					Rep:     1,
+					Command: "mkdir -p /var/run/sshd; /usr/sbin/sshd -p 1000 -D;",
 				},
 			},
 		}

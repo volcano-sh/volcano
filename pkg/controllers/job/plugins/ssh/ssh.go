@@ -23,9 +23,11 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"strconv"
 
 	"golang.org/x/crypto/ssh"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -48,6 +50,9 @@ type sshPlugin struct {
 
 	// public key string
 	sshPublicKey string
+
+	// ssh port
+	port int
 }
 
 // New creates ssh plugin
@@ -69,6 +74,10 @@ func (sp *sshPlugin) Name() string {
 
 func (sp *sshPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	sp.mountRsaKey(pod, job)
+	sp.openContainerPort(pod)
+	if pod.Spec.HostNetwork {
+		sp.addPodAntiAffinity(pod)
+	}
 
 	return nil
 }
@@ -81,9 +90,9 @@ func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 	var data map[string][]byte
 	var err error
 	if len(sp.sshPrivateKey) > 0 {
-		data, err = withUserProvidedRsaKey(job, sp.sshPrivateKey, sp.sshPublicKey)
+		data, err = sp.withUserProvidedRsaKey(job, sp.sshPrivateKey, sp.sshPublicKey)
 	} else {
-		data, err = generateRsaKey(job)
+		data, err = sp.generateRsaKey(job)
 	}
 	if err != nil {
 		return err
@@ -172,7 +181,6 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 			SubPath:   SSHRelativePath,
 			Name:      secretName,
 		}
-
 		pod.Spec.Containers[i].VolumeMounts = append(c.VolumeMounts, vm)
 	}
 	for i, c := range pod.Spec.InitContainers {
@@ -181,12 +189,11 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 			SubPath:   SSHRelativePath,
 			Name:      secretName,
 		}
-
 		pod.Spec.InitContainers[i].VolumeMounts = append(c.VolumeMounts, vm)
 	}
 }
 
-func generateRsaKey(job *batch.Job) (map[string][]byte, error) {
+func (sp *sshPlugin) generateRsaKey(job *batch.Job) (map[string][]byte, error) {
 	bitSize := 2048
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, bitSize)
@@ -214,17 +221,17 @@ func generateRsaKey(job *batch.Job) (map[string][]byte, error) {
 	data[SSHPrivateKey] = privateKeyBytes
 	data[SSHPublicKey] = publicKeyBytes
 	data[SSHAuthorizedKeys] = publicKeyBytes
-	data[SSHConfig] = []byte(generateSSHConfig(job))
+	data[SSHConfig] = []byte(sp.generateSSHConfig(job))
 
 	return data, nil
 }
 
-func withUserProvidedRsaKey(job *batch.Job, sshPrivateKey string, sshPublicKey string) (map[string][]byte, error) {
+func (sp *sshPlugin) withUserProvidedRsaKey(job *batch.Job, sshPrivateKey string, sshPublicKey string) (map[string][]byte, error) {
 	data := make(map[string][]byte)
 	data[SSHPrivateKey] = []byte(sshPrivateKey)
 	data[SSHPublicKey] = []byte(sshPublicKey)
 	data[SSHAuthorizedKeys] = []byte(sshPublicKey)
-	data[SSHConfig] = []byte(generateSSHConfig(job))
+	data[SSHConfig] = []byte(sp.generateSSHConfig(job))
 
 	return data, nil
 }
@@ -239,13 +246,14 @@ func (sp *sshPlugin) addFlags() {
 		"ssh private and public keys, it is `/root/.ssh` by default.")
 	flagSet.StringVar(&sp.sshPrivateKey, "ssh-private-key", sp.sshPrivateKey, "The input string of the private key")
 	flagSet.StringVar(&sp.sshPublicKey, "ssh-public-key", sp.sshPublicKey, "The input string of the public key")
+	flagSet.IntVar(&sp.port, "port", 22, "The port of ssh")
 
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
 	}
 }
 
-func generateSSHConfig(job *batch.Job) string {
+func (sp *sshPlugin) generateSSHConfig(job *batch.Job) string {
 	config := "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null\n"
 
 	for _, ts := range job.Spec.Tasks {
@@ -261,6 +269,7 @@ func generateSSHConfig(job *batch.Job) string {
 
 			config += "Host " + hostName + "\n"
 			config += "  HostName " + hostName + "." + subdomain + "\n"
+			config += "  Port " + strconv.Itoa(sp.port) + "\n"
 			if len(ts.Template.Spec.Hostname) != 0 {
 				break
 			}
@@ -268,4 +277,65 @@ func generateSSHConfig(job *batch.Job) string {
 	}
 
 	return config
+}
+
+func (sp *sshPlugin) openContainerPort(pod *v1.Pod) {
+	sshPort := v1.ContainerPort{
+		Name:          "sshport",
+		ContainerPort: int32(sp.port),
+	}
+
+	for i, c := range pod.Spec.Containers {
+		if !sp.isPortOpen(&c) {
+			pod.Spec.Containers[i].Ports = append(pod.Spec.Containers[i].Ports, sshPort)
+			if pod.Labels == nil {
+				pod.Labels = make(map[string]string)
+			}
+			pod.Labels[SSHOpenPortLabel] = strconv.Itoa(sp.port)
+		}
+	}
+	for i, c := range pod.Spec.InitContainers {
+		if !sp.isPortOpen(&c) {
+			pod.Spec.InitContainers[i].Ports = append(pod.Spec.InitContainers[i].Ports, sshPort)
+			if pod.Labels == nil {
+				pod.Labels = make(map[string]string)
+			}
+			pod.Labels[SSHOpenPortLabel] = strconv.Itoa(sp.port)
+		}
+	}
+}
+
+func (sp *sshPlugin) isPortOpen(c *v1.Container) bool {
+	for _, p := range c.Ports {
+		if p.ContainerPort == int32(sp.port) {
+			return true
+		}
+	}
+	return false
+}
+
+func (sp *sshPlugin) addPodAntiAffinity(pod *v1.Pod) {
+	antiAffinity := v1.PodAffinityTerm{
+		TopologyKey: "kubernetes.io/hostname",
+		LabelSelector: &metav1.LabelSelector{
+			MatchExpressions: []metav1.LabelSelectorRequirement{
+				{
+					Key:      SSHOpenPortLabel,
+					Operator: metav1.LabelSelectorOpIn,
+					Values:   []string{strconv.Itoa(sp.port)},
+				},
+			},
+		},
+	}
+	if pod.Spec.Affinity == nil {
+		pod.Spec.Affinity = &v1.Affinity{}
+	}
+	if pod.Spec.Affinity.PodAntiAffinity == nil {
+		pod.Spec.Affinity.PodAntiAffinity = &v1.PodAntiAffinity{}
+	}
+	if pod.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+		pod.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = []v1.PodAffinityTerm{}
+	}
+	pod.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = append(
+		pod.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution, antiAffinity)
 }

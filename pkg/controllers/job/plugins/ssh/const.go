@@ -34,4 +34,9 @@ const (
 
 	// SSHRelativePath ssh rel path
 	SSHRelativePath = ".ssh"
+
+	// If the port is opened for pods through the ssh plugin,
+	// add this label and later set the anti-affinity of pods
+	// according to this label
+	SSHOpenPortLabel = "volcano.sh/open-port-by-SSH"
 )
