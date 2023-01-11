@@ -18,7 +18,7 @@ package options
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -145,12 +145,12 @@ func (s *ServerOption) RegisterOptions() {
 func (s *ServerOption) readCAFiles() error {
 	var err error
 
-	s.CertData, err = ioutil.ReadFile(s.CertFile)
+	s.CertData, err = os.ReadFile(s.CertFile)
 	if err != nil {
 		return fmt.Errorf("failed to read cert file (%s): %v", s.CertFile, err)
 	}
 
-	s.KeyData, err = ioutil.ReadFile(s.KeyFile)
+	s.KeyData, err = os.ReadFile(s.KeyFile)
 	if err != nil {
 		return fmt.Errorf("failed to read key file (%s): %v", s.KeyFile, err)
 	}

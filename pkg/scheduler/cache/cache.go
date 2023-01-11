@@ -19,7 +19,6 @@ package cache
 import (
 	"context"
 	"fmt"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"os"
 	"strconv"
 	"strings"
@@ -52,7 +51,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
-	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -65,6 +64,7 @@ import (
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	commonutil "volcano.sh/volcano/pkg/util"
 )

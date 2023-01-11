@@ -62,6 +62,7 @@ type pgcontroller struct {
 	queue workqueue.RateLimitingInterface
 
 	schedulerNames []string
+	workers        uint32
 
 	// To determine whether inherit owner's annotations for pods when create podgroup
 	inheritOwnerAnnotations bool
@@ -75,6 +76,7 @@ func (pg *pgcontroller) Name() string {
 func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.kubeClient = opt.KubeClient
 	pg.vcClient = opt.VolcanoClient
+	pg.workers = opt.WorkerNum
 
 	pg.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
@@ -116,7 +118,9 @@ func (pg *pgcontroller) Run(stopCh <-chan struct{}) {
 		}
 	}
 
-	go wait.Until(pg.worker, 0, stopCh)
+	for i := 0; i < int(pg.workers); i++ {
+		go wait.Until(pg.worker, 0, stopCh)
+	}
 
 	klog.Infof("PodgroupController is running ...... ")
 }

@@ -18,7 +18,7 @@ package scheduler
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 
 	"gopkg.in/yaml.v2"
@@ -86,7 +86,7 @@ func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 }
 
 func readSchedulerConf(confPath string) (string, error) {
-	dat, err := ioutil.ReadFile(confPath)
+	dat, err := os.ReadFile(confPath)
 	if err != nil {
 		return "", err
 	}

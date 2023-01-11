@@ -31,6 +31,8 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Con
 	ssn := openSession(cache)
 	ssn.Tiers = tiers
 	ssn.Configurations = configurations
+	ssn.NodeMap = GenerateNodeMapAndSlice(ssn.Nodes)
+	ssn.PodLister = NewPodLister(ssn)
 
 	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {

@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
@@ -62,6 +63,11 @@ type Session struct {
 	RevocableNodes map[string]*api.NodeInfo
 	Queues         map[api.QueueID]*api.QueueInfo
 	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
+
+	// NodeMap is like Nodes except that it uses k8s NodeInfo api and should only
+	// be used in k8s compatable api scenarios such as in predicates and nodeorder plugins.
+	NodeMap   map[string]*k8sframework.NodeInfo
+	PodLister *PodLister
 
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration

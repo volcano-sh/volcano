@@ -167,8 +167,8 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
-	pl := util.NewPodListerFromNode(ssn)
-	nodeMap := util.GenerateNodeMapAndSlice(ssn.Nodes)
+	pl := ssn.PodLister
+	nodeMap := ssn.NodeMap
 
 	pCache := predicateCacheNew()
 	predicate := enablePredicate(pp.pluginArguments)
@@ -184,7 +184,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				klog.Errorf("predicates, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
 				return
 			}
-
 			nodeInfo, ok := ssn.Nodes[nodeName]
 			if !ok {
 				klog.Errorf("Failed to get node %s info from cache", nodeName)

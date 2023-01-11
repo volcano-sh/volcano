@@ -17,10 +17,11 @@ limitations under the License.
 package rescheduling
 
 import (
+	"reflect"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog"
-	"reflect"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
