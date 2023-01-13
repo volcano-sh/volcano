@@ -298,11 +298,7 @@ func victimTasks(ssn *framework.Session) {
 	stmt := framework.NewStatement(ssn)
 	tasks := make([]*api.TaskInfo, 0)
 	victimTasksMap := ssn.VictimTasks(tasks)
-	victimTasks := make([]*api.TaskInfo, 0)
-	for task := range victimTasksMap {
-		victimTasks = append(victimTasks, task)
-	}
-	for _, victim := range victimTasks {
+	for victim := range victimTasksMap {
 		if err := stmt.Evict(victim.Clone(), "evict"); err != nil {
 			klog.Errorf("Failed to evict Task <%s/%s>: %v",
 				victim.Namespace, victim.Name, err)
