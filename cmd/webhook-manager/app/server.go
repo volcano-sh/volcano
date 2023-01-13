@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
+	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 	"volcano.sh/volcano/pkg/kube"
@@ -43,6 +44,12 @@ func Run(config *options.Config) error {
 	if config.PrintVersion {
 		version.PrintVersionAndExit()
 		return nil
+	}
+
+	if config.EnableHealthz {
+		if err := helpers.StartHealthz(config.HealthzBindAddress, "volcano-admission", config.CertData, config.KeyData); err != nil {
+			return err
+		}
 	}
 
 	if config.WebhookURL == "" && config.WebhookNamespace == "" && config.WebhookName == "" {
