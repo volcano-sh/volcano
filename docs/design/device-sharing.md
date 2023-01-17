@@ -2,40 +2,46 @@
 
 ## Introduction
 
-We implement a common interface for shareable devices(GPU,NPU,FPGA,...) called sharedDevicePool, and use it to reimplement current gpu-share mechanism. The goal is to let device-sharing easy to implement, and better organised. If you wish to grant vc-scheduler the ability to share another device, all you need to do is to implement these methods in sharedDevicePool, and place your logic under pkg/scheduler/api/devices. No other hackings are needed.
+We implement a common interface for shareable devices(GPU,NPU,FPGA,...) called Devices, and use it to reimplement current gpu-share mechanism. The goal is to let device-sharing easy to implement, and better organised. If you wish to grant vc-scheduler the ability to share another device, all you need is to implement these methods in Devices, and place your logic under pkg/scheduler/api/devices. 
 
 ## Backguards
 
-We intended to provide volcano the ability to share third-party resources link GPU,NPU,etc in the near future. At fitst, I tried to implement these logic based on predicate.gpushare, but i sooner realised that logics scattered in device_info.go, node_info.go, pod_info.go, and whole predicate folder. if i follow predicate.gpushare implementation, i have no choice but hack deeply into vc-scheduler api. Sooner or later vc-scheduler api will be crowded with various device-sharing logic, that is probably not what we wished.
+We intended to provide volcano the ability to share third-party resources link GPU,NPU,etc in the near future. At fitst, I tried to implement these logics based on predicate.gpushare, but i sooner realised that these logics scattered in device_info.go, node_info.go, pod_info.go, and whole predicate folder. if i follow the implementation of predicate.gpushare, i will have no choice but hack deeply into vc-scheduler api. Sooner or later vc-scheduler api will be crowded with various device-sharing logic, which is probably not what we wished.
 
 ## Implementation
 
-### Interface SharedDevicePool design
+### Interface Devices design
 
-The design of shareddevicePool is shown below:
+The design of Devices is shown below:
 
 ```
-type SharedDevicePool interface {
+type Devices interface {
 	//following two functions used in node_info
+	//AddResource is to add the corresponding device resource of this 'pod' into current scheduler cache
 	AddResource(pod *v1.Pod)
+	//SubResoure is to substract the corresponding device resource of this 'pod' from current scheduler cache
 	SubResource(pod *v1.Pod)
 
 	//following four functions used in predicate
-	RequestInPod(pod *v1.Pod) bool // check whether this pod uses this device
-	FitInPod(pod *v1.Pod) (bool, error) // check whether this pod can fit in current node
-	AllocateToPod(kubeClient kubernetes.Interface, pod *v1.Pod) error
-	ReleaseFromPod(kubeClient kubernetes.Interface, pod *v1.Pod) error
+	//HasDeviceRequest checks if the 'pod' request this device
+	HasDeviceRequest(pod *v1.Pod) bool
+	//FiltreNode checks if the 'pod' fit in current node
+	FilterNode(pod *v1.Pod) (bool, error)
+	//Allocate action in predicate
+	Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error
+	//Release action in predicate
+	Release(kubeClient kubernetes.Interface, pod *v1.Pod) error
 
 	//used for debug and monitor
-	MonitorStatus() string
+	GetStatus() string
 }
 ```
 
 The first two method are used for node_info to update cluster status. The following four methods are used in predicate which allocatation and deallocation actually take place. Finally a monitor mothod for debug.
 
-### Create a seperate package for gpushare related methods, and use SharedDevicePool method to reimplement it.
+### Create a seperate package for gpushare related methods, and use Devices method to reimplement it.
 
-There are two steps we need to do, first, we need to create a new package in "pkg/scheduler/api/devices/nvidia/gpushare", and implement SharedDevicePool methods in it, then we need to seperate gpushare-related logic from "scheduler.api" and "predicate plugin", and convert them to package "pkg/scheduler/api/devices/nvidia/gpushare". The package contains the following files: device.go(which implement SharedDevicePool interface methods), share.go(which contains private methods for device.go), type.go(which contains const values and definations).
+There are two steps we need to do, first, we need to create a new package in "pkg/scheduler/api/devices/nvidia/gpushare", and implement Devices methods in it, then we need to seperate gpushare-related logic from "scheduler.api" and "predicate plugin", and convert them to package "pkg/scheduler/api/devices/nvidia/gpushare". The package contains the following files: device.go(which implement SharedDevicePool interface methods), share.go(which contains private methods for device.go), type.go(which contains const values and definations).
 
 Details of methods mapping is shown in the table below:
 
@@ -73,31 +79,24 @@ The methods defined in SharedDevicePool interface and its information is shown i
 | ------------- | ------------ | ------------- |
 | AddResource(pod *v1.Pod) | pkg/scheduler/api/node_info.go | Add the 'pod' and its resources into scheduler cache |
 | SubResource(pod *v1.Pod) | pkg/scheduler/api/node_info.go | Delete the 'pod' and substract its resources from scheduler cache |
-| RequestInPod(pod *v1.Pod) bool | pkg/scheduler/plugins/predicates/predicate.go | Check whether this 'pod' request a portion of this device |
-| FitInPod(pod *v1.Pod)| pkg/scheduler/plugins/predicates/predicate.go | Check whether the portion of device this pod requests can fit in current node |
-| AllocateToPod(kubeClient kubernetes.Interface, pod *v1.Pod) error | pkg/scheduler/plugins/predicates/predicate.go | Allocate the portion of this device from the current node to this pod |
-| ReleaseFromPod(kubeClient kubernetes.Interface, pod *v1.Pod) error | pkg/scheduler/plugins/predicates/predicate.go | Dellocate the portion of this device from this pod |
-| MonitorStatus() string | none | Used for debug and monitor | 
+| HasDeviceRequest(pod *v1.Pod) bool | pkg/scheduler/plugins/predicates/predicate.go | Check whether this 'pod' request a portion of this device |
+| FilterNode(pod *v1.Pod)| pkg/scheduler/plugins/predicates/predicate.go | Check whether the portion of device this pod requests can fit in current node |
+| Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error | pkg/scheduler/plugins/predicates/predicate.go | Allocate the portion of this device from the current node to this pod |
+| Release(kubeClient kubernetes.Interface, pod *v1.Pod) error | pkg/scheduler/plugins/predicates/predicate.go | Dellocate the portion of this device from this pod |
+| GetStatus() string | none | Used for debug and monitor | 
 
 ### 4. Add your initialization code in /pkg/scheduler/api/node_info.go
 
 This is the *only* place you hack into scheduler.api ,which you have to register your policy during initialization of node_struct.
 
 ```
-// NewNodeInfo is used to create new nodeInfo object
-{
 
-	func NewNodeInfo(node *v1.Node) *NodeInfo {
-		nodeInfo := &NodeInfo{
-		...
-
-		nodeInfo.SharedDevices[GPUSharingDevice] = gpushare.NewGPUDevices(nodeInfo.Name, node)
-		#nodeInfo.SharedDevices[you policy name] = "your policy package Initialization method"
-		...
-		}
-		return nodeInfo
-	}
+// setNodeOthersResource initialize sharable devices
+func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
+	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
+	//ni.Others["your device sharing policy name"] = your device sharing package initialization method
 }
+
 ```
 
 ### 5. Check if your policy is enabled in /pkg/scheduler/plugins/predicate/predicates.go

@@ -66,7 +66,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p2": NewTaskInfo(case01Pod2),
 				},
-				SharedDevices: map[string]SharedDevicePool{
+				Others: map[string]Devices{
 					GPUSharingDevice: gpushare.NewGPUDevices("n1", case01Node),
 				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
@@ -89,7 +89,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: Ready},
 				Tasks:                    map[TaskID]*TaskInfo{},
-				SharedDevices: map[string]SharedDevicePool{
+				Others: map[string]Devices{
 					GPUSharingDevice: gpushare.NewGPUDevices("n2", case01Node),
 				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
@@ -154,7 +154,7 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p3": NewTaskInfo(case01Pod3),
 				},
-				SharedDevices: map[string]SharedDevicePool{
+				Others: map[string]Devices{
 					GPUSharingDevice: gpushare.NewGPUDevices("n1", case01Node),
 				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
@@ -219,7 +219,7 @@ func TestNodeInfo_SetNode(t *testing.T) {
 					"c1/p2": NewTaskInfo(case01Pod2),
 					"c1/p3": NewTaskInfo(case01Pod3),
 				},
-				SharedDevices: map[string]SharedDevicePool{
+				Others: map[string]Devices{
 					GPUSharingDevice: gpushare.NewGPUDevices("n1", case01Node1),
 				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),

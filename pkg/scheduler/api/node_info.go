@@ -70,8 +70,8 @@ type NodeInfo struct {
 	RevocableZone     string
 
 	// Used to store custom information
-	Others        map[string]interface{}
-	SharedDevices map[string]SharedDevicePool
+	Others map[string]Devices
+	//SharedDevices map[string]SharedDevicePool
 
 	// enable node resource oversubscription
 	OversubscriptionNode bool
@@ -140,8 +140,8 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		OversubscriptionResource: EmptyResource(),
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
-		SharedDevices: make(map[string]SharedDevicePool),
-		ImageStates:   make(map[string]*k8sframework.ImageStateSummary),
+		Others:      make(map[string]Devices),
+		ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 	}
 
 	nodeInfo.setOversubscription(node)
@@ -153,7 +153,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		nodeInfo.Allocatable = NewResource(node.Status.Allocatable).Add(nodeInfo.OversubscriptionResource)
 		nodeInfo.Capability = NewResource(node.Status.Capacity).Add(nodeInfo.OversubscriptionResource)
 	}
-	nodeInfo.SharedDevices[GPUSharingDevice] = gpushare.NewGPUDevices(nodeInfo.Name, node)
+	nodeInfo.setNodeOthersResource(node)
 	nodeInfo.setNodeState(node)
 	nodeInfo.setRevocableZone(node)
 
@@ -341,10 +341,15 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.setNode(node)
 }
 
+// setNodeOthersResource initialize sharable devices
+func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
+	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
+}
+
 // setNode sets kubernetes node object to nodeInfo object without assertion
 func (ni *NodeInfo) setNode(node *v1.Node) {
 	ni.setOversubscription(node)
-	ni.SharedDevices[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
+	ni.setNodeOthersResource(node)
 	ni.setRevocableZone(node)
 
 	ni.Name = node.Name
@@ -363,13 +368,13 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 			ni.Idle.sub(ti.Resreq) // sub without assertion
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
-			ni.SharedDevices[GPUSharingDevice].AddResource(ti.Pod)
+			ni.addResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		default:
 			ni.Idle.sub(ti.Resreq) // sub without assertion
 			ni.Used.Add(ti.Resreq)
-			ni.SharedDevices[GPUSharingDevice].AddResource(ti.Pod)
+			ni.addResource(ti.Pod)
 		}
 	}
 }
@@ -413,7 +418,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 			}
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
-			ni.SharedDevices[GPUSharingDevice].AddResource(ti.Pod)
+			ni.addResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		default:
@@ -421,7 +426,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 				return err
 			}
 			ni.Used.Add(ti.Resreq)
-			ni.SharedDevices[GPUSharingDevice].AddResource(ti.Pod)
+			ni.addResource(ti.Pod)
 		}
 	}
 
@@ -456,13 +461,13 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 			ni.Releasing.Sub(task.Resreq)
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
-			ni.SharedDevices[GPUSharingDevice].SubResource(ti.Pod)
+			ni.subResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Sub(task.Resreq)
 		default:
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
-			ni.SharedDevices[GPUSharingDevice].SubResource(ti.Pod)
+			ni.subResource(ti.Pod)
 		}
 	}
 
@@ -473,6 +478,16 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 	delete(ni.Tasks, key)
 
 	return nil
+}
+
+// addResource is used to add sharable devices
+func (ni *NodeInfo) addResource(pod *v1.Pod) {
+	ni.Others[GPUSharingDevice].AddResource(pod)
+}
+
+// subResource is used to substract sharable devices
+func (ni *NodeInfo) subResource(pod *v1.Pod) {
+	ni.Others[GPUSharingDevice].SubResource(pod)
 }
 
 // UpdateTask is used to update a task in nodeInfo object.

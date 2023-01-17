@@ -114,7 +114,7 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 	}
 }
 
-func (gs *GPUDevices) RequestInPod(pod *v1.Pod) bool {
+func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
 	if GpuSharingEnable && getGPUMemoryOfPod(pod) > 0 ||
 		GpuNumberEnable && getGPUNumberOfPod(pod) > 0 {
 		return true
@@ -122,7 +122,7 @@ func (gs *GPUDevices) RequestInPod(pod *v1.Pod) bool {
 	return false
 }
 
-func (gs *GPUDevices) ReleaseFromPod(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
 	ids := GetGPUIndex(pod)
 	patch := RemoveGPUIndexPatch()
 	_, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
@@ -141,7 +141,7 @@ func (gs *GPUDevices) ReleaseFromPod(kubeClient kubernetes.Interface, pod *v1.Po
 	return nil
 }
 
-func (gs *GPUDevices) FitInPod(pod *v1.Pod) (bool, error) {
+func (gs *GPUDevices) FilterNode(pod *v1.Pod) (bool, error) {
 	klog.V(4).Infoln("DeviceSharing:Into FitInPod", pod.Name)
 	if GpuSharingEnable {
 		fit, err := checkNodeGPUSharingPredicate(pod, gs)
@@ -161,11 +161,11 @@ func (gs *GPUDevices) FitInPod(pod *v1.Pod) (bool, error) {
 	return true, nil
 }
 
-func (gs *GPUDevices) MonitorStatus() string {
+func (gs *GPUDevices) GetStatus() string {
 	return ""
 }
 
-func (gs *GPUDevices) AllocateToPod(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
 	klog.V(4).Infoln("DeviceSharing:Into AllocateToPod", pod.Name)
 	if getGPUMemoryOfPod(pod) > 0 {
 		if NodeLockEnable {
