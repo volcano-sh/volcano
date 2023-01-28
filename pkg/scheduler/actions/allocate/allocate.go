@@ -61,7 +61,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 	for _, job := range ssn.Jobs {
 		// If not config enqueue action, change Pending pg into Inqueue statue to avoid blocking job scheduling.
-		if !conf.EnabledActionMap["enqueue"] {
+		if !conf.EnabledActionMap["enqueue"] && job.IsPending() {
 			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
 		} else {
 			if job.IsPending() {
