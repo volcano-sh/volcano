@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Volcano Authors.
+Copyright 2023 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package api
+package gpushare
 
 import (
 	"testing"
@@ -90,7 +90,7 @@ func TestGetGPUMemoryOfPod(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := GetGPUMemoryOfPod(tc.pod)
+			got := getGPUMemoryOfPod(tc.pod)
 			if tc.want != got {
 				t.Errorf("unexpected result, want: %v, got: %v", tc.want, got)
 			}
@@ -165,7 +165,7 @@ func TestGetGPUNumberOfPod(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := GetGPUNumberOfPod(tc.pod)
+			got := getGPUNumberOfPod(tc.pod)
 			if tc.want != got {
 				t.Errorf("unexpected result, want: %v, got: %v", tc.want, got)
 			}

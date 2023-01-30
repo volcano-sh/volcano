@@ -18,10 +18,7 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"strconv"
-	"strings"
-	"time"
 
 	v1 "k8s.io/api/core/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -157,55 +154,4 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 	}
 
 	return result
-}
-
-// GetGPUIndex returns the index list of gpu cards
-func GetGPUIndex(pod *v1.Pod) []int {
-	if len(pod.Annotations) == 0 {
-		return nil
-	}
-
-	value, found := pod.Annotations[GPUIndex]
-	if !found {
-		return nil
-	}
-
-	ids := strings.Split(value, ",")
-	if len(ids) == 0 {
-		klog.Errorf("invalid gpu index annotation %s=%s", GPUIndex, value)
-		return nil
-	}
-
-	idSlice := make([]int, len(ids))
-	for idx, id := range ids {
-		j, err := strconv.Atoi(id)
-		if err != nil {
-			klog.Errorf("invalid %s=%s", GPUIndex, value)
-			return nil
-		}
-		idSlice[idx] = j
-	}
-	return idSlice
-}
-
-func escapeJSONPointer(p string) string {
-	// Escaping reference name using https://tools.ietf.org/html/rfc6901
-	p = strings.Replace(p, "~", "~0", -1)
-	p = strings.Replace(p, "/", "~1", -1)
-	return p
-}
-
-// AddGPUIndexPatch returns the patch adding GPU index
-func AddGPUIndexPatch(ids []int) string {
-	idsstring := strings.Trim(strings.Replace(fmt.Sprint(ids), " ", ",", -1), "[]")
-	return fmt.Sprintf(`[{"op": "add", "path": "/metadata/annotations/%s", "value":"%d"},`+
-		`{"op": "add", "path": "/metadata/annotations/%s", "value": "%s"}]`,
-		escapeJSONPointer(PredicateTime), time.Now().UnixNano(),
-		escapeJSONPointer(GPUIndex), idsstring)
-}
-
-// RemoveGPUIndexPatch returns the patch removing GPU index
-func RemoveGPUIndexPatch() string {
-	return fmt.Sprintf(`[{"op": "remove", "path": "/metadata/annotations/%s"},`+
-		`{"op": "remove", "path": "/metadata/annotations/%s"}]`, escapeJSONPointer(PredicateTime), escapeJSONPointer(GPUIndex))
 }
