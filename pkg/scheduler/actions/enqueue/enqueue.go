@@ -67,6 +67,12 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			queues.Push(queue)
 		}
 
+		if job.IsDeferredScheduling() {
+			klog.Errorf("The podgroup of job <%s/%s> in queue <%s> has no ownerreference information, and the scheduling is postponed",
+				job.Namespace, job.Name, job.Queue)
+			continue
+		}
+
 		if job.IsPending() {
 			if _, found := jobsMap[job.Queue]; !found {
 				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)

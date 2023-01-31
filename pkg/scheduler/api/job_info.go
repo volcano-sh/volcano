@@ -860,3 +860,7 @@ func (ji *JobInfo) IsPending() bool {
 func (ji *JobInfo) HasPendingTasks() bool {
 	return len(ji.TaskStatusIndex[Pending]) != 0
 }
+
+func (ji *JobInfo) IsDeferredScheduling() bool {
+	return ji.PodGroup == nil || len(ji.PodGroup.OwnerReferences) == 0
+}
