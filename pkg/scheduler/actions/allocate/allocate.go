@@ -67,10 +67,18 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					job.Namespace, job.Name, job.Queue)
 				continue
 			}
-		} else if job.IsPending() {
-			klog.V(4).Infof("Job <%s/%s> Queue <%s> status update from pending to inqueue, reason: no enqueue action is configured.",
-				job.Namespace, job.Name, job.Queue)
-			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
+		} else {
+			if job.IsDeferredScheduling() {
+				klog.Warningf("The podgroup of job <%s/%s> in queue <%s> has no ownerreference information, and the scheduling is postponed",
+					job.Namespace, job.Name, job.Queue)
+				continue
+			}
+
+			if job.IsPending() {
+				klog.V(4).Infof("Job <%s/%s> Queue <%s> status update from pending to inqueue, reason: no enqueue action is configured.",
+					job.Namespace, job.Name, job.Queue)
+				job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
+			}
 		}
 
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
