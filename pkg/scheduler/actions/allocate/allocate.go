@@ -61,14 +61,16 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 	for _, job := range ssn.Jobs {
 		// If not config enqueue action, change Pending pg into Inqueue statue to avoid blocking job scheduling.
-		if !conf.EnabledActionMap["enqueue"] && job.IsPending() {
-			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
-		} else {
+		if conf.EnabledActionMap["enqueue"] {
 			if job.IsPending() {
 				klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: job status is pending.",
 					job.Namespace, job.Name, job.Queue)
 				continue
 			}
+		} else if job.IsPending() {
+			klog.V(4).Infof("Job <%s/%s> Queue <%s> status update from pending to inqueue, reason: no enqueue action is configured.",
+				job.Namespace, job.Name, job.Queue)
+			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
 		}
 
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
