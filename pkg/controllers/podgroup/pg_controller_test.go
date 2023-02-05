@@ -166,8 +166,16 @@ func TestAddPodGroup(t *testing.T) {
 			t.Errorf("Case %s failed when getting podGroup for %v", testCase.name, err)
 		}
 
-		if false == reflect.DeepEqual(pg.OwnerReferences, testCase.expectedPodGroup.OwnerReferences) {
-			t.Errorf("Case %s failed, expect %v, got %v", testCase.name, testCase.expectedPodGroup, pg)
+		if len(pg.OwnerReferences) != 0 {
+			if false == reflect.DeepEqual(pg.OwnerReferences, testCase.expectedPodGroup.OwnerReferences) {
+				t.Errorf("Case %s failed, expect %v, got %v", testCase.name, testCase.expectedPodGroup, pg)
+			}
+		} else {
+			if pg.Annotations["owner-reference-kind"] != testCase.expectedPodGroup.OwnerReferences[0].Kind ||
+				pg.Annotations["owner-reference-name"] != testCase.expectedPodGroup.OwnerReferences[0].Name ||
+				pg.Annotations["owner-reference-uuid"] != string(testCase.expectedPodGroup.OwnerReferences[0].UID) {
+				t.Errorf("Case %s failed, expect %v, got %v", testCase.name, testCase.expectedPodGroup, pg)
+			}
 		}
 
 		newpod, err := c.kubeClient.CoreV1().Pods(testCase.pod.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})

@@ -64,6 +64,8 @@ type ServerOption struct {
 	DetectionPeriodOfDependsOntask time.Duration
 	// To determine whether inherit owner's annotations for pods when create podgroup
 	InheritOwnerAnnotations bool
+	// Associate owner reference for podgroup
+	AssociatedOwnerReference bool
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -96,6 +98,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&s.DetectionPeriodOfDependsOntask, "detection-period-of-dependson-task", defaultDetectionPeriodOfDependsOntask, "It indicates how often to detect the status of dependent tasks."+
 		"e.g. --detection-period-of-dependson-task=1s")
 	fs.BoolVar(&s.InheritOwnerAnnotations, "inherit-owner-annotations", true, "Enable inherit owner annotations for pods when create podgroup; it is enabled by default")
+	fs.BoolVar(&s.AssociatedOwnerReference, "associate-owner-reference", true, "Associate owner reference for podgroup; it is enabled by default")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace.

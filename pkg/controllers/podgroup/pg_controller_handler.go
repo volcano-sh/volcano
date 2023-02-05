@@ -19,8 +19,10 @@ package podgroup
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
+	appv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -59,6 +61,66 @@ func (pg *pgcontroller) addPod(obj interface{}) {
 	}
 
 	pg.queue.Add(req)
+}
+
+func (pg *pgcontroller) deleteReplicaSet(obj interface{}) {
+	rs, ok := obj.(*appv1.ReplicaSet)
+	if !ok {
+		klog.Errorf("Failed to convert %v to apps.ReplicaSet", obj)
+		return
+	}
+	klog.V(4).Infof("ReplicaSet %v is delete, rs UID: %s", rs.Name, string(rs.UID))
+
+	pg.lock.Lock()
+	defer pg.lock.Unlock()
+	podGroupKey := fmt.Sprintf("ReplicaSet/%s/%s", rs.Name, string(rs.UID))
+	if group, ok := pg.podgroups[podGroupKey]; ok {
+		err := pg.vcClient.SchedulingV1beta1().PodGroups(group.Namespace).Delete(context.TODO(), group.Name, metav1.DeleteOptions{})
+		if err != nil {
+			klog.Errorf("Failed to delete PodGroup <%s/%s>: %v", group.Namespace, group.Name, err)
+		}
+	}
+}
+
+func (pg *pgcontroller) addPodGroup(obj interface{}) {
+	podGroup, ok := obj.(*scheduling.PodGroup)
+	if !ok {
+		klog.Errorf("Failed to convert %v to scheduling.PodGroup", obj)
+		return
+	}
+
+	pg.lock.Lock()
+	defer pg.lock.Unlock()
+	if _, ok := podGroup.Annotations["owner-reference-kind"]; !ok || len(podGroup.OwnerReferences) > 0 {
+		klog.V(4).Infof("PodGroup %s/%s is not created by pg_controller or has owner reference, ignore it", podGroup.Namespace, podGroup.Name)
+		return
+	}
+	podGroupKey := fmt.Sprintf("%s/%s/%s",
+		podGroup.Annotations["owner-reference-kind"], podGroup.Annotations["owner-reference-name"], podGroup.Annotations["owner-reference-uuid"])
+	klog.V(4).Infof("PodGroup %s is created by pg_controller and has owner reference", podGroupKey)
+	if _, ok := pg.podgroups[podGroupKey]; ok {
+		return
+	}
+	pg.podgroups[podGroupKey] = podGroup
+}
+
+func (pg *pgcontroller) deletePodGroup(obj interface{}) {
+	podGroup, ok := obj.(*scheduling.PodGroup)
+	if !ok {
+		klog.Errorf("Failed to convert %v to scheduling.PodGroup", obj)
+		return
+	}
+
+	pg.lock.Lock()
+	defer pg.lock.Unlock()
+	if _, ok := podGroup.Annotations["owner-reference-kind"]; !ok {
+		klog.V(4).Infof("PodGroup %s/%s is not created by pg_controller or has owner reference, ignore it", podGroup.Namespace, podGroup.Name)
+		return
+	}
+	podGroupKey := fmt.Sprintf("%s/%s/%s",
+		podGroup.Annotations["owner-reference-kind"], podGroup.Annotations["owner-reference-name"], podGroup.Annotations["owner-reference-uuid"])
+	klog.V(4).Infof("Delete PodGroup %s internally ", podGroupKey)
+	delete(pg.podgroups, podGroupKey)
 }
 
 func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
@@ -156,11 +218,10 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 
 		obj := &scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace:       pod.Namespace,
-				Name:            pgName,
-				OwnerReferences: newPGOwnerReferences(pod),
-				Annotations:     map[string]string{},
-				Labels:          map[string]string{},
+				Namespace:   pod.Namespace,
+				Name:        pgName,
+				Annotations: map[string]string{},
+				Labels:      map[string]string{},
 			},
 			Spec: scheduling.PodGroupSpec{
 				MinMember:         1,
@@ -170,6 +231,25 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			Status: scheduling.PodGroupStatus{
 				Phase: scheduling.PodGroupPending,
 			},
+		}
+
+		owners := newPGOwnerReferences(pod)
+		if pg.associateOwnerReference {
+			obj.OwnerReferences = owners
+		} else {
+			// only support one owner reference
+			if len(owners) > 0 {
+				owner := owners[0]
+				switch owner.Kind {
+				// TODO: should also support statefulset/daemonset/job
+				case "ReplicaSet":
+					obj.Annotations["owner-reference-kind"] = owner.Kind
+					obj.Annotations["owner-reference-name"] = owner.Name
+					obj.Annotations["owner-reference-uuid"] = string(owner.UID)
+				default:
+					obj.OwnerReferences = owners
+				}
+			}
 		}
 
 		pg.inheritUpperAnnotations(pod, obj)

@@ -19,12 +19,15 @@ package podgroup
 import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
+	appinformers "k8s.io/client-go/informers/apps/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	applisters "k8s.io/client-go/listers/apps/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
+	"sync"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
@@ -42,11 +45,14 @@ func init() {
 
 // pgcontroller the Podgroup pgcontroller type.
 type pgcontroller struct {
+	lock *sync.Mutex
+
 	kubeClient kubernetes.Interface
 	vcClient   vcclientset.Interface
 
 	podInformer coreinformers.PodInformer
 	pgInformer  schedulinginformer.PodGroupInformer
+	rsInformer  appinformers.ReplicaSetInformer
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -59,6 +65,10 @@ type pgcontroller struct {
 	pgLister schedulinglister.PodGroupLister
 	pgSynced func() bool
 
+	// A store of replicasets
+	rsLister applisters.ReplicaSetLister
+	rsSynced func() bool
+
 	queue workqueue.RateLimitingInterface
 
 	schedulerNames []string
@@ -66,6 +76,10 @@ type pgcontroller struct {
 
 	// To determine whether inherit owner's annotations for pods when create podgroup
 	inheritOwnerAnnotations bool
+
+	associateOwnerReference bool
+
+	podgroups map[string]*scheduling.PodGroup
 }
 
 func (pg *pgcontroller) Name() string {
@@ -83,6 +97,7 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.schedulerNames = make([]string, len(opt.SchedulerNames))
 	copy(pg.schedulerNames, opt.SchedulerNames)
 	pg.inheritOwnerAnnotations = opt.InheritOwnerAnnotations
+	pg.associateOwnerReference = opt.AssociateOwnerReference
 
 	pg.informerFactory = opt.SharedInformerFactory
 	pg.podInformer = opt.SharedInformerFactory.Core().V1().Pods()
@@ -97,6 +112,20 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.pgInformer = factory.Scheduling().V1beta1().PodGroups()
 	pg.pgLister = pg.pgInformer.Lister()
 	pg.pgSynced = pg.pgInformer.Informer().HasSynced
+	pg.pgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    pg.addPodGroup,
+		DeleteFunc: pg.deletePodGroup,
+	})
+
+	pg.rsInformer = opt.SharedInformerFactory.Apps().V1().ReplicaSets()
+	pg.rsLister = pg.rsInformer.Lister()
+	pg.rsSynced = pg.rsInformer.Informer().HasSynced
+	pg.rsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		DeleteFunc: pg.deleteReplicaSet,
+	})
+
+	pg.lock = new(sync.Mutex)
+	pg.podgroups = make(map[string]*scheduling.PodGroup)
 
 	return nil
 }
