@@ -27,14 +27,14 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-
+	vcscheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
-
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
@@ -329,7 +329,7 @@ var _ = Describe("Job E2E Test", func() {
 			Tasks: []e2eutil.TaskSpec{
 				{
 					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
+					Req: e2eutil.HalfCPU,
 					Min: count,
 					Rep: count,
 				},
@@ -649,5 +649,63 @@ var _ = Describe("Job E2E Test", func() {
 
 		Expect(q2ScheduledPod).Should(BeNumerically("<=", expectPod/2+1),
 			fmt.Sprintf("expectPod %d, q1ScheduledPod %d, q2ScheduledPod %d", expectPod, q1ScheduledPod, q2ScheduledPod))
+	})
+
+	It("changeable Deployment's PodGroup", func() {
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
+		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)/2 + 1
+
+		d := e2eutil.CreateDeployment(ctx, "d-1", rep, e2eutil.DefaultNginxImage, e2eutil.OneCPU)
+		err := e2eutil.WaitDeploymentReady(ctx, d.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		pgs, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred(), "failed to list podGroups in namespace %s", ctx.Namespace)
+		Expect(len(pgs.Items)).To(Equal(1), "this test need a clean cluster")
+		oldOne := &pgs.Items[0]
+
+		d.ResourceVersion = ""
+		d.Spec.Template.Spec.Containers[0].Resources.Requests = e2eutil.HalfCPU
+		d, err = ctx.Kubeclient.AppsV1().Deployments(ctx.Namespace).Update(context.TODO(), d, metav1.UpdateOptions{})
+		Expect(err).NotTo(HaveOccurred(), "failed to update deployment(%s) in namespace %s", d.Name, ctx.Namespace)
+		err = e2eutil.WaitDeploymentReady(ctx, d.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		wait.Poll(time.Second, time.Minute, func() (bool, error) {
+			oldOne, err = ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(context.TODO(), oldOne.Name, metav1.GetOptions{})
+			if err != nil {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(errors.IsNotFound(err)).To(BeTrue(), "old pg(%s) should not found", oldOne.Name)
+
+		pgs, err = ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred(), "failed to list podGroups in namespace %s", ctx.Namespace)
+		Expect(len(pgs.Items)).To(Equal(1), "only one podGroup should be exists")
+	})
+
+	It("k8s Job", func() {
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
+
+		jb := e2eutil.CreateSampleK8sJob(ctx, "job1", e2eutil.DefaultNginxImage, e2eutil.OneCPU)
+		err := e2eutil.Waitk8sJobCompleted(ctx, jb.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		var pgPhase vcscheduling.PodGroupPhase
+		wait.Poll(time.Second, time.Second*30, func() (bool, error) {
+			pgs, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to list podGroups in namespace %s", ctx.Namespace)
+			Expect(len(pgs.Items)).To(Equal(1), "this test need a clean cluster")
+			pgPhase = pgs.Items[0].Status.Phase
+			if pgPhase != vcscheduling.PodGroupRunning {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(pgPhase).To(Equal(vcscheduling.PodGroupCompleted), "podGroup Phase is %s, should be %s",
+			ctx.Namespace, vcscheduling.PodGroupCompleted)
 	})
 })
