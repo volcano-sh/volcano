@@ -190,8 +190,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			//predicate gpu sharing
-			if nodeInfo.Others[api.GPUSharingDevice].HasDeviceRequest(pod) {
-				err := nodeInfo.Others[api.GPUSharingDevice].Allocate(ssn.KubeClient(), pod)
+			if nodeInfo.Others[api.GPUSharingDevice].(api.Devices).HasDeviceRequest(pod) {
+				err := nodeInfo.Others[api.GPUSharingDevice].(api.Devices).Allocate(ssn.KubeClient(), pod)
 				if err != nil {
 					klog.Errorf("AllocateToPod failed %s", err.Error())
 					return
@@ -216,9 +216,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 
-			if nodeInfo.Others[api.GPUSharingDevice].HasDeviceRequest(pod) {
+			if nodeInfo.Others[api.GPUSharingDevice].(api.Devices).HasDeviceRequest(pod) {
 				// deallocate pod gpu id
-				err := nodeInfo.Others[api.GPUSharingDevice].Release(ssn.KubeClient(), pod)
+				err := nodeInfo.Others[api.GPUSharingDevice].(api.Devices).Release(ssn.KubeClient(), pod)
 				if err != nil {
 					klog.Errorf(err.Error())
 					return
@@ -395,7 +395,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return fmt.Errorf("plugin %s predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
 		}
 
-		fit, err = node.Others[api.GPUSharingDevice].FilterNode(task.Pod)
+		fit, err = node.Others[api.GPUSharingDevice].(api.Devices).FilterNode(task.Pod)
 		if err != nil {
 			return err
 		}
