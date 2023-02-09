@@ -19,6 +19,8 @@ package api
 import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
+
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 )
 
 const (
@@ -45,3 +47,6 @@ type Devices interface {
 	//used for debug and monitor
 	GetStatus() string
 }
+
+// make sure GPUDevices implements Devices interface
+var _ Devices = new(gpushare.GPUDevices)

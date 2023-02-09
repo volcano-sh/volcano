@@ -70,7 +70,7 @@ type NodeInfo struct {
 	RevocableZone     string
 
 	// Used to store custom information
-	Others map[string]Devices
+	Others map[string]interface{}
 	//SharedDevices map[string]SharedDevicePool
 
 	// enable node resource oversubscription
@@ -140,7 +140,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		OversubscriptionResource: EmptyResource(),
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
-		Others:      make(map[string]Devices),
+		Others:      make(map[string]interface{}),
 		ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 	}
 
@@ -482,12 +482,12 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 
 // addResource is used to add sharable devices
 func (ni *NodeInfo) addResource(pod *v1.Pod) {
-	ni.Others[GPUSharingDevice].AddResource(pod)
+	ni.Others[GPUSharingDevice].(Devices).AddResource(pod)
 }
 
 // subResource is used to substract sharable devices
 func (ni *NodeInfo) subResource(pod *v1.Pod) {
-	ni.Others[GPUSharingDevice].SubResource(pod)
+	ni.Others[GPUSharingDevice].(Devices).SubResource(pod)
 }
 
 // UpdateTask is used to update a task in nodeInfo object.
