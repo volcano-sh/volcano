@@ -91,6 +91,7 @@ spec:
             - --admission-conf=/admission.local.config/configmap/{{base .Values.basic.admission_config_file}}
             - --webhook-namespace={{ .Release.Namespace }}
             - --webhook-service-name={{ .Release.Name }}-admission-service
+            - --enable-healthz=true
             - --logtostderr
             - --port={{.Values.basic.admission_port}}
             - -v=4
