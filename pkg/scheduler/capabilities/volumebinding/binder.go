@@ -95,8 +95,8 @@ type StorageResource struct {
 // StorageResource returns storage resource.
 func (b *BindingInfo) StorageResource() *StorageResource {
 	// both fields are mandatory
-	requestedQty := b.pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
-	capacityQty := b.pv.Spec.Capacity[v1.ResourceName(v1.ResourceStorage)]
+	requestedQty := b.pvc.Spec.Resources.Requests[v1.ResourceStorage]
+	capacityQty := b.pv.Spec.Capacity[v1.ResourceStorage]
 	return &StorageResource{
 		Requested: requestedQty.Value(),
 		Capacity:  capacityQty.Value(),
@@ -882,7 +882,7 @@ func (b *volumeBinder) checkVolumeProvisions(pod *v1.Pod, claimsToProvision []*v
 		}
 
 		// Check if the node can satisfy the topology requirement in the class
-		if !v1helper.MatchTopologySelectorTerms(class.AllowedTopologies, labels.Set(node.Labels)) {
+		if !v1helper.MatchTopologySelectorTerms(class.AllowedTopologies, node.Labels) {
 			klog.V(4).InfoS("Node cannot satisfy provisioning topology requirements of claim", "node", klog.KObj(node), "PVC", klog.KObj(claim))
 			return false, true, nil, nil
 		}
