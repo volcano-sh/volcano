@@ -621,7 +621,7 @@ func makeTestPVC(name, size, node string, pvcBoundState int, pvName, resourceVer
 		Spec: v1.PersistentVolumeClaimSpec{
 			Resources: v1.ResourceRequirements{
 				Requests: v1.ResourceList{
-					v1.ResourceName(v1.ResourceStorage): resource.MustParse(size),
+					v1.ResourceStorage: resource.MustParse(size),
 				},
 			},
 			StorageClassName: className,
@@ -651,7 +651,7 @@ func makeTestPV(name, node, capacity, version string, boundToPVC *v1.PersistentV
 		},
 		Spec: v1.PersistentVolumeSpec{
 			Capacity: v1.ResourceList{
-				v1.ResourceName(v1.ResourceStorage): resource.MustParse(capacity),
+				v1.ResourceStorage: resource.MustParse(capacity),
 			},
 			StorageClassName: className,
 			VolumeMode:       &fs,

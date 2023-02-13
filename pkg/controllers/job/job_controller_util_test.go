@@ -239,7 +239,7 @@ func TestCreateJobPod(t *testing.T) {
 	for i, testcase := range testcases {
 
 		t.Run(testcase.Name, func(t *testing.T) {
-			pod := createJobPod(testcase.Job, testcase.PodTemplate, v1alpha1.NumaPolicy(""), testcase.Index, false)
+			pod := createJobPod(testcase.Job, testcase.PodTemplate, "", testcase.Index, false)
 
 			if testcase.ReturnVal != nil && pod != nil && pod.Name != testcase.ReturnVal.Name && pod.Namespace != testcase.ReturnVal.Namespace {
 				t.Errorf("Expected Return Value to be %v but got %v in case %d", testcase.ReturnVal, pod, i)
