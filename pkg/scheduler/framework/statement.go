@@ -293,6 +293,9 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 }
 
 func (s *Statement) allocate(task *api.TaskInfo) error {
+	if err := s.ssn.BindTaskFn(task); err != nil {
+		return err
+	}
 	if err := s.ssn.cache.AddBindTask(task); err != nil {
 		return err
 	}

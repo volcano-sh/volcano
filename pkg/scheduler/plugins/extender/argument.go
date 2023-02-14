@@ -70,3 +70,11 @@ type JobReadyRequest struct {
 type JobReadyResponse struct {
 	Status bool `json:"status"`
 }
+
+type BindTaskRequest struct {
+	Task *api.TaskInfo `json:"task"`
+}
+
+type BindTaskResponse struct {
+	ErrorMessage string `json:"errorMessage"`
+}

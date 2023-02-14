@@ -76,4 +76,7 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledAllocatable == nil {
 		option.EnabledAllocatable = &t
 	}
+	if option.EnabledBindTask == nil {
+		option.EnabledBindTask = &t
+	}
 }

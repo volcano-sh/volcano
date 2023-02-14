@@ -174,3 +174,6 @@ type VictimTasksFn func([]*TaskInfo) []*TaskInfo
 
 // AllocatableFn is the func declaration used to check whether the task can be allocated
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool
+
+// BindTaskFn is the func declaration used to bind node for task.
+type BindTaskFn func(*TaskInfo) error

@@ -155,3 +155,16 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 
 	return result
 }
+
+func MatchResource(pod *v1.Pod, resources []string) (map[string]int64, bool) {
+	resource := GetPodResourceRequest(pod)
+	for sr, v := range resource.ScalarResources {
+		for _, re := range resources {
+			if sr.String() == re {
+				klog.V(3).Infof("matched resource for pod %s, %s=%s", pod.Name, sr.String(), re)
+				return map[string]int64{sr.String(): int64(v / 1000)}, true
+			}
+		}
+	}
+	return nil, false
+}

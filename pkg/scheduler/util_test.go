@@ -63,6 +63,7 @@ tiers:
 					EnabledJobStarving:    &trueValue,
 					EnabledOverused:       &trueValue,
 					EnabledAllocatable:    &trueValue,
+					EnabledBindTask:       &trueValue,
 				},
 				{
 					Name:                  "gang",
@@ -84,6 +85,7 @@ tiers:
 					EnabledJobStarving:    &trueValue,
 					EnabledOverused:       &trueValue,
 					EnabledAllocatable:    &trueValue,
+					EnabledBindTask:       &trueValue,
 				},
 				{
 					Name:                  "conformance",
@@ -105,6 +107,7 @@ tiers:
 					EnabledJobStarving:    &trueValue,
 					EnabledOverused:       &trueValue,
 					EnabledAllocatable:    &trueValue,
+					EnabledBindTask:       &trueValue,
 				},
 			},
 		},
@@ -130,6 +133,7 @@ tiers:
 					EnabledJobStarving:    &trueValue,
 					EnabledOverused:       &trueValue,
 					EnabledAllocatable:    &trueValue,
+					EnabledBindTask:       &trueValue,
 				},
 				{
 					Name:                  "predicates",
@@ -151,6 +155,7 @@ tiers:
 					EnabledJobStarving:    &trueValue,
 					EnabledOverused:       &trueValue,
 					EnabledAllocatable:    &trueValue,
+					EnabledBindTask:       &trueValue,
 				},
 				{
 					Name:                  "proportion",
@@ -172,6 +177,7 @@ tiers:
 					EnabledJobStarving:    &trueValue,
 					EnabledOverused:       &trueValue,
 					EnabledAllocatable:    &trueValue,
+					EnabledBindTask:       &trueValue,
 				},
 				{
 					Name:                  "nodeorder",
@@ -193,6 +199,7 @@ tiers:
 					EnabledJobStarving:    &trueValue,
 					EnabledOverused:       &trueValue,
 					EnabledAllocatable:    &trueValue,
+					EnabledBindTask:       &trueValue,
 				},
 			},
 		},

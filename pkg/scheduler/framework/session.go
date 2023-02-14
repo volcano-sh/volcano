@@ -35,7 +35,6 @@ import (
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -100,6 +99,7 @@ type Session struct {
 	reservedNodesFns  map[string]api.ReservedNodesFn
 	victimTasksFns    map[string][]api.VictimTasksFn
 	jobStarvingFns    map[string]api.ValidateFn
+	bindTaskFns       map[string]api.BindTaskFn
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -146,6 +146,7 @@ func openSession(cache cache.Cache) *Session {
 		reservedNodesFns:  map[string]api.ReservedNodesFn{},
 		victimTasksFns:    map[string][]api.VictimTasksFn{},
 		jobStarvingFns:    map[string]api.ValidateFn{},
+		bindTaskFns:       map[string]api.BindTaskFn{},
 	}
 
 	snapshot := cache.Snapshot()
@@ -530,7 +531,7 @@ func (ssn Session) InformerFactory() informers.SharedInformerFactory {
 }
 
 // RecordPodGroupEvent records podGroup events
-func (ssn Session) RecordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {
+func (ssn Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason, msg string) {
 	if podGroup == nil {
 		return
 	}

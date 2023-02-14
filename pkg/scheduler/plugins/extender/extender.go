@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -60,83 +61,134 @@ const (
 	ExtenderJobReadyVerb = "extender.jobReadyVerb"
 	// ExtenderIgnorable indicates whether the extender can ignore unexpected errors
 	ExtenderIgnorable = "extender.ignorable"
+	// ExtenderBindTaskVerb is the verb of Bind task method
+	ExtenderBindTaskVerb = "extender.bindTaskVerb"
+	// ExtenderSupportMultiMachine indicates whether the extender can support multi machine
+	ExtenderSupportMultiMachine = "extender.supportMultiMachine"
+	// ExtenderManagedResources is a list of extended resources that are managed by this extender
+	ExtenderManagedResources = "extender.managedResources"
 )
 
 type extenderConfig struct {
-	urlPrefix          string
-	httpTimeout        time.Duration
-	onSessionOpenVerb  string
-	onSessionCloseVerb string
-	predicateVerb      string
-	prioritizeVerb     string
-	preemptableVerb    string
-	reclaimableVerb    string
-	queueOverusedVerb  string
-	jobEnqueueableVerb string
-	jobReadyVerb       string
-	ignorable          bool
+	urlPrefix           string
+	httpTimeout         time.Duration
+	onSessionOpenVerb   string
+	onSessionCloseVerb  string
+	predicateVerb       string
+	prioritizeVerb      string
+	preemptableVerb     string
+	reclaimableVerb     string
+	queueOverusedVerb   string
+	jobEnqueueableVerb  string
+	jobReadyVerb        string
+	ignorable           bool
+	bindTaskVerb        string
+	supportMultiMachine bool
+	managedResources    []string
 }
 
 type extenderPlugin struct {
-	client http.Client
-	config *extenderConfig
+	client map[string]http.Client
+	config map[string]extenderConfig
 }
 
-func parseExtenderConfig(arguments framework.Arguments) *extenderConfig {
+func parseExtenderConfig(arguments framework.Arguments) map[string]extenderConfig {
 	/*
-		   actions: "reclaim, allocate, backfill, preempt"
-		   tiers:
-		   - plugins:
-		     - name: priority
-		     - name: gang
-		     - name: conformance
-		   - plugins:
-		     - name: drf
-		     - name: predicates
-			 - name: extender
-		       arguments:
-				   extender.urlPrefix: http://127.0.0.1
-				   extender.httpTimeout: 100ms
-				   extender.onSessionOpenVerb: onSessionOpen
-				   extender.onSessionCloseVerb: onSessionClose
-				   extender.predicateVerb: predicate
-				   extender.prioritizeVerb: prioritize
-				   extender.preemptableVerb: preemptable
-				   extender.reclaimableVerb: reclaimable
-				   extender.queueOverusedVerb: queueOverused
-				   extender.jobEnqueueableVerb: jobEnqueueable
-				   extender.ignorable: true
-		     - name: proportion
-		     - name: nodeorder
+		actions: "reclaim, allocate, backfill, preempt"
+		tiers:
+		- plugins:
+		  - name: priority
+		  - name: gang
+		  - name: conformance
+		- plugins:
+		  - name: drf
+		  - name: predicates
+		  - name: extender
+			arguments:
+			  extender:
+			  - extender.urlPrefix: http://127.0.0.1
+			    extender.httpTimeout: 100ms
+			    extender.onSessionOpenVerb: onSessionOpen
+			    extender.onSessionCloseVerb: onSessionClose
+			    extender.predicateVerb: predicate
+			    extender.prioritizeVerb: prioritize
+			    extender.preemptableVerb: preemptable
+			    extender.reclaimableVerb: reclaimable
+			    extender.queueOverusedVerb: queueOverused
+			    extender.jobEnqueueableVerb: jobEnqueueable
+			    extender.ignorable: true
+			    extender.bindTaskVerb: bindTask
+			    extender.supportMultiMachine: true
+			    extender.managedResources:
+			    - aa.com/aa
+			    - bb.com/bb
+			  - extender.urlPrefix: http://mlushare-schd-extender.kube-system.svc:12345
+			    extender.httpTimeout: 100ms
+			    extender.predicateVerb: predicate
+			    extender.bindTaskVerb: bindTask
+			    extender.managedResources:
+			   - cambricon.com/mlu-mem
+		  - name: proportion
+		  - name: nodeorder
 	*/
-	ec := &extenderConfig{}
-	ec.urlPrefix, _ = arguments[ExtenderURLPrefix].(string)
-	ec.onSessionOpenVerb, _ = arguments[ExtenderOnSessionOpenVerb].(string)
-	ec.onSessionCloseVerb, _ = arguments[ExtenderOnSessionCloseVerb].(string)
-	ec.predicateVerb, _ = arguments[ExtenderPredicateVerb].(string)
-	ec.prioritizeVerb, _ = arguments[ExtenderPrioritizeVerb].(string)
-	ec.preemptableVerb, _ = arguments[ExtenderPreemptableVerb].(string)
-	ec.reclaimableVerb, _ = arguments[ExtenderReclaimableVerb].(string)
-	ec.queueOverusedVerb, _ = arguments[ExtenderQueueOverusedVerb].(string)
-	ec.jobEnqueueableVerb, _ = arguments[ExtenderJobEnqueueableVerb].(string)
-	ec.jobReadyVerb, _ = arguments[ExtenderJobReadyVerb].(string)
-
-	arguments.GetBool(&ec.ignorable, ExtenderIgnorable)
-
-	ec.httpTimeout = time.Second
-	if httpTimeout, _ := arguments[ExtenderHTTPTimeout].(string); httpTimeout != "" {
-		if timeoutDuration, err := time.ParseDuration(httpTimeout); err == nil {
-			ec.httpTimeout = timeoutDuration
+	ecs := make(map[string]extenderConfig)
+	for _, arg := range arguments[PluginName].([]interface{}) {
+		argument := arg.(map[interface{}]interface{})
+		urlPrefix, ok := argument[ExtenderURLPrefix].(string)
+		if !ok {
+			klog.Info("extender urlPrefix is empty")
+			continue
 		}
+		if _, ok := ecs[urlPrefix]; ok {
+			continue
+		}
+		ec := extenderConfig{}
+		ec.urlPrefix, _ = argument[ExtenderURLPrefix].(string)
+		ec.onSessionOpenVerb, _ = argument[ExtenderOnSessionOpenVerb].(string)
+		ec.onSessionCloseVerb, _ = argument[ExtenderOnSessionCloseVerb].(string)
+		ec.predicateVerb, _ = argument[ExtenderPredicateVerb].(string)
+		ec.prioritizeVerb, _ = argument[ExtenderPrioritizeVerb].(string)
+		ec.preemptableVerb, _ = argument[ExtenderPreemptableVerb].(string)
+		ec.reclaimableVerb, _ = argument[ExtenderReclaimableVerb].(string)
+		ec.queueOverusedVerb, _ = argument[ExtenderQueueOverusedVerb].(string)
+		ec.jobEnqueueableVerb, _ = argument[ExtenderJobEnqueueableVerb].(string)
+		ec.jobReadyVerb, _ = argument[ExtenderJobReadyVerb].(string)
+		ec.bindTaskVerb, _ = argument[ExtenderBindTaskVerb].(string)
+		managedResources, _ := argument[ExtenderManagedResources].([]interface{})
+		for _, resource := range managedResources {
+			ec.managedResources = append(ec.managedResources, resource.(string))
+		}
+		if ignorable, ok := argument[ExtenderIgnorable].(string); ok {
+			arguments.GetBool(&ec.ignorable, ignorable)
+		}
+		if supportMultiMachine, ok := argument[ExtenderSupportMultiMachine].(string); ok {
+			arguments.GetBool(&ec.supportMultiMachine, supportMultiMachine)
+		}
+		ec.httpTimeout = time.Second
+		if httpTimeout, ok := argument[ExtenderHTTPTimeout].(string); ok && httpTimeout != "" {
+			if timeoutDuration, err := time.ParseDuration(httpTimeout); err == nil {
+				ec.httpTimeout = timeoutDuration
+			}
+		}
+		ecs[urlPrefix] = ec
 	}
 
-	return ec
+	klog.V(4).Infof("parse extender config result: %v", ecs)
+	return ecs
 }
 
 func New(arguments framework.Arguments) framework.Plugin {
-	cfg := parseExtenderConfig(arguments)
-	klog.V(4).Infof("Initialize extender plugin with endpoint address %s", cfg.urlPrefix)
-	return &extenderPlugin{client: http.Client{Timeout: cfg.httpTimeout}, config: cfg}
+	var ep extenderPlugin
+	ep.client = make(map[string]http.Client)
+	ep.config = make(map[string]extenderConfig)
+	cfgs := parseExtenderConfig(arguments)
+	for url, cfg := range cfgs {
+		klog.V(4).Infof("Initialize extender plugin with resource %v endpoint address %s",
+			cfg.managedResources, url)
+		ep.client[url] = http.Client{Timeout: cfg.httpTimeout}
+		ep.config[url] = cfg
+	}
+	return &ep
 }
 
 func (ep *extenderPlugin) Name() string {
@@ -144,8 +196,11 @@ func (ep *extenderPlugin) Name() string {
 }
 
 func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
-	if ep.config.onSessionOpenVerb != "" {
-		err := ep.send(ep.config.onSessionOpenVerb, &OnSessionOpenRequest{
+	for url, cfg := range ep.config {
+		if cfg.onSessionOpenVerb == "" {
+			continue
+		}
+		err := ep.send(cfg.onSessionOpenVerb, url, &OnSessionOpenRequest{
 			Jobs:           ssn.Jobs,
 			Nodes:          ssn.Nodes,
 			Queues:         ssn.Queues,
@@ -153,171 +208,352 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 			RevocableNodes: ssn.RevocableNodes,
 		}, nil)
 		if err != nil {
-			klog.Warningf("OnSessionClose failed with error %v", err)
-		}
-		if err != nil && !ep.config.ignorable {
-			return
+			klog.Warningf("OnSessionOpen failed with url %s with error %v",
+				url, err)
 		}
 	}
 
-	if ep.config.predicateVerb != "" {
-		ssn.AddPredicateFn(ep.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
-			resp := &PredicateResponse{}
-			err := ep.send(ep.config.predicateVerb, &PredicateRequest{Task: task, Node: node}, resp)
-			if err != nil {
-				klog.Warningf("Predicate failed with error %v", err)
-
-				if ep.config.ignorable {
-					return nil
+	ssn.AddPredicateFn(ep.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		for url, cfg := range ep.config {
+			if cfg.predicateVerb == "" || !isInterested(task.Pod, cfg) {
+				continue
+			}
+			if !cfg.supportMultiMachine && isMultiMachine(ssn.Jobs[task.Job], cfg.managedResources) {
+				if cfg.ignorable {
+					continue
 				}
+				return fmt.Errorf("plugin %s with url %s predicates failed for task %s on node %s of multi-machines",
+					ep.Name(), url, task.Name, node.Name)
+			}
+			resp := &PredicateResponse{}
+			err := ep.send(cfg.predicateVerb, url, &PredicateRequest{Task: task, Node: node}, resp)
+			if err != nil {
+				if cfg.ignorable {
+					continue
+				}
+				klog.Warningf("plugin %s with url %s predicate failed for task %s on node %s with error %v",
+					ep.Name(), url, task.Name, node.Name, err)
 				return err
 			}
-
-			if resp.ErrorMessage == "" {
-				return nil
+			if resp.ErrorMessage != "" {
+				klog.Warningf("plugin %s with url %s predicate failed for task %s on node %s with msg %s",
+					ep.Name(), url, task.Name, node.Name, resp.ErrorMessage)
+				return errors.New(resp.ErrorMessage)
 			}
-			return errors.New(resp.ErrorMessage)
-		})
-	}
+		}
+		return nil
+	})
 
-	if ep.config.prioritizeVerb != "" {
-		ssn.AddBatchNodeOrderFn(ep.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
-			resp := &PrioritizeResponse{}
-			err := ep.send(ep.config.prioritizeVerb, &PrioritizeRequest{Task: task, Nodes: nodes}, resp)
-			if err != nil {
-				klog.Warningf("Prioritize failed with error %v", err)
-
-				if ep.config.ignorable {
-					return nil, nil
+	ssn.AddBatchNodeOrderFn(ep.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+		nodeScore := map[string]float64{}
+		for url, cfg := range ep.config {
+			if cfg.prioritizeVerb == "" || !isInterested(task.Pod, cfg) {
+				continue
+			}
+			if !cfg.supportMultiMachine && isMultiMachine(ssn.Jobs[task.Job], cfg.managedResources) {
+				if cfg.ignorable {
+					continue
 				}
+				return nil, fmt.Errorf("plugin %s prioritize with url %s failed for task %s of multi-machines",
+					ep.Name(), url, task.Name)
+			}
+			resp := &PrioritizeResponse{}
+			err := ep.send(cfg.prioritizeVerb, url, &PrioritizeRequest{Task: task, Nodes: nodes}, resp)
+			if err != nil {
+				if cfg.ignorable {
+					continue
+				}
+				klog.Warningf("plugin %s with url %s prioritize failed for task %s with error %v",
+					ep.Name(), url, task.Name, err)
 				return nil, err
 			}
-
-			if resp.ErrorMessage == "" && resp.NodeScore != nil {
-				return resp.NodeScore, nil
+			if resp.ErrorMessage != "" {
+				klog.Warningf("plugin %s with url %s prioritize failed for task %s with msg %s",
+					ep.Name(), url, task.Name, resp.ErrorMessage)
+				return nil, errors.New(resp.ErrorMessage)
 			}
-			return nil, errors.New(resp.ErrorMessage)
-		})
-	}
+			for n, v := range resp.NodeScore {
+				if s, ok := nodeScore[n]; ok {
+					nodeScore[n] = s + v
+				} else {
+					nodeScore[n] = v
+				}
+			}
+		}
+		return nodeScore, nil
+	})
 
-	if ep.config.preemptableVerb != "" {
-		ssn.AddPreemptableFn(ep.Name(), func(evictor *api.TaskInfo, evictees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+	ssn.AddPreemptableFn(ep.Name(), func(evictor *api.TaskInfo, evictees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		for url, cfg := range ep.config {
+			if cfg.preemptableVerb == "" || !isInterested(evictor.Pod, cfg) {
+				continue
+			}
+			if !cfg.supportMultiMachine && isMultiMachine(ssn.Jobs[evictor.Job], cfg.managedResources) {
+				if cfg.ignorable {
+					continue
+				}
+				klog.Warningf("plugin %s with url %s preempt failed for task %s of multi-machines",
+					ep.Name(), url, evictor.Name)
+				return nil, util.Reject
+			}
 			resp := &PreemptableResponse{}
-			err := ep.send(ep.config.preemptableVerb, &PreemptableRequest{Evictor: evictor, Evictees: evictees}, resp)
+			err := ep.send(cfg.preemptableVerb, url, &PreemptableRequest{Evictor: evictor, Evictees: evictees}, resp)
 			if err != nil {
-				klog.Warningf("Preemptable failed with error %v", err)
-
-				if ep.config.ignorable {
-					return nil, util.Permit
+				if cfg.ignorable {
+					continue
 				}
+				klog.Warningf("plugin %s with url %s preempt failed for task %s with error %v",
+					ep.Name(), url, evictor.Name, err)
 				return nil, util.Reject
 			}
+			if resp.Status == util.Reject {
+				return nil, util.Reject
+			}
+			evictees = resp.Victims
+		}
+		return evictees, util.Permit
+	})
 
-			return resp.Victims, resp.Status
-		})
-	}
-
-	if ep.config.reclaimableVerb != "" {
-		ssn.AddReclaimableFn(ep.Name(), func(evictor *api.TaskInfo, evictees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+	ssn.AddReclaimableFn(ep.Name(), func(evictor *api.TaskInfo, evictees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		for url, cfg := range ep.config {
+			if cfg.reclaimableVerb == "" || !isInterested(evictor.Pod, cfg) {
+				continue
+			}
+			if !cfg.supportMultiMachine && isMultiMachine(ssn.Jobs[evictor.Job], cfg.managedResources) {
+				if cfg.ignorable {
+					continue
+				}
+				klog.Warningf("plugin %s with url %s reclaim failed for task %s of multi-machines",
+					ep.Name(), url, evictor.Name)
+				return nil, util.Reject
+			}
 			resp := &ReclaimableResponse{}
-			err := ep.send(ep.config.reclaimableVerb, &ReclaimableRequest{Evictor: evictor, Evictees: evictees}, resp)
+			err := ep.send(cfg.reclaimableVerb, url, &ReclaimableRequest{Evictor: evictor, Evictees: evictees}, resp)
 			if err != nil {
-				klog.Warningf("Reclaimable failed with error %v", err)
-
-				if ep.config.ignorable {
-					return nil, util.Permit
+				if cfg.ignorable {
+					continue
 				}
+				klog.Warningf("plugin %s with url %s reclaim failed for task %s with error %v",
+					ep.Name(), url, evictor.Name, err)
 				return nil, util.Reject
 			}
+			if resp.Status == util.Reject {
+				return nil, util.Reject
+			}
+			evictees = resp.Victims
+		}
+		return evictees, util.Permit
+	})
 
-			return resp.Victims, resp.Status
-		})
-	}
-
-	if ep.config.jobEnqueueableVerb != "" {
-		ssn.AddJobEnqueueableFn(ep.Name(), func(obj interface{}) int {
-			job := obj.(*api.JobInfo)
-			resp := &JobEnqueueableResponse{}
-			err := ep.send(ep.config.jobEnqueueableVerb, &JobEnqueueableRequest{Job: job}, resp)
-			if err != nil {
-				klog.Warningf("JobEnqueueable failed with error %v", err)
-
-				if ep.config.ignorable {
-					return util.Permit
+	ssn.AddJobEnqueueableFn(ep.Name(), func(obj interface{}) int {
+		job := obj.(*api.JobInfo)
+		for url, cfg := range ep.config {
+			if cfg.jobEnqueueableVerb == "" {
+				continue
+			}
+			var matchResource bool
+			for _, task := range job.Tasks {
+				if isInterested(task.Pod, cfg) {
+					matchResource = true
+					break
 				}
+			}
+			if !matchResource {
+				continue
+			}
+			if !cfg.supportMultiMachine && isMultiMachine(job, cfg.managedResources) {
+				if cfg.ignorable {
+					continue
+				}
+				klog.Warningf("plugin %s with url %s jobEnqueue failed for job %s of multi-machines",
+					ep.Name(), url, job.Name)
+				return util.Reject
+
+			}
+			resp := &JobEnqueueableResponse{}
+			err := ep.send(cfg.jobEnqueueableVerb, url, &JobEnqueueableRequest{Job: job}, resp)
+			if err != nil {
+				if cfg.ignorable {
+					continue
+				}
+				klog.Warningf("plugin %s with url %s jobEnqueue failed for job %s with error %v",
+					ep.Name(), url, job.Name, err)
 				return util.Reject
 			}
+			if resp.Status == util.Reject {
+				return util.Reject
+			}
+		}
+		return util.Permit
+	})
 
-			return resp.Status
-		})
-	}
-
-	if ep.config.queueOverusedVerb != "" {
-		ssn.AddOverusedFn(ep.Name(), func(obj interface{}) bool {
+	ssn.AddOverusedFn(ep.Name(), func(obj interface{}) bool {
+		for url, cfg := range ep.config {
+			if cfg.queueOverusedVerb == "" {
+				continue
+			}
 			queue := obj.(*api.QueueInfo)
 			resp := &QueueOverusedResponse{}
-			err := ep.send(ep.config.queueOverusedVerb, &QueueOverusedRequest{Queue: queue}, resp)
+			err := ep.send(cfg.queueOverusedVerb, url, &QueueOverusedRequest{Queue: queue}, resp)
 			if err != nil {
-				klog.Warningf("QueueOverused failed with error %v", err)
-
-				return !ep.config.ignorable
+				if cfg.ignorable {
+					continue
+				}
+				klog.Warningf("plugin %s with url %s get queueOverused with error %v",
+					ep.Name(), url, err)
+				return true
 			}
+			if resp.Overused {
+				return true
+			}
+		}
+		return false
+	})
 
-			return resp.Overused
-		})
-	}
-
-	if ep.config.jobReadyVerb != "" {
-		ssn.AddJobReadyFn(ep.Name(), func(obj interface{}) bool {
-			job := obj.(*api.JobInfo)
+	ssn.AddJobReadyFn(ep.Name(), func(obj interface{}) bool {
+		job := obj.(*api.JobInfo)
+		for url, cfg := range ep.config {
+			if cfg.jobReadyVerb == "" {
+				continue
+			}
+			var matchResource bool
+			for _, task := range job.Tasks {
+				if isInterested(task.Pod, cfg) {
+					matchResource = true
+					break
+				}
+			}
+			if !matchResource {
+				continue
+			}
+			if !cfg.supportMultiMachine && isMultiMachine(job, cfg.managedResources) {
+				if cfg.ignorable {
+					continue
+				}
+				klog.Warningf("plugin %s with url %s jobReady failed for job %s of multi-machines",
+					ep.Name(), url, job.Name)
+				return false
+			}
 			resp := &JobReadyResponse{}
-			err := ep.send(ep.config.jobReadyVerb, &JobReadyRequest{Job: job}, resp)
+			err := ep.send(cfg.jobReadyVerb, url, &JobReadyRequest{Job: job}, resp)
 			if err != nil {
-				klog.Warningf("JobReady failed with error %v", err)
-
-				return !ep.config.ignorable
+				if cfg.ignorable {
+					continue
+				}
+				klog.Warningf("plugin %s with url %s jobReady failed for job %s with error %v",
+					ep.Name(), url, job.Name, err)
+				return false
 			}
+			if !resp.Status {
+				return false
+			}
+		}
+		return true
+	})
 
-			return resp.Status
-		})
-	}
+	ssn.AddBindTaskFn(ep.Name(), func(task *api.TaskInfo) error {
+		for url, cfg := range ep.config {
+			if cfg.bindTaskVerb == "" || !isInterested(task.Pod, cfg) {
+				continue
+			}
+			if !cfg.supportMultiMachine && isMultiMachine(ssn.Jobs[task.Job], cfg.managedResources) {
+				if cfg.ignorable {
+					continue
+				}
+				return fmt.Errorf("plugin %s bind task failed for task %s on node %s because of multi-machines",
+					ep.Name(), task.Name, task.NodeName)
+			}
+			resp := &BindTaskResponse{}
+			err := ep.send(cfg.bindTaskVerb, url, &BindTaskRequest{Task: task}, resp)
+			if err != nil {
+				if cfg.ignorable {
+					continue
+				}
+				klog.Warningf("plugin %s bind task failed for task %s on node %s with error %v",
+					ep.Name(), task.Name, task.NodeName, err)
+			}
+			if resp.ErrorMessage != "" {
+				klog.Warningf("plugin %s bind task failed for task %s on node %s with msg %s",
+					ep.Name(), task.Name, task.NodeName, resp.ErrorMessage)
+				return errors.New(resp.ErrorMessage)
+			}
+		}
+		return nil
+	})
 }
 
 func (ep *extenderPlugin) OnSessionClose(ssn *framework.Session) {
-	if ep.config.onSessionCloseVerb != "" {
-		if err := ep.send(ep.config.onSessionCloseVerb, &OnSessionCloseRequest{}, nil); err != nil {
-			klog.Warningf("OnSessionClose failed with error %v", err)
+	for url, cfg := range ep.config {
+		if cfg.onSessionCloseVerb != "" {
+			if err := ep.send(cfg.onSessionCloseVerb, url, &OnSessionCloseRequest{}, nil); err != nil {
+				klog.Warningf("OnSessionClose failed with url %s with error %v", url, err)
+			}
 		}
 	}
 }
 
-func (ep *extenderPlugin) send(action string, args interface{}, result interface{}) error {
+func (ep *extenderPlugin) send(action, url string, args interface{}, result interface{}) error {
 	out, err := json.Marshal(args)
 	if err != nil {
 		return err
 	}
 
-	url := strings.TrimRight(ep.config.urlPrefix, "/") + "/" + action
+	fullURl := strings.TrimRight(url, "/") + "/" + action
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(out))
+	req, err := http.NewRequest("POST", fullURl, bytes.NewReader(out))
 	if err != nil {
 		return err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := ep.client.Do(req)
+	cli := ep.client[url]
+	resp, err := cli.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed %v with extender at URL %v, code %v", action, url, resp.StatusCode)
+		return fmt.Errorf("failed %v with extender at URL %v, code %v",
+			action, url, resp.StatusCode)
 	}
 
 	if result != nil {
 		return json.NewDecoder(resp.Body).Decode(result)
 	}
 	return nil
+}
+
+func isMultiMachine(job *api.JobInfo, managedResources []string) bool {
+	if job.MinAvailable <= 1 {
+		return false
+	}
+	for _, min := range job.TaskMinAvailable {
+		if min > 1 {
+			return true
+		}
+	}
+	if len(job.Tasks) <= 1 {
+		return false
+	}
+	var taskUseResource int
+	for _, task := range job.Tasks {
+		if _, ok := api.MatchResource(task.Pod, managedResources); ok {
+			taskUseResource++
+		}
+	}
+	return taskUseResource > 1
+}
+
+// isInterested returns true if at least one extended resource requested by
+// this pod is managed by this extender.
+func isInterested(pod *v1.Pod, cfg extenderConfig) bool {
+	if len(cfg.managedResources) == 0 {
+		return true
+	}
+	if _, ok := api.MatchResource(pod, cfg.managedResources); ok {
+		return true
+	}
+	return false
 }

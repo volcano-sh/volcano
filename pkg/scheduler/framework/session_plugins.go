@@ -149,6 +149,11 @@ func (ssn *Session) AddJobStarvingFns(name string, fn api.ValidateFn) {
 	ssn.jobStarvingFns[name] = fn
 }
 
+// AddBindTaskFn add bindTaskFns function
+func (ssn *Session) AddBindTaskFn(name string, pf api.BindTaskFn) {
+	ssn.bindTaskFns[name] = pf
+}
+
 // Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
@@ -790,4 +795,24 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 		}
 	}
 	return nodeScoreMap, nil
+}
+
+// BindTaskFn invoke bind function of the plugins
+func (ssn *Session) BindTaskFn(task *api.TaskInfo) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledBindTask) {
+				continue
+			}
+			pfn, found := ssn.bindTaskFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(task)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
