@@ -27,7 +27,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"

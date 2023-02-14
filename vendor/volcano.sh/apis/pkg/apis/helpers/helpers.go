@@ -35,7 +35,7 @@ import (
 	"k8s.io/apiserver/pkg/server/healthz"
 	"k8s.io/apiserver/pkg/server/mux"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"

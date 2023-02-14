@@ -651,7 +651,7 @@ var _ = Describe("Job E2E Test", func() {
 			fmt.Sprintf("expectPod %d, q1ScheduledPod %d, q2ScheduledPod %d", expectPod, q1ScheduledPod, q2ScheduledPod))
 	})
 
-	It("changeable Deployment's PodGroup", func() {
+	It("PodGroup's Count change with Deployment's Request change", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)/2 + 1
@@ -686,7 +686,7 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(len(pgs.Items)).To(Equal(1), "only one podGroup should be exists")
 	})
 
-	It("k8s Job", func() {
+	It("PodGroup's Phase with k8s Job in Completed", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 

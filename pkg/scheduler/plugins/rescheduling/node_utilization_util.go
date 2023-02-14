@@ -21,7 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
 
 	"volcano.sh/volcano/pkg/scheduler/api"

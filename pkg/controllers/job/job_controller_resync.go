@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 func newRateLimitingQueue() workqueue.RateLimitingInterface {

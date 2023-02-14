@@ -27,7 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	"volcano.sh/apis/pkg/apis/helpers"

@@ -28,7 +28,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"

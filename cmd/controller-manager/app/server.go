@@ -32,7 +32,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"

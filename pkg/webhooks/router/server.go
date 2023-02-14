@@ -23,7 +23,7 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"

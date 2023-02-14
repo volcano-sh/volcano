@@ -30,13 +30,12 @@ require (
 	k8s.io/component-base v0.25.0
 	k8s.io/component-helpers v0.25.0
 	k8s.io/csi-translation-lib v0.25.0
-	k8s.io/klog v1.0.0
-	k8s.io/klog/v2 v2.70.1
+	k8s.io/klog/v2 v2.80.1
 	k8s.io/kubernetes v1.25.0
 	k8s.io/utils v0.0.0-20220728103510-ee6ede2d64ed
 	sigs.k8s.io/yaml v1.3.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.6.0-alpha.0.0.20221206071715-99768c621d1d
+	volcano.sh/apis v1.6.0-alpha.0.0.20230214095022-ad92502b1a57
 )
 
 require (
@@ -114,7 +113,6 @@ replace (
 	k8s.io/controller-manager => k8s.io/controller-manager v0.25.0
 	k8s.io/cri-api => k8s.io/cri-api v0.25.0
 	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.25.0
-	k8s.io/klog => k8s.io/klog v1.0.0
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.25.0
 	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.25.0
 	k8s.io/kube-proxy => k8s.io/kube-proxy v0.25.0

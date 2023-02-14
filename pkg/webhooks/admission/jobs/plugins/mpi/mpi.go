@@ -17,7 +17,7 @@ limitations under the License.
 package mpi
 
 import (
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"

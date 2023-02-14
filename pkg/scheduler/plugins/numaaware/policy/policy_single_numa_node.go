@@ -16,7 +16,7 @@ limitations under the License.
 
 package policy
 
-import "k8s.io/klog"
+import "k8s.io/klog/v2"
 
 type policySingleNumaNode struct {
 	numaNodes []int
