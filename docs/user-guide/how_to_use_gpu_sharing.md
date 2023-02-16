@@ -46,7 +46,7 @@ Same as above, after installed, update the scheduler configuration in `volcano-s
 
 Please refer to [volcano device plugin](https://github.com/volcano-sh/devices/blob/master/README.md#quick-start)
 
-* By default volcano device plugin supports shared GPUs, users do not need to config volcano device plugin. Default setting is the same as setting --gpu-strategy=number. For more information [volcano device plugin configuration](https://github.com/volcano-sh/devices/blob/master/doc/config.md)
+* By default volcano device plugin supports shared GPUs, users do not need to config volcano device plugin. Default setting is the same as setting --gpu-strategy=share. For more information [volcano device plugin configuration](https://github.com/volcano-sh/devices/blob/master/doc/config.md)
 
 ### Verify environment is ready
 
