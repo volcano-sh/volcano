@@ -60,7 +60,7 @@ type NodeInfo struct {
 	Used *Resource
 
 	Allocatable   *Resource
-	Capability    *Resource
+	Capacity      *Resource
 	ResourceUsage *NodeUsage
 
 	Tasks             map[TaskID]*TaskInfo
@@ -134,7 +134,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Used:      EmptyResource(),
 
 		Allocatable:   EmptyResource(),
-		Capability:    EmptyResource(),
+		Capacity:      EmptyResource(),
 		ResourceUsage: &NodeUsage{},
 
 		OversubscriptionResource: EmptyResource(),
@@ -151,7 +151,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		nodeInfo.Node = node
 		nodeInfo.Idle = NewResource(node.Status.Allocatable).Add(nodeInfo.OversubscriptionResource)
 		nodeInfo.Allocatable = NewResource(node.Status.Allocatable).Add(nodeInfo.OversubscriptionResource)
-		nodeInfo.Capability = NewResource(node.Status.Capacity).Add(nodeInfo.OversubscriptionResource)
+		nodeInfo.Capacity = NewResource(node.Status.Capacity).Add(nodeInfo.OversubscriptionResource)
 	}
 	nodeInfo.setNodeOthersResource(node)
 	nodeInfo.setNodeState(node)
@@ -356,7 +356,7 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 	ni.Node = node
 
 	ni.Allocatable = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)
-	ni.Capability = NewResource(node.Status.Capacity).Add(ni.OversubscriptionResource)
+	ni.Capacity = NewResource(node.Status.Capacity).Add(ni.OversubscriptionResource)
 	ni.Releasing = EmptyResource()
 	ni.Pipelined = EmptyResource()
 	ni.Idle = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)

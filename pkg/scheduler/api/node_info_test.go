@@ -59,7 +59,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Pipelined:                EmptyResource(),
 				OversubscriptionResource: EmptyResource(),
 				Allocatable:              buildResource("8000m", "10G"),
-				Capability:               buildResource("8000m", "10G"),
+				Capacity:                 buildResource("8000m", "10G"),
 				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: Ready},
 				Tasks: map[TaskID]*TaskInfo{
@@ -85,7 +85,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Pipelined:                EmptyResource(),
 				OversubscriptionResource: EmptyResource(),
 				Allocatable:              buildResource("2000m", "1G"),
-				Capability:               buildResource("2000m", "1G"),
+				Capacity:                 buildResource("2000m", "1G"),
 				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: Ready},
 				Tasks:                    map[TaskID]*TaskInfo{},
@@ -147,7 +147,7 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 				Releasing:                EmptyResource(),
 				Pipelined:                EmptyResource(),
 				Allocatable:              buildResource("8000m", "10G"),
-				Capability:               buildResource("8000m", "10G"),
+				Capacity:                 buildResource("8000m", "10G"),
 				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: Ready},
 				Tasks: map[TaskID]*TaskInfo{
@@ -211,7 +211,7 @@ func TestNodeInfo_SetNode(t *testing.T) {
 				Releasing:                EmptyResource(),
 				Pipelined:                EmptyResource(),
 				Allocatable:              buildResource("10", "10G"),
-				Capability:               buildResource("10", "10G"),
+				Capacity:                 buildResource("10", "10G"),
 				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: NotReady, Reason: "OutOfSync"},
 				Tasks: map[TaskID]*TaskInfo{

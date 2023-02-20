@@ -27,6 +27,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/filewatcher"
 	schedcache "volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -48,6 +49,7 @@ type Scheduler struct {
 	plugins        []conf.Tier
 	configurations []conf.Configuration
 	metricsConf    map[string]string
+	dumper         schedcache.Dumper
 }
 
 // NewScheduler returns a scheduler
@@ -69,11 +71,13 @@ func NewScheduler(
 		}
 	}
 
+	cache := schedcache.New(config, schedulerNames, defaultQueue, nodeSelectors)
 	scheduler := &Scheduler{
 		schedulerConf:  schedulerConf,
 		fileWatcher:    watcher,
-		cache:          schedcache.New(config, schedulerNames, defaultQueue, nodeSelectors),
+		cache:          cache,
 		schedulePeriod: period,
+		dumper:         schedcache.Dumper{Cache: cache},
 	}
 
 	return scheduler, nil
@@ -89,6 +93,9 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	pc.cache.WaitForCacheSync(stopCh)
 	klog.V(2).Infof("scheduler completes Initialization and start to run")
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
+	if options.ServerOpts.EnableCacheDumper {
+		pc.dumper.ListenForSignal(stopCh)
+	}
 }
 
 func (pc *Scheduler) runOnce() {
