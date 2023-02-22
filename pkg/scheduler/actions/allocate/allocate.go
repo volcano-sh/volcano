@@ -185,6 +185,13 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 		tasks := pendingTasks[job.UID]
 
+		// Added Namespace back until no job in Namespace.
+		namespaces.Push(namespace)
+
+		if tasks.Empty() {
+			continue
+		}
+
 		klog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v/%v>",
 			tasks.Len(), job.Namespace, job.Name)
 
@@ -281,8 +288,6 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 		}
 
-		// Added Namespace back until no job in Namespace.
-		namespaces.Push(namespace)
 	}
 }
 
