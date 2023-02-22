@@ -22,7 +22,7 @@ jobs:
       with:
         fetch-depth: 0
         repository: apache/spark
-        ref: branch-3.3
+        ref: branch-3.4
         path: ${{ github.workspace }}/spark
     - name: Cache Scala, SBT and Maven
       uses: actions/cache@v3
