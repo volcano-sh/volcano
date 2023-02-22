@@ -23,8 +23,8 @@ export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export MPI_EXAMPLE_IMAGE=${MPI_EXAMPLE_IMAGE:-"volcanosh/example-mpi:0.0.1"}
 export TF_EXAMPLE_IMAGE=${TF_EXAMPLE_IMAGE:-"volcanosh/dist-mnist-tf-example:0.0.1"}
-# "volcanosh/pytorch-mnist-v1beta1-45c5727-example:0.0.1" is from "docker.io/kubeflowkatib/pytorch-mnist:v1beta1-45c5727"
-export PYTORCH_EXAMPLE_IMAGE=${PYTORCH_EXAMPLE_IMAGE:-"volcanosh/pytorch-mnist-v1beta1-45c5727-example:0.0.1"}
+# "volcanosh/pytorch-mnist-v1beta1-9ee8fda-example:0.0.1" is from "docker.io/kubeflowkatib/pytorch-mnist:v1beta1-9ee8fda"
+export PYTORCH_EXAMPLE_IMAGE=${PYTORCH_EXAMPLE_IMAGE:-"volcanosh/pytorch-mnist-v1beta1-9ee8fda-example:0.0.1"}
 export E2E_TYPE=${E2E_TYPE:-"ALL"}
 
 if [[ "${CLUSTER_NAME}xxx" == "xxx" ]];then
