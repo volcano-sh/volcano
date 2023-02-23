@@ -35,5 +35,9 @@ func NewMetricsClient(metricsConf map[string]string) (MetricsClient, error) {
 	if len(address) == 0 {
 		return nil, errors.New("metrics address is empty")
 	}
+	metricsType := metricsConf["type"]
+	if metricsType == "elasticsearch" {
+		return NewElasticsearchMetricsClient(address)
+	}
 	return &PrometheusMetricsClient{address: address}, nil
 }
