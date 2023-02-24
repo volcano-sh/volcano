@@ -21,8 +21,6 @@ export VC_BIN=${VK_ROOT}/${BIN_DIR}/${BIN_OSARCH}
 export LOG_LEVEL=3
 export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
-export MPI_EXAMPLE_IMAGE=${MPI_EXAMPLE_IMAGE:-"volcanosh/example-mpi:0.0.1"}
-export TF_EXAMPLE_IMAGE=${TF_EXAMPLE_IMAGE:-"volcanosh/dist-mnist-tf-example:0.0.1"}
 export E2E_TYPE=${E2E_TYPE:-"ALL"}
 
 if [[ "${CLUSTER_NAME}xxx" == "xxx" ]];then
@@ -50,12 +48,6 @@ function install-volcano {
     if [ "$minor" -lt "18" ]; then
       crd_version="v1beta1"
     fi
-  fi
-
-  if [[ ${E2E_TYPE} = "ALL" ]] || [[ ${E2E_TYPE} = "JOBSEQ" ]]; then
-    echo "Pulling required docker images"
-    docker pull ${MPI_EXAMPLE_IMAGE}
-    docker pull ${TF_EXAMPLE_IMAGE}
   fi
 
   echo "Ensure create namespace"

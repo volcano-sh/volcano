@@ -36,7 +36,7 @@ As soon as another task is assigned to the n4 group, n4’s dominant share
 will be higher than n3’s, resulting in all remaining GPU resources being repeatedly allocated to n3,2.
 Thus, in the final allocation n3,2 gets 2/3 of GPUs, while n4 gets only 1/3 of the GPUs.
 To fix this problem, HDRF first picks the minimum dominant share, M, among non-blocked nodes.
-Second, only every nonblocked node’s resource consumption vector is rescaled such that its dominant share is M.
+Second, only every non-blocked node’s resource consumption vector is rescaled such that its dominant share is M.
 Third, all nodes' blocked as well as non-blocked vectors are added to
 get the parent’s resource consumption vector.
 Furthermore, HDRF ignores saturated resources when computing the dominant share of any internal node.

@@ -76,6 +76,8 @@ const (
 	DefaultNginxImage   = "nginx:1.14"
 	DefaultMPIImage     = "volcanosh/example-mpi:0.0.1"
 	DefaultTFImage      = "volcanosh/dist-mnist-tf-example:0.0.1"
+	// "volcanosh/pytorch-mnist-v1beta1-9ee8fda-example:0.0.1" is from "docker.io/kubeflowkatib/pytorch-mnist:v1beta1-9ee8fda"
+	DefaultPytorchImage = "volcanosh/pytorch-mnist-v1beta1-9ee8fda-example:0.0.1"
 )
 
 func CpuResource(request string) v1.ResourceList {
