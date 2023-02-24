@@ -60,6 +60,8 @@ metrics:                             # metrics server related configuration
   type: prometheus                   # Optional, The metrics source type, prometheus by default, support prometheus and elasticsearch
   address: http://192.168.0.10:9090  # mandatory, The metrics source address
   interval: 30s                      # Optional, The scheduler pull metrics from Prometheus with this interval, 5s by default
+  elasticsearch:                     # Optional, The elasticsearch configuration
+    index: "custom-index-name"       # Optional, The elasticsearch index name, "metricbeat-*" by default
   ```
 
 ### How to predicate node

@@ -33,12 +33,19 @@ const (
 )
 
 type ElasticsearchMetricsClient struct {
-	address string
-	es      *elasticsearch.Client
+	address   string
+	indexName string
+	es        *elasticsearch.Client
 }
 
-func NewElasticsearchMetricsClient(address string) (*ElasticsearchMetricsClient, error) {
+func NewElasticsearchMetricsClient(address string, conf map[string]string) (*ElasticsearchMetricsClient, error) {
 	e := &ElasticsearchMetricsClient{address: address}
+	indexConf := conf["elasticsearch.index"]
+	if len(indexConf) == 0 {
+		e.indexName = "metricbeat-*"
+	} else {
+		e.indexName = indexConf
+	}
 	var err error
 	e.es, err = elasticsearch.NewDefaultClient()
 	if err != nil {
