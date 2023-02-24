@@ -61,8 +61,8 @@ func getNodeUtilization() []*NodeUtilization {
 		nodeUtilization := &NodeUtilization{
 			nodeInfo: nodeInfo.Node,
 			utilization: map[v1.ResourceName]float64{
-				v1.ResourceCPU:    nodeInfo.ResourceUsage.CPUUsageAvg[Interval],
-				v1.ResourceMemory: nodeInfo.ResourceUsage.MEMUsageAvg[Interval],
+				v1.ResourceCPU:    nodeInfo.ResourceUsage.CPUUsageAvg[MetricsPeriod],
+				v1.ResourceMemory: nodeInfo.ResourceUsage.MEMUsageAvg[MetricsPeriod],
 			},
 			pods: nodeInfo.Pods(),
 		}
