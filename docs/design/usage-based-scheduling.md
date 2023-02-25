@@ -47,8 +47,8 @@ tiers:
       - name: usage  # usage based scheduling plugin
         arguments:
           thresholds:
-            CPUUsageAvg.5m: 90 # The node whose average usage in 5 minute is higher than 90% will be filtered in predicating stage
-            MEMUsageAvg.5m: 80 # The node whose average usage in 5 minute is higher than 80% will be filtered in predicating stage
+            CPUUsageAvg.5m: 90 # The node whose average usage in 5 minute is higher than 90% will be filtered in predicating stage, The supported configuration time is 5m, 10m, 15m, 30m, 1h, 1d.
+            MEMUsageAvg.5m: 80 # The node whose average usage in 5 minute is higher than 80% will be filtered in predicating stage, The supported configuration time is 5m, 10m, 15m, 30m, 1h, 1d.
   - plugins:
       - name: overcommit
       - name: drf
@@ -107,9 +107,29 @@ spec:
         rules:
         - record: cpu_usage_avg_5m
           expr: avg_over_time(cpu_usage_active[5m])
+        - record: cpu_usage_avg_10m
+          expr: avg_over_time(cpu_usage_active[10m])
+        - record: cpu_usage_avg_15m
+          expr: avg_over_time(cpu_usage_active[15m])
+        - record: cpu_usage_avg_30m
+          expr: avg_over_time(cpu_usage_active[30m])
+        - record: cpu_usage_avg_1h
+          expr: avg_over_time(cpu_usage_active[1h])
+        - record: cpu_usage_avg_1d
+          expr: avg_over_time(cpu_usage_active[1d])
       - name: mem-usage-1m
         interval: 1m
         rules:
         - record: mem_usage_avg_5m
           expr: avg_over_time(mem_usage_active[5m])
+        - record: mem_usage_avg_10m
+          expr: avg_over_time(mem_usage_active[10m])
+        - record: mem_usage_avg_15m
+          expr: avg_over_time(mem_usage_active[15m])
+        - record: mem_usage_avg_30m
+          expr: avg_over_time(mem_usage_active[30m])
+        - record: mem_usage_avg_1h
+          expr: avg_over_time(mem_usage_active[1h])
+        - record: mem_usage_avg_1d
+          expr: avg_over_time(mem_usage_active[1d])
 ```

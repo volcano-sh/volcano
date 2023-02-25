@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 
 	v1 "k8s.io/api/core/v1"
@@ -1276,7 +1277,7 @@ func (sc *SchedulerCache) GetMetricsData() {
 	}
 	sc.Mutex.Unlock()
 
-	supportedPeriods := []string{"5m"}
+	supportedPeriods := []string{"5m", "10m", "15m", "30m", "1h", "1d"}
 	for node := range nodeUsageMap {
 		for _, period := range supportedPeriods {
 			nodeMetrics, err := client.NodeMetricsAvg(ctx, node, period)
