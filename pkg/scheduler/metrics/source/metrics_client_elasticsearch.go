@@ -47,7 +47,9 @@ func NewElasticsearchMetricsClient(address string, conf map[string]string) (*Ela
 		e.indexName = indexConf
 	}
 	var err error
-	e.es, err = elasticsearch.NewDefaultClient()
+	e.es, err = elasticsearch.NewClient(elasticsearch.Config{
+		Addresses: []string{address},
+	})
 	if err != nil {
 		return nil, err
 	}
