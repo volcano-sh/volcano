@@ -62,6 +62,8 @@ metrics:                             # metrics server related configuration
   interval: 30s                      # Optional, The scheduler pull metrics from Prometheus with this interval, 5s by default
   elasticsearch:                     # Optional, The elasticsearch configuration
     index: "custom-index-name"       # Optional, The elasticsearch index name, "metricbeat-*" by default
+    username: ""                     # Optional, The elasticsearch username
+    password: ""                     # Optional, The elasticsearch password
   ```
 
 ### How to predicate node
