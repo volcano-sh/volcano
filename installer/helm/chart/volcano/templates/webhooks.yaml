@@ -22,7 +22,7 @@ webhooks:
         - key: kubernetes.io/metadata.name
           operator: NotIn
           values:
-            - volcano-system
+            - {{ .Release.Namespace }}
             - kube-system
     objectSelector: {}
     reinvocationPolicy: Never
@@ -64,7 +64,7 @@ webhooks:
         - key: kubernetes.io/metadata.name
           operator: NotIn
           values:
-            - volcano-system
+            - {{ .Release.Namespace }}
             - kube-system
     objectSelector: {}
     reinvocationPolicy: Never
@@ -106,7 +106,7 @@ webhooks:
         - key: kubernetes.io/metadata.name
           operator: NotIn
           values:
-            - volcano-system
+            - {{ .Release.Namespace }}
             - kube-system
     objectSelector: {}
     reinvocationPolicy: Never
@@ -148,7 +148,7 @@ webhooks:
         - key: kubernetes.io/metadata.name
           operator: NotIn
           values:
-            - volcano-system
+            - {{ .Release.Namespace }}
             - kube-system
     objectSelector: {}
     reinvocationPolicy: Never
@@ -190,7 +190,7 @@ webhooks:
         - key: kubernetes.io/metadata.name
           operator: NotIn
           values:
-            - volcano-system
+            - {{ .Release.Namespace }}
             - kube-system
     objectSelector: {}
     rules:
@@ -232,7 +232,7 @@ webhooks:
         - key: kubernetes.io/metadata.name
           operator: NotIn
           values:
-            - volcano-system
+            - {{ .Release.Namespace }}
             - kube-system
     objectSelector: {}
     rules:
@@ -273,7 +273,7 @@ webhooks:
         - key: kubernetes.io/metadata.name
           operator: NotIn
           values:
-            - volcano-system
+            - {{ .Release.Namespace }}
             - kube-system
     objectSelector: {}
     rules:
