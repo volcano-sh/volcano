@@ -74,7 +74,7 @@ func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
 	ssn.predicateFns[name] = pf
 }
 
-// AddPredicateFn add Predicate function
+// AddPrePredicateFn add PrePredicate function
 func (ssn *Session) AddPrePredicateFn(name string, pf api.PrePredicateFn) {
 	ssn.prePredicateFns[name] = pf
 }
