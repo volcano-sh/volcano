@@ -24,7 +24,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 // getDevicesIdleGPUMemory returns all the idle GPU memory by gpu card.

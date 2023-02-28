@@ -28,14 +28,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -272,6 +271,10 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 		// If there're enough allocated resource, it's running
 		if int32(allocated) >= jobInfo.PodGroup.Spec.MinMember {
 			status.Phase = scheduling.PodGroupRunning
+			// If all allocated tasks is succeeded, it's completed
+			if len(jobInfo.TaskStatusIndex[api.Succeeded]) == allocated {
+				status.Phase = scheduling.PodGroupCompleted
+			}
 		} else if jobInfo.PodGroup.Status.Phase != scheduling.PodGroupInqueue {
 			status.Phase = scheduling.PodGroupPending
 		}
@@ -526,7 +529,7 @@ func (ssn Session) InformerFactory() informers.SharedInformerFactory {
 }
 
 // RecordPodGroupEvent records podGroup events
-func (ssn Session) RecordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {
+func (ssn Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason, msg string) {
 	if podGroup == nil {
 		return
 	}

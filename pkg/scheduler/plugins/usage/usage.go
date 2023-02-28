@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -80,13 +80,13 @@ func (up *usagePlugin) Name() string {
 
 func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(4).Infof("Enter usage plugin ...")
-	if klog.V(4) {
+	if klog.V(4).Enabled() {
 		defer func() {
 			klog.V(4).Infof("Leaving usage plugin ...")
 		}()
 	}
 
-	if klog.V(4) {
+	if klog.V(4).Enabled() {
 		for node := range ssn.Nodes {
 			usage := ssn.Nodes[node].ResourceUsage
 			klog.V(4).Infof("node:%v, cpu usage:%v, mem usage:%v", node, usage.CPUUsageAvg["5m"], usage.MEMUsageAvg["5m"])

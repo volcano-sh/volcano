@@ -7,7 +7,7 @@ For example, in 8:00~24:00 the on-line service in kubernetes can use these nodes
 
 ## Solution
 
-Frist, we need mark out these nodes(by add `volcano.sh/revocable-zone` for nodes) which are in both Kubernetes cluster and Yarn cluster. We call these node are `revocable node`. For the kubernetes 
+First, we need mark out these nodes(by add `volcano.sh/revocable-zone` for nodes) which are in both Kubernetes cluster and Yarn cluster. We call these node are `revocable node`. For the kubernetes 
 workload, we add `volcano.sh/preemptable: "true"` annotation for pod/podgroup to distinguish which pod can be dispatched to the `revocable node`. We call these pod are `preemptable task`.
 TDM plugin enhance the volcano time-sharing multiplexing resource ability. It will try to dispatch `preemptable task` to `revocable node` in node revocable time and evict the `preemptable task` from 
 `revocable node` out of revocable time.
@@ -32,9 +32,9 @@ Otherwise, the pod can not be dispatched to `revocable node`.
 5. TDM plugin:
 - PredicateFn: For the `non-preemptable task`, they can not use `revocable nodes`; For the `preemptable task`, they can use `revocable node` in revocable time period, otherwise they also can not use the `revocable node`.
 - NodeOrderFn: For the `preemptable task`, they preferred to use `revocable nodes` in revocable time period.
-- VictimTasksFn: In 1VictimTasksFn1, the plugin can decide which tasks/pods should be evict, e.g. based on Job/PodGroup info.
+- VictimTasksFn: In 1VictimTasksFn1, the plugin can decide which tasks/pods should be evicted, e.g. based on Job/PodGroup info.
 - PreemptableFn: When there is `non-preemptable task` pending, select appropriate `preemptable task` on `non-revocable nodes` to evict.
 
 ## Feature interaction
 
-- Preemt action: This TDM plugin need work with preempt action. If does not config preempt action, TDM plugin will miss PreemptableFn.
+- Preempt action: This TDM plugin need work with preempt action. If does not config preempt action, TDM plugin will miss PreemptableFn.

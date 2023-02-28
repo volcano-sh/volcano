@@ -26,7 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -155,17 +155,17 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 	}
 
 	if job.Job != nil {
-		var oldResourceversion, newResourceversion uint64
+		var oldResourceVersion, newResourceVersion uint64
 		var err error
-		if oldResourceversion, err = strconv.ParseUint(job.Job.ResourceVersion, 10, 64); err != nil {
+		if oldResourceVersion, err = strconv.ParseUint(job.Job.ResourceVersion, 10, 64); err != nil {
 			return fmt.Errorf("failed to parase job <%v> resource version <%s>", key, job.Job.ResourceVersion)
 		}
 
-		if newResourceversion, err = strconv.ParseUint(obj.ResourceVersion, 10, 64); err != nil {
+		if newResourceVersion, err = strconv.ParseUint(obj.ResourceVersion, 10, 64); err != nil {
 			return fmt.Errorf("failed to parase job <%v> resource version <%s>", key, obj.ResourceVersion)
 		}
-		if newResourceversion < oldResourceversion {
-			return fmt.Errorf("job <%v> has too old resource version: %d (%d)", key, newResourceversion, oldResourceversion)
+		if newResourceVersion < oldResourceVersion {
+			return fmt.Errorf("job <%v> has too old resource version: %d (%d)", key, newResourceVersion, oldResourceVersion)
 		}
 	}
 	job.Job = obj

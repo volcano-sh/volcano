@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"stathat.com/c/consistent"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"

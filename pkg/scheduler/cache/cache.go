@@ -24,10 +24,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/prometheus/client_golang/api"
-	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
-	pmodel "github.com/prometheus/common/model"
+	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -49,7 +46,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
@@ -70,10 +67,6 @@ import (
 )
 
 const (
-	// record name of cpu average usage defined in prometheus rules
-	cpuUsageAvg = "cpu_usage_avg"
-	// record name of mem average usage defined in prometheus rules
-	memUsageAvg = "mem_usage_avg"
 	// default interval for sync data from metrics server, the value is 5s
 	defaultMetricsInternal = 5000000000
 )
@@ -1266,19 +1259,11 @@ func (sc *SchedulerCache) SetMetricsConf(conf map[string]string) {
 }
 
 func (sc *SchedulerCache) GetMetricsData() {
-	address := sc.metricsConf["address"]
-	if len(address) == 0 {
-		return
-	}
-	klog.V(4).Infof("Get metrics from Prometheus: %s", address)
-	client, err := api.NewClient(api.Config{
-		Address: address,
-	})
+	client, err := source.NewMetricsClient(sc.metricsConf)
 	if err != nil {
 		klog.Errorf("Error creating client: %v\n", err)
 		return
 	}
-	v1api := prometheusv1.NewAPI(client)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel()
 	nodeUsageMap := make(map[string]*schedulingapi.NodeUsage)
@@ -1292,42 +1277,16 @@ func (sc *SchedulerCache) GetMetricsData() {
 	sc.Mutex.Unlock()
 
 	supportedPeriods := []string{"5m"}
-	supportedMetrics := []string{cpuUsageAvg, memUsageAvg}
 	for node := range nodeUsageMap {
 		for _, period := range supportedPeriods {
-			for _, metric := range supportedMetrics {
-				queryStr := fmt.Sprintf("%s_%s{instance=\"%s\"}", metric, period, node)
-				klog.V(4).Infof("Query prometheus by %s", queryStr)
-				res, warnings, err := v1api.Query(ctx, queryStr, time.Now())
-				if err != nil {
-					klog.Errorf("Error querying Prometheus: %v", err)
-				}
-				if len(warnings) > 0 {
-					klog.V(3).Infof("Warning querying Prometheus: %v", warnings)
-				}
-				if res == nil || res.String() == "" {
-					klog.Warningf("Warning querying Prometheus: no data found for %s", queryStr)
-					continue
-				}
-				// plugin.usage only need type pmodel.ValVector in Prometheus.rulues
-				if res.Type() != pmodel.ValVector {
-					continue
-				}
-				// only method res.String() can get data, dataType []pmodel.ValVector, eg: "{k1:v1, ...} => #[value] @#[timespace]\n {k2:v2, ...} => ..."
-				firstRowValVector := strings.Split(res.String(), "\n")[0]
-				rowValues := strings.Split(strings.TrimSpace(firstRowValVector), "=>")
-				value := strings.Split(strings.TrimSpace(rowValues[1]), " ")
-				switch metric {
-				case cpuUsageAvg:
-					cpuUsage, _ := strconv.ParseFloat(value[0], 64)
-					nodeUsageMap[node].CPUUsageAvg[period] = cpuUsage
-					klog.V(4).Infof("node: %v, CpuUsageAvg: %v, period:%v", node, cpuUsage, period)
-				case memUsageAvg:
-					memUsage, _ := strconv.ParseFloat(value[0], 64)
-					nodeUsageMap[node].MEMUsageAvg[period] = memUsage
-					klog.V(4).Infof("node: %v, MemUsageAvg: %v, period:%v", node, memUsage, period)
-				}
+			nodeMetrics, err := client.NodeMetricsAvg(ctx, node, period)
+			if err != nil {
+				klog.Errorf("Error getting node metrics: %v\n", err)
+				continue
 			}
+			klog.V(4).Infof("node: %v, CpuUsageAvg: %v, MemUsageAvg: %v, period:%v", node, nodeMetrics.Cpu, nodeMetrics.Memory, period)
+			nodeUsageMap[node].CPUUsageAvg[period] = nodeMetrics.Cpu
+			nodeUsageMap[node].MEMUsageAvg[period] = nodeMetrics.Memory
 		}
 	}
 	sc.setMetricsData(nodeUsageMap)

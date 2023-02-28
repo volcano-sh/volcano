@@ -26,7 +26,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	cliflag "k8s.io/component-base/cli/flag"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/cmd/webhook-manager/app"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"

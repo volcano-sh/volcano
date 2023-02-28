@@ -32,7 +32,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"

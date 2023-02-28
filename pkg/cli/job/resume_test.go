@@ -26,7 +26,7 @@ import (
 	"github.com/spf13/cobra"
 
 	v1alpha1batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	v1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 )
 
 func TestResumeJob(t *testing.T) {

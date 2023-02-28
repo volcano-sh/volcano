@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -163,7 +163,7 @@ func (bp *binpackPlugin) Name() string {
 
 func (bp *binpackPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(4).Infof("Enter binpack plugin ...")
-	if klog.V(4) {
+	if klog.V(4).Enabled() {
 		defer func() {
 			klog.V(4).Infof("Leaving binpack plugin. %s ...", bp.weight.String())
 		}()

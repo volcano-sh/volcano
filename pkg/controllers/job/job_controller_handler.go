@@ -26,7 +26,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	bus "volcano.sh/apis/pkg/apis/bus/v1alpha1"

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -138,7 +138,7 @@ func (tp *tdmPlugin) availableRevocableZone(rz string) error {
 
 func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(4).Infof("Enter tdm plugin ...")
-	if klog.V(4) {
+	if klog.V(4).Enabled() {
 		defer func() {
 			klog.V(4).Infof("Leaving tdm plugin.")
 		}()
