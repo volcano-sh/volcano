@@ -45,8 +45,6 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 - [Volcano：基于云原生的高密计算解决方案 @ Huawei Connection 2019](https://agenda.events.huawei.com/2019/cn/minisite/agenda.html#dayTab=day7&tagName=%7B%22language%22%3A%22Cn%22%7D&seminarId=1743)
 - [Improving Performance of Deep Learning Workloads With Volcano @ KubeCon 2019 NA](https://sched.co/UaZi)
 - [Batch Capability of Kubernetes Intro @ KubeCon 2019 NA](https://sched.co/Uajv)
-- [Intro: Kubernetes Batch Scheduling @ KubeCon 2019 EU](https://sched.co/MPi7)
-
 
 ## Ecosystem
 
