@@ -39,6 +39,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu4pd"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 )
@@ -51,6 +52,8 @@ const (
 	GPUSharingPredicate = "predicate.GPUSharingEnable"
 	NodeLockEnable      = "predicate.NodeLockEnable"
 	GPUNumberPredicate  = "predicate.GPUNumberEnable"
+
+	VGPU4pdEnable = "predicate.VGPU4pdEnable"
 
 	// CachePredicate control cache predicate feature
 	CachePredicate = "predicate.CacheEnable"
@@ -123,7 +126,9 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	args.GetBool(&gpushare.GpuSharingEnable, GPUSharingPredicate)
 	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
 	args.GetBool(&gpushare.NodeLockEnable, NodeLockEnable)
+	args.GetBool(&vgpu4pd.VGPUEnable, VGPU4pdEnable)
 
+	klog.Infoln("setting vgpu enable to", vgpu4pd.VGPUEnable)
 	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {
 		klog.Fatal("can not define true in both gpu sharing and gpu number")
 	}
@@ -314,6 +319,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		klog.Infoln("-=-=-=-=-=-=-=-=-=Into predicate--=-=-=-=-=-=-=-=-=-=-")
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
 			return fmt.Errorf("failed to predicates, node info for %s not found", node.Name)
@@ -395,10 +401,20 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return fmt.Errorf("plugin %s predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
 		}
 
-		fit, err = node.Others[api.GPUSharingDevice].(api.Devices).FilterNode(task.Pod)
-		if err != nil {
-			return err
+		if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
+			fit, err = node.Others[api.GPUSharingDevice].(api.Devices).FilterNode(task.Pod)
+			if err != nil {
+				return err
+			}
 		}
+
+		if vgpu4pd.VGPUEnable {
+			fit, err = node.Others[vgpu4pd.DeviceName].(api.Devices).FilterNode(task.Pod)
+			if err != nil {
+				return err
+			}
+		}
+
 		klog.V(4).Infof("checkNodeGPUPredicate predicates Task <%s/%s> on Node <%s>: fit %v",
 			task.Namespace, task.Name, node.Name, fit)
 

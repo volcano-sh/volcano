@@ -54,6 +54,7 @@ func NewGPUDevice(id int, mem uint) *GPUDevice {
 }
 
 func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
+	klog.Infoln("INTO NewGPUDevices")
 	if node == nil {
 		return nil
 	}

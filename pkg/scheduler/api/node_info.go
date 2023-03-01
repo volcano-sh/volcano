@@ -26,6 +26,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu4pd"
 )
 
 type AllocateFailError struct {
@@ -344,6 +345,7 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 // setNodeOthersResource initialize sharable devices
 func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
+	ni.Others[vgpu4pd.DeviceName] = vgpu4pd.NewGPUDevices(ni.Name, node)
 }
 
 // setNode sets kubernetes node object to nodeInfo object without assertion
@@ -483,11 +485,13 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 // addResource is used to add sharable devices
 func (ni *NodeInfo) addResource(pod *v1.Pod) {
 	ni.Others[GPUSharingDevice].(Devices).AddResource(pod)
+	ni.Others[vgpu4pd.DeviceName].(Devices).AddResource(pod)
 }
 
 // subResource is used to substract sharable devices
 func (ni *NodeInfo) subResource(pod *v1.Pod) {
 	ni.Others[GPUSharingDevice].(Devices).SubResource(pod)
+	ni.Others[vgpu4pd.DeviceName].(Devices).SubResource(pod)
 }
 
 // UpdateTask is used to update a task in nodeInfo object.

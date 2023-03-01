@@ -50,3 +50,7 @@ type Devices interface {
 
 // make sure GPUDevices implements Devices interface
 var _ Devices = new(gpushare.GPUDevices)
+
+var IgnoredResources = []string{
+	"111", "222",
+}

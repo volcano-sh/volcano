@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	v1helper "k8s.io/kubernetes/pkg/scheduler/util"
 
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu4pd"
 	"volcano.sh/volcano/pkg/scheduler/util/assert"
 )
 
@@ -365,6 +366,9 @@ func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) b
 	}
 
 	for resourceName, leftValue := range r.ScalarResources {
+		if strings.Compare(string(resourceName), vgpu4pd.VolcanoVGPUMemory) == 0 {
+			continue
+		}
 		rightValue, ok := rr.ScalarResources[resourceName]
 		if !ok && defaultValue == Infinity {
 			continue
