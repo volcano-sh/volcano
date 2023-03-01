@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
 
 const (
@@ -55,3 +56,7 @@ type Devices interface {
 var _ Devices = new(gpushare.GPUDevices)
 
 var IgnoredDevicesList []string
+
+var RegisteredDevices = []string{
+	GPUSharingDevice, vgpu.DeviceName,
+}

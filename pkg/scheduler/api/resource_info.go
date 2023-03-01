@@ -87,7 +87,7 @@ func NewResource(rl v1.ResourceList) *Resource {
 			if v1helper.IsScalarResourceName(rName) {
 				ignore := false
 				for _, val := range IgnoredDevicesList {
-					if strings.Compare(val, rName.String()) == 0 {
+					if strings.Compare(rName.String(), val) == 0 {
 						ignore = true
 						break
 					}

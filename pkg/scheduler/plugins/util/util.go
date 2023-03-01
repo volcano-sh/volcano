@@ -17,6 +17,8 @@ limitations under the License.
 package util
 
 import (
+	"strings"
+
 	v1 "k8s.io/api/core/v1"
 	v1helper "k8s.io/kubernetes/pkg/scheduler/util"
 
@@ -103,7 +105,16 @@ func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource
 			if api.IsCountQuota(rName) || !v1helper.IsScalarResourceName(rName) {
 				continue
 			}
-
+			ignore := false
+			for _, ignoredDevice := range api.IgnoredDevicesList {
+				if len(ignoredDevice) > 0 && strings.Contains(rName.String(), ignoredDevice) {
+					ignore = true
+					break
+				}
+			}
+			if ignore {
+				continue
+			}
 			if inqueue.ScalarResources == nil {
 				inqueue.ScalarResources = make(map[v1.ResourceName]float64)
 			}

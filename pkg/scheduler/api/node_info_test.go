@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
 
 func nodeInfoEqual(l, r *NodeInfo) bool {
@@ -68,6 +69,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				},
 				Others: map[string]interface{}{
 					GPUSharingDevice: gpushare.NewGPUDevices("n1", case01Node),
+					vgpu.DeviceName:  vgpu.NewGPUDevices("n1", case01Node),
 				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 			},
@@ -91,6 +93,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Tasks:                    map[TaskID]*TaskInfo{},
 				Others: map[string]interface{}{
 					GPUSharingDevice: gpushare.NewGPUDevices("n2", case01Node),
+					vgpu.DeviceName:  vgpu.NewGPUDevices("n2", case01Node),
 				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 			},
@@ -156,6 +159,7 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 				},
 				Others: map[string]interface{}{
 					GPUSharingDevice: gpushare.NewGPUDevices("n1", case01Node),
+					vgpu.DeviceName:  vgpu.NewGPUDevices("n1", case01Node),
 				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 			},
@@ -221,6 +225,7 @@ func TestNodeInfo_SetNode(t *testing.T) {
 				},
 				Others: map[string]interface{}{
 					GPUSharingDevice: gpushare.NewGPUDevices("n1", case01Node1),
+					vgpu.DeviceName:  vgpu.NewGPUDevices("n1", case01Node1),
 				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 			},
