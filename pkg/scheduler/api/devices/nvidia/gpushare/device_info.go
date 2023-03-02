@@ -88,6 +88,11 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	return &gpudevices
 }
 
+// GetIgnoredDevices return device names which wish vc-scheduler to ignore
+func (gs *GPUDevices) GetIgnoredDevices() []string {
+	return []string{""}
+}
+
 // AddGPUResource adds the pod to GPU pool if it is assigned
 func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 	gpuRes := getGPUMemoryOfPod(pod)
