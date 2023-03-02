@@ -343,7 +343,9 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 
 // setNodeOthersResource initialize sharable devices
 func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
+	IgnoredDevicesList = []string{}
 	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
+	IgnoredDevicesList = append(IgnoredDevicesList, ni.Others[GPUSharingDevice].(Devices).GetIgnoredDevices()...)
 }
 
 // setNode sets kubernetes node object to nodeInfo object without assertion

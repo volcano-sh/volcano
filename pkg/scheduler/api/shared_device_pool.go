@@ -44,9 +44,14 @@ type Devices interface {
 	//Release action in predicate
 	Release(kubeClient kubernetes.Interface, pod *v1.Pod) error
 
+	//IgnredDevices notify vc-scheduler to ignore devices in return list
+	GetIgnoredDevices() []string
+
 	//used for debug and monitor
 	GetStatus() string
 }
 
 // make sure GPUDevices implements Devices interface
 var _ Devices = new(gpushare.GPUDevices)
+
+var IgnoredDevicesList []string
