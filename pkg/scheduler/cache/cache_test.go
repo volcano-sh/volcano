@@ -21,12 +21,19 @@ import (
 	"reflect"
 	"testing"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
+
+	schedulingk8sv1 "k8s.io/api/scheduling/v1"
+
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -68,6 +75,44 @@ func buildPod(ns, n, nn string,
 				},
 			},
 		},
+	}
+}
+
+func buildQueue(name string, weight int32, priorityClass string) *schedulingv1.Queue {
+	return &schedulingv1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: schedulingv1.QueueSpec{
+			Weight:            weight,
+			PriorityClassName: priorityClass,
+		},
+	}
+}
+
+func buildPriorityClass(name string, value int32) *schedulingk8sv1.PriorityClass {
+	return &schedulingk8sv1.PriorityClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Value: value,
+	}
+}
+
+func buildJob(name string, namespace string, queueId string, priorityClassName string) *schedulingapi.JobInfo {
+	return &schedulingapi.JobInfo{
+		UID:       schedulingapi.JobID(fmt.Sprintf("%s/%s", namespace, name)),
+		Name:      name,
+		Namespace: namespace,
+		Queue:     schedulingapi.QueueID(queueId),
+		PodGroup: &schedulingapi.PodGroup{
+			PodGroup: scheduling.PodGroup{
+				Spec: scheduling.PodGroupSpec{
+					PriorityClassName: priorityClassName,
+				},
+			},
+		},
+		Budget: schedulingapi.NewDisruptionBudget("1", "1"),
 	}
 }
 
@@ -311,6 +356,75 @@ func TestNodeOperation(t *testing.T) {
 		if !reflect.DeepEqual(cache, test.delExpect) {
 			t.Errorf("case %d: \n expected %v, \n got %v \n",
 				i, test.delExpect, cache)
+		}
+	}
+}
+
+func TestJobInheritQueuePriority(t *testing.T) {
+	// case 1
+	queue1 := buildQueue("queue1", 1, "priorityclass1")
+	queue2 := buildQueue("queue2", 1, "")
+	priorityclass1 := buildPriorityClass("priorityclass1", 100)
+	priorityclass2 := buildPriorityClass("priorityclass2", 200)
+	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
+
+	tests := []struct {
+		jobName             string
+		namespace           string
+		queueId             string
+		priorityClassName   string
+		expectPriorityClass int32
+	}{
+		{
+			jobName:             "j1",
+			namespace:           "n1",
+			queueId:             "queue1",
+			priorityClassName:   "",
+			expectPriorityClass: 100,
+		},
+		{
+			jobName:             "j2",
+			namespace:           "n1",
+			queueId:             "queue1",
+			priorityClassName:   "priorityclass2",
+			expectPriorityClass: 200,
+		},
+		{
+			jobName:             "j3",
+			namespace:           "n1",
+			queueId:             "queue2",
+			priorityClassName:   "",
+			expectPriorityClass: 0,
+		},
+		{
+			jobName:             "j4",
+			namespace:           "n1",
+			queueId:             "queue2",
+			priorityClassName:   "priorityclass1",
+			expectPriorityClass: 100,
+		},
+	}
+	for i, test := range tests {
+		cache := &SchedulerCache{
+			Jobs:            make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+			PriorityClasses: make(map[string]*schedulingk8sv1.PriorityClass),
+			Queues:          make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+			Nodes:           make(map[string]*api.NodeInfo),
+			NodeList:        []string{},
+		}
+
+		cache.AddNode(node1)
+		cache.AddQueueV1beta1(queue1)
+		cache.AddQueueV1beta1(queue2)
+		cache.AddPriorityClass(priorityclass1)
+		cache.AddPriorityClass(priorityclass2)
+		job := buildJob(test.jobName, test.namespace, test.queueId, test.priorityClassName)
+		cache.AddJob(job)
+		snapshot := cache.Snapshot()
+
+		if !reflect.DeepEqual(snapshot.Jobs[schedulingapi.JobID(fmt.Sprintf("%s/%s", test.namespace, test.jobName))].Priority, test.expectPriorityClass) {
+			t.Errorf("case %d: \n expected %v, \n got %v \n",
+				i, test.expectPriorityClass, snapshot.Jobs[schedulingapi.JobID(fmt.Sprintf("%s/%s", test.namespace, test.jobName))].Priority)
 		}
 	}
 }

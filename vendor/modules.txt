@@ -973,7 +973,7 @@ sigs.k8s.io/yaml
 # stathat.com/c/consistent v1.0.0
 ## explicit
 stathat.com/c/consistent
-# volcano.sh/apis v1.6.0-alpha.0.0.20230214095022-ad92502b1a57
+# volcano.sh/apis v1.6.0-alpha.0.0.20230214095022-ad92502b1a57 => github.com/zbbkeepgoing/volcano-apis v1.6.0-alpha.0.0.20230303032828-89d4a3d2c2b4
 ## explicit; go 1.19
 volcano.sh/apis/pkg/apis/batch/v1alpha1
 volcano.sh/apis/pkg/apis/bus/v1alpha1
@@ -1044,3 +1044,4 @@ volcano.sh/apis/pkg/client/listers/scheduling/v1beta1
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.25.0
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.25.0
 # k8s.io/sample-controller => k8s.io/sample-controller v0.25.0
+# volcano.sh/apis => github.com/zbbkeepgoing/volcano-apis v1.6.0-alpha.0.0.20230303032828-89d4a3d2c2b4

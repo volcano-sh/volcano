@@ -33,6 +33,8 @@ type QueueInfo struct {
 
 	Weight int32
 
+	Priority int32
+
 	// Weights is a list of slash sperated float numbers.
 	// Each of them is a weight corresponding the
 	// hierarchy level.
@@ -56,6 +58,7 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 
 		Queue: queue,
 	}
+
 }
 
 // Clone is used to clone queueInfo object

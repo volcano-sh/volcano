@@ -45,7 +45,6 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	taskOrderFn := func(l interface{}, r interface{}) int {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
-
 		klog.V(4).Infof("Priority TaskOrder: <%v/%v> priority is %v, <%v/%v> priority is %v",
 			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
 
@@ -82,6 +81,42 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	ssn.AddJobOrderFn(pp.Name(), jobOrderFn)
+
+	queueOrderFn := func(l, r interface{}) int {
+		lv := l.(*api.QueueInfo)
+		rv := r.(*api.QueueInfo)
+
+		klog.V(4).Infof("Priority QueueOrderFn: <%v> priority: %d, <%v> priority: %d",
+			lv.Name, lv.Priority, rv.Name, rv.Priority)
+
+		if lv.Priority > rv.Priority {
+			return -1
+		}
+
+		if lv.Priority < rv.Priority {
+			return 1
+		}
+
+		return 0
+	}
+
+	ssn.AddQueueOrderFn(pp.Name(), queueOrderFn)
+
+	queueScoreFn := func(l, r interface{}) (float64, float64) {
+		lv := l.(*api.QueueInfo)
+		rv := r.(*api.QueueInfo)
+		maxPriorityClass := ssn.PriorityClassInfo.MaxPriorityClass
+		minPriorityClass := ssn.PriorityClassInfo.MinPriorityClass
+		if maxPriorityClass == minPriorityClass {
+			return 0, 0
+		}
+		lvScore := float64(lv.Priority-minPriorityClass) / float64(maxPriorityClass-minPriorityClass)
+		rvScore := float64(rv.Priority-minPriorityClass) / float64(maxPriorityClass-minPriorityClass)
+		return lvScore, rvScore
+
+	}
+
+	ssn.AddQueueScoreFn(pp.Name(), queueScoreFn)
 
 	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		preemptorJob := ssn.Jobs[preemptor.Job]

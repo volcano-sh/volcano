@@ -255,13 +255,15 @@ func BuildPodWithPriority(namespace, name, nodeName string, p v1.PodPhase, req v
 
 // FakeBinder is used as fake binder
 type FakeBinder struct {
-	Binds   map[string]string
-	Channel chan string
+	BindSlice []string
+	Binds     map[string]string
+	Channel   chan string
 }
 
 // Bind used by fake binder struct to bind pods
 func (fb *FakeBinder) Bind(kubeClient *kubernetes.Clientset, tasks []*api.TaskInfo) ([]*api.TaskInfo, error) {
 	for _, p := range tasks {
+		fb.BindSlice = append(fb.BindSlice, p.Name)
 		key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
 		fb.Binds[key] = p.NodeName
 	}

@@ -22,17 +22,29 @@ creating tasks.
 
 In Reclaim Action, there are multiple plugin functions that are getting used like,
 
-1.  TaskOrderFn(Plugin: Priority),
-2.  JobOrderFn(Plugin: Priority, DRF, Gang),
-3.  NodeOrderFn(Plugin: NodeOrder),
-4.  PredicateFn(Plugin: Predicates),
-5.  ReclaimableFn(Plugin: Conformance, Gang, Proportion).
+1. QueueOrderFn(Plugin: Priority, DRF, Proportion),
+2. TaskOrderFn(Plugin: Priority),
+3. JobOrderFn(Plugin: Priority, DRF, Gang),
+4. NodeOrderFn(Plugin: NodeOrder),
+5. PredicateFn(Plugin: Predicates),
+6. ReclaimableFn(Plugin: Conformance, Gang, Proportion). 
+7. QueueScoreOrderFn(Plugin: Priority, DRF, Proportion),
 
-### 1. TaskOrderFn:
+### 1. QueueOrderFn:
+#### Priority:
+Compares queuePriority set in Spec(using PriorityClass) and returns the decision of comparison between two priorities.
+
+#### DRF:
+The queue with the lowest share of dominant resource will have higher priority.
+
+#### Proportion:
+The queue with the lowest share will have higher priority.
+
+### 2. TaskOrderFn:
 #### Priority:
 Compares taskPriority set in PodSpec and returns the decision of comparison between two priorities.
 
-### 2. JobOrderFn:
+### 3. JobOrderFn:
 #### Priority:
 Compares jobPriority set in Spec(using PriorityClass) and returns the decision of comparison between two priorities.
 
@@ -42,15 +54,15 @@ The job having the lowest share will have higher priority.
 #### Gang:
 The job which is not yet ready(i.e. minAvailable number of task is not yet in Bound, Binding, Running, Allocated, Succeeded, Pipelined state) will have high priority.
 
-### 3. NodeOrderFn:
+### 4. NodeOrderFn:
 #### NodeOrder:
 NodeOrderFn returns the score of a particular node for a specific task by running through sets of priorities.
 
-### 4. PredicateFn:
+### 5. PredicateFn:
 #### Predicates:
 PredicateFn returns whether a task can be bounded to a node or not by running through set of predicates.
 
-### 5. ReclaimableFn:
+### 6. ReclaimableFn:
 Checks whether a task can be evicted or not, which returns set of tasks that can be evicted so that new task can be created in new queue.
 #### Conformance:
 In conformance plugin, it checks whether a task is critical or running in kube-system namespace, so that it can be avoided while computing set of tasks that can be preempted.
@@ -60,3 +72,14 @@ total number of tasks running for a job is going to be less than the minAvailabl
 #### Proportion:
 It checks whether by evicting a task, that task's queue has allocated resource less than the deserved share.  If so, that task
 is added as a victim task that can be evicted so that resource can be reclaimed.
+
+### 7. QueueScoreOrderFn:
+According to the weight of plugins priority, drf, and proportion, calculate the queue's total score and sort the queue by total score.
+#### Priority:
+The queue with the high priority class will have higher score.
+
+#### DRF:
+The queue with the lowest share of dominant resource will have higher score.
+
+#### Proportion:
+The queue with the lowest share will have higher score.

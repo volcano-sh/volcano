@@ -17,6 +17,10 @@ limitations under the License.
 package framework
 
 import (
+	"fmt"
+
+	"volcano.sh/volcano/pkg/scheduler/conf"
+
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -32,6 +36,10 @@ func (ssn *Session) AddJobOrderFn(name string, cf api.CompareFn) {
 // AddQueueOrderFn add queue order function
 func (ssn *Session) AddQueueOrderFn(name string, qf api.CompareFn) {
 	ssn.queueOrderFns[name] = qf
+}
+
+func (ssn *Session) AddQueueScoreFn(name string, sf api.ScoreFn) {
+	ssn.queueScoreOrderFns[name] = sf
 }
 
 // AddClusterOrderFn add queue order function
@@ -596,6 +604,42 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 		return lv.UID < rv.UID
 	}
 	return lv.Queue.CreationTimestamp.Before(&rv.Queue.CreationTimestamp)
+}
+
+// QueueScoreOrderFn invoke queueScore function of the plugins
+func (ssn *Session) QueueScoreOrderFn(action string) func(interface{}, interface{}) bool {
+	return func(l, r interface{}) bool {
+		args := GetArgOfActionFromConf(ssn.Configurations, action)
+		lTotalScore := float64(0)
+		rTotalScore := float64(0)
+		queueOrderWeight := float64(0)
+		for _, tier := range ssn.Tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledQueueScoreOrder) {
+					continue
+				}
+				qof, found := ssn.queueScoreOrderFns[plugin.Name]
+				if !found {
+					continue
+				}
+				lScore, rScore := qof(l, r)
+				args.GetFloat64(&queueOrderWeight, fmt.Sprintf(conf.QueueScoreOrderWeightFormat, plugin.Name))
+				lTotalScore += lScore * float64(queueOrderWeight)
+				rTotalScore += rScore * float64(queueOrderWeight)
+			}
+		}
+		if lTotalScore != rTotalScore {
+			return lTotalScore > rTotalScore
+		}
+
+		// If no queue order funcs, order queue by CreationTimestamp first, then by UID.
+		lv := l.(*api.QueueInfo)
+		rv := r.(*api.QueueInfo)
+		if lv.Queue.CreationTimestamp.Equal(&rv.Queue.CreationTimestamp) {
+			return lv.UID < rv.UID
+		}
+		return lv.Queue.CreationTimestamp.Before(&rv.Queue.CreationTimestamp)
+	}
 }
 
 // TaskCompareFns invoke taskorder function of the plugins

@@ -148,8 +148,21 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				continue
 			}
 
-			if queue == nil || ssn.QueueOrderFn(currentQueue, queue) {
+			if queue == nil {
 				queue = currentQueue
+			} else {
+				queueOrder := false
+				QueueScoreOrderEnable := false
+				framework.GetArgOfActionFromConf(ssn.Configurations, alloc.Name()).GetBool(&QueueScoreOrderEnable, conf.QueueScoreOrderEnable)
+				if QueueScoreOrderEnable {
+					queueOrderFn := ssn.QueueScoreOrderFn(alloc.Name())
+					queueOrder = queueOrderFn(currentQueue, queue)
+				} else {
+					queueOrder = ssn.QueueOrderFn(currentQueue, queue)
+				}
+				if queueOrder {
+					queue = currentQueue
+				}
 			}
 		}
 

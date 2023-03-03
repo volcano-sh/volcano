@@ -262,6 +262,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return 1
 	})
 
+	ssn.AddQueueScoreFn(pp.Name(), func(l, r interface{}) (float64, float64) {
+		lv := l.(*api.QueueInfo)
+		rv := r.(*api.QueueInfo)
+		return 1 - pp.queueOpts[lv.UID].share, 1 - pp.queueOpts[rv.UID].share
+	})
+
 	ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 		allocations := map[api.QueueID]*api.Resource{}

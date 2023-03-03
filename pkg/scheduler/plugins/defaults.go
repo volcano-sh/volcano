@@ -49,6 +49,9 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledQueueOrder == nil {
 		option.EnabledQueueOrder = &t
 	}
+	if option.EnabledQueueScoreOrder == nil {
+		option.EnabledQueueScoreOrder = &t
+	}
 	if option.EnabledPredicate == nil {
 		option.EnabledPredicate = &t
 	}

@@ -19,6 +19,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -1037,19 +1038,39 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
-		Nodes:          make(map[string]*schedulingapi.NodeInfo),
-		Jobs:           make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Queues:         make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
-		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
-		NodeList:       make([]string, len(sc.NodeList)),
-		CSINodesStatus: make(map[string]*schedulingapi.CSINodeStatusInfo),
+		Nodes:             make(map[string]*schedulingapi.NodeInfo),
+		Jobs:              make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Queues:            make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		NamespaceInfo:     make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
+		RevocableNodes:    make(map[string]*schedulingapi.NodeInfo),
+		NodeList:          make([]string, len(sc.NodeList)),
+		CSINodesStatus:    make(map[string]*schedulingapi.CSINodeStatusInfo),
+		PriorityClassInfo: &schedulingapi.PriorityClassInfo{},
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)
 	for _, value := range sc.Nodes {
 		value.RefreshNumaSchedulerInfoByCrd()
 	}
+
+	minPriorityClass := int32(math.MaxInt32)
+	maxPriorityClass := int32(math.MinInt32)
+	if sc.defaultPriority > maxPriorityClass {
+		maxPriorityClass = sc.defaultPriority
+	}
+	if sc.defaultPriority < minPriorityClass {
+		minPriorityClass = sc.defaultPriority
+	}
+	for _, sc := range sc.PriorityClasses {
+		if sc.Value > maxPriorityClass {
+			maxPriorityClass = sc.Value
+		}
+		if sc.Value < minPriorityClass {
+			minPriorityClass = sc.Value
+		}
+	}
+	snapshot.PriorityClassInfo.MaxPriorityClass = maxPriorityClass
+	snapshot.PriorityClassInfo.MinPriorityClass = minPriorityClass
 
 	for _, value := range sc.CSINodesStatus {
 		snapshot.CSINodesStatus[value.CSINodeName] = value.Clone()
@@ -1070,6 +1091,13 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	for _, value := range sc.Queues {
 		snapshot.Queues[value.UID] = value.Clone()
+		snapshot.Queues[value.UID].Priority = sc.defaultPriority
+		priName := snapshot.Queues[value.UID].Queue.Spec.PriorityClassName
+		if priorityClass, found := sc.PriorityClasses[priName]; found {
+			snapshot.Queues[value.UID].Priority = priorityClass.Value
+		}
+		klog.V(4).Infof("The priority of Queue <%s> is <%s/%d>",
+			snapshot.Queues[value.UID].Name, priName, snapshot.Queues[value.UID].Priority)
 	}
 
 	var cloneJobLock sync.Mutex
@@ -1083,6 +1111,11 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			priName := value.PodGroup.Spec.PriorityClassName
 			if priorityClass, found := sc.PriorityClasses[priName]; found {
 				value.Priority = priorityClass.Value
+			} else {
+				// inherit queue's priority if not set pg's priority
+				if priorityClass, found := sc.PriorityClasses[snapshot.Queues[value.Queue].Queue.Spec.PriorityClassName]; found {
+					value.Priority = priorityClass.Value
+				}
 			}
 
 			klog.V(4).Infof("The priority of job <%s/%s> is <%s/%d>",

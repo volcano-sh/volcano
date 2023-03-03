@@ -197,6 +197,40 @@ func (drf *drfPlugin) compareQueues(root *hierarchicalNode, lqueue *api.QueueInf
 	return 0
 }
 
+// Calculate the dominant resource share of the node of queue, the node of queue is more saturated, it will get less score,
+// Otherwise it will get high score,
+func (drf *drfPlugin) scoreQueues(root *hierarchicalNode, lqueue *api.QueueInfo, rqueue *api.QueueInfo) (float64, float64) {
+	lnode := root
+	lpaths := strings.Split(lqueue.Hierarchy, "/")
+	rnode := root
+	rpaths := strings.Split(rqueue.Hierarchy, "/")
+	depth := 0
+	if len(lpaths) < len(rpaths) {
+		depth = len(lpaths)
+	} else {
+		depth = len(rpaths)
+	}
+	for i := 0; i < depth; i++ {
+		// Saturated nodes have minumun prioirty,
+		// so that demanding nodes will be poped first.
+		if !lnode.saturated && rnode.saturated {
+			return 1, 0
+		}
+		if lnode.saturated && !rnode.saturated {
+			return 0, 1
+		}
+		if lnode.attr.share/lnode.weight == rnode.attr.share/rnode.weight {
+			if i < depth-1 {
+				lnode = lnode.children[lpaths[i+1]]
+				rnode = rnode.children[rpaths[i+1]]
+			}
+		} else {
+			return 1 - lnode.attr.share/lnode.weight, 1 - rnode.attr.share/rnode.weight
+		}
+	}
+	return 0, 0
+}
+
 func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Prepare scheduling data for this session.
 	drf.totalResource.Add(ssn.TotalResource)
@@ -341,6 +375,13 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0
 		}
 		ssn.AddQueueOrderFn(drf.Name(), queueOrderFn)
+
+		queueScoreFn := func(l interface{}, r interface{}) (float64, float64) {
+			lv := l.(*api.QueueInfo)
+			rv := r.(*api.QueueInfo)
+			return drf.scoreQueues(drf.hierarchicalRoot, lv, rv)
+		}
+		ssn.AddQueueScoreFn(drf.Name(), queueScoreFn)
 
 		reclaimFn := func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 			var victims []*api.TaskInfo

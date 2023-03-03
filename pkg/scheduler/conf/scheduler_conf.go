@@ -16,6 +16,12 @@ limitations under the License.
 
 package conf
 
+const (
+	// QueueScoreOrderEnable mean enable queue score order in action
+	QueueScoreOrderEnable       = "QueueScoreOrderEnable"
+	QueueScoreOrderWeightFormat = "QueueScoreOrder.%s.weight"
+)
+
 // EnabledActionMap check if a action exist in scheduler configmap. If not exist the value is false.
 var EnabledActionMap map[string]bool
 
@@ -65,6 +71,8 @@ type PluginOption struct {
 	EnabledReclaimable *bool `yaml:"enableReclaimable"`
 	// EnabledQueueOrder defines whether queueOrderFn is enabled
 	EnabledQueueOrder *bool `yaml:"enableQueueOrder"`
+	// EnabledQueueScoreOrder defines whether queueScoreOrderFn is enabled
+	EnabledQueueScoreOrder *bool `yaml:"enabledQueueScoreOrder"`
 	// EnabledPredicate defines whether predicateFn is enabled
 	EnabledClusterOrder *bool `yaml:"EnabledClusterOrder"`
 	// EnableClusterOrder defines whether clusterOrderFn is enabled

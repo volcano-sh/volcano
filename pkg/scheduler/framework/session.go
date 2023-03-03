@@ -56,12 +56,13 @@ type Session struct {
 	// This should not be mutated after initiated
 	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
 
-	Jobs           map[api.JobID]*api.JobInfo
-	Nodes          map[string]*api.NodeInfo
-	CSINodesStatus map[string]*api.CSINodeStatusInfo
-	RevocableNodes map[string]*api.NodeInfo
-	Queues         map[api.QueueID]*api.QueueInfo
-	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
+	PriorityClassInfo *api.PriorityClassInfo
+	Jobs              map[api.JobID]*api.JobInfo
+	Nodes             map[string]*api.NodeInfo
+	CSINodesStatus    map[string]*api.CSINodeStatusInfo
+	RevocableNodes    map[string]*api.NodeInfo
+	Queues            map[api.QueueID]*api.QueueInfo
+	NamespaceInfo     map[api.NamespaceName]*api.NamespaceInfo
 
 	// NodeMap is like Nodes except that it uses k8s NodeInfo api and should only
 	// be used in k8s compatable api scenarios such as in predicates and nodeorder plugins.
@@ -72,33 +73,34 @@ type Session struct {
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
 
-	plugins           map[string]Plugin
-	eventHandlers     []*EventHandler
-	jobOrderFns       map[string]api.CompareFn
-	queueOrderFns     map[string]api.CompareFn
-	taskOrderFns      map[string]api.CompareFn
-	namespaceOrderFns map[string]api.CompareFn
-	clusterOrderFns   map[string]api.CompareFn
-	predicateFns      map[string]api.PredicateFn
-	prePredicateFns   map[string]api.PrePredicateFn
-	bestNodeFns       map[string]api.BestNodeFn
-	nodeOrderFns      map[string]api.NodeOrderFn
-	batchNodeOrderFns map[string]api.BatchNodeOrderFn
-	nodeMapFns        map[string]api.NodeMapFn
-	nodeReduceFns     map[string]api.NodeReduceFn
-	preemptableFns    map[string]api.EvictableFn
-	reclaimableFns    map[string]api.EvictableFn
-	overusedFns       map[string]api.ValidateFn
-	allocatableFns    map[string]api.AllocatableFn
-	jobReadyFns       map[string]api.ValidateFn
-	jobPipelinedFns   map[string]api.VoteFn
-	jobValidFns       map[string]api.ValidateExFn
-	jobEnqueueableFns map[string]api.VoteFn
-	jobEnqueuedFns    map[string]api.JobEnqueuedFn
-	targetJobFns      map[string]api.TargetJobFn
-	reservedNodesFns  map[string]api.ReservedNodesFn
-	victimTasksFns    map[string][]api.VictimTasksFn
-	jobStarvingFns    map[string]api.ValidateFn
+	plugins            map[string]Plugin
+	eventHandlers      []*EventHandler
+	jobOrderFns        map[string]api.CompareFn
+	queueOrderFns      map[string]api.CompareFn
+	queueScoreOrderFns map[string]api.ScoreFn
+	taskOrderFns       map[string]api.CompareFn
+	namespaceOrderFns  map[string]api.CompareFn
+	clusterOrderFns    map[string]api.CompareFn
+	predicateFns       map[string]api.PredicateFn
+	prePredicateFns    map[string]api.PrePredicateFn
+	bestNodeFns        map[string]api.BestNodeFn
+	nodeOrderFns       map[string]api.NodeOrderFn
+	batchNodeOrderFns  map[string]api.BatchNodeOrderFn
+	nodeMapFns         map[string]api.NodeMapFn
+	nodeReduceFns      map[string]api.NodeReduceFn
+	preemptableFns     map[string]api.EvictableFn
+	reclaimableFns     map[string]api.EvictableFn
+	overusedFns        map[string]api.ValidateFn
+	allocatableFns     map[string]api.AllocatableFn
+	jobReadyFns        map[string]api.ValidateFn
+	jobPipelinedFns    map[string]api.VoteFn
+	jobValidFns        map[string]api.ValidateExFn
+	jobEnqueueableFns  map[string]api.VoteFn
+	jobEnqueuedFns     map[string]api.JobEnqueuedFn
+	targetJobFns       map[string]api.TargetJobFn
+	reservedNodesFns   map[string]api.ReservedNodesFn
+	victimTasksFns     map[string][]api.VictimTasksFn
+	jobStarvingFns     map[string]api.ValidateFn
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -119,32 +121,33 @@ func openSession(cache cache.Cache) *Session {
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
 
-		plugins:           map[string]Plugin{},
-		jobOrderFns:       map[string]api.CompareFn{},
-		queueOrderFns:     map[string]api.CompareFn{},
-		taskOrderFns:      map[string]api.CompareFn{},
-		namespaceOrderFns: map[string]api.CompareFn{},
-		clusterOrderFns:   map[string]api.CompareFn{},
-		predicateFns:      map[string]api.PredicateFn{},
-		prePredicateFns:   map[string]api.PrePredicateFn{},
-		bestNodeFns:       map[string]api.BestNodeFn{},
-		nodeOrderFns:      map[string]api.NodeOrderFn{},
-		batchNodeOrderFns: map[string]api.BatchNodeOrderFn{},
-		nodeMapFns:        map[string]api.NodeMapFn{},
-		nodeReduceFns:     map[string]api.NodeReduceFn{},
-		preemptableFns:    map[string]api.EvictableFn{},
-		reclaimableFns:    map[string]api.EvictableFn{},
-		overusedFns:       map[string]api.ValidateFn{},
-		allocatableFns:    map[string]api.AllocatableFn{},
-		jobReadyFns:       map[string]api.ValidateFn{},
-		jobPipelinedFns:   map[string]api.VoteFn{},
-		jobValidFns:       map[string]api.ValidateExFn{},
-		jobEnqueueableFns: map[string]api.VoteFn{},
-		jobEnqueuedFns:    map[string]api.JobEnqueuedFn{},
-		targetJobFns:      map[string]api.TargetJobFn{},
-		reservedNodesFns:  map[string]api.ReservedNodesFn{},
-		victimTasksFns:    map[string][]api.VictimTasksFn{},
-		jobStarvingFns:    map[string]api.ValidateFn{},
+		plugins:            map[string]Plugin{},
+		jobOrderFns:        map[string]api.CompareFn{},
+		queueOrderFns:      map[string]api.CompareFn{},
+		queueScoreOrderFns: map[string]api.ScoreFn{},
+		taskOrderFns:       map[string]api.CompareFn{},
+		namespaceOrderFns:  map[string]api.CompareFn{},
+		clusterOrderFns:    map[string]api.CompareFn{},
+		predicateFns:       map[string]api.PredicateFn{},
+		prePredicateFns:    map[string]api.PrePredicateFn{},
+		bestNodeFns:        map[string]api.BestNodeFn{},
+		nodeOrderFns:       map[string]api.NodeOrderFn{},
+		batchNodeOrderFns:  map[string]api.BatchNodeOrderFn{},
+		nodeMapFns:         map[string]api.NodeMapFn{},
+		nodeReduceFns:      map[string]api.NodeReduceFn{},
+		preemptableFns:     map[string]api.EvictableFn{},
+		reclaimableFns:     map[string]api.EvictableFn{},
+		overusedFns:        map[string]api.ValidateFn{},
+		allocatableFns:     map[string]api.AllocatableFn{},
+		jobReadyFns:        map[string]api.ValidateFn{},
+		jobPipelinedFns:    map[string]api.VoteFn{},
+		jobValidFns:        map[string]api.ValidateExFn{},
+		jobEnqueueableFns:  map[string]api.VoteFn{},
+		jobEnqueuedFns:     map[string]api.JobEnqueuedFn{},
+		targetJobFns:       map[string]api.TargetJobFn{},
+		reservedNodesFns:   map[string]api.ReservedNodesFn{},
+		victimTasksFns:     map[string][]api.VictimTasksFn{},
+		jobStarvingFns:     map[string]api.ValidateFn{},
 	}
 
 	snapshot := cache.Snapshot()
@@ -181,6 +184,7 @@ func openSession(cache cache.Cache) *Session {
 	ssn.RevocableNodes = snapshot.RevocableNodes
 	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
+	ssn.PriorityClassInfo = snapshot.PriorityClassInfo
 	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
 	for _, n := range ssn.Nodes {
 		ssn.TotalResource.Add(n.Allocatable)
@@ -240,6 +244,7 @@ func closeSession(ssn *Session) {
 	ssn.clusterOrderFns = nil
 	ssn.NodeList = nil
 	ssn.TotalResource = nil
+	ssn.PriorityClassInfo = nil
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }

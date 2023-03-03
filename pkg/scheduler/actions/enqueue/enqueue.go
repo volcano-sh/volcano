@@ -19,6 +19,8 @@ package enqueue
 import (
 	"time"
 
+	"volcano.sh/volcano/pkg/scheduler/conf"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -46,6 +48,12 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 	defer klog.V(3).Infof("Leaving Enqueue ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
+	QueueScoreOrderEnable := false
+	framework.GetArgOfActionFromConf(ssn.Configurations, enqueue.Name()).GetBool(&QueueScoreOrderEnable, conf.QueueScoreOrderEnable)
+	if QueueScoreOrderEnable {
+		queueOrderFn := ssn.QueueScoreOrderFn(enqueue.Name())
+		queues = util.NewPriorityQueue(queueOrderFn)
+	}
 	queueSet := sets.NewString()
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 

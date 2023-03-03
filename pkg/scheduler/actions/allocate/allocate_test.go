@@ -24,6 +24,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
+	schedulingk8sv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -243,8 +244,9 @@ func TestAllocate(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			binder := &util.FakeBinder{
-				Binds:   map[string]string{},
-				Channel: make(chan string),
+				BindSlice: make([]string, 0),
+				Binds:     map[string]string{},
+				Channel:   make(chan string),
 			}
 			option := options.NewServerOption()
 			option.RegisterOptions()
@@ -418,8 +420,9 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 
 			fakeVolumeBinder := util.NewFakeVolumeBinder(kubeClient)
 			binder := &util.FakeBinder{
-				Binds:   map[string]string{},
-				Channel: make(chan string),
+				BindSlice: make([]string, 0),
+				Binds:     map[string]string{},
+				Channel:   make(chan string),
 			}
 
 			option := options.NewServerOption()
@@ -478,6 +481,557 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				t.Errorf("expected: %v, got %v ", test.expectedActions, fakeVolumeBinder.Actions)
 			}
 			fakeVolumeBinder.Actions = make(map[string][]string)
+		})
+	}
+}
+
+func TestAllocateWithQueuePriorityClass(t *testing.T) {
+	var tmp *cache.SchedulerCache
+	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, task *api.TaskInfo) error {
+		scCache.Binder.Bind(nil, []*api.TaskInfo{task})
+		return nil
+	})
+	defer patches.Reset()
+
+	framework.RegisterPluginBuilder("priority", priority.New)
+	framework.RegisterPluginBuilder("drf", drf.New)
+	framework.RegisterPluginBuilder("proportion", proportion.New)
+
+	options.ServerOpts = &options.ServerOption{
+		MinNodesToFind:             100,
+		MinPercentageOfNodesToFind: 5,
+		PercentageOfNodesToFind:    100,
+	}
+
+	defer framework.CleanupPluginBuilders()
+
+	tests := []struct {
+		name                  string
+		priorityWeight        float64
+		drfWeight             float64
+		proportionWeight      float64
+		enableDrfHierarchical bool
+		podGroups             []*schedulingv1.PodGroup
+		pods                  []*v1.Pod
+		nodes                 []*v1.Node
+		queues                []*schedulingv1.Queue
+		priorityClasss        []*schedulingk8sv1.PriorityClass
+		expected              []string
+	}{
+		{
+			name:                  "no drf, two job in two empty and different priority class queue",
+			priorityWeight:        1,
+			drfWeight:             1,
+			proportionWeight:      1,
+			enableDrfHierarchical: false,
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c1",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c2",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "pg1-p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("2", "4Gi"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:            1,
+						PriorityClassName: "system-cluster-critical",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c2",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:            1,
+						PriorityClassName: "system-node-critical",
+					},
+				},
+			},
+			priorityClasss: []*schedulingk8sv1.PriorityClass{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "system-cluster-critical",
+					},
+					Value: 2000000000,
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "system-node-critical",
+					},
+					Value: 2000001000,
+				},
+			},
+			expected: []string{
+				"pg2-p1",
+				"pg1-p1",
+			},
+		},
+		{
+			name:                  "no drf, one pending job in high priority queue, two pending job in low priority queue",
+			priorityWeight:        1,
+			drfWeight:             1,
+			proportionWeight:      1,
+			enableDrfHierarchical: false,
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c1",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c2",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "pg1-p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg1-p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p2", "", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("4", "8Gi"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:            1,
+						PriorityClassName: "system-cluster-critical",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c2",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:            1,
+						PriorityClassName: "system-node-critical",
+					},
+				},
+			},
+			priorityClasss: []*schedulingk8sv1.PriorityClass{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "system-cluster-critical",
+					},
+					Value: 2000000000,
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "system-node-critical",
+					},
+					Value: 2000001000,
+				},
+			},
+			expected: []string{
+				"pg1-p1",
+				"pg2-p1",
+				"pg1-p2",
+			},
+		},
+		{
+			name:                  "no drf, priority is important than drf and proportion",
+			priorityWeight:        1.2,
+			drfWeight:             1,
+			proportionWeight:      1,
+			enableDrfHierarchical: false,
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c1",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c2",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "pg1-p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg1-p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg1-p3", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p3", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("6", "12Gi"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:            1,
+						PriorityClassName: "system-cluster-critical",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c2",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:            1,
+						PriorityClassName: "system-node-critical",
+					},
+				},
+			},
+			priorityClasss: []*schedulingk8sv1.PriorityClass{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "system-cluster-critical",
+					},
+					Value: 50,
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "system-node-critical",
+					},
+					Value: 100,
+				},
+			},
+			expected: []string{
+				"pg2-p1",
+				"pg2-p2",
+				"pg1-p1",
+				"pg2-p3",
+				"pg1-p2",
+				"pg1-p3",
+			},
+		},
+		{
+			name:                  "drf & proportion & priority",
+			priorityWeight:        1,
+			drfWeight:             1,
+			proportionWeight:      1,
+			enableDrfHierarchical: true,
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c1",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c2",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "pg1-p1", "", v1.PodPending, util.BuildResourceList("2", "1Gi"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg1-p2", "", v1.PodPending, util.BuildResourceList("2", "1Gi"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg1-p3", "", v1.PodPending, util.BuildResourceList("2", "1Gi"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p1", "", v1.PodPending, util.BuildResourceList("1", "4Gi"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p2", "", v1.PodPending, util.BuildResourceList("1", "4Gi"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p3", "", v1.PodPending, util.BuildResourceList("1", "4Gi"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("10", "16Gi"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+						Annotations: map[string]string{
+							"volcano.sh/hierarchy":         "root/c1",
+							"volcano.sh/hierarchy-weights": "root/1",
+						},
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:            1,
+						PriorityClassName: "system-cluster-critical",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c2",
+						Annotations: map[string]string{
+							"volcano.sh/hierarchy":         "root/c2",
+							"volcano.sh/hierarchy-weights": "root/1",
+						},
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:            1,
+						PriorityClassName: "system-node-critical",
+					},
+				},
+			},
+			priorityClasss: []*schedulingk8sv1.PriorityClass{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "system-cluster-critical",
+					},
+					Value: 50,
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "system-node-critical",
+					},
+					Value: 100,
+				},
+			},
+			expected: []string{
+				"pg2-p1",
+				"pg1-p1",
+				"pg2-p2",
+				"pg1-p2",
+				"pg2-p3",
+				"pg1-p3",
+			},
+		},
+		{
+			name:                  "only one priority in kubernetes, the denominator is 0 in priority",
+			priorityWeight:        1,
+			drfWeight:             1,
+			proportionWeight:      1,
+			enableDrfHierarchical: true,
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c1",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c2",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "pg1-p1", "", v1.PodPending, util.BuildResourceList("2", "1Gi"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg1-p2", "", v1.PodPending, util.BuildResourceList("2", "1Gi"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg1-p3", "", v1.PodPending, util.BuildResourceList("2", "1Gi"), "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p1", "", v1.PodPending, util.BuildResourceList("1", "4Gi"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p2", "", v1.PodPending, util.BuildResourceList("1", "4Gi"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "pg2-p3", "", v1.PodPending, util.BuildResourceList("1", "4Gi"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("10", "16Gi"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+						Annotations: map[string]string{
+							"volcano.sh/hierarchy":         "root/c1",
+							"volcano.sh/hierarchy-weights": "root/1",
+						},
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:            1,
+						PriorityClassName: "system-cluster-critical",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c2",
+						Annotations: map[string]string{
+							"volcano.sh/hierarchy":         "root/c2",
+							"volcano.sh/hierarchy-weights": "root/1",
+						},
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight:            1,
+						PriorityClassName: "system-node-critical",
+					},
+				},
+			},
+			priorityClasss: []*schedulingk8sv1.PriorityClass{},
+			expected: []string{
+				"pg1-p1",
+				"pg2-p1",
+				"pg1-p2",
+				"pg2-p2",
+				"pg1-p3",
+				"pg2-p3",
+			},
+		},
+	}
+
+	allocate := New()
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binder := &util.FakeBinder{
+				BindSlice: make([]string, 0),
+				Binds:     map[string]string{},
+				Channel:   make(chan string),
+			}
+			option := options.NewServerOption()
+			option.RegisterOptions()
+			config, err := kube.BuildConfig(option.KubeClientOptions)
+			if err != nil {
+				return
+			}
+			sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
+			schedulerCache := sc.(*cache.SchedulerCache)
+
+			schedulerCache.Binder = binder
+			schedulerCache.StatusUpdater = &util.FakeStatusUpdater{}
+			schedulerCache.VolumeBinder = &util.FakeVolumeBinder{}
+			schedulerCache.Recorder = record.NewFakeRecorder(100)
+
+			for _, node := range test.nodes {
+				schedulerCache.AddNode(node)
+			}
+			priorityPod := int32(100)
+			for _, pod := range test.pods {
+				priorityPod--
+				pod.Spec.Priority = &priorityPod
+				schedulerCache.AddPod(pod)
+			}
+
+			for _, ss := range test.podGroups {
+				schedulerCache.AddPodGroupV1beta1(ss)
+			}
+
+			for _, q := range test.queues {
+				schedulerCache.AddQueueV1beta1(q)
+			}
+
+			for _, pc := range test.priorityClasss {
+				schedulerCache.AddPriorityClass(pc)
+			}
+
+			trueValue := true
+			enableDrfHierarchical := test.enableDrfHierarchical
+			ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+				{
+					Plugins: []conf.PluginOption{
+						{
+							Name:                   "priority",
+							EnabledQueueScoreOrder: &trueValue,
+							EnabledPreemptable:     &trueValue,
+							EnabledJobOrder:        &trueValue,
+							EnabledTaskOrder:       &trueValue,
+							EnabledNamespaceOrder:  &trueValue,
+						},
+						{
+							Name:                   "drf",
+							EnabledQueueScoreOrder: &trueValue,
+							EnabledPreemptable:     &trueValue,
+							EnabledJobOrder:        &trueValue,
+							EnabledNamespaceOrder:  &trueValue,
+							EnabledHierarchy:       &enableDrfHierarchical,
+						},
+						{
+							Name:                   "proportion",
+							EnabledQueueScoreOrder: &trueValue,
+							EnabledQueueOrder:      &trueValue,
+							EnabledReclaimable:     &trueValue,
+						},
+					},
+				},
+			}, []conf.Configuration{
+				{
+					Name: "allocate",
+					Arguments: map[string]interface{}{
+						"QueueScoreOrderEnable":             true,
+						"QueueScoreOrder.priority.weight":   test.priorityWeight,
+						"QueueScoreOrder.drf.weight":        test.drfWeight,
+						"QueueScoreOrder.proportion.weight": test.proportionWeight,
+					},
+				},
+			})
+			defer framework.CloseSession(ssn)
+
+			allocate.Execute(ssn)
+
+			if !reflect.DeepEqual(test.expected, binder.BindSlice) {
+				t.Errorf("expected: %v, got %v ", test.expected, binder.BindSlice)
+			}
 		})
 	}
 }

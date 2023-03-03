@@ -359,6 +359,15 @@ type QueueSpec struct {
 
 	// Type define the type of queue
 	Type string `json:"type,omitempty" protobuf:"bytes,7,opt,name=type"`
+
+	// If specified, indicates the Queue's priority. "system-node-critical" and
+	// "system-cluster-critical" are two special keywords which indicate the
+	// highest priorities with the former being the highest priority. Any other
+	// name must be defined by creating a PriorityClass object with that name.
+	// If not specified, the Queue priority will be default or zero if there is no
+	// default.
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty" protobuf:"bytes,8,opt,name=priorityClassName"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

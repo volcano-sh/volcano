@@ -20,6 +20,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -41,6 +42,12 @@ func (ra *Action) Execute(ssn *framework.Session) {
 	defer klog.V(3).Infof("Leaving Reclaim ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
+	QueueScoreOrderEnable := false
+	framework.GetArgOfActionFromConf(ssn.Configurations, ra.Name()).GetBool(&QueueScoreOrderEnable, conf.QueueScoreOrderEnable)
+	if QueueScoreOrderEnable {
+		queueOrderFn := ssn.QueueScoreOrderFn(ra.Name())
+		queues = util.NewPriorityQueue(queueOrderFn)
+	}
 	queueMap := map[api.QueueID]*api.QueueInfo{}
 
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
