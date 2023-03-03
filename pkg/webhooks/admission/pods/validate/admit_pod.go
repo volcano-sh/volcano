@@ -31,6 +31,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/helpers"
+
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -112,7 +113,7 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 		pgName = pod.Annotations[vcv1beta1.KubeGroupNameAnnotationKey]
 	}
 	if pgName != "" {
-		if err := checkPG(pod, pgName, true); err != nil {
+		if err := checkPG(pod, pgName, util.BelongToVcJob(pod)); err != nil {
 			msg = err.Error()
 			reviewResponse.Allowed = false
 		} else if err := checkPGQueueState(pod, pgName); err != nil {

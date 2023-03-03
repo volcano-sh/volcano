@@ -17,6 +17,8 @@ limitations under the License.
 package podgroup
 
 import (
+	"sync"
+
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	appinformers "k8s.io/client-go/informers/apps/v1"
@@ -27,7 +29,6 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
-	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -71,6 +72,9 @@ type pgcontroller struct {
 
 	// To determine whether inherit owner's annotations for pods when create podgroup
 	inheritOwnerAnnotations bool
+
+	// multipleSinglePodsPGExist Using it to achieve concurrent security for managing multiple single pods
+	multipleSinglePodsPGExist sync.Map
 }
 
 func (pg *pgcontroller) Name() string {
@@ -110,6 +114,7 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 		UpdateFunc: pg.updateReplicaSet,
 	})
 
+	pg.multipleSinglePodsPGExist = sync.Map{}
 	return nil
 }
 
@@ -160,11 +165,6 @@ func (pg *pgcontroller) processNextReq() bool {
 
 	if !commonutil.Contains(pg.schedulerNames, pod.Spec.SchedulerName) {
 		klog.V(5).Infof("pod %v/%v field SchedulerName is not matched", pod.Namespace, pod.Name)
-		return true
-	}
-
-	if pod.Annotations != nil && pod.Annotations[scheduling.KubeGroupNameAnnotationKey] != "" {
-		klog.V(5).Infof("pod %v/%v has created podgroup", pod.Namespace, pod.Name)
 		return true
 	}
 

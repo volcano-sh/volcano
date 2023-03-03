@@ -21,6 +21,8 @@ import (
 	"reflect"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -184,6 +186,299 @@ func TestAddPodGroup(t *testing.T) {
 		if testCase.expectedPodGroup.Spec.PriorityClassName != pod.Spec.PriorityClassName {
 			t.Errorf("Case %s failed, expect %v, got %v", testCase.name,
 				testCase.expectedPodGroup.Spec.PriorityClassName, pod.Spec.PriorityClassName)
+		}
+	}
+}
+
+func TestAddPodGroupForMultipleSinglePods(t *testing.T) {
+	namespace := "test"
+	isController := true
+	isNotController := false
+	blockOwnerDeletion := true
+	pgName := "podgroup-p1"
+
+	testCases := []struct {
+		name             string
+		pod              []v1.Pod
+		expectedPodGroup *scheduling.PodGroup
+	}{
+		{
+			name: "AddPodGroup: one pod has defined min resource annotation, another didn't.",
+			pod: []v1.Pod{
+				{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "v1",
+						Kind:       "Pod",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pod1",
+						Namespace: namespace,
+						UID:       types.UID("7a09885b-b753-4924-9fba-77c0836bac20"),
+						Annotations: map[string]string{
+							scheduling.KubeGroupNameAnnotationKey:            pgName,
+							scheduling.VolcanoGroupMinResourcesAnnotationKey: "{\"cpu\":\"200m\",\"memory\":\"128Mi\"}",
+						},
+					},
+				},
+				{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "v1",
+						Kind:       "Pod",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pod2",
+						Namespace: namespace,
+						UID:       types.UID("7a09885b-b753-4924-9fba-77c0836bac21"),
+						Annotations: map[string]string{
+							scheduling.KubeGroupNameAnnotationKey: pgName,
+						},
+					},
+				},
+			},
+			expectedPodGroup: &scheduling.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+					Kind:       "PodGroup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      pgName,
+					Namespace: namespace,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion:         "v1",
+							Kind:               "Pod",
+							Name:               "pod1",
+							UID:                "7a09885b-b753-4924-9fba-77c0836bac20",
+							Controller:         &isController,
+							BlockOwnerDeletion: &blockOwnerDeletion,
+						},
+						{
+							APIVersion:         "v1",
+							Kind:               "Pod",
+							Name:               "pod2",
+							UID:                "7a09885b-b753-4924-9fba-77c0836bac21",
+							Controller:         &isNotController,
+							BlockOwnerDeletion: &blockOwnerDeletion,
+						},
+					},
+				},
+				Spec: scheduling.PodGroupSpec{
+					MinMember: 1,
+					MinResources: &v1.ResourceList{
+						"cpu":    resource.MustParse("200m"),
+						"memory": resource.MustParse("128Mi"),
+					},
+				},
+			},
+		},
+		{
+			name: "AddPodGroup: first pod has defined min resource annotation, another pod's min resource is larger than first pod.",
+			pod: []v1.Pod{
+				{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "v1",
+						Kind:       "Pod",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pod1",
+						Namespace: namespace,
+						UID:       types.UID("7a09885b-b753-4924-9fba-77c0836bac20"),
+						Annotations: map[string]string{
+							scheduling.KubeGroupNameAnnotationKey:            pgName,
+							scheduling.VolcanoGroupMinResourcesAnnotationKey: "{\"cpu\":\"200m\",\"memory\":\"128Mi\"}",
+						},
+					},
+				},
+				{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "v1",
+						Kind:       "Pod",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pod2",
+						Namespace: namespace,
+						UID:       types.UID("7a09885b-b753-4924-9fba-77c0836bac21"),
+						Annotations: map[string]string{
+							scheduling.KubeGroupNameAnnotationKey:            pgName,
+							scheduling.VolcanoGroupMinResourcesAnnotationKey: "{\"cpu\":\"400m\",\"memory\":\"256Mi\"}",
+						},
+					},
+				},
+			},
+			expectedPodGroup: &scheduling.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+					Kind:       "PodGroup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      pgName,
+					Namespace: namespace,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion:         "v1",
+							Kind:               "Pod",
+							Name:               "pod1",
+							UID:                "7a09885b-b753-4924-9fba-77c0836bac20",
+							Controller:         &isController,
+							BlockOwnerDeletion: &blockOwnerDeletion,
+						},
+						{
+							APIVersion:         "v1",
+							Kind:               "Pod",
+							Name:               "pod2",
+							UID:                "7a09885b-b753-4924-9fba-77c0836bac21",
+							Controller:         &isNotController,
+							BlockOwnerDeletion: &blockOwnerDeletion,
+						},
+					},
+				},
+				Spec: scheduling.PodGroupSpec{
+					MinMember: 1,
+					MinResources: &v1.ResourceList{
+						"cpu":    resource.MustParse("400m"),
+						"memory": resource.MustParse("256Mi"),
+					},
+				},
+			},
+		},
+		{
+			name: "AddPodGroup: first pod has defined min resource annotation, second pod's min resource is larger than first pod." +
+				"third pod didn't",
+			pod: []v1.Pod{
+				{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "v1",
+						Kind:       "Pod",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pod1",
+						Namespace: namespace,
+						UID:       types.UID("7a09885b-b753-4924-9fba-77c0836bac20"),
+						Annotations: map[string]string{
+							scheduling.KubeGroupNameAnnotationKey:            pgName,
+							scheduling.VolcanoGroupMinResourcesAnnotationKey: "{\"cpu\":\"200m\",\"memory\":\"128Mi\"}",
+						},
+					},
+				},
+				{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "v1",
+						Kind:       "Pod",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pod2",
+						Namespace: namespace,
+						UID:       types.UID("7a09885b-b753-4924-9fba-77c0836bac21"),
+						Annotations: map[string]string{
+							scheduling.KubeGroupNameAnnotationKey:            pgName,
+							scheduling.VolcanoGroupMinResourcesAnnotationKey: "{\"cpu\":\"400m\",\"memory\":\"256Mi\"}",
+						},
+					},
+				},
+				{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "v1",
+						Kind:       "Pod",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pod3",
+						Namespace: namespace,
+						UID:       types.UID("7a09885b-b753-4924-9fba-77c0836bac22"),
+						Annotations: map[string]string{
+							scheduling.KubeGroupNameAnnotationKey: pgName,
+						},
+					},
+				},
+			},
+			expectedPodGroup: &scheduling.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+					Kind:       "PodGroup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      pgName,
+					Namespace: namespace,
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion:         "v1",
+							Kind:               "Pod",
+							Name:               "pod1",
+							UID:                "7a09885b-b753-4924-9fba-77c0836bac20",
+							Controller:         &isController,
+							BlockOwnerDeletion: &blockOwnerDeletion,
+						},
+						{
+							APIVersion:         "v1",
+							Kind:               "Pod",
+							Name:               "pod2",
+							UID:                "7a09885b-b753-4924-9fba-77c0836bac21",
+							Controller:         &isNotController,
+							BlockOwnerDeletion: &blockOwnerDeletion,
+						},
+						{
+							APIVersion:         "v1",
+							Kind:               "Pod",
+							Name:               "pod3",
+							UID:                "7a09885b-b753-4924-9fba-77c0836bac22",
+							Controller:         &isNotController,
+							BlockOwnerDeletion: &blockOwnerDeletion,
+						},
+					},
+				},
+				Spec: scheduling.PodGroupSpec{
+					MinMember: 1,
+					MinResources: &v1.ResourceList{
+						"cpu":    resource.MustParse("400m"),
+						"memory": resource.MustParse("256Mi"),
+					},
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		c := newFakeController()
+		for _, testPod := range testCase.pod {
+			pod, err := c.kubeClient.CoreV1().Pods(testPod.Namespace).Create(context.TODO(), &testPod, metav1.CreateOptions{})
+			if err != nil {
+				t.Errorf("Case %s failed when creating pod for %v", testCase.name, err)
+			}
+			c.addPod(pod)
+			c.createNormalPodPGIfNotExist(pod)
+		}
+
+		pg, err := c.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(),
+			testCase.expectedPodGroup.Name,
+			metav1.GetOptions{},
+		)
+		if err != nil {
+			t.Errorf("Case %s failed when getting podGroup for %v", testCase.name, err)
+		}
+
+		if false == reflect.DeepEqual(pg.OwnerReferences, testCase.expectedPodGroup.OwnerReferences) {
+			t.Errorf("Case %s ownerReferences failed, expect %v, got %v", testCase.name, testCase.expectedPodGroup, pg)
+		}
+
+		if false == reflect.DeepEqual(pg.Spec.MinResources, testCase.expectedPodGroup.Spec.MinResources) {
+			t.Errorf("Case %s min Resources failed, expect %v, got %v", testCase.name, testCase.expectedPodGroup, pg)
+		}
+
+		for _, testPod := range testCase.pod {
+			newpod, err := c.kubeClient.CoreV1().Pods(testPod.Namespace).Get(context.TODO(), testPod.Name, metav1.GetOptions{})
+			if err != nil {
+				t.Errorf("Case %s failed when creating pod for %v", testCase.name, err)
+			}
+
+			podAnnotation := newpod.Annotations[scheduling.KubeGroupNameAnnotationKey]
+			if testCase.expectedPodGroup.Name != podAnnotation {
+				t.Errorf("Case %s failed, expect %v, got %v", testCase.name,
+					testCase.expectedPodGroup.Name, podAnnotation)
+			}
+
+			if testCase.expectedPodGroup.Spec.PriorityClassName != testPod.Spec.PriorityClassName {
+				t.Errorf("Case %s failed, expect %v, got %v", testCase.name,
+					testCase.expectedPodGroup.Spec.PriorityClassName, testPod.Spec.PriorityClassName)
+			}
 		}
 	}
 }

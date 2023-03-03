@@ -17,9 +17,13 @@ limitations under the License.
 package util
 
 import (
+	"strings"
+
 	admissionv1 "k8s.io/api/admission/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
+	"volcano.sh/apis/pkg/apis/scheduling"
 )
 
 // ToAdmissionResponse updates the admission response with the input error.
@@ -31,4 +35,14 @@ func ToAdmissionResponse(err error) *admissionv1.AdmissionResponse {
 			Message: err.Error(),
 		},
 	}
+}
+
+// BelongToVcJob Check if pod belongs to vcjob
+func BelongToVcJob(pod *v1.Pod) bool {
+	for _, ownerReference := range pod.OwnerReferences {
+		if *ownerReference.Controller && strings.HasPrefix(ownerReference.APIVersion, scheduling.GroupName) && ownerReference.Kind == "Job" {
+			return true
+		}
+	}
+	return false
 }
