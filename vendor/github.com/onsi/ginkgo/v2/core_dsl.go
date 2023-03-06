@@ -21,8 +21,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/onsi/ginkgo/v2/formatter"
 	"github.com/onsi/ginkgo/v2/internal"
 	"github.com/onsi/ginkgo/v2/internal/global"
@@ -46,7 +46,9 @@ func init() {
 	var err error
 	flagSet, err = types.BuildTestSuiteFlagSet(&suiteConfig, &reporterConfig)
 	exitIfErr(err)
-	GinkgoWriter = internal.NewWriter(os.Stdout)
+	writer := internal.NewWriter(os.Stdout)
+	GinkgoWriter = writer
+	GinkgoLogr = internal.GinkgoLogrFunc(writer)
 }
 
 func exitIfErr(err error) {
@@ -90,11 +92,11 @@ type GinkgoWriterInterface interface {
 }
 
 /*
- SpecContext is the context object passed into nodes that are subject to a timeout or need to be notified of an interrupt.  It implements the standard context.Context interface but also contains additional helpers to provide an extensibility point for Ginkgo.  (As an example, Gomega's Eventually can use the methods defined on SpecContext to provide deeper integratoin with Ginkgo).
+SpecContext is the context object passed into nodes that are subject to a timeout or need to be notified of an interrupt.  It implements the standard context.Context interface but also contains additional helpers to provide an extensibility point for Ginkgo.  (As an example, Gomega's Eventually can use the methods defined on SpecContext to provide deeper integration with Ginkgo).
 
- You can do anything with SpecContext that you do with a typical context.Context including wrapping it with any of the context.With* methods.
+You can do anything with SpecContext that you do with a typical context.Context including wrapping it with any of the context.With* methods.
 
- Ginkgo will cancel the SpecContext when a node is interrupted (e.g. by the user sending an interupt signal) or when a node has exceeded it's allowed run-time.  Note, however, that even in cases where a node has a deadline, SpecContext will not return a deadline via .Deadline().  This is because Ginkgo does not use a WithDeadline() context to model node deadlines as Ginkgo needs control over the precise timing of the context cancellation to ensure it can provide an accurate progress report at the moment of cancellation.
+Ginkgo will cancel the SpecContext when a node is interrupted (e.g. by the user sending an interrupt signal) or when a node has exceeded its allowed run-time.  Note, however, that even in cases where a node has a deadline, SpecContext will not return a deadline via .Deadline().  This is because Ginkgo does not use a WithDeadline() context to model node deadlines as Ginkgo needs control over the precise timing of the context cancellation to ensure it can provide an accurate progress report at the moment of cancellation.
 */
 type SpecContext = internal.SpecContext
 
@@ -111,6 +113,11 @@ Writes to GinkgoWriter are immediately sent to any registered TeeTo() writers.  
 You can learn more at https://onsi.github.io/ginkgo/#logging-output
 */
 var GinkgoWriter GinkgoWriterInterface
+
+/*
+GinkgoLogr is a logr.Logger that writes to GinkgoWriter
+*/
+var GinkgoLogr logr.Logger
 
 // The interface by which Ginkgo receives *testing.T
 type GinkgoTestingT interface {
@@ -154,6 +161,29 @@ For more on how specs are parallelized in Ginkgo, see http://onsi.github.io/gink
 */
 func GinkgoParallelProcess() int {
 	return suiteConfig.ParallelProcess
+}
+
+/*
+GinkgoHelper marks the function it's called in as a test helper.  When a failure occurs inside a helper function, Ginkgo will skip the helper when analyzing the stack trace to identify where the failure occurred.
+
+This is an alternative, simpler, mechanism to passing in a skip offset when calling Fail or using Gomega.
+*/
+func GinkgoHelper() {
+	types.MarkAsHelper(1)
+}
+
+/*
+GinkgoLabelFilter() returns the label filter configured for this suite via `--label-filter`.
+
+You can use this to manually check if a set of labels would satisfy the filter via:
+
+	if (Label("cat", "dog").MatchesLabelFilter(GinkgoLabelFilter())) {
+		//...
+	}
+*/
+func GinkgoLabelFilter() string {
+	suiteConfig, _ := GinkgoConfiguration()
+	return suiteConfig.LabelFilter
 }
 
 /*
@@ -268,7 +298,7 @@ func RunSpecs(t GinkgoTestingT, description string, args ...interface{}) bool {
 	}
 
 	writer := GinkgoWriter.(*internal.Writer)
-	if reporterConfig.Verbose && suiteConfig.ParallelTotal == 1 {
+	if reporterConfig.Verbosity().GTE(types.VerbosityLevelVerbose) && suiteConfig.ParallelTotal == 1 {
 		writer.SetMode(internal.WriterModeStreamAndBuffer)
 	} else {
 		writer.SetMode(internal.WriterModeBufferOnly)
@@ -363,6 +393,12 @@ func AbortSuite(message string, callerSkip ...int) {
 }
 
 /*
+ignorablePanic is used by Gomega to signal to GinkgoRecover that Goemga is handling
+the error associated with this panic.  It i used when Eventually/Consistently are passed a func(g Gomega) and the resulting function launches a goroutines that makes a failed assertion.  That failed assertion is registered by Gomega and then panics.  Ordinarily the panic is captured by Gomega.  In the case of a goroutine Gomega can't capture the panic - so we piggy back on GinkgoRecover so users have a single defer GinkgoRecover() pattern to follow.  To do that we need to tell Ginkgo to ignore this panic and not register it as a panic on the global Failer.
+*/
+type ignorablePanic interface{ GinkgoRecoverShouldIgnoreThisPanic() }
+
+/*
 GinkgoRecover should be deferred at the top of any spawned goroutine that (may) call `Fail`
 Since Gomega assertions call fail, you should throw a `defer GinkgoRecover()` at the top of any goroutine that
 calls out to Gomega
@@ -377,6 +413,9 @@ You can learn more about how Ginkgo manages failures here: https://onsi.github.i
 func GinkgoRecover() {
 	e := recover()
 	if e != nil {
+		if _, ok := e.(ignorablePanic); ok {
+			return
+		}
 		global.Failer.Panic(types.NewCodeLocationWithStackTrace(1), e)
 	}
 }
@@ -505,31 +544,7 @@ Note that By does not generate a new Ginkgo node - rather it is simply synctacti
 You can learn more about By here: https://onsi.github.io/ginkgo/#documenting-complex-specs-by
 */
 func By(text string, callback ...func()) {
-	if !global.Suite.InRunPhase() {
-		exitIfErr(types.GinkgoErrors.ByNotDuringRunPhase(types.NewCodeLocation(1)))
-	}
-	value := struct {
-		Text     string
-		Duration time.Duration
-	}{
-		Text: text,
-	}
-	t := time.Now()
-	global.Suite.SetProgressStepCursor(internal.ProgressStepCursor{
-		Text:         text,
-		CodeLocation: types.NewCodeLocation(1),
-		StartTime:    t,
-	})
-	AddReportEntry("By Step", ReportEntryVisibilityNever, Offset(1), &value, t)
-	formatter := formatter.NewWithNoColorBool(reporterConfig.NoColor)
-	GinkgoWriter.Println(formatter.F("{{bold}}STEP:{{/}} %s {{gray}}%s{{/}}", text, t.Format(types.GINKGO_TIME_FORMAT)))
-	if len(callback) == 1 {
-		callback[0]()
-		value.Duration = time.Since(t)
-	}
-	if len(callback) > 1 {
-		panic("just one callback per By, please")
-	}
+	exitIfErr(global.Suite.By(text, callback...))
 }
 
 /*
@@ -686,7 +701,6 @@ Multiple BeforeAll nodes can be defined in a given Ordered container however the
 
 BeforeAll can take a func() body, or an interruptible func(SpecContext)/func(context.Context) body.
 
-
 You cannot nest any other Ginkgo nodes within a BeforeAll node's closure.
 You can learn more about Ordered Containers at: https://onsi.github.io/ginkgo/#ordered-containers
 And you can learn more about BeforeAll at: https://onsi.github.io/ginkgo/#setup-in-ordered-containers-beforeall-and-afterall
@@ -717,10 +731,10 @@ DeferCleanup can be called within any Setup or Subject node to register a cleanu
 
 DeferCleanup can be passed:
 1. A function that takes no arguments and returns no values.
-2. A function that returns an error (in which case it will assert that the returned error was nil, or it will fail the spec).
-3. A function that takes a context.Context or SpecContext (and optionally returns an error).  The resulting cleanup node is deemed interruptible and the passed-in context will be cancelled in the event of a timeout or interrupt.
-4. A function that takes arguments (and optionally returns an error) followed by a list of arguments to pass to the function.
-5. A function that takes SpecContext and a list of arguments (and optionally returns an error) followed by a list of arguments to pass to the function.
+2. A function that returns multiple values.  `DeferCleanup` will ignore all these return values except for the last one.  If this last return value is a non-nil error `DeferCleanup` will fail the spec).
+3. A function that takes a context.Context or SpecContext (and optionally returns multiple values).  The resulting cleanup node is deemed interruptible and the passed-in context will be cancelled in the event of a timeout or interrupt.
+4. A function that takes arguments (and optionally returns multiple values) followed by a list of arguments to pass to the function.
+5. A function that takes SpecContext and a list of arguments (and optionally returns multiple values) followed by a list of arguments to pass to the function.
 
 For example:
 
@@ -729,7 +743,7 @@ For example:
 	    os.SetEnv("FOO", "BAR")
 	})
 
-will register a cleanup handler that will set the environment variable "FOO" to it's current value (obtained by os.GetEnv("FOO")) after the spec runs and then sets the environment variable "FOO" to "BAR" for the current spec.
+will register a cleanup handler that will set the environment variable "FOO" to its current value (obtained by os.GetEnv("FOO")) after the spec runs and then sets the environment variable "FOO" to "BAR" for the current spec.
 
 Similarly:
 
