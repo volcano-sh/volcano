@@ -55,7 +55,7 @@ spec:
                 - |
                   mkdir -p /var/run/sshd; /usr/sbin/sshd;
                   mpiexec --allow-run-as-root --host ${MPI_HOST} -np 2 mpi_hello_world;
-              image: volcanosh/example-mpi:0.0.1
+              image: volcanosh/example-mpi:0.0.3
               name: mpimaster
               workingDir: /home
           restartPolicy: OnFailure
@@ -69,7 +69,7 @@ spec:
                 - -c
                 - |
                   mkdir -p /var/run/sshd; /usr/sbin/sshd -D;
-              image: volcanosh/example-mpi:0.0.1
+              image: volcanosh/example-mpi:0.0.3
               name: mpiworker
               workingDir: /home
           restartPolicy: OnFailure
