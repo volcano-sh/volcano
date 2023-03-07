@@ -150,7 +150,6 @@ func openSession(cache cache.Cache) *Session {
 	snapshot := cache.Snapshot()
 
 	ssn.Jobs = snapshot.Jobs
-	klog.Infoln("-=-=-=-=-=ssn_jobs=", ssn.Jobs)
 	for _, job := range ssn.Jobs {
 		// only conditions will be updated periodically
 		if job.PodGroup != nil && job.PodGroup.Status.Conditions != nil {
