@@ -1,1 +1,0 @@
-/vc-scheduler --logtostderr --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf --enable-healthz=true --enable-metrics=true -v=3
