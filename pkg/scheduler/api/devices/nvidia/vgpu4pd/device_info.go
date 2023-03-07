@@ -71,7 +71,7 @@ func NewGPUDevice(id int, mem uint) *GPUDevice {
 }
 
 func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
-	klog.Infoln("into devices")
+	klog.V(3).Infoln("into devices")
 	if node == nil {
 		return nil
 	}
@@ -88,7 +88,7 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 		return nil
 	}
 	for _, val := range nodedevices.Device {
-		klog.Infoln("name=", nodedevices.Name, "val=", *val)
+		klog.V(3).Infoln("name=", nodedevices.Name, "val=", *val)
 	}
 
 	// We have to handshake here in order to avoid time-inconsistency between scheduler and nodes
@@ -165,7 +165,6 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 }
 
 func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
-	klog.Infoln("-=-=-=-=-=-=-=vgpu4pd:HasDeviceRequest=-=-=-=-=-=-=-=-=-=-=")
 	if VGPUEnable && checkVGPUResourcesInPod(pod) {
 		return true
 	}
@@ -179,7 +178,7 @@ func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) erro
 
 func (gs *GPUDevices) FilterNode(pod *v1.Pod) (bool, error) {
 
-	klog.Infoln("4pdvgpuDeviceSharing:Into FitInPod", pod.Name)
+	klog.V(3).Infoln("4pdvgpuDeviceSharing:Into FitInPod", pod.Name)
 	if VGPUEnable {
 		fit, _, err := checkNodeGPUSharingPredicate(pod, gs, true)
 		if err != nil {
@@ -187,7 +186,7 @@ func (gs *GPUDevices) FilterNode(pod *v1.Pod) (bool, error) {
 			return fit, err
 		}
 	}
-	klog.Infoln("4pdvgpu DeviceSharing:FitInPod successed")
+	klog.V(3).Infoln("4pdvgpu DeviceSharing:FitInPod successed")
 	return true, nil
 }
 
@@ -196,7 +195,7 @@ func (gs *GPUDevices) GetStatus() string {
 }
 
 func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	klog.Infoln("-=-=-=-=-=DeviceSharing:Into AllocateToPod", pod.Name)
+	klog.V(3).Infoln("VGPU DeviceSharing:Into AllocateToPod", pod.Name)
 	if VGPUEnable {
 		fit, device, err := checkNodeGPUSharingPredicate(pod, gs, false)
 		if err != nil || !fit {
@@ -221,7 +220,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 		if err != nil {
 			return err
 		}
-		klog.Infoln("DeviceSharing:Allocate Success")
+		klog.V(3).Infoln("DeviceSharing:Allocate Success")
 	}
 	return nil
 }

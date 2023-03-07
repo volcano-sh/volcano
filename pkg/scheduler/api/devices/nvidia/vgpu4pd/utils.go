@@ -42,7 +42,7 @@ func init() {
 	if err != nil {
 		klog.Errorf("init kubeclient in 4pdvgpu failed", err.Error())
 	} else {
-		klog.Infoln("init kubeclient success")
+		klog.V(3).Infoln("init kubeclient success")
 	}
 }
 
@@ -83,7 +83,7 @@ func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	_, err = kubeClient.CoreV1().Nodes().
 		Patch(context.Background(), node.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
 	if err != nil {
-		klog.Infof("patch pod %v failed, %v", node.Name, err)
+		klog.Errorf("patch pod %v failed, %v", node.Name, err)
 	}
 	return err
 }
@@ -122,7 +122,7 @@ func encodeContainerDevices(cd []ContainerDevice) string {
 	for _, val := range cd {
 		tmp += val.UUID + "," + val.Type + "," + strconv.Itoa(int(val.Usedmem)) + "," + strconv.Itoa(int(val.Usedcores)) + ":"
 	}
-	fmt.Println("Encoded container Devices=", tmp)
+	klog.V(4).Infoln("Encoded container Devices=", tmp)
 	return tmp
 	//return strings.Join(cd, ",")
 }
@@ -253,7 +253,7 @@ func resourcereqs(pod *v1.Pod) []ContainerDeviceRequest {
 			})
 		}
 	}
-	klog.Infoln("counts=", counts)
+	klog.V(3).Infoln("counts=", counts)
 	return counts
 }
 
@@ -299,7 +299,7 @@ func checkType(annos map[string]string, d GPUDevice, n ContainerDeviceRequest) b
 	if strings.Compare(n.Type, NvidiaGPUDevice) == 0 {
 		return checkGPUtype(annos, d.Type)
 	}
-	klog.Infof("Unrecognized device", n.Type)
+	klog.Errorf("Unrecognized device", n.Type)
 	return false
 }
 
@@ -347,10 +347,10 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices, replicate boo
 		if int(val.Nums) > len(gs.Device) {
 			return false, []ContainerDevices{}, fmt.Errorf("no enough gpu cards on node %s", gs.Name)
 		}
-		klog.Infoln("Allocating device for container request", val)
+		klog.V(3).Infoln("Allocating device for container request", val)
 
 		for i := len(gs.Device) - 1; i >= 0; i-- {
-			klog.Info("Scoring pod ", val.Memreq, ":", val.MemPercentagereq, ":", val.Coresreq, ":", val.Nums, "i", i, "device:", gs.Device[i].ID)
+			klog.V(3).Info("Scoring pod ", val.Memreq, ":", val.MemPercentagereq, ":", val.Coresreq, ":", val.Nums, "i", i, "device:", gs.Device[i].ID)
 			if gs.Device[i].Number <= uint(gs.Device[i].UsedNum) {
 				continue
 			}
@@ -377,7 +377,7 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices, replicate boo
 			//total += gs.Devices[i].Count
 			//free += node.Devices[i].Count - node.Devices[i].Used
 			if val.Nums > 0 {
-				klog.Infoln("device", gs.Device[i].ID, "fitted")
+				klog.V(3).Infoln("device", gs.Device[i].ID, "fitted")
 				val.Nums--
 				gs.Device[i].UsedNum++
 				gs.Device[i].UsedMem += uint(val.Memreq)
@@ -420,7 +420,7 @@ func patchPodAnnotations(pod *v1.Pod, annotations map[string]string) error {
 	_, err = kubeClient.CoreV1().Pods(pod.Namespace).
 		Patch(context.Background(), pod.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
 	if err != nil {
-		klog.Infof("patch pod %v failed, %v", pod.Name, err)
+		klog.Errorf("patch pod %v failed, %v", pod.Name, err)
 	}
 	/*
 		Can't modify Env of pods here
