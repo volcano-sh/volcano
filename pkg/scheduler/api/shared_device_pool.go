@@ -60,3 +60,4 @@ var IgnoredDevicesList []string
 var RegisteredDevices = []string{
 	GPUSharingDevice, vgpu4pd.DeviceName,
 }
+

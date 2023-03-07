@@ -148,6 +148,7 @@ func lowThresholdFilter(usage *NodeUtilization, config interface{}) bool {
 		klog.V(4).Infoln("lack of LowNodeUtilizationConf pointer parameter")
 		return false
 	}
+	klog.V(4).Infof("The utilizationConfig thresholds is %v", utilizationConfig.Thresholds)
 
 	if usage.nodeInfo.Spec.Unschedulable {
 		return false
@@ -169,6 +170,7 @@ func highThresholdFilter(usage *NodeUtilization, config interface{}) bool {
 		klog.V(4).Infof("lack of LowNodeUtilizationConf pointer parameter")
 		return false
 	}
+	klog.V(4).Infof("The utilizationConfig targetThresholds is %v", utilizationConfig.TargetThresholds)
 
 	for rName, usagePercent := range usage.utilization {
 		if threshold, ok := utilizationConfig.TargetThresholds[string(rName)]; ok {

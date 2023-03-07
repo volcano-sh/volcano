@@ -349,6 +349,7 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 	ni.Others[vgpu4pd.DeviceName] = vgpu4pd.NewGPUDevices(ni.Name, node)
 	IgnoredDevicesList = append(IgnoredDevicesList, ni.Others[GPUSharingDevice].(Devices).GetIgnoredDevices()...)
 	IgnoredDevicesList = append(IgnoredDevicesList, ni.Others[vgpu4pd.DeviceName].(Devices).GetIgnoredDevices()...)
+
 }
 
 // setNode sets kubernetes node object to nodeInfo object without assertion
