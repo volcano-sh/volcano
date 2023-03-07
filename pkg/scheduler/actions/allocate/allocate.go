@@ -59,7 +59,6 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	// used to find job with highest priority in given queue and namespace
 	jobsMap := map[api.NamespaceName]map[api.QueueID]*util.PriorityQueue{}
 
-	klog.Infoln("Allocate=-=-=-=-=-=-=-=-=-=-=-=ssn.jobs=", ssn.Jobs)
 	for _, job := range ssn.Jobs {
 		// If not config enqueue action, change Pending pg into Inqueue statue to avoid blocking job scheduling.
 		if conf.EnabledActionMap["enqueue"] {
@@ -84,11 +83,9 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				job.Namespace, job.Name, job.Queue)
 			continue
 		}
-		klog.Infoln("job=", job.TotalRequest)
 
 		namespace := api.NamespaceName(job.Namespace)
 		queueMap, found := jobsMap[namespace]
-		klog.Infoln("-=-=-=-=-=-=-=-=namespace=", namespace)
 		if !found {
 			namespaces.Push(namespace)
 
@@ -114,20 +111,17 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		// Check for Resource Predicate
 		if !task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
-			klog.Infoln("-=-=-=-=-=LessOrEqual failed=-=-=-=-=-=")
 			return api.NewFitError(task, node, api.NodeResourceFitFailed)
 		}
 
 		return ssn.PredicateFn(task, node)
 	}
 
-	klog.V(3).Infof("-=-=-=-=-=-=-=-=-=-=-=-=Try to allocate resource to %d Namespaces", len(jobsMap))
 	// To pick <namespace, queue> tuple for job, we choose to pick namespace firstly.
 	// Because we believe that number of queues would less than namespaces in most case.
 	// And, this action would make the resource usage among namespace balanced.
 	for {
 		if namespaces.Empty() {
-			klog.V(3).Infof("-=-=-=-==-=-=namespace empty-=-=-=-=-=")
 			break
 		}
 
@@ -159,14 +153,12 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 		}
 
-		klog.V(3).Infof("-=-=-=-=-=-=-=-=Cp1-=-=-=-=-=-=-")
-
 		if queue == nil {
 			klog.V(3).Infof("Namespace <%s> have no queue, skip it", namespace)
 			continue
 		}
 
-		klog.V(3).Infof("-=-=-=-=-=-=-=-=Try to allocate resource to Jobs in Namespace <%s> Queue <%v>", namespace, queue.Name)
+		klog.V(3).Infof("Try to allocate resource to Jobs in Namespace <%s> Queue <%v>", namespace, queue.Name)
 
 		jobs, found := queueInNamespace[queue.UID]
 		if !found || jobs.Empty() {
