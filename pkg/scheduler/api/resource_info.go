@@ -23,6 +23,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/klog/v2"
 	v1helper "k8s.io/kubernetes/pkg/scheduler/util"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu4pd"
@@ -85,7 +86,18 @@ func NewResource(rl v1.ResourceList) *Resource {
 			}
 			//NOTE: When converting this back to k8s resource, we need record the format as well as / 1000
 			if v1helper.IsScalarResourceName(rName) {
-				r.AddScalar(rName, float64(rQuant.MilliValue()))
+				ignore := false
+				for _, val := range IgnoredDevicesList {
+					if strings.Compare(val, rName.String()) == 0 {
+						ignore = true
+						break
+					}
+				}
+				if !ignore {
+					r.AddScalar(rName, float64(rQuant.MilliValue()))
+				} else {
+					klog.V(4).Infof("Ignoring resource", rName.String())
+				}
 			}
 		}
 	}

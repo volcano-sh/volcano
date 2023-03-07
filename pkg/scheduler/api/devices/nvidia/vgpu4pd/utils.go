@@ -1,3 +1,19 @@
+/*
+Copyright 2023 The Volcano Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package vgpu4pd
 
 import (
@@ -48,7 +64,7 @@ func NewClient() (kubernetes.Interface, error) {
 	return client, err
 }
 
-func PatchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
+func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	type patchMetadata struct {
 		Annotations map[string]string `json:"annotations,omitempty"`
 	}
@@ -72,7 +88,7 @@ func PatchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	return err
 }
 
-func DecodeNodeDevices(name string, str string) *GPUDevices {
+func decodeNodeDevices(name string, str string) *GPUDevices {
 	if !strings.Contains(str, ":") {
 		return nil
 	}
@@ -101,6 +117,64 @@ func DecodeNodeDevices(name string, str string) *GPUDevices {
 	return retval
 }
 
+func encodeContainerDevices(cd []ContainerDevice) string {
+	tmp := ""
+	for _, val := range cd {
+		tmp += val.UUID + "," + val.Type + "," + strconv.Itoa(int(val.Usedmem)) + "," + strconv.Itoa(int(val.Usedcores)) + ":"
+	}
+	fmt.Println("Encoded container Devices=", tmp)
+	return tmp
+	//return strings.Join(cd, ",")
+}
+
+func encodePodDevices(pd []ContainerDevices) string {
+	var ss []string
+	for _, cd := range pd {
+		ss = append(ss, encodeContainerDevices(cd))
+	}
+	return strings.Join(ss, ";")
+}
+
+func decodeContainerDevices(str string) ContainerDevices {
+	if len(str) == 0 {
+		return ContainerDevices{}
+	}
+	cd := strings.Split(str, ":")
+	contdev := ContainerDevices{}
+	tmpdev := ContainerDevice{}
+	//fmt.Println("before container device", str)
+	if len(str) == 0 {
+		return contdev
+	}
+	for _, val := range cd {
+		if strings.Contains(val, ",") {
+			//fmt.Println("cd is ", val)
+			tmpstr := strings.Split(val, ",")
+			tmpdev.UUID = tmpstr[0]
+			tmpdev.Type = tmpstr[1]
+			devmem, _ := strconv.ParseInt(tmpstr[2], 10, 32)
+			tmpdev.Usedmem = int32(devmem)
+			devcores, _ := strconv.ParseInt(tmpstr[3], 10, 32)
+			tmpdev.Usedcores = int32(devcores)
+			contdev = append(contdev, tmpdev)
+		}
+	}
+	//fmt.Println("Decoded container device", contdev)
+	return contdev
+}
+
+func decodePodDevices(str string) []ContainerDevices {
+	if len(str) == 0 {
+		return []ContainerDevices{}
+	}
+	var pd []ContainerDevices
+	for _, s := range strings.Split(str, ";") {
+		cd := decodeContainerDevices(s)
+		pd = append(pd, cd)
+	}
+	return pd
+}
+
 func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 	for _, container := range pod.Spec.Containers {
 		_, ok := container.Resources.Limits[VolcanoVGPUMemory]
@@ -115,15 +189,15 @@ func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 	return false
 }
 
-func resourcereqs(pod *v1.Pod) (counts []ContainerDeviceRequest) {
+func resourcereqs(pod *v1.Pod) []ContainerDeviceRequest {
 	resourceName := v1.ResourceName(VolcanoVGPUNumber)
 	resourceMem := v1.ResourceName(VolcanoVGPUMemory)
 	resourceMemPercentage := v1.ResourceName(VolcanoVGPUMemoryPercentage)
 	resourceCores := v1.ResourceName(VolcanoVGPUCores)
-	counts = make([]ContainerDeviceRequest, len(pod.Spec.Containers))
-	singledevice := false
+	counts := []ContainerDeviceRequest{}
 	//Count Nvidia GPU
 	for i := 0; i < len(pod.Spec.Containers); i++ {
+		singledevice := false
 		v, ok := pod.Spec.Containers[i].Resources.Limits[resourceName]
 		if !ok {
 			v, ok = pod.Spec.Containers[i].Resources.Limits[resourceMem]
@@ -252,20 +326,26 @@ func getGPUDeviceSnapShot(snap *GPUDevices) *GPUDevices {
 }
 
 // checkNodeGPUSharingPredicate checks if a pod with gpu requirement can be scheduled on a node.
-func checkNodeGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices) (bool, []ContainerDevice, error) {
+func checkNodeGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices, replicate bool) (bool, []ContainerDevices, error) {
 	// no gpu sharing request
 	if !checkVGPUResourcesInPod(pod) {
-		return true, []ContainerDevice{}, nil
+		return true, []ContainerDevices{}, nil
 	}
 	ctrReq := resourcereqs(pod)
 	if len(ctrReq) == 0 {
-		return true, []ContainerDevice{}, nil
+		return true, []ContainerDevices{}, nil
 	}
-	gs := getGPUDeviceSnapShot(gssnap)
-	devs := []ContainerDevice{}
+	var gs *GPUDevices
+	if replicate {
+		gs = getGPUDeviceSnapShot(gssnap)
+	} else {
+		gs = gssnap
+	}
+	ctrdevs := []ContainerDevices{}
 	for _, val := range ctrReq {
+		devs := []ContainerDevice{}
 		if int(val.Nums) > len(gs.Device) {
-			return false, []ContainerDevice{}, fmt.Errorf("no enough gpu cards on node %s", gs.Name)
+			return false, []ContainerDevices{}, fmt.Errorf("no enough gpu cards on node %s", gs.Name)
 		}
 		klog.Infoln("Allocating device for container request", val)
 
@@ -314,8 +394,43 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices) (bool, []Cont
 			}
 		}
 		if val.Nums > 0 {
-			return false, []ContainerDevice{}, fmt.Errorf("not enough gpu fitted on this node")
+			return false, []ContainerDevices{}, fmt.Errorf("not enough gpu fitted on this node")
 		}
+		ctrdevs = append(ctrdevs, devs)
 	}
-	return true, devs, nil
+	return true, ctrdevs, nil
+}
+
+func patchPodAnnotations(pod *v1.Pod, annotations map[string]string) error {
+	type patchMetadata struct {
+		Annotations map[string]string `json:"annotations,omitempty"`
+	}
+	type patchPod struct {
+		Metadata patchMetadata `json:"metadata"`
+		//Spec     patchSpec     `json:"spec,omitempty"`
+	}
+
+	p := patchPod{}
+	p.Metadata.Annotations = annotations
+
+	bytes, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	_, err = kubeClient.CoreV1().Pods(pod.Namespace).
+		Patch(context.Background(), pod.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
+	if err != nil {
+		klog.Infof("patch pod %v failed, %v", pod.Name, err)
+	}
+	/*
+		Can't modify Env of pods here
+
+		patch1 := addGPUIndexPatch()
+		_, err = s.kubeClient.CoreV1().Pods(pod.Namespace).
+			Patch(context.Background(), pod.Name, k8stypes.JSONPatchType, []byte(patch1), metav1.PatchOptions{})
+		if err != nil {
+			klog.Infof("Patch1 pod %v failed, %v", pod.Name, err)
+		}*/
+
+	return err
 }

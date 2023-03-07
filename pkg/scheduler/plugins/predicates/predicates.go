@@ -195,11 +195,13 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			//predicate gpu sharing
-			if nodeInfo.Others[api.GPUSharingDevice].(api.Devices).HasDeviceRequest(pod) {
-				err := nodeInfo.Others[api.GPUSharingDevice].(api.Devices).Allocate(ssn.KubeClient(), pod)
-				if err != nil {
-					klog.Errorf("AllocateToPod failed %s", err.Error())
-					return
+			for _, val := range api.RegisteredDevices {
+				if nodeInfo.Others[val].(api.Devices).HasDeviceRequest(pod) {
+					err := nodeInfo.Others[val].(api.Devices).Allocate(ssn.KubeClient(), pod)
+					if err != nil {
+						klog.Errorf("AllocateToPod failed %s", err.Error())
+						return
+					}
 				}
 			}
 			node.AddPod(pod)
@@ -221,12 +223,14 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 
-			if nodeInfo.Others[api.GPUSharingDevice].(api.Devices).HasDeviceRequest(pod) {
-				// deallocate pod gpu id
-				err := nodeInfo.Others[api.GPUSharingDevice].(api.Devices).Release(ssn.KubeClient(), pod)
-				if err != nil {
-					klog.Errorf(err.Error())
-					return
+			for _, val := range api.RegisteredDevices {
+				if nodeInfo.Others[val].(api.Devices).HasDeviceRequest(pod) {
+					// deallocate pod gpu id
+					err := nodeInfo.Others[val].(api.Devices).Release(ssn.KubeClient(), pod)
+					if err != nil {
+						klog.Errorf(err.Error())
+						return
+					}
 				}
 			}
 
@@ -401,15 +405,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return fmt.Errorf("plugin %s predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
 		}
 
-		if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
-			fit, err = node.Others[api.GPUSharingDevice].(api.Devices).FilterNode(task.Pod)
-			if err != nil {
-				return err
-			}
-		}
-
-		if vgpu4pd.VGPUEnable {
-			fit, err = node.Others[vgpu4pd.DeviceName].(api.Devices).FilterNode(task.Pod)
+		for _, val := range api.RegisteredDevices {
+			fit, err = node.Others[val].(api.Devices).FilterNode(task.Pod)
 			if err != nil {
 				return err
 			}

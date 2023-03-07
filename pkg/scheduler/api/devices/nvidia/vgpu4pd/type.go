@@ -20,8 +20,15 @@ var VGPUEnable bool
 var NodeLockEnable bool
 
 const (
-	GPUInUse        = "nvidia.com/use-gputype"
-	GPUNoUse        = "nvidia.com/nouse-gputype"
+	GPUInUse                         = "nvidia.com/use-gputype"
+	GPUNoUse                         = "nvidia.com/nouse-gputype"
+	AssignedTimeAnnotations          = "volcano.sh/vgpu-time"
+	AssignedIDsAnnotations           = "volcano.sh/vgpu-ids-new"
+	AssignedIDsToAllocateAnnotations = "volcano.sh/devices-to-allocate"
+	AssignedNodeAnnotations          = "volcano.sh/vgpu-node"
+	BindTimeAnnotations              = "volcano.sh/bind-time"
+	DeviceBindPhase                  = "volcano.sh/bind-phase"
+
 	NvidiaGPUDevice = "NVIDIA"
 
 	// VolcanoGPUMemory extended gpu memory
@@ -35,7 +42,7 @@ const (
 	// VolcanoVGPURegister virtual gpu information registered from device-plugin to scheduler
 	VolcanoVGPURegister = "volcano.sh/node-vgpu-register"
 	// Volcanohandshake for vgpu
-	VolcanoVGPUHandshake = "volcano.sh/node-handshake"
+	VolcanoVGPUHandshake = "volcano.sh/node-vgpu-handshake"
 
 	// PredicateTime is the key of predicate time
 	PredicateTime = "volcano.sh/predicate-time"
@@ -63,3 +70,5 @@ type ContainerDevice struct {
 	Usedmem   int32
 	Usedcores int32
 }
+
+type ContainerDevices []ContainerDevice

@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu4pd"
 )
 
 const (
@@ -44,6 +45,9 @@ type Devices interface {
 	//Release action in predicate
 	Release(kubeClient kubernetes.Interface, pod *v1.Pod) error
 
+	//IgnredDevices notify vc-scheduler to ignore devices in return list
+	GetIgnoredDevices() []string
+
 	//used for debug and monitor
 	GetStatus() string
 }
@@ -51,6 +55,8 @@ type Devices interface {
 // make sure GPUDevices implements Devices interface
 var _ Devices = new(gpushare.GPUDevices)
 
-var IgnoredResources = []string{
-	"111", "222",
+var IgnoredDevicesList []string
+
+var RegisteredDevices = []string{
+	GPUSharingDevice, vgpu4pd.DeviceName,
 }

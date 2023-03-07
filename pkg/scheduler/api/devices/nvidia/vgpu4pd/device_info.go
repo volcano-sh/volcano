@@ -17,12 +17,15 @@ limitations under the License.
 package vgpu4pd
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
 
 // GPUDevice include gpu id, memory and the pods that are sharing it.
@@ -80,7 +83,7 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	if !ok {
 		return nil
 	}
-	nodedevices := DecodeNodeDevices(name, annos)
+	nodedevices := decodeNodeDevices(name, annos)
 	if len(nodedevices.Device) == 0 {
 		return nil
 	}
@@ -96,7 +99,7 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 
 			tmppat := make(map[string]string)
 			tmppat[handshake] = "Deleted_" + time.Now().Format("2006.01.02 15:04:05")
-			PatchNodeAnnotations(node, tmppat)
+			patchNodeAnnotations(node, tmppat)
 			return nil
 		}
 	} else if strings.Contains(handshake, "Deleted") {
@@ -104,37 +107,61 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	} else {
 		tmppat := make(map[string]string)
 		tmppat[VolcanoVGPUHandshake] = "Requesting_" + time.Now().Format("2006.01.02 15:04:05")
-		PatchNodeAnnotations(node, tmppat)
+		patchNodeAnnotations(node, tmppat)
 	}
 	return nodedevices
 }
 
+func (gs *GPUDevices) GetIgnoredDevices() []string {
+	return []string{VolcanoVGPUMemory, VolcanoVGPUMemoryPercentage, VolcanoVGPUCores}
+}
+
 // AddGPUResource adds the pod to GPU pool if it is assigned
 func (gs *GPUDevices) AddResource(pod *v1.Pod) {
-	/*
-		gpuRes := getGPUMemoryOfPod(pod)
-		if gpuRes > 0 {
-			ids := GetGPUIndex(pod)
-			for _, id := range ids {
-				if dev := gs.Device[id]; dev != nil {
-					dev.PodMap[string(pod.UID)] = pod
+	ids, ok := pod.Annotations[AssignedIDsAnnotations]
+	if !ok {
+		return
+	}
+	podDev := decodePodDevices(ids)
+	for _, val := range podDev {
+		for _, deviceused := range val {
+			if gs == nil {
+				break
+			}
+			for index, gsdevice := range gs.Device {
+				if strings.Compare(gsdevice.UUID, deviceused.UUID) == 0 {
+					klog.Infoln("recording pod", pod.Name, "device", deviceused)
+					gs.Device[index].UsedMem += uint(deviceused.Usedmem)
+					gs.Device[index].UsedNum++
+					gs.Device[index].UsedCore += uint(deviceused.Usedcores)
 				}
 			}
-		}*/
+		}
+	}
 }
 
 // SubGPUResource frees the gpu hold by the pod
 func (gs *GPUDevices) SubResource(pod *v1.Pod) {
-	/*
-		gpuRes := getGPUMemoryOfPod(pod)
-		if gpuRes > 0 {
-			ids := GetGPUIndex(pod)
-			for _, id := range ids {
-				if dev := gs.Device[id]; dev != nil {
-					delete(dev.PodMap, string(pod.UID))
+	ids, ok := pod.Annotations[AssignedIDsAnnotations]
+	if !ok {
+		return
+	}
+	podDev := decodePodDevices(ids)
+	for _, val := range podDev {
+		for _, deviceused := range val {
+			if gs == nil {
+				break
+			}
+			for index, gsdevice := range gs.Device {
+				if strings.Compare(gsdevice.UUID, deviceused.UUID) == 0 {
+					klog.Infoln("subsctracting pod", pod.Name, "device", deviceused)
+					gs.Device[index].UsedMem -= uint(deviceused.Usedmem)
+					gs.Device[index].UsedNum--
+					gs.Device[index].UsedCore -= uint(deviceused.Usedcores)
 				}
 			}
-		}*/
+		}
+	}
 }
 
 func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
@@ -146,22 +173,7 @@ func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
 }
 
 func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	/*ids := GetGPUIndex(pod)
-	patch := RemoveGPUIndexPatch()
-	_, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
-	if err != nil {
-		return errors.Errorf("patch pod %s failed with patch %s: %v", pod.Name, patch, err)
-
-	}
-
-	for _, id := range ids {
-		if dev, ok := gs.Device[id]; ok {
-			delete(dev.PodMap, string(pod.UID))
-		}
-	}
-
-	klog.V(4).Infof("predicates with gpu sharing, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, gs.Name)
-	*/
+	// Nothing needs to be done here
 	return nil
 }
 
@@ -169,7 +181,7 @@ func (gs *GPUDevices) FilterNode(pod *v1.Pod) (bool, error) {
 
 	klog.Infoln("4pdvgpuDeviceSharing:Into FitInPod", pod.Name)
 	if VGPUEnable {
-		fit, _, err := checkNodeGPUSharingPredicate(pod, gs)
+		fit, _, err := checkNodeGPUSharingPredicate(pod, gs, true)
 		if err != nil {
 			klog.Errorln("deviceSharing err=", err.Error())
 			return fit, err
@@ -184,53 +196,32 @@ func (gs *GPUDevices) GetStatus() string {
 }
 
 func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	klog.V(4).Infoln("DeviceSharing:Into AllocateToPod", pod.Name)
-	/*
-		if getGPUMemoryOfPod(pod) > 0 {
-			if NodeLockEnable {
-				nodelock.UseClient(kubeClient)
-				err := nodelock.LockNode(gs.Name, "gpu")
-				if err != nil {
-					return errors.Errorf("node %s locked for lockname gpushare %s", gs.Name, err.Error())
-				}
-			}
-			ids := predicateGPUbyMemory(pod, gs)
-			if len(ids) == 0 {
-				return errors.Errorf("the node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
-			}
-			id := ids[0]
-			patch := AddGPUIndexPatch([]int{id})
-			pod, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
-			if err != nil {
-				return errors.Errorf("patch pod %s failed with patch %s: %v", pod.Name, patch, err)
-
-			}
-			dev, ok := gs.Device[id]
-			if !ok {
-				return errors.Errorf("failed to get GPU %d from node %s", id, gs.Name)
-			}
-			dev.PodMap[string(pod.UID)] = pod
-			klog.V(4).Infof("predicates with gpu sharing, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, gs.Name)
+	klog.Infoln("-=-=-=-=-=DeviceSharing:Into AllocateToPod", pod.Name)
+	if VGPUEnable {
+		fit, device, err := checkNodeGPUSharingPredicate(pod, gs, false)
+		if err != nil || !fit {
+			klog.Errorln("DeviceSharing err=", err.Error())
+			return err
 		}
-		if getGPUNumberOfPod(pod) > 0 {
-			ids := predicateGPUbyNumber(pod, gs)
-			if len(ids) == 0 {
-				return errors.Errorf("the node %s can't place the pod %s in ns %s", pod.Spec.NodeName, pod.Name, pod.Namespace)
+		nodelock.UseClient(kubeClient)
+		err = nodelock.LockNode(gs.Name, DeviceName)
+		if err != nil {
+			return errors.Errorf("node %s locked for lockname gpushare %s", gs.Name, err.Error())
+		}
 
-			}
-			patch := AddGPUIndexPatch(ids)
-			pod, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, []byte(patch), metav1.PatchOptions{})
-			if err != nil {
-				return errors.Errorf("patch pod %s failed with patch %s: %v", pod.Name, patch, err)
-			}
-			for _, id := range ids {
-				dev, ok := gs.Device[id]
-				if !ok {
-					return errors.Errorf("failed to get GPU %d from node %s", id, gs.Name)
-				}
-				dev.PodMap[string(pod.UID)] = pod
-			}
-			klog.V(4).Infof("predicates with gpu number, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, gs.Name)
-		}*/
+		annotations := make(map[string]string)
+		annotations[AssignedNodeAnnotations] = gs.Name
+		annotations[AssignedTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
+		annotations[AssignedIDsAnnotations] = encodePodDevices(device)
+		annotations[AssignedIDsToAllocateAnnotations] = annotations[AssignedIDsAnnotations]
+
+		annotations[DeviceBindPhase] = "allocating"
+		annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
+		err = patchPodAnnotations(pod, annotations)
+		if err != nil {
+			return err
+		}
+		klog.Infoln("DeviceSharing:Allocate Success")
+	}
 	return nil
 }
