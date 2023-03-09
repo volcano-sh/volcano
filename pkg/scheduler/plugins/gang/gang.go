@@ -29,6 +29,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/gangextender"
 )
 
 // PluginName indicates name of volcano scheduler plugin.
@@ -85,6 +86,11 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		jobOccupiedMap := map[api.JobID]int32{}
 
 		for _, preemptee := range preemptees {
+			// Can not reclaim or preempt some special task.
+			// Such as spark driver. if reclaim or preempt driver, the spark job will be fail!
+			if gangextender.GangPreemptRejectExtender(preemptee) {
+				continue
+			}
 			job := ssn.Jobs[preemptee.Job]
 			if _, found := jobOccupiedMap[job.UID]; !found {
 				jobOccupiedMap[job.UID] = job.ReadyTaskNum()
