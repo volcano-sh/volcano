@@ -40,11 +40,11 @@ type ElasticsearchMetricsClient struct {
 
 func NewElasticsearchMetricsClient(address string, conf map[string]string) (*ElasticsearchMetricsClient, error) {
 	e := &ElasticsearchMetricsClient{address: address}
-	indexConf := conf["elasticsearch.index"]
-	if len(indexConf) == 0 {
+	indexName := conf["elasticsearch.index"]
+	if len(indexName) == 0 {
 		e.indexName = "metricbeat-*"
 	} else {
-		e.indexName = indexConf
+		e.indexName = indexName
 	}
 	var err error
 	e.es, err = elasticsearch.NewClient(elasticsearch.Config{
@@ -100,21 +100,27 @@ func (e *ElasticsearchMetricsClient) NodeMetricsAvg(ctx context.Context, nodeNam
 	}
 	res, err := e.es.Search(
 		e.es.Search.WithContext(ctx),
-		e.es.Search.WithIndex("metricbeat-*"),
+		e.es.Search.WithIndex(e.indexName),
 		e.es.Search.WithBody(&buf),
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer res.Body.Close()
-	var r map[string]interface{}
+	var r struct {
+		Aggregations struct {
+			Cpu struct {
+				Value float64 `json:"value"`
+			}
+			Mem struct {
+				Value float64 `json:"value"`
+			}
+		} `json:"aggregations"`
+	}
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
 		return nil, err
 	}
-	aggs := r["aggregations"].(map[string]interface{})
-	cpuUsage := aggs["cpu"].(map[string]interface{})["value"].(float64)
-	memUsage := aggs["mem"].(map[string]interface{})["value"].(float64)
-	nodeMetrics.Cpu = cpuUsage
-	nodeMetrics.Memory = memUsage
+	nodeMetrics.Cpu = r.Aggregations.Cpu.Value
+	nodeMetrics.Memory = r.Aggregations.Mem.Value
 	return nodeMetrics, nil
 }
