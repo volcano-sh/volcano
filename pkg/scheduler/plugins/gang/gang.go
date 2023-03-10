@@ -83,15 +83,27 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 		jobOccupiedMap := map[api.JobID]int32{}
-
+		jobAllocatedMap := map[api.JobID]*api.Resource{}
 		for _, preemptee := range preemptees {
 			job := ssn.Jobs[preemptee.Job]
 			if _, found := jobOccupiedMap[job.UID]; !found {
 				jobOccupiedMap[job.UID] = job.ReadyTaskNum()
+				jobAllocatedMap[job.UID] = util.GetAllocatedResource(job)
+			}
+
+			// It's not allowed to reclaim or preempt task when allocated is less equal to min resource of job.
+			jobMinResource := job.GetMinResources()
+			klog.V(4).Infof("Job name is <%v>, Allocated is %+v, MinResource is %+v.", job.Name, jobAllocatedMap[job.UID], jobMinResource)
+			jobAllocatedTmp := jobAllocatedMap[job.UID].Clone()
+			if jobAllocatedTmp.Sub(preemptee.Resreq).LessPartly(jobMinResource, api.Zero) {
+				klog.V(4).Infof("Can not preempt or reclaim task <%v/%v>, because allocated of job <%v> is less equal to min resource.",
+					preemptee.Namespace, preemptee.Name, job.Name)
+				continue
 			}
 
 			if jobOccupiedMap[job.UID] > job.MinAvailable {
 				jobOccupiedMap[job.UID]--
+				jobAllocatedMap[job.UID].Sub(preemptee.Resreq)
 				victims = append(victims, preemptee)
 			} else {
 				klog.V(4).Infof("Can not preempt task <%v/%v> because job %s ready num(%d) <= MinAvailable(%d) for gang-scheduling",
