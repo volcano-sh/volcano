@@ -152,6 +152,12 @@ func (ra *Action) Execute(ssn *framework.Session) {
 					reclaimees = append(reclaimees, task.Clone())
 				}
 			}
+
+			if len(reclaimees) == 0 {
+				klog.V(4).Infof("No reclaimees on Node <%s>.", n.Name)
+				continue
+			}
+
 			victims := ssn.Reclaimable(task, reclaimees)
 
 			if err := util.ValidateVictims(task, n, victims); err != nil {
