@@ -39,5 +39,5 @@ func NewMetricsClient(metricsConf map[string]string) (MetricsClient, error) {
 	if metricsType == "elasticsearch" {
 		return NewElasticsearchMetricsClient(address, metricsConf)
 	}
-	return &PrometheusMetricsClient{address: address}, nil
+	return NewPrometheusMetricsClient(address, metricsConf)
 }
