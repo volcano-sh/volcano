@@ -188,5 +188,5 @@ Investigate to cooperate with argo to support job dependencies.
 ### Support job backfill
 * Description: Add backfill functionality to improve the resource utilization.
 
-### Improve the Autoscaling enficiency
+### Improve the Autoscaling efficiency
 * Description: Combine the Autoscaler and scheduler to improve the scaling efficiency.
