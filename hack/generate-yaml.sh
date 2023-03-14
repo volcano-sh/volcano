@@ -62,7 +62,7 @@ esac
 ARCH=$(go env GOARCH)
 
 # Step1. install helm binary
-if [[ ! -f "${HELM_BIN_DIR}/version.helm.${HELM_VER}" ]] ; then
+if [[ ! -f "${HELM_BIN_DIR}/version.helm.${HELM_VER}" ]] || [[ ! -f "${HELM_BIN_DIR}/helm" ]] ; then
     TD=$(mktemp -d)
     cd "${TD}" && \
         curl -Lo "${TD}/helm.tgz" "https://get.helm.sh/helm-${HELM_VER}-${LOCAL_OS}-${ARCH}.tar.gz" && \
@@ -70,8 +70,11 @@ if [[ ! -f "${HELM_BIN_DIR}/version.helm.${HELM_VER}" ]] ; then
         mv ${LOCAL_OS}-${ARCH}/helm "${HELM_BIN_DIR}/helm-${HELM_VER}" && \
         cp "${HELM_BIN_DIR}/helm-${HELM_VER}" "${HELM_BIN_DIR}/helm" && \
         chmod +x ${HELM_BIN_DIR}/helm
-        rm -rf "${TD}" && \
-        touch "${HELM_BIN_DIR}/version.helm.${HELM_VER}"
+        rm -rf "${TD}"
+
+        if [[ ! -f "${HELM_BIN_DIR}/version.helm.${HELM_VER}" ]] ; then
+          touch "${HELM_BIN_DIR}/version.helm.${HELM_VER}"
+        fi
 fi
 
 # Step2. update helm templates from config dir
