@@ -122,6 +122,11 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 			patch = append(patch, *patchLabel)
 		}
 
+		patchAffinity := patchAffinity(pod, resourceGroup)
+		if patchAffinity != nil {
+			patch = append(patch, *patchAffinity)
+		}
+
 		patchToleration := patchTaintToleration(pod, resourceGroup)
 		if patchToleration != nil {
 			patch = append(patch, *patchToleration)
@@ -154,6 +159,28 @@ func patchLabels(pod *v1.Pod, resGroupConfig wkconfig.ResGroupConfig) *patchOper
 	}
 
 	return &patchOperation{Op: "add", Path: "/spec/nodeSelector", Value: nodeSelector}
+}
+
+// patchAffinity patch affinity
+func patchAffinity(pod *v1.Pod, resGroupConfig wkconfig.ResGroupConfig) *patchOperation {
+	if resGroupConfig.Affinity == "" {
+		return nil
+	}
+
+	if pod.Spec.Affinity != nil {
+		klog.V(5).Infof("pod affinity exist: %s", pod.Name)
+		return nil
+	}
+
+	var affinity v1.Affinity
+	err := json.Unmarshal([]byte(resGroupConfig.Affinity), &affinity)
+	if err != nil {
+		fmt.Println("Failed to unmarshal JSON:", err)
+		klog.V(3).Infof("Failed to unmarshal JSON: %s", err)
+		return nil
+	}
+
+	return &patchOperation{Op: "add", Path: "/spec/affinity", Value: affinity}
 }
 
 // patchTaintToleration patch taint toleration

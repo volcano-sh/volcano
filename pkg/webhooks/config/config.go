@@ -42,6 +42,7 @@ type ResGroupConfig struct {
 	SchedulerName string            `yaml:"schedulerName"`
 	Tolerations   []v1.Toleration   `yaml:"tolerations"`
 	Labels        map[string]string `yaml:"labels"`
+	Affinity      string            `yaml:"affinity"`
 }
 
 // AdmissionConfiguration defines the configuration of admission.
