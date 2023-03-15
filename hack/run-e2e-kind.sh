@@ -55,6 +55,7 @@ function install-volcano {
 
   echo "Install volcano chart with crd version $crd_version"
   helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace volcano-system --kubeconfig ${KUBECONFIG} \
+    --set basic.image_pull_policy=IfNotPresent \
     --set basic.image_tag_version=${TAG} \
     --set basic.scheduler_config_file=config/volcano-scheduler-ci.conf \
     --set basic.crd_version=${crd_version} \
