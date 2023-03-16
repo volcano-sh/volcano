@@ -35,9 +35,10 @@ const (
 )
 
 type ElasticsearchMetricsClient struct {
-	address   string
-	indexName string
-	es        *elasticsearch.Client
+	address           string
+	indexName         string
+	es                *elasticsearch.Client
+	hostnameFieldName string
 }
 
 func NewElasticsearchMetricsClient(address string, conf map[string]string) (*ElasticsearchMetricsClient, error) {
@@ -47,6 +48,12 @@ func NewElasticsearchMetricsClient(address string, conf map[string]string) (*Ela
 		e.indexName = "metricbeat-*"
 	} else {
 		e.indexName = indexName
+	}
+	hostNameFieldName := conf["elasticsearch.hostnameFieldName"]
+	if len(hostNameFieldName) == 0 {
+		e.hostnameFieldName = esHostNameField
+	} else {
+		e.hostnameFieldName = hostNameFieldName
 	}
 	var err error
 	insecureSkipVerify := conf["tls.insecureSkipVerify"] == "true"
@@ -84,7 +91,7 @@ func (e *ElasticsearchMetricsClient) NodeMetricsAvg(ctx context.Context, nodeNam
 					},
 					{
 						"term": map[string]interface{}{
-							esHostNameField: nodeName,
+							e.hostnameFieldName: nodeName,
 						},
 					},
 				},
