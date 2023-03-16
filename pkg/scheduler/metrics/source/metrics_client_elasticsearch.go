@@ -19,8 +19,10 @@ package source
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"github.com/elastic/go-elasticsearch/v7"
+	"net/http"
 )
 
 const (
@@ -47,10 +49,16 @@ func NewElasticsearchMetricsClient(address string, conf map[string]string) (*Ela
 		e.indexName = indexName
 	}
 	var err error
+	insecureSkipVerify := conf["tls.insecureSkipVerify"] == "true"
 	e.es, err = elasticsearch.NewClient(elasticsearch.Config{
 		Addresses: []string{address},
 		Username:  conf["elasticsearch.username"],
 		Password:  conf["elasticsearch.password"],
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: insecureSkipVerify,
+			},
+		},
 	})
 	if err != nil {
 		return nil, err
