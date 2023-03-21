@@ -135,7 +135,8 @@ func (e *ElasticsearchMetricsClient) NodeMetricsAvg(ctx context.Context, nodeNam
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
 		return nil, err
 	}
-	nodeMetrics.Cpu = r.Aggregations.Cpu.Value
-	nodeMetrics.Memory = r.Aggregations.Mem.Value
+	// The data obtained from Elasticsearch is in decimals and needs to be multiplied by 100.
+	nodeMetrics.Cpu = r.Aggregations.Cpu.Value * 100
+	nodeMetrics.Memory = r.Aggregations.Mem.Value * 100
 	return nodeMetrics, nil
 }
