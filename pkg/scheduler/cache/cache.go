@@ -27,6 +27,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 
 	v1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -215,8 +216,13 @@ func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
 		klog.Errorf("Failed to update pod <%v/%v> status: %v", pod.Namespace, pod.Name, err)
 		return err
 	}
-	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(context.TODO(), p.Name, metav1.DeleteOptions{}); err != nil {
-		klog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
+	if err := de.kubeclient.CoreV1().Pods(p.Namespace).EvictV1(context.TODO(), &policyv1.Eviction{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      p.Name,
+			Namespace: p.Namespace,
+		},
+	}); err != nil {
+		klog.Errorf("Failed to evict pod <%v/%v>: %v", p.Namespace, p.Name, err)
 		return err
 	}
 
