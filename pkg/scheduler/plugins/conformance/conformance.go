@@ -63,6 +63,20 @@ func (pp *conformancePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddPreemptableFn(pp.Name(), evictableFn)
 	ssn.AddReclaimableFn(pp.Name(), evictableFn)
+	namespaceOrderFn := func(left, right interface{}) int {
+		lv := left.(api.NamespaceName)
+		rv := right.(api.NamespaceName)
+
+		if lv == v1.NamespaceSystem {
+			return -1
+		}
+		if rv == v1.NamespaceSystem {
+			return 1
+		}
+		return 0
+	}
+
+	ssn.AddNamespaceOrderFn(pp.Name(), namespaceOrderFn)
 }
 
 func (pp *conformancePlugin) OnSessionClose(ssn *framework.Session) {}
