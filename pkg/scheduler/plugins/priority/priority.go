@@ -118,6 +118,45 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return ji.ReadyTaskNum()+ji.WaitingTaskNum() < int32(len(ji.Tasks))
 	}
 	ssn.AddJobStarvingFns(pp.Name(), jobStarvingFn)
+
+	namespaceOrderFn := func(l interface{}, r interface{}) int {
+		lv := l.(api.NamespaceName)
+		rv := r.(api.NamespaceName)
+
+		var lPriority int32
+		var rPriority int32
+		var lHighestJob string
+		var rHighestJob string
+
+		for _, info := range ssn.Jobs {
+			// only calculate pending jobs
+			switch info.Namespace {
+			case string(lv):
+				if lPriority < info.Priority {
+					lPriority = info.Priority
+					lHighestJob = info.Name
+				}
+			case string(rv):
+				if rPriority < info.Priority {
+					rPriority = info.Priority
+					rHighestJob = info.Name
+				}
+			}
+		}
+		klog.V(5).Infof("Priority NamespaceOrderFn: namespace <%s> priority <%d> from job <%s>, "+
+			"namespace <%s> priority <%d> from job <%s>", lv, lPriority, lHighestJob, rv, rPriority, rHighestJob)
+
+		if lPriority == rPriority {
+			return 0
+		}
+
+		if lPriority < rPriority {
+			return 1
+		}
+
+		return -1
+	}
+	ssn.AddNamespaceOrderFn(pp.Name(), namespaceOrderFn)
 }
 
 func (pp *priorityPlugin) OnSessionClose(ssn *framework.Session) {}
