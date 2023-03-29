@@ -217,7 +217,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				break
 			}
 
-			predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, predicateFn)
+			predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, predicateFn, true)
 			if len(predicateNodes) == 0 {
 				job.NodesFitErrors[task.UID] = fitErrors
 				break
