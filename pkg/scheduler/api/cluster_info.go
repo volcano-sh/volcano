@@ -65,8 +65,7 @@ func (ci ClusterInfo) String() string {
 	if len(ci.NamespaceInfo) != 0 {
 		str += "Namespaces:\n"
 		for _, ns := range ci.NamespaceInfo {
-			str += fmt.Sprintf("\t Namespace(%s) Weight(%v)\n",
-				ns.Name, ns.Weight)
+			str += fmt.Sprintf("\t Namespace(%s)\n", ns.Name)
 		}
 	}
 

@@ -46,18 +46,16 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	defer klog.V(3).Infof("Leaving Allocate ...")
 
 	// the allocation for pod may have many stages
-	// 1. pick a namespace named N (using ssn.NamespaceOrderFn)
-	// 2. pick a queue named Q from N (using ssn.QueueOrderFn)
-	// 3. pick a job named J from Q (using ssn.JobOrderFn)
-	// 4. pick a task T from J (using ssn.TaskOrderFn)
-	// 5. use predicateFn to filter out node that T can not be allocated on.
-	// 6. use ssn.NodeOrderFn to judge the best node and assign it to T
+	// 1. pick a queue named Q (using ssn.QueueOrderFn)
+	// 2. pick a job named J from Q (using ssn.JobOrderFn)
+	// 3. pick a task T from J (using ssn.TaskOrderFn)
+	// 4. use predicateFn to filter out node that T can not be allocated on.
+	// 5. use ssn.NodeOrderFn to judge the best node and assign it to T
 
-	namespaces := util.NewPriorityQueue(ssn.NamespaceOrderFn)
-
-	// jobsMap is map[api.NamespaceName]map[api.QueueID]PriorityQueue(*api.JobInfo)
-	// used to find job with highest priority in given queue and namespace
-	jobsMap := map[api.NamespaceName]map[api.QueueID]*util.PriorityQueue{}
+	// queues sort queues by QueueOrderFn.
+	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
+	// jobsMap is used to find job with the highest priority in given queue.
+	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
 		// If not config enqueue action, change Pending pg into Inqueue statue to avoid blocking job scheduling.
@@ -84,26 +82,16 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		namespace := api.NamespaceName(job.Namespace)
-		queueMap, found := jobsMap[namespace]
-		if !found {
-			namespaces.Push(namespace)
-
-			queueMap = make(map[api.QueueID]*util.PriorityQueue)
-			jobsMap[namespace] = queueMap
-		}
-
-		jobs, found := queueMap[job.Queue]
-		if !found {
-			jobs = util.NewPriorityQueue(ssn.JobOrderFn)
-			queueMap[job.Queue] = jobs
+		if _, found := jobsMap[job.Queue]; !found {
+			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			queues.Push(ssn.Queues[job.Queue])
 		}
 
 		klog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
-		jobs.Push(job)
+		jobsMap[job.Queue].Push(job)
 	}
 
-	klog.V(3).Infof("Try to allocate resource to %d Namespaces", len(jobsMap))
+	klog.V(3).Infof("Try to allocate resource to %d Queues", len(jobsMap))
 
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
 
@@ -121,49 +109,21 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	// Because we believe that number of queues would less than namespaces in most case.
 	// And, this action would make the resource usage among namespace balanced.
 	for {
-		if namespaces.Empty() {
+		if queues.Empty() {
 			break
 		}
 
-		// pick namespace from namespaces PriorityQueue
-		namespace := namespaces.Pop().(api.NamespaceName)
+		queue := queues.Pop().(*api.QueueInfo)
 
-		queueInNamespace := jobsMap[namespace]
-
-		// pick queue for given namespace
-		//
-		// This block use an algorithm with time complex O(n).
-		// But at least PriorityQueue could not be used here,
-		// because the allocation of job would change the priority of queue among all namespaces,
-		// and the PriorityQueue have no ability to update priority for a special queue.
-		var queue *api.QueueInfo
-		for queueID := range queueInNamespace {
-			currentQueue := ssn.Queues[queueID]
-			if ssn.Overused(currentQueue) {
-				klog.V(3).Infof("Namespace <%s> Queue <%s> is overused, ignore it.", namespace, currentQueue.Name)
-				delete(queueInNamespace, queueID)
-				continue
-			}
-			if jobs, found := queueInNamespace[currentQueue.UID]; found && jobs.Empty() {
-				continue
-			}
-
-			if queue == nil || ssn.QueueOrderFn(currentQueue, queue) {
-				queue = currentQueue
-			}
-		}
-
-		if queue == nil {
-			klog.V(3).Infof("Namespace <%s> have no queue, skip it", namespace)
+		if ssn.Overused(queue) {
+			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
 			continue
 		}
 
-		klog.V(3).Infof("Try to allocate resource to Jobs in Namespace <%s> Queue <%v>", namespace, queue.Name)
+		klog.V(3).Infof("Try to allocate resource to Jobs in Queue <%s>", queue.Name)
 
-		jobs, found := queueInNamespace[queue.UID]
+		jobs, found := jobsMap[queue.UID]
 		if !found || jobs.Empty() {
-			delete(queueInNamespace, queue.UID)
-			namespaces.Push(namespace)
 			klog.V(4).Infof("Can not find jobs for queue %s.", queue.Name)
 			continue
 		}
@@ -185,8 +145,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 		tasks := pendingTasks[job.UID]
 
-		// Added Namespace back until no job in Namespace.
-		namespaces.Push(namespace)
+		// Added Queue back until no job in Namespace.
+		queues.Push(queue)
 
 		if tasks.Empty() {
 			continue
