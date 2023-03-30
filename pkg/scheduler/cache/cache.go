@@ -1099,8 +1099,6 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	for _, value := range sc.NamespaceCollection {
 		info := value.Snapshot()
 		snapshot.NamespaceInfo[info.Name] = info
-		klog.V(4).Infof("Namespace %s has weight %v",
-			value.Name, info.GetWeight())
 	}
 
 	for _, value := range sc.Jobs {
@@ -1161,8 +1159,7 @@ func (sc *SchedulerCache) String() string {
 		str += "Namespaces:\n"
 		for _, ns := range sc.NamespaceCollection {
 			info := ns.Snapshot()
-			str += fmt.Sprintf("\t Namespace(%s) Weight(%v)\n",
-				info.Name, info.Weight)
+			str += fmt.Sprintf("\t Namespace(%s)\n", info.Name)
 		}
 	}
 

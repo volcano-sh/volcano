@@ -44,11 +44,6 @@ func (ssn *Session) AddTaskOrderFn(name string, cf api.CompareFn) {
 	ssn.taskOrderFns[name] = cf
 }
 
-// AddNamespaceOrderFn add namespace order function
-func (ssn *Session) AddNamespaceOrderFn(name string, cf api.CompareFn) {
-	ssn.namespaceOrderFns[name] = cf
-}
-
 // AddPreemptableFn add preemptable function
 func (ssn *Session) AddPreemptableFn(name string, cf api.EvictableFn) {
 	ssn.preemptableFns[name] = cf
@@ -522,31 +517,6 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 		return lv.UID < rv.UID
 	}
 	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
-}
-
-// NamespaceOrderFn invoke namespaceorder function of the plugins
-func (ssn *Session) NamespaceOrderFn(l, r interface{}) bool {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledNamespaceOrder) {
-				continue
-			}
-			nof, found := ssn.namespaceOrderFns[plugin.Name]
-			if !found {
-				continue
-			}
-			if j := nof(l, r); j != 0 {
-				return j < 0
-			}
-		}
-	}
-
-	// TODO(lminzhw): if all NamespaceOrderFn treat these two namespace as the same,
-	// we should make the job order have its affect among namespaces.
-	// or just schedule namespace one by one
-	lv := l.(api.NamespaceName)
-	rv := r.(api.NamespaceName)
-	return lv < rv
 }
 
 // ClusterOrderFn invoke ClusterOrderFn function of the plugins
