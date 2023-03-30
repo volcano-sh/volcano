@@ -42,8 +42,8 @@ func (alloc *Action) Name() string {
 func (alloc *Action) Initialize() {}
 
 func (alloc *Action) Execute(ssn *framework.Session) {
-	klog.V(3).Infof("Enter Allocate ...")
-	defer klog.V(3).Infof("Leaving Allocate ...")
+	klog.V(5).Infof("Enter Allocate ...")
+	defer klog.V(5).Infof("Leaving Allocate ...")
 
 	// the allocation for pod may have many stages
 	// 1. pick a queue named Q (using ssn.QueueOrderFn)

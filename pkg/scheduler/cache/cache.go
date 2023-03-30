@@ -671,11 +671,14 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go wait.Until(sc.processBindTask, time.Millisecond*20, stopCh)
 
 	// Get metrics data
-	interval, err := time.ParseDuration(sc.metricsConf["interval"])
-	if err != nil || interval <= 0 {
-		interval = time.Duration(defaultMetricsInternal)
+	address := sc.metricsConf["address"]
+	if len(address) > 0 {
+		interval, err := time.ParseDuration(sc.metricsConf["interval"])
+		if err != nil || interval <= 0 {
+			interval = time.Duration(defaultMetricsInternal)
+		}
+		go wait.Until(sc.GetMetricsData, interval, stopCh)
 	}
-	go wait.Until(sc.GetMetricsData, interval, stopCh)
 }
 
 // WaitForCacheSync sync the cache with the api server

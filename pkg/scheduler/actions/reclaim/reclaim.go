@@ -37,8 +37,8 @@ func (ra *Action) Name() string {
 func (ra *Action) Initialize() {}
 
 func (ra *Action) Execute(ssn *framework.Session) {
-	klog.V(3).Infof("Enter Reclaim ...")
-	defer klog.V(3).Infof("Leaving Reclaim ...")
+	klog.V(5).Infof("Enter Reclaim ...")
+	defer klog.V(5).Infof("Leaving Reclaim ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}

@@ -79,12 +79,10 @@ func (up *usagePlugin) Name() string {
 }
 
 func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
-	klog.V(4).Infof("Enter usage plugin ...")
-	if klog.V(4).Enabled() {
-		defer func() {
-			klog.V(4).Infof("Leaving usage plugin ...")
-		}()
-	}
+	klog.V(5).Infof("Enter usage plugin ...")
+	defer func() {
+		klog.V(5).Infof("Leaving usage plugin ...")
+	}()
 
 	if klog.V(4).Enabled() {
 		for node := range ssn.Nodes {
