@@ -163,9 +163,13 @@ func (pg *pgcontroller) processNextReq() bool {
 		return true
 	}
 
-	if pod.Annotations != nil && pod.Annotations[scheduling.KubeGroupNameAnnotationKey] != "" {
-		klog.V(5).Infof("pod %v/%v has created podgroup", pod.Namespace, pod.Name)
-		return true
+	if pod.Annotations != nil {
+		if pgName := pod.Annotations[scheduling.KubeGroupNameAnnotationKey]; pgName != "" {
+			if _, err := pg.pgLister.PodGroups(pod.Namespace).Get(pgName); err == nil {
+				klog.V(5).Infof("pod %v/%v has created podgroup", pod.Namespace, pod.Name)
+				return true
+			}
+		}
 	}
 
 	// normal pod use volcano
