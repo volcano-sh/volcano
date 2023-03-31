@@ -137,12 +137,10 @@ func (tp *tdmPlugin) availableRevocableZone(rz string) error {
 }
 
 func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
-	klog.V(4).Infof("Enter tdm plugin ...")
-	if klog.V(4).Enabled() {
-		defer func() {
-			klog.V(4).Infof("Leaving tdm plugin.")
-		}()
-	}
+	klog.V(5).Infof("Enter tdm plugin ...")
+	defer func() {
+		klog.V(5).Infof("Leaving tdm plugin.")
+	}()
 
 	// tdm plugin just handle revocable node
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {

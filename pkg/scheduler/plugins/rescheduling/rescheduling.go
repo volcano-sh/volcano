@@ -79,8 +79,8 @@ func (rp *reschedulingPlugin) Name() string {
 }
 
 func (rp *reschedulingPlugin) OnSessionOpen(ssn *framework.Session) {
-	klog.V(3).Infof("Enter rescheduling plugin ...")
-	defer klog.V(3).Infof("Leaving rescheduling plugin.")
+	klog.V(5).Infof("Enter rescheduling plugin ...")
+	defer klog.V(5).Infof("Leaving rescheduling plugin.")
 
 	// Parse all the rescheduling strategies and execution interval
 	Session = ssn

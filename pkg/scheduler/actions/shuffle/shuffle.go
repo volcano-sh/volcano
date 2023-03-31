@@ -46,8 +46,8 @@ func (shuffle *Action) Initialize() {}
 
 // Execute select evictees according given strategies and evict them.
 func (shuffle *Action) Execute(ssn *framework.Session) {
-	klog.V(3).Infoln("Enter Shuffle ...")
-	defer klog.V(3).Infoln("Leaving Shuffle ...")
+	klog.V(5).Infoln("Enter Shuffle ...")
+	defer klog.V(5).Infoln("Leaving Shuffle ...")
 
 	// select pods that may be evicted
 	tasks := make([]*api.TaskInfo, 0)

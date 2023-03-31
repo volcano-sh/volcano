@@ -162,12 +162,11 @@ func (bp *binpackPlugin) Name() string {
 }
 
 func (bp *binpackPlugin) OnSessionOpen(ssn *framework.Session) {
-	klog.V(4).Infof("Enter binpack plugin ...")
+	klog.V(5).Infof("Enter binpack plugin ...")
+	defer func() {
+		klog.V(5).Infof("Leaving binpack plugin. %s ...", bp.weight.String())
+	}()
 	if klog.V(4).Enabled() {
-		defer func() {
-			klog.V(4).Infof("Leaving binpack plugin. %s ...", bp.weight.String())
-		}()
-
 		notFoundResource := []string{}
 		for resource := range bp.weight.BinPackingResources {
 			found := false

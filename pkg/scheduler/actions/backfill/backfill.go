@@ -39,8 +39,8 @@ func (backfill *Action) Name() string {
 func (backfill *Action) Initialize() {}
 
 func (backfill *Action) Execute(ssn *framework.Session) {
-	klog.V(3).Infof("Enter Backfill ...")
-	defer klog.V(3).Infof("Leaving Backfill ...")
+	klog.V(5).Infof("Enter Backfill ...")
+	defer klog.V(5).Infof("Leaving Backfill ...")
 
 	// TODO (k82cn): When backfill, it's also need to balance between Queues.
 	for _, job := range ssn.Jobs {

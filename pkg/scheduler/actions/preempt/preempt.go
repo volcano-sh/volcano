@@ -40,8 +40,8 @@ func (pmpt *Action) Name() string {
 func (pmpt *Action) Initialize() {}
 
 func (pmpt *Action) Execute(ssn *framework.Session) {
-	klog.V(3).Infof("Enter Preempt ...")
-	defer klog.V(3).Infof("Leaving Preempt ...")
+	klog.V(5).Infof("Enter Preempt ...")
+	defer klog.V(5).Infof("Leaving Preempt ...")
 
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}

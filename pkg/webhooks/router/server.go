@@ -59,7 +59,7 @@ func Serve(w io.Writer, r *http.Request, admit AdmitFunc) {
 	} else {
 		reviewResponse = admit(ar)
 	}
-	klog.V(3).Infof("sending response: %v", reviewResponse)
+	klog.V(5).Infof("sending response: %v", reviewResponse)
 
 	response := createResponse(reviewResponse, &ar)
 	resp, err := json.Marshal(response)

@@ -70,8 +70,8 @@ tiers:
     overcommit-factor: 1.0
 */
 func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
-	klog.V(4).Infof("Enter overcommit plugin ...")
-	defer klog.V(4).Infof("Leaving overcommit plugin.")
+	klog.V(5).Infof("Enter overcommit plugin ...")
+	defer klog.V(5).Infof("Leaving overcommit plugin.")
 
 	op.pluginArguments.GetFloat64(&op.overCommitFactor, overCommitFactor)
 	if op.overCommitFactor < 1.0 {
