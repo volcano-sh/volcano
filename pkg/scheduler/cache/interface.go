@@ -87,6 +87,12 @@ type Cache interface {
 
 	// EventRecorder returns the event recorder
 	EventRecorder() record.EventRecorder
+
+	// CustomResourceClient returns the clientset of the custom resources
+	CustomResourceClient(name string) interface{}
+
+	// UpdateCustomResource updates the extended resource saved in the scheduler cache
+	UpdateCustomResource(kind api.CustomResourceKind, key api.CustomResourceKey, new api.CustomResource) error
 }
 
 // VolumeBinder interface for allocate and bind volumes
@@ -116,4 +122,11 @@ type StatusUpdater interface {
 // BatchBinder updates podgroup or job information
 type BatchBinder interface {
 	Bind(job *api.JobInfo, cluster string) (*api.JobInfo, error)
+}
+
+type CustomResourceEventHandler interface {
+	AddEventHandlers() error
+	StartInformer(stop <-chan struct{})
+	WaitForCacheSync(stop <-chan struct{})
+	Client() interface{}
 }

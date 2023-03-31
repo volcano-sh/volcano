@@ -142,6 +142,8 @@ type SchedulerCache struct {
 
 	// A map from image name to its imageState.
 	imageStates map[string]*imageState
+
+	CustomResources map[schedulingapi.CustomResourceKind]map[schedulingapi.CustomResourceKey]schedulingapi.CustomResource
 }
 
 type imageState struct {
@@ -441,7 +443,8 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 		imageStates:         make(map[string]*imageState),
 
-		NodeList: []string{},
+		NodeList:        []string{},
+		CustomResources: make(map[schedulingapi.CustomResourceKind]map[schedulingapi.CustomResourceKey]schedulingapi.CustomResource),
 	}
 	if len(nodeSelectors) > 0 {
 		for _, nodeSelectorLabel := range nodeSelectors {
@@ -655,6 +658,9 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		UpdateFunc: sc.UpdateNumaInfoV1alpha1,
 		DeleteFunc: sc.DeleteNumaInfoV1alpha1,
 	})
+
+	AddCustomResourceEventHandlers(sc, config)
+
 	return sc
 }
 
@@ -662,6 +668,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
+	StartCustomResourceInformers(stopCh)
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
 
@@ -685,6 +692,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 	sc.informerFactory.WaitForCacheSync(stopCh)
 	sc.vcInformerFactory.WaitForCacheSync(stopCh)
+	WaitForCustomResourceCacheSync(stopCh)
 }
 
 // findJobAndTask returns job and the task info
@@ -818,6 +826,23 @@ func (sc *SchedulerCache) Client() kubernetes.Interface {
 // ClientConfig returns the rest config
 func (sc *SchedulerCache) ClientConfig() *rest.Config {
 	return sc.restConfig
+}
+
+// CustomResourceClient returns the custom resource clientSet
+func (sc *SchedulerCache) CustomResourceClient(name string) interface{} {
+	return CustomResourceClient(name)
+}
+
+// UpdateCustomResource updates the custom resource saved in the scheduler cache
+func (sc *SchedulerCache) UpdateCustomResource(kind schedulingapi.CustomResourceKind, key schedulingapi.CustomResourceKey, new schedulingapi.CustomResource) error {
+	sc.Lock()
+	defer sc.Unlock()
+	if k, ok := sc.CustomResources[kind]; ok {
+		if r, ok := k[key]; ok {
+			return r.Update(new)
+		}
+	}
+	return fmt.Errorf("update custom resource failed kind: %s, key: %s", kind, key)
 }
 
 // SharedInformerFactory returns the scheduler SharedInformerFactory
@@ -1040,13 +1065,14 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
-		Nodes:          make(map[string]*schedulingapi.NodeInfo),
-		Jobs:           make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Queues:         make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
-		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
-		NodeList:       make([]string, len(sc.NodeList)),
-		CSINodesStatus: make(map[string]*schedulingapi.CSINodeStatusInfo),
+		Nodes:           make(map[string]*schedulingapi.NodeInfo),
+		Jobs:            make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Queues:          make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		NamespaceInfo:   make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
+		RevocableNodes:  make(map[string]*schedulingapi.NodeInfo),
+		NodeList:        make([]string, len(sc.NodeList)),
+		CSINodesStatus:  make(map[string]*schedulingapi.CSINodeStatusInfo),
+		CustomResources: make(map[schedulingapi.CustomResourceKind]map[schedulingapi.CustomResourceKey]schedulingapi.CustomResource),
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)
@@ -1123,6 +1149,16 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		go cloneJob(value)
 	}
 	wg.Wait()
+
+	for kind, res := range sc.CustomResources {
+		if _, ok := snapshot.CustomResources[kind]; !ok {
+			snapshot.CustomResources[kind] = make(map[schedulingapi.CustomResourceKey]schedulingapi.CustomResource)
+		}
+		for key, val := range res {
+			snapshot.CustomResources[kind][key] = val.DeepCopy()
+		}
+		klog.V(3).Infof("There are <%d> %s resources in total for scheduling", len(snapshot.CustomResources[kind]), kind)
+	}
 
 	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
 		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))

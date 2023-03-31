@@ -74,6 +74,16 @@ func (ssn *Session) AddPrePredicateFn(name string, pf api.PrePredicateFn) {
 	ssn.prePredicateFns[name] = pf
 }
 
+// AddGenericPredicateFn add Predicate function
+func (ssn *Session) AddGenericPredicateFn(name string, pf api.GenericPredicateFn) {
+	ssn.genericPredicateFns[name] = pf
+}
+
+// AddGenericOrderFn add Order function
+func (ssn *Session) AddGenericOrderFn(name string, pf api.GenericOrderFn) {
+	ssn.genericOrderFns[name] = pf
+}
+
 // AddBestNodeFn add BestNode function
 func (ssn *Session) AddBestNodeFn(name string, pf api.BestNodeFn) {
 	ssn.bestNodeFns[name] = pf
@@ -639,6 +649,49 @@ func (ssn *Session) PrePredicateFn(task *api.TaskInfo) error {
 		}
 	}
 	return nil
+}
+
+// GenericPredicateFn invoke generic predicate function of plugins
+func (ssn *Session) GenericPredicateFn(a ...interface{}) error {
+
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPredicate) {
+				continue
+			}
+			pfn, found := ssn.genericPredicateFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(a...)
+			if err.Failed() {
+				return err.AsError()
+			}
+		}
+	}
+	return nil
+}
+
+// GenericOrderFn invoke generic order function of the plugins
+func (ssn *Session) GenericOrderFn(a ...interface{}) (float64, error) {
+	priorityScore := 0.0
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledNodeOrder) {
+				continue
+			}
+			pfn, found := ssn.genericOrderFns[plugin.Name]
+			if !found {
+				continue
+			}
+			score, err := pfn(a...)
+			if err != nil {
+				return 0, err.AsError()
+			}
+			priorityScore += score
+		}
+	}
+	return priorityScore, nil
 }
 
 // BestNodeFn invoke bestNode function of the plugins
