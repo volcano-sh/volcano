@@ -226,59 +226,60 @@ func preempt(
 		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 			preemptor.Namespace, preemptor.Name, node.Name)
 
-		var preemptees []*api.TaskInfo
-		for _, task := range node.Tasks {
-			if filter == nil {
-				preemptees = append(preemptees, task.Clone())
-			} else if filter(task) {
-				preemptees = append(preemptees, task.Clone())
+		if !(ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero)) {
+			var preemptees []*api.TaskInfo
+			for _, task := range node.Tasks {
+				if filter == nil {
+					preemptees = append(preemptees, task.Clone())
+				} else if filter(task) {
+					preemptees = append(preemptees, task.Clone())
+				}
 			}
-		}
-		victims := ssn.Preemptable(preemptor, preemptees)
-		metrics.UpdatePreemptionVictimsCount(len(victims))
+			victims := ssn.Preemptable(preemptor, preemptees)
+			metrics.UpdatePreemptionVictimsCount(len(victims))
 
-		if err := util.ValidateVictims(preemptor, node, victims); err != nil {
-			klog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
-			continue
-		}
-
-		victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
-			lv := l.(*api.TaskInfo)
-			rv := r.(*api.TaskInfo)
-			if lv.Job != rv.Job {
-				return !ssn.JobOrderFn(ssn.Jobs[lv.Job], ssn.Jobs[rv.Job])
-			}
-			return !ssn.TaskOrderFn(l, r)
-		})
-		for _, victim := range victims {
-			victimsQueue.Push(victim)
-		}
-		// Preempt victims for tasks, pick lowest priority task first.
-		preempted := api.EmptyResource()
-
-		for !victimsQueue.Empty() {
-			// If reclaimed enough resources, break loop to avoid Sub panic.
-			// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
-			if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
-				break
-			}
-			preemptee := victimsQueue.Pop().(*api.TaskInfo)
-			klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
-				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
-			if err := stmt.Evict(preemptee, "preempt"); err != nil {
-				klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
-					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
+			if err := util.ValidateVictims(preemptor, node, victims); err != nil {
+				klog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
 				continue
 			}
-			preempted.Add(preemptee.Resreq)
+
+			victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
+				lv := l.(*api.TaskInfo)
+				rv := r.(*api.TaskInfo)
+				if lv.Job != rv.Job {
+					return !ssn.JobOrderFn(ssn.Jobs[lv.Job], ssn.Jobs[rv.Job])
+				}
+				return !ssn.TaskOrderFn(l, r)
+			})
+			for _, victim := range victims {
+				victimsQueue.Push(victim)
+			}
+			// Preempt victims for tasks, pick lowest priority task first.
+			preempted := api.EmptyResource()
+
+			for !victimsQueue.Empty() {
+				// If reclaimed enough resources, break loop to avoid Sub panic.
+				if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+					break
+				}
+				preemptee := victimsQueue.Pop().(*api.TaskInfo)
+				klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
+					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
+				if err := stmt.Evict(preemptee, "preempt"); err != nil {
+					klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
+						preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
+					continue
+				}
+				preempted.Add(preemptee.Resreq)
+			}
+
+			metrics.RegisterPreemptionAttempts()
+			klog.V(3).Infof("Preempted <%v> for Task <%s/%s> requested <%v>.",
+				preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 		}
 
-		metrics.RegisterPreemptionAttempts()
-		klog.V(3).Infof("Preempted <%v> for Task <%s/%s> requested <%v>.",
-			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
-
-		// If preemptor's queue is overused, it means preemptor can not be allcated. So no need care about the node idle resourace
-		if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+		// Queue and node have enough resources.
+		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
