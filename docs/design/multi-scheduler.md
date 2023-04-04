@@ -21,7 +21,8 @@ The configmap defines some resource groups, each resource group contains
   - Annotation field
 - The pod's data volcano needs to patch, volcano support to patch the fields and the fields are optional and not mandatory. User can set them according the application scenario.
   - Tolerations 
-  - NodeSelector 
+  - Affinity
+  - NodeSelector
   - SchedulerName
 
 If the object field is not setted, it is filled with a default as the following:
@@ -67,6 +68,14 @@ data:
       schedulerName: volcano                      # the annotation key is fixed and is "volcano.sh/resource-group", The corresponding value is the resourceGroup field
       labels:
         volcano.sh/nodetype: gpu
+    - resourceGroup: fixed                        # if the object is unsetted, default is:  the key is annotation,
+      schedulerName: volcano                      # the annotation key is fixed and is "volcano.sh/resource-group", The corresponding value is the resourceGroup field
+      object:
+        key: annotation
+        value:
+        - "volcano.sh/resource-group-job-role: master"
+      # set the affinity for patching, the format is a json string.
+      affinity: "{\"nodeAffinity\":{\"requiredDuringSchedulingIgnoredDuringExecution\":{\"nodeSelectorTerms\":[{\"matchExpressions\":[{\"key\":\"volcano.sh/nodetype\",\"operator\":\"In\",\"values\":[\"fixed\"]}]}]}}}"
 ````
 
 ### The pod mutate process 
@@ -205,6 +214,72 @@ schedulerName: volcano
 The pod in job-A is scheduled to node1.
 The pod in job-B job is scheduled to node2.
 ````
+
+### case 3 
+
+Here is a cluster as the following:
+
+|node|label|
+|----|-----|
+|node1| volcano.sh/nodetype: fixed|
+|node2| none| none|
+
+|volcano job | annotation|
+|----|----|
+|job-A|volcano.sh/resource-group-job-role: master| 
+|job-B|none|
+
+1. Edit volcano-admission-configmap
+````
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-admission-configmap
+  namespace: volcano-system
+data:
+  volcano-admission.conf: |
+    resourceGroups:
+    - resourceGroup: fixed                        # if the object is unsetted, default is:  the key is annotation,
+      schedulerName: volcano                      # the annotation key is fixed and is "volcano.sh/resource-group", The corresponding value is the resourceGroup field
+      object:
+        key: annotation
+        value:
+        - "volcano.sh/resource-group-job-role: master"
+      # set the affinity for patching, the format is a json string.
+      affinity: "{\"nodeAffinity\":{\"requiredDuringSchedulingIgnoredDuringExecution\":{\"nodeSelectorTerms\":[{\"matchExpressions\":[{\"key\":\"volcano.sh/nodetype",\"operator\":\"In\",\"values\":[\"fixed\"]}]}]}}}"
+````
+2. Submit job-A and job-B
+
+3. Check the Pod information 
+
+````
+job-A:
+....
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: volcano.sh/nodetype
+          operator: In
+          values:
+          - fixed
+...
+schedulerName: volcano
+....
+
+job-B:
+....
+...
+schedulerName: volcano
+....
+ ````
+4. Check the result of the pod's scheduling
+````
+The pod in job-A is scheduled to node1.
+The pod in job-B job is scheduled to node1/node2.
+````
+
 ## NOTE
 
 Enable this feature may modify pod information and affect resource utilization.
