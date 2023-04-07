@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -162,12 +162,11 @@ func (bp *binpackPlugin) Name() string {
 }
 
 func (bp *binpackPlugin) OnSessionOpen(ssn *framework.Session) {
-	klog.V(4).Infof("Enter binpack plugin ...")
-	if klog.V(4) {
-		defer func() {
-			klog.V(4).Infof("Leaving binpack plugin. %s ...", bp.weight.String())
-		}()
-
+	klog.V(5).Infof("Enter binpack plugin ...")
+	defer func() {
+		klog.V(5).Infof("Leaving binpack plugin. %s ...", bp.weight.String())
+	}()
+	if klog.V(4).Enabled() {
 		notFoundResource := []string{}
 		for resource := range bp.weight.BinPackingResources {
 			found := false

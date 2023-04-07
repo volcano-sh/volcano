@@ -72,7 +72,8 @@ type ServerOption struct {
 	MinPercentageOfNodesToFind int32
 	PercentageOfNodesToFind    int32
 
-	NodeSelector []string
+	NodeSelector      []string
+	EnableCacheDumper bool
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -125,6 +126,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
+	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.

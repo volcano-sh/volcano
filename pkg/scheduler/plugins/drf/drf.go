@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
@@ -152,19 +152,6 @@ func (drf *drfPlugin) HierarchyEnabled(ssn *framework.Session) bool {
 	return false
 }
 
-// NamespaceOrderEnabled returns the NamespaceOrder for this plugin is enabled in this session or not
-func (drf *drfPlugin) NamespaceOrderEnabled(ssn *framework.Session) bool {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if plugin.Name != PluginName {
-				continue
-			}
-			return plugin.EnabledNamespaceOrder != nil && *plugin.EnabledNamespaceOrder
-		}
-	}
-	return false
-}
-
 func (drf *drfPlugin) compareQueues(root *hierarchicalNode, lqueue *api.QueueInfo, rqueue *api.QueueInfo) float64 {
 	lnode := root
 	lpaths := strings.Split(lqueue.Hierarchy, "/")
@@ -203,7 +190,6 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	klog.V(4).Infof("Total Allocatable %s", drf.totalResource)
 
-	namespaceOrderEnabled := drf.NamespaceOrderEnabled(ssn)
 	hierarchyEnabled := drf.HierarchyEnabled(ssn)
 
 	for _, job := range ssn.Jobs {
@@ -224,18 +210,6 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		drf.jobAttrs[job.UID] = attr
 
-		if namespaceOrderEnabled {
-			nsOpts, found := drf.namespaceOpts[job.Namespace]
-			if !found {
-				nsOpts = &drfAttr{
-					allocated: api.EmptyResource(),
-				}
-				drf.namespaceOpts[job.Namespace] = nsOpts
-			}
-			// all task in job should have the same namespace with job
-			nsOpts.allocated.Add(attr.allocated)
-			drf.updateNamespaceShare(job.Namespace, nsOpts)
-		}
 		if hierarchyEnabled {
 			queue := ssn.Queues[job.Queue]
 			drf.totalAllocated.Add(attr.allocated)
@@ -248,57 +222,6 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		addVictim := func(candidate *api.TaskInfo) {
 			victims = append(victims, candidate)
-		}
-
-		if namespaceOrderEnabled {
-			// apply the namespace share policy on preemptee firstly
-
-			lWeight := ssn.NamespaceInfo[api.NamespaceName(preemptor.Namespace)].GetWeight()
-			lNsAtt := drf.namespaceOpts[preemptor.Namespace]
-			lNsAlloc := lNsAtt.allocated.Clone().Add(preemptor.Resreq)
-			_, lNsShare := drf.calculateShare(lNsAlloc, drf.totalResource)
-			lNsShareWeighted := lNsShare / float64(lWeight)
-
-			namespaceAllocation := map[string]*api.Resource{}
-
-			// undecidedPreemptees means this policy could not judge preemptee is preemptable or not
-			// and left it to next policy
-			undecidedPreemptees := []*api.TaskInfo{}
-
-			for _, preemptee := range preemptees {
-				if preemptor.Namespace == preemptee.Namespace {
-					// policy is disabled when they are in the same namespace
-					undecidedPreemptees = append(undecidedPreemptees, preemptee)
-					continue
-				}
-
-				// compute the preemptee namespace weighted share after preemption
-				nsAllocation, found := namespaceAllocation[preemptee.Namespace]
-				if !found {
-					rNsAtt := drf.namespaceOpts[preemptee.Namespace]
-					nsAllocation = rNsAtt.allocated.Clone()
-					namespaceAllocation[preemptee.Namespace] = nsAllocation
-				}
-				rWeight := ssn.NamespaceInfo[api.NamespaceName(preemptee.Namespace)].GetWeight()
-				rNsAlloc := nsAllocation.Sub(preemptee.Resreq)
-				_, rNsShare := drf.calculateShare(rNsAlloc, drf.totalResource)
-				rNsShareWeighted := rNsShare / float64(rWeight)
-
-				// to avoid ping pong actions, the preemptee namespace should
-				// have the higher weighted share after preemption.
-				if lNsShareWeighted < rNsShareWeighted {
-					addVictim(preemptee)
-					continue
-				}
-				if lNsShareWeighted-rNsShareWeighted > shareDelta {
-					continue
-				}
-
-				// equal namespace order leads to judgement of jobOrder
-				undecidedPreemptees = append(undecidedPreemptees, preemptee)
-			}
-
-			preemptees = undecidedPreemptees
 		}
 
 		latt := drf.jobAttrs[preemptor.Job]
@@ -421,42 +344,6 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobOrderFn(drf.Name(), jobOrderFn)
 
-	namespaceOrderFn := func(l interface{}, r interface{}) int {
-		lv := l.(api.NamespaceName)
-		rv := r.(api.NamespaceName)
-
-		lOpt := drf.namespaceOpts[string(lv)]
-		rOpt := drf.namespaceOpts[string(rv)]
-
-		lWeight := ssn.NamespaceInfo[lv].GetWeight()
-		rWeight := ssn.NamespaceInfo[rv].GetWeight()
-
-		klog.V(4).Infof("DRF NamespaceOrderFn: <%v> share state: %f, weight %v, <%v> share state: %f, weight %v",
-			lv, lOpt.share, lWeight, rv, rOpt.share, rWeight)
-
-		lWeightedShare := lOpt.share / float64(lWeight)
-		rWeightedShare := rOpt.share / float64(rWeight)
-
-		metrics.UpdateNamespaceWeight(string(lv), lWeight)
-		metrics.UpdateNamespaceWeight(string(rv), rWeight)
-		metrics.UpdateNamespaceWeightedShare(string(lv), lWeightedShare)
-		metrics.UpdateNamespaceWeightedShare(string(rv), rWeightedShare)
-
-		if lWeightedShare == rWeightedShare {
-			return 0
-		}
-
-		if lWeightedShare < rWeightedShare {
-			return -1
-		}
-
-		return 1
-	}
-
-	if namespaceOrderEnabled {
-		ssn.AddNamespaceOrderFn(drf.Name(), namespaceOrderFn)
-	}
-
 	// Register event handlers.
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
@@ -467,13 +354,6 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			drf.updateJobShare(job.Namespace, job.Name, attr)
 
 			nsShare := -1.0
-			if namespaceOrderEnabled {
-				nsOpt := drf.namespaceOpts[event.Task.Namespace]
-				nsOpt.allocated.Add(event.Task.Resreq)
-
-				drf.updateNamespaceShare(event.Task.Namespace, nsOpt)
-				nsShare = nsOpt.share
-			}
 			if hierarchyEnabled {
 				queue := ssn.Queues[job.Queue]
 
@@ -492,13 +372,6 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			drf.updateJobShare(job.Namespace, job.Name, attr)
 
 			nsShare := -1.0
-			if namespaceOrderEnabled {
-				nsOpt := drf.namespaceOpts[event.Task.Namespace]
-				nsOpt.allocated.Sub(event.Task.Resreq)
-
-				drf.updateNamespaceShare(event.Task.Namespace, nsOpt)
-				nsShare = nsOpt.share
-			}
 
 			if hierarchyEnabled {
 				queue := ssn.Queues[job.Queue]

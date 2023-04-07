@@ -76,7 +76,8 @@ tiers:
       - name: conformance
       - name: rescheduling       ## rescheduling plugin
         arguments:
-          interval: 5m           ## optional, the strategies will be called in this duration periodcally. 5 minuters by default. 
+          interval: 5m           ## optional, the strategies will be called in this duration periodically. 5 minutes by default.
+          metricsPeriod: 5m      ## optional, the metrics will be used during this plugin. 5 minutes by default.
           strategies:            ## required, strategies working in order
             - name: offlineOnly
             - name: lowPriorityFirst

@@ -19,7 +19,7 @@ package util
 import (
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 // ToAdmissionResponse updates the admission response with the input error.

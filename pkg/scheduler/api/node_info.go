@@ -21,7 +21,7 @@ import (
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -60,7 +60,7 @@ type NodeInfo struct {
 	Used *Resource
 
 	Allocatable   *Resource
-	Capability    *Resource
+	Capacity      *Resource
 	ResourceUsage *NodeUsage
 
 	Tasks             map[TaskID]*TaskInfo
@@ -70,7 +70,7 @@ type NodeInfo struct {
 	RevocableZone     string
 
 	// Used to store custom information
-	Others map[string]Devices
+	Others map[string]interface{}
 	//SharedDevices map[string]SharedDevicePool
 
 	// enable node resource oversubscription
@@ -134,13 +134,13 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Used:      EmptyResource(),
 
 		Allocatable:   EmptyResource(),
-		Capability:    EmptyResource(),
+		Capacity:      EmptyResource(),
 		ResourceUsage: &NodeUsage{},
 
 		OversubscriptionResource: EmptyResource(),
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
-		Others:      make(map[string]Devices),
+		Others:      make(map[string]interface{}),
 		ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 	}
 
@@ -151,7 +151,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		nodeInfo.Node = node
 		nodeInfo.Idle = NewResource(node.Status.Allocatable).Add(nodeInfo.OversubscriptionResource)
 		nodeInfo.Allocatable = NewResource(node.Status.Allocatable).Add(nodeInfo.OversubscriptionResource)
-		nodeInfo.Capability = NewResource(node.Status.Capacity).Add(nodeInfo.OversubscriptionResource)
+		nodeInfo.Capacity = NewResource(node.Status.Capacity).Add(nodeInfo.OversubscriptionResource)
 	}
 	nodeInfo.setNodeOthersResource(node)
 	nodeInfo.setNodeState(node)
@@ -343,7 +343,9 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 
 // setNodeOthersResource initialize sharable devices
 func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
+	IgnoredDevicesList = []string{}
 	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
+	IgnoredDevicesList = append(IgnoredDevicesList, ni.Others[GPUSharingDevice].(Devices).GetIgnoredDevices()...)
 }
 
 // setNode sets kubernetes node object to nodeInfo object without assertion
@@ -356,7 +358,7 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 	ni.Node = node
 
 	ni.Allocatable = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)
-	ni.Capability = NewResource(node.Status.Capacity).Add(ni.OversubscriptionResource)
+	ni.Capacity = NewResource(node.Status.Capacity).Add(ni.OversubscriptionResource)
 	ni.Releasing = EmptyResource()
 	ni.Pipelined = EmptyResource()
 	ni.Idle = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)
@@ -482,12 +484,12 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 
 // addResource is used to add sharable devices
 func (ni *NodeInfo) addResource(pod *v1.Pod) {
-	ni.Others[GPUSharingDevice].AddResource(pod)
+	ni.Others[GPUSharingDevice].(Devices).AddResource(pod)
 }
 
 // subResource is used to substract sharable devices
 func (ni *NodeInfo) subResource(pod *v1.Pod) {
-	ni.Others[GPUSharingDevice].SubResource(pod)
+	ni.Others[GPUSharingDevice].(Devices).SubResource(pod)
 }
 
 // UpdateTask is used to update a task in nodeInfo object.

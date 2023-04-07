@@ -17,7 +17,7 @@ limitations under the License.
 package reclaim
 
 import (
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -37,8 +37,8 @@ func (ra *Action) Name() string {
 func (ra *Action) Initialize() {}
 
 func (ra *Action) Execute(ssn *framework.Session) {
-	klog.V(3).Infof("Enter Reclaim ...")
-	defer klog.V(3).Infof("Leaving Reclaim ...")
+	klog.V(5).Infof("Enter Reclaim ...")
+	defer klog.V(5).Infof("Leaving Reclaim ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
@@ -152,6 +152,12 @@ func (ra *Action) Execute(ssn *framework.Session) {
 					reclaimees = append(reclaimees, task.Clone())
 				}
 			}
+
+			if len(reclaimees) == 0 {
+				klog.V(4).Infof("No reclaimees on Node <%s>.", n.Name)
+				continue
+			}
+
 			victims := ssn.Reclaimable(task, reclaimees)
 
 			if err := util.ValidateVictims(task, n, victims); err != nil {

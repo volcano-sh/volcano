@@ -19,7 +19,7 @@ package preempt
 import (
 	"fmt"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -40,8 +40,8 @@ func (pmpt *Action) Name() string {
 func (pmpt *Action) Initialize() {}
 
 func (pmpt *Action) Execute(ssn *framework.Session) {
-	klog.V(3).Infof("Enter Preempt ...")
-	defer klog.V(3).Infof("Leaving Preempt ...")
+	klog.V(5).Infof("Enter Preempt ...")
+	defer klog.V(5).Infof("Leaving Preempt ...")
 
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
@@ -209,7 +209,7 @@ func preempt(
 	if err := ssn.PrePredicateFn(preemptor); err != nil {
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
-	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateFn)
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateFn, true)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 

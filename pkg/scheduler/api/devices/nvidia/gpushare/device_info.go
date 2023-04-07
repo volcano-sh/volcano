@@ -24,7 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
 
@@ -86,6 +86,11 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 		delete(gpudevices.Device, unhealthyGPUs[i])
 	}
 	return &gpudevices
+}
+
+// GetIgnoredDevices return device names which wish vc-scheduler to ignore
+func (gs *GPUDevices) GetIgnoredDevices() []string {
+	return []string{""}
 }
 
 // AddGPUResource adds the pod to GPU pool if it is assigned

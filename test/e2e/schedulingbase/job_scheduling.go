@@ -27,14 +27,14 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-
+	vcscheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
-
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
@@ -329,7 +329,7 @@ var _ = Describe("Job E2E Test", func() {
 			Tasks: []e2eutil.TaskSpec{
 				{
 					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
+					Req: e2eutil.HalfCPU,
 					Min: count,
 					Rep: count,
 				},
@@ -442,120 +442,6 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("Namespace Fair Share", func() {
-		Skip("Failed when add yaml and test case may fail in some condition")
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
-		const fairShareNamespace = "fairshare"
-		_, err := ctx.Kubeclient.CoreV1().Namespaces().Create(context.TODO(),
-			&v1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: fairShareNamespace,
-				},
-			},
-			metav1.CreateOptions{})
-		Expect(err).NotTo(HaveOccurred())
-		defer func() {
-			deleteForeground := metav1.DeletePropagationForeground
-			err := ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(),
-				fairShareNamespace,
-				metav1.DeleteOptions{
-					PropagationPolicy: &deleteForeground,
-				})
-			Expect(err).NotTo(HaveOccurred())
-
-			err = wait.Poll(100*time.Millisecond, e2eutil.FiveMinute, e2eutil.NamespaceNotExistWithName(ctx, fairShareNamespace))
-			Expect(err).NotTo(HaveOccurred())
-		}()
-
-		slot := e2eutil.HalfCPU
-		rep := e2eutil.ClusterSize(ctx, slot)
-
-		createJobToNamespace := func(namespace string, index int, replica int32) *vcbatch.Job {
-			spec := &e2eutil.JobSpec{
-				Name:      fmt.Sprintf("namespace-fair-share-%s-%d", namespace, index),
-				Namespace: namespace,
-				Tasks: []e2eutil.TaskSpec{
-					{
-						Img:     e2eutil.DefaultNginxImage,
-						Command: "sleep 10000",
-						Req:     slot,
-						Min:     2,
-						Rep:     replica,
-					},
-				},
-			}
-			job := e2eutil.CreateJob(ctx, spec)
-			return job
-		}
-
-		By("occupy all cluster resources")
-		occupiedJob := createJobToNamespace("default", 123, rep*2)
-		err = e2eutil.WaitJobReady(ctx, occupiedJob)
-		Expect(err).NotTo(HaveOccurred())
-
-		for i := 0; i < int(rep); i++ {
-			createJobToNamespace(ctx.Namespace, i, 2)
-			createJobToNamespace(fairShareNamespace, i, 2)
-		}
-
-		By("release occupied cluster resources")
-		deleteBackground := metav1.DeletePropagationBackground
-		err = ctx.Vcclient.BatchV1alpha1().Jobs(occupiedJob.Namespace).Delete(context.TODO(),
-			occupiedJob.Name,
-			metav1.DeleteOptions{
-				PropagationPolicy: &deleteBackground,
-			})
-		Expect(err).NotTo(HaveOccurred())
-
-		By("wait occupied cluster resources releasing")
-		err = e2eutil.WaitJobCleanedUp(ctx, occupiedJob)
-		Expect(err).NotTo(HaveOccurred())
-
-		By("wait pod in fs/test namespace scheduled")
-		fsScheduledPod := 0
-		testScheduledPod := 0
-		expectPod := int(rep)
-		if expectPod%1 == 1 {
-			expectPod--
-		}
-		err = wait.Poll(100*time.Millisecond, e2eutil.FiveMinute, func() (bool, error) {
-			fsScheduledPod = 0
-			testScheduledPod = 0
-
-			pods, err := ctx.Kubeclient.CoreV1().Pods(fairShareNamespace).List(context.TODO(), metav1.ListOptions{})
-			if err != nil {
-				return false, err
-			}
-			for _, pod := range pods.Items {
-				if e2eutil.IsPodScheduled(&pod) {
-					fsScheduledPod++
-				}
-			}
-
-			pods, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
-			if err != nil {
-				return false, err
-			}
-			for _, pod := range pods.Items {
-				if e2eutil.IsPodScheduled(&pod) {
-					testScheduledPod++
-				}
-			}
-
-			// gang scheduling
-			if testScheduledPod+fsScheduledPod == expectPod {
-				return true, nil
-			}
-
-			return false, nil
-		})
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(testScheduledPod).Should(BeNumerically(">=", expectPod/2-1), fmt.Sprintf("expectPod %d, fsScheduledPod %d, testScheduledPod %d", expectPod, fsScheduledPod, testScheduledPod))
-		Expect(testScheduledPod).Should(BeNumerically("<=", expectPod/2+1), fmt.Sprintf("expectPod %d, fsScheduledPod %d, testScheduledPod %d", expectPod, fsScheduledPod, testScheduledPod))
-	})
-
 	It("Queue Fair Share", func() {
 		Skip("Failed when add yaml, test case may fail in some condition")
 		q1, q2 := "q1", "q2"
@@ -649,5 +535,63 @@ var _ = Describe("Job E2E Test", func() {
 
 		Expect(q2ScheduledPod).Should(BeNumerically("<=", expectPod/2+1),
 			fmt.Sprintf("expectPod %d, q1ScheduledPod %d, q2ScheduledPod %d", expectPod, q1ScheduledPod, q2ScheduledPod))
+	})
+
+	It("PodGroup's Count change with Deployment's Request change", func() {
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
+		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)/2 + 1
+
+		d := e2eutil.CreateDeployment(ctx, "d-1", rep, e2eutil.DefaultNginxImage, e2eutil.OneCPU)
+		err := e2eutil.WaitDeploymentReady(ctx, d.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		pgs, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred(), "failed to list podGroups in namespace %s", ctx.Namespace)
+		Expect(len(pgs.Items)).To(Equal(1), "this test need a clean cluster")
+		oldOne := &pgs.Items[0]
+
+		d.ResourceVersion = ""
+		d.Spec.Template.Spec.Containers[0].Resources.Requests = e2eutil.HalfCPU
+		d, err = ctx.Kubeclient.AppsV1().Deployments(ctx.Namespace).Update(context.TODO(), d, metav1.UpdateOptions{})
+		Expect(err).NotTo(HaveOccurred(), "failed to update deployment(%s) in namespace %s", d.Name, ctx.Namespace)
+		err = e2eutil.WaitDeploymentReady(ctx, d.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		wait.Poll(time.Second, time.Minute, func() (bool, error) {
+			oldOne, err = ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Get(context.TODO(), oldOne.Name, metav1.GetOptions{})
+			if err != nil {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(errors.IsNotFound(err)).To(BeTrue(), "old pg(%s) should not found", oldOne.Name)
+
+		pgs, err = ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred(), "failed to list podGroups in namespace %s", ctx.Namespace)
+		Expect(len(pgs.Items)).To(Equal(1), "only one podGroup should be exists")
+	})
+
+	It("PodGroup's Phase with k8s Job in Completed", func() {
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
+
+		jb := e2eutil.CreateSampleK8sJob(ctx, "job1", e2eutil.DefaultNginxImage, e2eutil.OneCPU)
+		err := e2eutil.Waitk8sJobCompleted(ctx, jb.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		var pgPhase vcscheduling.PodGroupPhase
+		wait.Poll(time.Second, time.Second*30, func() (bool, error) {
+			pgs, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to list podGroups in namespace %s", ctx.Namespace)
+			Expect(len(pgs.Items)).To(Equal(1), "this test need a clean cluster")
+			pgPhase = pgs.Items[0].Status.Phase
+			if pgPhase != vcscheduling.PodGroupRunning {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(pgPhase).To(Equal(vcscheduling.PodGroupCompleted), "podGroup Phase is %s, should be %s",
+			ctx.Namespace, vcscheduling.PodGroupCompleted)
 	})
 })

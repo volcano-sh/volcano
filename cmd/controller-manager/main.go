@@ -26,7 +26,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	cliflag "k8s.io/component-base/cli/flag"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	_ "volcano.sh/volcano/pkg/controllers/garbagecollector"
 	_ "volcano.sh/volcano/pkg/controllers/job"

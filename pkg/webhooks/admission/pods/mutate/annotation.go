@@ -20,7 +20,7 @@ import (
 	"github.com/imdario/mergo"
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 )

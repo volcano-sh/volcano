@@ -30,7 +30,7 @@ var _ = Describe("Pytorch Plugin E2E Test", func() {
 			Tasks: []e2eutil.TaskSpec{
 				{
 					Name:       "master",
-					Img:        "docker.io/kubeflowkatib/pytorch-mnist:v1beta1-45c5727",
+					Img:        e2eutil.DefaultPytorchImage,
 					Req:        slot,
 					Min:        1,
 					Rep:        1,
@@ -40,7 +40,7 @@ var _ = Describe("Pytorch Plugin E2E Test", func() {
 				},
 				{
 					Name:       "worker",
-					Img:        "docker.io/kubeflowkatib/pytorch-mnist:v1beta1-45c5727",
+					Img:        e2eutil.DefaultPytorchImage,
 					Req:        slot,
 					Min:        2,
 					Rep:        2,

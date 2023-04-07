@@ -17,7 +17,7 @@ Currently the pod is scheduled based on the resource request and node allocatabl
 ## Design 
 
 ### Scheduler Cache
-A separated goroutine is created in scheduler cache to talk with Prometheus which is used to collect and aggregate node usage metrics. The node usage data in cache is consumed by usage based scheduling plugin and other plugins like rescheduling plugin. The struct is as below. 
+A separated goroutine is created in scheduler cache to talk with Metrics source(like prometheus, elasticsearch) which is used to collect and aggregate node usage metrics. The node usage data in cache is consumed by usage based scheduling plugin and other plugins like rescheduling plugin. The struct is as below. 
 ```
 type NodeUsage struct {
     cpuUsageAvg map[string]float64
@@ -56,9 +56,17 @@ tiers:
       - name: proportion
       - name: nodeorder
       - name: binpack
-metrics:                             # metrics server related configuration
-  address: http://192.168.0.10:9090  # mandatory, The Prometheus server address
-  interval: 30s                      # Optional, The scheduler pull metrics from Prometheus with this interval, 5s by default
+metrics:                               # metrics server related configuration
+  type: prometheus                     # Optional, The metrics source type, prometheus by default, support prometheus and elasticsearch
+  address: http://192.168.0.10:9090    # Mandatory, The metrics source address
+  interval: 30s                        # Optional, The scheduler pull metrics from Prometheus with this interval, 5s by default
+  tls:                                 # Optional, The tls configuration
+    insecureSkipVerify: "false"        # Optional, Skip the certificate verification, false by default
+  elasticsearch:                       # Optional, The elasticsearch configuration
+    index: "custom-index-name"         # Optional, The elasticsearch index name, "metricbeat-*" by default
+    username: ""                       # Optional, The elasticsearch username
+    password: ""                       # Optional, The elasticsearch password
+    hostnameFieldName: "host.hostname" # Optional, The elasticsearch hostname field name, "host.hostname" by default
   ```
 
 ### How to predicate node

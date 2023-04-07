@@ -21,7 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	v1qos "k8s.io/kubernetes/pkg/apis/core/v1/helper/qos"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -61,8 +61,8 @@ func getNodeUtilization() []*NodeUtilization {
 		nodeUtilization := &NodeUtilization{
 			nodeInfo: nodeInfo.Node,
 			utilization: map[v1.ResourceName]float64{
-				v1.ResourceCPU:    nodeInfo.ResourceUsage.CPUUsageAvg[Interval],
-				v1.ResourceMemory: nodeInfo.ResourceUsage.MEMUsageAvg[Interval],
+				v1.ResourceCPU:    nodeInfo.ResourceUsage.CPUUsageAvg[MetricsPeriod],
+				v1.ResourceMemory: nodeInfo.ResourceUsage.MEMUsageAvg[MetricsPeriod],
 			},
 			pods: nodeInfo.Pods(),
 		}

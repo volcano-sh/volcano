@@ -19,12 +19,13 @@ package podgroup
 import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
+	appinformers "k8s.io/client-go/informers/apps/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
@@ -47,6 +48,7 @@ type pgcontroller struct {
 
 	podInformer coreinformers.PodInformer
 	pgInformer  schedulinginformer.PodGroupInformer
+	rsInformer  appinformers.ReplicaSetInformer
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -58,6 +60,9 @@ type pgcontroller struct {
 	// A store of podgroups
 	pgLister schedulinglister.PodGroupLister
 	pgSynced func() bool
+
+	// A store of replicaset
+	rsSynced func() bool
 
 	queue workqueue.RateLimitingInterface
 
@@ -97,6 +102,13 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.pgInformer = factory.Scheduling().V1beta1().PodGroups()
 	pg.pgLister = pg.pgInformer.Lister()
 	pg.pgSynced = pg.pgInformer.Informer().HasSynced
+
+	pg.rsInformer = pg.informerFactory.Apps().V1().ReplicaSets()
+	pg.rsSynced = pg.rsInformer.Informer().HasSynced
+	pg.rsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    pg.addReplicaSet,
+		UpdateFunc: pg.updateReplicaSet,
+	})
 
 	return nil
 }

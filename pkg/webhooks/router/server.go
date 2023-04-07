@@ -23,7 +23,7 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -59,7 +59,7 @@ func Serve(w io.Writer, r *http.Request, admit AdmitFunc) {
 	} else {
 		reviewResponse = admit(ar)
 	}
-	klog.V(3).Infof("sending response: %v", reviewResponse)
+	klog.V(5).Infof("sending response: %v", reviewResponse)
 
 	response := createResponse(reviewResponse, &ar)
 	resp, err := json.Marshal(response)

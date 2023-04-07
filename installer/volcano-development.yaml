@@ -145,6 +145,7 @@ spec:
             - --admission-conf=/admission.local.config/configmap/volcano-admission.conf
             - --webhook-namespace=volcano-system
             - --webhook-service-name=volcano-admission-service
+            - --enable-healthz=true
             - --logtostderr
             - --port=8443
             - -v=4
@@ -8564,8 +8565,11 @@ rules:
     resources: ["networkpolicies"]
     verbs: ["get", "create", "delete"]
   - apiGroups: ["apps"]
-    resources: ["daemonsets", "replicasets", "statefulsets"]
+    resources: ["daemonsets", "statefulsets"]
     verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["get"]
@@ -8612,7 +8616,7 @@ spec:
               - --enable-healthz=true
               - -v=4
               - 2>&1
-            imagePullPolicy: "IfNotPresent"
+            imagePullPolicy: IfNotPresent
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
@@ -8775,7 +8779,7 @@ spec:
             - --enable-metrics=true
             - -v=3
             - 2>&1
-          imagePullPolicy: "IfNotPresent"
+          imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: scheduler-config
               mountPath: /volcano.scheduler

@@ -12,7 +12,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: kube-state-metrics
-  namespace: {{ .Release.Namespace }} 
+  namespace: {{ .Release.Namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -135,16 +135,16 @@ metadata:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kube-state-metrics 
+  name: kube-state-metrics
   namespace: {{ .Release.Namespace }}
   labels:
-    k8s-app: kube-state-metrics  
+    k8s-app: kube-state-metrics
 spec:
   progressDeadlineSeconds: 600
   replicas: 1
   selector:
     matchLabels:
-      k8s-app: kube-state-metrics 
+      k8s-app: kube-state-metrics
   strategy:
     rollingUpdate:
       maxSurge: 25%
@@ -153,12 +153,12 @@ spec:
   template:
     metadata:
       labels:
-        k8s-app: kube-state-metrics 
+        k8s-app: kube-state-metrics
     spec:
       containers:
         - image: quay.io/coreos/kube-state-metrics:v1.9.7
-          imagePullPolicy: IfNotPresent
-          name: kube-state-metrics 
+          imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+          name: kube-state-metrics
           ports:
             - name: http-metrics
               containerPort: 8080

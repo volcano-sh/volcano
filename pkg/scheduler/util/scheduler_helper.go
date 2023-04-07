@@ -27,7 +27,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -102,27 +102,27 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 		return nodeScores
 	}
 
+	nodeScoreMap := map[string]float64{}
 	for _, node := range nodes {
-		if score, found := reduceScores[node.Name]; found {
-			if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
-				score += orderScore
-			}
-			if batchScore, ok := batchNodeScore[node.Name]; ok {
-				score += batchScore
-			}
-			nodeScores[score] = append(nodeScores[score], node)
-		} else {
-			// If no plugin is applied to this node, the default is 0.0
-			score = 0.0
-			if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
-				score += orderScore
-			}
-			if batchScore, ok := batchNodeScore[node.Name]; ok {
-				score += batchScore
-			}
-			nodeScores[score] = append(nodeScores[score], node)
+		// If no plugin is applied to this node, the default is 0.0
+		score := 0.0
+		if reduceScore, ok := reduceScores[node.Name]; ok {
+			score += reduceScore
+		}
+		if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
+			score += orderScore
+		}
+		if batchScore, ok := batchNodeScore[node.Name]; ok {
+			score += batchScore
+		}
+		nodeScores[score] = append(nodeScores[score], node)
+
+		if klog.V(5).Enabled() {
+			nodeScoreMap[node.Name] = score
 		}
 	}
+
+	klog.V(5).Infof("Prioritize nodeScoreMap for task<%s/%s> is: %v", task.Namespace, task.Name, nodeScoreMap)
 	return nodeScores
 }
 

@@ -7,13 +7,13 @@ import (
 	"sync/atomic"
 
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 type PredicateHelper interface {
-	PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) ([]*api.NodeInfo, *api.FitErrors)
+	PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool) ([]*api.NodeInfo, *api.FitErrors)
 }
 
 type predicateHelper struct {
@@ -21,7 +21,7 @@ type predicateHelper struct {
 }
 
 // PredicateNodes returns the specified number of nodes that fit a task
-func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn) ([]*api.NodeInfo, *api.FitErrors) {
+func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool) ([]*api.NodeInfo, *api.FitErrors) {
 	var errorLock sync.RWMutex
 	fe := api.NewFitErrors()
 
@@ -56,7 +56,7 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 
 		// Check if the task had "predicate" failure before.
 		// And then check if the task failed to predict on this node before.
-		if taskFailedBefore {
+		if enableErrorCache && taskFailedBefore {
 			errorLock.RLock()
 			errC, ok := nodeErrorCache[node.Name]
 			errorLock.RUnlock()

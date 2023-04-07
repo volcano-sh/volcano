@@ -21,7 +21,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -42,8 +42,8 @@ func (enqueue *Action) Name() string {
 func (enqueue *Action) Initialize() {}
 
 func (enqueue *Action) Execute(ssn *framework.Session) {
-	klog.V(3).Infof("Enter Enqueue ...")
-	defer klog.V(3).Infof("Leaving Enqueue ...")
+	klog.V(5).Infof("Enter Enqueue ...")
+	defer klog.V(5).Infof("Leaving Enqueue ...")
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueSet := sets.NewString()

@@ -21,7 +21,7 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -32,6 +32,8 @@ const (
 	PluginName = "rescheduling"
 	// DefaultInterval indicates the default interval rescheduling plugin works for
 	DefaultInterval = 5 * time.Minute
+	// DefaultMetricsPeriod indicates the default metrics period rescheduling plugin works for
+	DefaultMetricsPeriod = "5m"
 	// DefaultStrategy indicates the default strategy rescheduling plugin making use of
 	DefaultStrategy = "lowNodeUtilization"
 )
@@ -46,14 +48,14 @@ var (
 	// VictimFn contains all the VictimTasksFn for registered the strategies
 	VictimFn map[string]api.VictimTasksFn
 
-	// Interval indicates the interval to get metrics, "5m" by default.
-	Interval string
+	// MetricsPeriod indicates the metrics period will be used during this plugin. 5 minutes by default.
+	MetricsPeriod string
 )
 
 func init() {
 	RegisteredStrategyConfigs = make(map[string]interface{})
 	VictimFn = make(map[string]api.VictimTasksFn)
-	Interval = "5m"
+	MetricsPeriod = "5m"
 
 	// register victim functions for all strategies here
 	VictimFn["lowNodeUtilization"] = victimsFnForLnu
@@ -77,8 +79,8 @@ func (rp *reschedulingPlugin) Name() string {
 }
 
 func (rp *reschedulingPlugin) OnSessionOpen(ssn *framework.Session) {
-	klog.V(3).Infof("Enter rescheduling plugin ...")
-	defer klog.V(3).Infof("Leaving rescheduling plugin.")
+	klog.V(5).Infof("Enter rescheduling plugin ...")
+	defer klog.V(5).Infof("Leaving rescheduling plugin.")
 
 	// Parse all the rescheduling strategies and execution interval
 	Session = ssn
@@ -153,8 +155,12 @@ func (rc *Configs) parseArguments(arguments framework.Arguments) {
 	if err != nil {
 		klog.V(4).Infof("Parse rescheduling interval failed. Reset the interval to 5m by default.")
 		rc.interval = DefaultInterval
-	} else {
-		Interval = intervalStr
+	}
+	if metricsPeriodArg, ok := arguments["metricsPeriod"]; ok {
+		MetricsPeriod = metricsPeriodArg.(string)
+	}
+	if MetricsPeriod == "" {
+		MetricsPeriod = DefaultMetricsPeriod
 	}
 	strategies, ok := arguments["strategies"]
 	if ok {
