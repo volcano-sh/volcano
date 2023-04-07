@@ -9,7 +9,7 @@ on:
 
 jobs:
   e2e_scheduling_actions:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-22.04
     name: E2E about Scheduling Actions
     timeout-minutes: 40
     steps:

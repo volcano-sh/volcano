@@ -9,7 +9,7 @@ on:
 
 jobs:
   e2e_parallel_jobs:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-22.04
     name: E2E about Parallel Jobs
     timeout-minutes: 40
     steps:
