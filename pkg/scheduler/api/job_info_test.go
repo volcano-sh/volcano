@@ -231,7 +231,7 @@ func TestTaskSchedulingReason(t *testing.T) {
 				t3.UID: "Pod ns1/task-3 can possibly be assigned to node1",
 				t4.UID: "Pod ns1/task-4 can possibly be assigned to node2",
 				t5.UID: "Pod ns1/task-5 can possibly be assigned to node3",
-				t6.UID: "all nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed.",
+				t6.UID: "0/3 nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed.",
 			},
 		},
 	}

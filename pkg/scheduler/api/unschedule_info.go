@@ -66,7 +66,7 @@ func (f *FitErrors) SetNodeError(nodeName string, err error) {
 // Error returns the final error message
 func (f *FitErrors) Error() string {
 	if f.err == "" {
-		f.err = AllNodeUnavailableMsg
+		f.err = fmt.Sprintf("0/%v", len(f.nodes)) + " nodes are unavailable"
 	}
 	if len(f.nodes) == 0 {
 		return f.err

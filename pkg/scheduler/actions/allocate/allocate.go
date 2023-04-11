@@ -98,8 +98,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	allNodes := ssn.NodeList
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		// Check for Resource Predicate
-		if !task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
-			return api.NewFitError(task, node, api.NodeResourceFitFailed)
+		if ok, reason := task.InitResreq.LessEqualWithReason(node.FutureIdle(), api.Zero); !ok {
+			return api.NewFitError(task, node, reason)
 		}
 
 		return ssn.PredicateFn(task, node)
