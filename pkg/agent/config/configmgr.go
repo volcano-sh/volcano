@@ -103,7 +103,7 @@ func (m *ConfigManager) PrepareConfigmap() error {
 	})
 	if waitErr != nil {
 		klog.ErrorS(waitErr, "Failed to wait for creating configMap")
-		return fmt.Errorf("failed to create configmap(%s:%s), waitting error: %v, latest creation error: %v",
+		return fmt.Errorf("failed to create configmap(%s:%s), waiting error: %v, latest creation error: %v",
 			m.agentPodNamespace, utils.ConfigMapName, waitErr, lastCreateErr)
 	}
 	return nil
