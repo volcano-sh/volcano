@@ -22,3 +22,77 @@ custom:
 nodeSelector: {}
 affinity: []
 tolerations: []
+
+# Specify affinity for all main Volcano components or per component.
+# For example:
+#
+#  default_affinity:
+#    podAntiAffinity:
+#      preferredDuringSchedulingIgnoredDuringExecution:
+#        - podAffinityTerm:
+#            labelSelector:
+#              matchLabels:
+#                key: value
+#            topologyKey: kubernetes.io/hostname
+#          weight: 49
+  default_affinity: ~
+  admission_affinity: ~
+  controller_affinity: ~
+  scheduler_affinity: ~
+
+# Specify tolerations for all main Volcano components or per component
+# For example:
+#
+#  default_tolerations:
+#  - key: "example-key1"
+#    operator: "Exists"
+#    effect: "NoSchedule"
+  default_tolerations: ~
+  admission_tolerations: ~
+  controller_tolerations: ~
+  scheduler_tolerations: ~
+
+# Specify securityContext for all main Volcano components or per component
+# For example:
+#
+#  default_sc:
+#    runAsUser: 3000
+#    runAsGroup: 3000
+  default_sc: ~
+  scheduler_sc: ~
+  admission_sc: ~
+  controller_sc: ~
+
+# Specify nodeSelector for all main Volcano components or per component
+# For example:
+#
+#  default_ns:
+#    nodetype: criticalservices
+  default_ns: ~
+  admission_ns: ~
+  scheduler_ns: ~
+  controller_ns: ~
+
+
+# Specify labels for Volcano main component deployments and pods
+# For example:
+#
+#  admission_podLabels:
+#    key1: value1
+  admission_podLabels: ~
+  scheduler_podLabels: ~
+  controller_podLabels: ~
+  admission_labels: ~
+  scheduler_labels: ~
+  controller_labels: ~
+
+# Specify resources for Volcano main component deployments and pods
+# For example:
+#
+#  admission_resources:
+#    limits:
+#      cpu: 300m
+#      memory: 300Mi
+  admission_resources: ~
+  scheduler_resources: ~
+  controller_resources: ~

@@ -1,4 +1,8 @@
 {{- if .Values.custom.admission_enable }}
+{{ $admission_affinity := or .Values.custom.admission_affinity .Values.custom.default_affinity }}
+{{ $admission_tolerations := or .Values.custom.admission_tolerations .Values.custom.default_tolerations }}
+{{ $admission_sc := or .Values.custom.admission_sc .Values.custom.default_sc }}
+{{ $admission_ns := or .Values.custom.admission_ns .Values.custom.default_ns }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -64,6 +68,9 @@ kind: Deployment
 metadata:
   labels:
     app: volcano-admission
+    {{- if .Values.custom.admission_labels }}
+    {{- toYaml .Values.custom.admission_labels | nindent 4 }}
+    {{- end }}
   name: {{ .Release.Name }}-admission
   namespace: {{ .Release.Namespace }}
 spec:
@@ -75,7 +82,24 @@ spec:
     metadata:
       labels:
         app: volcano-admission
+        {{- if .Values.custom.admission_podLabels }}
+        {{- toYaml .Values.custom.admission_podLabels | nindent 8 }}
+        {{- end }}
     spec:
+      {{- if $admission_tolerations }}
+      tolerations: {{- toYaml $admission_tolerations | nindent 8 }}
+      {{- end }}
+      {{- if $admission_ns }}
+      nodeSelector: {{- toYaml $admission_ns | nindent 8 }}
+      {{- end }}
+      {{- if $admission_affinity }}
+      affinity:
+          {{- toYaml $admission_affinity | nindent 8 }}
+      {{- end }}
+      {{- if $admission_sc }}
+      securityContext:
+          {{- toYaml $admission_sc | nindent 8 }}
+      {{- end }}
       serviceAccount: {{ .Release.Name }}-admission
       priorityClassName: system-cluster-critical
       {{- if .Values.basic.image_pull_secret }}
@@ -99,6 +123,8 @@ spec:
           image: {{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           name: admission
+          resources:
+          {{- toYaml .Values.custom.admission_resources | nindent 12 }}
           volumeMounts:
             - mountPath: /admission.local.config/certificates
               name: admission-certs
@@ -152,10 +178,27 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app: volcano-admission-init
+    {{- if .Values.custom.admission_labels }}
+    {{- toYaml .Values.custom.admission_labels | nindent 4 }}
+    {{- end }}
 spec:
   backoffLimit: 3
   template:
     spec:
+      {{- if $admission_tolerations }}
+      tolerations: {{- toYaml $admission_tolerations | nindent 8 }}
+      {{- end }}
+      {{- if $admission_ns }}
+      nodeSelector: {{- toYaml $admission_ns | nindent 8 }}
+      {{- end }}
+      {{- if $admission_affinity }}
+      affinity:
+        {{- toYaml $admission_affinity | nindent 8 }}
+      {{- end }}
+      {{- if $admission_sc }}
+      securityContext:
+        {{- toYaml $admission_sc | nindent 8 }}
+      {{- end }}
       serviceAccountName: {{ .Release.Name }}-admission
       priorityClassName: system-cluster-critical
       {{- if .Values.basic.image_pull_secret }}
@@ -165,6 +208,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
+          resources:
+          {{- toYaml .Values.custom.admission_resources | nindent 12 }}
           image: {{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           command: ["./gen-admission-secret.sh", "--service", "{{ .Release.Name }}-admission-service", "--namespace",

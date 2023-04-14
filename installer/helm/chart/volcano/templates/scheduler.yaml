@@ -1,4 +1,8 @@
 {{- if .Values.custom.scheduler_enable }}
+{{ $scheduler_affinity := or .Values.custom.scheduler_affinity .Values.custom.default_affinity }}
+{{ $scheduler_tolerations := or .Values.custom.scheduler_tolerations .Values.custom.default_tolerations }}
+{{ $scheduler_sc := or .Values.custom.scheduler_sc .Values.custom.default_sc }}
+{{ $scheduler_ns := or .Values.custom.scheduler_ns .Values.custom.default_ns }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -103,6 +107,9 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app: volcano-scheduler
+    {{- if .Values.custom.scheduler_labels }}
+    {{- toYaml .Values.custom.scheduler_labels | nindent 4 }}
+    {{- end }}
 spec:
   replicas: {{ .Values.custom.scheduler_replicas }}
   selector:
@@ -112,7 +119,24 @@ spec:
     metadata:
       labels:
         app: volcano-scheduler
+        {{- if .Values.custom.scheduler_podLabels }}
+        {{- toYaml .Values.custom.scheduler_podLabels | nindent 8 }}
+        {{- end }}
     spec:
+      {{- if $scheduler_tolerations }}
+      tolerations: {{- toYaml $scheduler_tolerations | nindent 8 }}
+      {{- end }}
+      {{- if $scheduler_ns }}
+      nodeSelector: {{- toYaml $scheduler_ns | nindent 8 }}
+      {{- end }}
+      {{- if $scheduler_affinity }}
+      affinity:
+        {{- toYaml $scheduler_affinity | nindent 8 }}
+      {{- end }}
+      {{- if $scheduler_sc }}
+      securityContext:
+        {{- toYaml $scheduler_sc | nindent 8 }}
+      {{- end }}
       serviceAccount: {{ .Release.Name }}-scheduler
       priorityClassName: system-cluster-critical
       {{- if .Values.basic.image_pull_secret }}
@@ -122,6 +146,8 @@ spec:
       containers:
         - name: {{ .Release.Name }}-scheduler
           image: {{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
+          resources:
+          {{- toYaml .Values.custom.scheduler_resources | nindent 12 }}
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.scheduler_config_file}}
