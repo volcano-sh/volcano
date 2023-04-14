@@ -24,7 +24,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -59,10 +58,12 @@ import (
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -592,6 +593,13 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 						}
 					}
 					return true
+				case cache.DeletedFinalStateUnknown:
+					if _, ok := v.Obj.(*v1.Pod); ok {
+						// The carried object may be stale, always pass to clean up stale obj in event handlers.
+						return true
+					}
+					klog.Errorf("Cannot convert object %T to *v1.Pod", v.Obj)
+					return false
 				default:
 					return false
 				}
