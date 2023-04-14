@@ -14,13 +14,10 @@ Kubernetes that are commonly required by many classes of batch & elastic workloa
 ## Installing volcano via yaml file
 
 All-in-one yaml has been generated for quick deployment. Try command:
-
 ```$xslt
 kubectl apply -f volcano-v0.0.x.yaml
 ```
-
 Check the status in namespace `volcano-system`
-
 ```$xslt
 $kubectl get all -n volcano-system
 NAME                                       READY   STATUS      RESTARTS   AGE
@@ -98,6 +95,31 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.scheduler_enable`|Whether to Enable Scheduler|`true`|
 |`custom.scheduler_replicas`|The number of Scheduler pods to run|`1`|
 |`custom.leader_elect_enable`|Whether to Enable leader elect|`false`|
+|`custom.default_affinity`|Default affinity for Admission/Controller/Scheduler pods|`~`|
+|`custom.admission_affinity`|Affinity for Admission pods|`~`|
+|`custom.controller_affinity`|Affinity for Controller pods|`~`|
+|`custom.scheduler_affinity`|Affinity for Scheduler pods|`~`|
+|`custom.default_tolerations`|Default tolerations for Admission/Controller/Scheduler pods|`~`|
+|`custom.admission_tolerations`|Tolerations for Admission pods|`~`|
+|`custom.controller_tolerations`|Tolerations for Controller pods|`~`|
+|`custom.scheduler_tolerations`|Tolerations for Scheduler pods|`~`|
+|`custom.default_sc`|Default securityContext for Admission/Controller/Scheduler pods|`~`|
+|`custom.admission_sc`|securityContext for Admission pods|`~`|
+|`custom.controller_sc`|securityContext for Controller pods|`~`|
+|`custom.scheduler_sc`|securityContext for Scheduler pods|`~`|
+|`custom.default_ns`|Default nodeSelector for Admission/Controller/Scheduler pods|`~`|
+|`custom.admission_ns`|nodeSelector for Admission pods|`~`|
+|`custom.controller_ns`|nodeSelector for Controller pods|`~`|
+|`custom.scheduler_ns`|nodeSelector for Scheduler pods|`~`|
+|`custom.admission_podLabels`|Pod labels for Admission pods|`~`|
+|`custom.controller_podLabels`|Pod labels for Controller pods|`~`|
+|`custom.scheduler_podLabels`|Pod labels for Scheduler pods|`~`|
+|`custom.admission_labels`|Labels for Admission deployment and job|`~`|
+|`custom.controller_labels`|Labels for Controller deployment|`~`|
+|`custom.scheduler_labels`|Labels for Scheduler deployment|`~`|
+|`custom.admission_resources`|Resources for Admission pods|`~`|
+|`custom.controller_resources`|Resources for Controller pods|`~`|
+|`custom.scheduler_resources`|Resources for Scheduler pods|`~`|
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 
@@ -106,6 +128,7 @@ $ helm install --name volcano-release --set basic.image_pull_policy=Always volca
 ```
 
 The above command set image pull policy to `Always`, so docker image will be pulled each time.
+
 
 Alternatively, a YAML file that specifies the values for the parameters can be provided while installing the chart. For example,
 
