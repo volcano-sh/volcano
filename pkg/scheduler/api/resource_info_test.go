@@ -1227,3 +1227,143 @@ func TestMinDimensionResourceInfinity(t *testing.T) {
 		}
 	}
 }
+
+func TestResource_LessEqualResource(t *testing.T) {
+	testsForDefaultZero := []struct {
+		resource1 *Resource
+		resource2 *Resource
+		expected  string
+	}{
+		{
+			resource1: &Resource{},
+			resource2: &Resource{},
+			expected:  "",
+		},
+		{
+			resource1: &Resource{},
+			resource2: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			expected: "",
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{},
+			expected:  "Insufficient cpu",
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          4000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU:        8000,
+				Memory:          8000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
+			},
+			expected: "",
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          8000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU:        8000,
+				Memory:          8000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
+			},
+			expected: "",
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          4000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU:        8000,
+				Memory:          8000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
+			},
+			expected: "",
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          4000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 5000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU:        8000,
+				Memory:          8000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
+			},
+			expected: "Insufficient scalar.test/scalar1",
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        9000,
+				Memory:          4000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{
+				MilliCPU:        8000,
+				Memory:          8000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
+			},
+			expected: "Insufficient cpu",
+		},
+	}
+
+	testsForDefaultInfinity := []struct {
+		resource1 *Resource
+		resource2 *Resource
+		expected  string
+	}{
+		{
+			resource1: &Resource{},
+			resource2: &Resource{},
+			expected:  "",
+		},
+		{
+			resource1: &Resource{},
+			resource2: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			expected: "",
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
+			},
+			resource2: &Resource{},
+			expected:  "Insufficient cpu",
+		},
+	}
+
+	for _, test := range testsForDefaultZero {
+		_, reason := test.resource1.LessEqualWithReason(test.resource2, Zero)
+		if !reflect.DeepEqual(test.expected, reason) {
+			t.Errorf("expected: %#v, got: %#v", test.expected, reason)
+		}
+	}
+	for caseID, test := range testsForDefaultInfinity {
+		_, reason := test.resource1.LessEqualWithReason(test.resource2, Infinity)
+		if !reflect.DeepEqual(test.expected, reason) {
+			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, reason)
+		}
+	}
+}
