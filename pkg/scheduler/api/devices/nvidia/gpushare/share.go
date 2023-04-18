@@ -125,7 +125,7 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, gs *GPUDevices) (bool, error) {
 	if getGPUMemoryOfPod(pod) <= 0 {
 		return true, nil
 	}
-	ids := predicateGPUbyMemory(pod, gs)
+	ids := predicateGPUbyTotalMemory(pod, gs)
 	if len(ids) == 0 {
 		return false, fmt.Errorf("no enough gpu memory on node %s", gs.Name)
 	}
@@ -142,6 +142,21 @@ func checkNodeGPUNumberPredicate(pod *v1.Pod, gs *GPUDevices) (bool, error) {
 		return false, fmt.Errorf("no enough gpu number on node %s", gs.Name)
 	}
 	return true, nil
+}
+
+// predicateGPUbyTotalMemory returns the available GPU ID on node
+func predicateGPUbyTotalMemory(pod *v1.Pod, gs *GPUDevices) []int {
+	gpuRequest := getGPUMemoryOfPod(pod)
+	allocatableGPUs := getDevicesAllGPUMemory(gs)
+	var devIDs []int
+
+	for devID := range allocatableGPUs {
+		if availableGPU, ok := allocatableGPUs[devID]; ok && availableGPU >= gpuRequest {
+			devIDs = append(devIDs, devID)
+		}
+	}
+	sort.Ints(devIDs)
+	return devIDs
 }
 
 // predicateGPUbyMemory returns the available GPU ID
