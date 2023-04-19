@@ -362,31 +362,8 @@ func (r *Resource) Less(rr *Resource, defaultValue DimensionDefaultValue) bool {
 // Otherwise returns false.
 // @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
 func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) bool {
-	lessEqualFunc := func(l, r, diff float64) bool {
-		if l < r || math.Abs(l-r) < diff {
-			return true
-		}
-		return false
-	}
-
-	if !lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) {
-		return false
-	}
-	if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
-		return false
-	}
-
-	for resourceName, leftValue := range r.ScalarResources {
-		rightValue, ok := rr.ScalarResources[resourceName]
-		if !ok && defaultValue == Infinity {
-			continue
-		}
-
-		if !lessEqualFunc(leftValue, rightValue, minResource) {
-			return false
-		}
-	}
-	return true
+	isLess, _ := r.LessEqualWithReason(rr, defaultValue)
+	return isLess
 }
 
 // LessEqualWithReason returns true, "" only on condition that all dimensions of resources in r are less than or equal with that of rr,
