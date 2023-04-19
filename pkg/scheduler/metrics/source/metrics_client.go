@@ -22,7 +22,7 @@ import (
 )
 
 type NodeMetrics struct {
-	Cpu    float64
+	CPU    float64
 	Memory float64
 }
 

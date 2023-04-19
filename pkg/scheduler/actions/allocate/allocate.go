@@ -247,7 +247,6 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 				stmt.Discard()
 			}
 		}
-
 	}
 }
 

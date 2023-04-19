@@ -1292,8 +1292,8 @@ func (sc *SchedulerCache) GetMetricsData() {
 				klog.Errorf("Error getting node metrics: %v\n", err)
 				continue
 			}
-			klog.V(4).Infof("node: %v, CpuUsageAvg: %v, MemUsageAvg: %v, period:%v", node, nodeMetrics.Cpu, nodeMetrics.Memory, period)
-			nodeUsageMap[node].CPUUsageAvg[period] = nodeMetrics.Cpu
+			klog.V(4).Infof("node: %v, CpuUsageAvg: %v, MemUsageAvg: %v, period:%v", node, nodeMetrics.CPU, nodeMetrics.Memory, period)
+			nodeUsageMap[node].CPUUsageAvg[period] = nodeMetrics.CPU
 			nodeUsageMap[node].MEMUsageAvg[period] = nodeMetrics.Memory
 		}
 	}

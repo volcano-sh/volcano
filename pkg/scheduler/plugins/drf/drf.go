@@ -385,11 +385,6 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 }
 
-func (drf *drfPlugin) updateNamespaceShare(namespaceName string, attr *drfAttr) {
-	drf.updateShare(attr)
-	metrics.UpdateNamespaceShare(namespaceName, attr.share)
-}
-
 // build hierarchy if the node does not exist
 func (drf *drfPlugin) buildHierarchy(root *hierarchicalNode, job *api.JobInfo, attr *drfAttr,
 	hierarchy, hierarchicalWeights string) {
@@ -435,7 +430,7 @@ func (drf *drfPlugin) buildHierarchy(root *hierarchicalNode, job *api.JobInfo, a
 		job.Namespace, job.Name, inode.hierarchy, hierarchicalWeights, child.attr, job.TotalRequest)
 }
 
-// updateNamespaceShare updates the node attribute recursively
+// updateHierarchicalShare updates the node attribute recursively
 func (drf *drfPlugin) updateHierarchicalShare(node *hierarchicalNode,
 	demandingResources map[v1.ResourceName]bool) {
 	if node.children == nil {
