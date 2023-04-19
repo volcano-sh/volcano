@@ -63,50 +63,45 @@ func (ji *JobInfo) SetJob(job *batch.Job) {
 // AddPod adds the k8s pod object values to the Pods field
 // of JobStruct if it doesn't exist. Otherwise it throws error.
 func (ji *JobInfo) AddPod(pod *v1.Pod) error {
-	taskName, found := pod.Annotations[batch.TaskSpecKey]
+	taskSpec, found := pod.Annotations[batch.TaskSpecKey]
 	if !found {
-		return fmt.Errorf("failed to find taskName of Pod <%s/%s>",
-			pod.Namespace, pod.Name)
+		return fmt.Errorf("failed to find task-spec in annotation of Pod <%s/%s>", pod.Namespace, pod.Name)
 	}
 
 	_, found = pod.Annotations[batch.JobVersion]
 	if !found {
-		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>",
-			pod.Namespace, pod.Name)
+		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>", pod.Namespace, pod.Name)
 	}
 
-	if _, found := ji.Pods[taskName]; !found {
-		ji.Pods[taskName] = make(map[string]*v1.Pod)
+	if _, found := ji.Pods[taskSpec]; !found {
+		ji.Pods[taskSpec] = make(map[string]*v1.Pod)
 	}
-	if _, found := ji.Pods[taskName][pod.Name]; found {
+	if _, found := ji.Pods[taskSpec][pod.Name]; found {
 		return fmt.Errorf("duplicated pod")
 	}
-	ji.Pods[taskName][pod.Name] = pod
+	ji.Pods[taskSpec][pod.Name] = pod
 
 	return nil
 }
 
 // UpdatePod updates the k8s pod object values to the existing pod.
 func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
-	taskName, found := pod.Annotations[batch.TaskSpecKey]
+	taskSpec, found := pod.Annotations[batch.TaskSpecKey]
 	if !found {
-		return fmt.Errorf("failed to find taskName of Pod <%s/%s>",
-			pod.Namespace, pod.Name)
+		return fmt.Errorf("failed to find task-spec in annotation of Pod <%s/%s>", pod.Namespace, pod.Name)
 	}
 	_, found = pod.Annotations[batch.JobVersion]
 	if !found {
-		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>",
-			pod.Namespace, pod.Name)
+		return fmt.Errorf("failed to find jobVersion of Pod <%s/%s>", pod.Namespace, pod.Name)
 	}
 
-	if _, found := ji.Pods[taskName]; !found {
-		return fmt.Errorf("can not find task %s in cache", taskName)
+	if _, found := ji.Pods[taskSpec]; !found {
+		return fmt.Errorf("can not find task-spec %s in cache", taskSpec)
 	}
-	if _, found := ji.Pods[taskName][pod.Name]; !found {
-		return fmt.Errorf("can not find pod <%s/%s> in cache",
-			pod.Namespace, pod.Name)
+	if _, found := ji.Pods[taskSpec][pod.Name]; !found {
+		return fmt.Errorf("can not find pod <%s/%s> in cache", pod.Namespace, pod.Name)
 	}
-	ji.Pods[taskName][pod.Name] = pod
+	ji.Pods[taskSpec][pod.Name] = pod
 
 	return nil
 }

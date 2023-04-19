@@ -121,9 +121,9 @@ func GetJobKeyByReq(req *apis.Request) string {
 }
 
 // GetTasklndexUnderJob return index of the task in the job.
-func GetTasklndexUnderJob(taskName string, job *batch.Job) int {
+func GetTasklndexUnderJob(specName string, job *batch.Job) int {
 	for index, task := range job.Spec.Tasks {
-		if task.Name == taskName {
+		if task.Name == specName {
 			return index
 		}
 	}
@@ -131,12 +131,12 @@ func GetTasklndexUnderJob(taskName string, job *batch.Job) int {
 }
 
 // GetPodsNameUnderTask return names of all pods in the task.
-func GetPodsNameUnderTask(taskName string, job *batch.Job) []string {
+func GetPodsNameUnderTask(specName string, job *batch.Job) []string {
 	var res []string
 	for _, task := range job.Spec.Tasks {
-		if task.Name == taskName {
+		if task.Name == specName {
 			for index := 0; index < int(task.Replicas); index++ {
-				res = append(res, MakePodName(job.Name, taskName, index))
+				res = append(res, MakePodName(job.Name, specName, index))
 			}
 			break
 		}

@@ -142,9 +142,10 @@ func getJobID(pod *v1.Pod) JobID {
 	return ""
 }
 
-func getTaskID(pod *v1.Pod) TaskID {
+// getTaskSpec return task's role spac name
+func getTaskSpec(pod *v1.Pod) string {
 	if ts, found := pod.Annotations[batch.TaskSpecKey]; found && len(ts) != 0 {
-		return TaskID(ts)
+		return ts
 	}
 
 	return ""
@@ -259,11 +260,11 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 	}
 }
 
-func (ti *TaskInfo) GetTaskSpecKey() TaskID {
+func (ti *TaskInfo) GetTaskSpecKey() string {
 	if ti.Pod == nil {
 		return ""
 	}
-	return getTaskID(ti.Pod)
+	return getTaskSpec(ti.Pod)
 }
 
 // String returns the taskInfo details in a string
@@ -309,7 +310,7 @@ type JobInfo struct {
 	// All tasks of the Job.
 	TaskStatusIndex       map[TaskStatus]tasksMap
 	Tasks                 tasksMap
-	TaskMinAvailable      map[TaskID]int32
+	TaskMinAvailable      map[string]int32
 	TaskMinAvailableTotal int32
 
 	Allocated    *Resource
@@ -340,7 +341,7 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 		TotalRequest:     EmptyResource(),
 		TaskStatusIndex:  map[TaskStatus]tasksMap{},
 		Tasks:            tasksMap{},
-		TaskMinAvailable: map[TaskID]int32{},
+		TaskMinAvailable: map[string]int32{},
 	}
 
 	for _, task := range tasks {
@@ -384,8 +385,8 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.Budget = ji.extractBudget(pg)
 
 	taskMinAvailableTotal := int32(0)
-	for task, member := range pg.Spec.MinTaskMember {
-		ji.TaskMinAvailable[TaskID(task)] = member
+	for spec, member := range pg.Spec.MinTaskMember {
+		ji.TaskMinAvailable[spec] = member
 		taskMinAvailableTotal += member
 	}
 	ji.TaskMinAvailableTotal = taskMinAvailableTotal
@@ -704,24 +705,24 @@ func (ji *JobInfo) CheckTaskValid() bool {
 		return true
 	}
 
-	actual := map[TaskID]int32{}
+	actual := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded ||
 			status == Pipelined ||
 			status == Pending {
 			for _, task := range tasks {
-				actual[getTaskID(task.Pod)]++
+				actual[getTaskSpec(task.Pod)]++
 			}
 		}
 	}
 
 	klog.V(4).Infof("job %s/%s actual: %+v, ji.TaskMinAvailable: %+v", ji.Name, ji.Namespace, actual, ji.TaskMinAvailable)
-	for task, minAvailable := range ji.TaskMinAvailable {
+	for specKey, minAvailable := range ji.TaskMinAvailable {
 		if minAvailable == 0 {
 			continue
 		}
-		if act, ok := actual[task]; !ok || act < minAvailable {
+		if act, ok := actual[specKey]; !ok || act < minAvailable {
 			return false
 		}
 	}
@@ -734,12 +735,12 @@ func (ji *JobInfo) CheckTaskReady() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
-	occupiedMap := map[TaskID]int32{}
+	occupiedMap := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded {
 			for _, task := range tasks {
-				occupiedMap[getTaskID(task.Pod)]++
+				occupiedMap[getTaskSpec(task.Pod)]++
 			}
 			continue
 		}
@@ -747,14 +748,14 @@ func (ji *JobInfo) CheckTaskReady() bool {
 		if status == Pending {
 			for _, task := range tasks {
 				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskID(task.Pod)]++
+					occupiedMap[getTaskSpec(task.Pod)]++
 				}
 			}
 		}
 	}
-	for taskID, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskID] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+	for specKey, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[specKey] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, specKey, occupiedMap[specKey])
 			return false
 		}
 	}
@@ -766,13 +767,13 @@ func (ji *JobInfo) CheckTaskPipelined() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
-	occupiedMap := map[TaskID]int32{}
+	occupiedMap := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded ||
 			status == Pipelined {
 			for _, task := range tasks {
-				occupiedMap[getTaskID(task.Pod)]++
+				occupiedMap[getTaskSpec(task.Pod)]++
 			}
 			continue
 		}
@@ -780,14 +781,14 @@ func (ji *JobInfo) CheckTaskPipelined() bool {
 		if status == Pending {
 			for _, task := range tasks {
 				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskID(task.Pod)]++
+					occupiedMap[getTaskSpec(task.Pod)]++
 				}
 			}
 		}
 	}
-	for taskID, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskID] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+	for specKey, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[specKey] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, specKey, occupiedMap[specKey])
 			return false
 		}
 	}
@@ -799,13 +800,13 @@ func (ji *JobInfo) CheckTaskStarving() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
-	occupiedMap := map[TaskID]int32{}
+	occupiedMap := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded ||
 			status == Pipelined {
 			for _, task := range tasks {
-				occupiedMap[getTaskID(task.Pod)]++
+				occupiedMap[getTaskSpec(task.Pod)]++
 			}
 			continue
 		}
@@ -813,14 +814,14 @@ func (ji *JobInfo) CheckTaskStarving() bool {
 		if status == Pending {
 			for _, task := range tasks {
 				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskID(task.Pod)]++
+					occupiedMap[getTaskSpec(task.Pod)]++
 				}
 			}
 		}
 	}
-	for taskID, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskID] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min available", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+	for specKey, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[specKey] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min available", ji.Namespace, ji.Name, specKey, occupiedMap[specKey])
 			return true
 		}
 	}
