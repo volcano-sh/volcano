@@ -17,23 +17,21 @@
 package shuffle
 
 import (
+	"github.com/golang/mock/gomock"
 	"testing"
 	"time"
+	mock_framework "volcano.sh/volcano/pkg/scheduler/framework/mock_gen"
 
-	"github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
-	mock_framework "volcano.sh/volcano/pkg/scheduler/framework/mock_gen"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -46,8 +44,8 @@ func TestShuffle(t *testing.T) {
 	ctl := gomock.NewController(t)
 	fakePlugin := mock_framework.NewMockPlugin(ctl)
 	fakePlugin.EXPECT().Name().AnyTimes().Return("fake")
-	fakePlugin.EXPECT().OnSessionOpen(gomock.Any()).AnyTimes().Return()
-	fakePlugin.EXPECT().OnSessionClose(gomock.Any()).AnyTimes().Return()
+	fakePlugin.EXPECT().OnSessionOpen(gomock.Any()).Return()
+	fakePlugin.EXPECT().OnSessionClose(gomock.Any()).Return()
 	fakePluginBuilder := func(arguments framework.Arguments) framework.Plugin {
 		return fakePlugin
 	}
@@ -137,22 +135,18 @@ func TestShuffle(t *testing.T) {
 		evictor := &util.FakeEvictor{
 			Channel: make(chan string),
 		}
+		schedulerCache := &cache.SchedulerCache{
+			Nodes:           make(map[string]*api.NodeInfo),
+			Jobs:            make(map[api.JobID]*api.JobInfo),
+			Queues:          make(map[api.QueueID]*api.QueueInfo),
+			Binder:          binder,
+			Evictor:         evictor,
+			StatusUpdater:   &util.FakeStatusUpdater{},
+			VolumeBinder:    &util.FakeVolumeBinder{},
+			PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
 
-		option := options.NewServerOption()
-		option.RegisterOptions()
-		config, err := kube.BuildConfig(option.KubeClientOptions)
-		if err != nil {
-			return
+			Recorder: record.NewFakeRecorder(100),
 		}
-
-		sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
-		schedulerCache := sc.(*cache.SchedulerCache)
-		schedulerCache.Binder = binder
-		schedulerCache.Evictor = evictor
-		schedulerCache.StatusUpdater = &util.FakeStatusUpdater{}
-		schedulerCache.VolumeBinder = &util.FakeVolumeBinder{}
-		schedulerCache.Recorder = record.NewFakeRecorder(100)
-
 		schedulerCache.PriorityClasses["high-priority"] = &schedulingv1.PriorityClass{
 			Value: highPriority,
 		}

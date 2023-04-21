@@ -14,7 +14,6 @@ import (
 
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -211,21 +210,15 @@ func TestHDRF(t *testing.T) {
 			Binds:   map[string]string{},
 			Channel: make(chan string),
 		}
-
-		option := options.NewServerOption()
-		option.RegisterOptions()
-		config, err := kube.BuildConfig(option.KubeClientOptions)
-		if err != nil {
-			return
+		schedulerCache := &cache.SchedulerCache{
+			Nodes:         make(map[string]*api.NodeInfo),
+			Jobs:          make(map[api.JobID]*api.JobInfo),
+			Queues:        make(map[api.QueueID]*api.QueueInfo),
+			Binder:        binder,
+			StatusUpdater: &util.FakeStatusUpdater{},
+			VolumeBinder:  &util.FakeVolumeBinder{},
+			Recorder:      record.NewFakeRecorder(100),
 		}
-
-		sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
-		schedulerCache := sc.(*cache.SchedulerCache)
-		schedulerCache.Binder = binder
-		schedulerCache.StatusUpdater = &util.FakeStatusUpdater{}
-		schedulerCache.VolumeBinder = &util.FakeVolumeBinder{}
-		schedulerCache.Recorder = record.NewFakeRecorder(100)
-
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)
 		}

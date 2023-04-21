@@ -52,9 +52,6 @@ func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
 		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", queueSpec.Name)
 	}
-
-	// wait for queue state turns to be open
-	time.Sleep(3 * time.Second)
 }
 
 // CreateQueue creates Queue with the specified name
@@ -80,9 +77,6 @@ func CreateQueues(ctx *TestContext) {
 	for _, queue := range ctx.Queues {
 		CreateQueue(ctx, queue)
 	}
-
-	// wait for all queues state open
-	time.Sleep(3 * time.Second)
 }
 
 // DeleteQueue deletes Queue with the specified name
