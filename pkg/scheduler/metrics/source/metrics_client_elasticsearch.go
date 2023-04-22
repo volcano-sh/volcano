@@ -21,15 +21,16 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"github.com/elastic/go-elasticsearch/v7"
 	"net/http"
+
+	"github.com/elastic/go-elasticsearch/v7"
 )
 
 const (
 	// esHostNameField is the field name of host name in the document
 	esHostNameField = "host.hostname"
-	// esCpuUsageField is the field name of cpu usage in the document
-	esCpuUsageField = "host.cpu.usage"
+	// esCPUUsageField is the field name of cpu usage in the document
+	esCPUUsageField = "host.cpu.usage"
 	// esMemUsageField is the field name of mem usage in the document
 	esMemUsageField = "system.memory.actual.used.pct"
 )
@@ -100,7 +101,7 @@ func (e *ElasticsearchMetricsClient) NodeMetricsAvg(ctx context.Context, nodeNam
 		"aggs": map[string]interface{}{
 			"cpu": map[string]interface{}{
 				"avg": map[string]interface{}{
-					"field": esCpuUsageField,
+					"field": esCPUUsageField,
 				},
 			},
 			"mem": map[string]interface{}{
@@ -124,7 +125,7 @@ func (e *ElasticsearchMetricsClient) NodeMetricsAvg(ctx context.Context, nodeNam
 	defer res.Body.Close()
 	var r struct {
 		Aggregations struct {
-			Cpu struct {
+			CPU struct {
 				Value float64 `json:"value"`
 			}
 			Mem struct {
@@ -136,7 +137,7 @@ func (e *ElasticsearchMetricsClient) NodeMetricsAvg(ctx context.Context, nodeNam
 		return nil, err
 	}
 	// The data obtained from Elasticsearch is in decimals and needs to be multiplied by 100.
-	nodeMetrics.Cpu = r.Aggregations.Cpu.Value * 100
+	nodeMetrics.CPU = r.Aggregations.CPU.Value * 100
 	nodeMetrics.Memory = r.Aggregations.Mem.Value * 100
 	return nodeMetrics, nil
 }

@@ -20,19 +20,20 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/prometheus/client_golang/api"
-	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
-	pmodel "github.com/prometheus/common/model"
-	"k8s.io/klog/v2"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/prometheus/client_golang/api"
+	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	pmodel "github.com/prometheus/common/model"
+	"k8s.io/klog/v2"
 )
 
 const (
-	// promCpuUsageAvg record name of cpu average usage defined in prometheus rules
-	promCpuUsageAvg = "cpu_usage_avg"
+	// promCPUUsageAvg record name of cpu average usage defined in prometheus rules
+	promCPUUsageAvg = "cpu_usage_avg"
 	// promMemUsageAvg record name of mem average usage defined in prometheus rules
 	promMemUsageAvg = "mem_usage_avg"
 )
@@ -65,7 +66,7 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 	}
 	v1api := prometheusv1.NewAPI(client)
 	nodeMetrics := &NodeMetrics{}
-	for _, metric := range []string{promCpuUsageAvg, promMemUsageAvg} {
+	for _, metric := range []string{promCPUUsageAvg, promMemUsageAvg} {
 		queryStr := fmt.Sprintf("%s_%s{instance=\"%s\"}", metric, period, nodeName)
 		klog.V(4).Infof("Query prometheus by %s", queryStr)
 		res, warnings, err := v1api.Query(ctx, queryStr, time.Now())
@@ -88,9 +89,9 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 		rowValues := strings.Split(strings.TrimSpace(firstRowValVector), "=>")
 		value := strings.Split(strings.TrimSpace(rowValues[1]), " ")
 		switch metric {
-		case promCpuUsageAvg:
+		case promCPUUsageAvg:
 			cpuUsage, _ := strconv.ParseFloat(value[0], 64)
-			nodeMetrics.Cpu = cpuUsage
+			nodeMetrics.CPU = cpuUsage
 		case promMemUsageAvg:
 			memUsage, _ := strconv.ParseFloat(value[0], 64)
 			nodeMetrics.Memory = memUsage
