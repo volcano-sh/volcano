@@ -59,6 +59,11 @@ func TestHDRF(t *testing.T) {
 	})
 	defer patches.Reset()
 
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+
 	s := options.NewServerOption()
 	s.MinNodesToFind = 100
 	s.PercentageOfNodesToFind = 100

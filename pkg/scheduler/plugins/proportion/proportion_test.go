@@ -22,23 +22,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"k8s.io/client-go/util/workqueue"
-	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
-
-	"io/ioutil"
-
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	apiv1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -112,6 +107,11 @@ func TestProportion(t *testing.T) {
 		return nil
 	})
 	defer patches.Reset()
+
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
 
 	framework.RegisterPluginBuilder(PluginName, New)
 	framework.RegisterPluginBuilder(gang.PluginName, gang.New)

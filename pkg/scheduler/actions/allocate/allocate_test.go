@@ -51,6 +51,11 @@ func TestAllocate(t *testing.T) {
 	})
 	defer patches.Reset()
 
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+
 	framework.RegisterPluginBuilder("drf", drf.New)
 	framework.RegisterPluginBuilder("proportion", proportion.New)
 
@@ -307,6 +312,11 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 		return nil
 	})
 	defer patches.Reset()
+	
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
 
 	framework.RegisterPluginBuilder("gang", gang.New)
 	framework.RegisterPluginBuilder("priority", priority.New)

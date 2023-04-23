@@ -17,11 +17,12 @@
 package shuffle
 
 import (
-	"github.com/golang/mock/gomock"
+	"reflect"
 	"testing"
 	"time"
-	mock_framework "volcano.sh/volcano/pkg/scheduler/framework/mock_gen"
 
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,10 +33,17 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	mock_framework "volcano.sh/volcano/pkg/scheduler/framework/mock_gen"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func TestShuffle(t *testing.T) {
+	var tmp *cache.SchedulerCache
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+
 	var highPriority int32
 	var lowPriority int32
 	highPriority = 100

@@ -17,9 +17,11 @@ limitations under the License.
 package preempt
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +39,12 @@ import (
 )
 
 func TestPreempt(t *testing.T) {
+	var tmp *cache.SchedulerCache
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+
 	framework.RegisterPluginBuilder("conformance", conformance.New)
 	framework.RegisterPluginBuilder("gang", gang.New)
 	options.ServerOpts = &options.ServerOption{

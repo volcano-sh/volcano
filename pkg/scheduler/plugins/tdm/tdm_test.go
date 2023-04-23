@@ -19,9 +19,11 @@ package tdm
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
@@ -107,6 +109,12 @@ func Test_parseRevocableZone(t *testing.T) {
 }
 
 func Test_TDM(t *testing.T) {
+	var tmp *cache.SchedulerCache
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+
 	framework.RegisterPluginBuilder(PluginName, New)
 	defer framework.CleanupPluginBuilders()
 
@@ -312,6 +320,12 @@ func Test_TDM(t *testing.T) {
 	}
 }
 func Test_TDM_victimsFn(t *testing.T) {
+	var tmp *cache.SchedulerCache
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+
 	framework.RegisterPluginBuilder(PluginName, New)
 	defer framework.CleanupPluginBuilders()
 
