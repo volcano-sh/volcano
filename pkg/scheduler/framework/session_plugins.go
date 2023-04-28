@@ -69,6 +69,11 @@ func (ssn *Session) AddPredicateFn(name string, pf api.PredicateFn) {
 	ssn.predicateFns[name] = pf
 }
 
+// AddPredicateResourceFn add Predicate Resource information function
+func (ssn *Session) AddPredicateResourceFn(name string, pf api.PredicateResourceFn) {
+	ssn.predicateResourceFns[name] = pf
+}
+
 // AddPrePredicateFn add PrePredicate function
 func (ssn *Session) AddPrePredicateFn(name string, pf api.PrePredicateFn) {
 	ssn.prePredicateFns[name] = pf
@@ -608,6 +613,28 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 				continue
 			}
 			pfn, found := ssn.predicateFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(task, node)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// PredicateResourceFn invoke predicate resource function of the plugins
+// Including resource information such as: CPU, Memory, extended resources such as: GPU, etc.
+// Including the number of pods
+func (ssn *Session) PredicateResourceFn(task *api.TaskInfo, node *api.NodeInfo) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPredicateResource) {
+				continue
+			}
+			pfn, found := ssn.predicateResourceFns[plugin.Name]
 			if !found {
 				continue
 			}

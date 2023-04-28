@@ -63,10 +63,12 @@ type PluginOption struct {
 	EnabledReclaimable *bool `yaml:"enableReclaimable"`
 	// EnabledQueueOrder defines whether queueOrderFn is enabled
 	EnabledQueueOrder *bool `yaml:"enableQueueOrder"`
-	// EnabledPredicate defines whether predicateFn is enabled
-	EnabledClusterOrder *bool `yaml:"EnabledClusterOrder"`
 	// EnableClusterOrder defines whether clusterOrderFn is enabled
+	EnabledClusterOrder *bool `yaml:"EnabledClusterOrder"`
+	// EnabledPredicate defines whether predicateFn is enabled
 	EnabledPredicate *bool `yaml:"enablePredicate"`
+	// EnabledPredicateResource defines whether predicateResourceFn is enabled
+	EnabledPredicateResource *bool `yaml:"enablePredicateResource"`
 	// EnabledBestNode defines whether bestNodeFn is enabled
 	EnabledBestNode *bool `yaml:"enableBestNode"`
 	// EnabledNodeOrder defines whether NodeOrderFn is enabled

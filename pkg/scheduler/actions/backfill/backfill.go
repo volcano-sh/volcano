@@ -70,8 +70,13 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 				// As task did not request resources, so it only need to meet predicates.
 				// TODO (k82cn): need to prioritize nodes to avoid pod hole.
 				for _, node := range ssn.Nodes {
-					// TODO (k82cn): predicates did not consider pod number for now, there'll
-					// be ping-pong case here.
+					if err := ssn.PredicateResourceFn(task, node); err != nil {
+						klog.V(3).Infof("Predicate resource information failed for task <%s/%s> on node <%s>: %v",
+							task.Namespace, task.Name, node.Name, err)
+						fe.SetNodeError(node.Name, err)
+						continue
+					}
+
 					if err := ssn.PredicateFn(task, node); err != nil {
 						klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 							task.Namespace, task.Name, node.Name, err)

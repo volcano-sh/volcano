@@ -98,11 +98,16 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	allNodes := ssn.NodeList
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		// Check for Resource Predicate
-		if ok, reason := task.InitResreq.LessEqualWithReason(node.FutureIdle(), api.Zero); !ok {
-			return api.NewFitError(task, node, reason)
+		if err := ssn.PredicateResourceFn(task, node); err != nil {
+			return err
 		}
 
-		return ssn.PredicateFn(task, node)
+		// Check for predicate
+		if err := ssn.PredicateFn(task, node); err != nil {
+			return err
+		}
+
+		return nil
 	}
 
 	// To pick <namespace, queue> tuple for job, we choose to pick namespace firstly.
