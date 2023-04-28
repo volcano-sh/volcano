@@ -67,8 +67,6 @@ type PluginOption struct {
 	EnabledClusterOrder *bool `yaml:"EnabledClusterOrder"`
 	// EnabledPredicate defines whether predicateFn is enabled
 	EnabledPredicate *bool `yaml:"enablePredicate"`
-	// EnabledPredicateResource defines whether predicateResourceFn is enabled
-	EnabledPredicateResource *bool `yaml:"enablePredicateResource"`
 	// EnabledBestNode defines whether bestNodeFn is enabled
 	EnabledBestNode *bool `yaml:"enableBestNode"`
 	// EnabledNodeOrder defines whether NodeOrderFn is enabled

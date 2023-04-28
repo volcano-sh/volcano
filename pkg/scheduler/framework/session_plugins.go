@@ -631,7 +631,7 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 func (ssn *Session) PredicateResourceFn(task *api.TaskInfo, node *api.NodeInfo) error {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledPredicateResource) {
+			if !isEnabled(plugin.EnabledPredicate) {
 				continue
 			}
 			pfn, found := ssn.predicateResourceFns[plugin.Name]

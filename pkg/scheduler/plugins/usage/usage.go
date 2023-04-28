@@ -124,20 +124,20 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(4).Infof("Threshold arguments :%v", argsValue)
 	}
 
-	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
+	predicateResourceFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		for period, value := range up.threshold.cpuUsageAvg {
-			klog.V(4).Infof("predicateFn cpuUsageAvg:%v", up.threshold.cpuUsageAvg)
+			klog.V(4).Infof("predicateResourceFn cpuUsageAvg:%v", up.threshold.cpuUsageAvg)
 			if node.ResourceUsage.CPUUsageAvg[period] > value {
 				msg := fmt.Sprintf("Node %s cpu usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.CPUUsageAvg[period], value)
-				return fmt.Errorf("plugin %s predicates failed %s", up.Name(), msg)
+				return fmt.Errorf("plugin %s predicates resource failed %s", up.Name(), msg)
 			}
 		}
 
 		for period, value := range up.threshold.memUsageAvg {
-			klog.V(4).Infof("predicateFn memUsageAvg:%v", up.threshold.memUsageAvg)
+			klog.V(4).Infof("predicateResourceFn memUsageAvg:%v", up.threshold.memUsageAvg)
 			if node.ResourceUsage.MEMUsageAvg[period] > value {
 				msg := fmt.Sprintf("Node %s mem usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.MEMUsageAvg[period], value)
-				return fmt.Errorf("plugin %s memory usage predicates failed %s", up.Name(), msg)
+				return fmt.Errorf("plugin %s memory usage predicates resource failed %s", up.Name(), msg)
 			}
 		}
 		klog.V(4).Infof("Usage plugin filter for task %s/%s on node %s pass.", task.Namespace, task.Name, node.Name)
@@ -157,7 +157,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		return score, nil
 	}
 
-	ssn.AddPredicateFn(up.Name(), predicateFn)
+	ssn.AddPredicateResourceFn(up.Name(), predicateResourceFn)
 	ssn.AddNodeOrderFn(up.Name(), nodeOrderFn)
 }
 

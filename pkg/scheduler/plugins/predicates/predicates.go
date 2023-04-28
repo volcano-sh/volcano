@@ -393,16 +393,44 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		return nil
 	})
 
+	ssn.AddPredicateResourceFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		nodeInfo, found := nodeMap[node.Name]
+		if !found {
+			return fmt.Errorf("failed to predicate resource, node info for %s not found", node.Name)
+		}
+
+		if ok, reason := task.InitResreq.LessEqualWithReason(node.FutureIdle(), api.Zero); !ok {
+			klog.V(4).Infof("NodeFutureIdle resource predicates Task <%s/%s> on Node <%s> failed",
+				task.Namespace, task.Name, node.Name)
+			return api.NewFitError(task, node, reason)
+		}
+
+		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods) {
+			klog.V(4).Infof("NodePodNumber resource predicates Task <%s/%s> on Node <%s> failed",
+				task.Namespace, task.Name, node.Name)
+			return api.NewFitError(task, node, api.NodePodNumberExceeded)
+		}
+
+		for _, val := range api.RegisteredDevices {
+			if devices, ok := node.Others[val].(api.Devices); ok {
+				_, err := devices.FilterNode(task.Pod)
+				if err != nil {
+					return err
+				}
+			} else {
+				klog.Warningf("Devices %s assertion conversion failed, skip", val)
+			}
+			klog.V(4).Infof("check node registered devices predicates Task <%s/%s> on Node <%s>",
+				task.Namespace, task.Name, node.Name)
+		}
+
+		return nil
+	})
+
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
 			return fmt.Errorf("failed to predicates, node info for %s not found", node.Name)
-		}
-
-		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods) {
-			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed",
-				task.Namespace, task.Name, node.Name)
-			return api.NewFitError(task, node, api.NodePodNumberExceeded)
 		}
 
 		predicateByStablefilter := func(pod *v1.Pod, nodeInfo *k8sframework.NodeInfo) (bool, error) {
@@ -491,20 +519,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return fmt.Errorf("plugin %s predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
 			}
 		}
-
-		for _, val := range api.RegisteredDevices {
-			if devices, ok := node.Others[val].(api.Devices); ok {
-				fit, err = devices.FilterNode(task.Pod)
-				if err != nil {
-					return err
-				}
-			} else {
-				klog.Warningf("Devices %s assertion conversion failed, skip", val)
-			}
-		}
-
-		klog.V(4).Infof("checkNodeGPUPredicate predicates Task <%s/%s> on Node <%s>: fit %v",
-			task.Namespace, task.Name, node.Name, fit)
 
 		if predicate.proportionalEnable {
 			// Check ProportionalPredicate

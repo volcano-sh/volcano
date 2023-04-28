@@ -46,6 +46,8 @@ const (
 	ExtenderOnSessionCloseVerb = "extender.onSessionCloseVerb"
 	// ExtenderPredicateVerb is the verb of Predicate method
 	ExtenderPredicateVerb = "extender.predicateVerb"
+	// ExtenderPredicateResourceVerb is the verb of Predicate resource method
+	ExtenderPredicateResourceVerb = "extender.predicateResourceVerb"
 	// ExtenderPrioritizeVerb is the verb of Prioritize method
 	ExtenderPrioritizeVerb = "extender.prioritizeVerb"
 	// ExtenderPreemptableVerb is the verb of Preemptable method
@@ -63,18 +65,19 @@ const (
 )
 
 type extenderConfig struct {
-	urlPrefix          string
-	httpTimeout        time.Duration
-	onSessionOpenVerb  string
-	onSessionCloseVerb string
-	predicateVerb      string
-	prioritizeVerb     string
-	preemptableVerb    string
-	reclaimableVerb    string
-	queueOverusedVerb  string
-	jobEnqueueableVerb string
-	jobReadyVerb       string
-	ignorable          bool
+	urlPrefix             string
+	httpTimeout           time.Duration
+	onSessionOpenVerb     string
+	onSessionCloseVerb    string
+	predicateVerb         string
+	predicateResourceVerb string
+	prioritizeVerb        string
+	preemptableVerb       string
+	reclaimableVerb       string
+	queueOverusedVerb     string
+	jobEnqueueableVerb    string
+	jobReadyVerb          string
+	ignorable             bool
 }
 
 type extenderPlugin struct {
@@ -100,6 +103,7 @@ func parseExtenderConfig(arguments framework.Arguments) *extenderConfig {
 				   extender.onSessionOpenVerb: onSessionOpen
 				   extender.onSessionCloseVerb: onSessionClose
 				   extender.predicateVerb: predicate
+				   extender.predicateResourceVerb: predicateResource
 				   extender.prioritizeVerb: prioritize
 				   extender.preemptableVerb: preemptable
 				   extender.reclaimableVerb: reclaimable
@@ -114,6 +118,7 @@ func parseExtenderConfig(arguments framework.Arguments) *extenderConfig {
 	ec.onSessionOpenVerb, _ = arguments[ExtenderOnSessionOpenVerb].(string)
 	ec.onSessionCloseVerb, _ = arguments[ExtenderOnSessionCloseVerb].(string)
 	ec.predicateVerb, _ = arguments[ExtenderPredicateVerb].(string)
+	ec.predicateResourceVerb, _ = arguments[ExtenderPredicateResourceVerb].(string)
 	ec.prioritizeVerb, _ = arguments[ExtenderPrioritizeVerb].(string)
 	ec.preemptableVerb, _ = arguments[ExtenderPreemptableVerb].(string)
 	ec.reclaimableVerb, _ = arguments[ExtenderReclaimableVerb].(string)
@@ -166,6 +171,26 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 			err := ep.send(ep.config.predicateVerb, &PredicateRequest{Task: task, Node: node}, resp)
 			if err != nil {
 				klog.Warningf("Predicate failed with error %v", err)
+
+				if ep.config.ignorable {
+					return nil
+				}
+				return err
+			}
+
+			if resp.ErrorMessage == "" {
+				return nil
+			}
+			return errors.New(resp.ErrorMessage)
+		})
+	}
+
+	if ep.config.predicateResourceVerb != "" {
+		ssn.AddPredicateResourceFn(ep.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+			resp := &PredicateResourceResponse{}
+			err := ep.send(ep.config.predicateResourceVerb, &PredicateRequest{Task: task, Node: node}, resp)
+			if err != nil {
+				klog.Warningf("Predicate resource failed with error %v", err)
 
 				if ep.config.ignorable {
 					return nil

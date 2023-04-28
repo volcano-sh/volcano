@@ -1,21 +1,27 @@
 package predicates
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/spf13/pflag"
 
 	apiv1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodevolumelimits"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -55,23 +61,53 @@ func TestEventHandler(t *testing.T) {
 	})
 	defer patches.Reset()
 
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+
+	interpodaffinityNewPatch := gomonkey.ApplyFunc(interpodaffinity.New, func(plArgs runtime.Object, h k8sframework.Handle) (k8sframework.Plugin, error) {
+		return &interpodaffinity.InterPodAffinity{}, nil
+	})
+	defer interpodaffinityNewPatch.Reset()
+	podAffinityFilter := &interpodaffinity.InterPodAffinity{}
+	interpodaffinityPreFilterPatch := gomonkey.ApplyMethod(reflect.TypeOf(podAffinityFilter), "PreFilter", func(_ *interpodaffinity.InterPodAffinity, ctx context.Context, cycleState *k8sframework.CycleState, pod *apiv1.Pod) (*k8sframework.PreFilterResult, *k8sframework.Status) {
+		return nil, nil
+	})
+	defer interpodaffinityPreFilterPatch.Reset()
+	interpodaffinityFilterPatch := gomonkey.ApplyMethod(reflect.TypeOf(podAffinityFilter), "Filter", func(_ *interpodaffinity.InterPodAffinity, ctx context.Context, cycleState *k8sframework.CycleState, pod *apiv1.Pod, nodeInfo *k8sframework.NodeInfo) *k8sframework.Status {
+		return nil
+	})
+	defer interpodaffinityFilterPatch.Reset()
+
+	nodevolumelimitsNewCSIPatch := gomonkey.ApplyFunc(nodevolumelimits.NewCSI, func(_ runtime.Object, handle k8sframework.Handle, fts feature.Features) (k8sframework.Plugin, error) {
+		return &nodevolumelimits.CSILimits{}, nil
+	})
+	defer nodevolumelimitsNewCSIPatch.Reset()
+	volumezoneNewPatch := gomonkey.ApplyFunc(volumezone.New, func(_ runtime.Object, handle k8sframework.Handle) (k8sframework.Plugin, error) {
+		return &volumezone.VolumeZone{}, nil
+	})
+	defer volumezoneNewPatch.Reset()
+
+	podtopologyspreadNewPatch := gomonkey.ApplyFunc(podtopologyspread.New, func(plArgs runtime.Object, h k8sframework.Handle, fts feature.Features) (k8sframework.Plugin, error) {
+		return &podtopologyspread.PodTopologySpread{}, nil
+	})
+	defer podtopologyspreadNewPatch.Reset()
+	podTopologySpreadFilter := &podtopologyspread.PodTopologySpread{}
+	podtopologyspreadPreFilterPatch := gomonkey.ApplyMethod(reflect.TypeOf(podTopologySpreadFilter), "PreFilter", func(_ *podtopologyspread.PodTopologySpread, ctx context.Context, cycleState *k8sframework.CycleState, pod *apiv1.Pod) (*k8sframework.PreFilterResult, *k8sframework.Status) {
+		return nil, nil
+	})
+	defer podtopologyspreadPreFilterPatch.Reset()
+	podtopologyspreadFilterPatch := gomonkey.ApplyMethod(reflect.TypeOf(podTopologySpreadFilter), "Filter", func(_ *podtopologyspread.PodTopologySpread, ctx context.Context, cycleState *k8sframework.CycleState, pod *apiv1.Pod, nodeInfo *k8sframework.NodeInfo) *k8sframework.Status {
+		return nil
+	})
+	defer podtopologyspreadFilterPatch.Reset()
+
 	framework.RegisterPluginBuilder(PluginName, New)
 	framework.RegisterPluginBuilder(gang.PluginName, gang.New)
 	framework.RegisterPluginBuilder(priority.PluginName, priority.New)
 	options.ServerOpts = options.NewServerOption()
 	defer framework.CleanupPluginBuilders()
-
-	option := options.NewServerOption()
-	option.AddFlags(pflag.CommandLine)
-	option.RegisterOptions()
-
-	config, err := kube.BuildConfig(option.KubeClientOptions)
-	if err != nil {
-		return
-	}
-
-	sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
-	schedulerCache := sc.(*cache.SchedulerCache)
 
 	// pending pods
 	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodPending, util.BuildResourceList("3", "3k"), "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
@@ -156,6 +192,17 @@ func TestEventHandler(t *testing.T) {
 				t.Logf("%s: [Event] %s", test.name, event)
 			}
 		}()
+
+		schedulerCache := &cache.SchedulerCache{
+			Nodes:           make(map[string]*api.NodeInfo),
+			Jobs:            make(map[api.JobID]*api.JobInfo),
+			PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
+			Queues:          make(map[api.QueueID]*api.QueueInfo),
+			Binder:          binder,
+			StatusUpdater:   &util.FakeStatusUpdater{},
+			VolumeBinder:    &util.FakeVolumeBinder{},
+			Recorder:        recorder,
+		}
 		for _, node := range test.nodes {
 			schedulerCache.AddNode(node)
 		}

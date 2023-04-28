@@ -25,6 +25,10 @@ type PredicateResponse struct {
 	ErrorMessage string `json:"errorMessage"`
 }
 
+type PredicateResourceResponse struct {
+	ErrorMessage string `json:"errorMessage"`
+}
+
 type PrioritizeRequest struct {
 	Task  *api.TaskInfo   `json:"task"`
 	Nodes []*api.NodeInfo `json:"nodes"`
