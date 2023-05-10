@@ -75,6 +75,8 @@ type ServerOption struct {
 
 	NodeSelector      []string
 	EnableCacheDumper bool
+
+	WaitForHandlersSyncedBeforeStart bool
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -128,6 +130,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
+	fs.BoolVar(&s.WaitForHandlersSyncedBeforeStart, "wait-handlers-synced", false, "Wait for handlers synced before starting to schedule, it's false by default")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.

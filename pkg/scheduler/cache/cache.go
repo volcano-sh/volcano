@@ -48,6 +48,7 @@ import (
 	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/utils/pointer"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -81,8 +82,13 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors)
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, waitForHandlesSynced bool) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, waitForHandlesSynced)
+}
+
+type informer2Hander struct {
+	informer cache.SharedIndexInformer
+	handler  cache.ResourceEventHandler
 }
 
 // SchedulerCache cache for the kube batch
@@ -111,6 +117,9 @@ type SchedulerCache struct {
 	csiDriverInformer          storagev1.CSIDriverInformer
 	csiStorageCapacityInformer storagev1beta1.CSIStorageCapacityInformer
 	cpuInformer                cpuinformerv1.NumatopologyInformer
+	registeredHandler          []informer2Hander
+
+	waitForHandlesSynced bool
 
 	Binder         Binder
 	Evictor        Evictor
@@ -383,7 +392,7 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	return job, nil
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, waitForHandlesSynced bool) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -441,6 +450,8 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 		imageStates:         make(map[string]*imageState),
+
+		waitForHandlesSynced: waitForHandlesSynced,
 
 		NodeList: []string{},
 	}
@@ -507,7 +518,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
-	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
+	sc.EventHandlerProxy(sc.nodeInformer.Informer(),
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				var node *v1.Node
@@ -546,7 +557,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 				DeleteFunc: sc.DeleteNode,
 			},
 		},
-		0,
+		pointer.Duration(0),
 	)
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
@@ -554,13 +565,13 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
-	sc.csiNodeInformer.Informer().AddEventHandler(
+	sc.EventHandlerProxy(sc.csiNodeInformer.Informer(),
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddOrUpdateCSINode,
 			UpdateFunc: sc.UpdateCSINode,
 			DeleteFunc: sc.DeleteCSINode,
 		},
-	)
+		pointer.Duration(0))
 	sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
 	sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
 
@@ -589,7 +600,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	}
 
 	// create informer for pod information
-	sc.podInformer.Informer().AddEventHandler(
+	sc.EventHandlerProxy(sc.podInformer.Informer(),
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
@@ -619,30 +630,33 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 				UpdateFunc: sc.UpdatePod,
 				DeleteFunc: sc.DeletePod,
 			},
-		})
+		},
+		pointer.Duration(0))
 
 	if options.ServerOpts.EnablePriorityClass {
 		sc.pcInformer = informerFactory.Scheduling().V1().PriorityClasses()
-		sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		sc.EventHandlerProxy(sc.pcInformer.Informer(), cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddPriorityClass,
 			UpdateFunc: sc.UpdatePriorityClass,
 			DeleteFunc: sc.DeletePriorityClass,
-		})
+		},
+			pointer.Duration(0))
 	}
 
 	sc.quotaInformer = informerFactory.Core().V1().ResourceQuotas()
-	sc.quotaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddResourceQuota,
-		UpdateFunc: sc.UpdateResourceQuota,
-		DeleteFunc: sc.DeleteResourceQuota,
-	})
+	sc.EventHandlerProxy(sc.quotaInformer.Informer(),
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddResourceQuota,
+			UpdateFunc: sc.UpdateResourceQuota,
+			DeleteFunc: sc.DeleteResourceQuota,
+		}, pointer.Duration(0))
 
 	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, 0)
 	sc.vcInformerFactory = vcinformers
 
 	// create informer for PodGroup(v1beta1) information
 	sc.podGroupInformerV1beta1 = vcinformers.Scheduling().V1beta1().PodGroups()
-	sc.podGroupInformerV1beta1.Informer().AddEventHandler(
+	sc.EventHandlerProxy(sc.podGroupInformerV1beta1.Informer(),
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				var pg *vcv1beta1.PodGroup
@@ -667,23 +681,50 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 				UpdateFunc: sc.UpdatePodGroupV1beta1,
 				DeleteFunc: sc.DeletePodGroupV1beta1,
 			},
-		})
+		},
+		pointer.Duration(0))
 
 	// create informer(v1beta1) for Queue information
 	sc.queueInformerV1beta1 = vcinformers.Scheduling().V1beta1().Queues()
-	sc.queueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	sc.EventHandlerProxy(sc.queueInformerV1beta1.Informer(), cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddQueueV1beta1,
 		UpdateFunc: sc.UpdateQueueV1beta1,
 		DeleteFunc: sc.DeleteQueueV1beta1,
-	})
+	},
+		pointer.Duration(0))
 
 	sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
-	sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	sc.EventHandlerProxy(sc.cpuInformer.Informer(), cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddNumaInfoV1alpha1,
 		UpdateFunc: sc.UpdateNumaInfoV1alpha1,
 		DeleteFunc: sc.DeleteNumaInfoV1alpha1,
-	})
+	},
+		pointer.Duration(0))
 	return sc
+}
+
+func (sc *SchedulerCache) EventHandlerProxy(informer cache.SharedIndexInformer, handler cache.ResourceEventHandler, resync *time.Duration) {
+	if resync == nil {
+		informer.AddEventHandler(handler)
+	} else {
+		informer.AddEventHandlerWithResyncPeriod(handler, *resync)
+	}
+	sc.registeredHandler = append(sc.registeredHandler, informer2Hander{informer, handler})
+}
+
+func (sc *SchedulerCache) WaitForHandlerSynced(stopCh <-chan struct{}) {
+	var wg sync.WaitGroup
+	wg.Add(len(sc.registeredHandler))
+	for _, i := range sc.registeredHandler {
+		go func(i2h informer2Hander) {
+			items := i2h.informer.GetStore().List()
+			for _, item := range items {
+				i2h.handler.OnAdd(item)
+			}
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
 }
 
 // Run  starts the schedulerCache
@@ -713,6 +754,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 	sc.informerFactory.WaitForCacheSync(stopCh)
 	sc.vcInformerFactory.WaitForCacheSync(stopCh)
+	if sc.waitForHandlesSynced {
+		sc.WaitForHandlerSynced(stopCh)
+	}
 }
 
 // findJobAndTask returns job and the task info

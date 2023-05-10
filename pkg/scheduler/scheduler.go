@@ -60,6 +60,7 @@ func NewScheduler(
 	period time.Duration,
 	defaultQueue string,
 	nodeSelectors []string,
+	waitForHandlersSynced bool,
 ) (*Scheduler, error) {
 	var watcher filewatcher.FileWatcher
 	if schedulerConf != "" {
@@ -71,7 +72,7 @@ func NewScheduler(
 		}
 	}
 
-	cache := schedcache.New(config, schedulerNames, defaultQueue, nodeSelectors)
+	cache := schedcache.New(config, schedulerNames, defaultQueue, nodeSelectors, waitForHandlersSynced)
 	scheduler := &Scheduler{
 		schedulerConf:  schedulerConf,
 		fileWatcher:    watcher,
