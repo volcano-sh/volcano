@@ -39,6 +39,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 )
@@ -51,6 +52,8 @@ const (
 	GPUSharingPredicate = "predicate.GPUSharingEnable"
 	NodeLockEnable      = "predicate.NodeLockEnable"
 	GPUNumberPredicate  = "predicate.GPUNumberEnable"
+
+	VGPUEnable = "predicate.VGPUEnable"
 
 	// CachePredicate control cache predicate feature
 	CachePredicate = "predicate.CacheEnable"
@@ -123,11 +126,14 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	args.GetBool(&gpushare.GpuSharingEnable, GPUSharingPredicate)
 	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
 	args.GetBool(&gpushare.NodeLockEnable, NodeLockEnable)
+	args.GetBool(&vgpu.VGPUEnable, VGPUEnable)
 
 	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {
 		klog.Fatal("can not define true in both gpu sharing and gpu number")
 	}
-
+	if (gpushare.GpuSharingEnable || gpushare.GpuNumberEnable) && vgpu.VGPUEnable {
+		klog.Fatal("gpu-share and vgpu can't be used together")
+	}
 	args.GetBool(&predicate.cacheEnable, CachePredicate)
 	// Checks whether predicate.ProportionalEnable is provided or not, if given, modifies the value in predicateEnable struct.
 	args.GetBool(&predicate.proportionalEnable, ProportionalPredicate)
@@ -190,11 +196,13 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			//predicate gpu sharing
-			if nodeInfo.Others[api.GPUSharingDevice].(api.Devices).HasDeviceRequest(pod) {
-				err := nodeInfo.Others[api.GPUSharingDevice].(api.Devices).Allocate(ssn.KubeClient(), pod)
-				if err != nil {
-					klog.Errorf("AllocateToPod failed %s", err.Error())
-					return
+			for _, val := range api.RegisteredDevices {
+				if nodeInfo.Others[val].(api.Devices).HasDeviceRequest(pod) {
+					err := nodeInfo.Others[val].(api.Devices).Allocate(ssn.KubeClient(), pod)
+					if err != nil {
+						klog.Errorf("AllocateToPod failed %s", err.Error())
+						return
+					}
 				}
 			}
 			node.AddPod(pod)
@@ -216,12 +224,14 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 
-			if nodeInfo.Others[api.GPUSharingDevice].(api.Devices).HasDeviceRequest(pod) {
-				// deallocate pod gpu id
-				err := nodeInfo.Others[api.GPUSharingDevice].(api.Devices).Release(ssn.KubeClient(), pod)
-				if err != nil {
-					klog.Errorf(err.Error())
-					return
+			for _, val := range api.RegisteredDevices {
+				if nodeInfo.Others[val].(api.Devices).HasDeviceRequest(pod) {
+					// deallocate pod gpu id
+					err := nodeInfo.Others[val].(api.Devices).Release(ssn.KubeClient(), pod)
+					if err != nil {
+						klog.Errorf(err.Error())
+						return
+					}
 				}
 			}
 
@@ -395,10 +405,13 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return fmt.Errorf("plugin %s predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
 		}
 
-		fit, err = node.Others[api.GPUSharingDevice].(api.Devices).FilterNode(task.Pod)
-		if err != nil {
-			return err
+		for _, val := range api.RegisteredDevices {
+			fit, err = node.Others[val].(api.Devices).FilterNode(task.Pod)
+			if err != nil {
+				return err
+			}
 		}
+
 		klog.V(4).Infof("checkNodeGPUPredicate predicates Task <%s/%s> on Node <%s>: fit %v",
 			task.Namespace, task.Name, node.Name, fit)
 
