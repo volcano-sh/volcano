@@ -34,6 +34,7 @@ const (
 	defaultSchedulerName                  = "volcano"
 	defaultHealthzAddress                 = ":11251"
 	defaultDetectionPeriodOfDependsOntask = 100 * time.Millisecond
+	defaultLockObjectNamespace            = "volcano-system"
 )
 
 // ServerOption is the main context object for the controllers.
@@ -81,9 +82,9 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
 	fs.StringVar(&s.KeyFile, "tls-private-key-file", s.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
-	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", s.EnableLeaderElection, "Start a leader election client and gain leadership before "+
-		"executing the main loop. Enable this when running replicated vc-controller-manager for high availability.")
-	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", s.LockObjectNamespace, "Define the namespace of the lock object.")
+	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", true, "Start a leader election client and gain leadership before "+
+		"executing the main loop. Enable this when running replicated vc-controller-manager for high availability; it is enabled by default")
+	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", defaultLockObjectNamespace, "Define the namespace of the lock object; it is volcano-system by default")
 	fs.Float32Var(&s.KubeClientOptions.QPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&s.KubeClientOptions.Burst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")

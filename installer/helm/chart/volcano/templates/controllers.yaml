@@ -62,6 +62,9 @@ rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["get"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "watch"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -106,6 +109,10 @@ spec:
             args:
               - --logtostderr
               - --enable-healthz=true
+              - --leader-elect={{ .Values.custom.leader_elect_enable }}
+              {{- if .Values.custom.leader_elect_enable }}
+              - --lock-object-namespace={{ .Release.Namespace }}
+              {{- end }}
               - -v=4
               - 2>&1
             imagePullPolicy: {{ .Values.basic.image_pull_policy }}
