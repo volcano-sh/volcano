@@ -212,7 +212,8 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 
 	klog.V(5).Infof("imageStates is %v", res.ImageStates)
 
-	res.Others = ni.Others
+	res.Others = ni.CloneOthers()
+	res.ImageStates = ni.CloneImageSumary()
 	return res
 }
 
@@ -551,6 +552,16 @@ func (ni *NodeInfo) CloneImageSumary() map[string]*k8sframework.ImageStateSummar
 	return nodeImageStates
 }
 
+// CloneOthers clone other map resources
+func (ni *NodeInfo) CloneOthers() map[string]interface{} {
+	others := make(map[string]interface{})
+	for k, v := range ni.Others {
+		others[k] = v
+	}
+	return others
+}
+
+// Clone clone csi node status info
 func (cs *CSINodeStatusInfo) Clone() *CSINodeStatusInfo {
 	newcs := &CSINodeStatusInfo{
 		CSINodeName:  cs.CSINodeName,

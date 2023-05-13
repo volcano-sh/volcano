@@ -1072,7 +1072,6 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		}
 
 		snapshot.Nodes[value.Name] = value.Clone()
-		snapshot.Nodes[value.Name].ImageStates = value.CloneImageSumary()
 
 		if value.RevocableZone != "" {
 			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
