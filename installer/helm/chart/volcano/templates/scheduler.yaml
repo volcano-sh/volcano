@@ -145,11 +145,14 @@ metadata:
     prometheus.io/scrape: "true"
   name: {{ .Release.Name }}-scheduler-service
   namespace: {{ .Release.Namespace }}
+  labels:
+    app: volcano-scheduler
 spec:
   ports:
   - port: 8080
     protocol: TCP
     targetPort: 8080
+    name: "metrics"
   selector:
     app: volcano-scheduler
   type: ClusterIP

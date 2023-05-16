@@ -8740,11 +8740,14 @@ metadata:
     prometheus.io/scrape: "true"
   name: volcano-scheduler-service
   namespace: volcano-system
+  labels:
+    app: volcano-scheduler
 spec:
   ports:
   - port: 8080
     protocol: TCP
     targetPort: 8080
+    name: "metrics"
   selector:
     app: volcano-scheduler
   type: ClusterIP
