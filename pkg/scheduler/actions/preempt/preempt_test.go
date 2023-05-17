@@ -17,9 +17,11 @@ limitations under the License.
 package preempt
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,7 +29,7 @@ import (
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/kube"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -37,6 +39,12 @@ import (
 )
 
 func TestPreempt(t *testing.T) {
+	var tmp *cache.SchedulerCache
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+
 	framework.RegisterPluginBuilder("conformance", conformance.New)
 	framework.RegisterPluginBuilder("gang", gang.New)
 	options.ServerOpts = &options.ServerOption{
@@ -287,22 +295,18 @@ func TestPreempt(t *testing.T) {
 			evictor := &util.FakeEvictor{
 				Channel: make(chan string),
 			}
+			schedulerCache := &cache.SchedulerCache{
+				Nodes:           make(map[string]*api.NodeInfo),
+				Jobs:            make(map[api.JobID]*api.JobInfo),
+				Queues:          make(map[api.QueueID]*api.QueueInfo),
+				Binder:          binder,
+				Evictor:         evictor,
+				StatusUpdater:   &util.FakeStatusUpdater{},
+				VolumeBinder:    &util.FakeVolumeBinder{},
+				PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
 
-			option := options.NewServerOption()
-			option.RegisterOptions()
-			config, err := kube.BuildConfig(option.KubeClientOptions)
-			if err != nil {
-				return
+				Recorder: record.NewFakeRecorder(100),
 			}
-
-			sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
-			schedulerCache := sc.(*cache.SchedulerCache)
-			schedulerCache.Binder = binder
-			schedulerCache.Evictor = evictor
-			schedulerCache.StatusUpdater = &util.FakeStatusUpdater{}
-			schedulerCache.VolumeBinder = &util.FakeVolumeBinder{}
-			schedulerCache.Recorder = record.NewFakeRecorder(100)
-
 			schedulerCache.PriorityClasses["high-priority"] = &schedulingv1.PriorityClass{
 				Value: 100000,
 			}

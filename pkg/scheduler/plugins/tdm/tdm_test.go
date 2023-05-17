@@ -19,16 +19,16 @@ package tdm
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -109,6 +109,12 @@ func Test_parseRevocableZone(t *testing.T) {
 }
 
 func Test_TDM(t *testing.T) {
+	var tmp *cache.SchedulerCache
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+
 	framework.RegisterPluginBuilder(PluginName, New)
 	defer framework.CleanupPluginBuilders()
 
@@ -234,21 +240,16 @@ func Test_TDM(t *testing.T) {
 				Binds:   map[string]string{},
 				Channel: make(chan string),
 			}
+			schedulerCache := &cache.SchedulerCache{
+				Nodes:         make(map[string]*api.NodeInfo),
+				Jobs:          make(map[api.JobID]*api.JobInfo),
+				Queues:        make(map[api.QueueID]*api.QueueInfo),
+				Binder:        binder,
+				StatusUpdater: &util.FakeStatusUpdater{},
+				VolumeBinder:  &util.FakeVolumeBinder{},
 
-			option := options.NewServerOption()
-			option.RegisterOptions()
-			config, err := kube.BuildConfig(option.KubeClientOptions)
-			if err != nil {
-				return
+				Recorder: record.NewFakeRecorder(100),
 			}
-
-			sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
-			schedulerCache := sc.(*cache.SchedulerCache)
-			schedulerCache.Binder = binder
-			schedulerCache.StatusUpdater = &util.FakeStatusUpdater{}
-			schedulerCache.VolumeBinder = &util.FakeVolumeBinder{}
-			schedulerCache.Recorder = record.NewFakeRecorder(100)
-
 			for _, node := range test.nodes {
 				schedulerCache.AddNode(node)
 			}
@@ -319,6 +320,12 @@ func Test_TDM(t *testing.T) {
 	}
 }
 func Test_TDM_victimsFn(t *testing.T) {
+	var tmp *cache.SchedulerCache
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+
 	framework.RegisterPluginBuilder(PluginName, New)
 	defer framework.CleanupPluginBuilders()
 
@@ -684,21 +691,16 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Binds:   map[string]string{},
 				Channel: make(chan string),
 			}
+			schedulerCache := &cache.SchedulerCache{
+				Nodes:         make(map[string]*api.NodeInfo),
+				Jobs:          make(map[api.JobID]*api.JobInfo),
+				Queues:        make(map[api.QueueID]*api.QueueInfo),
+				Binder:        binder,
+				StatusUpdater: &util.FakeStatusUpdater{},
+				VolumeBinder:  &util.FakeVolumeBinder{},
 
-			option := options.NewServerOption()
-			option.RegisterOptions()
-			config, err := kube.BuildConfig(option.KubeClientOptions)
-			if err != nil {
-				return
+				Recorder: record.NewFakeRecorder(100),
 			}
-
-			sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
-			schedulerCache := sc.(*cache.SchedulerCache)
-			schedulerCache.Binder = binder
-			schedulerCache.StatusUpdater = &util.FakeStatusUpdater{}
-			schedulerCache.VolumeBinder = &util.FakeVolumeBinder{}
-			schedulerCache.Recorder = record.NewFakeRecorder(100)
-
 			for _, node := range test.nodes {
 				schedulerCache.AddNode(node)
 			}
