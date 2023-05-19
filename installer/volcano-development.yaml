@@ -8646,6 +8646,7 @@ data:
         enablePreemptable: false
       - name: predicates
       - name: proportion
+        enableJobEnqueued: false
       - name: nodeorder
       - name: binpack
 ---
@@ -8669,7 +8670,7 @@ rules:
     verbs: ["create", "list", "watch", "update", "patch"]
   - apiGroups: [""]
     resources: ["pods", "pods/status"]
-    verbs: ["create", "get", "list", "watch", "update", "patch", "bind", "updateStatus", "delete"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "bind", "delete"]
   - apiGroups: [""]
     resources: ["pods/binding"]
     verbs: ["create"]
