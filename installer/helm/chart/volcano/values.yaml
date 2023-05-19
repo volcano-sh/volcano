@@ -18,3 +18,6 @@ custom:
   scheduler_enable: true
   scheduler_replicas: 1
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
+nodeSelector: {}
+affinity: []
+tolerations: []
