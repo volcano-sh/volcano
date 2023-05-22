@@ -99,6 +99,13 @@ function createSecret() {
       -n ${NAMESPACE}
 }
 
+ret=0
+kubectl get secret ${SECRET} -n ${NAMESPACE} > /dev/null || ret=$?
+if [[ ${ret} -eq 0 ]]; then
+  echo -e "The secret ${SECRET} -n ${NAMESPACE} already exists. Do not create it again."
+  exit 0
+fi
+
 createCerts
 
 createSecret
