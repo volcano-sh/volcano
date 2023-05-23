@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Copyright 2021 The Volcano Authors.
+# Copyright 2023 The Volcano Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,9 +32,11 @@ LOCAL_OS=${OSTYPE}
 case $LOCAL_OS in
   "linux"*)
     LOCAL_OS='linux'
+    alias sed_i='sed -i'
     ;;
   "darwin"*)
     LOCAL_OS='darwin'
+    alias sed_i='sed -i ""'
     ;;
   *)
     echo "This system's OS ${LOCAL_OS} isn't recognized/supported"
@@ -42,6 +44,8 @@ case $LOCAL_OS in
     ;;
 esac
 
+# Enable the alias function in the Shell
+shopt -s  expand_aliases 
 ARCH=$(go env GOARCH)
 
 # Step1. install helm binary
@@ -63,9 +67,10 @@ fi
 echo "generate chart"
 CHART_ORIGIN_PATH=${VK_ROOT}/installer/helm/chart
 CHART_OUT_PATH=${RELEASE_FOLDER}/chart
+rm -rf ${RELEASE_FOLDER}/chart
 cp -r "${CHART_ORIGIN_PATH}" "${CHART_OUT_PATH}"
-sed -i "s|image_tag_version: \"latest\"|image_tag_version: \"${VOLCANO_IMAGE_TAG}\"|g" $(find ${CHART_OUT_PATH} -type f | grep values.yaml)
-sed -i "s|version: 1.5|version: ${VOLCANO_CHART_VERSION}|g" $(find ${CHART_OUT_PATH} -type f | grep Chart.yaml)
-sed -i "s|appVersion: 0.1|appVersion: ${VOLCANO_CHART_VERSION}|g" $(find ${CHART_OUT_PATH} -type f | grep Chart.yaml)
+sed_i "s|image_tag_version: \"latest\"|image_tag_version: \"${VOLCANO_IMAGE_TAG}\"|g" $(find ${CHART_OUT_PATH} -type f | grep values.yaml)
+sed_i "s|version: 1.5|version: ${VOLCANO_CHART_VERSION}|g" $(find ${CHART_OUT_PATH} -type f | grep Chart.yaml)
+sed_i "s|appVersion: 0.1|appVersion: ${VOLCANO_CHART_VERSION}|g" $(find ${CHART_OUT_PATH} -type f | grep Chart.yaml)
 helm package "${CHART_OUT_PATH}/volcano" -d "${CHART_OUT_PATH}"
 echo "helm package end, charts is in ${CHART_OUT_PATH}"
