@@ -3,6 +3,11 @@ on:
   schedule:
   # Runs at 0:00 and 12:00 UTC every day
   - cron:  '0 */12 * * *'
+  # Automatically push the image when releasing the version
+  push:
+    tags:
+      - "v*.*.*"
+
 
 jobs:
   docker:
@@ -28,6 +33,17 @@ jobs:
           fetch-depth: 0
           path: ./src/github.com/${{ github.repository }}
 
+      - name: Get tag or branch name
+        run: |
+          echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+          echo "RELEASE_VER=${{ github.ref_name }}" >> $GITHUB_ENV
+
+      - name: Update tag and release_ver
+        if: ${{ github.ref_name == 'master' }}
+        run: |
+          echo "TAG=latest" >> $GITHUB_ENV
+          echo "RELEASE_VER=latest" >> $GITHUB_ENV
+
       - uses: actions/cache@v2
         with:
           path: ~/go/pkg/mod
@@ -36,7 +52,7 @@ jobs:
       - name: Run verify test
         run: |
           make verify
-          make TAG=latest generate-yaml
+          make TAG=${{ env.TAG }} generate-yaml
           make verify-generated-yaml
           make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
@@ -48,7 +64,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Daily Release
-        run: docker buildx create --use && make TAG=latest RELEASE_VER=latest DOCKER_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} DOCKER_PASSWORD=${{ secrets.DOCKERHUB_TOKEN }} CC=/usr/local/musl/bin/musl-gcc DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry release
+        run: docker buildx create --use && make TAG=${{ env.TAG }} RELEASE_VER=${{ env.RELEASE_VER }} DOCKER_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} DOCKER_PASSWORD=${{ secrets.DOCKERHUB_TOKEN }} CC=/usr/local/musl/bin/musl-gcc DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry release
         working-directory: ./src/github.com/${{ github.repository }}
 
       - name: Loginout DockerHub

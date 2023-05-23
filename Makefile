@@ -127,6 +127,9 @@ e2e-test-stress: images
 generate-yaml: init manifests
 	./hack/generate-yaml.sh TAG=${RELEASE_VER} CRD_VERSION=${CRD_VERSION}
 
+generate-charts: init manifests
+	./hack/generate-charts.sh 
+	
 release-env:
 	./hack/build-env.sh release
 
