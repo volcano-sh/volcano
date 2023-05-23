@@ -19,9 +19,6 @@ custom:
   scheduler_replicas: 1
   leader_elect_enable: false
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
-nodeSelector: {}
-affinity: []
-tolerations: []
 
 # Specify affinity for all main Volcano components or per component.
 # For example:
