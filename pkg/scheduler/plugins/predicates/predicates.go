@@ -197,12 +197,18 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			//predicate gpu sharing
 			for _, val := range api.RegisteredDevices {
-				if nodeInfo.Others[val].(api.Devices).HasDeviceRequest(pod) {
-					err := nodeInfo.Others[val].(api.Devices).Allocate(ssn.KubeClient(), pod)
+				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
+					if !devices.HasDeviceRequest(pod) {
+						continue
+					}
+
+					err := devices.Allocate(ssn.KubeClient(), pod)
 					if err != nil {
 						klog.Errorf("AllocateToPod failed %s", err.Error())
 						return
 					}
+				} else {
+					klog.Warningf("Devices %s assertion conversion failed, skip", val)
 				}
 			}
 			node.AddPod(pod)
@@ -225,13 +231,19 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			for _, val := range api.RegisteredDevices {
-				if nodeInfo.Others[val].(api.Devices).HasDeviceRequest(pod) {
+				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
+					if !devices.HasDeviceRequest(pod) {
+						continue
+					}
+
 					// deallocate pod gpu id
-					err := nodeInfo.Others[val].(api.Devices).Release(ssn.KubeClient(), pod)
+					err := devices.Release(ssn.KubeClient(), pod)
 					if err != nil {
 						klog.Errorf(err.Error())
 						return
 					}
+				} else {
+					klog.Warningf("Devices %s assertion conversion failed, skip", val)
 				}
 			}
 
@@ -406,9 +418,13 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		for _, val := range api.RegisteredDevices {
-			fit, err = node.Others[val].(api.Devices).FilterNode(task.Pod)
-			if err != nil {
-				return err
+			if devices, ok := node.Others[val].(api.Devices); ok {
+				fit, err = devices.FilterNode(task.Pod)
+				if err != nil {
+					return err
+				}
+			} else {
+				klog.Warningf("Devices %s assertion conversion failed, skip", val)
 			}
 		}
 
