@@ -81,7 +81,7 @@ func (t *ginkgoTestingTProxy) Fatalf(format string, args ...interface{}) {
 }
 
 func (t *ginkgoTestingTProxy) Helper() {
-	types.MarkAsHelper(1)
+	// No-op
 }
 
 func (t *ginkgoTestingTProxy) Log(args ...interface{}) {

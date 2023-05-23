@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"io"
 	"sync"
-
-	"github.com/go-logr/logr"
-	"github.com/go-logr/logr/funcr"
 )
 
 type WriterMode uint
@@ -22,30 +19,24 @@ type WriterInterface interface {
 
 	Truncate()
 	Bytes() []byte
-	Len() int
 }
 
-// Writer implements WriterInterface and GinkgoWriterInterface
+//Writer implements WriterInterface and GinkgoWriterInterface
 type Writer struct {
 	buffer    *bytes.Buffer
 	outWriter io.Writer
 	lock      *sync.Mutex
 	mode      WriterMode
 
-	streamIndent []byte
-	indentNext   bool
-
 	teeWriters []io.Writer
 }
 
 func NewWriter(outWriter io.Writer) *Writer {
 	return &Writer{
-		buffer:       &bytes.Buffer{},
-		lock:         &sync.Mutex{},
-		outWriter:    outWriter,
-		mode:         WriterModeStreamAndBuffer,
-		streamIndent: []byte("  "),
-		indentNext:   true,
+		buffer:    &bytes.Buffer{},
+		lock:      &sync.Mutex{},
+		outWriter: outWriter,
+		mode:      WriterModeStreamAndBuffer,
 	}
 }
 
@@ -54,14 +45,6 @@ func (w *Writer) SetMode(mode WriterMode) {
 	defer w.lock.Unlock()
 	w.mode = mode
 }
-
-func (w *Writer) Len() int {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	return w.buffer.Len()
-}
-
-var newline = []byte("\n")
 
 func (w *Writer) Write(b []byte) (n int, err error) {
 	w.lock.Lock()
@@ -72,21 +55,7 @@ func (w *Writer) Write(b []byte) (n int, err error) {
 	}
 
 	if w.mode == WriterModeStreamAndBuffer {
-		line, remaining, found := []byte{}, b, false
-		for len(remaining) > 0 {
-			line, remaining, found = bytes.Cut(remaining, newline)
-			if len(line) > 0 {
-				if w.indentNext {
-					w.outWriter.Write(w.streamIndent)
-					w.indentNext = false
-				}
-				w.outWriter.Write(line)
-			}
-			if found {
-				w.outWriter.Write(newline)
-				w.indentNext = true
-			}
-		}
+		w.outWriter.Write(b)
 	}
 	return w.buffer.Write(b)
 }
@@ -106,7 +75,7 @@ func (w *Writer) Bytes() []byte {
 	return copied
 }
 
-// GinkgoWriterInterface
+//GinkgoWriterInterface
 func (w *Writer) TeeTo(writer io.Writer) {
 	w.lock.Lock()
 	defer w.lock.Unlock()
@@ -131,10 +100,4 @@ func (w *Writer) Printf(format string, a ...interface{}) {
 
 func (w *Writer) Println(a ...interface{}) {
 	fmt.Fprintln(w, a...)
-}
-
-func GinkgoLogrFunc(writer *Writer) logr.Logger {
-	return funcr.New(func(prefix, args string) {
-		writer.Printf("%s", args)
-	}, funcr.Options{})
 }
