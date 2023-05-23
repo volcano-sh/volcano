@@ -14,10 +14,13 @@ Kubernetes that are commonly required by many classes of batch & elastic workloa
 ## Installing volcano via yaml file
 
 All-in-one yaml has been generated for quick deployment. Try command:
+
 ```$xslt
 kubectl apply -f volcano-v0.0.x.yaml
 ```
+
 Check the status in namespace `volcano-system`
+
 ```$xslt
 $kubectl get all -n volcano-system
 NAME                                       READY   STATUS      RESTARTS   AGE
@@ -128,7 +131,6 @@ $ helm install --name volcano-release --set basic.image_pull_policy=Always volca
 ```
 
 The above command set image pull policy to `Always`, so docker image will be pulled each time.
-
 
 Alternatively, a YAML file that specifies the values for the parameters can be provided while installing the chart. For example,
 
