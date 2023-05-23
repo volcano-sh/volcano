@@ -172,9 +172,10 @@ func GetNodeList(nodes map[string]*api.NodeInfo, nodeList []string) []*api.NodeI
 
 // ValidateVictims returns an error if the resources of the victims can't satisfy the preemptor
 func ValidateVictims(preemptor *api.TaskInfo, node *api.NodeInfo, victims []*api.TaskInfo) error {
-	if len(victims) == 0 {
-		return fmt.Errorf("no victims")
-	}
+	// Victims should not be judged to be empty here.
+	// It is possible to complete the scheduling of the preemptor without evicting the task.
+	// In the first round, a large task (CPU: 8) is expelled, and a small task is scheduled (CPU: 2)
+	// When the following rounds of victims are empty, it is still allowed to schedule small tasks (CPU: 2)
 	futureIdle := node.FutureIdle()
 	for _, victim := range victims {
 		futureIdle.Add(victim.Resreq)
