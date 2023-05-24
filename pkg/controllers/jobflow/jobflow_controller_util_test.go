@@ -19,7 +19,8 @@ package jobflow
 import (
 	"testing"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
