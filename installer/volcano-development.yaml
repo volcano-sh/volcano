@@ -178,6 +178,7 @@ metadata:
     app: volcano-admission-init
 spec:
   backoffLimit: 3
+  ttlSecondsAfterFinished: 100
   template:
     spec:
       serviceAccountName: volcano-admission
