@@ -34,7 +34,13 @@ func getDevicesIdleGPUMemory(gs *GPUDevices) map[int]uint {
 	res := map[int]uint{}
 	for id, allMemory := range devicesAllGPUMemory {
 		if usedMemory, found := devicesUsedGPUMemory[id]; found {
-			res[id] = allMemory - usedMemory
+			// When high concurrent schedule the pods to same gpu id, if earlier k8s pod add event
+			// it will lead to usedMemory more then allMemory sometime.
+			if allMemory > usedMemory {
+				res[id] = allMemory - usedMemory
+			} else {
+				res[id] = 0
+			}
 		} else {
 			res[id] = allMemory
 		}
