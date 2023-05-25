@@ -769,23 +769,21 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 
 // Bind binds task to the target host.
 func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) error {
-	go func(taskArray []*schedulingapi.TaskInfo) {
-		tmp := time.Now()
-		errTasks, err := sc.Binder.Bind(sc.kubeClient, taskArray)
-		if err == nil {
-			klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
-			for _, task := range tasks {
-				sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v",
-					task.Namespace, task.Name, task.NodeName)
-			}
-		} else {
-			for _, task := range errTasks {
-				klog.V(2).Infof("resyncTask task %s", task.Name)
-				sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
-				sc.resyncTask(task)
-			}
+	tmp := time.Now()
+	errTasks, err := sc.Binder.Bind(sc.kubeClient, tasks)
+	if err == nil {
+		klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
+		for _, task := range tasks {
+			sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v",
+				task.Namespace, task.Name, task.NodeName)
 		}
-	}(tasks)
+	} else {
+		for _, task := range errTasks {
+			klog.V(2).Infof("resyncTask task %s", task.Name)
+			sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
+			sc.resyncTask(task)
+		}
+	}
 	return nil
 }
 
@@ -1010,35 +1008,37 @@ func (sc *SchedulerCache) processBindTask() {
 	if len(sc.bindCache) == 0 {
 		return
 	}
-
 	sc.BindTask()
 }
 
 func (sc *SchedulerCache) BindTask() {
 	klog.V(5).Infof("batch bind task count %d", len(sc.bindCache))
-	successfulTasks := make([]*schedulingapi.TaskInfo, 0)
-	for _, task := range sc.bindCache {
-		if err := sc.VolumeBinder.BindVolumes(task, task.PodVolumes); err != nil {
-			klog.Errorf("task %s/%s bind Volumes failed: %#v", task.Namespace, task.Name, err)
-			sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
-			sc.resyncTask(task)
-		} else {
-			successfulTasks = append(successfulTasks, task)
-			klog.V(5).Infof("task %s/%s bind Volumes done", task.Namespace, task.Name)
+	var tmpBindCache []*schedulingapi.TaskInfo = make([]*schedulingapi.TaskInfo, len(sc.bindCache))
+	copy(tmpBindCache, sc.bindCache)
+	go func(tasks []*schedulingapi.TaskInfo) {
+		successfulTasks := make([]*schedulingapi.TaskInfo, 0)
+		for _, task := range tasks {
+			if err := sc.VolumeBinder.BindVolumes(task, task.PodVolumes); err != nil {
+				klog.Errorf("task %s/%s bind Volumes failed: %#v", task.Namespace, task.Name, err)
+				sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
+				sc.resyncTask(task)
+			} else {
+				successfulTasks = append(successfulTasks, task)
+				klog.V(5).Infof("task %s/%s bind Volumes done", task.Namespace, task.Name)
+			}
 		}
-	}
 
-	bindTasks := make([]*schedulingapi.TaskInfo, len(successfulTasks))
-	copy(bindTasks, successfulTasks)
-	if err := sc.Bind(bindTasks); err != nil {
-		klog.Errorf("failed to bind task count %d: %#v", len(bindTasks), err)
-		return
-	}
+		bindTasks := make([]*schedulingapi.TaskInfo, len(successfulTasks))
+		copy(bindTasks, successfulTasks)
+		if err := sc.Bind(bindTasks); err != nil {
+			klog.Errorf("failed to bind task count %d: %#v", len(bindTasks), err)
+			return
+		}
 
-	for _, task := range successfulTasks {
-		metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
-	}
-
+		for _, task := range successfulTasks {
+			metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
+		}
+	}(tmpBindCache)
 	sc.bindCache = sc.bindCache[0:0]
 }
 
