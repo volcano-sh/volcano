@@ -128,3 +128,6 @@ kubernetes.tar.gz
 
 # test coverage file
 coverage.txt
+
+# go vendor directory
+vendor
