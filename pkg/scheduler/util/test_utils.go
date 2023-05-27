@@ -260,7 +260,7 @@ type FakeBinder struct {
 }
 
 // Bind used by fake binder struct to bind pods
-func (fb *FakeBinder) Bind(kubeClient *kubernetes.Clientset, tasks []*api.TaskInfo) ([]*api.TaskInfo, error) {
+func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) ([]*api.TaskInfo, error) {
 	for _, p := range tasks {
 		key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
 		fb.Binds[key] = p.NodeName
