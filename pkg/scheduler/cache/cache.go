@@ -789,20 +789,33 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 
 // Bind binds task to the target host.
 func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) error {
+	var toBindTasks, conflictTasks []*schedulingapi.TaskInfo
+	if options.ServerOpts.EnableConflictCheck {
+		toBindTasks, conflictTasks = sc.CheckConflictBeforeBind(tasks)
+	} else {
+		toBindTasks = tasks
+	}
 	tmp := time.Now()
-	errTasks, err := sc.Binder.Bind(sc.kubeClient, tasks)
+	errTasks, err := sc.Binder.Bind(sc.kubeClient, toBindTasks)
 	if err == nil {
 		klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
-		for _, task := range tasks {
+		for _, task := range toBindTasks {
 			sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v",
 				task.Namespace, task.Name, task.NodeName)
 		}
 	} else {
 		for _, task := range errTasks {
-			klog.V(2).Infof("resyncTask task %s", task.Name)
+			klog.V(2).Infof("resync failed binding task %s", task.Name)
 			sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
 			sc.resyncTask(task)
 		}
+	}
+
+	// resync tasks conflict
+	for _, task := range conflictTasks {
+		klog.V(2).Infof("resync conflict task %s", task.Name)
+		sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
+		sc.resyncTask(task)
 	}
 	return nil
 }
@@ -814,6 +827,30 @@ func (sc *SchedulerCache) BindPodGroup(job *schedulingapi.JobInfo, cluster strin
 		return err
 	}
 	return nil
+}
+
+// CheckConflictBeforeBind check resource is enough for task's request, return two list of tasks: no conflict and conflict detected
+func (sc *SchedulerCache) CheckConflictBeforeBind(tasks []*schedulingapi.TaskInfo) (toBind, conflict []*schedulingapi.TaskInfo) {
+	toBind = make([]*schedulingapi.TaskInfo, 0, len(tasks)) // init capacity as long as tasks, because conflict is low probability
+
+	sc.Lock()
+	for _, ti := range tasks {
+		node, ok := sc.Nodes[ti.NodeName]
+		if !ok {
+			conflict = append(conflict, ti)
+			continue
+		}
+
+		if !ti.Resreq.LessEqual(node.Idle, schedulingapi.Zero) {
+			conflict = append(conflict, ti)
+			continue
+		}
+		toBind = append(toBind, ti)
+	}
+	sc.Unlock()
+
+	klog.Warningf("check confilict before bind find total %d conflict tasks", len(conflict))
+	return toBind, conflict
 }
 
 // GetPodVolumes get pod volume on the host
