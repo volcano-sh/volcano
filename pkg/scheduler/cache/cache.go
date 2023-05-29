@@ -510,11 +510,21 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
-				node, ok := obj.(*v1.Node)
-				if !ok {
-					klog.Errorf("Cannot convert to *v1.Node: %v", obj)
+				var node *v1.Node
+				switch t := obj.(type) {
+				case *v1.Node:
+					node = t
+				case cache.DeletedFinalStateUnknown:
+					var ok bool
+					node, ok = t.Obj.(*v1.Node)
+					if !ok {
+						klog.Errorf("Cannot convert to *v1.Node: %v", t.Obj)
+						return false
+					}
+				default:
 					return false
 				}
+
 				if !responsibleForNode(node.Name, mySchedulerPodName, c) {
 					return false
 				}
@@ -635,12 +645,22 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	sc.podGroupInformerV1beta1.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
+				var pg *vcv1beta1.PodGroup
 				switch v := obj.(type) {
 				case *vcv1beta1.PodGroup:
-					return responsibleForPodGroup(v, mySchedulerPodName, c)
+					pg = v
+				case cache.DeletedFinalStateUnknown:
+					var ok bool
+					pg, ok = v.Obj.(*vcv1beta1.PodGroup)
+					if !ok {
+						klog.Errorf("Cannot convert to podgroup: %v", v.Obj)
+						return false
+					}
 				default:
 					return false
 				}
+
+				return responsibleForPodGroup(pg, mySchedulerPodName, c)
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    sc.AddPodGroupV1beta1,
