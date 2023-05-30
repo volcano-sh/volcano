@@ -29,6 +29,8 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+OS=$(shell uname -s)
+
 # Get OS architecture
 OSARCH=$(shell uname -m)
 ifeq ($(OSARCH),x86_64)
@@ -82,7 +84,11 @@ vc-webhook-manager: init
 	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
 
 vcctl: init
-	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli
+	if [ ${OS} = 'Darwin' ];then\
+		CC=${CC} CGO_ENABLED=0 GOOS=darwin go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli;\
+	else\
+		CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli;\
+	fi;
 
 image_bins: vc-scheduler vc-controller-manager vc-webhook-manager
 
@@ -101,7 +107,11 @@ manifests: controller-gen
 
 unit-test:
 	go clean -testcache
-	go test -p 8 -race $$(find pkg cmd -type f -name '*_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|")
+	if [ ${OS} = 'Darwin' ];then\
+		GOOS=darwin go list ./... | grep -v "/e2e" | xargs  go test;\
+	else\
+		go test -p 8 -race $$(find pkg cmd -type f -name '*_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|");\
+	fi;
 
 e2e: images
 	./hack/run-e2e-kind.sh
