@@ -157,7 +157,7 @@ type DefaultBinder struct {
 }
 
 // Bind will send bind request to api server
-func (db *DefaultBinder) Bind(kubeClient *kubernetes.Clientset, tasks []*schedulingapi.TaskInfo) ([]*schedulingapi.TaskInfo, error) {
+func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) ([]*schedulingapi.TaskInfo, error) {
 	var errTasks []*schedulingapi.TaskInfo
 	for _, task := range tasks {
 		p := task.Pod
