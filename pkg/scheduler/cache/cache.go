@@ -804,7 +804,7 @@ func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) error {
 			sc.resyncTask(task)
 		}
 	}
-	return nil
+	return err
 }
 
 // BindPodGroup binds job to silo cluster
