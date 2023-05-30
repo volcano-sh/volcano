@@ -41,7 +41,7 @@ func homeDir() string {
 	return os.Getenv("USERPROFILE") // windows
 }
 
-// populateResourceListV1 takes strings of form <resourceName1>=<value1>,<resourceName1>=<value2>
+// populateResourceListV1 takes strings of form <resourceName1>=<value1>,<resourceName2>=<value2>
 // and returns ResourceList.
 func populateResourceListV1(spec string) (v1.ResourceList, error) {
 	// empty input gets a nil response to preserve generator test expected behaviors
