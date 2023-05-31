@@ -88,3 +88,14 @@ function install-helm {
     echo -n "Found helm, version: " && helm version
   fi
 }
+
+function install-ginkgo-if-not-exist {
+  echo "Checking ginkgo"
+  which ginkgo >/dev/null 2>&1
+  if [[ $? -ne 0 ]]; then
+    echo "Installing ginkgo ..."
+    go install github.com/onsi/ginkgo/v2/ginkgo
+  else
+    echo -n "Found ginkgo, version: " && ginkgo version
+  fi
+}

@@ -121,7 +121,7 @@ install-volcano
 # Run e2e test
 cd ${VK_ROOT}
 
-GO111MODULE=off go get github.com/onsi/ginkgo/ginkgo
+install-ginkgo-if-not-exist
 
 case ${E2E_TYPE} in
 "ALL")
