@@ -53,6 +53,8 @@ func TestAddFlags(t *testing.T) {
 		HealthzBindAddress:             ":11251",
 		DetectionPeriodOfDependsOntask: defaultDetectionPeriodOfDependsOntask,
 		InheritOwnerAnnotations:        true,
+		EnableLeaderElection:           true,
+		LockObjectNamespace:            defaultLockObjectNamespace,
 	}
 
 	if !reflect.DeepEqual(expected, s) {

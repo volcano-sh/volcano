@@ -78,7 +78,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["daemonsets", "replicasets", "statefulsets"]
     verbs: ["list", "watch", "get"]
-
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "watch"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -125,6 +127,10 @@ spec:
             - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.scheduler_config_file}}
             - --enable-healthz=true
             - --enable-metrics=true
+            - --leader-elect={{ .Values.custom.leader_elect_enable }}
+            {{- if .Values.custom.leader_elect_enable }}
+            - --lock-object-namespace={{ .Release.Namespace }}
+            {{- end }}
             - -v=3
             - 2>&1
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}

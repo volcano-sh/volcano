@@ -8576,6 +8576,9 @@ rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["get"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "watch"]
 ---
 # Source: volcano/templates/controllers.yaml
 kind: ClusterRoleBinding
@@ -8617,6 +8620,7 @@ spec:
             args:
               - --logtostderr
               - --enable-healthz=true
+              - --leader-elect=false
               - -v=4
               - 2>&1
             imagePullPolicy: Always
@@ -8718,6 +8722,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["daemonsets", "replicasets", "statefulsets"]
     verbs: ["list", "watch", "get"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "watch"]
 ---
 # Source: volcano/templates/scheduler.yaml
 kind: ClusterRoleBinding
@@ -8783,6 +8790,7 @@ spec:
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
             - --enable-healthz=true
             - --enable-metrics=true
+            - --leader-elect=false
             - -v=3
             - 2>&1
           imagePullPolicy: Always

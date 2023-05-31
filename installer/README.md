@@ -14,10 +14,13 @@ Kubernetes that are commonly required by many classes of batch & elastic workloa
 ## Installing volcano via yaml file
 
 All-in-one yaml has been generated for quick deployment. Try command:
+
 ```$xslt
 kubectl apply -f volcano-v0.0.x.yaml
 ```
+
 Check the status in namespace `volcano-system`
+
 ```$xslt
 $kubectl get all -n volcano-system
 NAME                                       READY   STATUS      RESTARTS   AGE
@@ -47,14 +50,22 @@ replicaset.apps/volcano-scheduler-94998fc64      1         1         1       36s
 To install the volcano with chart:
 
 ```bash
-helm install helm/chart/volcano --namespace <namespace> --name <specified-name>
+helm install <specified-name> helm/chart/volcano --namespace <namespace> --create-namespace
 
 e.g :
-helm install helm/chart/volcano --namespace volcano-trial --name volcano-trial
+helm install volcano-trial helm/chart/volcano --namespace volcano-trial --create-namespace
 ```
 
 This command deploys volcano in kubernetes cluster with default configuration.  The [configuration](#configuration) section lists the parameters that can be configured during installation.
 
+To list the volcano chart:
+
+```bash
+helm list -n <namespace>
+
+e.g:
+ helm list -n volcano-trial
+```
 
 ## Uninstalling the Chart
 
@@ -75,7 +86,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`basic.admission_secret_name`|Volcano Admission Secret Name|`volcano-admission-secret`|
 |`basic.scheduler_config_file`|Configuration File name for Scheduler|`config/volcano-scheduler.conf`|
 |`basic.image_pull_secret`|Image Pull Secret|`""`|
-|`basic.image_pull_policy`|Image Pull Policy|`IfNotPresent`|
+|`basic.image_pull_policy`|Image Pull Policy|`Always`|
 |`basic.admission_app_name`|Admission Controller App Name|`volcano-admission`|
 |`basic.controller_app_name`|Controller App Name|`volcano-controller`|
 |`basic.scheduler_app_name`|Scheduler App Name|`volcano-scheduler`|
@@ -86,6 +97,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.controller_replicas`|The number of Controller pods to run|`1`|
 |`custom.scheduler_enable`|Whether to Enable Scheduler|`true`|
 |`custom.scheduler_replicas`|The number of Scheduler pods to run|`1`|
+|`custom.leader_elect_enable`|Whether to Enable leader elect|`false`|
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 
@@ -94,7 +106,6 @@ $ helm install --name volcano-release --set basic.image_pull_policy=Always volca
 ```
 
 The above command set image pull policy to `Always`, so docker image will be pulled each time.
-
 
 Alternatively, a YAML file that specifies the values for the parameters can be provided while installing the chart. For example,
 
