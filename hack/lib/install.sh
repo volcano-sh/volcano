@@ -19,7 +19,11 @@ function kind-up-cluster {
   check-kind
 
   echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}]"
-  kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}
+  echo "Kind cluster name: ${CLUSTER_NAME}"
+  kind get clusters |grep ${CLUSTER_NAME}
+  if [[ $? -ne 0 ]]; then
+    kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}
+  fi
 
   echo
   check-images
