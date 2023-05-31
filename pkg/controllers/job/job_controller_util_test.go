@@ -677,7 +677,7 @@ func TestTasksPriority_Swap(t *testing.T) {
 	}
 
 	for _, testcase := range testcases {
-		t.Run(testcase.Name, func(t *testing.T) {
+		t.Run(testcase.Name, func(_ *testing.T) {
 			testcase.TasksPriority.Swap(testcase.Task1Index, testcase.Task2Index)
 		})
 	}
