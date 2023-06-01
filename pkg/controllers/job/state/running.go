@@ -91,7 +91,7 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 				}
 				return true
 			}
-			if status.Pending == jobReplicas {
+			if status.Pending > jobReplicas-totalTaskMinAvailable {
 				status.State.Phase = vcbatch.Pending
 				return true
 			}
