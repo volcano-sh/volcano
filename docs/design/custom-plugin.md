@@ -80,7 +80,7 @@ tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
 make && sudo make install
 
 # build plugin
-CC=/usr/local/musl/bin/musl-gcc CGO_ENABLED=1 go build -buildmode=plugin magic.go
+CC=/usr/local/musl/bin/musl-gcc CGO_ENABLED=1 go build -o plugins/magic.so -buildmode=plugin magic.go
 ```
 
 #### B. Use gnu-libc build plugin
@@ -90,7 +90,7 @@ you can just build the plugin in local.
 
 ```bash
 # default CC is gcc
-CGO_ENABLED=1 go build -buildmode=plugin magic.go
+CGO_ENABLED=1 go build -o plugins/magic.so -buildmode=plugin magic.go
 ```
 
 ### 4. Add plugins into container
@@ -98,10 +98,17 @@ CGO_ENABLED=1 go build -buildmode=plugin magic.go
 Your can build your docker image
 
 ```dockerfile
-FROM volcano.sh/vc-scheduler:${VERSION}
+#Dockerfile
+FROM volcanosh/vc-scheduler:latest
 
 COPY plugins plugins
 ```
+
+```
+docker build -t volcanosh/vc-scheduler:magic-plugins .
+```
+
+
 
 Or just use `pvc` to mount these plugins
 
@@ -110,18 +117,26 @@ Or just use `pvc` to mount these plugins
 ...
     containers:
     - name: volcano-scheduler
-      image: volcano.sh/vc-scheduler:${VERSION}
+      image: volcanosh/vc-scheduler:magic-plugins
       args:
-        - --logtostderr
-        - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
-        - -v=3
-        - --plugins-dir=plugins  # specify plugins dir path
-        - 2>&1
+       - --logtostderr
+       - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
+       - --enable-healthz=true
+       - --enable-metrics=true
+       - -v=3
+       - --plugins-dir=plugins  # specify plugins dir path
+       - 2>&1
 ```
 
 ### 5. Update volcano-scheduler-configmap
 
 Add your custom plugin name in configmap
+
+```
+kubectl edit cm volcano-scheduler-configmap -n volcano-system
+```
+
+
 
 ```yaml
 apiVersion: v1
