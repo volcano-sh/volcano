@@ -1171,6 +1171,145 @@ func TestRunningState_Execute(t *testing.T) {
 			Action:      busv1alpha1.SyncJobAction,
 			ExpectedVal: nil,
 		},
+		{
+			Name: "RunningState- Default case and running back to pending When pending equal to total",
+			JobInfo: &apis.JobInfo{
+				Namespace: namespace,
+				Name:      "jobinfo1",
+				Job: &v1alpha1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            "job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
+					},
+					Spec: v1alpha1.JobSpec{
+						MinAvailable: 3,
+						Tasks: []v1alpha1.TaskSpec{
+							{
+								Name:     "task1",
+								Replicas: 5,
+								Template: v1.PodTemplateSpec{
+									ObjectMeta: metav1.ObjectMeta{
+										Name: "task1",
+									},
+								},
+							},
+						},
+					},
+					Status: v1alpha1.JobStatus{
+						Pending: 5,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
+					},
+				},
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"job1-task1-0": buildPod(namespace, "pod1", v1.PodPending, nil),
+						"job1-task1-1": buildPod(namespace, "pod2", v1.PodPending, nil),
+						"job1-task1-2": buildPod(namespace, "pod3", v1.PodPending, nil),
+						"job1-task1-3": buildPod(namespace, "pod4", v1.PodPending, nil),
+						"job1-task1-4": buildPod(namespace, "pod5", v1.PodPending, nil),
+					},
+				},
+			},
+			Action:      busv1alpha1.SyncJobAction,
+			ExpectedVal: nil,
+		},
+		{
+			Name: "RunningState- Default case and running back to pending When pods status pending>(total-minAvailable)",
+			JobInfo: &apis.JobInfo{
+				Namespace: namespace,
+				Name:      "jobinfo1",
+				Job: &v1alpha1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            "job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
+					},
+					Spec: v1alpha1.JobSpec{
+						MinAvailable: 3,
+						Tasks: []v1alpha1.TaskSpec{
+							{
+								Name:     "task1",
+								Replicas: 5,
+								Template: v1.PodTemplateSpec{
+									ObjectMeta: metav1.ObjectMeta{
+										Name: "task1",
+									},
+								},
+							},
+						},
+					},
+					Status: v1alpha1.JobStatus{
+						Pending: 3,
+						Running: 2,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
+					},
+				},
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"job1-task1-0": buildPod(namespace, "pod1", v1.PodRunning, nil),
+						"job1-task1-1": buildPod(namespace, "pod2", v1.PodRunning, nil),
+						"job1-task1-2": buildPod(namespace, "pod3", v1.PodPending, nil),
+						"job1-task1-3": buildPod(namespace, "pod4", v1.PodPending, nil),
+						"job1-task1-4": buildPod(namespace, "pod5", v1.PodPending, nil),
+					},
+				},
+			},
+			Action:      busv1alpha1.SyncJobAction,
+			ExpectedVal: nil,
+		},
+		{
+			Name: "RunningState- Default case and keep running When pods status pending<=(total-minAvailable)",
+			JobInfo: &apis.JobInfo{
+				Namespace: namespace,
+				Name:      "jobinfo1",
+				Job: &v1alpha1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            "job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
+					},
+					Spec: v1alpha1.JobSpec{
+						MinAvailable: 3,
+						Tasks: []v1alpha1.TaskSpec{
+							{
+								Name:     "task1",
+								Replicas: 5,
+								Template: v1.PodTemplateSpec{
+									ObjectMeta: metav1.ObjectMeta{
+										Name: "task1",
+									},
+								},
+							},
+						},
+					},
+					Status: v1alpha1.JobStatus{
+						Pending:   2,
+						Running:   1,
+						Succeeded: 1,
+						Failed:    1,
+						State: v1alpha1.JobState{
+							Phase: v1alpha1.Running,
+						},
+					},
+				},
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"job1-task1-0": buildPod(namespace, "pod1", v1.PodRunning, nil),
+						"job1-task1-1": buildPod(namespace, "pod2", v1.PodSucceeded, nil),
+						"job1-task1-2": buildPod(namespace, "pod3", v1.PodFailed, nil),
+						"job1-task1-3": buildPod(namespace, "pod4", v1.PodPending, nil),
+						"job1-task1-4": buildPod(namespace, "pod5", v1.PodPending, nil),
+					},
+				},
+			},
+			Action:      busv1alpha1.SyncJobAction,
+			ExpectedVal: nil,
+		},
 	}
 
 	for i, testcase := range testcases {
@@ -1231,6 +1370,10 @@ func TestRunningState_Execute(t *testing.T) {
 				if total == testcase.JobInfo.Job.Status.Succeeded+testcase.JobInfo.Job.Status.Failed {
 					if jobInfo.Job.Status.State.Phase != v1alpha1.Completed {
 						t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Completed, jobInfo.Job.Status.State.Phase, i)
+					}
+				} else if testcase.JobInfo.Job.Status.Pending > total-testcase.JobInfo.Job.Spec.MinAvailable {
+					if jobInfo.Job.Status.State.Phase != v1alpha1.Pending {
+						t.Errorf("Expected Job phase to %s, but got %s in case %d", v1alpha1.Pending, jobInfo.Job.Status.State.Phase, i)
 					}
 				} else {
 					if jobInfo.Job.Status.State.Phase != v1alpha1.Running {
