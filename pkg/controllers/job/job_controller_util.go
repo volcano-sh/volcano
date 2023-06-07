@@ -18,8 +18,6 @@ package job
 
 import (
 	"fmt"
-	"time"
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -32,8 +30,6 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
-
-var detectionPeriodOfDependsOntask time.Duration
 
 // MakePodName append podname,jobname,taskName and index and returns the string.
 func MakePodName(jobName string, taskName string, index int) string {
@@ -257,8 +253,4 @@ func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
 		return true
 	}
 	return false
-}
-
-func SetDetectionPeriodOfDependsOntask(period time.Duration) {
-	detectionPeriodOfDependsOntask = period
 }
