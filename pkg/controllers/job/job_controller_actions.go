@@ -18,6 +18,7 @@ package job
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -28,7 +29,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
 
@@ -486,11 +486,10 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	return nil
 }
 
-func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskIndex int, podToCreateEachTask []*v1.Pod, job *batch.Job) {
+func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskIndex int, podToCreateEachTask []*v1.Pod, job *batch.Job) bool {
 	if job.Spec.Tasks[taskIndex].DependsOn == nil {
-		return
+		return true
 	}
-
 	dependsOn := *job.Spec.Tasks[taskIndex].DependsOn
 	if len(dependsOn.Name) > 1 && dependsOn.Iteration == batch.IterationAny {
 		// any ready to create task, return true

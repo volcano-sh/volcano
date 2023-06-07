@@ -32,8 +32,6 @@ import (
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 )
 
-var detectionPeriodOfDependsOntask time.Duration
-
 // MakePodName append podname,jobname,taskName and index and returns the string.
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(jobhelpers.PodNameFmt, jobName, taskName, index)
@@ -256,8 +254,4 @@ func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
 		return true
 	}
 	return false
-}
-
-func SetDetectionPeriodOfDependsOntask(period time.Duration) {
-	detectionPeriodOfDependsOntask = period
 }
