@@ -122,8 +122,8 @@ func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
 
 	newTask := schedulingapi.NewTaskInfo(newPod)
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 	return sc.updateTask(oldTask, newTask)
 }
 
@@ -223,8 +223,8 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	err := sc.addPod(pod)
 	if err != nil {
@@ -248,8 +248,8 @@ func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	err := sc.updatePod(oldPod, newPod)
 	if err != nil {
@@ -278,8 +278,8 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	err := sc.deletePod(pod)
 	if err != nil {
@@ -393,8 +393,8 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	err := sc.addNode(node)
 	if err != nil {
@@ -417,8 +417,8 @@ func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	err := sc.updateNode(oldNode, newNode)
 	if err != nil {
@@ -445,8 +445,8 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	err := sc.deleteNode(node)
 	if err != nil {
@@ -472,8 +472,8 @@ func (sc *SchedulerCache) AddOrUpdateCSINode(obj interface{}) {
 		CSINodeName:  csiNode.Name,
 		DriverStatus: make(map[string]bool),
 	}
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	for i := range csiNode.Spec.Drivers {
 		d := csiNode.Spec.Drivers[i]
@@ -514,9 +514,9 @@ func (sc *SchedulerCache) DeleteCSINode(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
+	sc.RWMutex.Lock()
 	delete(sc.CSINodesStatus, csiNode.Name)
-	sc.Mutex.Unlock()
+	sc.RWMutex.Unlock()
 }
 
 func getJobID(pg *schedulingapi.PodGroup) schedulingapi.JobID {
@@ -579,8 +579,8 @@ func (sc *SchedulerCache) AddPodGroupV1beta1(obj interface{}) {
 	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
 	klog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	if err := sc.setPodGroup(pg); err != nil {
 		klog.Errorf("Failed to add PodGroup %s into cache: %v", ss.Name, err)
@@ -613,8 +613,8 @@ func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj interface{}) {
 
 	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	if err := sc.updatePodGroup(pg); err != nil {
 		klog.Errorf("Failed to update SchedulingSpec %s into cache: %v", pg.Name, err)
@@ -642,8 +642,8 @@ func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
 
 	jobID := schedulingapi.JobID(fmt.Sprintf("%s/%s", ss.Namespace, ss.Name))
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	if err := sc.deletePodGroup(jobID); err != nil {
 		klog.Errorf("Failed to delete podgroup %s from cache: %v", ss.Name, err)
@@ -665,8 +665,8 @@ func (sc *SchedulerCache) AddQueueV1beta1(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	klog.V(4).Infof("Add Queue(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 	sc.addQueue(queue)
@@ -695,8 +695,8 @@ func (sc *SchedulerCache) UpdateQueueV1beta1(oldObj, newObj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 	sc.updateQueue(newQueue)
 }
 
@@ -718,8 +718,8 @@ func (sc *SchedulerCache) DeleteQueueV1beta1(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 	sc.deleteQueue(schedulingapi.QueueID(ss.Name))
 }
 
@@ -757,8 +757,8 @@ func (sc *SchedulerCache) DeletePriorityClass(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	sc.deletePriorityClass(ss)
 }
@@ -778,8 +778,8 @@ func (sc *SchedulerCache) UpdatePriorityClass(oldObj, newObj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	sc.deletePriorityClass(oldSS)
 	sc.addPriorityClass(newSS)
@@ -793,8 +793,8 @@ func (sc *SchedulerCache) AddPriorityClass(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	sc.addPriorityClass(ss)
 }
@@ -858,8 +858,8 @@ func (sc *SchedulerCache) DeleteResourceQuota(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	klog.V(3).Infof("Delete ResourceQuota <%s/%v> in cache", r.Namespace, r.Name)
 	sc.deleteResourceQuota(r)
@@ -873,8 +873,8 @@ func (sc *SchedulerCache) UpdateResourceQuota(oldObj, newObj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	klog.V(3).Infof("Update ResourceQuota <%s/%v> in cache, with spec: %v.", newR.Namespace, newR.Name, newR.Spec.Hard)
 	sc.updateResourceQuota(newR)
@@ -891,8 +891,8 @@ func (sc *SchedulerCache) AddResourceQuota(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	klog.V(3).Infof("Add ResourceQuota <%s/%v> in cache, with spec: %v.", r.Namespace, r.Name, r.Spec.Hard)
 	sc.updateResourceQuota(r)
@@ -988,8 +988,8 @@ func (sc *SchedulerCache) AddNumaInfoV1alpha1(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	sc.addNumaInfo(ss)
 }
@@ -1002,8 +1002,8 @@ func (sc *SchedulerCache) UpdateNumaInfoV1alpha1(oldObj, newObj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 	sc.addNumaInfo(ss)
 	klog.V(3).Infof("update numaInfo<%s> in cahce, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
 }
@@ -1026,8 +1026,8 @@ func (sc *SchedulerCache) DeleteNumaInfoV1alpha1(obj interface{}) {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	sc.deleteNumaInfo(ss)
 	klog.V(3).Infof("Delete numaInfo<%s> from cahce, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
@@ -1040,7 +1040,7 @@ func (sc *SchedulerCache) AddJob(obj interface{}) {
 		klog.Errorf("Cannot convert to *api.JobInfo: %v", obj)
 		return
 	}
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 	sc.Jobs[job.UID] = job
 }
