@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
@@ -446,7 +447,7 @@ type TestArg struct {
 	Sc        *storagev1.StorageClass
 }
 
-func CreateCacheForTest(testArg *TestArg, highPriority, lowPriority int32) (*schedulecache.SchedulerCache, *FakeBinder, *FakeEvictor) {
+func CreateCacheForTest(testArg *TestArg, highPriority, lowPriority int32) (*schedulecache.SchedulerCache, *FakeBinder, *FakeEvictor,*FakeVolumeBinder) {
 	binder := &FakeBinder{
 		Binds:   map[string]string{},
 		Channel: make(chan string, 1),
@@ -454,6 +455,21 @@ func CreateCacheForTest(testArg *TestArg, highPriority, lowPriority int32) (*sch
 	evictor := &FakeEvictor{
 		Channel: make(chan string),
 	}
+
+	volumenBinder:=&FakeVolumeBinder{}
+	if testArg.Sc != nil {
+		kubeClient := fake.NewSimpleClientset()
+		kubeClient.StorageV1().StorageClasses().Create(context.TODO(), testArg.Sc, metav1.CreateOptions{})
+		for _, pv := range testArg.Pvs {
+			kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), pv, metav1.CreateOptions{})
+		}
+		for _, pvc := range testArg.Pvcs {
+			kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
+		}
+
+		volumenBinder = NewFakeVolumeBinder(kubeClient)
+	}
+
 	schedulerCache := &schedulecache.SchedulerCache{
 		Nodes:           make(map[string]*api.NodeInfo),
 		Jobs:            make(map[api.JobID]*api.JobInfo),
@@ -461,7 +477,7 @@ func CreateCacheForTest(testArg *TestArg, highPriority, lowPriority int32) (*sch
 		Binder:          binder,
 		Evictor:         evictor,
 		StatusUpdater:   &FakeStatusUpdater{},
-		VolumeBinder:    &FakeVolumeBinder{},
+		VolumeBinder:    volumenBinder,
 		PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
 
 		Recorder: record.NewFakeRecorder(100),
@@ -485,5 +501,5 @@ func CreateCacheForTest(testArg *TestArg, highPriority, lowPriority int32) (*sch
 	for _, pod := range testArg.Pods {
 		schedulerCache.AddPod(pod)
 	}
-	return schedulerCache, binder, evictor
+	return schedulerCache, binder, evictor,volumenBinder
 }
