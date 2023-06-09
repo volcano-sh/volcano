@@ -30,9 +30,12 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
+	schedulingv1 "k8s.io/api/scheduling/v1"
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	schedulecache "volcano.sh/volcano/pkg/scheduler/cache"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
@@ -431,4 +434,56 @@ func (fvb *FakeVolumeBinder) RevertVolumes(task *api.TaskInfo, podVolumes *volum
 	if podVolumes != nil {
 		fvb.volumeBinder.RevertAssumedPodVolumes(podVolumes)
 	}
+}
+
+type TestArg struct {
+	PodGroups []*schedulingv2.PodGroup
+	Pods      []*v1.Pod
+	Nodes     []*v1.Node
+	Queues    []*schedulingv2.Queue
+	Pvs       []*v1.PersistentVolume
+	Pvcs      []*v1.PersistentVolumeClaim
+	Sc        *storagev1.StorageClass
+}
+
+func CreateCacheForTest(testArg *TestArg, highPriority, lowPriority int32) (*schedulecache.SchedulerCache, *FakeBinder, *FakeEvictor) {
+	binder := &FakeBinder{
+		Binds:   map[string]string{},
+		Channel: make(chan string, 1),
+	}
+	evictor := &FakeEvictor{
+		Channel: make(chan string),
+	}
+	schedulerCache := &schedulecache.SchedulerCache{
+		Nodes:           make(map[string]*api.NodeInfo),
+		Jobs:            make(map[api.JobID]*api.JobInfo),
+		Queues:          make(map[api.QueueID]*api.QueueInfo),
+		Binder:          binder,
+		Evictor:         evictor,
+		StatusUpdater:   &FakeStatusUpdater{},
+		VolumeBinder:    &FakeVolumeBinder{},
+		PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
+
+		Recorder: record.NewFakeRecorder(100),
+	}
+	schedulerCache.PriorityClasses["high-priority"] = &schedulingv1.PriorityClass{
+		Value: highPriority,
+	}
+	schedulerCache.PriorityClasses["low-priority"] = &schedulingv1.PriorityClass{
+		Value: lowPriority,
+	}
+
+	for _, node := range testArg.Nodes {
+		schedulerCache.AddNode(node)
+	}
+	for _, q := range testArg.Queues {
+		schedulerCache.AddQueueV1beta1(q)
+	}
+	for _, ss := range testArg.PodGroups {
+		schedulerCache.AddPodGroupV1beta1(ss)
+	}
+	for _, pod := range testArg.Pods {
+		schedulerCache.AddPod(pod)
+	}
+	return schedulerCache, binder, evictor
 }
