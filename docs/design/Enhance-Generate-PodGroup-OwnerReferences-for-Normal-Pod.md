@@ -68,7 +68,7 @@ When controller need create a podgroup, it will check the pod `ownerReferences` 
 
 ### DiscoveryClient & DynamicClient
 From the `ownerReferences`, we can get or create a GVK and owner resource name. 
-Discovery client is foucs on the k8s resources, it can get GVR from GVK. When get GVR and owner resource name, we can use Dynamic client to get the owner resource's `ownerReferences`.
+Discovery client is focused on the k8s resources, it can get GVR from GVK. When get GVR and owner resource name, we can use Dynamic client to get the owner resource's `ownerReferences`.
 
 ### RBAC
 
