@@ -427,7 +427,7 @@ func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 	_, err := cc.cache.Get(jobcache.JobKeyByName(newPG.Namespace, jobNameKey))
 	if err != nil && newPG.Annotations != nil {
 		klog.Warningf(
-			"Failed to find job in cache by PodGroup, this may not be a PodGroup for volcano job.")
+			"Failed to find job in cache by PodGroup(%s/%s), this may not be a PodGroup for volcano job.", newPG.Namespace, newPG.Name)
 	}
 
 	if newPG.Status.Phase != oldPG.Status.Phase {
