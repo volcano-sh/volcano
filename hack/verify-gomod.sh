@@ -26,18 +26,15 @@ VOLCANO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 echo "running 'go mod tidy' for repo root"
 go mod tidy
 
-echo "running 'go mod vendor' for repo root"
-go mod vendor
-
 function volcano::git::check_status() {
-	# check if there's any uncommitted changes on go.mod, go.sum or vendor/
-	echo $( git status --short 2>/dev/null | grep -E "go.mod|go.sum|vendor/" |wc -l)
+	# check if there's any uncommitted changes on go.mod or go.sum /
+	echo $( git status --short 2>/dev/null | grep -E "go.mod|go.sum/" |wc -l)
 }
 
 ret=$(volcano::git::check_status)
 if [ ${ret} -eq 0 ]; then
-	echo "SUCCESS: Vendor Verified."
+	echo "SUCCESS: go.mod Verified."
 else
-	echo  "FAILED: Vendor stale. Please run the command [go mod tidy && go mod vendor] to update vendor."
+	echo  "FAILED: go.mod stale. Please run the command [go mod tidy] to update go.mod ."
 	exit 1
 fi
