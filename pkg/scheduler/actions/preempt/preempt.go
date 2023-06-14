@@ -203,13 +203,32 @@ func preempt(
 	predicateHelper util.PredicateHelper,
 ) (bool, error) {
 	assigned := false
-
 	allNodes := ssn.NodeList
-
-	if err := ssn.PrePredicateFn(preemptor); err != nil {
+	prePredicateStatus, err := ssn.PrePredicateFn(preemptor)
+	if err != nil {
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
-	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateFn, true)
+	for _, status := range prePredicateStatus {
+		if status != nil && status.Code != api.Success && status.Code != api.Unschedulable {
+			return false, fmt.Errorf("PrePredicate for task %s/%s failed, %v", preemptor.Namespace, preemptor.Name, status.Reason)
+		}
+	}
+
+	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+		predicateStatus, err := ssn.PredicateFn(task, node)
+		if err != nil {
+			return nil, err
+		}
+		for _, status := range predicateStatus {
+			if status != nil && status.Code != api.Success && status.Code != api.Unschedulable {
+				return nil, api.NewFitError(task, node, status.Reason)
+			}
+		}
+
+		return nil, nil
+	}
+
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, predicateFn, true)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 

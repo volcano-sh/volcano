@@ -161,22 +161,20 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	if ep.config.predicateVerb != "" {
-		ssn.AddPredicateFn(ep.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		ssn.AddPredicateFn(ep.Name(), func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 			resp := &PredicateResponse{}
 			err := ep.send(ep.config.predicateVerb, &PredicateRequest{Task: task, Node: node}, resp)
 			if err != nil {
 				klog.Warningf("Predicate failed with error %v", err)
 
 				if ep.config.ignorable {
-					return nil
+					return nil, nil
 				}
-				return err
+				return nil, err
 			}
 
-			if resp.ErrorMessage == "" {
-				return nil
-			}
-			return errors.New(resp.ErrorMessage)
+			predicateStatus := resp.Status
+			return predicateStatus, nil
 		})
 	}
 

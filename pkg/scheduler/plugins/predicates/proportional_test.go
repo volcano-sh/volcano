@@ -45,7 +45,7 @@ func Test_checkNodeResourceIsProportional(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    bool
+		want    int
 		wantErr bool
 	}{
 		{
@@ -55,7 +55,7 @@ func Test_checkNodeResourceIsProportional(t *testing.T) {
 				node:         n1,
 				proportional: proportional,
 			},
-			true,
+			api.Success,
 			false,
 		},
 		{
@@ -65,7 +65,7 @@ func Test_checkNodeResourceIsProportional(t *testing.T) {
 				node:         n1,
 				proportional: proportional,
 			},
-			false,
+			api.Unschedulable,
 			true,
 		},
 		{
@@ -75,7 +75,7 @@ func Test_checkNodeResourceIsProportional(t *testing.T) {
 				node:         n1,
 				proportional: proportional,
 			},
-			true,
+			api.Success,
 			false,
 		},
 		{
@@ -85,7 +85,7 @@ func Test_checkNodeResourceIsProportional(t *testing.T) {
 				node:         n2,
 				proportional: proportional,
 			},
-			true,
+			api.Success,
 			false,
 		},
 	}
@@ -96,7 +96,7 @@ func Test_checkNodeResourceIsProportional(t *testing.T) {
 				t.Errorf("checkNodeResourceIsProportional() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if got != tt.want {
+			if got.Code != tt.want {
 				t.Errorf("checkNodeResourceIsProportional() got = %v, want %v", got, tt.want)
 			}
 		})

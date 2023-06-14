@@ -70,7 +70,7 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 		}
 
 		// TODO (k82cn): Enable eCache for performance improvement.
-		if err := fn(task, node); err != nil {
+		if _, err := fn(task, node); err != nil {
 			klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
 				task.Namespace, task.Name, node.Name, err)
 			errorLock.Lock()

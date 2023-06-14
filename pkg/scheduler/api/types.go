@@ -124,6 +124,34 @@ type ValidateResult struct {
 	Message string
 }
 
+// These are predefined codes used in a Status.
+const (
+	// Success means that plugin ran correctly and found pod schedulable.
+	// NOTE: A nil status is also considered as "Success".
+	Success int = iota
+	// Error is used for internal plugin errors, unexpected input, etc.
+	Error
+	// Unschedulable is used when a plugin finds a pod unschedulable. The scheduler might attempt to
+	// preempt other pods to get this pod scheduled. Use UnschedulableAndUnresolvable to make the
+	// scheduler skip preemption.
+	// The accompanying status message should explain why the pod is unschedulable.
+	Unschedulable
+	// UnschedulableAndUnresolvable is used when a plugin finds a pod unschedulable and
+	// preemption would not change anything. Plugins should return Unschedulable if it is possible
+	// that the pod can get scheduled with preemption.
+	// The accompanying status message should explain why the pod is unschedulable.
+	UnschedulableAndUnresolvable
+	// Wait is used when a Permit plugin finds a pod scheduling should wait.
+	Wait
+	// Skip is used when a Bind plugin chooses to skip binding.
+	Skip
+)
+
+type Status struct {
+	Code   int
+	Reason string
+}
+
 // ValidateExFn is the func declaration used to validate the result.
 type ValidateExFn func(interface{}) *ValidateResult
 
@@ -134,10 +162,10 @@ type VoteFn func(interface{}) int
 type JobEnqueuedFn func(interface{})
 
 // PredicateFn is the func declaration used to predicate node for task.
-type PredicateFn func(*TaskInfo, *NodeInfo) error
+type PredicateFn func(*TaskInfo, *NodeInfo) ([]*Status, error)
 
 // PrePredicateFn is the func declaration used to pre-predicate node for task.
-type PrePredicateFn func(*TaskInfo) error
+type PrePredicateFn func(*TaskInfo) ([]*Status, error)
 
 // BestNodeFn is the func declaration used to return the nodeScores to plugins.
 type BestNodeFn func(*TaskInfo, map[float64][]*NodeInfo) *NodeInfo

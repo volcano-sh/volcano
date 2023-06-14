@@ -17,6 +17,7 @@ limitations under the License.
 package backfill
 
 import (
+	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -56,26 +57,20 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 		for _, task := range job.TaskStatusIndex[api.Pending] {
 			if task.InitResreq.IsEmpty() {
 				allocated := false
-				fe := api.NewFitErrors()
-
-				if err := ssn.PrePredicateFn(task); err != nil {
-					klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
-					for _, ni := range ssn.Nodes {
-						fe.SetNodeError(ni.Name, err)
-					}
-					job.NodesFitErrors[task.UID] = fe
-					break
+				if err := prePredicateforBackfill(ssn, task, job); err != nil {
+					klog.V(3).Infof("backfill %s", err.Error())
+					continue
 				}
 
+				fe := api.NewFitErrors()
 				// As task did not request resources, so it only need to meet predicates.
 				// TODO (k82cn): need to prioritize nodes to avoid pod hole.
 				for _, node := range ssn.Nodes {
 					// TODO (k82cn): predicates did not consider pod number for now, there'll
 					// be ping-pong case here.
-					if err := ssn.PredicateFn(task, node); err != nil {
-						klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
-							task.Namespace, task.Name, node.Name, err)
-						fe.SetNodeError(node.Name, err)
+					err := predicateforBackfill(ssn, task, node, fe)
+					if err != nil {
+						klog.V(3).Infof("backfill %s", err.Error())
 						continue
 					}
 
@@ -99,6 +94,47 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			// TODO (k82cn): backfill for other case.
 		}
 	}
+}
+
+func predicateforBackfill(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo, fe *api.FitErrors) error {
+	predicateStatus, err := ssn.PredicateFn(task, node)
+	if err != nil {
+		fe.SetNodeError(node.Name, err)
+		return fmt.Errorf("Predicates failed for task <%s/%s> on node <%s>: %v",
+			task.Namespace, task.Name, node.Name, err)
+	}
+	for _, status := range predicateStatus {
+		if status != nil && status.Code != api.Success {
+			return fmt.Errorf("Predicates failed for task <%s/%s> on node <%s>: %s",
+				task.Namespace, task.Name, node.Name, status.Reason)
+		}
+	}
+	return nil
+}
+
+func prePredicateforBackfill(ssn *framework.Session, task *api.TaskInfo, job *api.JobInfo) error {
+	prePredicateStatus, err := ssn.PrePredicateFn(task)
+	if err != nil {
+		fitErrors := api.NewFitErrors()
+		for _, ni := range ssn.Nodes {
+			fitErrors.SetNodeError(ni.Name, err)
+		}
+		job.NodesFitErrors[task.UID] = fitErrors
+		return fmt.Errorf("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+	}
+
+	for _, status := range prePredicateStatus {
+		if status != nil && status.Code != api.Success {
+			fitErrors := api.NewFitErrors()
+			err := fmt.Errorf("PrePredicate for task %s/%s failed, %s", task.Namespace, task.Name, status.Reason)
+			for _, ni := range ssn.Nodes {
+				fitErrors.SetNodeError(ni.Name, err)
+			}
+			job.NodesFitErrors[task.UID] = fitErrors
+			return err
+		}
+	}
+	return nil
 }
 
 func (backfill *Action) UnInitialize() {}
