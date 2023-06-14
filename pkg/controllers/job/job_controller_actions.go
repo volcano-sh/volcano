@@ -493,26 +493,6 @@ func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskInd
 
 	dependsOn := *job.Spec.Tasks[taskIndex].DependsOn
 	if len(dependsOn.Name) > 1 && dependsOn.Iteration == batch.IterationAny {
-<<<<<<< HEAD
-		wait.PollInfinite(detectionPeriodOfDependsOntask, func() (bool, error) {
-			for _, task := range dependsOn.Name {
-				if cc.isDependsOnPodsReady(task, job) {
-					return true, nil
-				}
-			}
-			return false, nil
-		})
-	} else {
-		for _, dependsOnTask := range dependsOn.Name {
-			wait.PollInfinite(detectionPeriodOfDependsOntask, func() (bool, error) {
-				if cc.isDependsOnPodsReady(dependsOnTask, job) {
-					return true, nil
-				}
-				return false, nil
-			})
-		}
-	}
-=======
 		// any ready to create task, return true
 		for _, task := range dependsOn.Name {
 			if cc.isDependsOnPodsReady(task, job) {
@@ -530,7 +510,6 @@ func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskInd
 	}
 	// all ready to create task, return true
 	return true
->>>>>>> 6d0ab3b8d... change wait dependson job log level to error
 }
 
 func (cc *jobcontroller) isDependsOnPodsReady(task string, job *batch.Job) bool {
