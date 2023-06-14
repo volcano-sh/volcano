@@ -34,6 +34,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// TODO: can we use the same client as the scheduler?
 var kubeClient kubernetes.Interface
 
 func init() {
@@ -62,6 +63,12 @@ func NewClient() (kubernetes.Interface, error) {
 	client, err := kubernetes.NewForConfig(config)
 	kubeClient = client
 	return client, err
+}
+
+// UseClient uses an existing client
+func UseClient(client kubernetes.Interface) error {
+	kubeClient = client
+	return nil
 }
 
 func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
@@ -376,8 +383,6 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices, replicate boo
 				klog.Errorln("failed checktype", gs.Device[i].Type, val.Type)
 				continue
 			}
-			//total += gs.Devices[i].Count
-			//free += node.Devices[i].Count - node.Devices[i].Used
 			if val.Nums > 0 {
 				klog.V(3).Infoln("device", gs.Device[i].ID, "fitted")
 				val.Nums--
@@ -403,13 +408,12 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices, replicate boo
 	return true, ctrdevs, nil
 }
 
-func patchPodAnnotations(pod *v1.Pod, annotations map[string]string) error {
+func patchPodAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod, annotations map[string]string) error {
 	type patchMetadata struct {
 		Annotations map[string]string `json:"annotations,omitempty"`
 	}
 	type patchPod struct {
 		Metadata patchMetadata `json:"metadata"`
-		//Spec     patchSpec     `json:"spec,omitempty"`
 	}
 
 	p := patchPod{}
@@ -424,15 +428,5 @@ func patchPodAnnotations(pod *v1.Pod, annotations map[string]string) error {
 	if err != nil {
 		klog.Errorf("patch pod %v failed, %v", pod.Name, err)
 	}
-	/*
-		Can't modify Env of pods here
-
-		patch1 := addGPUIndexPatch()
-		_, err = s.kubeClient.CoreV1().Pods(pod.Namespace).
-			Patch(context.Background(), pod.Name, k8stypes.JSONPatchType, []byte(patch1), metav1.PatchOptions{})
-		if err != nil {
-			klog.Infof("Patch1 pod %v failed, %v", pod.Name, err)
-		}*/
-
 	return err
 }

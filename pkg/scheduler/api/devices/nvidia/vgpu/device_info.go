@@ -216,7 +216,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 
 		annotations[DeviceBindPhase] = "allocating"
 		annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
-		err = patchPodAnnotations(pod, annotations)
+		err = patchPodAnnotations(kubeClient, pod, annotations)
 		if err != nil {
 			return err
 		}
