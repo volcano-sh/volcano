@@ -17,6 +17,8 @@ limitations under the License.
 package reclaim
 
 import (
+	"fmt"
+
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -116,15 +118,16 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		if err := ssn.PrePredicateFn(task); err != nil {
-			klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+		if err := prePredicateforReclaim(ssn, task); err != nil {
+			klog.V(3).Infof("reclaim %s", err.Error())
 			continue
 		}
 
 		assigned := false
 		for _, n := range ssn.Nodes {
 			// If predicates failed, next node.
-			if err := ssn.PredicateFn(task, n); err != nil {
+			if err := predicateforReclaim(ssn, task, n); err != nil {
+				klog.V(3).Infof("reclaim %s", err.Error())
 				continue
 			}
 
@@ -205,6 +208,35 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 		queues.Push(queue)
 	}
+}
+
+func predicateforReclaim(ssn *framework.Session, task *api.TaskInfo, n *api.NodeInfo) error {
+	predicateStatus, err := ssn.PredicateFn(task, n)
+	if err != nil {
+		return fmt.Errorf("Predicates failed for task <%s/%s> on node <%s>: %v",
+			task.Namespace, task.Name, n.Name, err)
+	}
+	for _, status := range predicateStatus {
+		if status != nil && status.Code != api.Success && status.Code != api.Unschedulable {
+			return fmt.Errorf("Predicates failed for task <%s/%s> on node <%s>: %v",
+				task.Namespace, task.Name, n.Name, status.Reason)
+		}
+	}
+	return nil
+}
+
+func prePredicateforReclaim(ssn *framework.Session, task *api.TaskInfo) error {
+	prePredicateStatus, err := ssn.PrePredicateFn(task)
+	if err != nil {
+		return fmt.Errorf("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+	}
+
+	for _, status := range prePredicateStatus {
+		if status != nil && status.Code != api.Success && status.Code != api.Unschedulable {
+			return fmt.Errorf("PrePredicate for task %s/%s failed, %v", task.Namespace, task.Name, status.Reason)
+		}
+	}
+	return nil
 }
 
 func (ra *Action) UnInitialize() {

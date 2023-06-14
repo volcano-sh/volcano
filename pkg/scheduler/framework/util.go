@@ -17,12 +17,14 @@ limitations under the License.
 package framework
 
 import (
+	"fmt"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
-	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/framework"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -223,10 +225,10 @@ func (pal *PodAffinityLister) FilteredList(podFilter PodFilter, selector labels.
 }
 
 // GenerateNodeMapAndSlice returns the nodeMap and nodeSlice generated from ssn
-func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) map[string]*schedulernodeinfo.NodeInfo {
-	nodeMap := make(map[string]*schedulernodeinfo.NodeInfo)
+func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) map[string]*k8sframework.NodeInfo {
+	nodeMap := make(map[string]*k8sframework.NodeInfo)
 	for _, node := range nodes {
-		nodeInfo := schedulernodeinfo.NewNodeInfo(node.Pods()...)
+		nodeInfo := k8sframework.NewNodeInfo(node.Pods()...)
 		nodeInfo.SetNode(node.Node)
 		nodeMap[node.Name] = nodeInfo
 		// add imagestate into nodeinfo
@@ -262,4 +264,26 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 		nodes = append(nodes, node.Node)
 	}
 	return nodes, nil
+}
+
+// The state of the k8s prefile is converted to the internal state of the volcano
+func ConvertPredicateStatus(status *k8sframework.Status) (*api.Status, error) {
+	internalStatus := &api.Status{}
+	if status.Code() == k8sframework.Success {
+		internalStatus.Code = api.Success
+		return internalStatus, nil
+	} else if status.Code() == k8sframework.Unschedulable {
+		internalStatus.Code = api.Unschedulable
+		internalStatus.Reason = status.Message()
+		return internalStatus, nil
+	} else if status.Code() == k8sframework.UnschedulableAndUnresolvable {
+		internalStatus.Code = api.UnschedulableAndUnresolvable
+		internalStatus.Reason = status.Message()
+		return internalStatus, nil
+	} else {
+		internalStatus.Code = api.Error
+		internalStatus.Reason = status.Message()
+		return internalStatus, fmt.Errorf("Convert predicate status error, k8s status code is %d, Reason is %s",
+			status.Code(), status.Message())
+	}
 }

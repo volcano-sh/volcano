@@ -25,10 +25,12 @@ import (
 )
 
 // checkNodeResourceIsProportional checks if a gpu:cpu:memory is Proportional
-func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, proportional map[v1.ResourceName]baseResource) (bool, error) {
+func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, proportional map[v1.ResourceName]baseResource) (*api.Status, error) {
+	status := &api.Status{}
 	for resourceName := range proportional {
 		if value, found := task.Resreq.ScalarResources[resourceName]; found && value > 0 {
-			return true, nil
+			status.Code = api.Success
+			return status, nil
 		}
 	}
 	for resourceName, resourceRate := range proportional {
@@ -38,9 +40,11 @@ func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, pro
 			r := node.Idle.Clone()
 			r = r.Sub(task.Resreq)
 			if r.MilliCPU < cpuReserved || r.Memory < memoryReserved {
-				return false, fmt.Errorf("proportional of resource %s check failed", resourceName)
+				status.Code = api.Unschedulable
+				status.Reason = fmt.Sprintf("proportional of resource %s check failed", resourceName)
+				return status, fmt.Errorf("proportional of resource %s check failed", resourceName)
 			}
 		}
 	}
-	return true, nil
+	return status, nil
 }

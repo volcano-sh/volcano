@@ -17,6 +17,7 @@
 package allocate
 
 import (
+	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -96,13 +97,22 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
 
 	allNodes := ssn.NodeList
-	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
+	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		// Check for Resource Predicate
 		if ok, reason := task.InitResreq.LessEqualWithReason(node.FutureIdle(), api.Zero); !ok {
-			return api.NewFitError(task, node, reason)
+			return nil, api.NewFitError(task, node, reason)
+		}
+		predicateStatus, err := ssn.PredicateFn(task, node)
+		if err != nil {
+			return nil, err
+		}
+		for _, status := range predicateStatus {
+			if status != nil && status.Code != api.Success {
+				return nil, api.NewFitError(task, node, status.Reason)
+			}
 		}
 
-		return ssn.PredicateFn(task, node)
+		return nil, nil
 	}
 
 	// To pick <namespace, queue> tuple for job, we choose to pick namespace firstly.
@@ -167,13 +177,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(ssn.Nodes), job.Namespace, job.Name)
 
-			if err := ssn.PrePredicateFn(task); err != nil {
-				klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
-				fitErrors := api.NewFitErrors()
-				for _, ni := range allNodes {
-					fitErrors.SetNodeError(ni.Name, err)
-				}
-				job.NodesFitErrors[task.UID] = fitErrors
+			if err := prePredicateforAllocate(ssn, task, allNodes, job); err != nil {
 				break
 			}
 
@@ -248,6 +252,34 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 		}
 	}
+}
+
+func prePredicateforAllocate(ssn *framework.Session, task *api.TaskInfo, allNodes []*api.NodeInfo, job *api.JobInfo) error {
+	prePredicateStatus, err := ssn.PrePredicateFn(task)
+	if err != nil {
+		klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+		fitErrors := api.NewFitErrors()
+		for _, ni := range allNodes {
+			fitErrors.SetNodeError(ni.Name, err)
+		}
+		job.NodesFitErrors[task.UID] = fitErrors
+		return fmt.Errorf("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+	}
+
+	for _, status := range prePredicateStatus {
+		if status != nil && status.Code != api.Success {
+			klog.V(3).Infof("PrePredicate for task %s/%s failed, Code is %d, reason is  %s",
+				task.Namespace, task.Name, status.Code, status.Reason)
+			fitErrors := api.NewFitErrors()
+			err := fmt.Errorf("PrePredicate for task %s/%s, %s", task.Namespace, task.Name, status.Reason)
+			for _, ni := range allNodes {
+				fitErrors.SetNodeError(ni.Name, err)
+			}
+			job.NodesFitErrors[task.UID] = fitErrors
+			return err
+		}
+	}
+	return nil
 }
 
 func (alloc *Action) UnInitialize() {}
