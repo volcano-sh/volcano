@@ -18,7 +18,6 @@ package job
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -379,8 +378,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			taskIndex := jobhelpers.GetTasklndexUnderJob(taskName, job)
 			if job.Spec.Tasks[taskIndex].DependsOn != nil {
 				if !cc.waitDependsOnTaskMeetCondition(taskName, taskIndex, podToCreateEachTask, job) {
-					klog.Errorf("Job %s/%s depends on task not ready", job.Name, job.Namespace)
-					creationErrs = append(creationErrs, errors.New(fmt.Sprintf("Job %s/%s depends on task not ready", job.Name, job.Namespace)))
+					klog.V(4).Infof("Job %s/%s depends on task not ready", job.Name, job.Namespace)
 					// release wait group
 					for _, pod := range podToCreateEachTask {
 						go func(pod *v1.Pod) {
