@@ -153,8 +153,6 @@ spec:
           image: volcanosh/vc-webhook-manager:latest
           imagePullPolicy: Always
           name: admission
-          resources:
-            null
           volumeMounts:
             - mountPath: /admission.local.config/certificates
               name: admission-certs
@@ -187,8 +185,6 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
-          resources:
-            null
           image: volcanosh/vc-webhook-manager:latest
           imagePullPolicy: Always
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
@@ -8620,8 +8616,6 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
           - name: volcano-controllers
-            resources:
-              null
             image: volcanosh/vc-controller-manager:latest
             args:
               - --logtostderr
@@ -8791,8 +8785,6 @@ spec:
       containers:
         - name: volcano-scheduler
           image: volcanosh/vc-scheduler:latest
-          resources:
-            null
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
