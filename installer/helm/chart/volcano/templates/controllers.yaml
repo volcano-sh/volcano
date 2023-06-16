@@ -132,8 +132,10 @@ spec:
       {{- end }}
       containers:
           - name: {{ .Release.Name }}-controllers
+            {{- if .Values.custom.controller_resources }}
             resources:
             {{- toYaml .Values.custom.controller_resources | nindent 14 }}
+            {{- end }}
             image: {{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
             args:
               - --logtostderr
