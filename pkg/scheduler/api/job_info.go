@@ -389,12 +389,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.RevocableZone = ji.extractRevocableZone(pg)
 	ji.Budget = ji.extractBudget(pg)
 
-	taskMinAvailableTotal := int32(0)
-	for task, member := range pg.Spec.MinTaskMember {
-		ji.TaskMinAvailable[TaskID(task)] = member
-		taskMinAvailableTotal += member
-	}
-	ji.TaskMinAvailableTotal = taskMinAvailableTotal
+	ji.ParseMinMemberInfo(pg)
 
 	ji.PodGroup = pg
 }
@@ -479,6 +474,18 @@ func (ji *JobInfo) extractBudget(pg *PodGroup) *DisruptionBudget {
 	}
 
 	return NewDisruptionBudget("", "")
+}
+
+// ParseMinMemberInfo set the information about job's min member
+// 1. set number of each role to TaskMinAvailable
+// 2. calculate sum of all roles' min members and set to TaskMinAvailableTotal
+func (ji *JobInfo) ParseMinMemberInfo(pg *PodGroup) {
+	taskMinAvailableTotal := int32(0)
+	for task, member := range pg.Spec.MinTaskMember {
+		ji.TaskMinAvailable[TaskID(task)] = member
+		taskMinAvailableTotal += member
+	}
+	ji.TaskMinAvailableTotal = taskMinAvailableTotal
 }
 
 // GetMinResources return the min resources of podgroup.
