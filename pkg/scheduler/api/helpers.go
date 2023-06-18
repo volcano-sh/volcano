@@ -18,6 +18,7 @@ package api
 
 import (
 	"fmt"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	clientcache "k8s.io/client-go/tools/cache"
@@ -33,15 +34,22 @@ func PodKey(pod *v1.Pod) TaskID {
 }
 
 func getTaskStatus(pod *v1.Pod) TaskStatus {
+	var gracePeriodSeconds int64 = 30
+	if pod.Spec.TerminationGracePeriodSeconds != nil {
+		// default grace period
+		gracePeriodSeconds = *pod.Spec.TerminationGracePeriodSeconds
+	}
 	switch pod.Status.Phase {
 	case v1.PodRunning:
-		if pod.DeletionTimestamp != nil {
+		if pod.DeletionTimestamp != nil &&
+			time.Now().Unix()-pod.DeletionTimestamp.Unix() <= gracePeriodSeconds {
 			return Releasing
 		}
 
 		return Running
 	case v1.PodPending:
-		if pod.DeletionTimestamp != nil {
+		if pod.DeletionTimestamp != nil &&
+			time.Now().Unix()-pod.DeletionTimestamp.Unix() <= gracePeriodSeconds {
 			return Releasing
 		}
 
