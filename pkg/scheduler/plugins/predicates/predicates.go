@@ -351,8 +351,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	state := k8sframework.NewCycleState()
 
-	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) ([]*api.Status, error) {
-		prePredicateStatus := make([]*api.Status, 0)
+	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {
 		// Check NodePorts
 		if predicate.nodePortEnable {
 			nodePortFilter.PreFilter(context.TODO(), state, task.Pod)
@@ -370,10 +369,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// the processing logic needs to be added to the return value result.
 		if predicate.podAffinityEnable {
 			_, status := podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
-			podAffinityStatus, err := framework.ConvertPredicateStatus(status)
-			prePredicateStatus = append(prePredicateStatus, podAffinityStatus)
-			if err != nil {
-				return prePredicateStatus, fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
+			if !status.IsSuccess() {
+				return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
 			}
 		}
 
@@ -389,13 +386,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// the processing logic needs to be added to the return value result.
 		if predicate.podTopologySpreadEnable {
 			_, status := podTopologySpreadFilter.PreFilter(context.TODO(), state, task.Pod)
-			podTopologyStatus, err := framework.ConvertPredicateStatus(status)
-			prePredicateStatus = append(prePredicateStatus, podTopologyStatus)
-			if err != nil {
-				return prePredicateStatus, fmt.Errorf("plugin %s pre-predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
+			if !status.IsSuccess() {
+				return fmt.Errorf("plugin %s pre-predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
 			}
 		}
-		return prePredicateStatus, nil
+		return nil
 	})
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {

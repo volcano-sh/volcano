@@ -204,14 +204,9 @@ func preempt(
 ) (bool, error) {
 	assigned := false
 	allNodes := ssn.NodeList
-	prePredicateStatus, err := ssn.PrePredicateFn(preemptor)
+	err := ssn.PrePredicateFn(preemptor)
 	if err != nil {
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
-	}
-	for _, status := range prePredicateStatus {
-		if status != nil && status.Code != api.Success && status.Code != api.Unschedulable {
-			return false, fmt.Errorf("PrePredicate for task %s/%s failed, %v", preemptor.Namespace, preemptor.Name, status.Reason)
-		}
 	}
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
