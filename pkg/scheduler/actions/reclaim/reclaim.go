@@ -118,8 +118,8 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		if err := prePredicateforReclaim(ssn, task); err != nil {
-			klog.V(3).Infof("reclaim %s", err.Error())
+		if err := ssn.PrePredicateFn(task); err != nil {
+			klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
 			continue
 		}
 
@@ -220,20 +220,6 @@ func predicateforReclaim(ssn *framework.Session, task *api.TaskInfo, n *api.Node
 		if status != nil && status.Code != api.Success && status.Code != api.Unschedulable {
 			return fmt.Errorf("Predicates failed for task <%s/%s> on node <%s>: %v",
 				task.Namespace, task.Name, n.Name, status.Reason)
-		}
-	}
-	return nil
-}
-
-func prePredicateforReclaim(ssn *framework.Session, task *api.TaskInfo) error {
-	prePredicateStatus, err := ssn.PrePredicateFn(task)
-	if err != nil {
-		return fmt.Errorf("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
-	}
-
-	for _, status := range prePredicateStatus {
-		if status != nil && status.Code != api.Success && status.Code != api.Unschedulable {
-			return fmt.Errorf("PrePredicate for task %s/%s failed, %v", task.Namespace, task.Name, status.Reason)
 		}
 	}
 	return nil

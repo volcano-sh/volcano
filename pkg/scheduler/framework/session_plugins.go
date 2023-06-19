@@ -623,8 +623,7 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) ([]*api.
 }
 
 // PrePredicateFn invoke predicate function of the plugins
-func (ssn *Session) PrePredicateFn(task *api.TaskInfo) ([]*api.Status, error) {
-	prePredicateStatus := make([]*api.Status, 0)
+func (ssn *Session) PrePredicateFn(task *api.TaskInfo) error {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			// we use same option as predicates for they are
@@ -635,14 +634,13 @@ func (ssn *Session) PrePredicateFn(task *api.TaskInfo) ([]*api.Status, error) {
 			if !found {
 				continue
 			}
-			status, err := pfn(task)
-			prePredicateStatus = append(prePredicateStatus, status...)
+			err := pfn(task)
 			if err != nil {
-				return prePredicateStatus, err
+				return err
 			}
 		}
 	}
-	return prePredicateStatus, nil
+	return nil
 }
 
 // BestNodeFn invoke bestNode function of the plugins
