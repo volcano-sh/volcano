@@ -23,6 +23,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
 
 func nodeInfoEqual(l, r *NodeInfo) bool {
@@ -58,14 +60,17 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Pipelined:                EmptyResource(),
 				OversubscriptionResource: EmptyResource(),
 				Allocatable:              buildResource("8000m", "10G"),
-				Capability:               buildResource("8000m", "10G"),
+				Capacity:                 buildResource("8000m", "10G"),
 				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: Ready},
 				Tasks: map[TaskID]*TaskInfo{
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p2": NewTaskInfo(case01Pod2),
 				},
-				GPUDevices:  make(map[int]*GPUDevice),
+				Others: map[string]interface{}{
+					GPUSharingDevice: gpushare.NewGPUDevices("n1", case01Node),
+					vgpu.DeviceName:  vgpu.NewGPUDevices("n1", case01Node),
+				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 			},
 		},
@@ -82,12 +87,15 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Pipelined:                EmptyResource(),
 				OversubscriptionResource: EmptyResource(),
 				Allocatable:              buildResource("2000m", "1G"),
-				Capability:               buildResource("2000m", "1G"),
+				Capacity:                 buildResource("2000m", "1G"),
 				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: Ready},
 				Tasks:                    map[TaskID]*TaskInfo{},
-				GPUDevices:               make(map[int]*GPUDevice),
-				ImageStates:              make(map[string]*k8sframework.ImageStateSummary),
+				Others: map[string]interface{}{
+					GPUSharingDevice: gpushare.NewGPUDevices("n2", case01Node),
+					vgpu.DeviceName:  vgpu.NewGPUDevices("n2", case01Node),
+				},
+				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 			},
 			expectedFailure: true,
 		},
@@ -142,14 +150,17 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 				Releasing:                EmptyResource(),
 				Pipelined:                EmptyResource(),
 				Allocatable:              buildResource("8000m", "10G"),
-				Capability:               buildResource("8000m", "10G"),
+				Capacity:                 buildResource("8000m", "10G"),
 				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: Ready},
 				Tasks: map[TaskID]*TaskInfo{
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p3": NewTaskInfo(case01Pod3),
 				},
-				GPUDevices:  make(map[int]*GPUDevice),
+				Others: map[string]interface{}{
+					GPUSharingDevice: gpushare.NewGPUDevices("n1", case01Node),
+					vgpu.DeviceName:  vgpu.NewGPUDevices("n1", case01Node),
+				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 			},
 		},
@@ -204,7 +215,7 @@ func TestNodeInfo_SetNode(t *testing.T) {
 				Releasing:                EmptyResource(),
 				Pipelined:                EmptyResource(),
 				Allocatable:              buildResource("10", "10G"),
-				Capability:               buildResource("10", "10G"),
+				Capacity:                 buildResource("10", "10G"),
 				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: NotReady, Reason: "OutOfSync"},
 				Tasks: map[TaskID]*TaskInfo{
@@ -212,7 +223,10 @@ func TestNodeInfo_SetNode(t *testing.T) {
 					"c1/p2": NewTaskInfo(case01Pod2),
 					"c1/p3": NewTaskInfo(case01Pod3),
 				},
-				GPUDevices:  make(map[int]*GPUDevice),
+				Others: map[string]interface{}{
+					GPUSharingDevice: gpushare.NewGPUDevices("n1", case01Node1),
+					vgpu.DeviceName:  vgpu.NewGPUDevices("n1", case01Node1),
+				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 			},
 		},
