@@ -19,13 +19,14 @@ package api
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
 
 type AllocateFailError struct {
@@ -60,7 +61,7 @@ type NodeInfo struct {
 	Used *Resource
 
 	Allocatable   *Resource
-	Capability    *Resource
+	Capacity      *Resource
 	ResourceUsage *NodeUsage
 
 	Tasks             map[TaskID]*TaskInfo
@@ -70,8 +71,8 @@ type NodeInfo struct {
 	RevocableZone     string
 
 	// Used to store custom information
-	Others     map[string]interface{}
-	GPUDevices map[int]*GPUDevice
+	Others map[string]interface{}
+	//SharedDevices map[string]SharedDevicePool
 
 	// enable node resource oversubscription
 	OversubscriptionNode bool
@@ -134,13 +135,13 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Used:      EmptyResource(),
 
 		Allocatable:   EmptyResource(),
-		Capability:    EmptyResource(),
+		Capacity:      EmptyResource(),
 		ResourceUsage: &NodeUsage{},
 
 		OversubscriptionResource: EmptyResource(),
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
-		GPUDevices:  make(map[int]*GPUDevice),
+		Others:      make(map[string]interface{}),
 		ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 	}
 
@@ -151,9 +152,9 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		nodeInfo.Node = node
 		nodeInfo.Idle = NewResource(node.Status.Allocatable).Add(nodeInfo.OversubscriptionResource)
 		nodeInfo.Allocatable = NewResource(node.Status.Allocatable).Add(nodeInfo.OversubscriptionResource)
-		nodeInfo.Capability = NewResource(node.Status.Capacity).Add(nodeInfo.OversubscriptionResource)
+		nodeInfo.Capacity = NewResource(node.Status.Capacity).Add(nodeInfo.OversubscriptionResource)
 	}
-	nodeInfo.setNodeGPUInfo(node)
+	nodeInfo.setNodeOthersResource(node)
 	nodeInfo.setNodeState(node)
 	nodeInfo.setRevocableZone(node)
 
@@ -317,38 +318,6 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 	klog.V(4).Infof("set the node %s status to %s.", node.Name, Ready.String())
 }
 
-func (ni *NodeInfo) setNodeGPUInfo(node *v1.Node) {
-	if node == nil {
-		return
-	}
-	memory, ok := node.Status.Capacity[VolcanoGPUResource]
-	if !ok {
-		return
-	}
-	totalMemory := memory.Value()
-
-	res, ok := node.Status.Capacity[VolcanoGPUNumber]
-	if !ok {
-		return
-	}
-	gpuNumber := res.Value()
-	if gpuNumber == 0 {
-		klog.Warningf("invalid %s=%s", VolcanoGPUNumber, res.String())
-		return
-	}
-
-	memoryPerCard := uint(totalMemory / gpuNumber)
-	ni.GPUDevices = make(map[int]*GPUDevice)
-	for i := 0; i < int(gpuNumber); i++ {
-		ni.GPUDevices[i] = NewGPUDevice(i, memoryPerCard)
-	}
-	unhealthyGPUs := ni.getUnhealthyGPUs(node)
-	for i := range unhealthyGPUs {
-		klog.V(4).Infof("delete unhealthy gpu id %d from GPUDevices", unhealthyGPUs[i])
-		delete(ni.GPUDevices, unhealthyGPUs[i])
-	}
-}
-
 // SetNode sets kubernetes node object to nodeInfo object
 func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.setNodeState(node)
@@ -373,17 +342,26 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.setNode(node)
 }
 
+// setNodeOthersResource initialize sharable devices
+func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
+	IgnoredDevicesList = []string{}
+	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
+	ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
+	IgnoredDevicesList = append(IgnoredDevicesList, ni.Others[GPUSharingDevice].(Devices).GetIgnoredDevices()...)
+	IgnoredDevicesList = append(IgnoredDevicesList, ni.Others[vgpu.DeviceName].(Devices).GetIgnoredDevices()...)
+}
+
 // setNode sets kubernetes node object to nodeInfo object without assertion
 func (ni *NodeInfo) setNode(node *v1.Node) {
 	ni.setOversubscription(node)
-	ni.setNodeGPUInfo(node)
+	ni.setNodeOthersResource(node)
 	ni.setRevocableZone(node)
 
 	ni.Name = node.Name
 	ni.Node = node
 
 	ni.Allocatable = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)
-	ni.Capability = NewResource(node.Status.Capacity).Add(ni.OversubscriptionResource)
+	ni.Capacity = NewResource(node.Status.Capacity).Add(ni.OversubscriptionResource)
 	ni.Releasing = EmptyResource()
 	ni.Pipelined = EmptyResource()
 	ni.Idle = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)
@@ -395,13 +373,13 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 			ni.Idle.sub(ti.Resreq) // sub without assertion
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
-			ni.AddGPUResource(ti.Pod)
+			ni.addResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		default:
 			ni.Idle.sub(ti.Resreq) // sub without assertion
 			ni.Used.Add(ti.Resreq)
-			ni.AddGPUResource(ti.Pod)
+			ni.addResource(ti.Pod)
 		}
 	}
 }
@@ -445,7 +423,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 			}
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
-			ni.AddGPUResource(ti.Pod)
+			ni.addResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		default:
@@ -453,7 +431,7 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 				return err
 			}
 			ni.Used.Add(ti.Resreq)
-			ni.AddGPUResource(ti.Pod)
+			ni.addResource(ti.Pod)
 		}
 	}
 
@@ -488,13 +466,13 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 			ni.Releasing.Sub(task.Resreq)
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
-			ni.SubGPUResource(ti.Pod)
+			ni.subResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Sub(task.Resreq)
 		default:
 			ni.Idle.Add(task.Resreq)
 			ni.Used.Sub(task.Resreq)
-			ni.SubGPUResource(ti.Pod)
+			ni.subResource(ti.Pod)
 		}
 	}
 
@@ -505,6 +483,18 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 	delete(ni.Tasks, key)
 
 	return nil
+}
+
+// addResource is used to add sharable devices
+func (ni *NodeInfo) addResource(pod *v1.Pod) {
+	ni.Others[GPUSharingDevice].(Devices).AddResource(pod)
+	ni.Others[vgpu.DeviceName].(Devices).AddResource(pod)
+}
+
+// subResource is used to substract sharable devices
+func (ni *NodeInfo) subResource(pod *v1.Pod) {
+	ni.Others[GPUSharingDevice].(Devices).SubResource(pod)
+	ni.Others[vgpu.DeviceName].(Devices).SubResource(pod)
 }
 
 // UpdateTask is used to update a task in nodeInfo object.
@@ -545,95 +535,6 @@ func (ni *NodeInfo) Pods() (pods []*v1.Pod) {
 		pods = append(pods, t.Pod)
 	}
 
-	return
-}
-
-// GetDevicesIdleGPUMemory returns all the idle GPU memory by gpu card.
-func (ni *NodeInfo) GetDevicesIdleGPUMemory() map[int]uint {
-	devicesAllGPUMemory := ni.getDevicesAllGPUMemory()
-	devicesUsedGPUMemory := ni.getDevicesUsedGPUMemory()
-	res := map[int]uint{}
-	for id, allMemory := range devicesAllGPUMemory {
-		if usedMemory, found := devicesUsedGPUMemory[id]; found {
-			res[id] = allMemory - usedMemory
-		} else {
-			res[id] = allMemory
-		}
-	}
-	return res
-}
-
-func (ni *NodeInfo) getDevicesUsedGPUMemory() map[int]uint {
-	res := map[int]uint{}
-	for _, device := range ni.GPUDevices {
-		res[device.ID] = device.getUsedGPUMemory()
-	}
-	return res
-}
-
-func (ni *NodeInfo) getDevicesAllGPUMemory() map[int]uint {
-	res := map[int]uint{}
-	for _, device := range ni.GPUDevices {
-		res[device.ID] = device.Memory
-	}
-	return res
-}
-
-// GetDevicesIdleGPU returns all the idle gpu card.
-func (ni *NodeInfo) GetDevicesIdleGPUs() []int {
-	res := []int{}
-	for _, device := range ni.GPUDevices {
-		if device.isIdleGPU() {
-			res = append(res, device.ID)
-		}
-	}
-	return res
-}
-
-// AddGPUResource adds the pod to GPU pool if it is assigned
-func (ni *NodeInfo) AddGPUResource(pod *v1.Pod) {
-	gpuRes := GetGPUMemoryOfPod(pod)
-	if gpuRes > 0 {
-		ids := GetGPUIndex(pod)
-		for _, id := range ids {
-			if dev := ni.GPUDevices[id]; dev != nil {
-				dev.PodMap[string(pod.UID)] = pod
-			}
-		}
-	}
-}
-
-// SubGPUResource frees the gpu hold by the pod
-func (ni *NodeInfo) SubGPUResource(pod *v1.Pod) {
-	gpuRes := GetGPUMemoryOfPod(pod)
-	if gpuRes > 0 {
-		ids := GetGPUIndex(pod)
-		for _, id := range ids {
-			if dev := ni.GPUDevices[id]; dev != nil {
-				delete(dev.PodMap, string(pod.UID))
-			}
-		}
-	}
-}
-
-// getUnhealthyGPUs returns all the unhealthy GPU id.
-func (ni *NodeInfo) getUnhealthyGPUs(node *v1.Node) (unhealthyGPUs []int) {
-	unhealthyGPUs = []int{}
-	devicesStr, ok := node.Annotations[UnhealthyGPUIDs]
-
-	if !ok {
-		return
-	}
-
-	idsStr := strings.Split(devicesStr, ",")
-	for _, sid := range idsStr {
-		id, err := strconv.Atoi(sid)
-		if err != nil {
-			klog.Warningf("Failed to parse unhealthy gpu id %s due to %v", sid, err)
-		} else {
-			unhealthyGPUs = append(unhealthyGPUs, id)
-		}
-	}
 	return
 }
 
