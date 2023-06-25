@@ -201,6 +201,9 @@ func updateQueueStatus(ssn *Session) {
 		for _, runningTask := range job.TaskStatusIndex[api.Running] {
 			allocatedResources[job.Queue].Add(runningTask.Resreq)
 		}
+		for _, runningTask := range job.TaskStatusIndex[api.ReleasingFailed] {
+			allocatedResources[job.Queue].Add(runningTask.Resreq)
+		}
 	}
 
 	// update queue status
@@ -277,7 +280,7 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 		}
 	}
 
-	status.Running = int32(len(jobInfo.TaskStatusIndex[api.Running]))
+	status.Running = int32(len(jobInfo.TaskStatusIndex[api.Running]) + len(jobInfo.TaskStatusIndex[api.ReleasingFailed]))
 	status.Failed = int32(len(jobInfo.TaskStatusIndex[api.Failed]))
 	status.Succeeded = int32(len(jobInfo.TaskStatusIndex[api.Succeeded]))
 

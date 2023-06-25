@@ -678,6 +678,7 @@ func (ji *JobInfo) ReadyTaskNum() int32 {
 	occupied += len(ji.TaskStatusIndex[Bound])
 	occupied += len(ji.TaskStatusIndex[Binding])
 	occupied += len(ji.TaskStatusIndex[Running])
+	occupied += len(ji.TaskStatusIndex[ReleasingFailed])
 	occupied += len(ji.TaskStatusIndex[Allocated])
 	occupied += len(ji.TaskStatusIndex[Succeeded])
 

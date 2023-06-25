@@ -45,6 +45,9 @@ const (
 	// Releasing means a task/pod is deleted.
 	Releasing
 
+	// ReleasingFailed means a task/pod delete failed
+	ReleasingFailed
+
 	// Succeeded means that all containers in the pod have voluntarily terminated
 	// with a container exit code of 0, and the system is not going to restart any of these containers.
 	Succeeded
@@ -73,6 +76,8 @@ func (ts TaskStatus) String() string {
 		return "Running"
 	case Releasing:
 		return "Releasing"
+	case ReleasingFailed:
+		return "ReleasingFailed"
 	case Succeeded:
 		return "Succeeded"
 	case Failed:

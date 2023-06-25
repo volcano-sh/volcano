@@ -44,6 +44,8 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 		if pod.DeletionTimestamp != nil &&
 			time.Now().Unix()-pod.DeletionTimestamp.Unix() <= gracePeriodSeconds {
 			return Releasing
+		} else if pod.DeletionTimestamp != nil {
+			return ReleasingFailed
 		}
 
 		return Running
@@ -51,6 +53,8 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 		if pod.DeletionTimestamp != nil &&
 			time.Now().Unix()-pod.DeletionTimestamp.Unix() <= gracePeriodSeconds {
 			return Releasing
+		} else if pod.DeletionTimestamp != nil {
+			return ReleasingFailed
 		}
 
 		if len(pod.Spec.NodeName) == 0 {
@@ -71,7 +75,7 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 // AllocatedStatus checks whether the tasks has AllocatedStatus
 func AllocatedStatus(status TaskStatus) bool {
 	switch status {
-	case Bound, Binding, Running, Allocated:
+	case Bound, Binding, Running, Allocated, ReleasingFailed:
 		return true
 	default:
 		return false
