@@ -378,7 +378,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			taskIndex := jobhelpers.GetTasklndexUnderJob(taskName, job)
 			if job.Spec.Tasks[taskIndex].DependsOn != nil {
 				if !cc.waitDependsOnTaskMeetCondition(taskName, taskIndex, podToCreateEachTask, job) {
-					klog.V(4).Infof("Job %s/%s depends on task not ready", job.Name, job.Namespace)
+					klog.V(3).Infof("Job %s/%s depends on task not ready", job.Name, job.Namespace)
 					// release wait group
 					for _, pod := range podToCreateEachTask {
 						go func(pod *v1.Pod) {
@@ -491,22 +491,22 @@ func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskInd
 	}
 	dependsOn := *job.Spec.Tasks[taskIndex].DependsOn
 	if len(dependsOn.Name) > 1 && dependsOn.Iteration == batch.IterationAny {
-		// any ready to create task
+		// any ready to create task, return true
 		for _, task := range dependsOn.Name {
 			if cc.isDependsOnPodsReady(task, job) {
 				return true
 			}
 		}
+		// all not ready to skip create task, return false
 		return false
-	} else {
-		for _, dependsOnTask := range dependsOn.Name {
-			// any not ready to skip
-			if !cc.isDependsOnPodsReady(dependsOnTask, job) {
-				return false
-			}
-			return true
+	}
+	for _, dependsOnTask := range dependsOn.Name {
+		// any not ready to skip create task, return false
+		if !cc.isDependsOnPodsReady(dependsOnTask, job) {
+			return false
 		}
 	}
+	// all ready to create task, return true
 	return true
 }
 

@@ -46,15 +46,14 @@ func TestAddFlags(t *testing.T) {
 			QPS:        defaultQPS,
 			Burst:      200,
 		},
-		PrintVersion:                   false,
-		WorkerThreads:                  defaultWorkers,
-		SchedulerNames:                 []string{"volcano", "volcano2"},
-		MaxRequeueNum:                  defaultMaxRequeueNum,
-		HealthzBindAddress:             ":11251",
-		DetectionPeriodOfDependsOntask: defaultDetectionPeriodOfDependsOntask,
-		InheritOwnerAnnotations:        true,
-		EnableLeaderElection:           true,
-		LockObjectNamespace:            defaultLockObjectNamespace,
+		PrintVersion:            false,
+		WorkerThreads:           defaultWorkers,
+		SchedulerNames:          []string{"volcano", "volcano2"},
+		MaxRequeueNum:           defaultMaxRequeueNum,
+		HealthzBindAddress:      ":11251",
+		InheritOwnerAnnotations: true,
+		EnableLeaderElection:    true,
+		LockObjectNamespace:     defaultLockObjectNamespace,
 	}
 
 	if !reflect.DeepEqual(expected, s) {
