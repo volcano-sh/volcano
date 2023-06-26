@@ -79,25 +79,29 @@ fi
 
 # Step2. update helm templates from config dir
 HELM_TEMPLATES_DIR=${VK_ROOT}/installer/helm/chart/volcano/templates
-HELM_CRD_DIR=${VK_ROOT}/installer/helm/chart/volcano/crd
+HELM_VOLCANO_CRD_DIR=${VK_ROOT}/installer/helm/chart/volcano/crd
+HELM_JOBFLOW_CRD_DIR=${VK_ROOT}/installer/helm/chart/jobflow/crd
+VOLCANO_CRD_DIR=${VK_ROOT}/config/crd/volcano
+JOBFLOW_CRD_DIR=${VK_ROOT}/config/crd/jobflow
 echo Updating templates in $HELM_TEMPLATES_DIR
 # use tail because we should skip top two line
-# sync bases
-tail -n +3 ${VK_ROOT}/config/crd/bases/batch.volcano.sh_jobs.yaml > ${HELM_CRD_DIR}/bases/batch.volcano.sh_jobs.yaml
-tail -n +3 ${VK_ROOT}/config/crd/bases/bus.volcano.sh_commands.yaml > ${HELM_CRD_DIR}/bases/bus.volcano.sh_commands.yaml
-tail -n +3 ${VK_ROOT}/config/crd/bases/scheduling.volcano.sh_podgroups.yaml > ${HELM_CRD_DIR}/bases/scheduling.volcano.sh_podgroups.yaml
-tail -n +3 ${VK_ROOT}/config/crd/bases/scheduling.volcano.sh_queues.yaml > ${HELM_CRD_DIR}/bases/scheduling.volcano.sh_queues.yaml
-tail -n +3 ${VK_ROOT}/config/crd/bases/nodeinfo.volcano.sh_numatopologies.yaml > ${HELM_CRD_DIR}/bases/nodeinfo.volcano.sh_numatopologies.yaml
-tail -n +3 ${VK_ROOT}/config/crd/bases/flow.volcano.sh_jobflows.yaml > ${HELM_CRD_DIR}/bases/flow.volcano.sh_jobflows.yaml
-tail -n +3 ${VK_ROOT}/config/crd/bases/flow.volcano.sh_jobtemplates.yaml > ${HELM_CRD_DIR}/bases/flow.volcano.sh_jobtemplates.yaml
+# sync volcano bases
+tail -n +3 ${VOLCANO_CRD_DIR}/bases/batch.volcano.sh_jobs.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/batch.volcano.sh_jobs.yaml
+tail -n +3 ${VOLCANO_CRD_DIR}/bases/bus.volcano.sh_commands.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/bus.volcano.sh_commands.yaml
+tail -n +3 ${VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_podgroups.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_podgroups.yaml
+tail -n +3 ${VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_queues.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_queues.yaml
+tail -n +3 ${VOLCANO_CRD_DIR}/bases/nodeinfo.volcano.sh_numatopologies.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/nodeinfo.volcano.sh_numatopologies.yaml
+
 # sync v1beta1
-tail -n +3 ${VK_ROOT}/config/crd/v1beta1/batch.volcano.sh_jobs.yaml > ${HELM_CRD_DIR}/v1beta1/batch.volcano.sh_jobs.yaml
-tail -n +3 ${VK_ROOT}/config/crd/v1beta1/bus.volcano.sh_commands.yaml > ${HELM_CRD_DIR}/v1beta1/bus.volcano.sh_commands.yaml
-tail -n +3 ${VK_ROOT}/config/crd/v1beta1/scheduling.volcano.sh_podgroups.yaml > ${HELM_CRD_DIR}/v1beta1/scheduling.volcano.sh_podgroups.yaml
-tail -n +3 ${VK_ROOT}/config/crd/v1beta1/scheduling.volcano.sh_queues.yaml > ${HELM_CRD_DIR}/v1beta1/scheduling.volcano.sh_queues.yaml
-tail -n +3 ${VK_ROOT}/config/crd/v1beta1/nodeinfo.volcano.sh_numatopologies.yaml > ${HELM_CRD_DIR}/v1beta1/nodeinfo.volcano.sh_numatopologies.yaml
-tail -n +3 ${VK_ROOT}/config/crd/v1beta1/flow.volcano.sh_jobflows.yaml > ${HELM_CRD_DIR}/v1beta1/flow.volcano.sh_jobflows.yaml
-tail -n +3 ${VK_ROOT}/config/crd/v1beta1/flow.volcano.sh_jobtemplates.yaml > ${HELM_CRD_DIR}/v1beta1/flow.volcano.sh_jobtemplates.yaml
+tail -n +3 ${VOLCANO_CRD_DIR}/v1beta1/batch.volcano.sh_jobs.yaml > ${HELM_VOLCANO_CRD_DIR}/v1beta1/batch.volcano.sh_jobs.yaml
+tail -n +3 ${VOLCANO_CRD_DIR}/v1beta1/bus.volcano.sh_commands.yaml > ${HELM_VOLCANO_CRD_DIR}/v1beta1/bus.volcano.sh_commands.yaml
+tail -n +3 ${VOLCANO_CRD_DIR}/v1beta1/scheduling.volcano.sh_podgroups.yaml > ${HELM_VOLCANO_CRD_DIR}/v1beta1/scheduling.volcano.sh_podgroups.yaml
+tail -n +3 ${VOLCANO_CRD_DIR}/v1beta1/scheduling.volcano.sh_queues.yaml > ${HELM_VOLCANO_CRD_DIR}/v1beta1/scheduling.volcano.sh_queues.yaml
+tail -n +3 ${VOLCANO_CRD_DIR}/v1beta1/nodeinfo.volcano.sh_numatopologies.yaml > ${HELM_VOLCANO_CRD_DIR}/v1beta1/nodeinfo.volcano.sh_numatopologies.yaml
+
+# sync jobflow bases
+tail -n +3 ${JOBFLOW_CRD_DIR}/bases/flow.volcano.sh_jobflows.yaml > ${HELM_JOBFLOW_CRD_DIR}/bases/flow.volcano.sh_jobflows.yaml
+tail -n +3 ${JOBFLOW_CRD_DIR}/bases/flow.volcano.sh_jobtemplates.yaml > ${HELM_JOBFLOW_CRD_DIR}/bases/flow.volcano.sh_jobtemplates.yaml
 
 # Step3. generate yaml in folder
 if [[ ! -d ${RELEASE_FOLDER} ]];then
@@ -116,7 +120,11 @@ if [[ -f ${MONITOR_DEPLOYMENT_YAML_FILENAME} ]];then
     rm ${MONITOR_DEPLOYMENT_YAML_FILENAME}
 fi
 
+# Namespace
 cat ${VK_ROOT}/installer/namespace.yaml > ${DEPLOYMENT_FILE}
+
+# Volcano
+${HELM_BIN_DIR}/helm dependency update ${VK_ROOT}/installer/helm/chart/volcano 
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
       -s templates/admission.yaml \
@@ -128,10 +136,16 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       -s templates/scheduling_v1beta1_queue.yaml \
       -s templates/nodeinfo_v1alpha1_numatopologies.yaml \
       -s templates/webhooks.yaml \
+      >> ${DEPLOYMENT_FILE}
+
+# JobFlow
+${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/jobflow --namespace volcano-system \
+      --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
       -s templates/flow_v1alpha1_jobflows.yaml \
       -s templates/flow_v1alpha1_jobtemplates.yaml \
       >> ${DEPLOYMENT_FILE}
 
+# Monitoring
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-monitoring \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set custom.metrics_enable=true \
       -s templates/prometheus.yaml \
