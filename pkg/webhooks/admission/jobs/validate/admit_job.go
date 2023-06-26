@@ -121,6 +121,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	var msg string
 	taskNames := map[string]string{}
 	var totalReplicas int32
+	var totalMinAvailable int32
 
 	if job.Spec.MinAvailable < 0 {
 		reviewResponse.Allowed = false
@@ -157,6 +158,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	}
 
 	hasDependenciesBetweenTasks := false
+	hasSetTaskMinAvailable := false
 	for index, task := range job.Spec.Tasks {
 		if task.DependsOn != nil {
 			hasDependenciesBetweenTasks = true
@@ -172,6 +174,10 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 			} else if *task.MinAvailable > task.Replicas {
 				msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s;", task.Name, job.Name)
 			}
+			hasSetTaskMinAvailable = true
+			totalMinAvailable += *task.MinAvailable
+		} else {
+			totalMinAvailable += task.Replicas
 		}
 
 		// count replicas
@@ -203,6 +209,17 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 
 	if totalReplicas < job.Spec.MinAvailable {
 		msg += " job 'minAvailable' should not be greater than total replicas in tasks;"
+	}
+	if job.Spec.MinAvailable != 0 && !hasSetTaskMinAvailable {
+		if len(job.Spec.Tasks) > 1 && job.Spec.MinAvailable != totalReplicas {
+			msg += " Multi-tasks job 'minAvailable' needs to set task 'minAvailable', " +
+				"otherwise job 'minAvailable' must be equal to the sum of task 'replicas';"
+		}
+	} else if job.Spec.MinAvailable != 0 && hasSetTaskMinAvailable {
+		if job.Spec.MinAvailable != totalMinAvailable {
+			msg += " job minAvailable is not equal to the sum of task minAvailable, " +
+				"If task minAvailable is nil (default) equal to task Replicas;"
+		}
 	}
 
 	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
@@ -247,6 +264,8 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 
 func validateJobUpdate(old, new *v1alpha1.Job) error {
 	var totalReplicas int32
+	var totalMinAvailable int32
+	hasSetTaskMinAvailable := false
 	for _, task := range new.Spec.Tasks {
 		if task.Replicas < 0 {
 			return fmt.Errorf("'replicas' must be >= 0 in task: %s", task.Name)
@@ -258,6 +277,10 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 			} else if *task.MinAvailable > task.Replicas {
 				return fmt.Errorf("'minAvailable' must be <= 'replicas' in task: %s", task.Name)
 			}
+			hasSetTaskMinAvailable = true
+			totalMinAvailable += *task.MinAvailable
+		} else {
+			totalMinAvailable += task.Replicas
 		}
 
 		// count replicas
@@ -269,7 +292,17 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	if new.Spec.MinAvailable < 0 {
 		return fmt.Errorf("job 'minAvailable' must be >= 0")
 	}
-
+	if new.Spec.MinAvailable != 0 && !hasSetTaskMinAvailable {
+		if len(new.Spec.Tasks) > 1 && new.Spec.MinAvailable != totalReplicas {
+			return fmt.Errorf(" Multi-tasks job 'minAvailable' needs to set task 'minAvailable', " +
+				"otherwise job 'minAvailable' must be equal to total task 'replicas'")
+		}
+	} else if new.Spec.MinAvailable != 0 && hasSetTaskMinAvailable {
+		if new.Spec.MinAvailable != totalMinAvailable {
+			return fmt.Errorf(" job 'minAvailable' is not equal to the sum of task 'minAvailable', " +
+				"If task 'minAvailable' is nil (default) equal to task 'replicas'")
+		}
+	}
 	if len(old.Spec.Tasks) != len(new.Spec.Tasks) {
 		return fmt.Errorf("job updates may not add or remove tasks")
 	}

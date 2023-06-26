@@ -235,7 +235,10 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			}
 
 			if ssn.JobReady(job) && !tasks.Empty() {
-				jobs.Push(job)
+				// skip dependent job push, because dependent job has other pods will be creat
+				if !job.DependentJob {
+					jobs.Push(job)
+				}
 				break
 			}
 		}

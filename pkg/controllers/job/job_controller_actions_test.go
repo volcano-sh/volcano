@@ -25,6 +25,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -204,8 +205,9 @@ func TestSyncJobFunc(t *testing.T) {
 				Spec: v1alpha1.JobSpec{
 					Tasks: []v1alpha1.TaskSpec{
 						{
-							Name:     "task1",
-							Replicas: 6,
+							Name:         "task1",
+							Replicas:     6,
+							MinAvailable: buildMinAvailable(6),
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
 									Name:      "pods",
@@ -282,6 +284,7 @@ func TestSyncJobFunc(t *testing.T) {
 			testcase.JobInfo.Job.Spec.Plugins = jobPlugins
 
 			fakeController.pgInformer.Informer().GetIndexer().Add(testcase.PodGroup)
+			fakeController.vcClient.SchedulingV1beta1().PodGroups(testcase.PodGroup.Namespace).Create(context.TODO(), testcase.PodGroup, metav1.CreateOptions{})
 
 			for _, pod := range testcase.Pods {
 				_, err := fakeController.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
@@ -414,6 +417,7 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 	testcases := []struct {
 		Name      string
 		Job       *v1alpha1.Job
+		PodGroup  *schedulingapi.PodGroup
 		ExpextVal error
 	}{
 		{
@@ -425,12 +429,152 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 					ResourceVersion: "100",
 					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
 				},
+				Spec: v1alpha1.JobSpec{
+					Queue:             "default",
+					MinAvailable:      3,
+					PriorityClassName: "test-priority",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "master",
+							Replicas:     3,
+							MinAvailable: buildMinAvailable(3),
+							Template:     buildPodTemplate("0.5", "0.5G"),
+						},
+					},
+				},
+			},
+			PodGroup: &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: schedulingapi.PodGroupSpec{
+					MinMember:         3,
+					MinResources:      buildResourceList("1.5", "1.5G"),
+					Queue:             "default",
+					PriorityClassName: "test-priority",
+					MinTaskMember: map[string]int32{
+						"master": 3,
+					},
+				},
+			},
+			ExpextVal: nil,
+		},
+		{
+			Name: "CreatePodGroup With Multi-task minResource equal to job minResource Case",
+			/*
+			   minResource = sum(task.minResource)
+			*/
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:       namespace,
+					Name:            "job1",
+					ResourceVersion: "100",
+					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					Queue:             "default",
+					MinAvailable:      5,
+					PriorityClassName: "test-priority",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "master",
+							Replicas:     3,
+							MinAvailable: buildMinAvailable(3),
+							Template:     buildPodTemplate("0.5", "0.5G"),
+						},
+						{
+							Name:         "work",
+							Replicas:     2,
+							MinAvailable: buildMinAvailable(2),
+							Template:     buildPodTemplate("1", "1G"),
+						},
+					},
+				},
+			},
+			PodGroup: &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: schedulingapi.PodGroupSpec{
+					MinMember:         5,
+					MinResources:      buildResourceList("3.5", "3.5G"),
+					Queue:             "default",
+					PriorityClassName: "test-priority",
+					MinTaskMember: map[string]int32{
+						"master": 3,
+						"work":   2,
+					},
+				},
+			},
+			ExpextVal: nil,
+		},
+		{
+			Name: "CreatePodGroup With  Multi-tasks minResource equal to job minResource Case",
+			/*
+			  A   B
+			   \ /
+			    C
+			*/
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:       namespace,
+					Name:            "job1",
+					ResourceVersion: "100",
+					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					Queue:             "default",
+					MinAvailable:      2,
+					PriorityClassName: "test-priority",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "A",
+							Replicas:     3,
+							MinAvailable: buildMinAvailable(3),
+							Template:     buildPodTemplate("0.5", "0.5G"),
+						},
+						{
+							Name:         "B",
+							Replicas:     2,
+							MinAvailable: buildMinAvailable(2),
+							Template:     buildPodTemplate("0.5", "0.5G"),
+						},
+						{
+							Name:         "C",
+							Replicas:     2,
+							MinAvailable: buildMinAvailable(2),
+							Template:     buildPodTemplate("1", "1G"),
+							DependsOn: &v1alpha1.DependsOn{
+								Name: []string{"A", "B"},
+							},
+						},
+					},
+				},
+			},
+			PodGroup: &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: schedulingapi.PodGroupSpec{
+					MinMember:         2,
+					MinResources:      buildResourceList("4.5", "4.5G"),
+					Queue:             "default",
+					PriorityClassName: "test-priority",
+					MinTaskMember: map[string]int32{
+						"A": 3,
+						"B": 2,
+						"C": 2,
+					},
+				},
 			},
 			ExpextVal: nil,
 		},
 	}
 
-	for _, testcase := range testcases {
+	for i, testcase := range testcases {
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 
@@ -440,9 +584,27 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 			}
 
 			pgName := testcase.Job.Name + "-" + string(testcase.Job.UID)
-			_, err = fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+			pg, err := fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 			if err != nil {
 				t.Error("Expected PodGroup to get created, but not created")
+			}
+			expected := *testcase.PodGroup.Spec.MinResources
+			created := *pg.Spec.MinResources
+			for key, value := range expected {
+				if other, found := created[key]; found {
+					if value.Cmp(other) != 0 {
+						t.Errorf("Expected PodGroup %s=%s not equal to created podGroup %s=%s,in case %d",
+							key.String(), value.String(), key.String(), other.String(), i)
+					}
+				} else {
+					t.Errorf("Expected PodGroup key %s not found in created podGroup,in case %d", key, i)
+				}
+			}
+			pg.Spec.MinResources = nil
+			testcase.PodGroup.Spec.MinResources = nil
+			if !reflect.DeepEqual(pg.Spec, testcase.PodGroup.Spec) {
+				t.Errorf("Expected PodGroup %#v\n not equal to created podGroup %#v\n,in case %d",
+					pg.Spec, testcase.PodGroup.Spec, i)
 			}
 		})
 
@@ -560,4 +722,33 @@ func TestDeleteJobPod(t *testing.T) {
 			}
 		})
 	}
+}
+
+func buildPodTemplate(cpu string, memory string) v1.PodTemplateSpec {
+	return v1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "web",
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name: "nginx",
+					Resources: v1.ResourceRequirements{
+						Requests: *buildResourceList(cpu, memory),
+					},
+				},
+			},
+		},
+	}
+}
+
+func buildResourceList(cpu string, memory string) *v1.ResourceList {
+	return &v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse(cpu),
+		v1.ResourceMemory: resource.MustParse(memory),
+	}
+}
+
+func buildMinAvailable(minAvailable int32) *int32 {
+	return &minAvailable
 }

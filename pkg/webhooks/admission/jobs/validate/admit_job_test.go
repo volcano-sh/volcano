@@ -61,19 +61,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -97,42 +85,18 @@ func TestValidateJobCreate(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
+					MinAvailable: 2,
 					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{
 							Name:     "duplicated-task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 						{
 							Name:     "duplicated-task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 				},
@@ -156,19 +120,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -202,19 +154,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 				},
@@ -238,19 +178,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Plugins: map[string][]string{
@@ -277,19 +205,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					TTLSecondsAfterFinished: &invTTL,
@@ -314,19 +230,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 				},
@@ -351,19 +255,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 				},
@@ -405,19 +297,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: -1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 				},
@@ -442,19 +322,7 @@ func TestValidateJobCreate(t *testing.T) {
 							Name:         "task-1",
 							Replicas:     1,
 							MinAvailable: &invMinAvailable,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template:     buildPodTemplate(),
 						},
 					},
 				},
@@ -478,19 +346,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "Task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 				},
@@ -514,19 +370,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -557,19 +401,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -598,19 +430,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -640,19 +460,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -682,19 +490,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -726,19 +522,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -774,19 +558,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -820,19 +592,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -867,19 +627,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -918,19 +666,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 					Policies: []v1alpha1.LifecyclePolicy{
@@ -968,19 +704,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 							Policies: []v1alpha1.LifecyclePolicy{
 								{
 									Event:  busv1alpha1.AnyEvent,
@@ -1014,19 +738,7 @@ func TestValidateJobCreate(t *testing.T) {
 						{
 							Name:     "task-1",
 							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 					},
 				},
@@ -1125,7 +837,7 @@ func TestValidateJobCreate(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
+					MinAvailable: 2,
 					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{
@@ -1134,31 +846,13 @@ func TestValidateJobCreate(t *testing.T) {
 							DependsOn: &v1alpha1.DependsOn{
 								Name: []string{"t2"},
 							},
-							Template: v1.PodTemplateSpec{
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 						{
 							Name:      "t2",
 							Replicas:  1,
 							DependsOn: nil,
-							Template: v1.PodTemplateSpec{
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template:  buildPodTemplate(),
 						},
 					},
 				},
@@ -1175,7 +869,7 @@ func TestValidateJobCreate(t *testing.T) {
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
+					MinAvailable: 2,
 					Queue:        "default",
 					Tasks: []v1alpha1.TaskSpec{
 						{
@@ -1184,31 +878,13 @@ func TestValidateJobCreate(t *testing.T) {
 							DependsOn: &v1alpha1.DependsOn{
 								Name: []string{"t3"},
 							},
-							Template: v1.PodTemplateSpec{
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template: buildPodTemplate(),
 						},
 						{
 							Name:      "t2",
 							Replicas:  1,
 							DependsOn: nil,
-							Template: v1.PodTemplateSpec{
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
+							Template:  buildPodTemplate(),
 						},
 					},
 				},
@@ -1352,19 +1028,7 @@ func TestValidateJobUpdate(t *testing.T) {
 				new.Spec.Tasks = append(new.Spec.Tasks, v1alpha1.TaskSpec{
 					Name:     "task-2",
 					Replicas: 5,
-					Template: v1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{"name": "test"},
-						},
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{
-								{
-									Name:  "fake-name",
-									Image: "busybox:1.24",
-								},
-							},
-						},
-					},
+					Template: buildPodTemplate(),
 				})
 			}
 			if tc.mutateTaskName {
@@ -1399,19 +1063,7 @@ func newJob() *v1alpha1.Job {
 				{
 					Name:     "task-1",
 					Replicas: 5,
-					Template: v1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{"name": "test"},
-						},
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{
-								{
-									Name:  "fake-name",
-									Image: "busybox:1.24",
-								},
-							},
-						},
-					},
+					Template: buildPodTemplate(),
 				},
 			},
 			Policies: []v1alpha1.LifecyclePolicy{
@@ -1485,5 +1137,21 @@ func TestValidateTaskTopoPolicy(t *testing.T) {
 		if !strings.Contains(msg, testcase.expect) {
 			t.Errorf("%s failed.", testcase.name)
 		}
+	}
+}
+
+func buildPodTemplate() v1.PodTemplateSpec {
+	return v1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{"name": "test"},
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name:  "fake-name",
+					Image: "busybox:1.24",
+				},
+			},
+		},
 	}
 }

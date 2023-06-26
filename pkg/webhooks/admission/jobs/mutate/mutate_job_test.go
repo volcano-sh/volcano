@@ -45,35 +45,11 @@ func TestCreatePatchExecution(t *testing.T) {
 				Tasks: []v1alpha1.TaskSpec{
 					{
 						Replicas: 1,
-						Template: v1.PodTemplateSpec{
-							ObjectMeta: metav1.ObjectMeta{
-								Labels: map[string]string{"name": "test"},
-							},
-							Spec: v1.PodSpec{
-								Containers: []v1.Container{
-									{
-										Name:  "fake-name",
-										Image: "busybox:1.24",
-									},
-								},
-							},
-						},
+						Template: buildPodTemplate(),
 					},
 					{
 						Replicas: 1,
-						Template: v1.PodTemplateSpec{
-							ObjectMeta: metav1.ObjectMeta{
-								Labels: map[string]string{"name": "test"},
-							},
-							Spec: v1.PodSpec{
-								Containers: []v1.Container{
-									{
-										Name:  "fake-name",
-										Image: "busybox:1.24",
-									},
-								},
-							},
-						},
+						Template: buildPodTemplate(),
 					},
 				},
 			},
@@ -85,36 +61,12 @@ func TestCreatePatchExecution(t *testing.T) {
 				{
 					Name:     v1alpha1.DefaultTaskSpec + "0",
 					Replicas: 1,
-					Template: v1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{"name": "test"},
-						},
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{
-								{
-									Name:  "fake-name",
-									Image: "busybox:1.24",
-								},
-							},
-						},
-					},
+					Template: buildPodTemplate(),
 				},
 				{
 					Name:     v1alpha1.DefaultTaskSpec + "1",
 					Replicas: 1,
-					Template: v1.PodTemplateSpec{
-						ObjectMeta: metav1.ObjectMeta{
-							Labels: map[string]string{"name": "test"},
-						},
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{
-								{
-									Name:  "fake-name",
-									Image: "busybox:1.24",
-								},
-							},
-						},
-					},
+					Template: buildPodTemplate(),
 				},
 			},
 		},
@@ -144,4 +96,106 @@ func TestCreatePatchExecution(t *testing.T) {
 		}
 	}
 
+}
+
+func Test_patchDefaultMinAvailable(t *testing.T) {
+	namespace := "test"
+	testcases := []struct {
+		Name      string
+		Job       *v1alpha1.Job
+		operation patchOperation
+	}{
+		{
+			Name: "add default minAvailable",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "path-task-name",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Replicas: 1,
+							Template: buildPodTemplate(),
+						},
+						{
+							Replicas: 1,
+							Template: buildPodTemplate(),
+						},
+					},
+				},
+			},
+			operation: patchOperation{
+				Op:    "add",
+				Path:  "/spec/minAvailable",
+				Value: int32(2),
+			},
+		},
+		{
+			Name: "replace job minAvailable to sum(task.minAvailable)",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "path-task-name",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Replicas:     2,
+							MinAvailable: buildMinAvailable(1),
+							Template:     buildPodTemplate(),
+						},
+						{
+							Replicas: 2,
+							Template: buildPodTemplate(),
+						},
+					},
+				},
+			},
+			operation: patchOperation{
+				Op:    "add",
+				Path:  "/spec/minAvailable",
+				Value: int32(3),
+			},
+		},
+	}
+	for i, testcase := range testcases {
+		t.Run(testcase.Name, func(t *testing.T) {
+			ret := patchDefaultMinAvailable(testcase.Job)
+			if ret.Path != testcase.operation.Path || ret.Op != testcase.operation.Op {
+				t.Errorf("testCase %s's expected patch operation %v, but got %v case %d",
+					testcase.Name, testcase.operation, *ret, i)
+			}
+			minAvailable, ok := ret.Value.(int32)
+			if !ok {
+				t.Errorf("testCase '%s' path value expected to be 'int32', but negative case %d",
+					testcase.Name, i)
+			}
+			expectedMinAvailable, _ := testcase.operation.Value.(int32)
+			if minAvailable != expectedMinAvailable {
+				t.Errorf("testCase '%s' op value expected %d not equal to return %d case %d",
+					testcase.Name, expectedMinAvailable, minAvailable, i)
+			}
+		})
+	}
+}
+
+func buildMinAvailable(minAvailable int32) *int32 {
+	return &minAvailable
+}
+
+func buildPodTemplate() v1.PodTemplateSpec {
+	return v1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{"name": "test"},
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name:  "fake-name",
+					Image: "busybox:1.24",
+				},
+			},
+		},
+	}
 }

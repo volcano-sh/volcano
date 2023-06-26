@@ -77,8 +77,9 @@ func TestCreateJobPod(t *testing.T) {
 				Spec: v1alpha1.JobSpec{
 					Tasks: []v1alpha1.TaskSpec{
 						{
-							Name:     "task1",
-							Replicas: 6,
+							Name:         "task1",
+							Replicas:     6,
+							MinAvailable: buildMinAvailable(6),
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
 									Name:      "pods",
@@ -134,8 +135,9 @@ func TestCreateJobPod(t *testing.T) {
 					},
 					Tasks: []v1alpha1.TaskSpec{
 						{
-							Name:     "task1",
-							Replicas: 6,
+							Name:         "task1",
+							Replicas:     6,
+							MinAvailable: buildMinAvailable(6),
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
 									Name:      "pods",
@@ -195,8 +197,9 @@ func TestCreateJobPod(t *testing.T) {
 					},
 					Tasks: []v1alpha1.TaskSpec{
 						{
-							Name:     "task1",
-							Replicas: 6,
+							Name:         "task1",
+							Replicas:     6,
+							MinAvailable: buildMinAvailable(6),
 							Template: v1.PodTemplateSpec{
 								ObjectMeta: metav1.ObjectMeta{
 									Name:      "pods",
@@ -239,7 +242,7 @@ func TestCreateJobPod(t *testing.T) {
 	for i, testcase := range testcases {
 
 		t.Run(testcase.Name, func(t *testing.T) {
-			pod := createJobPod(testcase.Job, testcase.PodTemplate, "", testcase.Index, false)
+			pod := createJobPod(testcase.Job, testcase.PodTemplate, "", testcase.Index, false, testcase.Job.Spec.MinAvailable)
 
 			if testcase.ReturnVal != nil && pod != nil && pod.Name != testcase.ReturnVal.Name && pod.Namespace != testcase.ReturnVal.Namespace {
 				t.Errorf("Expected Return Value to be %v but got %v in case %d", testcase.ReturnVal, pod, i)

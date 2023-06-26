@@ -43,6 +43,7 @@ const (
 	DefaultMaxRetry = 3
 
 	defaultMaxRetry int32 = 3
+	dependentJob          = "dependent-job"
 )
 
 func init() {
@@ -125,6 +126,10 @@ func createPatch(job *v1alpha1.Job) ([]byte, error) {
 	if pathMaxRetry != nil {
 		patch = append(patch, *pathMaxRetry)
 	}
+	pathDependsOn := patchDependsOn(job)
+	if pathDependsOn != nil {
+		patch = append(patch, *pathDependsOn)
+	}
 	pathSpec := mutateSpec(job.Spec.Tasks, "/spec/tasks", job)
 	if pathSpec != nil {
 		patch = append(patch, *pathSpec)
@@ -165,6 +170,26 @@ func patchDefaultMaxRetry(job *v1alpha1.Job) *patchOperation {
 	return nil
 }
 
+func patchDependsOn(job *v1alpha1.Job) *patchOperation {
+	for _, task := range job.Spec.Tasks {
+		if task.DependsOn != nil {
+			if _, ok := job.Annotations[dependentJob]; !ok {
+				return &patchOperation{
+					Op:    "add",
+					Path:  fmt.Sprintf("/metadata/annotations/%s", dependentJob),
+					Value: "true",
+				}
+			}
+			return &patchOperation{
+				Op:    "replace",
+				Path:  fmt.Sprintf("/metadata/annotations/%s", dependentJob),
+				Value: "true",
+			}
+		}
+	}
+	return nil
+}
+
 func patchDefaultMinAvailable(job *v1alpha1.Job) *patchOperation {
 	// Add default minAvailable if minAvailable is zero.
 	if job.Spec.MinAvailable == 0 {
@@ -188,6 +213,11 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string, job *v1alpha1.Job) *
 	// 	mpi.AddDependsOn(job)
 	// }
 	patched := false
+	if len(tasks) == 1 && tasks[0].MinAvailable == nil {
+		patched = true
+		minAvailable := job.Spec.MinAvailable
+		tasks[0].MinAvailable = &minAvailable
+	}
 	for index := range tasks {
 		// add default task name
 		taskName := tasks[index].Name

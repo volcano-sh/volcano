@@ -337,7 +337,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		ts.Template.Name = ts.Name
 		tc := ts.Template.DeepCopy()
 		name := ts.Template.Name
-
+		minAvailable := ts.MinAvailable
 		pods, found := jobInfo.Pods[name]
 		if !found {
 			pods = map[string]*v1.Pod{}
@@ -347,7 +347,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		for i := 0; i < int(ts.Replicas); i++ {
 			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
-				newPod := createJobPod(job, tc, ts.TopologyPolicy, i, jobForwarding)
+				newPod := createJobPod(job, tc, ts.TopologyPolicy, i, jobForwarding, *minAvailable)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
 					return err
 				}
@@ -780,14 +780,12 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 	sort.Sort(tasksPriority)
 
 	minReq := v1.ResourceList{}
-	podCnt := int32(0)
 	for _, task := range tasksPriority {
-		for i := int32(0); i < task.Replicas; i++ {
-			if podCnt >= job.Spec.MinAvailable {
-				break
-			}
-
-			podCnt++
+		if task.MinAvailable == nil {
+			task.MinAvailable = &task.Replicas
+		}
+		// only calc minAvailable task
+		for i := int32(0); i < *task.MinAvailable; i++ {
 			pod := &v1.Pod{
 				Spec: task.Template.Spec,
 			}

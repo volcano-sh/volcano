@@ -63,6 +63,9 @@ func (db *DisruptionBudget) Clone() *DisruptionBudget {
 // when job waits longer than waiting time, it should enqueue at once, and cluster should reserve resources for it
 const JobWaitingTime = "sla-waiting-time"
 
+// DependentJob flag whether job is a dependent task
+const DependentJob = "dependent-job"
+
 // TaskID is UID type for Task
 type TaskID types.UID
 
@@ -103,6 +106,9 @@ func (info *TopologyInfo) Clone() *TopologyInfo {
 type TaskInfo struct {
 	UID TaskID
 	Job JobID
+
+	TemplateUID  string
+	MinAvailable int
 
 	Name      string
 	Namespace string
@@ -150,7 +156,23 @@ func getTaskID(pod *v1.Pod) TaskID {
 	return ""
 }
 
-const TaskPriorityAnnotation = "volcano.sh/task-priority"
+func getMinAvailable(pod *v1.Pod) int {
+	if minAvailable, found := pod.Annotations[TaskMinAvailable]; found {
+		atoi, err := strconv.Atoi(minAvailable)
+		if err != nil {
+			klog.Errorf("pod %s/%s strconv minAvailable error %v", pod.Namespace, pod.Name, err)
+			return 0
+		}
+		return atoi
+	}
+
+	return 0
+}
+
+const (
+	TaskPriorityAnnotation = "volcano.sh/task-priority"
+	TaskMinAvailable       = "volcano.sh/task-min-available"
+)
 
 // NewTaskInfo creates new taskInfo object for a Pod
 func NewTaskInfo(pod *v1.Pod) *TaskInfo {
@@ -162,10 +184,14 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	topologyInfo := GetPodTopologyInfo(pod)
 
 	jobID := getJobID(pod)
+	templateName := getTaskID(pod)
+	minAvailable := getMinAvailable(pod)
 
 	ti := &TaskInfo{
 		UID:           TaskID(pod.UID),
 		Job:           jobID,
+		TemplateUID:   fmt.Sprintf("%s-%s", jobID, templateName),
+		MinAvailable:  minAvailable,
 		Name:          pod.Name,
 		Namespace:     pod.Namespace,
 		Priority:      1,
@@ -239,6 +265,8 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 	return &TaskInfo{
 		UID:           ti.UID,
 		Job:           ti.Job,
+		TemplateUID:   ti.TemplateUID,
+		MinAvailable:  ti.MinAvailable,
 		Name:          ti.Name,
 		Namespace:     ti.Namespace,
 		Priority:      ti.Priority,
@@ -305,6 +333,7 @@ type JobInfo struct {
 
 	JobFitErrors   string
 	NodesFitErrors map[TaskID]*FitErrors
+	DependentJob   bool
 
 	// All tasks of the Job.
 	TaskStatusIndex       map[TaskStatus]tasksMap
@@ -362,6 +391,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.MinAvailable = pg.Spec.MinMember
 	ji.Queue = QueueID(pg.Spec.Queue)
 	ji.CreationTimestamp = pg.GetCreationTimestamp()
+	ji.DependentJob = ji.extractDependentFlag(pg, DependentJob)
 
 	var err error
 	ji.WaitingTime, err = ji.extractWaitingTime(pg, v1beta1.JobWaitingTime)
@@ -410,6 +440,18 @@ func (ji *JobInfo) extractWaitingTime(pg *PodGroup, waitingTimeKey string) (*tim
 	}
 
 	return &jobWaitingTime, nil
+}
+
+func (ji *JobInfo) extractDependentFlag(pg *PodGroup, dependent string) bool {
+	if value, exist := pg.Annotations[dependent]; exist {
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			klog.Warningf("invalid %s=%s", dependent, value)
+			return false
+		}
+		return b
+	}
+	return false
 }
 
 // extractPreemptable return volcano.sh/preemptable value for job
@@ -692,6 +734,31 @@ func (ji *JobInfo) ReadyTaskNum() int32 {
 	return int32(occupied)
 }
 
+// WaitCreateTaskNum returns the number of task.minAvailable that waiting to be created
+func (ji *JobInfo) WaitCreateTaskNum() int32 {
+	occupied := int32(0)
+	actual := map[TaskID]int32{}
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) || status == Succeeded || status == Pipelined || status == Pending {
+			for _, task := range tasks {
+				actual[getTaskID(task.Pod)]++
+			}
+		}
+	}
+	klog.V(4).Infof("job %s/%s actual: %+v, ji.TaskMinAvailable: %+v", ji.Name, ji.Namespace, actual, ji.TaskMinAvailable)
+	for task, minAvailable := range ji.TaskMinAvailable {
+		if minAvailable == 0 {
+			continue
+		}
+		if _, ok := actual[task]; !ok && ji.DependentJob {
+			// Add the minAvailable of the task that has not been created
+			occupied = occupied + minAvailable
+		}
+	}
+
+	return occupied
+}
+
 // WaitingTaskNum returns the number of tasks that are pipelined.
 func (ji *JobInfo) WaitingTaskNum() int32 {
 	return int32(len(ji.TaskStatusIndex[Pipelined]))
@@ -721,8 +788,19 @@ func (ji *JobInfo) CheckTaskValid() bool {
 		if minAvailable == 0 {
 			continue
 		}
-		if act, ok := actual[task]; !ok || act < minAvailable {
-			return false
+		act, ok := actual[task]
+		if ok {
+			if act < minAvailable {
+				return false
+			}
+		} else {
+			if ji.DependentJob {
+				// Some tasks of dependencies have not been created, skipping checks
+				klog.V(4).Infof("Dependent job %s/%s Task %s not found", ji.Namespace, ji.Name, task)
+			} else {
+				klog.Errorf("Job %s/%s Task %s not found", ji.Namespace, ji.Name, task)
+				return false
+			}
 		}
 	}
 
@@ -753,9 +831,20 @@ func (ji *JobInfo) CheckTaskReady() bool {
 		}
 	}
 	for taskID, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskID] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
-			return false
+		i, found := occupiedMap[taskID]
+		if found {
+			if i < minNum {
+				klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task minAvaliable",
+					ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+				return false
+			}
+		} else {
+			if ji.DependentJob {
+				klog.V(4).Infof("Dependent job %s/%s Task %s not found", ji.Namespace, ji.Name, taskID)
+			} else {
+				klog.Errorf("Job %s/%s Task %s not found", ji.Namespace, ji.Name, taskID)
+				return false
+			}
 		}
 	}
 	return true
@@ -838,14 +927,14 @@ func (ji *JobInfo) ValidTaskNum() int32 {
 			occupied += len(tasks)
 		}
 	}
-
-	return int32(occupied)
+	waitTaskOccupied := ji.WaitCreateTaskNum()
+	return int32(occupied) + waitTaskOccupied
 }
 
 // Ready returns whether job is ready for run
 func (ji *JobInfo) Ready() bool {
 	occupied := ji.ReadyTaskNum()
-
+	occupied += ji.WaitCreateTaskNum()
 	return occupied >= ji.MinAvailable
 }
 

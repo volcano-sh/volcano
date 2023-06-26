@@ -17,6 +17,8 @@ limitations under the License.
 package priority
 
 import (
+	"fmt"
+
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -29,12 +31,16 @@ const PluginName = "priority"
 
 type priorityPlugin struct {
 	// Arguments given for the plugin
-	pluginArguments framework.Arguments
+	pluginArguments  framework.Arguments
+	taskMinAvailable map[string]int32
 }
 
 // New return priority plugin
 func New(arguments framework.Arguments) framework.Plugin {
-	return &priorityPlugin{pluginArguments: arguments}
+	return &priorityPlugin{
+		taskMinAvailable: map[string]int32{},
+		pluginArguments:  arguments,
+	}
 }
 
 func (pp *priorityPlugin) Name() string {
@@ -42,6 +48,14 @@ func (pp *priorityPlugin) Name() string {
 }
 
 func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
+	klog.Infof("..........Enter %s plugin..........", PluginName)
+	defer klog.Infof("..........Leaving %s plugin..........\n", PluginName)
+	for _, job := range ssn.Jobs {
+		for taskName, minAvailable := range job.TaskMinAvailable {
+			taskID := fmt.Sprintf("%s/%s-%s", job.Namespace, job.Name, taskName)
+			pp.taskMinAvailable[taskID] = minAvailable
+		}
+	}
 	taskOrderFn := func(l interface{}, r interface{}) int {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
@@ -49,14 +63,48 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(4).Infof("Priority TaskOrder: <%v/%v> priority is %v, <%v/%v> priority is %v",
 			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
 
+		/*
+			     If one party satisfies the task minAvailable, the other party has a higher priority:
+			                                            ｜pp.taskMinAvailable[lv.TemplateUID]<=0｜pp.taskMinAvailable[lv.TemplateUID]>0
+			     ---------------------------------------｜--------------------------------------｜-----------------------------
+			     pp.taskMinAvailable[rv.TemplateUID]<=0 ｜            priority compare          ｜        l prior to r
+			     ---------------------------------------｜--------------------------------------｜-----------------------------
+			     pp.taskMinAvailable[rv.TemplateUID]>0  ｜             r prior to l             ｜        priority compare
+
+				for example:
+				master:
+					PriorityClassName: high-priority
+					Replaces: 5
+					MinAvailable: 3
+					Pods: master-0、master-1、master-2、master-3、master-4
+				work:
+					PriorityClassName: low-priority
+					Replaces: 3
+					MinAvailable: 2
+					Pods: work-0、work-1、work-2
+
+				the right pods order should be:
+					master-0、master-1、master-2、work-0、work-1、master-3、master-4、work-2、work-3
+				   ｜-----------------MinAvailable-------------｜
+		*/
+		// if lv task pushed queue enough to MinAvailable, priority push rv to queue
+		if pp.taskMinAvailable[lv.TemplateUID] <= 0 && pp.taskMinAvailable[rv.TemplateUID] > 0 {
+			pp.taskMinAvailable[rv.TemplateUID]--
+			return 1
+		}
+		if pp.taskMinAvailable[rv.TemplateUID] <= 0 && pp.taskMinAvailable[lv.TemplateUID] > 0 {
+			pp.taskMinAvailable[lv.TemplateUID]--
+			return -1
+		}
 		if lv.Priority == rv.Priority {
 			return 0
 		}
 
 		if lv.Priority > rv.Priority {
+			pp.taskMinAvailable[lv.TemplateUID]--
 			return -1
 		}
-
+		pp.taskMinAvailable[rv.TemplateUID]--
 		return 1
 	}
 

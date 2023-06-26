@@ -53,7 +53,40 @@ func CompareTask(lv, rv *api.TaskInfo) bool {
 	rStr := GetPodIndexUnderTask(rv.Pod)
 	lIndex, lErr := strconv.Atoi(lStr)
 	rIndex, rErr := strconv.Atoi(rStr)
-	if lErr != nil || rErr != nil || lIndex == rIndex {
+	if lErr != nil || rErr != nil {
+		return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
+	}
+	/*
+		If one party satisfies the task minAvailable, the other party has a higher priority:
+
+									  ｜ lIndex+1 <= lv.MinAvailable ｜ lIndex+1 > lv.MinAvailable
+		  ----------------------------｜-----------------------------｜-----------------------------
+		  rIndex+1 <= rv.MinAvailable ｜      index compare          ｜        r prior to l
+		  ----------------------------｜-----------------------------｜-----------------------------
+		  rIndex+1 > rv.MinAvailable  ｜      l prior to r           ｜        index compare
+
+		for example:
+		master:
+			Replaces: 5
+			MinAvailable: 2
+			Pods: master-0、master-1、master-2、master-3、master-4
+		work:
+			Replaces: 3
+			MinAvailable: 3
+			Pods: work-0、work-1、work-2
+
+		the right pods order should be:
+			master-0、work-0、master-1、work-1、work-2、  master-2、master-3、work-3、master-4
+		   ｜-----------------MinAvailable-------------｜
+	*/
+	if lIndex+1 > lv.MinAvailable && rIndex+1 <= rv.MinAvailable {
+		return false
+	}
+	if rIndex+1 > lv.MinAvailable && lIndex+1 <= rv.MinAvailable {
+		return true
+	}
+
+	if lIndex == rIndex {
 		return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
 	}
 	if lIndex > rIndex {

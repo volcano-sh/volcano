@@ -35,12 +35,15 @@ import (
 
 var detectionPeriodOfDependsOntask time.Duration
 
+// TaskMinAvailable todo(renwenlong) move to volcano.sh api
+const TaskMinAvailable = "volcano.sh/task-min-available"
+
 // MakePodName append podname,jobname,taskName and index and returns the string.
 func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(jobhelpers.PodNameFmt, jobName, taskName, index)
 }
 
-func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy batch.NumaPolicy, ix int, jobForwarding bool) *v1.Pod {
+func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy batch.NumaPolicy, ix int, jobForwarding bool, minAvailable int32) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
 	pod := &v1.Pod{
@@ -106,6 +109,7 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 	pod.Annotations[batch.QueueNameKey] = job.Spec.Queue
 	pod.Annotations[batch.JobVersion] = fmt.Sprintf("%d", job.Status.Version)
 	pod.Annotations[batch.PodTemplateKey] = fmt.Sprintf("%s-%s", job.Name, template.Name)
+	pod.Annotations[TaskMinAvailable] = fmt.Sprintf("%d", minAvailable)
 
 	if topologyPolicy != "" {
 		pod.Annotations[schedulingv2.NumaPolicyKey] = string(topologyPolicy)
