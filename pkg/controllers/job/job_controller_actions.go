@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -331,8 +332,6 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		*container = append(*container, err)
 	}
 
-	waitCreationGroup := sync.WaitGroup{}
-
 	for _, ts := range job.Spec.Tasks {
 		ts.Template.Name = ts.Name
 		tc := ts.Template.DeepCopy()
@@ -352,7 +351,6 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 					return err
 				}
 				podToCreateEachTask = append(podToCreateEachTask, newPod)
-				waitCreationGroup.Add(1)
 			} else {
 				delete(pods, podName)
 				if pod.DeletionTimestamp != nil {
@@ -371,39 +369,46 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		}
 	}
 
+	batcher := errgroup.Group{}
+	concurrent := 20
+	batcher.SetLimit(concurrent)
+
 	for taskName, podToCreateEachTask := range podToCreate {
 		if len(podToCreateEachTask) == 0 {
 			continue
 		}
-		go func(taskName string, podToCreateEachTask []*v1.Pod) {
-			taskIndex := jobhelpers.GetTasklndexUnderJob(taskName, job)
-			if job.Spec.Tasks[taskIndex].DependsOn != nil {
-				cc.waitDependsOnTaskMeetCondition(taskName, taskIndex, podToCreateEachTask, job)
-			}
 
-			for _, pod := range podToCreateEachTask {
-				go func(pod *v1.Pod) {
-					defer waitCreationGroup.Done()
-					newPod, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
-					if err != nil && !apierrors.IsAlreadyExists(err) {
-						// Failed to create Pod, waitCreationGroup a moment and then create it again
-						// This is to ensure all podsMap under the same Job created
-						// So gang-scheduling could schedule the Job successfully
-						klog.Errorf("Failed to create pod %s for Job %s, err %#v",
-							pod.Name, job.Name, err)
-						appendError(&creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
-					} else {
-						classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
-						calcPodStatus(pod, taskStatusCount)
-						klog.V(5).Infof("Created Task <%s> of Job <%s/%s>",
-							pod.Name, job.Namespace, job.Name)
-					}
-				}(pod)
-			}
-		}(taskName, podToCreateEachTask)
+		taskIndex := jobhelpers.GetTasklndexUnderJob(taskName, job)
+		if job.Spec.Tasks[taskIndex].DependsOn != nil {
+			cc.waitDependsOnTaskMeetCondition(taskName, taskIndex, podToCreateEachTask, job)
+		}
+
+		for _, pod := range podToCreateEachTask {
+			// avoid goroutines referring to the same object
+			pod := pod
+
+			batcher.Go(func() error {
+				newPod, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+				if err != nil && !apierrors.IsAlreadyExists(err) {
+					// Failed to create Pod, waitCreationGroup a moment and then create it again
+					// This is to ensure all podsMap under the same Job created
+					// So gang-scheduling could schedule the Job successfully
+					klog.Errorf("Failed to create pod %s for Job %s, err %#v",
+						pod.Name, job.Name, err)
+					appendError(&creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
+				} else {
+					classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
+					calcPodStatus(pod, taskStatusCount)
+					klog.V(5).Infof("Created Task <%s> of Job <%s/%s>",
+						pod.Name, job.Namespace, job.Name)
+				}
+
+				return nil
+			})
+		}
 	}
 
-	waitCreationGroup.Wait()
+	batcher.Wait()
 
 	if len(creationErrs) != 0 {
 		cc.recorder.Event(job, v1.EventTypeWarning, FailedCreatePodReason,
