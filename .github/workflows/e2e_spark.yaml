@@ -48,7 +48,7 @@ jobs:
         distribution: temurin
         java-version: 8
     - name: Install Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: 1.19.x
     - name: Set up Docker Buildx
