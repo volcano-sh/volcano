@@ -1211,7 +1211,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
 	if pgUnschedulable {
 		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 			len(job.TaskStatusIndex[schedulingapi.Pending]),
-			len(job.Tasks),
+			job.MinAvailable,
 			job.FitError())
 		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(scheduling.PodGroupUnschedulableType), msg)
 	} else {
