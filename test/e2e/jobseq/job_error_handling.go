@@ -28,6 +28,7 @@ import (
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+
 	jobctl "volcano.sh/volcano/pkg/controllers/job"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
@@ -834,14 +835,14 @@ var _ = Describe("Job Error Handling", func() {
 					Name:         "higherprioritytask",
 					Img:          e2eutil.DefaultNginxImage,
 					Rep:          int32(nodecount),
-					Req:          e2eutil.CpuResource(strconv.Itoa(int(rep)/nodecount - 1)),
+					Req:          e2eutil.CPUResource(strconv.Itoa(int(rep)/nodecount - 1)),
 					Taskpriority: e2eutil.MasterPriority,
 				},
 				{
 					Name:         "lowerprioritytask",
 					Img:          e2eutil.DefaultNginxImage,
 					Rep:          int32(nodecount),
-					Req:          e2eutil.CpuResource(strconv.Itoa(int(rep)/nodecount - 1)),
+					Req:          e2eutil.CPUResource(strconv.Itoa(int(rep)/nodecount - 1)),
 					Taskpriority: e2eutil.MasterPriority,
 				},
 			},
