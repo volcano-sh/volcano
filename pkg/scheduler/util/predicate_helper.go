@@ -10,6 +10,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 type PredicateHelper interface {
@@ -98,6 +99,24 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 	lastProcessedNodeIndex = (lastProcessedNodeIndex + int(processedNodes)) % allNodes
 	predicateNodes = predicateNodes[:numFoundNodes]
 	return predicateNodes, fe
+}
+
+func PredicateForAdmitStatus(ssn *framework.Session, task *api.TaskInfo, n *api.NodeInfo, admitStatus map[int]struct{}) error {
+	predicateStatus, err := ssn.PredicateFn(task, n)
+	if err != nil {
+		return fmt.Errorf("Predicates failed for task <%s/%s> on node <%s>: %v",
+			task.Namespace, task.Name, n.Name, err)
+	}
+	for _, status := range predicateStatus {
+		if status == nil {
+			continue
+		}
+		if _, ok := admitStatus[status.Code]; !ok {
+			return fmt.Errorf("Predicates failed for task <%s/%s> on node <%s>: %v",
+				task.Namespace, task.Name, n.Name, status.Reason)
+		}
+	}
+	return nil
 }
 
 func taskGroupID(task *api.TaskInfo) string {

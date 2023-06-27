@@ -17,7 +17,6 @@ limitations under the License.
 package backfill
 
 import (
-	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -25,6 +24,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 type Action struct{}
@@ -73,9 +73,14 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 				for _, node := range ssn.Nodes {
 					// TODO (k82cn): predicates did not consider pod number for now, there'll
 					// be ping-pong case here.
-					err := predicateforBackfill(ssn, task, node, fe)
+					// Only nodes whose status is success after predicate filtering can be scheduled.
+					admitStatus := map[int]struct{}{
+						api.Success: {},
+					}
+					err := util.PredicateForAdmitStatus(ssn, task, node, admitStatus)
 					if err != nil {
 						klog.V(3).Infof("backfill %s", err.Error())
+						fe.SetNodeError(node.Name, err)
 						continue
 					}
 
@@ -99,22 +104,6 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			// TODO (k82cn): backfill for other case.
 		}
 	}
-}
-
-func predicateforBackfill(ssn *framework.Session, task *api.TaskInfo, node *api.NodeInfo, fe *api.FitErrors) error {
-	predicateStatus, err := ssn.PredicateFn(task, node)
-	if err != nil {
-		fe.SetNodeError(node.Name, err)
-		return fmt.Errorf("Predicates failed for task <%s/%s> on node <%s>: %v",
-			task.Namespace, task.Name, node.Name, err)
-	}
-	for _, status := range predicateStatus {
-		if status != nil && status.Code != api.Success {
-			return fmt.Errorf("Predicates failed for task <%s/%s> on node <%s>: %s",
-				task.Namespace, task.Name, node.Name, status.Reason)
-		}
-	}
-	return nil
 }
 
 func (backfill *Action) UnInitialize() {}

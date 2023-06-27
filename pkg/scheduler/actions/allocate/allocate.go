@@ -101,17 +101,12 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		if ok, reason := task.InitResreq.LessEqualWithReason(node.FutureIdle(), api.Zero); !ok {
 			return nil, api.NewFitError(task, node, reason)
 		}
-		predicateStatus, err := ssn.PredicateFn(task, node)
-		if err != nil {
-			return nil, err
-		}
-		for _, status := range predicateStatus {
-			if status != nil && status.Code != api.Success {
-				return nil, api.NewFitError(task, node, status.Reason)
-			}
-		}
 
-		return nil, nil
+		// Only nodes whose status is success after predicate filtering can be scheduled.
+		admitStatus := map[int]struct{}{
+			api.Success: {},
+		}
+		return nil, util.PredicateForAdmitStatus(ssn, task, node, admitStatus)
 	}
 
 	// To pick <namespace, queue> tuple for job, we choose to pick namespace firstly.
