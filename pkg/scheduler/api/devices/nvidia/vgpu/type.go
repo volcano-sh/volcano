@@ -31,17 +31,17 @@ const (
 
 	NvidiaGPUDevice = "NVIDIA"
 
-	// VolcanoGPUMemory extended gpu memory
+	// VolcanoVGPUMemory extended gpu memory
 	VolcanoVGPUMemory = "volcano.sh/vgpu-memory"
-	// VolcanoMemoryPercentage extends gpu memory
+	// VolcanoVGPUMemoryPercentage extends gpu memory
 	VolcanoVGPUMemoryPercentage = "volcano.sh/vgpu-memory-percentage"
-	// VolcanoVGPUcores indicates utilization percentage of vgpu
+	// VolcanoVGPUCores indicates utilization percentage of vgpu
 	VolcanoVGPUCores = "volcano.sh/vgpu-cores"
-	// VolcanoGPUNumber virtual GPU card number
+	// VolcanoVGPUNumber virtual GPU card number
 	VolcanoVGPUNumber = "volcano.sh/vgpu-number"
 	// VolcanoVGPURegister virtual gpu information registered from device-plugin to scheduler
 	VolcanoVGPURegister = "volcano.sh/node-vgpu-register"
-	// Volcanohandshake for vgpu
+	// VolcanoVGPUHandshake for vgpu
 	VolcanoVGPUHandshake = "volcano.sh/node-vgpu-handshake"
 
 	// PredicateTime is the key of predicate time

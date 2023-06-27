@@ -25,6 +25,7 @@ import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
@@ -213,7 +214,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 	klog.V(5).Infof("imageStates is %v", res.ImageStates)
 
 	res.Others = ni.CloneOthers()
-	res.ImageStates = ni.CloneImageSumary()
+	res.ImageStates = ni.CloneImageSummary()
 	return res
 }
 
@@ -539,8 +540,8 @@ func (ni *NodeInfo) Pods() (pods []*v1.Pod) {
 	return
 }
 
-// Clone Image State
-func (ni *NodeInfo) CloneImageSumary() map[string]*k8sframework.ImageStateSummary {
+// CloneImageSummary Clone Image State
+func (ni *NodeInfo) CloneImageSummary() map[string]*k8sframework.ImageStateSummary {
 	nodeImageStates := make(map[string]*k8sframework.ImageStateSummary)
 	for imageName, summary := range ni.ImageStates {
 		newImageSummary := &k8sframework.ImageStateSummary{

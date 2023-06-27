@@ -39,6 +39,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	schedulerapi "volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -80,7 +81,7 @@ const (
 	DefaultPytorchImage = "volcanosh/pytorch-mnist-v1beta1-9ee8fda-example:0.0.1"
 )
 
-func CpuResource(request string) v1.ResourceList {
+func CPUResource(request string) v1.ResourceList {
 	return v1.ResourceList{v1.ResourceCPU: resource.MustParse(request)}
 }
 
