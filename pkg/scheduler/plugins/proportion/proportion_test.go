@@ -32,6 +32,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -282,10 +283,9 @@ func TestProportion(t *testing.T) {
 							t.Errorf("after delete vcjob pg2, queue_allocated metrics is fail,%v", metrics)
 							c <- false
 							return
-						} else {
-							t.Logf("after delete vcjob pg2, queue_allocated metrics is ok,%v", metrics)
-							c <- true
 						}
+						t.Logf("after delete vcjob pg2, queue_allocated metrics is ok,%v", metrics)
+						c <- true
 					}
 					num++
 				}

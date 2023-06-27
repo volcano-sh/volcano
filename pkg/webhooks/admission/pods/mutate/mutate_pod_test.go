@@ -28,9 +28,9 @@ import (
 )
 
 func TestMutatePods(t *testing.T) {
-	affinityJsonStr := `{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"kubernetes.io/os","operator":"In","values":["linux"]}]}]}}}`
+	affinityJSONStr := `{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"kubernetes.io/os","operator":"In","values":["linux"]}]}]}}}`
 	var affinity v1.Affinity
-	json.Unmarshal([]byte(affinityJsonStr), &affinity)
+	json.Unmarshal([]byte(affinityJSONStr), &affinity)
 
 	admissionConfigData := &webconfig.AdmissionConfiguration{
 		ResGroupsConfig: []webconfig.ResGroupConfig{
@@ -51,7 +51,7 @@ func TestMutatePods(t *testing.T) {
 						Effect:   v1.TaintEffectNoSchedule,
 					},
 				},
-				Affinity: affinityJsonStr,
+				Affinity: affinityJSONStr,
 				Labels: map[string]string{
 					"volcano.sh/nodetype": "management",
 				},

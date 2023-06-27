@@ -96,22 +96,22 @@ var _ = Describe("SLA Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		job2.Name = "j2-slow-sla"
-		slowSlaJob := e2eutil.CreateJobWithPodGroup(ctx, job2, "", map[string]string{jobWaitingTime: "1h"})
-		err = e2eutil.WaitTaskPhase(ctx, slowSlaJob, []v1.PodPhase{v1.PodPending}, 0)
+		slowSLAJob := e2eutil.CreateJobWithPodGroup(ctx, job2, "", map[string]string{jobWaitingTime: "1h"})
+		err = e2eutil.WaitTaskPhase(ctx, slowSLAJob, []v1.PodPhase{v1.PodPending}, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		job2.Name = "j3-fast-sla"
-		fastSlaJob := e2eutil.CreateJobWithPodGroup(ctx, job2, "", map[string]string{jobWaitingTime: "30m"})
-		err = e2eutil.WaitTaskPhase(ctx, fastSlaJob, []v1.PodPhase{v1.PodPending}, 0)
+		fastSLAJob := e2eutil.CreateJobWithPodGroup(ctx, job2, "", map[string]string{jobWaitingTime: "30m"})
+		err = e2eutil.WaitTaskPhase(ctx, fastSLAJob, []v1.PodPhase{v1.PodPending}, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = ctx.Vcclient.BatchV1alpha1().Jobs(e2eutil.Namespace(ctx, job1)).Delete(context.TODO(), job1.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = e2eutil.WaitTaskPhase(ctx, slowSlaJob, []v1.PodPhase{v1.PodPending}, 0)
+		err = e2eutil.WaitTaskPhase(ctx, slowSLAJob, []v1.PodPhase{v1.PodPending}, 0)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = e2eutil.WaitTasksReady(ctx, fastSlaJob, int(rep))
+		err = e2eutil.WaitTasksReady(ctx, fastSLAJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
