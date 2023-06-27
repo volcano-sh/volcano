@@ -17,6 +17,7 @@
 package allocate
 
 import (
+	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -102,11 +103,16 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 			return nil, api.NewFitError(task, node, reason)
 		}
 
+		predicateStatus, err := ssn.PredicateFn(task, node)
+		if err != nil {
+			return nil, fmt.Errorf("allocate predicates failed for task <%s/%s> on node <%s>: %v",
+				task.Namespace, task.Name, node.Name, err)
+		}
 		// Only nodes whose status is success after predicate filtering can be scheduled.
 		admitStatus := map[int]struct{}{
 			api.Success: {},
 		}
-		return nil, util.PredicateForAdmitStatus(ssn, task, node, admitStatus)
+		return nil, util.CheckPredicateStatus(predicateStatus, admitStatus)
 	}
 
 	// To pick <namespace, queue> tuple for job, we choose to pick namespace firstly.
