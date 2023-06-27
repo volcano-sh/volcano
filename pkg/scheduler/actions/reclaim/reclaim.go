@@ -128,9 +128,16 @@ func (ra *Action) Execute(ssn *framework.Session) {
 				api.Success:       {},
 				api.Unschedulable: {},
 			}
+			predicateStatus, err := ssn.PredicateFn(task, n)
+			if err != nil {
+				klog.V(3).Infof("reclaim predicates failed for task <%s/%s> on node <%s>: %v",
+					task.Namespace, task.Name, n.Name, err)
+				continue
+			}
 			// If predicates failed, next node.
-			if err := util.PredicateForAdmitStatus(ssn, task, n, admitStatus); err != nil {
-				klog.V(3).Infof("reclaim %s", err.Error())
+			if err := util.CheckPredicateStatus(predicateStatus, admitStatus); err != nil {
+				klog.V(3).Infof("reclaim predicates failed for task <%s/%s> on node <%s>: %v",
+					task.Namespace, task.Name, n.Name, err)
 				continue
 			}
 

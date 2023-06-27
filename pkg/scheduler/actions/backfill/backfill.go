@@ -77,9 +77,17 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 					admitStatus := map[int]struct{}{
 						api.Success: {},
 					}
-					err := util.PredicateForAdmitStatus(ssn, task, node, admitStatus)
+					predicateStatus, err := ssn.PredicateFn(task, node)
 					if err != nil {
-						klog.V(3).Infof("backfill %s", err.Error())
+						klog.V(3).Infof("backfill predicates failed for task <%s/%s> on node <%s>: %v",
+							task.Namespace, task.Name, node.Name, err)
+						fe.SetNodeError(node.Name, err)
+						continue
+					}
+					err = util.CheckPredicateStatus(predicateStatus, admitStatus)
+					if err != nil {
+						klog.V(3).Infof("backfill predicates failed for task <%s/%s> on node <%s>: %v",
+							task.Namespace, task.Name, node.Name, err)
 						fe.SetNodeError(node.Name, err)
 						continue
 					}
