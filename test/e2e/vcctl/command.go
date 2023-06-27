@@ -129,7 +129,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 				{
 					Name: taskName,
 					Img:  e2eutil.DefaultNginxImage,
-					Req:  e2eutil.CpuResource(fmt.Sprintf("%dm", 1000*rep)),
+					Req:  e2eutil.CPUResource(fmt.Sprintf("%dm", 1000*rep)),
 					Min:  1,
 					Rep:  1,
 				},
