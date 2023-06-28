@@ -43,7 +43,7 @@ const (
 	defaultPercentageOfNodesToFind    = 100
 	defaultLockObjectNamespace        = "volcano-system"
 	defaultGracePeriodSeconds         = 30
-	defaultGracePeriodFactor          = 1.1
+	defaultGracePeriodSecondsWait     = 3
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -135,7 +135,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 
 	fs.Int64Var(&s.GracePeriodSeconds, "grace-period", defaultGracePeriodSeconds, "the default second grace period seconds from pod")
-	fs.Int64Var(&s.GracePeriodSecondsWait, "grace-period-wait", defaultGracePeriodFactor, "wait time from pod send sig kill to delete pod")
+	fs.Int64Var(&s.GracePeriodSecondsWait, "grace-period-wait", defaultGracePeriodSecondsWait, "wait time from pod send sig kill to delete pod")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.

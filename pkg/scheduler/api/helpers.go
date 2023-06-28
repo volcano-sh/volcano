@@ -36,16 +36,16 @@ func PodKey(pod *v1.Pod) TaskID {
 
 func getTaskStatus(pod *v1.Pod) TaskStatus {
 	opts := options.ServerOpts
-	gracePeriodSeconds := opts.GracePeriodSeconds
+	waitTime := opts.GracePeriodSeconds
 	if pod.Spec.TerminationGracePeriodSeconds != nil {
 		// default grace period
-		gracePeriodSeconds = *pod.Spec.TerminationGracePeriodSeconds
+		waitTime = *pod.Spec.TerminationGracePeriodSeconds
 	}
-	gracePeriodSeconds += opts.GracePeriodSecondsWait
+	waitTime += opts.GracePeriodSecondsWait
 	switch pod.Status.Phase {
 	case v1.PodRunning:
 		if pod.DeletionTimestamp != nil &&
-			time.Now().Unix()-pod.DeletionTimestamp.Unix() <= gracePeriodSeconds {
+			time.Now().Unix()-pod.DeletionTimestamp.Unix() <= waitTime {
 			return Releasing
 		} else if pod.DeletionTimestamp != nil {
 			return ReleasingFailed
@@ -54,7 +54,7 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 		return Running
 	case v1.PodPending:
 		if pod.DeletionTimestamp != nil &&
-			time.Now().Unix()-pod.DeletionTimestamp.Unix() <= gracePeriodSeconds {
+			time.Now().Unix()-pod.DeletionTimestamp.Unix() <= waitTime {
 			return Releasing
 		} else if pod.DeletionTimestamp != nil {
 			return ReleasingFailed
