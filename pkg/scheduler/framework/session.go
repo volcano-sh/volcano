@@ -201,6 +201,9 @@ func updateQueueStatus(ssn *Session) {
 		for _, runningTask := range job.TaskStatusIndex[api.Running] {
 			allocatedResources[job.Queue].Add(runningTask.Resreq)
 		}
+		for _, runningTask := range job.TaskStatusIndex[api.ReleasingFailed] {
+			allocatedResources[job.Queue].Add(runningTask.Resreq)
+		}
 	}
 
 	// update queue status

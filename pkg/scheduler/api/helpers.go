@@ -18,6 +18,8 @@ package api
 
 import (
 	"fmt"
+	"time"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 
 	v1 "k8s.io/api/core/v1"
 	clientcache "k8s.io/client-go/tools/cache"
@@ -33,16 +35,29 @@ func PodKey(pod *v1.Pod) TaskID {
 }
 
 func getTaskStatus(pod *v1.Pod) TaskStatus {
+	opts := options.ServerOpts
+	waitTime := opts.GracePeriodSeconds
+	if pod.Spec.TerminationGracePeriodSeconds != nil {
+		// default grace period
+		waitTime = *pod.Spec.TerminationGracePeriodSeconds
+	}
+	waitTime += opts.GracePeriodSecondsWait
 	switch pod.Status.Phase {
 	case v1.PodRunning:
-		if pod.DeletionTimestamp != nil {
+		if pod.DeletionTimestamp != nil &&
+			time.Now().Unix()-pod.DeletionTimestamp.Unix() <= waitTime {
 			return Releasing
+		} else if pod.DeletionTimestamp != nil {
+			return ReleasingFailed
 		}
 
 		return Running
 	case v1.PodPending:
-		if pod.DeletionTimestamp != nil {
+		if pod.DeletionTimestamp != nil &&
+			time.Now().Unix()-pod.DeletionTimestamp.Unix() <= waitTime {
 			return Releasing
+		} else if pod.DeletionTimestamp != nil {
+			return ReleasingFailed
 		}
 
 		if len(pod.Spec.NodeName) == 0 {
@@ -63,7 +78,7 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 // AllocatedStatus checks whether the tasks has AllocatedStatus
 func AllocatedStatus(status TaskStatus) bool {
 	switch status {
-	case Bound, Binding, Running, Allocated:
+	case Bound, Binding, Running, Allocated, ReleasingFailed:
 		return true
 	default:
 		return false
