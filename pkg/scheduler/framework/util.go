@@ -266,7 +266,7 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 	return nodes, nil
 }
 
-// The state of the k8s prefile is converted to the internal state of the volcano
+// ConvertPredicateStatus return predicate status from k8sframework status
 func ConvertPredicateStatus(status *k8sframework.Status) (*api.Status, error) {
 	internalStatus := &api.Status{}
 	if status.Code() == k8sframework.Success {

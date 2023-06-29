@@ -17,6 +17,7 @@ limitations under the License.
 package backfill
 
 import (
+	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -74,20 +75,20 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 					// TODO (k82cn): predicates did not consider pod number for now, there'll
 					// be ping-pong case here.
 					// Only nodes whose status is success after predicate filtering can be scheduled.
-					admitStatus := map[int]struct{}{
-						api.Success: {},
-					}
-					predicateStatus, err := ssn.PredicateFn(task, node)
+					var statusSets util.StatusSets
+					statusSets, err := ssn.PredicateFn(task, node)
 					if err != nil {
 						klog.V(3).Infof("backfill predicates failed for task <%s/%s> on node <%s>: %v",
 							task.Namespace, task.Name, node.Name, err)
 						fe.SetNodeError(node.Name, err)
 						continue
 					}
-					err = util.CheckPredicateStatus(predicateStatus, admitStatus)
-					if err != nil {
-						klog.V(3).Infof("backfill predicates failed for task <%s/%s> on node <%s>: %v",
-							task.Namespace, task.Name, node.Name, err)
+
+					if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
+						statusSets.ContainsErrorSkipOrWait() {
+						err := fmt.Errorf("predicates failed in backfill for task <%s/%s> on node <%s>, status is not success",
+							task.Namespace, task.Name, node.Name)
+						klog.V(3).Infof("err: %v", err)
 						fe.SetNodeError(node.Name, err)
 						continue
 					}

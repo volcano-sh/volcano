@@ -210,16 +210,18 @@ func preempt(
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		// Allows scheduling to nodes that are in Success or Unschedulable state after filtering by predicate.
-		admitStatus := map[int]struct{}{
-			api.Success:       {},
-			api.Unschedulable: {},
-		}
-		predicateStatus, err := ssn.PredicateFn(task, node)
+		var statusSets util.StatusSets
+		statusSets, err := ssn.PredicateFn(task, node)
 		if err != nil {
 			return nil, fmt.Errorf("preempt predicates failed for task <%s/%s> on node <%s>: %v",
 				task.Namespace, task.Name, node.Name, err)
 		}
-		return nil, util.CheckPredicateStatus(predicateStatus, admitStatus)
+
+		if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
+			return nil, fmt.Errorf("predicates failed in preempt for task <%s/%s> on node <%s>, status is not success or unschedulable",
+				task.Namespace, task.Name, node.Name)
+		}
+		return nil, nil
 	}
 
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, predicateFn, true)
