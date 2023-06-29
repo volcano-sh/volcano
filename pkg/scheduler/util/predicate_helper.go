@@ -100,23 +100,54 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 	return predicateNodes, fe
 }
 
-func CheckPredicateStatus(predicateStatus []*api.Status, admitStatus map[int]struct{}) error {
-	for _, status := range predicateStatus {
-		if status == nil {
-			continue
-		}
-		if _, ok := admitStatus[status.Code]; !ok {
-			return fmt.Errorf("Predicates status (code: %d) does not meet the expectation (admit status: %v), message: %s",
-				status.Code, admitStatus, status.Reason)
-		}
-	}
-	return nil
-}
-
 func taskGroupID(task *api.TaskInfo) string {
 	return fmt.Sprintf("%s/%s", task.Job, task.GetTaskSpecKey())
 }
 
 func NewPredicateHelper() PredicateHelper {
 	return &predicateHelper{taskPredicateErrorCache: map[string]map[string]error{}}
+}
+
+type PredicateStatus interface {
+	IsContainsUnschedulable() bool
+	IsContainsUnschedulableAndUnresolvable() bool
+	IsContainsErrorSkipOrWait() bool
+}
+
+type StatusSets []*api.Status
+
+func (s StatusSets) ContainsUnschedulable() bool {
+	for _, status := range s {
+		if status == nil {
+			continue
+		}
+		if status.Code == api.Unschedulable {
+			return true
+		}
+	}
+	return false
+}
+
+func (s StatusSets) ContainsUnschedulableAndUnresolvable() bool {
+	for _, status := range s {
+		if status == nil {
+			continue
+		}
+		if status.Code == api.UnschedulableAndUnresolvable {
+			return true
+		}
+	}
+	return false
+}
+
+func (s StatusSets) ContainsErrorSkipOrWait() bool {
+	for _, status := range s {
+		if status == nil {
+			continue
+		}
+		if status.Code == api.Error || status.Code == api.Skip || status.Code == api.Wait {
+			return true
+		}
+	}
+	return false
 }

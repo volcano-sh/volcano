@@ -102,17 +102,19 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		if ok, reason := task.InitResreq.LessEqualWithReason(node.FutureIdle(), api.Zero); !ok {
 			return nil, api.NewFitError(task, node, reason)
 		}
-
-		predicateStatus, err := ssn.PredicateFn(task, node)
+		var statusSets util.StatusSets
+		statusSets, err := ssn.PredicateFn(task, node)
 		if err != nil {
 			return nil, fmt.Errorf("allocate predicates failed for task <%s/%s> on node <%s>: %v",
 				task.Namespace, task.Name, node.Name, err)
 		}
-		// Only nodes whose status is success after predicate filtering can be scheduled.
-		admitStatus := map[int]struct{}{
-			api.Success: {},
+
+		if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
+			statusSets.ContainsErrorSkipOrWait() {
+			return nil, fmt.Errorf("predicates failed in allocate for task <%s/%s> on node <%s>, status is not success",
+				task.Namespace, task.Name, node.Name)
 		}
-		return nil, util.CheckPredicateStatus(predicateStatus, admitStatus)
+		return nil, nil
 	}
 
 	// To pick <namespace, queue> tuple for job, we choose to pick namespace firstly.
