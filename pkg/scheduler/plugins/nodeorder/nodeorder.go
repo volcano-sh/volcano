@@ -166,40 +166,7 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 
 func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	weight := calculateWeight(pp.pluginArguments)
-	pl := ssn.PodLister
 	nodeMap := ssn.NodeMap
-
-	// Register event handlers to update task info in PodLister & nodeMap
-	ssn.AddEventHandler(&framework.EventHandler{
-		AllocateFunc: func(event *framework.Event) {
-			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
-
-			nodeName := event.Task.NodeName
-			node, found := nodeMap[nodeName]
-			if !found {
-				klog.Warningf("node order, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
-			} else {
-				node.AddPod(pod)
-				klog.V(4).Infof("node order, update pod %s/%s allocate to node [%s]", pod.Namespace, pod.Name, nodeName)
-			}
-		},
-		DeallocateFunc: func(event *framework.Event) {
-			pod := pl.UpdateTask(event.Task, "")
-
-			nodeName := event.Task.NodeName
-			node, found := nodeMap[nodeName]
-			if !found {
-				klog.Warningf("node order, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
-			} else {
-				err := node.RemovePod(pod)
-				if err != nil {
-					klog.Errorf("Failed to update pod %s/%s and deallocate from node [%s]: %s", pod.Namespace, pod.Name, nodeName, err.Error())
-				} else {
-					klog.V(4).Infof("node order, update pod %s/%s deallocate from node [%s]", pod.Namespace, pod.Name, nodeName)
-				}
-			}
-		},
-	})
 
 	fts := feature.Features{
 		EnableReadWriteOncePod:                       utilFeature.DefaultFeatureGate.Enabled(features.ReadWriteOncePod),
