@@ -37,6 +37,7 @@ func TestValidateJobCreate(t *testing.T) {
 	var invTTL int32 = -1
 	var policyExitCode int32 = -1
 	var invMinAvailable int32 = -1
+	var MinAvailable int32 = 1
 	namespace := "test"
 	priviledged := true
 
@@ -330,6 +331,67 @@ func TestValidateJobCreate(t *testing.T) {
 			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
 			ret:            "'minAvailable' < 0 in task: task-1, job: taskMinAvailable-lessThanZero;",
 			ExpectErr:      true,
+		},
+		// job.minAvailable != sum(task.MinAvailable)
+		{
+			Name: "job minAvailable != sum(task.MinAvailable)",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "taskMinAvailable-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							Replicas:     1,
+							MinAvailable: &MinAvailable,
+							Template:     buildPodTemplate(),
+						},
+						{
+							Name:     "task-1",
+							Replicas: 2,
+							Template: buildPodTemplate(),
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret: " job 'minAvailable' is not equal to the sum of task 'minAvailable', " +
+				"If task 'minAvailable' is nil (default) equal to task 'replicas'",
+			ExpectErr: true,
+		},
+		// job.minAvailable != sum(task.replicas)
+		{
+			Name: "job.minAvailable != sum(task.replicas)",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "taskMinAvailable-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: buildPodTemplate(),
+						},
+						{
+							Name:     "task-2",
+							Replicas: 1,
+							Template: buildPodTemplate(),
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret: " Multi-tasks job 'minAvailable' needs to set task 'minAvailable', " +
+				"otherwise job 'minAvailable' must be equal to the sum of task 'replicas';",
+			ExpectErr: true,
 		},
 		// task name error
 		{

@@ -217,8 +217,8 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		}
 	} else if job.Spec.MinAvailable != 0 && hasSetTaskMinAvailable {
 		if job.Spec.MinAvailable != totalMinAvailable {
-			msg += " job minAvailable is not equal to the sum of task minAvailable, " +
-				"If task minAvailable is nil (default) equal to task Replicas;"
+			msg += " job 'minAvailable' is not equal to the sum of task 'minAvailable', " +
+				"If task 'minAvailable' is nil (default) equal to task 'replicas'"
 		}
 	}
 
