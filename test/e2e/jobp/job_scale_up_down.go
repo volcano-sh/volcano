@@ -58,8 +58,10 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// scale up
+		var taskMinAvailable int32 = 4
 		job.Spec.MinAvailable = 4
 		job.Spec.Tasks[0].Replicas = 4
+		job.Spec.Tasks[0].MinAvailable = &taskMinAvailable
 		err = e2eutil.UpdateJob(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -193,8 +195,10 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 		Expect(hosts).To(Equal(cm.Data))
 
 		// scale up
+		taskMinAvailable = int32(2)
 		job.Spec.MinAvailable = 2
 		job.Spec.Tasks[0].Replicas = 2
+		job.Spec.Tasks[0].MinAvailable = &taskMinAvailable
 		err = e2eutil.UpdateJob(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 

@@ -116,11 +116,12 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 		if len(task.RestartPolicy) > 0 {
 			restartPolicy = task.RestartPolicy
 		}
-
+		minAvailable := task.Min
 		ts := batchv1alpha1.TaskSpec{
-			Name:     name,
-			Replicas: task.Rep,
-			Policies: task.Policies,
+			Name:         name,
+			Replicas:     task.Rep,
+			MinAvailable: &minAvailable,
+			Policies:     task.Policies,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   name,
@@ -150,8 +151,11 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 		}
 
 		job.Spec.Tasks = append(job.Spec.Tasks, ts)
-
-		min += task.Min
+		if task.Min != 0 {
+			min += task.Min
+		} else {
+			min += task.Rep
+		}
 	}
 
 	if jobSpec.Min > 0 {
@@ -219,12 +223,13 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 		if maxRetry == 0 {
 			maxRetry = -1
 		}
-
+		minAvailable := task.Min
 		ts := batchv1alpha1.TaskSpec{
-			Name:     name,
-			Replicas: task.Rep,
-			Policies: task.Policies,
-			MaxRetry: maxRetry,
+			Name:         name,
+			Replicas:     task.Rep,
+			MinAvailable: &minAvailable,
+			Policies:     task.Policies,
+			MaxRetry:     maxRetry,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   name,
@@ -252,8 +257,11 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 		}
 
 		job.Spec.Tasks = append(job.Spec.Tasks, ts)
-
-		min += task.Min
+		if task.Min != 0 {
+			min += task.Min
+		} else {
+			min += task.Rep
+		}
 	}
 
 	if jobSpec.Min > 0 {

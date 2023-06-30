@@ -33,7 +33,7 @@ var _ = Describe("MPI Plugin E2E Test", func() {
 
 		spec := &e2eutil.JobSpec{
 			Name: "mpi",
-			Min:  1,
+			Min:  3,
 			Policies: []vcbatch.LifecyclePolicy{
 				{
 					Action: vcbus.CompleteJobAction,
