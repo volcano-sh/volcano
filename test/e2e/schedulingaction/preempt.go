@@ -112,6 +112,7 @@ var _ = Describe("Job E2E Test", func() {
 		job.Name = "preemptor"
 		job.Pri = highPriority
 		job.Min = rep / 2
+		job.Tasks[0].Min = rep / 2
 		preemptorJob := e2eutil.CreateJob(ctx, job)
 		err = e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
