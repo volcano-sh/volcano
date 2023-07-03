@@ -54,6 +54,7 @@ function install-volcano {
   kubectl apply -f installer/namespace.yaml
 
   echo "Install volcano chart with crd version $crd_version"
+  helm dependency update installer/helm/chart/volcano
   helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace volcano-system --kubeconfig ${KUBECONFIG} \
     --set basic.image_pull_policy=IfNotPresent \
     --set basic.image_tag_version=${TAG} \
@@ -121,7 +122,7 @@ install-volcano
 # Run e2e test
 cd ${VK_ROOT}
 
-GO111MODULE=off go get github.com/onsi/ginkgo/ginkgo
+install-ginkgo-if-not-exist
 
 case ${E2E_TYPE} in
 "ALL")

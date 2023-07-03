@@ -345,6 +345,14 @@ func (r *Resource) Less(rr *Resource, defaultValue DimensionDefaultValue) bool {
 		return false
 	}
 
+	if defaultValue == Infinity {
+		for name := range rr.ScalarResources {
+			if _, ok := r.ScalarResources[name]; !ok {
+				return false
+			}
+		}
+	}
+
 	for resourceName, leftValue := range r.ScalarResources {
 		rightValue, ok := rr.ScalarResources[resourceName]
 		if !ok && defaultValue == Infinity {
@@ -374,6 +382,14 @@ func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) b
 	}
 	if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
 		return false
+	}
+
+	if defaultValue == Infinity {
+		for name := range rr.ScalarResources {
+			if _, ok := r.ScalarResources[name]; !ok {
+				return false
+			}
+		}
 	}
 
 	for resourceName, leftValue := range r.ScalarResources {
@@ -433,6 +449,14 @@ func (r *Resource) LessPartly(rr *Resource, defaultValue DimensionDefaultValue) 
 		return true
 	}
 
+	if defaultValue == Zero {
+		for name := range rr.ScalarResources {
+			if _, ok := r.ScalarResources[name]; !ok {
+				return true
+			}
+		}
+	}
+
 	for resourceName, leftValue := range r.ScalarResources {
 		rightValue, ok := rr.ScalarResources[resourceName]
 		if !ok && defaultValue == Infinity {
@@ -459,6 +483,14 @@ func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultVa
 
 	if lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) || lessEqualFunc(r.Memory, rr.Memory, minResource) {
 		return true
+	}
+
+	if defaultValue == Zero {
+		for name := range rr.ScalarResources {
+			if _, ok := r.ScalarResources[name]; !ok {
+				return true
+			}
+		}
 	}
 
 	for resourceName, leftValue := range r.ScalarResources {

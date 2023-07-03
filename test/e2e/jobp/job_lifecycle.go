@@ -45,7 +45,7 @@ var _ = Describe("Job Life Cycle", func() {
 					Img:  e2eutil.DefaultNginxImage,
 					Min:  2,
 					Rep:  2,
-					Req:  e2eutil.CpuResource("10000"),
+					Req:  e2eutil.CPUResource("10000"),
 				},
 			},
 		})
@@ -222,7 +222,7 @@ var _ = Describe("Job Life Cycle", func() {
 					Rep:           1,
 					Command:       "sleep 10s",
 					RestartPolicy: v1.RestartPolicyNever,
-					Req:           e2eutil.CpuResource("1"),
+					Req:           e2eutil.CPUResource("1"),
 				},
 			},
 		})
@@ -306,8 +306,8 @@ var _ = Describe("Job Life Cycle", func() {
 					Rep:           rep + 1,
 					Command:       "sleep 10s",
 					RestartPolicy: v1.RestartPolicyNever,
-					Req:           e2eutil.CpuResource("1"),
-					Limit:         e2eutil.CpuResource("1"),
+					Req:           e2eutil.CPUResource("1"),
+					Limit:         e2eutil.CPUResource("1"),
 					Affinity:      &v1.Affinity{NodeAffinity: nodeAffinity},
 				},
 			},

@@ -7,6 +7,10 @@ icon: https://raw.githubusercontent.com/volcano-sh/charts/master/docs/images/vol
 home: https://volcano.sh
 sources:
   - https://github.com/volcano-sh/volcano
+dependencies:
+- name: jobflow
+  version: "1.0.0"
+  repository: "file://../jobflow"
 maintainers:
   - name: k82cn
     email: klaus1982.cn@gmail.com

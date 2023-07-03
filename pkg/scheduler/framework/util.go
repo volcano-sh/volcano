@@ -230,7 +230,7 @@ func GenerateNodeMapAndSlice(nodes map[string]*api.NodeInfo) map[string]*schedul
 		nodeInfo.SetNode(node.Node)
 		nodeMap[node.Name] = nodeInfo
 		// add imagestate into nodeinfo
-		nodeMap[node.Name].ImageStates = node.CloneImageSumary()
+		nodeMap[node.Name].ImageStates = node.CloneImageSummary()
 	}
 	return nodeMap
 }

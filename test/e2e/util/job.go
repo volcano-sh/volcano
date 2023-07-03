@@ -67,7 +67,7 @@ type JobSpec struct {
 	Volumes   []batchv1alpha1.VolumeSpec
 	NodeName  string
 	// ttl seconds after job finished
-	Ttl        *int32
+	TTL        *int32
 	MinSuccess *int32
 	// job max retry
 	MaxRetry int32
@@ -101,7 +101,7 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 			Policies:                jobSpec.Policies,
 			Queue:                   jobSpec.Queue,
 			Plugins:                 jobSpec.Plugins,
-			TTLSecondsAfterFinished: jobSpec.Ttl,
+			TTLSecondsAfterFinished: jobSpec.TTL,
 		},
 	}
 
@@ -201,7 +201,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			Policies:                jobSpec.Policies,
 			Queue:                   jobSpec.Queue,
 			Plugins:                 jobSpec.Plugins,
-			TTLSecondsAfterFinished: jobSpec.Ttl,
+			TTLSecondsAfterFinished: jobSpec.TTL,
 			MinSuccess:              jobSpec.MinSuccess,
 			MaxRetry:                jobSpec.MaxRetry,
 		},
