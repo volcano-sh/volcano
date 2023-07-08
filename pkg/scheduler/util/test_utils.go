@@ -31,7 +31,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 
-	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
@@ -78,7 +78,7 @@ func BuildPod(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceLi
 			Namespace: namespace,
 			Labels:    labels,
 			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
+				schedulingv1.KubeGroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{
@@ -107,7 +107,7 @@ func BuildPodWithPVC(namespace, name, nodename string, p v1.PodPhase, req v1.Res
 			Namespace: namespace,
 			Labels:    labels,
 			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
+				schedulingv1.KubeGroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{
@@ -203,7 +203,7 @@ func BuildBestEffortPod(namespace, name, nodeName string, p v1.PodPhase, groupNa
 			Namespace: namespace,
 			Labels:    labels,
 			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
+				schedulingv1.KubeGroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{
@@ -232,7 +232,7 @@ func BuildPodWithPriority(namespace, name, nodeName string, p v1.PodPhase, req v
 			Namespace: namespace,
 			Labels:    labels,
 			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
+				schedulingv1.KubeGroupNameAnnotationKey: groupName,
 			},
 		},
 		Status: v1.PodStatus{
@@ -249,6 +249,46 @@ func BuildPodWithPriority(namespace, name, nodeName string, p v1.PodPhase, req v
 					},
 				},
 			},
+		},
+	}
+}
+
+// BuildPodGroup return podgroup with base spec and phase status
+func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1.PodGroupPhase) *schedulingv1.PodGroup {
+	return &schedulingv1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Spec: schedulingv1.PodGroupSpec{
+			Queue:         queue,
+			MinMember:     minMember,
+			MinTaskMember: taskMinMember,
+		},
+		Status: schedulingv1.PodGroupStatus{
+			Phase: status,
+		},
+	}
+}
+
+// BuildPodGroup return podgroup
+func BuildPodGroupWithPrio(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1.PodGroupPhase, prioName string) *schedulingv1.PodGroup {
+	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
+	pg.Spec.PriorityClassName = prioName
+	return pg
+}
+
+///////////// function to build queue  ///////////////////
+
+// BuildQueue return a scheduling Queue
+func BuildQueue(qname string, weight int32, cap v1.ResourceList) *schedulingv1.Queue {
+	return &schedulingv1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: qname,
+		},
+		Spec: schedulingv1.QueueSpec{
+			Weight:     weight,
+			Capability: cap,
 		},
 	}
 }

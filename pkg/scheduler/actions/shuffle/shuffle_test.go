@@ -25,7 +25,6 @@ import (
 	"github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -74,52 +73,12 @@ func TestShuffle(t *testing.T) {
 				util.BuildNode("node2", util.BuildResourceList("4", "8Gi"), make(map[string]string)),
 			},
 			queues: []*schedulingv1beta1.Queue{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "default",
-					},
-					Spec: schedulingv1beta1.QueueSpec{
-						Weight: 1,
-					},
-				},
+				util.BuildQueue("default", 1, nil),
 			},
 			podGroups: []*schedulingv1beta1.PodGroup{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg1",
-						Namespace: "test",
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue: "default",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupRunning,
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg2",
-						Namespace: "test",
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue: "default",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupRunning,
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg3",
-						Namespace: "test",
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue: "default",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupRunning,
-					},
-				},
+				util.BuildPodGroup("pg1", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
+				util.BuildPodGroup("pg2", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
+				util.BuildPodGroup("pg3", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
 			},
 			pods: []*v1.Pod{
 				util.BuildPodWithPriority("test", "pod1-1", "node1", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &lowPriority),
