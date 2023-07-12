@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
@@ -489,6 +490,149 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				t.Errorf("expected: %v, got %v ", test.expectedActions, fakeVolumeBinder.Actions)
 			}
 			fakeVolumeBinder.Actions = make(map[string][]string)
+		})
+	}
+}
+
+func TestAllocatedWithTerminatingPod(t *testing.T) {
+	var tmp *cache.SchedulerCache
+	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, task *api.TaskInfo) error {
+		scCache.Binder.Bind(nil, []*api.TaskInfo{task})
+		return nil
+	})
+	defer patches.Reset()
+	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
+		return nil
+	})
+	defer patchUpdateQueueStatus.Reset()
+	options.ServerOpts = &options.ServerOption{
+		MinNodesToFind:             100,
+		MinPercentageOfNodesToFind: 5,
+		PercentageOfNodesToFind:    100,
+	}
+	framework.RegisterPluginBuilder("gang", gang.New)
+	framework.RegisterPluginBuilder("binpack", priority.New)
+	pod1 := util.BuildPod("c1", "p1", "", v1.PodRunning, util.BuildResourceList("2", "4G"), "pg1", make(map[string]string), make(map[string]string))
+	pod1.CreationTimestamp = metav1.Time{Time: time.Now().Add(-20 * time.Minute)}
+	pod1.Spec.NodeName = "n1"
+	pod1.DeletionTimestamp = &metav1.Time{Time: time.Now().Add(-10 * time.Minute)}
+	pod2 := util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("2", "4G"), "pg2", make(map[string]string), make(map[string]string))
+	tests := []struct {
+		name      string
+		podGroups []*schedulingv1.PodGroup
+		pods      []*v1.Pod
+		nodes     []*v1.Node
+		queues    []*schedulingv1.Queue
+		expected  map[string]string
+	}{
+		{
+			name: "two Job with one Pods on two node",
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c1",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupRunning,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: "c1",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c1",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				pod1,
+				pod2,
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", util.BuildResourceList("3", "6Gi"), make(map[string]string)),
+				util.BuildNode("n2", util.BuildResourceList("3", "6Gi"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c1",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight: 1,
+					},
+				},
+			},
+			expected: map[string]string{
+				"c1/p2": "n2",
+			},
+		},
+	}
+	allocate := New()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			binder := &util.FakeBinder{
+				Binds:   map[string]string{},
+				Channel: make(chan string),
+			}
+			schedulerCache := &cache.SchedulerCache{
+				Nodes:         make(map[string]*api.NodeInfo),
+				Jobs:          make(map[api.JobID]*api.JobInfo),
+				Queues:        make(map[api.QueueID]*api.QueueInfo),
+				Binder:        binder,
+				StatusUpdater: &util.FakeStatusUpdater{},
+				VolumeBinder:  &util.FakeVolumeBinder{},
+
+				Recorder: record.NewFakeRecorder(100),
+			}
+
+			for _, node := range test.nodes {
+				schedulerCache.AddNode(node)
+			}
+			for _, pod := range test.pods {
+				schedulerCache.AddPod(pod)
+			}
+
+			for _, ss := range test.podGroups {
+				schedulerCache.AddPodGroupV1beta1(ss)
+			}
+
+			for _, q := range test.queues {
+				schedulerCache.AddQueueV1beta1(q)
+			}
+
+			trueValue := true
+			ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+				{
+					Plugins: []conf.PluginOption{
+						{
+							Name:            "gang",
+							EnabledJobOrder: &trueValue,
+							EnabledJobReady: &trueValue,
+						},
+						{
+							Name:            "binpack",
+							EnabledJobOrder: &trueValue,
+							EnabledJobReady: &trueValue,
+						},
+					},
+				},
+			}, nil)
+			defer framework.CloseSession(ssn)
+
+			allocate.Execute(ssn)
+
+			if !reflect.DeepEqual(test.expected, binder.Binds) {
+				t.Errorf("expected: %v, got %v ", test.expected, binder.Binds)
+			}
 		})
 	}
 }

@@ -77,9 +77,6 @@ type ServerOption struct {
 
 	NodeSelector      []string
 	EnableCacheDumper bool
-
-	GracePeriodSeconds     int64
-	GracePeriodSecondsWait int64
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -134,8 +131,6 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 
-	fs.Int64Var(&s.GracePeriodSeconds, "grace-period", defaultGracePeriodSeconds, "the default second grace period seconds from pod")
-	fs.Int64Var(&s.GracePeriodSecondsWait, "grace-period-wait", defaultGracePeriodSecondsWait, "wait time from pod send sig kill to delete pod")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.

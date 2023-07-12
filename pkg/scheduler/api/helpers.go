@@ -18,11 +18,9 @@ package api
 
 import (
 	"fmt"
-	"time"
-	"volcano.sh/volcano/cmd/scheduler/app/options"
-
 	v1 "k8s.io/api/core/v1"
 	clientcache "k8s.io/client-go/tools/cache"
+	"time"
 )
 
 // PodKey returns the string key of a pod.
@@ -35,13 +33,11 @@ func PodKey(pod *v1.Pod) TaskID {
 }
 
 func getTaskStatus(pod *v1.Pod) TaskStatus {
-	opts := options.ServerOpts
-	waitTime := opts.GracePeriodSeconds
+	var waitTime int64 = 30
 	if pod.Spec.TerminationGracePeriodSeconds != nil {
-		// default grace period
 		waitTime = *pod.Spec.TerminationGracePeriodSeconds
 	}
-	waitTime += opts.GracePeriodSecondsWait
+	waitTime += 5
 	switch pod.Status.Phase {
 	case v1.PodRunning:
 		if pod.DeletionTimestamp != nil &&
