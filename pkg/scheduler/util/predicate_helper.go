@@ -108,12 +108,6 @@ func NewPredicateHelper() PredicateHelper {
 	return &predicateHelper{taskPredicateErrorCache: map[string]map[string]error{}}
 }
 
-type PredicateStatus interface {
-	IsContainsUnschedulable() bool
-	IsContainsUnschedulableAndUnresolvable() bool
-	IsContainsErrorSkipOrWait() bool
-}
-
 type StatusSets []*api.Status
 
 func (s StatusSets) ContainsUnschedulable() bool {

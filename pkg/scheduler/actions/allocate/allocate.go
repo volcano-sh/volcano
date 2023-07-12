@@ -105,7 +105,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		var statusSets util.StatusSets
 		statusSets, err := ssn.PredicateFn(task, node)
 		if err != nil {
-			return nil, fmt.Errorf("allocate predicates failed for task <%s/%s> on node <%s>: %v",
+			return nil, fmt.Errorf("predicates failed in allocate for task <%s/%s> on node <%s>: %v",
 				task.Namespace, task.Name, node.Name, err)
 		}
 
@@ -229,7 +229,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 				}
 			} else {
-				klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
+				klog.V(3).Infof("Predicates failed in allocate for task <%s/%s> on node <%s> with limited resources",
 					task.Namespace, task.Name, node.Name)
 
 				// Allocate releasing resource to the task if any.
