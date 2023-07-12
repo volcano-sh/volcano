@@ -28,6 +28,7 @@ import (
 	"github.com/prometheus/client_golang/api"
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	pmodel "github.com/prometheus/common/model"
+	"k8s.io/client-go/transport"
 	"k8s.io/klog/v2"
 )
 
@@ -52,10 +53,20 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 	var client api.Client
 	var err error
 	insecureSkipVerify := p.conf["tls.insecureSkipVerify"] == "true"
-	tr := &http.Transport{
+	var tr http.RoundTripper = &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: insecureSkipVerify,
 		},
+	}
+	tConf := &transport.Config{
+		Username:        p.conf["username"],
+		Password:        p.conf["password"],
+		BearerToken:     p.conf["bearertoken"],
+		BearerTokenFile: p.conf["bearertokenfile"],
+	}
+	if tr, err = transport.HTTPWrappersForConfig(tConf, tr); err != nil {
+		klog.Errorf("Error while wrap http round tripper with error: %v\n", err)
+		return nil, err
 	}
 	client, err = api.NewClient(api.Config{
 		Address:      p.address,
