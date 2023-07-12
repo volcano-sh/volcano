@@ -42,8 +42,6 @@ const (
 	defaultMinNodesToFind             = 100
 	defaultPercentageOfNodesToFind    = 100
 	defaultLockObjectNamespace        = "volcano-system"
-	defaultGracePeriodSeconds         = 30
-	defaultGracePeriodSecondsWait     = 3
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -130,7 +128,6 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
-
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.

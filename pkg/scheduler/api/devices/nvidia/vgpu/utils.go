@@ -37,13 +37,13 @@ import (
 var kubeClient kubernetes.Interface
 
 func init() {
-	//var err error
-	//kubeClient, err = NewClient()
-	//if err != nil {
-	//	klog.Errorf("init kubeclient in 4pdvgpu failed", err.Error())
-	//} else {
-	//	klog.V(3).Infoln("init kubeclient success")
-	//}
+	var err error
+	kubeClient, err = NewClient()
+	if err != nil {
+		klog.Errorf("init kubeclient in 4pdvgpu failed", err.Error())
+	} else {
+		klog.V(3).Infoln("init kubeclient success")
+	}
 }
 
 // NewClient connects to an API server
