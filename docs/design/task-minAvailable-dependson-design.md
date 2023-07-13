@@ -215,13 +215,13 @@ The dependsOn task is created multiple times, and the scheduling process is also
 It does not meet the job-level gang scheduling, but only the task-level gang scheduling. The schematic diagram is as follows:
 
 
-### 1、task gang
+### 1、master gang scheduler
 The work depends on the master, the master is created, the work is not created, 
 and the gang scheduling is performed according to the master `task.minAvailable`.
 
 <img src="images/minAvailable-dependsOn-3.png" alt="dependsOn1" width="700"><br>
 
-### 2、task gang
+### 2、work gang scheduler
 After the work depends on the master Running, the work pod is created, and the task is prioritized when sorting the work minAvailable,
 and the work is ranked first, and the gang scheduling is performed according to the work `task.minAvailable`.
 <img src="images/minAvailable-dependsOn-4.png" alt="dependsOn2" width="700"><br>
