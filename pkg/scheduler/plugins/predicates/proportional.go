@@ -33,13 +33,13 @@ func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, pro
 			return status, nil
 		}
 	}
+
 	for resourceName, resourceRate := range proportional {
 		if value, found := node.Idle.ScalarResources[resourceName]; found {
 			cpuReserved := value * resourceRate.CPU
 			memoryReserved := value * resourceRate.Memory * 1000 * 1000
-			r := node.Idle.Clone()
-			r = r.Sub(task.Resreq)
-			if r.MilliCPU < cpuReserved || r.Memory < memoryReserved {
+
+			if node.Idle.MilliCPU-task.Resreq.MilliCPU < cpuReserved || node.Idle.Memory-task.Resreq.Memory < memoryReserved {
 				status.Code = api.Unschedulable
 				status.Reason = fmt.Sprintf("proportional of resource %s check failed", resourceName)
 				return status, fmt.Errorf("proportional of resource %s check failed", resourceName)
