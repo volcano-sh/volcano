@@ -432,3 +432,7 @@ func (fvb *FakeVolumeBinder) RevertVolumes(task *api.TaskInfo, podVolumes *volum
 		fvb.volumeBinder.RevertAssumedPodVolumes(podVolumes)
 	}
 }
+
+func (fvb *FakeVolumeBinder) SchedulerVolumeBinder() volumescheduling.SchedulerVolumeBinder {
+	return fvb.volumeBinder
+}
