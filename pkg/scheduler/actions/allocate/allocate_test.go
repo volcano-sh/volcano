@@ -19,16 +19,19 @@ package allocate
 import (
 	"context"
 	"fmt"
-	"reflect"
-	"testing"
-	"time"
-
 	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
+	"reflect"
+	"testing"
+	"time"
+	"volcano.sh/volcano/pkg/scheduler/plugins/binpack"
+	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
+	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
+	"volcano.sh/volcano/pkg/scheduler/plugins/overcommit"
 
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
@@ -510,13 +513,30 @@ func TestAllocatedWithTerminatingPod(t *testing.T) {
 		MinPercentageOfNodesToFind: 5,
 		PercentageOfNodesToFind:    100,
 	}
+	framework.RegisterPluginBuilder("priority", priority.New)
 	framework.RegisterPluginBuilder("gang", gang.New)
-	framework.RegisterPluginBuilder("binpack", priority.New)
-	pod1 := util.BuildPod("c1", "p1", "", v1.PodRunning, util.BuildResourceList("2", "4G"), "pg1", make(map[string]string), make(map[string]string))
-	pod1.CreationTimestamp = metav1.Time{Time: time.Now().Add(-20 * time.Minute)}
-	pod1.Spec.NodeName = "n1"
-	pod1.DeletionTimestamp = &metav1.Time{Time: time.Now().Add(-10 * time.Minute)}
-	pod2 := util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("2", "4G"), "pg2", make(map[string]string), make(map[string]string))
+	framework.RegisterPluginBuilder("conformance", conformance.New)
+	framework.RegisterPluginBuilder("overcommit", overcommit.New)
+	framework.RegisterPluginBuilder("drf", drf.New)
+	framework.RegisterPluginBuilder("proportion", proportion.New)
+	framework.RegisterPluginBuilder("nodeorder", nodeorder.New)
+	framework.RegisterPluginBuilder("binpack", binpack.New)
+	// case1 pod reproduce the case
+	// p2 will waiting p1 releasing completed and can not be scheduled n2
+	// p2 will be pending if p1 is status releasing always
+	case1Pod1 := util.BuildPod("c1", "p1", "n1", v1.PodRunning, util.BuildResourceListWithGPU("2", "4G", "3"), "pg1", make(map[string]string), make(map[string]string))
+	case1Pod1.CreationTimestamp = metav1.Time{Time: time.Now().Add(-20 * time.Minute)}
+	case1Pod1.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+	case1Pod2 := util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceListWithGPU("2", "4G", "2"), "pg2", make(map[string]string), make(map[string]string))
+
+	// case2 pod solve case
+	// p3 releasing failed and p4 will be scheduled n4
+
+	case2Pod3 := util.BuildPod("c2", "p3", "", v1.PodRunning, util.BuildResourceListWithGPU("2", "4G", "3"), "pg3", make(map[string]string), make(map[string]string))
+	case2Pod3.CreationTimestamp = metav1.Time{Time: time.Now().Add(-20 * time.Minute)}
+	case2Pod3.Spec.NodeName = "n3"
+	case2Pod3.DeletionTimestamp = &metav1.Time{Time: time.Now().Add(-10 * time.Minute)}
+	case2Pod4 := util.BuildPod("c2", "p4", "", v1.PodPending, util.BuildResourceListWithGPU("2", "4G", "2"), "pg4", make(map[string]string), make(map[string]string))
 	tests := []struct {
 		name      string
 		podGroups []*schedulingv1.PodGroup
@@ -526,7 +546,7 @@ func TestAllocatedWithTerminatingPod(t *testing.T) {
 		expected  map[string]string
 	}{
 		{
-			name: "two Job with one Pods on two node",
+			name: "two Job with one Releasing Pods on two node",
 			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -554,12 +574,12 @@ func TestAllocatedWithTerminatingPod(t *testing.T) {
 				},
 			},
 			pods: []*v1.Pod{
-				pod1,
-				pod2,
+				case1Pod1,
+				case1Pod2,
 			},
 			nodes: []*v1.Node{
-				util.BuildNode("n1", util.BuildResourceList("3", "6Gi"), make(map[string]string)),
-				util.BuildNode("n2", util.BuildResourceList("3", "6Gi"), make(map[string]string)),
+				util.BuildNode("n1", util.BuildResourceListWithGPU("20", "400Gi", "4"), make(map[string]string)),
+				util.BuildNode("n2", util.BuildResourceListWithGPU("20", "400Gi", "8"), make(map[string]string)),
 			},
 			queues: []*schedulingv1.Queue{
 				{
@@ -571,8 +591,57 @@ func TestAllocatedWithTerminatingPod(t *testing.T) {
 					},
 				},
 			},
+			expected: map[string]string{},
+		},
+
+		{
+			name: "two Job with one ReleasingFailed Pods on two node ",
+			podGroups: []*schedulingv1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg3",
+						Namespace: "c2",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c2",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupRunning,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg4",
+						Namespace: "c2",
+					},
+					Spec: schedulingv1.PodGroupSpec{
+						Queue: "c2",
+					},
+					Status: schedulingv1.PodGroupStatus{
+						Phase: schedulingv1.PodGroupInqueue,
+					},
+				},
+			},
+			pods: []*v1.Pod{
+				case2Pod3,
+				case2Pod4,
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n3", util.BuildResourceListWithGPU("20", "400Gi", "4"), make(map[string]string)),
+				util.BuildNode("n4", util.BuildResourceListWithGPU("20", "400Gi", "8"), make(map[string]string)),
+			},
+			queues: []*schedulingv1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "c2",
+					},
+					Spec: schedulingv1.QueueSpec{
+						Weight: 1,
+					},
+				},
+			},
 			expected: map[string]string{
-				"c1/p2": "n2",
+				"c2/p4": "n4",
 			},
 		},
 	}
@@ -614,14 +683,55 @@ func TestAllocatedWithTerminatingPod(t *testing.T) {
 				{
 					Plugins: []conf.PluginOption{
 						{
-							Name:            "gang",
-							EnabledJobOrder: &trueValue,
-							EnabledJobReady: &trueValue,
+							Name:                "gang",
+							EnabledJobPipelined: &trueValue,
+							EnabledJobOrder:     &trueValue,
+							EnabledJobReady:     &trueValue,
+							EnabledPredicate:    &trueValue,
 						},
 						{
-							Name:            "binpack",
-							EnabledJobOrder: &trueValue,
-							EnabledJobReady: &trueValue,
+							Name:                "priority",
+							EnabledJobPipelined: &trueValue,
+							EnabledJobOrder:     &trueValue,
+							EnabledJobReady:     &trueValue,
+							EnabledPredicate:    &trueValue,
+						},
+						{
+							Name:                "conformance",
+							EnabledJobPipelined: &trueValue,
+							EnabledJobOrder:     &trueValue,
+							EnabledJobReady:     &trueValue,
+							EnabledPredicate:    &trueValue,
+						},
+
+						{
+							Name:                "overcommit",
+							EnabledJobPipelined: &trueValue,
+							EnabledJobOrder:     &trueValue,
+							EnabledJobReady:     &trueValue,
+							EnabledPredicate:    &trueValue,
+						},
+						{
+							Name:                "drf",
+							EnabledJobPipelined: &trueValue,
+							EnabledJobOrder:     &trueValue,
+							EnabledJobReady:     &trueValue,
+							EnabledPredicate:    &trueValue,
+						},
+						{
+							Name:                "proportion",
+							EnabledJobPipelined: &trueValue,
+							EnabledJobOrder:     &trueValue,
+							EnabledJobReady:     &trueValue,
+							EnabledPredicate:    &trueValue,
+						},
+						{
+							Name:                "binpack",
+							EnabledJobPipelined: &trueValue,
+							EnabledJobOrder:     &trueValue,
+							EnabledJobReady:     &trueValue,
+							EnabledNodeOrder:    &trueValue,
+							EnabledPredicate:    &trueValue,
 						},
 					},
 				},
