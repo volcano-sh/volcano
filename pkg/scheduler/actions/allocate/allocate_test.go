@@ -546,7 +546,7 @@ func TestAllocatedWithTerminatingPod(t *testing.T) {
 		expected  map[string]string
 	}{
 		{
-			name: "two Job with one Releasing Pods on two node",
+			name: "two Job with one Releasing Pods and two nodes",
 			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -595,7 +595,7 @@ func TestAllocatedWithTerminatingPod(t *testing.T) {
 		},
 
 		{
-			name: "two Job with one ReleasingFailed Pods on two node ",
+			name: "two Job with one ReleasingFailed Pods and two nodes ",
 			podGroups: []*schedulingv1.PodGroup{
 				{
 					ObjectMeta: metav1.ObjectMeta{
