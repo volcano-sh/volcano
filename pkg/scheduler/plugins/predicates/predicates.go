@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
@@ -40,6 +41,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
+	volumeScheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 )
@@ -113,6 +115,7 @@ type predicateEnable struct {
 	podAffinityEnable       bool
 	nodeVolumeLimitsEnable  bool
 	volumeZoneEnable        bool
+	volumeBindingEnable     bool
 	podTopologySpreadEnable bool
 	cacheEnable             bool
 	proportionalEnable      bool
@@ -140,6 +143,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	         predicate.PodAffinityEnable: true
 	         predicate.NodeVolumeLimitsEnable: true
 	         predicate.VolumeZoneEnable: true
+	         predicate.VolumeBindingEnable: true
 	         predicate.PodTopologySpreadEnable: true
 	         predicate.GPUSharingEnable: true
 	         predicate.GPUNumberEnable: true
@@ -159,6 +163,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		podAffinityEnable:       true,
 		nodeVolumeLimitsEnable:  true,
 		volumeZoneEnable:        true,
+		volumeBindingEnable:     false,
 		podTopologySpreadEnable: true,
 		cacheEnable:             false,
 		proportionalEnable:      false,
@@ -343,7 +348,15 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	// 7. VolumeZone
 	plugin, _ = volumezone.New(nil, handle)
 	volumeZoneFilter := plugin.(*volumezone.VolumeZone)
-	// 8. PodTopologySpread
+	// 8. VolumeBinding
+	volumeBindingArgs := &config.VolumeBindingArgs{
+		TypeMeta:           metav1.TypeMeta{},
+		BindTimeoutSeconds: volumeScheduling.DefaultBindTimeoutSeconds,
+		Shape:              nil,
+	}
+	plugin, _ = volumeScheduling.NewWithBinder(volumeBindingArgs, handle, features, ssn.GetSchedulerVolumeBinder())
+	volumeBindingFilter := plugin.(*volumeScheduling.VolumeBinding)
+	// 9. PodTopologySpread
 	// Setting cluster level default constraints is not support for now.
 	ptsArgs := &config.PodTopologySpreadArgs{DefaultingType: config.SystemDefaulting}
 	plugin, _ = podtopologyspread.New(ptsArgs, handle, features)
@@ -481,6 +494,18 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			status := volumeZoneFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
 				return fmt.Errorf("plugin %s predicates failed %s", volumeZoneFilter.Name(), status.Message())
+			}
+		}
+
+		// Check VolumeBinding
+		if predicate.volumeBindingEnable {
+			_, status := volumeBindingFilter.PreFilter(context.TODO(), state, task.Pod)
+			if !status.IsSuccess() {
+				return fmt.Errorf("plugin %s pre-predicates failed %s", volumeBindingFilter.Name(), status.Message())
+			}
+			status = volumeBindingFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+			if !status.IsSuccess() {
+				return fmt.Errorf("plugin %s predicates failed %s", volumeBindingFilter.Name(), status.Message())
 			}
 		}
 

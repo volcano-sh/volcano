@@ -36,6 +36,7 @@ import (
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
+	volumeScheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -508,6 +509,11 @@ func (ssn *Session) AddEventHandler(eh *EventHandler) {
 // UpdateSchedulerNumaInfo update SchedulerNumaInfo
 func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNumaSets) {
 	ssn.cache.UpdateSchedulerNumaInfo(AllocatedSets)
+}
+
+// GetSchedulerVolumeBinder returns the original volume binder
+func (ssn *Session) GetSchedulerVolumeBinder() volumeScheduling.SchedulerVolumeBinder {
+	return ssn.cache.SchedulerVolumeBinder()
 }
 
 // KubeClient returns the kubernetes client

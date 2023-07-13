@@ -404,3 +404,36 @@ func New(plArgs runtime.Object, fh framework.Handle, fts feature.Features) (fram
 		fts:       fts,
 	}, nil
 }
+
+// NewWithBinder takes binder as parameter.
+func NewWithBinder(plArgs runtime.Object, fh framework.Handle, fts feature.Features, binder SchedulerVolumeBinder) (framework.Plugin, error) {
+	args, ok := plArgs.(*config.VolumeBindingArgs)
+	if !ok {
+		return nil, fmt.Errorf("want args to be of type VolumeBindingArgs, got %T", plArgs)
+	}
+	if err := validation.ValidateVolumeBindingArgsWithOptions(nil, args, validation.VolumeBindingArgsValidationOptions{
+		AllowVolumeCapacityPriority: fts.EnableVolumeCapacityPriority,
+	}); err != nil {
+		return nil, err
+	}
+	pvcInformer := fh.SharedInformerFactory().Core().V1().PersistentVolumeClaims()
+
+	// build score function
+	var scorer volumeCapacityScorer
+	if fts.EnableVolumeCapacityPriority {
+		shape := make(helper.FunctionShape, 0, len(args.Shape))
+		for _, point := range args.Shape {
+			shape = append(shape, helper.FunctionShapePoint{
+				Utilization: int64(point.Utilization),
+				Score:       int64(point.Score) * (framework.MaxNodeScore / config.MaxCustomPriorityScore),
+			})
+		}
+		scorer = buildScorerFunction(shape)
+	}
+	return &VolumeBinding{
+		Binder:    binder,
+		PVCLister: pvcInformer.Lister(),
+		scorer:    scorer,
+		fts:       fts,
+	}, nil
+}
