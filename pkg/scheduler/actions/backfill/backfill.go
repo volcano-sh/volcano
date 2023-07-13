@@ -17,6 +17,7 @@ limitations under the License.
 package backfill
 
 import (
+	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -24,6 +25,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 type Action struct{}
@@ -72,9 +74,21 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 				for _, node := range ssn.Nodes {
 					// TODO (k82cn): predicates did not consider pod number for now, there'll
 					// be ping-pong case here.
-					if err := ssn.PredicateFn(task, node); err != nil {
-						klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s>: %v",
+					// Only nodes whose status is success after predicate filtering can be scheduled.
+					var statusSets util.StatusSets
+					statusSets, err := ssn.PredicateFn(task, node)
+					if err != nil {
+						klog.V(3).Infof("predicates failed in backfill for task <%s/%s> on node <%s>: %v",
 							task.Namespace, task.Name, node.Name, err)
+						fe.SetNodeError(node.Name, err)
+						continue
+					}
+
+					if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
+						statusSets.ContainsErrorSkipOrWait() {
+						err := fmt.Errorf("predicates failed in backfill for task <%s/%s> on node <%s>, status is not success",
+							task.Namespace, task.Name, node.Name)
+						klog.V(3).Infof("%v", err)
 						fe.SetNodeError(node.Name, err)
 						continue
 					}

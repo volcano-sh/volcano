@@ -17,6 +17,7 @@
 package allocate
 
 import (
+	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -96,13 +97,24 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	pendingTasks := map[api.JobID]*util.PriorityQueue{}
 
 	allNodes := ssn.NodeList
-	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
+	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		// Check for Resource Predicate
 		if ok, reason := task.InitResreq.LessEqualWithReason(node.FutureIdle(), api.Zero); !ok {
-			return api.NewFitError(task, node, reason)
+			return nil, api.NewFitError(task, node, reason)
+		}
+		var statusSets util.StatusSets
+		statusSets, err := ssn.PredicateFn(task, node)
+		if err != nil {
+			return nil, fmt.Errorf("predicates failed in allocate for task <%s/%s> on node <%s>: %v",
+				task.Namespace, task.Name, node.Name, err)
 		}
 
-		return ssn.PredicateFn(task, node)
+		if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
+			statusSets.ContainsErrorSkipOrWait() {
+			return nil, fmt.Errorf("predicates failed in allocate for task <%s/%s> on node <%s>, status is not success",
+				task.Namespace, task.Name, node.Name)
+		}
+		return nil, nil
 	}
 
 	// To pick <namespace, queue> tuple for job, we choose to pick namespace firstly.
@@ -217,7 +229,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 					metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 				}
 			} else {
-				klog.V(3).Infof("Predicates failed for task <%s/%s> on node <%s> with limited resources",
+				klog.V(3).Infof("Predicates failed in allocate for task <%s/%s> on node <%s> with limited resources",
 					task.Namespace, task.Name, node.Name)
 
 				// Allocate releasing resource to the task if any.
