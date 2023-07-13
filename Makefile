@@ -98,9 +98,6 @@ images:
 		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR}; \
 	done
 
-generate-code:
-	./hack/update-gencode.sh
-
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
 	go mod vendor
@@ -167,7 +164,6 @@ clean:
 
 verify:
 	hack/verify-gofmt.sh
-	hack/verify-gencode.sh
     # this verify is deprecated and use make lint-licenses instead.
 	#hack/verify-vendor-licenses.sh
 
