@@ -22,7 +22,7 @@ type PredicateRequest struct {
 }
 
 type PredicateResponse struct {
-	ErrorMessage string `json:"errorMessage"`
+	Status []*api.Status `json:"status"`
 }
 
 type PrioritizeRequest struct {
