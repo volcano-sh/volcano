@@ -28,6 +28,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -161,7 +162,14 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	var errTasks []*schedulingapi.TaskInfo
 	for _, task := range tasks {
 		p := task.Pod
-		if err := kubeClient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
+		if p.Annotations["is-fake"] == "true" {
+			db.CreateQueue()
+			p.Annotations["fake-pod"] = task.NodeName
+			p.Annotations["scheduling.k8s.io/group-name"] = "job1-e7f18111-1cec-11ea-b688-fa163ec79500"
+			p.Spec.NodeName = ""
+			update, err := kubeClient.CoreV1().Pods(p.Namespace).Update(context.TODO(), p, metav1.UpdateOptions{})
+			klog.Info(update, err)
+		} else if err := kubeClient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
 			&v1.Binding{
 				ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: p.Annotations},
 				Target: v1.ObjectReference{
@@ -181,7 +189,37 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 
 	return nil, nil
 }
+func (db *DefaultBinder) CreateQueue() {
+	reclaimable := true
+	defaultQue := vcv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "guojian1",
+		},
+		Spec: vcv1beta1.QueueSpec{
+			Reclaimable: &reclaimable,
+			Weight:      1,
+			Guarantee: vcv1beta1.Guarantee{
+				Resource: v1.ResourceList{
+					v1.ResourceCPU: resource.MustParse("10"),
+				},
+			},
+		},
+	}
+	ret, err := globalVcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{})
+	fmt.Println(ret, err)
 
+	podGroup := &vcv1beta1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
+		},
+		Spec: vcv1beta1.PodGroupSpec{
+			Queue:        "guojian1",
+			MinResources: &v1.ResourceList{},
+		},
+	}
+	globalVcClient.SchedulingV1beta1().PodGroups("default").Create(context.TODO(), podGroup, metav1.CreateOptions{})
+}
 func NewBinder() *DefaultBinder {
 	return &DefaultBinder{}
 }
@@ -383,12 +421,15 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	return job, nil
 }
 
+var globalVcClient *vcclient.Clientset
+
 func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
 	}
 	vcClient, err := vcclient.NewForConfig(config)
+	globalVcClient = vcClient
 	if err != nil {
 		panic(fmt.Sprintf("failed init vcClient, with err: %v", err))
 	}
