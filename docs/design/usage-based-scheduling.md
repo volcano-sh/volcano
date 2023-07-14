@@ -60,6 +60,10 @@ metrics:                               # metrics server related configuration
   type: prometheus                     # Optional, The metrics source type, prometheus by default, support prometheus and elasticsearch
   address: http://192.168.0.10:9090    # Mandatory, The metrics source address
   interval: 30s                        # Optional, The scheduler pull metrics from Prometheus with this interval, 5s by default
+  username: ""                         # Optional, The basic auth username for prometheus client
+  password: ""                         # Optional, The basic auth password for prometheus client
+  bearertoken: ""                      # Optional, The bearer auth token for prometheus client
+  bearertokenfile: ""                  # Optional, The bearer auth token file for prometheus client
   tls:                                 # Optional, The tls configuration
     insecureSkipVerify: "false"        # Optional, Skip the certificate verification, false by default
   elasticsearch:                       # Optional, The elasticsearch configuration
