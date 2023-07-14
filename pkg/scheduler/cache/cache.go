@@ -48,6 +48,7 @@ import (
 	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -96,7 +97,7 @@ type SchedulerCache struct {
 	// schedulerName is the name for volcano scheduler
 	schedulerNames     []string
 	nodeSelectorLabels map[string]string
-	metricsConf        map[string]string
+	metricsConf        conf.Metrics
 
 	podInformer                infov1.PodInformer
 	nodeInformer               infov1.NodeInformer
@@ -699,9 +700,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go wait.Until(sc.processBindTask, time.Millisecond*20, stopCh)
 
 	// Get metrics data
-	address := sc.metricsConf["address"]
+	address := sc.metricsConf.Address
 	if len(address) > 0 {
-		interval, err := time.ParseDuration(sc.metricsConf["interval"])
+		interval, err := time.ParseDuration(sc.metricsConf.Interval)
 		if err != nil || interval <= 0 {
 			interval = time.Duration(defaultMetricsInternal)
 		}
@@ -1281,7 +1282,7 @@ func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, 
 	sc.Recorder.Eventf(pg, eventType, reason, msg)
 }
 
-func (sc *SchedulerCache) SetMetricsConf(conf map[string]string) {
+func (sc *SchedulerCache) SetMetricsConf(conf conf.Metrics) {
 	sc.metricsConf = conf
 }
 
@@ -1303,7 +1304,7 @@ func (sc *SchedulerCache) GetMetricsData() {
 	}
 	sc.Mutex.Unlock()
 
-	supportedPeriods := []string{"5m"}
+	supportedPeriods := []string{source.Period}
 	for node := range nodeUsageMap {
 		for _, period := range supportedPeriods {
 			nodeMetrics, err := client.NodeMetricsAvg(ctx, node, period)

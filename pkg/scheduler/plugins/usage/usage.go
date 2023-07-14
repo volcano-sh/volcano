@@ -18,14 +18,13 @@ package usage
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 
 	"k8s.io/klog/v2"
 	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 )
 
 const (
@@ -34,7 +33,6 @@ const (
 	cpuUsageAvgPrefix = "CPUUsageAvg."
 	memUsageAvgPrefix = "MEMUsageAvg."
 	thresholdSection  = "thresholds"
-	cpuUsageAvg5m     = "5m"
 )
 
 /*
@@ -43,35 +41,63 @@ const (
    - plugins:
      - name: usage
        arguments:
-          thresholds:
-            CPUUsageAvg.5m: 80
-            MEMUsageAvg.5m: 90
+         usage.weight: 10
+         type: average
+         thresholds:
+           cpu: 70
+           mem: 70
+         period: 10m
 */
 
-type thresholdConfig struct {
-	cpuUsageAvg map[string]float64
-	memUsageAvg map[string]float64
-}
+const AVG string = "average"
+const COMMON string = "common"
+const MAX string = "max"
 
+type PeriodThreshold struct {
+	Period    string
+	Threshold float64
+}
+type thresholdConfig struct {
+	CpuUsageAvg PeriodThreshold
+	MemUsageAvg PeriodThreshold
+}
 type usagePlugin struct {
 	pluginArguments framework.Arguments
 	weight          int
-	threshold       thresholdConfig
+	usageType       string
+	cpuThresholds   float64
+	memThresholds   float64
+	SamplePeriods   string
 }
 
 // New function returns usagePlugin object
 func New(args framework.Arguments) framework.Plugin {
-	usageWeight := 1
-	args.GetInt(&usageWeight, "usage.weight")
-	config := thresholdConfig{
-		cpuUsageAvg: make(map[string]float64),
-		memUsageAvg: make(map[string]float64),
-	}
-	return &usagePlugin{
+	var plugin *usagePlugin = &usagePlugin{
 		pluginArguments: args,
-		weight:          usageWeight,
-		threshold:       config,
+		weight:          1,
+		usageType:       AVG,
+		cpuThresholds:   80,
+		memThresholds:   80,
+		SamplePeriods:   "10m",
 	}
+	args.GetInt(&plugin.weight, "usage.weight")
+
+	if averageStr, ok := args["type"]; ok {
+		if average, success := averageStr.(string); success {
+			plugin.usageType = average
+		} else {
+			klog.Warningf("usage parameter[%v] is wrong", args)
+		}
+	}
+
+	if samplePeriodsStr, ok := args["period"]; ok {
+		if samplePeriods, success := samplePeriodsStr.(string); success {
+			plugin.SamplePeriods = samplePeriods
+		} else {
+			klog.Warningf("usage parameter[%v] is wrong", args)
+		}
+	}
+	return plugin
 }
 
 func (up *usagePlugin) Name() string {
@@ -87,10 +113,9 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 	if klog.V(4).Enabled() {
 		for node := range ssn.Nodes {
 			usage := ssn.Nodes[node].ResourceUsage
-			klog.V(4).Infof("node:%v, cpu usage:%v, mem usage:%v", node, usage.CPUUsageAvg["5m"], usage.MEMUsageAvg["5m"])
+			klog.V(4).Infof("node:%v, cpu usage:%v, mem usage:%v", node, usage.CPUUsageAvg, usage.MEMUsageAvg)
 		}
 	}
-
 	argsValue, ok := up.pluginArguments[thresholdSection]
 	if ok {
 		args, ok := argsValue.(map[interface{}]interface{})
@@ -99,26 +124,26 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		for k, v := range args {
 			key, _ := k.(string)
-			var val float64
-			switch a := v.(type) {
-			case string:
-				val, _ = strconv.ParseFloat(a, 64)
-			case int:
-				val = float64(a)
-			case float64:
-				val = a
-			default:
-				klog.V(4).Infof("The threshold %v is an unknown type", a)
+			value, _ := v.(int)
+			switch key {
+			case "cpu":
+				up.cpuThresholds = float64(value)
+			case "mem":
+				up.memThresholds = float64(value)
 			}
-			if strings.Contains(key, cpuUsageAvgPrefix) {
-				periodKey := strings.Replace(key, cpuUsageAvgPrefix, "", 1)
-				up.threshold.cpuUsageAvg[periodKey] = val
+		}
+
+		// here is to deal with the case that restart volcano-scheduler and there is no ResourceUsage in cache of volcano-scheduler
+		if source.Period == "" {
+			source.Period = up.SamplePeriods
+			ssn.GetCache().GetMetricsData()
+			if schedulerCache, ok := ssn.GetCache().(*cache.SchedulerCache); ok {
+				for index, node := range ssn.NodeList {
+					ssn.NodeList[index].ResourceUsage = schedulerCache.Nodes[node.Name].ResourceUsage
+				}
+			} else {
+				klog.Error("chane cache to schedulerCache error")
 			}
-			if strings.Contains(key, memUsageAvgPrefix) {
-				periodKey := strings.Replace(key, memUsageAvgPrefix, "", 1)
-				up.threshold.memUsageAvg[periodKey] = val
-			}
-			klog.V(4).Infof("Threshold config key: %s, value: %f", key, val)
 		}
 	} else {
 		klog.V(4).Infof("Threshold arguments :%v", argsValue)
@@ -127,28 +152,25 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		predicateStatus := make([]*api.Status, 0)
 		usageStatus := &api.Status{}
-		for period, value := range up.threshold.cpuUsageAvg {
-			klog.V(4).Infof("predicateFn cpuUsageAvg:%v", up.threshold.cpuUsageAvg)
-			if node.ResourceUsage.CPUUsageAvg[period] > value {
-				msg := fmt.Sprintf("Node %s cpu usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.CPUUsageAvg[period], value)
+		if up.SamplePeriods != "" {
+			klog.V(4).Infof("predicateFn cpuUsageAvg:%v,predicateFn memUsageAvg:%v", up.cpuThresholds, up.memThresholds)
+			if node.ResourceUsage.CPUUsageAvg[up.SamplePeriods] > up.cpuThresholds {
+				msg := fmt.Sprintf("Node %s cpu usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.CPUUsageAvg[up.SamplePeriods], up.cpuThresholds)
 				usageStatus.Code = api.Unschedulable
 				usageStatus.Reason = msg
 				predicateStatus = append(predicateStatus, usageStatus)
 				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", up.Name(), msg)
-			}
-		}
 
-		for period, value := range up.threshold.memUsageAvg {
-			klog.V(4).Infof("predicateFn memUsageAvg:%v", up.threshold.memUsageAvg)
-			if node.ResourceUsage.MEMUsageAvg[period] > value {
-				msg := fmt.Sprintf("Node %s mem usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.MEMUsageAvg[period], value)
+			}
+			if node.ResourceUsage.MEMUsageAvg[up.SamplePeriods] > up.memThresholds {
+				msg := fmt.Sprintf("Node %s mem usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.MEMUsageAvg[up.SamplePeriods], up.memThresholds)
 				usageStatus.Code = api.Unschedulable
 				usageStatus.Reason = msg
 				predicateStatus = append(predicateStatus, usageStatus)
 				return predicateStatus, fmt.Errorf("plugin %s memory usage predicates failed %s", up.Name(), msg)
+
 			}
 		}
-
 		usageStatus.Code = api.Success
 		predicateStatus = append(predicateStatus, usageStatus)
 		klog.V(4).Infof("Usage plugin filter for task %s/%s on node %s pass.", task.Namespace, task.Name, node.Name)
@@ -157,7 +179,10 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		score := 0.0
-		cpuUsage, exist := node.ResourceUsage.CPUUsageAvg[cpuUsageAvg5m]
+		if up.SamplePeriods == "" {
+			return 0, nil
+		}
+		cpuUsage, exist := node.ResourceUsage.CPUUsageAvg[up.SamplePeriods]
 		klog.V(4).Infof("Node %s cpu usage is %f.", node.Name, cpuUsage)
 		if !exist {
 			return 0, nil

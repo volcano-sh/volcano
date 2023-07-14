@@ -26,8 +26,21 @@ type SchedulerConfiguration struct {
 	// Tiers defines plugins in different tiers
 	Tiers []Tier `yaml:"tiers"`
 	// Configurations is configuration for actions
-	Configurations       []Configuration   `yaml:"configurations"`
-	MetricsConfiguration map[string]string `yaml:"metrics"`
+	Configurations       []Configuration `yaml:"configurations"`
+	MetricsConfiguration Metrics         `yaml:"metrics"`
+}
+
+type Metrics struct {
+	Type     string `yaml:"type"`
+	Address  string `yaml:"address"`
+	Interval string `yaml:"interval"`
+
+	ElasticsearchIndex             string `yaml:"elasticsearch.index"`
+	ElasticsearchHostnameFieldName string `yaml:"elasticsearch.hostnameFieldName"`
+	TlsInsecureSkipVerify          bool   `yaml:"tls.insecureSkipVerify"`
+
+	ElasticsearchUserName string `yaml:"elasticsearch.username"`
+	ElasticsearchPassword string `yaml:"elasticsearch.password"`
 }
 
 // Tier defines plugin tier

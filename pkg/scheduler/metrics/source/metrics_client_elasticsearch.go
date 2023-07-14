@@ -24,6 +24,7 @@ import (
 	"net/http"
 
 	"github.com/elastic/go-elasticsearch/v7"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
 const (
@@ -42,26 +43,26 @@ type ElasticsearchMetricsClient struct {
 	hostnameFieldName string
 }
 
-func NewElasticsearchMetricsClient(address string, conf map[string]string) (*ElasticsearchMetricsClient, error) {
+func NewElasticsearchMetricsClient(address string, conf conf.Metrics) (*ElasticsearchMetricsClient, error) {
 	e := &ElasticsearchMetricsClient{address: address}
-	indexName := conf["elasticsearch.index"]
+	indexName := conf.ElasticsearchIndex
 	if len(indexName) == 0 {
 		e.indexName = "metricbeat-*"
 	} else {
 		e.indexName = indexName
 	}
-	hostNameFieldName := conf["elasticsearch.hostnameFieldName"]
+	hostNameFieldName := conf.ElasticsearchHostnameFieldName
 	if len(hostNameFieldName) == 0 {
 		e.hostnameFieldName = esHostNameField
 	} else {
 		e.hostnameFieldName = hostNameFieldName
 	}
 	var err error
-	insecureSkipVerify := conf["tls.insecureSkipVerify"] == "true"
+	insecureSkipVerify := conf.TlsInsecureSkipVerify
 	e.es, err = elasticsearch.NewClient(elasticsearch.Config{
 		Addresses: []string{address},
-		Username:  conf["elasticsearch.username"],
-		Password:  conf["elasticsearch.password"],
+		Username:  conf.ElasticsearchUserName,
+		Password:  conf.ElasticsearchPassword,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: insecureSkipVerify,

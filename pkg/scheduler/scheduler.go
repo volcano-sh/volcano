@@ -48,7 +48,7 @@ type Scheduler struct {
 	actions        []framework.Action
 	plugins        []conf.Tier
 	configurations []conf.Configuration
-	metricsConf    map[string]string
+	metricsConf    conf.Metrics
 	dumper         schedcache.Dumper
 }
 

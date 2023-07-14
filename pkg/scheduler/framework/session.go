@@ -100,6 +100,10 @@ type Session struct {
 	jobStarvingFns    map[string]api.ValidateFn
 }
 
+func (ssn *Session) GetCache() cache.Cache {
+	return ssn.cache
+}
+
 func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
 		UID:             uuid.NewUUID(),

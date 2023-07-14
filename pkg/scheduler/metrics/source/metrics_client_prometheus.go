@@ -29,6 +29,7 @@ import (
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	pmodel "github.com/prometheus/common/model"
 	"k8s.io/klog/v2"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
 const (
@@ -40,36 +41,42 @@ const (
 
 type PrometheusMetricsClient struct {
 	address string
-	conf    map[string]string
+	conf    conf.Metrics
 }
 
-func NewPrometheusMetricsClient(address string, conf map[string]string) (*PrometheusMetricsClient, error) {
+func NewPrometheusMetricsClient(address string, conf conf.Metrics) (*PrometheusMetricsClient, error) {
 	return &PrometheusMetricsClient{address: address, conf: conf}, nil
 }
+
+var Period string
 
 func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName string, period string) (*NodeMetrics, error) {
 	klog.V(4).Infof("Get node metrics from Prometheus: %s", p.address)
 	var client api.Client
 	var err error
-	insecureSkipVerify := p.conf["tls.insecureSkipVerify"] == "true"
-	tr := &http.Transport{
+	insecureSkipVerify := p.conf.TlsInsecureSkipVerify
+	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: insecureSkipVerify,
 		},
 	}
 	client, err = api.NewClient(api.Config{
 		Address:      p.address,
-		RoundTripper: tr,
+		RoundTripper: transport,
 	})
 	if err != nil {
 		return nil, err
 	}
 	v1api := prometheusv1.NewAPI(client)
 	nodeMetrics := &NodeMetrics{}
-	for _, metric := range []string{promCPUUsageAvg, promMemUsageAvg} {
-		queryStr := fmt.Sprintf("%s_%s{instance=\"%s\"}", metric, period, nodeName)
-		klog.V(4).Infof("Query prometheus by %s", queryStr)
-		res, warnings, err := v1api.Query(ctx, queryStr, time.Now())
+	if Period == "" {
+		return nodeMetrics, nil
+	}
+	cpuQueryStr := fmt.Sprintf("avg_over_time((100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\",instance=\"%s\"}[30s])) * 100))[%s:30s])", nodeName, period)
+	memQueryStr := fmt.Sprintf("100*avg_over_time(((1-node_memory_MemAvailable_bytes{instance=\"%s\"}/node_memory_MemTotal_bytes{instance=\"%s\"}))[%s:30s])", nodeName, nodeName, period)
+
+	for _, metric := range []string{cpuQueryStr, memQueryStr} {
+		res, warnings, err := v1api.Query(ctx, metric, time.Now())
 		if err != nil {
 			klog.Errorf("Error querying Prometheus: %v", err)
 		}
@@ -77,7 +84,7 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 			klog.V(3).Infof("Warning querying Prometheus: %v", warnings)
 		}
 		if res == nil || res.String() == "" {
-			klog.Warningf("Warning querying Prometheus: no data found for %s", queryStr)
+			klog.Warningf("Warning querying Prometheus: no data found for %s", metric)
 			continue
 		}
 		// plugin.usage only need type pmodel.ValVector in Prometheus.rulues
@@ -89,10 +96,10 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 		rowValues := strings.Split(strings.TrimSpace(firstRowValVector), "=>")
 		value := strings.Split(strings.TrimSpace(rowValues[1]), " ")
 		switch metric {
-		case promCPUUsageAvg:
+		case cpuQueryStr:
 			cpuUsage, _ := strconv.ParseFloat(value[0], 64)
 			nodeMetrics.CPU = cpuUsage
-		case promMemUsageAvg:
+		case memQueryStr:
 			memUsage, _ := strconv.ParseFloat(value[0], 64)
 			nodeMetrics.Memory = memUsage
 		}

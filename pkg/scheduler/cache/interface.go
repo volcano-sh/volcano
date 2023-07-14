@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
@@ -83,10 +84,13 @@ type Cache interface {
 	SharedInformerFactory() informers.SharedInformerFactory
 
 	// SetMetricsConf set the metrics server related configuration
-	SetMetricsConf(conf map[string]string)
+	SetMetricsConf(conf conf.Metrics)
 
 	// EventRecorder returns the event recorder
 	EventRecorder() record.EventRecorder
+
+	// GetMetricsData get metrics data from prometheus or elk
+	GetMetricsData()
 }
 
 // VolumeBinder interface for allocate and bind volumes

@@ -19,6 +19,8 @@ package source
 import (
 	"context"
 	"errors"
+
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
 type NodeMetrics struct {
@@ -30,12 +32,12 @@ type MetricsClient interface {
 	NodeMetricsAvg(ctx context.Context, nodeName string, period string) (*NodeMetrics, error)
 }
 
-func NewMetricsClient(metricsConf map[string]string) (MetricsClient, error) {
-	address := metricsConf["address"]
+func NewMetricsClient(metricsConf conf.Metrics) (MetricsClient, error) {
+	address := metricsConf.Address
 	if len(address) == 0 {
 		return nil, errors.New("metrics address is empty")
 	}
-	metricsType := metricsConf["type"]
+	metricsType := metricsConf.Type
 	if metricsType == "elasticsearch" {
 		return NewElasticsearchMetricsClient(address, metricsConf)
 	}
