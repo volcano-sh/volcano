@@ -532,9 +532,8 @@ func TestAllocatedWithTerminatingPod(t *testing.T) {
 	// case2 pod solve case
 	// p3 releasing failed and p4 will be scheduled n4
 
-	case2Pod3 := util.BuildPod("c2", "p3", "", v1.PodRunning, util.BuildResourceListWithGPU("2", "4G", "3"), "pg3", make(map[string]string), make(map[string]string))
+	case2Pod3 := util.BuildPod("c2", "p3", "n3", v1.PodRunning, util.BuildResourceListWithGPU("2", "4G", "3"), "pg3", make(map[string]string), make(map[string]string))
 	case2Pod3.CreationTimestamp = metav1.Time{Time: time.Now().Add(-20 * time.Minute)}
-	case2Pod3.Spec.NodeName = "n3"
 	case2Pod3.DeletionTimestamp = &metav1.Time{Time: time.Now().Add(-10 * time.Minute)}
 	case2Pod4 := util.BuildPod("c2", "p4", "", v1.PodPending, util.BuildResourceListWithGPU("2", "4G", "2"), "pg4", make(map[string]string), make(map[string]string))
 	tests := []struct {
