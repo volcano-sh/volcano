@@ -336,16 +336,16 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	for _, ts := range job.Spec.Tasks {
 		ts.Template.Name = ts.Name
 		tc := ts.Template.DeepCopy()
-		name := ts.Template.Name
+		roleSpec := ts.Template.Name
 
-		pods, found := jobInfo.Pods[name]
+		pods, found := jobInfo.Pods[roleSpec]
 		if !found {
 			pods = map[string]*v1.Pod{}
 		}
 
 		var podToCreateEachTask []*v1.Pod
 		for i := 0; i < int(ts.Replicas); i++ {
-			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, name, i)
+			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, roleSpec, i)
 			if pod, found := pods[podName]; !found {
 				newPod := createJobPod(job, tc, ts.TopologyPolicy, i, jobForwarding)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
@@ -371,14 +371,14 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		}
 	}
 
-	for taskName, podToCreateEachTask := range podToCreate {
+	for specName, podToCreateEachTask := range podToCreate {
 		if len(podToCreateEachTask) == 0 {
 			continue
 		}
-		go func(taskName string, podToCreateEachTask []*v1.Pod) {
-			taskIndex := jobhelpers.GetTasklndexUnderJob(taskName, job)
+		go func(specName string, podToCreateEachTask []*v1.Pod) {
+			taskIndex := jobhelpers.GetTasklndexUnderJob(specName, job)
 			if job.Spec.Tasks[taskIndex].DependsOn != nil {
-				cc.waitDependsOnTaskMeetCondition(taskName, taskIndex, podToCreateEachTask, job)
+				cc.waitDependsOnTaskMeetCondition(specName, taskIndex, podToCreateEachTask, job)
 			}
 
 			for _, pod := range podToCreateEachTask {
@@ -400,7 +400,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 					}
 				}(pod)
 			}
-		}(taskName, podToCreateEachTask)
+		}(specName, podToCreateEachTask)
 	}
 
 	waitCreationGroup.Wait()
