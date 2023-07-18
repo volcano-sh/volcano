@@ -58,6 +58,8 @@ type Devices interface {
 	// that the pod can get scheduled with preemption.
 	// The accompanying status message should explain why the pod is unschedulable.
 	FilterNode(pod *v1.Pod) (int, string, error)
+	//ScoreNode returns the score of the current node based on this device
+	ScoreNode(pod *v1.Pod) (float64, error)
 	//Allocate action in predicate
 	Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error
 	//Release action in predicate
