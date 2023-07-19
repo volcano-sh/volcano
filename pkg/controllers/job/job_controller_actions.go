@@ -28,7 +28,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
 
@@ -378,7 +377,16 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		go func(taskName string, podToCreateEachTask []*v1.Pod) {
 			taskIndex := jobhelpers.GetTasklndexUnderJob(taskName, job)
 			if job.Spec.Tasks[taskIndex].DependsOn != nil {
-				cc.waitDependsOnTaskMeetCondition(taskName, taskIndex, podToCreateEachTask, job)
+				if !cc.waitDependsOnTaskMeetCondition(taskName, taskIndex, podToCreateEachTask, job) {
+					klog.V(3).Infof("Job %s/%s depends on task not ready", job.Name, job.Namespace)
+					// release wait group
+					for _, pod := range podToCreateEachTask {
+						go func(pod *v1.Pod) {
+							defer waitCreationGroup.Done()
+						}(pod)
+					}
+					return
+				}
 			}
 
 			for _, pod := range podToCreateEachTask {
@@ -477,31 +485,29 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	return nil
 }
 
-func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskIndex int, podToCreateEachTask []*v1.Pod, job *batch.Job) {
+func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskIndex int, podToCreateEachTask []*v1.Pod, job *batch.Job) bool {
 	if job.Spec.Tasks[taskIndex].DependsOn == nil {
-		return
+		return true
 	}
-
 	dependsOn := *job.Spec.Tasks[taskIndex].DependsOn
 	if len(dependsOn.Name) > 1 && dependsOn.Iteration == batch.IterationAny {
-		wait.PollInfinite(detectionPeriodOfDependsOntask, func() (bool, error) {
-			for _, task := range dependsOn.Name {
-				if cc.isDependsOnPodsReady(task, job) {
-					return true, nil
-				}
+		// any ready to create task, return true
+		for _, task := range dependsOn.Name {
+			if cc.isDependsOnPodsReady(task, job) {
+				return true
 			}
-			return false, nil
-		})
-	} else {
-		for _, dependsOnTask := range dependsOn.Name {
-			wait.PollInfinite(detectionPeriodOfDependsOntask, func() (bool, error) {
-				if cc.isDependsOnPodsReady(dependsOnTask, job) {
-					return true, nil
-				}
-				return false, nil
-			})
+		}
+		// all not ready to skip create task, return false
+		return false
+	}
+	for _, dependsOnTask := range dependsOn.Name {
+		// any not ready to skip create task, return false
+		if !cc.isDependsOnPodsReady(dependsOnTask, job) {
+			return false
 		}
 	}
+	// all ready to create task, return true
+	return true
 }
 
 func (cc *jobcontroller) isDependsOnPodsReady(task string, job *batch.Job) bool {
