@@ -118,12 +118,10 @@ func TestNode(t *testing.T) {
 	GPU := v1.ResourceName("nvidia.com/gpu")
 	FOO := v1.ResourceName("example.com/foo")
 
-	p1 := util.BuildPod("c1", "p1", "n1", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p2 := util.BuildPod("c1", "p2", "n3", v1.PodPending, util.BuildResourceList("1.5", "0Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, util.BuildResourceList("2", "10Gi"), "pg1", make(map[string]string), make(map[string]string))
-	addResource(p3.Spec.Containers[0].Resources.Requests, GPU, "2")
-	p4 := util.BuildPod("c1", "p4", "", v1.PodPending, util.BuildResourceList("3", "4Gi"), "pg1", make(map[string]string), make(map[string]string))
-	addResource(p4.Spec.Containers[0].Resources.Requests, FOO, "3")
+	p1 := util.BuildPod("c1", "p1", "n1", v1.PodPending, "pg1", util.PodResourceOption("1", "1Gi"))
+	p2 := util.BuildPod("c1", "p2", "n3", v1.PodPending, "pg1", util.PodResourceOption("1.5", "0Gi"))
+	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, "pg1", util.PodResourceWithGPUOption("2", "10Gi", "2"))
+	p4 := util.BuildPod("c1", "p4", "", v1.PodPending, "pg1", util.PodResourceWithGPUOption("3", "4Gi", "2"))
 
 	n1 := util.BuildNode("n1", util.BuildResourceList("2", "4Gi"), make(map[string]string))
 	n2 := util.BuildNode("n2", util.BuildResourceList("4", "16Gi"), make(map[string]string))

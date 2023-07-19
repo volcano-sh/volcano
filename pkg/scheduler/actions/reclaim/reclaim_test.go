@@ -85,10 +85,10 @@ func TestReclaim(t *testing.T) {
 					},
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-					util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-					util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-					util.BuildPod("c1", "preemptor1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+					util.BuildPreemptablePod("c1", "preemptee1", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptor1", "", v1.PodPending, "pg2", util.PodResourceOption("1", "1G")),
 				},
 				Nodes: []*v1.Node{
 					util.BuildNode("n1", util.BuildResourceList("3", "3Gi"), make(map[string]string)),

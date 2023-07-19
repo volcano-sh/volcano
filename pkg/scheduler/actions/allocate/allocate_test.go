@@ -87,8 +87,8 @@ func TestAllocate(t *testing.T) {
 					},
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-					util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "p1", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "p2", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1G")),
 				},
 				Nodes: []*v1.Node{
 					util.BuildNode("n1", util.BuildResourceList("2", "4Gi"), make(map[string]string)),
@@ -143,13 +143,13 @@ func TestAllocate(t *testing.T) {
 				// due to change of TaskOrderFn
 				Pods: []*v1.Pod{
 					// pending pod with owner1, under c1
-					util.BuildPod("c1", "pg1-p-1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "pg1-p-1", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1G")),
 					// pending pod with owner1, under c1
-					util.BuildPod("c1", "pg1-p-2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "pg1-p-2", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1G")),
 					// pending pod with owner2, under c2
-					util.BuildPod("c2", "pg2-p-1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c2", "pg2-p-1", "", v1.PodPending, "pg2", util.PodResourceOption("1", "1G")),
 					// pending pod with owner2, under c2
-					util.BuildPod("c2", "pg2-p-2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c2", "pg2-p-2", "", v1.PodPending, "pg2", util.PodResourceOption("1", "1G")),
 				},
 				Nodes: []*v1.Node{
 					util.BuildNode("n1", util.BuildResourceList("2", "4G"), make(map[string]string)),
@@ -210,9 +210,9 @@ func TestAllocate(t *testing.T) {
 
 				Pods: []*v1.Pod{
 					// pending pod with owner1, under ns:c1/q:c1
-					util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("3", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "p1", "", v1.PodPending, "pg1", util.PodResourceOption("3", "1G")),
 					// pending pod with owner2, under ns:c1/q:c2
-					util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "p2", "", v1.PodPending, "pg2", util.PodResourceOption("1", "1G")),
 				},
 				Nodes: []*v1.Node{
 					util.BuildNode("n1", util.BuildResourceList("2", "4G"), make(map[string]string)),
@@ -350,8 +350,8 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			name: "resource not match",
 			TestArg: cache.TestArg{
 				Pods: []*v1.Pod{
-					util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
-					util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "p1", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1G"), util.PodPVCOption(pvc)),
+					util.BuildPod("c1", "p2", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1G"), util.PodPVCOption(pvc)),
 				},
 				Nodes: []*v1.Node{
 					util.BuildNode("n1", util.BuildResourceList("1", "4Gi"), make(map[string]string)),
@@ -370,8 +370,8 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			name: "node changed with enough resource",
 			TestArg: cache.TestArg{
 				Pods: []*v1.Pod{
-					util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
-					util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "p1", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1G"), util.PodPVCOption(pvc)),
+					util.BuildPod("c1", "p2", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1G"), util.PodPVCOption(pvc1)),
 				},
 				Nodes: []*v1.Node{
 					util.BuildNode("n2", util.BuildResourceList("2", "4Gi"), make(map[string]string)),

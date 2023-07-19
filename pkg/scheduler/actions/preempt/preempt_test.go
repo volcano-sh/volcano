@@ -79,9 +79,9 @@ func TestPreempt(t *testing.T) {
 					},
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-					util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-					util.BuildPod("c1", "preemptor1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptor1", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1G")),
 				},
 				// If there are enough idle resources on the node, then there is no need to preempt anything.
 				Nodes: []*v1.Node{
@@ -139,10 +139,10 @@ func TestPreempt(t *testing.T) {
 				},
 				// Both pg1 and pg2 jobs are pipelined, because enough pods are already running.
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-					util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-					util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
-					util.BuildPod("c1", "preemptor2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, "pg2", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptor2", "", v1.PodPending, "pg2", util.PodResourceOption("1", "1G")),
 				},
 				// All resources on the node will be in use.
 				Nodes: []*v1.Node{
@@ -201,10 +201,10 @@ func TestPreempt(t *testing.T) {
 					},
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-					util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-					util.BuildPod("c1", "preemptor1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
-					util.BuildPod("c1", "preemptor2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+					util.BuildPreemptablePod("c1", "preemptee1", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptor1", "", v1.PodPending, "pg2", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptor2", "", v1.PodPending, "pg2", util.PodResourceOption("1", "1G")),
 				},
 				Nodes: []*v1.Node{
 					util.BuildNode("n1", util.BuildResourceList("2", "2G"), make(map[string]string)),
@@ -264,10 +264,10 @@ func TestPreempt(t *testing.T) {
 				// There are 3 cpus and 3G of memory idle and 3 tasks running each consuming 1 cpu and 1G of memory.
 				// Big task requiring 5 cpus and 5G of memory should preempt 2 of 3 running tasks to fit into the node.
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-					util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-					util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, util.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-					util.BuildPod("c1", "preemptor1", "", v1.PodPending, util.BuildResourceList("5", "5G"), "pg2", make(map[string]string), make(map[string]string)),
+					util.BuildPreemptablePod("c1", "preemptee1", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPreemptablePod("c1", "preemptee2", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPreemptablePod("c1", "preemptee3", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1G")),
+					util.BuildPod("c1", "preemptor1", "", v1.PodPending, "pg2", util.PodResourceOption("5", "5G")),
 				},
 				Nodes: []*v1.Node{
 					util.BuildNode("n1", util.BuildResourceList("6", "6G"), make(map[string]string)),
