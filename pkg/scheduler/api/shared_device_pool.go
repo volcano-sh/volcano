@@ -19,8 +19,8 @@ package api
 import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
-
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/mgpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
 
@@ -76,5 +76,5 @@ var _ Devices = new(gpushare.GPUDevices)
 var IgnoredDevicesList []string
 
 var RegisteredDevices = []string{
-	GPUSharingDevice, vgpu.DeviceName,
+	GPUSharingDevice, vgpu.DeviceName, mgpu.DeviceName,
 }

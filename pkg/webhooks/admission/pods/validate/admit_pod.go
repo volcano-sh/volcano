@@ -136,6 +136,15 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 		reviewResponse.Allowed = false
 	}
 
+	// check pod requested mgpu resources
+	if isSharedMGPUPod(pod) {
+		ok, reason := checkMGPUPod(pod)
+		if !ok {
+			msg = reason
+			reviewResponse.Allowed = false
+		}
+	}
+
 	// check pod annotatations
 	if err := validateAnnotation(pod); err != nil {
 		msg = err.Error()
@@ -227,4 +236,44 @@ func validateIntPercentageStr(key, value string) error {
 		return nil
 	}
 	return fmt.Errorf("invalid type: neither int nor percentage for %v", key)
+}
+
+func isSharedMGPUPod(pod *v1.Pod) bool {
+	containers := pod.Spec.Containers
+	hasGPURequest := false
+	for _, container := range containers {
+		if _, ok := container.Resources.Limits[ResourceMGPUCore]; ok {
+			hasGPURequest = true
+			break
+		} else if _, ok = container.Resources.Limits[ResourceMGPUMemory]; ok {
+			hasGPURequest = true
+			break
+		}
+	}
+
+	return hasGPURequest
+}
+
+// checkMGPUPod validates the pod which requests mgpu resource.
+func checkMGPUPod(pod *v1.Pod) (bool, string) {
+	isMultipleGPUShare, gpuCountList, err := checkAndExtraMultipleGPUCountList(pod)
+	if err != nil && !notExistMultipleGPUAnno(err) {
+		return false, err.Error()
+	}
+
+	// If a gpu shared pod has been set annotation "vke.volcengine.com/container-multiple-gpu",
+	// it's a pod requests container multiple mgpu. If not set, it's a normal mgpu pod.
+	if !isMultipleGPUShare {
+		ok, reason := validateNormalMGPUPod(pod)
+		if !ok {
+			return false, reason
+		}
+	} else {
+		ok, reason := validateContainerMultipleMGPUPod(pod, gpuCountList)
+		if !ok {
+			return false, reason
+		}
+	}
+
+	return true, ""
 }

@@ -19,8 +19,6 @@ package predicates
 import (
 	"context"
 	"fmt"
-	"strings"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
@@ -37,6 +35,8 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
+	"strings"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/mgpu"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
@@ -74,8 +74,8 @@ const (
 	GPUSharingPredicate = "predicate.GPUSharingEnable"
 	NodeLockEnable      = "predicate.NodeLockEnable"
 	GPUNumberPredicate  = "predicate.GPUNumberEnable"
-
-	VGPUEnable = "predicate.VGPUEnable"
+	VGPUEnable          = "predicate.VGPUEnable"
+	MGPUEnable          = "predicate.MGPUEnable"
 
 	// CachePredicate control cache predicate feature
 	CachePredicate = "predicate.CacheEnable"
@@ -180,9 +180,35 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
 	args.GetBool(&gpushare.NodeLockEnable, NodeLockEnable)
 	args.GetBool(&vgpu.VGPUEnable, VGPUEnable)
+	args.GetBool(&mgpu.MGPUEnable, MGPUEnable)
+
+	// Initializes arguments for mGPU Plugin which can't be used with gpu-share or vgpu at the same time.
+	if mgpu.MGPUEnable {
+		var ok bool
+		mgpu.GlobalConfig.Policy, ok = args[mgpu.Policy].(string)
+		if !ok {
+			klog.Fatal("Can not parse MGPUPolicy")
+		}
+		mgpu.GlobalConfig.ScheduleMode, ok = args[mgpu.ScheduleMode].(string)
+		if !ok {
+			klog.Fatal("Can not parse ScheduleMode")
+		}
+		mgpu.GlobalConfig.WeightOfCore, ok = args[mgpu.WeightOfCore].(int)
+		if !ok {
+			klog.Fatal("Can not parse WeightOfCore")
+		}
+		mgpu.GlobalConfig.MaxContainersPerCard, ok = args[mgpu.MaxContainersPerCard].(int)
+		if !ok {
+			klog.Fatal("Can not parse MaxContainersPerCard")
+		}
+		mgpu.GlobalConfig.MaxContainersPerCard, ok = args[mgpu.MaxContainersPerCard].(int)
+		if !ok {
+			klog.Fatal("Can not parse MaxContainersPerCard")
+		}
+	}
 
 	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {
-		klog.Fatal("can not define true in both gpu sharing and gpu number")
+		klog.Fatal("Can not define true in both gpu sharing and gpu number")
 	}
 	if (gpushare.GpuSharingEnable || gpushare.GpuNumberEnable) && vgpu.VGPUEnable {
 		klog.Fatal("gpu-share and vgpu can't be used together")
