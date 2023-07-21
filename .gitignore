@@ -133,5 +133,4 @@ coverage.txt
 vendor
 
 # helm dependency files
-installer/helm/chart/volcano/charts/
 installer/helm/chart/volcano/requirements.lock
