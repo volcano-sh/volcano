@@ -87,7 +87,7 @@ func Run(opt *options.ServerOption) error {
 	// add a uniquifier so that two processes on the same host don't accidentally both become active
 	id := hostname + "_" + string(uuid.NewUUID())
 
-	rl, err := resourcelock.New(resourcelock.ConfigMapsLeasesResourceLock,
+	rl, err := resourcelock.New(resourcelock.LeasesResourceLock,
 		opt.LockObjectNamespace,
 		"vc-controller-manager",
 		leaderElectionClient.CoreV1(),
