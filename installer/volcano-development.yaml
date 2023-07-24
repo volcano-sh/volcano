@@ -8527,7 +8527,7 @@ rules:
     verbs: ["create", "get", "list", "watch", "delete"]
   - apiGroups: ["batch.volcano.sh"]
     resources: ["jobs"]
-    verbs: ["get", "list", "watch", "update", "delete"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
   - apiGroups: ["batch.volcano.sh"]
     resources: ["jobs/status", "jobs/finalizers"]
     verbs: ["update", "patch"]
