@@ -65,6 +65,9 @@ type ServerOption struct {
 	DetectionPeriodOfDependsOntask time.Duration
 	// To determine whether inherit owner's annotations for pods when create podgroup
 	InheritOwnerAnnotations bool
+	// WorkerThreadsForPG is the number of threads syncing podgroup operations
+	// The larger the number, the faster the podgroup processing, but requires more CPU load.
+	WorkerThreadsForPG uint32
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -97,6 +100,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&s.DetectionPeriodOfDependsOntask, "detection-period-of-dependson-task", defaultDetectionPeriodOfDependsOntask, "It indicates how often to detect the status of dependent tasks."+
 		"e.g. --detection-period-of-dependson-task=1s")
 	fs.BoolVar(&s.InheritOwnerAnnotations, "inherit-owner-annotations", true, "Enable inherit owner annotations for pods when create podgroup; it is enabled by default")
+	fs.Uint32Var(&s.WorkerThreadsForPG, "worker-threads-for-podgroup", 1, "The number of threads syncing podgroup operations. The larger the number, the faster the podgroup processing, but requires more CPU load.")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace.
