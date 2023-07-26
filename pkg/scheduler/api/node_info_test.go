@@ -76,14 +76,14 @@ func TestNodeInfo_AddPod(t *testing.T) {
 			},
 		},
 		{
-			name: "add 1 unknown pod",
+			name: "add 1 unknown pod and pod memory req > idle",
 			node: case02Node,
 			pods: []*v1.Pod{case02Pod1},
 			expected: &NodeInfo{
 				Name:                     "n2",
 				Node:                     case02Node,
-				Idle:                     buildResource("2000m", "1G"),
-				Used:                     EmptyResource(),
+				Idle:                     buildResource("1000m", "-1G"),
+				Used:                     buildResource("1000m", "2G"),
 				Releasing:                EmptyResource(),
 				Pipelined:                EmptyResource(),
 				OversubscriptionResource: EmptyResource(),
@@ -91,14 +91,16 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Capacity:                 buildResource("2000m", "1G"),
 				ResourceUsage:            &NodeUsage{},
 				State:                    NodeState{Phase: Ready},
-				Tasks:                    map[TaskID]*TaskInfo{},
+				Tasks: map[TaskID]*TaskInfo{
+					"c2/p1": NewTaskInfo(case02Pod1),
+				},
 				Others: map[string]interface{}{
 					GPUSharingDevice: gpushare.NewGPUDevices("n2", case01Node),
 					vgpu.DeviceName:  vgpu.NewGPUDevices("n2", case01Node),
 				},
 				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
 			},
-			expectedFailure: true,
+			expectedFailure: false,
 		},
 	}
 
@@ -196,11 +198,12 @@ func TestNodeInfo_SetNode(t *testing.T) {
 	case01Pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, buildResourceList("6", "6G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	tests := []struct {
-		name     string
-		node     *v1.Node
-		updated  *v1.Node
-		pods     []*v1.Pod
-		expected *NodeInfo
+		name      string
+		node      *v1.Node
+		updated   *v1.Node
+		pods      []*v1.Pod
+		expected  *NodeInfo
+		expected2 *NodeInfo
 	}{
 		{
 			name:    "add 3 running non-owner pod",
@@ -208,6 +211,29 @@ func TestNodeInfo_SetNode(t *testing.T) {
 			updated: case01Node2,
 			pods:    []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
 			expected: &NodeInfo{
+				Name:                     "n1",
+				Node:                     case01Node2,
+				Idle:                     buildResource("-1", "-1G"),
+				Used:                     buildResource("9", "9G"),
+				OversubscriptionResource: EmptyResource(),
+				Releasing:                EmptyResource(),
+				Pipelined:                EmptyResource(),
+				Allocatable:              buildResource("8", "8G"),
+				Capacity:                 buildResource("8", "8G"),
+				ResourceUsage:            &NodeUsage{},
+				State:                    NodeState{Phase: Ready, Reason: ""},
+				Tasks: map[TaskID]*TaskInfo{
+					"c1/p1": NewTaskInfo(case01Pod1),
+					"c1/p2": NewTaskInfo(case01Pod2),
+					"c1/p3": NewTaskInfo(case01Pod3),
+				},
+				Others: map[string]interface{}{
+					GPUSharingDevice: gpushare.NewGPUDevices("n1", case01Node1),
+					vgpu.DeviceName:  vgpu.NewGPUDevices("n1", case01Node1),
+				},
+				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+			},
+			expected2: &NodeInfo{
 				Name:                     "n1",
 				Node:                     case01Node1,
 				Idle:                     buildResource("1", "1G"),
@@ -218,7 +244,7 @@ func TestNodeInfo_SetNode(t *testing.T) {
 				Allocatable:              buildResource("10", "10G"),
 				Capacity:                 buildResource("10", "10G"),
 				ResourceUsage:            &NodeUsage{},
-				State:                    NodeState{Phase: NotReady, Reason: "OutOfSync"},
+				State:                    NodeState{Phase: Ready, Reason: ""},
 				Tasks: map[TaskID]*TaskInfo{
 					"c1/p1": NewTaskInfo(case01Pod1),
 					"c1/p2": NewTaskInfo(case01Pod2),
@@ -250,10 +276,9 @@ func TestNodeInfo_SetNode(t *testing.T) {
 
 		// Recover. e.g.: nvidia-device-plugin is restarted successfully
 		ni.SetNode(test.node)
-		test.expected.State = NodeState{Phase: Ready}
-		if !nodeInfoEqual(ni, test.expected) {
+		if !nodeInfoEqual(ni, test.expected2) {
 			t.Errorf("recovered %d: \n expected\t%v, \n got\t\t%v \n",
-				i, test.expected, ni)
+				i, test.expected2, ni)
 		}
 	}
 }

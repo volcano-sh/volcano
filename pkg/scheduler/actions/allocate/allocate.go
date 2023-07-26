@@ -99,8 +99,8 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	allNodes := ssn.NodeList
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		// Check for Resource Predicate
-		if ok, reason := task.InitResreq.LessEqualWithReason(node.FutureIdle(), api.Zero); !ok {
-			return nil, api.NewFitError(task, node, reason)
+		if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
+			return nil, api.NewFitError(task, node, api.WrapInsufficientResourceReason(resources))
 		}
 		var statusSets util.StatusSets
 		statusSets, err := ssn.PredicateFn(task, node)

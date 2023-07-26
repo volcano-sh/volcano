@@ -114,3 +114,11 @@ func NewFitError(task *TaskInfo, node *NodeInfo, message ...string) *FitError {
 func (f *FitError) Error() string {
 	return fmt.Sprintf("task %s/%s on node %s fit failed: %s", f.taskNamespace, f.taskName, f.NodeName, strings.Join(f.Reasons, ", "))
 }
+
+// WrapInsufficientResourceReason wrap insufficient resource reason.
+func WrapInsufficientResourceReason(resources []string) string {
+	if len(resources) == 0 {
+		return ""
+	}
+	return "Insufficient " + resources[0]
+}
