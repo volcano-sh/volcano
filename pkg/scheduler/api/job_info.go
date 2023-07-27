@@ -653,13 +653,13 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason string, msg string) 
 
 	msg = ji.JobFitErrors
 	switch status := ctx.Status; status {
-	case Allocated, Pipelined:
+	case Allocated:
 		// Pod is schedulable
 		msg = fmt.Sprintf("Pod %s/%s can possibly be assigned to %s", taskInfo.Namespace, taskInfo.Name, ctx.NodeName)
-		if status == Pipelined {
-			msg += " once resource is released"
-		}
 		return PodReasonSchedulable, msg
+	case Pipelined:
+		msg = fmt.Sprintf("Pod %s/%s can possibly be assigned to %s, once resource is released", taskInfo.Namespace, taskInfo.Name, ctx.NodeName)
+		return PodReasonUnschedulable, msg
 	case Pending:
 		if fe := ji.NodesFitErrors[tid]; fe != nil {
 			// Pod is not schedulable
