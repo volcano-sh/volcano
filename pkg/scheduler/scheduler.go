@@ -116,14 +116,16 @@ func (pc *Scheduler) runOnce() {
 	}
 
 	ssn := framework.OpenSession(pc.cache, plugins, configurations)
-	defer framework.CloseSession(ssn)
+	defer func() {
+		framework.CloseSession(ssn)
+		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
+	}()
 
 	for _, action := range actions {
 		actionStartTime := time.Now()
 		action.Execute(ssn)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
 	}
-	metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 }
 
 func (pc *Scheduler) loadSchedulerConf() {
