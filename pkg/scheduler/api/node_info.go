@@ -291,12 +291,8 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 	}
 
 	// set NodeState according to resources
-	if !ni.Used.LessEqual(ni.Allocatable, Zero) {
-		ni.State = NodeState{
-			Phase:  NotReady,
-			Reason: "OutOfSync",
-		}
-		return
+	if ok, resources := ni.Used.LessEqualWithResourcesName(ni.Allocatable, Zero); !ok {
+		klog.ErrorS(nil, "Node out of sync", "name", ni.Name, "resources", resources)
 	}
 
 	// If node not ready, e.g. power off
@@ -372,30 +368,30 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 	for _, ti := range ni.Tasks {
 		switch ti.Status {
 		case Releasing:
-			ni.Idle.sub(ti.Resreq) // sub without assertion
+			ni.allocateIdleResource(ti)
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
 			ni.addResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
 		default:
-			ni.Idle.sub(ti.Resreq) // sub without assertion
+			ni.allocateIdleResource(ti)
 			ni.Used.Add(ti.Resreq)
 			ni.addResource(ti.Pod)
 		}
 	}
 }
 
-func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo) error {
-	if ti.Resreq.LessEqual(ni.Idle, Zero) {
-		ni.Idle.Sub(ti.Resreq)
-		return nil
+func (ni *NodeInfo) allocateIdleResource(ti *TaskInfo) {
+	ok, resources := ti.Resreq.LessEqualWithResourcesName(ni.Idle, Zero)
+	if ok {
+		ni.Idle.sub(ti.Resreq)
+		return
 	}
 
-	return &AllocateFailError{Reason: fmt.Sprintf(
-		"cannot allocate resource, <%s> idle: %s <%s/%s> req: %s",
-		ni.Name, ni.Idle.String(), ti.Namespace, ti.Name, ti.Resreq.String(),
-	)}
+	ni.Idle.sub(ti.Resreq)
+	klog.ErrorS(nil, "Idle resources turn into negative after allocated",
+		"nodeName", ni.Name, "task", klog.KObj(ti.Pod), "resources", resources, "idle", ni.Idle.String(), "req", ti.Resreq.String())
 }
 
 // AddTask is used to add a task in nodeInfo object
@@ -420,18 +416,22 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 	if ni.Node != nil {
 		switch ti.Status {
 		case Releasing:
-			if err := ni.allocateIdleResource(ti); err != nil {
-				return err
-			}
+			ni.allocateIdleResource(ti)
 			ni.Releasing.Add(ti.Resreq)
 			ni.Used.Add(ti.Resreq)
 			ni.addResource(ti.Pod)
 		case Pipelined:
 			ni.Pipelined.Add(ti.Resreq)
-		default:
-			if err := ni.allocateIdleResource(ti); err != nil {
-				return err
+		case Binding:
+			// When task in Binding status, it will bind to node, we should double-check whether idle resources are enough to put task before bind to apiserver.
+			if ok, resNames := ti.Resreq.LessEqualWithResourcesName(ni.Idle, Zero); !ok {
+				return fmt.Errorf("node %s resources %v are not enough to put task <%s/%s>, idle: %s, req: %s", ni.Name, resNames, ti.Namespace, ti.Name, ni.Idle.String(), ti.Resreq.String())
 			}
+			ni.allocateIdleResource(ti)
+			ni.Used.Add(ti.Resreq)
+			ni.addResource(ti.Pod)
+		default:
+			ni.allocateIdleResource(ti)
 			ni.Used.Add(ti.Resreq)
 			ni.addResource(ti.Pod)
 		}

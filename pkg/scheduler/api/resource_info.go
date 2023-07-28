@@ -405,11 +405,12 @@ func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) b
 	return true
 }
 
-// LessEqualWithReason returns true, "" only on condition that all dimensions of resources in r are less than or equal with that of rr,
-// Otherwise returns false and err string ,which show which resource is insufficient.
+// LessEqualWithResourcesName returns true, []string{} only on condition that all dimensions of resources in r are less than or equal with that of rr,
+// Otherwise returns false and err string ,which show what resources are insufficient.
 // @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
 // this function is the same as LessEqual , and it will be merged to LessEqual in the future
-func (r *Resource) LessEqualWithReason(rr *Resource, defaultValue DimensionDefaultValue) (bool, string) {
+func (r *Resource) LessEqualWithResourcesName(rr *Resource, defaultValue DimensionDefaultValue) (bool, []string) {
+	resources := []string{}
 	lessEqualFunc := func(l, r, diff float64) bool {
 		if l < r || math.Abs(l-r) < diff {
 			return true
@@ -418,10 +419,10 @@ func (r *Resource) LessEqualWithReason(rr *Resource, defaultValue DimensionDefau
 	}
 
 	if !lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) {
-		return false, "Insufficient cpu"
+		resources = append(resources, "cpu")
 	}
 	if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
-		return false, "Insufficient memory"
+		resources = append(resources, "memory")
 	}
 
 	for resourceName, leftValue := range r.ScalarResources {
@@ -431,10 +432,13 @@ func (r *Resource) LessEqualWithReason(rr *Resource, defaultValue DimensionDefau
 		}
 
 		if !lessEqualFunc(leftValue, rightValue, minResource) {
-			return false, "Insufficient " + string(resourceName)
+			resources = append(resources, string(resourceName))
 		}
 	}
-	return true, ""
+	if len(resources) > 0 {
+		return false, resources
+	}
+	return true, resources
 }
 
 // LessPartly returns true if there exists any dimension whose resource amount in r is less than that in rr.
