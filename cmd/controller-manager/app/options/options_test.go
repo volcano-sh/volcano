@@ -54,6 +54,7 @@ func TestAddFlags(t *testing.T) {
 		InheritOwnerAnnotations: true,
 		EnableLeaderElection:    true,
 		LockObjectNamespace:     defaultLockObjectNamespace,
+		WorkerThreadsForPG:      1,
 	}
 
 	if !reflect.DeepEqual(expected, s) {
