@@ -574,7 +574,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		PodGroup: ji.PodGroup.Clone(),
 
 		TaskStatusIndex:       map[TaskStatus]tasksMap{},
-		TaskMinAvailable:      ji.TaskMinAvailable,
+		TaskMinAvailable:      make(map[TaskID]int32),
 		TaskMinAvailableTotal: ji.TaskMinAvailableTotal,
 		Tasks:                 tasksMap{},
 		Preemptable:           ji.Preemptable,
@@ -584,6 +584,9 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
 
+	for task, minAvailable := range ji.TaskMinAvailable {
+		info.TaskMinAvailable[task] = minAvailable
+	}
 	for _, task := range ji.Tasks {
 		info.AddTaskInfo(task.Clone())
 	}
