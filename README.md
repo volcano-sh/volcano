@@ -11,7 +11,6 @@
 [![LICENSE](https://img.shields.io/github/license/volcano-sh/volcano.svg)](https://github.com/volcano-sh/volcano/blob/master/LICENSE)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/3012/badge)](https://bestpractices.coreinfrastructure.org/projects/3012)
 
-
 [Volcano](https://volcano.sh/) is a batch system built on Kubernetes. It provides a suite of mechanisms that are commonly required by
 many classes of batch & elastic workload including: machine learning/deep learning, bioinformatics/genomics and
 other "big data" applications. These types of applications typically run on generalized domain frameworks like
@@ -32,7 +31,7 @@ refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](htt
 
 ![cncf_logo](docs/images/cncf-logo.png)
 
-Volcano is an incubating project of the [Cloud Native Computing Foundation](https://cncf.io/) (CNCF). Please consider joining the CNCF if you are an organization that wants to take an active role in supporting the growth and evolution of the cloud native ecosystem. 
+Volcano is an incubating project of the [Cloud Native Computing Foundation](https://cncf.io/) (CNCF). Please consider joining the CNCF if you are an organization that wants to take an active role in supporting the growth and evolution of the cloud native ecosystem.
 
 ## Overall Architecture
 
@@ -46,7 +45,6 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 - [Improving Performance of Deep Learning Workloads With Volcano @ KubeCon 2019 NA](https://sched.co/UaZi)
 - [Batch Capability of Kubernetes Intro @ KubeCon 2019 NA](https://sched.co/Uajv)
 - [Intro: Kubernetes Batch Scheduling @ KubeCon 2019 EU](https://sched.co/MPi7)
-
 
 ## Ecosystem
 
@@ -64,12 +62,12 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 
 - Kubernetes 1.12+ with CRD support
 
-
 You can try Volcano by one of the following two ways.
 
-Note: 
-* For Kubernetes v1.17+ use CRDs under config/crd/bases (recommended)
-* For Kubernetes versions < v1.16 use CRDs under config/crd/v1beta1 (deprecated)
+Note:
+
+- For Kubernetes v1.17+ use CRDs under config/crd/volcano/bases (recommended)
+- For Kubernetes versions =< v1.16 use CRDs under config/crd/volcano/v1beta1 (deprecated)
 
 ### Install with YAML files
 
@@ -80,7 +78,6 @@ kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/ins
 ```
 
 Enjoy! Volcano will create the following resources in `volcano-system` namespace.
-
 
 ```
 NAME                                       READY   STATUS      RESTARTS   AGE
@@ -135,10 +132,10 @@ kubectl create -f _output/release/volcano-monitoring-latest.yaml
 | Volcano HEAD (master) | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               |✓               |✓               |
 
 Key:
-* `✓` Volcano and the Kubernetes version are exactly compatible.
-* `+` Volcano has features or API objects that may not be present in the Kubernetes version.
-* `-` The Kubernetes version has features or API objects that Volcano can't use.
 
+- `✓` Volcano and the Kubernetes version are exactly compatible.
+- `+` Volcano has features or API objects that may not be present in the Kubernetes version.
+- `-` The Kubernetes version has features or API objects that Volcano can't use.
 
 ## Meeting
 
@@ -150,6 +147,7 @@ Community meeting for Europe is ongoing on demand now. If you have some ideas or
 in the [slack](https://cloud-native.slack.com/archives/C011GJDQS0N). Maintainers will contact with you and book an open meeting for that.
 
 Resources:
+
 - [Meeting notes and agenda](https://docs.google.com/document/d/1YLbF8zjZBiR9PbXQPB22iuc_L0Oui5A1lddVfRnZrqs/edit)
 - [Meeting link](https://zoom.us/j/91804791393)
 - [Meeting Calendar](https://calendar.google.com/calendar/b/1/embed?src=volcano.sh.bot@gmail.com) | [Subscribe](https://calendar.google.com/calendar/b/1?cid=dm9sY2Fuby5zaC5ib3RAZ21haWwuY29t)
