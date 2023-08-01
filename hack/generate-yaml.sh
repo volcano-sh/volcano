@@ -80,7 +80,7 @@ fi
 # Step2. update helm templates from config dir
 HELM_TEMPLATES_DIR=${VK_ROOT}/installer/helm/chart/volcano/templates
 HELM_VOLCANO_CRD_DIR=${VK_ROOT}/installer/helm/chart/volcano/crd
-HELM_JOBFLOW_CRD_DIR=${VK_ROOT}/installer/helm/chart/jobflow/crd
+HELM_JOBFLOW_CRD_DIR=${VK_ROOT}/installer/helm/chart/volcano/charts/jobflow/crd
 VOLCANO_CRD_DIR=${VK_ROOT}/config/crd/volcano
 JOBFLOW_CRD_DIR=${VK_ROOT}/config/crd/jobflow
 echo Updating templates in $HELM_TEMPLATES_DIR
@@ -124,7 +124,6 @@ fi
 cat ${VK_ROOT}/installer/namespace.yaml > ${DEPLOYMENT_FILE}
 
 # Volcano
-${HELM_BIN_DIR}/helm dependency update ${VK_ROOT}/installer/helm/chart/volcano 
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
       -s templates/admission.yaml \
@@ -139,7 +138,7 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       >> ${DEPLOYMENT_FILE}
 
 # JobFlow
-${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/jobflow --namespace volcano-system \
+${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano/charts/jobflow --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
       -s templates/flow_v1alpha1_jobflows.yaml \
       -s templates/flow_v1alpha1_jobtemplates.yaml \

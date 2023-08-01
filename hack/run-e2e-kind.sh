@@ -54,7 +54,6 @@ function install-volcano {
   kubectl apply -f installer/namespace.yaml
 
   echo "Install volcano chart with crd version $crd_version"
-  helm dependency update installer/helm/chart/volcano
   helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace volcano-system --kubeconfig ${KUBECONFIG} \
     --set basic.image_pull_policy=IfNotPresent \
     --set basic.image_tag_version=${TAG} \
