@@ -81,7 +81,7 @@ func (pg *pgcontroller) Name() string {
 func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.kubeClient = opt.KubeClient
 	pg.vcClient = opt.VolcanoClient
-	pg.workers = opt.WorkerNum
+	pg.workers = opt.WorkerThreadsForPG
 
 	pg.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 

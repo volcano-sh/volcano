@@ -84,7 +84,7 @@ func Run(opt *options.ServerOption) error {
 	// add a uniquifier so that two processes on the same host don't accidentally both become active
 	id := hostname + "_" + string(uuid.NewUUID())
 
-	rl, err := resourcelock.New(resourcelock.ConfigMapsLeasesResourceLock,
+	rl, err := resourcelock.New(resourcelock.LeasesResourceLock,
 		opt.LockObjectNamespace,
 		"vc-controller-manager",
 		leaderElectionClient.CoreV1(),
@@ -124,6 +124,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.VolcanoClient = vcclientset.NewForConfigOrDie(config)
 	controllerOpt.SharedInformerFactory = informers.NewSharedInformerFactory(controllerOpt.KubeClient, 0)
 	controllerOpt.InheritOwnerAnnotations = opt.InheritOwnerAnnotations
+	controllerOpt.WorkerThreadsForPG = opt.WorkerThreadsForPG
 
 	return func(ctx context.Context) {
 		framework.ForeachController(func(c framework.Controller) {

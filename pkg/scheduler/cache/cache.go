@@ -501,8 +501,8 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	sc.informerFactory = informerFactory
 	mySchedulerPodName, c := getMultiSchedulerInfo()
 
-	// explictly register informers to the factory, otherwise resources listers cannot get anything
-	// even with no erorr returned. `Namespace` informer is used by `InterPodAffinity` plugin,
+	// explicitly register informers to the factory, otherwise resources listers cannot get anything
+	// even with no error returned. `Namespace` informer is used by `InterPodAffinity` plugin,
 	// `SelectorSpread` and `PodTopologySpread` plugins uses the following four so far.
 	informerFactory.Core().V1().Namespaces().Informer()
 	informerFactory.Core().V1().Services().Informer()

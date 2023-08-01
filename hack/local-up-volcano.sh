@@ -40,7 +40,6 @@ function prepare {
 function install-volcano {
   # TODO: add a graceful way waiting for all crd ready
   kubectl create namespace volcano-system 
-  helm dependency build
   helm install volcano ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
   --set basic.image_tag_version=${TAG} \
   --set basic.image_pull_policy=IfNotPresent 

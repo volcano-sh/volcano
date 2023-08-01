@@ -574,7 +574,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		PodGroup: ji.PodGroup.Clone(),
 
 		TaskStatusIndex:       map[TaskStatus]tasksMap{},
-		TaskMinAvailable:      ji.TaskMinAvailable,
+		TaskMinAvailable:      make(map[TaskID]int32),
 		TaskMinAvailableTotal: ji.TaskMinAvailableTotal,
 		Tasks:                 tasksMap{},
 		Preemptable:           ji.Preemptable,
@@ -584,6 +584,9 @@ func (ji *JobInfo) Clone() *JobInfo {
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
 
+	for task, minAvailable := range ji.TaskMinAvailable {
+		info.TaskMinAvailable[task] = minAvailable
+	}
 	for _, task := range ji.Tasks {
 		info.AddTaskInfo(task.Clone())
 	}
@@ -653,13 +656,13 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason string, msg string) 
 
 	msg = ji.JobFitErrors
 	switch status := ctx.Status; status {
-	case Allocated, Pipelined:
+	case Allocated:
 		// Pod is schedulable
 		msg = fmt.Sprintf("Pod %s/%s can possibly be assigned to %s", taskInfo.Namespace, taskInfo.Name, ctx.NodeName)
-		if status == Pipelined {
-			msg += " once resource is released"
-		}
 		return PodReasonSchedulable, msg
+	case Pipelined:
+		msg = fmt.Sprintf("Pod %s/%s can possibly be assigned to %s, once resource is released", taskInfo.Namespace, taskInfo.Name, ctx.NodeName)
+		return PodReasonUnschedulable, msg
 	case Pending:
 		if fe := ji.NodesFitErrors[tid]; fe != nil {
 			// Pod is not schedulable
