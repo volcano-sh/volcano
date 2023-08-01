@@ -24,15 +24,13 @@ JobFlow helps migrating AI, BigData, HPC workloads to the cloud-native world. Th
 - Some jobs need to depend on the completion of the previous job or other status when running, etc. Otherwise, the correct result cannot be calculated.
 - Sometimes inter-job dependencies also require diverse dependency types, such as conditional dependencies, circular dependencies, probes, and so on.
 
-![jobflow-2.jpg](../images/jobflow-2.jpg)
+![jobflow-1.png](../images/jobflow-1.png)
 
 ## Design
 
-![jobflow-1.png](../images/jobflow-1.png)
+![jobflow-2.png](../images/jobflow-2.png)
 
-![jobflow-3.png](../images/jobflow-3.png)
-
-The blue part is the component of k8s itself, the green and brown are the components of volcano, and the yellow is the crd resource of volcano.
+The blue part is the components of k8s itself, the orange is the existing definition of Volcano, and the red is the new definition of JobFlow.
 
 **jobflow job submission complete process**：
 
@@ -58,7 +56,7 @@ Deleting a jobflow when the jobflow is in a non-complete state will be intercept
 
 ### Controller
 
-![jobflow-4.png](../images/jobflow-4.png)
+![jobflow-3.png](../images/jobflow-3.png)
 
 ### Webhook
 
