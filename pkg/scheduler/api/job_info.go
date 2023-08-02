@@ -574,7 +574,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		PodGroup: ji.PodGroup.Clone(),
 
 		TaskStatusIndex:       map[TaskStatus]tasksMap{},
-		TaskMinAvailable:      make(map[TaskID]int32),
+		TaskMinAvailable:      make(map[TaskID]int32, len(ji.TaskMinAvailable)),
 		TaskMinAvailableTotal: ji.TaskMinAvailableTotal,
 		Tasks:                 tasksMap{},
 		Preemptable:           ji.Preemptable,
