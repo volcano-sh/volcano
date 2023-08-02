@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 )
@@ -71,7 +72,10 @@ func predicate(w http.ResponseWriter, r *http.Request) {
 
 	resp := &extender.PredicateResponse{}
 	if req.Task.BestEffort && len(req.Node.Tasks) > 10 {
-		resp.ErrorMessage = "Too many tasks on the node"
+		sts := api.Status{}
+		sts.Code = api.Unschedulable
+		sts.Reason = "Too many tasks on the node"
+		resp.Status = append(resp.Status, &sts)
 	}
 	response, err := json.Marshal(resp)
 	if err != nil {
