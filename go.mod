@@ -19,6 +19,7 @@ require (
 	github.com/prometheus/common v0.37.0
 	github.com/spf13/cobra v1.6.0
 	github.com/spf13/pflag v1.0.5
+	github.com/stretchr/testify v1.8.3
 	go.uber.org/automaxprocs v1.4.0
 	golang.org/x/crypto v0.1.0
 	golang.org/x/time v0.3.0
@@ -86,6 +87,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/selinux v1.10.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect

@@ -19,6 +19,7 @@ package volumebinding
 import (
 	"context"
 	"testing"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -784,6 +785,9 @@ func TestVolumeBinding(t *testing.T) {
 		},
 	}
 
+	options.ServerOpts = &options.ServerOption{
+		EnableCSIStorage: true,
+	}
 	for _, item := range table {
 		t.Run(item.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
