@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -381,9 +382,12 @@ func New(plArgs runtime.Object, fh framework.Handle, fts feature.Features) (fram
 	pvInformer := fh.SharedInformerFactory().Core().V1().PersistentVolumes()
 	storageClassInformer := fh.SharedInformerFactory().Storage().V1().StorageClasses()
 	csiNodeInformer := fh.SharedInformerFactory().Storage().V1().CSINodes()
-	capacityCheck := CapacityCheck{
-		CSIDriverInformer:          fh.SharedInformerFactory().Storage().V1().CSIDrivers(),
-		CSIStorageCapacityInformer: fh.SharedInformerFactory().Storage().V1().CSIStorageCapacities(),
+	var capacityCheck *CapacityCheck
+	if options.ServerOpts.EnableCSIStorage {
+		capacityCheck = &CapacityCheck{
+			CSIDriverInformer:          fh.SharedInformerFactory().Storage().V1().CSIDrivers(),
+			CSIStorageCapacityInformer: fh.SharedInformerFactory().Storage().V1beta1().CSIStorageCapacities(),
+		}
 	}
 	binder := NewVolumeBinder(fh.ClientSet(), podInformer, nodeInformer, csiNodeInformer, pvcInformer, pvInformer, storageClassInformer, capacityCheck, time.Duration(args.BindTimeoutSeconds)*time.Second)
 
