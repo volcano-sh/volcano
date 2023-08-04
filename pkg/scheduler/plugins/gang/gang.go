@@ -144,8 +144,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	pipelinedFn := func(obj interface{}) int {
 		ji := obj.(*api.JobInfo)
-		occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
-		if ji.CheckTaskPipelined() && occupied >= ji.MinAvailable {
+		if ji.CheckTaskPipelined() && ji.Pipelined(){
 			return util.Permit
 		}
 		return util.Reject

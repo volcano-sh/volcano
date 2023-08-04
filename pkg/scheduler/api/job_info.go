@@ -849,9 +849,23 @@ func (ji *JobInfo) ValidTaskNum() int32 {
 func (ji *JobInfo) Ready() bool {
 	occupied := ji.ReadyTaskNum()
 
-	return occupied >= ji.MinAvailable
+	if occupied < ji.MinAvailable {
+		klog.V(4).Infof("Job %s/%s not Ready, because ready num(%d) less than MinAvailable(%d)", ji.Namespace, ji.Name, occupied, ji.MinAvailable)
+		return false
+	}
+	return true
 }
 
+// Pipelined returns whether job is Pipelined for run
+func (ji *JobInfo) Pipelined() bool {
+	occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
+
+	if occupied < ji.MinAvailable {
+		klog.V(4).Infof("Job %s/%s not Pipelined, because Pipeline num(%d) less than MinAvailable(%d)", ji.Namespace, ji.Name, occupied, ji.MinAvailable)
+		return false
+	}
+	return true
+}
 // IsPending returns whether job is in pending status
 func (ji *JobInfo) IsPending() bool {
 	return ji.PodGroup == nil ||
