@@ -33,6 +33,7 @@ type ControllerOption struct {
 	MaxRequeueNum         int
 
 	InheritOwnerAnnotations bool
+	WorkerThreadsForPG      uint32
 }
 
 // Controller is the interface of all controllers.
