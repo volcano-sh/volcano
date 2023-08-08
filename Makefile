@@ -195,5 +195,5 @@ CONTROLLER_GEN=$(shell which controller-gen)
 endif
 
 update-development-yaml:
-	make generate-yaml TAG=latest RELEASE_DIR=installer
-	mv installer/volcano-latest.yaml installer/volcano-development.yaml
+	make generate-yaml TAG=v1.8.0 RELEASE_DIR=installer
+	mv installer/volcano-v1.8.0.yaml installer/volcano-development.yaml
