@@ -724,20 +724,21 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	}
 
 	for _, task := range job.Spec.Tasks {
-		if task.MinAvailable == nil {
-			continue
+		cnt := task.Replicas
+		if task.MinAvailable != nil {
+			cnt = *task.MinAvailable
 		}
 
 		if taskMember, ok := pg.Spec.MinTaskMember[task.Name]; !ok {
 			pgShouldUpdate = true
-			pg.Spec.MinTaskMember[task.Name] = *task.MinAvailable
+			pg.Spec.MinTaskMember[task.Name] = cnt
 		} else {
-			if taskMember == *task.MinAvailable {
+			if taskMember == cnt {
 				continue
 			}
 
 			pgShouldUpdate = true
-			pg.Spec.MinTaskMember[task.Name] = *task.MinAvailable
+			pg.Spec.MinTaskMember[task.Name] = cnt
 		}
 	}
 
