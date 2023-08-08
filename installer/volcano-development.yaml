@@ -150,8 +150,8 @@ spec:
             - --port=8443
             - -v=4
             - 2>&1
-          image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: Always
+          image: volcanosh/vc-webhook-manager:v1.8.0
+          imagePullPolicy: IfNotPresent
           name: admission
           volumeMounts:
             - mountPath: /admission.local.config/certificates
@@ -185,8 +185,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
-          image: volcanosh/vc-webhook-manager:latest
-          imagePullPolicy: Always
+          image: volcanosh/vc-webhook-manager:v1.8.0
+          imagePullPolicy: IfNotPresent
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
 ---
@@ -8619,14 +8619,14 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
           - name: volcano-controllers
-            image: volcanosh/vc-controller-manager:latest
+            image: volcanosh/vc-controller-manager:v1.8.0
             args:
               - --logtostderr
               - --enable-healthz=true
               - --leader-elect=false
               - -v=4
               - 2>&1
-            imagePullPolicy: Always
+            imagePullPolicy: IfNotPresent
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
@@ -8787,7 +8787,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-scheduler
-          image: volcanosh/vc-scheduler:latest
+          image: volcanosh/vc-scheduler:v1.8.0
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
@@ -8796,7 +8796,7 @@ spec:
             - --leader-elect=false
             - -v=3
             - 2>&1
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           volumeMounts:
             - name: scheduler-config
               mountPath: /volcano.scheduler

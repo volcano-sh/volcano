@@ -6,8 +6,8 @@ basic:
   admission_config_file: "config/volcano-admission.conf"
   scheduler_config_file: "config/volcano-scheduler.conf"
   image_pull_secret: ""
-  image_pull_policy: "Always"
-  image_tag_version: "latest"
+  image_pull_policy: "IfNotPresent"
+  image_tag_version: "v1.8.0"
   admission_port: 8443
 custom:
   metrics_enable: false
