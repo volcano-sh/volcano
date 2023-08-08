@@ -601,7 +601,8 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 }
 
 // PredicateFn invoke predicate function of the plugins
-func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
+func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+	predicateStatus := make([]*api.Status, 0)
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledPredicate) {
@@ -611,13 +612,14 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 			if !found {
 				continue
 			}
-			err := pfn(task, node)
+			status, err := pfn(task, node)
+			predicateStatus = append(predicateStatus, status...)
 			if err != nil {
-				return err
+				return predicateStatus, err
 			}
 		}
 	}
-	return nil
+	return predicateStatus, nil
 }
 
 // PrePredicateFn invoke predicate function of the plugins

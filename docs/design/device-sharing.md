@@ -26,7 +26,26 @@ type Devices interface {
 	//HasDeviceRequest checks if the 'pod' request this device
 	HasDeviceRequest(pod *v1.Pod) bool
 	//FiltreNode checks if the 'pod' fit in current node
-	FilterNode(pod *v1.Pod) (bool, error)
+	// The first return value represents the filtering result, and the value range is "0, 1, 2, 3"
+	// 0: Success
+	// Success means that plugin ran correctly and found pod schedulable.
+
+	// 1: Error
+	// Error is used for internal plugin errors, unexpected input, etc.
+
+	// 2: Unschedulable
+	// Unschedulable is used when a plugin finds a pod unschedulable. The scheduler might attempt to
+	// preempt other pods to get this pod scheduled. Use UnschedulableAndUnresolvable to make the
+	// scheduler skip preemption.
+	// The accompanying status message should explain why the pod is unschedulable.
+
+	// 3: UnschedulableAndUnresolvable
+	// UnschedulableAndUnresolvable is used when a plugin finds a pod unschedulable and
+	// preemption would not change anything. Plugins should return Unschedulable if it is possible
+	// that the pod can get scheduled with preemption.
+	// The accompanying status message should explain why the pod is unschedulable.
+	FilterNode(pod *v1.Pod) (int, string, error)
+	
 	//Allocate action in predicate
 	Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error
 	//Release action in predicate

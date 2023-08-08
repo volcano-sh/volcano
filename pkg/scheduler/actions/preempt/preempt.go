@@ -203,13 +203,28 @@ func preempt(
 	predicateHelper util.PredicateHelper,
 ) (bool, error) {
 	assigned := false
-
 	allNodes := ssn.NodeList
-
 	if err := ssn.PrePredicateFn(preemptor); err != nil {
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
-	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateFn, true)
+
+	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+		// Allows scheduling to nodes that are in Success or Unschedulable state after filtering by predicate.
+		var statusSets util.StatusSets
+		statusSets, err := ssn.PredicateFn(task, node)
+		if err != nil {
+			return nil, fmt.Errorf("preempt predicates failed for task <%s/%s> on node <%s>: %v",
+				task.Namespace, task.Name, node.Name, err)
+		}
+
+		if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
+			return nil, fmt.Errorf("predicates failed in preempt for task <%s/%s> on node <%s>, status is not success or unschedulable",
+				task.Namespace, task.Name, node.Name)
+		}
+		return nil, nil
+	}
+
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, predicateFn, true)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 

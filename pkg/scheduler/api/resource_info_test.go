@@ -19,6 +19,7 @@ package api
 import (
 	"math"
 	"reflect"
+	"sort"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -1256,12 +1257,12 @@ func TestResource_LessEqualResource(t *testing.T) {
 	testsForDefaultZero := []struct {
 		resource1 *Resource
 		resource2 *Resource
-		expected  string
+		expected  []string
 	}{
 		{
 			resource1: &Resource{},
 			resource2: &Resource{},
-			expected:  "",
+			expected:  []string{},
 		},
 		{
 			resource1: &Resource{},
@@ -1270,7 +1271,7 @@ func TestResource_LessEqualResource(t *testing.T) {
 				Memory:          2000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
 			},
-			expected: "",
+			expected: []string{},
 		},
 		{
 			resource1: &Resource{
@@ -1279,7 +1280,7 @@ func TestResource_LessEqualResource(t *testing.T) {
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
 			},
 			resource2: &Resource{},
-			expected:  "Insufficient cpu",
+			expected:  []string{"cpu", "memory", "scalar.test/scalar1", "hugepages-test"},
 		},
 		{
 			resource1: &Resource{
@@ -1292,7 +1293,7 @@ func TestResource_LessEqualResource(t *testing.T) {
 				Memory:          8000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
 			},
-			expected: "",
+			expected: []string{},
 		},
 		{
 			resource1: &Resource{
@@ -1305,7 +1306,7 @@ func TestResource_LessEqualResource(t *testing.T) {
 				Memory:          8000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
 			},
-			expected: "",
+			expected: []string{},
 		},
 		{
 			resource1: &Resource{
@@ -1318,7 +1319,7 @@ func TestResource_LessEqualResource(t *testing.T) {
 				Memory:          8000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
 			},
-			expected: "",
+			expected: []string{},
 		},
 		{
 			resource1: &Resource{
@@ -1331,7 +1332,7 @@ func TestResource_LessEqualResource(t *testing.T) {
 				Memory:          8000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
 			},
-			expected: "Insufficient scalar.test/scalar1",
+			expected: []string{"scalar.test/scalar1"},
 		},
 		{
 			resource1: &Resource{
@@ -1344,19 +1345,19 @@ func TestResource_LessEqualResource(t *testing.T) {
 				Memory:          8000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4000, "hugepages-test": 5000},
 			},
-			expected: "Insufficient cpu",
+			expected: []string{"cpu"},
 		},
 	}
 
 	testsForDefaultInfinity := []struct {
 		resource1 *Resource
 		resource2 *Resource
-		expected  string
+		expected  []string
 	}{
 		{
 			resource1: &Resource{},
 			resource2: &Resource{},
-			expected:  "",
+			expected:  []string{},
 		},
 		{
 			resource1: &Resource{},
@@ -1365,7 +1366,7 @@ func TestResource_LessEqualResource(t *testing.T) {
 				Memory:          2000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
 			},
-			expected: "",
+			expected: []string{},
 		},
 		{
 			resource1: &Resource{
@@ -1374,18 +1375,22 @@ func TestResource_LessEqualResource(t *testing.T) {
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000, "hugepages-test": 2000},
 			},
 			resource2: &Resource{},
-			expected:  "Insufficient cpu",
+			expected:  []string{"cpu", "memory"},
 		},
 	}
 
 	for _, test := range testsForDefaultZero {
-		_, reason := test.resource1.LessEqualWithReason(test.resource2, Zero)
+		_, reason := test.resource1.LessEqualWithResourcesName(test.resource2, Zero)
+		sort.Strings(test.expected)
+		sort.Strings(reason)
 		if !reflect.DeepEqual(test.expected, reason) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, reason)
 		}
 	}
 	for caseID, test := range testsForDefaultInfinity {
-		_, reason := test.resource1.LessEqualWithReason(test.resource2, Infinity)
+		_, reason := test.resource1.LessEqualWithResourcesName(test.resource2, Infinity)
+		sort.Strings(test.expected)
+		sort.Strings(reason)
 		if !reflect.DeepEqual(test.expected, reason) {
 			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, reason)
 		}

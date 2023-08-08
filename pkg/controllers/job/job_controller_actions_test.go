@@ -20,12 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
-	"testing"
-
 	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"reflect"
+	"testing"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingapi "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -261,6 +260,109 @@ func TestSyncJobFunc(t *testing.T) {
 			Plugins:      []string{"svc", "ssh", "env"},
 			ExpectVal:    nil,
 		},
+		{
+			Name: "SyncJob with dependsOn job can't find the dependent task",
+			/*
+				Work dependsOn Master task, preempt actions causes controller deadlock
+				   controller                master,work             scheduler
+				       |                           |  <---preempt-----  |
+				       |                           |  <---kill work---  |
+				       | ----watch work kill---->  |                    |
+					   |                           |  <---kill master-- |
+				       | ----create work pods--->  |                    |
+				       | --wait master running-->  |                    |
+				       |                           |                    |
+					   | ---watch master kill--->  |                    |
+				       | --push master to queue->  |                    |
+				       | -wait process to create-> |                    |
+			*/
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "100",
+					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "master",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+						{
+							Name:     "work",
+							Replicas: 3,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+							DependsOn: &v1alpha1.DependsOn{
+								Name: []string{"master"},
+							},
+						},
+					},
+				},
+				Status: v1alpha1.JobStatus{
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Pending,
+					},
+				},
+			},
+			PodGroup: &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
+					Namespace: namespace,
+				},
+				Spec: schedulingapi.PodGroupSpec{
+					MinResources:  &v1.ResourceList{},
+					MinTaskMember: map[string]int32{},
+				},
+				Status: schedulingapi.PodGroupStatus{
+					Phase: schedulingapi.PodGroupInqueue,
+				},
+			},
+			PodRetainPhase: state.PodRetainPhaseNone,
+			UpdateStatus:   nil,
+			JobInfo: &apis.JobInfo{
+				Namespace: namespace,
+				Name:      "jobinfo1",
+				Pods: map[string]map[string]*v1.Pod{
+					"work": {
+						"job1-work-0": buildPod(namespace, "job1-work-0", v1.PodRunning, nil),
+						"job1-work-1": buildPod(namespace, "job1-work-1", v1.PodRunning, nil),
+					},
+				},
+			},
+			Pods: map[string]*v1.Pod{
+				"job1-work-0": buildPod(namespace, "job1-work-0", v1.PodRunning, nil),
+				"job1-work-1": buildPod(namespace, "job1-work-1", v1.PodRunning, nil),
+			},
+			TotalNumPods: 4,
+			Plugins:      []string{"svc", "ssh", "env"},
+			ExpectVal:    nil,
+		},
 	}
 	for i, testcase := range testcases {
 
@@ -282,6 +384,7 @@ func TestSyncJobFunc(t *testing.T) {
 			testcase.JobInfo.Job.Spec.Plugins = jobPlugins
 
 			fakeController.pgInformer.Informer().GetIndexer().Add(testcase.PodGroup)
+			fakeController.vcClient.SchedulingV1beta1().PodGroups(testcase.PodGroup.Namespace).Create(context.TODO(), testcase.PodGroup, metav1.CreateOptions{})
 
 			for _, pod := range testcase.Pods {
 				_, err := fakeController.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})

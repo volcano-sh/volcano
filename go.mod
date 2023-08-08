@@ -3,7 +3,7 @@ module volcano.sh/volcano
 go 1.19
 
 require (
-	github.com/agiledragon/gomonkey/v2 v2.1.0
+	github.com/agiledragon/gomonkey/v2 v2.2.0
 	github.com/elastic/go-elasticsearch/v7 v7.17.7
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/golang/mock v1.6.0

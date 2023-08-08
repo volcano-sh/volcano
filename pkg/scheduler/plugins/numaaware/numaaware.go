@@ -112,14 +112,16 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 		},
 	})
 
-	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
+	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+		predicateStatus := make([]*api.Status, 0)
+		numaStatus := &api.Status{}
 		if v1qos.GetPodQOS(task.Pod) != v1.PodQOSGuaranteed {
 			klog.V(3).Infof("task %s isn't Guaranteed pod", task.Name)
-			return nil
+			return predicateStatus, nil
 		}
 
 		if fit, err := filterNodeByPolicy(task, node, pp.nodeResSets); !fit {
-			return err
+			return predicateStatus, err
 		}
 
 		resNumaSets := pp.nodeResSets[node.Name].Clone()
@@ -130,7 +132,11 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 			providersHints := policy.AccumulateProvidersHints(&container, node.NumaSchedulerInfo, resNumaSets, pp.hintProviders)
 			hit, admit := taskPolicy.Predicate(providersHints)
 			if !admit {
-				return fmt.Errorf("plugin %s predicates failed for task %s container %s on node %s",
+				numaStatus.Code = api.UnschedulableAndUnresolvable
+				numaStatus.Reason = fmt.Sprintf("plugin %s predicates failed for task %s container %s on node %s",
+					pp.Name(), task.Name, container.Name, node.Name)
+				predicateStatus = append(predicateStatus, numaStatus)
+				return predicateStatus, fmt.Errorf("plugin %s predicates failed for task %s container %s on node %s",
 					pp.Name(), task.Name, container.Name, node.Name)
 			}
 
@@ -154,7 +160,9 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(4).Infof(" task %s's on node<%s> resAssignMap: %v",
 			task.Name, node.Name, pp.assignRes[task.UID][node.Name])
 
-		return nil
+		numaStatus.Code = api.Success
+		predicateStatus = append(predicateStatus, numaStatus)
+		return predicateStatus, nil
 	}
 
 	ssn.AddPredicateFn(pp.Name(), predicateFn)

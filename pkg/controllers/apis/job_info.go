@@ -40,11 +40,11 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Name:      ji.Name,
 		Job:       ji.Job,
 
-		Pods: make(map[string]map[string]*v1.Pod),
+		Pods: make(map[string]map[string]*v1.Pod, len(ji.Pods)),
 	}
 
 	for key, pods := range ji.Pods {
-		job.Pods[key] = make(map[string]*v1.Pod)
+		job.Pods[key] = make(map[string]*v1.Pod, len(pods))
 		for pn, pod := range pods {
 			job.Pods[key][pn] = pod
 		}

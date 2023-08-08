@@ -17,6 +17,7 @@ limitations under the License.
 package vgpu
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
 
@@ -177,17 +179,17 @@ func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) erro
 	return nil
 }
 
-func (gs *GPUDevices) FilterNode(pod *v1.Pod) (bool, error) {
+func (gs *GPUDevices) FilterNode(pod *v1.Pod) (int, string, error) {
 	klog.V(3).Infoln("4pdvgpuDeviceSharing:Into FitInPod", pod.Name)
 	if VGPUEnable {
 		fit, _, err := checkNodeGPUSharingPredicate(pod, gs, true)
-		if err != nil {
+		if err != nil || !fit {
 			klog.Errorln("deviceSharing err=", err.Error())
-			return fit, err
+			return devices.Unschedulable, fmt.Sprintf("4pdvgpuDeviceSharing %s", err.Error()), err
 		}
 	}
 	klog.V(3).Infoln("4pdvgpu DeviceSharing:FitInPod successed")
-	return true, nil
+	return devices.Success, "", nil
 }
 
 func (gs *GPUDevices) GetStatus() string {
