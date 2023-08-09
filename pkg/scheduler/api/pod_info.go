@@ -149,7 +149,7 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 	}
 
 	// if PodOverhead feature is supported, add overhead for running a pod
-	if pod.Spec.Overhead != nil && utilfeature.DefaultFeatureGate.Enabled(features.PodOverhead) {
+	if pod.Spec.Overhead != nil && utilfeature.DefaultFeatureGate.Enabled(features.PodSecurity) {
 		result.Add(NewResource(pod.Spec.Overhead))
 	}
 

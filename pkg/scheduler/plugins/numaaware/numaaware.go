@@ -250,7 +250,7 @@ func getNodeNumaNumForTask(nodeInfo []*api.NodeInfo, resAssignMap map[string]api
 
 func getNumaNodeCntForCPUID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) int {
 	mask, _ := bitmask.NewBitMask()
-	s := cpus.ToSlice()
+	s := cpus.List()
 
 	for _, cpuID := range s {
 		mask.Add(cpuDetails[cpuID].NUMANodeID)
@@ -281,7 +281,7 @@ func (pp *numaPlugin) OnSessionClose(ssn *framework.Session) {
 		resSet := pp.assignRes[taskID][nodeName]
 		for resName, set := range resSet {
 			if _, existed := allocatedResSet[nodeName][resName]; !existed {
-				allocatedResSet[nodeName][resName] = cpuset.NewCPUSet()
+				allocatedResSet[nodeName][resName] = cpuset.New()
 			}
 
 			allocatedResSet[nodeName][resName] = allocatedResSet[nodeName][resName].Union(set)

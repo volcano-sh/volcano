@@ -60,7 +60,7 @@ func Test_GetTopologyHints(t *testing.T) {
 				},
 			},
 			resNumaSets: api.ResNumaSets{
-				"cpu": cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+				"cpu": cpuset.New(0, 1, 2, 3, 4, 5, 6, 7),
 			},
 			expect: []policy.TopologyHint{
 				{
@@ -96,7 +96,7 @@ func Test_GetTopologyHints(t *testing.T) {
 				},
 			},
 			resNumaSets: api.ResNumaSets{
-				"cpu": cpuset.NewCPUSet(1, 2, 3, 4, 5, 6, 7),
+				"cpu": cpuset.New(1, 2, 3, 4, 5, 6, 7),
 			},
 			expect: []policy.TopologyHint{
 				{
@@ -125,7 +125,7 @@ func Test_GetTopologyHints(t *testing.T) {
 				},
 			},
 			resNumaSets: api.ResNumaSets{
-				"cpu": cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+				"cpu": cpuset.New(0, 1, 2, 3, 4, 5, 6, 7),
 			},
 			expect: []policy.TopologyHint{
 				{
@@ -147,7 +147,7 @@ func Test_GetTopologyHints(t *testing.T) {
 				},
 			},
 			resNumaSets: api.ResNumaSets{
-				"cpu": cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+				"cpu": cpuset.New(0, 1, 2, 3, 4, 5, 6, 7),
 			},
 			expect: []policy.TopologyHint{
 				{
@@ -169,7 +169,7 @@ func Test_GetTopologyHints(t *testing.T) {
 				},
 			},
 			resNumaSets: api.ResNumaSets{
-				"cpu": cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+				"cpu": cpuset.New(0, 1, 2, 3, 4, 5, 6, 7),
 			},
 			expect: []policy.TopologyHint{},
 		},
@@ -183,7 +183,7 @@ func Test_GetTopologyHints(t *testing.T) {
 				},
 			},
 			resNumaSets: api.ResNumaSets{
-				"cpu": cpuset.NewCPUSet(2, 3, 4, 5),
+				"cpu": cpuset.New(2, 3, 4, 5),
 			},
 			expect: []policy.TopologyHint{
 				{
@@ -225,7 +225,7 @@ func Test_Allocate(t *testing.T) {
 				},
 			},
 			resNumaSets: api.ResNumaSets{
-				"cpu": cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+				"cpu": cpuset.New(0, 1, 2, 3, 4, 5, 6, 7),
 			},
 			bestHit: &policy.TopologyHint{
 				NUMANodeAffinity: func() bitmask.BitMask {
@@ -234,7 +234,7 @@ func Test_Allocate(t *testing.T) {
 				}(),
 				Preferred: true,
 			},
-			expect: cpuset.NewCPUSet(0, 1, 2, 3),
+			expect: cpuset.New(0, 1, 2, 3),
 		},
 		{
 			name: "test-2",
@@ -246,7 +246,7 @@ func Test_Allocate(t *testing.T) {
 				},
 			},
 			resNumaSets: api.ResNumaSets{
-				"cpu": cpuset.NewCPUSet(1, 2, 3, 4, 5, 6, 7),
+				"cpu": cpuset.New(1, 2, 3, 4, 5, 6, 7),
 			},
 			bestHit: &policy.TopologyHint{
 				NUMANodeAffinity: func() bitmask.BitMask {
@@ -255,7 +255,7 @@ func Test_Allocate(t *testing.T) {
 				}(),
 				Preferred: true,
 			},
-			expect: cpuset.NewCPUSet(4, 5, 6, 7),
+			expect: cpuset.New(4, 5, 6, 7),
 		},
 		{
 			name: "test-3",
@@ -267,7 +267,7 @@ func Test_Allocate(t *testing.T) {
 				},
 			},
 			resNumaSets: api.ResNumaSets{
-				"cpu": cpuset.NewCPUSet(0, 1, 2, 3, 4, 5, 6, 7),
+				"cpu": cpuset.New(0, 1, 2, 3, 4, 5, 6, 7),
 			},
 			bestHit: &policy.TopologyHint{
 				NUMANodeAffinity: func() bitmask.BitMask {
@@ -276,7 +276,7 @@ func Test_Allocate(t *testing.T) {
 				}(),
 				Preferred: true,
 			},
-			expect: cpuset.NewCPUSet(0, 1, 2, 3, 4),
+			expect: cpuset.New(0, 1, 2, 3, 4),
 		},
 		{
 			name: "test-4",
@@ -288,7 +288,7 @@ func Test_Allocate(t *testing.T) {
 				},
 			},
 			resNumaSets: api.ResNumaSets{
-				"cpu": cpuset.NewCPUSet(1, 2, 3, 4, 5, 6, 7),
+				"cpu": cpuset.New(1, 2, 3, 4, 5, 6, 7),
 			},
 			bestHit: &policy.TopologyHint{
 				NUMANodeAffinity: func() bitmask.BitMask {
@@ -297,7 +297,7 @@ func Test_Allocate(t *testing.T) {
 				}(),
 				Preferred: true,
 			},
-			expect: cpuset.NewCPUSet(1, 4, 5, 6, 7),
+			expect: cpuset.New(1, 4, 5, 6, 7),
 		},
 		{
 			name: "test-5",
@@ -309,7 +309,7 @@ func Test_Allocate(t *testing.T) {
 				},
 			},
 			resNumaSets: api.ResNumaSets{
-				"cpu": cpuset.NewCPUSet(1, 2, 3, 4, 5, 6, 7),
+				"cpu": cpuset.New(1, 2, 3, 4, 5, 6, 7),
 			},
 			bestHit: &policy.TopologyHint{
 				NUMANodeAffinity: func() bitmask.BitMask {
@@ -318,7 +318,7 @@ func Test_Allocate(t *testing.T) {
 				}(),
 				Preferred: true,
 			},
-			expect: cpuset.NewCPUSet(),
+			expect: cpuset.New(),
 		},
 	}
 
