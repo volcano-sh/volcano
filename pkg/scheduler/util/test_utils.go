@@ -408,15 +408,15 @@ func (fvb *FakeVolumeBinder) GetPodVolumes(task *api.TaskInfo, node *v1.Node) (*
 	}
 	key := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
 	fvb.Actions[key] = []string{"GetPodVolumes"}
-	boundClaims, claimsToBind, unboundClaimsImmediate, err := fvb.volumeBinder.GetPodVolumes(task.Pod)
+	volumeClaims, err := fvb.volumeBinder.GetPodVolumeClaims(task.Pod)
 	if err != nil {
 		return nil, err
 	}
-	if len(unboundClaimsImmediate) > 0 {
-		return nil, fmt.Errorf("pod has unbound immediate PersistentVolumeClaims")
-	}
+	// if len(unboundClaimsImmediate) > 0 {
+	// 	return nil, fmt.Errorf("pod has unbound immediate PersistentVolumeClaims")
+	// }
 
-	podVolumes, reasons, err := fvb.volumeBinder.FindPodVolumes(task.Pod, boundClaims, claimsToBind, node)
+	podVolumes, reasons, err := fvb.volumeBinder.FindPodVolumes(task.Pod, volumeClaims, node)
 	if err != nil {
 		return nil, err
 	} else if len(reasons) > 0 {
