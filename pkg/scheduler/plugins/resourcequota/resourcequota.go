@@ -71,7 +71,8 @@ func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 					failedHard,
 				)
 				klog.V(4).Infof("enqueueable false for job: %s/%s, because :%s", job.Namespace, job.Name, msg)
-				ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), msg)
+				ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnenqueueable), msg)
+				job.JobFitErrors = "resource quota insufficient"
 				return util.Reject
 			}
 		}

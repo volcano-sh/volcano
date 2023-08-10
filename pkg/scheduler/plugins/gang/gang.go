@@ -179,17 +179,22 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			unreadyTaskCount = job.MinAvailable - schedulableTaskNum()
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 				unreadyTaskCount, len(job.Tasks), job.FitError())
-			job.JobFitErrors = msg
 
 			unScheduleJobCount++
 			metrics.RegisterJobRetries(job.Name)
+
+			reason := scheduling.NotEnoughResourcesReason
+			// if job is rejected to enqueue, record the reason with Unenqueueable, to distinguish from NotEnoughResources
+			if job.PodGroup.Status.Phase != scheduling.PodGroupInqueue {
+				reason = scheduling.UnEnqueueableReason
+			}
 
 			jc := &scheduling.PodGroupCondition{
 				Type:               scheduling.PodGroupUnschedulableType,
 				Status:             v1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 				TransitionID:       string(ssn.UID),
-				Reason:             v1beta1.NotEnoughResourcesReason,
+				Reason:             reason,
 				Message:            msg,
 			}
 
