@@ -40,6 +40,7 @@ const (
 type overcommitPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments  framework.Arguments
+	totalResource    *api.Resource
 	idleResource     *api.Resource
 	inqueueResource  *api.Resource
 	overCommitFactor float64
@@ -49,6 +50,7 @@ type overcommitPlugin struct {
 func New(arguments framework.Arguments) framework.Plugin {
 	return &overcommitPlugin{
 		pluginArguments:  arguments,
+		totalResource:    api.EmptyResource(),
 		idleResource:     api.EmptyResource(),
 		inqueueResource:  api.EmptyResource(),
 		overCommitFactor: defaultOverCommitFactor,
@@ -80,14 +82,13 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		op.overCommitFactor = defaultOverCommitFactor
 	}
 
+	op.totalResource.Add(ssn.TotalResource)
 	// calculate idle resources of total cluster, overcommit resources included
-	total := api.EmptyResource()
 	used := api.EmptyResource()
 	for _, node := range ssn.Nodes {
-		total.Add(node.Allocatable)
 		used.Add(node.Used)
 	}
-	op.idleResource = total.Clone().Multi(op.overCommitFactor).Sub(used)
+	op.idleResource = op.totalResource.Clone().Multi(op.overCommitFactor).Sub(used)
 
 	for _, job := range ssn.Jobs {
 		// calculate inqueue job resources
@@ -140,6 +141,7 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func (op *overcommitPlugin) OnSessionClose(ssn *framework.Session) {
+	op.totalResource = nil
 	op.idleResource = nil
 	op.inqueueResource = nil
 }
