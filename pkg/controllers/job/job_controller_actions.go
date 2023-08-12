@@ -19,7 +19,6 @@ package job
 import (
 	"context"
 	"fmt"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -38,7 +36,6 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
-	"volcano.sh/volcano/pkg/controllers/util"
 )
 
 var calMutex sync.Mutex
@@ -784,23 +781,7 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 		tasksPriority = append(tasksPriority, tp)
 	}
 
-	sort.Sort(tasksPriority)
-
-	minReq := v1.ResourceList{}
-	podCnt := int32(0)
-	for _, task := range tasksPriority {
-		for i := int32(0); i < task.Replicas; i++ {
-			if podCnt >= job.Spec.MinAvailable {
-				break
-			}
-
-			podCnt++
-			pod := &v1.Pod{
-				Spec: task.Template.Spec,
-			}
-			minReq = quotav1.Add(minReq, *util.GetPodQuotaUsage(pod))
-		}
-	}
+	minReq := tasksPriority.CalcPGMinResources(job.Spec.MinAvailable)
 
 	return &minReq
 }
