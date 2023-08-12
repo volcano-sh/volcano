@@ -10,7 +10,13 @@
 
 Nowadays there are min-members of both job and task.
 
-With this example yaml
+If task's min-available is null, webhook will patch it as task's replicas;
+
+And then, if job's min-available is null, webhook will patch job's min-available as sum of tasks' min-available
+
+Relative issue is at [PG minresource has some problems after PR#1459 #2921](https://github.com/volcano-sh/volcano/issues/2921), and PR is at [fix calculations of podgroup min resource #3057](https://github.com/volcano-sh/volcano/pull/3057)
+
+With this example yaml, master will have higher priority when sort them.
 
 ```yaml
 spec:
@@ -41,16 +47,16 @@ spec:
                   cpu: "100m"
 ```
 
-|job.minAvailable|master.minAvailable|work.minAvailable|current(minMember/CPU)|expect|
-|---|---|---|---|---|
-| 0 | - | 1 | 3/200m |3/200m|
-| 0 | 1 | 1 | 2/100m |2/150m|
-| 3 | - | 1 | 3/200m |3/200m|
-| 3 | 1 | - | 3/200m |3/250m|
-| 3 | 1 | 1 | 3/200m |3/200m|
-| 2 | 1 | 1 | 2/100m |2/150m|
-| 2 | - | 1 | 2/100m |2/100m|
-| 2 | 1 | - | 2/100m |2/100m|
+|job.minAvailable|master.minAvailable|work.minAvailable|current(minMember/CPU)|expect|explain|express|
+|---|---|---|--------|------|----------------|-----|
+| 0 | - | 1 | 3/200m |3/200m|2*master+worker| jobMinAvailable == sum(taskMinAvailable) |
+| 0 | 1 | 1 | 2/100m |2/150m|master+worker | jobMinAvailable == sum(taskMinAvailable)|
+| 3 | - | 1 | 3/200m |3/200m|2*master+worker| jobMinAvailable == sum(taskMinAvailable)|
+| 3 | 1 | - | 3/200m |3/250m|master+2*worker| jobMinAvailable == sum(taskMinAvailable)|
+| 3 | 1 | 1 | 3/200m |3/200m|master+worker+master | jobMinAvailable > sum(taskMinAvailable)|
+| 2 | 1 | 1 | 2/100m |2/150m|master+worker |jobMinAvailable = sum(taskMinAvailable)|
+| 2 | - | 1 | 2/100m |2/100m|2*master(todo) |jobMinAvailable < sum(taskMinAvailable)|
+| 2 | 1 | - | 2/100m |2/150m|master+worker(todo) |jobMinAvailable < sum(taskMinAvailable)|
 
 ## 1. job's MinAvailable is zero
 
