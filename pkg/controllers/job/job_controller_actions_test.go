@@ -384,6 +384,7 @@ func TestSyncJobFunc(t *testing.T) {
 			testcase.JobInfo.Job.Spec.Plugins = jobPlugins
 
 			fakeController.pgInformer.Informer().GetIndexer().Add(testcase.PodGroup)
+			fakeController.vcClient.SchedulingV1beta1().PodGroups(testcase.PodGroup.Namespace).Create(context.TODO(), testcase.PodGroup, metav1.CreateOptions{})
 
 			for _, pod := range testcase.Pods {
 				_, err := fakeController.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
