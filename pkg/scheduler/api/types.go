@@ -152,6 +152,11 @@ type Status struct {
 	Reason string
 }
 
+// String represents status string
+func (s Status) String() string {
+	return s.Reason
+}
+
 // ValidateExFn is the func declaration used to validate the result.
 type ValidateExFn func(interface{}) *ValidateResult
 
