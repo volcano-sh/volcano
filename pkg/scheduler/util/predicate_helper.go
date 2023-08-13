@@ -3,6 +3,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -144,4 +145,28 @@ func (s StatusSets) ContainsErrorSkipOrWait() bool {
 		}
 	}
 	return false
+}
+
+// Message return the message generated from StatusSets
+func (s StatusSets) Message() string {
+	if s == nil {
+		return ""
+	}
+	all := make([]string, 0, len(s))
+	for _, status := range s {
+		all = append(all, status.Reason)
+	}
+	return strings.Join(all, ",")
+}
+
+// Reasons return the reasons list
+func (s StatusSets) Reasons() []string {
+	if s == nil {
+		return nil
+	}
+	all := make([]string, 0, len(s))
+	for _, status := range s {
+		all = append(all, status.Reason)
+	}
+	return all
 }

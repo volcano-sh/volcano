@@ -405,8 +405,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				task.Namespace, task.Name, node.Name)
 			podsNumStatus := &api.Status{
 				Code: api.Unschedulable,
-				Reason: fmt.Sprintf("Task <%s/%s> on Node <%s> failed, reason: %s",
-					task.Namespace, task.Name, node.Name, api.NodePodNumberExceeded),
+				Reason: api.NodePodNumberExceeded,
 			}
 			predicateStatus = append(predicateStatus, podsNumStatus)
 		}
