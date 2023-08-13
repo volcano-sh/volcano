@@ -104,7 +104,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		var statusSets util.StatusSets
 		statusSets, err := ssn.PredicateFn(task, node)
 		if err != nil {
-			return nil, api.NewFitError(task, node, "predicate in allocation with error "+err.Error())
+			return nil, api.NewFitError(task, node, err.Error())
 		}
 
 		if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
