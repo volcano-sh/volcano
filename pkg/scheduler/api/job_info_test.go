@@ -273,7 +273,7 @@ func TestTaskSchedulingReason(t *testing.T) {
 			task.Status = Pending
 			job.TaskStatusIndex[Pending][task.UID] = task
 		}
-		job.JobFitErrors = job.FitError()
+		job.JobFitErrors = job.FitError(nil)
 
 		// assert
 		for uid, exp := range test.expected {

@@ -610,7 +610,7 @@ func (ji JobInfo) String() string {
 
 // FitError returns detailed information on why a job's task failed to fit on
 // each available node
-func (ji *JobInfo) FitError() string {
+func (ji *JobInfo) FitError(nodeMap map[string]*NodeInfo) string {
 	sortReasonsHistogram := func(reasons map[string]int) []string {
 		reasonStrings := []string{}
 		for k, v := range reasons {
@@ -618,6 +618,31 @@ func (ji *JobInfo) FitError() string {
 		}
 		sort.Strings(reasonStrings)
 		return reasonStrings
+	}
+
+	getUnavailableResources := func(nodeMap map[string]*NodeInfo, tasks tasksMap) string {
+		if nodeMap == nil {
+			return ""
+		}
+		var unavailableResources []string
+		seenResources := make(map[string]bool)
+		for uid := range tasks {
+			nodeName := tasks[uid].NodeName
+			if nodeName != "" {
+				taskResource := tasks[uid].InitResreq
+				nodeResource := nodeMap[nodeName].Allocatable
+				for _, rn := range taskResource.ResourceNames() {
+					if nodeResource.Get(rn) < taskResource.Get(rn) {
+						msg := fmt.Sprintf("Insufficient resource %s in %s: required %f available %f", rn.String(), nodeName, taskResource.Get(rn), nodeResource.Get(rn))
+						if !seenResources[msg] {
+							unavailableResources = append(unavailableResources, msg)
+							seenResources[msg] = true
+						}
+					}
+				}
+			}
+		}
+		return strings.Join(unavailableResources, ", ")
 	}
 
 	// Stat histogram for all tasks of the job
@@ -630,12 +655,13 @@ func (ji *JobInfo) FitError() string {
 
 	// Stat histogram for pending tasks only
 	reasons = make(map[string]int)
+	resourceError := getUnavailableResources(nodeMap, ji.Tasks)
 	for uid := range ji.TaskStatusIndex[Pending] {
 		reason, _ := ji.TaskSchedulingReason(uid)
 		reasons[reason]++
 	}
 	if len(reasons) > 0 {
-		reasonMsg += "; " + fmt.Sprintf("%s: %s", Pending.String(), strings.Join(sortReasonsHistogram(reasons), ", "))
+		reasonMsg += "; " + fmt.Sprintf("%s: %s", Pending.String(), strings.Join(sortReasonsHistogram(reasons), ", "+resourceError))
 	}
 	return reasonMsg
 }
