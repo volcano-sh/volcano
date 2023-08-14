@@ -33,6 +33,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
 	schedv1 "k8s.io/client-go/informers/scheduling/v1"
@@ -60,6 +61,7 @@ import (
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/features"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -501,9 +503,11 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	// `SelectorSpread` and `PodTopologySpread` plugins uses the following four so far.
 	informerFactory.Core().V1().Namespaces().Informer()
 	informerFactory.Core().V1().Services().Informer()
-	informerFactory.Core().V1().ReplicationControllers().Informer()
-	informerFactory.Apps().V1().ReplicaSets().Informer()
-	informerFactory.Apps().V1().StatefulSets().Informer()
+	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
+		informerFactory.Core().V1().ReplicationControllers().Informer()
+		informerFactory.Apps().V1().ReplicaSets().Informer()
+		informerFactory.Apps().V1().StatefulSets().Informer()
+	}
 
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
@@ -561,11 +565,11 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 			DeleteFunc: sc.DeleteCSINode,
 		},
 	)
-	sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
-	sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
 
 	var capacityCheck *volumescheduling.CapacityCheck
-	if options.ServerOpts.EnableCSIStorage {
+	if options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
+		sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
+		sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
 		capacityCheck = &volumescheduling.CapacityCheck{
 			CSIDriverInformer:          sc.csiDriverInformer,
 			CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
@@ -621,7 +625,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 			},
 		})
 
-	if options.ServerOpts.EnablePriorityClass {
+	if options.ServerOpts.EnablePriorityClass && utilfeature.DefaultFeatureGate.Enabled(features.PriorityClass) {
 		sc.pcInformer = informerFactory.Scheduling().V1().PriorityClasses()
 		sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddPriorityClass,
@@ -677,12 +681,14 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 
-	sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
-	sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddNumaInfoV1alpha1,
-		UpdateFunc: sc.UpdateNumaInfoV1alpha1,
-		DeleteFunc: sc.DeleteNumaInfoV1alpha1,
-	})
+	if utilfeature.DefaultFeatureGate.Enabled(features.ResourceTopology) {
+		sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
+		sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddNumaInfoV1alpha1,
+			UpdateFunc: sc.UpdateNumaInfoV1alpha1,
+			DeleteFunc: sc.DeleteNumaInfoV1alpha1,
+		})
+	}
 	return sc
 }
 
