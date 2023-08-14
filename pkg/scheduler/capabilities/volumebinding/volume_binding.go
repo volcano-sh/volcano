@@ -26,6 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/component-helpers/storage/ephemeral"
 	"k8s.io/klog/v2"
@@ -37,6 +38,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/names"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/features"
 )
 
 const (
@@ -377,7 +379,7 @@ func New(plArgs runtime.Object, fh framework.Handle, fts feature.Features) (fram
 	storageClassInformer := fh.SharedInformerFactory().Storage().V1().StorageClasses()
 	csiNodeInformer := fh.SharedInformerFactory().Storage().V1().CSINodes()
 	var capacityCheck *CapacityCheck
-	if options.ServerOpts.EnableCSIStorage {
+	if options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
 		capacityCheck = &CapacityCheck{
 			CSIDriverInformer:          fh.SharedInformerFactory().Storage().V1().CSIDrivers(),
 			CSIStorageCapacityInformer: fh.SharedInformerFactory().Storage().V1beta1().CSIStorageCapacities(),

@@ -21,8 +21,6 @@ import (
 	"reflect"
 	"testing"
 
-	"volcano.sh/volcano/cmd/scheduler/app/options"
-
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "k8s.io/api/core/v1"
@@ -30,12 +28,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/runtime"
+
+	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/features"
 )
 
 var (
@@ -596,6 +599,7 @@ func TestVolumeBinding(t *testing.T) {
 	options.ServerOpts = &options.ServerOption{
 		EnableCSIStorage: true,
 	}
+	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CSIStorage, true)()
 	for _, item := range table {
 		t.Run(item.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
