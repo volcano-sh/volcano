@@ -28,6 +28,14 @@ func TestPrometheusMetricsClient_NodeMetricsAvg(t *testing.T) {
 				t.Errorf("bearer token missmatch, token: %s", auth)
 				res.WriteHeader(http.StatusUnauthorized)
 			}
+		} else if strings.HasPrefix(req.URL.Path, "/both-auth") {
+			userName, password, ok := req.BasicAuth()
+			token := req.Header.Get("Authorization")
+			if !ok || userName != basicAuthUser || password != basicAuthPwd || !strings.HasPrefix(token, "Basic") {
+				t.Errorf("both auth missmatch, ok: %v, userName: %v, password: %v, token %v",
+					ok, userName, password, token)
+				res.WriteHeader(http.StatusUnauthorized)
+			}
 		}
 		res.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[]}}`))
 		res.WriteHeader(http.StatusOK)
@@ -44,5 +52,11 @@ func TestPrometheusMetricsClient_NodeMetricsAvg(t *testing.T) {
 	metricsClient, _ = NewPrometheusMetricsClient(testServer.URL+"/token-auth", conf)
 	if _, err := metricsClient.NodeMetricsAvg(context.TODO(), "node-name", "5m"); err != nil {
 		t.Errorf("Get Node Metric Avg with token auth err %v", err)
+	}
+	// test both basic auth and token auth
+	conf = map[string]string{"username": basicAuthUser, "password": basicAuthPwd, "bearertoken": bearerAuthToken}
+	metricsClient, _ = NewPrometheusMetricsClient(testServer.URL+"/both-auth", conf)
+	if _, err := metricsClient.NodeMetricsAvg(context.TODO(), "node-name", "5m"); err != nil {
+		t.Errorf("Get Node Metric Avg with both auth err %v", err)
 	}
 }
