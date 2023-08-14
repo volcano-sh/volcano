@@ -141,6 +141,18 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
+		jobMinResource := job.TotalRequest
+		queueAllocatedResource := api.NewResource(queue.Queue.Status.Allocated)
+		queueCapability := api.NewResource(queue.Queue.Spec.Capability)
+		var canTakeThisJob bool = true
+		for _, rn := range jobMinResource.ResourceNames() {
+			if jobMinResource.ScalarResources[rn]+queueAllocatedResource.ScalarResources[rn] < queueCapability.ScalarResources[rn] {
+				canTakeThisJob = false
+			}
+		}
+		if !canTakeThisJob {
+			klog.V(4).Infof("Queue <%s> is overused when considering job <%s>, ignore it.", queue.Name, job.Name)
+		}
 		if _, found = pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
