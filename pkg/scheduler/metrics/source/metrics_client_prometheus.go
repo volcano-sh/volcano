@@ -64,6 +64,9 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 		BearerToken:     p.conf["bearertoken"],
 		BearerTokenFile: p.conf["bearertokenfile"],
 	}
+	if tConf.HasBasicAuth() {
+		tConf.BearerToken, tConf.BearerTokenFile = "", ""
+	}
 	if tr, err = transport.HTTPWrappersForConfig(tConf, tr); err != nil {
 		klog.Errorf("Error while wrap http round tripper with error: %v\n", err)
 		return nil, err
