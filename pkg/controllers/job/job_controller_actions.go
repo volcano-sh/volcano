@@ -766,6 +766,7 @@ func (cc *jobcontroller) deleteJobPod(jobName string, pod *v1.Pod) error {
 func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 	// sort task by priorityClasses
 	var tasksPriority TasksPriority
+	totalMinAvailable := int32(0)
 	for _, task := range job.Spec.Tasks {
 		tp := TaskPriority{0, task}
 		pc := task.Template.Spec.PriorityClassName
@@ -779,8 +780,22 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 			}
 		}
 		tasksPriority = append(tasksPriority, tp)
+		if task.MinAvailable != nil { // actually, it can not be nil, because nil value will be patched in webhook
+			totalMinAvailable += *task.MinAvailable
+		} else {
+			totalMinAvailable += task.Replicas
+		}
 	}
 
+	// see docs https://github.com/volcano-sh/volcano/pull/2945
+	// 1. job.MinAvailable < sum(task.MinAvailable), regard podgroup's min resource as sum of the first minAvailable,
+	// according to https://github.com/volcano-sh/volcano/blob/c91eb07f2c300e4d5c826ff11a63b91781b3ac11/pkg/scheduler/api/job_info.go#L738-L740
+	if job.Spec.MinAvailable < totalMinAvailable {
+		minReq := tasksPriority.CalcFirstCountResources(job.Spec.MinAvailable)
+		return &minReq
+	}
+
+	// 2. job.MinAvailable >= sum(task.MinAvailable)
 	minReq := tasksPriority.CalcPGMinResources(job.Spec.MinAvailable)
 
 	return &minReq

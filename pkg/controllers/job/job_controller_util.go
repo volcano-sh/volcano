@@ -263,6 +263,23 @@ func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
 	return false
 }
 
+// CalcFirstCountResources return the first count tasks resource, sorted by priority
+func (p TasksPriority) CalcFirstCountResources(count int32) v1.ResourceList {
+	sort.Sort(p)
+	minReq := v1.ResourceList{}
+
+	for _, task := range p {
+		if count <= task.Replicas {
+			minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, count))
+			break
+		} else {
+			minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, task.Replicas))
+			count -= task.Replicas
+		}
+	}
+	return minReq
+}
+
 // CalcPGMinResources sums up all task's min available; if not enough, then fill up to jobMinAvailable via task's replicas
 func (p TasksPriority) CalcPGMinResources(jobMinAvailable int32) v1.ResourceList {
 	sort.Sort(p)
