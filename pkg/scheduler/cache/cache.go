@@ -1303,7 +1303,7 @@ func (sc *SchedulerCache) GetMetricsData() {
 	}
 	sc.Mutex.Unlock()
 
-	supportedPeriods := []string{"5m"}
+	supportedPeriods := []string{source.Period}
 	for node := range nodeUsageMap {
 		for _, period := range supportedPeriods {
 			nodeMetrics, err := client.NodeMetricsAvg(ctx, node, period)
