@@ -18,6 +18,7 @@ package podgroup
 
 import (
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	appinformers "k8s.io/client-go/informers/apps/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
@@ -34,6 +35,7 @@ import (
 	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/framework"
+	"volcano.sh/volcano/pkg/features"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -103,13 +105,14 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.pgLister = pg.pgInformer.Lister()
 	pg.pgSynced = pg.pgInformer.Informer().HasSynced
 
-	pg.rsInformer = pg.informerFactory.Apps().V1().ReplicaSets()
-	pg.rsSynced = pg.rsInformer.Informer().HasSynced
-	pg.rsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    pg.addReplicaSet,
-		UpdateFunc: pg.updateReplicaSet,
-	})
-
+	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
+		pg.rsInformer = pg.informerFactory.Apps().V1().ReplicaSets()
+		pg.rsSynced = pg.rsInformer.Informer().HasSynced
+		pg.rsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    pg.addReplicaSet,
+			UpdateFunc: pg.updateReplicaSet,
+		})
+	}
 	return nil
 }
 
