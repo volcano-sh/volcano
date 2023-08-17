@@ -47,20 +47,10 @@ func (a *cpuAccumulator) take(cpus cpuset.CPUSet) {
 	a.numCPUsNeeded -= cpus.Size()
 }
 
-// isSocketFree Returns true if the supplied socket is fully available in `topoDetails`.
-func (a *cpuAccumulator) isSocketFree(socketID int) bool {
-	return a.details.CPUsInSockets(socketID).Size() == a.topo.CPUsPerSocket()
-}
-
-// isCoreFree Returns true if the supplied core is fully available in `topoDetails`.
-func (a *cpuAccumulator) isCoreFree(coreID int) bool {
-	return a.details.CPUsInCores(coreID).Size() == a.topo.CPUsPerCore()
-}
-
 // freeSockets Returns free socket IDs as a slice sorted by:
 // - socket ID, ascending.
 func (a *cpuAccumulator) freeSockets() []int {
-	return a.details.Sockets().Intersection(a.details.CPUsInCores()).List()
+	return a.details.Sockets().Intersection(a.details.CPUs()).List()
 }
 
 // freeCores Returns core IDs as a slice sorted by:
@@ -71,14 +61,14 @@ func (a *cpuAccumulator) freeCores() []int {
 	socketIDs := a.details.Sockets().UnsortedList()
 	sort.Slice(socketIDs,
 		func(i, j int) bool {
-			iCores := a.details.CoresInSockets(socketIDs[i]).Intersection(a.details.CPUsInCores())
-			jCores := a.details.CoresInSockets(socketIDs[j]).Intersection(a.details.CPUsInCores())
+			iCores := a.details.CoresInSockets(socketIDs[i]).Intersection(a.details.CPUs())
+			jCores := a.details.CoresInSockets(socketIDs[j]).Intersection(a.details.CPUs())
 			return iCores.Size() < jCores.Size() || socketIDs[i] < socketIDs[j]
 		})
 
 	coreIDs := []int{}
 	for _, s := range socketIDs {
-		coreIDs = append(coreIDs, a.details.CoresInSockets(s).Intersection(a.details.CPUsInCores()).List()...)
+		coreIDs = append(coreIDs, a.details.CoresInSockets(s).Intersection(a.details.CPUs()).List()...)
 	}
 	return coreIDs
 }

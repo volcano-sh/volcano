@@ -19,7 +19,6 @@ package cache
 import (
 	"context"
 	"fmt"
-	"os"
 	"reflect"
 	"strconv"
 
@@ -915,7 +914,6 @@ func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.Numatopo
 		allocatable, err := cpuset.Parse(resInfo.Allocatable)
 		if err != nil {
 			klog.ErrorS(err, "Failed to parse input as CPUSet", resInfo.Allocatable)
-			os.Exit(1)
 		}
 		tmp.Allocatable = allocatable
 		numaInfo.NumaResMap[name] = &tmp
