@@ -19,12 +19,13 @@ package volumebinding
 import (
 	"context"
 	"fmt"
-	storagev1beta1 "k8s.io/api/storage/v1beta1"
-	storageinformersv1beta1 "k8s.io/client-go/informers/storage/v1beta1"
-	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
 	"sort"
 	"strings"
 	"time"
+
+	storagev1beta1 "k8s.io/api/storage/v1beta1"
+	storageinformersv1beta1 "k8s.io/client-go/informers/storage/v1beta1"
+	storagelistersv1beta1 "k8s.io/client-go/listers/storage/v1beta1"
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -982,7 +983,6 @@ func (b *volumeBinder) checkVolumeProvisions(pod *v1.Pod, claimsToProvision []*v
 		}
 
 		dynamicProvisions = append(dynamicProvisions, claim)
-
 	}
 	klog.V(4).InfoS("Provisioning for claims of pod that has no matching volumes...", "claimCount", len(claimsToProvision), "pod", klog.KObj(pod), "node", klog.KObj(node))
 
