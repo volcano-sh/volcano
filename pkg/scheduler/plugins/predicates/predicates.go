@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
@@ -350,6 +351,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	podTopologySpreadFilter := plugin.(*podtopologyspread.PodTopologySpread)
 
 	state := k8sframework.NewCycleState()
+	skipPlugins := sets.New[string]()
+	state.SkipFilterPlugins = skipPlugins
 
 	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {
 		// Check NodePorts
@@ -372,7 +375,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// the processing logic needs to be added to the return value result.
 		if predicate.podAffinityEnable {
 			_, status := podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
-			if !status.IsSuccess() {
+			if status.IsSkip() {
+				state.SkipFilterPlugins.Insert(interpodaffinity.Name)
+			} else if !status.IsSuccess() {
 				return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
 			}
 		}
@@ -486,11 +491,13 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// Check PodAffinity
 		if predicate.podAffinityEnable {
-			status := podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-			podAffinityStatus := framework.ConvertPredicateStatus(status)
-			if podAffinityStatus.Code != api.Success {
-				predicateStatus = append(predicateStatus, podAffinityStatus)
-				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", podAffinityFilter.Name(), status.Message())
+			if !state.SkipFilterPlugins.Has(interpodaffinity.Name) {
+				status := podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+				podAffinityStatus := framework.ConvertPredicateStatus(status)
+				if podAffinityStatus.Code != api.Success {
+					predicateStatus = append(predicateStatus, podAffinityStatus)
+					return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", podAffinityFilter.Name(), status.Message())
+				}
 			}
 		}
 

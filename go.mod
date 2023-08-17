@@ -1,6 +1,6 @@
 module volcano.sh/volcano
 
-go 1.19
+go 1.20
 
 require (
 	github.com/agiledragon/gomonkey/v2 v2.2.0
@@ -39,7 +39,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.3.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.8.0-alpha.0.0.20230720004552-846928789f8e
+	volcano.sh/apis v1.8.0
 )
 
 require (
