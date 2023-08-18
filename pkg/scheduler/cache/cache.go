@@ -157,8 +157,10 @@ type imageState struct {
 	nodes sets.String
 }
 
+// DefaultBinder with kube client and event recorder
 type DefaultBinder struct {
-	// kubeclient *kubernetes.Clientset
+	kubeclient kubernetes.Interface
+	recorder   record.EventRecorder
 }
 
 // Bind will send bind request to api server
@@ -166,7 +168,7 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	var errTasks []*schedulingapi.TaskInfo
 	for _, task := range tasks {
 		p := task.Pod
-		if err := kubeClient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
+		if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
 			&v1.Binding{
 				ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: p.Annotations},
 				Target: v1.ObjectReference{
@@ -178,6 +180,7 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 			klog.Errorf("Failed to bind pod <%v/%v> to node %s : %#v", p.Namespace, p.Name, task.NodeName, err)
 			errTasks = append(errTasks, task)
 		} else {
+			db.recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", task.Namespace, task.Name, task.NodeName)
 			metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time)) // update metrics as soon as pod is bind
 		}
 	}
@@ -189,8 +192,12 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	return nil, nil
 }
 
-func NewBinder() *DefaultBinder {
-	return &DefaultBinder{}
+// NewDefaultBinder create binder with kube client and event recorder, support fake binder if passed fake client and fake event recorder
+func NewDefaultBinder(kbclient kubernetes.Interface, record record.EventRecorder) *DefaultBinder {
+	return &DefaultBinder{
+		kubeclient: kbclient,
+		recorder:   record,
+	}
 }
 
 type defaultEvictor struct {
@@ -476,6 +483,10 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(sc.schedulerNames)})
 
 	sc.BindFlowChannel = make(chan *schedulingapi.TaskInfo, 5000)
+	if bindMethodMap == nil {
+		klog.V(3).Info("no registered bind method, new a default one")
+		bindMethodMap = NewDefaultBinder(sc.kubeClient, sc.Recorder)
+	}
 	sc.Binder = GetBindMethod()
 
 	var batchNum int
@@ -810,11 +821,6 @@ func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) {
 	errTasks, err := sc.Binder.Bind(sc.kubeClient, tasks)
 	if err == nil {
 		klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
-		// TODO: need to move this event recording into Bind so that record it as soon as pod is bind
-		for _, task := range tasks {
-			sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v",
-				task.Namespace, task.Name, task.NodeName)
-		}
 	} else {
 		for _, task := range errTasks {
 			klog.V(2).Infof("resyncTask task %s", task.Name)

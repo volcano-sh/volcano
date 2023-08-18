@@ -338,7 +338,7 @@ func TestBindTasks(t *testing.T) {
 		nodeQueue:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 	}
 
-	sc.Binder = &DefaultBinder{}
+	sc.Binder = &DefaultBinder{sc.kubeClient, sc.Recorder}
 	sc.VolumeBinder = &defaultVolumeBinder{
 		volumeBinder: volumescheduling.NewVolumeBinder(
 			sc.kubeClient,
