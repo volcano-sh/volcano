@@ -12,7 +12,3 @@ func RegisterBindMethod(binder Binder) {
 func GetBindMethod() Binder {
 	return bindMethodMap
 }
-
-func init() {
-	RegisterBindMethod(NewBinder())
-}
