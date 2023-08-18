@@ -17,16 +17,25 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -312,5 +321,81 @@ func TestNodeOperation(t *testing.T) {
 			t.Errorf("case %d: \n expected %v, \n got %v \n",
 				i, test.delExpect, cache)
 		}
+	}
+}
+
+func TestBindTasks(t *testing.T) {
+	owner := buildOwnerReference("j1")
+	scheduler := "fake-scheduler"
+
+	fakeKube := fake.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(fakeKube, 0)
+	sc := &SchedulerCache{
+		Jobs:            make(map[api.JobID]*api.JobInfo),
+		Nodes:           make(map[string]*api.NodeInfo),
+		kubeClient:      fakeKube,
+		schedulerNames:  []string{scheduler},
+		Recorder:        record.NewFakeRecorder(10),
+		BindFlowChannel: make(chan *api.TaskInfo, 5000),
+		podInformer:     informerFactory.Core().V1().Pods(),
+		nodeInformer:    informerFactory.Core().V1().Nodes(),
+		csiNodeInformer: informerFactory.Storage().V1().CSINodes(),
+		pvcInformer:     informerFactory.Core().V1().PersistentVolumeClaims(),
+		pvInformer:      informerFactory.Core().V1().PersistentVolumes(),
+		scInformer:      informerFactory.Storage().V1().StorageClasses(),
+		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+	}
+
+	sc.Binder = &DefaultBinder{}
+	sc.VolumeBinder = &defaultVolumeBinder{
+		volumeBinder: volumescheduling.NewVolumeBinder(
+			sc.kubeClient,
+			sc.podInformer,
+			sc.nodeInformer,
+			sc.csiNodeInformer,
+			sc.pvcInformer,
+			sc.pvInformer,
+			sc.scInformer,
+			nil,
+			100*time.Millisecond,
+		)}
+
+	sc.podInformer.Informer().AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddPod,
+			UpdateFunc: sc.UpdatePod,
+			DeleteFunc: sc.DeletePod,
+		},
+	)
+	sc.nodeInformer.Informer().AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddNode,
+			UpdateFunc: sc.UpdateNode,
+		},
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go wait.Until(sc.processBindTask, time.Millisecond*5, ctx.Done())
+	pod := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string))
+	node := buildNode("n1", buildResourceList("2000m", "10G"))
+	pod.Annotations = map[string]string{"scheduling.k8s.io/group-name": "j1"}
+	pod.Spec.SchedulerName = scheduler
+
+	// make sure pod exist when calling fake client binding
+	fakeKube.CoreV1().Pods(pod.Namespace).Create(ctx, pod, metav1.CreateOptions{})
+	fakeKube.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
+	informerFactory.Start(ctx.Done())
+	informerFactory.WaitForCacheSync(ctx.Done())
+
+	task := api.NewTaskInfo(pod)
+	task.NodeName = "n1"
+	err := sc.AddBindTask(task)
+	if err != nil {
+		t.Errorf("failed to bind pod to node: %v", err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	r := sc.Recorder.(*record.FakeRecorder)
+	if len(r.Events) != 1 {
+		t.Fatalf("succesfully binding task should have 1 event")
 	}
 }
