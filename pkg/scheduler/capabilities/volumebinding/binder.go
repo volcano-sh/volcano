@@ -522,6 +522,11 @@ func (b *volumeBinder) BindPodVolumes(ctx context.Context, assumedPod *v1.Pod, p
 		}
 	}()
 
+	if podVolumes == nil {
+		klog.Infof("BindPodVolumes for pod(%s): pod volumes is nil", assumedPod.Name)
+		return nil
+	}
+
 	bindings := podVolumes.StaticBindings
 	claimsToProvision := podVolumes.DynamicProvisions
 
