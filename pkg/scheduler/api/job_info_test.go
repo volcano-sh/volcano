@@ -17,12 +17,15 @@ limitations under the License.
 package api
 
 import (
+	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/fake"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -86,7 +89,7 @@ func TestAddTaskInfo(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		ps := NewJobInfo(test.uid)
+		ps := NewJobInfo(test.uid, fake.NewSimpleClientset())
 
 		for _, pod := range test.pods {
 			pi := NewTaskInfo(pod)
@@ -177,7 +180,7 @@ func TestDeleteTaskInfo(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		ps := NewJobInfo(test.uid)
+		ps := NewJobInfo(test.uid, fake.NewSimpleClientset())
 
 		for _, pod := range test.pods {
 			pi := NewTaskInfo(pod)
@@ -237,7 +240,7 @@ func TestTaskSchedulingReason(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		job := NewJobInfo(test.jobid)
+		job := NewJobInfo(test.jobid, fake.NewSimpleClientset())
 		pg := scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: "ns1",
@@ -286,5 +289,51 @@ func TestTaskSchedulingReason(t *testing.T) {
 				t.Errorf("[x] case #%d, task %v, expected: %s, got: %s", i, uid, exp, msg)
 			}
 		}
+	}
+}
+
+func TestJobInfo_UpdateTaskStatus(t *testing.T) {
+	fakeClient := fake.NewSimpleClientset()
+	pod1 := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "pod1",
+		},
+	}
+	type args struct {
+		task   *TaskInfo
+		status TaskStatus
+	}
+	tests := []struct {
+		name    string
+		args    args
+		aop     func()
+		wantErr bool
+	}{
+		{
+			name: "pod status is Pipelined",
+			args: args{
+				task:   NewTaskInfo(pod1),
+				status: Pipelined,
+			},
+			aop: func() {
+				_, _ = fakeClient.CoreV1().Pods(pod1.Namespace).Create(context.TODO(), pod1, metav1.CreateOptions{})
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ji := NewJobInfo(tt.args.task.Job, fakeClient)
+			if tt.aop != nil {
+				tt.aop()
+			}
+			if err := ji.UpdateTaskStatus(tt.args.task, tt.args.status); (err != nil) != tt.wantErr {
+				t.Errorf("UpdateTaskStatus() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			time.Sleep(time.Second)
+			if tt.args.task.Pod.Annotations[TaskStatusKey] != tt.args.status.String() {
+				t.Errorf("expect %v, !=  %v", tt.args.task.Pod.Annotations[TaskStatusKey], tt.args.status.String())
+			}
+		})
 	}
 }

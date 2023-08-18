@@ -55,6 +55,9 @@ const (
 
 	// Unknown means the status of task/pod is unknown to the scheduler.
 	Unknown
+
+	// TaskStatusKey task status key used in pod annotation
+	TaskStatusKey = "volcano.sh/task-status"
 )
 
 func (ts TaskStatus) String() string {

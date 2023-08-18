@@ -91,9 +91,9 @@ func New(config *rest.Config, schedulerNames []string, defaultQueue string, node
 type SchedulerCache struct {
 	sync.Mutex
 
-	kubeClient   *kubernetes.Clientset
+	kubeClient   kubernetes.Interface
 	restConfig   *rest.Config
-	vcClient     *vcclient.Clientset
+	vcClient     vcclient.Interface
 	defaultQueue string
 	// schedulerName is the name for volcano scheduler
 	schedulerNames     []string
@@ -189,7 +189,7 @@ func NewBinder() *DefaultBinder {
 }
 
 type defaultEvictor struct {
-	kubeclient *kubernetes.Clientset
+	kubeclient kubernetes.Interface
 	recorder   record.EventRecorder
 }
 
@@ -228,8 +228,8 @@ func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
 
 // defaultStatusUpdater is the default implementation of the StatusUpdater interface
 type defaultStatusUpdater struct {
-	kubeclient *kubernetes.Clientset
-	vcclient   *vcclient.Clientset
+	kubeclient kubernetes.Interface
+	vcclient   vcclient.Interface
 }
 
 // following the same logic as podutil.UpdatePodCondition
@@ -347,8 +347,8 @@ func (dvb *defaultVolumeBinder) BindVolumes(task *schedulingapi.TaskInfo, podVol
 }
 
 type podgroupBinder struct {
-	kubeclient *kubernetes.Clientset
-	vcclient   *vcclient.Clientset
+	kubeclient kubernetes.Interface
+	vcclient   vcclient.Interface
 }
 
 // Bind will add silo cluster annotaion on pod and podgroup

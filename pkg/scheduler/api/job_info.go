@@ -17,6 +17,7 @@ limitations under the License.
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"k8s.io/client-go/util/retry"
+
+	"k8s.io/client-go/kubernetes"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,6 +38,7 @@ import (
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
@@ -328,10 +334,11 @@ type JobInfo struct {
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
 	Budget        *DisruptionBudget
+	kubeClient    kubernetes.Interface
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
-func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
+func NewJobInfo(uid JobID, kubeClient kubernetes.Interface, tasks ...*TaskInfo) *JobInfo {
 	job := &JobInfo{
 		UID:              uid,
 		MinAvailable:     0,
@@ -341,6 +348,7 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 		TaskStatusIndex:  map[TaskStatus]tasksMap{},
 		Tasks:            tasksMap{},
 		TaskMinAvailable: map[TaskID]int32{},
+		kubeClient:       kubeClient,
 	}
 
 	for _, task := range tasks {
@@ -527,6 +535,31 @@ func (ji *JobInfo) UpdateTaskStatus(task *TaskInfo, status TaskStatus) error {
 	task.Status = status
 	ji.AddTaskInfo(task)
 
+	// Update Task status to pod
+	go func(ji *JobInfo, task *TaskInfo) {
+		retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			if task.Pod != nil && task.Pod.Annotations != nil && task.Pod.Annotations[TaskStatusKey] == task.Status.String() {
+				return nil
+			}
+			pod, err := ji.kubeClient.CoreV1().Pods(task.Pod.Namespace).Get(context.TODO(), task.Pod.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			if pod.Annotations == nil {
+				pod.Annotations = map[string]string{}
+			}
+			pod.Annotations[TaskStatusKey] = status.String()
+			pod, err = ji.kubeClient.CoreV1().Pods(pod.Namespace).Update(context.TODO(), pod, metav1.UpdateOptions{})
+			if err != nil {
+				return err
+			}
+			task.Pod = pod
+			return nil
+		})
+		if retryErr != nil {
+			klog.Errorf("Update task status %s to Pod %s/%s failed, err: %v", task.Status.String(), task.Pod.Namespace, task.Pod.Name, retryErr)
+		}
+	}(ji, task)
 	return nil
 }
 

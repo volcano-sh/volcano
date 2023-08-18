@@ -60,7 +60,7 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 	}
 
 	if _, found := sc.Jobs[pi.Job]; !found {
-		sc.Jobs[pi.Job] = schedulingapi.NewJobInfo(pi.Job)
+		sc.Jobs[pi.Job] = schedulingapi.NewJobInfo(pi.Job, sc.kubeClient)
 	}
 
 	return sc.Jobs[pi.Job]
@@ -521,7 +521,7 @@ func getJobID(pg *schedulingapi.PodGroup) schedulingapi.JobID {
 func (sc *SchedulerCache) setPodGroup(ss *schedulingapi.PodGroup) error {
 	job := getJobID(ss)
 	if _, found := sc.Jobs[job]; !found {
-		sc.Jobs[job] = schedulingapi.NewJobInfo(job)
+		sc.Jobs[job] = schedulingapi.NewJobInfo(job, sc.kubeClient)
 	}
 
 	sc.Jobs[job].SetPodGroup(ss)
