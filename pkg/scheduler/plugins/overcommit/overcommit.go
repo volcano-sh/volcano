@@ -101,8 +101,7 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		if job.PodGroup.Status.Phase == scheduling.PodGroupRunning &&
 			job.PodGroup.Spec.MinResources != nil &&
 			int32(util.CalculateAllocatedTaskNum(job)) >= job.PodGroup.Spec.MinMember {
-			allocated := util.GetAllocatedResource(job)
-			inqueued := util.GetInqueueResource(job, allocated)
+			inqueued := util.GetInqueueResource(job, job.Allocated)
 			op.inqueueResource.Add(inqueued)
 		}
 	}

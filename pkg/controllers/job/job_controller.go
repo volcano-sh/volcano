@@ -24,6 +24,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	kubeschedulinginformers "k8s.io/client-go/informers/scheduling/v1"
@@ -48,10 +49,12 @@ import (
 	batchlister "volcano.sh/apis/pkg/client/listers/batch/v1alpha1"
 	buslister "volcano.sh/apis/pkg/client/listers/bus/v1alpha1"
 	schedulinglisters "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
+
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	"volcano.sh/volcano/pkg/controllers/job/state"
+	"volcano.sh/volcano/pkg/features"
 )
 
 func init() {
@@ -151,39 +154,43 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	factory := informerfactory.NewSharedInformerFactory(cc.vcClient, 0)
 	cc.vcInformerFactory = factory
-	cc.jobInformer = factory.Batch().V1alpha1().Jobs()
-	cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    cc.addJob,
-		UpdateFunc: cc.updateJob,
-		DeleteFunc: cc.deleteJob,
-	})
-	cc.jobLister = cc.jobInformer.Lister()
-	cc.jobSynced = cc.jobInformer.Informer().HasSynced
+	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
+		cc.jobInformer = factory.Batch().V1alpha1().Jobs()
+		cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    cc.addJob,
+			UpdateFunc: cc.updateJob,
+			DeleteFunc: cc.deleteJob,
+		})
+		cc.jobLister = cc.jobInformer.Lister()
+		cc.jobSynced = cc.jobInformer.Informer().HasSynced
+	}
 
-	cc.cmdInformer = factory.Bus().V1alpha1().Commands()
-	cc.cmdInformer.Informer().AddEventHandler(
-		cache.FilteringResourceEventHandler{
-			FilterFunc: func(obj interface{}) bool {
-				switch v := obj.(type) {
-				case *busv1alpha1.Command:
-					if v.TargetObject != nil &&
-						v.TargetObject.APIVersion == batchv1alpha1.SchemeGroupVersion.String() &&
-						v.TargetObject.Kind == "Job" {
-						return true
+	if utilfeature.DefaultFeatureGate.Enabled(features.QueueCommandSync) {
+		cc.cmdInformer = factory.Bus().V1alpha1().Commands()
+		cc.cmdInformer.Informer().AddEventHandler(
+			cache.FilteringResourceEventHandler{
+				FilterFunc: func(obj interface{}) bool {
+					switch v := obj.(type) {
+					case *busv1alpha1.Command:
+						if v.TargetObject != nil &&
+							v.TargetObject.APIVersion == batchv1alpha1.SchemeGroupVersion.String() &&
+							v.TargetObject.Kind == "Job" {
+							return true
+						}
+
+						return false
+					default:
+						return false
 					}
-
-					return false
-				default:
-					return false
-				}
+				},
+				Handler: cache.ResourceEventHandlerFuncs{
+					AddFunc: cc.addCommand,
+				},
 			},
-			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc: cc.addCommand,
-			},
-		},
-	)
-	cc.cmdLister = cc.cmdInformer.Lister()
-	cc.cmdSynced = cc.cmdInformer.Informer().HasSynced
+		)
+		cc.cmdLister = cc.cmdInformer.Lister()
+		cc.cmdSynced = cc.cmdInformer.Informer().HasSynced
+	}
 
 	cc.podInformer = sharedInformers.Core().V1().Pods()
 	cc.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -210,9 +217,11 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.pgLister = cc.pgInformer.Lister()
 	cc.pgSynced = cc.pgInformer.Informer().HasSynced
 
-	cc.pcInformer = sharedInformers.Scheduling().V1().PriorityClasses()
-	cc.pcLister = cc.pcInformer.Lister()
-	cc.pcSynced = cc.pcInformer.Informer().HasSynced
+	if utilfeature.DefaultFeatureGate.Enabled(features.PriorityClass) {
+		cc.pcInformer = sharedInformers.Scheduling().V1().PriorityClasses()
+		cc.pcLister = cc.pcInformer.Lister()
+		cc.pcSynced = cc.pcInformer.Informer().HasSynced
+	}
 
 	cc.queueInformer = factory.Scheduling().V1beta1().Queues()
 	cc.queueLister = cc.queueInformer.Lister()

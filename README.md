@@ -158,6 +158,6 @@ Resources:
 
 If you have any question, feel free to reach out to us in the following ways:
 
-[Volcano Slack Channel](https://volcano-sh.slack.com)
+[Volcano Slack Channel](https://cloud-native.slack.com/archives/C011GJDQS0N) | [Join](https://slack.cncf.io/)
 
 [Mailing List](https://groups.google.com/forum/#!forum/volcano-sh)

@@ -204,10 +204,12 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 			klog.Errorln("DeviceSharing err=", err.Error())
 			return err
 		}
-		nodelock.UseClient(kubeClient)
-		err = nodelock.LockNode(gs.Name, DeviceName)
-		if err != nil {
-			return errors.Errorf("node %s locked for lockname gpushare %s", gs.Name, err.Error())
+		if NodeLockEnable {
+			nodelock.UseClient(kubeClient)
+			err = nodelock.LockNode(gs.Name, DeviceName)
+			if err != nil {
+				return errors.Errorf("node %s locked for lockname gpushare %s", gs.Name, err.Error())
+			}
 		}
 
 		annotations := make(map[string]string)

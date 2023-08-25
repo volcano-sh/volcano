@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -46,6 +47,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	queuestate "volcano.sh/volcano/pkg/controllers/queue/state"
+	"volcano.sh/volcano/pkg/features"
 )
 
 func init() {
@@ -137,22 +139,24 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 		DeleteFunc: c.deletePodGroup,
 	})
 
-	c.cmdInformer = factory.Bus().V1alpha1().Commands()
-	c.cmdInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool {
-			switch v := obj.(type) {
-			case *busv1alpha1.Command:
-				return IsQueueReference(v.TargetObject)
-			default:
-				return false
-			}
-		},
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc: c.addCommand,
-		},
-	})
-	c.cmdLister = c.cmdInformer.Lister()
-	c.cmdSynced = c.cmdInformer.Informer().HasSynced
+	if utilfeature.DefaultFeatureGate.Enabled(features.QueueCommandSync) {
+		c.cmdInformer = factory.Bus().V1alpha1().Commands()
+		c.cmdInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch v := obj.(type) {
+				case *busv1alpha1.Command:
+					return IsQueueReference(v.TargetObject)
+				default:
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc: c.addCommand,
+			},
+		})
+		c.cmdLister = c.cmdInformer.Lister()
+		c.cmdSynced = c.cmdInformer.Informer().HasSynced
+	}
 
 	queuestate.SyncQueue = c.syncQueue
 	queuestate.OpenQueue = c.openQueue
