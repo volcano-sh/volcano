@@ -26,7 +26,7 @@ import (
 
 func AddDependsOn(job *v1alpha1.Job) {
 	mp := controllerMpi.NewInstance(job.Spec.Plugins[controllerMpi.MPIPluginName])
-	masterIndex := helpers.GetTasklndexUnderJob(mp.GetMasterName(), job)
+	masterIndex := helpers.GetTaskIndexUnderJob(mp.GetMasterName(), job)
 	if masterIndex == -1 {
 		klog.Errorln("Failed to find master task")
 		return

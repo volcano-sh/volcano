@@ -36,7 +36,7 @@ import (
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
-// DisruptionBudget define job min pod available and max pod unvailable value
+// DisruptionBudget define job min pod available and max pod unavailable value
 type DisruptionBudget struct {
 	MinAvailable  string
 	MaxUnavilable string
@@ -323,7 +323,7 @@ type JobInfo struct {
 	Preemptable bool
 
 	// RevocableZone support set volcano.sh/revocable-zone annotaion or label for pod/podgroup
-	// we only support empty value or * value for this version and we will support specify revocable zone name for futrue release
+	// we only support empty value or * value for this version and we will support specify revocable zone name for future release
 	// empty value means workload can not use revocable node
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
@@ -666,7 +666,7 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason string, msg string) 
 		return PodReasonUnschedulable, msg
 	case Pending:
 		if fe := ji.NodesFitErrors[tid]; fe != nil {
-			// Pod is not schedulable
+			// Pod is unschedulable
 			return PodReasonUnschedulable, fe.Error()
 		}
 		// Pod is not scheduled yet, keep UNSCHEDULABLE as the reason to support cluster autoscaler
@@ -703,7 +703,7 @@ func (ji *JobInfo) WaitingTaskNum() int32 {
 
 // CheckTaskValid returns whether each task of job is valid.
 func (ji *JobInfo) CheckTaskValid() bool {
-	// if job minAvailable is less than sumof(task minAvailable), skip this check
+	// if job minAvailable is less than sum of(task minAvailable), skip this check
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
