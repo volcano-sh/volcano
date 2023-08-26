@@ -17,8 +17,6 @@ limitations under the License.
 package framework
 
 import (
-	"fmt"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -267,23 +265,22 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 }
 
 // ConvertPredicateStatus return predicate status from k8sframework status
-func ConvertPredicateStatus(status *k8sframework.Status) (*api.Status, error) {
+func ConvertPredicateStatus(status *k8sframework.Status) *api.Status {
 	internalStatus := &api.Status{}
 	if status.Code() == k8sframework.Success {
 		internalStatus.Code = api.Success
-		return internalStatus, nil
+		return internalStatus
 	} else if status.Code() == k8sframework.Unschedulable {
 		internalStatus.Code = api.Unschedulable
 		internalStatus.Reason = status.Message()
-		return internalStatus, nil
+		return internalStatus
 	} else if status.Code() == k8sframework.UnschedulableAndUnresolvable {
 		internalStatus.Code = api.UnschedulableAndUnresolvable
 		internalStatus.Reason = status.Message()
-		return internalStatus, nil
+		return internalStatus
 	} else {
 		internalStatus.Code = api.Error
 		internalStatus.Reason = status.Message()
-		return internalStatus, fmt.Errorf("Convert predicate status error, k8s status code is %d, Reason is %s",
-			status.Code(), status.Message())
+		return internalStatus
 	}
 }
