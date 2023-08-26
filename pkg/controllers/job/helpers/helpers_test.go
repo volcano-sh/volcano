@@ -186,7 +186,7 @@ func TestGetTasklndexUnderJobFunc(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			index := GetTasklndexUnderJob(testCase.TaskName, testCase.Job)
+			index := GetTaskIndexUnderJob(testCase.TaskName, testCase.Job)
 			if index != testCase.Expect {
 				t.Errorf("GetTasklndexUnderJobFunc(%s) = %d, expect %d", testCase.TaskName, index, testCase.Expect)
 			}
