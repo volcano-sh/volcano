@@ -232,6 +232,33 @@ type defaultStatusUpdater struct {
 	vcclient   *vcclient.Clientset
 }
 
+func NewPodStatusClient(config *rest.Config) (*kubernetes.Clientset, error) {
+	configShallowCopy := *config
+	qps := os.Getenv("POD_STATUS_CLIENT_QPS")
+	if qps != "" {
+		qpsFloat, err := strconv.ParseFloat(qps, 32)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse qps: %v", err)
+		}
+		configShallowCopy.QPS = float32(qpsFloat)
+	}
+
+	burst := os.Getenv("POD_STATUS_CLIENT_BURST")
+	if burst != "" {
+		burstInt, err := strconv.Atoi(burst)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse burst: %v", err)
+		}
+		configShallowCopy.Burst = burstInt
+	}
+
+	client, err := kubernetes.NewForConfig(&configShallowCopy)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init kube client: %v", err)
+	}
+	return client, nil
+}
+
 // following the same logic as podutil.UpdatePodCondition
 func podConditionHaveUpdate(status *v1.PodStatus, condition *v1.PodCondition) bool {
 	lastTransitionTime := metav1.Now()
@@ -398,6 +425,13 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	if err != nil {
 		panic(fmt.Sprintf("failed init eventClient, with err: %v", err))
 	}
+	// update pod statue use a separate client and set separate qps and client because it may send large requests instantly when there are lots of pending pods
+	// and pod status changed such as an available node is scaled, and every pod will update pod.status.message, which harms to apiserevr and etcd.
+	podStatusClient, err := NewPodStatusClient(config)
+	if err != nil {
+		klog.ErrorS(err, "Failed to init pod status client")
+		podStatusClient = kubeClient
+	}
 
 	// create default queue
 	reclaimable := true
@@ -485,7 +519,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	}
 
 	sc.StatusUpdater = &defaultStatusUpdater{
-		kubeclient: sc.kubeClient,
+		kubeclient: podStatusClient,
 		vcclient:   sc.vcClient,
 	}
 
