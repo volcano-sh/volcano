@@ -55,8 +55,8 @@ spec:
 | 3 | 1 | - | 3/200m |3/250m|master+2*worker| jobMinAvailable == sum(taskMinAvailable)|
 | 3 | 1 | 1 | 3/200m |3/200m|master+worker+master | jobMinAvailable > sum(taskMinAvailable)|
 | 2 | 1 | 1 | 2/100m |2/150m|master+worker |jobMinAvailable = sum(taskMinAvailable)|
-| 2 | - | 1 | 2/100m |2/100m|2*master(todo) |jobMinAvailable < sum(taskMinAvailable)|
-| 2 | 1 | - | 2/100m |2/150m|master+worker(todo) |jobMinAvailable < sum(taskMinAvailable)|
+| 2 | - | 1 | 2/100m |2/100m|2*master |jobMinAvailable < sum(taskMinAvailable)|
+| 2 | 1 | - | 2/100m |2/100m|2*master |jobMinAvailable < sum(taskMinAvailable)|
 
 ## 1. job's MinAvailable is zero
 
