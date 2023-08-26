@@ -213,13 +213,11 @@ func preempt(
 		var statusSets util.StatusSets
 		statusSets, err := ssn.PredicateFn(task, node)
 		if err != nil {
-			return nil, fmt.Errorf("preempt predicates failed for task <%s/%s> on node <%s>: %v",
-				task.Namespace, task.Name, node.Name, err)
+			return nil, api.NewFitError(task, node, err.Error())
 		}
 
 		if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
-			return nil, fmt.Errorf("predicates failed in preempt for task <%s/%s> on node <%s>, status is not success or unschedulable",
-				task.Namespace, task.Name, node.Name)
+			return nil, api.NewFitError(task, node, statusSets.Message())
 		}
 		return nil, nil
 	}
