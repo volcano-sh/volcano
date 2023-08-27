@@ -18,6 +18,7 @@ package job
 
 import (
 	"fmt"
+	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -96,6 +97,8 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 		pod.Annotations = make(map[string]string)
 	}
 
+	index := strconv.Itoa(ix)
+	pod.Annotations[batch.TaskIndex] = index
 	pod.Annotations[batch.TaskSpecKey] = tsKey
 	pgName := job.Name + "-" + string(job.UID)
 	pod.Annotations[schedulingv2.KubeGroupNameAnnotationKey] = pgName
@@ -131,6 +134,7 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 	}
 
 	// Set pod labels for Service.
+	pod.Labels[batch.TaskIndex] = index
 	pod.Labels[batch.JobNameKey] = job.Name
 	pod.Labels[batch.TaskSpecKey] = tsKey
 	pod.Labels[batch.JobNamespaceKey] = job.Namespace
