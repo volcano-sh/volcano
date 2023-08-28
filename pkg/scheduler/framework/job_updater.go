@@ -15,9 +15,6 @@ import (
 
 const (
 	jobUpdaterWorker = 16
-
-	jobConditionUpdateTime       = time.Minute
-	jobConditionUpdateTimeJitter = 30 * time.Second
 )
 
 // TimeJitterAfter means: new after old + duration + jitter
@@ -61,9 +58,6 @@ func isPodGroupConditionsUpdated(newCondition, oldCondition []scheduling.PodGrou
 
 		newTime := newCond.LastTransitionTime
 		oldTime := oldCond.LastTransitionTime
-		if TimeJitterAfter(newTime.Time, oldTime.Time, jobConditionUpdateTime, jobConditionUpdateTimeJitter) {
-			return true
-		}
 
 		// if newCond is not new enough, we treat it the same as the old one
 		newCond.LastTransitionTime = oldTime
