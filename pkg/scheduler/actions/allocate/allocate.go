@@ -17,7 +17,6 @@
 package allocate
 
 import (
-	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -105,14 +104,12 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		var statusSets util.StatusSets
 		statusSets, err := ssn.PredicateFn(task, node)
 		if err != nil {
-			return nil, fmt.Errorf("predicates failed in allocate for task <%s/%s> on node <%s>: %v",
-				task.Namespace, task.Name, node.Name, err)
+			return nil, api.NewFitError(task, node, err.Error())
 		}
 
 		if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
 			statusSets.ContainsErrorSkipOrWait() {
-			return nil, fmt.Errorf("predicates failed in allocate for task <%s/%s> on node <%s>, status is not success",
-				task.Namespace, task.Name, node.Name)
+			return nil, api.NewFitError(task, node, statusSets.Message())
 		}
 		return nil, nil
 	}

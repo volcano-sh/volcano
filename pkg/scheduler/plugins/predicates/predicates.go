@@ -354,7 +354,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {
 		// Check NodePorts
 		if predicate.nodePortEnable {
-			nodePortFilter.PreFilter(context.TODO(), state, task.Pod)
+			_, status := nodePortFilter.PreFilter(context.TODO(), state, task.Pod)
+			if !status.IsSuccess() {
+				return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
+			}
 		}
 
 		// InterPodAffinity Predicate
@@ -404,40 +407,44 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed",
 				task.Namespace, task.Name, node.Name)
 			podsNumStatus := &api.Status{
-				Code: api.Unschedulable,
-				Reason: fmt.Sprintf("Task <%s/%s> on Node <%s> failed, reason: %s",
-					task.Namespace, task.Name, node.Name, api.NodePodNumberExceeded),
+				// TODO(wangyang0616): When the number of pods of a node reaches the upper limit, preemption is not supported for now.
+				// Record details in #3079 (volcano.sh/volcano)
+				// In the preempt stage, the pipeline of the pod number is not considered,
+				// the preemption of the pod number is released directly, which will cause the pods in the node to be cyclically evicted.
+				Code:   api.UnschedulableAndUnresolvable,
+				Reason: api.NodePodNumberExceeded,
 			}
 			predicateStatus = append(predicateStatus, podsNumStatus)
+			return predicateStatus, fmt.Errorf("%s", api.NodePodNumberExceeded)
 		}
 
 		predicateByStablefilter := func(pod *v1.Pod, nodeInfo *k8sframework.NodeInfo) ([]*api.Status, bool, error) {
 			// CheckNodeUnschedulable
 			predicateStatus := make([]*api.Status, 0)
 			status := nodeUnscheduleFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-			nodeUnscheduleStatus, err := framework.ConvertPredicateStatus(status)
-			predicateStatus = append(predicateStatus, nodeUnscheduleStatus)
-			if err != nil {
-				return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeunschedulable.Name, status.Message())
+			nodeUnscheduleStatus := framework.ConvertPredicateStatus(status)
+			if nodeUnscheduleStatus.Code != api.Success {
+				predicateStatus = append(predicateStatus, nodeUnscheduleStatus)
+				return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeUnscheduleFilter.Name(), status.Message())
 			}
 
 			// Check NodeAffinity
 			if predicate.nodeAffinityEnable {
 				status := nodeAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-				nodeAffinityStatus, err := framework.ConvertPredicateStatus(status)
-				predicateStatus = append(predicateStatus, nodeAffinityStatus)
-				if err != nil {
-					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeaffinity.Name, status.Message())
+				nodeAffinityStatus := framework.ConvertPredicateStatus(status)
+				if nodeAffinityStatus.Code != api.Success {
+					predicateStatus = append(predicateStatus, nodeAffinityStatus)
+					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeAffinityFilter.Name(), status.Message())
 				}
 			}
 
 			// PodToleratesNodeTaints: TaintToleration
 			if predicate.taintTolerationEnable {
 				status := tolerationFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-				tolerationStatus, err := framework.ConvertPredicateStatus(status)
-				predicateStatus = append(predicateStatus, tolerationStatus)
-				if err != nil {
-					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", tainttoleration.Name, status.Message())
+				tolerationStatus := framework.ConvertPredicateStatus(status)
+				if tolerationStatus.Code != api.Success {
+					predicateStatus = append(predicateStatus, tolerationStatus)
+					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", tolerationFilter.Name(), status.Message())
 				}
 			}
 
@@ -470,29 +477,29 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// Check NodePort
 		if predicate.nodePortEnable {
 			status := nodePortFilter.Filter(context.TODO(), state, nil, nodeInfo)
-			nodePortStatus, err := framework.ConvertPredicateStatus(status)
-			predicateStatus = append(predicateStatus, nodePortStatus)
-			if err != nil {
-				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", nodeports.Name, status.Message())
+			nodePortStatus := framework.ConvertPredicateStatus(status)
+			if nodePortStatus.Code != api.Success {
+				predicateStatus = append(predicateStatus, nodePortStatus)
+				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", nodePortFilter.Name(), status.Message())
 			}
 		}
 
 		// Check PodAffinity
 		if predicate.podAffinityEnable {
 			status := podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-			podAffinityStatus, err := framework.ConvertPredicateStatus(status)
-			predicateStatus = append(predicateStatus, podAffinityStatus)
-			if err != nil {
-				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", interpodaffinity.Name, status.Message())
+			podAffinityStatus := framework.ConvertPredicateStatus(status)
+			if podAffinityStatus.Code != api.Success {
+				predicateStatus = append(predicateStatus, podAffinityStatus)
+				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", podAffinityFilter.Name(), status.Message())
 			}
 		}
 
 		// Check NodeVolumeLimits
 		if predicate.nodeVolumeLimitsEnable {
 			status := nodeVolumeLimitsCSIFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-			nodeVolumeStatus, err := framework.ConvertPredicateStatus(status)
-			predicateStatus = append(predicateStatus, nodeVolumeStatus)
-			if err != nil {
+			nodeVolumeStatus := framework.ConvertPredicateStatus(status)
+			if nodeVolumeStatus.Code != api.Success {
+				predicateStatus = append(predicateStatus, nodeVolumeStatus)
 				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", nodeVolumeLimitsCSIFilter.Name(), status.Message())
 			}
 		}
@@ -500,9 +507,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// Check VolumeZone
 		if predicate.volumeZoneEnable {
 			status := volumeZoneFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-			volumeZoneStatus, err := framework.ConvertPredicateStatus(status)
-			predicateStatus = append(predicateStatus, volumeZoneStatus)
-			if err != nil {
+			volumeZoneStatus := framework.ConvertPredicateStatus(status)
+			if volumeZoneStatus.Code != api.Success {
+				predicateStatus = append(predicateStatus, volumeZoneStatus)
 				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", volumeZoneFilter.Name(), status.Message())
 			}
 		}
@@ -510,9 +517,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// Check PodTopologySpread
 		if predicate.podTopologySpreadEnable {
 			status := podTopologySpreadFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-			podTopologyStatus, err := framework.ConvertPredicateStatus(status)
-			predicateStatus = append(predicateStatus, podTopologyStatus)
-			if err != nil {
+			podTopologyStatus := framework.ConvertPredicateStatus(status)
+			if podTopologyStatus.Code != api.Success {
+				predicateStatus = append(predicateStatus, podTopologyStatus)
 				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
 			}
 		}
@@ -524,9 +531,12 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					Code:   code,
 					Reason: msg,
 				}
-				predicateStatus = append(predicateStatus, filterNodeStatus)
 				if err != nil {
 					return predicateStatus, err
+				}
+				if filterNodeStatus.Code != api.Success {
+					predicateStatus = append(predicateStatus, filterNodeStatus)
+					return predicateStatus, fmt.Errorf("plugin device filternode predicates failed %s", msg)
 				}
 			} else {
 				klog.Warningf("Devices %s assertion conversion failed, skip", val)
@@ -539,8 +549,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		if predicate.proportionalEnable {
 			// Check ProportionalPredicate
 			proportionalStatus, err := checkNodeResourceIsProportional(task, node, predicate.proportional)
-			predicateStatus = append(predicateStatus, proportionalStatus)
-			if err != nil {
+			if proportionalStatus.Code != api.Success {
+				predicateStatus = append(predicateStatus, proportionalStatus)
 				return predicateStatus, err
 			}
 			klog.V(4).Infof("checkNodeResourceIsProportional predicates Task <%s/%s> on Node <%s>: fit %v",
