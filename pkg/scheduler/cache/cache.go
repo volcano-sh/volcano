@@ -1441,18 +1441,19 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 			job.PodGroup.Status.Phase == scheduling.PodGroupPending ||
 			job.PodGroup.Status.Phase == scheduling.PodGroupInqueue)
 
+	fitErrStr := job.FitError()
 	// If pending or unschedulable, record unschedulable event.
 	if pgUnschedulable {
 		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 			len(job.TaskStatusIndex[schedulingapi.Pending]),
 			len(job.Tasks),
-			job.FitError())
+			fitErrStr)
 		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(scheduling.PodGroupUnschedulableType), msg)
 	} else if updatePG {
 		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupScheduled), string(scheduling.PodGroupReady))
 	}
 
-	baseErrorMessage := job.JobFitErrors
+	baseErrorMessage := fitErrStr
 	if baseErrorMessage == "" {
 		baseErrorMessage = schedulingapi.AllNodeUnavailableMsg
 	}
