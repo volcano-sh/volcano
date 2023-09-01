@@ -955,9 +955,24 @@ func (sc *SchedulerCache) processResyncTask() {
 		return
 	}
 
+	reSynced := false
 	if err := sc.syncTask(task); err != nil {
 		klog.Errorf("Failed to sync pod <%v/%v>, retry it.", task.Namespace, task.Name)
 		sc.resyncTask(task)
+		reSynced = true
+	}
+
+	// execute custom bind err handler call back func if exists.
+	if task.CustomBindErrHandler != nil && !task.CustomBindErrHandlerSucceeded {
+		err := task.CustomBindErrHandler()
+		if err != nil {
+			klog.ErrorS(err, "Failed to execute custom bind err handler, retry it.")
+		} else {
+			task.CustomBindErrHandlerSucceeded = true
+		}
+		if !task.CustomBindErrHandlerSucceeded && !reSynced {
+			sc.resyncTask(task)
+		}
 	}
 }
 
