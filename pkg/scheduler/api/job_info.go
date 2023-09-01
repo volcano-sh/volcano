@@ -33,6 +33,7 @@ import (
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
@@ -130,6 +131,11 @@ type TaskInfo struct {
 	NumaInfo   *TopologyInfo
 	PodVolumes *volumescheduling.PodVolumes
 	Pod        *v1.Pod
+
+	// CustomBindErrHandler is a custom callback func called when task bind err.
+	CustomBindErrHandler func() error
+	// CustomBindErrHandlerSucceeded indicates whether CustomBindErrHandler is executed successfully.
+	CustomBindErrHandlerSucceeded bool
 }
 
 func getJobID(pod *v1.Pod) JobID {
