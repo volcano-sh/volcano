@@ -42,68 +42,64 @@ const (
 
 func Test_parseRevocableZone(t *testing.T) {
 	tests := []struct {
-		rz    string
-		delta int64
-		err   bool
+		rz  string
+		now string
+		err bool
 	}{
 		{
-			rz:    "00:00_01:00",
-			delta: 0,
-			err:   true,
+			rz:  "00:00_01:00",
+			now: "01:00",
+			err: true,
 		},
 		{
-			rz:    "00:00-01:00",
-			delta: 60 * 60,
-			err:   false,
+			rz:  "00:00-01:00",
+			now: "00:59",
+			err: false,
 		},
 		{
-			rz:    "0:00-23:59",
-			delta: 23*60*60 + 59*60,
-			err:   false,
+			rz:  "0:00-22:59",
+			now: "01:00",
+			err: false,
 		},
 		{
-			rz:    "0:00",
-			delta: 0,
-			err:   true,
+			rz:  "23:00-02:00",
+			now: "22:00",
+			err: true,
 		},
 		{
-			rz:    "1:00-0:00",
-			delta: 23 * 60 * 60,
-			err:   false,
+			rz:  "23:00-02:00",
+			now: "23:01",
+			err: false,
 		},
 		{
-			rz:    "1:0-0:0",
-			delta: 0,
-			err:   true,
+			rz:  "1:0-0:0",
+			now: "00:59",
+			err: true,
 		},
 		{
-			rz:    "   1:00-0:00    ",
-			delta: 23 * 60 * 60,
-			err:   false,
+			rz:  "   1:00-0:00    ",
+			now: "11:00",
+			err: false,
 		},
 		{
-			rz:    "23:59-23:59",
-			delta: 24 * 60 * 60,
-			err:   false,
+			rz:  "23:59-23:59",
+			now: "0:00",
+			err: false,
 		},
 		{
-			rz:    "63:59-23:59",
-			delta: 0,
-			err:   true,
+			rz:  "63:59-23:59",
+			now: "0:00",
+			err: true,
 		},
 	}
 
 	for i, c := range tests {
 		t.Run(fmt.Sprintf("case %d", i), func(t *testing.T) {
-			start, end, err := parseRevocableZone(c.rz)
+			now, _ := time.Parse(revocableZoneLayout, c.now)
+			err := checkRevocableZone(c.rz, now)
 			if (err != nil) != c.err {
 				t.Errorf("want %v ,got %v, err: %v", c.err, err != nil, err)
 			}
-
-			if end.Unix()-start.Unix() != c.delta {
-				t.Errorf("want %v, got %v", c.delta, end.Unix()-start.Unix())
-			}
-
 		})
 	}
 }

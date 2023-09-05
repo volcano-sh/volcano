@@ -85,34 +85,35 @@ func (tp *tdmPlugin) Name() string {
 	return PluginName
 }
 
-func parseRevocableZone(rzRaw string) (start, end time.Time, err error) {
+func checkRevocableZone(rzRaw string, now time.Time) error {
 	rzValues := strings.Split(strings.TrimSpace(rzRaw), "-")
 
 	if len(rzValues) != 2 {
-		err = fmt.Errorf("revocable zone %v format error", rzRaw)
-		return
+		return fmt.Errorf("revocable zone %v format error", rzRaw)
 	}
 
-	t1, err := time.Parse(revocableZoneLayout, rzValues[0])
+	start, err := time.Parse(revocableZoneLayout, rzValues[0])
 	if err != nil {
-		return
+		return err
 	}
 
-	t2, err := time.Parse(revocableZoneLayout, rzValues[1])
+	end, err := time.Parse(revocableZoneLayout, rzValues[1])
 	if err != nil {
-		return
+		return err
 	}
 
-	now := time.Now()
+	current := time.Date(0, time.January, 1, now.Hour(), now.Minute(), 0, 0, now.Location())
 
-	start = time.Date(now.Year(), now.Month(), now.Day(), t1.Hour(), t1.Minute(), 0, 0, now.Location())
-	if t1.After(t2) || t1.Equal(t2) {
-		end = time.Date(now.Year(), now.Month(), now.Day()+1, t2.Hour(), t2.Minute(), 0, 0, now.Location())
-	} else {
-		end = time.Date(now.Year(), now.Month(), now.Day(), t2.Hour(), t2.Minute(), 0, 0, now.Location())
+	if start.Before(end) && current.After(start) && current.Before(end) {
+		return nil
 	}
-
-	return
+	if start.After(end) && (current.After(start) || current.Before(end)) {
+		return nil
+	}
+	if start.Equal(end) {
+		return nil
+	}
+	return fmt.Errorf("current time beyond revocable zone %v", rzRaw)
 }
 
 func (tp *tdmPlugin) availableRevocableZone(rz string) error {
@@ -122,18 +123,7 @@ func (tp *tdmPlugin) availableRevocableZone(rz string) error {
 		return fmt.Errorf("revocable zone %v not support", rz)
 	}
 
-	now := time.Now()
-
-	start, end, err := parseRevocableZone(rzRaw)
-	if err != nil {
-		return err
-	}
-
-	if now.Unix() < start.Unix() || now.Unix() > end.Unix() {
-		return fmt.Errorf("current time beyond revocable zone %v:%v", rz, rzRaw)
-	}
-
-	return nil
+	return checkRevocableZone(rzRaw, time.Now())
 }
 
 func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
