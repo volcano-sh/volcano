@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.19.4 AS builder
+FROM golang:1.20.1 AS builder
 WORKDIR /go/src/volcano.sh/
 ADD . volcano
 RUN cd volcano && make vc-webhook-manager
 
 FROM alpine:latest
-ARG KUBE_VERSION="1.25.0"
+ARG KUBE_VERSION="1.27.0"
 ARG TARGETARCH
 RUN apk add --update ca-certificates && \
     apk add --update openssl && \
