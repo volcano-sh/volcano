@@ -314,15 +314,15 @@ func (dvb *defaultVolumeBinder) RevertVolumes(task *schedulingapi.TaskInfo, podV
 // GetPodVolumes get pod volume on the host
 func (dvb *defaultVolumeBinder) GetPodVolumes(task *schedulingapi.TaskInfo,
 	node *v1.Node) (podVolumes *volumescheduling.PodVolumes, err error) {
-	boundClaims, claimsToBind, unboundClaimsImmediate, err := dvb.volumeBinder.GetPodVolumes(task.Pod)
+	podVolumeClaims, err := dvb.volumeBinder.GetPodVolumeClaims(task.Pod)
 	if err != nil {
 		return nil, err
 	}
-	if len(unboundClaimsImmediate) > 0 {
-		return nil, fmt.Errorf("pod has unbound immediate PersistentVolumeClaims")
-	}
+	// if len(unboundClaimsImmediate) > 0 {
+	// 	return nil, fmt.Errorf("pod has unbound immediate PersistentVolumeClaims")
+	// }
 
-	podVolumes, reasons, err := dvb.volumeBinder.FindPodVolumes(task.Pod, boundClaims, claimsToBind, node)
+	podVolumes, reasons, err := dvb.volumeBinder.FindPodVolumes(task.Pod, podVolumeClaims, node)
 	if err != nil {
 		return nil, err
 	} else if len(reasons) > 0 {
