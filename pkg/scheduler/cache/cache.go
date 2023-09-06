@@ -89,7 +89,7 @@ func New(config *rest.Config, schedulerNames []string, defaultQueue string, node
 
 // SchedulerCache cache for the kube batch
 type SchedulerCache struct {
-	sync.Mutex
+	sync.RWMutex
 
 	kubeClient   *kubernetes.Clientset
 	restConfig   *rest.Config
@@ -742,8 +742,8 @@ func (sc *SchedulerCache) findJobAndTask(taskInfo *schedulingapi.TaskInfo) (*sch
 //
 // If error occurs both task and job are guaranteed to be in the original state.
 func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	job, task, err := sc.findJobAndTask(taskInfo)
 
@@ -795,20 +795,33 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 
 // Bind binds task to the target host.
 func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) error {
+	var toBindTasks, conflictTasks []*schedulingapi.TaskInfo
+	if options.ServerOpts.EnableConflictCheck {
+		toBindTasks, conflictTasks = sc.CheckConflictBeforeBind(tasks)
+	} else {
+		toBindTasks = tasks
+	}
 	tmp := time.Now()
-	errTasks, err := sc.Binder.Bind(sc.kubeClient, tasks)
+	errTasks, err := sc.Binder.Bind(sc.kubeClient, toBindTasks)
 	if err == nil {
 		klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
-		for _, task := range tasks {
+		for _, task := range toBindTasks {
 			sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v",
 				task.Namespace, task.Name, task.NodeName)
 		}
 	} else {
 		for _, task := range errTasks {
-			klog.V(2).Infof("resyncTask task %s", task.Name)
+			klog.V(2).Infof("resync failed binding task %s", task.Name)
 			sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
 			sc.resyncTask(task)
 		}
+	}
+
+	// resync tasks conflict
+	for _, task := range conflictTasks {
+		klog.V(2).Infof("resync conflict task %s", task.Name)
+		sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
+		sc.resyncTask(task)
 	}
 	return nil
 }
@@ -820,6 +833,30 @@ func (sc *SchedulerCache) BindPodGroup(job *schedulingapi.JobInfo, cluster strin
 		return err
 	}
 	return nil
+}
+
+// CheckConflictBeforeBind check resource is enough for task's request, return two list of tasks: no conflict and conflict detected
+func (sc *SchedulerCache) CheckConflictBeforeBind(tasks []*schedulingapi.TaskInfo) (toBind, conflict []*schedulingapi.TaskInfo) {
+	toBind = make([]*schedulingapi.TaskInfo, 0, len(tasks)) // init capacity as long as tasks, because conflict is low probability
+
+	sc.RLock()
+	for _, ti := range tasks {
+		node, ok := sc.Nodes[ti.NodeName]
+		if !ok {
+			conflict = append(conflict, ti)
+			continue
+		}
+
+		if !ti.Resreq.LessEqual(node.Idle, schedulingapi.Zero) {
+			conflict = append(conflict, ti)
+			continue
+		}
+		toBind = append(toBind, ti)
+	}
+	sc.RUnlock()
+
+	klog.Warningf("check confilict before bind find total %d conflict tasks", len(conflict))
+	return toBind, conflict
 }
 
 // GetPodVolumes get pod volume on the host
@@ -859,8 +896,8 @@ func (sc *SchedulerCache) SharedInformerFactory() informers.SharedInformerFactor
 
 // UpdateSchedulerNumaInfo used to update scheduler node cache NumaSchedulerInfo
 func (sc *SchedulerCache) UpdateSchedulerNumaInfo(AllocatedSets map[string]schedulingapi.ResNumaSets) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	for nodeName, sets := range AllocatedSets {
 		if _, found := sc.Nodes[nodeName]; !found {
@@ -930,8 +967,8 @@ func (sc *SchedulerCache) processCleanupJob() {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	if schedulingapi.JobTerminated(job) {
 		delete(sc.Jobs, job.UID)
@@ -969,8 +1006,8 @@ func (sc *SchedulerCache) processResyncTask() {
 
 func (sc *SchedulerCache) AddBindTask(taskInfo *schedulingapi.TaskInfo) error {
 	klog.V(5).Infof("add bind task %v/%v", taskInfo.Namespace, taskInfo.Name)
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 	job, task, err := sc.findJobAndTask(taskInfo)
 	if err != nil {
 		return err
@@ -1070,8 +1107,8 @@ func (sc *SchedulerCache) BindTask() {
 
 // Snapshot returns the complete snapshot of the cluster from cache
 func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
 		Nodes:          make(map[string]*schedulingapi.NodeInfo),
@@ -1165,8 +1202,8 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 // String returns information about the cache in a string format
 func (sc *SchedulerCache) String() string {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	str := "Cache:\n"
 
@@ -1300,14 +1337,14 @@ func (sc *SchedulerCache) GetMetricsData() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel()
 	nodeUsageMap := make(map[string]*schedulingapi.NodeUsage)
-	sc.Mutex.Lock()
+	sc.RWMutex.Lock()
 	for k := range sc.Nodes {
 		nodeUsageMap[k] = &schedulingapi.NodeUsage{
 			CPUUsageAvg: make(map[string]float64),
 			MEMUsageAvg: make(map[string]float64),
 		}
 	}
-	sc.Mutex.Unlock()
+	sc.RWMutex.Unlock()
 
 	supportedPeriods := []string{"5m"}
 	for node := range nodeUsageMap {
@@ -1326,8 +1363,8 @@ func (sc *SchedulerCache) GetMetricsData() {
 }
 
 func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*schedulingapi.NodeUsage) {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RWMutex.Lock()
+	defer sc.RWMutex.Unlock()
 
 	for k := range usageInfo {
 		nodeInfo, ok := sc.Nodes[k]
