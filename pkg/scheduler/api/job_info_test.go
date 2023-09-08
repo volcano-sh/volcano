@@ -385,3 +385,56 @@ func TestJobInfo(t *testing.T) {
 		}
 	}
 }
+
+func TestGetElasticResources(t *testing.T) {
+	resNoGPU := BuildResourceList("1", "1G")
+	resWithGPU := BuildResourceListWithGPU("1", "1G", "1")
+	tests := []struct {
+		pods     []*v1.Pod
+		podgroup scheduling.PodGroup
+		want     *Resource
+	}{
+		{
+			pods: []*v1.Pod{
+				buildPod("ns1", "task-1", "node1", v1.PodRunning, resWithGPU, nil, make(map[string]string)),
+			},
+			podgroup: BuildPodgroup("pg1", "ns1", 1, resWithGPU),
+			want:     EmptyResource(),
+		},
+		{
+			pods: []*v1.Pod{
+				buildPod("ns1", "task-1", "node1", v1.PodRunning, resWithGPU, nil, make(map[string]string)),
+				buildPod("ns1", "task-2", "node2", v1.PodRunning, resNoGPU, nil, make(map[string]string)),
+			},
+			podgroup: BuildPodgroup("pg1", "ns1", 1, resWithGPU),
+			want:     NewResource(resNoGPU),
+		},
+		{
+			pods: []*v1.Pod{
+				buildPod("ns1", "task-1", "node1", v1.PodRunning, resNoGPU, nil, make(map[string]string)),
+				buildPod("ns1", "task-2", "node2", v1.PodRunning, resNoGPU, nil, make(map[string]string)),
+			},
+			podgroup: BuildPodgroup("pg1", "ns1", 1, resWithGPU),
+			want:     NewResource(resNoGPU),
+		},
+		{
+			pods: []*v1.Pod{
+				buildPod("ns1", "task-1", "node1", v1.PodRunning, resWithGPU, nil, make(map[string]string)),
+				buildPod("ns1", "task-2", "node2", v1.PodRunning, resWithGPU, nil, make(map[string]string)),
+			},
+			podgroup: BuildPodgroup("pg1", "ns1", 1, resWithGPU),
+			want:     NewResource(resWithGPU),
+		},
+	}
+
+	for i, test := range tests {
+		job := NewJobInfo("job")
+		for _, pod := range test.pods {
+			job.AddTaskInfo(NewTaskInfo(pod))
+		}
+		job.SetPodGroup(&PodGroup{PodGroup: test.podgroup})
+		if elastic := job.GetElasticResources(); !reflect.DeepEqual(elastic, test.want) {
+			t.Fatalf("case %d:expected %+v, got %+v", i, test.want, elastic)
+		}
+	}
+}
