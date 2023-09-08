@@ -23,6 +23,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	"volcano.sh/apis/pkg/apis/scheduling"
 )
 
 func buildNode(name string, alloc v1.ResourceList) *v1.Node {
@@ -90,7 +92,7 @@ type ScalarResource struct {
 	Value string
 }
 
-// BuildResourceList builts resource list object
+// BuildResourceList builds resource list object
 func BuildResourceList(cpu string, memory string, scalarResources ...ScalarResource) v1.ResourceList {
 	resourceList := v1.ResourceList{
 		v1.ResourceCPU:    resource.MustParse(cpu),
@@ -103,7 +105,7 @@ func BuildResourceList(cpu string, memory string, scalarResources ...ScalarResou
 	return resourceList
 }
 
-// BuildResourceListWithGPU builts resource list with GPU
+// BuildResourceListWithGPU builds resource list with GPU
 func BuildResourceListWithGPU(cpu string, memory string, GPU string, scalarResources ...ScalarResource) v1.ResourceList {
 	resourceList := v1.ResourceList{
 		v1.ResourceCPU:    resource.MustParse(cpu),
@@ -115,4 +117,18 @@ func BuildResourceListWithGPU(cpu string, memory string, GPU string, scalarResou
 	}
 
 	return resourceList
+}
+
+// BuildPodgroup builds podgroup
+func BuildPodgroup(name, ns string, minMember int32, minResource v1.ResourceList) scheduling.PodGroup {
+	return scheduling.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: ns,
+			Name:      name,
+		},
+		Spec: scheduling.PodGroupSpec{
+			MinMember:    minMember,
+			MinResources: &minResource,
+		},
+	}
 }
