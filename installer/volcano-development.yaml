@@ -138,7 +138,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - args:
-            - --enabled-admission=/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate
+            - --enabled-admission=/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/mutate,/queues/mutate,/queues/validate
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
@@ -9823,44 +9823,6 @@ webhooks:
           - UPDATE
         resources:
           - jobs
-        scope: '*'
-    sideEffects: NoneOnDryRun
-    timeoutSeconds: 10
----
-# Source: volcano/templates/webhooks.yaml
-apiVersion: admissionregistration.k8s.io/v1
-kind: ValidatingWebhookConfiguration
-metadata:
-  name: volcano-admission-service-pods-validate
-webhooks:
-  - admissionReviewVersions:
-      - v1
-    clientConfig:
-      service:
-        name: volcano-admission-service
-        namespace: volcano-system
-        path: /pods/validate
-        port: 443
-    failurePolicy: Fail
-    matchPolicy: Equivalent
-    name: validatepod.volcano.sh
-    namespaceSelector:
-      matchExpressions:
-        - key: kubernetes.io/metadata.name
-          operator: NotIn
-          values:
-            - volcano-system
-            - kube-system
-    objectSelector: {}
-    rules:
-      - apiGroups:
-          - ""
-        apiVersions:
-          - v1
-        operations:
-          - CREATE
-        resources:
-          - pods
         scope: '*'
     sideEffects: NoneOnDryRun
     timeoutSeconds: 10

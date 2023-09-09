@@ -18,7 +18,9 @@ custom:
   scheduler_enable: true
   scheduler_replicas: 1
   leader_elect_enable: false
-  enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
+  # The full list is: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
+  # to enable or disable one special webhook, just add or delete it from enabled_admissions arg
+  enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/mutate,/queues/mutate,/queues/validate"
 
 # Specify affinity for all main Volcano components or per component.
 # For example:
