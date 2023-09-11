@@ -17,6 +17,7 @@ limitations under the License.
 package options
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -77,10 +78,19 @@ type ServerOption struct {
 	EnableCacheDumper bool
 }
 
+// InitializedServerOption the value of first init server options
+type InitializedServerOption struct {
+	ServerOption
+	KlogLevel string
+}
+
 type DecryptFunc func(c *ServerOption) error
 
 // ServerOpts server options.
 var ServerOpts *ServerOption
+
+// InitializedServerOptions the value of first init server options
+var InitializedServerOptions InitializedServerOption
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
@@ -142,6 +152,18 @@ func (s *ServerOption) CheckOptionOrDie() error {
 // RegisterOptions registers options.
 func (s *ServerOption) RegisterOptions() {
 	ServerOpts = s
+}
+
+func (s *ServerOption) SetInitializedServerOption() {
+	fs := flag.CommandLine
+	InitializedklogLevel := fs.Lookup("v").Value.String()
+	if InitializedklogLevel == "" {
+		InitializedklogLevel = "0"
+	}
+	InitializedServerOptions = InitializedServerOption{
+		ServerOption: *s,
+		KlogLevel:    InitializedklogLevel,
+	}
 }
 
 // readCAFiles read data from ca file path

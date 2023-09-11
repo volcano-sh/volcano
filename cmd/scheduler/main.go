@@ -64,7 +64,7 @@ func main() {
 			klog.Fatalf("Failed to parse CA file: %v", err)
 		}
 	}
-
+	s.SetInitializedServerOption()
 	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
 	defer klog.Flush()
 

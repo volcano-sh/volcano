@@ -17,6 +17,7 @@ limitations under the License.
 package scheduler
 
 import (
+	"flag"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -160,12 +161,65 @@ func (pc *Scheduler) loadSchedulerConf() {
 	}
 
 	pc.mutex.Lock()
-	// If it is valid, use the new configuration
+	for _, configuration := range configurations {
+		if configuration.Name == "dynamicConf" {
+			if err := pc.setConfKlogLevel(configuration); err != nil {
+				klog.Error(err)
+			}
+			if err := pc.setConfPercentageNodesToFind(configuration); err != nil {
+				klog.Error(err)
+			}
+		}
+	}
+
 	pc.actions = actions
 	pc.plugins = plugins
 	pc.configurations = configurations
 	pc.metricsConf = metricsConf
 	pc.mutex.Unlock()
+}
+
+func (pc *Scheduler) setConfKlogLevel(configuration conf.Configuration) error {
+	if configuration.Arguments["klogLevel"] != nil {
+		klogLevel, ok := configuration.Arguments["klogLevel"].(string)
+		if !ok {
+			return fmt.Errorf("dynamicConf klogLevel is not string,is %v", configuration.Arguments["klogLevel"])
+		}
+		fs := flag.CommandLine
+		curklogLevel := fs.Lookup("v").Value.String()
+		if curklogLevel != klogLevel {
+			klog.Infof("want to change klogV to %v", klogLevel)
+			if err := fs.Set("v", klogLevel); err != nil {
+				return fmt.Errorf("set klogLevel to %v failed: %v", klogLevel, err)
+			}
+		}
+	} else {
+		// if user delete klogLevel in configmap, we should set it to default value
+		fs := flag.CommandLine
+		if err := fs.Set("v", options.InitializedServerOptions.KlogLevel); err != nil {
+			return fmt.Errorf("set klogLevel to Initialized value: %v failed: %v", options.InitializedServerOptions.KlogLevel, err)
+		}
+		klog.Infof("set klogLevel to Initialized value:%v", options.InitializedServerOptions.KlogLevel)
+	}
+	return nil
+}
+
+func (pc *Scheduler) setConfPercentageNodesToFind(configuration conf.Configuration) error {
+	if configuration.Arguments["percentageNodesToFind"] != nil {
+		percentageNodesToFind, ok := configuration.Arguments["percentageNodesToFind"].(int32)
+		if !ok {
+			return fmt.Errorf("dynamicConf percentageNodesToFind is not int,is %v", configuration.Arguments["percentageNodesToFind"])
+		}
+		if percentageNodesToFind != options.ServerOpts.PercentageOfNodesToFind {
+			klog.Infof("want to change percentageNodesToFind from %v to %v", options.ServerOpts.PercentageOfNodesToFind, percentageNodesToFind)
+			options.ServerOpts.PercentageOfNodesToFind = percentageNodesToFind
+		}
+	} else {
+		// if user delete percentageNodesToFind in configmap, we should set it to init value
+		options.ServerOpts.PercentageOfNodesToFind = options.InitializedServerOptions.PercentageOfNodesToFind
+		klog.Infof("set percentageNodesToFind to Initialized value:%v", options.InitializedServerOptions.PercentageOfNodesToFind)
+	}
+	return nil
 }
 
 func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
