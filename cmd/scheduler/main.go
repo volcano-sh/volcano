@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"time"
 
 	// init pprof server
 	_ "net/http/pprof"
@@ -27,7 +26,6 @@ import (
 	"github.com/spf13/pflag"
 	_ "go.uber.org/automaxprocs"
 
-	"k8s.io/apimachinery/pkg/util/wait"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 
@@ -39,14 +37,18 @@ import (
 	_ "volcano.sh/volcano/pkg/scheduler/plugins"
 
 	// init assert
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	logsapi "k8s.io/component-base/logs/api/v1"
 	_ "volcano.sh/volcano/pkg/scheduler/util/assert"
+	// for json log format registration
+	_ "k8s.io/component-base/logs/json/register"
 )
-
-var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
+	c := logsapi.NewLoggingConfiguration()
+	logsapi.AddFlags(c, pflag.CommandLine)
 	klog.InitFlags(nil)
 
 	s := options.NewServerOption()
@@ -54,6 +56,11 @@ func main() {
 	s.RegisterOptions()
 
 	cliflag.InitFlags()
+
+	if err := logsapi.ValidateAndApply(c, utilfeature.DefaultFeatureGate); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
 	if err := s.CheckOptionOrDie(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
@@ -64,9 +71,6 @@ func main() {
 			klog.Fatalf("Failed to parse CA file: %v", err)
 		}
 	}
-
-	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
-	defer klog.Flush()
 
 	if err := app.Run(s); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
