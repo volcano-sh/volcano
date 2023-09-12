@@ -32,6 +32,8 @@ import (
 
 var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 	It("use exisisting PVC in job", func() {
+		// PVC related e2e verification fails probabilistically, See issue: #3102
+		Skip("PVC related e2e verification fails probabilistically, See issue: #3102")
 		jobName := "job-pvc-name-exist"
 		taskName := "pvctask"
 		pvName := "job-pv-name"

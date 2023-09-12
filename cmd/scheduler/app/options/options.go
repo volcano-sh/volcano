@@ -40,7 +40,7 @@ const (
 	// Default parameters to control the number of feasible nodes to find and score
 	defaultMinPercentageOfNodesToFind = 5
 	defaultMinNodesToFind             = 100
-	defaultPercentageOfNodesToFind    = 100
+	defaultPercentageOfNodesToFind    = 0
 	defaultLockObjectNamespace        = "volcano-system"
 )
 

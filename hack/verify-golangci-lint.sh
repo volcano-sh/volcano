@@ -27,7 +27,7 @@ function check_golangci-lint() {
   command -v golangci-lint >/dev/null 2>&1
   if [[ $? -ne 0 ]]; then
     echo "installing golangci-lint ."
-    curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.50.0
+    curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.54.2
     if [[ $? -ne 0 ]]; then
       echo "golangci-lint installed failed, exiting."
       exit 1

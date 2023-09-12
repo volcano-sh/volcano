@@ -78,17 +78,13 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 					var statusSets util.StatusSets
 					statusSets, err := ssn.PredicateFn(task, node)
 					if err != nil {
-						klog.V(3).Infof("predicates failed in backfill for task <%s/%s> on node <%s>: %v",
-							task.Namespace, task.Name, node.Name, err)
 						fe.SetNodeError(node.Name, err)
 						continue
 					}
 
 					if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
 						statusSets.ContainsErrorSkipOrWait() {
-						err := fmt.Errorf("predicates failed in backfill for task <%s/%s> on node <%s>, status is not success",
-							task.Namespace, task.Name, node.Name)
-						klog.V(3).Infof("%v", err)
+						err := fmt.Errorf("%s", statusSets.Message())
 						fe.SetNodeError(node.Name, err)
 						continue
 					}

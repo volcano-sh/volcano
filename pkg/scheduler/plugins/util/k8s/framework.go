@@ -116,11 +116,11 @@ func (f *Framework) RunPreScorePlugins(ctx context.Context, state *framework.Cyc
 	panic("implement me")
 }
 
-func (f *Framework) RunScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodes []*v1.Node) (framework.PluginToNodeScores, *framework.Status) {
+func (f *Framework) RunScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodes []*v1.Node) ([]framework.NodePluginScores, *framework.Status) {
 	panic("implement me")
 }
 
-func (f *Framework) RunFilterPlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, info *framework.NodeInfo) framework.PluginToStatus {
+func (f *Framework) RunFilterPlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, info *framework.NodeInfo) *framework.Status {
 	panic("implement me")
 }
 

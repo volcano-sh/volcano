@@ -911,7 +911,11 @@ func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.Numatopo
 	for name, resInfo := range numaResMap {
 		tmp := schedulingapi.ResourceInfo{}
 		tmp.Capacity = resInfo.Capacity
-		tmp.Allocatable = cpuset.MustParse(resInfo.Allocatable)
+		allocatable, err := cpuset.Parse(resInfo.Allocatable)
+		if err != nil {
+			klog.ErrorS(err, "Failed to parse input as CPUSet", resInfo.Allocatable)
+		}
+		tmp.Allocatable = allocatable
 		numaInfo.NumaResMap[name] = &tmp
 	}
 
