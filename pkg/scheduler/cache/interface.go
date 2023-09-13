@@ -51,7 +51,7 @@ type Cache interface {
 
 	// RecordJobStatusEvent records related events according to job status.
 	// Deprecated: remove it after removed PDB support.
-	RecordJobStatusEvent(job *api.JobInfo)
+	RecordJobStatusEvent(job *api.JobInfo, updatePG bool)
 
 	// UpdateJobStatus puts job in backlog for a while.
 	UpdateJobStatus(job *api.JobInfo, updatePG bool) (*api.JobInfo, error)

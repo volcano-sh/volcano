@@ -1219,7 +1219,7 @@ func (sc *SchedulerCache) String() string {
 }
 
 // RecordJobStatusEvent records related events according to job status.
-func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
+func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updatePG bool) {
 	pgUnschedulable := job.PodGroup != nil &&
 		(job.PodGroup.Status.Phase == scheduling.PodGroupUnknown ||
 			job.PodGroup.Status.Phase == scheduling.PodGroupPending ||
@@ -1232,7 +1232,7 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo) {
 			len(job.Tasks),
 			job.FitError())
 		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(scheduling.PodGroupUnschedulableType), msg)
-	} else {
+	} else if updatePG {
 		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupScheduled), string(scheduling.PodGroupReady))
 	}
 
@@ -1265,7 +1265,7 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG b
 		job.PodGroup = pg
 	}
 
-	sc.RecordJobStatusEvent(job)
+	sc.RecordJobStatusEvent(job, updatePG)
 
 	return job, nil
 }
