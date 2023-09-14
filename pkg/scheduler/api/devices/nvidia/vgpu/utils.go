@@ -143,7 +143,7 @@ func decodeContainerDevices(str string) ContainerDevices {
 	contdev := ContainerDevices{}
 	tmpdev := ContainerDevice{}
 	//fmt.Println("before container device", str)
-	if len(str) == 0 {
+	if len(cd) == 0 {
 		return contdev
 	}
 	for _, val := range cd {
