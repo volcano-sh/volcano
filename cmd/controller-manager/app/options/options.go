@@ -55,7 +55,7 @@ type ServerOption struct {
 	MaxRequeueNum  int
 	SchedulerNames []string
 	// HealthzBindAddress is the IP address and port for the health check server to serve on,
-	// defaulting to 0.0.0.0:11252
+	// defaulting to 0.0.0.0:11251
 	HealthzBindAddress string
 	EnableHealthz      bool
 	// To determine whether inherit owner's annotations for pods when create podgroup
