@@ -149,8 +149,7 @@ func openSession(cache cache.Cache) *Session {
 
 	ssn.Jobs = snapshot.Jobs
 	for _, job := range ssn.Jobs {
-		// only conditions will be updated periodically
-		if job.PodGroup != nil && job.PodGroup.Status.Conditions != nil {
+		if job.PodGroup != nil {
 			ssn.podGroupStatus[job.UID] = *job.PodGroup.Status.DeepCopy()
 		}
 
