@@ -493,7 +493,7 @@ func (ni *NodeInfo) addResource(pod *v1.Pod) {
 	ni.Others[vgpu.DeviceName].(Devices).AddResource(pod)
 }
 
-// subResource is used to substract sharable devices
+// subResource is used to subtract sharable devices
 func (ni *NodeInfo) subResource(pod *v1.Pod) {
 	ni.Others[GPUSharingDevice].(Devices).SubResource(pod)
 	ni.Others[vgpu.DeviceName].(Devices).SubResource(pod)

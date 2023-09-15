@@ -65,7 +65,7 @@ func Test_checkNodeResourceIsProportional(t *testing.T) {
 				node:         n1,
 				proportional: proportional,
 			},
-			api.Unschedulable,
+			api.UnschedulableAndUnresolvable,
 			true,
 		},
 		{

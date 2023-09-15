@@ -23,10 +23,11 @@ import (
 	"sync"
 	"time"
 
+	"volcano.sh/volcano/cmd/scheduler/app/options"
+
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/component-helpers/storage/ephemeral"
 	"k8s.io/klog/v2"
@@ -36,15 +37,9 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/helper"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/names"
-
-	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/features"
 )
 
 const (
-	// DefaultBindTimeoutSeconds defines the default bind timeout in seconds
-	DefaultBindTimeoutSeconds = 600
-
 	stateKey framework.StateKey = Name
 
 	maxUtilization = 100
@@ -54,14 +49,12 @@ const (
 // framework.CycleState, in the later phases we don't need to call Write method
 // to update the value
 type stateData struct {
-	skip         bool // set true if pod does not have PVCs
-	boundClaims  []*v1.PersistentVolumeClaim
-	claimsToBind []*v1.PersistentVolumeClaim
-	allBound     bool
+	allBound bool
 	// podVolumesByNode holds the pod's volume information found in the Filter
 	// phase for each node
 	// it's initialized in the PreFilter phase
 	podVolumesByNode map[string]*PodVolumes
+	podVolumeClaims  *PodVolumeClaims
 	sync.Mutex
 }
 
@@ -174,14 +167,14 @@ func (pl *VolumeBinding) PreFilter(ctx context.Context, state *framework.CycleSt
 	if hasPVC, err := pl.podHasPVCs(pod); err != nil {
 		return nil, framework.NewStatus(framework.UnschedulableAndUnresolvable, err.Error())
 	} else if !hasPVC {
-		state.Write(stateKey, &stateData{skip: true})
-		return nil, nil
+		state.Write(stateKey, &stateData{})
+		return nil, framework.NewStatus(framework.Skip)
 	}
-	boundClaims, claimsToBind, unboundClaimsImmediate, err := pl.Binder.GetPodVolumes(pod)
+	podVolumeClaims, err := pl.Binder.GetPodVolumeClaims(pod)
 	if err != nil {
 		return nil, framework.AsStatus(err)
 	}
-	if len(unboundClaimsImmediate) > 0 {
+	if len(podVolumeClaims.unboundClaimsImmediate) > 0 {
 		// Return UnschedulableAndUnresolvable error if immediate claims are
 		// not bound. Pod will be moved to active/backoff queues once these
 		// claims are bound by PV controller.
@@ -189,8 +182,23 @@ func (pl *VolumeBinding) PreFilter(ctx context.Context, state *framework.CycleSt
 		status.AppendReason("pod has unbound immediate PersistentVolumeClaims")
 		return nil, status
 	}
-	state.Write(stateKey, &stateData{boundClaims: boundClaims, claimsToBind: claimsToBind, podVolumesByNode: make(map[string]*PodVolumes)})
-	return nil, nil
+	// Attempt to reduce down the number of nodes to consider in subsequent scheduling stages if pod has bound claims.
+	var result *framework.PreFilterResult
+	if eligibleNodes := pl.Binder.GetEligibleNodes(podVolumeClaims.boundClaims); eligibleNodes != nil {
+		result = &framework.PreFilterResult{
+			NodeNames: eligibleNodes,
+		}
+	}
+
+	state.Write(stateKey, &stateData{
+		podVolumesByNode: make(map[string]*PodVolumes),
+		podVolumeClaims: &PodVolumeClaims{
+			boundClaims:                podVolumeClaims.boundClaims,
+			unboundClaimsDelayBinding:  podVolumeClaims.unboundClaimsDelayBinding,
+			unboundVolumesDelayBinding: podVolumeClaims.unboundVolumesDelayBinding,
+		},
+	})
+	return result, nil
 }
 
 // PreFilterExtensions returns prefilter extensions, pod add and remove.
@@ -236,11 +244,7 @@ func (pl *VolumeBinding) Filter(ctx context.Context, cs *framework.CycleState, p
 		return framework.AsStatus(err)
 	}
 
-	if state.skip {
-		return nil
-	}
-
-	podVolumes, reasons, err := pl.Binder.FindPodVolumes(pod, state.boundClaims, state.claimsToBind, node)
+	podVolumes, reasons, err := pl.Binder.FindPodVolumes(pod, state.podVolumeClaims, node)
 
 	if err != nil {
 		return framework.AsStatus(err)
@@ -379,7 +383,7 @@ func New(plArgs runtime.Object, fh framework.Handle, fts feature.Features) (fram
 	storageClassInformer := fh.SharedInformerFactory().Storage().V1().StorageClasses()
 	csiNodeInformer := fh.SharedInformerFactory().Storage().V1().CSINodes()
 	var capacityCheck *CapacityCheck
-	if options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
+	if options.ServerOpts.EnableCSIStorage {
 		capacityCheck = &CapacityCheck{
 			CSIDriverInformer:          fh.SharedInformerFactory().Storage().V1().CSIDrivers(),
 			CSIStorageCapacityInformer: fh.SharedInformerFactory().Storage().V1beta1().CSIStorageCapacities(),

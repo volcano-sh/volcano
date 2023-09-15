@@ -57,11 +57,15 @@ linters:
     - varcheck
     # other linters supported by golangci-lint.
     #- gosec
-    - revive
+    #- revive
     - whitespace
 
 linters-settings:
   goimports:
     local-prefixes: volcano.sh
+  staticcheck:
+    checks:
+      - "all"
+      - "-SA1019"   # TODO(fix) Using a deprecated function, variable, constant or field
 
 
