@@ -126,15 +126,15 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			var statusSets util.StatusSets
 			statusSets, err := ssn.PredicateFn(task, n)
 			if err != nil {
-				klog.V(3).Infof("reclaim predicates failed for task <%s/%s> on node <%s>: %v",
+				klog.V(5).Infof("reclaim predicates failed for task <%s/%s> on node <%s>: %v",
 					task.Namespace, task.Name, n.Name, err)
 				continue
 			}
 
 			// Allows scheduling to nodes that are in Success or Unschedulable state after filtering by predicate.
 			if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
-				klog.V(3).Infof("predicates failed in reclaim for task <%s/%s> on node <%s>, status is not success or unschedulable.",
-					task.Namespace, task.Name, n.Name)
+				klog.V(5).Infof("predicates failed in reclaim for task <%s/%s> on node <%s>, reason is %s.",
+					task.Namespace, task.Name, n.Name, statusSets.Message())
 				continue
 			}
 			klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",

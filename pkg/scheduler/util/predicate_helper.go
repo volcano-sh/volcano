@@ -154,6 +154,9 @@ func (s StatusSets) Message() string {
 	}
 	all := make([]string, 0, len(s))
 	for _, status := range s {
+		if status.Reason == "" {
+			continue
+		}
 		all = append(all, status.Reason)
 	}
 	return strings.Join(all, ",")
@@ -166,6 +169,9 @@ func (s StatusSets) Reasons() []string {
 	}
 	all := make([]string, 0, len(s))
 	for _, status := range s {
+		if status.Reason == "" {
+			continue
+		}
 		all = append(all, status.Reason)
 	}
 	return all

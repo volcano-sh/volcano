@@ -92,7 +92,7 @@ func (pvb pvBuilder) withVersion(version string) pvBuilder {
 
 func (pvb pvBuilder) withCapacity(capacity resource.Quantity) pvBuilder {
 	pvb.PersistentVolume.Spec.Capacity = v1.ResourceList{
-		v1.ResourceStorage: capacity,
+		v1.ResourceName(v1.ResourceStorage): capacity,
 	}
 	return pvb
 }
@@ -115,7 +115,7 @@ func makePVC(name string, storageClassName string) pvcBuilder {
 			Namespace: v1.NamespaceDefault,
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
-			StorageClassName: pointer.StringPtr(storageClassName),
+			StorageClassName: pointer.String(storageClassName),
 		},
 	}}
 }
@@ -129,7 +129,7 @@ func (pvcb pvcBuilder) withBoundPV(pvName string) pvcBuilder {
 func (pvcb pvcBuilder) withRequestStorage(request resource.Quantity) pvcBuilder {
 	pvcb.PersistentVolumeClaim.Spec.Resources = v1.ResourceRequirements{
 		Requests: v1.ResourceList{
-			v1.ResourceStorage: request,
+			v1.ResourceName(v1.ResourceStorage): request,
 		},
 	}
 	return pvcb
