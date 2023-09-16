@@ -708,3 +708,31 @@ func (r ResourceNameList) Contains(rr ResourceNameList) bool {
 func IsCountQuota(name v1.ResourceName) bool {
 	return strings.HasPrefix(string(name), "count/")
 }
+
+// Partly returns the partly resource in r which exceed rr
+func Partly(left, right *Resource) *Resource {
+	if right == nil {
+		return left
+	}
+	diff := EmptyResource()
+	if left == nil {
+		return diff
+	}
+	if left.MilliCPU > right.MilliCPU {
+		diff.MilliCPU = left.MilliCPU - right.MilliCPU
+	}
+	if left.Memory > right.Memory {
+		diff.Memory = left.Memory - right.Memory
+	}
+
+	for k, v := range left.ScalarResources {
+		minv := right.ScalarResources[k]
+		if v > minv {
+			if diff.ScalarResources == nil {
+				diff.ScalarResources = map[v1.ResourceName]float64{}
+			}
+			diff.ScalarResources[k] = v - minv
+		}
+	}
+	return diff
+}
