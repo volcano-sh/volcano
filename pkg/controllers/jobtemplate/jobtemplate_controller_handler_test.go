@@ -23,6 +23,7 @@ import (
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	jobflowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
+	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
 func TestAddJobTemplateFunc(t *testing.T) {
@@ -87,4 +88,56 @@ func TestAddJob(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEnqueueJobTemplate(t *testing.T) {
+
+	namespace := "test"
+
+	req1 := apis.FlowRequest{
+		Namespace:       namespace,
+		JobTemplateName: "name1",
+
+		Action: jobflowv1alpha1.SyncJobTemplateAction,
+	}
+	req2 := apis.FlowRequest{
+		Namespace:       namespace,
+		JobTemplateName: "name2",
+
+		Action: jobflowv1alpha1.SyncJobTemplateAction,
+	}
+
+	testCases := []struct {
+		Name        string
+		newReq      apis.FlowRequest
+		oldReq      apis.FlowRequest
+		ExpectValue int
+	}{
+		{
+			Name:        "de-duplicate",
+			newReq:      req1,
+			oldReq:      req1,
+			ExpectValue: 1,
+		},
+		{
+			Name:        "no-deduplicate",
+			newReq:      req1,
+			oldReq:      req2,
+			ExpectValue: 2,
+		},
+	}
+
+	for i, testcase := range testCases {
+		t.Run(testcase.Name, func(t *testing.T) {
+			fakeController := newFakeController()
+
+			fakeController.enqueueJobTemplate(testcase.oldReq)
+			fakeController.enqueueJobTemplate(testcase.newReq)
+			queueLen := fakeController.queue.Len()
+			if testcase.ExpectValue != queueLen {
+				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, queueLen)
+			}
+		})
+	}
+
 }
