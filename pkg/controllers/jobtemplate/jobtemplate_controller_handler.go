@@ -26,7 +26,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
-func (jt *jobtemplatecontroller) enqueue(req *apis.FlowRequest) {
+func (jt *jobtemplatecontroller) enqueue(req apis.FlowRequest) {
 	jt.queue.Add(req)
 }
 
@@ -37,7 +37,7 @@ func (jt *jobtemplatecontroller) addJobTemplate(obj interface{}) {
 		return
 	}
 
-	req := &apis.FlowRequest{
+	req := apis.FlowRequest{
 		Namespace:       jobTemplate.Namespace,
 		JobTemplateName: jobTemplate.Name,
 	}
@@ -63,9 +63,9 @@ func (jt *jobtemplatecontroller) addJob(obj interface{}) {
 	}
 	namespace, name := namespaceName[0], namespaceName[1]
 
-	req := &apis.FlowRequest{
+	req := apis.FlowRequest{
 		Namespace:       namespace,
 		JobTemplateName: name,
 	}
-	jt.queue.Add(req)
+	jt.enqueueJobTemplate(req)
 }
