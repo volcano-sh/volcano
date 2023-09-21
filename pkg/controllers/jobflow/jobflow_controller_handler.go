@@ -36,6 +36,7 @@ func (jf *jobflowcontroller) addJobFlow(obj interface{}) {
 		return
 	}
 
+	// use struct instead of pointer
 	req := apis.FlowRequest{
 		Namespace:   jobFlow.Namespace,
 		JobFlowName: jobFlow.Name,
