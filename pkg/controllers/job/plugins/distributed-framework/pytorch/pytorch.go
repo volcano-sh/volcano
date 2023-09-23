@@ -64,7 +64,7 @@ func (pp *pytorchPlugin) Name() string {
 
 func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	taskType := helpers.GetTaskKey(pod)
-	masterIndex := helpers.GetTasklndexUnderJob(pp.masterName, job)
+	masterIndex := helpers.GetTaskIndexUnderJob(pp.masterName, job)
 	if masterIndex == -1 {
 		klog.Errorf("job %v doesn't have task %v", job.Name, pp.masterName)
 		return nil

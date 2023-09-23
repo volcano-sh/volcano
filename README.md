@@ -107,6 +107,24 @@ job.batch/volcano-admission-init   1/1           48s        96s
 
 ```
 
+### Install via helm
+
+To install official release, please visit to [helm-charts](https://github.com/volcano-sh/helm-charts) for details.
+
+```bash
+helm repo add volcano-sh https://volcano-sh.github.io/helm-charts
+helm install volcano volcano-sh/volcano -n volcano-system --create-namespace
+```
+
+Install from source code for developers:
+
+```bash
+helm install volcano installer/helm/chart/volcano --namespace volcano-system --create-namespace
+
+# list helm release
+helm list -n volcano-system
+```
+
 ### Install from code
 
 If you don't have a kubernetes cluster, try one-click install from code base:
