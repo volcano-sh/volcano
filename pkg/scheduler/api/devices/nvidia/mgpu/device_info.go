@@ -71,15 +71,18 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	if node == nil {
 		return nil
 	}
+	value, ok := node.Labels[VKELabelNodeResourceType]
+	if !ok || value == GPUTypeNvidiaGPU {
+		return nil
+	}
 	rater := getRater()
-	devices := decodeNodeDevices(name, node, rater)
 
-	return devices
+	return decodeNodeDevices(name, node, rater)
 }
 
 // AddResource adds the pod to GPU pool if it is assigned
 func (gs *GPUDevices) AddResource(pod *v1.Pod) {
-	if !isSharedMGPUPod(pod) {
+	if !isSharedMGPUPod(pod) || (pod.Status.Phase != v1.PodRunning) {
 		return
 	}
 	klog.V(3).Infof("Start to add pod %s/%s", pod.Namespace, pod.Name)
@@ -105,11 +108,10 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 	}
 	klog.Infof("Start to forget pod %s/%s", pod.Namespace, pod.Name)
 	podName := getPodNamespaceName(pod)
-	option := NewGPUOptionFromPod(pod, VKEResourceMGPUCore, VKEResourceMGPUMemory)
-	//option, ok := gs.Pod2OptionMap[podName]
-	//if !ok {
-	//	return
-	//}
+	option, ok := gs.Pod2OptionMap[podName]
+	if !ok {
+		return
+	}
 	if option.Allocated != nil && option.Allocated[0] == nil {
 		return
 	}
@@ -117,9 +119,9 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 		klog.Infof("Cancel pod %s/%s option %+v on %+v", pod.Namespace, pod.Name, option, gs.GPUs.ToString())
 	}
 	gs.GPUs.Cancel(pod, option)
-	//if klog.V(3).Enabled() {
-	klog.Infof("After Cancel, Current GPU allocation of node %s: %+v", gs.Name, gs.GPUs.ToString())
-	//}
+	if klog.V(3).Enabled() {
+		klog.Infof("After Cancel, Current GPU allocation of node %s: %+v", gs.Name, gs.GPUs.ToString())
+	}
 	delete(gs.Pod2OptionMap, podName)
 }
 
@@ -154,23 +156,8 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 		if klog.V(5).Enabled() {
 			klog.Infof("GPU Devices: %+v\n", gs.GPUs.ToString())
 		}
-		var (
-			req   GPURequest
-			cmReq ContainerMultiGPURequest
-		)
-		req, cmReq = NewGPURequest(pod, VKEResourceMGPUCore, VKEResourceMGPUMemory)
-		// Check container specific number whether exceed the node's GPU number
-		gpuCountList, _ := ExtraMultipleGPUCountList(pod)
-		if len(gpuCountList) > 0 {
-			for i, count := range gpuCountList {
-				if count > len(gs.GPUs) {
-					return fmt.Errorf("request multiple GPU count %d is exceed the allocatable GPU number, container index: %d", count, i+1)
-				}
-			}
-		}
-
 		// Achieve the option of GPU for pod's containers
-		option, err := gs.GPUs.Trade(gs.Rater, req, pod, cmReq)
+		option, err := tradeForResourceOption(pod, gs)
 		if err != nil {
 			return err
 		}
@@ -196,7 +183,11 @@ func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) erro
 	podName := GetPodNamespaceName(pod)
 	option, ok := gs.Pod2OptionMap[podName]
 	if !ok {
-		return fmt.Errorf("")
+		// remove patched GPU annotations of the pod
+		if err := removePatchGPUInfo(kubeClient, pod); err != nil {
+			return fmt.Errorf("remove patched mgpu annotations failed: %v", err)
+		}
+		return fmt.Errorf("not found pod option from cache when ReleaseToPod")
 	}
 	if klog.V(3).Enabled() {
 		klog.Infof("Cancel pod %s/%s option %+v on %+v", pod.Namespace, pod.Name, option, gs.GPUs.ToString())
@@ -289,7 +280,7 @@ func (g GPUs) Transact(pod *v1.Pod, option *GPUOption) error {
 					// judge whether the only needed card can satisfy the request of container i
 					if !g[option.Allocated[i][0]].CanAllocate(option.Request[i]) {
 						g.cancelAdded(addedDict, pod, option)
-						klog.Errorf("Fail to trade option %+v on %+v because the GPU's residual memory or core can't satisfy the container", option, g.ToString())
+						//klog.Errorf("Fail to trade option %+v on %+v because the GPU's residual memory or core can't satisfy the container", option, g.ToString())
 						return fmt.Errorf("can't trade option %+v on %+v because the GPU's residual memory or core can't satisfy the container", option, g)
 					}
 					g[option.Allocated[i][0]].Add(option.Request[i])
@@ -672,6 +663,19 @@ func patchGPUInfo(kubeClient kubernetes.Interface, pod *v1.Pod, option *GPUOptio
 		podCopy.Annotations[VKEAnnotationMGPUAssumed] = "true"
 		klog.V(5).Infof("patch pod %s annotation: container %s with gpus' index: %s ", pod.Name, c.Name, ids)
 	}
+
+	return Patch(kubeClient, pod, podCopy)
+}
+
+func removePatchGPUInfo(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+	podCopy := pod.DeepCopy()
+	if podCopy.Annotations == nil {
+		podCopy.Annotations = make(map[string]string)
+	}
+	for _, c := range podCopy.Spec.Containers {
+		delete(podCopy.Annotations, fmt.Sprintf(VKEAnnotationMGPUContainer, c.Name))
+	}
+	delete(podCopy.Annotations, VKEAnnotationMGPUAssumed)
 
 	return Patch(kubeClient, pod, podCopy)
 }

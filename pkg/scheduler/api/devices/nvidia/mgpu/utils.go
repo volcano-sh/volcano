@@ -48,17 +48,17 @@ func checkMGPUResourceInPod(pod *v1.Pod) bool {
 }
 
 func getRater() Rater {
-	//var rater Rater
-	//switch GlobalConfig.Policy {
-	//case Binpack:
-	//	rater = &GPUBinpack{}
-	//case Spread:
-	//	rater = &GPUSpread{}
-	//default:
-	//	klog.Errorf("priority algorithm is not supported: %s", GlobalConfig.Policy)
-	//	return nil
-	//}
-	return &GPUBinpack{}
+	var rater Rater
+	switch GlobalConfig.Policy {
+	case Binpack:
+		rater = &GPUBinpack{}
+	case Spread:
+		rater = &GPUSpread{}
+	default:
+		klog.Errorf("priority algorithm is not supported: %s", GlobalConfig.Policy)
+		return nil
+	}
+	return rater
 }
 
 func decodeNodeDevices(name string, node *v1.Node, rater Rater) *GPUDevices {
@@ -102,7 +102,7 @@ func decodeNodeDevices(name string, node *v1.Node, rater Rater) *GPUDevices {
 				})
 			}
 		default:
-			klog.Errorf("invalid resource value of %s", VKELabelNodeResourceType)
+			klog.Errorf("invalid resource value of %s on node %s", VKELabelNodeResourceType, node.Name)
 			return nil
 		}
 	}
@@ -123,17 +123,30 @@ func checkNodeMGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices) (bool, error
 	if !isFullCardGPUPod(pod) && getPodComputePolicy(pod) != gs.NodePolicy {
 		return false, fmt.Errorf("compute policy not match normal mgpu")
 	}
+	_, err := tradeForResourceOption(pod, gs)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func tradeForResourceOption(pod *v1.Pod, gs *GPUDevices) (option *GPUOption, err error) {
+	var (
+		req   GPURequest
+		cmReq ContainerMultiGPURequest
+	)
+	req, cmReq = NewGPURequest(pod, VKEResourceMGPUCore, VKEResourceMGPUMemory)
 	// Check container specific number whether exceed the node's GPU number
 	gpuCountList, _ := ExtraMultipleGPUCountList(pod)
 	if len(gpuCountList) > 0 {
 		for i, count := range gpuCountList {
 			if count > len(gs.GPUs) {
-				return false, fmt.Errorf("request multiple GPU count %d is exceed the allocatable GPU number, container index: %d", count, i+1)
+				return nil, fmt.Errorf("request multiple GPU count %d is exceed the allocatable GPU number, container index: %d", count, i+1)
 			}
 		}
 	}
-
-	return true, nil
+	return gs.GPUs.Trade(gs.Rater, req, pod, cmReq)
 }
 
 func getPodNamespaceName(pod *v1.Pod) string {

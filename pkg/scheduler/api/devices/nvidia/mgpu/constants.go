@@ -82,8 +82,8 @@ const (
 	NotNeedMultipleGPU = -3
 	// GPUTypeMGPU is GPUTypeMGPU
 	GPUTypeMGPU = "mgpu"
-	// GPUTypePGPU is GPUTypePGPU
-	GPUTypePGPU = "nvidia"
+	// GPUTypeNvidiaGPU is GPUTypeNvidiaGPU
+	GPUTypeNvidiaGPU = "nvidia"
 	// DefaultComputePolicy is DefaultComputePolicy
 	DefaultComputePolicy = "fixed-share"
 	// NativeBurstSharePolicy is NativeBurstSharePolicy
