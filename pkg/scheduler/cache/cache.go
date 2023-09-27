@@ -915,6 +915,12 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 func (sc *SchedulerCache) deleteJob(job *schedulingapi.JobInfo) {
 	klog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
 
+	sc.DeletedJobs.Add(job)
+}
+
+func (sc *SchedulerCache) retryDeleteJob(job *schedulingapi.JobInfo) {
+	klog.V(3).Infof("Retry to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
+
 	sc.DeletedJobs.AddRateLimited(job)
 }
 
@@ -939,9 +945,10 @@ func (sc *SchedulerCache) processCleanupJob() {
 		delete(sc.Jobs, job.UID)
 		metrics.DeleteJobMetrics(job.Name, string(job.Queue), job.Namespace)
 		klog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
+		sc.DeletedJobs.Forget(obj)
 	} else {
 		// Retry
-		sc.deleteJob(job)
+		sc.retryDeleteJob(job)
 	}
 }
 
