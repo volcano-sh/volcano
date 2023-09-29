@@ -180,7 +180,7 @@ func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) erro
 }
 
 func (gs *GPUDevices) FilterNode(pod *v1.Pod) (int, string, error) {
-	klog.V(3).Infoln("4pdvgpuDeviceSharing:Into FitInPod", pod.Name)
+	klog.V(5).Infoln("4pdvgpu DeviceSharing starts filtering pods", pod.Name)
 	if VGPUEnable {
 		fit, _, err := checkNodeGPUSharingPredicate(pod, gs, true)
 		if err != nil || !fit {
@@ -188,7 +188,7 @@ func (gs *GPUDevices) FilterNode(pod *v1.Pod) (int, string, error) {
 			return devices.Unschedulable, fmt.Sprintf("4pdvgpuDeviceSharing %s", err.Error()), err
 		}
 	}
-	klog.V(3).Infoln("4pdvgpu DeviceSharing:FitInPod successed")
+	klog.V(5).Infoln("4pdvgpu DeviceSharing successfully filters pods")
 	return devices.Success, "", nil
 }
 
