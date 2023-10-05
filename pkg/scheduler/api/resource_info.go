@@ -84,7 +84,7 @@ func NewResource(rl v1.ResourceList) *Resource {
 				continue
 			}
 			//NOTE: When converting this back to k8s resource, we need record the format as well as / 1000
-			if v1helper.IsScalarResourceName(rName) {
+			if v1helper.IsScalarResourceName(rName) || rName.String() == "volcano.sh/vgpu-memory" {
 				ignore := false
 				for _, val := range IgnoredDevicesList {
 					if strings.Compare(rName.String(), val) == 0 {
