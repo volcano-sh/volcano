@@ -548,6 +548,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		for _, val := range api.RegisteredDevices {
 			if devices, ok := node.Others[val].(api.Devices); ok {
+				klog.Infof("-----Node Others [&#v], devices [%#v]", node.Others, devices)
 				code, msg, err := devices.FilterNode(task.Pod)
 				filterNodeStatus := &api.Status{
 					Code:   code,
