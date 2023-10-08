@@ -10,6 +10,10 @@ need to set up before being able to build and run the code.
 - [Setting up Kubernetes](#setting-up-kubernetes)
 - [Setting up personal access token](#setting-up-a-personal-access-token)
 
+### Recommended Operating Systems
+
+- **Linux**: Given the strong support for Kubernetes and Docker on Linux, it stands out as the preferred environment for development. [Ubuntu](https://ubuntu.com/) or [CentOS](https://www.centos.org/centos-linux/) are popular choices. For Mac ARM64 chip (m1 & m2) users, it is recommended to have a virtual Linux machine for development.
+
 ## Setting up Go
 
 All Volcano components are written in the [Go](https://golang.org) programming language.
@@ -17,14 +21,14 @@ To build, you'll need a Go development environment. If you haven't set up a Go d
 environment, please follow [these instructions](https://golang.org/doc/install)
 to install the Go tools.
 
-Volcano currently builds with Go 1.14
+Volcano currently builds with Go 1.20
 
 ## Setting up Docker
 
-Istio has a Docker build system for creating and publishing Docker images.
+Volcano has a Docker build system for creating and publishing Docker images.
 To leverage that you will need:
 
-- **Docker platform:** To download and install Docker follow [these instructions](https://docs.docker.com/install/).
+- **Docker platform:** To download and install Docker follow [these instructions](https://docs.docker.com/engine/install/).
 
 - **Docker Hub ID:** If you do not yet have a Docker ID account you can follow [these steps](https://docs.docker.com/docker-id/) to create one. This ID will be used in a later step when setting up the environment variables.
 
