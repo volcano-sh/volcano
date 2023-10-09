@@ -32,7 +32,7 @@ refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](htt
 
 ![cncf_logo](docs/images/cncf-logo.png)
 
-Volcano is an incubating project of the [Cloud Native Computing Foundation](https://cncf.io/) (CNCF). Please consider joining the CNCF if you are an organization that wants to take an active role in supporting the growth and evolution of the cloud native ecosystem. 
+Volcano is an incubating project of the [Cloud Native Computing Foundation](https://cncf.io/) (CNCF). Please consider joining the CNCF if you are an organization that wants to take an active role in supporting the growth and evolution of the cloud native ecosystem.
 
 ## Overall Architecture
 
@@ -67,7 +67,7 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 
 You can try Volcano by one of the following two ways.
 
-Note: 
+Note:
 * For Kubernetes v1.17+ use CRDs under config/crd/bases (recommended)
 * For Kubernetes versions < v1.16 use CRDs under config/crd/v1beta1 (deprecated)
 
@@ -76,7 +76,7 @@ Note:
 Install Volcano on an existing Kubernetes cluster. This way is both available for x86_64 and arm64 architecture.
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development.yaml
+kubectl create -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development.yaml
 ```
 
 Enjoy! Volcano will create the following resources in `volcano-system` namespace.
