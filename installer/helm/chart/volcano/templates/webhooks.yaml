@@ -38,9 +38,8 @@ webhooks:
         scope: '*'
     sideEffects: NoneOnDryRun
     timeoutSeconds: 10
-{{- end }}
-
 ---
+{{- end }}
 
 {{- if .Values.custom.enabled_admissions | regexMatch "/queues/mutate" }}
 apiVersion: admissionregistration.k8s.io/v1
@@ -80,9 +79,8 @@ webhooks:
         scope: '*'
     sideEffects: NoneOnDryRun
     timeoutSeconds: 10
-{{- end }}
-
 ---
+{{- end }}
 
 {{- if .Values.custom.enabled_admissions | regexMatch "/podgroups/mutate" }}
 apiVersion: admissionregistration.k8s.io/v1
@@ -122,9 +120,8 @@ webhooks:
         scope: '*'
     sideEffects: NoneOnDryRun
     timeoutSeconds: 10
-{{- end }}
-
 ---
+{{- end }}
 
 {{- if .Values.custom.enabled_admissions | regexMatch "/jobs/mutate" }}
 apiVersion: admissionregistration.k8s.io/v1
@@ -164,9 +161,8 @@ webhooks:
         scope: '*'
     sideEffects: NoneOnDryRun
     timeoutSeconds: 10
-{{- end }}
-
 ---
+{{- end }}
 
 {{- if .Values.custom.enabled_admissions | regexMatch "/jobs/validate" }}
 apiVersion: admissionregistration.k8s.io/v1
@@ -206,9 +202,8 @@ webhooks:
         scope: '*'
     sideEffects: NoneOnDryRun
     timeoutSeconds: 10
-{{- end }}
-
 ---
+{{- end }}
 
 {{- if .Values.custom.enabled_admissions | regexMatch "/pods/validate" }}
 apiVersion: admissionregistration.k8s.io/v1
@@ -247,9 +242,8 @@ webhooks:
         scope: '*'
     sideEffects: NoneOnDryRun
     timeoutSeconds: 10
-{{- end }}
-
 ---
+{{- end }}
 
 {{- if .Values.custom.enabled_admissions | regexMatch "/queues/validate" }}
 apiVersion: admissionregistration.k8s.io/v1
@@ -290,5 +284,6 @@ webhooks:
         scope: '*'
     sideEffects: NoneOnDryRun
     timeoutSeconds: 10
+---
 {{- end }}
 {{- end }}
