@@ -168,4 +168,5 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.27.2
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.27.2
 	k8s.io/sample-controller => k8s.io/sample-controller v0.27.2
+	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.27.2
 )
