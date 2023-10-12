@@ -431,11 +431,11 @@ func TestGuarantee(t *testing.T) {
 		for _, job := range ssn.Jobs {
 			expectedNode, exist := test.expectedAffinity[job.Name]
 			if !exist {
-				// Doesn't have affinity constraing for this job
+				// Doesn't have an affinity constraint for this job
 				continue
 			}
 
-			// All tasks of the job must be on the node from expectedAffinity
+			// All tasks of the job must be on the expectedAffinity node
 			for _, task := range job.Tasks {
 				if task.Pod.Spec.NodeName != expectedNode {
 					t.Logf("expected affinity <%s> for task <%s>", expectedNode, task.Pod.Spec.NodeName)
@@ -443,7 +443,5 @@ func TestGuarantee(t *testing.T) {
 				}
 			}
 		}
-		// Clear resources
-		framework.CloseSession(ssn)
 	}
 }
