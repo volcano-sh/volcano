@@ -161,14 +161,22 @@ spec:
             {{- end }}
             - -v=3
             - 2>&1
+          env:
+            - name: DEBUG_SOCKET_DIR
+              value: /tmp/klog-socks
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           volumeMounts:
             - name: scheduler-config
               mountPath: /volcano.scheduler
+            - name: klog-sock
+              mountPath: /tmp/klog-socks
       volumes:
         - name: scheduler-config
           configMap:
             name: {{ .Release.Name }}-scheduler-configmap
+        - name: klog-sock
+          hostPath:
+            path: /tmp/klog-socks
 ---
 apiVersion: v1
 kind: Service
