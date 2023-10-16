@@ -18,11 +18,32 @@ package predicates
 
 import (
 	"fmt"
+	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
+
+const TaskIgnoreProportionAnnotation = "volcano.sh/ignore-proportion"
+
+func shouldIgnoreProportion(task *api.TaskInfo) bool {
+	if task.Pod == nil {
+		return false
+	}
+
+	val, found := task.Pod.Annotations[TaskIgnoreProportionAnnotation]
+	if !found {
+		return false
+	}
+
+	ignore, err := strconv.ParseBool(val)
+	if err != nil {
+		return false
+	}
+
+	return ignore
+}
 
 // checkNodeResourceIsProportional checks if a gpu:cpu:memory is Proportional
 func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, proportional map[v1.ResourceName]baseResource) (*api.Status, error) {
@@ -33,6 +54,10 @@ func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, pro
 		if value, found := task.Resreq.ScalarResources[resourceName]; found && value > 0 {
 			return status, nil
 		}
+	}
+
+	if shouldIgnoreProportion(task) {
+		return status, nil
 	}
 
 	for resourceName, resourceRate := range proportional {
