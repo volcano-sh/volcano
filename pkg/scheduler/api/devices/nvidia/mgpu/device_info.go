@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"strconv"
+	"sync"
 	"time"
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
 )
@@ -48,6 +49,7 @@ type GPUDevices struct {
 	NodePolicy string
 	// Pod2OptionMap is the map for pod and it's option
 	Pod2OptionMap map[string]*GPUOption
+	lock          sync.RWMutex
 	GPUs          GPUs
 	CoreName      v1.ResourceName
 	MemName       v1.ResourceName
@@ -80,6 +82,65 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	return decodeNodeDevices(name, node, rater)
 }
 
+func (gs *GPUDevices) DeepCopy() interface{} {
+	if gs == nil {
+		return nil
+	}
+
+	newPod2OptionMap := make(map[string]*GPUOption)
+	if gs.Pod2OptionMap != nil {
+		for k, v := range gs.Pod2OptionMap {
+			newAllocated := make([][]int, len(v.Request))
+			if len(v.Allocated) > 0 || len(v.Allocated[0]) > 0 {
+				for i := range v.Allocated {
+					newAllocated[i] = make([]int, len(v.Allocated[i]))
+					for j := range v.Allocated[i] {
+						newAllocated[i][j] = v.Allocated[i][j]
+					}
+				}
+
+			}
+
+			newOpt := &GPUOption{
+				Request:   v.Request,
+				CMRequest: v.CMRequest,
+				Allocated: newAllocated,
+				Score:     v.Score,
+			}
+			newPod2OptionMap[k] = newOpt
+		}
+	}
+
+	newGPUs := make([]*GPUDevice, 0)
+	for _, g := range gs.GPUs {
+		newMulti := make(map[string]int)
+		for k, v := range g.MultiUsedContainers {
+			newMulti[k] = v
+		}
+		newGPUDevice := &GPUDevice{
+			Index:               g.Index,
+			CoreAvailable:       g.CoreAvailable,
+			MemoryAvailable:     g.MemoryAvailable,
+			CoreTotal:           g.CoreTotal,
+			MemoryTotal:         g.MemoryTotal,
+			ContainerCount:      g.ContainerCount,
+			MGPUInstanceCount:   g.MGPUInstanceCount,
+			MultiUsedContainers: newMulti,
+		}
+		newGPUs = append(newGPUs, newGPUDevice)
+	}
+
+	return &GPUDevices{
+		Name:          gs.Name,
+		Rater:         gs.Rater,
+		NodePolicy:    gs.NodePolicy,
+		Pod2OptionMap: newPod2OptionMap,
+		GPUs:          newGPUs,
+		CoreName:      VKEResourceMGPUCore,
+		MemName:       VKEResourceMGPUMemory,
+	}
+}
+
 // AddResource adds the pod to GPU pool if it is assigned
 func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 	if !isSharedMGPUPod(pod) || (pod.Status.Phase != v1.PodRunning) {
@@ -87,6 +148,10 @@ func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 	}
 	klog.V(3).Infof("Start to add pod %s/%s", pod.Namespace, pod.Name)
 	podName := getPodNamespaceName(pod)
+
+	gs.lock.Lock()
+	defer gs.lock.Unlock()
+
 	if _, ok := gs.Pod2OptionMap[podName]; !ok {
 		option := NewGPUOptionFromPod(pod, VKEResourceMGPUCore, VKEResourceMGPUMemory)
 		if option.Allocated != nil && option.Allocated[0] == nil {
@@ -108,6 +173,10 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 	}
 	klog.Infof("Start to forget pod %s/%s", pod.Namespace, pod.Name)
 	podName := getPodNamespaceName(pod)
+
+	gs.lock.Lock()
+	defer gs.lock.Unlock()
+
 	option, ok := gs.Pod2OptionMap[podName]
 	if !ok {
 		return
@@ -131,14 +200,32 @@ func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
 }
 
 // FilterNode checks if the 'pod' fit in current node
-func (gs *GPUDevices) FilterNode(pod *v1.Pod) (int, string, error) {
+func (gs *GPUDevices) FilterNode(kubeClient kubernetes.Interface, pod *v1.Pod) (int, string, error) {
 	klog.Infoln("MGPU DeviceSharing: Into FitInPod", pod.Name)
 	if MGPUEnable {
+		gs.lock.Lock()
+		defer gs.lock.Unlock()
+
 		fit, err := checkNodeMGPUSharingPredicate(pod, gs)
 		if err != nil || !fit {
 			klog.Errorln("deviceSharing err=", err.Error())
-			return devices.Unschedulable, fmt.Sprintf("mgpuDevice %s", err.Error()), err
+			return devices.Unschedulable, "MGPU DeviceSharing FilterNode check node failed", err
 		}
+
+		// Achieve the option of GPU for pod's containers
+		option, err := tradeForResourceOption(pod, gs)
+		if err != nil {
+			return devices.Unschedulable, "MGPU DeviceSharing FilterNode trade for option failed", err
+		}
+		if err := gs.Add(pod, option); err != nil {
+			return devices.Unschedulable, "MGPU DeviceSharing FilterNode add pod to node allocator failed", err
+		}
+
+		// patch GPU annotations and labels to the pod
+		if err := patchGPUInfo(kubeClient, pod, option); err != nil {
+			return devices.Unschedulable, "MGPU DeviceSharing FilterNode patch mgpu annotations and labels to pod failed", err
+		}
+		klog.V(3).Infoln("DeviceSharing:Allocate Success")
 	}
 	klog.V(3).Infoln("vke.volcengine.com mGPU DeviceSharing: FitInPod succeed", pod.Name)
 	return devices.Success, "", nil
@@ -146,34 +233,6 @@ func (gs *GPUDevices) FilterNode(pod *v1.Pod) (int, string, error) {
 
 // Allocate action in predicate
 func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	klog.Infoln("MGPU DeviceSharing:Into AllocateToPod", pod.Name)
-	if MGPUEnable {
-		fit, err := checkNodeMGPUSharingPredicate(pod, gs)
-		if err != nil || !fit {
-			klog.Errorln("DeviceSharing err=", err.Error())
-			return err
-		}
-		if klog.V(5).Enabled() {
-			klog.Infof("GPU Devices: %+v\n", gs.GPUs.ToString())
-		}
-		// Achieve the option of GPU for pod's containers
-		option, err := tradeForResourceOption(pod, gs)
-		if err != nil {
-			return err
-		}
-		if err := gs.Add(pod, option); err != nil {
-			return fmt.Errorf("add pod to node allocator failed: %v", err)
-		}
-
-		// patch GPU annotations and labels to the pod
-		if err := patchGPUInfo(kubeClient, pod, option); err != nil {
-			return fmt.Errorf("patch mgpu annotations and labels to pod failed: %v", err)
-		}
-		klog.V(3).Infoln("DeviceSharing:Allocate Success")
-	}
-	if klog.V(5).Enabled() {
-		klog.Infof("Allocated %s successfully: %s: %+v\n", pod.Name, gs.Name, gs.GPUs.ToString())
-	}
 	return nil
 }
 
@@ -181,6 +240,10 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
 	klog.Infoln("MGPU DeviceSharing:Into ReleaseToPod", pod.Name)
 	podName := GetPodNamespaceName(pod)
+
+	gs.lock.Lock()
+	defer gs.lock.Unlock()
+
 	option, ok := gs.Pod2OptionMap[podName]
 	if !ok {
 		// remove patched GPU annotations of the pod

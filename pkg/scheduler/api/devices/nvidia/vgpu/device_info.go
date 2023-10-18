@@ -115,6 +115,10 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	return nodedevices
 }
 
+func (gs *GPUDevices) DeepCopy() interface{} {
+	return gs
+}
+
 func (gs *GPUDevices) GetIgnoredDevices() []string {
 	return []string{VolcanoVGPUMemory, VolcanoVGPUMemoryPercentage, VolcanoVGPUCores}
 }
@@ -179,7 +183,7 @@ func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) erro
 	return nil
 }
 
-func (gs *GPUDevices) FilterNode(pod *v1.Pod) (int, string, error) {
+func (gs *GPUDevices) FilterNode(kubeClient kubernetes.Interface, pod *v1.Pod) (int, string, error) {
 	klog.V(5).Infoln("4pdvgpu DeviceSharing starts filtering pods", pod.Name)
 	if VGPUEnable {
 		fit, _, err := checkNodeGPUSharingPredicate(pod, gs, true)

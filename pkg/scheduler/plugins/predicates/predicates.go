@@ -574,7 +574,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		for _, val := range api.RegisteredDevices {
 			if devices, ok := node.Others[val].(api.Devices); ok {
-				code, msg, err := devices.FilterNode(task.Pod)
+				code, msg, err := devices.FilterNode(ssn.KubeClient(), task.Pod)
 				filterNodeStatus := &api.Status{
 					Code:   code,
 					Reason: msg,

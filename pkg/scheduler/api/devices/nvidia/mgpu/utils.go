@@ -110,12 +110,11 @@ func decodeNodeDevices(name string, node *v1.Node, rater Rater) *GPUDevices {
 	return gs
 }
 
-func checkNodeMGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices) (bool, error) {
+func checkNodeMGPUSharingPredicate(pod *v1.Pod, gs *GPUDevices) (bool, error) {
 	if !isSharedMGPUPod(pod) {
 		return true, nil
 	}
 
-	gs := getMGPUDevicesSnapShot(gssnap)
 	if isMultipleGPUPod(pod) && (getPodComputePolicy(pod) != NativeBurstSharePolicy ||
 		gs.NodePolicy != NativeBurstSharePolicy) {
 		return false, fmt.Errorf("compute policy not match multiple mgpu")
@@ -123,10 +122,10 @@ func checkNodeMGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices) (bool, error
 	if !isFullCardGPUPod(pod) && getPodComputePolicy(pod) != gs.NodePolicy {
 		return false, fmt.Errorf("compute policy not match normal mgpu")
 	}
-	_, err := tradeForResourceOption(pod, gs)
-	if err != nil {
-		return false, err
-	}
+	//_, err := tradeForResourceOption(pod, gs)
+	//if err != nil {
+	//	return false, err
+	//}
 
 	return true, nil
 }

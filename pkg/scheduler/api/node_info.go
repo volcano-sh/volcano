@@ -561,7 +561,7 @@ func (ni *NodeInfo) CloneImageSummary() map[string]*k8sframework.ImageStateSumma
 func (ni *NodeInfo) CloneOthers() map[string]interface{} {
 	others := make(map[string]interface{})
 	for k, v := range ni.Others {
-		others[k] = v
+		others[k] = v.(Devices).DeepCopy()
 	}
 	return others
 }

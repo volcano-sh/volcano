@@ -91,6 +91,10 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	return &gpudevices
 }
 
+func (gs *GPUDevices) DeepCopy() interface{} {
+	return gs
+}
+
 // GetIgnoredDevices return device names which wish vc-scheduler to ignore
 func (gs *GPUDevices) GetIgnoredDevices() []string {
 	return []string{""}
@@ -148,7 +152,7 @@ func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) erro
 	return nil
 }
 
-func (gs *GPUDevices) FilterNode(pod *v1.Pod) (int, string, error) {
+func (gs *GPUDevices) FilterNode(kubeClient kubernetes.Interface, pod *v1.Pod) (int, string, error) {
 	klog.V(4).Infoln("DeviceSharing:Into FitInPod", pod.Name)
 	if GpuSharingEnable {
 		fit, err := checkNodeGPUSharingPredicate(pod, gs)
