@@ -143,7 +143,7 @@ func (gs *GPUDevices) DeepCopy() interface{} {
 
 // AddResource adds the pod to GPU pool if it is assigned
 func (gs *GPUDevices) AddResource(pod *v1.Pod) {
-	if !isSharedMGPUPod(pod) || (pod.Status.Phase != v1.PodRunning) {
+	if !isSharedMGPUPod(pod) {
 		return
 	}
 	klog.V(3).Infof("Start to add pod %s/%s", pod.Namespace, pod.Name)
