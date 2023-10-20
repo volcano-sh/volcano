@@ -287,7 +287,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		for _, condition := range pg.Status.Conditions {
 			if condition.Type == scheduling.PodGroupUnschedulableType {
 				cc.recorder.Eventf(job, v1.EventTypeWarning, string(batch.PodGroupPending),
-					fmt.Sprintf("PodGroup %s:%s unschedule,reason: %s", job.Namespace, job.Name, condition.Message))
+					fmt.Sprintf("PodGroup %s:%s unschedule, reason: %s", job.Namespace, job.Name, condition.Message))
 			}
 		}
 	}

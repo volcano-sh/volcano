@@ -171,6 +171,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 			if !ssn.Allocatable(queue, task) {
 				klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
+				job.JobFitErrors = "queue will be overused, skipping allocation"
 				continue
 			}
 

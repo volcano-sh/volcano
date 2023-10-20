@@ -644,6 +644,9 @@ func (ji *JobInfo) FitError() string {
 	if len(reasons) > 0 {
 		reasonMsg += "; " + fmt.Sprintf("%s: %s", Pending.String(), strings.Join(sortReasonsHistogram(reasons), ", "))
 	}
+	if ji.JobFitErrors != "" {
+		reasonMsg += ", original reason: " + ji.JobFitErrors
+	}
 	return reasonMsg
 }
 
