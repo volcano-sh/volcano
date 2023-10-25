@@ -62,7 +62,7 @@ func (pp *pdbPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	// 1. define the func to filter out tasks that violate PDB constraints
-	filterFn := func(tasks []*api.TaskInfo) []*api.TaskInfo {
+	pdbFilterFn := func(tasks []*api.TaskInfo) []*api.TaskInfo {
 		var victims []*api.TaskInfo
 
 		// (a. get all PDBs
@@ -83,52 +83,58 @@ func (pp *pdbPlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, task := range tasks {
 			pod := task.Pod
 			pdbForPodIsViolated := false
+
 			// A pod with no labels will not match any PDB. So, no need to check.
-			if len(pod.Labels) != 0 {
-				for i, pdb := range pdbs {
-					if pdb.Namespace != pod.Namespace {
-						continue
-					}
-					selector, err := metav1.LabelSelectorAsSelector(pdb.Spec.Selector)
-					if err != nil {
-						continue
-					}
-					// A PDB with a nil or empty selector matches nothing.
-					if selector.Empty() || !selector.Matches(labels.Set(pod.Labels)) {
-						continue
-					}
+			if len(pod.Labels) == 0 {
+				continue
+			}
 
-					// Existing in DisruptedPods means it has been processed in API server,
-					// we don't treat it as a violating case.
-					if _, exist := pdb.Status.DisruptedPods[pod.Name]; exist {
-						continue
-					}
-					// Only decrement the matched pdb when it's not in its <DisruptedPods>;
-					// otherwise we may over-decrement the budget number.
-					pdbsAllowed[i]--
+			for i, pdb := range pdbs {
+				if pdb.Namespace != pod.Namespace {
+					continue
+				}
+				selector, err := metav1.LabelSelectorAsSelector(pdb.Spec.Selector)
+				if err != nil {
+					continue
+				}
+				// A PDB with a nil or empty selector matches nothing.
+				if selector.Empty() || !selector.Matches(labels.Set(pod.Labels)) {
+					continue
+				}
 
-					if pdbsAllowed[i] < 0 {
-						pdbForPodIsViolated = true
-					}
+				// Existing in DisruptedPods means it has been processed in API server,
+				// we don't treat it as a violating case.
+				if _, exist := pdb.Status.DisruptedPods[pod.Name]; exist {
+					continue
+				}
+				// Only decrement the matched pdb when it's not in its <DisruptedPods>;
+				// otherwise we may over-decrement the budget number.
+				pdbsAllowed[i]--
+
+				if pdbsAllowed[i] < 0 {
+					pdbForPodIsViolated = true
 				}
 			}
+
 			if !pdbForPodIsViolated {
 				victims = append(victims, task)
+			} else {
+				klog.V(4).Infof("The pod <%s> of task <%s> violates the pdb constraint, so filter it from the victim list", task.Name, task.Pod.Name)
 			}
 		}
 		return victims
 	}
 
-	// 2. wrap filterFn to meet reclaimable and preemptable interface requirements
-	wrappedFilterFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
-		return filterFn(preemptees), util.Permit
+	// 2. wrap pdbFilterFn to meet reclaimable and preemptable interface requirements
+	wrappedPdbFilterFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		return pdbFilterFn(preemptees), util.Permit
 	}
 
 	// 3. register VictimTasksFns, ReclaimableFn and PreemptableFn
-	victimsFns := []api.VictimTasksFn{filterFn}
+	victimsFns := []api.VictimTasksFn{pdbFilterFn}
 	ssn.AddVictimTasksFns(pp.Name(), victimsFns)
-	ssn.AddReclaimableFn(pp.Name(), wrappedFilterFn)
-	ssn.AddPreemptableFn(pp.Name(), wrappedFilterFn)
+	ssn.AddReclaimableFn(pp.Name(), wrappedPdbFilterFn)
+	ssn.AddPreemptableFn(pp.Name(), wrappedPdbFilterFn)
 }
 
 func (pp *pdbPlugin) OnSessionClose(ssn *framework.Session) {}
