@@ -58,7 +58,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-	if s.CertFile != "" && s.KeyFile != "" {
+	if s.CaCertFile != "" && s.CertFile != "" && s.KeyFile != "" {
 		if err := s.ParseCAFiles(nil); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to parse CA file: %v\n", err)
 			os.Exit(1)
