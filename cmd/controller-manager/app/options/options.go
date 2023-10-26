@@ -40,8 +40,10 @@ type ServerOption struct {
 	KubeClientOptions    kube.ClientOptions
 	CertFile             string
 	KeyFile              string
+	CaCertFile           string
 	CertData             []byte
 	KeyData              []byte
+	CaCertData           []byte
 	EnableLeaderElection bool
 	LockObjectNamespace  string
 	PrintVersion         bool
@@ -76,6 +78,7 @@ func NewServerOption() *ServerOption {
 func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.KubeClientOptions.Master, "master", s.KubeClientOptions.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&s.KubeClientOptions.KubeConfig, "kubeconfig", s.KubeClientOptions.KubeConfig, "Path to kubeconfig file with authorization and master location information.")
+	fs.StringVar(&s.CaCertFile, "ca-cert-file", s.CaCertFile, "File containing the x509 Certificate for HTTPS.")
 	fs.StringVar(&s.CertFile, "tls-cert-file", s.CertFile, ""+
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
@@ -107,6 +110,11 @@ func (s *ServerOption) CheckOptionOrDie() error {
 // readCAFiles read data from ca file path
 func (s *ServerOption) readCAFiles() error {
 	var err error
+
+	s.CaCertData, err = os.ReadFile(s.CaCertFile)
+	if err != nil {
+		return fmt.Errorf("failed to read cacert file (%s): %v", s.CaCertFile, err)
+	}
 
 	s.CertData, err = os.ReadFile(s.CertFile)
 	if err != nil {
