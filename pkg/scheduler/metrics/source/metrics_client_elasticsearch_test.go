@@ -19,7 +19,7 @@ package source
 import "testing"
 
 func TestElasticsearchMetricsClientDefaultIndexName(t *testing.T) {
-	client, err := NewElasticsearchMetricsClient("http://localhost:9200", map[string]string{})
+	client, err := NewElasticsearchMetricsClient(map[string]string{"address": "http://localhost:9200"})
 	if err != nil {
 		t.Errorf("Failed to create client: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestElasticsearchMetricsClientDefaultIndexName(t *testing.T) {
 }
 
 func TestElasticsearchMetricsClientCustomIndexName(t *testing.T) {
-	client, err := NewElasticsearchMetricsClient("http://localhost:9200", map[string]string{"elasticsearch.index": "custom-index"})
+	client, err := NewElasticsearchMetricsClient(map[string]string{"address": "http://localhost:9200", "elasticsearch.index": "custom-index"})
 	if err != nil {
 		t.Errorf("Failed to create client: %v", err)
 	}
