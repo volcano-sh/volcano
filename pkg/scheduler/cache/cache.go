@@ -501,8 +501,10 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	mySchedulerPodName, c := getMultiSchedulerInfo()
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
-	// even with no error returned. `Namespace` informer is used by `InterPodAffinity` plugin,
+	// even with no error returned. `PodDisruptionBudgets` informer is used by `Pdb` plugin
+	// `Namespace` informer is used by `InterPodAffinity` plugin,
 	// `SelectorSpread` and `PodTopologySpread` plugins uses the following four so far.
+	informerFactory.Policy().V1().PodDisruptionBudgets().Informer()
 	informerFactory.Core().V1().Namespaces().Informer()
 	informerFactory.Core().V1().Services().Informer()
 	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
@@ -857,6 +859,11 @@ func (sc *SchedulerCache) ClientConfig() *rest.Config {
 // SharedInformerFactory returns the scheduler SharedInformerFactory
 func (sc *SchedulerCache) SharedInformerFactory() informers.SharedInformerFactory {
 	return sc.informerFactory
+}
+
+// SetSharedInformerFactory sets the scheduler SharedInformerFactory for unit test
+func (sc *SchedulerCache) SetSharedInformerFactory(factory informers.SharedInformerFactory) {
+	sc.informerFactory = factory
 }
 
 // UpdateSchedulerNumaInfo used to update scheduler node cache NumaSchedulerInfo
