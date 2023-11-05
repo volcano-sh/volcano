@@ -104,6 +104,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			job = jobs.Pop().(*api.JobInfo)
 		}
 
+		queues.Push(queue)
 		// Found "high" priority task to reclaim others
 		if tasks, found := preemptorTasks[job.UID]; !found || tasks.Empty() {
 			continue
@@ -212,7 +213,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		if assigned {
 			jobs.Push(job)
 		}
-		queues.Push(queue)
 	}
 }
 
