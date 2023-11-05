@@ -73,6 +73,9 @@ import (
 const (
 	// default interval for sync data from metrics server, the value is 30s
 	defaultMetricsInternal = 30 * time.Second
+
+	// syncedPollPeriod controls how often you look at the status of your sync funcs
+	syncedPollPeriod = 100 * time.Millisecond
 )
 
 // defaultIgnoredProvisioners contains provisioners that will be ignored during pod pvc request computation and preemption.
@@ -157,6 +160,9 @@ type SchedulerCache struct {
 	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
 	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
 	IgnoredCSIProvisioners sets.Set[string]
+
+	// registeredHandlers contains the registrations of all handlers. It's used to check if all handlers have finished syncing before the scheduling cycles start.
+	registeredHandlers []cache.ResourceEventHandlerRegistration
 }
 
 type imageState struct {
@@ -599,6 +605,12 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 }
 
 func (sc *SchedulerCache) addEventHandler() {
+	var (
+		handlerRegistration cache.ResourceEventHandlerRegistration
+		handlers            []cache.ResourceEventHandlerRegistration
+		err                 error
+	)
+
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
 	sc.informerFactory = informerFactory
 	mySchedulerPodName, c := getMultiSchedulerInfo()
@@ -622,7 +634,7 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
-	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
+	handlerRegistration, err = sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				var node *v1.Node
@@ -663,19 +675,27 @@ func (sc *SchedulerCache) addEventHandler() {
 		},
 		0,
 	)
+	if err != nil {
+		panic(fmt.Sprintf("failed to register event handler for node informer, with err: %v", err))
+	}
+	handlers = append(handlers, handlerRegistration)
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
-	sc.csiNodeInformer.Informer().AddEventHandler(
+	handlerRegistration, err = sc.csiNodeInformer.Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddOrUpdateCSINode,
 			UpdateFunc: sc.UpdateCSINode,
 			DeleteFunc: sc.DeleteCSINode,
 		},
 	)
+	if err != nil {
+		panic(fmt.Sprintf("failed to register event handler for CSINode informer, with err: %v", err))
+	}
+	handlers = append(handlers, handlerRegistration)
 
 	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
 		sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
@@ -683,7 +703,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	}
 
 	// create informer for pod information
-	sc.podInformer.Informer().AddEventHandler(
+	handlerRegistration, err = sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
@@ -714,29 +734,41 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeletePod,
 			},
 		})
+	if err != nil {
+		panic(fmt.Sprintf("failed to register event handler for pod informer, with err: %v", err))
+	}
+	handlers = append(handlers, handlerRegistration)
 
 	if options.ServerOpts != nil && options.ServerOpts.EnablePriorityClass && utilfeature.DefaultFeatureGate.Enabled(features.PriorityClass) {
 		sc.pcInformer = informerFactory.Scheduling().V1().PriorityClasses()
-		sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		handlerRegistration, err = sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddPriorityClass,
 			UpdateFunc: sc.UpdatePriorityClass,
 			DeleteFunc: sc.DeletePriorityClass,
 		})
+		if err != nil {
+			panic(fmt.Sprintf("failed to register event handler for priorityclass informer, with err: %v", err))
+		}
+		handlers = append(handlers, handlerRegistration)
 	}
 
 	sc.quotaInformer = informerFactory.Core().V1().ResourceQuotas()
-	sc.quotaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	handlerRegistration, err = sc.quotaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddResourceQuota,
 		UpdateFunc: sc.UpdateResourceQuota,
 		DeleteFunc: sc.DeleteResourceQuota,
 	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to register event handler for resourcequota informer, with err: %v", err))
+	}
+	handlers = append(handlers, handlerRegistration)
 
 	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, 0)
 	sc.vcInformerFactory = vcinformers
 
 	// create informer for PodGroup(v1beta1) information
 	sc.podGroupInformerV1beta1 = vcinformers.Scheduling().V1beta1().PodGroups()
-	sc.podGroupInformerV1beta1.Informer().AddEventHandler(
+	handlerRegistration, err = sc.podGroupInformerV1beta1.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				var pg *vcv1beta1.PodGroup
@@ -762,23 +794,37 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeletePodGroupV1beta1,
 			},
 		})
+	if err != nil {
+		panic(fmt.Sprintf("failed to register event handler for podgroup informer, with err: %v", err))
+	}
+	handlers = append(handlers, handlerRegistration)
 
 	// create informer(v1beta1) for Queue information
 	sc.queueInformerV1beta1 = vcinformers.Scheduling().V1beta1().Queues()
-	sc.queueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	handlerRegistration, err = sc.queueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddQueueV1beta1,
 		UpdateFunc: sc.UpdateQueueV1beta1,
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to register event handler for queue informer, with err: %v", err))
+	}
+	handlers = append(handlers, handlerRegistration)
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.ResourceTopology) {
 		sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
-		sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		handlerRegistration, err = sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddNumaInfoV1alpha1,
 			UpdateFunc: sc.UpdateNumaInfoV1alpha1,
 			DeleteFunc: sc.DeleteNumaInfoV1alpha1,
 		})
+		if err != nil {
+			panic(fmt.Sprintf("failed to register event handler for cpu informer, with err: %v", err))
+		}
+		handlers = append(handlers, handlerRegistration)
 	}
+
+	sc.registeredHandlers = handlers
 }
 
 // Run  starts the schedulerCache
@@ -812,6 +858,21 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 	sc.informerFactory.WaitForCacheSync(stopCh)
 	sc.vcInformerFactory.WaitForCacheSync(stopCh)
+}
+
+// WaitForHandlersSync waits for EventHandlers to sync.
+func (sc *SchedulerCache) WaitForHandlersSync(stopCh <-chan struct{}) {
+	err := wait.PollImmediateUntil(syncedPollPeriod, func() (done bool, err error) {
+		for _, handler := range sc.registeredHandlers {
+			if !handler.HasSynced() {
+				return false, nil
+			}
+		}
+		return true, nil
+	}, stopCh)
+	if err != nil {
+		klog.Errorf("Error syncing event handlers: %v", err)
+	}
 }
 
 // findJobAndTask returns job and the task info
