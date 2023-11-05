@@ -95,6 +95,9 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	pc.cache.SetMetricsConf(pc.metricsConf)
 	pc.cache.Run(stopCh)
 	pc.cache.WaitForCacheSync(stopCh)
+	if err := pc.cache.WaitForHandlersSync(stopCh); err != nil {
+		panic(fmt.Sprintf("failed to wait for handlers sync: %v", err))
+	}
 	klog.V(2).Infof("scheduler completes Initialization and start to run")
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
 	if options.ServerOpts.EnableCacheDumper {
