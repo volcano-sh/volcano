@@ -25,7 +25,12 @@ import (
 	"k8s.io/klog/v2"
 )
 
-const NODE_METRICS_PERIOD = "10m"
+const (
+	NODE_METRICS_PERIOD             = "10m"
+	Metrics_Type_Prometheus_Adaptor = "prometheus_adaptor"
+	Metrics_Tpye_Prometheus         = "prometheus"
+	Metrics_Type_Elasticsearch      = "elasticsearch"
+)
 
 type NodeMetrics struct {
 	MetricsTime time.Time
@@ -40,14 +45,15 @@ type MetricsClient interface {
 func NewMetricsClient(restConfig *rest.Config, metricsConf map[string]string) (MetricsClient, error) {
 	klog.V(3).Infof("New metrics client begin, resconfig is %v, metricsConf is %v", restConfig, metricsConf)
 	metricsType := metricsConf["type"]
-	if metricsType == "elasticsearch" {
+	if metricsType == Metrics_Type_Elasticsearch {
 		return NewElasticsearchMetricsClient(metricsConf)
-	} else if metricsType == "prometheus" {
+	} else if metricsType == Metrics_Tpye_Prometheus {
 		return NewPrometheusMetricsClient(metricsConf)
-	} else if metricsType == "prometheus_adapt" {
+	} else if metricsType == Metrics_Type_Prometheus_Adaptor {
 		return NewCustomMetricsClient(restConfig)
 	} else {
 		return nil, fmt.Errorf("Data cannot be collected from the %s monitoring system. "+
-			"The supported monitoring systems are elasticsearch, prometheus, and prometheus_adapt.", metricsType)
+			"The supported monitoring systems are %s, %s, and %s.",
+			metricsType, Metrics_Type_Elasticsearch, Metrics_Tpye_Prometheus, Metrics_Type_Prometheus_Adaptor)
 	}
 }
