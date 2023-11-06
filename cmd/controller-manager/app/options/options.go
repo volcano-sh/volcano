@@ -33,6 +33,7 @@ const (
 	defaultSchedulerName       = "volcano"
 	defaultHealthzAddress      = ":11251"
 	defaultLockObjectNamespace = "volcano-system"
+	defaultPodGroupWorkers     = 5
 )
 
 // ServerOption is the main context object for the controllers.
@@ -96,7 +97,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.InheritOwnerAnnotations, "inherit-owner-annotations", true, "Enable inherit owner annotations for pods when create podgroup; it is enabled by default")
-	fs.Uint32Var(&s.WorkerThreadsForPG, "worker-threads-for-podgroup", 1, "The number of threads syncing podgroup operations. The larger the number, the faster the podgroup processing, but requires more CPU load.")
+	fs.Uint32Var(&s.WorkerThreadsForPG, "worker-threads-for-podgroup", defaultPodGroupWorkers, "The number of threads syncing podgroup operations. The larger the number, the faster the podgroup processing, but requires more CPU load.")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace.
