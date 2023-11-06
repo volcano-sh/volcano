@@ -98,41 +98,14 @@ Finally, there should a model to balance multiple factors with weight and calcul
 |                           |                 |                  |
 
 ### Configuration and usage of different monitoring systems
-The monitoring data of Volcano usage can be obtained from "Prometheus", "Custom Metrics Api" and "Eleasticsearch", where the corresponding type of "Custom Metrics Api" is "prometheus_adapt".
-#### Prometheus
-Scheduler Configuration:
-```
-actions: "enqueue, allocate, backfill"  
-tiers:
-  - plugins:
-      - name: priority
-      - name: gang
-      - name: conformance
-      - name: usage  # usage based scheduling plugin
-        enablePredicate: false  # If the value is false, new pod scheduling is not disabled when the node load reaches the threshold. If the value is true or left blank, new pod scheduling is disabled.
-        arguments:
-          usage.weight: 5
-          cpu.weight: 1
-          memory.weight: 1
-          thresholds:
-            cpu: 80    # The actual CPU load of a node reaches 80%, and the node cannot schedule new pods.
-            mem: 70    # The actual Memory load of a node reaches 70%, and the node cannot schedule new pods.
-  - plugins:
-      - name: overcommit
-      - name: drf
-      - name: predicates
-      - name: proportion
-      - name: nodeorder
-      - name: binpack
-metrics:                               # metrics server related configuration
-  type: prometheus                     # Optional, The metrics source type, prometheus by default, support "prometheus", "prometheus_adapt" and "elasticsearch"
-  address: http://192.168.0.10:9090    # Mandatory, The metrics source address
-  interval: 30s                        # Optional, The scheduler pull metrics from Prometheus with this interval, 30s by default
-  ```
-#### Custom Metrics Api
-Ensure that Prometheus Adapt is properly installed in the cluster and the custom metrics API is available.
+The monitoring data of Volcano usage can be obtained from "Prometheus", "Custom Metrics API" and "Eleasticsearch", where the corresponding type of "Custom Metrics Api" is "prometheus_adapt".
+
+**It is recommended to use the Custom Metrics API mode, and the monitoring indicators come from Prometheus Adapt.**
+
+#### Custom Metrics API
+Ensure that Prometheus Adaptor is properly installed in the cluster and the custom metrics API is available.
 Set the user-defined indicator information. The rules to be added are as follows. For details, see [Metrics Discovery and Presentation Configuration](https://github.com/kubernetes-sigs/prometheus-adapter/blob/master/docs/config.md#metrics-discovery-and-presentation-configuration)
-```azure
+```
 rules:
     - seriesQuery: '{__name__=~"node_cpu_seconds_total"}'
       resources:
@@ -178,9 +151,41 @@ tiers:
       - name: nodeorder
       - name: binpack
 metrics:                               # metrics server related configuration
-  type: prometheus_adapt               # Optional, The metrics source type, prometheus by default, support "prometheus", "prometheus_adapt" and "elasticsearch"
+  type: prometheus_adaptor               # Optional, The metrics source type, prometheus by default, support "prometheus", "prometheus_adaptor" and "elasticsearch"
   interval: 30s                        # Optional, The scheduler pull metrics from Prometheus with this interval, 30s by default
   ```
+
+#### Prometheus
+Scheduler Configuration:
+```
+actions: "enqueue, allocate, backfill"  
+tiers:
+  - plugins:
+      - name: priority
+      - name: gang
+      - name: conformance
+      - name: usage  # usage based scheduling plugin
+        enablePredicate: false  # If the value is false, new pod scheduling is not disabled when the node load reaches the threshold. If the value is true or left blank, new pod scheduling is disabled.
+        arguments:
+          usage.weight: 5
+          cpu.weight: 1
+          memory.weight: 1
+          thresholds:
+            cpu: 80    # The actual CPU load of a node reaches 80%, and the node cannot schedule new pods.
+            mem: 70    # The actual Memory load of a node reaches 70%, and the node cannot schedule new pods.
+  - plugins:
+      - name: overcommit
+      - name: drf
+      - name: predicates
+      - name: proportion
+      - name: nodeorder
+      - name: binpack
+metrics:                               # metrics server related configuration
+  type: prometheus                     # Optional, The metrics source type, prometheus by default, support "prometheus", "prometheus_adaptor" and "elasticsearch"
+  address: http://192.168.0.10:9090    # Mandatory, The metrics source address
+  interval: 30s                        # Optional, The scheduler pull metrics from Prometheus with this interval, 30s by default
+  ```
+
 ### Elesticsearch
 Scheduler Configuration
 ```
@@ -207,7 +212,7 @@ tiers:
       - name: nodeorder
       - name: binpack
 metrics:                               # metrics server related configuration
-  type: elasticsearch                  # Optional, The metrics source type, prometheus by default, support "prometheus", "prometheus_adapt" and "elasticsearch"
+  type: elasticsearch                  # Optional, The metrics source type, prometheus by default, support "prometheus", "prometheus_adaptor" and "elasticsearch"
   address: http://192.168.0.10:9090    # Mandatory, The metrics source address
   interval: 30s                        # Optional, The scheduler pull metrics from Prometheus with this interval, 30s by default
   tls:                                 # Optional, The tls configuration
