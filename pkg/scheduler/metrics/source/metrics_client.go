@@ -18,26 +18,42 @@ package source
 
 import (
 	"context"
-	"errors"
+	"fmt"
+	"time"
+
+	"k8s.io/client-go/rest"
+	"k8s.io/klog/v2"
+)
+
+const (
+	NODE_METRICS_PERIOD             = "10m"
+	Metrics_Type_Prometheus_Adaptor = "prometheus_adaptor"
+	Metrics_Tpye_Prometheus         = "prometheus"
+	Metrics_Type_Elasticsearch      = "elasticsearch"
 )
 
 type NodeMetrics struct {
-	CPU    float64
-	Memory float64
+	MetricsTime time.Time
+	CPU         float64
+	Memory      float64
 }
 
 type MetricsClient interface {
-	NodeMetricsAvg(ctx context.Context, nodeName string, period string) (*NodeMetrics, error)
+	NodesMetricsAvg(ctx context.Context, nodeMetricsMap map[string]*NodeMetrics) error
 }
 
-func NewMetricsClient(metricsConf map[string]string) (MetricsClient, error) {
-	address := metricsConf["address"]
-	if len(address) == 0 {
-		return nil, errors.New("metrics address is empty")
-	}
+func NewMetricsClient(restConfig *rest.Config, metricsConf map[string]string) (MetricsClient, error) {
+	klog.V(3).Infof("New metrics client begin, resconfig is %v, metricsConf is %v", restConfig, metricsConf)
 	metricsType := metricsConf["type"]
-	if metricsType == "elasticsearch" {
-		return NewElasticsearchMetricsClient(address, metricsConf)
+	if metricsType == Metrics_Type_Elasticsearch {
+		return NewElasticsearchMetricsClient(metricsConf)
+	} else if metricsType == Metrics_Tpye_Prometheus {
+		return NewPrometheusMetricsClient(metricsConf)
+	} else if metricsType == Metrics_Type_Prometheus_Adaptor {
+		return NewCustomMetricsClient(restConfig)
+	} else {
+		return nil, fmt.Errorf("Data cannot be collected from the %s monitoring system. "+
+			"The supported monitoring systems are %s, %s, and %s.",
+			metricsType, Metrics_Type_Elasticsearch, Metrics_Tpye_Prometheus, Metrics_Type_Prometheus_Adaptor)
 	}
-	return NewPrometheusMetricsClient(address, metricsConf)
 }
