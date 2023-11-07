@@ -200,6 +200,7 @@ func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 			klog.V(4).Infof("watch %s event: %v", pc.schedulerConf, event)
 			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
 				pc.loadSchedulerConf()
+				pc.cache.SetMetricsConf(pc.metricsConf)
 			}
 		case err, ok := <-errCh:
 			if !ok {

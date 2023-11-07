@@ -131,6 +131,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubelet v0.0.0 // indirect
+	k8s.io/metrics v0.27.2
 	k8s.io/mount-utils v0.25.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.2 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
