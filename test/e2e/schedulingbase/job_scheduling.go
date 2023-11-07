@@ -33,7 +33,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	vcscheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
@@ -579,19 +578,8 @@ var _ = Describe("Job E2E Test", func() {
 		jb := e2eutil.CreateSampleK8sJob(ctx, "job1", e2eutil.DefaultNginxImage, e2eutil.OneCPU)
 		err := e2eutil.Waitk8sJobCompleted(ctx, jb.Name)
 		Expect(err).NotTo(HaveOccurred())
-
-		var pgPhase vcscheduling.PodGroupPhase
-		wait.Poll(time.Second, time.Second*30, func() (bool, error) {
-			pgs, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
-			Expect(err).NotTo(HaveOccurred(), "failed to list podGroups in namespace %s", ctx.Namespace)
-			Expect(len(pgs.Items)).To(Equal(1), "this test need a clean cluster")
-			pgPhase = pgs.Items[0].Status.Phase
-			if pgPhase != vcscheduling.PodGroupRunning {
-				return true, nil
-			}
-			return false, nil
-		})
-		Expect(pgPhase).To(Equal(vcscheduling.PodGroupCompleted), "podGroup Phase is %s, should be %s",
-			ctx.Namespace, vcscheduling.PodGroupCompleted)
+		pgs, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred(), "failed to list podGroups in namespace %s", ctx.Namespace)
+		Expect(len(pgs.Items)).To(Equal(0), "no pg should be found")
 	})
 })
