@@ -134,6 +134,7 @@ type SchedulerCache struct {
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
 	errTasks    workqueue.RateLimitingInterface
+	errNodes    workqueue.RateLimitingInterface
 	DeletedJobs workqueue.RateLimitingInterface
 
 	informerFactory   informers.SharedInformerFactory
@@ -435,6 +436,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
 		errTasks:            workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		errNodes:            workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
@@ -702,6 +704,11 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	sc.vcInformerFactory.Start(stopCh)
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
+
+	go func() {
+		sc.WaitForCacheSync(stopCh)
+		wait.Until(sc.processResyncNode, 0, stopCh)
+	}()
 
 	// Cleanup jobs.
 	go wait.Until(sc.processCleanupJob, 0, stopCh)
@@ -988,6 +995,34 @@ func (sc *SchedulerCache) processResyncTask() {
 			sc.resyncTask(task)
 		}
 	}
+}
+
+func (sc *SchedulerCache) resyncNode(nodeName string) {
+	sc.errNodes.AddRateLimited(nodeName)
+}
+
+func (sc *SchedulerCache) processResyncNode() {
+	obj, shutdown := sc.errNodes.Get()
+	if shutdown {
+		return
+	}
+	defer sc.errNodes.Done(obj)
+
+	nodeName, ok := obj.(string)
+	if !ok {
+		klog.Errorf("failed to convert %v to string", obj)
+		return
+	}
+
+	err := sc.syncNode(nodeName)
+	if err == nil {
+		sc.errNodes.Forget(nodeName)
+		return
+	}
+
+	klog.Errorf("Failed to sync node <%s>, retry it.", nodeName)
+	sc.resyncNode(nodeName)
+	return
 }
 
 // AddBindTask add task to be bind to a cache which consumes by go runtime

@@ -238,7 +238,6 @@ func (r *Resource) Add(rr *Resource) *Resource {
 		}
 		r.ScalarResources[rName] += rQuant
 	}
-
 	return r
 }
 
