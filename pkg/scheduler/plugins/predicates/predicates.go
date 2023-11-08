@@ -418,15 +418,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
 				task.Namespace, task.Name, node.Name, node.Allocatable.MaxTaskNum, len(nodeInfo.Pods))
 			podsNumStatus := &api.Status{
-				// TODO(wangyang0616): When the number of pods of a node reaches the upper limit, preemption is not supported for now.
-				// Record details in #3079 (volcano.sh/volcano)
-				// In the preempt stage, the pipeline of the pod number is not considered,
-				// the preemption of the pod number is released directly, which will cause the pods in the node to be cyclically evicted.
-				Code:   api.UnschedulableAndUnresolvable,
+				Code:   api.Unschedulable,
 				Reason: api.NodePodNumberExceeded,
 			}
 			predicateStatus = append(predicateStatus, podsNumStatus)
-			return predicateStatus, fmt.Errorf("%s", api.NodePodNumberExceeded)
 		}
 
 		predicateByStablefilter := func(pod *v1.Pod, nodeInfo *k8sframework.NodeInfo) ([]*api.Status, bool, error) {

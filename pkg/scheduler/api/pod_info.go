@@ -65,6 +65,7 @@ func GetPodResourceRequest(pod *v1.Pod) *Resource {
 	for _, container := range pod.Spec.InitContainers {
 		result.SetMaxResource(NewResource(container.Resources.Requests))
 	}
+	result.AddScalar(v1.ResourcePods, 1)
 
 	return result
 }
