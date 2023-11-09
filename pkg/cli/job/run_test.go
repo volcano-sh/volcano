@@ -18,7 +18,6 @@ package job
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -50,7 +49,7 @@ func TestCreateJob(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	err = ioutil.WriteFile(fileName, val, os.ModePerm)
+	err = os.WriteFile(fileName, val, os.ModePerm)
 	if err != nil {
 		panic(err)
 	}

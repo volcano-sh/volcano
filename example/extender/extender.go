@@ -18,7 +18,7 @@ package main
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -28,7 +28,7 @@ import (
 var snapshot *api.ClusterInfo
 
 func onSessionOpen(w http.ResponseWriter, r *http.Request) {
-	content, err := ioutil.ReadAll(r.Body)
+	content, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -56,7 +56,7 @@ func onSessionClose(w http.ResponseWriter, r *http.Request) {
 }
 
 func predicate(w http.ResponseWriter, r *http.Request) {
-	content, err := ioutil.ReadAll(r.Body)
+	content, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -89,7 +89,7 @@ func predicate(w http.ResponseWriter, r *http.Request) {
 }
 
 func prioritize(w http.ResponseWriter, r *http.Request) {
-	content, err := ioutil.ReadAll(r.Body)
+	content, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return

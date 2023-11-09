@@ -14,7 +14,7 @@ limitations under the License.
 package proportion
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -85,7 +85,7 @@ func getLocalMetrics() int {
 	}
 	defer res.Body.Close()
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return data
 	}
