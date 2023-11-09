@@ -404,6 +404,23 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return fmt.Errorf("plugin %s pre-predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
 			}
 		}
+
+		// Check NodeAffinity
+		if predicate.nodeAffinityEnable {
+			_, status := nodeAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
+			if status.IsSkip() {
+				taskKey := api.PodKey(task.Pod)
+				if _, ok := skipPlugins[taskKey]; !ok {
+					plugins := sets.New[string]()
+					skipPlugins[taskKey] = plugins
+				}
+				skipPlugins[taskKey].Insert(nodeaffinity.Name)
+				klog.V(3).Infof("pod(%s/%s) nodeAffinity require information is nil, plugin nodeAffinity is skipped",
+					task.Namespace, task.Name)
+			} else if !status.IsSuccess() {
+				return fmt.Errorf("plugin %s pre-predicates failed %s", nodeaffinity.Name, status.Message())
+			}
+		}
 		return nil
 	})
 
@@ -441,11 +458,22 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			// Check NodeAffinity
 			if predicate.nodeAffinityEnable {
-				status := nodeAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-				nodeAffinityStatus := framework.ConvertPredicateStatus(status)
-				if nodeAffinityStatus.Code != api.Success {
-					predicateStatus = append(predicateStatus, nodeAffinityStatus)
-					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeAffinityFilter.Name(), status.Message())
+				isSkipNodeAffinity := false
+				taskKey := api.PodKey(task.Pod)
+				if plugins, ok := skipPlugins[taskKey]; ok {
+					if plugins.Has(nodeaffinity.Name) {
+						isSkipNodeAffinity = true
+						klog.V(5).Infof("pod(%s/%s) nodeAffinity require information is nil, plugin nodeAffinity is skip for node %s",
+							task.Namespace, task.Name, node.Name)
+					}
+				}
+				if !isSkipNodeAffinity {
+					status := nodeAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+					nodeAffinityStatus := framework.ConvertPredicateStatus(status)
+					if nodeAffinityStatus.Code != api.Success {
+						predicateStatus = append(predicateStatus, nodeAffinityStatus)
+						return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeAffinityFilter.Name(), status.Message())
+					}
 				}
 			}
 
