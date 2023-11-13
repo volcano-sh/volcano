@@ -45,7 +45,7 @@ func init() {
 	framework.RegisterController(&jobtemplatecontroller{})
 }
 
-// jobflowcontroller the JobFlow jobflowcontroller type.
+// jobtemplatecontroller the JobTemplate jobtemplatecontroller type.
 type jobtemplatecontroller struct {
 	kubeClient kubernetes.Interface
 	vcClient   vcclientset.Interface
