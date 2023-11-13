@@ -197,8 +197,10 @@ func updateQueueStatus(ssn *Session) {
 		allocatedResources[queueID] = &api.Resource{}
 	}
 	for _, job := range ssn.Jobs {
-		for _, runningTask := range job.TaskStatusIndex[api.Running] {
-			allocatedResources[job.Queue].Add(runningTask.Resreq)
+		for _, task := range job.Tasks {
+			if api.AllocatedStatus(task.Status) {
+				allocatedResources[job.Queue].Add(task.Resreq)
+			}
 		}
 	}
 
