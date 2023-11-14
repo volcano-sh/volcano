@@ -74,7 +74,7 @@ type jobflowcontroller struct {
 	recorder record.EventRecorder
 
 	queue          workqueue.RateLimitingInterface
-	enqueueJobFlow func(req *apis.FlowRequest)
+	enqueueJobFlow func(req apis.FlowRequest)
 
 	syncHandler func(req *apis.FlowRequest) error
 
@@ -164,13 +164,13 @@ func (jf *jobflowcontroller) processNextWorkItem() bool {
 	// period.
 	defer jf.queue.Done(obj)
 
-	req, ok := obj.(*apis.FlowRequest)
+	req, ok := obj.(apis.FlowRequest)
 	if !ok {
 		klog.Errorf("%v is not a valid queue request struct.", obj)
 		return true
 	}
 
-	err := jf.syncHandler(req)
+	err := jf.syncHandler(&req)
 	jf.handleJobFlowErr(err, obj)
 
 	return true
@@ -218,7 +218,7 @@ func (jf *jobflowcontroller) handleJobFlowErr(err error, obj interface{}) {
 		return
 	}
 
-	req, _ := obj.(*apis.FlowRequest)
+	req, _ := obj.(apis.FlowRequest)
 	jf.recordEventsForJobFlow(req.Namespace, req.JobFlowName, v1.EventTypeWarning, string(req.Action),
 		fmt.Sprintf("%v JobFlow failed for %v", req.Action, err))
 	klog.V(4).Infof("Dropping JobFlow request %v out of the queue for %v.", obj, err)

@@ -18,8 +18,9 @@ package usage
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
+	"time"
+
+	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 
 	"k8s.io/klog/v2"
 	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
@@ -30,11 +31,11 @@ import (
 
 const (
 	// PluginName indicates name of volcano scheduler plugin.
-	PluginName        = "usage"
-	cpuUsageAvgPrefix = "CPUUsageAvg."
-	memUsageAvgPrefix = "MEMUsageAvg."
-	thresholdSection  = "thresholds"
-	cpuUsageAvg5m     = "5m"
+	PluginName            = "usage"
+	thresholdSection      = "thresholds"
+	MetricsActiveTime     = 5 * time.Minute
+	NodeUsageCPUExtend    = "the CPU load of the node exceeds the upper limit."
+	NodeUsageMemoryExtend = "the memory load of the node exceeds the upper limit."
 )
 
 /*
@@ -42,36 +43,68 @@ const (
    tiers:
    - plugins:
      - name: usage
+       enablePredicate: false  # If the value is false, new pod scheduling is not disabled when the node load reaches the threshold. If the value is true or left blank, new pod scheduling is disabled.
        arguments:
-          thresholds:
-            CPUUsageAvg.5m: 80
-            MEMUsageAvg.5m: 90
+         usage.weight: 5
+         cpu.weight: 1
+         memory.weight: 1
+         thresholds:
+           cpu: 80
+           mem: 80
 */
 
-type thresholdConfig struct {
-	cpuUsageAvg map[string]float64
-	memUsageAvg map[string]float64
-}
+const AVG string = "average"
 
 type usagePlugin struct {
 	pluginArguments framework.Arguments
-	weight          int
-	threshold       thresholdConfig
+	usageWeight     int
+	cpuWeight       int
+	memoryWeight    int
+	usageType       string
+	cpuThresholds   float64
+	memThresholds   float64
+	period          string
 }
 
 // New function returns usagePlugin object
 func New(args framework.Arguments) framework.Plugin {
-	usageWeight := 1
-	args.GetInt(&usageWeight, "usage.weight")
-	config := thresholdConfig{
-		cpuUsageAvg: make(map[string]float64),
-		memUsageAvg: make(map[string]float64),
-	}
-	return &usagePlugin{
+	var plugin = &usagePlugin{
 		pluginArguments: args,
-		weight:          usageWeight,
-		threshold:       config,
+		usageWeight:     5,
+		cpuWeight:       1,
+		memoryWeight:    1,
+		usageType:       AVG,
+		cpuThresholds:   80,
+		memThresholds:   80,
+		period:          source.NODE_METRICS_PERIOD,
 	}
+	args.GetInt(&plugin.usageWeight, "usage.weight")
+	args.GetInt(&plugin.cpuWeight, "cpu.weight")
+	args.GetInt(&plugin.memoryWeight, "memory.weight")
+
+	argsValue, ok := plugin.pluginArguments[thresholdSection]
+	if !ok {
+		klog.Errorf("Failed to obtain thresholds information, usage plugin arguments is %v", plugin.pluginArguments)
+		return plugin
+	}
+
+	thresholdArgs, ok := argsValue.(map[interface{}]interface{})
+	if !ok {
+		klog.Errorf("Failed to convert the thresholds information, thresholds args values is %v", argsValue)
+		return plugin
+	}
+	for resourceName, threshold := range thresholdArgs {
+		resource, _ := resourceName.(string)
+		value, _ := threshold.(int)
+		switch resource {
+		case "cpu":
+			plugin.cpuThresholds = float64(value)
+		case "mem":
+			plugin.memThresholds = float64(value)
+		}
+	}
+
+	return plugin
 }
 
 func (up *usagePlugin) Name() string {
@@ -85,85 +118,70 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 	}()
 
 	if klog.V(4).Enabled() {
-		for node := range ssn.Nodes {
-			usage := ssn.Nodes[node].ResourceUsage
-			klog.V(4).Infof("node:%v, cpu usage:%v, mem usage:%v", node, usage.CPUUsageAvg["5m"], usage.MEMUsageAvg["5m"])
+		for node, nodeInfo := range ssn.Nodes {
+			klog.V(4).Infof("node:%v, cpu usage:%v, mem usage:%v, metrics time is %v",
+				node, nodeInfo.ResourceUsage.CPUUsageAvg, nodeInfo.ResourceUsage.MEMUsageAvg, nodeInfo.ResourceUsage.MetricsTime)
 		}
-	}
-
-	argsValue, ok := up.pluginArguments[thresholdSection]
-	if ok {
-		args, ok := argsValue.(map[interface{}]interface{})
-		if !ok {
-			klog.V(4).Infof("pluginArguments[thresholdsSection]:%v", argsValue)
-		}
-		for k, v := range args {
-			key, _ := k.(string)
-			var val float64
-			switch a := v.(type) {
-			case string:
-				val, _ = strconv.ParseFloat(a, 64)
-			case int:
-				val = float64(a)
-			case float64:
-				val = a
-			default:
-				klog.V(4).Infof("The threshold %v is an unknown type", a)
-			}
-			if strings.Contains(key, cpuUsageAvgPrefix) {
-				periodKey := strings.Replace(key, cpuUsageAvgPrefix, "", 1)
-				up.threshold.cpuUsageAvg[periodKey] = val
-			}
-			if strings.Contains(key, memUsageAvgPrefix) {
-				periodKey := strings.Replace(key, memUsageAvgPrefix, "", 1)
-				up.threshold.memUsageAvg[periodKey] = val
-			}
-			klog.V(4).Infof("Threshold config key: %s, value: %f", key, val)
-		}
-	} else {
-		klog.V(4).Infof("Threshold arguments :%v", argsValue)
 	}
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		predicateStatus := make([]*api.Status, 0)
 		usageStatus := &api.Status{}
-		for period, value := range up.threshold.cpuUsageAvg {
-			klog.V(4).Infof("predicateFn cpuUsageAvg:%v", up.threshold.cpuUsageAvg)
-			if node.ResourceUsage.CPUUsageAvg[period] > value {
-				msg := fmt.Sprintf("Node %s cpu usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.CPUUsageAvg[period], value)
-				usageStatus.Code = api.Unschedulable
-				usageStatus.Reason = msg
-				predicateStatus = append(predicateStatus, usageStatus)
-				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", up.Name(), msg)
-			}
+
+		now := time.Now()
+		if up.period == "" || now.Sub(node.ResourceUsage.MetricsTime) > MetricsActiveTime {
+			klog.V(4).Infof("The period(%s) is empty or the usage metrics data is not updated for more than %v minutes, "+
+				"Usage plugin filter for task %s/%s on node %s pass, metrics time is %v. ", up.period, task.Namespace, task.Name, node.Name, node.ResourceUsage.MetricsTime)
+
+			usageStatus.Code = api.Success
+			predicateStatus = append(predicateStatus, usageStatus)
+			return predicateStatus, nil
 		}
 
-		for period, value := range up.threshold.memUsageAvg {
-			klog.V(4).Infof("predicateFn memUsageAvg:%v", up.threshold.memUsageAvg)
-			if node.ResourceUsage.MEMUsageAvg[period] > value {
-				msg := fmt.Sprintf("Node %s mem usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.MEMUsageAvg[period], value)
-				usageStatus.Code = api.Unschedulable
-				usageStatus.Reason = msg
-				predicateStatus = append(predicateStatus, usageStatus)
-				return predicateStatus, fmt.Errorf("plugin %s memory usage predicates failed %s", up.Name(), msg)
-			}
+		klog.V(4).Infof("predicateFn cpuUsageAvg:%v,predicateFn memUsageAvg:%v", up.cpuThresholds, up.memThresholds)
+		if node.ResourceUsage.CPUUsageAvg[up.period] > up.cpuThresholds {
+			klog.V(3).Infof("Node %s cpu usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.CPUUsageAvg[up.period], up.cpuThresholds)
+			usageStatus.Code = api.UnschedulableAndUnresolvable
+			usageStatus.Reason = NodeUsageCPUExtend
+			predicateStatus = append(predicateStatus, usageStatus)
+			return predicateStatus, fmt.Errorf("Plugin %s predicates failed, because of %s", up.Name(), NodeUsageCPUExtend)
+		}
+		if node.ResourceUsage.MEMUsageAvg[up.period] > up.memThresholds {
+			klog.V(3).Infof("Node %s mem usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.MEMUsageAvg[up.period], up.memThresholds)
+			usageStatus.Code = api.UnschedulableAndUnresolvable
+			usageStatus.Reason = NodeUsageMemoryExtend
+			predicateStatus = append(predicateStatus, usageStatus)
+			return predicateStatus, fmt.Errorf("Plugin %s predicates failed, because of %s", up.Name(), NodeUsageMemoryExtend)
 		}
 
-		usageStatus.Code = api.Success
-		predicateStatus = append(predicateStatus, usageStatus)
 		klog.V(4).Infof("Usage plugin filter for task %s/%s on node %s pass.", task.Namespace, task.Name, node.Name)
 		return predicateStatus, nil
 	}
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		score := 0.0
-		cpuUsage, exist := node.ResourceUsage.CPUUsageAvg[cpuUsageAvg5m]
+		now := time.Now()
+		if up.period == "" || now.Sub(node.ResourceUsage.MetricsTime) > MetricsActiveTime {
+			klog.V(4).Infof("The period(%s) is empty or the usage metrics data is not updated for more than %v minutes, "+
+				"Usage plugin score for task %s/%s on node is 0, metrics time is %v. ", up.period, task.Namespace, task.Name, node.Name, node.ResourceUsage.MetricsTime)
+			return 0, nil
+		}
+
+		cpuUsage, exist := node.ResourceUsage.CPUUsageAvg[up.period]
 		klog.V(4).Infof("Node %s cpu usage is %f.", node.Name, cpuUsage)
 		if !exist {
 			return 0, nil
 		}
-		score = (100 - cpuUsage) / 100
-		score *= float64(k8sFramework.MaxNodeScore * int64(up.weight))
+		cpuScore := (100 - cpuUsage) / 100 * float64(up.cpuWeight)
+
+		memoryUsage, exist := node.ResourceUsage.MEMUsageAvg[up.period]
+		klog.V(4).Infof("Node %s memory usage is %f.", node.Name, memoryUsage)
+		if !exist {
+			return 0, nil
+		}
+		memoryScore := (100 - memoryUsage) / 100 * float64(up.memoryWeight)
+		score = (cpuScore + memoryScore) / float64((up.cpuWeight + up.memoryWeight))
+		score *= float64(k8sFramework.MaxNodeScore * int64(up.usageWeight))
 		klog.V(4).Infof("Node %s score for task %s is %f.", node.Name, task.Name, score)
 		return score, nil
 	}

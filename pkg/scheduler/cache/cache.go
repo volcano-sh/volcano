@@ -70,8 +70,8 @@ import (
 )
 
 const (
-	// default interval for sync data from metrics server, the value is 5s
-	defaultMetricsInternal = 5000000000
+	// default interval for sync data from metrics server, the value is 30s
+	defaultMetricsInternal = 30 * time.Second
 )
 
 func init() {
@@ -501,8 +501,10 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	mySchedulerPodName, c := getMultiSchedulerInfo()
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
-	// even with no error returned. `Namespace` informer is used by `InterPodAffinity` plugin,
+	// even with no error returned. `PodDisruptionBudgets` informer is used by `Pdb` plugin
+	// `Namespace` informer is used by `InterPodAffinity` plugin,
 	// `SelectorSpread` and `PodTopologySpread` plugins uses the following four so far.
+	informerFactory.Policy().V1().PodDisruptionBudgets().Informer()
 	informerFactory.Core().V1().Namespaces().Informer()
 	informerFactory.Core().V1().Services().Informer()
 	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
@@ -707,14 +709,13 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	go wait.Until(sc.processBindTask, time.Millisecond*20, stopCh)
 
 	// Get metrics data
-	address := sc.metricsConf["address"]
-	if len(address) > 0 {
-		interval, err := time.ParseDuration(sc.metricsConf["interval"])
-		if err != nil || interval <= 0 {
-			interval = time.Duration(defaultMetricsInternal)
-		}
-		go wait.Until(sc.GetMetricsData, interval, stopCh)
+	klog.V(3).Infof("Start metrics collection, metricsConf is %v", sc.metricsConf)
+	interval, err := time.ParseDuration(sc.metricsConf["interval"])
+	if err != nil || interval <= 0 {
+		interval = defaultMetricsInternal
 	}
+	klog.V(3).Infof("The interval for querying metrics data is %v", interval)
+	go wait.Until(sc.GetMetricsData, interval, stopCh)
 }
 
 // WaitForCacheSync sync the cache with the api server
@@ -857,6 +858,11 @@ func (sc *SchedulerCache) ClientConfig() *rest.Config {
 // SharedInformerFactory returns the scheduler SharedInformerFactory
 func (sc *SchedulerCache) SharedInformerFactory() informers.SharedInformerFactory {
 	return sc.informerFactory
+}
+
+// SetSharedInformerFactory sets the scheduler SharedInformerFactory for unit test
+func (sc *SchedulerCache) SetSharedInformerFactory(factory informers.SharedInformerFactory) {
+	sc.informerFactory = factory
 }
 
 // UpdateSchedulerNumaInfo used to update scheduler node cache NumaSchedulerInfo
@@ -1304,49 +1310,57 @@ func (sc *SchedulerCache) SetMetricsConf(conf map[string]string) {
 }
 
 func (sc *SchedulerCache) GetMetricsData() {
-	client, err := source.NewMetricsClient(sc.metricsConf)
+	metricsType := sc.metricsConf["type"]
+	if len(metricsType) == 0 {
+		klog.V(3).Infof("The metrics type is not set in the volcano scheduler configmap file. " +
+			"As a result, the CPU and memory load information of the node is not collected.")
+		return
+	}
+
+	client, err := source.NewMetricsClient(sc.restConfig, sc.metricsConf)
 	if err != nil {
 		klog.Errorf("Error creating client: %v\n", err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel()
-	nodeUsageMap := make(map[string]*schedulingapi.NodeUsage)
+	nodeMetricsMap := make(map[string]*source.NodeMetrics, len(sc.NodeList))
 	sc.Mutex.Lock()
-	for k := range sc.Nodes {
-		nodeUsageMap[k] = &schedulingapi.NodeUsage{
-			CPUUsageAvg: make(map[string]float64),
-			MEMUsageAvg: make(map[string]float64),
-		}
+
+	for _, nodeName := range sc.NodeList {
+		nodeMetricsMap[nodeName] = &source.NodeMetrics{}
 	}
 	sc.Mutex.Unlock()
 
-	supportedPeriods := []string{"5m"}
-	for node := range nodeUsageMap {
-		for _, period := range supportedPeriods {
-			nodeMetrics, err := client.NodeMetricsAvg(ctx, node, period)
-			if err != nil {
-				klog.Errorf("Error getting node metrics: %v\n", err)
-				continue
-			}
-			klog.V(4).Infof("node: %v, CpuUsageAvg: %v, MemUsageAvg: %v, period:%v", node, nodeMetrics.CPU, nodeMetrics.Memory, period)
-			nodeUsageMap[node].CPUUsageAvg[period] = nodeMetrics.CPU
-			nodeUsageMap[node].MEMUsageAvg[period] = nodeMetrics.Memory
-		}
+	err = client.NodesMetricsAvg(ctx, nodeMetricsMap)
+	if err != nil {
+		klog.Errorf("Error getting node metrics: %v\n", err)
+		return
 	}
-	sc.setMetricsData(nodeUsageMap)
+
+	sc.setMetricsData(nodeMetricsMap)
 }
 
-func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*schedulingapi.NodeUsage) {
+func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*source.NodeMetrics) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	for k := range usageInfo {
-		nodeInfo, ok := sc.Nodes[k]
-		if ok {
-			klog.V(3).Infof("node: %s, ResourceUsage: %+v => %+v", k, *nodeInfo.ResourceUsage, *usageInfo[k])
-			nodeInfo.ResourceUsage = usageInfo[k]
+	for nodeName, nodeMetric := range usageInfo {
+		nodeUsage := &schedulingapi.NodeUsage{
+			CPUUsageAvg: make(map[string]float64),
+			MEMUsageAvg: make(map[string]float64),
 		}
+		nodeUsage.MetricsTime = nodeMetric.MetricsTime
+		nodeUsage.CPUUsageAvg[source.NODE_METRICS_PERIOD] = nodeMetric.CPU
+		nodeUsage.MEMUsageAvg[source.NODE_METRICS_PERIOD] = nodeMetric.Memory
+
+		nodeInfo, ok := sc.Nodes[nodeName]
+		if !ok {
+			klog.Errorf("The information about node %s cannot be found in the cache.", nodeName)
+			continue
+		}
+		klog.V(5).Infof("node: %s, ResourceUsage: %+v => %+v", nodeName, *nodeInfo.ResourceUsage, nodeUsage)
+		nodeInfo.ResourceUsage = nodeUsage
 	}
 }
 

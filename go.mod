@@ -22,6 +22,7 @@ require (
 	github.com/stretchr/testify v1.8.3
 	go.uber.org/automaxprocs v1.4.0
 	golang.org/x/crypto v0.1.0
+	golang.org/x/sys v0.7.0
 	golang.org/x/time v0.3.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.27.2
@@ -39,7 +40,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.3.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v0.0.0-20230915061450-c58d9e019f72
+	volcano.sh/apis v1.8.0-alpha.0.0.20231028020234-1a5aa81107d7
 )
 
 require (
@@ -53,7 +54,7 @@ require (
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/docker/distribution v2.8.1+incompatible // indirect
+	github.com/docker/distribution v2.8.2+incompatible // indirect
 	github.com/emicklei/go-restful/v3 v3.9.0 // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
 	github.com/evanphx/json-patch/v5 v5.6.0 // indirect
@@ -111,7 +112,6 @@ require (
 	golang.org/x/net v0.9.0 // indirect
 	golang.org/x/oauth2 v0.7.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/sys v0.7.0 // indirect
 	golang.org/x/term v0.7.0 // indirect
 	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/tools v0.7.0 // indirect
@@ -131,6 +131,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubelet v0.0.0 // indirect
+	k8s.io/metrics v0.27.2
 	k8s.io/mount-utils v0.25.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.2 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
@@ -154,6 +155,7 @@ replace (
 	k8s.io/controller-manager => k8s.io/controller-manager v0.27.2
 	k8s.io/cri-api => k8s.io/cri-api v0.27.2
 	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.27.2
+	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.27.2
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.27.2
 	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.27.2
 	k8s.io/kube-proxy => k8s.io/kube-proxy v0.27.2

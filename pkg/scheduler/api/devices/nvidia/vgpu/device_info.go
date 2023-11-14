@@ -74,7 +74,6 @@ func NewGPUDevice(id int, mem uint) *GPUDevice {
 }
 
 func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
-	klog.V(3).Infoln("into devices")
 	if node == nil {
 		return nil
 	}
@@ -141,6 +140,7 @@ func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 			}
 		}
 	}
+	gs.GetStatus()
 }
 
 // SubResource frees the gpu hold by the pod
@@ -180,25 +180,21 @@ func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) erro
 }
 
 func (gs *GPUDevices) FilterNode(pod *v1.Pod) (int, string, error) {
-	klog.V(3).Infoln("4pdvgpuDeviceSharing:Into FitInPod", pod.Name)
 	if VGPUEnable {
+		klog.V(5).Infoln("4pdvgpu DeviceSharing starts filtering pods", pod.Name)
 		fit, _, err := checkNodeGPUSharingPredicate(pod, gs, true)
 		if err != nil || !fit {
 			klog.Errorln("deviceSharing err=", err.Error())
 			return devices.Unschedulable, fmt.Sprintf("4pdvgpuDeviceSharing %s", err.Error()), err
 		}
+		klog.V(5).Infoln("4pdvgpu DeviceSharing successfully filters pods")
 	}
-	klog.V(3).Infoln("4pdvgpu DeviceSharing:FitInPod successed")
 	return devices.Success, "", nil
 }
 
-func (gs *GPUDevices) GetStatus() string {
-	return ""
-}
-
 func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	klog.V(3).Infoln("VGPU DeviceSharing:Into AllocateToPod", pod.Name)
 	if VGPUEnable {
+		klog.V(3).Infoln("VGPU DeviceSharing:Into AllocateToPod", pod.Name)
 		fit, device, err := checkNodeGPUSharingPredicate(pod, gs, false)
 		if err != nil || !fit {
 			klog.Errorln("DeviceSharing err=", err.Error())
@@ -224,6 +220,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 		if err != nil {
 			return err
 		}
+		gs.GetStatus()
 		klog.V(3).Infoln("DeviceSharing:Allocate Success")
 	}
 	return nil

@@ -17,7 +17,9 @@ limitations under the License.
 package scheduler
 
 import (
+	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -26,6 +28,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
+
+	"volcano.sh/volcano/pkg/util"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/filewatcher"
@@ -96,6 +100,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	if options.ServerOpts.EnableCacheDumper {
 		pc.dumper.ListenForSignal(stopCh)
 	}
+	go runSchedulerSocket()
 }
 
 func (pc *Scheduler) runOnce() {
@@ -195,6 +200,7 @@ func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 			klog.V(4).Infof("watch %s event: %v", pc.schedulerConf, event)
 			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
 				pc.loadSchedulerConf()
+				pc.cache.SetMetricsConf(pc.metricsConf)
 			}
 		case err, ok := <-errCh:
 			if !ok {
@@ -205,4 +211,14 @@ func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 			return
 		}
 	}
+}
+
+func runSchedulerSocket() {
+	fs := flag.CommandLine
+	startKlogLevel := fs.Lookup("v").Value.String()
+	socketDir := os.Getenv(util.SocketDirEnvName)
+	if socketDir == "" {
+		socketDir = util.DefaultSocketDir
+	}
+	util.ListenAndServeKlogLogLevel("klog", startKlogLevel, socketDir)
 }
