@@ -265,7 +265,7 @@ func TestNode(t *testing.T) {
 			Recorder: record.NewFakeRecorder(100),
 		}
 		for _, node := range test.nodes {
-			schedulerCache.AddNode(node)
+			schedulerCache.AddOrUpdateNode(node)
 		}
 		for _, pod := range test.pods {
 			schedulerCache.AddPod(pod)

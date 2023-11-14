@@ -163,7 +163,7 @@ func TestShuffle(t *testing.T) {
 		}
 
 		for _, node := range test.nodes {
-			schedulerCache.AddNode(node)
+			schedulerCache.AddOrUpdateNode(node)
 		}
 		for _, q := range test.queues {
 			schedulerCache.AddQueueV1beta1(q)

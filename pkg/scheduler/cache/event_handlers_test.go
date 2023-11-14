@@ -75,7 +75,7 @@ func TestSchedulerCache_updateTask(t *testing.T) {
 		}
 
 		for _, n := range test.Nodes {
-			cache.AddNode(n)
+			cache.AddOrUpdateNode(n)
 		}
 
 		cache.AddPod(test.OldPod)
@@ -129,7 +129,7 @@ func TestSchedulerCache_UpdatePod(t *testing.T) {
 		}
 
 		for _, n := range test.Nodes {
-			cache.AddNode(n)
+			cache.AddOrUpdateNode(n)
 		}
 
 		cache.AddPod(test.OldPod)
@@ -210,7 +210,7 @@ func TestSchedulerCache_AddPodGroupV1beta1(t *testing.T) {
 		}
 
 		for _, n := range test.Nodes {
-			cache.AddNode(n)
+			cache.AddOrUpdateNode(n)
 		}
 		test.Pod.Annotations = map[string]string{
 			"scheduling.k8s.io/group-name": "j1",
@@ -336,7 +336,7 @@ func TestSchedulerCache_UpdatePodGroupV1beta1(t *testing.T) {
 		}
 
 		for _, n := range test.Nodes {
-			cache.AddNode(n)
+			cache.AddOrUpdateNode(n)
 		}
 		test.Pod.Annotations = map[string]string{
 			"scheduling.k8s.io/group-name": "j1",
@@ -431,7 +431,7 @@ func TestSchedulerCache_DeletePodGroupV1beta1(t *testing.T) {
 		cache.DeletedJobs = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
 		for _, n := range test.Nodes {
-			cache.AddNode(n)
+			cache.AddOrUpdateNode(n)
 		}
 		test.Pod.Annotations = map[string]string{
 			"scheduling.k8s.io/group-name": "j1",
