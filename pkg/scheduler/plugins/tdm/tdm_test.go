@@ -251,7 +251,7 @@ func Test_TDM(t *testing.T) {
 				Recorder: record.NewFakeRecorder(100),
 			}
 			for _, node := range test.nodes {
-				schedulerCache.AddNode(node)
+				schedulerCache.AddOrUpdateNode(node)
 			}
 
 			schedulerCache.AddPod(test.pod)
@@ -713,7 +713,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Recorder: record.NewFakeRecorder(100),
 			}
 			for _, node := range test.nodes {
-				schedulerCache.AddNode(node)
+				schedulerCache.AddOrUpdateNode(node)
 			}
 
 			for _, pod := range test.pods {

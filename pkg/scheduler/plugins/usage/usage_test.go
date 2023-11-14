@@ -314,7 +314,7 @@ func TestUsage_predicateFn(t *testing.T) {
 			}
 
 			for _, node := range test.nodes {
-				schedulerCache.AddNode(node)
+				schedulerCache.AddOrUpdateNode(node)
 			}
 			for _, pod := range test.pods {
 				schedulerCache.AddPod(pod)
@@ -513,7 +513,7 @@ func TestUsage_nodeOrderFn(t *testing.T) {
 			}
 
 			for _, node := range test.nodes {
-				schedulerCache.AddNode(node)
+				schedulerCache.AddOrUpdateNode(node)
 			}
 			for _, pod := range test.pods {
 				schedulerCache.AddPod(pod)
