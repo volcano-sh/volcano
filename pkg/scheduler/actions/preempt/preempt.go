@@ -114,7 +114,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 				if preempted, _ := preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
 					// Ignore non running task.
-					if task.Status != api.Running {
+					if !api.PreemptableStatus(task.Status) {
 						return false
 					}
 					// Ignore task with empty resource request.
@@ -169,7 +169,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 				stmt := framework.NewStatement(ssn)
 				assigned, _ := preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
 					// Ignore non running task.
-					if task.Status != api.Running {
+					if !api.PreemptableStatus(task.Status) {
 						return false
 					}
 					// Ignore task with empty resource request.
