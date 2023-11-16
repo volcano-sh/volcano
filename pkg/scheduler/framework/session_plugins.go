@@ -105,6 +105,11 @@ func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 	ssn.overusedFns[name] = fn
 }
 
+// AddPreemptiveFn add preemptive function
+func (ssn *Session) AddPreemptiveFn(name string, fn api.ValidateFn) {
+	ssn.preemptiveFns[name] = fn
+}
+
 // AddAllocatableFn add allocatable function
 func (ssn *Session) AddAllocatableFn(name string, fn api.AllocatableFn) {
 	ssn.allocatableFns[name] = fn
@@ -265,6 +270,26 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 	}
 
 	return false
+}
+
+// Preemptive invoke can preemptive function of the plugins
+func (ssn *Session) Preemptive(queue *api.QueueInfo) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			of, found := ssn.preemptiveFns[plugin.Name]
+			if !isEnabled(plugin.EnablePreemptive) {
+				continue
+			}
+			if !found {
+				continue
+			}
+			if !of(queue) {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // Allocatable invoke allocatable function of the plugins

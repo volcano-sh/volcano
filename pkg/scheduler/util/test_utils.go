@@ -236,6 +236,13 @@ func BuildQueueWithAnnos(qname string, weight int32, cap v1.ResourceList, annos 
 	return queue
 }
 
+// BuildQueueWithResourcesQuantity return a queue with deserved and capability resources quantity.
+func BuildQueueWithResourcesQuantity(qname string, deserved, cap v1.ResourceList) *schedulingv1beta1.Queue {
+	queue := BuildQueue(qname, 1, cap)
+	queue.Spec.Deserved = deserved
+	return queue
+}
+
 // ////// build in resource //////
 // BuildPriorityClass return pc
 func BuildPriorityClass(name string, value int32) *schedulingv1.PriorityClass {
