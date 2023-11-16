@@ -19,6 +19,7 @@ package plugins
 import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/binpack"
+	"volcano.sh/volcano/pkg/scheduler/plugins/capacity"
 	"volcano.sh/volcano/pkg/scheduler/plugins/cdp"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/deviceshare"
@@ -64,6 +65,7 @@ func init() {
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)
+	framework.RegisterPluginBuilder(capacity.PluginName, capacity.New)
 
 	// Plugins for Extender
 	framework.RegisterPluginBuilder(extender.PluginName, extender.New)
