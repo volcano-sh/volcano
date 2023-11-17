@@ -24,9 +24,7 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
-	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/record"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -60,75 +58,74 @@ func TestShuffle(t *testing.T) {
 	framework.RegisterPluginBuilder("fake", fakePluginBuilder)
 
 	tests := []struct {
-		name      string
-		podGroups []*schedulingv1beta1.PodGroup
-		pods      []*v1.Pod
-		nodes     []*v1.Node
-		queues    []*schedulingv1beta1.Queue
-		expected  int
+		name string
+		cache.TestArg
+		expected int
 	}{
 		{
 			name: "select pods with low priority and evict them",
-			nodes: []*v1.Node{
-				util.BuildNode("node1", util.BuildResourceList("4", "8Gi"), make(map[string]string)),
-				util.BuildNode("node2", util.BuildResourceList("4", "8Gi"), make(map[string]string)),
-			},
-			queues: []*schedulingv1beta1.Queue{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "default",
-					},
-					Spec: schedulingv1beta1.QueueSpec{
-						Weight: 1,
+			TestArg: cache.TestArg{
+				Nodes: []*v1.Node{
+					util.BuildNode("node1", util.BuildResourceList("4", "8Gi"), make(map[string]string)),
+					util.BuildNode("node2", util.BuildResourceList("4", "8Gi"), make(map[string]string)),
+				},
+				Queues: []*schedulingv1beta1.Queue{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "default",
+						},
+						Spec: schedulingv1beta1.QueueSpec{
+							Weight: 1,
+						},
 					},
 				},
-			},
-			podGroups: []*schedulingv1beta1.PodGroup{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg1",
-						Namespace: "test",
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "pg1",
+							Namespace: "test",
+						},
+						Spec: schedulingv1beta1.PodGroupSpec{
+							Queue: "default",
+						},
+						Status: schedulingv1beta1.PodGroupStatus{
+							Phase: schedulingv1beta1.PodGroupRunning,
+						},
 					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue: "default",
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "pg2",
+							Namespace: "test",
+						},
+						Spec: schedulingv1beta1.PodGroupSpec{
+							Queue: "default",
+						},
+						Status: schedulingv1beta1.PodGroupStatus{
+							Phase: schedulingv1beta1.PodGroupRunning,
+						},
 					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupRunning,
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "pg3",
+							Namespace: "test",
+						},
+						Spec: schedulingv1beta1.PodGroupSpec{
+							Queue: "default",
+						},
+						Status: schedulingv1beta1.PodGroupStatus{
+							Phase: schedulingv1beta1.PodGroupRunning,
+						},
 					},
 				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg2",
-						Namespace: "test",
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue: "default",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupRunning,
-					},
+				Pods: []*v1.Pod{
+					util.BuildPod("test", "pod1-1", "node1", v1.PodRunning, "pg1", util.PodResourceOption("1", "2G"), util.PodPriorityOption(lowPriority)),
+					util.BuildPod("test", "pod1-2", "node1", v1.PodRunning, "pg1", util.PodResourceOption("1", "2G"), util.PodPriorityOption(highPriority)),
+					util.BuildPod("test", "pod1-3", "node1", v1.PodRunning, "pg1", util.PodResourceOption("1", "2G"), util.PodPriorityOption(highPriority)),
+					util.BuildPod("test", "pod2-1", "node1", v1.PodRunning, "pg2", util.PodResourceOption("1", "2G"), util.PodPriorityOption(lowPriority)),
+					util.BuildPod("test", "pod2-2", "node2", v1.PodRunning, "pg2", util.PodResourceOption("1", "2G"), util.PodPriorityOption(highPriority)),
+					util.BuildPod("test", "pod3-1", "node2", v1.PodRunning, "pg3", util.PodResourceOption("1", "2G"), util.PodPriorityOption(lowPriority)),
+					util.BuildPod("test", "pod3-2", "node2", v1.PodRunning, "pg3", util.PodResourceOption("1", "2G"), util.PodPriorityOption(highPriority)),
 				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg3",
-						Namespace: "test",
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue: "default",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupRunning,
-					},
-				},
-			},
-			pods: []*v1.Pod{
-				util.BuildPodWithPriority("test", "pod1-1", "node1", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod1-2", "node1", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod1-3", "node1", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod2-1", "node1", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg2", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod2-2", "node2", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg2", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod3-1", "node2", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod3-2", "node2", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &highPriority),
 			},
 			expected: 3,
 		},
@@ -136,44 +133,7 @@ func TestShuffle(t *testing.T) {
 	shuffle := New()
 
 	for i, test := range tests {
-		binder := &util.FakeBinder{
-			Binds:   map[string]string{},
-			Channel: make(chan string, 1),
-		}
-		evictor := &util.FakeEvictor{
-			Channel: make(chan string),
-		}
-		schedulerCache := &cache.SchedulerCache{
-			Nodes:           make(map[string]*api.NodeInfo),
-			Jobs:            make(map[api.JobID]*api.JobInfo),
-			Queues:          make(map[api.QueueID]*api.QueueInfo),
-			Binder:          binder,
-			Evictor:         evictor,
-			StatusUpdater:   &util.FakeStatusUpdater{},
-			VolumeBinder:    &util.FakeVolumeBinder{},
-			PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
-
-			Recorder: record.NewFakeRecorder(100),
-		}
-		schedulerCache.PriorityClasses["high-priority"] = &schedulingv1.PriorityClass{
-			Value: highPriority,
-		}
-		schedulerCache.PriorityClasses["low-priority"] = &schedulingv1.PriorityClass{
-			Value: lowPriority,
-		}
-
-		for _, node := range test.nodes {
-			schedulerCache.AddNode(node)
-		}
-		for _, q := range test.queues {
-			schedulerCache.AddQueueV1beta1(q)
-		}
-		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroupV1beta1(ss)
-		}
-		for _, pod := range test.pods {
-			schedulerCache.AddPod(pod)
-		}
+		schedulerCache, _, evictor, _ := cache.CreateCacheForTest(&test.TestArg, highPriority, lowPriority)
 
 		trueValue := true
 		ssn := framework.OpenSession(schedulerCache, []conf.Tier{

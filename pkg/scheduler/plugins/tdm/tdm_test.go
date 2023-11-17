@@ -118,9 +118,9 @@ func Test_TDM(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)
 	defer framework.CleanupPluginBuilders()
 
-	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1Gi"))
+	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1Gi"))
+	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, "pg1", util.PodResourceOption("1", "1Gi"))
 
 	p1.Annotations[schedulingv2.RevocableZone] = "*"
 	p3.Annotations[schedulingv2.RevocableZone] = "*"
@@ -340,16 +340,16 @@ func Test_TDM_victimsFn(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)
 	defer framework.CleanupPluginBuilders()
 
-	p1 := util.BuildPod("c1", "p1", "n1", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p2 := util.BuildPod("c1", "p2", "n1", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p3 := util.BuildPod("c1", "p3", "n1", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p4 := util.BuildPod("c1", "p4", "n1", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p5 := util.BuildPod("c1", "p5", "n1", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p6 := util.BuildPod("c2", "p6", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p7 := util.BuildPod("c2", "p7", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p8 := util.BuildPod("c2", "p8", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p9 := util.BuildPod("c2", "p9", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p10 := util.BuildPod("c2", "p10", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
+	p1 := util.BuildPod("c1", "p1", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1Gi"))
+	p2 := util.BuildPod("c1", "p2", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1Gi"))
+	p3 := util.BuildPod("c1", "p3", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1Gi"))
+	p4 := util.BuildPod("c1", "p4", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1Gi"))
+	p5 := util.BuildPod("c1", "p5", "n1", v1.PodRunning, "pg1", util.PodResourceOption("1", "1Gi"))
+	p6 := util.BuildPod("c2", "p6", "n2", v1.PodRunning, "pg2", util.PodResourceOption("1", "1Gi"))
+	p7 := util.BuildPod("c2", "p7", "n2", v1.PodRunning, "pg2", util.PodResourceOption("1", "1Gi"))
+	p8 := util.BuildPod("c2", "p8", "n2", v1.PodRunning, "pg2", util.PodResourceOption("1", "1Gi"))
+	p9 := util.BuildPod("c2", "p9", "n2", v1.PodRunning, "pg2", util.PodResourceOption("1", "1Gi"))
+	p10 := util.BuildPod("c2", "p10", "n2", v1.PodRunning, "pg2", util.PodResourceOption("1", "1Gi"))
 
 	p1.Annotations[schedulingv2.PodPreemptable] = "true"
 	p2.Annotations[schedulingv2.PodPreemptable] = "true"

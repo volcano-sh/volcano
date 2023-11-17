@@ -121,9 +121,9 @@ func TestProportion(t *testing.T) {
 	defer framework.CleanupPluginBuilders()
 
 	// Running pods
-	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodRunning, util.BuildResourceList("3", "3k"), "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
-	w2 := util.BuildPod("ns1", "worker-2", "", apiv1.PodRunning, util.BuildResourceList("5", "5k"), "pg1", map[string]string{"role": "worker"}, map[string]string{})
-	w3 := util.BuildPod("ns1", "worker-3", "", apiv1.PodRunning, util.BuildResourceList("4", "4k"), "pg2", map[string]string{"role": "worker"}, map[string]string{})
+	w1 := util.BuildWorkerPod("ns1", "worker-1", "", apiv1.PodRunning, "pg1", util.PodResourceOption("3", "3k"), util.PodSelectorOption("selector", "worker"))
+	w2 := util.BuildWorkerPod("ns1", "worker-2", "", apiv1.PodRunning, "pg1", util.PodResourceOption("5", "5k"))
+	w3 := util.BuildPod("ns1", "worker-3", "", apiv1.PodRunning, "pg2", util.PodResourceOption("4", "4k"))
 	w1.Spec.Affinity = getWorkerAffinity()
 	w2.Spec.Affinity = getWorkerAffinity()
 	w3.Spec.Affinity = getWorkerAffinity()

@@ -28,8 +28,7 @@ func makePods(num int, cpu, mem, podGroupName string) []*v1.Pod {
 	for i := 0; i < num; i++ {
 		pods = append(pods, util.BuildPod("default",
 			fmt.Sprintf("%s-p%d", podGroupName, i), "",
-			v1.PodPending, util.BuildResourceList(cpu, mem),
-			podGroupName, make(map[string]string), make(map[string]string)))
+			v1.PodPending, podGroupName, util.PodResourceOption(cpu, mem)))
 	}
 	return pods
 }
