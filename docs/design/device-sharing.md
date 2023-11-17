@@ -6,7 +6,7 @@ We implement a common interface for shareable devices(GPU,NPU,FPGA,...) called D
 
 ## Backguards
 
-We intended to provide volcano the ability to share third-party resources link GPU,NPU,etc in the near future. At fitst, I tried to implement these logics based on predicate.gpushare, but i sooner realised that these logics scattered in device_info.go, node_info.go, pod_info.go, and whole predicate folder. if i follow the implementation of predicate.gpushare, i will have no choice but hack deeply into vc-scheduler api. Sooner or later vc-scheduler api will be crowded with various device-sharing logic, which is probably not what we wished.
+We intended to provide volcano the ability to share third-party resources link GPU,NPU,etc in the near future. At first, I tried to implement these logics based on predicate.gpushare, but i sooner realised that these logics scattered in device_info.go, node_info.go, pod_info.go, and whole predicate folder. if i follow the implementation of predicate.gpushare, i will have no choice but hack deeply into vc-scheduler api. Sooner or later vc-scheduler api will be crowded with various device-sharing logic, which is probably not what we wished.
 
 ## Implementation
 
