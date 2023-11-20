@@ -118,17 +118,17 @@ func TestNode(t *testing.T) {
 	GPU := v1.ResourceName("nvidia.com/gpu")
 	FOO := v1.ResourceName("example.com/foo")
 
-	p1 := util.BuildPod("c1", "p1", "n1", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p2 := util.BuildPod("c1", "p2", "n3", v1.PodPending, util.BuildResourceList("1.5", "0Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, util.BuildResourceList("2", "10Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p1 := util.BuildPod("c1", "p1", "n1", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p2 := util.BuildPod("c1", "p2", "n3", v1.PodPending, api.BuildResourceList("1.5", "0Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "10Gi"), "pg1", make(map[string]string), make(map[string]string))
 	addResource(p3.Spec.Containers[0].Resources.Requests, GPU, "2")
-	p4 := util.BuildPod("c1", "p4", "", v1.PodPending, util.BuildResourceList("3", "4Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p4 := util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("3", "4Gi"), "pg1", make(map[string]string), make(map[string]string))
 	addResource(p4.Spec.Containers[0].Resources.Requests, FOO, "3")
 
-	n1 := util.BuildNode("n1", util.BuildResourceList("2", "4Gi"), make(map[string]string))
-	n2 := util.BuildNode("n2", util.BuildResourceList("4", "16Gi"), make(map[string]string))
+	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n2 := util.BuildNode("n2", api.BuildResourceList("4", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
 	addResource(n2.Status.Allocatable, GPU, "4")
-	n3 := util.BuildNode("n3", util.BuildResourceList("2", "4Gi"), make(map[string]string))
+	n3 := util.BuildNode("n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
 	addResource(n3.Status.Allocatable, FOO, "16")
 
 	pg1 := &schedulingv1.PodGroup{

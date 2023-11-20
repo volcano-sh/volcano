@@ -46,10 +46,10 @@ func TestSchedulerCache_updateTask(t *testing.T) {
 	}{
 		{
 			Name:   "Success Case",
-			OldPod: buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
-			NewPod: buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "2G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			OldPod: buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			NewPod: buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "2G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			OldTaskInfo: &api.TaskInfo{},
 			NewTaskInfo: &api.TaskInfo{},
@@ -57,10 +57,10 @@ func TestSchedulerCache_updateTask(t *testing.T) {
 		},
 		{
 			Name:   "Error Case",
-			OldPod: buildPod(namespace, "p1", "n1", v1.PodSucceeded, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
-			NewPod: buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "2G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			OldPod: buildPod(namespace, "p1", "n1", v1.PodSucceeded, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			NewPod: buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "2G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			OldTaskInfo: &api.TaskInfo{},
 			NewTaskInfo: &api.TaskInfo{},
@@ -104,19 +104,19 @@ func TestSchedulerCache_UpdatePod(t *testing.T) {
 	}{
 		{
 			Name:   "Success Case",
-			OldPod: buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
-			NewPod: buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "2G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			OldPod: buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			NewPod: buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "2G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			Expected: nil,
 		},
 		{
 			Name:   "Error Case",
-			OldPod: buildPod(namespace, "p1", "n1", v1.PodSucceeded, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
-			NewPod: buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "2G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			OldPod: buildPod(namespace, "p1", "n1", v1.PodSucceeded, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			NewPod: buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "2G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			Expected: fmt.Errorf("failed to find task <%s/%s> on host <%s>", namespace, "p1", "n1"),
 		},
@@ -155,9 +155,9 @@ func TestSchedulerCache_AddPodGroupV1beta1(t *testing.T) {
 	}{
 		{
 			Name: "Success Case",
-			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			PodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
@@ -176,9 +176,9 @@ func TestSchedulerCache_AddPodGroupV1beta1(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 1 - Wrong Type",
-			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			PodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
@@ -190,9 +190,9 @@ func TestSchedulerCache_AddPodGroupV1beta1(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 2 - PodGroup Without Identity",
-			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			PodGroup: &schedulingv1.PodGroup{
 				Status: schedulingv1.PodGroupStatus{
@@ -243,9 +243,9 @@ func TestSchedulerCache_UpdatePodGroupV1beta1(t *testing.T) {
 	}{
 		{
 			Name: "Success Case",
-			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			OldPodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
@@ -270,9 +270,9 @@ func TestSchedulerCache_UpdatePodGroupV1beta1(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 1 - Wrong Type(OldPodGroup)",
-			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			OldPodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
@@ -290,9 +290,9 @@ func TestSchedulerCache_UpdatePodGroupV1beta1(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 2 - PodGroup Without Identity",
-			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			NewPodGroup: &schedulingv1.PodGroup{
 				Status: schedulingv1.PodGroupStatus{
@@ -309,9 +309,9 @@ func TestSchedulerCache_UpdatePodGroupV1beta1(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 3 - Wrong Type(NewPodGroup)",
-			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			OldPodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
@@ -368,9 +368,9 @@ func TestSchedulerCache_DeletePodGroupV1beta1(t *testing.T) {
 	}{
 		{
 			Name: "Success Case",
-			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			PodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
@@ -382,9 +382,9 @@ func TestSchedulerCache_DeletePodGroupV1beta1(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 1 - Wrong Type",
-			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			PodGroup: &schedulingv1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{
@@ -403,9 +403,9 @@ func TestSchedulerCache_DeletePodGroupV1beta1(t *testing.T) {
 		},
 		{
 			Name: "Error Case: 2 - PodGroup Without Identity",
-			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
+			Pod:  buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
-				buildNode("n1", buildResourceList("2000m", "10G")),
+				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
 			PodGroup: &schedulingv1.PodGroup{
 				Status: schedulingv1.PodGroupStatus{

@@ -118,25 +118,25 @@ func Test_TDM(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)
 	defer framework.CleanupPluginBuilders()
 
-	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
 
 	p1.Annotations[schedulingv2.RevocableZone] = "*"
 	p3.Annotations[schedulingv2.RevocableZone] = "*"
 
-	n1 := util.BuildNode("n1", util.BuildResourceList("16", "64Gi"), map[string]string{
+	n1 := util.BuildNode("n1", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{
 		schedulingv2.RevocableZone: "rz1",
 	})
 
-	n2 := util.BuildNode("n2", util.BuildResourceList("16", "64Gi"), map[string]string{
+	n2 := util.BuildNode("n2", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{
 		schedulingv2.RevocableZone: "rz1",
 	})
 
-	n3 := util.BuildNode("n3", util.BuildResourceList("16", "64Gi"), map[string]string{})
-	n4 := util.BuildNode("n4", util.BuildResourceList("16", "64Gi"), map[string]string{})
+	n3 := util.BuildNode("n3", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	n4 := util.BuildNode("n4", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
 
-	n5 := util.BuildNode("n5", util.BuildResourceList("16", "64Gi"), map[string]string{
+	n5 := util.BuildNode("n5", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{
 		schedulingv2.RevocableZone: "rz2",
 	})
 
@@ -340,16 +340,16 @@ func Test_TDM_victimsFn(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)
 	defer framework.CleanupPluginBuilders()
 
-	p1 := util.BuildPod("c1", "p1", "n1", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p2 := util.BuildPod("c1", "p2", "n1", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p3 := util.BuildPod("c1", "p3", "n1", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p4 := util.BuildPod("c1", "p4", "n1", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p5 := util.BuildPod("c1", "p5", "n1", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p6 := util.BuildPod("c2", "p6", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p7 := util.BuildPod("c2", "p7", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p8 := util.BuildPod("c2", "p8", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p9 := util.BuildPod("c2", "p9", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p10 := util.BuildPod("c2", "p10", "n2", v1.PodRunning, util.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
+	p1 := util.BuildPod("c1", "p1", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p2 := util.BuildPod("c1", "p2", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p3 := util.BuildPod("c1", "p3", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p4 := util.BuildPod("c1", "p4", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p5 := util.BuildPod("c1", "p5", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p6 := util.BuildPod("c2", "p6", "n2", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
+	p7 := util.BuildPod("c2", "p7", "n2", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
+	p8 := util.BuildPod("c2", "p8", "n2", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
+	p9 := util.BuildPod("c2", "p9", "n2", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
+	p10 := util.BuildPod("c2", "p10", "n2", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
 
 	p1.Annotations[schedulingv2.PodPreemptable] = "true"
 	p2.Annotations[schedulingv2.PodPreemptable] = "true"
@@ -364,11 +364,11 @@ func Test_TDM_victimsFn(t *testing.T) {
 	p9.Annotations[schedulingv2.PodPreemptable] = "true"
 	p10.Annotations[schedulingv2.PodPreemptable] = "true"
 
-	n1 := util.BuildNode("n1", util.BuildResourceList("16", "64Gi"), map[string]string{
+	n1 := util.BuildNode("n1", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{
 		schedulingv2.RevocableZone: "rz1",
 	})
 
-	n2 := util.BuildNode("n2", util.BuildResourceList("16", "64Gi"), map[string]string{
+	n2 := util.BuildNode("n2", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{
 		schedulingv2.RevocableZone: "rz1",
 	})
 

@@ -19,6 +19,7 @@ package api
 import (
 	"math"
 	"reflect"
+	"sort"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -1380,12 +1381,16 @@ func TestResource_LessEqualResource(t *testing.T) {
 
 	for _, test := range testsForDefaultZero {
 		_, reason := test.resource1.LessEqualWithResourcesName(test.resource2, Zero)
+		sort.Strings(test.expected)
+		sort.Strings(reason)
 		if !reflect.DeepEqual(test.expected, reason) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, reason)
 		}
 	}
 	for caseID, test := range testsForDefaultInfinity {
 		_, reason := test.resource1.LessEqualWithResourcesName(test.resource2, Infinity)
+		sort.Strings(test.expected)
+		sort.Strings(reason)
 		if !reflect.DeepEqual(test.expected, reason) {
 			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, reason)
 		}
