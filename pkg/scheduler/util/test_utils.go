@@ -24,7 +24,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
@@ -39,24 +38,6 @@ import (
 	schedulecache "volcano.sh/volcano/pkg/scheduler/cache"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
-
-// BuildResourceList builts resource list object
-func BuildResourceList(cpu string, memory string) v1.ResourceList {
-	return v1.ResourceList{
-		v1.ResourceCPU:      resource.MustParse(cpu),
-		v1.ResourceMemory:   resource.MustParse(memory),
-		api.GPUResourceName: resource.MustParse("0"),
-	}
-}
-
-// BuildResourceListWithGPU builts resource list with GPU
-func BuildResourceListWithGPU(cpu string, memory string, GPU string) v1.ResourceList {
-	return v1.ResourceList{
-		v1.ResourceCPU:      resource.MustParse(cpu),
-		v1.ResourceMemory:   resource.MustParse(memory),
-		api.GPUResourceName: resource.MustParse(GPU),
-	}
-}
 
 // BuildNode builts node object
 func BuildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1.Node {
