@@ -70,8 +70,8 @@ func TestShuffle(t *testing.T) {
 		{
 			name: "select pods with low priority and evict them",
 			nodes: []*v1.Node{
-				util.BuildNode("node1", util.BuildResourceList("4", "8Gi"), make(map[string]string)),
-				util.BuildNode("node2", util.BuildResourceList("4", "8Gi"), make(map[string]string)),
+				util.BuildNode("node1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.BuildNode("node2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
 			},
 			queues: []*schedulingv1beta1.Queue{
 				{
@@ -122,13 +122,13 @@ func TestShuffle(t *testing.T) {
 				},
 			},
 			pods: []*v1.Pod{
-				util.BuildPodWithPriority("test", "pod1-1", "node1", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod1-2", "node1", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod1-3", "node1", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod2-1", "node1", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg2", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod2-2", "node2", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg2", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod3-1", "node2", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod3-2", "node2", v1.PodRunning, util.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &highPriority),
+				util.BuildPodWithPriority("test", "pod1-1", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &lowPriority),
+				util.BuildPodWithPriority("test", "pod1-2", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
+				util.BuildPodWithPriority("test", "pod1-3", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
+				util.BuildPodWithPriority("test", "pod2-1", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg2", make(map[string]string), make(map[string]string), &lowPriority),
+				util.BuildPodWithPriority("test", "pod2-2", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg2", make(map[string]string), make(map[string]string), &highPriority),
+				util.BuildPodWithPriority("test", "pod3-1", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &lowPriority),
+				util.BuildPodWithPriority("test", "pod3-2", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &highPriority),
 			},
 			expected: 3,
 		},

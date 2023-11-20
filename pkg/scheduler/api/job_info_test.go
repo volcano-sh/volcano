@@ -23,8 +23,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
+
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
@@ -38,13 +38,13 @@ func TestAddTaskInfo(t *testing.T) {
 	case01Ns := "c1"
 	case01Owner := buildOwnerReference("uid")
 
-	case01Pod1 := buildPod(case01Ns, "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Pod1 := buildPod(case01Ns, "p1", "", v1.PodPending, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
 	case01Task1 := NewTaskInfo(case01Pod1)
-	case01Pod2 := buildPod(case01Ns, "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Pod2 := buildPod(case01Ns, "p2", "n1", v1.PodRunning, BuildResourceList("2000m", "2G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
 	case01Task2 := NewTaskInfo(case01Pod2)
-	case01Pod3 := buildPod(case01Ns, "p3", "n1", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Pod3 := buildPod(case01Ns, "p3", "n1", v1.PodPending, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
 	case01Task3 := NewTaskInfo(case01Pod3)
-	case01Pod4 := buildPod(case01Ns, "p4", "n1", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Pod4 := buildPod(case01Ns, "p4", "n1", v1.PodPending, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
 	case01Task4 := NewTaskInfo(case01Pod4)
 
 	tests := []struct {
@@ -59,8 +59,8 @@ func TestAddTaskInfo(t *testing.T) {
 			pods: []*v1.Pod{case01Pod1, case01Pod2, case01Pod3, case01Pod4},
 			expected: &JobInfo{
 				UID:          case01UID,
-				Allocated:    buildResource("4000m", "4G"),
-				TotalRequest: buildResource("5000m", "5G"),
+				Allocated:    buildResource("4000m", "4G", map[string]string{"pods": "3"}, 0),
+				TotalRequest: buildResource("5000m", "5G", map[string]string{"pods": "4"}, 0),
 				Tasks: tasksMap{
 					case01Task1.UID: case01Task1,
 					case01Task2.UID: case01Task2,
@@ -81,18 +81,19 @@ func TestAddTaskInfo(t *testing.T) {
 				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
 				TaskMinAvailable: make(map[TaskID]int32),
+				Budget:           &DisruptionBudget{},
 			},
 		},
 	}
 
 	for i, test := range tests {
 		ps := NewJobInfo(test.uid)
+		ps.Budget = &DisruptionBudget{}
 
 		for _, pod := range test.pods {
 			pi := NewTaskInfo(pod)
 			ps.AddTaskInfo(pi)
 		}
-
 		if !jobInfoEqual(ps, test.expected) {
 			t.Errorf("podset info %d: \n expected: %v, \n got: %v \n",
 				i, test.expected, ps)
@@ -105,20 +106,20 @@ func TestDeleteTaskInfo(t *testing.T) {
 	case01UID := JobID("owner1")
 	case01Ns := "c1"
 	case01Owner := buildOwnerReference(string(case01UID))
-	case01Pod1 := buildPod(case01Ns, "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Pod1 := buildPod(case01Ns, "p1", "", v1.PodPending, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
 	case01Task1 := NewTaskInfo(case01Pod1)
-	case01Pod2 := buildPod(case01Ns, "p2", "n1", v1.PodRunning, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
-	case01Pod3 := buildPod(case01Ns, "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Pod2 := buildPod(case01Ns, "p2", "n1", v1.PodRunning, BuildResourceList("2000m", "2G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
+	case01Pod3 := buildPod(case01Ns, "p3", "n1", v1.PodRunning, BuildResourceList("3000m", "3G"), []metav1.OwnerReference{case01Owner}, make(map[string]string))
 	case01Task3 := NewTaskInfo(case01Pod3)
 
 	// case2
 	case02UID := JobID("owner2")
 	case02Ns := "c2"
 	case02Owner := buildOwnerReference(string(case02UID))
-	case02Pod1 := buildPod(case02Ns, "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{case02Owner}, make(map[string]string))
+	case02Pod1 := buildPod(case02Ns, "p1", "", v1.PodPending, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{case02Owner}, make(map[string]string))
 	case02Task1 := NewTaskInfo(case02Pod1)
-	case02Pod2 := buildPod(case02Ns, "p2", "n1", v1.PodPending, buildResourceList("2000m", "2G"), []metav1.OwnerReference{case02Owner}, make(map[string]string))
-	case02Pod3 := buildPod(case02Ns, "p3", "n1", v1.PodRunning, buildResourceList("3000m", "3G"), []metav1.OwnerReference{case02Owner}, make(map[string]string))
+	case02Pod2 := buildPod(case02Ns, "p2", "n1", v1.PodPending, BuildResourceList("2000m", "2G"), []metav1.OwnerReference{case02Owner}, make(map[string]string))
+	case02Pod3 := buildPod(case02Ns, "p3", "n1", v1.PodRunning, BuildResourceList("3000m", "3G"), []metav1.OwnerReference{case02Owner}, make(map[string]string))
 	case02Task3 := NewTaskInfo(case02Pod3)
 
 	tests := []struct {
@@ -134,8 +135,8 @@ func TestDeleteTaskInfo(t *testing.T) {
 			pods:   []*v1.Pod{case01Pod1, case01Pod2, case01Pod3},
 			rmPods: []*v1.Pod{case01Pod2},
 			expected: &JobInfo{
-				Allocated:    buildResource("3000m", "3G"),
-				TotalRequest: buildResource("4000m", "4G"),
+				Allocated:    buildResource("3000m", "3G", map[string]string{"pods": "1"}, 0),
+				TotalRequest: buildResource("4000m", "4G", map[string]string{"pods": "2"}, 0),
 				UID:          case01UID,
 				Tasks: tasksMap{
 					case01Task1.UID: case01Task1,
@@ -147,6 +148,7 @@ func TestDeleteTaskInfo(t *testing.T) {
 				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
 				TaskMinAvailable: make(map[TaskID]int32),
+				Budget:           &DisruptionBudget{},
 			},
 		},
 		{
@@ -155,8 +157,8 @@ func TestDeleteTaskInfo(t *testing.T) {
 			pods:   []*v1.Pod{case02Pod1, case02Pod2, case02Pod3},
 			rmPods: []*v1.Pod{case02Pod2},
 			expected: &JobInfo{
-				Allocated:    buildResource("3000m", "3G"),
-				TotalRequest: buildResource("4000m", "4G"),
+				Allocated:    buildResource("3000m", "3G", map[string]string{"pods": "1"}, 0),
+				TotalRequest: buildResource("4000m", "4G", map[string]string{"pods": "2"}, 0),
 				UID:          case02UID,
 				Tasks: tasksMap{
 					case02Task1.UID: case02Task1,
@@ -172,12 +174,14 @@ func TestDeleteTaskInfo(t *testing.T) {
 				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
 				TaskMinAvailable: make(map[TaskID]int32),
+				Budget:           &DisruptionBudget{},
 			},
 		},
 	}
 
 	for i, test := range tests {
 		ps := NewJobInfo(test.uid)
+		ps.Budget = &DisruptionBudget{}
 
 		for _, pod := range test.pods {
 			pi := NewTaskInfo(pod)
@@ -197,12 +201,12 @@ func TestDeleteTaskInfo(t *testing.T) {
 }
 
 func TestTaskSchedulingReason(t *testing.T) {
-	t1 := buildPod("ns1", "task-1", "", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
-	t2 := buildPod("ns1", "task-2", "", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
-	t3 := buildPod("ns1", "task-3", "node1", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
-	t4 := buildPod("ns1", "task-4", "node2", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
-	t5 := buildPod("ns1", "task-5", "node3", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
-	t6 := buildPod("ns1", "task-6", "", v1.PodPending, buildResourceList("1", "1G"), nil, make(map[string]string))
+	t1 := buildPod("ns1", "task-1", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
+	t2 := buildPod("ns1", "task-2", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
+	t3 := buildPod("ns1", "task-3", "node1", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
+	t4 := buildPod("ns1", "task-4", "node2", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
+	t5 := buildPod("ns1", "task-5", "node3", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
+	t6 := buildPod("ns1", "task-6", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
 
 	tests := []struct {
 		desc     string
