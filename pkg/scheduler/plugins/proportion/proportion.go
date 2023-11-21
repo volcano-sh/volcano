@@ -22,7 +22,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
@@ -121,7 +120,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			if attr.capability == nil {
 				attr.realCapability = realCapability
 			} else {
-				attr.realCapability = helpers.Min(realCapability, attr.capability)
+				realCapability.MinDimensionResource(attr.capability, api.Infinity)
+				attr.realCapability = realCapability
+
 			}
 			pp.queueOpts[job.Queue] = attr
 			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
