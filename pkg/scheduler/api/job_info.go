@@ -29,11 +29,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
@@ -496,6 +494,14 @@ func (ji *JobInfo) GetElasticResources() *Resource {
 		return EmptyResource()
 	}
 	return ji.Allocated.Clone().Sub(minResource)
+}
+
+func (ji *JobInfo) GetElasticResourcesWithDiff() *Resource {
+	increase, _ := ji.Allocated.Diff(ji.GetMinResources(), Zero)
+	if increase.IsEmpty() {
+		return EmptyResource()
+	}
+	return increase
 }
 
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
