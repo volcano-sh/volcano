@@ -32,7 +32,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -155,7 +154,7 @@ func TestSchedulerCache_Bind_NodeWithSufficientResources(t *testing.T) {
 	cache.AddPod(pod)
 
 	node := buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
-	cache.AddNode(node)
+	cache.AddOrUpdateNode(node)
 
 	task := api.NewTaskInfo(pod)
 	task.Job = "j1"
@@ -187,7 +186,7 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 	cache.AddPod(pod)
 
 	node := buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
-	cache.AddNode(node)
+	cache.AddOrUpdateNode(node)
 
 	task := api.NewTaskInfo(pod)
 	task.Job = "j1"
@@ -299,7 +298,7 @@ func TestNodeOperation(t *testing.T) {
 		}
 
 		for _, n := range test.nodes {
-			cache.AddNode(n)
+			cache.AddOrUpdateNode(n)
 		}
 
 		if !reflect.DeepEqual(cache, test.expected) {
@@ -308,7 +307,7 @@ func TestNodeOperation(t *testing.T) {
 		}
 
 		// delete node
-		cache.DeleteNode(test.deletedNode)
+		cache.RemoveNode(test.deletedNode.Name)
 		if !reflect.DeepEqual(cache, test.delExpect) {
 			t.Errorf("case %d: \n expected %v, \n got %v \n",
 				i, test.delExpect, cache)
@@ -336,6 +335,7 @@ func TestBindTasks(t *testing.T) {
 		pvInformer:      informerFactory.Core().V1().PersistentVolumes(),
 		scInformer:      informerFactory.Storage().V1().StorageClasses(),
 		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		nodeQueue:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 	}
 
 	sc.Binder = &DefaultBinder{}
@@ -359,12 +359,6 @@ func TestBindTasks(t *testing.T) {
 			DeleteFunc: sc.DeletePod,
 		},
 	)
-	sc.nodeInformer.Informer().AddEventHandler(
-		cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddNode,
-			UpdateFunc: sc.UpdateNode,
-		},
-	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go wait.Until(sc.processBindTask, time.Millisecond*5, ctx.Done())
@@ -375,9 +369,10 @@ func TestBindTasks(t *testing.T) {
 
 	// make sure pod exist when calling fake client binding
 	fakeKube.CoreV1().Pods(pod.Namespace).Create(ctx, pod, metav1.CreateOptions{})
-	fakeKube.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
 	informerFactory.Start(ctx.Done())
 	informerFactory.WaitForCacheSync(ctx.Done())
+	// set node in cache directly
+	sc.AddOrUpdateNode(node)
 
 	task := api.NewTaskInfo(pod)
 	task.NodeName = "n1"

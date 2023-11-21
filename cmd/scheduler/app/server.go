@@ -74,12 +74,7 @@ func Run(opt *options.ServerOption) error {
 		}
 	}
 
-	sched, err := scheduler.NewScheduler(config,
-		opt.SchedulerNames,
-		opt.SchedulerConf,
-		opt.SchedulePeriod,
-		opt.DefaultQueue,
-		opt.NodeSelector)
+	sched, err := scheduler.NewScheduler(config, opt)
 	if err != nil {
 		panic(err)
 	}
