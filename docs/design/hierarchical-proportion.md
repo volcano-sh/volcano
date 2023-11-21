@@ -27,6 +27,7 @@ We propose to enhance the existing queue structure by adding hierarchical capabi
 ### Story 1: Hierarchical Queue System for Resource Management
 
 As an administrator, I can set up a hierarchical queue system to better manage resource allocation among different teams. This includes a bound of resources between parent queue and child queues, ensuring that the sum of sub-queue's capacity/guarantee resources does not exceed the parent's.
+
 ![stroy1](images/hierarchical-proportion1.png)
 
 ### Story 2: Resource Allocation Based on Leaf Nodes
