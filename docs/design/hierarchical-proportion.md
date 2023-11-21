@@ -2,12 +2,12 @@
 
 ## Contributors:
 
-- Author: @Zhuoqi Huang
-- Reviewer: @william-wang @Xuzheng Chang
+- Author: @hzq5477
+- Reviewer: @william-wang @Monokaix
 
 ## Motivation
 
-The Proportion Plugin with Hierarchical Tree Queue is designed to enable more accurate modeling of queue relationships and finer-grained scheduling in multi-tenant environments. It allows for a hierarchical structure of queues improving control over queue scheduling and resource allocation. For example, in a multi-tenant environment, we can model a parent queue that represents a project or team and child queues that represent different teams or workloads within that project.
+To solve part of [issue 3018](https://github.com/volcano-sh/volcano/issues/3018), the Proportion Plugin with Hierarchical Tree Queue is designed to enable more accurate modeling of queue relationships and finer-grained scheduling in multi-tenant environments. It allows for a hierarchical structure of queues improving control over queue scheduling and resource allocation. For example, in a multi-tenant environment, we can model a parent queue that represents a project or team and child queues that represent different teams or workloads within that project.
 
 ### In Scope:
 
