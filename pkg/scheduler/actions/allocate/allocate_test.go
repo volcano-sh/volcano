@@ -268,7 +268,7 @@ func TestAllocate(t *testing.T) {
 			}
 
 			for _, node := range test.nodes {
-				schedulerCache.AddNode(node)
+				schedulerCache.AddOrUpdateNode(node)
 			}
 			for _, pod := range test.pods {
 				schedulerCache.AddPod(pod)
@@ -454,7 +454,7 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				schedulerCache.AddPod(pod)
 			}
 			for _, node := range test.nodes {
-				schedulerCache.AddNode(node)
+				schedulerCache.AddOrUpdateNode(node)
 			}
 
 			trueValue := true

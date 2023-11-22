@@ -264,7 +264,7 @@ func TestHDRF(t *testing.T) {
 			Recorder:      record.NewFakeRecorder(100),
 		}
 		for _, node := range test.nodes {
-			schedulerCache.AddNode(node)
+			schedulerCache.AddOrUpdateNode(node)
 		}
 		for _, q := range test.queueSpecs {
 			schedulerCache.AddQueueV1beta1(

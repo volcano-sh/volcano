@@ -19,6 +19,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 
@@ -26,13 +27,17 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	sv1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/component-helpers/storage/ephemeral"
+	storagehelpers "k8s.io/component-helpers/storage/volume"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
+	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -43,6 +48,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
+
+var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
 
 func isTerminated(status schedulingapi.TaskStatus) bool {
 	return status == schedulingapi.Succeeded || status == schedulingapi.Failed
@@ -64,6 +71,131 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 	}
 
 	return sc.Jobs[pi.Job]
+}
+
+// addPodCSIVolumesToTask counts the csi volumes used by task
+// @Lily922 TODO: support counting shared volumes. Currently, if two different pods use the same attachable volume
+// and scheduled on the same nodes the volume will be count twice, but actually only use one attachable limit resource
+func (sc *SchedulerCache) addPodCSIVolumesToTask(pi *schedulingapi.TaskInfo) error {
+	volumes, err := sc.getPodCSIVolumes(pi.Pod)
+	if err != nil {
+		klog.Errorf("got pod csi attachment persistent volumes count error: %s", err.Error())
+		return err
+	}
+
+	for key, count := range volumes {
+		pi.Resreq.AddScalar(key, float64(count))
+	}
+	return nil
+}
+
+func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int64, error) {
+	volumes := make(map[v1.ResourceName]int64)
+	for _, vol := range pod.Spec.Volumes {
+		pvcName := ""
+		isEphemeral := false
+		switch {
+		case vol.PersistentVolumeClaim != nil:
+			// Normal CSI volume can only be used through PVC
+			pvcName = vol.PersistentVolumeClaim.ClaimName
+		case vol.Ephemeral != nil:
+			// Generic ephemeral inline volumes also use a PVC,
+			// just with a computed name and certain ownership.
+			// That is checked below once the pvc object is
+			// retrieved.
+			pvcName = ephemeral.VolumeClaimName(pod, &vol)
+			isEphemeral = true
+		default:
+			// @Lily922 TODO: support Inline volumes.
+			// Inline volume is not supported now
+			continue
+		}
+		if pvcName == "" {
+			return volumes, fmt.Errorf("PersistentVolumeClaim had no name")
+		}
+
+		pvc, err := sc.pvcInformer.Lister().PersistentVolumeClaims(pod.Namespace).Get(pvcName)
+		if err != nil {
+			// The PVC is required to proceed with
+			// scheduling of a new pod because it cannot
+			// run without it. Bail out immediately.
+			return volumes, fmt.Errorf("looking up PVC %s/%s: %v", pod.Namespace, pvcName, err)
+		}
+		// The PVC for an ephemeral volume must be owned by the pod.
+		if isEphemeral {
+			if err := ephemeral.VolumeIsForPod(pod, pvc); err != nil {
+				return volumes, err
+			}
+		}
+		driverName := sc.getCSIDriverInfo(pvc)
+		if driverName == "" {
+			klog.V(5).InfoS("Could not find a CSI driver name for pvc(%s/%s), not counting volume", pvc.Namespace, pvc.Name)
+			continue
+		}
+
+		// Count all csi volumes in cache, because the storage may change from unattachable volumes to attachable volumes after
+		// the cache set up, in this case it is very difficult to refresh all task caches.
+		// For unattachable volume, set the limits number to a very large value, in this way, scheduling will never
+		// be limited due to insufficient quantity of it.
+		k := v1.ResourceName(volumeutil.GetCSIAttachLimitKey(driverName))
+		if _, ok := volumes[k]; !ok {
+			volumes[k] = 1
+		} else {
+			volumes[k] += 1
+		}
+	}
+	return volumes, nil
+}
+
+func (sc *SchedulerCache) getCSIDriverInfo(pvc *v1.PersistentVolumeClaim) string {
+	pvName := pvc.Spec.VolumeName
+
+	if pvName == "" {
+		klog.V(5).Infof("PV had no name for pvc <%s>", klog.KObj(pvc))
+		return sc.getCSIDriverInfoFromSC(pvc)
+	}
+
+	pv, err := sc.pvInformer.Lister().Get(pvName)
+	if err != nil {
+		klog.V(5).InfoS("Failed to get pv <%s> for pvc <%s>: %v", klog.KRef("", pvName), klog.KObj(pvc), err)
+		// If we can't fetch PV associated with PVC, may be it got deleted
+		// or PVC was prebound to a PVC that hasn't been created yet.
+		// fallback to using StorageClass for volume counting
+		return sc.getCSIDriverInfoFromSC(pvc)
+	}
+
+	csiSource := pv.Spec.PersistentVolumeSource.CSI
+	if csiSource == nil {
+		// @Lily922 TODO: support non-CSI volumes and migrating pvc
+		// CSIMigration is not supported now.
+		klog.Warningf("Not support non-csi pvc.")
+		return ""
+	}
+
+	return csiSource.Driver
+}
+
+// getCSIDriverInfoFromSC get the name of the csi driver through the sc of the pvc.
+func (sc *SchedulerCache) getCSIDriverInfoFromSC(pvc *v1.PersistentVolumeClaim) string {
+	scName := storagehelpers.GetPersistentVolumeClaimClass(pvc)
+
+	// If StorageClass is not set or not found, then PVC must be using immediate binding mode
+	// and hence it must be bound before scheduling. So it is safe to not count it.
+	if scName == "" {
+		klog.V(3).Infof("PVC <%s> has no StorageClass", klog.KObj(pvc))
+		return ""
+	}
+
+	storageClass, err := sc.scInformer.Lister().Get(scName)
+	if err != nil {
+		klog.Errorf("Failed to get StorageClass for pvc <%s>: %v", klog.KObj(pvc), err)
+		return ""
+	}
+
+	if driverName, ok := storageClass.Parameters["csi.storage.k8s.io/csi-driver-name"]; ok {
+		return driverName
+	}
+	return storageClass.Provisioner
 }
 
 func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
@@ -91,9 +223,21 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 	return nil
 }
 
+func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, error) {
+	taskInfo := schedulingapi.NewTaskInfo(pod)
+	if err := sc.addPodCSIVolumesToTask(taskInfo); err != nil {
+		return taskInfo, err
+	}
+	return taskInfo, nil
+}
+
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
-	pi := schedulingapi.NewTaskInfo(pod)
+	pi, err := sc.NewTaskInfo(pod)
+	if err != nil {
+		klog.Errorf("generate taskInfo for pod(%s) failed: %v", pod.Name, err)
+		sc.resyncTask(pi)
+	}
 
 	return sc.addTask(pi)
 }
@@ -114,7 +258,10 @@ func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
 		return fmt.Errorf("failed to get Pod <%v/%v>: err %v", oldTask.Namespace, oldTask.Name, err)
 	}
 
-	newTask := schedulingapi.NewTaskInfo(newPod)
+	newTask, err := sc.NewTaskInfo(newPod)
+	if err != nil {
+		return fmt.Errorf("failed to generate taskInfo of pod(%s), error: %v", newPod.Name, err)
+	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
@@ -314,58 +461,62 @@ func (sc *SchedulerCache) addNodeImageStates(node *v1.Node, nodeInfo *scheduling
 // removeNodeImageStates removes the given node record from image entries having the node
 // in imageStates cache. After the removal, if any image becomes free, i.e., the image
 // is no longer available on any node, the image entry will be removed from imageStates.
-func (sc *SchedulerCache) removeNodeImageStates(node *v1.Node) {
-	if node == nil {
-		return
-	}
-
-	for _, image := range node.Status.Images {
-		for _, name := range image.Names {
-			state, ok := sc.imageStates[name]
-			if ok {
-				state.nodes.Delete(node.Name)
-				if len(state.nodes) == 0 {
-					// Remove the unused image to make sure the length of
-					// imageStates represents the total number of different
-					// images on all nodes
-					delete(sc.imageStates, name)
-				}
-			}
+func (sc *SchedulerCache) removeNodeImageStates(node string) {
+	for image, state := range sc.imageStates {
+		state.nodes.Delete(node)
+		if len(state.nodes) == 0 {
+			// Remove the unused image to make sure the length of
+			// imageStates represents the total number of different
+			// images on all nodes
+			delete(sc.imageStates, image)
 		}
 	}
 }
 
-// Assumes that lock is already acquired.
-func (sc *SchedulerCache) addNode(node *v1.Node) error {
+// AddOrUpdateNode adds or updates node info in cache.
+func (sc *SchedulerCache) AddOrUpdateNode(node *v1.Node) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
 	if sc.Nodes[node.Name] != nil {
 		sc.Nodes[node.Name].SetNode(node)
-		sc.removeNodeImageStates(node)
+		sc.removeNodeImageStates(node.Name)
 	} else {
 		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
 	}
 	sc.addNodeImageStates(node, sc.Nodes[node.Name])
+
+	var nodeExisted bool
+	for _, name := range sc.NodeList {
+		if name == node.Name {
+			nodeExisted = true
+			break
+		}
+	}
+	if !nodeExisted {
+		sc.NodeList = append(sc.NodeList, node.Name)
+	}
 	return nil
 }
 
-// Assumes that lock is already acquired.
-func (sc *SchedulerCache) updateNode(oldNode, newNode *v1.Node) error {
-	if sc.Nodes[newNode.Name] != nil {
-		sc.Nodes[newNode.Name].SetNode(newNode)
-		sc.removeNodeImageStates(newNode)
-		sc.addNodeImageStates(newNode, sc.Nodes[newNode.Name])
-		return nil
+// RemoveNode removes node info from cache
+func (sc *SchedulerCache) RemoveNode(nodeName string) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	for i, name := range sc.NodeList {
+		if name == nodeName {
+			sc.NodeList = append(sc.NodeList[:i], sc.NodeList[i+1:]...)
+			break
+		}
+	}
+	sc.removeNodeImageStates(nodeName)
+
+	if _, ok := sc.Nodes[nodeName]; !ok {
+		return fmt.Errorf("node <%s> does not exist", nodeName)
 	}
 
-	return fmt.Errorf("node <%s> does not exist", newNode.Name)
-}
-
-// Assumes that lock is already acquired.
-func (sc *SchedulerCache) deleteNode(node *v1.Node) error {
-	if _, ok := sc.Nodes[node.Name]; !ok {
-		return fmt.Errorf("node <%s> does not exist", node.Name)
-	}
-
-	numaInfo := sc.Nodes[node.Name].NumaInfo
+	numaInfo := sc.Nodes[nodeName].NumaInfo
 	if numaInfo != nil {
 		klog.V(3).Infof("delete numatopo <%s/%s>", numaInfo.Namespace, numaInfo.Name)
 		err := sc.vcClient.NodeinfoV1alpha1().Numatopologies().Delete(context.TODO(), numaInfo.Name, metav1.DeleteOptions{})
@@ -373,9 +524,7 @@ func (sc *SchedulerCache) deleteNode(node *v1.Node) error {
 			klog.Errorf("delete numatopo <%s/%s> failed.", numaInfo.Namespace, numaInfo.Name)
 		}
 	}
-	sc.removeNodeImageStates(node)
-	delete(sc.Nodes, node.Name)
-
+	delete(sc.Nodes, nodeName)
 	return nil
 }
 
@@ -386,21 +535,12 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 		klog.Errorf("Cannot convert to *v1.Node: %v", obj)
 		return
 	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	err := sc.addNode(node)
-	if err != nil {
-		klog.Errorf("Failed to add node %s into cache: %v", node.Name, err)
-		return
-	}
-	sc.NodeList = append(sc.NodeList, node.Name)
+	sc.nodeQueue.Add(node.Name)
 }
 
 // UpdateNode update node to scheduler cache
 func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
-	oldNode, ok := oldObj.(*v1.Node)
+	_, ok := oldObj.(*v1.Node)
 	if !ok {
 		klog.Errorf("Cannot convert oldObj to *v1.Node: %v", oldObj)
 		return
@@ -410,15 +550,7 @@ func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
 		klog.Errorf("Cannot convert newObj to *v1.Node: %v", newObj)
 		return
 	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	err := sc.updateNode(oldNode, newNode)
-	if err != nil {
-		klog.Errorf("Failed to update node %v in cache: %v", oldNode.Name, err)
-		return
-	}
+	sc.nodeQueue.Add(newNode.Name)
 }
 
 // DeleteNode delete node from scheduler cache
@@ -438,22 +570,33 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 		klog.Errorf("Cannot convert to *v1.Node: %v", t)
 		return
 	}
+	sc.nodeQueue.Add(node.Name)
+}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	err := sc.deleteNode(node)
+func (sc *SchedulerCache) SyncNode(nodeName string) error {
+	node, err := sc.nodeInformer.Lister().Get(nodeName)
 	if err != nil {
-		klog.Errorf("Failed to delete node %s from cache: %v", node.Name, err)
-		return
+		if errors.IsNotFound(err) {
+			deleteErr := sc.RemoveNode(nodeName)
+			if deleteErr != nil {
+				klog.Errorf("Failed to delete node <%s> and remove from cache: %s", nodeName, deleteErr.Error())
+				return deleteErr
+			}
+
+			klog.V(3).Infof("Node <%s> was deleted, removed from cache.", nodeName)
+			return nil
+		}
+		klog.Errorf("Failed to get node %s, error: %v", nodeName, err)
+		return err
 	}
 
-	for i, name := range sc.NodeList {
-		if name == node.Name {
-			sc.NodeList = append(sc.NodeList[:i], sc.NodeList[i+1:]...)
-			break
-		}
+	csiNode, err := sc.csiNodeInformer.Lister().Get(nodeName)
+	if err == nil {
+		sc.setCSIResourceOnNode(csiNode, node)
+	} else if !errors.IsNotFound(err) {
+		return err
 	}
+	return sc.AddOrUpdateNode(node)
 }
 
 func (sc *SchedulerCache) AddOrUpdateCSINode(obj interface{}) {
@@ -474,6 +617,7 @@ func (sc *SchedulerCache) AddOrUpdateCSINode(obj interface{}) {
 		csiNodeStatus.DriverStatus[d.Name] = d.Allocatable != nil && d.Allocatable.Count != nil
 	}
 	sc.CSINodesStatus[csiNode.Name] = csiNodeStatus
+	sc.nodeQueue.Add(csiNode.Name)
 }
 
 func (sc *SchedulerCache) UpdateCSINode(oldObj, newObj interface{}) {
@@ -511,6 +655,7 @@ func (sc *SchedulerCache) DeleteCSINode(obj interface{}) {
 	sc.Mutex.Lock()
 	delete(sc.CSINodesStatus, csiNode.Name)
 	sc.Mutex.Unlock()
+	sc.nodeQueue.Add(csiNode.Name)
 }
 
 func getJobID(pg *schedulingapi.PodGroup) schedulingapi.JobID {
@@ -1041,4 +1186,42 @@ func (sc *SchedulerCache) AddJob(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 	sc.Jobs[job.UID] = job
+}
+
+func (sc *SchedulerCache) setCSIResourceOnNode(csiNode *sv1.CSINode, node *v1.Node) {
+	if csiNode == nil || node == nil {
+		return
+	}
+
+	csiResources := make(map[v1.ResourceName]resource.Quantity)
+	for i := range csiNode.Spec.Drivers {
+		d := csiNode.Spec.Drivers[i]
+		k := v1.ResourceName(volumeutil.GetCSIAttachLimitKey(d.Name))
+		if d.Allocatable != nil && d.Allocatable.Count != nil {
+			csiResources[k] = *resource.NewScaledQuantity(int64(*d.Allocatable.Count), -3)
+		} else {
+			// Count all csi volumes in cache, because the storage may change from unattachable volumes to attachable volumes after
+			// the cache set up, in this case it is very difficult to refresh all task caches.
+			// For unattachable volume, set the limits number to a very large value, in this way, scheduling will never
+			// be limited due to insufficient quantity of it.
+			csiResources[k] = *resource.NewScaledQuantity(DefaultAttachableVolumeQuantity, -3)
+		}
+	}
+
+	if len(csiResources) == 0 {
+		return
+	}
+
+	if node.Status.Allocatable == nil {
+		node.Status.Allocatable = make(map[v1.ResourceName]resource.Quantity)
+	}
+
+	if node.Status.Capacity == nil {
+		node.Status.Capacity = make(map[v1.ResourceName]resource.Quantity)
+	}
+
+	for resourceName, quantity := range csiResources {
+		node.Status.Allocatable[resourceName] = quantity
+		node.Status.Capacity[resourceName] = quantity
+	}
 }
