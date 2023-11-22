@@ -53,30 +53,23 @@ type Scheduler struct {
 }
 
 // NewScheduler returns a scheduler
-func NewScheduler(
-	config *rest.Config,
-	schedulerNames []string,
-	schedulerConf string,
-	period time.Duration,
-	defaultQueue string,
-	nodeSelectors []string,
-) (*Scheduler, error) {
+func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, error) {
 	var watcher filewatcher.FileWatcher
-	if schedulerConf != "" {
+	if opt.SchedulerConf != "" {
 		var err error
-		path := filepath.Dir(schedulerConf)
+		path := filepath.Dir(opt.SchedulerConf)
 		watcher, err = filewatcher.NewFileWatcher(path)
 		if err != nil {
-			return nil, fmt.Errorf("failed creating filewatcher for %s: %v", schedulerConf, err)
+			return nil, fmt.Errorf("failed creating filewatcher for %s: %v", opt.SchedulerConf, err)
 		}
 	}
 
-	cache := schedcache.New(config, schedulerNames, defaultQueue, nodeSelectors)
+	cache := schedcache.New(config, opt.SchedulerNames, opt.DefaultQueue, opt.NodeSelector, opt.NodeWorkerThreads)
 	scheduler := &Scheduler{
-		schedulerConf:  schedulerConf,
+		schedulerConf:  opt.SchedulerConf,
 		fileWatcher:    watcher,
 		cache:          cache,
-		schedulePeriod: period,
+		schedulePeriod: opt.SchedulePeriod,
 		dumper:         schedcache.Dumper{Cache: cache},
 	}
 

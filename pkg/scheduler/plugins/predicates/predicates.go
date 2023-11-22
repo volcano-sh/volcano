@@ -415,8 +415,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods) {
-			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed",
-				task.Namespace, task.Name, node.Name)
+			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
+				task.Namespace, task.Name, node.Name, node.Allocatable.MaxTaskNum, len(nodeInfo.Pods))
 			podsNumStatus := &api.Status{
 				// TODO(wangyang0616): When the number of pods of a node reaches the upper limit, preemption is not supported for now.
 				// Record details in #3079 (volcano.sh/volcano)
@@ -520,10 +520,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		if predicate.nodeVolumeLimitsEnable {
 			status := nodeVolumeLimitsCSIFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 			nodeVolumeStatus := framework.ConvertPredicateStatus(status)
-			if nodeVolumeStatus.Code != api.Success {
-				predicateStatus = append(predicateStatus, nodeVolumeStatus)
-				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", nodeVolumeLimitsCSIFilter.Name(), status.Message())
-			}
+			predicateStatus = append(predicateStatus, nodeVolumeStatus)
 		}
 
 		// Check VolumeZone

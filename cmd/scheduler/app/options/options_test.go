@@ -57,6 +57,7 @@ func TestAddFlags(t *testing.T) {
 		PercentageOfNodesToFind:    defaultPercentageOfNodesToFind,
 		EnableLeaderElection:       true,
 		LockObjectNamespace:        defaultLockObjectNamespace,
+		NodeWorkerThreads:          defaultNodeWorkers,
 	}
 
 	if !reflect.DeepEqual(expected, s) {
