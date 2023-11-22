@@ -59,6 +59,10 @@ type queueAttr struct {
 	// realCapability represents the resource limit of the queue, LessEqual capability
 	realCapability *api.Resource
 	guarantee      *api.Resource
+	// children represents the children of the queue
+	children map[api.QueueID]*queueAttr
+	// parrent represents the parrent of the queue
+	parent api.QueueID
 }
 
 // New return proportion action
@@ -164,6 +168,31 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
 		}
 	}
+	// Temporary map to hold parent-child relationships
+	tempChildren := make(map[string][]*queueAttr)
+
+	for _, queue := range ssn.Queues {
+		parentName := queue.Queue.Spec.Parent
+
+		attr := pp.queueOpts[queue.UID]
+		attr.children = make(map[api.QueueID]*queueAttr)
+
+		if parentName != "" {
+			tempChildren[parentName] = append(tempChildren[parentName], attr)
+		}
+	}
+
+	// Assign children to parent queues
+	for _, queue := range ssn.Queues {
+		queueName := queue.Name
+		if children, exists := tempChildren[queueName]; exists {
+			parentAttr := pp.queueOpts[queue.UID]
+			for _, childAttr := range children {
+				childAttr.parent = queue.UID
+				parentAttr.children[childAttr.queueID] = childAttr
+			}
+		}
+	}
 
 	// Record metrics
 	for _, attr := range pp.queueOpts {
@@ -249,7 +278,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
-
+		if pp.isLeafNode(lv.UID) && !pp.isLeafNode(rv.UID) {
+			return -1
+		}
+		if !pp.isLeafNode(lv.UID) && pp.isLeafNode(rv.UID) {
+			return 1
+		}
 		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
 			return 0
 		}
@@ -264,11 +298,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 		allocations := map[api.QueueID]*api.Resource{}
-
 		for _, reclaimee := range reclaimees {
 			job := ssn.Jobs[reclaimee.Job]
 			attr := pp.queueOpts[job.Queue]
-
 			if _, found := allocations[job.Queue]; !found {
 				allocations[job.Queue] = attr.allocated.Clone()
 			}
@@ -297,6 +329,19 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		if overused {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)
+			// Check if parent queue is overusing
+			if parent := attr.parent; parent != "" {
+				parentAttr := pp.queueOpts[parent]
+				parentOverused := parentAttr.deserved.LessEqual(parentAttr.allocated, api.Zero)
+				if !parentOverused {
+					parentAttr.deserved = parentAttr.deserved.Add(attr.deserved)
+					parentAttr.allocated = parentAttr.allocated.Add(attr.allocated)
+					parentOverused = true
+					metrics.UpdateQueueOverused(parentAttr.name, parentOverused)
+					klog.V(3).Infof("Parent Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
+						parentAttr.name, parentAttr.deserved, parentAttr.allocated, parentAttr.share)
+				}
+			}
 		}
 
 		return overused
@@ -304,7 +349,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		attr := pp.queueOpts[queue.UID]
-
+		if !pp.isLeafNode(queue.UID) {
+			return false
+			//todo: add logic for non-leaf node, allocate to the leaf node
+		}
 		free, _ := attr.deserved.Diff(attr.allocated, api.Zero)
 		allocatable := candidate.Resreq.LessEqual(free, api.Zero)
 		if !allocatable {
@@ -318,6 +366,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		queueID := job.Queue
+		if !pp.isLeafNode(queueID) {
+			return util.Reject
+			//todo: add logic for non-leaf node, allocate to the leaf node
+		}
 		attr := pp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
 		// If no capability is set, always enqueue the job.
@@ -401,4 +453,48 @@ func (pp *proportionPlugin) updateShare(attr *queueAttr) {
 
 	attr.share = res
 	metrics.UpdateQueueShare(attr.name, attr.share)
+}
+
+// determine whether the queue is a leaf node
+func (pp *proportionPlugin) isLeafNode(queueID api.QueueID) bool {
+	attr := pp.queueOpts[queueID]
+	if len(attr.children) == 0 {
+		return true
+	}
+	return false
+}
+
+// Updates the resource state of parent queues based on the child queues' states.
+func (pp *proportionPlugin) updateParentQueue(queueID api.QueueID) {
+	// find the child queue, return if not exists
+	childAttr, exists := pp.queueOpts[queueID]
+	if !exists {
+		return
+	}
+
+	// get the parent queue ID
+	parentQueueID := childAttr.parent
+
+	// update the parent queue
+	if parentAttr, exists := pp.queueOpts[parentQueueID]; exists {
+		// initialize the parent queue's resource state
+		totalAllocated := api.EmptyResource()
+		totalRequested := api.EmptyResource()
+		totalGuarantee := api.EmptyResource()
+
+		// add the resource state of all the children queues
+		for _, child := range parentAttr.children {
+			totalAllocated.Add(child.allocated)
+			totalRequested.Add(child.request)
+			totalGuarantee.Add(child.guarantee)
+		}
+
+		// update the parent queue's resource state
+		parentAttr.allocated = totalAllocated
+		parentAttr.request = totalRequested
+		parentAttr.guarantee = totalGuarantee
+		pp.updateShare(parentAttr)
+		// call itself recursively to get the most top parent queue
+		pp.updateParentQueue(parentQueueID)
+	}
 }
