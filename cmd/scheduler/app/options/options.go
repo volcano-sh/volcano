@@ -43,6 +43,7 @@ const (
 	defaultPercentageOfNodesToFind    = 0
 	defaultLockObjectNamespace        = "volcano-system"
 	defaultNodeWorkers                = 20
+	defaultWorkerNum                  = 16
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -79,6 +80,8 @@ type ServerOption struct {
 	NodeSelector      []string
 	EnableCacheDumper bool
 	NodeWorkerThreads uint32
+	// the number of worker when execute in parallel
+	WorkerNum int
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -134,6 +137,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
+	fs.IntVar(&s.WorkerNum, "worker-num", defaultWorkerNum, "The number of concurrent workers that can be used when multitasking is involved in the scheduler")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.

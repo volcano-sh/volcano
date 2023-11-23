@@ -35,7 +35,8 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/selectorspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
-
+	
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
@@ -371,12 +372,11 @@ func interPodAffinityScore(
 	// and the ParallelizeUntil guarantees only "workerNum" goroutines will be working simultaneously.
 	// so it's enough to allocate workerNum size for errCh.
 	// note that, in such case, size of errCh should be no less than parallelization number
-	workerNum := 16
-	errCh := make(chan error, workerNum)
+	errCh := make(chan error, options.ServerOpts.WorkerNum)
 	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
 	defer parallelizeCancel()
 
-	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodes), func(index int) {
+	workqueue.ParallelizeUntil(parallelizeContext, options.ServerOpts.WorkerNum, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -429,12 +429,11 @@ func taintTolerationScore(
 
 	nodeScoreList := make(k8sframework.NodeScoreList, len(nodes))
 	// size of errCh should be no less than parallelization number, see interPodAffinityScore.
-	workerNum := 16
-	errCh := make(chan error, workerNum)
+	errCh := make(chan error, options.ServerOpts.WorkerNum)
 	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
 	defer parallelizeCancel()
 
-	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodes), func(index int) {
+	workqueue.ParallelizeUntil(parallelizeContext, options.ServerOpts.WorkerNum, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -487,10 +486,9 @@ func podTopologySpreadScore(
 
 	nodeScoreList := make(k8sframework.NodeScoreList, len(nodes))
 	// size of errCh should be no less than parallelization number, see interPodAffinityScore.
-	workerNum := 16
-	errCh := make(chan error, workerNum)
+	errCh := make(chan error, options.ServerOpts.WorkerNum)
 	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
-	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodes), func(index int) {
+	workqueue.ParallelizeUntil(parallelizeContext, options.ServerOpts.WorkerNum, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -542,10 +540,9 @@ func selectorSpreadScore(
 	}
 	nodeScoreList := make(k8sframework.NodeScoreList, len(nodes))
 	// size of errCh should be no less than parallelization number, see interPodAffinityScore.
-	workerNum := 16
-	errCh := make(chan error, workerNum)
+	errCh := make(chan error, options.ServerOpts.WorkerNum)
 	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
-	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodes), func(index int) {
+	workqueue.ParallelizeUntil(parallelizeContext, options.ServerOpts.WorkerNum, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

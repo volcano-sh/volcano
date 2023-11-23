@@ -58,6 +58,7 @@ func TestAddFlags(t *testing.T) {
 		EnableLeaderElection:       true,
 		LockObjectNamespace:        defaultLockObjectNamespace,
 		NodeWorkerThreads:          defaultNodeWorkers,
+		WorkerNum:                  defaultWorkerNum,
 	}
 
 	if !reflect.DeepEqual(expected, s) {
