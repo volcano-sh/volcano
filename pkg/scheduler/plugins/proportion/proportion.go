@@ -278,6 +278,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
+		if pp.isLeafNode(lv.UID) && !pp.isLeafNode(rv.UID) {
+			return -1
+		}
+		if !pp.isLeafNode(lv.UID) && pp.isLeafNode(rv.UID) {
+			return 1
+		}
 		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
 			return 0
 		}
@@ -343,6 +349,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		attr := pp.queueOpts[queue.UID]
+		if !pp.isLeafNode(queue.UID) {
+			return false
+			//todo: add logic for non-leaf node, allocate to the leaf node
+		}
 		free, _ := attr.deserved.Diff(attr.allocated, api.Zero)
 		allocatable := candidate.Resreq.LessEqual(free, api.Zero)
 		if !allocatable {
@@ -356,10 +366,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		queueID := job.Queue
-		if !pp.isLeafNode(queueID) {
-			return util.Reject
-			//todo: add logic for non-leaf node, allocate to the leaf node
-		}
 		attr := pp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
 		// If no capability is set, always enqueue the job.
