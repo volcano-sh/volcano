@@ -118,6 +118,9 @@ spec:
                     Just set either `percentage` or `resource`
                   type: object
               type: object
+            parent:
+              description: Parent define the parent of queue
+              type: string
             reclaimable:
               description: Reclaimable indicate whether the queue can be reclaimed
                 by other queue

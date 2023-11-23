@@ -108,6 +108,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				elastic:   api.EmptyResource(),
 				inqueue:   api.EmptyResource(),
 				guarantee: api.EmptyResource(),
+				children:  make(map[api.QueueID]*queueAttr),
 			}
 			if len(queue.Queue.Spec.Capability) != 0 {
 				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
@@ -175,7 +176,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		parentName := queue.Queue.Spec.Parent
 
 		attr := pp.queueOpts[queue.UID]
-		attr.children = make(map[api.QueueID]*queueAttr)
 
 		if parentName != "" {
 			tempChildren[parentName] = append(tempChildren[parentName], attr)
@@ -278,12 +278,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
-		if pp.isLeafNode(lv.UID) && !pp.isLeafNode(rv.UID) {
-			return -1
-		}
-		if !pp.isLeafNode(lv.UID) && pp.isLeafNode(rv.UID) {
-			return 1
-		}
 		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
 			return 0
 		}
@@ -349,10 +343,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		attr := pp.queueOpts[queue.UID]
-		if !pp.isLeafNode(queue.UID) {
-			return false
-			//todo: add logic for non-leaf node, allocate to the leaf node
-		}
 		free, _ := attr.deserved.Diff(attr.allocated, api.Zero)
 		allocatable := candidate.Resreq.LessEqual(free, api.Zero)
 		if !allocatable {
