@@ -23,6 +23,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	v1helper "k8s.io/kubernetes/pkg/scheduler/util"
 
@@ -193,13 +194,24 @@ func (r *Resource) Get(rn v1.ResourceName) float64 {
 	}
 }
 
-// IsEmpty returns false if any kind of resource is not less than min value, otherwise returns true
+// Skip checking "pods" resource.
+// All pods request one "pods" resource now, no need to check it
+var ignoredScalarResources = sets.NewString(string(v1.ResourcePods))
+
+func IsIgnoredScalarResource(name v1.ResourceName) bool {
+	return ignoredScalarResources.Has(string(name))
+}
+
+// IsEmpty returns false if any kind of resource other than IgnoredResources is not less than min value, otherwise returns true
 func (r *Resource) IsEmpty() bool {
 	if !(r.MilliCPU < minResource && r.Memory < minResource) {
 		return false
 	}
 
-	for _, rQuant := range r.ScalarResources {
+	for rName, rQuant := range r.ScalarResources {
+		if IsIgnoredScalarResource(rName) {
+			continue
+		}
 		if rQuant >= minResource {
 			return false
 		}
