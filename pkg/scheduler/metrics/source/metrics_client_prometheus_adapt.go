@@ -36,23 +36,32 @@ const (
 	CustomNodeMemUsageAvg = "node_memory_usage_avg"
 )
 
-type CustomMetricsClient struct {
-	config *rest.Config
+type KMetricsClient struct {
+	customMetricsCli customclient.CustomMetricsClient
 }
 
-func NewCustomMetricsClient(restConfig *rest.Config) (*CustomMetricsClient, error) {
-	klog.V(3).Infof("NewCustomMetricsClient begin")
-	return &CustomMetricsClient{config: restConfig}, nil
-}
+var kMetricsClient *KMetricsClient
 
-func (c *CustomMetricsClient) NodesMetricsAvg(ctx context.Context, nodeMetricsMap map[string]*NodeMetrics) error {
-	klog.V(5).Infof("Get node metrics from Custom Metrics")
-	discoveryClient := discovery.NewDiscoveryClientForConfigOrDie(c.config)
+func NewCustomMetricsClient(cfg *rest.Config) (*KMetricsClient, error) {
+	if kMetricsClient != nil {
+		return kMetricsClient, nil
+	}
+
+	klog.V(3).Infof("Create custom metrics api client")
+	discoveryClient := discovery.NewDiscoveryClientForConfigOrDie(cfg)
 	cachedDiscoClient := cacheddiscovery.NewMemCacheClient(discoveryClient)
 	restMapper := restmapper.NewDeferredDiscoveryRESTMapper(cachedDiscoClient)
-	restMapper.Reset()
 	apiVersionsGetter := customclient.NewAvailableAPIsGetter(discoveryClient)
-	customMetricsClient := customclient.NewForConfig(c.config, restMapper, apiVersionsGetter)
+	customMetricsClient := customclient.NewForConfig(cfg, restMapper, apiVersionsGetter)
+
+	kMetricsClient = &KMetricsClient{
+		customMetricsCli: customMetricsClient,
+	}
+	return kMetricsClient, nil
+}
+
+func (km *KMetricsClient) NodesMetricsAvg(ctx context.Context, nodeMetricsMap map[string]*NodeMetrics) error {
+	klog.V(5).Infof("Get node metrics from Custom Metrics")
 
 	groupKind := schema.GroupKind{
 		Group: "",
@@ -60,7 +69,7 @@ func (c *CustomMetricsClient) NodesMetricsAvg(ctx context.Context, nodeMetricsMa
 	}
 
 	for _, metricName := range []string{CustomNodeCPUUsageAvg, CustomNodeMemUsageAvg} {
-		metricsValue, err := customMetricsClient.RootScopedMetrics().GetForObjects(groupKind, labels.NewSelector(), metricName, labels.NewSelector())
+		metricsValue, err := km.customMetricsCli.RootScopedMetrics().GetForObjects(groupKind, labels.NewSelector(), metricName, labels.NewSelector())
 		if err != nil {
 			klog.Errorf("Failed to query the indicator %s, error is: %v.", metricName, err)
 			return err

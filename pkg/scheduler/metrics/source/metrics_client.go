@@ -43,7 +43,7 @@ type MetricsClient interface {
 }
 
 func NewMetricsClient(restConfig *rest.Config, metricsConf map[string]string) (MetricsClient, error) {
-	klog.V(3).Infof("New metrics client begin, resconfig is %v, metricsConf is %v", restConfig, metricsConf)
+	klog.V(3).Infof("New metrics client begin, metricsConf is %v", metricsConf)
 	metricsType := metricsConf["type"]
 	if metricsType == Metrics_Type_Elasticsearch {
 		return NewElasticsearchMetricsClient(metricsConf)
