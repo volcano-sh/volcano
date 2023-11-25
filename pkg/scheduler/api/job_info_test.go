@@ -389,6 +389,8 @@ func TestJobInfo(t *testing.T) {
 func TestGetElasticResources(t *testing.T) {
 	resNoGPU := BuildResourceList("1", "1G")
 	resWithGPU := BuildResourceListWithGPU("1", "1G", "1")
+	wantNoGPU := BuildResourceList("1", "1G", []ScalarResource{{Name: "pods", Value: "1"}}...)
+	wantWithGPU := BuildResourceListWithGPU("1", "1G", "1", []ScalarResource{{Name: "pods", Value: "1"}}...)
 	tests := []struct {
 		pods     []*v1.Pod
 		podgroup scheduling.PodGroup
@@ -398,7 +400,7 @@ func TestGetElasticResources(t *testing.T) {
 			pods: []*v1.Pod{
 				buildPod("ns1", "task-1", "node1", v1.PodRunning, resWithGPU, nil, make(map[string]string)),
 			},
-			podgroup: BuildPodgroup("pg1", "ns1", 1, resWithGPU),
+			podgroup: BuildPodgroup("pg1", "ns1", 1, wantWithGPU),
 			want:     EmptyResource(),
 		},
 		{
@@ -406,24 +408,24 @@ func TestGetElasticResources(t *testing.T) {
 				buildPod("ns1", "task-1", "node1", v1.PodRunning, resWithGPU, nil, make(map[string]string)),
 				buildPod("ns1", "task-2", "node2", v1.PodRunning, resNoGPU, nil, make(map[string]string)),
 			},
-			podgroup: BuildPodgroup("pg1", "ns1", 1, resWithGPU),
-			want:     NewResource(resNoGPU),
+			podgroup: BuildPodgroup("pg1", "ns1", 1, wantWithGPU),
+			want:     NewResource(wantNoGPU),
 		},
 		{
 			pods: []*v1.Pod{
 				buildPod("ns1", "task-1", "node1", v1.PodRunning, resNoGPU, nil, make(map[string]string)),
 				buildPod("ns1", "task-2", "node2", v1.PodRunning, resNoGPU, nil, make(map[string]string)),
 			},
-			podgroup: BuildPodgroup("pg1", "ns1", 1, resWithGPU),
-			want:     NewResource(resNoGPU),
+			podgroup: BuildPodgroup("pg1", "ns1", 1, wantWithGPU),
+			want:     NewResource(wantNoGPU),
 		},
 		{
 			pods: []*v1.Pod{
 				buildPod("ns1", "task-1", "node1", v1.PodRunning, resWithGPU, nil, make(map[string]string)),
 				buildPod("ns1", "task-2", "node2", v1.PodRunning, resWithGPU, nil, make(map[string]string)),
 			},
-			podgroup: BuildPodgroup("pg1", "ns1", 1, resWithGPU),
-			want:     NewResource(resWithGPU),
+			podgroup: BuildPodgroup("pg1", "ns1", 1, wantWithGPU),
+			want:     NewResource(wantWithGPU),
 		},
 	}
 
@@ -433,7 +435,7 @@ func TestGetElasticResources(t *testing.T) {
 			job.AddTaskInfo(NewTaskInfo(pod))
 		}
 		job.SetPodGroup(&PodGroup{PodGroup: test.podgroup})
-		if elastic := job.GetElasticResources(); !reflect.DeepEqual(elastic, test.want) {
+		if elastic := job.GetElasticResources(); !elastic.Equal(test.want, Zero) {
 			t.Fatalf("case %d:expected %+v, got %+v", i, test.want, elastic)
 		}
 	}
