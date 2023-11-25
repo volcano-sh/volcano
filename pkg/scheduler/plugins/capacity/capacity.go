@@ -116,7 +116,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
 				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
 			}
-			realCapability := cp.totalResource.Clone().Sub(cp.totalGuarantee).Add(attr.guarantee)
+			realCapability := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(attr.guarantee)
 			if attr.capability == nil {
 				attr.realCapability = realCapability
 			} else {
