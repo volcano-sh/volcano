@@ -271,8 +271,16 @@ func preempt(
 
 		for !victimsQueue.Empty() {
 			// If reclaimed enough resources, break loop to avoid Sub panic.
-			// If preemptor's queue is overused, it means preemptor can not be allocated. So no need care about the node idle resource
-			if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			// Preempt action is about preempt in same queue, which job is not allocatable in allocate action, due to:
+			// 1. cluster has free resource, but queue not allocatable
+			// 2. cluster has no free resource, but queue not allocatable
+			// 3. cluster has no free resource, but queue allocatable
+			// for case 1 and 2, high priority job/task can preempt low priority job/task in same queue;
+			// for case 3, it need to do reclaim resource from other queue, in reclaim action;
+			// so if current queue is not allocatable(the queue will be overused when consider current preemptor's requests)
+			// or current idle resource is not enougth for preemptor, it need to continue preempting
+			// otherwise, break out
+			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
@@ -291,7 +299,7 @@ func preempt(
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
 		// If preemptor's queue is overused, it means preemptor can not be allocated. So no need care about the node idle resource
-		if !ssn.Overused(currentQueue) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)

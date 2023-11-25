@@ -34,6 +34,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
+	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -44,8 +46,10 @@ func TestPreempt(t *testing.T) {
 	})
 	defer patchUpdateQueueStatus.Reset()
 
-	framework.RegisterPluginBuilder("conformance", conformance.New)
-	framework.RegisterPluginBuilder("gang", gang.New)
+	framework.RegisterPluginBuilder(conformance.PluginName, conformance.New)
+	framework.RegisterPluginBuilder(gang.PluginName, gang.New)
+	framework.RegisterPluginBuilder(priority.PluginName, priority.New)
+	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)
 	options.ServerOpts = &options.ServerOption{
 		MinNodesToFind:             100,
 		MinPercentageOfNodesToFind: 5,
@@ -144,6 +148,65 @@ func TestPreempt(t *testing.T) {
 			},
 			expected: 2,
 		},
+		{
+			// case about #3161
+			name: "preempt low priority job in same queue",
+			podGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("3", "3G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("3", "3G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, api.BuildResourceList("4", "4G")),
+			},
+			expected: 1,
+		},
+		{
+			// case about #3161
+			name: "preempt low priority job in same queue: allocatable and has enough resource, don't preempt",
+			podGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("3", "3G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("3", "3G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, api.BuildResourceList("6", "6G")),
+			},
+			expected: 0,
+		},
+		{
+			// case about issue #2232
+			name: "preempt low priority job in same queue",
+			podGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, api.BuildResourceList("3", "3G")),
+			},
+			expected: 1,
+		},
 	}
 
 	preempt := New()
@@ -195,14 +258,28 @@ func TestPreempt(t *testing.T) {
 				{
 					Plugins: []conf.PluginOption{
 						{
-							Name:               "conformance",
+							Name:               conformance.PluginName,
 							EnabledPreemptable: &trueValue,
 						},
 						{
-							Name:                "gang",
+							Name:                gang.PluginName,
 							EnabledPreemptable:  &trueValue,
 							EnabledJobPipelined: &trueValue,
 							EnabledJobStarving:  &trueValue,
+						},
+						{
+							Name:                priority.PluginName,
+							EnabledTaskOrder:    &trueValue,
+							EnabledJobOrder:     &trueValue,
+							EnabledPreemptable:  &trueValue,
+							EnabledJobPipelined: &trueValue,
+							EnabledJobStarving:  &trueValue,
+						},
+						{
+							Name:               proportion.PluginName,
+							EnabledOverused:    &trueValue,
+							EnabledAllocatable: &trueValue,
+							EnabledQueueOrder:  &trueValue,
 						},
 					},
 				},
