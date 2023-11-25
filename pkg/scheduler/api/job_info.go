@@ -574,30 +574,11 @@ func (ji *JobInfo) DeductSchGatedResources(res *Resource) *Resource {
 
 // GetElasticResources returns those partly resources in allocated which are more than its minResource
 func (ji *JobInfo) GetElasticResources() *Resource {
-	elastic := EmptyResource()
 	if ji.Allocated == nil {
-		return elastic
+		return EmptyResource()
 	}
 	minResource := ji.GetMinResources()
-	if ji.Allocated.MilliCPU > minResource.MilliCPU {
-		elastic.MilliCPU = ji.Allocated.MilliCPU - minResource.MilliCPU
-	}
-	if ji.Allocated.Memory > minResource.Memory {
-		elastic.Memory = ji.Allocated.Memory - minResource.Memory
-	}
-
-	for k, v := range ji.Allocated.ScalarResources {
-		if k == v1.ResourcePods{
-			continue
-		}
-		minv := minResource.ScalarResources[k]
-		if v > minv {
-			if elastic.ScalarResources == nil {
-				elastic.ScalarResources = map[v1.ResourceName]float64{}
-			}
-			elastic.ScalarResources[k] = v - minv
-		}
-	}
+	elastic := ExceededPart(ji.Allocated, minResource)
 
 	return elastic
 }
