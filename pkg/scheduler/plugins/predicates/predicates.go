@@ -181,6 +181,8 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
 	args.GetBool(&gpushare.NodeLockEnable, NodeLockEnable)
 	args.GetBool(&vgpu.VGPUEnable, VGPUEnable)
+	args.GetBool(&vgpu.NodeLockEnable, NodeLockEnable)
+	args.GetInt(&vgpu.SchedulePolicy, vgpu.SchedulePolicyArgument)
 
 	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {
 		klog.Fatal("can not define true in both gpu sharing and gpu number")

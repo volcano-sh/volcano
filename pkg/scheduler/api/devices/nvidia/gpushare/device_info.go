@@ -168,6 +168,10 @@ func (gs *GPUDevices) FilterNode(pod *v1.Pod) (int, string, error) {
 	return devices.Success, "", nil
 }
 
+func (gs *GPUDevices) ScoreNode(pod *v1.Pod) float64 {
+	return 0
+}
+
 func (gs *GPUDevices) GetStatus() string {
 	return ""
 }

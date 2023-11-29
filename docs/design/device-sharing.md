@@ -4,9 +4,9 @@
 
 We implement a common interface for shareable devices(GPU,NPU,FPGA,...) called Devices, and use it to reimplement current gpu-share mechanism. The goal is to let device-sharing easy to implement, and better organised. If you wish to grant vc-scheduler the ability to share another device, all you need is to implement these methods in Devices, and place your logic under pkg/scheduler/api/devices. 
 
-## Backguards
+## Background
 
-We intended to provide volcano the ability to share third-party resources link GPU,NPU,etc in the near future. At first, I tried to implement these logics based on predicate.gpushare, but i sooner realised that these logics scattered in device_info.go, node_info.go, pod_info.go, and whole predicate folder. if i follow the implementation of predicate.gpushare, i will have no choice but hack deeply into vc-scheduler api. Sooner or later vc-scheduler api will be crowded with various device-sharing logic, which is probably not what we wished.
+We intended to provide volcano the ability to share third-party resources link GPU,NPU,etc in the near future. At first, I tried to implement these logics based on predicate.gpushare, but i sooner realized that these logics scattered in device_info.go, node_info.go, pod_info.go, and whole predicate folder. if i follow the implementation of predicate.gpushare, i will have no choice but hack deeply into vc-scheduler api. Sooner or later vc-scheduler api will be crowded with various device-sharing logic, which is probably not what we wished.
 
 ## Implementation
 

@@ -193,3 +193,52 @@ Tue Mar  7 12:19:59 2023
 [4pdvGPU Msg(31336:140369108928320:multiprocess_memory_limit.c:457)]: Calling exit handler 31336
 ...
 ```
+
+### VGPU Monitor
+
+VGPU related monitor metrics can be found in volcano scheduler metrics:
+
+{scheduler ip}:8080/metrics
+
+### Schedule Policy
+
+You need to actiave nodeorder plugin and set nodeorder.devicescore.weight > 0 to enable schedule policy, see [how_to_configure_scheduler](./how_to_configure_scheduler.md) for more information
+
+Then you can set one of the following schedule policy using predicate argument "predicate.VgpuSchedulePolicy"
+
+There are three schedule policies, as the following table:
+
+| predicate.VgpuSchedulePolicy      | Description |
+| ----------- | ----------- |
+| 0      | No schedule policy       |
+| 1   | Best fit - the lower device memory remains, the higher score        |
+| 2   | IdleFirst fit - Idle card has a higher score        |
+
+For example, a best-fit schedule policy can be set as follows:
+
+```yaml
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: volcano-scheduler-configmap
+  namespace: volcano-system
+data:
+  volcano-scheduler.conf: |
+    actions: "enqueue, allocate, backfill"
+    tiers:
+    - plugins:
+      - name: priority
+      - name: gang
+      - name: conformance
+    - plugins:
+      - name: drf
+      - name: predicates
+        arguments:
+          predicate.VGPUEnable: true # enable vgpu
+          predicate.VgpuSchedulePolicy: 1
+      - name: proportion
+      - name: nodeorder
+        arguments:
+          deviceScore.weight: 1
+      - name: binpack
+```

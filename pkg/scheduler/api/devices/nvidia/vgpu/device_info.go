@@ -58,6 +58,9 @@ type GPUDevice struct {
 type GPUDevices struct {
 	Name string
 
+	// We cache score in filter step according to schedulePolicy, to avoid recalculating in score
+	ScoreMap map[string]float64
+
 	Device map[int]*GPUDevice
 }
 
@@ -182,22 +185,32 @@ func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) erro
 func (gs *GPUDevices) FilterNode(pod *v1.Pod) (int, string, error) {
 	if VGPUEnable {
 		klog.V(5).Infoln("4pdvgpu DeviceSharing starts filtering pods", pod.Name)
-		fit, _, err := checkNodeGPUSharingPredicate(pod, gs, true)
+		fit, _, score, err := checkNodeGPUSharingPredicateAndScore(pod, gs, true)
 		if err != nil || !fit {
 			klog.Errorln("deviceSharing err=", err.Error())
 			return devices.Unschedulable, fmt.Sprintf("4pdvgpuDeviceSharing %s", err.Error()), err
 		}
+		gs.ScoreMap[pod.Name] = score
 		klog.V(5).Infoln("4pdvgpu DeviceSharing successfully filters pods")
 	}
 	return devices.Success, "", nil
 }
 
+func (gs *GPUDevices) ScoreNode(pod *v1.Pod) float64 {
+	/* TODO: we need a base score to be campatable with preemption, it means a node without evicting a task has
+	a higher score than those needs to evict a task */
+
+	// Use cached stored in filter state in order to avoid recalculating.
+	klog.V(5).Infof("Scoring pod %s with scoreMap %s", pod.Name, gs.ScoreMap[pod.Name])
+	return gs.ScoreMap[pod.Name]
+}
+
 func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
 	if VGPUEnable {
 		klog.V(3).Infoln("VGPU DeviceSharing:Into AllocateToPod", pod.Name)
-		fit, device, err := checkNodeGPUSharingPredicate(pod, gs, false)
+		fit, device, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, false)
 		if err != nil || !fit {
-			klog.Errorln("DeviceSharing err=", err.Error())
+			klog.Errorf("DeviceSharing err:%s", err.Error())
 			return err
 		}
 		if NodeLockEnable {

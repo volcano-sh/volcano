@@ -94,8 +94,9 @@ func decodeNodeDevices(name string, str string) *GPUDevices {
 	}
 	tmp := strings.Split(str, ":")
 	retval := &GPUDevices{
-		Name:   name,
-		Device: make(map[int]*GPUDevice),
+		Name:     name,
+		Device:   make(map[int]*GPUDevice),
+		ScoreMap: make(map[string]float64),
 	}
 	for index, val := range tmp {
 		if strings.Contains(val, ",") {
@@ -122,7 +123,7 @@ func encodeContainerDevices(cd []ContainerDevice) string {
 	for _, val := range cd {
 		tmp += val.UUID + "," + val.Type + "," + strconv.Itoa(int(val.Usedmem)) + "," + strconv.Itoa(int(val.Usedcores)) + ":"
 	}
-	klog.V(4).Infoln("Encoded container Devices=", tmp)
+	klog.V(4).Infof("Encoded container Devices:%s", tmp)
 	return tmp
 	//return strings.Join(cd, ",")
 }
@@ -219,7 +220,7 @@ func resourcereqs(pod *v1.Pod) []ContainerDeviceRequest {
 					memnum = int(memnums)
 				}
 			}
-			mempnum := int32(101)
+			mempnum := int32(DefaultMemPercentage)
 			mem, ok = pod.Spec.Containers[i].Resources.Limits[resourceMemPercentage]
 			if !ok {
 				mem, ok = pod.Spec.Containers[i].Resources.Requests[resourceMemPercentage]
@@ -230,7 +231,7 @@ func resourcereqs(pod *v1.Pod) []ContainerDeviceRequest {
 					mempnum = int32(mempnums)
 				}
 			}
-			if mempnum == 101 && memnum == 0 {
+			if mempnum == DefaultMemPercentage && memnum == 0 {
 				mempnum = 100
 			}
 			corenum := 0
@@ -253,7 +254,7 @@ func resourcereqs(pod *v1.Pod) []ContainerDeviceRequest {
 			})
 		}
 	}
-	klog.V(3).Infoln("counts=", counts)
+	klog.V(3).Infof("requesting %d devices", counts)
 	return counts
 }
 
@@ -326,14 +327,15 @@ func getGPUDeviceSnapShot(snap *GPUDevices) *GPUDevices {
 }
 
 // checkNodeGPUSharingPredicate checks if a pod with gpu requirement can be scheduled on a node.
-func checkNodeGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices, replicate bool) (bool, []ContainerDevices, error) {
+func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, replicate bool) (bool, []ContainerDevices, float64, error) {
 	// no gpu sharing request
+	score := float64(0)
 	if !checkVGPUResourcesInPod(pod) {
-		return true, []ContainerDevices{}, nil
+		return true, []ContainerDevices{}, 0, nil
 	}
 	ctrReq := resourcereqs(pod)
 	if len(ctrReq) == 0 {
-		return true, []ContainerDevices{}, nil
+		return true, []ContainerDevices{}, 0, nil
 	}
 	var gs *GPUDevices
 	if replicate {
@@ -342,20 +344,21 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices, replicate boo
 		gs = gssnap
 	}
 	ctrdevs := []ContainerDevices{}
+
 	for _, val := range ctrReq {
 		devs := []ContainerDevice{}
 		if int(val.Nums) > len(gs.Device) {
-			return false, []ContainerDevices{}, fmt.Errorf("no enough gpu cards on node %s", gs.Name)
+			return false, []ContainerDevices{}, 0, fmt.Errorf("no enough gpu cards on node %s", gs.Name)
 		}
-		klog.V(3).Infoln("Allocating device for container request", val)
+		klog.V(3).InfoS("Allocating device for container", "request", val)
 
 		for i := len(gs.Device) - 1; i >= 0; i-- {
-			klog.V(3).Info("Scoring pod ", val.Memreq, ":", val.MemPercentagereq, ":", val.Coresreq, ":", val.Nums, "i", i, "device:", gs.Device[i].ID)
-			klog.V(3).Infoln("gs", i, "=", gs.Device[i].Memory, gs.Device[i].UsedMem, gs.Device[i].UsedNum)
+			klog.V(3).InfoS("Scoring pod request", "memReq", val.Memreq, "memPercentageReq", val.MemPercentagereq, "coresReq", val.Coresreq, "Nums", val.Nums, "Index", i, "ID", gs.Device[i].ID)
+			klog.V(3).InfoS("Current Device", "Index", i, "TotalMemory", gs.Device[i].Memory, "UsedMemory", gs.Device[i].UsedMem, "UsedCores", gs.Device[i].UsedNum)
 			if gs.Device[i].Number <= uint(gs.Device[i].UsedNum) {
 				continue
 			}
-			if val.MemPercentagereq != 101 && val.Memreq == 0 {
+			if val.MemPercentagereq != DefaultMemPercentage && val.Memreq == 0 {
 				val.Memreq = int32(gs.Device[i].Memory * uint(val.MemPercentagereq/100))
 			}
 			if gs.Device[i].Memory-gs.Device[i].UsedMem < uint(val.Memreq) {
@@ -373,13 +376,13 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices, replicate boo
 				continue
 			}
 			if !checkType(pod.Annotations, *gs.Device[i], val) {
-				klog.Errorln("failed checktype", gs.Device[i].Type, val.Type)
+				klog.Error("failed checktype", gs.Device[i].Type, val.Type)
 				continue
 			}
 			//total += gs.Devices[i].Count
 			//free += node.Devices[i].Count - node.Devices[i].Used
 			if val.Nums > 0 {
-				klog.V(3).Infoln("device", gs.Device[i].ID, "fitted")
+				klog.V(3).InfoS("device fitted", "ID", gs.Device[i].ID)
 				val.Nums--
 				gs.Device[i].UsedNum++
 				gs.Device[i].UsedMem += uint(val.Memreq)
@@ -390,17 +393,27 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, gssnap *GPUDevices, replicate boo
 					Usedmem:   val.Memreq,
 					Usedcores: val.Coresreq,
 				})
+				switch SchedulePolicy {
+				case bestFit:
+					score += bestFitMultiplier * (float64(gs.Device[i].UsedMem) / float64(gs.Device[i].Memory))
+				case idleFirstFit:
+					if gs.Device[i].UsedNum == 1 {
+						score += idleFirstFitMultiplier
+					}
+				case noPolicy:
+					score = float64(0)
+				}
 			}
 			if val.Nums == 0 {
 				break
 			}
 		}
 		if val.Nums > 0 {
-			return false, []ContainerDevices{}, fmt.Errorf("not enough gpu fitted on this node")
+			return false, []ContainerDevices{}, 0, fmt.Errorf("not enough gpu fitted on this node")
 		}
 		ctrdevs = append(ctrdevs, devs)
 	}
-	return true, ctrdevs, nil
+	return true, ctrdevs, score, nil
 }
 
 func patchPodAnnotations(pod *v1.Pod, annotations map[string]string) error {

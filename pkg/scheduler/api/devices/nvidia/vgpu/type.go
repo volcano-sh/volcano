@@ -16,8 +16,9 @@ limitations under the License.
 
 package vgpu
 
-var VGPUEnable bool
-var NodeLockEnable bool
+var VGPUEnable bool = false
+var NodeLockEnable bool = false
+var SchedulePolicy int = 0
 
 const (
 	GPUInUse                         = "nvidia.com/use-gputype"
@@ -54,6 +55,20 @@ const (
 
 	// DeviceName used to indicate this device
 	DeviceName = "vgpu4pd"
+
+	SchedulePolicyArgument = "predicate.VgpuSchedulePolicy"
+
+	// These are two schedule policies, set by predicate arguments
+	noPolicy = 0
+	// bestfit means the lower device memory remained after this allocation, the better
+	bestFit = 1
+	// idleFirstFit means better put this task into an idle GPU card than a shared GPU card
+	idleFirstFit = 2
+	// 101 means wo don't assign defaultMemPercentage value
+	DefaultMemPercentage = 101
+
+	idleFirstFitMultiplier = 1
+	bestFitMultiplier      = 1
 )
 
 type ContainerDeviceRequest struct {

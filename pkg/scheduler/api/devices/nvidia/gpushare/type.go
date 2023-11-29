@@ -16,9 +16,9 @@ limitations under the License.
 
 package gpushare
 
-var GpuSharingEnable bool
-var NodeLockEnable bool
-var GpuNumberEnable bool
+var GpuSharingEnable bool = false
+var NodeLockEnable bool = false
+var GpuNumberEnable bool = false
 
 const (
 	// VolcanoGPUResource extended gpu resource

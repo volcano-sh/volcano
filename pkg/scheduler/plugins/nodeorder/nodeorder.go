@@ -63,6 +63,8 @@ const (
 	PodTopologySpreadWeight = "podtopologyspread.weight"
 	// SelectorSpreadWeight is the key for providing Selector Spread Priority Weight in YAML
 	selectorSpreadWeight = "selectorspread.weight"
+	// DeviceScoreWeight is the key for providing Device Score Priority Weight in YAML
+	deviceScoreWeight = "devicescore.weight"
 )
 
 type nodeOrderPlugin struct {
@@ -89,6 +91,7 @@ type priorityWeight struct {
 	imageLocalityWeight     int
 	podTopologySpreadWeight int
 	selectorSpreadWeight    int
+	deviceScoreWeight       int
 }
 
 // calculateWeight from the provided arguments.
@@ -98,26 +101,27 @@ type priorityWeight struct {
 //
 // User should specify priority weights in the config in this format:
 //
-//	actions: "reclaim, allocate, backfill, preempt"
-//	tiers:
-//	- plugins:
-//	  - name: priority
-//	  - name: gang
-//	  - name: conformance
-//	- plugins:
-//	  - name: drf
-//	  - name: predicates
-//	  - name: proportion
-//	  - name: nodeorder
-//	    arguments:
-//	      leastrequested.weight: 1
-//	      mostrequested.weight: 0
-//	      nodeaffinity.weight: 2
-//	      podaffinity.weight: 2
-//	      balancedresource.weight: 1
-//	      tainttoleration.weight: 3
-//	      imagelocality.weight: 1
-//	      podtopologyspread.weight: 2
+//		actions: "reclaim, allocate, backfill, preempt"
+//		tiers:
+//		- plugins:
+//		  - name: priority
+//		  - name: gang
+//		  - name: conformance
+//		- plugins:
+//		  - name: drf
+//		  - name: predicates
+//		  - name: proportion
+//		  - name: nodeorder
+//		    arguments:
+//		      leastrequested.weight: 1
+//		      mostrequested.weight: 0
+//		      nodeaffinity.weight: 2
+//		      podaffinity.weight: 2
+//		      balancedresource.weight: 1
+//		      tainttoleration.weight: 3
+//		      imagelocality.weight: 1
+//		      podtopologyspread.weight: 2
+//	              devicescore.weight: 0
 func calculateWeight(args framework.Arguments) priorityWeight {
 	// Initial values for weights.
 	// By default, for backward compatibility and for reasonable scores,
@@ -132,6 +136,7 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 		imageLocalityWeight:     1,
 		podTopologySpreadWeight: 2, // be consistent with kubernetes default setting.
 		selectorSpreadWeight:    0,
+		deviceScoreWeight:       0,
 	}
 
 	// Checks whether nodeaffinity.weight is provided or not, if given, modifies the value in weight struct.
@@ -161,6 +166,8 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	// Checks whether selectorspread.weight is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.selectorSpreadWeight, selectorSpreadWeight)
 
+	// Checks whether devicescore.weight is provided or not, if given, modifies the value in weight struct.
+	args.GetInt(&weight.deviceScoreWeight, deviceScoreWeight)
 	return weight
 }
 
@@ -288,6 +295,20 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			// If nodeAffinityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
 			nodeScore += float64(score) * float64(weight.nodeAffinityWeight)
 			klog.V(5).Infof("Node: %s, task<%s/%s> Node Affinity weight %d, score: %f", node.Name, task.Namespace, task.Name, weight.nodeAffinityWeight, float64(score)*float64(weight.nodeAffinityWeight))
+		}
+
+		// DeviceScore
+		if weight.deviceScoreWeight != 0 {
+			score, status := api.GetDeviceScore(context.TODO(), state, task.Pod, node)
+			if !status.IsSuccess() {
+				klog.Warningf("Node: %s, Calculate Device Score Failed because of Error: %v", node.Name, status.AsError())
+				return 0, status.AsError()
+			}
+
+			// TODO: should we normalize the score
+			// If nodeAffinityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
+			nodeScore += float64(score) * float64(weight.nodeAffinityWeight)
+			klog.V(5).Infof("Node: %s, task<%s/%s> Device Score weight %d, score: %f", node.Name, task.Namespace, task.Name, weight.deviceScoreWeight, float64(score)*float64(weight.deviceScoreWeight))
 		}
 
 		klog.V(4).Infof("Nodeorder Total Score for task<%s/%s> on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)

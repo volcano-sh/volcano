@@ -17,8 +17,13 @@
 package api
 
 import (
+	"context"
+	"math"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
@@ -58,6 +63,9 @@ type Devices interface {
 	// that the pod can get scheduled with preemption.
 	// The accompanying status message should explain why the pod is unschedulable.
 	FilterNode(pod *v1.Pod) (int, string, error)
+	// ScoreNode will be invoked when using devicescore plugin, devices api can use it to implement multiple
+	// scheduling policies.
+	ScoreNode(pod *v1.Pod) float64
 	//Allocate action in predicate
 	Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error
 	//Release action in predicate
@@ -77,4 +85,16 @@ var IgnoredDevicesList []string
 
 var RegisteredDevices = []string{
 	GPUSharingDevice, vgpu.DeviceName,
+}
+
+func GetDeviceScore(ctx context.Context, state *framework.CycleState, pod *v1.Pod, node *NodeInfo) (int64, *framework.Status) {
+	s := float64(0)
+	for _, devices := range node.Others {
+		if devices.(Devices).HasDeviceRequest(pod) {
+			ns := devices.(Devices).ScoreNode(pod)
+			s += ns
+		}
+	}
+	klog.V(4).Infof("deviceScore for task %s/%s is: %v", pod.Namespace, pod.Name, s)
+	return int64(math.Floor(s + 0.5)), nil
 }
