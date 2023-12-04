@@ -587,6 +587,7 @@ var _ = Describe("Job E2E Test", func() {
 			}
 			return false, nil
 		})
+		pgs, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
 		Expect(len(pgs.Items)).To(Equal(0), "no pg should be found")
 	})
 })
