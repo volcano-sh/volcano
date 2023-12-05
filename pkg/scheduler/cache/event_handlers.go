@@ -228,6 +228,8 @@ func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, err
 	if err := sc.addPodCSIVolumesToTask(taskInfo); err != nil {
 		return taskInfo, err
 	}
+	// Update BestEffort because the InitResreq maybe changes
+	taskInfo.BestEffort = taskInfo.InitResreq.IsEmpty()
 	return taskInfo, nil
 }
 

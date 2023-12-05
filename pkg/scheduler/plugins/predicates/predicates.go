@@ -39,6 +39,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -539,8 +540,15 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		for _, val := range api.RegisteredDevices {
-			if devices, ok := node.Others[val].(api.Devices); ok {
-				code, msg, err := devices.FilterNode(task.Pod)
+			if dev, ok := node.Others[val].(api.Devices); ok {
+				if dev == nil {
+					predicateStatus = append(predicateStatus, &api.Status{
+						Code:   devices.Unschedulable,
+						Reason: "node not initialized with device" + val,
+					})
+					return predicateStatus, fmt.Errorf("node not initialized with device %s", val)
+				}
+				code, msg, err := dev.FilterNode(task.Pod)
 				filterNodeStatus := &api.Status{
 					Code:   code,
 					Reason: msg,
