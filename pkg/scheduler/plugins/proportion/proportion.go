@@ -246,6 +246,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
 			pp.updateShare(attr)
+			pp.updateParentQueue(attr)
 			klog.V(4).Infof("Format queue <%s> deserved resource to <%v>", attr.name, attr.deserved)
 
 			if attr.request.LessEqual(attr.deserved, api.Zero) {
@@ -278,20 +279,91 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
+
+		// Compare leaf queues
+		if pp.isLeafNode(lv.UID) && pp.isLeafNode(rv.UID) {
+			// Find the parent of the leaf nodes
+			lvParent := pp.getParentQueue(lv.UID)
+			rvParent := pp.getParentQueue(rv.UID)
+			// If both leaf nodes have the same parent
+			if lvParent == rvParent {
+				// Compare the weight of the leaf nodes
+				if pp.queueOpts[lv.UID].weight != pp.queueOpts[rv.UID].weight {
+					return int(pp.queueOpts[rv.UID].weight - pp.queueOpts[lv.UID].weight)
+				}
+				// Compare the share of the leaf nodes
+				if pp.queueOpts[lv.UID].share != pp.queueOpts[rv.UID].share {
+					if pp.queueOpts[lv.UID].share < pp.queueOpts[rv.UID].share {
+						return -1
+					}
+					return 1
+				}
+				return 0
+			}
+
+			// Find the level of the leaf nodes
+			lvLevel := pp.getQueueLevel(lv.UID)
+			rvLevel := pp.getQueueLevel(rv.UID)
+
+			// If both leaf nodes are at the same level
+			if lvLevel == rvLevel {
+				// Compare the parent queues of the leaf nodes
+				lvParentQueue := pp.getParentQueue(lvParent)
+				rvParentQueue := pp.getParentQueue(rvParent)
+
+				// Compare the weight of the parent queues
+				if pp.queueOpts[lvParentQueue].weight != pp.queueOpts[rvParentQueue].weight {
+					return int(pp.queueOpts[rvParentQueue].weight - pp.queueOpts[lvParentQueue].weight)
+				}
+				// Compare the share of the parent queues
+				if pp.queueOpts[lvParentQueue].share != pp.queueOpts[rvParentQueue].share {
+					if pp.queueOpts[lvParentQueue].share < pp.queueOpts[rvParentQueue].share {
+						return -1
+					}
+					return 1
+				}
+				return 0
+			}
+
+			// Find the lowest common ancestor (LCA) of the leaf nodes
+			lca := pp.lowestCommonAncestor(lv.UID, rv.UID)
+
+			// Compare each leaf node with its parent queue at the level of the LCA
+			lvParentQueue := pp.getParentQueueBelowLCA(lv.UID, lca)
+			rvParentQueue := pp.getParentQueueBelowLCA(rv.UID, lca)
+
+			// Compare the weight of the parent queues
+			if pp.queueOpts[lvParentQueue].weight != pp.queueOpts[rvParentQueue].weight {
+				return int(pp.queueOpts[rvParentQueue].weight - pp.queueOpts[lvParentQueue].weight)
+			}
+			// Compare the share of the parent queues
+			if pp.queueOpts[lvParentQueue].share != pp.queueOpts[rvParentQueue].share {
+				if pp.queueOpts[lvParentQueue].share < pp.queueOpts[rvParentQueue].share {
+					return -1
+				}
+				return 1
+			}
+			return 0
+		}
+
+		// Compare leaf and non-leaf queues, non-leaf queues are always at the end of the queue
 		if pp.isLeafNode(lv.UID) && !pp.isLeafNode(rv.UID) {
 			return -1
 		}
 		if !pp.isLeafNode(lv.UID) && pp.isLeafNode(rv.UID) {
 			return 1
 		}
+
+		// Compare non-leaf queues
+		if pp.queueOpts[lv.UID].weight != pp.queueOpts[rv.UID].weight {
+			return int(pp.queueOpts[rv.UID].weight - pp.queueOpts[lv.UID].weight)
+		}
 		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
 			return 0
 		}
-
 		if pp.queueOpts[lv.UID].share < pp.queueOpts[rv.UID].share {
 			return -1
 		}
-
 		return 1
 	})
 
@@ -412,7 +484,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
 
 			pp.updateShare(attr)
-
+			pp.updateParentQueue(attr)
 			klog.V(4).Infof("Proportion AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
@@ -423,7 +495,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
 
 			pp.updateShare(attr)
-
+			pp.updateParentQueue(attr)
 			klog.V(4).Infof("Proportion EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
@@ -460,17 +532,79 @@ func (pp *proportionPlugin) isLeafNode(queueID api.QueueID) bool {
 	return false
 }
 
+// get the parent queue ID
+func (pp *proportionPlugin) getParentQueue(queueID api.QueueID) api.QueueID {
+	attr := pp.queueOpts[queueID]
+	return attr.parent
+}
+
+// get the level of the queue
+func (pp *proportionPlugin) getQueueLevel(queueID api.QueueID) int {
+	attr := pp.queueOpts[queueID]
+	level := 0
+	for attr.parent != "" {
+		level++
+		attr = pp.queueOpts[attr.parent]
+	}
+	return level
+}
+
+// get the parent queue ID one level below the lowest common ancestor (LCA)
+func (pp *proportionPlugin) getParentQueueBelowLCA(queueID api.QueueID, lca api.QueueID) api.QueueID {
+	attr := pp.queueOpts[queueID]
+
+	// If the queue is one level below, return itself
+	if attr.parent == lca {
+		return queueID
+	}
+	// Otherwise, find the parent queue ID one level below the LCA
+	var lastParent api.QueueID = queueID
+	for attr.parent != lca {
+		lastParent = attr.parent
+		attr = pp.queueOpts[attr.parent]
+	}
+	return lastParent
+}
+
+// get the lowest common ancestor (LCA) of the two queues
+func (pp *proportionPlugin) lowestCommonAncestor(queueID1 api.QueueID, queueID2 api.QueueID) api.QueueID {
+	attr1 := pp.queueOpts[queueID1]
+	attr2 := pp.queueOpts[queueID2]
+
+	// find the level of the two queues
+	level1 := pp.getQueueLevel(queueID1)
+	level2 := pp.getQueueLevel(queueID2)
+
+	// equalize the level of the two queues
+	for level1 > level2 {
+		attr1 = pp.queueOpts[attr1.parent]
+		level1--
+	}
+	for level2 > level1 {
+		attr2 = pp.queueOpts[attr2.parent]
+		level2--
+	}
+
+	for attr1.parent != attr2.parent {
+		attr1 = pp.queueOpts[attr1.parent]
+		attr2 = pp.queueOpts[attr2.parent]
+	}
+	return attr1.parent
+}
+
 // Updates the resource state of parent queues based on the child queues' states.
-func (pp *proportionPlugin) updateParentQueue(queueID api.QueueID) {
+func (pp *proportionPlugin) updateParentQueue(attr *queueAttr) {
 	// find the child queue, return if not exists
-	childAttr, exists := pp.queueOpts[queueID]
+	childAttr, exists := pp.queueOpts[attr.queueID]
 	if !exists {
 		return
 	}
 
 	// get the parent queue ID
 	parentQueueID := childAttr.parent
-
+	if parentQueueID == "" {
+		return
+	}
 	// update the parent queue
 	if parentAttr, exists := pp.queueOpts[parentQueueID]; exists {
 		// initialize the parent queue's resource state
@@ -491,6 +625,6 @@ func (pp *proportionPlugin) updateParentQueue(queueID api.QueueID) {
 		parentAttr.guarantee = totalGuarantee
 		pp.updateShare(parentAttr)
 		// call itself recursively to get the most top parent queue
-		pp.updateParentQueue(parentQueueID)
+		pp.updateParentQueue(parentAttr)
 	}
 }

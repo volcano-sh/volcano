@@ -167,6 +167,24 @@ func TestProportion(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "q1",
 		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+			Weight: 2,
+		},
+	}
+	queue2 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "q2",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+			Weight: 1,
+		},
+	}
+	queueroot := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "root",
+		},
 	}
 
 	// tests
@@ -232,6 +250,8 @@ func TestProportion(t *testing.T) {
 			schedulerCache.AddPodGroupV1beta1(pg)
 		}
 		schedulerCache.AddQueueV1beta1(queue1)
+		schedulerCache.AddQueueV1beta1(queue2)
+		schedulerCache.AddQueueV1beta1(queueroot)
 		// session
 		trueValue := true
 
