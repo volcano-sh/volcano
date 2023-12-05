@@ -28,7 +28,7 @@ func makePods(num int, cpu, mem, podGroupName string) []*v1.Pod {
 	for i := 0; i < num; i++ {
 		pods = append(pods, util.BuildPod("default",
 			fmt.Sprintf("%s-p%d", podGroupName, i), "",
-			v1.PodPending, util.BuildResourceList(cpu, mem),
+			v1.PodPending, api.BuildResourceList(cpu, mem),
 			podGroupName, make(map[string]string), make(map[string]string)))
 	}
 	return pods
@@ -79,7 +79,7 @@ func TestHDRF(t *testing.T) {
 		nodes      []*v1.Node
 		queues     []*schedulingv1.Queue
 		queueSpecs []queueSpec
-		expected   map[string]string
+		expected   map[string]*api.Resource
 	}{
 		{
 			name: "rescaling test",
@@ -107,7 +107,7 @@ func TestHDRF(t *testing.T) {
 				},
 			},
 			nodes: []*v1.Node{util.BuildNode("n",
-				util.BuildResourceList("10", "10G"),
+				api.BuildResourceList("10", "10G", []api.ScalarResource{{Name: "pods", Value: "50"}}...),
 				make(map[string]string))},
 			queueSpecs: []queueSpec{
 				{
@@ -126,10 +126,22 @@ func TestHDRF(t *testing.T) {
 					weights:   "100/50/50",
 				},
 			},
-			expected: map[string]string{
-				"pg1":  "cpu 5000.00, memory 5000000000.00, nvidia.com/gpu 0.00",
-				"pg21": "cpu 5000.00, memory 0.00, nvidia.com/gpu 0.00",
-				"pg22": "cpu 0.00, memory 5000000000.00, nvidia.com/gpu 0.00",
+			expected: map[string]*api.Resource{
+				"pg1": {
+					MilliCPU:        5000,
+					Memory:          5000000000,
+					ScalarResources: map[v1.ResourceName]float64{"pods": 5},
+				},
+				"pg21": {
+					MilliCPU:        5000,
+					Memory:          0,
+					ScalarResources: map[v1.ResourceName]float64{"pods": 5},
+				},
+				"pg22": {
+					MilliCPU:        0,
+					Memory:          5000000000,
+					ScalarResources: map[v1.ResourceName]float64{"pods": 5},
+				},
 			},
 		},
 		{
@@ -172,7 +184,7 @@ func TestHDRF(t *testing.T) {
 				},
 			},
 			nodes: []*v1.Node{util.BuildNode("n",
-				util.BuildResourceList("30", "30G"),
+				api.BuildResourceList("30", "30G", []api.ScalarResource{{Name: "pods", Value: "500"}}...),
 				make(map[string]string))},
 			queueSpecs: []queueSpec{
 				{
@@ -201,12 +213,33 @@ func TestHDRF(t *testing.T) {
 					weights:   "100/25",
 				},
 			},
-			expected: map[string]string{
-				"pg1":  "cpu 10000.00, memory 0.00, nvidia.com/gpu 0.00",
-				"pg2":  "cpu 10000.00, memory 0.00, nvidia.com/gpu 0.00",
-				"pg31": "cpu 10000.00, memory 0.00, nvidia.com/gpu 0.00",
-				"pg32": "cpu 0.00, memory 15000000000.00, nvidia.com/gpu 0.00",
-				"pg4":  "cpu 0.00, memory 15000000000.00, nvidia.com/gpu 0.00",
+			expected: map[string]*api.Resource{
+
+				"pg1": {
+					MilliCPU:        10000,
+					Memory:          0,
+					ScalarResources: map[v1.ResourceName]float64{"pods": 10},
+				},
+				"pg": {
+					MilliCPU:        10000,
+					Memory:          0,
+					ScalarResources: map[v1.ResourceName]float64{"pods": 10},
+				},
+				"pg31": {
+					MilliCPU:        10000,
+					Memory:          0,
+					ScalarResources: map[v1.ResourceName]float64{"pods": 10},
+				},
+				"pg32": {
+					MilliCPU:        0,
+					Memory:          15000000000,
+					ScalarResources: map[v1.ResourceName]float64{"pods": 15},
+				},
+				"pg4": {
+					MilliCPU:        0,
+					Memory:          15000000000,
+					ScalarResources: map[v1.ResourceName]float64{"pods": 15},
+				},
 			},
 		},
 	}
@@ -231,7 +264,7 @@ func TestHDRF(t *testing.T) {
 			Recorder:      record.NewFakeRecorder(100),
 		}
 		for _, node := range test.nodes {
-			schedulerCache.AddNode(node)
+			schedulerCache.AddOrUpdateNode(node)
 		}
 		for _, q := range test.queueSpecs {
 			schedulerCache.AddQueueV1beta1(
@@ -291,7 +324,7 @@ func TestHDRF(t *testing.T) {
 		allocateAction.Execute(ssn)
 
 		for _, job := range ssn.Jobs {
-			if test.expected[job.Name] != job.Allocated.String() {
+			if reflect.DeepEqual(test.expected, job.Allocated) {
 				t.Fatalf("%s: job %s expected resource %s, but got %s", test.name, job.Name, test.expected[job.Name], job.Allocated)
 			}
 		}

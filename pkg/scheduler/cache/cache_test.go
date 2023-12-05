@@ -24,7 +24,6 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -33,7 +32,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -80,13 +78,6 @@ func buildPod(ns, n, nn string,
 	}
 }
 
-func buildResourceList(cpu string, memory string) v1.ResourceList {
-	return v1.ResourceList{
-		v1.ResourceCPU:    resource.MustParse(cpu),
-		v1.ResourceMemory: resource.MustParse(memory),
-	}
-}
-
 func buildOwnerReference(owner string) metav1.OwnerReference {
 	controller := true
 	return metav1.OwnerReference{
@@ -99,17 +90,17 @@ func TestGetOrCreateJob(t *testing.T) {
 	owner1 := buildOwnerReference("j1")
 	owner2 := buildOwnerReference("j2")
 
-	pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, buildResourceList("1000m", "1G"),
+	pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"),
 		[]metav1.OwnerReference{owner1}, make(map[string]string))
 	pi1 := api.NewTaskInfo(pod1)
 	pi1.Job = "j1" // The job name is set by cache.
 
-	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, buildResourceList("1000m", "1G"),
+	pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"),
 		[]metav1.OwnerReference{owner2}, make(map[string]string))
 	pod2.Spec.SchedulerName = "volcano"
 	pi2 := api.NewTaskInfo(pod2)
 
-	pod3 := buildPod("c3", "p3", "n1", v1.PodRunning, buildResourceList("1000m", "1G"),
+	pod3 := buildPod("c3", "p3", "n1", v1.PodRunning, api.BuildResourceList("1000m", "1G"),
 		[]metav1.OwnerReference{owner2}, make(map[string]string))
 	pi3 := api.NewTaskInfo(pod3)
 
@@ -158,12 +149,12 @@ func TestSchedulerCache_Bind_NodeWithSufficientResources(t *testing.T) {
 		BindFlowChannel: make(chan *api.TaskInfo, 5000),
 	}
 
-	pod := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"),
+	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1000m", "1G"),
 		[]metav1.OwnerReference{owner}, make(map[string]string))
 	cache.AddPod(pod)
 
-	node := buildNode("n1", buildResourceList("2000m", "10G"))
-	cache.AddNode(node)
+	node := buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
+	cache.AddOrUpdateNode(node)
 
 	task := api.NewTaskInfo(pod)
 	task.Job = "j1"
@@ -190,12 +181,12 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 		BindFlowChannel: make(chan *api.TaskInfo, 5000),
 	}
 
-	pod := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("5000m", "50G"),
+	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("5000m", "50G"),
 		[]metav1.OwnerReference{owner}, make(map[string]string))
 	cache.AddPod(pod)
 
-	node := buildNode("n1", buildResourceList("2000m", "10G"))
-	cache.AddNode(node)
+	node := buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
+	cache.AddOrUpdateNode(node)
 
 	task := api.NewTaskInfo(pod)
 	task.Job = "j1"
@@ -229,9 +220,9 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 
 func TestNodeOperation(t *testing.T) {
 	// case 1
-	node1 := buildNode("n1", buildResourceList("2000m", "10G"))
-	node2 := buildNode("n2", buildResourceList("4000m", "16G"))
-	node3 := buildNode("n3", buildResourceList("3000m", "12G"))
+	node1 := buildNode("n1", api.BuildResourceList("2000m", "10G"))
+	node2 := buildNode("n2", api.BuildResourceList("4000m", "16G"))
+	node3 := buildNode("n3", api.BuildResourceList("3000m", "12G"))
 	nodeInfo1 := api.NewNodeInfo(node1)
 	nodeInfo2 := api.NewNodeInfo(node2)
 	nodeInfo3 := api.NewNodeInfo(node3)
@@ -307,7 +298,7 @@ func TestNodeOperation(t *testing.T) {
 		}
 
 		for _, n := range test.nodes {
-			cache.AddNode(n)
+			cache.AddOrUpdateNode(n)
 		}
 
 		if !reflect.DeepEqual(cache, test.expected) {
@@ -316,7 +307,7 @@ func TestNodeOperation(t *testing.T) {
 		}
 
 		// delete node
-		cache.DeleteNode(test.deletedNode)
+		cache.RemoveNode(test.deletedNode.Name)
 		if !reflect.DeepEqual(cache, test.delExpect) {
 			t.Errorf("case %d: \n expected %v, \n got %v \n",
 				i, test.delExpect, cache)
@@ -344,6 +335,7 @@ func TestBindTasks(t *testing.T) {
 		pvInformer:      informerFactory.Core().V1().PersistentVolumes(),
 		scInformer:      informerFactory.Storage().V1().StorageClasses(),
 		errTasks:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		nodeQueue:       workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 	}
 
 	sc.Binder = &DefaultBinder{}
@@ -367,25 +359,20 @@ func TestBindTasks(t *testing.T) {
 			DeleteFunc: sc.DeletePod,
 		},
 	)
-	sc.nodeInformer.Informer().AddEventHandler(
-		cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddNode,
-			UpdateFunc: sc.UpdateNode,
-		},
-	)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go wait.Until(sc.processBindTask, time.Millisecond*5, ctx.Done())
-	pod := buildPod("c1", "p1", "", v1.PodPending, buildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string))
-	node := buildNode("n1", buildResourceList("2000m", "10G"))
+	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string))
+	node := buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
 	pod.Annotations = map[string]string{"scheduling.k8s.io/group-name": "j1"}
 	pod.Spec.SchedulerName = scheduler
 
 	// make sure pod exist when calling fake client binding
 	fakeKube.CoreV1().Pods(pod.Namespace).Create(ctx, pod, metav1.CreateOptions{})
-	fakeKube.CoreV1().Nodes().Create(ctx, node, metav1.CreateOptions{})
 	informerFactory.Start(ctx.Done())
 	informerFactory.WaitForCacheSync(ctx.Done())
+	// set node in cache directly
+	sc.AddOrUpdateNode(node)
 
 	task := api.NewTaskInfo(pod)
 	task.NodeName = "n1"

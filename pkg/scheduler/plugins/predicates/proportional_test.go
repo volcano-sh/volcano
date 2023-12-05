@@ -6,20 +6,19 @@ import (
 	v1 "k8s.io/api/core/v1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
-	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func buildTask(name, cpu, memory, gpu string) *api.TaskInfo {
 	return &api.TaskInfo{
 		Name:   name,
-		Resreq: api.NewResource(util.BuildResourceListWithGPU(cpu, memory, gpu)),
+		Resreq: api.NewResource(api.BuildResourceListWithGPU(cpu, memory, gpu)),
 	}
 }
 
 func buildNode(name, cpu, memory, gpu string) *api.NodeInfo {
 	return &api.NodeInfo{
 		Name: name,
-		Idle: api.NewResource(util.BuildResourceListWithGPU(cpu, memory, gpu)),
+		Idle: api.NewResource(api.BuildResourceListWithGPU(cpu, memory, gpu)),
 	}
 }
 

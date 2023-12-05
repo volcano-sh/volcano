@@ -67,6 +67,12 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 	}
 
 	queueStatus.Allocated = queue.Status.Allocated.DeepCopy()
+	// queue.status.allocated will be updated after every session close in volcano scheduler, we should not depend on it because session may be time-consuming,
+	// and queue.status.allocated can't be updated timely. We initialize queue.status.allocated and update it here explicitly
+	// to avoid update queue err because update will fail when queue.status.allocated is nil.
+	if queueStatus.Allocated == nil {
+		queueStatus.Allocated = v1.ResourceList{}
+	}
 
 	// ignore update when status does not change
 	if reflect.DeepEqual(queueStatus, queue.Status) {

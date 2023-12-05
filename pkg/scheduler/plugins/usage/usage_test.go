@@ -72,14 +72,14 @@ func TestUsage_predicateFn(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)
 	defer framework.CleanupPluginBuilders()
 
-	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
 
-	n1 := util.BuildNode("n1", util.BuildResourceList("4", "8Gi"), make(map[string]string))
-	n2 := util.BuildNode("n2", util.BuildResourceList("4", "8Gi"), make(map[string]string))
-	n3 := util.BuildNode("n3", util.BuildResourceList("4", "8Gi"), make(map[string]string))
-	n4 := util.BuildNode("n4", util.BuildResourceList("4", "8Gi"), make(map[string]string))
-	n5 := util.BuildNode("n5", util.BuildResourceList("4", "8Gi"), make(map[string]string))
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n2 := util.BuildNode("n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n3 := util.BuildNode("n3", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n4 := util.BuildNode("n4", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n5 := util.BuildNode("n5", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
 
 	nodesUsage := make(map[string]*api.NodeUsage)
 	timeNow := time.Now()
@@ -314,7 +314,7 @@ func TestUsage_predicateFn(t *testing.T) {
 			}
 
 			for _, node := range test.nodes {
-				schedulerCache.AddNode(node)
+				schedulerCache.AddOrUpdateNode(node)
 			}
 			for _, pod := range test.pods {
 				schedulerCache.AddPod(pod)
@@ -382,13 +382,13 @@ func TestUsage_nodeOrderFn(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)
 	defer framework.CleanupPluginBuilders()
 
-	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
 
-	n1 := util.BuildNode("n1", util.BuildResourceList("4", "8Gi"), make(map[string]string))
-	n2 := util.BuildNode("n2", util.BuildResourceList("4", "8Gi"), make(map[string]string))
-	n3 := util.BuildNode("n3", util.BuildResourceList("4", "8Gi"), make(map[string]string))
-	n4 := util.BuildNode("n4", util.BuildResourceList("4", "8Gi"), make(map[string]string))
-	n5 := util.BuildNode("n5", util.BuildResourceList("4", "8Gi"), make(map[string]string))
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n2 := util.BuildNode("n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n3 := util.BuildNode("n3", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n4 := util.BuildNode("n4", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n5 := util.BuildNode("n5", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
 
 	nodesUsage := make(map[string]*api.NodeUsage)
 	timeNow := time.Now()
@@ -513,7 +513,7 @@ func TestUsage_nodeOrderFn(t *testing.T) {
 			}
 
 			for _, node := range test.nodes {
-				schedulerCache.AddNode(node)
+				schedulerCache.AddOrUpdateNode(node)
 			}
 			for _, pod := range test.pods {
 				schedulerCache.AddPod(pod)
