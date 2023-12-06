@@ -138,7 +138,6 @@ func TestAllocate(t *testing.T) {
 						},
 					},
 				},
-
 				// pod name should be like "*-*-{index}",
 				// due to change of TaskOrderFn
 				Pods: []*v1.Pod{
@@ -251,7 +250,6 @@ func TestAllocate(t *testing.T) {
 			t.Skip("Test cases are not as expected, fixed later. see issue: #2810")
 		}
 		t.Run(test.name, func(t *testing.T) {
-
 			schedulerCache, binder, _, _ := cache.CreateCacheForTest(&test.TestArg, 100000, 10)
 
 			trueValue := true
