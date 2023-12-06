@@ -17,16 +17,24 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"stathat.com/c/consistent"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -116,4 +124,74 @@ func getMultiSchedulerInfo() (schedulerPodName string, c *consistent.Consistent)
 		}
 	}
 	return mySchedulerPodName, c
+}
+
+type TestArg struct {
+	PodGroups []*scheduling.PodGroup
+	Pods      []*v1.Pod
+	Nodes     []*v1.Node
+	Queues    []*scheduling.Queue
+	Pvs       []*v1.PersistentVolume
+	Pvcs      []*v1.PersistentVolumeClaim
+	Sc        *storagev1.StorageClass
+}
+
+func CreateCacheForTest(testArg *TestArg, highPriority, lowPriority int32) (*SchedulerCache, *util.FakeBinder, *util.FakeEvictor, *util.FakeVolumeBinder) {
+	binder := &util.FakeBinder{
+		Binds:   map[string]string{},
+		Channel: make(chan string, 1),
+	}
+	evictor := &util.FakeEvictor{
+		Channel: make(chan string),
+	}
+
+	volumenBinder := &util.FakeVolumeBinder{}
+	if testArg.Sc != nil {
+		kubeClient := fake.NewSimpleClientset()
+		kubeClient.StorageV1().StorageClasses().Create(context.TODO(), testArg.Sc, metav1.CreateOptions{})
+		for _, pv := range testArg.Pvs {
+			kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), pv, metav1.CreateOptions{})
+		}
+		for _, pvc := range testArg.Pvcs {
+			kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
+		}
+
+		volumenBinder = util.NewFakeVolumeBinder(kubeClient)
+	}
+
+	schedulerCache := &SchedulerCache{
+		Nodes:           make(map[string]*api.NodeInfo),
+		Jobs:            make(map[api.JobID]*api.JobInfo),
+		Queues:          make(map[api.QueueID]*api.QueueInfo),
+		Binder:          binder,
+		Evictor:         evictor,
+		StatusUpdater:   &util.FakeStatusUpdater{},
+		VolumeBinder:    volumenBinder,
+		PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
+
+		Recorder: record.NewFakeRecorder(100),
+	}
+	schedulerCache.PriorityClasses["high-priority"] = &schedulingv1.PriorityClass{
+		Value: highPriority,
+	}
+	schedulerCache.PriorityClasses["low-priority"] = &schedulingv1.PriorityClass{
+		Value: lowPriority,
+	}
+
+	for _, node := range testArg.Nodes {
+		schedulerCache.AddOrUpdateNode(node)
+	}
+	for _, pod := range testArg.Pods {
+		schedulerCache.AddPod(pod)
+	}
+
+	for _, ss := range testArg.PodGroups {
+		schedulerCache.AddPodGroupV1beta1(ss)
+	}
+	for _, q := range testArg.Queues {
+		schedulerCache.AddQueueV1beta1(q)
+	}
+	
+	
+	return schedulerCache, binder, evictor, volumenBinder
 }

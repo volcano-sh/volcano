@@ -17,7 +17,6 @@ limitations under the License.
 package allocate
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"testing"
@@ -26,13 +25,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
-
-	storagev1 "k8s.io/api/storage/v1"
 
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -70,43 +65,42 @@ func TestAllocate(t *testing.T) {
 	defer framework.CleanupPluginBuilders()
 
 	tests := []struct {
-		name      string
-		podGroups []*schedulingv1.PodGroup
-		pods      []*v1.Pod
-		nodes     []*v1.Node
-		queues    []*schedulingv1.Queue
-		expected  map[string]string
+		name string
+		cache.TestArg
+		expected map[string]string
 	}{
 		{
 			name: "one Job with two Pods on one node",
-			podGroups: []*schedulingv1.PodGroup{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg1",
-						Namespace: "c1",
-					},
-					Spec: schedulingv1.PodGroupSpec{
-						Queue: "c1",
-					},
-					Status: schedulingv1.PodGroupStatus{
-						Phase: schedulingv1.PodGroupInqueue,
+			TestArg: cache.TestArg{
+				PodGroups: []*schedulingv1.PodGroup{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "pg1",
+							Namespace: "c1",
+						},
+						Spec: schedulingv1.PodGroupSpec{
+							Queue: "c1",
+						},
+						Status: schedulingv1.PodGroupStatus{
+							Phase: schedulingv1.PodGroupInqueue,
+						},
 					},
 				},
-			},
-			pods: []*v1.Pod{
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-			},
-			nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			queues: []*schedulingv1.Queue{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "c1",
-					},
-					Spec: schedulingv1.QueueSpec{
-						Weight: 1,
+				Pods: []*v1.Pod{
+					util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", util.BuildResourceList("2", "4Gi"), make(map[string]string)),
+				},
+				Queues: []*schedulingv1.Queue{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "c1",
+						},
+						Spec: schedulingv1.QueueSpec{
+							Weight: 1,
+						},
 					},
 				},
 			},
@@ -117,63 +111,64 @@ func TestAllocate(t *testing.T) {
 		},
 		{
 			name: "two Jobs on one node",
-			podGroups: []*schedulingv1.PodGroup{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg1",
-						Namespace: "c1",
+			TestArg: cache.TestArg{
+				PodGroups: []*schedulingv1.PodGroup{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "pg1",
+							Namespace: "c1",
+						},
+						Spec: schedulingv1.PodGroupSpec{
+							Queue: "c1",
+						},
+						Status: schedulingv1.PodGroupStatus{
+							Phase: schedulingv1.PodGroupInqueue,
+						},
 					},
-					Spec: schedulingv1.PodGroupSpec{
-						Queue: "c1",
-					},
-					Status: schedulingv1.PodGroupStatus{
-						Phase: schedulingv1.PodGroupInqueue,
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg2",
-						Namespace: "c2",
-					},
-					Spec: schedulingv1.PodGroupSpec{
-						Queue: "c2",
-					},
-					Status: schedulingv1.PodGroupStatus{
-						Phase: schedulingv1.PodGroupInqueue,
-					},
-				},
-			},
-
-			// pod name should be like "*-*-{index}",
-			// due to change of TaskOrderFn
-			pods: []*v1.Pod{
-				// pending pod with owner1, under c1
-				util.BuildPod("c1", "pg1-p-1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				// pending pod with owner1, under c1
-				util.BuildPod("c1", "pg1-p-2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				// pending pod with owner2, under c2
-				util.BuildPod("c2", "pg2-p-1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
-				// pending pod with owner2, under c2
-				util.BuildPod("c2", "pg2-p-2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
-			},
-			nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			queues: []*schedulingv1.Queue{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "c1",
-					},
-					Spec: schedulingv1.QueueSpec{
-						Weight: 1,
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "pg2",
+							Namespace: "c2",
+						},
+						Spec: schedulingv1.PodGroupSpec{
+							Queue: "c2",
+						},
+						Status: schedulingv1.PodGroupStatus{
+							Phase: schedulingv1.PodGroupInqueue,
+						},
 					},
 				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "c2",
+				// pod name should be like "*-*-{index}",
+				// due to change of TaskOrderFn
+				Pods: []*v1.Pod{
+					// pending pod with owner1, under c1
+					util.BuildPod("c1", "pg1-p-1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					// pending pod with owner1, under c1
+					util.BuildPod("c1", "pg1-p-2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					// pending pod with owner2, under c2
+					util.BuildPod("c2", "pg2-p-1", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+					// pending pod with owner2, under c2
+					util.BuildPod("c2", "pg2-p-2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", util.BuildResourceList("2", "4G"), make(map[string]string)),
+				},
+				Queues: []*schedulingv1.Queue{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "c1",
+						},
+						Spec: schedulingv1.QueueSpec{
+							Weight: 1,
+						},
 					},
-					Spec: schedulingv1.QueueSpec{
-						Weight: 1,
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "c2",
+						},
+						Spec: schedulingv1.QueueSpec{
+							Weight: 1,
+						},
 					},
 				},
 			},
@@ -184,57 +179,59 @@ func TestAllocate(t *testing.T) {
 		},
 		{
 			name: "high priority queue should not block others",
-			podGroups: []*schedulingv1.PodGroup{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg1",
-						Namespace: "c1",
+			TestArg: cache.TestArg{
+				PodGroups: []*schedulingv1.PodGroup{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "pg1",
+							Namespace: "c1",
+						},
+						Spec: schedulingv1.PodGroupSpec{
+							Queue: "c1",
+						},
+						Status: schedulingv1.PodGroupStatus{
+							Phase: schedulingv1.PodGroupInqueue,
+						},
 					},
-					Spec: schedulingv1.PodGroupSpec{
-						Queue: "c1",
-					},
-					Status: schedulingv1.PodGroupStatus{
-						Phase: schedulingv1.PodGroupInqueue,
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "pg2",
+							Namespace: "c1",
+						},
+						Spec: schedulingv1.PodGroupSpec{
+							Queue: "c2",
+						},
+						Status: schedulingv1.PodGroupStatus{
+							Phase: schedulingv1.PodGroupInqueue,
+						},
 					},
 				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg2",
-						Namespace: "c1",
-					},
-					Spec: schedulingv1.PodGroupSpec{
-						Queue: "c2",
-					},
-					Status: schedulingv1.PodGroupStatus{
-						Phase: schedulingv1.PodGroupInqueue,
-					},
-				},
-			},
 
-			pods: []*v1.Pod{
-				// pending pod with owner1, under ns:c1/q:c1
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("3", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				// pending pod with owner2, under ns:c1/q:c2
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
-			},
-			nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			queues: []*schedulingv1.Queue{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "c1",
-					},
-					Spec: schedulingv1.QueueSpec{
-						Weight: 1,
-					},
+				Pods: []*v1.Pod{
+					// pending pod with owner1, under ns:c1/q:c1
+					util.BuildPod("c1", "p1", "", v1.PodPending, util.BuildResourceList("3", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					// pending pod with owner2, under ns:c1/q:c2
+					util.BuildPod("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
 				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "c2",
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", util.BuildResourceList("2", "4G"), make(map[string]string)),
+				},
+				Queues: []*schedulingv1.Queue{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "c1",
+						},
+						Spec: schedulingv1.QueueSpec{
+							Weight: 1,
+						},
 					},
-					Spec: schedulingv1.QueueSpec{
-						Weight: 1,
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "c2",
+						},
+						Spec: schedulingv1.QueueSpec{
+							Weight: 1,
+						},
 					},
 				},
 			},
@@ -253,34 +250,7 @@ func TestAllocate(t *testing.T) {
 			t.Skip("Test cases are not as expected, fixed later. see issue: #2810")
 		}
 		t.Run(test.name, func(t *testing.T) {
-			binder := &util.FakeBinder{
-				Binds:   map[string]string{},
-				Channel: make(chan string),
-			}
-			schedulerCache := &cache.SchedulerCache{
-				Nodes:         make(map[string]*api.NodeInfo),
-				Jobs:          make(map[api.JobID]*api.JobInfo),
-				Queues:        make(map[api.QueueID]*api.QueueInfo),
-				Binder:        binder,
-				StatusUpdater: &util.FakeStatusUpdater{},
-				VolumeBinder:  &util.FakeVolumeBinder{},
-				Recorder:      record.NewFakeRecorder(100),
-			}
-
-			for _, node := range test.nodes {
-				schedulerCache.AddOrUpdateNode(node)
-			}
-			for _, pod := range test.pods {
-				schedulerCache.AddPod(pod)
-			}
-
-			for _, ss := range test.podGroups {
-				schedulerCache.AddPodGroupV1beta1(ss)
-			}
-
-			for _, q := range test.queues {
-				schedulerCache.AddQueueV1beta1(q)
-			}
+			schedulerCache, binder, _, _ := cache.CreateCacheForTest(&test.TestArg, 100000, 10)
 
 			trueValue := true
 			ssn := framework.OpenSession(schedulerCache, []conf.Tier{
@@ -369,26 +339,26 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 	allocate := New()
 
 	tests := []struct {
-		name            string
-		pods            []*v1.Pod
-		nodes           []*v1.Node
-		pvs             []*v1.PersistentVolume
-		pvcs            []*v1.PersistentVolumeClaim
-		sc              *storagev1.StorageClass
+		name string
+		cache.TestArg
 		expectedBind    map[string]string
 		expectedActions map[string][]string
 	}{
 		{
 			name: "resource not match",
-			pods: []*v1.Pod{
-				util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
+			TestArg: cache.TestArg{
+				Pods: []*v1.Pod{
+					util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", util.BuildResourceList("1", "4Gi"), make(map[string]string)),
+				},
+				PodGroups: []*schedulingv1.PodGroup{pg},
+				Queues:    []*schedulingv1.Queue{queue},
+				Sc:        sc,
+				Pvcs:      []*v1.PersistentVolumeClaim{pvc, pvc1},
 			},
-			nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("1", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			sc:           sc,
-			pvcs:         []*v1.PersistentVolumeClaim{pvc, pvc1},
 			expectedBind: map[string]string{},
 			expectedActions: map[string][]string{
 				"c1/p1": {"GetPodVolumes", "AllocateVolumes", "RevertVolumes"},
@@ -396,15 +366,19 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 		},
 		{
 			name: "node changed with enough resource",
-			pods: []*v1.Pod{
-				util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
+			TestArg: cache.TestArg{
+				Pods: []*v1.Pod{
+					util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, util.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n2", util.BuildResourceList("2", "4Gi"), make(map[string]string)),
+				},
+				PodGroups: []*schedulingv1.PodGroup{pg},
+				Queues:    []*schedulingv1.Queue{queue},
+				Sc:        sc,
+				Pvcs:      []*v1.PersistentVolumeClaim{pvc, pvc1},
 			},
-			nodes: []*v1.Node{
-				util.BuildNode("n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			sc:   sc,
-			pvcs: []*v1.PersistentVolumeClaim{pvc, pvc1},
 			expectedBind: map[string]string{
 				"c1/p1": "n2",
 				"c1/p2": "n2",
@@ -423,39 +397,7 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			t.Skip("Test cases are not as expected, fixed later. see issue: #2812")
 		}
 		t.Run(test.name, func(t *testing.T) {
-			kubeClient := fake.NewSimpleClientset()
-			kubeClient.StorageV1().StorageClasses().Create(context.TODO(), test.sc, metav1.CreateOptions{})
-			for _, pv := range test.pvs {
-				kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), pv, metav1.CreateOptions{})
-			}
-			for _, pvc := range test.pvcs {
-				kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
-			}
-
-			fakeVolumeBinder := util.NewFakeVolumeBinder(kubeClient)
-			binder := &util.FakeBinder{
-				Binds:   map[string]string{},
-				Channel: make(chan string),
-			}
-			schedulerCache := &cache.SchedulerCache{
-				Nodes:         make(map[string]*api.NodeInfo),
-				Jobs:          make(map[api.JobID]*api.JobInfo),
-				Queues:        make(map[api.QueueID]*api.QueueInfo),
-				Binder:        binder,
-				StatusUpdater: &util.FakeStatusUpdater{},
-				VolumeBinder:  fakeVolumeBinder,
-				Recorder:      record.NewFakeRecorder(100),
-			}
-			schedulerCache.AddQueueV1beta1(queue)
-			schedulerCache.AddPodGroupV1beta1(pg)
-			for i, pod := range test.pods {
-				priority := int32(-i)
-				pod.Spec.Priority = &priority
-				schedulerCache.AddPod(pod)
-			}
-			for _, node := range test.nodes {
-				schedulerCache.AddOrUpdateNode(node)
-			}
+			schedulerCache, binder, _, fakeVolumeBinder := cache.CreateCacheForTest(&test.TestArg, 10000, 10)
 
 			trueValue := true
 			ssn := framework.OpenSession(schedulerCache, []conf.Tier{
