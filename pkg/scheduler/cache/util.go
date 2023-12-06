@@ -179,16 +179,19 @@ func CreateCacheForTest(testArg *TestArg, highPriority, lowPriority int32) (*Sch
 	}
 
 	for _, node := range testArg.Nodes {
-		schedulerCache.AddNode(node)
-	}
-	for _, q := range testArg.Queues {
-		schedulerCache.AddQueueV1beta1(q)
-	}
-	for _, ss := range testArg.PodGroups {
-		schedulerCache.AddPodGroupV1beta1(ss)
+		schedulerCache.AddOrUpdateNode(node)
 	}
 	for _, pod := range testArg.Pods {
 		schedulerCache.AddPod(pod)
 	}
+
+	for _, ss := range testArg.PodGroups {
+		schedulerCache.AddPodGroupV1beta1(ss)
+	}
+	for _, q := range testArg.Queues {
+		schedulerCache.AddQueueV1beta1(q)
+	}
+	
+	
 	return schedulerCache, binder, evictor, volumenBinder
 }
