@@ -72,7 +72,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 		}
 
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
-			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
+			klog.Warningf("Job <%s/%s> Queue <%s> skip allocate, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue
 		}
 
