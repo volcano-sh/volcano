@@ -23,9 +23,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
-	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/record"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -51,67 +49,66 @@ func TestReclaim(t *testing.T) {
 	defer framework.CleanupPluginBuilders()
 
 	tests := []struct {
-		name      string
-		podGroups []*schedulingv1beta1.PodGroup
-		pods      []*v1.Pod
-		nodes     []*v1.Node
-		queues    []*schedulingv1beta1.Queue
-		expected  int
+		name string
+		cache.TestArg
+		expected int
 	}{
 		{
 			name: "Two Queue with one Queue overusing resource, should reclaim",
-			podGroups: []*schedulingv1beta1.PodGroup{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg1",
-						Namespace: "c1",
+			TestArg: cache.TestArg{
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "pg1",
+							Namespace: "c1",
+						},
+						Spec: schedulingv1beta1.PodGroupSpec{
+							Queue:             "q1",
+							PriorityClassName: "low-priority",
+						},
+						Status: schedulingv1beta1.PodGroupStatus{
+							Phase: schedulingv1beta1.PodGroupInqueue,
+						},
 					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue:             "q1",
-						PriorityClassName: "low-priority",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupInqueue,
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg2",
-						Namespace: "c1",
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue:             "q2",
-						PriorityClassName: "high-priority",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupInqueue,
-					},
-				},
-			},
-			pods: []*v1.Pod{
-				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
-			},
-			nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			queues: []*schedulingv1beta1.Queue{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "q1",
-					},
-					Spec: schedulingv1beta1.QueueSpec{
-						Weight: 1,
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "pg2",
+							Namespace: "c1",
+						},
+						Spec: schedulingv1beta1.PodGroupSpec{
+							Queue:             "q2",
+							PriorityClassName: "high-priority",
+						},
+						Status: schedulingv1beta1.PodGroupStatus{
+							Phase: schedulingv1beta1.PodGroupInqueue,
+						},
 					},
 				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "q2",
+				Pods: []*v1.Pod{
+					util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+					util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				},
+				Queues: []*schedulingv1beta1.Queue{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "q1",
+						},
+						Spec: schedulingv1beta1.QueueSpec{
+							Weight: 1,
+						},
 					},
-					Spec: schedulingv1beta1.QueueSpec{
-						Weight: 1,
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "q2",
+						},
+						Spec: schedulingv1beta1.QueueSpec{
+							Weight: 1,
+						},
 					},
 				},
 			},
@@ -122,45 +119,7 @@ func TestReclaim(t *testing.T) {
 	reclaim := New()
 
 	for i, test := range tests {
-		binder := &util.FakeBinder{
-			Binds:   map[string]string{},
-			Channel: make(chan string),
-		}
-		evictor := &util.FakeEvictor{
-			Channel: make(chan string),
-		}
-		schedulerCache := &cache.SchedulerCache{
-			Nodes:           make(map[string]*api.NodeInfo),
-			Jobs:            make(map[api.JobID]*api.JobInfo),
-			Queues:          make(map[api.QueueID]*api.QueueInfo),
-			Binder:          binder,
-			Evictor:         evictor,
-			StatusUpdater:   &util.FakeStatusUpdater{},
-			VolumeBinder:    &util.FakeVolumeBinder{},
-			PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
-
-			Recorder: record.NewFakeRecorder(100),
-		}
-		schedulerCache.PriorityClasses["high-priority"] = &schedulingv1.PriorityClass{
-			Value: 100000,
-		}
-		schedulerCache.PriorityClasses["low-priority"] = &schedulingv1.PriorityClass{
-			Value: 10,
-		}
-		for _, node := range test.nodes {
-			schedulerCache.AddOrUpdateNode(node)
-		}
-		for _, pod := range test.pods {
-			schedulerCache.AddPod(pod)
-		}
-
-		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroupV1beta1(ss)
-		}
-
-		for _, q := range test.queues {
-			schedulerCache.AddQueueV1beta1(q)
-		}
+		schedulerCache, _, evictor, _ := cache.CreateCacheForTest(&test.TestArg, 100000, 10)
 
 		trueValue := true
 		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
