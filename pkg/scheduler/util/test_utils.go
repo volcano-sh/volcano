@@ -50,14 +50,97 @@ func BuildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1
 	}
 }
 
-// BuildPod builds a Burstable pod object
-func BuildPod(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
-	return &v1.Pod{
+type PodOption = func(*v1.Pod)
+
+func PodResourceOption(req v1.ResourceList) PodOption {
+	return func(pod *v1.Pod) {
+		pod.Spec.Containers[0].Resources.Requests = req
+	}
+}
+
+func PodGroupnameOption(groupName string) PodOption {
+	return func(pod *v1.Pod) {
+		pod.Annotations[schedulingv2.KubeGroupNameAnnotationKey] = groupName
+	}
+}
+
+func PodLabelOption(k, v string) PodOption {
+	return func(pod *v1.Pod) {
+		pod.Labels[k] = v
+	}
+}
+
+func PodLabelsOption(labels map[string]string) PodOption {
+	return func(pod *v1.Pod) {
+		for k, v := range labels {
+			pod.Labels[k] = v
+		}
+	}
+}
+
+func PodAnnoOption(k, v string) PodOption {
+	return func(pod *v1.Pod) {
+		pod.Annotations[k] = v
+	}
+}
+
+func PodAnnosOption(annos map[string]string) PodOption {
+	return func(pod *v1.Pod) {
+		for k, v := range annos {
+			pod.Annotations[k] = v
+		}
+	}
+}
+
+func PodSelectorOption(k, v string) PodOption {
+	return func(pod *v1.Pod) {
+		pod.Spec.NodeSelector[k] = v
+	}
+}
+
+func PodSelectorsOption(selectors map[string]string) PodOption {
+	return func(pod *v1.Pod) {
+		for k, v := range selectors {
+			pod.Spec.NodeSelector[k] = v
+		}
+	}
+}
+
+func PodPriorityOption(priority int32) PodOption {
+	return func(pod *v1.Pod) {
+		pod.Spec.Priority = &priority
+	}
+}
+
+func PodPVCOption(pvc *v1.PersistentVolumeClaim) PodOption {
+	return func(pod *v1.Pod) {
+		pod.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
+			{
+				Name:      pvc.Name,
+				MountPath: "/data",
+			},
+		}
+		pod.Spec.Volumes = []v1.Volume{
+			{
+				Name: pvc.Name,
+				VolumeSource: v1.VolumeSource{
+					PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+						ClaimName: pvc.Name,
+					},
+				},
+			},
+		}
+	}
+}
+
+// BuilTestPod builds a Burstable pod object
+func BuildTestPod(namespace, name, nodeName string, p v1.PodPhase, groupName string, opts ...PodOption) *v1.Pod {
+	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
 			Name:      name,
 			Namespace: namespace,
-			Labels:    labels,
+			Labels:    map[string]string{},
 			Annotations: map[string]string{
 				schedulingv2.KubeGroupNameAnnotationKey: groupName,
 			},
@@ -67,61 +150,33 @@ func BuildPod(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceLi
 		},
 		Spec: v1.PodSpec{
 			NodeName:     nodeName,
-			NodeSelector: selector,
+			NodeSelector: map[string]string{},
 			Containers: []v1.Container{
 				{
 					Resources: v1.ResourceRequirements{
-						Requests: req,
+						Requests: v1.ResourceList{},
 					},
 				},
 			},
 		},
 	}
+
+	for _, opt := range opts {
+		opt(pod)
+	}
+	return pod
+}
+
+// BuildPod builds a Burstable pod object
+func BuildPod(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
+	opts := []PodOption{PodResourceOption(req), PodGroupnameOption(groupName), PodLabelsOption(labels), PodAnnosOption(selector)}
+	return BuildTestPod(namespace, name, nodeName, p, groupName, opts...)
 }
 
 // BuildPodWithPVC builts Pod object with pvc volume
 func BuildPodWithPVC(namespace, name, nodename string, p v1.PodPhase, req v1.ResourceList, pvc *v1.PersistentVolumeClaim, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
-	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
-			},
-		},
-		Status: v1.PodStatus{
-			Phase: p,
-		},
-		Spec: v1.PodSpec{
-			NodeName:     nodename,
-			NodeSelector: selector,
-			Containers: []v1.Container{
-				{
-					Resources: v1.ResourceRequirements{
-						Requests: req,
-					},
-					VolumeMounts: []v1.VolumeMount{
-						{
-							Name:      pvc.Name,
-							MountPath: "/data",
-						},
-					},
-				},
-			},
-			Volumes: []v1.Volume{
-				{
-					Name: pvc.Name,
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: pvc.Name,
-						},
-					},
-				},
-			},
-		},
-	}
+	opts := []PodOption{PodResourceOption(req), PodPVCOption(pvc), PodGroupnameOption(groupName), PodLabelsOption(labels), PodAnnosOption(selector)}
+	return BuildTestPod(namespace, name, nodename, p, groupName, opts...)
 }
 
 // BuildDynamicPVC create pv pvc and storage class
@@ -177,61 +232,14 @@ func BuildDynamicPVC(namespace, name string, req v1.ResourceList) (*v1.Persisten
 
 // BuildBestEffortPod builds a BestEffort pod object
 func BuildBestEffortPod(namespace, name, nodeName string, p v1.PodPhase, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
-	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
-			},
-		},
-		Status: v1.PodStatus{
-			Phase: p,
-		},
-		Spec: v1.PodSpec{
-			NodeName:     nodeName,
-			NodeSelector: selector,
-			Containers: []v1.Container{
-				{
-					Resources: v1.ResourceRequirements{
-						Requests: v1.ResourceList{},
-					},
-				},
-			},
-		},
-	}
+	opts := []PodOption{PodGroupnameOption(groupName), PodLabelsOption(labels), PodAnnosOption(selector)}
+	return BuildTestPod(namespace, name, nodeName, p, groupName, opts...)
 }
 
 // BuildPodWithPriority builds a pod object with priority
 func BuildPodWithPriority(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, priority *int32) *v1.Pod {
-	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-			Annotations: map[string]string{
-				schedulingv2.KubeGroupNameAnnotationKey: groupName,
-			},
-		},
-		Status: v1.PodStatus{
-			Phase: p,
-		},
-		Spec: v1.PodSpec{
-			NodeName:     nodeName,
-			NodeSelector: selector,
-			Priority:     priority,
-			Containers: []v1.Container{
-				{
-					Resources: v1.ResourceRequirements{
-						Requests: req,
-					},
-				},
-			},
-		},
-	}
+	opts := []PodOption{PodResourceOption(req), PodGroupnameOption(groupName), PodLabelsOption(labels), PodAnnosOption(selector), PodPriorityOption(*priority)}
+	return BuildTestPod(namespace, name, nodeName, p, groupName, opts...)
 }
 
 // FakeBinder is used as fake binder
