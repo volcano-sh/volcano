@@ -18,10 +18,8 @@ package cache
 
 import (
 	"os"
-	"os/signal"
 	"runtime"
 	"strings"
-	"syscall"
 
 	"k8s.io/klog/v2"
 
@@ -76,7 +74,7 @@ func (d *Dumper) printJobInfo(jobInfo *api.JobInfo) string {
 // receives SIGUSER2 signal.
 func (d *Dumper) ListenForSignal(stopCh <-chan struct{}) {
 	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGUSR2)
+	// signal.Notify(ch, syscall.SIGUSR2)
 	go func() {
 		for {
 			select {
