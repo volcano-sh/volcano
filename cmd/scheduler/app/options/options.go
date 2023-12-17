@@ -191,3 +191,11 @@ func (s *ServerOption) ParseCAFiles(decryptFunc DecryptFunc) error {
 
 	return nil
 }
+
+// Default new and registry a default one
+func Default() *ServerOption {
+	s := NewServerOption()
+	s.AddFlags(pflag.CommandLine)
+	s.RegisterOptions()
+	return s
+}
