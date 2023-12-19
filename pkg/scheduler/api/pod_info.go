@@ -19,7 +19,7 @@ package api
 import (
 	"encoding/json"
 	"strconv"
-
+	"math"
 	v1 "k8s.io/api/core/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
@@ -61,14 +61,35 @@ import (
 func GetPodResourceRequest(pod *v1.Pod) *Resource {
 	result := GetPodResourceWithoutInitContainers(pod)
 
-	// take max_resource(sum_pod, any_init_container)
-	for _, container := range pod.Spec.InitContainers {
-		result.SetMaxResource(NewResource(container.Resources.Requests))
+	// Calculate the sum of CPU and Memory resources used by containers
+	var cpuSum, memorySum float64
+	for _, container := range pod.Spec.Containers {
+		cpuSum += float64(container.Resources.Requests.Cpu().MilliValue())
+		memorySum += float64(container.Resources.Requests.Memory().Value())
 	}
-	result.AddScalar(v1.ResourcePods, 1)
+
+	// Calculate max utilization from init containers
+	var initContainerMax float64
+	for _, container := range pod.Spec.InitContainers {
+		containerResource := NewResource(container.Resources.Requests)
+		initContainerMax = math.Max(initContainerMax, containerResource.MilliCPU)
+		initContainerMax = math.Max(initContainerMax, float64(containerResource.Memory))
+	}
+
+	// Adjust the share based on CPU, Memory, and maximum init container utilization
+	maxUtilization := math.Max(cpuSum, memorySum)
+	maxUtilization = math.Max(maxUtilization, initContainerMax)
+	if maxUtilization > 0 {
+		podShare := maxUtilization / 1000 // Convert to fractional value
+		if podShare > 1 {
+			podShare = 1
+		}
+		result.AddScalar(v1.ResourcePods, podShare)
+	}
 
 	return result
 }
+
 
 // GetPodPreemptable return volcano.sh/preemptable value for pod
 func GetPodPreemptable(pod *v1.Pod) bool {
