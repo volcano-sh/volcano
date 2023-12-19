@@ -520,7 +520,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		By("Create coming jobs")
 
 		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q3, "high-priority", "", true)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
+		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
 
 		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j4", q4, "high-priority", "", true)
 		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
