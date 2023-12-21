@@ -133,7 +133,7 @@ type TaskInfo struct {
 	Pod        *v1.Pod
 
 	// CustomBindErrHandler is a custom callback func called when task bind err.
-	CustomBindErrHandler func() error
+	CustomBindErrHandler func() error `json:"-"`
 	// CustomBindErrHandlerSucceeded indicates whether CustomBindErrHandler is executed successfully.
 	CustomBindErrHandlerSucceeded bool
 }
