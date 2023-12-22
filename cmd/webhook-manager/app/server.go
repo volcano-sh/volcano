@@ -47,7 +47,7 @@ func Run(config *options.Config) error {
 	}
 
 	if config.EnableHealthz {
-		if err := helpers.StartHealthz(config.HealthzBindAddress, "volcano-admission", config.CertData, config.KeyData); err != nil {
+		if err := helpers.StartHealthz(config.HealthzBindAddress, "volcano-admission", config.CaCertData, config.CertData, config.KeyData); err != nil {
 			return err
 		}
 	}

@@ -19,6 +19,7 @@ package api
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -109,6 +110,7 @@ type NodeState struct {
 
 // NodeUsage defines the real load usage of node
 type NodeUsage struct {
+	MetricsTime time.Time
 	CPUUsageAvg map[string]float64
 	MEMUsageAvg map[string]float64
 }
@@ -118,6 +120,7 @@ func (nu *NodeUsage) DeepCopy() *NodeUsage {
 		CPUUsageAvg: make(map[string]float64),
 		MEMUsageAvg: make(map[string]float64),
 	}
+	newUsage.MetricsTime = nu.MetricsTime
 	for k, v := range nu.CPUUsageAvg {
 		newUsage.CPUUsageAvg[k] = v
 	}
@@ -493,7 +496,7 @@ func (ni *NodeInfo) addResource(pod *v1.Pod) {
 	ni.Others[vgpu.DeviceName].(Devices).AddResource(pod)
 }
 
-// subResource is used to substract sharable devices
+// subResource is used to subtract sharable devices
 func (ni *NodeInfo) subResource(pod *v1.Pod) {
 	ni.Others[GPUSharingDevice].(Devices).SubResource(pod)
 	ni.Others[vgpu.DeviceName].(Devices).SubResource(pod)

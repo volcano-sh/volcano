@@ -147,7 +147,6 @@ func openSession(cache cache.Cache) *Session {
 	snapshot := cache.Snapshot()
 
 	ssn.Jobs = snapshot.Jobs
-
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
 	ssn.Nodes = snapshot.Nodes
 	ssn.CSINodesStatus = snapshot.CSINodesStatus

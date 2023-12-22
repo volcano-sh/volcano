@@ -70,20 +70,20 @@ func TestEventHandler(t *testing.T) {
 		return
 	}
 
-	sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector)
+	sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector, option.NodeWorkerThreads)
 	schedulerCache := sc.(*cache.SchedulerCache)
 
 	// pending pods
-	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodPending, util.BuildResourceList("3", "3k"), "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
-	w2 := util.BuildPod("ns1", "worker-2", "", apiv1.PodPending, util.BuildResourceList("5", "5k"), "pg1", map[string]string{"role": "worker"}, map[string]string{})
-	w3 := util.BuildPod("ns1", "worker-3", "", apiv1.PodPending, util.BuildResourceList("4", "4k"), "pg2", map[string]string{"role": "worker"}, map[string]string{})
+	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodPending, api.BuildResourceList("3", "3k"), "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
+	w2 := util.BuildPod("ns1", "worker-2", "", apiv1.PodPending, api.BuildResourceList("5", "5k"), "pg1", map[string]string{"role": "worker"}, map[string]string{})
+	w3 := util.BuildPod("ns1", "worker-3", "", apiv1.PodPending, api.BuildResourceList("4", "4k"), "pg2", map[string]string{"role": "worker"}, map[string]string{})
 	w1.Spec.Affinity = getWorkerAffinity()
 	w2.Spec.Affinity = getWorkerAffinity()
 	w3.Spec.Affinity = getWorkerAffinity()
 
 	// nodes
-	n1 := util.BuildNode("node1", util.BuildResourceList("4", "4k"), map[string]string{"selector": "worker"})
-	n2 := util.BuildNode("node2", util.BuildResourceList("3", "3k"), map[string]string{})
+	n1 := util.BuildNode("node1", api.BuildResourceList("4", "4k", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"selector": "worker"})
+	n2 := util.BuildNode("node2", api.BuildResourceList("3", "3k", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
 	n1.Status.Allocatable["pods"] = resource.MustParse("15")
 	n2.Status.Allocatable["pods"] = resource.MustParse("15")
 	n1.Labels["kubernetes.io/hostname"] = "node1"
@@ -157,7 +157,7 @@ func TestEventHandler(t *testing.T) {
 			}
 		}()
 		for _, node := range test.nodes {
-			schedulerCache.AddNode(node)
+			schedulerCache.AddOrUpdateNode(node)
 		}
 		for _, pod := range test.pods {
 			schedulerCache.AddPod(pod)

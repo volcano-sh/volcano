@@ -42,6 +42,7 @@ const (
 	defaultMinNodesToFind             = 100
 	defaultPercentageOfNodesToFind    = 0
 	defaultLockObjectNamespace        = "volcano-system"
+	defaultNodeWorkers                = 20
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -49,8 +50,10 @@ type ServerOption struct {
 	KubeClientOptions    kube.ClientOptions
 	CertFile             string
 	KeyFile              string
+	CaCertFile           string
 	CertData             []byte
 	KeyData              []byte
+	CaCertData           []byte
 	SchedulerNames       []string
 	SchedulerConf        string
 	SchedulePeriod       time.Duration
@@ -75,6 +78,7 @@ type ServerOption struct {
 
 	NodeSelector      []string
 	EnableCacheDumper bool
+	NodeWorkerThreads uint32
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -91,6 +95,7 @@ func NewServerOption() *ServerOption {
 func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.KubeClientOptions.Master, "master", s.KubeClientOptions.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&s.KubeClientOptions.KubeConfig, "kubeconfig", s.KubeClientOptions.KubeConfig, "Path to kubeconfig file with authorization and master location information")
+	fs.StringVar(&s.CaCertFile, "ca-cert-file", s.CaCertFile, "File containing the x509 Certificate for HTTPS.")
 	fs.StringVar(&s.CertFile, "tls-cert-file", s.CertFile, ""+
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
@@ -128,6 +133,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
+	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.
@@ -147,6 +153,11 @@ func (s *ServerOption) RegisterOptions() {
 // readCAFiles read data from ca file path
 func (s *ServerOption) readCAFiles() error {
 	var err error
+
+	s.CaCertData, err = os.ReadFile(s.CaCertFile)
+	if err != nil {
+		return fmt.Errorf("failed to read cacert file (%s): %v", s.CaCertFile, err)
+	}
 
 	s.CertData, err = os.ReadFile(s.CertFile)
 	if err != nil {

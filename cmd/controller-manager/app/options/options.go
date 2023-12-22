@@ -33,6 +33,7 @@ const (
 	defaultSchedulerName       = "volcano"
 	defaultHealthzAddress      = ":11251"
 	defaultLockObjectNamespace = "volcano-system"
+	defaultPodGroupWorkers     = 5
 )
 
 // ServerOption is the main context object for the controllers.
@@ -40,8 +41,10 @@ type ServerOption struct {
 	KubeClientOptions    kube.ClientOptions
 	CertFile             string
 	KeyFile              string
+	CaCertFile           string
 	CertData             []byte
 	KeyData              []byte
+	CaCertData           []byte
 	EnableLeaderElection bool
 	LockObjectNamespace  string
 	PrintVersion         bool
@@ -55,7 +58,7 @@ type ServerOption struct {
 	MaxRequeueNum  int
 	SchedulerNames []string
 	// HealthzBindAddress is the IP address and port for the health check server to serve on,
-	// defaulting to 0.0.0.0:11252
+	// defaulting to 0.0.0.0:11251
 	HealthzBindAddress string
 	EnableHealthz      bool
 	// To determine whether inherit owner's annotations for pods when create podgroup
@@ -76,6 +79,7 @@ func NewServerOption() *ServerOption {
 func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.KubeClientOptions.Master, "master", s.KubeClientOptions.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&s.KubeClientOptions.KubeConfig, "kubeconfig", s.KubeClientOptions.KubeConfig, "Path to kubeconfig file with authorization and master location information.")
+	fs.StringVar(&s.CaCertFile, "ca-cert-file", s.CaCertFile, "File containing the x509 Certificate for HTTPS.")
 	fs.StringVar(&s.CertFile, "tls-cert-file", s.CertFile, ""+
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
@@ -93,7 +97,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.InheritOwnerAnnotations, "inherit-owner-annotations", true, "Enable inherit owner annotations for pods when create podgroup; it is enabled by default")
-	fs.Uint32Var(&s.WorkerThreadsForPG, "worker-threads-for-podgroup", 1, "The number of threads syncing podgroup operations. The larger the number, the faster the podgroup processing, but requires more CPU load.")
+	fs.Uint32Var(&s.WorkerThreadsForPG, "worker-threads-for-podgroup", defaultPodGroupWorkers, "The number of threads syncing podgroup operations. The larger the number, the faster the podgroup processing, but requires more CPU load.")
 }
 
 // CheckOptionOrDie checks the LockObjectNamespace.
@@ -107,6 +111,11 @@ func (s *ServerOption) CheckOptionOrDie() error {
 // readCAFiles read data from ca file path
 func (s *ServerOption) readCAFiles() error {
 	var err error
+
+	s.CaCertData, err = os.ReadFile(s.CaCertFile)
+	if err != nil {
+		return fmt.Errorf("failed to read cacert file (%s): %v", s.CaCertFile, err)
+	}
 
 	s.CertData, err = os.ReadFile(s.CertFile)
 	if err != nil {

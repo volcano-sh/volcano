@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
@@ -38,6 +39,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -350,6 +352,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	podTopologySpreadFilter := plugin.(*podtopologyspread.PodTopologySpread)
 
 	state := k8sframework.NewCycleState()
+	skipPlugins := make(map[api.TaskID]sets.Set[string])
 
 	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {
 		// Check NodePorts
@@ -372,7 +375,16 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// the processing logic needs to be added to the return value result.
 		if predicate.podAffinityEnable {
 			_, status := podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
-			if !status.IsSuccess() {
+			if status.IsSkip() {
+				taskKey := api.PodKey(task.Pod)
+				if _, ok := skipPlugins[taskKey]; !ok {
+					plugins := sets.New[string]()
+					skipPlugins[taskKey] = plugins
+				}
+				skipPlugins[taskKey].Insert(interpodaffinity.Name)
+				klog.V(3).Infof("pod(%s/%s) affinity require information is nil, plugin InterPodAffinity is skipped",
+					task.Namespace, task.Name)
+			} else if !status.IsSuccess() {
 				return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
 			}
 		}
@@ -404,18 +416,13 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods) {
-			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed",
-				task.Namespace, task.Name, node.Name)
+			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
+				task.Namespace, task.Name, node.Name, node.Allocatable.MaxTaskNum, len(nodeInfo.Pods))
 			podsNumStatus := &api.Status{
-				// TODO(wangyang0616): When the number of pods of a node reaches the upper limit, preemption is not supported for now.
-				// Record details in #3079 (volcano.sh/volcano)
-				// In the preempt stage, the pipeline of the pod number is not considered,
-				// the preemption of the pod number is released directly, which will cause the pods in the node to be cyclically evicted.
-				Code:   api.UnschedulableAndUnresolvable,
+				Code:   api.Unschedulable,
 				Reason: api.NodePodNumberExceeded,
 			}
 			predicateStatus = append(predicateStatus, podsNumStatus)
-			return predicateStatus, fmt.Errorf("%s", api.NodePodNumberExceeded)
 		}
 
 		predicateByStablefilter := func(pod *v1.Pod, nodeInfo *k8sframework.NodeInfo) ([]*api.Status, bool, error) {
@@ -486,11 +493,22 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// Check PodAffinity
 		if predicate.podAffinityEnable {
-			status := podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-			podAffinityStatus := framework.ConvertPredicateStatus(status)
-			if podAffinityStatus.Code != api.Success {
-				predicateStatus = append(predicateStatus, podAffinityStatus)
-				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", podAffinityFilter.Name(), status.Message())
+			isSkipInterPodAffinity := false
+			taskKey := api.PodKey(task.Pod)
+			if plugins, ok := skipPlugins[taskKey]; ok {
+				if plugins.Has(interpodaffinity.Name) {
+					isSkipInterPodAffinity = true
+					klog.V(5).Infof("pod(%s/%s) affinity require information is nil, plugin InterPodAffinity is skip for node %s",
+						task.Namespace, task.Name, node.Name)
+				}
+			}
+			if !isSkipInterPodAffinity {
+				status := podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+				podAffinityStatus := framework.ConvertPredicateStatus(status)
+				if podAffinityStatus.Code != api.Success {
+					predicateStatus = append(predicateStatus, podAffinityStatus)
+					return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", podAffinityFilter.Name(), status.Message())
+				}
 			}
 		}
 
@@ -498,10 +516,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		if predicate.nodeVolumeLimitsEnable {
 			status := nodeVolumeLimitsCSIFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 			nodeVolumeStatus := framework.ConvertPredicateStatus(status)
-			if nodeVolumeStatus.Code != api.Success {
-				predicateStatus = append(predicateStatus, nodeVolumeStatus)
-				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", nodeVolumeLimitsCSIFilter.Name(), status.Message())
-			}
+			predicateStatus = append(predicateStatus, nodeVolumeStatus)
 		}
 
 		// Check VolumeZone
@@ -525,8 +540,15 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		for _, val := range api.RegisteredDevices {
-			if devices, ok := node.Others[val].(api.Devices); ok {
-				code, msg, err := devices.FilterNode(task.Pod)
+			if dev, ok := node.Others[val].(api.Devices); ok {
+				if dev == nil {
+					predicateStatus = append(predicateStatus, &api.Status{
+						Code:   devices.Unschedulable,
+						Reason: "node not initialized with device" + val,
+					})
+					return predicateStatus, fmt.Errorf("node not initialized with device %s", val)
+				}
+				code, msg, err := dev.FilterNode(task.Pod)
 				filterNodeStatus := &api.Status{
 					Code:   code,
 					Reason: msg,

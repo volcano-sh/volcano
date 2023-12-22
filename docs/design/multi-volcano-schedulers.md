@@ -1,4 +1,4 @@
-# Multi schedulers
+# Multi volcano schedulers
 
 ## Introduction
 
@@ -17,7 +17,7 @@ Sometimes we may want to the cluster be divided into multi sections for differen
 #### Specify scheduler
 You should name each scheduler, and add `selector` to filter nodes.
 
-`selector`(label query) supports '=', '==', and '!='.(e.g. -l key1=value1,key2=value2)
+`selector`(label query) supports ':'.(e.g. --node-selector key1:value1,key2:value2)
 
 ```diff
 # Scheduler deployment
@@ -28,7 +28,7 @@ You should name each scheduler, and add `selector` to filter nodes.
              - --logtostderr
              - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
 +            - --scheduler-name=gpu
-+            - -l=zone=gpu
++            - --node-selector=zone:gpu
              - -v=3
              - 2>&1
 ```

@@ -120,8 +120,8 @@ func GetJobKeyByReq(req *apis.Request) string {
 	return fmt.Sprintf("%s/%s", req.Namespace, req.JobName)
 }
 
-// GetTasklndexUnderJob return index of the task in the job.
-func GetTasklndexUnderJob(taskName string, job *batch.Job) int {
+// GetTaskIndexUnderJob return index of the task in the job.
+func GetTaskIndexUnderJob(taskName string, job *batch.Job) int {
 	for index, task := range job.Spec.Tasks {
 		if task.Name == taskName {
 			return index

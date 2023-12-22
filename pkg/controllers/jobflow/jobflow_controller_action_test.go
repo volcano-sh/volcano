@@ -147,6 +147,7 @@ func TestSyncJobFlowFunc(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      getJobName(tt.args.jobFlow.Name, tt.args.jobTemplateList[i].Name),
 						Namespace: tt.args.jobFlow.Namespace,
+						Labels:    map[string]string{CreatedByJobTemplate: GetTemplateString(tt.args.jobFlow.Namespace, tt.args.jobTemplateList[i].Name)},
 					},
 					Spec: tt.args.jobTemplateList[i].Spec,
 					Status: v1alpha1.JobStatus{

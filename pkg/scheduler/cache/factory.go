@@ -8,10 +8,7 @@ func RegisterBindMethod(binder Binder) {
 	bindMethodMap = binder
 }
 
+// GetBindMethod get the registered Binder
 func GetBindMethod() Binder {
 	return bindMethodMap
-}
-
-func init() {
-	RegisterBindMethod(NewBinder())
 }

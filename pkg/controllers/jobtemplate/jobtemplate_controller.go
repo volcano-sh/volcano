@@ -45,7 +45,7 @@ func init() {
 	framework.RegisterController(&jobtemplatecontroller{})
 }
 
-// jobflowcontroller the JobFlow jobflowcontroller type.
+// jobtemplatecontroller the JobTemplate jobtemplatecontroller type.
 type jobtemplatecontroller struct {
 	kubeClient kubernetes.Interface
 	vcClient   vcclientset.Interface
@@ -66,7 +66,7 @@ type jobtemplatecontroller struct {
 	recorder record.EventRecorder
 
 	queue              workqueue.RateLimitingInterface
-	enqueueJobTemplate func(req *apis.FlowRequest)
+	enqueueJobTemplate func(req apis.FlowRequest)
 
 	syncHandler func(req *apis.FlowRequest) error
 
@@ -149,13 +149,13 @@ func (jt *jobtemplatecontroller) processNextWorkItem() bool {
 	// period.
 	defer jt.queue.Done(obj)
 
-	req, ok := obj.(*apis.FlowRequest)
+	req, ok := obj.(apis.FlowRequest)
 	if !ok {
 		klog.Errorf("%v is not a valid queue request struct.", obj)
 		return true
 	}
 
-	err := jt.syncHandler(req)
+	err := jt.syncHandler(&req)
 	jt.handleJobTemplateErr(err, obj)
 
 	return true

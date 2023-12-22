@@ -17,7 +17,9 @@ limitations under the License.
 package scheduler
 
 import (
+	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -26,6 +28,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
+
+	"volcano.sh/volcano/pkg/util"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/filewatcher"
@@ -53,30 +57,23 @@ type Scheduler struct {
 }
 
 // NewScheduler returns a scheduler
-func NewScheduler(
-	config *rest.Config,
-	schedulerNames []string,
-	schedulerConf string,
-	period time.Duration,
-	defaultQueue string,
-	nodeSelectors []string,
-) (*Scheduler, error) {
+func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, error) {
 	var watcher filewatcher.FileWatcher
-	if schedulerConf != "" {
+	if opt.SchedulerConf != "" {
 		var err error
-		path := filepath.Dir(schedulerConf)
+		path := filepath.Dir(opt.SchedulerConf)
 		watcher, err = filewatcher.NewFileWatcher(path)
 		if err != nil {
-			return nil, fmt.Errorf("failed creating filewatcher for %s: %v", schedulerConf, err)
+			return nil, fmt.Errorf("failed creating filewatcher for %s: %v", opt.SchedulerConf, err)
 		}
 	}
 
-	cache := schedcache.New(config, schedulerNames, defaultQueue, nodeSelectors)
+	cache := schedcache.New(config, opt.SchedulerNames, opt.DefaultQueue, opt.NodeSelector, opt.NodeWorkerThreads)
 	scheduler := &Scheduler{
-		schedulerConf:  schedulerConf,
+		schedulerConf:  opt.SchedulerConf,
 		fileWatcher:    watcher,
 		cache:          cache,
-		schedulePeriod: period,
+		schedulePeriod: opt.SchedulePeriod,
 		dumper:         schedcache.Dumper{Cache: cache},
 	}
 
@@ -96,6 +93,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	if options.ServerOpts.EnableCacheDumper {
 		pc.dumper.ListenForSignal(stopCh)
 	}
+	go runSchedulerSocket()
 }
 
 func (pc *Scheduler) runOnce() {
@@ -195,6 +193,7 @@ func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 			klog.V(4).Infof("watch %s event: %v", pc.schedulerConf, event)
 			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
 				pc.loadSchedulerConf()
+				pc.cache.SetMetricsConf(pc.metricsConf)
 			}
 		case err, ok := <-errCh:
 			if !ok {
@@ -205,4 +204,14 @@ func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 			return
 		}
 	}
+}
+
+func runSchedulerSocket() {
+	fs := flag.CommandLine
+	startKlogLevel := fs.Lookup("v").Value.String()
+	socketDir := os.Getenv(util.SocketDirEnvName)
+	if socketDir == "" {
+		socketDir = util.DefaultSocketDir
+	}
+	util.ListenAndServeKlogLogLevel("klog", startKlogLevel, socketDir)
 }

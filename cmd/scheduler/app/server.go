@@ -74,12 +74,7 @@ func Run(opt *options.ServerOption) error {
 		}
 	}
 
-	sched, err := scheduler.NewScheduler(config,
-		opt.SchedulerNames,
-		opt.SchedulerConf,
-		opt.SchedulePeriod,
-		opt.DefaultQueue,
-		opt.NodeSelector)
+	sched, err := scheduler.NewScheduler(config, opt)
 	if err != nil {
 		panic(err)
 	}
@@ -92,7 +87,7 @@ func Run(opt *options.ServerOption) error {
 	}
 
 	if opt.EnableHealthz {
-		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-scheduler", opt.CertData, opt.KeyData); err != nil {
+		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-scheduler", opt.CaCertData, opt.CertData, opt.KeyData); err != nil {
 			return err
 		}
 	}
