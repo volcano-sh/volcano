@@ -210,6 +210,10 @@ func ConvertRes2ResList(res *api.Resource) v1.ResourceList {
 	rl[v1.ResourceCPU] = *resource.NewMilliQuantity(int64(res.MilliCPU), resource.DecimalSI)
 	rl[v1.ResourceMemory] = *resource.NewQuantity(int64(res.Memory), resource.BinarySI)
 	for resourceName, f := range res.ScalarResources {
+		if resourceName == v1.ResourcePods {
+			rl[resourceName] = *resource.NewQuantity(int64(f), resource.DecimalSI)
+			continue
+		}
 		rl[resourceName] = *resource.NewMilliQuantity(int64(f), resource.DecimalSI)
 	}
 	return rl
