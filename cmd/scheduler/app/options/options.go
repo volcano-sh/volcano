@@ -79,6 +79,11 @@ type ServerOption struct {
 	NodeSelector      []string
 	EnableCacheDumper bool
 	NodeWorkerThreads uint32
+
+	// IgnoredCSIProvisioners contains a list of provisioners, and pod request pvc with these provisioners will
+	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
+	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
+	IgnoredCSIProvisioners []string
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -134,6 +139,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
+	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.

@@ -74,6 +74,9 @@ const (
 	defaultMetricsInternal = 30 * time.Second
 )
 
+// defaultIgnoredProvisioners contains provisioners that will be ignored during pod pvc request computation and preemption.
+var defaultIgnoredProvisioners = []string{"rancher.io/local-path", "hostpath.csi.k8s.io"}
+
 func init() {
 	schemeBuilder := runtime.SchemeBuilder{
 		v1.AddToScheme,
@@ -83,8 +86,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers)
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners)
 }
 
 // SchedulerCache cache for the kube batch
@@ -148,6 +151,11 @@ type SchedulerCache struct {
 	imageStates map[string]*imageState
 
 	nodeWorkers uint32
+
+	// IgnoredCSIProvisioners contains a list of provisioners, and pod request pvc with these provisioners will
+	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
+	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
+	IgnoredCSIProvisioners sets.Set[string]
 }
 
 type imageState struct {
@@ -397,7 +405,7 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	return job, nil
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -460,6 +468,13 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		NodeList:    []string{},
 		nodeWorkers: nodeWorkers,
 	}
+
+	ignoredProvisionersSet := sets.New[string]()
+	for _, provisioner := range append(ignoredProvisioners, defaultIgnoredProvisioners...) {
+		ignoredProvisionersSet.Insert(provisioner)
+	}
+	sc.IgnoredCSIProvisioners = ignoredProvisionersSet
+
 	if len(nodeSelectors) > 0 {
 		for _, nodeSelectorLabel := range nodeSelectors {
 			nodeSelectorLabelLen := len(nodeSelectorLabel)
