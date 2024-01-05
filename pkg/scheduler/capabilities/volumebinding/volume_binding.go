@@ -35,6 +35,8 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/helper"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/names"
+
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 )
 
 const (
@@ -380,9 +382,12 @@ func New(ctx context.Context, plArgs runtime.Object, fh framework.Handle, fts fe
 	pvInformer := fh.SharedInformerFactory().Core().V1().PersistentVolumes()
 	storageClassInformer := fh.SharedInformerFactory().Storage().V1().StorageClasses()
 	csiNodeInformer := fh.SharedInformerFactory().Storage().V1().CSINodes()
-	capacityCheck := CapacityCheck{
-		CSIDriverInformer:          fh.SharedInformerFactory().Storage().V1().CSIDrivers(),
-		CSIStorageCapacityInformer: fh.SharedInformerFactory().Storage().V1().CSIStorageCapacities(),
+	var capacityCheck *CapacityCheck
+	if options.ServerOpts.EnableCSIStorage {
+		capacityCheck = &CapacityCheck{
+			CSIDriverInformer:          fh.SharedInformerFactory().Storage().V1().CSIDrivers(),
+			CSIStorageCapacityInformer: fh.SharedInformerFactory().Storage().V1beta1().CSIStorageCapacities(),
+		}
 	}
 	binder := NewVolumeBinder(klog.FromContext(ctx), fh.ClientSet(), podInformer, nodeInformer, csiNodeInformer, pvcInformer, pvInformer, storageClassInformer, capacityCheck, time.Duration(args.BindTimeoutSeconds)*time.Second)
 

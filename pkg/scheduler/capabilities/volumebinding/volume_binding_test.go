@@ -35,6 +35,8 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/runtime"
+
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 )
 
 var (
@@ -779,6 +781,9 @@ func TestVolumeBinding(t *testing.T) {
 		},
 	}
 
+	options.ServerOpts = &options.ServerOption{
+		EnableCSIStorage: true,
+	}
 	for _, item := range table {
 		t.Run(item.name, func(t *testing.T) {
 			_, ctx := ktesting.NewTestContext(t)
