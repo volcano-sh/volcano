@@ -184,8 +184,8 @@ func CreateCacheForTest(testArg *TestArg, highPriority, lowPriority int32) (*Sch
 	for _, pod := range testArg.Pods {
 		schedulerCache.AddPod(pod)
 	}
-	for _, ss := range testArg.PodGroups {
-		schedulerCache.AddPodGroupV1beta1(ss)
+	for _, pg := range testArg.PodGroups {
+		schedulerCache.AddPodGroupV1beta1(pg)
 	}
 	for _, q := range testArg.Queues {
 		schedulerCache.AddQueueV1beta1(q)
