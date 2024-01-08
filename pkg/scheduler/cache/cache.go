@@ -315,7 +315,8 @@ type defaultVolumeBinder struct {
 
 // AllocateVolumes allocates volume on the host to the task
 func (dvb *defaultVolumeBinder) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
-	allBound, err := dvb.volumeBinder.AssumePodVolumes(task.Pod, hostname, podVolumes)
+	logger := klog.FromContext(context.TODO())
+	allBound, err := dvb.volumeBinder.AssumePodVolumes(logger, task.Pod, hostname, podVolumes)
 	task.VolumeReady = allBound
 
 	return err
@@ -334,7 +335,8 @@ func (dvb *defaultVolumeBinder) RevertVolumes(task *schedulingapi.TaskInfo, podV
 // GetPodVolumes get pod volume on the host
 func (dvb *defaultVolumeBinder) GetPodVolumes(task *schedulingapi.TaskInfo,
 	node *v1.Node) (podVolumes *volumescheduling.PodVolumes, err error) {
-	podVolumeClaims, err := dvb.volumeBinder.GetPodVolumeClaims(task.Pod)
+	logger := klog.FromContext(context.TODO())
+	podVolumeClaims, err := dvb.volumeBinder.GetPodVolumeClaims(logger, task.Pod)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +344,7 @@ func (dvb *defaultVolumeBinder) GetPodVolumes(task *schedulingapi.TaskInfo,
 	// 	return nil, fmt.Errorf("pod has unbound immediate PersistentVolumeClaims")
 	// }
 
-	podVolumes, reasons, err := dvb.volumeBinder.FindPodVolumes(task.Pod, podVolumeClaims, node)
+	podVolumes, reasons, err := dvb.volumeBinder.FindPodVolumes(logger, task.Pod, podVolumeClaims, node)
 	if err != nil {
 		return nil, err
 	} else if len(reasons) > 0 {
@@ -406,6 +408,7 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 }
 
 func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) *SchedulerCache {
+	logger := klog.FromContext(context.TODO())
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -615,6 +618,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 
 	sc.VolumeBinder = &defaultVolumeBinder{
 		volumeBinder: volumescheduling.NewVolumeBinder(
+			logger,
 			sc.kubeClient,
 			sc.podInformer,
 			sc.nodeInformer,

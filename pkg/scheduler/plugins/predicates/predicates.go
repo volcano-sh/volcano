@@ -233,6 +233,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	pCache := predicateCacheNew()
 	predicate := enablePredicate(pp.pluginArguments)
 
+	ctx := context.TODO()
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
@@ -301,7 +302,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				}
 			}
 
-			err := node.RemovePod(pod)
+			err := node.RemovePod(klog.FromContext(ctx), pod)
 			if err != nil {
 				klog.Errorf("predicates, remove pod %s/%s from node [%s] error: %v", pod.Namespace, pod.Name, nodeName, err)
 				return
@@ -311,7 +312,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	features := feature.Features{
-		EnableReadWriteOncePod:                       utilFeature.DefaultFeatureGate.Enabled(features.ReadWriteOncePod),
 		EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
 		EnableMinDomainsInPodTopologySpread:          utilFeature.DefaultFeatureGate.Enabled(features.MinDomainsInPodTopologySpread),
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
@@ -321,34 +321,34 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
 	handle := k8s.NewFrameworkHandle(nodeMap, ssn.KubeClient(), ssn.InformerFactory())
 	// 1. NodeUnschedulable
-	plugin, _ := nodeunschedulable.New(nil, handle)
+	plugin, _ := nodeunschedulable.New(context.TODO(), nil, handle)
 	nodeUnscheduleFilter := plugin.(*nodeunschedulable.NodeUnschedulable)
 	// 2. NodeAffinity
 	nodeAffinityArgs := config.NodeAffinityArgs{
 		AddedAffinity: &v1.NodeAffinity{},
 	}
-	plugin, _ = nodeaffinity.New(&nodeAffinityArgs, handle)
+	plugin, _ = nodeaffinity.New(context.TODO(), &nodeAffinityArgs, handle)
 	nodeAffinityFilter := plugin.(*nodeaffinity.NodeAffinity)
 	// 3. NodePorts
-	plugin, _ = nodeports.New(nil, handle)
+	plugin, _ = nodeports.New(context.TODO(), nil, handle)
 	nodePortFilter := plugin.(*nodeports.NodePorts)
 	// 4. TaintToleration
-	plugin, _ = tainttoleration.New(nil, handle)
+	plugin, _ = tainttoleration.New(context.TODO(), nil, handle)
 	tolerationFilter := plugin.(*tainttoleration.TaintToleration)
 	// 5. InterPodAffinity
 	plArgs := &config.InterPodAffinityArgs{}
-	plugin, _ = interpodaffinity.New(plArgs, handle)
+	plugin, _ = interpodaffinity.New(context.TODO(), plArgs, handle)
 	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
 	// 6. NodeVolumeLimits
-	plugin, _ = nodevolumelimits.NewCSI(nil, handle, features)
+	plugin, _ = nodevolumelimits.NewCSI(context.TODO(), nil, handle, features)
 	nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
 	// 7. VolumeZone
-	plugin, _ = volumezone.New(nil, handle)
+	plugin, _ = volumezone.New(context.TODO(), nil, handle)
 	volumeZoneFilter := plugin.(*volumezone.VolumeZone)
 	// 8. PodTopologySpread
 	// Setting cluster level default constraints is not support for now.
 	ptsArgs := &config.PodTopologySpreadArgs{DefaultingType: config.SystemDefaulting}
-	plugin, _ = podtopologyspread.New(ptsArgs, handle, features)
+	plugin, _ = podtopologyspread.New(context.TODO(), ptsArgs, handle, features)
 	podTopologySpreadFilter := plugin.(*podtopologyspread.PodTopologySpread)
 
 	state := k8sframework.NewCycleState()

@@ -18,11 +18,12 @@ package policy
 
 import (
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask"
+	"k8s.io/utils/cpuset"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 

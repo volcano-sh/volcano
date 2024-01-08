@@ -76,7 +76,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 			Spec: v12.PersistentVolumeClaimSpec{
 				StorageClassName: &storageClsName,
 				VolumeName:       pvName,
-				Resources: v12.ResourceRequirements{
+				Resources: v12.VolumeResourceRequirements{
 					Requests: v12.ResourceList{
 						v12.ResourceName(v12.ResourceStorage): resource.MustParse("1Gi"),
 					},
@@ -90,7 +90,7 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 		Expect(err1).NotTo(HaveOccurred(), "pvc creation")
 
 		pvSpec := &v12.PersistentVolumeClaimSpec{
-			Resources: v12.ResourceRequirements{
+			Resources: v12.VolumeResourceRequirements{
 				Requests: v12.ResourceList{
 					v12.ResourceName(v12.ResourceStorage): resource.MustParse("1Gi"),
 				},

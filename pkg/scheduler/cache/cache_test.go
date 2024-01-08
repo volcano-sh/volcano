@@ -32,6 +32,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -316,6 +318,7 @@ func TestNodeOperation(t *testing.T) {
 }
 
 func TestBindTasks(t *testing.T) {
+	logger := klog.FromContext(context.TODO())
 	owner := buildOwnerReference("j1")
 	scheduler := "fake-scheduler"
 
@@ -341,6 +344,7 @@ func TestBindTasks(t *testing.T) {
 	sc.Binder = &DefaultBinder{sc.kubeClient, sc.Recorder}
 	sc.VolumeBinder = &defaultVolumeBinder{
 		volumeBinder: volumescheduling.NewVolumeBinder(
+			logger,
 			sc.kubeClient,
 			sc.podInformer,
 			sc.nodeInformer,
