@@ -46,8 +46,11 @@ func (c *ConfigMapCase) ChangeBy(fn func(data map[string]string) (changed bool, 
 		schedulerPods, err := KubeClient.CoreV1().Pods("volcano-system").List(context.TODO(), metav1.ListOptions{LabelSelector: "app=volcano-scheduler"})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		for _, scheduler := range schedulerPods.Items {
-			if !strings.HasPrefix(scheduler.Name, "volcano-scheduler") {
+			if !strings.Contains(scheduler.Name, "scheduler") {
 				continue
+			}
+			if scheduler.Annotations == nil {
+				scheduler.Annotations = make(map[string]string)
 			}
 			scheduler.Annotations["refreshts"] = time.Now().Format("060102150405.000")
 			_, err = KubeClient.CoreV1().Pods("volcano-system").Update(context.TODO(), &scheduler, metav1.UpdateOptions{})
