@@ -67,8 +67,8 @@ const (
 	// 101 means wo don't assign defaultMemPercentage value
 	DefaultMemPercentage = 101
 
-	idleFirstFitMultiplier = 1
-	bestFitMultiplier      = 1
+	idleFirstFitMultiplier = 100
+	bestFitMultiplier      = 100
 )
 
 type ContainerDeviceRequest struct {
