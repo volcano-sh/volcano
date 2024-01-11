@@ -177,6 +177,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	args.GetBool(&predicate.podTopologySpreadEnable, PodTopologySpreadEnable)
 
 	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
+	// TODO: move these arguments to a seperate plugin to ease the burden of predicates
 	args.GetBool(&gpushare.GpuSharingEnable, GPUSharingPredicate)
 	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
 	args.GetBool(&gpushare.NodeLockEnable, NodeLockEnable)

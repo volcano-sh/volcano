@@ -305,9 +305,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 				return 0, status.AsError()
 			}
 
-			// TODO: should we normalize the score
-			// If nodeAffinityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-			nodeScore += float64(score) * float64(weight.nodeAffinityWeight)
+			// TODO: we should use a seperate plugin for devices, and seperate them from predicates and nodeOrder plugin.
+			nodeScore += float64(score) * float64(weight.deviceScoreWeight)
 			klog.V(5).Infof("Node: %s, task<%s/%s> Device Score weight %d, score: %f", node.Name, task.Namespace, task.Name, weight.deviceScoreWeight, float64(score)*float64(weight.deviceScoreWeight))
 		}
 
