@@ -195,7 +195,7 @@ tiers:
 
 	_, tiers, configurations, _, err := unmarshalSchedulerConf(configuration)
 	if err != nil {
-		t.Errorf("Failed to load scheduler configuration: %v", err)
+		t.Errorf("Failed to load Scheduler configuration: %v", err)
 	}
 	if !reflect.DeepEqual(tiers, expectedTiers) {
 		t.Errorf("Failed to set default settings for plugins, expected: %+v, got %+v",
