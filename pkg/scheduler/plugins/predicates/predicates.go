@@ -233,7 +233,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	pCache := predicateCacheNew()
 	predicate := enablePredicate(pp.pluginArguments)
 
-	ctx := context.TODO()
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
@@ -302,7 +301,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				}
 			}
 
-			err := node.RemovePod(klog.FromContext(ctx), pod)
+			err := node.RemovePod(klog.FromContext(context.TODO()), pod)
 			if err != nil {
 				klog.Errorf("predicates, remove pod %s/%s from node [%s] error: %v", pod.Namespace, pod.Name, nodeName, err)
 				return
@@ -358,8 +357,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// Check NodePorts
 		if predicate.nodePortEnable {
 			_, status := nodePortFilter.PreFilter(context.TODO(), state, task.Pod)
-			if !status.IsSuccess() {
-				return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
+			if err := handleSkipPrePredicatePlugin(status, task, skipPlugins, nodeports.Name); err != nil {
+				return err
 			}
 		}
 
@@ -375,17 +374,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// the processing logic needs to be added to the return value result.
 		if predicate.podAffinityEnable {
 			_, status := podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
-			if status.IsSkip() {
-				taskKey := api.PodKey(task.Pod)
-				if _, ok := skipPlugins[taskKey]; !ok {
-					plugins := sets.New[string]()
-					skipPlugins[taskKey] = plugins
-				}
-				skipPlugins[taskKey].Insert(interpodaffinity.Name)
-				klog.V(3).Infof("pod(%s/%s) affinity require information is nil, plugin InterPodAffinity is skipped",
-					task.Namespace, task.Name)
-			} else if !status.IsSuccess() {
-				return fmt.Errorf("plugin %s pre-predicates failed %s", interpodaffinity.Name, status.Message())
+			if err := handleSkipPrePredicatePlugin(status, task, skipPlugins, interpodaffinity.Name); err != nil {
+				return err
 			}
 		}
 
@@ -401,8 +391,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// the processing logic needs to be added to the return value result.
 		if predicate.podTopologySpreadEnable {
 			_, status := podTopologySpreadFilter.PreFilter(context.TODO(), state, task.Pod)
-			if !status.IsSuccess() {
-				return fmt.Errorf("plugin %s pre-predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
+			if err := handleSkipPrePredicatePlugin(status, task, skipPlugins, podTopologySpreadFilter.Name()); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -483,25 +473,20 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// Check NodePort
 		if predicate.nodePortEnable {
-			status := nodePortFilter.Filter(context.TODO(), state, nil, nodeInfo)
-			nodePortStatus := framework.ConvertPredicateStatus(status)
-			if nodePortStatus.Code != api.Success {
-				predicateStatus = append(predicateStatus, nodePortStatus)
-				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", nodePortFilter.Name(), status.Message())
+			isSkipNodePorts := handleSkipPredicatePlugin(task, skipPlugins, nodePortFilter.Name(), node)
+			if !isSkipNodePorts {
+				status := nodePortFilter.Filter(context.TODO(), state, nil, nodeInfo)
+				nodePortStatus := framework.ConvertPredicateStatus(status)
+				if nodePortStatus.Code != api.Success {
+					predicateStatus = append(predicateStatus, nodePortStatus)
+					return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", nodePortFilter.Name(), status.Message())
+				}
 			}
 		}
 
 		// Check PodAffinity
 		if predicate.podAffinityEnable {
-			isSkipInterPodAffinity := false
-			taskKey := api.PodKey(task.Pod)
-			if plugins, ok := skipPlugins[taskKey]; ok {
-				if plugins.Has(interpodaffinity.Name) {
-					isSkipInterPodAffinity = true
-					klog.V(5).Infof("pod(%s/%s) affinity require information is nil, plugin InterPodAffinity is skip for node %s",
-						task.Namespace, task.Name, node.Name)
-				}
-			}
+			isSkipInterPodAffinity := handleSkipPredicatePlugin(task, skipPlugins, podAffinityFilter.Name(), node)
 			if !isSkipInterPodAffinity {
 				status := podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 				podAffinityStatus := framework.ConvertPredicateStatus(status)
@@ -531,11 +516,14 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// Check PodTopologySpread
 		if predicate.podTopologySpreadEnable {
-			status := podTopologySpreadFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
-			podTopologyStatus := framework.ConvertPredicateStatus(status)
-			if podTopologyStatus.Code != api.Success {
-				predicateStatus = append(predicateStatus, podTopologyStatus)
-				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
+			isSkipPodTopologySpreadFilter := handleSkipPredicatePlugin(task, skipPlugins, podTopologySpreadFilter.Name(), node)
+			if !isSkipPodTopologySpreadFilter {
+				status := podTopologySpreadFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
+				podTopologyStatus := framework.ConvertPredicateStatus(status)
+				if podTopologyStatus.Code != api.Success {
+					predicateStatus = append(predicateStatus, podTopologyStatus)
+					return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
+				}
 			}
 		}
 
@@ -580,6 +568,35 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		return predicateStatus, nil
 	})
+}
+
+func handleSkipPredicatePlugin(task *api.TaskInfo, skipPlugins map[api.TaskID]sets.Set[string], pluginName string, node *api.NodeInfo) bool {
+	isSkipPluginFilter := false
+	taskKey := api.PodKey(task.Pod)
+	if plugins, ok := skipPlugins[taskKey]; ok {
+		if plugins.Has(pluginName) {
+			isSkipPluginFilter = true
+			klog.V(5).Infof("pod(%s/%s) affinity require information is nil, plugin %s is skip for node %s",
+				task.Namespace, task.Name, pluginName, node.Name)
+		}
+	}
+	return isSkipPluginFilter
+}
+
+func handleSkipPrePredicatePlugin(status *k8sframework.Status, task *api.TaskInfo, skipPlugins map[api.TaskID]sets.Set[string], pluginName string) error {
+	if status.IsSkip() {
+		taskKey := api.PodKey(task.Pod)
+		if _, ok := skipPlugins[taskKey]; !ok {
+			plugins := sets.New[string]()
+			skipPlugins[taskKey] = plugins
+		}
+		skipPlugins[taskKey].Insert(pluginName)
+		klog.V(5).Infof("pod(%s/%s) affinity require information is nil, plugin %s is skipped",
+			task.Namespace, task.Name, pluginName)
+	} else if !status.IsSuccess() {
+		return fmt.Errorf("plugin %s pre-predicates failed %s", pluginName, status.Message())
+	}
+	return nil
 }
 
 func (pp *predicatesPlugin) OnSessionClose(ssn *framework.Session) {}
