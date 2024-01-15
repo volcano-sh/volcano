@@ -58,12 +58,15 @@ func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
 }
 
 // CreateQueue creates Queue with the specified name
-func CreateQueue(ctx *TestContext, q string) {
+func CreateQueue(ctx *TestContext, q, deservedResource string) {
 	_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 	if err != nil {
 		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: q,
+				Annotations: map[string]string{
+					"volcano.sh/deserved-resources": deservedResource,
+				},
 			},
 			Spec: schedulingv1beta1.QueueSpec{
 				Weight: 1,
@@ -78,7 +81,7 @@ func CreateQueues(ctx *TestContext) {
 	By("Creating Queues")
 
 	for _, queue := range ctx.Queues {
-		CreateQueue(ctx, queue)
+		CreateQueue(ctx, queue, ctx.DeservedResource[queue])
 	}
 
 	// wait for all queues state open
