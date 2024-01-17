@@ -97,7 +97,7 @@ func NewResource(rl v1.ResourceList) *Resource {
 				if !ignore {
 					r.AddScalar(rName, float64(rQuant.MilliValue()))
 				} else {
-					klog.V(4).Infof("Ignoring resource", rName.String())
+					klog.V(4).Infof("Ignoring resource %s", rName.String())
 				}
 			}
 		}

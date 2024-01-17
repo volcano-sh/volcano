@@ -18,7 +18,7 @@ ADD . volcano
 RUN cd volcano && make vc-webhook-manager
 
 FROM alpine:latest
-ARG KUBE_VERSION="1.27.0"
+ARG KUBE_VERSION="1.29.0"
 ARG TARGETARCH
 RUN apk add --update ca-certificates && \
     apk add --update openssl && \

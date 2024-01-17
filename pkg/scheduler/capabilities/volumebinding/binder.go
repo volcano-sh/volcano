@@ -523,6 +523,11 @@ func (b *volumeBinder) BindPodVolumes(ctx context.Context, assumedPod *v1.Pod, p
 		}
 	}()
 
+	if podVolumes == nil {
+		klog.Infof("BindPodVolumes for pod(%s): pod volumes is nil", assumedPod.Name)
+		return nil
+	}
+
 	bindings := podVolumes.StaticBindings
 	claimsToProvision := podVolumes.DynamicProvisions
 
@@ -985,7 +990,6 @@ func (b *volumeBinder) checkVolumeProvisions(logger klog.Logger, pod *v1.Pod, cl
 		}
 
 		dynamicProvisions = append(dynamicProvisions, claim)
-
 	}
 	logger.V(4).Info("Provisioning for claims of pod that has no matching volumes...", "claimCount", len(claimsToProvision), "pod", klog.KObj(pod), "node", klog.KObj(node))
 
