@@ -24,7 +24,6 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -61,32 +60,8 @@ func TestReclaim(t *testing.T) {
 		{
 			name: "Two Queue with one Queue overusing resource, should reclaim",
 			podGroups: []*schedulingv1beta1.PodGroup{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg1",
-						Namespace: "c1",
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue:             "q1",
-						PriorityClassName: "low-priority",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupInqueue,
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg2",
-						Namespace: "c1",
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue:             "q2",
-						PriorityClassName: "high-priority",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupInqueue,
-					},
-				},
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 0, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
 			},
 			pods: []*v1.Pod{
 				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
@@ -98,22 +73,8 @@ func TestReclaim(t *testing.T) {
 				util.BuildNode("n1", api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
 			},
 			queues: []*schedulingv1beta1.Queue{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "q1",
-					},
-					Spec: schedulingv1beta1.QueueSpec{
-						Weight: 1,
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "q2",
-					},
-					Spec: schedulingv1beta1.QueueSpec{
-						Weight: 1,
-					},
-				},
+				util.BuildQueue("q1", 1, nil),
+				util.BuildQueue("q2", 1, nil),
 			},
 			expected: 1,
 		},
