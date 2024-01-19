@@ -123,6 +123,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.admission_resources`|Resources for Admission pods|`~`|
 |`custom.controller_resources`|Resources for Controller pods|`~`|
 |`custom.scheduler_resources`|Resources for Scheduler pods|`~`|
+|`custom.webhooks_namespace_selector_expressions`|Additional namespace selector expressions for Volcano admission webhooks|`~`|
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 

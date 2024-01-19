@@ -39,7 +39,7 @@ case2: recommend queue can use private cloud nodes or public cloud nodes, but tt
 
 affinity configure:
 1. affinity.nodeGroupAffinity.requiredDuringSchedulingIgnoredDuringExecution, hard constraints, such as `nlp = nodegroup1,nodegroup2`, it means that task in queue=nlp can ony run on the nodes in nodegroup1 or nodegroup2.
-2. affinity.nodeGroupAffinity.preferredDuringSchedulingIgnoredDuringExecution, soft constraints, such as `nlp = nodegroup1`, it means that task in queue=nlp runs on nodegroup1 first, but if the resources of nodegroup1 is insufficient, it can also run on other nodegroups.
+2. affinity.nodeGroupAffinity.preferredDuringSchedulingIgnoredDuringExecution, soft constraints, such as `nlp = nodegroup1`, it means that task in queue=nlp runs on nodegroup1 first, but if the resources of nodegroup1 is insufficient, it can also run on other nodegroups. Combine rule1 and rule2, task in queue=nlp runs on nodegroup1 first,  but if the resources of nodegroup1 is insufficient, it can also run on nodegroup2.
 3. affinity.nodeGroupAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution, hard constraints, such as `nlp = nodegroup1`, it means that task in queue=nlp can run on any nodegroups but nodegroup1.
 4. affinity.nodeGroupAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution, soft constraints, such as `nlp = nodegroup1`, it means that task in queue=nlp runs on any other nodegroups, but if the resources of other nodegroup is insufficient, it can also run on nodegroup1.
 
@@ -66,3 +66,11 @@ risk: The resources of the queue can not be too different from the resources of 
 ## Implement
 
 Hard constraints are implemented by using PredicateFn, and soft constraints are implemented by using NodeOrderFn.
+
+predict flow chart:
+
+![](images/nodegroup_plugin-predict-1.png)
+
+score flow chart:
+
+![](images/nodegroup_plugin-score-1.png)

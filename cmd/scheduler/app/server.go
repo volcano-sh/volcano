@@ -23,9 +23,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	"volcano.sh/apis/pkg/apis/helpers"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
@@ -34,11 +33,15 @@ import (
 	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/version"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 
 	// Register gcp auth
@@ -47,6 +50,9 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
+
+	// Register rest client metrics
+	_ "k8s.io/component-base/metrics/prometheus/restclient"
 )
 
 const (
@@ -81,7 +87,7 @@ func Run(opt *options.ServerOption) error {
 
 	if opt.EnableMetrics {
 		go func() {
-			http.Handle("/metrics", promhttp.Handler())
+			http.Handle("/metrics", promHandler())
 			klog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
 		}()
 	}
@@ -146,4 +152,11 @@ func Run(opt *options.ServerOption) error {
 		},
 	})
 	return fmt.Errorf("lost lease")
+}
+
+func promHandler() http.Handler {
+	// Unregister go and process related collector because it's duplicated and `legacyregistry.DefaultGatherer` also has registered them.
+	prometheus.DefaultRegisterer.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	prometheus.DefaultRegisterer.Unregister(collectors.NewGoCollector())
+	return promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.Gatherers{prometheus.DefaultGatherer, legacyregistry.DefaultGatherer}, promhttp.HandlerOpts{}))
 }

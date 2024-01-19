@@ -127,7 +127,12 @@ func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int
 				return volumes, err
 			}
 		}
+
 		driverName := sc.getCSIDriverInfo(pvc)
+		if sc.isIgnoredProvisioner(driverName) {
+			klog.V(5).InfoS("Provisioner ignored, skip count pod pvc num", "driverName", driverName)
+			continue
+		}
 		if driverName == "" {
 			klog.V(5).InfoS("Could not find a CSI driver name for pvc(%s/%s), not counting volume", pvc.Namespace, pvc.Name)
 			continue
@@ -145,6 +150,10 @@ func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int
 		}
 	}
 	return volumes, nil
+}
+
+func (sc *SchedulerCache) isIgnoredProvisioner(driverName string) bool {
+	return sc.IgnoredCSIProvisioners.Has(driverName)
 }
 
 func (sc *SchedulerCache) getCSIDriverInfo(pvc *v1.PersistentVolumeClaim) string {

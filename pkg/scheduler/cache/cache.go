@@ -74,6 +74,9 @@ const (
 	defaultMetricsInternal = 30 * time.Second
 )
 
+// defaultIgnoredProvisioners contains provisioners that will be ignored during pod pvc request computation and preemption.
+var defaultIgnoredProvisioners = []string{"rancher.io/local-path", "hostpath.csi.k8s.io"}
+
 func init() {
 	schemeBuilder := runtime.SchemeBuilder{
 		v1.AddToScheme,
@@ -83,8 +86,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers)
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners)
 }
 
 // SchedulerCache cache for the kube batch
@@ -148,6 +151,11 @@ type SchedulerCache struct {
 	imageStates map[string]*imageState
 
 	nodeWorkers uint32
+
+	// IgnoredCSIProvisioners contains a list of provisioners, and pod request pvc with these provisioners will
+	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
+	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
+	IgnoredCSIProvisioners sets.Set[string]
 }
 
 type imageState struct {
@@ -157,8 +165,10 @@ type imageState struct {
 	nodes sets.String
 }
 
+// DefaultBinder with kube client and event recorder
 type DefaultBinder struct {
-	// kubeclient *kubernetes.Clientset
+	kubeclient kubernetes.Interface
+	recorder   record.EventRecorder
 }
 
 // Bind will send bind request to api server
@@ -166,7 +176,7 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	var errTasks []*schedulingapi.TaskInfo
 	for _, task := range tasks {
 		p := task.Pod
-		if err := kubeClient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
+		if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
 			&v1.Binding{
 				ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: p.Annotations},
 				Target: v1.ObjectReference{
@@ -178,6 +188,7 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 			klog.Errorf("Failed to bind pod <%v/%v> to node %s : %#v", p.Namespace, p.Name, task.NodeName, err)
 			errTasks = append(errTasks, task)
 		} else {
+			db.recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", task.Namespace, task.Name, task.NodeName)
 			metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time)) // update metrics as soon as pod is bind
 		}
 	}
@@ -189,8 +200,12 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	return nil, nil
 }
 
-func NewBinder() *DefaultBinder {
-	return &DefaultBinder{}
+// NewDefaultBinder create binder with kube client and event recorder, support fake binder if passed fake client and fake event recorder
+func NewDefaultBinder(kbclient kubernetes.Interface, record record.EventRecorder) *DefaultBinder {
+	return &DefaultBinder{
+		kubeclient: kbclient,
+		recorder:   record,
+	}
 }
 
 type defaultEvictor struct {
@@ -390,7 +405,7 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	return job, nil
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -453,6 +468,13 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		NodeList:    []string{},
 		nodeWorkers: nodeWorkers,
 	}
+
+	ignoredProvisionersSet := sets.New[string]()
+	for _, provisioner := range append(ignoredProvisioners, defaultIgnoredProvisioners...) {
+		ignoredProvisionersSet.Insert(provisioner)
+	}
+	sc.IgnoredCSIProvisioners = ignoredProvisionersSet
+
 	if len(nodeSelectors) > 0 {
 		for _, nodeSelectorLabel := range nodeSelectors {
 			nodeSelectorLabelLen := len(nodeSelectorLabel)
@@ -476,6 +498,10 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(sc.schedulerNames)})
 
 	sc.BindFlowChannel = make(chan *schedulingapi.TaskInfo, 5000)
+	if bindMethodMap == nil {
+		klog.V(3).Info("no registered bind method, new a default one")
+		bindMethodMap = NewDefaultBinder(sc.kubeClient, sc.Recorder)
+	}
 	sc.Binder = GetBindMethod()
 
 	var batchNum int
@@ -812,11 +838,6 @@ func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) {
 	errTasks, err := sc.Binder.Bind(sc.kubeClient, tasks)
 	if err == nil {
 		klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
-		// TODO: need to move this event recording into Bind so that record it as soon as pod is bind
-		for _, task := range tasks {
-			sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v",
-				task.Namespace, task.Name, task.NodeName)
-		}
 	} else {
 		for _, task := range errTasks {
 			klog.V(2).Infof("resyncTask task %s", task.Name)
@@ -931,6 +952,12 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 func (sc *SchedulerCache) deleteJob(job *schedulingapi.JobInfo) {
 	klog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
 
+	sc.DeletedJobs.Add(job)
+}
+
+func (sc *SchedulerCache) retryDeleteJob(job *schedulingapi.JobInfo) {
+	klog.V(3).Infof("Retry to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
+
 	sc.DeletedJobs.AddRateLimited(job)
 }
 
@@ -955,9 +982,10 @@ func (sc *SchedulerCache) processCleanupJob() {
 		delete(sc.Jobs, job.UID)
 		metrics.DeleteJobMetrics(job.Name, string(job.Queue), job.Namespace)
 		klog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
+		sc.DeletedJobs.Forget(obj)
 	} else {
 		// Retry
-		sc.deleteJob(job)
+		sc.retryDeleteJob(job)
 	}
 }
 
