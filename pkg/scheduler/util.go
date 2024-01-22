@@ -30,7 +30,7 @@ import (
 	"volcano.sh/volcano/pkg/util"
 )
 
-var defaultSchedulerConf = `
+var DefaultSchedulerConf = `
 actions: "enqueue, allocate, backfill"
 tiers:
 - plugins:
@@ -45,7 +45,7 @@ tiers:
   - name: nodeorder
 `
 
-func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []conf.Configuration, map[string]string, error) {
+func UnmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []conf.Configuration, map[string]string, error) {
 	var actions []framework.Action
 
 	schedulerConf := &conf.SchedulerConfiguration{}
