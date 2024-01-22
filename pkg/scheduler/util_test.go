@@ -193,7 +193,7 @@ tiers:
 
 	var expectedConfigurations []conf.Configuration
 
-	_, tiers, configurations, _, err := unmarshalSchedulerConf(configuration)
+	_, tiers, configurations, _, err := UnmarshalSchedulerConf(configuration)
 	if err != nil {
 		t.Errorf("Failed to load scheduler configuration: %v", err)
 	}
