@@ -165,7 +165,7 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 			}
 			if len(candidates) == 0 {
 				victims = nil
-				break
+				return nil
 			}
 			if !init {
 				victims = candidates
