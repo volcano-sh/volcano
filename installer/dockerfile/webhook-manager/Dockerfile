@@ -14,13 +14,17 @@
 
 FROM golang:1.20.1 AS builder
 WORKDIR /go/src/volcano.sh/
+COPY go.mod go.sum ./
+RUN go mod download
 ADD . volcano
 RUN cd volcano && make vc-webhook-manager
 
 FROM alpine:latest
 ARG KUBE_VERSION="1.27.0"
 ARG TARGETARCH
-RUN apk add --update ca-certificates && \
+ARG APK_MIRROR
+RUN if [[ -n "$APK_MIRROR" ]]; then sed -i "s@https://dl-cdn.alpinelinux.org@${APK_MIRROR}@g" /etc/apk/repositories ; fi && \
+    apk add --update ca-certificates && \
     apk add --update openssl && \
     apk add --update -t deps curl && \
     curl -L https://storage.googleapis.com/kubernetes-release/release/v$KUBE_VERSION/bin/linux/$TARGETARCH/kubectl -o /usr/local/bin/kubectl && \

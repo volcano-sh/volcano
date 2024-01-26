@@ -14,6 +14,8 @@
 
 FROM golang:1.20.1 AS builder
 WORKDIR /go/src/volcano.sh/
+COPY go.mod go.sum ./
+RUN go mod download
 ADD . volcano
 RUN cd volcano && make vc-scheduler
 
