@@ -39,9 +39,6 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
-	"volcano.sh/volcano/pkg/scheduler/api/devices"
-	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
-	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 )
@@ -70,13 +67,6 @@ const (
 
 	// PodTopologySpreadEnable is the key for enabling Pod Topology Spread Predicates in scheduler configmap
 	PodTopologySpreadEnable = "predicate.PodTopologySpreadEnable"
-
-	// GPUSharingPredicate is the key for enabling GPU Sharing Predicate in YAML
-	GPUSharingPredicate = "predicate.GPUSharingEnable"
-	NodeLockEnable      = "predicate.NodeLockEnable"
-	GPUNumberPredicate  = "predicate.GPUNumberEnable"
-
-	VGPUEnable = "predicate.VGPUEnable"
 
 	// CachePredicate control cache predicate feature
 	CachePredicate = "predicate.CacheEnable"
@@ -176,18 +166,6 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	args.GetBool(&predicate.volumeZoneEnable, VolumeZoneEnable)
 	args.GetBool(&predicate.podTopologySpreadEnable, PodTopologySpreadEnable)
 
-	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
-	args.GetBool(&gpushare.GpuSharingEnable, GPUSharingPredicate)
-	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
-	args.GetBool(&gpushare.NodeLockEnable, NodeLockEnable)
-	args.GetBool(&vgpu.VGPUEnable, VGPUEnable)
-
-	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {
-		klog.Fatal("can not define true in both gpu sharing and gpu number")
-	}
-	if (gpushare.GpuSharingEnable || gpushare.GpuNumberEnable) && vgpu.VGPUEnable {
-		klog.Fatal("gpu-share and vgpu can't be used together")
-	}
 	args.GetBool(&predicate.cacheEnable, CachePredicate)
 	// Checks whether predicate.ProportionalEnable is provided or not, if given, modifies the value in predicateEnable struct.
 	args.GetBool(&predicate.proportionalEnable, ProportionalPredicate)
@@ -538,35 +516,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				return predicateStatus, fmt.Errorf("plugin %s predicates failed %s", podTopologySpreadFilter.Name(), status.Message())
 			}
 		}
-
-		for _, val := range api.RegisteredDevices {
-			if dev, ok := node.Others[val].(api.Devices); ok {
-				if dev == nil {
-					predicateStatus = append(predicateStatus, &api.Status{
-						Code:   devices.Unschedulable,
-						Reason: "node not initialized with device" + val,
-					})
-					return predicateStatus, fmt.Errorf("node not initialized with device %s", val)
-				}
-				code, msg, err := dev.FilterNode(task.Pod)
-				filterNodeStatus := &api.Status{
-					Code:   code,
-					Reason: msg,
-				}
-				if err != nil {
-					return predicateStatus, err
-				}
-				if filterNodeStatus.Code != api.Success {
-					predicateStatus = append(predicateStatus, filterNodeStatus)
-					return predicateStatus, fmt.Errorf("plugin device filternode predicates failed %s", msg)
-				}
-			} else {
-				klog.Warningf("Devices %s assertion conversion failed, skip", val)
-			}
-		}
-
-		klog.V(4).Infof("checkNodeGPUPredicate predicates Task <%s/%s> on Node <%s>: fit %v",
-			task.Namespace, task.Name, node.Name, fit)
 
 		if predicate.proportionalEnable {
 			// Check ProportionalPredicate

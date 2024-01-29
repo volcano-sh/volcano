@@ -21,6 +21,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/binpack"
 	"volcano.sh/volcano/pkg/scheduler/plugins/cdp"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
+	"volcano.sh/volcano/pkg/scheduler/plugins/devices"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
@@ -43,6 +44,7 @@ func init() {
 	// Plugins for Jobs
 	framework.RegisterPluginBuilder(drf.PluginName, drf.New)
 	framework.RegisterPluginBuilder(gang.PluginName, gang.New)
+	framework.RegisterPluginBuilder(devices.PluginName, devices.New)
 	framework.RegisterPluginBuilder(predicates.PluginName, predicates.New)
 	framework.RegisterPluginBuilder(priority.PluginName, priority.New)
 	framework.RegisterPluginBuilder(nodeorder.PluginName, nodeorder.New)
