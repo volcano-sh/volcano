@@ -131,7 +131,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		now := time.Now()
 		if up.period == "" || now.Sub(node.ResourceUsage.MetricsTime) > MetricsActiveTime {
 			klog.V(4).Infof("The period(%s) is empty or the usage metrics data is not updated for more than %v minutes, "+
-				"Usage plugin filter for task %s/%s on node %s pass, metrics time is %v. ", up.period, task.Namespace, task.Name, node.Name, node.ResourceUsage.MetricsTime)
+				"Usage plugin filter for task %s/%s on node %s pass, metrics time is %v. ", up.period, MetricsActiveTime, task.Namespace, task.Name, node.Name, node.ResourceUsage.MetricsTime)
 
 			usageStatus.Code = api.Success
 			predicateStatus = append(predicateStatus, usageStatus)
@@ -163,7 +163,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		now := time.Now()
 		if up.period == "" || now.Sub(node.ResourceUsage.MetricsTime) > MetricsActiveTime {
 			klog.V(4).Infof("The period(%s) is empty or the usage metrics data is not updated for more than %v minutes, "+
-				"Usage plugin score for task %s/%s on node is 0, metrics time is %v. ", up.period, task.Namespace, task.Name, node.Name, node.ResourceUsage.MetricsTime)
+				"Usage plugin score for task %s/%s on node %s is 0, metrics time is %v. ", up.period, MetricsActiveTime, task.Namespace, task.Name, node.Name, node.ResourceUsage.MetricsTime)
 			return 0, nil
 		}
 

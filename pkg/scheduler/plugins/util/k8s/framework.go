@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
@@ -96,7 +97,7 @@ func (f *Framework) EventRecorder() events.EventRecorder {
 	return nil
 }
 
-func (f *Framework) AddNominatedPod(pod *framework.PodInfo, nominatingInfo *framework.NominatingInfo) {
+func (f *Framework) AddNominatedPod(logger klog.Logger, pod *framework.PodInfo, nominatingInfo *framework.NominatingInfo) {
 	panic("implement me")
 }
 
@@ -104,7 +105,7 @@ func (f *Framework) DeleteNominatedPodIfExists(pod *v1.Pod) {
 	panic("implement me")
 }
 
-func (f *Framework) UpdateNominatedPod(oldPod *v1.Pod, newPodInfo *framework.PodInfo) {
+func (f *Framework) UpdateNominatedPod(logger klog.Logger, oldPod *v1.Pod, newPodInfo *framework.PodInfo) {
 	panic("implement me")
 }
 
