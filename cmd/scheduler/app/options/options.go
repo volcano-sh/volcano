@@ -77,6 +77,7 @@ type ServerOption struct {
 	PercentageOfNodesToFind    int32
 
 	NodeSelector      []string
+	CacheDumpFileDir  string
 	EnableCacheDumper bool
 	NodeWorkerThreads uint32
 
@@ -86,6 +87,7 @@ type ServerOption struct {
 	IgnoredCSIProvisioners []string
 }
 
+// DecryptFunc is custom function to parse ca file
 type DecryptFunc func(c *ServerOption) error
 
 // ServerOpts server options.
@@ -138,6 +140,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
+	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 }
