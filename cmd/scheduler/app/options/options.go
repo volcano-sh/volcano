@@ -85,6 +85,9 @@ type ServerOption struct {
 	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
 	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
 	IgnoredCSIProvisioners []string
+
+	// CustomResourceGVR is a list of custom resource gvr, user can specify custom resource gvr and then volcano will cache them.
+	CustomResourceGVR []string
 }
 
 // DecryptFunc is custom function to parse ca file
@@ -143,6 +146,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
+	fs.StringSliceVar(&s.CustomResourceGVR, "custom-resource-gvr", nil, "The custom resource gvr, scheduler framework will cache those custom resources and are accessible."+
+		"The format is {resource}.{version}.{group}, eg test.v1.example.io")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.

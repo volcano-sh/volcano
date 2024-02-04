@@ -30,10 +30,13 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
 	schedv1 "k8s.io/client-go/informers/scheduling/v1"
@@ -86,8 +89,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners)
+func New(config *rest.Config, opt *options.ServerOption) Cache {
+	return newSchedulerCache(config, opt)
 }
 
 // SchedulerCache cache for the kube batch
@@ -95,6 +98,7 @@ type SchedulerCache struct {
 	sync.Mutex
 
 	kubeClient   kubernetes.Interface
+	dynClient    dynamic.Interface
 	restConfig   *rest.Config
 	vcClient     vcclient.Interface
 	defaultQueue string
@@ -142,6 +146,10 @@ type SchedulerCache struct {
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
+
+	DynInformerFactory dynamicinformer.DynamicSharedInformerFactory
+	CustomResources    map[schema.GroupVersionResource]map[string]schedulingapi.CustomResource
+	CustomResourceGVR  []string
 
 	BindFlowChannel chan *schedulingapi.TaskInfo
 	bindCache       []*schedulingapi.TaskInfo
@@ -492,7 +500,7 @@ func newDefaultQueue(vcClient vcclient.Interface, defaultQueue string) {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -507,7 +515,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	}
 
 	// create default queue
-	newDefaultQueue(vcClient, defaultQueue)
+	newDefaultQueue(vcClient, opt.DefaultQueue)
 	klog.Infof("Create init queue named default")
 
 	sc := &SchedulerCache{
@@ -519,27 +527,31 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		nodeQueue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:          kubeClient,
+		dynClient:           dynamic.NewForConfigOrDie(config),
 		vcClient:            vcClient,
 		restConfig:          config,
-		defaultQueue:        defaultQueue,
-		schedulerNames:      schedulerNames,
+		defaultQueue:        opt.DefaultQueue,
+		schedulerNames:      opt.SchedulerNames,
 		nodeSelectorLabels:  make(map[string]string),
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 		imageStates:         make(map[string]*imageState),
 
 		NodeList:    []string{},
-		nodeWorkers: nodeWorkers,
+		nodeWorkers: opt.NodeWorkerThreads,
+
+		CustomResources:   make(map[schema.GroupVersionResource]map[string]schedulingapi.CustomResource),
+		CustomResourceGVR: opt.CustomResourceGVR,
 	}
 
 	ignoredProvisionersSet := sets.New[string]()
-	for _, provisioner := range append(ignoredProvisioners, defaultIgnoredProvisioners...) {
+	for _, provisioner := range append(opt.IgnoredCSIProvisioners, defaultIgnoredProvisioners...) {
 		ignoredProvisionersSet.Insert(provisioner)
 	}
 	sc.IgnoredCSIProvisioners = ignoredProvisionersSet
 
-	if len(nodeSelectors) > 0 {
-		sc.updateNodeSelectors(nodeSelectors)
+	if len(opt.NodeSelector) > 0 {
+		sc.updateNodeSelectors(opt.NodeSelector)
 	}
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
@@ -757,12 +769,25 @@ func (sc *SchedulerCache) addEventHandler() {
 			DeleteFunc: sc.DeleteNumaInfoV1alpha1,
 		})
 	}
+
+	dynInformerFactory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(sc.dynClient, 0, v1.NamespaceAll, nil)
+	for _, val := range sc.CustomResourceGVR {
+		gvr, _ := schema.ParseResourceArg(val)
+		if _, ok := sc.CustomResources[*gvr]; !ok {
+			sc.CustomResources[*gvr] = make(map[string]schedulingapi.CustomResource)
+		}
+		if _, err := dynInformerFactory.ForResource(*gvr).Informer().AddEventHandler(GetEventHandlerByGVR(*gvr, sc)); err != nil {
+			klog.Fatal(err)
+		}
+	}
+	sc.DynInformerFactory = dynInformerFactory
 }
 
 // Run  starts the schedulerCache
 func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
+	sc.DynInformerFactory.Start(stopCh)
 	sc.WaitForCacheSync(stopCh)
 	for i := 0; i < int(sc.nodeWorkers); i++ {
 		go wait.Until(sc.runNodeWorker, 0, stopCh)
@@ -790,6 +815,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 	sc.informerFactory.WaitForCacheSync(stopCh)
 	sc.vcInformerFactory.WaitForCacheSync(stopCh)
+	sc.DynInformerFactory.WaitForCacheSync(stopCh)
 }
 
 // findJobAndTask returns job and the task info
@@ -951,6 +977,17 @@ func (sc *SchedulerCache) UpdateSchedulerNumaInfo(AllocatedSets map[string]sched
 // EventRecorder returns the Event Recorder
 func (sc *SchedulerCache) EventRecorder() record.EventRecorder {
 	return sc.Recorder
+}
+
+func (sc *SchedulerCache) UpdateCustomResource(gvr schema.GroupVersionResource, key string, new schedulingapi.CustomResource) error {
+	sc.Lock()
+	defer sc.Unlock()
+	if k, ok := sc.CustomResources[gvr]; ok {
+		if r, ok := k[key]; ok {
+			return r.Update(new)
+		}
+	}
+	return fmt.Errorf("update custom resource failed, gvr or resource key not exists, gvr: %s, key: %s", gvr, key)
 }
 
 // taskUnschedulable updates pod status of pending task
@@ -1192,13 +1229,14 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
-		Nodes:          make(map[string]*schedulingapi.NodeInfo),
-		Jobs:           make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Queues:         make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
-		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
-		NodeList:       make([]string, len(sc.NodeList)),
-		CSINodesStatus: make(map[string]*schedulingapi.CSINodeStatusInfo),
+		Nodes:           make(map[string]*schedulingapi.NodeInfo),
+		Jobs:            make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Queues:          make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		NamespaceInfo:   make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
+		RevocableNodes:  make(map[string]*schedulingapi.NodeInfo),
+		NodeList:        make([]string, len(sc.NodeList)),
+		CSINodesStatus:  make(map[string]*schedulingapi.CSINodeStatusInfo),
+		CustomResources: make(map[schema.GroupVersionResource]map[string]schedulingapi.CustomResource),
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)
@@ -1277,6 +1315,14 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
 		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
+
+	for gvr, value := range sc.CustomResources {
+		snapshot.CustomResources[gvr] = make(map[string]schedulingapi.CustomResource)
+		for name, resource := range value {
+			snapshot.CustomResources[gvr][name] = resource.DeepCopy()
+		}
+		klog.V(3).Infof("There are <%d> %s resources in total for scheduling", len(snapshot.CustomResources[gvr]), gvr)
+	}
 
 	return snapshot
 }

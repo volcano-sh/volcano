@@ -18,9 +18,11 @@ package cache
 
 import (
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	kcache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -87,6 +89,9 @@ type Cache interface {
 
 	// EventRecorder returns the event recorder
 	EventRecorder() record.EventRecorder
+
+	// UpdateCustomResource updates the extended resource saved in the scheduler cache
+	UpdateCustomResource(gvr schema.GroupVersionResource, key string, new api.CustomResource) error
 }
 
 // VolumeBinder interface for allocate and bind volumes
@@ -116,4 +121,15 @@ type StatusUpdater interface {
 // BatchBinder updates podgroup or job information
 type BatchBinder interface {
 	Bind(job *api.JobInfo, cluster string) (*api.JobInfo, error)
+}
+
+// CustomResourceEventHandlerFuncs maps gvr to corresponding event handler funcs.
+type CustomResourceEventHandlerFuncs map[schema.GroupVersionResource]kcache.ResourceEventHandler
+
+// CustomResourceEventHandler represents a custom handler.
+type CustomResourceEventHandler interface {
+	// Name the name of a custom handler.
+	Name() string
+	// EventHandlerFuncs returns handler funcs by gvr.
+	EventHandlerFuncs(gvr schema.GroupVersionResource) kcache.ResourceEventHandler
 }

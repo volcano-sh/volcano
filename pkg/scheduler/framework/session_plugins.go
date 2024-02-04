@@ -144,6 +144,16 @@ func (ssn *Session) AddJobStarvingFns(name string, fn api.ValidateFn) {
 	ssn.jobStarvingFns[name] = fn
 }
 
+// AddGenericPredicateFn add Predicate function
+func (ssn *Session) AddGenericPredicateFn(name string, pf api.GenericPredicateFn) {
+	ssn.genericPredicateFns[name] = pf
+}
+
+// AddGenericOrderFn add Order function
+func (ssn *Session) AddGenericOrderFn(name string, pf api.GenericOrderFn) {
+	ssn.genericOrderFns[name] = pf
+}
+
 // Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
@@ -762,4 +772,46 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 		}
 	}
 	return nodeScoreMap, nil
+}
+
+// GenericPredicateFn invoke generic predicate function of plugins
+func (ssn *Session) GenericPredicateFn(a ...interface{}) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPredicate) {
+				continue
+			}
+			pfn, found := ssn.genericPredicateFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(a...)
+			if err.Failed() {
+				return err.AsError()
+			}
+		}
+	}
+	return nil
+}
+
+// GenericOrderFn invoke generic order function of the plugins
+func (ssn *Session) GenericOrderFn(a ...interface{}) (float64, error) {
+	priorityScore := 0.0
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledNodeOrder) {
+				continue
+			}
+			pfn, found := ssn.genericOrderFns[plugin.Name]
+			if !found {
+				continue
+			}
+			score, err := pfn(a...)
+			if err != nil {
+				return 0, err.AsError()
+			}
+			priorityScore += score
+		}
+	}
+	return priorityScore, nil
 }
