@@ -71,7 +71,7 @@ data:
       - name: drf
       - name: predicates
         arguments:
-          predicates.VGPUEnable: true # enable vgpu
+          predicate.VGPUEnable: true # enable vgpu
       - name: proportion
       - name: nodeorder
       - name: binpack

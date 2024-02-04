@@ -65,7 +65,7 @@ data:
       - name: drf
       - name: predicates
         arguments:
-          predicates.GPUSharingEnable: true # enable gpu sharing
+          predicate.GPUSharingEnable: true # enable gpu sharing
       - name: proportion
       - name: nodeorder
       - name: binpack

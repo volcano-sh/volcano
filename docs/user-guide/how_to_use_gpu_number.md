@@ -65,7 +65,7 @@ data:
       - name: drf
       - name: predicates
         arguments:
-          predicates.GPUNumberEnable: true # enable gpu number
+          predicate.GPUNumberEnable: true # enable gpu number
       - name: proportion
       - name: nodeorder
       - name: binpack
