@@ -17,6 +17,8 @@
 package api
 
 import (
+	"sync"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -73,8 +75,32 @@ type Devices interface {
 // make sure GPUDevices implements Devices interface
 var _ Devices = new(gpushare.GPUDevices)
 
-var IgnoredDevicesList []string
-
 var RegisteredDevices = []string{
 	GPUSharingDevice, vgpu.DeviceName,
+}
+
+var IgnoredDevicesList = ignoredDevicesList{}
+
+type ignoredDevicesList struct {
+	sync.RWMutex
+	ignoredDevices []string
+}
+
+func (l *ignoredDevicesList) Set(deviceLists ...[]string) {
+	l.Lock()
+	defer l.Unlock()
+	l.ignoredDevices = l.ignoredDevices[:0]
+	for _, devices := range deviceLists {
+		l.ignoredDevices = append(l.ignoredDevices, devices...)
+	}
+}
+
+func (l *ignoredDevicesList) Range(f func(i int, device string) bool) {
+	l.RLock()
+	defer l.RUnlock()
+	for i, device := range l.ignoredDevices {
+		if !f(i, device) {
+			break
+		}
+	}
 }
