@@ -131,7 +131,7 @@ func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 				break
 			}
 			for index, gsdevice := range gs.Device {
-				if strings.Compare(gsdevice.UUID, deviceused.UUID) == 0 {
+				if gsdevice.UUID == deviceused.UUID {
 					klog.V(4).Infoln("VGPU recording pod", pod.Name, "device", deviceused)
 					gs.Device[index].UsedMem += uint(deviceused.Usedmem)
 					gs.Device[index].UsedNum++
@@ -156,7 +156,7 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 				break
 			}
 			for index, gsdevice := range gs.Device {
-				if strings.Compare(gsdevice.UUID, deviceused.UUID) == 0 {
+				if gsdevice.UUID == deviceused.UUID {
 					klog.V(4).Infoln("VGPU subsctracting pod", pod.Name, "device", deviceused)
 					gs.Device[index].UsedMem -= uint(deviceused.Usedmem)
 					gs.Device[index].UsedNum--
