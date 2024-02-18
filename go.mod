@@ -2,8 +2,6 @@ module volcano.sh/volcano
 
 go 1.21
 
-toolchain go1.21.10
-
 require (
 	github.com/agiledragon/gomonkey/v2 v2.2.0
 	github.com/elastic/go-elasticsearch/v7 v7.17.7
