@@ -26,7 +26,7 @@ After installed, update the scheduler configuration:
 kubectl edit cm -n volcano-system volcano-scheduler-configmap
 ```
 
-For volcano v1.8.2+(v1.8.2 included), use the following configMap 
+For volcano v1.8.2+(v1.8.2 excluded), use the following configMap 
 ```yaml
 kind: ConfigMap
 apiVersion: v1
@@ -52,7 +52,7 @@ data:
       - name: binpack
 ```
 
-For volcano v1.8.2-, use the following configMap 
+For volcano v1.8.2-(v1.8.2 included), use the following configMap 
 ```yaml
 kind: ConfigMap
 apiVersion: v1
