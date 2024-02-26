@@ -582,16 +582,20 @@ func (sc *SchedulerCache) addEventHandler() {
 	mySchedulerPodName, c := getMultiSchedulerInfo()
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
-	// even with no error returned. `PodDisruptionBudgets` informer is used by `Pdb` plugin
+	// even with no error returned.
 	// `Namespace` informer is used by `InterPodAffinity` plugin,
 	// `SelectorSpread` and `PodTopologySpread` plugins uses the following four so far.
-	informerFactory.Policy().V1().PodDisruptionBudgets().Informer()
 	informerFactory.Core().V1().Namespaces().Informer()
 	informerFactory.Core().V1().Services().Informer()
 	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
 		informerFactory.Core().V1().ReplicationControllers().Informer()
 		informerFactory.Apps().V1().ReplicaSets().Informer()
 		informerFactory.Apps().V1().StatefulSets().Informer()
+	}
+
+	// `PodDisruptionBudgets` informer is used by `Pdb` plugin
+	if utilfeature.DefaultFeatureGate.Enabled(features.PodDisruptionBudgetsSupport) {
+		informerFactory.Policy().V1().PodDisruptionBudgets().Informer()
 	}
 
 	// create informer for node information
