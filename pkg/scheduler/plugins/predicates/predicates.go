@@ -179,7 +179,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
 	args.GetBool(&gpushare.GpuSharingEnable, GPUSharingPredicate)
 	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
-	args.GetBool(&gpushare.NodeLockEnable, NodeLockEnable)
+	args.GetBool(&devices.NodeLockEnable, NodeLockEnable)
 	args.GetBool(&vgpu.VGPUEnable, VGPUEnable)
 
 	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {

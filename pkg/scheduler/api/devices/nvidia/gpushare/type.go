@@ -17,7 +17,6 @@ limitations under the License.
 package gpushare
 
 var GpuSharingEnable bool
-var NodeLockEnable bool
 var GpuNumberEnable bool
 
 const (

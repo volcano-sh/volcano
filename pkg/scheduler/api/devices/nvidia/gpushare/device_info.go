@@ -175,7 +175,7 @@ func (gs *GPUDevices) GetStatus() string {
 func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
 	klog.V(4).Infoln("DeviceSharing:Into AllocateToPod", pod.Name)
 	if getGPUMemoryOfPod(pod) > 0 {
-		if NodeLockEnable {
+		if devices.NodeLockEnable {
 			nodelock.UseClient(kubeClient)
 			err := nodelock.LockNode(gs.Name, "gpu")
 			if err != nil {
