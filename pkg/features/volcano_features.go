@@ -29,6 +29,9 @@ const (
 	// VolcanoJobSupport can identify and schedule volcano job.
 	VolcanoJobSupport featuregate.Feature = "VolcanoJobSupport"
 
+	// PodDisruptionBudgetsSupport can cache and support PodDisruptionBudgets
+	PodDisruptionBudgetsSupport featuregate.Feature = "PodDisruptionBudgetsSupport"
+
 	// QueueCommandSync supports queue command sync.
 	QueueCommandSync featuregate.Feature = "QueueCommandSync"
 
@@ -47,10 +50,11 @@ func init() {
 }
 
 var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	WorkLoadSupport:   {Default: true, PreRelease: featuregate.Alpha},
-	VolcanoJobSupport: {Default: true, PreRelease: featuregate.Alpha},
-	QueueCommandSync:  {Default: true, PreRelease: featuregate.Alpha},
-	PriorityClass:     {Default: true, PreRelease: featuregate.Alpha},
+	WorkLoadSupport:             {Default: true, PreRelease: featuregate.Alpha},
+	VolcanoJobSupport:           {Default: true, PreRelease: featuregate.Alpha},
+	PodDisruptionBudgetsSupport: {Default: true, PreRelease: featuregate.Alpha},
+	QueueCommandSync:            {Default: true, PreRelease: featuregate.Alpha},
+	PriorityClass:               {Default: true, PreRelease: featuregate.Alpha},
 	// CSIStorage is explicitly set to false by default.
 	CSIStorage:       {Default: false, PreRelease: featuregate.Alpha},
 	ResourceTopology: {Default: true, PreRelease: featuregate.Alpha},
