@@ -200,6 +200,10 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 			klog.Errorln("DeviceSharing err=", err.Error())
 			return err
 		}
+		if len(device) == 0 {
+			klog.V(3).Infof("pod %s/%s did not request vgpu", pod.Namespace, pod.Name)
+			return nil
+		}
 		if devices.NodeLockEnable {
 			nodelock.UseClient(kubeClient)
 			err = nodelock.LockNode(gs.Name, DeviceName)
