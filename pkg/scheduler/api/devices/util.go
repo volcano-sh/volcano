@@ -36,3 +36,5 @@ const (
 	// Skip is used when a Bind plugin chooses to skip binding.
 	Skip
 )
+
+var NodeLockEnable bool

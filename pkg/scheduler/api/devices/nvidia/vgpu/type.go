@@ -17,7 +17,6 @@ limitations under the License.
 package vgpu
 
 var VGPUEnable bool
-var NodeLockEnable bool
 
 const (
 	GPUInUse                         = "nvidia.com/use-gputype"
@@ -53,7 +52,8 @@ const (
 	UnhealthyGPUIDs = "volcano.sh/gpu-unhealthy-ids"
 
 	// DeviceName used to indicate this device
-	DeviceName = "vgpu4pd"
+	// The lock mark should be consistent with the device plugin
+	DeviceName = "vgpu"
 )
 
 type ContainerDeviceRequest struct {

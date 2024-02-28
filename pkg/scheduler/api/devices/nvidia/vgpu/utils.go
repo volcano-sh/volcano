@@ -83,7 +83,7 @@ func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	_, err = kubeClient.CoreV1().Nodes().
 		Patch(context.Background(), node.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
 	if err != nil {
-		klog.Errorf("patch pod %v failed, %v", node.Name, err)
+		klog.Errorf("patch node %v failed, %v", node.Name, err)
 	}
 	return err
 }
@@ -177,11 +177,8 @@ func decodePodDevices(str string) []ContainerDevices {
 
 func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 	for _, container := range pod.Spec.Containers {
-		_, ok := container.Resources.Limits[VolcanoVGPUMemory]
-		if ok {
-			return true
-		}
-		_, ok = container.Resources.Limits[VolcanoVGPUNumber]
+		// vgpu resources must have volcano.sh/vgpu-number
+		_, ok := container.Resources.Limits[VolcanoVGPUNumber]
 		if ok {
 			return true
 		}
