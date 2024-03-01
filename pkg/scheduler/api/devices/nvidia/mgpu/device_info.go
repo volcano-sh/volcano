@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"sync"
+	"time"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-	"strconv"
-	"sync"
-	"time"
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
 )
 
@@ -84,7 +85,7 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 
 func (gs *GPUDevices) DeepCopy() interface{} {
 	if gs == nil {
-		return nil
+		return gs
 	}
 
 	newPod2OptionMap := make(map[string]*GPUOption)
@@ -143,11 +144,16 @@ func (gs *GPUDevices) DeepCopy() interface{} {
 
 // AddResource adds the pod to GPU pool if it is assigned
 func (gs *GPUDevices) AddResource(pod *v1.Pod) {
-	if !isSharedMGPUPod(pod) {
+	if !isSharedMGPUPod(pod) || gs == nil {
 		return
 	}
+
 	klog.V(3).Infof("Start to add pod %s/%s", pod.Namespace, pod.Name)
 	podName := getPodNamespaceName(pod)
+
+	if gs == nil {
+		return
+	}
 
 	gs.lock.Lock()
 	defer gs.lock.Unlock()
@@ -168,7 +174,7 @@ func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 
 // SubResource frees the gpu hold by the pod
 func (gs *GPUDevices) SubResource(pod *v1.Pod) {
-	if !isSharedMGPUPod(pod) {
+	if !isSharedMGPUPod(pod) || gs == nil {
 		return
 	}
 	klog.Infof("Start to forget pod %s/%s", pod.Namespace, pod.Name)
@@ -202,7 +208,8 @@ func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
 // FilterNode checks if the 'pod' fit in current node
 func (gs *GPUDevices) FilterNode(kubeClient kubernetes.Interface, pod *v1.Pod) (int, string, error) {
 	klog.Infoln("MGPU DeviceSharing: Into FitInPod", pod.Name)
-	if MGPUEnable {
+
+	if MGPUEnable && gs != nil {
 		gs.lock.Lock()
 		defer gs.lock.Unlock()
 
@@ -240,6 +247,10 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
 	klog.Infoln("MGPU DeviceSharing:Into ReleaseToPod", pod.Name)
 	podName := GetPodNamespaceName(pod)
+
+	if gs == nil {
+		return nil
+	}
 
 	gs.lock.Lock()
 	defer gs.lock.Unlock()
