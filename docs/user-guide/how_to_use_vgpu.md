@@ -43,9 +43,9 @@ data:
       - name: conformance
     - plugins:
       - name: drf
-      - name: devices
+      - name: deviceshare
         arguments:
-          devices.VGPUEnable: true # enable vgpu
+          deviceshare.VGPUEnable: true # enable vgpu
       - name: predicates
       - name: proportion
       - name: nodeorder

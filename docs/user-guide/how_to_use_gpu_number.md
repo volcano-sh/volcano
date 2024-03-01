@@ -36,9 +36,9 @@ data:
       - name: conformance
     - plugins:
       - name: drf
-      - name: devices
+      - name: deviceshare
         arguments:
-          devices.GPUNumberEnable: true # enable gpu number
+          deviceshare.GPUNumberEnable: true # enable gpu number
       - name: predicates
       - name: proportion
       - name: nodeorder

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package devices
+package deviceshare
 
 import (
 	"fmt"
@@ -30,26 +30,26 @@ import (
 
 // PluginName indicates name of volcano scheduler plugin.
 const (
-	PluginName = "devices"
+	PluginName = "deviceshare"
 	// GPUSharingPredicate is the key for enabling GPU Sharing Predicate in YAML
-	GPUSharingPredicate = "devices.GPUSharingEnable"
-	NodeLockEnable      = "devices.NodeLockEnable"
-	GPUNumberPredicate  = "devices.GPUNumberEnable"
+	GPUSharingPredicate = "deviceshare.GPUSharingEnable"
+	NodeLockEnable      = "deviceshare.NodeLockEnable"
+	GPUNumberPredicate  = "deviceshare.GPUNumberEnable"
 
-	VGPUEnable = "devices.VGPUEnable"
+	VGPUEnable = "deviceshare.VGPUEnable"
 )
 
-type devicesPlugin struct {
+type deviceSharePlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
 }
 
 // New return priority plugin
 func New(arguments framework.Arguments) framework.Plugin {
-	return &devicesPlugin{pluginArguments: arguments}
+	return &deviceSharePlugin{pluginArguments: arguments}
 }
 
-func (dp *devicesPlugin) Name() string {
+func (dp *deviceSharePlugin) Name() string {
 	return PluginName
 }
 
@@ -68,7 +68,7 @@ func enablePredicate(args framework.Arguments) {
 	}
 }
 
-func (dp *devicesPlugin) OnSessionOpen(ssn *framework.Session) {
+func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 	enablePredicate(dp.pluginArguments)
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddPredicateFn(dp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
@@ -107,4 +107,4 @@ func (dp *devicesPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 }
 
-func (dp *devicesPlugin) OnSessionClose(ssn *framework.Session) {}
+func (dp *deviceSharePlugin) OnSessionClose(ssn *framework.Session) {}
