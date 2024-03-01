@@ -73,7 +73,7 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 		fileWatcher:    watcher,
 		cache:          cache,
 		schedulePeriod: opt.SchedulePeriod,
-		dumper:         schedcache.Dumper{Cache: cache},
+		dumper:         schedcache.Dumper{Cache: cache, RootDir: opt.CacheDumpFileDir},
 	}
 
 	return scheduler, nil
@@ -137,9 +137,9 @@ func (pc *Scheduler) loadSchedulerConf() {
 
 	var err error
 	pc.once.Do(func() {
-		pc.actions, pc.plugins, pc.configurations, pc.metricsConf, err = unmarshalSchedulerConf(defaultSchedulerConf)
+		pc.actions, pc.plugins, pc.configurations, pc.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
 		if err != nil {
-			klog.Errorf("unmarshal Scheduler config %s failed: %v", defaultSchedulerConf, err)
+			klog.Errorf("unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
 			panic("invalid default configuration")
 		}
 	})
@@ -155,7 +155,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 		config = strings.TrimSpace(string(confData))
 	}
 
-	actions, plugins, configurations, metricsConf, err := unmarshalSchedulerConf(config)
+	actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
 	if err != nil {
 		klog.Errorf("Scheduler config %s is invalid: %v", config, err)
 		return

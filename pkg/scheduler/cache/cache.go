@@ -315,7 +315,8 @@ type defaultVolumeBinder struct {
 
 // AllocateVolumes allocates volume on the host to the task
 func (dvb *defaultVolumeBinder) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
-	allBound, err := dvb.volumeBinder.AssumePodVolumes(task.Pod, hostname, podVolumes)
+	logger := klog.FromContext(context.TODO())
+	allBound, err := dvb.volumeBinder.AssumePodVolumes(logger, task.Pod, hostname, podVolumes)
 	task.VolumeReady = allBound
 
 	return err
@@ -334,7 +335,8 @@ func (dvb *defaultVolumeBinder) RevertVolumes(task *schedulingapi.TaskInfo, podV
 // GetPodVolumes get pod volume on the host
 func (dvb *defaultVolumeBinder) GetPodVolumes(task *schedulingapi.TaskInfo,
 	node *v1.Node) (podVolumes *volumescheduling.PodVolumes, err error) {
-	podVolumeClaims, err := dvb.volumeBinder.GetPodVolumeClaims(task.Pod)
+	logger := klog.FromContext(context.TODO())
+	podVolumeClaims, err := dvb.volumeBinder.GetPodVolumeClaims(logger, task.Pod)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +344,7 @@ func (dvb *defaultVolumeBinder) GetPodVolumes(task *schedulingapi.TaskInfo,
 	// 	return nil, fmt.Errorf("pod has unbound immediate PersistentVolumeClaims")
 	// }
 
-	podVolumes, reasons, err := dvb.volumeBinder.FindPodVolumes(task.Pod, podVolumeClaims, node)
+	podVolumes, reasons, err := dvb.volumeBinder.FindPodVolumes(logger, task.Pod, podVolumeClaims, node)
 	if err != nil {
 		return nil, err
 	} else if len(reasons) > 0 {
@@ -405,6 +407,91 @@ func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*sc
 	return job, nil
 }
 
+// updateNodeSelectors parse and update node selector key value pairs to schedule cache
+func (sc *SchedulerCache) updateNodeSelectors(nodeSelectors []string) {
+	for _, nodeSelectorLabel := range nodeSelectors {
+		nodeSelectorLabelLen := len(nodeSelectorLabel)
+		if nodeSelectorLabelLen <= 0 {
+			continue
+		}
+		// check input
+		index := strings.Index(nodeSelectorLabel, ":")
+		if index < 0 || index >= (nodeSelectorLabelLen-1) {
+			continue
+		}
+		nodeSelectorLabelName := strings.TrimSpace(nodeSelectorLabel[:index])
+		nodeSelectorLabelValue := strings.TrimSpace(nodeSelectorLabel[index+1:])
+		key := nodeSelectorLabelName + ":" + nodeSelectorLabelValue
+		sc.nodeSelectorLabels[key] = ""
+	}
+}
+
+// setBatchBindParallel configure the parallel when binding tasks to apiserver
+func (sc *SchedulerCache) setBatchBindParallel() {
+	sc.BindFlowChannel = make(chan *schedulingapi.TaskInfo, 5000)
+	var batchNum int
+	batchNum, err := strconv.Atoi(os.Getenv("BATCH_BIND_NUM"))
+	if err == nil && batchNum > 0 {
+		sc.batchNum = batchNum
+	} else {
+		sc.batchNum = 1
+	}
+}
+
+func (sc *SchedulerCache) setDefaultVolumeBinder() {
+	logger := klog.FromContext(context.TODO())
+	var capacityCheck *volumescheduling.CapacityCheck
+	if options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
+		capacityCheck = &volumescheduling.CapacityCheck{
+			CSIDriverInformer:          sc.csiDriverInformer,
+			CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
+		}
+	}
+	sc.VolumeBinder = &defaultVolumeBinder{
+		volumeBinder: volumescheduling.NewVolumeBinder(
+			logger,
+			sc.kubeClient,
+			sc.podInformer,
+			sc.nodeInformer,
+			sc.csiNodeInformer,
+			sc.pvcInformer,
+			sc.pvInformer,
+			sc.scInformer,
+			capacityCheck,
+			30*time.Second,
+		),
+	}
+}
+
+// newDefaultQueue init default queue
+func newDefaultQueue(vcClient vcclient.Interface, defaultQueue string) {
+	reclaimable := true
+	defaultQue := vcv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: defaultQueue,
+		},
+		Spec: vcv1beta1.QueueSpec{
+			Reclaimable: &reclaimable,
+			Weight:      1,
+		},
+	}
+
+	err := retry.OnError(wait.Backoff{
+		Steps:    60,
+		Duration: time.Second,
+		Factor:   1,
+		Jitter:   0.1,
+	}, func(err error) bool {
+		return !apierrors.IsAlreadyExists(err)
+	}, func() error {
+		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{})
+		return err
+	})
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		panic(fmt.Errorf("failed init default queue, with err: %v", err))
+	}
+}
+
 func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -420,31 +507,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	}
 
 	// create default queue
-	reclaimable := true
-	defaultQue := vcv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: defaultQueue,
-		},
-		Spec: vcv1beta1.QueueSpec{
-			Reclaimable: &reclaimable,
-			Weight:      1,
-		},
-	}
-
-	err = retry.OnError(wait.Backoff{
-		Steps:    60,
-		Duration: time.Second,
-		Factor:   1,
-		Jitter:   0.1,
-	}, func(err error) bool {
-		return !apierrors.IsAlreadyExists(err)
-	}, func() error {
-		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{})
-		return err
-	})
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		panic(fmt.Errorf("failed init default queue, with err: %v", err))
-	}
+	newDefaultQueue(vcClient, defaultQueue)
 	klog.Infof("Create init queue named default")
 
 	sc := &SchedulerCache{
@@ -476,41 +539,20 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	sc.IgnoredCSIProvisioners = ignoredProvisionersSet
 
 	if len(nodeSelectors) > 0 {
-		for _, nodeSelectorLabel := range nodeSelectors {
-			nodeSelectorLabelLen := len(nodeSelectorLabel)
-			if nodeSelectorLabelLen <= 0 {
-				continue
-			}
-			// check input
-			index := strings.Index(nodeSelectorLabel, ":")
-			if index < 0 || index >= (nodeSelectorLabelLen-1) {
-				continue
-			}
-			nodeSelectorLabelName := strings.TrimSpace(nodeSelectorLabel[:index])
-			nodeSelectorLabelValue := strings.TrimSpace(nodeSelectorLabel[index+1:])
-			key := nodeSelectorLabelName + ":" + nodeSelectorLabelValue
-			sc.nodeSelectorLabels[key] = ""
-		}
+		sc.updateNodeSelectors(nodeSelectors)
 	}
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
 	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(sc.schedulerNames)})
 
-	sc.BindFlowChannel = make(chan *schedulingapi.TaskInfo, 5000)
+	// set concurrency configuration when binding
+	sc.setBatchBindParallel()
 	if bindMethodMap == nil {
 		klog.V(3).Info("no registered bind method, new a default one")
 		bindMethodMap = NewDefaultBinder(sc.kubeClient, sc.Recorder)
 	}
 	sc.Binder = GetBindMethod()
-
-	var batchNum int
-	batchNum, err = strconv.Atoi(os.Getenv("BATCH_BIND_NUM"))
-	if err == nil && batchNum > 0 {
-		sc.batchNum = batchNum
-	} else {
-		sc.batchNum = 1
-	}
 
 	sc.Evictor = &defaultEvictor{
 		kubeclient: sc.kubeClient,
@@ -527,21 +569,33 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		vcclient:   sc.vcClient,
 	}
 
+	// add all events handlers
+	sc.addEventHandler()
+	// finally, init default volume binder which has dependencies on other informers
+	sc.setDefaultVolumeBinder()
+	return sc
+}
+
+func (sc *SchedulerCache) addEventHandler() {
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
 	sc.informerFactory = informerFactory
 	mySchedulerPodName, c := getMultiSchedulerInfo()
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
-	// even with no error returned. `PodDisruptionBudgets` informer is used by `Pdb` plugin
+	// even with no error returned.
 	// `Namespace` informer is used by `InterPodAffinity` plugin,
 	// `SelectorSpread` and `PodTopologySpread` plugins uses the following four so far.
-	informerFactory.Policy().V1().PodDisruptionBudgets().Informer()
 	informerFactory.Core().V1().Namespaces().Informer()
 	informerFactory.Core().V1().Services().Informer()
 	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
 		informerFactory.Core().V1().ReplicationControllers().Informer()
 		informerFactory.Apps().V1().ReplicaSets().Informer()
 		informerFactory.Apps().V1().StatefulSets().Informer()
+	}
+
+	// `PodDisruptionBudgets` informer is used by `Pdb` plugin
+	if utilfeature.DefaultFeatureGate.Enabled(features.PodDisruptionBudgetsSupport) {
+		informerFactory.Policy().V1().PodDisruptionBudgets().Informer()
 	}
 
 	// create informer for node information
@@ -601,30 +655,9 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		},
 	)
 
-	var capacityCheck *volumescheduling.CapacityCheck
 	if options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
 		sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
 		sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
-		capacityCheck = &volumescheduling.CapacityCheck{
-			CSIDriverInformer:          sc.csiDriverInformer,
-			CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
-		}
-	} else {
-		capacityCheck = nil
-	}
-
-	sc.VolumeBinder = &defaultVolumeBinder{
-		volumeBinder: volumescheduling.NewVolumeBinder(
-			sc.kubeClient,
-			sc.podInformer,
-			sc.nodeInformer,
-			sc.csiNodeInformer,
-			sc.pvcInformer,
-			sc.pvInformer,
-			sc.scInformer,
-			capacityCheck,
-			30*time.Second,
-		),
 	}
 
 	// create informer for pod information
@@ -633,7 +666,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
-					if !responsibleForPod(v, schedulerNames, mySchedulerPodName, c) {
+					if !responsibleForPod(v, sc.schedulerNames, mySchedulerPodName, c) {
 						if len(v.Spec.NodeName) == 0 {
 							return false
 						}
@@ -724,7 +757,6 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 			DeleteFunc: sc.DeleteNumaInfoV1alpha1,
 		})
 	}
-	return sc
 }
 
 // Run  starts the schedulerCache

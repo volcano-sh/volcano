@@ -29,8 +29,10 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
@@ -147,7 +149,7 @@ func BuildDynamicPVC(namespace, name string, req v1.ResourceList) (*v1.Persisten
 			Name:            name,
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
-			Resources: v1.ResourceRequirements{
+			Resources: v1.VolumeResourceRequirements{
 				Requests: req,
 			},
 			StorageClassName: &sc.Name,
@@ -342,6 +344,7 @@ type FakeVolumeBinder struct {
 
 // NewFakeVolumeBinder create fake volume binder with kubeclient
 func NewFakeVolumeBinder(kubeClient kubernetes.Interface) *FakeVolumeBinder {
+	logger := klog.FromContext(context.TODO())
 	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	podInformer := informerFactory.Core().V1().Pods()
 	pvcInformer := informerFactory.Core().V1().PersistentVolumeClaims()
@@ -376,6 +379,7 @@ func NewFakeVolumeBinder(kubeClient kubernetes.Interface) *FakeVolumeBinder {
 	}
 	return &FakeVolumeBinder{
 		volumeBinder: volumescheduling.NewVolumeBinder(
+			logger,
 			kubeClient,
 			podInformer,
 			nodeInformer,
@@ -395,7 +399,8 @@ func (fvb *FakeVolumeBinder) AllocateVolumes(task *api.TaskInfo, hostname string
 	if fvb.volumeBinder == nil {
 		return nil
 	}
-	_, err := fvb.volumeBinder.AssumePodVolumes(task.Pod, hostname, podVolumes)
+	logger := klog.FromContext(context.TODO())
+	_, err := fvb.volumeBinder.AssumePodVolumes(logger, task.Pod, hostname, podVolumes)
 
 	key := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
 	fvb.Actions[key] = append(fvb.Actions[key], "AllocateVolumes")
@@ -425,7 +430,8 @@ func (fvb *FakeVolumeBinder) GetPodVolumes(task *api.TaskInfo, node *v1.Node) (*
 	}
 	key := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
 	fvb.Actions[key] = []string{"GetPodVolumes"}
-	podVolumeClaims, err := fvb.volumeBinder.GetPodVolumeClaims(task.Pod)
+	logger := klog.FromContext(context.TODO())
+	podVolumeClaims, err := fvb.volumeBinder.GetPodVolumeClaims(logger, task.Pod)
 	if err != nil {
 		return nil, err
 	}
@@ -433,7 +439,7 @@ func (fvb *FakeVolumeBinder) GetPodVolumes(task *api.TaskInfo, node *v1.Node) (*
 	// 	return nil, fmt.Errorf("pod has unbound immediate PersistentVolumeClaims")
 	// }
 
-	podVolumes, reasons, err := fvb.volumeBinder.FindPodVolumes(task.Pod, podVolumeClaims, node)
+	podVolumes, reasons, err := fvb.volumeBinder.FindPodVolumes(logger, task.Pod, podVolumeClaims, node)
 	if err != nil {
 		return nil, err
 	} else if len(reasons) > 0 {

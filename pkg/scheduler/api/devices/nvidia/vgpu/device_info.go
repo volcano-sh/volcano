@@ -97,7 +97,7 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	if strings.Contains(handshake, "Requesting") {
 		formertime, _ := time.Parse("2006.01.02 15:04:05", strings.Split(handshake, "_")[1])
 		if time.Now().After(formertime.Add(time.Second * 60)) {
-			klog.Infof("node %v device %s leave, %v remaining devices:%v", node.Name, handshake)
+			klog.Infof("node %v device %s leave", node.Name, handshake)
 
 			tmppat := make(map[string]string)
 			tmppat[handshake] = "Deleted_" + time.Now().Format("2006.01.02 15:04:05")
