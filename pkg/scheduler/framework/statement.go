@@ -187,7 +187,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
 func (s *Statement) pipeline(task *api.TaskInfo) {
 }
 
-func (s *Statement) unpipeline(task *api.TaskInfo) error {
+func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
 		if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
@@ -360,7 +360,7 @@ func (s *Statement) Discard() {
 				klog.Errorf("Failed to unevict task: %s", err.Error())
 			}
 		case Pipeline:
-			err := s.unpipeline(op.task)
+			err := s.UnPipeline(op.task)
 			if err != nil {
 				klog.Errorf("Failed to unpipeline task: %s", err.Error())
 			}

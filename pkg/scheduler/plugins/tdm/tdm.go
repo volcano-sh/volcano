@@ -279,8 +279,7 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	jobPipelinedFn := func(obj interface{}) int {
 		jobInfo := obj.(*api.JobInfo)
-		occupied := jobInfo.WaitingTaskNum() + jobInfo.ReadyTaskNum()
-		if occupied >= jobInfo.MinAvailable {
+		if jobInfo.IsPipelined() {
 			return tutil.Permit
 		}
 		return tutil.Reject

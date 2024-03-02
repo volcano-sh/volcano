@@ -207,6 +207,44 @@ func TestPreempt(t *testing.T) {
 			},
 			expected: 1,
 		},
+		{
+			// case about #3335
+			name: "unBestEffort high-priority pod preempt BestEffort low-priority pod in same queue",
+			podGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, v1.ResourceList{}, "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("3", "3G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "1"}}...), make(map[string]string)),
+			},
+			queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, api.BuildResourceList("6", "6G")),
+			},
+			expected: 1,
+		},
+		{
+			// case about #3335
+			name: "BestEffort high-priority pod preempt BestEffort low-priority pod in same queue",
+			podGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, map[string]int32{}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, v1.ResourceList{}, "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, v1.ResourceList{}, "pg2", make(map[string]string), make(map[string]string)),
+			},
+			nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "1"}}...), make(map[string]string)),
+			},
+			queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, api.BuildResourceList("6", "6G")),
+			},
+			expected: 1,
+		},
 	}
 
 	preempt := New()
