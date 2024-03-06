@@ -135,6 +135,13 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
+		jobMinResource := job.GetMinResources()
+		queueAllocatedResource := api.NewResource(queue.Queue.Status.Allocated)
+		queueCapability := api.NewResource(queue.Queue.Spec.Capability)
+		if jobMinResource.Add(queueAllocatedResource).Less(queueCapability, api.Zero) {
+			klog.V(4).Infof("Queue <%s> is overused when considering job <%s>, ignore it.", queue.Name, job.Name)
+			continue
+		}
 		if _, found = pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
