@@ -721,3 +721,17 @@ func (r ResourceNameList) Contains(rr ResourceNameList) bool {
 func IsCountQuota(name v1.ResourceName) bool {
 	return strings.HasPrefix(string(name), "count/")
 }
+
+// ExceedPart returns the partly resource in left which exceed right
+func ExceedPart(left, right *Resource) *Resource {
+	if right == nil {
+		return left
+	}
+
+	if left == nil {
+		return EmptyResource()
+	}
+
+	diff, _ := left.Diff(right, Zero)
+	return diff
+}
