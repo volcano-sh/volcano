@@ -112,6 +112,25 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, util.Permit
 	}
 	ssn.AddPreemptableFn(pp.Name(), preemptableFn)
+	reclaimbleFn := func(reclaimor *api.TaskInfo, reclaimee []*api.TaskInfo) ([]*api.TaskInfo, int) {
+		reclaimorJob := ssn.Jobs[reclaimor.Job]
+		var victims []*api.TaskInfo
+		for _, reclaimee := range reclaimee {
+			reclaimeeJob := ssn.Jobs[reclaimee.Job]
+			if reclaimeeJob == nil {
+				continue
+			}
+			if reclaimorJob.Priority > reclaimeeJob.Priority {
+				victims = append(victims, reclaimee)
+			} else {
+				klog.V(4).Infof("Can not reclaim task <%v/%v> because reclaimee job has greater or equal job priority (%d) than reclaimor (%d)",
+					reclaimee.Namespace, reclaimee.Name, reclaimeeJob.Priority, reclaimorJob.Priority)
+			}
+		}
+		klog.V(4).Infof("Victims from Priority plugins are %+v", victims)
+		return victims, util.Permit
+	}
+	ssn.AddReclaimableFn(pp.Name(), reclaimbleFn)
 
 	jobStarvingFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
