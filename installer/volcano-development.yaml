@@ -4061,6 +4061,7 @@ data:
     tiers:
     - plugins:
       - name: priority
+        enableReclaimable: false
       - name: gang
         enablePreemptable: false
       - name: conformance
