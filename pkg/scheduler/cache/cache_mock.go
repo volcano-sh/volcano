@@ -84,7 +84,7 @@ func checkAndSetDefaultInterface(sc *SchedulerCache) {
 }
 
 func getNodeWorkers() uint32 {
-	if options.ServerOpts.NodeWorkerThreads > 0 {
+	if options.ServerOpts != nil && options.ServerOpts.NodeWorkerThreads > 0 {
 		return options.ServerOpts.NodeWorkerThreads
 	}
 	threads, err := strconv.Atoi(os.Getenv("NODE_WORKER_THREADS"))
@@ -116,7 +116,7 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 
 		NodeList: []string{},
 	}
-	if len(options.ServerOpts.NodeSelector) > 0 {
+	if options.ServerOpts != nil && len(options.ServerOpts.NodeSelector) > 0 {
 		msc.updateNodeSelectors(options.ServerOpts.NodeSelector)
 	}
 	msc.setBatchBindParallel()

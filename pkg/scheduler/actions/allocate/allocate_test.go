@@ -165,7 +165,7 @@ func TestAllocate(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			binder := &util.FakeBinder{
 				Binds:   map[string]string{},
-				Channel: make(chan string),
+				Channel: make(chan string, 10),
 			}
 			schedulerCache := &cache.SchedulerCache{
 				Nodes:         make(map[string]*api.NodeInfo),
@@ -323,7 +323,7 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			fakeVolumeBinder := util.NewFakeVolumeBinder(kubeClient)
 			binder := &util.FakeBinder{
 				Binds:   map[string]string{},
-				Channel: make(chan string),
+				Channel: make(chan string, 10),
 			}
 			schedulerCache := &cache.SchedulerCache{
 				Nodes:         make(map[string]*api.NodeInfo),
