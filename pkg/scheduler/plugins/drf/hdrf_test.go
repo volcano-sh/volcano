@@ -252,7 +252,7 @@ func TestHDRF(t *testing.T) {
 
 		binder := &util.FakeBinder{
 			Binds:   map[string]string{},
-			Channel: make(chan string),
+			Channel: make(chan string, 300),
 		}
 		schedulerCache := &cache.SchedulerCache{
 			Nodes:         make(map[string]*api.NodeInfo),

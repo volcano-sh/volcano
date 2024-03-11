@@ -147,7 +147,7 @@ func TestEventHandler(t *testing.T) {
 		// initialize schedulerCache
 		binder := &util.FakeBinder{
 			Binds:   map[string]string{},
-			Channel: make(chan string),
+			Channel: make(chan string, 10),
 		}
 		recorder := record.NewFakeRecorder(100)
 		go func() {
