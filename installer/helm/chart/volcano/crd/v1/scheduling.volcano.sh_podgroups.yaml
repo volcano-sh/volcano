@@ -1,0 +1,156 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.0
+  creationTimestamp: null
+  name: podgroups.scheduling.volcano.sh
+spec:
+  group: scheduling.volcano.sh
+  names:
+    kind: PodGroup
+    listKind: PodGroupList
+    plural: podgroups
+    shortNames:
+    - pg
+    - podgroup-v1beta1
+    singular: podgroup
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: STATUS
+      type: string
+    - jsonPath: .spec.minMember
+      name: minMember
+      type: integer
+    - jsonPath: .status.running
+      name: RUNNINGS
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    - jsonPath: .spec.queue
+      name: QUEUE
+      priority: 1
+      type: string
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: PodGroup is a collection of Pod; used for batch workload.
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: 'Specification of the desired behavior of the pod group.
+              More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status'
+            properties:
+              minMember:
+                description: MinMember defines the minimal number of members/tasks
+                  to run the pod group; if there's not enough resources to start all
+                  tasks, the scheduler will not start anyone.
+                format: int32
+                type: integer
+              minResources:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                description: MinResources defines the minimal resource of members/tasks
+                  to run the pod group; if there's not enough resources to start all
+                  tasks, the scheduler will not start anyone.
+                type: object
+              minTaskMember:
+                additionalProperties:
+                  format: int32
+                  type: integer
+                description: MinTaskMember defines the minimal number of pods to run
+                  each task in the pod group; if there's not enough resources to start
+                  each task, the scheduler will not start anyone.
+                type: object
+              priorityClassName:
+                description: If specified, indicates the PodGroup's priority. "system-node-critical"
+                  and "system-cluster-critical" are two special keywords which indicate
+                  the highest priorities with the former being the highest priority.
+                  Any other name must be defined by creating a PriorityClass object
+                  with that name. If not specified, the PodGroup priority will be
+                  default or zero if there is no default.
+                type: string
+              queue:
+                description: Queue defines the queue to allocate resource for PodGroup;
+                  if queue does not exist, the PodGroup will not be scheduled. Defaults
+                  to `default` Queue with the lowest weight.
+                type: string
+            type: object
+          status:
+            description: Status represents the current information about a pod group.
+              This data may not be up to date.
+            properties:
+              conditions:
+                description: The conditions of PodGroup.
+                items:
+                  description: PodGroupCondition contains details for the current
+                    state of this pod group.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the phase transitioned from another to
+                        current phase.
+                      format: date-time
+                      type: string
+                    message:
+                      description: Human-readable message indicating details about
+                        last transition.
+                      type: string
+                    reason:
+                      description: Unique, one-word, CamelCase reason for the phase's
+                        last transition.
+                      type: string
+                    status:
+                      description: Status is the status of the condition.
+                      type: string
+                    transitionID:
+                      description: The ID of condition transition.
+                      type: string
+                    type:
+                      description: Type is the type of the condition
+                      type: string
+                  type: object
+                type: array
+              failed:
+                description: The number of pods which reached phase Failed.
+                format: int32
+                type: integer
+              phase:
+                description: Current phase of PodGroup.
+                type: string
+              running:
+                description: The number of actively running pods.
+                format: int32
+                type: integer
+              succeeded:
+                description: The number of pods which reached phase Succeeded.
+                format: int32
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
