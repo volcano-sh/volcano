@@ -112,8 +112,8 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
-		lReady := lv.Ready()
-		rReady := rv.Ready()
+		lReady := lv.IsReady()
+		rReady := rv.IsReady()
 
 		klog.V(4).Infof("Gang JobOrderFn: <%v/%v> is ready: %t, <%v/%v> is ready: %t",
 			lv.Namespace, lv.Name, lReady, rv.Namespace, rv.Name, rReady)
@@ -136,7 +136,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddJobOrderFn(gp.Name(), jobOrderFn)
 	ssn.AddJobReadyFn(gp.Name(), func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
-		if ji.CheckTaskReady() && ji.Ready() {
+		if ji.CheckTaskReady() && ji.IsReady() {
 			return true
 		}
 		return false
@@ -144,8 +144,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	pipelinedFn := func(obj interface{}) int {
 		ji := obj.(*api.JobInfo)
-		occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
-		if ji.CheckTaskPipelined() && occupied >= ji.MinAvailable {
+		if ji.CheckTaskPipelined() && ji.IsPipelined() {
 			return util.Permit
 		}
 		return util.Reject
@@ -154,9 +153,8 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	jobStarvingFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
-		occupied := ji.WaitingTaskNum() + ji.ReadyTaskNum()
 		// In the preemption scenario, the taskMinAvailable configuration is not concerned, only the jobMinAvailable is concerned
-		return occupied < ji.MinAvailable
+		return ji.IsStarving()
 	}
 	ssn.AddJobStarvingFns(gp.Name(), jobStarvingFn)
 }
@@ -165,7 +163,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	var unreadyTaskCount int32
 	var unScheduleJobCount int
 	for _, job := range ssn.Jobs {
-		if !job.Ready() {
+		if !job.IsReady() {
 			schedulableTaskNum := func() (num int32) {
 				for _, task := range job.TaskStatusIndex[api.Pending] {
 					ctx := task.GetTransactionContext()

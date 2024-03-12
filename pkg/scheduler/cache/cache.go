@@ -309,6 +309,22 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 	return podGroupInfo, nil
 }
 
+// UpdateQueueStatus will update the status of queue
+func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
+	var newQueue = &vcv1beta1.Queue{}
+	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
+		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
+		return err
+	}
+
+	_, err := su.vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("error occurred in updating Queue <%s>: %s", newQueue.Name, err.Error())
+		return err
+	}
+	return nil
+}
+
 type defaultVolumeBinder struct {
 	volumeBinder volumescheduling.SchedulerVolumeBinder
 }
@@ -441,7 +457,7 @@ func (sc *SchedulerCache) setBatchBindParallel() {
 func (sc *SchedulerCache) setDefaultVolumeBinder() {
 	logger := klog.FromContext(context.TODO())
 	var capacityCheck *volumescheduling.CapacityCheck
-	if options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
+	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
 		capacityCheck = &volumescheduling.CapacityCheck{
 			CSIDriverInformer:          sc.csiDriverInformer,
 			CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
@@ -582,16 +598,20 @@ func (sc *SchedulerCache) addEventHandler() {
 	mySchedulerPodName, c := getMultiSchedulerInfo()
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
-	// even with no error returned. `PodDisruptionBudgets` informer is used by `Pdb` plugin
+	// even with no error returned.
 	// `Namespace` informer is used by `InterPodAffinity` plugin,
 	// `SelectorSpread` and `PodTopologySpread` plugins uses the following four so far.
-	informerFactory.Policy().V1().PodDisruptionBudgets().Informer()
 	informerFactory.Core().V1().Namespaces().Informer()
 	informerFactory.Core().V1().Services().Informer()
 	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
 		informerFactory.Core().V1().ReplicationControllers().Informer()
 		informerFactory.Apps().V1().ReplicaSets().Informer()
 		informerFactory.Apps().V1().StatefulSets().Informer()
+	}
+
+	// `PodDisruptionBudgets` informer is used by `Pdb` plugin
+	if utilfeature.DefaultFeatureGate.Enabled(features.PodDisruptionBudgetsSupport) {
+		informerFactory.Policy().V1().PodDisruptionBudgets().Informer()
 	}
 
 	// create informer for node information
@@ -651,7 +671,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		},
 	)
 
-	if options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
+	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
 		sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
 		sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
 	}
@@ -689,7 +709,7 @@ func (sc *SchedulerCache) addEventHandler() {
 			},
 		})
 
-	if options.ServerOpts.EnablePriorityClass && utilfeature.DefaultFeatureGate.Enabled(features.PriorityClass) {
+	if options.ServerOpts != nil && options.ServerOpts.EnablePriorityClass && utilfeature.DefaultFeatureGate.Enabled(features.PriorityClass) {
 		sc.pcInformer = informerFactory.Scheduling().V1().PriorityClasses()
 		sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddPriorityClass,
@@ -1374,18 +1394,7 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG b
 
 // UpdateQueueStatus update the status of queue.
 func (sc *SchedulerCache) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
-	var newQueue = &vcv1beta1.Queue{}
-	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
-		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
-		return err
-	}
-
-	_, err := sc.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Errorf("error occurred in updating Queue <%s>: %s", newQueue.Name, err.Error())
-		return err
-	}
-	return nil
+	return sc.StatusUpdater.UpdateQueueStatus(queue)
 }
 
 func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {

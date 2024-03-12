@@ -20,11 +20,13 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"k8s.io/apimachinery/pkg/types"
 	"volcano.sh/apis/pkg/apis/scheduling"
-
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
@@ -289,6 +291,95 @@ func TestTaskSchedulingReason(t *testing.T) {
 			if msg != exp {
 				t.Errorf("[x] case #%d, task %v, expected: %s, got: %s", i, uid, exp, msg)
 			}
+		}
+	}
+}
+
+func TestJobInfo(t *testing.T) {
+	newTaskFunc := func(uid, jobUid types.UID, status TaskStatus, resources *Resource) *TaskInfo {
+		isBestEffort := resources.IsEmpty()
+		return &TaskInfo{
+			UID:  TaskID(uid),
+			Job:  JobID(jobUid),
+			Name: string(uid),
+			TransactionContext: TransactionContext{
+				Status: status,
+			},
+			Resreq:     resources,
+			InitResreq: resources,
+			BestEffort: isBestEffort,
+			NumaInfo: &TopologyInfo{
+				ResMap: map[int]v1.ResourceList{},
+			},
+		}
+	}
+
+	testCases := []struct {
+		name                             string
+		jobUID                           JobID
+		jobMinAvailable                  int32
+		tasks                            []*TaskInfo
+		expectedPendingBestEffortTaskNum int32
+		expectedIsReady                  bool
+		expectedIsPipelined              bool
+		expectedIsStarving               bool
+	}{
+		{
+			name:            "starving job",
+			jobUID:          "job-1",
+			jobMinAvailable: 5,
+			tasks: []*TaskInfo{
+				newTaskFunc("pending-besteffort-task-1", "job-1", Pending, EmptyResource()),
+				newTaskFunc("pipelined-besteffort-task-1", "job-1", Pipelined, EmptyResource()),
+				newTaskFunc("running-besteffort-task-1", "job-1", Running, EmptyResource()),
+				newTaskFunc("pending-unbesteffort-task-1", "job-1", Pending, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
+				newTaskFunc("pipelined-unbesteffort-task-1", "job-1", Pipelined, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
+				newTaskFunc("running-unbesteffort-task-1", "job-1", Running, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
+			},
+			expectedPendingBestEffortTaskNum: 1,
+			expectedIsReady:                  false,
+			expectedIsPipelined:              true,
+			expectedIsStarving:               true,
+		},
+
+		{
+			name:            "ready job",
+			jobUID:          "job-1",
+			jobMinAvailable: 3,
+			tasks: []*TaskInfo{
+				newTaskFunc("pending-besteffort-task-1", "job-1", Pending, EmptyResource()),
+				newTaskFunc("pipelined-besteffort-task-1", "job-1", Pipelined, EmptyResource()),
+				newTaskFunc("running-besteffort-task-1", "job-1", Running, EmptyResource()),
+				newTaskFunc("pending-unbesteffort-task-1", "job-1", Pending, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
+				newTaskFunc("pipelined-unbesteffort-task-1", "job-1", Pipelined, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
+				newTaskFunc("running-unbesteffort-task-1", "job-1", Running, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
+			},
+			expectedPendingBestEffortTaskNum: 1,
+			expectedIsReady:                  true,
+			expectedIsPipelined:              true,
+			expectedIsStarving:               false,
+		},
+	}
+
+	for _, tc := range testCases {
+		jobInfo := NewJobInfo(tc.jobUID, tc.tasks...)
+		jobInfo.MinAvailable = tc.jobMinAvailable
+		actualPendingBestEffortTaskNum := jobInfo.PendingBestEffortTaskNum()
+		actualIsReady := jobInfo.IsReady()
+		actualIsPipelined := jobInfo.IsPipelined()
+		actualIsStarving := jobInfo.IsStarving()
+
+		if !assert.Equal(t, actualPendingBestEffortTaskNum, tc.expectedPendingBestEffortTaskNum) {
+			t.Errorf("unexpected PendingBestEffortTaskNum; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedPendingBestEffortTaskNum, actualPendingBestEffortTaskNum)
+		}
+		if !assert.Equal(t, actualIsReady, tc.expectedIsReady) {
+			t.Errorf("unexpected IsReady; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsReady, actualIsReady)
+		}
+		if !assert.Equal(t, actualIsPipelined, tc.expectedIsPipelined) {
+			t.Errorf("unexpected IsPipelined; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsPipelined, actualIsPipelined)
+		}
+		if !assert.Equal(t, actualIsStarving, tc.expectedIsStarving) {
+			t.Errorf("unexpected IsStarving; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsStarving, actualIsStarving)
 		}
 	}
 }
