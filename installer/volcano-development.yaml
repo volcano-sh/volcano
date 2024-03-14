@@ -4032,15 +4032,15 @@ spec:
       serviceAccount: volcano-controllers
       priorityClassName: system-cluster-critical
       containers:
-          - name: volcano-controllers
-            image: volcanosh/vc-controller-manager:latest
-            args:
-              - --logtostderr
-              - --enable-healthz=true
-              - --leader-elect=false
-              - -v=4
-              - 2>&1
-            imagePullPolicy: Always
+        - name: volcano-controllers
+          image: volcanosh/vc-controller-manager:latest
+          args:
+            - --logtostderr
+            - --enable-healthz=true
+            - --leader-elect=false
+            - -v=4
+            - 2>&1
+          imagePullPolicy: Always
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
