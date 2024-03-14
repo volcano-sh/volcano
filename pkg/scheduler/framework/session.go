@@ -152,30 +152,6 @@ func openSession(cache cache.Cache) *Session {
 	snapshot := cache.Snapshot()
 
 	ssn.Jobs = snapshot.Jobs
-	for _, job := range ssn.Jobs {
-		if job.PodGroup != nil {
-			ssn.podGroupStatus[job.UID] = *job.PodGroup.Status.DeepCopy()
-		}
-
-		if vjr := ssn.JobValid(job); vjr != nil {
-			if !vjr.Pass {
-				jc := &scheduling.PodGroupCondition{
-					Type:               scheduling.PodGroupUnschedulableType,
-					Status:             v1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
-					TransitionID:       string(ssn.UID),
-					Reason:             vjr.Reason,
-					Message:            vjr.Message,
-				}
-
-				if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
-					klog.Errorf("Failed to update job condition: %v", err)
-				}
-			}
-
-			delete(ssn.Jobs, job.UID)
-		}
-	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
 	ssn.Nodes = snapshot.Nodes
 	ssn.CSINodesStatus = snapshot.CSINodesStatus
@@ -196,7 +172,7 @@ func openSession(cache cache.Cache) *Session {
 // updateQueueStatus updates allocated field in queue status on session close.
 func updateQueueStatus(ssn *Session) {
 	// calculate allocated resources on each queue
-	var allocatedResources = make(map[api.QueueID]*api.Resource, len(ssn.Queues))
+	allocatedResources := make(map[api.QueueID]*api.Resource, len(ssn.Queues))
 	for queueID := range ssn.Queues {
 		allocatedResources[queueID] = &api.Resource{}
 	}
