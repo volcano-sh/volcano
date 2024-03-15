@@ -18,6 +18,7 @@ package deviceshare
 
 import (
 	"fmt"
+	"reflect"
 
 	"k8s.io/klog/v2"
 
@@ -76,7 +77,7 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		// Check PredicateWithCache
 		for _, val := range api.RegisteredDevices {
 			if dev, ok := node.Others[val].(api.Devices); ok {
-				if dev == nil {
+				if reflect.ValueOf(dev).IsNil() {
 					predicateStatus = append(predicateStatus, &api.Status{
 						Code:   devices.Unschedulable,
 						Reason: "node not initialized with device" + val,
