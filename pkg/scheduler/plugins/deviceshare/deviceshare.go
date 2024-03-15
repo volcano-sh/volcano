@@ -18,6 +18,7 @@ package deviceshare
 
 import (
 	"fmt"
+	"reflect"
 
 	"k8s.io/klog/v2"
 
@@ -76,12 +77,17 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		// Check PredicateWithCache
 		for _, val := range api.RegisteredDevices {
 			if dev, ok := node.Others[val].(api.Devices); ok {
-				if dev == nil {
-					predicateStatus = append(predicateStatus, &api.Status{
-						Code:   devices.Unschedulable,
-						Reason: "node not initialized with device" + val,
-					})
-					return predicateStatus, fmt.Errorf("node not initialized with device %s", val)
+				if reflect.ValueOf(dev).IsNil() {
+					// TODO When a pod requests a device of the current type, but the current node does not have such a device, an error is thrown
+					if dev == nil || dev.HasDeviceRequest(task.Pod) {
+						predicateStatus = append(predicateStatus, &api.Status{
+							Code:   devices.Unschedulable,
+							Reason: "node not initialized with device" + val,
+						})
+						return predicateStatus, fmt.Errorf("node not initialized with device %s", val)
+					}
+					klog.V(4).Infof("pod %s/%s did not request device %s on %s, skipping it", task.Pod.Namespace, task.Pod.Name, val, node.Name)
+					continue
 				}
 				code, msg, err := dev.FilterNode(task.Pod)
 				filterNodeStatus := &api.Status{
