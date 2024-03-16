@@ -112,10 +112,10 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, util.Permit
 	}
 	ssn.AddPreemptableFn(pp.Name(), preemptableFn)
-	reclaimbleFn := func(reclaimor *api.TaskInfo, reclaimee []*api.TaskInfo) ([]*api.TaskInfo, int) {
+	reclaimableFn := func(reclaimor *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		reclaimorJob := ssn.Jobs[reclaimor.Job]
 		var victims []*api.TaskInfo
-		for _, reclaimee := range reclaimee {
+		for _, reclaimee := range reclaimees {
 			reclaimeeJob := ssn.Jobs[reclaimee.Job]
 			if reclaimeeJob == nil {
 				continue
@@ -130,7 +130,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(4).Infof("Victims from Priority plugins are %+v", victims)
 		return victims, util.Permit
 	}
-	ssn.AddReclaimableFn(pp.Name(), reclaimbleFn)
+	ssn.AddReclaimableFn(pp.Name(), reclaimableFn)
 
 	jobStarvingFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)

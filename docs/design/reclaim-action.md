@@ -22,41 +22,62 @@ creating tasks.
 
 In Reclaim Action, there are multiple plugin functions that are getting used like,
 
-1.  TaskOrderFn(Plugin: Priority),
-2.  JobOrderFn(Plugin: Priority, DRF, Gang),
-3.  NodeOrderFn(Plugin: NodeOrder),
-4.  PredicateFn(Plugin: Predicates),
-5.  ReclaimableFn(Plugin: Conformance, Gang, Proportion).
+1. TaskOrderFn(Plugin: Priority),
+2. JobOrderFn(Plugin: Priority, DRF, Gang),
+3. NodeOrderFn(Plugin: NodeOrder),
+4. PredicateFn(Plugin: Predicates),
+5. ReclaimableFn(Plugin: Conformance, Gang, Proportion, Priority).
 
-### 1. TaskOrderFn:
-#### Priority:
+### 1. TaskOrderFn
+
+#### Priority
+
 Compares taskPriority set in PodSpec and returns the decision of comparison between two priorities.
 
-### 2. JobOrderFn:
-#### Priority:
+### 2. JobOrderFn
+
+#### Priority
+
 Compares jobPriority set in Spec(using PriorityClass) and returns the decision of comparison between two priorities.
 
-#### DRF:
+#### DRF
+
 The job having the lowest share will have higher priority.
 
-#### Gang:
+#### Gang
+
 The job which is not yet ready(i.e. minAvailable number of task is not yet in Bound, Binding, Running, Allocated, Succeeded, Pipelined state) will have high priority.
 
-### 3. NodeOrderFn:
-#### NodeOrder:
+### 3. NodeOrderFn
+
+#### NodeOrder
+
 NodeOrderFn returns the score of a particular node for a specific task by running through sets of priorities.
 
-### 4. PredicateFn:
-#### Predicates:
+### 4. PredicateFn
+
+#### Predicates
+
 PredicateFn returns whether a task can be bounded to a node or not by running through set of predicates.
 
-### 5. ReclaimableFn:
+### 5. ReclaimableFn
+
 Checks whether a task can be evicted or not, which returns set of tasks that can be evicted so that new task can be created in new queue.
-#### Conformance:
+
+#### Conformance
+
 In conformance plugin, it checks whether a task is critical or running in kube-system namespace, so that it can be avoided while computing set of tasks that can be preempted.
-#### Gang:
+
+#### Gang
+
 It checks whether by evicting a task, it affects gang scheduling in kube-batch.  It checks whether by evicting particular task,
 total number of tasks running for a job is going to be less than the minAvailable requirement for gang scheduling requirement.
-#### Proportion:
+
+#### Proportion
+
 It checks whether by evicting a task, that task's queue has allocated resource less than the deserved share.  If so, that task
 is added as a victim task that can be evicted so that resource can be reclaimed.
+
+#### Priority
+
+In priority plugin, it checks whether a task's job has a higher priority set in job spec, so that it can be avoided while computing set of tasks that can be preempted.
