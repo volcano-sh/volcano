@@ -20,6 +20,28 @@ custom:
   leader_elect_enable: false
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
 
+# Override the configuration for admission or scheduler.
+# For example:
+#
+#  scheduler_config_override: |
+#    actions: "enqueue, allocate, backfill"
+#    tiers:
+#    - plugins:
+#      - name: priority
+#      - name: gang
+#        enablePreemptable: false
+#      - name: conformance
+#    - plugins:
+#      - name: overcommit
+#      - name: drf
+#        enablePreemptable: false
+#      - name: predicates
+#      - name: proportion
+#      - name: nodeorder
+#      - name: binpack
+  admission_config_override: ~
+  scheduler_config_override: ~
+
 # Specify affinity for all main Volcano components or per component.
 # For example:
 #

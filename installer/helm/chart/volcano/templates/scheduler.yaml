@@ -9,7 +9,12 @@ metadata:
   name: {{ .Release.Name }}-scheduler-configmap
   namespace: {{ .Release.Namespace }}
 data:
+  {{- if .Values.custom.scheduler_config_override }}
+  volcano-scheduler.conf: |
+    {{- .Values.custom.scheduler_config_override | nindent 4 }}
+  {{- else }}
   {{- (.Files.Glob .Values.basic.scheduler_config_file).AsConfig | nindent 2}}
+  {{- end }}
 ---
 apiVersion: v1
 kind: ServiceAccount
