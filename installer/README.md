@@ -98,6 +98,8 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.scheduler_enable`|Whether to Enable Scheduler|`true`|
 |`custom.scheduler_replicas`|The number of Scheduler pods to run|`1`|
 |`custom.leader_elect_enable`|Whether to Enable leader elect|`false`|
+|`custom.admission_config_override`|Override admission configmap|`~`|
+|`custom.scheduler_config_override`|Override scheduler configmap|`~`|
 |`custom.default_affinity`|Default affinity for Admission/Controller/Scheduler pods|`~`|
 |`custom.admission_affinity`|Affinity for Admission pods|`~`|
 |`custom.controller_affinity`|Affinity for Controller pods|`~`|
