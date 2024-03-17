@@ -19,20 +19,16 @@ package binpack
 import (
 	"fmt"
 	"math"
-	"reflect"
 	"testing"
 
-	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/record"
 
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -103,18 +99,6 @@ func addResource(resourceList v1.ResourceList, name v1.ResourceName, need string
 }
 
 func TestNode(t *testing.T) {
-	var tmp *cache.SchedulerCache
-	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
-		return nil
-	})
-	defer patchUpdateQueueStatus.Reset()
-
-	// TODO(wangyang0616): First make sure that ut can run, and then fix the failed ut later
-	// See issue for details: https://github.com/volcano-sh/volcano/issues/2810
-	t.Skip("Test cases are not as expected, fixed later. see issue: #2810")
-	framework.RegisterPluginBuilder(PluginName, New)
-	defer framework.CleanupPluginBuilders()
-
 	GPU := v1.ResourceName("nvidia.com/gpu")
 	FOO := v1.ResourceName("example.com/foo")
 
@@ -131,46 +115,23 @@ func TestNode(t *testing.T) {
 	n3 := util.BuildNode("n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
 	addResource(n3.Status.Allocatable, FOO, "16")
 
-	pg1 := &schedulingv1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pg1",
-			Namespace: "c1",
-		},
-		Spec: schedulingv1.PodGroupSpec{
-			Queue: "c1",
-		},
-	}
-	queue1 := &schedulingv1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "c1",
-		},
-		Spec: schedulingv1.QueueSpec{
-			Weight: 1,
-		},
-	}
+	pg1 := util.BuildPodGroup("pg1", "c1", "c1", 0, nil, "")
+	queue1 := util.BuildQueue("c1", 1, nil)
 
 	tests := []struct {
-		name      string
-		podGroups []*schedulingv1.PodGroup
-		pods      []*v1.Pod
-		nodes     []*v1.Node
-		queues    []*schedulingv1.Queue
+		uthelper.TestCommonStruct
 		arguments framework.Arguments
 		expected  map[string]map[string]float64
 	}{
 		{
-			name: "single job",
-			podGroups: []*schedulingv1.PodGroup{
-				pg1,
-			},
-			queues: []*schedulingv1.Queue{
-				queue1,
-			},
-			pods: []*v1.Pod{
-				p1, p2, p3, p4,
-			},
-			nodes: []*v1.Node{
-				n1, n2, n3,
+			TestCommonStruct: uthelper.TestCommonStruct{
+
+				Name:      "single job",
+				Plugins:   map[string]framework.PluginBuilder{PluginName: New},
+				PodGroups: []*schedulingv1.PodGroup{pg1},
+				Queues:    []*schedulingv1.Queue{queue1},
+				Pods:      []*v1.Pod{p1, p2, p3, p4},
+				Nodes:     []*v1.Node{n1, n2, n3},
 			},
 			arguments: framework.Arguments{
 				"binpack.weight":                    10,
@@ -184,7 +145,7 @@ func TestNode(t *testing.T) {
 				"c1/p1": {
 					"n1": 700,
 					"n2": 137.5,
-					"n3": 150,
+					"n3": 0, // n3 has used 1.5c by pod p2, idle cpu not enough for p1
 				},
 				"c1/p2": {
 					"n1": 0,
@@ -199,23 +160,18 @@ func TestNode(t *testing.T) {
 				"c1/p4": {
 					"n1": 0,
 					"n2": 173.076923076,
-					"n3": 346.153846153,
+					"n3": 0, // required 3c, but node only has 2c
 				},
 			},
 		},
 		{
-			name: "single job",
-			podGroups: []*schedulingv1.PodGroup{
-				pg1,
-			},
-			queues: []*schedulingv1.Queue{
-				queue1,
-			},
-			pods: []*v1.Pod{
-				p1, p2, p3, p4,
-			},
-			nodes: []*v1.Node{
-				n1, n2, n3,
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:      "single job",
+				Plugins:   map[string]framework.PluginBuilder{PluginName: New},
+				PodGroups: []*schedulingv1.PodGroup{pg1},
+				Queues:    []*schedulingv1.Queue{queue1},
+				Pods:      []*v1.Pod{p1, p2, p3, p4},
+				Nodes:     []*v1.Node{n1, n2, n3},
 			},
 			arguments: framework.Arguments{
 				"binpack.weight":                   1,
@@ -228,7 +184,7 @@ func TestNode(t *testing.T) {
 				"c1/p1": {
 					"n1": 75,
 					"n2": 15.625,
-					"n3": 12.5,
+					"n3": 0,
 				},
 				"c1/p2": {
 					"n1": 0,
@@ -243,42 +199,15 @@ func TestNode(t *testing.T) {
 				"c1/p4": {
 					"n1": 0,
 					"n2": 50,
-					"n3": 50,
+					"n3": 0,
 				},
 			},
 		},
 	}
 
+	trueValue := true
 	for i, test := range tests {
-		binder := &util.FakeBinder{
-			Binds:   map[string]string{},
-			Channel: make(chan string),
-		}
-		schedulerCache := &cache.SchedulerCache{
-			Nodes:         make(map[string]*api.NodeInfo),
-			Jobs:          make(map[api.JobID]*api.JobInfo),
-			Queues:        make(map[api.QueueID]*api.QueueInfo),
-			Binder:        binder,
-			StatusUpdater: &util.FakeStatusUpdater{},
-			VolumeBinder:  &util.FakeVolumeBinder{},
-
-			Recorder: record.NewFakeRecorder(100),
-		}
-		for _, node := range test.nodes {
-			schedulerCache.AddOrUpdateNode(node)
-		}
-		for _, pod := range test.pods {
-			schedulerCache.AddPod(pod)
-		}
-		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroupV1beta1(ss)
-		}
-		for _, q := range test.queues {
-			schedulerCache.AddQueueV1beta1(q)
-		}
-
-		trueValue := true
-		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+		tiers := []conf.Tier{
 			{
 				Plugins: []conf.PluginOption{
 					{
@@ -288,9 +217,8 @@ func TestNode(t *testing.T) {
 					},
 				},
 			},
-		}, nil)
-		defer framework.CloseSession(ssn)
-
+		}
+		ssn := test.RegistSession(tiers, nil)
 		for _, job := range ssn.Jobs {
 			for _, task := range job.Tasks {
 				taskID := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
