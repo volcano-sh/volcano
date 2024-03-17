@@ -10,7 +10,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
 data:
   {{- if .Values.custom.admission_config_override }}
-  volcano-scheduler.conf: |
+  volcano-admission.conf: |
     {{- .Values.custom.admission_config_override | nindent 4 }}
   {{- else }}
   {{- (.Files.Glob .Values.basic.admission_config_file).AsConfig | nindent 2}}
