@@ -95,7 +95,7 @@ image_bins: vc-scheduler vc-controller-manager vc-webhook-manager
 
 images:
 	for name in controller-manager scheduler webhook-manager; do\
-		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS}; \
+		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR}; \
 	done
 
 generate-code:
@@ -166,7 +166,8 @@ clean:
 verify:
 	hack/verify-gofmt.sh
 	hack/verify-gencode.sh
-	hack/verify-vendor-licenses.sh
+    # this verify is deprecated and use make lint-licenses instead.
+	#hack/verify-vendor-licenses.sh
 
 lint: ## Lint the files
 	hack/verify-golangci-lint.sh
@@ -202,3 +203,26 @@ endif
 update-development-yaml:
 	make generate-yaml TAG=latest RELEASE_DIR=installer
 	mv installer/volcano-latest.yaml installer/volcano-development.yaml
+
+mod-download-go:
+	@-GOFLAGS="-mod=readonly" find -name go.mod -execdir go mod download \;
+# go mod tidy is needed with Golang 1.16+ as go mod download affects go.sum
+# https://github.com/golang/go/issues/43994
+# exclude docs folder
+	@find . -path ./docs -prune -o -name go.mod -execdir go mod tidy \;
+
+.PHONY: mirror-licenses
+mirror-licenses: mod-download-go; \
+	go install istio.io/tools/cmd/license-lint@1.19.7; \
+	cd licenses; \
+	rm -rf `ls ./ | grep -v LICENSE`; \
+	cd -; \
+	license-lint --mirror
+
+.PHONY: lint-licenses
+lint-licenses:
+	@if test -d licenses; then license-lint --config config/license-lint.yaml; fi
+
+.PHONY: licenses-check
+licenses-check: mirror-licenses; \
+    hack/licenses-check.sh

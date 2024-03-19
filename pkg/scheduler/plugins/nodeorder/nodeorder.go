@@ -33,7 +33,6 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/selectorspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -62,8 +61,6 @@ const (
 	ImageLocalityWeight = "imagelocality.weight"
 	// PodTopologySpreadWeight is the key for providing Pod Topology Spread Priority Weight in YAML
 	PodTopologySpreadWeight = "podtopologyspread.weight"
-	// SelectorSpreadWeight is the key for providing Selector Spread Priority Weight in YAML
-	selectorSpreadWeight = "selectorspread.weight"
 )
 
 type nodeOrderPlugin struct {
@@ -89,7 +86,6 @@ type priorityWeight struct {
 	taintTolerationWeight   int
 	imageLocalityWeight     int
 	podTopologySpreadWeight int
-	selectorSpreadWeight    int
 }
 
 // calculateWeight from the provided arguments.
@@ -132,7 +128,6 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 		taintTolerationWeight:   3,
 		imageLocalityWeight:     1,
 		podTopologySpreadWeight: 2, // be consistent with kubernetes default setting.
-		selectorSpreadWeight:    0,
 	}
 
 	// Checks whether nodeaffinity.weight is provided or not, if given, modifies the value in weight struct.
@@ -159,9 +154,6 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	// Checks whether podtopologyspread.weight is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.podTopologySpreadWeight, PodTopologySpreadWeight)
 
-	// Checks whether selectorspread.weight is provided or not, if given, modifies the value in weight struct.
-	args.GetInt(&weight.selectorSpreadWeight, selectorSpreadWeight)
-
 	return weight
 }
 
@@ -170,7 +162,6 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeMap := ssn.NodeMap
 
 	fts := feature.Features{
-		EnableReadWriteOncePod:                       utilFeature.DefaultFeatureGate.Enabled(features.ReadWriteOncePod),
 		EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
 		EnableMinDomainsInPodTopologySpread:          utilFeature.DefaultFeatureGate.Enabled(features.MinDomainsInPodTopologySpread),
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
@@ -187,7 +178,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			Resources: []config.ResourceSpec{{Name: "cpu", Weight: 50}, {Name: "memory", Weight: 50}},
 		},
 	}
-	p, _ := noderesources.NewFit(leastAllocatedArgs, handle, fts)
+	p, _ := noderesources.NewFit(context.TODO(), leastAllocatedArgs, handle, fts)
 	leastAllocated := p.(*noderesources.Fit)
 
 	// 2. NodeResourcesMostAllocated
@@ -197,7 +188,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			Resources: []config.ResourceSpec{{Name: "cpu", Weight: 1}, {Name: "memory", Weight: 1}},
 		},
 	}
-	p, _ = noderesources.NewFit(mostAllocatedArgs, handle, fts)
+	p, _ = noderesources.NewFit(context.TODO(), mostAllocatedArgs, handle, fts)
 	mostAllocation := p.(*noderesources.Fit)
 
 	// 3. NodeResourcesBalancedAllocation
@@ -208,18 +199,18 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			{Name: "nvidia.com/gpu", Weight: 1},
 		},
 	}
-	p, _ = noderesources.NewBalancedAllocation(blArgs, handle, fts)
+	p, _ = noderesources.NewBalancedAllocation(context.TODO(), blArgs, handle, fts)
 	balancedAllocation := p.(*noderesources.BalancedAllocation)
 
 	// 4. NodeAffinity
 	naArgs := &config.NodeAffinityArgs{
 		AddedAffinity: &v1.NodeAffinity{},
 	}
-	p, _ = nodeaffinity.New(naArgs, handle)
+	p, _ = nodeaffinity.New(context.TODO(), naArgs, handle)
 	nodeAffinity := p.(*nodeaffinity.NodeAffinity)
 
 	// 5. ImageLocality
-	p, _ = imagelocality.New(nil, handle)
+	p, _ = imagelocality.New(context.TODO(), nil, handle)
 	imageLocality := p.(*imagelocality.ImageLocality)
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
@@ -297,20 +288,17 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
 
 	plArgs := &config.InterPodAffinityArgs{}
-	p, _ = interpodaffinity.New(plArgs, handle)
+	p, _ = interpodaffinity.New(context.TODO(), plArgs, handle)
 	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
 
-	p, _ = tainttoleration.New(nil, handle)
+	p, _ = tainttoleration.New(context.TODO(), nil, handle)
 	taintToleration := p.(*tainttoleration.TaintToleration)
 
 	ptsArgs := &config.PodTopologySpreadArgs{
 		DefaultingType: config.SystemDefaulting,
 	}
-	p, _ = podtopologyspread.New(ptsArgs, handle, fts)
+	p, _ = podtopologyspread.New(context.TODO(), ptsArgs, handle, fts)
 	podTopologySpread := p.(*podtopologyspread.PodTopologySpread)
-
-	p, _ = selectorspread.New(nil, handle)
-	selectorSpread := p.(*selectorspread.SelectorSpread)
 
 	batchNodeOrderFn := func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
 		// InterPodAffinity
@@ -336,13 +324,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return nil, err
 		}
 
-		selectorSpreadScores, err := selectorSpreadScore(selectorSpread, state, task.Pod, nodes, weight.selectorSpreadWeight)
-		if err != nil {
-			return nil, err
-		}
-
 		for _, node := range nodes {
-			nodeScores[node.Name] = podAffinityScores[node.Name] + nodeTolerationScores[node.Name] + podTopologySpreadScores[node.Name] + selectorSpreadScores[node.Name]
+			nodeScores[node.Name] = podAffinityScores[node.Name] + nodeTolerationScores[node.Name] + podTopologySpreadScores[node.Name]
 		}
 
 		klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)

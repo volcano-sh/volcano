@@ -17,6 +17,7 @@ limitations under the License.
 package scheduler
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -26,9 +27,10 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins"
+	"volcano.sh/volcano/pkg/util"
 )
 
-var defaultSchedulerConf = `
+var DefaultSchedulerConf = `
 actions: "enqueue, allocate, backfill"
 tiers:
 - plugins:
@@ -43,7 +45,7 @@ tiers:
   - name: nodeorder
 `
 
-func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []conf.Configuration, map[string]string, error) {
+func UnmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []conf.Configuration, map[string]string, error) {
 	var actions []framework.Action
 
 	schedulerConf := &conf.SchedulerConfiguration{}
@@ -85,10 +87,12 @@ func unmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 	return actions, schedulerConf.Tiers, schedulerConf.Configurations, schedulerConf.MetricsConfiguration, nil
 }
 
-func readSchedulerConf(confPath string) (string, error) {
-	dat, err := os.ReadFile(confPath)
-	if err != nil {
-		return "", err
+func runSchedulerSocket() {
+	fs := flag.CommandLine
+	startKlogLevel := fs.Lookup("v").Value.String()
+	socketDir := os.Getenv(util.SocketDirEnvName)
+	if socketDir == "" {
+		socketDir = util.DefaultSocketDir
 	}
-	return string(dat), nil
+	util.ListenAndServeKlogLogLevel("klog", startKlogLevel, socketDir)
 }

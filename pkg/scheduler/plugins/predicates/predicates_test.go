@@ -70,7 +70,7 @@ func TestEventHandler(t *testing.T) {
 		return
 	}
 
-	sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector, option.NodeWorkerThreads)
+	sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector, option.NodeWorkerThreads, nil)
 	schedulerCache := sc.(*cache.SchedulerCache)
 
 	// pending pods
@@ -147,7 +147,7 @@ func TestEventHandler(t *testing.T) {
 		// initialize schedulerCache
 		binder := &util.FakeBinder{
 			Binds:   map[string]string{},
-			Channel: make(chan string),
+			Channel: make(chan string, 10),
 		}
 		recorder := record.NewFakeRecorder(100)
 		go func() {

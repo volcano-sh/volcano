@@ -17,11 +17,15 @@
 package cache
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/signal"
+	"path"
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"k8s.io/klog/v2"
 
@@ -32,9 +36,31 @@ import (
 // for debugging purposes. Usage: run `kill -s USR2 <pid>` in the shell, where <pid>
 // is the process id of the scheduler process.
 type Dumper struct {
-	Cache Cache
+	Cache   Cache
+	RootDir string // target directory for the dumped json file
 }
 
+// dumpToJSONFile marsh scheduler cache snapshot to json file
+func (d *Dumper) dumpToJSONFile() {
+	snapshot := d.Cache.Snapshot()
+	name := fmt.Sprintf("snapshot-%d.json", time.Now().Unix())
+	fName := path.Join(d.RootDir, name)
+	file, err := os.OpenFile(fName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		klog.Errorf("error creating snapshot because of error creating file: %v", err)
+		return
+	}
+	defer file.Close()
+	klog.Infoln("Starting to dump info in scheduler cache to file", fName)
+	if err = json.NewEncoder(file).Encode(snapshot.Nodes); err != nil {
+		klog.Errorf("Failed to dump info in scheduler cache, json encode error: %v", err)
+		return
+	}
+
+	klog.Infoln("Successfully dump info in scheduler cache to file", fName)
+}
+
+// dumpAll prints all information to log
 func (d *Dumper) dumpAll() {
 	snapshot := d.Cache.Snapshot()
 	klog.Info("Dump of nodes info in scheduler cache")
@@ -73,16 +99,20 @@ func (d *Dumper) printJobInfo(jobInfo *api.JobInfo) string {
 }
 
 // ListenForSignal starts a goroutine that will respond when process
-// receives SIGUSER2 signal.
+// receives SIGUSER1/SIGUSER2 signal.
 func (d *Dumper) ListenForSignal(stopCh <-chan struct{}) {
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGUSR2)
+	ch1 := make(chan os.Signal, 1)
+	ch2 := make(chan os.Signal, 1)
+	signal.Notify(ch1, syscall.SIGUSR1)
+	signal.Notify(ch2, syscall.SIGUSR2)
 	go func() {
 		for {
 			select {
 			case <-stopCh:
 				return
-			case <-ch:
+			case <-ch1:
+				d.dumpToJSONFile()
+			case <-ch2:
 				d.dumpAll()
 			}
 		}

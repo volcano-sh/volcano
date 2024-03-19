@@ -1,0 +1,72 @@
+# copied from https://github.com/istio/istio/blob/master/common/config/license-lint.yml
+unrestricted_licenses:
+  - Apache-2.0
+  - CC-BY-3.0
+  - ISC
+  - AFL-2.1
+  - AFL-3.0
+  - Artistic-1.0
+  - Artistic-2.0
+  - Apache-1.1
+  - BSD-1-Clause
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - 0BSD
+  - FTL
+  - LPL-1.02
+  - MS-PL
+  - MIT
+  - NCSA
+  - OpenSSL
+  - PHP-3.0
+  - TCP-wrappers
+  - W3C
+  - Xnet
+  - Zlib
+
+reciprocal_licenses:
+  - CC0-1.0
+  - APSL-2.0
+  - CDDL-1.0
+  - CDDL-1.1
+  - CPL-1.0
+  - EPL-1.0
+  - IPL-1.0
+  - MPL-1.0
+  - MPL-1.1
+  - MPL-2.0
+  - MPL-2.0-no-copyleft-exception
+  - Ruby
+
+restricted_licenses:
+  - GPL-1.0-only
+  - GPL-1.0-or-later
+  - GPL-2.0-only
+  - GPL-2.0-or-later
+  - GPL-3.0-only
+  - GPL-3.0-or-later
+  - LGPL-2.0-only
+  - LGPL-2.0-or-later
+  - LGPL-2.1-only
+  - LGPL-2.1-or-later
+  - LGPL-3.0-only
+  - LGPL-3.0-or-later
+  - NPL-1.0
+  - NPL-1.1
+  - OSL-1.0
+  - OSL-1.1
+  - OSL-2.0
+  - OSL-2.1
+  - OSL-3.0
+  - QPL-1.0
+  - Sleepycat
+
+allowlisted_modules:
+# Apache-2.0: github.com/google/cadvisor@v0.47.1/LICENSE
+- github.com/google/cadvisor
+# Apache-2.0: k8s.io/kubernetes@v1.27.2/logo/LICENSE
+- k8s.io/kubernetes
+# BSD: github.com/gogo/protobuf@v1.3.2/LICENSE
+- github.com/gogo/protobuf
+# MIT: sigs.k8s.io/yaml@v1.3.0/LICENSE
+- sigs.k8s.io/yaml

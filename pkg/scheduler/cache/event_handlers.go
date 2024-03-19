@@ -35,15 +35,16 @@ import (
 	storagehelpers "k8s.io/component-helpers/storage/volume"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
+	"k8s.io/utils/cpuset"
 
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/apis/utils"
+
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	commonutil "volcano.sh/volcano/pkg/util"
@@ -127,7 +128,12 @@ func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int
 				return volumes, err
 			}
 		}
+
 		driverName := sc.getCSIDriverInfo(pvc)
+		if sc.isIgnoredProvisioner(driverName) {
+			klog.V(5).InfoS("Provisioner ignored, skip count pod pvc num", "driverName", driverName)
+			continue
+		}
 		if driverName == "" {
 			klog.V(5).InfoS("Could not find a CSI driver name for pvc(%s/%s), not counting volume", pvc.Namespace, pvc.Name)
 			continue
@@ -145,6 +151,10 @@ func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int
 		}
 	}
 	return volumes, nil
+}
+
+func (sc *SchedulerCache) isIgnoredProvisioner(driverName string) bool {
+	return sc.IgnoredCSIProvisioners.Has(driverName)
 }
 
 func (sc *SchedulerCache) getCSIDriverInfo(pvc *v1.PersistentVolumeClaim) string {
@@ -228,6 +238,8 @@ func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, err
 	if err := sc.addPodCSIVolumesToTask(taskInfo); err != nil {
 		return taskInfo, err
 	}
+	// Update BestEffort because the InitResreq maybe changes
+	taskInfo.BestEffort = taskInfo.InitResreq.IsEmpty()
 	return taskInfo, nil
 }
 

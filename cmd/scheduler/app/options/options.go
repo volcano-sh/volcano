@@ -78,12 +78,19 @@ type ServerOption struct {
 	PercentageOfNodesToFind    int32
 
 	NodeSelector      []string
+	CacheDumpFileDir  string
 	EnableCacheDumper bool
 	NodeWorkerThreads uint32
 	// the number of worker when execute in parallel
 	WorkerNum int
+
+	// IgnoredCSIProvisioners contains a list of provisioners, and pod request pvc with these provisioners will
+	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
+	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
+	IgnoredCSIProvisioners []string
 }
 
+// DecryptFunc is custom function to parse ca file
 type DecryptFunc func(c *ServerOption) error
 
 // ServerOpts server options.
@@ -136,8 +143,10 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
+	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.IntVar(&s.WorkerNum, "worker-num", defaultWorkerNum, "The number of concurrent workers that can be used when multitasking is involved in the scheduler")
+	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 }
 
 // CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.
@@ -188,4 +197,12 @@ func (s *ServerOption) ParseCAFiles(decryptFunc DecryptFunc) error {
 	}
 
 	return nil
+}
+
+// Default new and registry a default one
+func Default() *ServerOption {
+	s := NewServerOption()
+	s.AddFlags(pflag.CommandLine)
+	s.RegisterOptions()
+	return s
 }

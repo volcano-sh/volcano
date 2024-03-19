@@ -299,7 +299,7 @@ func checkType(annos map[string]string, d GPUDevice, n ContainerDeviceRequest) b
 	if strings.Compare(n.Type, NvidiaGPUDevice) == 0 {
 		return checkGPUtype(annos, d.Type)
 	}
-	klog.Errorf("Unrecognized device", n.Type)
+	klog.Errorf("Unrecognized device %v", n.Type)
 	return false
 }
 

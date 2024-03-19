@@ -59,6 +59,7 @@ func TestAddFlags(t *testing.T) {
 		LockObjectNamespace:        defaultLockObjectNamespace,
 		NodeWorkerThreads:          defaultNodeWorkers,
 		WorkerNum:                  defaultWorkerNum,
+		CacheDumpFileDir:           "/tmp",
 	}
 
 	if !reflect.DeepEqual(expected, s) {

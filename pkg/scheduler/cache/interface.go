@@ -111,6 +111,7 @@ type Evictor interface {
 type StatusUpdater interface {
 	UpdatePodCondition(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error)
 	UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error)
+	UpdateQueueStatus(queue *api.QueueInfo) error
 }
 
 // BatchBinder updates podgroup or job information
