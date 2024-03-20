@@ -389,8 +389,10 @@ func (s *Statement) Commit() {
 		case Allocate:
 			err := s.allocate(op.task)
 			if err != nil {
-				s.ssn.cache.RevertVolumes(op.task, op.task.PodVolumes)
-				klog.Errorf("Failed to allocate task: for %s", err.Error())
+				if e := s.unallocate(op.task); e != nil {
+					klog.Errorf("Failed to unallocate task <%v/%v>: %v.", op.task.Namespace, op.task.Name, e)
+				}
+				klog.Errorf("Failed to allocate task <%v/%v>: %v.", op.task.Namespace, op.task.Name, err)
 			}
 		}
 	}
