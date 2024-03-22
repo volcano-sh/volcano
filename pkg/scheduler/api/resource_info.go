@@ -260,6 +260,16 @@ func (r *Resource) Sub(rr *Resource) *Resource {
 	return r.sub(rr)
 }
 
+// SubWithoutAssert subtracts two Resource objects without assertion,
+// this function is added because some resource subtraction allows negative results, while others do not.
+func (r *Resource) SubWithoutAssert(rr *Resource) *Resource {
+	ok, resources := rr.LessEqualWithResourcesName(r, Zero)
+	if !ok {
+		klog.Errorf("resources <%v> are not sufficient to do operation: <%v> sub <%v>", resources, r, rr)
+	}
+	return r.sub(rr)
+}
+
 // sub subtracts two Resource objects.
 func (r *Resource) sub(rr *Resource) *Resource {
 	r.MilliCPU -= rr.MilliCPU
