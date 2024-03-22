@@ -88,7 +88,7 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 	for _, node := range ssn.Nodes {
 		used.Add(node.Used)
 	}
-	op.idleResource = op.totalResource.Clone().Multi(op.overCommitFactor).Sub(used)
+	op.idleResource = op.totalResource.Clone().Multi(op.overCommitFactor).SubWithoutAssert(used)
 
 	for _, job := range ssn.Jobs {
 		// calculate inqueue job resources
