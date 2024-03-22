@@ -9,7 +9,12 @@ metadata:
   name: {{ .Release.Name }}-admission-configmap
   namespace: {{ .Release.Namespace }}
 data:
+  {{- if .Values.custom.admission_config_override }}
+  volcano-admission.conf: |
+    {{- .Values.custom.admission_config_override | nindent 4 }}
+  {{- else }}
   {{- (.Files.Glob .Values.basic.admission_config_file).AsConfig | nindent 2}}
+  {{- end }}
 ---
 apiVersion: v1
 kind: ServiceAccount
