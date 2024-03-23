@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -91,8 +92,8 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 		}
 	}
 
-	//workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
-	workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
+	//workqueue.ParallelizeUntil(context.TODO(), options.ServerOpts.WorkerNum, len(nodes), checkNode)
+	workqueue.ParallelizeUntil(ctx, options.ServerOpts.WorkerNum, allNodes, checkNode)
 
 	//processedNodes := int(numFoundNodes) + len(filteredNodesStatuses) + len(failedPredicateMap)
 	lastProcessedNodeIndex = (lastProcessedNodeIndex + int(processedNodes)) % allNodes
