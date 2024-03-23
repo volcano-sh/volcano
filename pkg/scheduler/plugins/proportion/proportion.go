@@ -154,7 +154,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			inqueued := util.GetInqueueResource(job, job.Allocated)
 			attr.inqueue.Add(inqueued)
 		}
-		attr.elastic.Add(job.GetElasticResources())
+		attr.elastic.Add(job.GetElasticResourcesWithDiff())
 		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
 			attr.name, attr.allocated.String(), attr.request.String(), attr.inqueue.String(), attr.elastic.String())
 	}
