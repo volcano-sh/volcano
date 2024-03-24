@@ -17,32 +17,21 @@
 package shuffle
 
 import (
-	"reflect"
 	"testing"
-	"time"
 
-	"github.com/agiledragon/gomonkey/v2"
 	"github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
-	schedulingv1 "k8s.io/api/scheduling/v1"
-	"k8s.io/client-go/tools/record"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	mock_framework "volcano.sh/volcano/pkg/scheduler/framework/mock_gen"
+	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func TestShuffle(t *testing.T) {
-	var tmp *cache.SchedulerCache
-	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
-		return nil
-	})
-	defer patchUpdateQueueStatus.Reset()
-
 	var highPriority int32
 	var lowPriority int32
 	highPriority = 100
@@ -56,31 +45,26 @@ func TestShuffle(t *testing.T) {
 	fakePluginBuilder := func(arguments framework.Arguments) framework.Plugin {
 		return fakePlugin
 	}
-	framework.RegisterPluginBuilder("fake", fakePluginBuilder)
 
-	tests := []struct {
-		name      string
-		podGroups []*schedulingv1beta1.PodGroup
-		pods      []*v1.Pod
-		nodes     []*v1.Node
-		queues    []*schedulingv1beta1.Queue
-		expected  int
-	}{
+	plugins := map[string]framework.PluginBuilder{"fake": fakePluginBuilder}
+
+	tests := []uthelper.TestCommonStruct{
 		{
-			name: "select pods with low priority and evict them",
-			nodes: []*v1.Node{
+			Name:    "select pods with low priority and evict them",
+			Plugins: plugins,
+			Nodes: []*v1.Node{
 				util.BuildNode("node1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
 				util.BuildNode("node2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
 			},
-			queues: []*schedulingv1beta1.Queue{
+			Queues: []*schedulingv1beta1.Queue{
 				util.BuildQueue("default", 1, nil),
 			},
-			podGroups: []*schedulingv1beta1.PodGroup{
+			PodGroups: []*schedulingv1beta1.PodGroup{
 				util.BuildPodGroup("pg1", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
 				util.BuildPodGroup("pg2", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
 				util.BuildPodGroup("pg3", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
 			},
-			pods: []*v1.Pod{
+			Pods: []*v1.Pod{
 				util.BuildPodWithPriority("test", "pod1-1", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &lowPriority),
 				util.BuildPodWithPriority("test", "pod1-2", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
 				util.BuildPodWithPriority("test", "pod1-3", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
@@ -89,53 +73,15 @@ func TestShuffle(t *testing.T) {
 				util.BuildPodWithPriority("test", "pod3-1", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &lowPriority),
 				util.BuildPodWithPriority("test", "pod3-2", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &highPriority),
 			},
-			expected: 3,
+			EvictNum: 3,
+			Evicted:  []string{"test/pod1-1", "test/pod2-1", "test/pod3-1"},
 		},
 	}
 	shuffle := New()
 
 	for i, test := range tests {
-		binder := &util.FakeBinder{
-			Binds:   map[string]string{},
-			Channel: make(chan string, 1),
-		}
-		evictor := &util.FakeEvictor{
-			Channel: make(chan string),
-		}
-		schedulerCache := &cache.SchedulerCache{
-			Nodes:           make(map[string]*api.NodeInfo),
-			Jobs:            make(map[api.JobID]*api.JobInfo),
-			Queues:          make(map[api.QueueID]*api.QueueInfo),
-			Binder:          binder,
-			Evictor:         evictor,
-			StatusUpdater:   &util.FakeStatusUpdater{},
-			VolumeBinder:    &util.FakeVolumeBinder{},
-			PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
-
-			Recorder: record.NewFakeRecorder(100),
-		}
-		schedulerCache.PriorityClasses["high-priority"] = &schedulingv1.PriorityClass{
-			Value: highPriority,
-		}
-		schedulerCache.PriorityClasses["low-priority"] = &schedulingv1.PriorityClass{
-			Value: lowPriority,
-		}
-
-		for _, node := range test.nodes {
-			schedulerCache.AddOrUpdateNode(node)
-		}
-		for _, q := range test.queues {
-			schedulerCache.AddQueueV1beta1(q)
-		}
-		for _, ss := range test.podGroups {
-			schedulerCache.AddPodGroupV1beta1(ss)
-		}
-		for _, pod := range test.pods {
-			schedulerCache.AddPod(pod)
-		}
-
 		trueValue := true
-		ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+		tiers := []conf.Tier{
 			{
 				Plugins: []conf.PluginOption{
 					{
@@ -144,8 +90,7 @@ func TestShuffle(t *testing.T) {
 					},
 				},
 			},
-		}, nil)
-		defer framework.CloseSession(ssn)
+		}
 
 		fakePluginVictimFns := func() []api.VictimTasksFn {
 			victimTasksFn := func(candidates []*api.TaskInfo) []*api.TaskInfo {
@@ -162,20 +107,15 @@ func TestShuffle(t *testing.T) {
 			victimTasksFns = append(victimTasksFns, victimTasksFn)
 			return victimTasksFns
 		}
-		ssn.AddVictimTasksFns("fake", fakePluginVictimFns())
 
-		shuffle.Execute(ssn)
-		for {
-			select {
-			case <-evictor.Channel:
-			case <-time.After(2 * time.Second):
-				goto LOOP
+		t.Run(test.Name, func(t *testing.T) {
+			ssn := test.RegistSession(tiers, nil)
+			defer test.Close()
+			ssn.AddVictimTasksFns("fake", fakePluginVictimFns())
+			test.Run([]framework.Action{shuffle})
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
 			}
-		}
-
-	LOOP:
-		if test.expected != len(evictor.Evicts()) {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, test.name, test.expected, len(evictor.Evicts()))
-		}
+		})
 	}
 }
