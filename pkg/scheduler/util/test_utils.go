@@ -214,6 +214,13 @@ func BuildPodGroupWithPrio(name, ns, queue string, minMember int32, taskMinMembe
 	return pg
 }
 
+// BuildPodGroupWithAnno returns a podgroup object with annotations
+func BuildPodGroupWithAnno(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, annos map[string]string) *schedulingv1beta1.PodGroup {
+	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
+	pg.Annotations = annos
+	return pg
+}
+
 ///////////// function to build queue  ///////////////////
 
 // BuildQueue return a scheduling Queue
