@@ -100,7 +100,7 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 			klog.Infof("node %v device %s leave", node.Name, handshake)
 
 			tmppat := make(map[string]string)
-			tmppat[handshake] = "Deleted_" + time.Now().Format("2006.01.02 15:04:05")
+			tmppat[VolcanoVGPUHandshake] = "Deleted_" + time.Now().Format("2006.01.02 15:04:05")
 			patchNodeAnnotations(node, tmppat)
 			return nil
 		}
