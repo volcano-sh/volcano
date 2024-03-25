@@ -110,6 +110,10 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.admission_sc`|securityContext for Admission pods|`~`|
 |`custom.controller_sc`|securityContext for Controller pods|`~`|
 |`custom.scheduler_sc`|securityContext for Scheduler pods|`~`|
+|`custom.default_container_sc`|Default container securityContext for Admission/Controller/Scheduler pods|`~`|
+|`custom.admission_container_sc`|Container securityContext for Admission pods|`~`|
+|`custom.controller_container_sc`|Container securityContext for Controller pods|`~`|
+|`custom.scheduler_container_sc`|Container securityContext for Scheduler pods|`~`|
 |`custom.default_ns`|Default nodeSelector for Admission/Controller/Scheduler pods|`~`|
 |`custom.admission_ns`|nodeSelector for Admission pods|`~`|
 |`custom.controller_ns`|nodeSelector for Controller pods|`~`|

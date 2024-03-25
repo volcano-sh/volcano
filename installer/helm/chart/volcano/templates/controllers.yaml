@@ -2,6 +2,7 @@
 {{ $controller_affinity := or .Values.custom.controller_affinity .Values.custom.default_affinity }}
 {{ $controller_tolerations := or .Values.custom.controller_tolerations .Values.custom.default_tolerations }}
 {{ $controller_sc := or .Values.custom.controller_sc .Values.custom.default_sc }}
+{{ $controller_container_sc := or .Values.custom.controller_container_sc .Values.custom.default_container_sc }}
 {{ $controller_ns := or .Values.custom.controller_ns .Values.custom.default_ns }}
 apiVersion: v1
 kind: ServiceAccount
@@ -134,20 +135,24 @@ spec:
           - name: {{ .Values.basic.image_pull_secret }}
       {{- end }}
       containers:
-          - name: {{ .Release.Name }}-controllers
-            {{- if .Values.custom.controller_resources }}
-            resources:
-            {{- toYaml .Values.custom.controller_resources | nindent 14 }}
+        - name: {{ .Release.Name }}-controllers
+          {{- if .Values.custom.controller_resources }}
+          resources:
+          {{- toYaml .Values.custom.controller_resources | nindent 12 }}
+          {{- end }}
+          image: {{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
+          args:
+            - --logtostderr
+            - --enable-healthz=true
+            - --leader-elect={{ .Values.custom.leader_elect_enable }}
+            {{- if .Values.custom.leader_elect_enable }}
+            - --lock-object-namespace={{ .Release.Namespace }}
             {{- end }}
-            image: {{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
-            args:
-              - --logtostderr
-              - --enable-healthz=true
-              - --leader-elect={{ .Values.custom.leader_elect_enable }}
-              {{- if .Values.custom.leader_elect_enable }}
-              - --lock-object-namespace={{ .Release.Namespace }}
-              {{- end }}
-              - -v=4
-              - 2>&1
-            imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+            - -v=4
+            - 2>&1
+          imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+          {{- if $controller_container_sc }}
+          securityContext:
+            {{- toYaml $controller_container_sc | nindent 12 }}
+          {{- end }}
 {{- end }}

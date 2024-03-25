@@ -60,6 +60,19 @@ custom:
   admission_sc: ~
   controller_sc: ~
 
+# Specify container securityContext for all main Volcano components or per component
+# For example:
+#
+#  default_container_sc:
+#    runAsUser: 1000
+#    capabilities:
+#      drop:
+#      - ALL
+  default_container_sc: ~
+  scheduler_container_sc: ~
+  admission_container_sc: ~
+  controller_container_sc: ~
+
 # Specify nodeSelector for all main Volcano components or per component
 # For example:
 #

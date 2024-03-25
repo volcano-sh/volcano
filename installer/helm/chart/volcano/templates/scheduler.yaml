@@ -2,6 +2,7 @@
 {{ $scheduler_affinity := or .Values.custom.scheduler_affinity .Values.custom.default_affinity }}
 {{ $scheduler_tolerations := or .Values.custom.scheduler_tolerations .Values.custom.default_tolerations }}
 {{ $scheduler_sc := or .Values.custom.scheduler_sc .Values.custom.default_sc }}
+{{ $scheduler_container_sc := or .Values.custom.scheduler_container_sc .Values.custom.default_container_sc }}
 {{ $scheduler_ns := or .Values.custom.scheduler_ns .Values.custom.default_ns }}
 apiVersion: v1
 kind: ConfigMap
@@ -165,6 +166,10 @@ spec:
             - name: DEBUG_SOCKET_DIR
               value: /tmp/klog-socks
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+          {{- if $scheduler_container_sc }}
+          securityContext:
+            {{- toYaml $scheduler_container_sc | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: scheduler-config
               mountPath: /volcano.scheduler

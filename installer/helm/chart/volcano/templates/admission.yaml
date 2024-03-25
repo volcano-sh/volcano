@@ -2,6 +2,7 @@
 {{ $admission_affinity := or .Values.custom.admission_affinity .Values.custom.default_affinity }}
 {{ $admission_tolerations := or .Values.custom.admission_tolerations .Values.custom.default_tolerations }}
 {{ $admission_sc := or .Values.custom.admission_sc .Values.custom.default_sc }}
+{{ $admission_container_sc := or .Values.custom.admission_container_sc .Values.custom.default_container_sc }}
 {{ $admission_ns := or .Values.custom.admission_ns .Values.custom.default_ns }}
 apiVersion: v1
 kind: ConfigMap
@@ -127,6 +128,10 @@ spec:
           resources:
           {{- toYaml .Values.custom.admission_resources | nindent 12 }}
           {{- end }}
+          {{- if $admission_container_sc }}
+          securityContext:
+            {{- toYaml $admission_container_sc | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - mountPath: /admission.local.config/certificates
               name: admission-certs
@@ -205,4 +210,8 @@ spec:
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           command: ["./gen-admission-secret.sh", "--service", "{{ .Release.Name }}-admission-service", "--namespace",
                     "{{ .Release.Namespace }}", "--secret", "{{.Values.basic.admission_secret_name}}"]
+          {{- if $admission_container_sc }}
+          securityContext:
+            {{- toYaml $admission_container_sc | nindent 12 }}
+          {{- end }}
 {{- end }}
