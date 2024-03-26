@@ -17,12 +17,15 @@ limitations under the License.
 package job
 
 import (
+	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
@@ -680,5 +683,390 @@ func TestTasksPriority_Swap(t *testing.T) {
 		t.Run(testcase.Name, func(_ *testing.T) {
 			testcase.TasksPriority.Swap(testcase.Task1Index, testcase.Task2Index)
 		})
+	}
+}
+
+var (
+	worker = v1alpha1.TaskSpec{
+		Name:     "worker",
+		Replicas: 2,
+		Template: v1.PodTemplateSpec{
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{
+						Name: "Containers",
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceCPU: resource.MustParse("100m"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	master = v1alpha1.TaskSpec{
+		Name:     "master",
+		Replicas: 2,
+		Template: v1.PodTemplateSpec{
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{
+						Name: "Containers",
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								v1.ResourceCPU: resource.MustParse("50m"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+)
+
+func TestTaskPriority_CalcPGMin(t *testing.T) {
+
+	oneMinAvailable := int32(1)
+	zeroMinAvailable := int32(0)
+
+	testcases := []struct {
+		Name              string
+		TasksPriority     TasksPriority
+		TasksMinAvailable []*int32
+		JobMinMember      int32
+		ExpectValue       v1.ResourceList
+	}{
+		{ // jobMinAvailable = sum(taskMinAvailable)
+			Name: "job's min available is 0, master's and workers is set to 1: min=1*master+1*worker",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master,
+				},
+				{
+					TaskSpec: worker,
+				},
+			},
+			TasksMinAvailable: []*int32{&oneMinAvailable, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(150, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(150, resource.DecimalSI),
+				"pods": *resource.NewQuantity(2, resource.DecimalSI), "count/pods": *resource.NewQuantity(2, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable = sum(taskMinAvailable)
+			Name: "job's min available is 0, master's is null and worker's is set to 1: min=2*master+worker",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master, priority: 2,
+				},
+				{
+					TaskSpec: worker,
+				},
+			},
+			JobMinMember:      0,
+			TasksMinAvailable: []*int32{nil, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(200, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(200, resource.DecimalSI),
+				"pods": *resource.NewQuantity(3, resource.DecimalSI), "count/pods": *resource.NewQuantity(3, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable = sum(taskMinAvailable)
+			Name: "job's min available is 3, master's is null and worker's is set to 1: min=2*master+1*worker ",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master,
+				},
+				{
+					TaskSpec: worker,
+				},
+			},
+			JobMinMember:      3,
+			TasksMinAvailable: []*int32{nil, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(200, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(200, resource.DecimalSI),
+				"pods": *resource.NewQuantity(3, resource.DecimalSI), "count/pods": *resource.NewQuantity(3, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable = sum(taskMinAvailable)
+			Name: "job's min available is 3, master's is 1 and worker's is null: min=1*master+2*worker",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master,
+				},
+				{
+					TaskSpec: worker,
+				},
+			},
+			JobMinMember:      3,
+			TasksMinAvailable: []*int32{&oneMinAvailable, nil},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(250, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(250, resource.DecimalSI),
+				"pods": *resource.NewQuantity(3, resource.DecimalSI), "count/pods": *resource.NewQuantity(3, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable = sum(taskMinAvailable)
+			Name: "job's min available is 2, master's and worker's is set to 1: min=1*master+1*worker",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master,
+				},
+				{
+					TaskSpec: worker,
+				},
+			},
+			JobMinMember:      2,
+			TasksMinAvailable: []*int32{&oneMinAvailable, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(150, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(150, resource.DecimalSI),
+				"pods": *resource.NewQuantity(2, resource.DecimalSI), "count/pods": *resource.NewQuantity(2, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable > sum(taskMinAvailable)
+			Name: "job's min available is 3, master's and worker's is set to 1: min=1*master+1*worker+1*master(high-priority)",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master, priority: 2,
+				},
+				{
+					TaskSpec: worker,
+				},
+			},
+			JobMinMember:      3,
+			TasksMinAvailable: []*int32{&oneMinAvailable, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(200, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(200, resource.DecimalSI),
+				"pods": *resource.NewQuantity(3, resource.DecimalSI), "count/pods": *resource.NewQuantity(3, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable > sum(taskMinAvailable)
+			Name: "job's min available is 3, master's and worker's is set to 1: min=1*worker+1*master+1*worker(high-priority)",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master,
+				},
+				{
+					TaskSpec: worker, priority: 2,
+				},
+			},
+			JobMinMember:      3,
+			TasksMinAvailable: []*int32{&oneMinAvailable, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(250, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(250, resource.DecimalSI),
+				"pods": *resource.NewQuantity(3, resource.DecimalSI), "count/pods": *resource.NewQuantity(3, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable > sum(taskMinAvailable)
+			Name: "job's min available is 3, master's is 0 and worker's is set to 1: min=1*worker+1*worker(high-priority)+1*master",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master,
+				},
+				{
+					TaskSpec: worker, priority: 2,
+				},
+			},
+			JobMinMember:      3,
+			TasksMinAvailable: []*int32{&zeroMinAvailable, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(250, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(250, resource.DecimalSI),
+				"pods": *resource.NewQuantity(3, resource.DecimalSI), "count/pods": *resource.NewQuantity(3, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable > sum(taskMinAvailable)
+			Name: "job's min available is 4, master's is null and worker's is set to 1: min=1*worker+2*master+1*worker",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master,
+				},
+				{
+					TaskSpec: worker, priority: 2,
+				},
+			},
+			JobMinMember:      4,
+			TasksMinAvailable: []*int32{nil, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(300, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(300, resource.DecimalSI),
+				"pods": *resource.NewQuantity(4, resource.DecimalSI), "count/pods": *resource.NewQuantity(4, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable > sum(taskMinAvailable)
+			Name: "job's min available is 4, master's and worker's is set to 1: min=1*worker+1*master+1*worker(hi-prio)+1*master",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master,
+				},
+				{
+					TaskSpec: worker, priority: 2,
+				},
+			},
+			JobMinMember:      4,
+			TasksMinAvailable: []*int32{&oneMinAvailable, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(300, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(300, resource.DecimalSI),
+				"pods": *resource.NewQuantity(4, resource.DecimalSI), "count/pods": *resource.NewQuantity(4, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable < sum(taskMinAvailable)
+			Name: "job's min available is 2, master's is null and worker's is set to 1: min=2*master",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master, priority: 2,
+				},
+				{
+					TaskSpec: worker,
+				},
+			},
+			JobMinMember:      2,
+			TasksMinAvailable: []*int32{nil, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(100, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(100, resource.DecimalSI),
+				"pods": *resource.NewQuantity(2, resource.DecimalSI), "count/pods": *resource.NewQuantity(2, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable < sum(taskMinAvailable)
+			Name: "job's min available is 2, master's is null and worker's is set to 1: min=1*worker+1*master",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master,
+				},
+				{
+					TaskSpec: worker, priority: 2,
+				},
+			},
+			JobMinMember:      2,
+			TasksMinAvailable: []*int32{nil, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(150, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(150, resource.DecimalSI),
+				"pods": *resource.NewQuantity(2, resource.DecimalSI), "count/pods": *resource.NewQuantity(2, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable < sum(taskMinAvailable)
+			Name: "job's min available is 2, master's is 1 and worker's is set to bull: min=1*master+1*worker",
+			TasksPriority: []TaskPriority{
+				{
+					TaskSpec: master,
+				},
+				{
+					TaskSpec: worker,
+				},
+			},
+			JobMinMember:      2,
+			TasksMinAvailable: []*int32{&oneMinAvailable, nil},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(150, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(150, resource.DecimalSI),
+				"pods": *resource.NewQuantity(2, resource.DecimalSI), "count/pods": *resource.NewQuantity(2, resource.DecimalSI),
+			},
+		},
+	}
+	for i, testcase := range testcases {
+		jobMinMember := int32(0)
+		for i, min := range testcase.TasksMinAvailable {
+			// patch task min available
+			if min == nil {
+				min = &testcase.TasksPriority[i].TaskSpec.Replicas
+			}
+			testcase.TasksPriority[i].TaskSpec.MinAvailable = min
+			// patch job min member
+			if testcase.JobMinMember == 0 {
+				jobMinMember += *testcase.TasksPriority[i].TaskSpec.MinAvailable
+			}
+		}
+		if testcase.JobMinMember == 0 {
+			testcase.JobMinMember = jobMinMember
+		}
+		gotMin := testcase.TasksPriority.CalcPGMinResources(testcase.JobMinMember)
+		if !reflect.DeepEqual(gotMin, testcase.ExpectValue) {
+			t.Fatalf("case %d/%v: expected %v got %v", i, testcase.Name, testcase.ExpectValue, gotMin)
+		}
+	}
+}
+
+func TestCalcPGMinResources(t *testing.T) {
+	jc := newFakeController()
+	job := &batch.Job{
+		TypeMeta: metav1.TypeMeta{},
+		Spec: batch.JobSpec{
+			Tasks: []batch.TaskSpec{
+				master, worker,
+			},
+		},
+	}
+
+	oneMinAvailable := int32(1)
+	//zeroMinAvailable := int32(0)
+
+	tests := []struct {
+		TasksMinAvailable []*int32
+		JobMinMember      int32
+		ExpectValue       v1.ResourceList
+	}{
+		// jobMinAvailable < sum(taskMinAvailable)
+		{
+			JobMinMember:      2,
+			TasksMinAvailable: []*int32{&oneMinAvailable, nil},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(100, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(100, resource.DecimalSI),
+				"pods": *resource.NewQuantity(2, resource.DecimalSI), "count/pods": *resource.NewQuantity(2, resource.DecimalSI),
+			},
+		},
+		{
+			JobMinMember:      2,
+			TasksMinAvailable: []*int32{nil, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(100, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(100, resource.DecimalSI),
+				"pods": *resource.NewQuantity(2, resource.DecimalSI), "count/pods": *resource.NewQuantity(2, resource.DecimalSI),
+			},
+		},
+		{
+			JobMinMember:      3,
+			TasksMinAvailable: []*int32{nil, nil},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(200, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(200, resource.DecimalSI),
+				"pods": *resource.NewQuantity(3, resource.DecimalSI), "count/pods": *resource.NewQuantity(3, resource.DecimalSI),
+			},
+		},
+		{ // jobMinAvailable > sum(taskMinAvailable)
+			JobMinMember:      3,
+			TasksMinAvailable: []*int32{&oneMinAvailable, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(200, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(200, resource.DecimalSI),
+				"pods": *resource.NewQuantity(3, resource.DecimalSI), "count/pods": *resource.NewQuantity(3, resource.DecimalSI),
+			},
+		},
+		// jobMinAvailable = sum(taskMinAvailable)
+		{
+			JobMinMember:      3,
+			TasksMinAvailable: []*int32{&oneMinAvailable, nil},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(250, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(250, resource.DecimalSI),
+				"pods": *resource.NewQuantity(3, resource.DecimalSI), "count/pods": *resource.NewQuantity(3, resource.DecimalSI),
+			},
+		},
+		{
+			JobMinMember:      2,
+			TasksMinAvailable: []*int32{&oneMinAvailable, &oneMinAvailable},
+			ExpectValue: v1.ResourceList{
+				v1.ResourceCPU: *resource.NewMilliQuantity(150, resource.DecimalSI), "requests.cpu": *resource.NewMilliQuantity(150, resource.DecimalSI),
+				"pods": *resource.NewQuantity(2, resource.DecimalSI), "count/pods": *resource.NewQuantity(2, resource.DecimalSI),
+			},
+		},
+	}
+	for i, tt := range tests {
+		job.Spec.MinAvailable = tt.JobMinMember
+		for i := range tt.TasksMinAvailable {
+			job.Spec.Tasks[i].MinAvailable = tt.TasksMinAvailable[i]
+		}
+		// simulating patch in webhook
+		for i, task := range job.Spec.Tasks {
+			if task.MinAvailable == nil {
+				min := &task.Replicas
+				job.Spec.Tasks[i].MinAvailable = min
+			}
+		}
+		gotMin := jc.calcPGMinResources(job)
+		if !reflect.DeepEqual(gotMin, &tt.ExpectValue) {
+			t.Fatalf("case %d: expected %v got %v", i, tt.ExpectValue, gotMin)
+		}
+
 	}
 }

@@ -18,11 +18,13 @@ package job
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -31,6 +33,7 @@ import (
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
+	"volcano.sh/volcano/pkg/controllers/util"
 )
 
 // MakePodName append podname,jobname,taskName and index and returns the string.
@@ -258,4 +261,83 @@ func isControlledBy(obj metav1.Object, gvk schema.GroupVersionKind) bool {
 		return true
 	}
 	return false
+}
+
+// CalcFirstCountResources return the first count tasks resource, sorted by priority
+func (p TasksPriority) CalcFirstCountResources(count int32) v1.ResourceList {
+	sort.Sort(p)
+	minReq := v1.ResourceList{}
+
+	for _, task := range p {
+		if count <= task.Replicas {
+			minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, count))
+			break
+		} else {
+			minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, task.Replicas))
+			count -= task.Replicas
+		}
+	}
+	return minReq
+}
+
+// CalcPGMinResources sums up all task's min available; if not enough, then fill up to jobMinAvailable via task's replicas
+func (p TasksPriority) CalcPGMinResources(jobMinAvailable int32) v1.ResourceList {
+	sort.Sort(p)
+	minReq := v1.ResourceList{}
+	podCnt := int32(0)
+
+	// 1. first sum up those tasks whose MinAvailable is set
+	for _, task := range p {
+		if task.MinAvailable == nil { // actually, all task's min available is set by webhook
+			continue
+		}
+
+		validReplics := *task.MinAvailable
+		if left := jobMinAvailable - podCnt; left < validReplics {
+			validReplics = left
+		}
+		minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, validReplics))
+		podCnt += validReplics
+		if podCnt >= jobMinAvailable {
+			break
+		}
+	}
+
+	if podCnt >= jobMinAvailable {
+		return minReq
+	}
+
+	// 2. fill up the count of pod to jobMinAvailable with tasks whose replicas is not used up, higher priority first
+	leftCnt := jobMinAvailable - podCnt
+	for _, task := range p {
+		left := task.Replicas
+		if task.MinAvailable != nil {
+			if *task.MinAvailable == task.Replicas {
+				continue
+			} else {
+				left = task.Replicas - *task.MinAvailable
+			}
+		}
+
+		if leftCnt >= left {
+			minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, left))
+			leftCnt -= left
+		} else {
+			minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, leftCnt))
+			leftCnt = 0
+		}
+		if leftCnt <= 0 {
+			break
+		}
+	}
+	return minReq
+}
+
+// calTaskRequests returns requests resource with validReplica replicas
+func calTaskRequests(pod *v1.Pod, validReplica int32) v1.ResourceList {
+	minReq := v1.ResourceList{}
+	for i := int32(0); i < validReplica; i++ {
+		minReq = quotav1.Add(minReq, *util.GetPodQuotaUsage(pod))
+	}
+	return minReq
 }
