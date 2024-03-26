@@ -88,12 +88,13 @@ func NewResource(rl v1.ResourceList) *Resource {
 			//NOTE: When converting this back to k8s resource, we need record the format as well as / 1000
 			if v1helper.IsScalarResourceName(rName) {
 				ignore := false
-				for _, val := range IgnoredDevicesList {
-					if strings.Compare(rName.String(), val) == 0 {
+				IgnoredDevicesList.Range(func(_ int, val string) bool {
+					if rName.String() == val {
 						ignore = true
-						break
+						return false
 					}
-				}
+					return true
+				})
 				if !ignore {
 					r.AddScalar(rName, float64(rQuant.MilliValue()))
 				} else {
