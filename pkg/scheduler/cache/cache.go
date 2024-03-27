@@ -1027,10 +1027,20 @@ func (sc *SchedulerCache) processCleanupJob() {
 	defer sc.Mutex.Unlock()
 
 	if schedulingapi.JobTerminated(job) {
-		delete(sc.Jobs, job.UID)
-		metrics.DeleteJobMetrics(job.Name, string(job.Queue), job.Namespace)
-		klog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
-		sc.DeletedJobs.Forget(obj)
+		oldJob, found := sc.Jobs[job.UID]
+		if !found {
+			klog.V(3).Infof("Failed to find Job <%v:%v/%v>, ignore it", job.UID, job.Namespace, job.Name)
+			return
+		}
+		oldPgVersion := oldJob.PgUID
+		newPgVersion := job.PgUID
+		klog.V(5).Infof("Just add pguid:%v, try to delete pguid:%v", oldPgVersion, newPgVersion)
+		if oldPgVersion == newPgVersion {
+			delete(sc.Jobs, job.UID)
+			metrics.DeleteJobMetrics(job.Name, string(job.Queue), job.Namespace)
+			klog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
+			sc.DeletedJobs.Forget(obj)
+		}
 	} else {
 		// Retry
 		sc.retryDeleteJob(job)
