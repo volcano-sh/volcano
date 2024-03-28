@@ -22,6 +22,9 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/component-base/config"
+	componentbaseconfigvalidation "k8s.io/component-base/config/validation"
 
 	"volcano.sh/volcano/pkg/kube"
 )
@@ -47,24 +50,26 @@ const (
 
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
-	KubeClientOptions    kube.ClientOptions
-	CertFile             string
-	KeyFile              string
-	CaCertFile           string
-	CertData             []byte
-	KeyData              []byte
-	CaCertData           []byte
-	SchedulerNames       []string
-	SchedulerConf        string
-	SchedulePeriod       time.Duration
-	EnableLeaderElection bool
-	LockObjectNamespace  string
-	DefaultQueue         string
-	PrintVersion         bool
-	EnableMetrics        bool
-	ListenAddress        string
-	EnablePriorityClass  bool
-	EnableCSIStorage     bool
+	KubeClientOptions kube.ClientOptions
+	CertFile          string
+	KeyFile           string
+	CaCertFile        string
+	CertData          []byte
+	KeyData           []byte
+	CaCertData        []byte
+	SchedulerNames    []string
+	SchedulerConf     string
+	SchedulePeriod    time.Duration
+	// leaderElection defines the configuration of leader election.
+	LeaderElection config.LeaderElectionConfiguration
+	// Deprecated: use ResourceNamespace instead.
+	LockObjectNamespace string
+	DefaultQueue        string
+	PrintVersion        bool
+	EnableMetrics       bool
+	ListenAddress       string
+	EnablePriorityClass bool
+	EnableCSIStorage    bool
 	// vc-scheduler will load (not activate) custom plugins which are in this directory
 	PluginsDir    string
 	EnableHealthz bool
@@ -107,16 +112,13 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
 	fs.StringVar(&s.KeyFile, "tls-private-key-file", s.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
+	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", defaultLockObjectNamespace, "Define the namespace of the lock object; it is volcano-system by default, will deprecated, please use --leader-elect-resource-namespace instead.")
 	// volcano scheduler will ignore pods with scheduler names other than specified with the option
 	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "vc-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
 	fs.DurationVar(&s.SchedulePeriod, "schedule-period", defaultSchedulerPeriod, "The period between each scheduling cycle")
 	fs.StringVar(&s.DefaultQueue, "default-queue", defaultQueue, "The default queue name of the job")
-	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", true,
-		"Start a leader election client and gain leadership before "+
-			"executing the main loop. Enable this when running replicated vc-scheduler for high availability; it is enabled by default")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
-	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", defaultLockObjectNamespace, "Define the namespace of the lock object that is used for leader election; it is volcano-system by default")
 	fs.StringVar(&s.ListenAddress, "listen-address", defaultListenAddress, "The address to listen on for HTTP requests.")
 	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 	fs.BoolVar(&s.EnablePriorityClass, "priority-class", true,
@@ -145,13 +147,9 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 }
 
-// CheckOptionOrDie check lock-object-namespace when LeaderElection is enabled.
+// CheckOptionOrDie check leader election flag when LeaderElection is enabled.
 func (s *ServerOption) CheckOptionOrDie() error {
-	if s.EnableLeaderElection && s.LockObjectNamespace == "" {
-		return fmt.Errorf("lock-object-namespace must not be nil when LeaderElection is enabled")
-	}
-
-	return nil
+	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }
 
 // RegisterOptions registers options.
