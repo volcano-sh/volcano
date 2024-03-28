@@ -1,7 +1,22 @@
 package util
 
+import (
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/component-base/config"
+)
+
 const (
-	defaultSchedulerName = "volcano"
+	defaultSchedulerName       = "volcano"
+	defaultLockObjectNamespace = "volcano-system"
+)
+
+var (
+	defaultElectionLeaseDuration = metav1.Duration{Duration: 15 * time.Second}
+	defaultElectionRenewDeadline = metav1.Duration{Duration: 10 * time.Second}
+	defaultElectionRetryPeriod   = metav1.Duration{Duration: 2 * time.Second}
 )
 
 // Contains check if slice contains element
@@ -31,4 +46,14 @@ func GenerateSchedulerName(schedulerNames []string) string {
 	}
 
 	return defaultSchedulerName
+}
+
+// LeaderElectionDefault set the LeaderElectionConfiguration  struct fields default value
+func LeaderElectionDefault(l *config.LeaderElectionConfiguration) {
+	l.LeaderElect = true
+	l.LeaseDuration = defaultElectionLeaseDuration
+	l.RenewDeadline = defaultElectionRenewDeadline
+	l.RetryPeriod = defaultElectionRetryPeriod
+	l.ResourceLock = resourcelock.LeasesResourceLock
+	l.ResourceNamespace = defaultLockObjectNamespace
 }
