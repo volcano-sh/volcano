@@ -600,6 +600,25 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 	return helpers.CompareTask(lv, rv)
 }
 
+// PreemptPredicateFn invoke predicate function of the plugins when decision preempt & reclaim scenes
+func (ssn *Session) PreemptPredicateFn(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+	predicateStatus := make([]*api.Status, 0)
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPredicate) {
+				continue
+			}
+			pfn, found := ssn.predicateFns[plugin.Name]
+			if !found {
+				continue
+			}
+			status, _ := pfn(task, node)
+			predicateStatus = append(predicateStatus, status...)
+		}
+	}
+	return predicateStatus, nil
+}
+
 // PredicateFn invoke predicate function of the plugins
 func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 	predicateStatus := make([]*api.Status, 0)
