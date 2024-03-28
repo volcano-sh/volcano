@@ -70,7 +70,7 @@ func TestEventHandler(t *testing.T) {
 		return
 	}
 
-	sc := cache.New(config, option.SchedulerNames, option.DefaultQueue, option.NodeSelector, option.NodeWorkerThreads, nil)
+	sc := cache.New(config, option)
 	schedulerCache := sc.(*cache.SchedulerCache)
 
 	// pending pods

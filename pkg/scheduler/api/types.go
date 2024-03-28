@@ -17,6 +17,11 @@ limitations under the License.
 package api
 
 import (
+	"errors"
+	"fmt"
+	"reflect"
+	"strings"
+
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -207,3 +212,87 @@ type VictimTasksFn func([]*TaskInfo) []*TaskInfo
 
 // AllocatableFn is the func declaration used to check whether the task can be allocated
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool
+
+type GenericCode int
+
+const (
+	// GenericSuccess the result if success
+	GenericSuccess GenericCode = iota
+	// GenericFailed the result is failed
+	GenericFailed
+	// GenericSkip the result should be safely discard
+	GenericSkip
+)
+
+// GenericResult is the result of the result of the generic functions
+type GenericResult struct {
+	code    GenericCode
+	reasons []string
+	err     error
+}
+
+// NewGenericResult makes a result out of the given arguments and returns its pointer.
+func NewGenericResult(code GenericCode, reasons ...string) *GenericResult {
+	s := &GenericResult{
+		code:    code,
+		reasons: reasons,
+	}
+	if code == GenericFailed {
+		s.err = errors.New(strings.Join(reasons, ","))
+	}
+	return s
+}
+
+func (gr *GenericResult) Failed() bool {
+	return gr.code == GenericFailed
+}
+
+func (gr *GenericResult) Success() bool {
+	return gr == nil || gr.code == GenericSuccess
+}
+
+// AsError returns nil if the result is a success; otherwise returns an "error" object
+// with a concatenated message on reasons of the result.
+func (gr *GenericResult) AsError() error {
+	if !gr.Failed() {
+		return nil
+	}
+	if gr.err != nil {
+		return gr.err
+	}
+	return errors.New(strings.Join(gr.reasons, ", "))
+}
+
+// AsGenericResult cast normal error into genericResult
+func AsGenericResult(err error) *GenericResult {
+	return &GenericResult{
+		code:    GenericFailed,
+		reasons: []string{err.Error()},
+		err:     err,
+	}
+}
+
+// GenericParamCheck checks the parameters number and types to make sure right predication called
+func GenericParamCheck(types []reflect.Type, i ...interface{}) *GenericResult {
+	if len(types) != len(i) {
+		return NewGenericResult(GenericSkip, fmt.Sprintf("parameter number mismatch expect: %d, actual: %d", len(types), len(i)))
+	}
+	for j, t := range types {
+		if t != reflect.TypeOf(i[j]) {
+			return NewGenericResult(GenericSkip, fmt.Sprintf("parameter type mismatch expect: %T, actual: %T", t, i[j]))
+		}
+	}
+	return NewGenericResult(GenericSuccess)
+}
+
+// GenericPredicateFn is a generic filter function that accept any resources as parameters
+type GenericPredicateFn func(...interface{}) *GenericResult
+
+// GenericOrderFn is a generic filter function that accept any resources as parameters
+type GenericOrderFn func(...interface{}) (float64, *GenericResult)
+
+// CustomResource interface is the resource that could be cached into scheduler cache
+type CustomResource interface {
+	DeepCopy() CustomResource
+	Update(CustomResource) error
+}
