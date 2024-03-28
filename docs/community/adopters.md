@@ -20,6 +20,7 @@ please feel free to add yourself into the following list by a pull request. Ther
 | [Bosszhipin](https://www.zhipin.com/?sid=sem_pz_bdpc_dasou_title) | [@hudson741](https://github.com/hudson741) | Production | Batch system for Distributed AI platform on K8s |
 | [Leinao](http://www.leinao.ai/) | [@king-jingxiang](https://github.com/king-jingxiang) | Production | Work as part of Leinao OS |
 | [Ruitian Capital](https://www.ruitiancapital.com/#/) | [@zen-xu](https://github.com/zen-xu) | Production | Batch system for AI platform on K8s |
+| [PITS Global Data Recovery Services](https://www.pitsdatarecovery.net/) | [@bejx1990](https://github.com/benjx1990)| Evaluation | ML Platform & Scheduler |
 | [JD Retail Infrastructure Department](https://jd.com/) |[@yuanchen8911](https://github.com/yuanchen8911)| Evaluation | Spark on K8S  |
 | [BIBDR](http://www.bibdr.org/en/) |[@felix5572](https://github.com/felix5572)| Evaluation | Scientific calculations in physics, materials , biology and chemistry. molecular dynamics simulation. |
 | [Unisound](https://www.unisound.com/) |[@xieydd](https://github.com/xieydd)| Evaluation | Evaluation in ATLAS AI Platform |
