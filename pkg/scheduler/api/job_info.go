@@ -296,7 +296,8 @@ type NodeResourceMap map[string]*Resource
 
 // JobInfo will have all info of a Job
 type JobInfo struct {
-	UID JobID
+	UID   JobID
+	PgUID types.UID
 
 	Name      string
 	Namespace string
@@ -396,6 +397,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	}
 	ji.TaskMinAvailableTotal = taskMinAvailableTotal
 
+	ji.PgUID = pg.UID
 	ji.PodGroup = pg
 }
 
