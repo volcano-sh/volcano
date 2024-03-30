@@ -26,28 +26,17 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: JobFlow is the Schema for the jobflows API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
           spec:
-            description: JobFlowSpec defines the desired state of JobFlow
             properties:
               flows:
-                description: Foo is an example field of JobFlow. Edit jobflow_types.go
-                  to remove/update
                 items:
-                  description: Flow defines the dependent of jobs
                   properties:
                     dependsOn:
                       properties:
@@ -57,16 +46,10 @@ spec:
                               items:
                                 properties:
                                   httpHeader:
-                                    description: HTTPHeader describes a custom header
-                                      to be used in HTTP probes
                                     properties:
                                       name:
-                                        description: The header field name. This will
-                                          be canonicalized upon output, so case-variant
-                                          names will be understood as the same header.
                                         type: string
                                       value:
-                                        description: The header field value
                                         type: string
                                     required:
                                     - name
@@ -116,7 +99,6 @@ spec:
                 type: string
             type: object
           status:
-            description: JobFlowStatus defines the observed state of JobFlow
             properties:
               completedJobs:
                 items:
@@ -129,20 +111,16 @@ spec:
                       format: date-time
                       type: string
                     phase:
-                      description: JobPhase defines the phase of the job.
                       type: string
                     runningDuration:
                       type: string
                     taskStatusCount:
                       additionalProperties:
-                        description: TaskState contains details for the current state
-                          of the task.
                         properties:
                           phase:
                             additionalProperties:
                               format: int32
                               type: integer
-                            description: The phase of Task.
                             type: object
                         type: object
                       type: object
@@ -173,7 +151,6 @@ spec:
                             format: date-time
                             type: string
                           state:
-                            description: JobPhase defines the phase of the job.
                             type: string
                         type: object
                       type: array
@@ -181,7 +158,6 @@ spec:
                       format: date-time
                       type: string
                     state:
-                      description: JobPhase defines the phase of the job.
                       type: string
                   type: object
                 type: array

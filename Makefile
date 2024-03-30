@@ -114,6 +114,8 @@ manifests: controller-gen
 	$(CONTROLLER_GEN) "crd:maxDescLen=0,crdVersions=v1beta1" paths="./vendor/volcano.sh/apis/pkg/apis/batch/v1alpha1" output:crd:artifacts:config=config/crd/volcano/v1beta1
 	# jobflow crd base
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./vendor/volcano.sh/apis/pkg/apis/flow/v1alpha1" output:crd:artifacts:config=config/crd/jobflow/bases
+	# generate volcano jobflow crd yaml without description to avoid yaml size limit when using `kubectl apply`
+	$(CONTROLLER_GEN) $(CRD_OPTIONS_EXCLUDE_DESCRIPTION) paths="./vendor/volcano.sh/apis/pkg/apis/flow/v1alpha1" output:crd:artifacts:config=config/crd/jobflow/bases
 
 unit-test:
 	go clean -testcache
