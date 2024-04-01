@@ -22,19 +22,29 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/component-base/config"
+	componentbaseoptions "k8s.io/component-base/config/options"
 
 	"volcano.sh/volcano/pkg/kube"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 func TestAddFlags(t *testing.T) {
 	fs := pflag.NewFlagSet("addflagstest", pflag.ContinueOnError)
 	s := NewServerOption()
+	commonutil.LeaderElectionDefault(&s.LeaderElection)
+	componentbaseoptions.BindLeaderElectionFlags(&s.LeaderElection, fs)
 	s.AddFlags(fs)
 
 	args := []string{
 		"--schedule-period=5m",
 		"--priority-class=false",
 		"--cache-dumper=false",
+		"--leader-elect-lease-duration=60s",
+		"--leader-elect-renew-deadline=20s",
+		"--leader-elect-retry-period=10s",
 	}
 	fs.Parse(args)
 
@@ -42,8 +52,17 @@ func TestAddFlags(t *testing.T) {
 	expected := &ServerOption{
 		SchedulerNames: []string{defaultSchedulerName},
 		SchedulePeriod: 5 * time.Minute,
-		DefaultQueue:   defaultQueue,
-		ListenAddress:  defaultListenAddress,
+		LeaderElection: config.LeaderElectionConfiguration{
+			LeaderElect:       true,
+			LeaseDuration:     metav1.Duration{60 * time.Second},
+			RenewDeadline:     metav1.Duration{20 * time.Second},
+			RetryPeriod:       metav1.Duration{10 * time.Second},
+			ResourceLock:      resourcelock.LeasesResourceLock,
+			ResourceNamespace: defaultLockObjectNamespace,
+		},
+		LockObjectNamespace: defaultLockObjectNamespace,
+		DefaultQueue:        defaultQueue,
+		ListenAddress:       defaultListenAddress,
 		KubeClientOptions: kube.ClientOptions{
 			Master:     "",
 			KubeConfig: "",
@@ -55,8 +74,6 @@ func TestAddFlags(t *testing.T) {
 		MinNodesToFind:             defaultMinNodesToFind,
 		MinPercentageOfNodesToFind: defaultMinPercentageOfNodesToFind,
 		PercentageOfNodesToFind:    defaultPercentageOfNodesToFind,
-		EnableLeaderElection:       true,
-		LockObjectNamespace:        defaultLockObjectNamespace,
 		NodeWorkerThreads:          defaultNodeWorkers,
 		CacheDumpFileDir:           "/tmp",
 	}
