@@ -157,7 +157,7 @@ spec:
             - --enable-metrics=true
             - --leader-elect={{ .Values.custom.leader_elect_enable }}
             {{- if .Values.custom.leader_elect_enable }}
-            - --lock-object-namespace={{ .Release.Namespace }}
+            - --leader-elect-resource-namespace={{ .Release.Namespace }}
             {{- end }}
             - -v=3
             - 2>&1

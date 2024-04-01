@@ -23,20 +23,20 @@ import (
 
 	"github.com/spf13/pflag"
 	_ "go.uber.org/automaxprocs"
-
 	"k8s.io/apimachinery/pkg/util/wait"
 	cliflag "k8s.io/component-base/cli/flag"
+	componentbaseoptions "k8s.io/component-base/config/options"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/cmd/controller-manager/app"
+	"volcano.sh/volcano/cmd/controller-manager/app/options"
 	_ "volcano.sh/volcano/pkg/controllers/garbagecollector"
 	_ "volcano.sh/volcano/pkg/controllers/job"
 	_ "volcano.sh/volcano/pkg/controllers/jobflow"
 	_ "volcano.sh/volcano/pkg/controllers/jobtemplate"
 	_ "volcano.sh/volcano/pkg/controllers/podgroup"
 	_ "volcano.sh/volcano/pkg/controllers/queue"
-
-	"volcano.sh/volcano/cmd/controller-manager/app"
-	"volcano.sh/volcano/cmd/controller-manager/app/options"
+	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/version"
 )
 
@@ -46,8 +46,13 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	klog.InitFlags(nil)
 
+	fs := pflag.CommandLine
 	s := options.NewServerOption()
-	s.AddFlags(pflag.CommandLine)
+
+	s.AddFlags(fs)
+	commonutil.LeaderElectionDefault(&s.LeaderElection)
+	s.LeaderElection.ResourceName = "vc-controller-manager"
+	componentbaseoptions.BindLeaderElectionFlags(&s.LeaderElection, fs)
 
 	cliflag.InitFlags()
 

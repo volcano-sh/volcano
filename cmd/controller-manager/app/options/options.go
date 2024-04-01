@@ -21,6 +21,9 @@ import (
 	"os"
 
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/component-base/config"
+	componentbaseconfigvalidation "k8s.io/component-base/config/validation"
 
 	"volcano.sh/volcano/pkg/kube"
 )
@@ -38,16 +41,18 @@ const (
 
 // ServerOption is the main context object for the controllers.
 type ServerOption struct {
-	KubeClientOptions    kube.ClientOptions
-	CertFile             string
-	KeyFile              string
-	CaCertFile           string
-	CertData             []byte
-	KeyData              []byte
-	CaCertData           []byte
-	EnableLeaderElection bool
-	LockObjectNamespace  string
-	PrintVersion         bool
+	KubeClientOptions kube.ClientOptions
+	CertFile          string
+	KeyFile           string
+	CaCertFile        string
+	CertData          []byte
+	KeyData           []byte
+	CaCertData        []byte
+	// leaderElection defines the configuration of leader election.
+	LeaderElection config.LeaderElectionConfiguration
+	// Deprecated: use ResourceNamespace instead.
+	LockObjectNamespace string
+	PrintVersion        bool
 	// WorkerThreads is the number of threads syncing job operations
 	// concurrently. Larger number = faster job updating, but more CPU load.
 	WorkerThreads uint32
@@ -84,9 +89,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
 	fs.StringVar(&s.KeyFile, "tls-private-key-file", s.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
-	fs.BoolVar(&s.EnableLeaderElection, "leader-elect", true, "Start a leader election client and gain leadership before "+
-		"executing the main loop. Enable this when running replicated vc-controller-manager for high availability; it is enabled by default")
-	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", defaultLockObjectNamespace, "Define the namespace of the lock object; it is volcano-system by default")
+	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", defaultLockObjectNamespace, "Define the namespace of the lock object; it is volcano-system by default, will deprecated, please use --leader-elect-resource-namespace instead.")
 	fs.Float32Var(&s.KubeClientOptions.QPS, "kube-api-qps", defaultQPS, "QPS to use while talking with kubernetes apiserver")
 	fs.IntVar(&s.KubeClientOptions.Burst, "kube-api-burst", defaultBurst, "Burst to use while talking with kubernetes apiserver")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
@@ -100,12 +103,9 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Uint32Var(&s.WorkerThreadsForPG, "worker-threads-for-podgroup", defaultPodGroupWorkers, "The number of threads syncing podgroup operations. The larger the number, the faster the podgroup processing, but requires more CPU load.")
 }
 
-// CheckOptionOrDie checks the LockObjectNamespace.
+// CheckOptionOrDie check leader election flag when LeaderElection is enabled.
 func (s *ServerOption) CheckOptionOrDie() error {
-	if s.EnableLeaderElection && s.LockObjectNamespace == "" {
-		return fmt.Errorf("lock-object-namespace must not be nil when LeaderElection is enabled")
-	}
-	return nil
+	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
 }
 
 // readCAFiles read data from ca file path
