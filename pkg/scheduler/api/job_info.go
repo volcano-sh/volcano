@@ -152,7 +152,10 @@ func getTaskID(pod *v1.Pod) TaskID {
 	if ts, found := pod.Annotations[batch.TaskSpecKey]; found && len(ts) != 0 {
 		return TaskID(ts)
 	}
-
+	// keep searching pod labels, as it is also added in labels in job controller
+	if ts, found := pod.Labels[batch.TaskSpecKey]; found && len(ts) != 0 {
+		return TaskID(ts)
+	}
 	return ""
 }
 
