@@ -51,13 +51,13 @@ func (jf *jobflowcontroller) addJobFlow(obj interface{}) {
 func (jf *jobflowcontroller) updateJobFlow(oldObj, newObj interface{}) {
 	oldJobFlow, ok := oldObj.(*jobflowv1alpha1.JobFlow)
 	if !ok {
-		klog.Errorf("Failed to convert %v to vcjob", oldJobFlow)
+		klog.Errorf("Failed to convert %v to jobflow", oldJobFlow)
 		return
 	}
 
 	newJobFlow, ok := newObj.(*jobflowv1alpha1.JobFlow)
 	if !ok {
-		klog.Errorf("Failed to convert %v to vcjob", newJobFlow)
+		klog.Errorf("Failed to convert %v to jobflow", newJobFlow)
 		return
 	}
 
