@@ -23,11 +23,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/dynamic/fake"
+	kcache "k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -342,5 +353,123 @@ func TestBindTasks(t *testing.T) {
 	r := sc.Recorder.(*record.FakeRecorder)
 	if len(r.Events) != 1 {
 		t.Fatalf("succesfully binding task should have 1 event")
+	}
+}
+
+var resourceKey = schema.GroupVersionResource{
+	Group:    "example.io",
+	Version:  "v1",
+	Resource: "foo",
+}
+
+type testResource struct {
+	name     string
+	sc       *SchedulerCache
+	ch       chan struct{}
+	handlers CustomResourceEventHandlerFuncs
+}
+
+func (t *testResource) Name() string {
+	return t.name
+}
+
+func (t *testResource) EventHandlerFuncs(gvr schema.GroupVersionResource) kcache.ResourceEventHandler {
+	return t.handlers[gvr]
+}
+
+func newHandler(ch chan struct{}, sc *SchedulerCache) (CustomResourceEventHandler, error) {
+	t := &testResource{
+		name:     "test-handler",
+		sc:       sc,
+		ch:       ch,
+		handlers: make(CustomResourceEventHandlerFuncs),
+	}
+
+	t.handlers[resourceKey] = kcache.ResourceEventHandlerFuncs{
+		AddFunc: t.onResourceAdd,
+	}
+	return t, nil
+}
+
+func (t *testResource) onResourceAdd(obj interface{}) {
+	if _, ok := t.sc.CustomResources[resourceKey]; !ok {
+		t.sc.CustomResources[resourceKey] = make(map[string]schedulingapi.CustomResource)
+	}
+
+	t.sc.Mutex.Lock()
+	defer t.sc.Mutex.Unlock()
+
+	t.sc.CustomResources[resourceKey]["name-foo"] = nil
+	t.ch <- struct{}{}
+	klog.InfoS("Added resource")
+}
+
+func newUnstructured(apiVersion, kind, namespace, name string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": apiVersion,
+			"kind":       kind,
+			"metadata": map[string]interface{}{
+				"namespace": namespace,
+				"name":      name,
+			},
+		},
+	}
+}
+
+func Test_add_custom_event_handler(t *testing.T) {
+	gvrToListKind := map[schema.GroupVersionResource]string{
+		{Group: "example.io", Version: "v1", Resource: "foo"}: "fooList",
+	}
+	ch := make(chan struct{})
+	tests := []struct {
+		name        string
+		sc          *SchedulerCache
+		handlerName string
+		creator     CustomResourceEventHandlerCreator
+		trigger     func(gvr schema.GroupVersionResource, client dynamic.Interface) error
+		want        map[schema.GroupVersionResource]map[string]schedulingapi.CustomResource
+	}{
+		{
+			name:        "custom resource add",
+			handlerName: "test",
+			sc: &SchedulerCache{
+				dynClient:         fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), gvrToListKind),
+				CustomResources:   make(map[schema.GroupVersionResource]map[string]schedulingapi.CustomResource),
+				CustomResourceGVR: []string{"foo.v1.example.io"}},
+			creator: func(sc *SchedulerCache) (CustomResourceEventHandler, error) {
+				return newHandler(ch, sc)
+			},
+			trigger: func(gvr schema.GroupVersionResource, client dynamic.Interface) error {
+				obj := newUnstructured("example.io/v1", "foo", "ns-foo", "name-foo")
+				_, err := client.Resource(resourceKey).Namespace("ns-foo").Create(context.TODO(), obj, metav1.CreateOptions{})
+
+				return err
+			},
+			want: map[schema.GroupVersionResource]map[string]schedulingapi.CustomResource{
+				resourceKey: {
+					"name-foo": nil,
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			RegisterCustomResourceEventHandler(tt.handlerName, tt.creator)
+			tt.sc.addEventHandler()
+			tt.sc.DynInformerFactory.Start(wait.NeverStop)
+			if synced := tt.sc.DynInformerFactory.WaitForCacheSync(wait.NeverStop); !synced[resourceKey] {
+				t.Errorf("faield to wait cache sync")
+			}
+			if tt.trigger != nil {
+				assert.NoError(t, tt.trigger(resourceKey, tt.sc.dynClient))
+			}
+
+			<-ch
+			got := tt.sc.CustomResources
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GetEventHandlerByGVR() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
