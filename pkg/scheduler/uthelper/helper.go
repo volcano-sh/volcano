@@ -144,6 +144,9 @@ func (test *TestCommonStruct) CheckAll(caseIndex int) (err error) {
 
 // CheckBind check expected bind result
 func (test *TestCommonStruct) CheckBind(caseIndex int) error {
+	if test.BindsNum != len(test.Bind) {
+		return fmt.Errorf("invalid setting for binding check: want bind count %d, want bind result length %d", test.BindsNum, len(test.Bind))
+	}
 	binder := test.binder.(*util.FakeBinder)
 	for i := 0; i < test.BindsNum; i++ {
 		select {
@@ -154,7 +157,7 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 	}
 
 	if len(test.Bind) != len(binder.Binds) {
-		return fmt.Errorf("case %d(%s) check bind: \nwant: %v, \ngot %v ", caseIndex, test.Name, test.Bind, binder.Binds)
+		return fmt.Errorf("case %d(%s) check bind: \nwant: %v\n got %v ", caseIndex, test.Name, test.Bind, binder.Binds)
 	}
 	for key, value := range test.Bind {
 		got := binder.Binds[key]
@@ -167,6 +170,9 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 
 // CheckEvict check the evicted result
 func (test *TestCommonStruct) CheckEvict(caseIndex int) error {
+	if test.EvictNum != len(test.Evicted) {
+		return fmt.Errorf("invalid setting for evicting check: want evict count %d, want evict result length %d", test.EvictNum, len(test.Evicted))
+	}
 	evictor := test.evictor.(*util.FakeEvictor)
 	for i := 0; i < test.EvictNum; i++ {
 		select {
@@ -178,7 +184,7 @@ func (test *TestCommonStruct) CheckEvict(caseIndex int) error {
 
 	evicts := evictor.Evicts()
 	if len(test.Evicted) != len(evicts) {
-		return fmt.Errorf("case %d(%s) check evict: \nwant: %v, \ngot %v ", caseIndex, test.Name, test.Evicted, evicts)
+		return fmt.Errorf("case %d(%s) check evict: \nwant: %v\n got %v ", caseIndex, test.Name, test.Evicted, evicts)
 	}
 
 	expect := map[string]int{} // evicted number
