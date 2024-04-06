@@ -22,6 +22,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 // AddJobOrderFn add job order function
@@ -762,4 +763,22 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 		}
 	}
 	return nodeScoreMap, nil
+}
+
+// BuildVictimsPriorityQueue returns a priority queue with victims sorted by:
+// if victims has same job id, sorted by !ssn.TaskOrderFn
+// if victims has different job id, sorted by !ssn.JobOrderFn
+func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo) *util.PriorityQueue {
+	victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
+		lv := l.(*api.TaskInfo)
+		rv := r.(*api.TaskInfo)
+		if lv.Job == rv.Job {
+			return !ssn.TaskOrderFn(l, r)
+		}
+		return !ssn.JobOrderFn(ssn.Jobs[lv.Job], ssn.Jobs[rv.Job])
+	})
+	for _, victim := range victims {
+		victimsQueue.Push(victim)
+	}
+	return victimsQueue
 }

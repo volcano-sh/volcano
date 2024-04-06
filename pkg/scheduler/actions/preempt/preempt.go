@@ -255,17 +255,7 @@ func preempt(
 			continue
 		}
 
-		victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
-			lv := l.(*api.TaskInfo)
-			rv := r.(*api.TaskInfo)
-			if lv.Job != rv.Job {
-				return !ssn.JobOrderFn(ssn.Jobs[lv.Job], ssn.Jobs[rv.Job])
-			}
-			return !ssn.TaskOrderFn(l, r)
-		})
-		for _, victim := range victims {
-			victimsQueue.Push(victim)
-		}
+		victimsQueue := ssn.BuildVictimsPriorityQueue(victims)
 		// Preempt victims for tasks, pick lowest priority task first.
 		preempted := api.EmptyResource()
 

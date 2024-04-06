@@ -174,11 +174,14 @@ func (ra *Action) Execute(ssn *framework.Session) {
 				continue
 			}
 
+			victimsQueue := ssn.BuildVictimsPriorityQueue(victims)
+
 			resreq := task.InitResreq.Clone()
 			reclaimed := api.EmptyResource()
 
 			// Reclaim victims for tasks.
-			for _, reclaimee := range victims {
+			for !victimsQueue.Empty() {
+				reclaimee := victimsQueue.Pop().(*api.TaskInfo)
 				klog.Errorf("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
 					reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
 				if err := ssn.Evict(reclaimee, "reclaim"); err != nil {
