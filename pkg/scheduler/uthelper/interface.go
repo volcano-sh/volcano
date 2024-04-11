@@ -25,8 +25,8 @@ import (
 type Interface interface {
 	// Run executes the actions
 	Run(actions []framework.Action)
-	// RegistSession init the session
-	RegistSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session
+	// RegisterSession init the session
+	RegisterSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session
 	// Close release session and do cleanup
 	Close()
 	// CheckAll do all checks

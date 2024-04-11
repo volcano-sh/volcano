@@ -165,7 +165,7 @@ func TestAllocate(t *testing.T) {
 	for i, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			test.Plugins = plugins
-			test.RegistSession(tiers, nil)
+			test.RegisterSession(tiers, nil)
 			defer test.Close()
 			test.Run([]framework.Action{New()})
 			if err := test.CheckAll(i); err != nil {
