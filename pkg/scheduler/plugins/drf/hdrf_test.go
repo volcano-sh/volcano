@@ -200,7 +200,7 @@ func TestHDRF(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(t.Name(), func(t *testing.T) {
-			ssn := test.RegistSession(tiers, nil)
+			ssn := test.RegisterSession(tiers, nil)
 			defer test.Close()
 			test.Run([]framework.Action{allocate.New()})
 			for _, job := range ssn.Jobs {
