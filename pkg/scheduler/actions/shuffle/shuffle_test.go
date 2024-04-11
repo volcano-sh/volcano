@@ -109,7 +109,7 @@ func TestShuffle(t *testing.T) {
 		}
 
 		t.Run(test.Name, func(t *testing.T) {
-			ssn := test.RegistSession(tiers, nil)
+			ssn := test.RegisterSession(tiers, nil)
 			defer test.Close()
 			ssn.AddVictimTasksFns("fake", fakePluginVictimFns())
 			test.Run([]framework.Action{shuffle})

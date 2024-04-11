@@ -111,7 +111,7 @@ func TestEventHandler(t *testing.T) {
 			},
 		}
 		t.Run(test.Name, func(t *testing.T) {
-			test.RegistSession(tiers, nil)
+			test.RegisterSession(tiers, nil)
 			defer test.Close()
 			test.Run(actions)
 			if err := test.CheckAll(i); err != nil {

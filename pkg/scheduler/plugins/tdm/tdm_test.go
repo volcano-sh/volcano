@@ -228,7 +228,7 @@ func Test_TDM(t *testing.T) {
 					},
 				},
 			}
-			ssn := test.RegistSession(tiers, nil)
+			ssn := test.RegisterSession(tiers, nil)
 			defer test.Close()
 
 			for _, job := range ssn.Jobs {
@@ -541,7 +541,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 					},
 				},
 			}
-			ssn := test.RegistSession(tiers, nil)
+			ssn := test.RegisterSession(tiers, nil)
 			defer test.Close()
 
 			d, _ := time.ParseDuration(test.args[evictPeriodLabel].(string))

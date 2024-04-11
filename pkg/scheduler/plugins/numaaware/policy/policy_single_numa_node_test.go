@@ -24,7 +24,7 @@ import (
 )
 
 func Test_single_numa_node_predicate(t *testing.T) {
-	teseCases := []struct {
+	testCases := []struct {
 		name           string
 		providersHints []map[string][]TopologyHint
 		expect         TopologyHint
@@ -278,7 +278,7 @@ func Test_single_numa_node_predicate(t *testing.T) {
 		},
 	}
 
-	for _, testcase := range teseCases {
+	for _, testcase := range testCases {
 		policy := NewPolicySingleNumaNode([]int{0, 1})
 		bestHit, _ := policy.Predicate(testcase.providersHints)
 		if !reflect.DeepEqual(bestHit, testcase.expect) {
