@@ -141,6 +141,19 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 	return nil
 }
 
+func (s *Statement) ActionJobFinishProcessed(actionName string, job *api.JobInfo) {
+	for _, eh := range s.ssn.eventHandlers {
+		if eh.ActionJobFinishProcessedFunc != nil {
+			eh.ActionJobFinishProcessedFunc(&Event{
+				ActionJob: &ActionJob{
+					ActionName: actionName,
+					Job:        job,
+				},
+			})
+		}
+	}
+}
+
 // Pipeline the task for the node
 func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
 	job, found := s.ssn.Jobs[task.Job]
