@@ -33,8 +33,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-// RegistPlugins plugins
-func RegistPlugins(plugins map[string]framework.PluginBuilder) {
+// RegisterPlugins plugins
+func RegisterPlugins(plugins map[string]framework.PluginBuilder) {
 	for name, plugin := range plugins {
 		framework.RegisterPluginBuilder(name, plugin)
 	}
@@ -68,8 +68,8 @@ type TestCommonStruct struct {
 
 var _ Interface = &TestCommonStruct{}
 
-// RegistSession open session with tiers and configuration, and mock schedulerCache with self-defined FakeBinder and FakeEvictor
-func (test *TestCommonStruct) RegistSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session {
+// RegisterSession open session with tiers and configuration, and mock schedulerCache with self-defined FakeBinder and FakeEvictor
+func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session {
 	binder := &util.FakeBinder{
 		Binds:   map[string]string{},
 		Channel: make(chan string),
@@ -102,7 +102,7 @@ func (test *TestCommonStruct) RegistSession(tiers []conf.Tier, config []conf.Con
 		schedulerCache.AddPriorityClass(pc)
 	}
 
-	RegistPlugins(test.Plugins)
+	RegisterPlugins(test.Plugins)
 	ssn := framework.OpenSession(schedulerCache, tiers, config)
 	test.ssn = ssn
 	schedulerCache.Run(test.stop)

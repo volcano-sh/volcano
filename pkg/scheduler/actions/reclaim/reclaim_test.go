@@ -87,7 +87,7 @@ func TestReclaim(t *testing.T) {
 			},
 		}
 		test.Plugins = plugins
-		test.RegistSession(tiers, nil)
+		test.RegisterSession(tiers, nil)
 		test.Run([]framework.Action{reclaim})
 		if err := test.CheckAll(i); err != nil {
 			t.Fatal(err)

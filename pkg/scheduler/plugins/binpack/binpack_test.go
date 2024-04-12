@@ -218,7 +218,7 @@ func TestNode(t *testing.T) {
 				},
 			},
 		}
-		ssn := test.RegistSession(tiers, nil)
+		ssn := test.RegisterSession(tiers, nil)
 		for _, job := range ssn.Jobs {
 			for _, task := range job.Tasks {
 				taskID := fmt.Sprintf("%s/%s", task.Namespace, task.Name)

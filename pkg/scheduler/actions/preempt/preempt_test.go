@@ -271,7 +271,7 @@ func TestPreempt(t *testing.T) {
 		test.Plugins = plugins
 		test.PriClass = []*schedulingv1.PriorityClass{highPrio, lowPrio}
 		t.Run(test.Name, func(t *testing.T) {
-			test.RegistSession(tiers, nil)
+			test.RegisterSession(tiers, nil)
 			defer test.Close()
 			test.Run(actions)
 			if err := test.CheckAll(i); err != nil {
