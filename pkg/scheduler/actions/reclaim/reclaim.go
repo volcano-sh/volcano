@@ -60,8 +60,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 
 		if queue, found := ssn.Queues[job.Queue]; !found {
-			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
-				job.Queue, job.Namespace, job.Name)
+			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>", job.Queue, job.Namespace, job.Name)
 			continue
 		} else if _, existed := queueMap[queue.UID]; !existed {
 			klog.V(4).Infof("Added Queue <%s> for Job <%s/%s>", queue.Name, job.Namespace, job.Name)
@@ -117,7 +116,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 
 		if err := ssn.PrePredicateFn(task); err != nil {
-			klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+			klog.Errorf("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
 			continue
 		}
 
@@ -126,7 +125,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			var statusSets util.StatusSets
 			statusSets, err := ssn.PredicateFn(task, n)
 			if err != nil {
-				klog.V(5).Infof("reclaim predicates failed for task <%s/%s> on node <%s>: %v",
+				klog.Errorf("reclaim predicates failed for task <%s/%s> on node <%s>: %v",
 					task.Namespace, task.Name, n.Name, err)
 				continue
 			}
@@ -170,7 +169,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			victims := ssn.Reclaimable(task, reclaimees)
 
 			if err := util.ValidateVictims(task, n, victims); err != nil {
-				klog.V(3).Infof("No validated victims on Node <%s>: %v", n.Name, err)
+				klog.Errorf("No validated victims on Node <%s>: %v", n.Name, err)
 				continue
 			}
 
@@ -179,7 +178,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 
 			// Reclaim victims for tasks.
 			for _, reclaimee := range victims {
-				klog.Errorf("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
+				klog.V(4).Infof("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
 					reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
 				if err := ssn.Evict(reclaimee, "reclaim"); err != nil {
 					klog.Errorf("Failed to reclaim Task <%s/%s> for Tasks <%s/%s>: %v",

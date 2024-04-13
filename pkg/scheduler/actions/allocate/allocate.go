@@ -76,7 +76,7 @@ func (alloc *Action) pickUpQueuesAndJobs(queues *util.PriorityQueue, jobsMap map
 				continue
 			}
 		} else if job.IsPending() {
-			klog.V(4).Infof("Job <%s/%s> Queue <%s> status update from pending to inqueue, reason: no enqueue action is configured.",
+			klog.V(4).Infof("Job <%s/%s> Queue <%s> status update from pending to enqueue, reason: no enqueue action is configured.",
 				job.Namespace, job.Name, job.Queue)
 			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
 		}
@@ -181,7 +181,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 		klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(ssn.Nodes), job.Namespace, job.Name)
 
 		if err := ssn.PrePredicateFn(task); err != nil {
-			klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+			klog.Errorf("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
 			fitErrors := api.NewFitErrors()
 			for _, ni := range allNodes {
 				fitErrors.SetNodeError(ni.Name, err)

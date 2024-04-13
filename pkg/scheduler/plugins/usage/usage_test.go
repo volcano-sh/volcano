@@ -160,7 +160,7 @@ func TestUsage_predicateFn(t *testing.T) {
 						Reason: NodeUsageCPUExtend,
 					},
 				},
-				err: fmt.Errorf("Plugin %s predicates failed, because of %s", PluginName, NodeUsageCPUExtend),
+				err: fmt.Errorf("plugin %s predicates failed, because of %s", PluginName, NodeUsageCPUExtend),
 			},
 		},
 		{
@@ -194,7 +194,7 @@ func TestUsage_predicateFn(t *testing.T) {
 						Reason: NodeUsageMemoryExtend,
 					},
 				},
-				err: fmt.Errorf("Plugin %s predicates failed, because of %s", PluginName, NodeUsageMemoryExtend),
+				err: fmt.Errorf("plugin %s predicates failed, because of %s", PluginName, NodeUsageMemoryExtend),
 			},
 		},
 		{

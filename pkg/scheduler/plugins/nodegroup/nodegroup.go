@@ -48,7 +48,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 	return &nodeGroupPlugin{pluginArguments: arguments}
 }
 
-func (pp *nodeGroupPlugin) Name() string {
+func (np *nodeGroupPlugin) Name() string {
 	return PluginName
 }
 
