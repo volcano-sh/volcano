@@ -51,8 +51,8 @@ type TestCommonStruct struct {
 	Queues         []*vcapisv1.Queue
 	PriClass       []*schedulingv1.PriorityClass
 	ResourceQuotas []*v1.ResourceQuota
-	Bind           map[string]string                      // bind results: ns/podName -> nodeName
-	PipeLined      map[string][]string                    // pipelined results: map[jobID][]{nodename}
+	BindMap        map[string]string                      // bind results: ns/podName -> nodeName
+	PipeLined      map[string][]string                    // pipelined results: map[jobID][]{nodeName}
 	Evicted        []string                               // evicted pods list of ns/podName
 	Status         map[api.JobID]scheduling.PodGroupPhase // final status
 	BindsNum       int                                    // binds events numbers
@@ -71,13 +71,8 @@ var _ Interface = &TestCommonStruct{}
 
 // RegisterSession open session with tiers and configuration, and mock schedulerCache with self-defined FakeBinder and FakeEvictor
 func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session {
-	binder := &util.FakeBinder{
-		Binds:   map[string]string{},
-		Channel: make(chan string),
-	}
-	evictor := &util.FakeEvictor{
-		Channel: make(chan string),
-	}
+	binder := util.NewFakeBinder(0)
+	evictor := util.NewFakeEvictor(0)
 	stsUpdator := &util.FakeStatusUpdater{}
 	test.binder = binder
 	test.evictor = evictor
@@ -148,8 +143,8 @@ func (test *TestCommonStruct) CheckAll(caseIndex int) (err error) {
 
 // CheckBind check expected bind result
 func (test *TestCommonStruct) CheckBind(caseIndex int) error {
-	if test.BindsNum != len(test.Bind) {
-		return fmt.Errorf("invalid setting for binding check: want bind count %d, want bind result length %d", test.BindsNum, len(test.Bind))
+	if test.BindsNum != len(test.BindMap) {
+		return fmt.Errorf("invalid setting for binding check: want bind count %d, want bind result length %d", test.BindsNum, len(test.BindMap))
 	}
 	binder := test.binder.(*util.FakeBinder)
 	for i := 0; i < test.BindsNum; i++ {
@@ -160,11 +155,19 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 		}
 	}
 
-	if len(test.Bind) != len(binder.Binds) {
-		return fmt.Errorf("case %d(%s) check bind: \nwant: %v\n got %v ", caseIndex, test.Name, test.Bind, binder.Binds)
+	// in case expected test.BindsNum is 0, but actually there is a binding and wait the binding goroutine to run
+	select {
+	case <-time.After(50 * time.Millisecond):
+	case key := <-binder.Channel:
+		return fmt.Errorf("unexpect binding %s in case %d(%s)", key, caseIndex, test.Name)
 	}
-	for key, value := range test.Bind {
-		got := binder.Binds[key]
+
+	binds := binder.Binds()
+	if len(test.BindMap) != len(binds) {
+		return fmt.Errorf("case %d(%s) check bind: \nwant: %v\n got %v ", caseIndex, test.Name, test.BindMap, binds)
+	}
+	for key, value := range test.BindMap {
+		got := binds[key]
 		if value != got {
 			return fmt.Errorf("case %d(%s)  check bind: \nwant: %v->%v\n got: %v->%v ", caseIndex, test.Name, key, value, key, got)
 		}
@@ -184,6 +187,13 @@ func (test *TestCommonStruct) CheckEvict(caseIndex int) error {
 		case <-time.After(300 * time.Millisecond):
 			return fmt.Errorf("Failed to get Evict request in case %d(%s).", caseIndex, test.Name)
 		}
+	}
+
+	// in case expected test.EvictNum is 0, but actually there is an evicting and wait the evicting goroutine to run
+	select {
+	case <-time.After(50 * time.Millisecond):
+	case key := <-evictor.Channel:
+		return fmt.Errorf("unexpect evicted %s in case %d(%s)", key, caseIndex, test.Name)
 	}
 
 	evicts := evictor.Evicts()

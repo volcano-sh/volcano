@@ -192,10 +192,7 @@ func TestNodeGroup(t *testing.T) {
 
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("case %v %v", i, test.name), func(t *testing.T) {
-			binder := &util.FakeBinder{
-				Binds:   map[string]string{},
-				Channel: make(chan string),
-			}
+			binder := util.NewFakeBinder(0)
 			schedulerCache := &cache.SchedulerCache{
 				Nodes:         make(map[string]*api.NodeInfo),
 				Jobs:          make(map[api.JobID]*api.JobInfo),
