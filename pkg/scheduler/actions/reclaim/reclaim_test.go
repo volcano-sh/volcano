@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -27,21 +28,21 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func TestReclaim(t *testing.T) {
-	plugins := map[string]framework.PluginBuilder{
-		conformance.PluginName: conformance.New,
-		gang.PluginName:        gang.New,
-		proportion.PluginName:  proportion.New,
-	}
-
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name: "Two Queue with one Queue overusing resource, should reclaim",
+			Plugins: map[string]framework.PluginBuilder{
+				conformance.PluginName: conformance.New,
+				gang.PluginName:        gang.New,
+				proportion.PluginName:  proportion.New,
+			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
 				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
 				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 0, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
@@ -62,35 +63,77 @@ func TestReclaim(t *testing.T) {
 			EvictNum: 1,
 			Evicted:  []string{"c1/preemptee2"}, // let pod2 in the middle when sort tasks be preemptable and will not disturb
 		},
+		{
+			Name: "sort reclaimees when reclaiming from overusing queue",
+			Plugins: map[string]framework.PluginBuilder{
+				conformance.PluginName: conformance.New,
+				gang.PluginName:        gang.New,
+				priority.PluginName:    priority.New,
+				proportion.PluginName:  proportion.New,
+			},
+			PriClass: []*schedulingv1.PriorityClass{
+				util.BuildPriorityClass("low-priority", 100),
+				util.BuildPriorityClass("mid-priority", 500),
+				util.BuildPriorityClass("high-priority", 1000),
+			},
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 0, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"), // reclaimed first
+				util.BuildPodGroupWithPrio("pg3", "c1", "q3", 0, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee1-2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee2-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg2", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee2-2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg2", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg3", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, nil),
+				util.BuildQueue("q2", 1, nil),
+				util.BuildQueue("q3", 1, nil),
+			},
+			EvictNum: 1,
+			Evicted:  []string{"c1/preemptee2-1"}, // low priority job's preemptable pod is evicted
+		},
 	}
 
 	reclaim := New()
-
-	for i, test := range tests {
-		trueValue := true
-		tiers := []conf.Tier{
-			{
-				Plugins: []conf.PluginOption{
-					{
-						Name:               "conformance",
-						EnabledReclaimable: &trueValue,
-					},
-					{
-						Name:               "gang",
-						EnabledReclaimable: &trueValue,
-					},
-					{
-						Name:               "proportion",
-						EnabledReclaimable: &trueValue,
-					},
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               "conformance",
+					EnabledReclaimable: &trueValue,
+				},
+				{
+					Name:               "gang",
+					EnabledReclaimable: &trueValue,
+				},
+				{ // proportion plugin will cause deserved resource large than preemptable pods's usage, and return less victims
+					Name:               "proportion",
+					EnabledReclaimable: &trueValue,
+				},
+				{
+					Name:             priority.PluginName,
+					EnabledJobOrder:  &trueValue,
+					EnabledTaskOrder: &trueValue,
 				},
 			},
-		}
-		test.Plugins = plugins
-		test.RegistSession(tiers, nil)
-		test.Run([]framework.Action{reclaim})
-		if err := test.CheckAll(i); err != nil {
-			t.Fatal(err)
-		}
+		},
+	}
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegistSession(tiers, nil)
+			defer test.Close()
+			test.Run([]framework.Action{reclaim})
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
