@@ -44,7 +44,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Backfill ...")
 	defer klog.V(5).Infof("Leaving Backfill ...")
 
-	predicatFunc := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+	predicateFunc := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		var statusSets util.StatusSets
 		statusSets, err := ssn.PredicateFn(task, node)
 		if err != nil {
@@ -76,7 +76,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			break
 		}
 
-		predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicatFunc, true)
+		predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicateFunc, true)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
 			break

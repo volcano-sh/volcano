@@ -119,7 +119,7 @@ func getKubeClient(restConfig *rest.Config) *kubernetes.Clientset {
 	return clientset
 }
 
-// GetVolcanoClient get a clientset for volcano.
+// getVolcanoClient get a clientset for volcano.
 func getVolcanoClient(restConfig *rest.Config) *versioned.Clientset {
 	clientset, err := versioned.NewForConfig(restConfig)
 	if err != nil {
