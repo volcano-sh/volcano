@@ -114,7 +114,7 @@ func TestShuffle(t *testing.T) {
 			ssn.AddVictimTasksFns("fake", fakePluginVictimFns())
 			test.Run([]framework.Action{shuffle})
 			if err := test.CheckAll(i); err != nil {
-				t.Fatal(err)
+				t.Errorf("unexpected shuffle test; name: %s, err: %s", test.Name, err)
 			}
 		})
 	}

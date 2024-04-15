@@ -169,7 +169,7 @@ func TestAllocate(t *testing.T) {
 			defer test.Close()
 			test.Run([]framework.Action{New()})
 			if err := test.CheckAll(i); err != nil {
-				t.Fatal(err)
+				t.Errorf("unexpected allocate test; name: %s, err: %s", test.Name, err)
 			}
 		})
 	}

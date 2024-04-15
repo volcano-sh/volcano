@@ -275,7 +275,7 @@ func TestPreempt(t *testing.T) {
 			defer test.Close()
 			test.Run(actions)
 			if err := test.CheckAll(i); err != nil {
-				t.Fatal(err)
+				t.Errorf("unexpected preempt test; name: %s, err: %s", test.Name, err)
 			}
 		})
 	}
