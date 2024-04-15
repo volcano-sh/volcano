@@ -151,10 +151,9 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		}
 		tasks := pendingTasks[job.UID]
 
-		// Added Queue back until no job in Namespace.
-		queues.Push(queue)
-
 		if tasks.Empty() {
+			// put queue back again and try other jobs in this queue
+			queues.Push(queue)
 			continue
 		}
 
@@ -162,6 +161,10 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 			tasks.Len(), job.Namespace, job.Name)
 
 		alloc.allocateResourcesForTasks(tasks, job, jobs, queue, allNodes)
+
+		// Put back the queue to priority queue after job's resource allocating finished,
+		// To ensure that the priority of the queue is calculated based on the latest resource allocation situation.
+		queues.Push(queue)
 	}
 }
 
