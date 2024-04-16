@@ -23,9 +23,8 @@ export SHOW_VOLCANO_LOGS=${SHOW_VOLCANO_LOGS:-1}
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export E2E_TYPE=${E2E_TYPE:-"ALL"}
 
-if [[ "${CLUSTER_NAME}xxx" == "xxx" ]];then
-    CLUSTER_NAME="integration"
-fi
+NAMESPACE=${NAMESPACE:-volcano-system}
+CLUSTER_NAME=${CLUSTER_NAME:-integration}
 
 export CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
 
@@ -54,7 +53,7 @@ function install-volcano {
   kubectl apply -f installer/namespace.yaml
 
   echo "Install volcano chart with crd version $crd_version"
-  helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace volcano-system --kubeconfig ${KUBECONFIG} \
+  helm install ${CLUSTER_NAME} installer/helm/chart/volcano --namespace ${NAMESPACE} --kubeconfig ${KUBECONFIG} \
     --set basic.image_pull_policy=IfNotPresent \
     --set basic.image_tag_version=${TAG} \
     --set basic.scheduler_config_file=config/volcano-scheduler-ci.conf \
@@ -63,14 +62,14 @@ function install-volcano {
 }
 
 function uninstall-volcano {
-  helm uninstall ${CLUSTER_NAME} -n kube-system
+  helm uninstall ${CLUSTER_NAME} -n ${NAMESPACE}
 }
 
 function generate-log {
     echo "Generating volcano log files"
-    kubectl logs deployment/${CLUSTER_NAME}-admission -n kube-system > volcano-admission.log
-    kubectl logs deployment/${CLUSTER_NAME}-controllers -n kube-system > volcano-controller.log
-    kubectl logs deployment/${CLUSTER_NAME}-scheduler -n kube-system > volcano-scheduler.log
+    kubectl logs deployment/${CLUSTER_NAME}-admission -n ${NAMESPACE} > volcano-admission.log
+    kubectl logs deployment/${CLUSTER_NAME}-controllers -n ${NAMESPACE} > volcano-controller.log
+    kubectl logs deployment/${CLUSTER_NAME}-scheduler -n ${NAMESPACE} > volcano-scheduler.log
 }
 
 # clean up
