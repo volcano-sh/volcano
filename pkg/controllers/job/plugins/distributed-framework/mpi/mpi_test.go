@@ -20,7 +20,9 @@ import (
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
@@ -46,13 +48,17 @@ func TestMpi(t *testing.T) {
 				},
 			},
 		},
+		Status: v1alpha1.JobStatus{
+			ControlledResources: map[string]string{},
+		},
 	}
 
 	testcases := []struct {
-		Name string
-		Job  *v1alpha1.Job
-		Pod  *v1.Pod
-		port int
+		Name    string
+		Job     *v1alpha1.Job
+		Pod     *v1.Pod
+		port    int
+		wantErr error
 	}{
 		{
 			Name: "add port",
@@ -61,26 +67,47 @@ func TestMpi(t *testing.T) {
 				Spec: v1alpha1.JobSpec{
 					Tasks: []v1alpha1.TaskSpec{
 						{
-							Name:     "fakeMaster",
+							Name:     "master",
 							Replicas: 1,
 							Template: v1.PodTemplateSpec{},
 						},
 						{
-							Name:     "fakeWorker",
+							Name:     "worker",
 							Replicas: 2,
 							Template: v1.PodTemplateSpec{},
 						},
 					},
 				},
+				Status: v1alpha1.JobStatus{
+					ControlledResources: map[string]string{},
+				},
 			},
 			Pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-mpi-fakeMaster-0",
+					Name:        "test-mpi-fakeMaster-0",
+					Annotations: map[string]string{batch.TaskSpecKey: DefaultMaster},
 				},
 				Spec: v1.PodSpec{
+					InitContainers: []v1.Container{
+						{
+							Name: "master",
+							Ports: []v1.ContainerPort{
+								{
+									Name:          "test",
+									ContainerPort: DefaultPort,
+								},
+							},
+						},
+					},
 					Containers: []v1.Container{
 						{
 							Name: "master",
+							Ports: []v1.ContainerPort{
+								{
+									Name:          "test",
+									ContainerPort: DefaultPort,
+								},
+							},
 						},
 					},
 				},
@@ -114,6 +141,18 @@ func TestMpi(t *testing.T) {
 			}
 			if testcase.Pod.Spec.Containers[0].Ports == nil || testcase.Pod.Spec.Containers[0].Ports[0].ContainerPort != int32(testcase.port) {
 				t.Errorf("Case %d (%s): wrong port, got %d", index, testcase.Name, testcase.Pod.Spec.Containers[0].Ports[0].ContainerPort)
+			}
+			err := mp.OnJobAdd(testcase.Job)
+			if !equality.Semantic.DeepEqual(err, testcase.wantErr) {
+				t.Fatalf("OnJobAdd error = %v, wantErr %v", err, testcase.wantErr)
+			}
+			err = mp.OnJobUpdate(testcase.Job)
+			if !equality.Semantic.DeepEqual(err, testcase.wantErr) {
+				t.Fatalf("OnJobUpdate error = %v, wantErr %v", err, testcase.wantErr)
+			}
+			err = mp.OnJobDelete(testcase.Job)
+			if !equality.Semantic.DeepEqual(err, testcase.wantErr) {
+				t.Fatalf("OnJobDelete error = %v, wantErr %v", err, testcase.wantErr)
 			}
 		})
 	}

@@ -19,11 +19,45 @@ package ssh
 import (
 	"testing"
 
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
+
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
 
 func TestSSHPlugin(t *testing.T) {
-
+	var (
+		job = &v1alpha1.Job{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-pytorch"},
+			Spec: v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name:     "worker",
+						Replicas: 1,
+						Template: v1.PodTemplateSpec{},
+					},
+				},
+			},
+			Status: v1alpha1.JobStatus{
+				ControlledResources: map[string]string{},
+			},
+		}
+		pod = &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-pytorch-worker-0",
+			},
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{
+						Name: "worker",
+					},
+				},
+			},
+		}
+	)
 	tests := []struct {
 		name           string
 		params         []string
@@ -31,6 +65,7 @@ func TestSSHPlugin(t *testing.T) {
 		sshKeyFilePath string
 		sshPrivateKey  string
 		sshPublicKey   string
+		wantErr        error
 	}{
 		{
 			name:           "no params specified",
@@ -56,17 +91,34 @@ func TestSSHPlugin(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			pluginInterface := New(pluginsinterface.PluginClientset{}, test.params)
+			pluginInterface := New(pluginsinterface.PluginClientset{KubeClients: fake.NewSimpleClientset(pod)}, test.params)
 			plugin := pluginInterface.(*sshPlugin)
 
 			if plugin.sshKeyFilePath != test.sshKeyFilePath {
-				t.Errorf("Expected sshKeyFilePath=%s, got %s", test.sshKeyFilePath, plugin.sshKeyFilePath)
+				t.Fatalf("Expected sshKeyFilePath=%s, got %s", test.sshKeyFilePath, plugin.sshKeyFilePath)
 			}
 			if plugin.sshPrivateKey != test.sshPrivateKey {
-				t.Errorf("Expected sshPrivateKey=%s, got %s", test.sshPrivateKey, plugin.sshPrivateKey)
+				t.Fatalf("Expected sshPrivateKey=%s, got %s", test.sshPrivateKey, plugin.sshPrivateKey)
 			}
 			if plugin.sshPublicKey != test.sshPublicKey {
-				t.Errorf("Expected sshPublicKey=%s, got %s", test.sshPublicKey, plugin.sshPublicKey)
+				t.Fatalf("Expected sshPublicKey=%s, got %s", test.sshPublicKey, plugin.sshPublicKey)
+			}
+
+			gotErr := plugin.OnPodCreate(pod, job)
+			if !equality.Semantic.DeepEqual(gotErr, test.wantErr) {
+				t.Fatalf("OnPodCreate error = %v, wantErr %v", gotErr, test.wantErr)
+			}
+			gotErr = plugin.OnJobAdd(job)
+			if !equality.Semantic.DeepEqual(gotErr, test.wantErr) {
+				t.Fatalf("OnJobAdd error = %v, wantErr %v", gotErr, test.wantErr)
+			}
+			gotErr = plugin.OnJobUpdate(job)
+			if !equality.Semantic.DeepEqual(gotErr, test.wantErr) {
+				t.Fatalf("OnJobUpdate error = %v, wantErr %v", gotErr, test.wantErr)
+			}
+			gotErr = plugin.OnJobDelete(job)
+			if !equality.Semantic.DeepEqual(gotErr, test.wantErr) {
+				t.Fatalf("OnJobDelete error = %v, wantErr %v", gotErr, test.wantErr)
 			}
 		})
 	}

@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -49,11 +50,15 @@ func TestTensorflow(t *testing.T) {
 				},
 			},
 		},
+		Status: batch.JobStatus{
+			ControlledResources: map[string]string{},
+		},
 	}
 	testcases := []struct {
-		Name string
-		Job  *batch.Job
-		Pod  *v1.Pod
+		Name    string
+		Job     *batch.Job
+		Pod     *v1.Pod
+		wantErr error
 	}{
 		{
 			Name: "ps case",
@@ -137,6 +142,18 @@ func TestTensorflow(t *testing.T) {
 				if testcase.Pod.Spec.Containers[0].Env[0].Value != `{"cluster":{"ps":["train-123-ps-0.train-123:5000","train-123-ps-1.train-123:5000"],"worker":["train-123-worker-0.train-123:5000","train-123-worker-1.train-123:5000"],"chief":["train-123-chief-0.train-123:5000"]},"task":{"type":"chief","index":0}}` {
 					t.Errorf("Case %d (%s): wrong env value, got %s", i, testcase.Name, testcase.Pod.Spec.Containers[0].Env[0].Value)
 				}
+			}
+			err := tp.OnJobAdd(testcase.Job)
+			if !equality.Semantic.DeepEqual(err, testcase.wantErr) {
+				t.Fatalf("OnJobAdd error = %v, wantErr %v", err, testcase.wantErr)
+			}
+			err = tp.OnJobUpdate(testcase.Job)
+			if !equality.Semantic.DeepEqual(err, testcase.wantErr) {
+				t.Fatalf("OnJobUpdate error = %v, wantErr %v", err, testcase.wantErr)
+			}
+			err = tp.OnJobDelete(testcase.Job)
+			if !equality.Semantic.DeepEqual(err, testcase.wantErr) {
+				t.Fatalf("OnJobDelete error = %v, wantErr %v", err, testcase.wantErr)
 			}
 		})
 	}
