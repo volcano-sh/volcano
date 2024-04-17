@@ -117,8 +117,8 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					if !api.PreemptableStatus(task.Status) {
 						return false
 					}
-					// Ignore task with empty resource request.
-					if task.Resreq.IsEmpty() {
+					// BestEffort pod is not supported to preempt unBestEffort pod.
+					if preemptor.BestEffort && !task.BestEffort {
 						return false
 					}
 					if !task.Preemptable {
@@ -172,8 +172,8 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					if !api.PreemptableStatus(task.Status) {
 						return false
 					}
-					// Ignore task with empty resource request.
-					if task.Resreq.IsEmpty() {
+					// BestEffort pod is not supported to preempt unBestEffort pod.
+					if preemptor.BestEffort && !task.BestEffort {
 						return false
 					}
 					// Preempt tasks within job.

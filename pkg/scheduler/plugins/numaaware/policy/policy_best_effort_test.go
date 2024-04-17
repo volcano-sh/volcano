@@ -24,7 +24,7 @@ import (
 )
 
 func Test_best_effort_predicate(t *testing.T) {
-	teseCases := []struct {
+	testCases := []struct {
 		name           string
 		providersHints []map[string][]TopologyHint
 		expect         TopologyHint
@@ -312,7 +312,7 @@ func Test_best_effort_predicate(t *testing.T) {
 		},
 	}
 
-	for _, testcase := range teseCases {
+	for _, testcase := range testCases {
 		policy := NewPolicyBestEffort([]int{0, 1})
 		bestHit, _ := policy.Predicate(testcase.providersHints)
 		if !reflect.DeepEqual(bestHit, testcase.expect) {

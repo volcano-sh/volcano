@@ -160,7 +160,7 @@ func checkPGQueueState(pod *v1.Pod, pgName string) error {
 	pgObj, err := config.VolcanoClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 	if err == nil {
 		if errQueue := checkQueueState(pgObj.Spec.Queue); errQueue != nil {
-			return fmt.Errorf("failed : %v;", errQueue)
+			return fmt.Errorf("failed : %v", errQueue)
 		}
 	}
 	return nil

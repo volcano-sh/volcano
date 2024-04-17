@@ -23,6 +23,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -32,7 +33,6 @@ import (
 	"k8s.io/klog/v2"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
@@ -179,61 +179,14 @@ func BuildDynamicPVC(namespace, name string, req v1.ResourceList) (*v1.Persisten
 
 // BuildBestEffortPod builds a BestEffort pod object
 func BuildBestEffortPod(namespace, name, nodeName string, p v1.PodPhase, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
-	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-			Annotations: map[string]string{
-				schedulingv1beta1.KubeGroupNameAnnotationKey: groupName,
-			},
-		},
-		Status: v1.PodStatus{
-			Phase: p,
-		},
-		Spec: v1.PodSpec{
-			NodeName:     nodeName,
-			NodeSelector: selector,
-			Containers: []v1.Container{
-				{
-					Resources: v1.ResourceRequirements{
-						Requests: v1.ResourceList{},
-					},
-				},
-			},
-		},
-	}
+	return BuildPod(namespace, name, nodeName, p, v1.ResourceList{}, groupName, labels, selector)
 }
 
 // BuildPodWithPriority builds a pod object with priority
 func BuildPodWithPriority(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, priority *int32) *v1.Pod {
-	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-			Annotations: map[string]string{
-				schedulingv1beta1.KubeGroupNameAnnotationKey: groupName,
-			},
-		},
-		Status: v1.PodStatus{
-			Phase: p,
-		},
-		Spec: v1.PodSpec{
-			NodeName:     nodeName,
-			NodeSelector: selector,
-			Priority:     priority,
-			Containers: []v1.Container{
-				{
-					Resources: v1.ResourceRequirements{
-						Requests: req,
-					},
-				},
-			},
-		},
-	}
+	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
+	pod.Spec.Priority = priority
+	return pod
 }
 
 // BuildPodGroup return podgroup with base spec and phase status
@@ -254,10 +207,17 @@ func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[st
 	}
 }
 
-// BuildPodGroup return podgroup
+// BuildPodGroupWithPrio return podgroup with podgroup PriorityClassName
 func BuildPodGroupWithPrio(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, prioName string) *schedulingv1beta1.PodGroup {
 	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
 	pg.Spec.PriorityClassName = prioName
+	return pg
+}
+
+// BuildPodGroupWithAnno returns a podgroup object with annotations
+func BuildPodGroupWithAnno(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, annos map[string]string) *schedulingv1beta1.PodGroup {
+	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
+	pg.Annotations = annos
 	return pg
 }
 
@@ -276,17 +236,39 @@ func BuildQueue(qname string, weight int32, cap v1.ResourceList) *schedulingv1be
 	}
 }
 
+// BuildQueueWithAnnos return a Queue with annotations
+func BuildQueueWithAnnos(qname string, weight int32, cap v1.ResourceList, annos map[string]string) *schedulingv1beta1.Queue {
+	queue := BuildQueue(qname, weight, cap)
+	queue.ObjectMeta.Annotations = annos
+	return queue
+}
+
+// ////// build in resource //////
+// BuildPriorityClass return pc
+func BuildPriorityClass(name string, value int32) *schedulingv1.PriorityClass {
+	return &schedulingv1.PriorityClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Value: value,
+	}
+}
+
 // FakeBinder is used as fake binder
 type FakeBinder struct {
+	sync.Mutex
 	Binds   map[string]string
 	Channel chan string
 }
 
 // Bind used by fake binder struct to bind pods
 func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) ([]*api.TaskInfo, error) {
+	fb.Lock()
+	defer fb.Unlock()
 	for _, p := range tasks {
 		key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
 		fb.Binds[key] = p.NodeName
+		fb.Channel <- key // need to wait binding pod because Bind process is asynchronous
 	}
 
 	return nil, nil
@@ -334,6 +316,11 @@ func (ftsu *FakeStatusUpdater) UpdatePodCondition(pod *v1.Pod, podCondition *v1.
 func (ftsu *FakeStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error) {
 	// do nothing here
 	return nil, nil
+}
+
+// UpdateQueueStatus do fake empty update
+func (ftsu *FakeStatusUpdater) UpdateQueueStatus(queue *api.QueueInfo) error {
+	return nil
 }
 
 // FakeVolumeBinder is used as fake volume binder

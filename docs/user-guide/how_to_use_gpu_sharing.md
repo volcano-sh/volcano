@@ -18,6 +18,35 @@ After installed, update the scheduler configuration:
 kubectl edit cm -n volcano-system volcano-scheduler-configmap
 ```
 
+For volcano v1.8.2+(v1.8.2 excluded), use the following configMap 
+
+```yaml
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: volcano-scheduler-configmap
+  namespace: volcano-system
+data:
+  volcano-scheduler.conf: |
+    actions: "enqueue, allocate, backfill"
+    tiers:
+    - plugins:
+      - name: priority
+      - name: gang
+      - name: conformance
+    - plugins:
+      - name: drf
+      - name: deviceshare
+        arguments:
+          deviceshare.GPUSharingEnable: true # enable gpu sharing
+      - name: predicates
+      - name: proportion
+      - name: nodeorder
+      - name: binpack
+```
+
+For volcano v1.8.2-(v1.8.2 included), use the following configMap 
+
 ```yaml
 kind: ConfigMap
 apiVersion: v1

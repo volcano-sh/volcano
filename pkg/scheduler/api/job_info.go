@@ -296,7 +296,8 @@ type NodeResourceMap map[string]*Resource
 
 // JobInfo will have all info of a Job
 type JobInfo struct {
-	UID JobID
+	UID   JobID
+	PgUID types.UID
 
 	Name      string
 	Namespace string
@@ -396,6 +397,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	}
 	ji.TaskMinAvailableTotal = taskMinAvailableTotal
 
+	ji.PgUID = pg.UID
 	ji.PodGroup = pg
 }
 
@@ -691,20 +693,22 @@ func (ji *JobInfo) ReadyTaskNum() int32 {
 	occupied += len(ji.TaskStatusIndex[Allocated])
 	occupied += len(ji.TaskStatusIndex[Succeeded])
 
-	if tasks, found := ji.TaskStatusIndex[Pending]; found {
-		for _, task := range tasks {
-			if task.BestEffort {
-				occupied++
-			}
-		}
-	}
-
 	return int32(occupied)
 }
 
 // WaitingTaskNum returns the number of tasks that are pipelined.
 func (ji *JobInfo) WaitingTaskNum() int32 {
 	return int32(len(ji.TaskStatusIndex[Pipelined]))
+}
+
+func (ji *JobInfo) PendingBestEffortTaskNum() int32 {
+	count := 0
+	for _, task := range ji.TaskStatusIndex[Pending] {
+		if task.BestEffort {
+			count++
+		}
+	}
+	return int32(count)
 }
 
 // CheckTaskValid returns whether each task of job is valid.
@@ -819,14 +823,6 @@ func (ji *JobInfo) CheckTaskStarving() bool {
 			}
 			continue
 		}
-
-		if status == Pending {
-			for _, task := range tasks {
-				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskID(task.Pod)]++
-				}
-			}
-		}
 	}
 	for taskID, minNum := range ji.TaskMinAvailable {
 		if occupiedMap[taskID] < minNum {
@@ -852,11 +848,16 @@ func (ji *JobInfo) ValidTaskNum() int32 {
 	return int32(occupied)
 }
 
-// Ready returns whether job is ready for run
-func (ji *JobInfo) Ready() bool {
-	occupied := ji.ReadyTaskNum()
+func (ji *JobInfo) IsReady() bool {
+	return ji.ReadyTaskNum()+ji.PendingBestEffortTaskNum() >= ji.MinAvailable
+}
 
-	return occupied >= ji.MinAvailable
+func (ji *JobInfo) IsPipelined() bool {
+	return ji.WaitingTaskNum()+ji.ReadyTaskNum()+ji.PendingBestEffortTaskNum() >= ji.MinAvailable
+}
+
+func (ji *JobInfo) IsStarving() bool {
+	return ji.WaitingTaskNum()+ji.ReadyTaskNum() < ji.MinAvailable
 }
 
 // IsPending returns whether job is in pending status
