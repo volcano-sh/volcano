@@ -141,7 +141,6 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 	return nil
 }
 
-<<<<<<< HEAD
 func (s *Statement) ActionJobFinishProcessed(actionName string, job *api.JobInfo) {
 	for _, eh := range s.ssn.eventHandlers {
 		if eh.ActionJobFinishProcessedFunc != nil {
