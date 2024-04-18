@@ -25,26 +25,14 @@ func TestLockNode(t *testing.T) {
 		{
 			name:      "lock node success",
 			expectErr: nil,
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: nodeName,
-					Annotations: map[string]string{
-						lockName: time.Now().Add(-time.Minute * 20).Format(time.RFC3339),
-					},
-				},
-			},
+			node: buildNode(nodeName,
+				map[string]string{lockName: time.Now().Add(-time.Minute * 20).Format(time.RFC3339)}),
 		},
 		{
 			name:      "lock node failed",
 			expectErr: fmt.Errorf("node %s has been locked within 5 minutes", nodeName),
-			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: nodeName,
-					Annotations: map[string]string{
-						lockName: time.Now().Add(time.Minute * 20).Format(time.RFC3339),
-					},
-				},
-			},
+			node: buildNode(nodeName,
+				map[string]string{lockName: time.Now().Add(time.Minute * 20).Format(time.RFC3339)}),
 		},
 	}
 
@@ -57,5 +45,15 @@ func TestLockNode(t *testing.T) {
 				t.Errorf("LockNode error: (+got: %T/-want: %T)", gotErr, tc.expectErr)
 			}
 		})
+	}
+}
+
+// buildNode builts node
+func buildNode(name string, annotations map[string]string) *v1.Node {
+	return &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Annotations: annotations,
+		},
 	}
 }
