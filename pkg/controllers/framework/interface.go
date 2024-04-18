@@ -34,6 +34,7 @@ type ControllerOption struct {
 
 	InheritOwnerAnnotations bool
 	WorkerThreadsForPG      uint32
+	WorkerThreadsForGC      uint32
 }
 
 // Controller is the interface of all controllers.

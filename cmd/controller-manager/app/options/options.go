@@ -37,6 +37,7 @@ const (
 	defaultHealthzAddress      = ":11251"
 	defaultLockObjectNamespace = "volcano-system"
 	defaultPodGroupWorkers     = 5
+	defaultGCWorkers           = 1
 )
 
 // ServerOption is the main context object for the controllers.
@@ -71,6 +72,9 @@ type ServerOption struct {
 	// WorkerThreadsForPG is the number of threads syncing podgroup operations
 	// The larger the number, the faster the podgroup processing, but requires more CPU load.
 	WorkerThreadsForPG uint32
+	// WorkerThreadsForGC is the number of threads for recycling jobs
+	// The larger the number, the faster the job recycling, but requires more CPU load.
+	WorkerThreadsForGC uint32
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -101,6 +105,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.InheritOwnerAnnotations, "inherit-owner-annotations", true, "Enable inherit owner annotations for pods when create podgroup; it is enabled by default")
 	fs.Uint32Var(&s.WorkerThreadsForPG, "worker-threads-for-podgroup", defaultPodGroupWorkers, "The number of threads syncing podgroup operations. The larger the number, the faster the podgroup processing, but requires more CPU load.")
+	fs.Uint32Var(&s.WorkerThreadsForGC, "worker-threads-for-gc", defaultGCWorkers, "The number of threads for recycling jobs. The larger the number, the faster the job recycling, but requires more CPU load.")
 }
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.
