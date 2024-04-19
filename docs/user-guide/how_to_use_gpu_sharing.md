@@ -1,9 +1,5 @@
 # GPU Sharing User guide
 
-## Note: GPU Sharing will be deprecated in volcano v1.9, please use volcano vgpu instead
-
-[Volcano vgpu](./how_to_use_vgpu.md)
-
 ## Environment setup
 
 ### Install volcano
