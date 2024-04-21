@@ -125,8 +125,9 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 
 		assigned := false
+		// TODO: we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
 		for _, n := range ssn.Nodes {
-			var statusSets util.StatusSets
+			var statusSets api.StatusSets
 			statusSets, _ = ssn.PredicateFn(task, n)
 
 			// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
