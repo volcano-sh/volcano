@@ -60,7 +60,7 @@ func (f *FitErrors) SetNodeError(nodeName string, err error) {
 	default:
 		fe = &FitError{
 			NodeName: nodeName,
-			Reasons:  []string{obj.Error()},
+			Status:   []*Status{{Code: Error, Reason: obj.Error()}},
 		}
 	}
 
@@ -78,7 +78,7 @@ func (f *FitErrors) Error() string {
 
 	reasons := make(map[string]int)
 	for _, node := range f.nodes {
-		for _, reason := range node.Reasons {
+		for _, reason := range node.Reasons() {
 			reasons[reason]++
 		}
 	}
@@ -100,7 +100,7 @@ type FitError struct {
 	taskNamespace string
 	taskName      string
 	NodeName      string
-	Reasons       []string
+	Status        StatusSets
 }
 
 // NewFitError return FitError by message
@@ -109,14 +109,33 @@ func NewFitError(task *TaskInfo, node *NodeInfo, message ...string) *FitError {
 		taskName:      task.Name,
 		taskNamespace: task.Namespace,
 		NodeName:      node.Name,
-		Reasons:       message,
+	}
+	sts := make([]*Status, 0, len(message))
+	for _, msg := range message {
+		sts = append(sts, &Status{Reason: msg, Code: Error})
+	}
+	fe.Status = StatusSets(sts)
+	return fe
+}
+
+func NewFitStatus(task *TaskInfo, node *NodeInfo, sts StatusSets) *FitError {
+	fe := &FitError{
+		taskName:      task.Name,
+		taskNamespace: task.Namespace,
+		NodeName:      node.Name,
+		Status:        sts,
 	}
 	return fe
 }
 
+// Reasons returns the reasons
+func (fe *FitError) Reasons() []string {
+	return fe.Status.Reasons()
+}
+
 // Error returns the final error message
 func (f *FitError) Error() string {
-	return fmt.Sprintf("task %s/%s on node %s fit failed: %s", f.taskNamespace, f.taskName, f.NodeName, strings.Join(f.Reasons, ", "))
+	return fmt.Sprintf("task %s/%s on node %s fit failed: %s", f.taskNamespace, f.taskName, f.NodeName, strings.Join(f.Reasons(), ", "))
 }
 
 // WrapInsufficientResourceReason wrap insufficient resource reason.
