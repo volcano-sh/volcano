@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -526,12 +527,17 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	newDefaultQueue(vcClient, defaultQueue)
 	klog.Infof("Create init queue named default")
 
+	errTaskRateLimiter := workqueue.NewMaxOfRateLimiter(
+		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 1000*time.Second),
+		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
+	)
+
 	sc := &SchedulerCache{
 		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
 		Nodes:               make(map[string]*schedulingapi.NodeInfo),
 		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
-		errTasks:            workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		errTasks:            workqueue.NewRateLimitingQueue(errTaskRateLimiter),
 		nodeQueue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		kubeClient:          kubeClient,
@@ -1049,7 +1055,40 @@ func (sc *SchedulerCache) processCleanupJob() {
 }
 
 func (sc *SchedulerCache) resyncTask(task *schedulingapi.TaskInfo) {
-	sc.errTasks.AddRateLimited(task)
+	key := sc.generateErrTaskKey(task)
+	sc.errTasks.AddRateLimited(key)
+}
+
+func (sc *SchedulerCache) generateErrTaskKey(task *schedulingapi.TaskInfo) string {
+	// Job UID is namespace + / +name, for example: theNs/theJob
+	// Task UID is derived from the Pod UID, for example: d336abea-4f14-42c7-8a6b-092959a31407
+	// In the example above, the key ultimately becomes: theNs/theJob/d336abea-4f14-42c7-8a6b-092959a31407
+	return fmt.Sprintf("%s/%s", task.Job, task.UID)
+}
+
+func (sc *SchedulerCache) parseErrTaskKey(key string) (*schedulingapi.TaskInfo, error) {
+	i := strings.LastIndex(key, "/")
+	if i == -1 {
+		return nil, fmt.Errorf("failed to split task key %s", key)
+	}
+
+	jobUID := key[:i]
+	taskUID := key[i+1:]
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	job, found := sc.Jobs[schedulingapi.JobID(jobUID)]
+	if !found {
+		return nil, fmt.Errorf("failed to find job %s", jobUID)
+	}
+
+	task, found := job.Tasks[schedulingapi.TaskID(taskUID)]
+	if !found {
+		return nil, fmt.Errorf("failed to find task %s", taskUID)
+	}
+
+	return task, nil
 }
 
 func (sc *SchedulerCache) processResyncTask() {
@@ -1058,19 +1097,31 @@ func (sc *SchedulerCache) processResyncTask() {
 		return
 	}
 
+	klog.V(5).Infof("the length of errTasks is %d", sc.errTasks.Len())
+
 	defer sc.errTasks.Done(obj)
 
-	task, ok := obj.(*schedulingapi.TaskInfo)
+	taskKey, ok := obj.(string)
 	if !ok {
-		klog.Errorf("failed to convert %v to *schedulingapi.TaskInfo", obj)
+		klog.Errorf("Failed to convert %v to string.", obj)
+		return
+	}
+
+	task, err := sc.parseErrTaskKey(taskKey)
+	if err != nil {
+		klog.ErrorS(err, "Failed to get task for sync task", "taskKey", taskKey)
+		sc.errTasks.Forget(obj)
 		return
 	}
 
 	reSynced := false
 	if err := sc.syncTask(task); err != nil {
-		klog.Errorf("Failed to sync pod <%v/%v>, retry it.", task.Namespace, task.Name)
+		klog.ErrorS(err, "Failed to sync task, retry it", "namespace", task.Namespace, "name", task.Name)
 		sc.resyncTask(task)
 		reSynced = true
+	} else {
+		klog.V(4).Infof("sync task <%s/%s> success", task.Namespace, task.Name)
+		sc.errTasks.Forget(obj)
 	}
 
 	// execute custom bind err handler call back func if exists.
