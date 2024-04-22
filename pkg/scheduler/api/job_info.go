@@ -560,8 +560,8 @@ func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 		return nil
 	}
 
-	return fmt.Errorf("failed to find task <%v/%v> in job <%v/%v>",
-		ti.Namespace, ti.Name, ji.Namespace, ji.Name)
+	klog.Warningf("failed to find task <%v/%v> in job <%v/%v>", ti.Namespace, ti.Name, ji.Namespace, ji.Name)
+	return nil
 }
 
 // Clone is used to clone a jobInfo object
