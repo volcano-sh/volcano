@@ -169,7 +169,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 	ssn := alloc.session
 	stmt := framework.NewStatement(ssn)
 	ph := util.NewPredicateHelper()
-
+	var isJobFinishProcessed = true
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
 
@@ -275,6 +275,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 
 		if ssn.JobReady(job) && !tasks.Empty() {
 			jobs.Push(job)
+			isJobFinishProcessed = false
 			break
 		}
 	}
@@ -285,6 +286,9 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 		if !ssn.JobPipelined(job) {
 			stmt.Discard()
 		}
+	}
+	if isJobFinishProcessed {
+		stmt.ActionJobFinishProcessed(alloc.Name(), job)
 	}
 }
 
