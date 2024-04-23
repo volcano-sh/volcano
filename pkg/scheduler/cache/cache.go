@@ -1088,6 +1088,7 @@ func (sc *SchedulerCache) processResyncTask() {
 	taskKey, ok := obj.(string)
 	if !ok {
 		klog.Errorf("Failed to convert %v to string.", obj)
+		sc.errTasks.Forget(obj)
 		return
 	}
 
@@ -1104,7 +1105,7 @@ func (sc *SchedulerCache) processResyncTask() {
 		sc.resyncTask(task)
 		reSynced = true
 	} else {
-		klog.V(4).Infof("sync task <%s/%s> success", task.Namespace, task.Name)
+		klog.V(4).Infof("Successfully synced task <%s/%s>", task.Namespace, task.Name)
 		sc.errTasks.Forget(obj)
 	}
 
