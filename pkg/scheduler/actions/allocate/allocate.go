@@ -196,7 +196,14 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 		predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, alloc.predicate, true)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
-			break
+			// Assume that  all left tasks is allocable, can not meet gang-scheduling min member, we should break from continuously allocating
+			// otherwise, should continue to find other allocable task
+			// TODO: especially, should check each task spec's left pod can meet their min member
+			if job.ReadyTaskNum()+int32(tasks.Len()) < job.MinAvailable {
+				break
+			} else {
+				continue
+			}
 		}
 
 		// Candidate nodes are divided into two gradients:
