@@ -149,9 +149,13 @@ func getJobID(pod *v1.Pod) JobID {
 	return ""
 }
 
-func getTaskID(pod *v1.Pod) TaskID {
+func getTaskSpec(pod *v1.Pod) string {
 	if ts, found := pod.Annotations[batch.TaskSpecKey]; found && len(ts) != 0 {
-		return TaskID(ts)
+		return ts
+	}
+	// keep searching pod labels, as it is also added in labels in job controller
+	if ts, found := pod.Labels[batch.TaskSpecKey]; found && len(ts) != 0 {
+		return ts
 	}
 
 	return ""
@@ -266,11 +270,11 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 	}
 }
 
-func (ti *TaskInfo) GetTaskSpecKey() TaskID {
+func (ti *TaskInfo) GetTaskSpecKey() string {
 	if ti.Pod == nil {
 		return ""
 	}
-	return getTaskID(ti.Pod)
+	return getTaskSpec(ti.Pod)
 }
 
 // String returns the taskInfo details in a string
@@ -317,7 +321,7 @@ type JobInfo struct {
 	// All tasks of the Job.
 	TaskStatusIndex       map[TaskStatus]tasksMap
 	Tasks                 tasksMap
-	TaskMinAvailable      map[TaskID]int32
+	TaskMinAvailable      map[string]int32 // key is value of "volcano.sh/task-spec", value is number
 	TaskMinAvailableTotal int32
 
 	Allocated    *Resource
@@ -348,7 +352,7 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 		TotalRequest:     EmptyResource(),
 		TaskStatusIndex:  map[TaskStatus]tasksMap{},
 		Tasks:            tasksMap{},
-		TaskMinAvailable: map[TaskID]int32{},
+		TaskMinAvailable: map[string]int32{},
 	}
 
 	for _, task := range tasks {
@@ -485,7 +489,7 @@ func (ji *JobInfo) extractBudget(pg *PodGroup) *DisruptionBudget {
 func (ji *JobInfo) ParseMinMemberInfo(pg *PodGroup) {
 	taskMinAvailableTotal := int32(0)
 	for task, member := range pg.Spec.MinTaskMember {
-		ji.TaskMinAvailable[TaskID(task)] = member
+		ji.TaskMinAvailable[task] = member
 		taskMinAvailableTotal += member
 	}
 	ji.TaskMinAvailableTotal = taskMinAvailableTotal
@@ -592,7 +596,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		PodGroup: ji.PodGroup.Clone(),
 
 		TaskStatusIndex:       map[TaskStatus]tasksMap{},
-		TaskMinAvailable:      make(map[TaskID]int32, len(ji.TaskMinAvailable)),
+		TaskMinAvailable:      make(map[string]int32, len(ji.TaskMinAvailable)),
 		TaskMinAvailableTotal: ji.TaskMinAvailableTotal,
 		Tasks:                 tasksMap{},
 		Preemptable:           ji.Preemptable,
@@ -730,14 +734,14 @@ func (ji *JobInfo) CheckTaskValid() bool {
 		return true
 	}
 
-	actual := map[TaskID]int32{}
+	actual := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded ||
 			status == Pipelined ||
 			status == Pending {
 			for _, task := range tasks {
-				actual[getTaskID(task.Pod)]++
+				actual[getTaskSpec(task.Pod)]++
 			}
 		}
 	}
@@ -760,12 +764,12 @@ func (ji *JobInfo) CheckTaskReady() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
-	occupiedMap := map[TaskID]int32{}
+	occupiedMap := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded {
 			for _, task := range tasks {
-				occupiedMap[getTaskID(task.Pod)]++
+				occupiedMap[getTaskSpec(task.Pod)]++
 			}
 			continue
 		}
@@ -773,14 +777,14 @@ func (ji *JobInfo) CheckTaskReady() bool {
 		if status == Pending {
 			for _, task := range tasks {
 				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskID(task.Pod)]++
+					occupiedMap[getTaskSpec(task.Pod)]++
 				}
 			}
 		}
 	}
-	for taskID, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskID] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+	for taskSpec, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[taskSpec] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskSpec, occupiedMap[taskSpec])
 			return false
 		}
 	}
@@ -792,13 +796,13 @@ func (ji *JobInfo) CheckTaskPipelined() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
-	occupiedMap := map[TaskID]int32{}
+	occupiedMap := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded ||
 			status == Pipelined {
 			for _, task := range tasks {
-				occupiedMap[getTaskID(task.Pod)]++
+				occupiedMap[getTaskSpec(task.Pod)]++
 			}
 			continue
 		}
@@ -806,14 +810,14 @@ func (ji *JobInfo) CheckTaskPipelined() bool {
 		if status == Pending {
 			for _, task := range tasks {
 				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskID(task.Pod)]++
+					occupiedMap[getTaskSpec(task.Pod)]++
 				}
 			}
 		}
 	}
-	for taskID, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskID] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+	for taskSpec, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[taskSpec] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskSpec, occupiedMap[taskSpec])
 			return false
 		}
 	}
@@ -825,20 +829,20 @@ func (ji *JobInfo) CheckTaskStarving() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
-	occupiedMap := map[TaskID]int32{}
+	occupiedMap := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded ||
 			status == Pipelined {
 			for _, task := range tasks {
-				occupiedMap[getTaskID(task.Pod)]++
+				occupiedMap[getTaskSpec(task.Pod)]++
 			}
 			continue
 		}
 	}
-	for taskID, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskID] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min available", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+	for taskSpec, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[taskSpec] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min available", ji.Namespace, ji.Name, taskSpec, occupiedMap[taskSpec])
 			return true
 		}
 	}
