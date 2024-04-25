@@ -295,7 +295,25 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 		return nil, err
 	}
 
-	updated, err := su.vcclient.SchedulingV1beta1().PodGroups(podgroup.Namespace).Update(context.TODO(), podgroup, metav1.UpdateOptions{})
+	var updated *vcv1beta1.PodGroup
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		newer, updateErr := su.vcclient.SchedulingV1beta1().PodGroups(podgroup.Namespace).Update(context.TODO(), podgroup, metav1.UpdateOptions{})
+		if updateErr == nil {
+			updated = newer
+			return nil
+		}
+
+		older, err := su.vcclient.SchedulingV1beta1().PodGroups(podgroup.Namespace).Get(context.TODO(), podgroup.Name, metav1.GetOptions{})
+		if err == nil {
+			podgroup.ResourceVersion = older.ResourceVersion
+		} else {
+			if apierrors.IsNotFound(err) {
+				return err
+			}
+			klog.Errorf("Error while getting PodGroup with error: %v", err)
+		}
+		return updateErr
+	})
 	if err != nil {
 		klog.Errorf("Error while updating PodGroup with error: %v", err)
 		return nil, err
