@@ -326,8 +326,7 @@ func (sc *SchedulerCache) deleteTask(pi *schedulingapi.TaskInfo) error {
 		if job, found := sc.Jobs[pi.Job]; found {
 			jobErr = job.DeleteTaskInfo(pi)
 		} else {
-			jobErr = fmt.Errorf("failed to find Job <%v> for Task %v/%v",
-				pi.Job, pi.Namespace, pi.Name)
+			klog.Warningf("Failed to find job <%v> for Task <%v/%v>", pi.Job, pi.Namespace, pi.Name)
 		}
 	}
 
