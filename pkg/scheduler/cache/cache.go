@@ -878,7 +878,13 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	}()
 
 	podgroup := &vcv1beta1.PodGroup{}
-	if err := schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
+	if job.PodGroup != nil {
+		err = schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil)
+	} else {
+		err = fmt.Errorf("the PodGroup of Job <%s/%s> is nil", job.Namespace, job.Name)
+	}
+
+	if err != nil {
 		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
 		return err
 	}
