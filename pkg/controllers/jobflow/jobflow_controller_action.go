@@ -23,9 +23,11 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -63,7 +65,26 @@ func (jf *jobflowcontroller) syncJobFlow(jobFlow *v1alpha1flow.JobFlow, updateSt
 	}
 	jobFlow.Status = *jobFlowStatus
 	updateStateFn(&jobFlow.Status, len(jobFlow.Spec.Flows))
-	_, err = jf.vcClient.FlowV1alpha1().JobFlows(jobFlow.Namespace).UpdateStatus(context.Background(), jobFlow, metav1.UpdateOptions{})
+
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		_, updateErr := jf.vcClient.FlowV1alpha1().JobFlows(jobFlow.Namespace).UpdateStatus(context.Background(), jobFlow, metav1.UpdateOptions{})
+		if updateErr == nil {
+			return nil
+		}
+
+		older, err := jf.vcClient.FlowV1alpha1().JobFlows(jobFlow.Namespace).Get(context.TODO(), jobFlow.Name, metav1.GetOptions{})
+		if err == nil {
+			jobFlow.ResourceVersion = older.ResourceVersion
+		} else {
+			if apierrors.IsNotFound(err) {
+				return err
+			}
+			klog.Errorf("Failed to get JobFlow %v/%v: %v",
+				jobFlow.Namespace, jobFlow.Name, err)
+		}
+
+		return updateErr
+	})
 	if err != nil {
 		klog.Errorf("Failed to update status of JobFlow %v/%v: %v",
 			jobFlow.Namespace, jobFlow.Name, err)
@@ -281,6 +302,12 @@ func (jf *jobflowcontroller) deleteAllJobsCreatedByJobFlow(jobFlow *v1alpha1flow
 	for _, job := range jobList {
 		err := jf.vcClient.BatchV1alpha1().Jobs(jobFlow.Namespace).Delete(context.Background(), job.Name, metav1.DeleteOptions{})
 		if err != nil {
+			if apierrors.IsNotFound(err) {
+				klog.Warningf("Failed to delete job of JobFlow %v/%v, it's not found",
+					jobFlow.Namespace, jobFlow.Name)
+				continue
+			}
+
 			klog.Errorf("Failed to delete job of JobFlow %v/%v: %v",
 				jobFlow.Namespace, jobFlow.Name, err)
 			return err
