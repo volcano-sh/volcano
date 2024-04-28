@@ -96,7 +96,8 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			preemptorJob := preemptors.Pop().(*api.JobInfo)
 
 			stmt := framework.NewStatement(ssn)
-			assigned := false
+			var assigned bool
+			var err error
 			for {
 				// If job is not request more resource, then stop preempting.
 				if !ssn.JobStarving(preemptorJob) {
@@ -112,7 +113,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 				preemptor := preemptorTasks[preemptorJob.UID].Pop().(*api.TaskInfo)
 
-				if preempted, _ := preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
+				assigned, err = preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
 					// Ignore non running task.
 					if !api.PreemptableStatus(task.Status) {
 						return false
@@ -130,8 +131,9 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					}
 					// Preempt other jobs within queue
 					return job.Queue == preemptorJob.Queue && preemptor.Job != task.Job
-				}, ph); preempted {
-					assigned = true
+				}, ph)
+				if err != nil {
+					klog.V(3).Infof("Preemptor <%s/%s> failed to preempt Task , err: %s", preemptor.Namespace, preemptor.Name, err)
 				}
 			}
 
@@ -167,7 +169,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 				preemptor := preemptorTasks[job.UID].Pop().(*api.TaskInfo)
 
 				stmt := framework.NewStatement(ssn)
-				assigned, _ := preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
+				assigned, err := preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
 					// Ignore non running task.
 					if !api.PreemptableStatus(task.Status) {
 						return false
@@ -179,6 +181,9 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					// Preempt tasks within job.
 					return preemptor.Job == task.Job
 				}, ph)
+				if err != nil {
+					klog.V(3).Infof("Preemptor <%s/%s> failed to preempt Task , err: %s", preemptor.Namespace, preemptor.Name, err)
+				}
 				stmt.Commit()
 
 				// If no preemption, next job.
@@ -230,7 +235,7 @@ func preempt(
 
 	job, found := ssn.Jobs[preemptor.Job]
 	if !found {
-		return false, fmt.Errorf("Job %s not found in SSN", preemptor.Job)
+		return false, fmt.Errorf("not found Job %s in Session", preemptor.Job)
 	}
 
 	currentQueue := ssn.Queues[job.Queue]
