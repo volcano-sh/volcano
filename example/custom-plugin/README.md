@@ -1,15 +1,18 @@
 # Build plugin
 
-## Use musl-libc build plugin
+## Use `musl-libc` build plugin
 
 Because the default `vc-scheduler` base image is `alpine`, which only has `musl-libc`, so we should use `musl-gcc` to
 build the plugin.
 
+### Build the plugin in `Docker`:
+
 ```bash
-docker run -v `pwd`:/work golang:1.14-alpine sh -c "cd /work && apk add musl-dev gcc && go build -buildmode=plugin magic.go"
+# You may need run this command at the root path of the project, cause this need the go.mod file.
+docker run -v `pwd`:/volcano golang:1.20-alpine sh -c "cd /volcano && apk add musl-dev gcc && go build -buildmode=plugin -o example/custom-plugin/magic.so example/custom-plugin/magic.go"
 ```
 
-Or build the plugin in local.
+### Build the plugin in local:
 
 ```bash
 # install musl
@@ -22,9 +25,9 @@ make && sudo make install
 CC=/usr/local/musl/bin/musl-gcc CGO_ENABLED=1 go build -buildmode=plugin magic.go
 ```
 
-## Use gnu-libc build plugin
+## Use `gnu-libc` build plugin
 
-If want to use `ubuntu` as base image, you can use `gnu-libc` to build the plugin. Since most Linux OS have `gnu-libc`,
+If you want to use `ubuntu` as base image, you can use `gnu-libc` to build the plugin. Since most Linux OS have `gnu-libc`,
 you can just build the plugin in local.
 
 ```bash
