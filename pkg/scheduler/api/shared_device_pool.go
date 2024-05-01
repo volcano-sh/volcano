@@ -32,13 +32,13 @@ type Devices interface {
 	//following two functions used in node_info
 	//AddResource is to add the corresponding device resource of this 'pod' into current scheduler cache
 	AddResource(pod *v1.Pod)
-	//SubResoure is to substract the corresponding device resource of this 'pod' from current scheduler cache
+	//SubResource is to subtract the corresponding device resource of this 'pod' from current scheduler cache
 	SubResource(pod *v1.Pod)
 
 	//following four functions used in predicate
 	//HasDeviceRequest checks if the 'pod' request this device
 	HasDeviceRequest(pod *v1.Pod) bool
-	//FiltreNode checks if the 'pod' fit in current node
+	// FilterNode checks if the 'pod' fit in current node
 	// The first return value represents the filtering result, and the value range is "0, 1, 2, 3"
 	// 0: Success
 	// Success means that plugin ran correctly and found pod schedulable.
@@ -58,15 +58,15 @@ type Devices interface {
 	// that the pod can get scheduled with preemption.
 	// The accompanying status message should explain why the pod is unschedulable.
 	FilterNode(pod *v1.Pod) (int, string, error)
-	//Allocate action in predicate
+	// Allocate action in predicate
 	Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error
-	//Release action in predicate
+	// Release action in predicate
 	Release(kubeClient kubernetes.Interface, pod *v1.Pod) error
 
-	//IgnredDevices notify vc-scheduler to ignore devices in return list
+	// GetIgnoredDevices notify vc-scheduler to ignore devices in return list
 	GetIgnoredDevices() []string
 
-	//used for debug and monitor
+	// GetStatus used for debug and monitor
 	GetStatus() string
 }
 

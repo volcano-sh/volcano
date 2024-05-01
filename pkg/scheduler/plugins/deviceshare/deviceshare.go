@@ -68,6 +68,14 @@ func enablePredicate(args framework.Arguments) {
 	}
 }
 
+func createStatus(code int, reason string) *api.Status {
+	status := api.Status{
+		Code:   code,
+		Reason: reason,
+	}
+	return &status
+}
+
 func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 	enablePredicate(dp.pluginArguments)
 	// Register event handlers to update task info in PodLister & nodeMap
@@ -77,20 +85,16 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, val := range api.RegisteredDevices {
 			if dev, ok := node.Others[val].(api.Devices); ok {
 				if dev == nil {
-					predicateStatus = append(predicateStatus, &api.Status{
-						Code:   devices.Unschedulable,
-						Reason: "node not initialized with device" + val,
-					})
+					predicateStatus = append(predicateStatus,
+						createStatus(devices.Unschedulable, "node not initialized with device"+val))
 					return predicateStatus, fmt.Errorf("node not initialized with device %s", val)
 				}
 				code, msg, err := dev.FilterNode(task.Pod)
-				filterNodeStatus := &api.Status{
-					Code:   code,
-					Reason: msg,
-				}
 				if err != nil {
+					predicateStatus = append(predicateStatus, createStatus(code, msg))
 					return predicateStatus, err
 				}
+				filterNodeStatus := createStatus(code, msg)
 				if filterNodeStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, filterNodeStatus)
 					return predicateStatus, fmt.Errorf("plugin device filternode predicates failed %s", msg)
