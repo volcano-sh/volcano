@@ -207,6 +207,21 @@ func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[st
 	}
 }
 
+func BuildResourceQuota(name, ns string, hard v1.ResourceList) *v1.ResourceQuota {
+	return &v1.ResourceQuota{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Spec: v1.ResourceQuotaSpec{
+			Hard: hard,
+		},
+		Status: v1.ResourceQuotaStatus{
+			Hard: hard,
+		},
+	}
+}
+
 // BuildPodGroupWithPrio return podgroup with podgroup PriorityClassName
 func BuildPodGroupWithPrio(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, prioName string) *schedulingv1beta1.PodGroup {
 	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)

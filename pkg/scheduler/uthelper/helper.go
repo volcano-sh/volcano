@@ -43,19 +43,20 @@ func RegisterPlugins(plugins map[string]framework.PluginBuilder) {
 // TestCommonStruct is the most common used resource when do UT
 // others can wrap it in a new struct
 type TestCommonStruct struct {
-	Name      string
-	Plugins   map[string]framework.PluginBuilder // plugins for each case
-	Pods      []*v1.Pod
-	Nodes     []*v1.Node
-	PodGroups []*vcapisv1.PodGroup
-	Queues    []*vcapisv1.Queue
-	PriClass  []*schedulingv1.PriorityClass
-	Bind      map[string]string                      // bind results: ns/podName -> nodeName
-	PipeLined map[string][]string                    // pipelined results: map[jobID][]{nodename}
-	Evicted   []string                               // evicted pods list of ns/podName
-	Status    map[api.JobID]scheduling.PodGroupPhase // final status
-	BindsNum  int                                    // binds events numbers
-	EvictNum  int                                    // evict events numbers, include preempted and reclaimed evict events
+	Name           string
+	Plugins        map[string]framework.PluginBuilder // plugins for each case
+	Pods           []*v1.Pod
+	Nodes          []*v1.Node
+	PodGroups      []*vcapisv1.PodGroup
+	Queues         []*vcapisv1.Queue
+	PriClass       []*schedulingv1.PriorityClass
+	ResourceQuotas []*v1.ResourceQuota
+	Bind           map[string]string                      // bind results: ns/podName -> nodeName
+	PipeLined      map[string][]string                    // pipelined results: map[jobID][]{nodename}
+	Evicted        []string                               // evicted pods list of ns/podName
+	Status         map[api.JobID]scheduling.PodGroupPhase // final status
+	BindsNum       int                                    // binds events numbers
+	EvictNum       int                                    // evict events numbers, include preempted and reclaimed evict events
 
 	// fake interface instance when check results need
 	stop       chan struct{}
@@ -100,6 +101,9 @@ func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.C
 	}
 	for _, pc := range test.PriClass {
 		schedulerCache.AddPriorityClass(pc)
+	}
+	for _, rq := range test.ResourceQuotas {
+		schedulerCache.AddResourceQuota(rq)
 	}
 
 	RegisterPlugins(test.Plugins)
