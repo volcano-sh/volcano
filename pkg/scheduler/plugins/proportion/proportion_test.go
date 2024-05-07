@@ -192,10 +192,7 @@ func TestProportion(t *testing.T) {
 
 	for _, test := range tests {
 		// initialize schedulerCache
-		binder := &util.FakeBinder{
-			Binds:   map[string]string{},
-			Channel: make(chan string),
-		}
+		binder := util.NewFakeBinder(0)
 		recorder := record.NewFakeRecorder(100)
 		go func() {
 			for {

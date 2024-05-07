@@ -134,12 +134,9 @@ func TestSchedulerCache_Bind_NodeWithSufficientResources(t *testing.T) {
 	owner := buildOwnerReference("j1")
 
 	cache := &SchedulerCache{
-		Jobs:  make(map[api.JobID]*api.JobInfo),
-		Nodes: make(map[string]*api.NodeInfo),
-		Binder: &util.FakeBinder{
-			Binds:   map[string]string{},
-			Channel: make(chan string),
-		},
+		Jobs:            make(map[api.JobID]*api.JobInfo),
+		Nodes:           make(map[string]*api.NodeInfo),
+		Binder:          util.NewFakeBinder(0),
 		BindFlowChannel: make(chan *api.TaskInfo, 5000),
 	}
 
@@ -166,12 +163,9 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 	owner := buildOwnerReference("j1")
 
 	cache := &SchedulerCache{
-		Jobs:  make(map[api.JobID]*api.JobInfo),
-		Nodes: make(map[string]*api.NodeInfo),
-		Binder: &util.FakeBinder{
-			Binds:   map[string]string{},
-			Channel: make(chan string),
-		},
+		Jobs:            make(map[api.JobID]*api.JobInfo),
+		Nodes:           make(map[string]*api.NodeInfo),
+		Binder:          util.NewFakeBinder(0),
 		BindFlowChannel: make(chan *api.TaskInfo, 5000),
 	}
 
