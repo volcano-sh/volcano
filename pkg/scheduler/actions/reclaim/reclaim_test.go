@@ -107,15 +107,15 @@ func TestReclaim(t *testing.T) {
 		{
 			Plugins: []conf.PluginOption{
 				{
-					Name:               "conformance",
+					Name:               conformance.PluginName,
 					EnabledReclaimable: &trueValue,
 				},
 				{
-					Name:               "gang",
+					Name:               gang.PluginName,
 					EnabledReclaimable: &trueValue,
 				},
 				{ // proportion plugin will cause deserved resource large than preemptable pods's usage, and return less victims
-					Name:               "proportion",
+					Name:               proportion.PluginName,
 					EnabledReclaimable: &trueValue,
 				},
 				{

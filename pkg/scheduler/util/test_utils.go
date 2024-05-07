@@ -207,6 +207,25 @@ func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[st
 	}
 }
 
+// BuildPodGroupWithMinResources return podgroup with base spec and phase status and minResources
+func BuildPodGroupWithMinResources(name, ns, queue string, minMember int32, taskMinMember map[string]int32, minResources v1.ResourceList, status schedulingv1beta1.PodGroupPhase) *schedulingv1beta1.PodGroup {
+	return &schedulingv1beta1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Spec: schedulingv1beta1.PodGroupSpec{
+			Queue:         queue,
+			MinMember:     minMember,
+			MinResources:  &minResources,
+			MinTaskMember: taskMinMember,
+		},
+		Status: schedulingv1beta1.PodGroupStatus{
+			Phase: status,
+		},
+	}
+}
+
 func BuildResourceQuota(name, ns string, hard v1.ResourceList) *v1.ResourceQuota {
 	return &v1.ResourceQuota{
 		ObjectMeta: metav1.ObjectMeta{
