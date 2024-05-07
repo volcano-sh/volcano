@@ -3968,7 +3968,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "delete", "update"]
+    verbs: ["get", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups", "queues", "queues/status"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
