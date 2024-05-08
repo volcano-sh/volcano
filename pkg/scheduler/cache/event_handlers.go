@@ -326,7 +326,7 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 		if job, found := sc.Jobs[ti.Job]; found {
 			jobErr = job.DeleteTaskInfo(ti)
 		} else {
-			jobErr = fmt.Errorf("failed to find Job <%v> for Task %v/%v", ti.Job, ti.Namespace, ti.Name)
+			klog.Warningf("Failed to find Job <%v> for Task <%v/%v>", ti.Job, ti.Namespace, ti.Name)
 		}
 	} else { // should not run into here; record error so that easy to debug
 		jobErr = fmt.Errorf("task %s/%s has null jobID", ti.Namespace, ti.Name)

@@ -70,7 +70,7 @@ func TestAllocate(t *testing.T) {
 			Queues: []*schedulingv1.Queue{
 				util.BuildQueue("c1", 1, nil),
 			},
-			Bind: map[string]string{
+			BindMap: map[string]string{
 				"c1/p1": "n1",
 				"c1/p2": "n1",
 			},
@@ -102,7 +102,7 @@ func TestAllocate(t *testing.T) {
 				util.BuildQueue("c1", 1, nil),
 				util.BuildQueue("c2", 1, nil),
 			},
-			Bind: map[string]string{
+			BindMap: map[string]string{
 				"c2/pg2-p-1": "n1",
 				"c1/pg1-p-1": "n1",
 			},
@@ -128,7 +128,7 @@ func TestAllocate(t *testing.T) {
 				util.BuildQueue("c1", 1, nil),
 				util.BuildQueue("c2", 1, nil),
 			},
-			Bind: map[string]string{
+			BindMap: map[string]string{
 				"c1/p2": "n1",
 			},
 			BindsNum: 1,
@@ -276,10 +276,7 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			}
 
 			fakeVolumeBinder := util.NewFakeVolumeBinder(kubeClient)
-			binder := &util.FakeBinder{
-				Binds:   map[string]string{},
-				Channel: make(chan string, 10),
-			}
+			binder := util.NewFakeBinder(10)
 			schedulerCache := &cache.SchedulerCache{
 				Nodes:         make(map[string]*api.NodeInfo),
 				Jobs:          make(map[api.JobID]*api.JobInfo),
@@ -324,8 +321,9 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			defer framework.CloseSession(ssn)
 
 			allocate.Execute(ssn)
-			if !reflect.DeepEqual(test.expectedBind, binder.Binds) {
-				t.Errorf("expected: %v, got %v ", test.expectedBind, binder.Binds)
+			bindResults := binder.Binds()
+			if !reflect.DeepEqual(test.expectedBind, bindResults) {
+				t.Errorf("expected: %v, got %v ", test.expectedBind, bindResults)
 			}
 			if !reflect.DeepEqual(test.expectedActions, fakeVolumeBinder.Actions) {
 				t.Errorf("expected: %v, got %v ", test.expectedActions, fakeVolumeBinder.Actions)

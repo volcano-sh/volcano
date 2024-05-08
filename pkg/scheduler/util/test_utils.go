@@ -207,6 +207,21 @@ func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[st
 	}
 }
 
+func BuildResourceQuota(name, ns string, hard v1.ResourceList) *v1.ResourceQuota {
+	return &v1.ResourceQuota{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: ns,
+		},
+		Spec: v1.ResourceQuotaSpec{
+			Hard: hard,
+		},
+		Status: v1.ResourceQuotaStatus{
+			Hard: hard,
+		},
+	}
+}
+
 // BuildPodGroupWithPrio return podgroup with podgroup PriorityClassName
 func BuildPodGroupWithPrio(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, prioName string) *schedulingv1beta1.PodGroup {
 	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
@@ -256,9 +271,35 @@ func BuildPriorityClass(name string, value int32) *schedulingv1.PriorityClass {
 
 // FakeBinder is used as fake binder
 type FakeBinder struct {
-	sync.Mutex
-	Binds   map[string]string
+	sync.RWMutex
+	binds   map[string]string
 	Channel chan string
+}
+
+// NewFakeBinder returns a instance of FakeBinder
+func NewFakeBinder(buffer int) *FakeBinder {
+	return &FakeBinder{
+		binds:   make(map[string]string, buffer),
+		Channel: make(chan string, buffer),
+	}
+}
+
+// Binds returns the binding results
+func (fb *FakeBinder) Binds() map[string]string {
+	fb.RLock()
+	defer fb.RUnlock()
+	ret := make(map[string]string, len(fb.binds))
+	for k, v := range fb.binds {
+		ret[k] = v
+	}
+	return ret
+}
+
+// Length returns the number of bindings
+func (fb *FakeBinder) Length() int {
+	fb.RLock()
+	defer fb.RUnlock()
+	return len(fb.binds)
 }
 
 // Bind used by fake binder struct to bind pods
@@ -267,7 +308,7 @@ func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInf
 	defer fb.Unlock()
 	for _, p := range tasks {
 		key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
-		fb.Binds[key] = p.NodeName
+		fb.binds[key] = p.NodeName
 		fb.Channel <- key // need to wait binding pod because Bind process is asynchronous
 	}
 
@@ -276,16 +317,31 @@ func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInf
 
 // FakeEvictor is used as fake evictor
 type FakeEvictor struct {
-	sync.Mutex
+	sync.RWMutex
 	evicts  []string
 	Channel chan string
 }
 
+// NewFakeEvictor returns a new FakeEvictor instance
+func NewFakeEvictor(buffer int) *FakeEvictor {
+	return &FakeEvictor{
+		evicts:  make([]string, 0, buffer),
+		Channel: make(chan string, buffer),
+	}
+}
+
 // Evicts returns copy of evicted pods.
 func (fe *FakeEvictor) Evicts() []string {
-	fe.Lock()
-	defer fe.Unlock()
+	fe.RLock()
+	defer fe.RUnlock()
 	return append([]string{}, fe.evicts...)
+}
+
+// Length returns the number of evicts
+func (fe *FakeEvictor) Length() int {
+	fe.RLock()
+	defer fe.RUnlock()
+	return len(fe.evicts)
 }
 
 // Evict is used by fake evictor to evict pods
