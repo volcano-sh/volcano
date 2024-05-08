@@ -40,6 +40,8 @@ Available Commands:
 Flags:
   -h, --help                           help for vcctl
       --log-flush-frequency duration   Maximum number of seconds between log flushes (default 5s)
+  -v, --v Level                        number for the log level verbosity
+      --vmodule moduleSpec             comma-separated list of pattern=N settings for file-filtered logging (only works for the default text log format)
 
 Use "vcctl [command] --help" for more information about a command.
 
@@ -70,6 +72,8 @@ Flags:
 
 Global Flags:
       --log-flush-frequency duration   Maximum number of seconds between log flushes (default 5s)
+  -v, --v Level                        number for the log level verbosity
+      --vmodule moduleSpec             comma-separated list of pattern=N settings for file-filtered logging (only works for the default text log format)
 
 Use "vcctl job [command] --help" for more information about a command.
 
@@ -99,6 +103,8 @@ Flags:
 
 Global Flags:
       --log-flush-frequency duration   Maximum number of seconds between log flushes (default 5s)
+  -v, --v Level                        number for the log level verbosity
+      --vmodule moduleSpec             comma-separated list of pattern=N settings for file-filtered logging (only works for the default text log format)
 
 `
 		command := []string{"job", "list", "--help"}
@@ -124,6 +130,8 @@ Flags:
 
 Global Flags:
       --log-flush-frequency duration   Maximum number of seconds between log flushes (default 5s)
+  -v, --v Level                        number for the log level verbosity
+      --vmodule moduleSpec             comma-separated list of pattern=N settings for file-filtered logging (only works for the default text log format)
 
 `
 		command := []string{"job", "suspend", "-n", "job1", "--help"}
@@ -149,6 +157,8 @@ Flags:
 
 Global Flags:
       --log-flush-frequency duration   Maximum number of seconds between log flushes (default 5s)
+  -v, --v Level                        number for the log level verbosity
+      --vmodule moduleSpec             comma-separated list of pattern=N settings for file-filtered logging (only works for the default text log format)
 
 `
 		command := []string{"job", "resume", "-n", "job1", "--help"}
@@ -181,6 +191,8 @@ Flags:
 
 Global Flags:
       --log-flush-frequency duration   Maximum number of seconds between log flushes (default 5s)
+  -v, --v Level                        number for the log level verbosity
+      --vmodule moduleSpec             comma-separated list of pattern=N settings for file-filtered logging (only works for the default text log format)
 
 `
 		command := []string{"job", "run", "--help"}

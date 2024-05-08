@@ -18,28 +18,15 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
-	"k8s.io/apimachinery/pkg/util/wait"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
-	"k8s.io/klog/v2"
+	"k8s.io/component-base/cli"
 
 	"volcano.sh/volcano/pkg/version"
 )
 
-var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
-
 func main() {
-	// flag.InitFlags()
-
-	klog.InitFlags(nil)
-
-	// The default klog flush interval is 30 seconds, which is frighteningly long.
-	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
-	defer klog.Flush()
-
 	rootCmd := cobra.Command{
 		Use: "vcctl",
 	}
@@ -51,10 +38,8 @@ func main() {
 	rootCmd.AddCommand(buildQueueCmd())
 	rootCmd.AddCommand(versionCommand())
 
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Printf("Failed to execute command: %v\n", err)
-		os.Exit(2)
-	}
+	code := cli.Run(&rootCmd)
+	os.Exit(code)
 }
 
 func checkError(cmd *cobra.Command, err error) {
