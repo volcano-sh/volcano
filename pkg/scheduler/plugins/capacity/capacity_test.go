@@ -65,7 +65,7 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 
 	// resources for test case 2
 	// pod
-	p5 := util.BuildPod("ns1", "p5", "n1", corev1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg5", make(map[string]string), make(map[string]string))
+	p5 := util.BuildPod("ns1", "p5", "n1", corev1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg5", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string))
 	p6 := util.BuildPod("ns1", "p6", "n2", corev1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg5", make(map[string]string), make(map[string]string))
 	p7 := util.BuildPod("ns1", "p7", "", corev1.PodPending, api.BuildResourceList("2", "4Gi"), "pg6", make(map[string]string), make(map[string]string))
 	// podgroup
@@ -105,8 +105,10 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 			PodGroups: []*schedulingv1beta1.PodGroup{pg5, pg6},
 			Queues:    []*schedulingv1beta1.Queue{queue3, queue4},
 			PipeLined: map[string][]string{
-				"ns1/pg6": {"n1", "n2"},
+				"ns1/pg6": {"n2"},
 			},
+			Evicted:  []string{"ns1/p6"},
+			EvictNum: 1,
 		},
 	}
 
@@ -131,7 +133,7 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 			test.RegisterSession(tiers, nil)
 			defer test.Close()
 			test.Run(actions)
-			if err := test.CheckPipelined(i); err != nil {
+			if err := test.CheckAll(i); err != nil {
 				t.Fatal(err)
 			}
 		})
