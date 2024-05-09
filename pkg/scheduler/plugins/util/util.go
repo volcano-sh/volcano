@@ -106,12 +106,13 @@ func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource
 				continue
 			}
 			ignore := false
-			for _, ignoredDevice := range api.IgnoredDevicesList {
+			api.IgnoredDevicesList.Range(func(_ int, ignoredDevice string) bool {
 				if len(ignoredDevice) > 0 && strings.Contains(rName.String(), ignoredDevice) {
 					ignore = true
-					break
+					return false
 				}
-			}
+				return true
+			})
 			if ignore {
 				continue
 			}
