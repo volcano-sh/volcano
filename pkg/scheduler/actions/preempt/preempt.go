@@ -209,13 +209,11 @@ func preempt(
 	}
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
-		// Allows scheduling to nodes that are in Success or Unschedulable state after filtering by predicate.
 		var statusSets util.StatusSets
-		statusSets, err := ssn.PredicateFn(task, node)
-		if err != nil {
-			return nil, api.NewFitError(task, node, err.Error())
-		}
+		statusSets, _ = ssn.PredicateFn(task, node)
 
+		// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
+		// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
 		if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
 			return nil, api.NewFitError(task, node, statusSets.Message())
 		}
