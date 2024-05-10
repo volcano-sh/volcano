@@ -82,6 +82,16 @@ spec:
                   x-kubernetes-int-or-string: true
                 description: ResourceList is a set of (resource name, quantity) pairs.
                 type: object
+              deserved:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                description: The amount of resources configured by the user. This
+                  part of resource can be shared with other queues and reclaimed back.
+                type: object
               extendClusters:
                 description: extendCluster indicate the jobs in this Queue will be
                   dispatched to these clusters.
