@@ -61,6 +61,8 @@ type PluginOption struct {
 	EnabledPreemptable *bool `yaml:"enablePreemptable"`
 	// EnabledReclaimable defines whether reclaimableFn is enabled
 	EnabledReclaimable *bool `yaml:"enableReclaimable"`
+	// EnablePreemptive defines whether preemptiveFn is enabled
+	EnablePreemptive *bool `yaml:"enablePreemptive"`
 	// EnabledQueueOrder defines whether queueOrderFn is enabled
 	EnabledQueueOrder *bool `yaml:"enableQueueOrder"`
 	// EnabledPredicate defines whether predicateFn is enabled

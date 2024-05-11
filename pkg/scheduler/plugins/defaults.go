@@ -43,6 +43,9 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	if option.EnabledReclaimable == nil {
 		option.EnabledReclaimable = &t
 	}
+	if option.EnablePreemptive == nil {
+		option.EnablePreemptive = &t
+	}
 	if option.EnabledQueueOrder == nil {
 		option.EnabledQueueOrder = &t
 	}
