@@ -727,6 +727,72 @@ func (ji *JobInfo) PendingBestEffortTaskNum() int32 {
 	return int32(count)
 }
 
+// CheckJobNeedContinueAllocating checks whether it can continue to allocate for current job
+// there are two cases to continue:
+// 1. job's total allocable number meet its minAvailable
+// 2. each task's allocable number meet its independent minAvailable
+func (ji *JobInfo) CheckJobNeedContinueAllocating() bool {
+	failedRoles := map[string]struct{}{}
+	for tid := range ji.NodesFitErrors {
+		task := ji.Tasks[tid]
+		failedRoles[getTaskSpec(task.Pod)] = struct{}{}
+	}
+
+	pending := map[string]int32{}
+	for _, task := range ji.TaskStatusIndex[Pending] {
+		pending[getTaskSpec(task.Pod)]++
+	}
+	// 1. don't consider each role's min, just consider total allocable number vs job's MinAvailable
+	if ji.MinAvailable < ji.TaskMinAvailableTotal {
+		left := int32(0)
+		for role, cnt := range pending {
+			if _, ok := failedRoles[role]; !ok {
+				left += cnt
+			}
+		}
+		return ji.ReadyTaskNum()+left >= ji.MinAvailable
+	}
+
+	// 2. if each task role has its independent minMember, check it
+	allocated := ji.getJobAllocatedRoles()
+	for role := range failedRoles {
+		min := ji.TaskMinAvailable[role]
+		if min == 0 {
+			continue
+		}
+		// current role predicated failed and it means the left task with same role can not be allocated,
+		// and allocated number less than minAvailable, it can not be ready
+		if allocated[role] < min {
+			return false
+		}
+	}
+
+	return true
+}
+
+// getJobAllocatedRoles returns result records each role's allocated number
+func (ji *JobInfo) getJobAllocatedRoles() map[string]int32 {
+	occupiedMap := map[string]int32{}
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) ||
+			status == Succeeded {
+			for _, task := range tasks {
+				occupiedMap[getTaskSpec(task.Pod)]++
+			}
+			continue
+		}
+
+		if status == Pending {
+			for _, task := range tasks {
+				if task.InitResreq.IsEmpty() {
+					occupiedMap[getTaskSpec(task.Pod)]++
+				}
+			}
+		}
+	}
+	return occupiedMap
+}
+
 // CheckTaskValid returns whether each task of job is valid.
 func (ji *JobInfo) CheckTaskValid() bool {
 	// if job minAvailable is less than sum of(task minAvailable), skip this check
@@ -764,24 +830,7 @@ func (ji *JobInfo) CheckTaskReady() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
-	occupiedMap := map[string]int32{}
-	for status, tasks := range ji.TaskStatusIndex {
-		if AllocatedStatus(status) ||
-			status == Succeeded {
-			for _, task := range tasks {
-				occupiedMap[getTaskSpec(task.Pod)]++
-			}
-			continue
-		}
-
-		if status == Pending {
-			for _, task := range tasks {
-				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskSpec(task.Pod)]++
-				}
-			}
-		}
-	}
+	occupiedMap := ji.getJobAllocatedRoles()
 	for taskSpec, minNum := range ji.TaskMinAvailable {
 		if occupiedMap[taskSpec] < minNum {
 			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskSpec, occupiedMap[taskSpec])
