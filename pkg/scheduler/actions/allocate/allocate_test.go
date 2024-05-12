@@ -59,6 +59,7 @@ func TestAllocate(t *testing.T) {
 		proportion.PluginName: proportion.New,
 		predicates.PluginName: predicates.New,
 		nodeorder.PluginName:  nodeorder.New,
+		gang.PluginName:       gang.New,
 	}
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -77,10 +78,10 @@ func TestAllocate(t *testing.T) {
 			Queues: []*schedulingv1.Queue{
 				util.BuildQueue("c1", 1, nil),
 			},
-			Bind: map[string]string{
+			ExpectBindMap: map[string]string{
 				"c1/p2": "n1",
 			},
-			BindsNum: 1,
+			ExpectBindsNum: 1,
 		},
 		{
 			Name: "prepredicate failed and tasks are not used up, continue on untill min member meet",
@@ -101,11 +102,33 @@ func TestAllocate(t *testing.T) {
 			Queues: []*schedulingv1.Queue{
 				util.BuildQueue("c1", 1, nil),
 			},
-			Bind: map[string]string{
+			ExpectBindMap: map[string]string{
 				"c1/p0": "n1",
 				"c1/p2": "n2",
 			},
-			BindsNum: 2,
+			ExpectBindsNum: 2,
+		},
+		{
+			Name: "master's min member can not be allocated, break from allocating",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "c1", 2, map[string]int32{"master": 2, "worker": 0}, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				// should use different role, because allocate actions default to enable the role caches when predicate
+				util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeRole": "worker"}),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeRole": "worker"}),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "master"}),
+				util.BuildNode("n2", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "worker"}),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("c1", 1, nil),
+			},
+			ExpectBindMap:  map[string]string{},
+			ExpectBindsNum: 0,
 		},
 		{
 			Name: "one Job with two Pods on one node",
@@ -191,6 +214,13 @@ func TestAllocate(t *testing.T) {
 	tiers := []conf.Tier{
 		{
 			Plugins: []conf.PluginOption{
+				{
+					Name:                gang.PluginName,
+					EnabledJobOrder:     &trueValue,
+					EnabledJobReady:     &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+				},
 				{
 					Name:               drf.PluginName,
 					EnabledPreemptable: &trueValue,
