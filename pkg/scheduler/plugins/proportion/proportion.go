@@ -160,22 +160,25 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.name, attr.allocated.String(), attr.request.String(), attr.inqueue.String(), attr.elastic.String())
 	}
 
-	for queueID, queueInfo := range ssn.Queues {
-		if _, ok := pp.queueOpts[queueID]; !ok {
-			metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
-		}
-	}
-
 	// Record metrics
-	for _, attr := range pp.queueOpts {
-		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
-		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
-		metrics.UpdateQueueWeight(attr.name, attr.weight)
-		queue := ssn.Queues[attr.queueID]
-		metrics.UpdateQueuePodGroupInqueueCount(attr.name, queue.Queue.Status.Inqueue)
-		metrics.UpdateQueuePodGroupPendingCount(attr.name, queue.Queue.Status.Pending)
-		metrics.UpdateQueuePodGroupRunningCount(attr.name, queue.Queue.Status.Running)
-		metrics.UpdateQueuePodGroupUnknownCount(attr.name, queue.Queue.Status.Unknown)
+	for queueID, queueInfo := range ssn.Queues {
+		if attr, ok := pp.queueOpts[queueID]; ok {
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
+			metrics.UpdateQueueWeight(attr.name, attr.weight)
+			queue := ssn.Queues[attr.queueID]
+			metrics.UpdateQueuePodGroupInqueueCount(attr.name, queue.Queue.Status.Inqueue)
+			metrics.UpdateQueuePodGroupPendingCount(attr.name, queue.Queue.Status.Pending)
+			metrics.UpdateQueuePodGroupRunningCount(attr.name, queue.Queue.Status.Running)
+			metrics.UpdateQueuePodGroupUnknownCount(attr.name, queue.Queue.Status.Unknown)
+			continue
+		}
+		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
+		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0)
+		metrics.UpdateQueuePodGroupInqueueCount(queueInfo.Name, 0)
+		metrics.UpdateQueuePodGroupPendingCount(queueInfo.Name, 0)
+		metrics.UpdateQueuePodGroupRunningCount(queueInfo.Name, 0)
+		metrics.UpdateQueuePodGroupUnknownCount(queueInfo.Name, 0)
 	}
 
 	remaining := pp.totalResource.Clone()
