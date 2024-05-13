@@ -172,6 +172,33 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
 	}
 
+	// Record metrics
+	for queueID, queueInfo := range ssn.Queues {
+		queue := ssn.Queues[queueID]
+		if attr, ok := cp.queueOpts[queueID]; ok {
+			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
+			metrics.UpdateQueuePodGroupInqueueCount(attr.name, queue.Queue.Status.Inqueue)
+			metrics.UpdateQueuePodGroupPendingCount(attr.name, queue.Queue.Status.Pending)
+			metrics.UpdateQueuePodGroupRunningCount(attr.name, queue.Queue.Status.Running)
+			metrics.UpdateQueuePodGroupUnknownCount(attr.name, queue.Queue.Status.Unknown)
+			continue
+		}
+		deservedCPU, deservedMem := 0.0, 0.0
+		if queue.Queue.Spec.Deserved != nil {
+			deservedCPU = float64(queue.Queue.Spec.Deserved.Cpu().MilliValue())
+			deservedMem = float64(queue.Queue.Spec.Deserved.Memory().Value())
+		}
+		metrics.UpdateQueueDeserved(queueInfo.Name, deservedCPU, deservedMem)
+		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
+		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0)
+		metrics.UpdateQueuePodGroupInqueueCount(queueInfo.Name, 0)
+		metrics.UpdateQueuePodGroupPendingCount(queueInfo.Name, 0)
+		metrics.UpdateQueuePodGroupRunningCount(queueInfo.Name, 0)
+		metrics.UpdateQueuePodGroupUnknownCount(queueInfo.Name, 0)
+	}
+
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
@@ -223,6 +250,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := cp.queueOpts[queue.UID]
 
 		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
+		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
 			klog.V(3).Infof("Queue <%v> can not reclaim, deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)
@@ -290,6 +318,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := cp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
 
 			cp.updateShare(attr)
 
@@ -300,6 +329,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := cp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
 
 			cp.updateShare(attr)
 
