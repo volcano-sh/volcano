@@ -108,6 +108,7 @@ type TaskInfo struct {
 
 	Name      string
 	Namespace string
+	TaskRole  string // value of "volcano.sh/task-spec"
 
 	// Resreq is the resource that used when task running.
 	Resreq *Resource
@@ -149,7 +150,10 @@ func getJobID(pod *v1.Pod) JobID {
 	return ""
 }
 
-func getTaskSpec(pod *v1.Pod) string {
+func getTaskRole(pod *v1.Pod) string {
+	if pod == nil {
+		return ""
+	}
 	if ts, found := pod.Annotations[batch.TaskSpecKey]; found && len(ts) != 0 {
 		return ts
 	}
@@ -171,6 +175,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	preemptable := GetPodPreemptable(pod)
 	revocableZone := GetPodRevocableZone(pod)
 	topologyInfo := GetPodTopologyInfo(pod)
+	role := getTaskRole(pod)
 
 	jobID := getJobID(pod)
 
@@ -179,6 +184,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		Job:           jobID,
 		Name:          pod.Name,
 		Namespace:     pod.Namespace,
+		TaskRole:      role,
 		Priority:      1,
 		Pod:           pod,
 		Resreq:        resReq,
@@ -252,6 +258,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		Job:           ti.Job,
 		Name:          ti.Name,
 		Namespace:     ti.Namespace,
+		TaskRole:      ti.TaskRole,
 		Priority:      ti.Priority,
 		PodVolumes:    ti.PodVolumes,
 		Pod:           ti.Pod,
@@ -270,18 +277,11 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 	}
 }
 
-func (ti *TaskInfo) GetTaskSpecKey() string {
-	if ti.Pod == nil {
-		return ""
-	}
-	return getTaskSpec(ti.Pod)
-}
-
 // String returns the taskInfo details in a string
 func (ti TaskInfo) String() string {
-	res := fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, "+
+	res := fmt.Sprintf("Task (%v:%v/%v): taskSpec %s, job %v, status %v, pri %v, "+
 		"resreq %v, preemptable %v, revocableZone %v",
-		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority,
+		ti.UID, ti.Namespace, ti.Name, ti.TaskRole, ti.Job, ti.Status, ti.Priority,
 		ti.Resreq, ti.Preemptable, ti.RevocableZone)
 
 	if ti.NumaInfo != nil {
@@ -741,22 +741,53 @@ func (ji *JobInfo) PendingBestEffortTaskNum() int32 {
 	return int32(count)
 }
 
-// CheckJobNeedContinueAllocating checks whether it can continue to allocate for current job
-// there are two cases to continue:
-// 1. job's total allocable number meet its minAvailable
-// 2. each task's allocable number meet its independent minAvailable
-func (ji *JobInfo) CheckJobNeedContinueAllocating() bool {
+// FitFailedRoles returns the job roles' failed fit records
+func (ji *JobInfo) FitFailedRoles() map[string]struct{} {
 	failedRoles := map[string]struct{}{}
 	for tid := range ji.NodesFitErrors {
 		task := ji.Tasks[tid]
-		failedRoles[getTaskSpec(task.Pod)] = struct{}{}
+		failedRoles[task.TaskRole] = struct{}{}
 	}
+	return failedRoles
+}
+
+// TaskHasFitErrors checks if the task has fit errors and can continue try predicating
+func (ji *JobInfo) TaskHasFitErrors(task *TaskInfo) bool {
+	// if the task didn't set the spec key, should not use the cache
+	if len(task.TaskRole) == 0 {
+		return false
+	}
+
+	_, exist := ji.FitFailedRoles()[task.TaskRole]
+	return exist
+}
+
+// NeedContinueAllocating checks whether it can continue on allocating for current job
+// when its one pod predicated failed, there are two cases to continue:
+//  1. job's total allocatable number meet its minAvailable(each task role has no independent minMember setting):
+//     because there are cases that some of the pods are not allocatable, but other pods are allocatable and
+//     the number of this kind pods can meet the gang-scheduling
+//  2. each task's allocable number meet its independent minAvailable
+//     this is for the case that each task role has its own independent minMember.
+//     eg, current role's pod has a failed predicating result but its allocated number has meet its minMember,
+//     the other roles' pods which have no failed predicating results can continue on
+//
+// performance analysis:
+//
+//	As the failed predicating role has been pre-checked when it was popped from queue,
+//	this function will only be called at most as the number of roles in this job.
+func (ji *JobInfo) NeedContinueAllocating() bool {
+	// Ensures all tasks must be running; if any pod allocation fails, further execution stops
+	if int(ji.MinAvailable) == len(ji.Tasks) {
+		return false
+	}
+	failedRoles := ji.FitFailedRoles()
 
 	pending := map[string]int32{}
 	for _, task := range ji.TaskStatusIndex[Pending] {
-		pending[getTaskSpec(task.Pod)]++
+		pending[task.TaskRole]++
 	}
-	// 1. don't consider each role's min, just consider total allocable number vs job's MinAvailable
+	// 1. don't consider each role's min, just consider total allocatable number vs job's MinAvailable
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		left := int32(0)
 		for role, cnt := range pending {
@@ -791,7 +822,7 @@ func (ji *JobInfo) getJobAllocatedRoles() map[string]int32 {
 		if AllocatedStatus(status) ||
 			status == Succeeded {
 			for _, task := range tasks {
-				occupiedMap[getTaskSpec(task.Pod)]++
+				occupiedMap[task.TaskRole]++
 			}
 			continue
 		}
@@ -799,7 +830,7 @@ func (ji *JobInfo) getJobAllocatedRoles() map[string]int32 {
 		if status == Pending {
 			for _, task := range tasks {
 				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskSpec(task.Pod)]++
+					occupiedMap[task.TaskRole]++
 				}
 			}
 		}
@@ -821,7 +852,7 @@ func (ji *JobInfo) CheckTaskValid() bool {
 			status == Pipelined ||
 			status == Pending {
 			for _, task := range tasks {
-				actual[getTaskSpec(task.Pod)]++
+				actual[task.TaskRole]++
 			}
 		}
 	}
@@ -865,7 +896,7 @@ func (ji *JobInfo) CheckTaskPipelined() bool {
 			status == Succeeded ||
 			status == Pipelined {
 			for _, task := range tasks {
-				occupiedMap[getTaskSpec(task.Pod)]++
+				occupiedMap[task.TaskRole]++
 			}
 			continue
 		}
@@ -873,7 +904,7 @@ func (ji *JobInfo) CheckTaskPipelined() bool {
 		if status == Pending {
 			for _, task := range tasks {
 				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskSpec(task.Pod)]++
+					occupiedMap[task.TaskRole]++
 				}
 			}
 		}
@@ -898,7 +929,7 @@ func (ji *JobInfo) CheckTaskStarving() bool {
 			status == Succeeded ||
 			status == Pipelined {
 			for _, task := range tasks {
-				occupiedMap[getTaskSpec(task.Pod)]++
+				occupiedMap[task.TaskRole]++
 			}
 			continue
 		}
