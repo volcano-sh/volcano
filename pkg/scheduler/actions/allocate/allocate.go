@@ -193,8 +193,9 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 		predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, alloc.predicate, true)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
-			// Assume that  all left tasks is allocable, can not meet gang-scheduling min member, we should break from continuously allocating
-			// otherwise, should continue to find other allocable task
+			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
+			// so we should break from continuously allocating.
+			// otherwise, should continue to find other allocatable task
 			if job.CheckJobNeedContinueAllocating() {
 				continue
 			} else {
