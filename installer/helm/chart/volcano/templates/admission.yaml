@@ -120,7 +120,7 @@ spec:
             - --port={{.Values.basic.admission_port}}
             - -v=4
             - 2>&1
-          image: {{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
+          image: {{ .Values.basic.image_registry }}/{{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           name: admission
           {{- if .Values.custom.admission_resources }}
@@ -201,7 +201,7 @@ spec:
           resources:
           {{- toYaml .Values.custom.admission_resources | nindent 12 }}
           {{- end }}
-          image: {{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
+          image: {{ .Values.basic.image_registry }}/{{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           command: ["./gen-admission-secret.sh", "--service", "{{ .Release.Name }}-admission-service", "--namespace",
                     "{{ .Release.Namespace }}", "--secret", "{{.Values.basic.admission_secret_name}}"]

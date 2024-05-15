@@ -9,6 +9,7 @@ basic:
   image_pull_policy: "Always"
   image_tag_version: "latest"
   admission_port: 8443
+  image_registry: "docker.io"
 custom:
   metrics_enable: false
   admission_enable: true
@@ -113,3 +114,4 @@ custom:
 #
 # Note that {{ .Release.Namespace }} and kube-system namespaces are always ignored.
   webhooks_namespace_selector_expressions: ~
+

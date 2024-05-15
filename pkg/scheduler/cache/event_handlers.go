@@ -319,22 +319,23 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	return sc.addPod(newPod)
 }
 
-func (sc *SchedulerCache) deleteTask(pi *schedulingapi.TaskInfo) error {
+func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 	var jobErr, nodeErr, numaErr error
 
-	if len(pi.Job) != 0 {
-		if job, found := sc.Jobs[pi.Job]; found {
-			jobErr = job.DeleteTaskInfo(pi)
+	if len(ti.Job) != 0 {
+		if job, found := sc.Jobs[ti.Job]; found {
+			jobErr = job.DeleteTaskInfo(ti)
 		} else {
-			jobErr = fmt.Errorf("failed to find Job <%v> for Task %v/%v",
-				pi.Job, pi.Namespace, pi.Name)
+			klog.Warningf("Failed to find Job <%v> for Task <%v/%v>", ti.Job, ti.Namespace, ti.Name)
 		}
+	} else { // should not run into here; record error so that easy to debug
+		jobErr = fmt.Errorf("task %s/%s has null jobID", ti.Namespace, ti.Name)
 	}
 
-	if len(pi.NodeName) != 0 {
-		node := sc.Nodes[pi.NodeName]
+	if len(ti.NodeName) != 0 {
+		node := sc.Nodes[ti.NodeName]
 		if node != nil {
-			nodeErr = node.RemoveTask(pi)
+			nodeErr = node.RemoveTask(ti)
 		}
 	}
 

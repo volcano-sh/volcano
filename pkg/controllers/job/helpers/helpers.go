@@ -54,6 +54,9 @@ func CompareTask(lv, rv *api.TaskInfo) bool {
 	lIndex, lErr := strconv.Atoi(lStr)
 	rIndex, rErr := strconv.Atoi(rStr)
 	if lErr != nil || rErr != nil || lIndex == rIndex {
+		if lv.Pod.CreationTimestamp.Equal(&rv.Pod.CreationTimestamp) {
+			return lv.UID < rv.UID
+		}
 		return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
 	}
 	if lIndex > rIndex {

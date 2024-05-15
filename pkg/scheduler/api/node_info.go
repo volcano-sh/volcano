@@ -94,7 +94,7 @@ type NodeInfo struct {
 //
 // That is current idle resources plus released resources minus pipelined resources.
 func (ni *NodeInfo) FutureIdle() *Resource {
-	return ni.Idle.Clone().Add(ni.Releasing).Sub(ni.Pipelined)
+	return ni.Idle.Clone().Add(ni.Releasing).SubWithoutAssert(ni.Pipelined)
 }
 
 // GetNodeAllocatable return node Allocatable without OversubscriptionResource resource
@@ -345,11 +345,12 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 
 // setNodeOthersResource initialize sharable devices
 func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
-	IgnoredDevicesList = []string{}
 	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
 	ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
-	IgnoredDevicesList = append(IgnoredDevicesList, ni.Others[GPUSharingDevice].(Devices).GetIgnoredDevices()...)
-	IgnoredDevicesList = append(IgnoredDevicesList, ni.Others[vgpu.DeviceName].(Devices).GetIgnoredDevices()...)
+	IgnoredDevicesList.Set(
+		ni.Others[GPUSharingDevice].(Devices).GetIgnoredDevices(),
+		ni.Others[vgpu.DeviceName].(Devices).GetIgnoredDevices(),
+	)
 }
 
 // setNode sets kubernetes node object to nodeInfo object without assertion

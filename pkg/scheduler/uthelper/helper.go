@@ -33,8 +33,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-// RegistPlugins plugins
-func RegistPlugins(plugins map[string]framework.PluginBuilder) {
+// RegisterPlugins plugins
+func RegisterPlugins(plugins map[string]framework.PluginBuilder) {
 	for name, plugin := range plugins {
 		framework.RegisterPluginBuilder(name, plugin)
 	}
@@ -43,19 +43,20 @@ func RegistPlugins(plugins map[string]framework.PluginBuilder) {
 // TestCommonStruct is the most common used resource when do UT
 // others can wrap it in a new struct
 type TestCommonStruct struct {
-	Name      string
-	Plugins   map[string]framework.PluginBuilder // plugins for each case
-	Pods      []*v1.Pod
-	Nodes     []*v1.Node
-	PodGroups []*vcapisv1.PodGroup
-	Queues    []*vcapisv1.Queue
-	PriClass  []*schedulingv1.PriorityClass
-	Bind      map[string]string                      // bind results: ns/podName -> nodeName
-	PipeLined map[string][]string                    // pipelined results: map[jobID][]{nodename}
-	Evicted   []string                               // evicted pods list of ns/podName
-	Status    map[api.JobID]scheduling.PodGroupPhase // final status
-	BindsNum  int                                    // binds events numbers
-	EvictNum  int                                    // evict events numbers, include preempted and reclaimed evict events
+	Name           string
+	Plugins        map[string]framework.PluginBuilder // plugins for each case
+	Pods           []*v1.Pod
+	Nodes          []*v1.Node
+	PodGroups      []*vcapisv1.PodGroup
+	Queues         []*vcapisv1.Queue
+	PriClass       []*schedulingv1.PriorityClass
+	ResourceQuotas []*v1.ResourceQuota
+	BindMap        map[string]string                      // bind results: ns/podName -> nodeName
+	PipeLined      map[string][]string                    // pipelined results: map[jobID][]{nodeName}
+	Evicted        []string                               // evicted pods list of ns/podName
+	Status         map[api.JobID]scheduling.PodGroupPhase // final status
+	BindsNum       int                                    // binds events numbers
+	EvictNum       int                                    // evict events numbers, include preempted and reclaimed evict events
 
 	// fake interface instance when check results need
 	stop       chan struct{}
@@ -68,15 +69,10 @@ type TestCommonStruct struct {
 
 var _ Interface = &TestCommonStruct{}
 
-// RegistSession open session with tiers and configuration, and mock schedulerCache with self-defined FakeBinder and FakeEvictor
-func (test *TestCommonStruct) RegistSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session {
-	binder := &util.FakeBinder{
-		Binds:   map[string]string{},
-		Channel: make(chan string),
-	}
-	evictor := &util.FakeEvictor{
-		Channel: make(chan string),
-	}
+// RegisterSession open session with tiers and configuration, and mock schedulerCache with self-defined FakeBinder and FakeEvictor
+func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session {
+	binder := util.NewFakeBinder(0)
+	evictor := util.NewFakeEvictor(0)
 	stsUpdator := &util.FakeStatusUpdater{}
 	test.binder = binder
 	test.evictor = evictor
@@ -101,8 +97,11 @@ func (test *TestCommonStruct) RegistSession(tiers []conf.Tier, config []conf.Con
 	for _, pc := range test.PriClass {
 		schedulerCache.AddPriorityClass(pc)
 	}
+	for _, rq := range test.ResourceQuotas {
+		schedulerCache.AddResourceQuota(rq)
+	}
 
-	RegistPlugins(test.Plugins)
+	RegisterPlugins(test.Plugins)
 	ssn := framework.OpenSession(schedulerCache, tiers, config)
 	test.ssn = ssn
 	schedulerCache.Run(test.stop)
@@ -144,6 +143,9 @@ func (test *TestCommonStruct) CheckAll(caseIndex int) (err error) {
 
 // CheckBind check expected bind result
 func (test *TestCommonStruct) CheckBind(caseIndex int) error {
+	if test.BindsNum != len(test.BindMap) {
+		return fmt.Errorf("invalid setting for binding check: want bind count %d, want bind result length %d", test.BindsNum, len(test.BindMap))
+	}
 	binder := test.binder.(*util.FakeBinder)
 	for i := 0; i < test.BindsNum; i++ {
 		select {
@@ -153,11 +155,19 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 		}
 	}
 
-	if len(test.Bind) != len(binder.Binds) {
-		return fmt.Errorf("case %d(%s) check bind: \nwant: %v, \ngot %v ", caseIndex, test.Name, test.Bind, binder.Binds)
+	// in case expected test.BindsNum is 0, but actually there is a binding and wait the binding goroutine to run
+	select {
+	case <-time.After(50 * time.Millisecond):
+	case key := <-binder.Channel:
+		return fmt.Errorf("unexpect binding %s in case %d(%s)", key, caseIndex, test.Name)
 	}
-	for key, value := range test.Bind {
-		got := binder.Binds[key]
+
+	binds := binder.Binds()
+	if len(test.BindMap) != len(binds) {
+		return fmt.Errorf("case %d(%s) check bind: \nwant: %v\n got %v ", caseIndex, test.Name, test.BindMap, binds)
+	}
+	for key, value := range test.BindMap {
+		got := binds[key]
 		if value != got {
 			return fmt.Errorf("case %d(%s)  check bind: \nwant: %v->%v\n got: %v->%v ", caseIndex, test.Name, key, value, key, got)
 		}
@@ -167,6 +177,9 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 
 // CheckEvict check the evicted result
 func (test *TestCommonStruct) CheckEvict(caseIndex int) error {
+	if test.EvictNum != len(test.Evicted) {
+		return fmt.Errorf("invalid setting for evicting check: want evict count %d, want evict result length %d", test.EvictNum, len(test.Evicted))
+	}
 	evictor := test.evictor.(*util.FakeEvictor)
 	for i := 0; i < test.EvictNum; i++ {
 		select {
@@ -176,9 +189,16 @@ func (test *TestCommonStruct) CheckEvict(caseIndex int) error {
 		}
 	}
 
+	// in case expected test.EvictNum is 0, but actually there is an evicting and wait the evicting goroutine to run
+	select {
+	case <-time.After(50 * time.Millisecond):
+	case key := <-evictor.Channel:
+		return fmt.Errorf("unexpect evicted %s in case %d(%s)", key, caseIndex, test.Name)
+	}
+
 	evicts := evictor.Evicts()
 	if len(test.Evicted) != len(evicts) {
-		return fmt.Errorf("case %d(%s) check evict: \nwant: %v, \ngot %v ", caseIndex, test.Name, test.Evicted, evicts)
+		return fmt.Errorf("case %d(%s) check evict: \nwant: %v\n got %v ", caseIndex, test.Name, test.Evicted, evicts)
 	}
 
 	expect := map[string]int{} // evicted number

@@ -88,12 +88,13 @@ func NewResource(rl v1.ResourceList) *Resource {
 			//NOTE: When converting this back to k8s resource, we need record the format as well as / 1000
 			if v1helper.IsScalarResourceName(rName) {
 				ignore := false
-				for _, val := range IgnoredDevicesList {
-					if strings.Compare(rName.String(), val) == 0 {
+				IgnoredDevicesList.Range(func(_ int, val string) bool {
+					if rName.String() == val {
 						ignore = true
-						break
+						return false
 					}
-				}
+					return true
+				})
 				if !ignore {
 					r.AddScalar(rName, float64(rQuant.MilliValue()))
 				} else {
@@ -257,6 +258,16 @@ func (r *Resource) Add(rr *Resource) *Resource {
 // Sub subtracts two Resource objects with assertion.
 func (r *Resource) Sub(rr *Resource) *Resource {
 	assert.Assertf(rr.LessEqual(r, Zero), "resource is not sufficient to do operation: <%v> sub <%v>", r, rr)
+	return r.sub(rr)
+}
+
+// SubWithoutAssert subtracts two Resource objects without assertion,
+// this function is added because some resource subtraction allows negative results, while others do not.
+func (r *Resource) SubWithoutAssert(rr *Resource) *Resource {
+	ok, resources := rr.LessEqualWithResourcesName(r, Zero)
+	if !ok {
+		klog.Errorf("resources <%v> are not sufficient to do operation: <%v> sub <%v>", resources, r, rr)
+	}
 	return r.sub(rr)
 }
 

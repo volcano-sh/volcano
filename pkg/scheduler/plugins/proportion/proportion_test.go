@@ -124,6 +124,7 @@ func TestProportion(t *testing.T) {
 	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodRunning, api.BuildResourceList("3", "3k"), "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
 	w2 := util.BuildPod("ns1", "worker-2", "", apiv1.PodRunning, api.BuildResourceList("5", "5k"), "pg1", map[string]string{"role": "worker"}, map[string]string{})
 	w3 := util.BuildPod("ns1", "worker-3", "", apiv1.PodRunning, api.BuildResourceList("4", "4k"), "pg2", map[string]string{"role": "worker"}, map[string]string{})
+	w4 := util.BuildPod("ns1", "rdma-demo", "", apiv1.PodRunning, api.BuildResourceList("1", "1k", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...), "pg3", map[string]string{}, map[string]string{})
 	w1.Spec.Affinity = getWorkerAffinity()
 	w2.Spec.Affinity = getWorkerAffinity()
 	w3.Spec.Affinity = getWorkerAffinity()
@@ -131,10 +132,13 @@ func TestProportion(t *testing.T) {
 	// nodes
 	n1 := util.BuildNode("node1", api.BuildResourceList("4", "4k", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"selector": "worker"})
 	n2 := util.BuildNode("node2", api.BuildResourceList("3", "3k", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	n3 := util.BuildNode("node3", api.BuildResourceList("4", "4k", []api.ScalarResource{{Name: "pods", Value: "10"}, {Name: "nvidia.com/gpu", Value: "8"}, {Name: "rdma/hca", Value: "1k"}}...), map[string]string{})
 	n1.Status.Allocatable["pods"] = resource.MustParse("15")
 	n2.Status.Allocatable["pods"] = resource.MustParse("15")
+	n3.Status.Allocatable["pods"] = resource.MustParse("15")
 	n1.Labels["kubernetes.io/hostname"] = "node1"
 	n2.Labels["kubernetes.io/hostname"] = "node2"
+	n3.Labels["kubernetes.io/hostname"] = "node3"
 
 	// priority
 	p1 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p1"}, Value: 1}
@@ -162,10 +166,34 @@ func TestProportion(t *testing.T) {
 			PriorityClassName: p1.Name,
 		},
 	}
+	pgRes3 := api.BuildResourceList("1", "1k", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...)
+	pg3 := &schedulingv1beta1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "ns1",
+			Name:      "pg3",
+		},
+		Spec: schedulingv1beta1.PodGroupSpec{
+			Queue:             "q2",
+			MinMember:         int32(1),
+			PriorityClassName: p1.Name,
+			MinResources:      &pgRes3,
+		},
+	}
+
 	// queue
 	queue1 := &schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "q1",
+		},
+	}
+
+	// queue
+	queue2 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "q2",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Capability: api.BuildResourceList("2", "2k", []api.ScalarResource{{Name: "pods", Value: "10"}, {Name: "nvidia.com/gpu", Value: "4"}}...),
 		},
 	}
 
@@ -188,14 +216,21 @@ func TestProportion(t *testing.T) {
 				"ns1/worker-3": "node1",
 			},
 		},
+		{
+			name:  "realcapability-test",
+			pods:  []*apiv1.Pod{w1, w2, w3, w4},
+			nodes: []*apiv1.Node{n1, n2, n3},
+			pcs:   []*schedulingv1.PriorityClass{p1, p2},
+			pgs:   []*schedulingv1beta1.PodGroup{pg1, pg2, pg3},
+			expected: map[string]string{ // podKey -> node
+				"ns1/rdma-demo": "node3",
+			},
+		},
 	}
 
 	for _, test := range tests {
 		// initialize schedulerCache
-		binder := &util.FakeBinder{
-			Binds:   map[string]string{},
-			Channel: make(chan string),
-		}
+		binder := util.NewFakeBinder(0)
 		recorder := record.NewFakeRecorder(100)
 		go func() {
 			for {
@@ -232,6 +267,7 @@ func TestProportion(t *testing.T) {
 			schedulerCache.AddPodGroupV1beta1(pg)
 		}
 		schedulerCache.AddQueueV1beta1(queue1)
+		schedulerCache.AddQueueV1beta1(queue2)
 		// session
 		trueValue := true
 

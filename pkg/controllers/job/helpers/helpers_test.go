@@ -35,23 +35,33 @@ func TestCompareTask(t *testing.T) {
 		expect bool
 	}{
 		{
-			generateTaskInfo("prod-worker-21", createTime),
-			generateTaskInfo("prod-worker-1", createTime),
+			generateTaskInfo("prod-worker-21", createTime, "pod-1"),
+			generateTaskInfo("prod-worker-1", createTime, "pod-2"),
 			false,
 		},
 		{
-			generateTaskInfo("prod-worker-0", createTime),
-			generateTaskInfo("prod-worker-3", createTime),
+			generateTaskInfo("prod-worker-0", createTime, "pod-1"),
+			generateTaskInfo("prod-worker-3", createTime, "pod-2"),
 			true,
 		},
 		{
-			generateTaskInfo("prod-worker", createTime),
-			generateTaskInfo("prod-worker-3", createTime.Add(time.Hour)),
+			generateTaskInfo("prod-worker", createTime, "pod-1"),
+			generateTaskInfo("prod-worker-3", createTime.Add(time.Hour), "pod-2"),
 			true,
 		},
 		{
-			generateTaskInfo("prod-worker", createTime),
-			generateTaskInfo("prod-worker-3", createTime.Add(-time.Hour)),
+			generateTaskInfo("prod-worker", createTime, "pod-1"),
+			generateTaskInfo("prod-worker-3", createTime.Add(-time.Hour), "pod-2"),
+			false,
+		},
+		{
+			generateTaskInfo("prod-worker", createTime, "pod-1"),
+			generateTaskInfo("prod-worker-3", createTime, "pod-2"),
+			true,
+		},
+		{
+			generateTaskInfo("prod-worker", createTime, "pod-2"),
+			generateTaskInfo("prod-worker-3", createTime, "pod-1"),
 			false,
 		},
 	}
@@ -63,7 +73,7 @@ func TestCompareTask(t *testing.T) {
 	}
 }
 
-func generateTaskInfo(name string, createTime time.Time) *api.TaskInfo {
+func generateTaskInfo(name string, createTime time.Time, uid api.TaskID) *api.TaskInfo {
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
@@ -72,6 +82,7 @@ func generateTaskInfo(name string, createTime time.Time) *api.TaskInfo {
 	}
 	return &api.TaskInfo{
 		Name: name,
+		UID:  uid,
 		Pod:  pod,
 	}
 }

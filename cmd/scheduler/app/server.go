@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
 
 	"volcano.sh/apis/pkg/apis/helpers"
 
@@ -53,12 +52,6 @@ import (
 
 	// Register rest client metrics
 	_ "k8s.io/component-base/metrics/prometheus/restclient"
-)
-
-const (
-	leaseDuration = 15 * time.Second
-	renewDeadline = 10 * time.Second
-	retryPeriod   = 5 * time.Second
 )
 
 // Run the volcano scheduler.
@@ -104,7 +97,7 @@ func Run(opt *options.ServerOption) error {
 		<-ctx.Done()
 	}
 
-	if !opt.EnableLeaderElection {
+	if !opt.LeaderElection.LeaderElect {
 		run(ctx)
 		return fmt.Errorf("finished without leader elect")
 	}
@@ -116,7 +109,7 @@ func Run(opt *options.ServerOption) error {
 
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
-	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: leaderElectionClient.CoreV1().Events(opt.LockObjectNamespace)})
+	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: leaderElectionClient.CoreV1().Events(opt.LeaderElection.ResourceNamespace)})
 	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(opt.SchedulerNames)})
 
 	hostname, err := os.Hostname()
@@ -125,10 +118,13 @@ func Run(opt *options.ServerOption) error {
 	}
 	// add a uniquifier so that two processes on the same host don't accidentally both become active
 	id := hostname + "_" + string(uuid.NewUUID())
-
+	// set ResourceNamespace value to LockObjectNamespace when it's not empty,compatible with old flag
+	if len(opt.LockObjectNamespace) > 0 {
+		opt.LeaderElection.ResourceNamespace = opt.LockObjectNamespace
+	}
 	rl, err := resourcelock.New(resourcelock.LeasesResourceLock,
-		opt.LockObjectNamespace,
-		commonutil.GenerateComponentName(opt.SchedulerNames),
+		opt.LeaderElection.ResourceNamespace,
+		opt.LeaderElection.ResourceName,
 		leaderElectionClient.CoreV1(),
 		leaderElectionClient.CoordinationV1(),
 		resourcelock.ResourceLockConfig{
@@ -141,9 +137,9 @@ func Run(opt *options.ServerOption) error {
 
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock:          rl,
-		LeaseDuration: leaseDuration,
-		RenewDeadline: renewDeadline,
-		RetryPeriod:   retryPeriod,
+		LeaseDuration: opt.LeaderElection.LeaseDuration.Duration,
+		RenewDeadline: opt.LeaderElection.RenewDeadline.Duration,
+		RetryPeriod:   opt.LeaderElection.RetryPeriod.Duration,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: run,
 			OnStoppedLeading: func() {

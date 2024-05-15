@@ -1,9 +1,9 @@
 module volcano.sh/volcano
 
-go 1.20
+go 1.21
 
 require (
-	github.com/agiledragon/gomonkey/v2 v2.2.0
+	github.com/agiledragon/gomonkey/v2 v2.11.0
 	github.com/elastic/go-elasticsearch/v7 v7.17.7
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/golang/mock v1.6.0
@@ -40,7 +40,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.3.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.8.0-alpha.0.0.20231028020234-1a5aa81107d7
+	volcano.sh/apis v1.9.0
 )
 
 require (

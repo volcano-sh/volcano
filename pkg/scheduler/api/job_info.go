@@ -296,7 +296,8 @@ type NodeResourceMap map[string]*Resource
 
 // JobInfo will have all info of a Job
 type JobInfo struct {
-	UID JobID
+	UID   JobID
+	PgUID types.UID
 
 	Name      string
 	Namespace string
@@ -396,6 +397,7 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	}
 	ji.TaskMinAvailableTotal = taskMinAvailableTotal
 
+	ji.PgUID = pg.UID
 	ji.PodGroup = pg
 }
 
@@ -558,8 +560,8 @@ func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 		return nil
 	}
 
-	return fmt.Errorf("failed to find task <%v/%v> in job <%v/%v>",
-		ti.Namespace, ti.Name, ji.Namespace, ji.Name)
+	klog.Warningf("failed to find task <%v/%v> in job <%v/%v>", ti.Namespace, ti.Name, ji.Namespace, ji.Name)
+	return nil
 }
 
 // Clone is used to clone a jobInfo object

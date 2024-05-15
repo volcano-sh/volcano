@@ -19,12 +19,14 @@ package plugins
 import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/binpack"
+	"volcano.sh/volcano/pkg/scheduler/plugins/capacity"
 	"volcano.sh/volcano/pkg/scheduler/plugins/cdp"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/deviceshare"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	"volcano.sh/volcano/pkg/scheduler/plugins/nodegroup"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware"
 	"volcano.sh/volcano/pkg/scheduler/plugins/overcommit"
@@ -59,9 +61,11 @@ func init() {
 	framework.RegisterPluginBuilder(rescheduling.PluginName, rescheduling.New)
 	framework.RegisterPluginBuilder(usage.PluginName, usage.New)
 	framework.RegisterPluginBuilder(pdb.PluginName, pdb.New)
+	framework.RegisterPluginBuilder(nodegroup.PluginName, nodegroup.New)
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)
+	framework.RegisterPluginBuilder(capacity.PluginName, capacity.New)
 
 	// Plugins for Extender
 	framework.RegisterPluginBuilder(extender.PluginName, extender.New)
