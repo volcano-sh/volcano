@@ -60,8 +60,8 @@ func TestReclaim(t *testing.T) {
 				util.BuildQueue("q1", 1, nil),
 				util.BuildQueue("q2", 1, nil),
 			},
-			EvictNum: 1,
-			Evicted:  []string{"c1/preemptee2"}, // let pod2 in the middle when sort tasks be preemptable and will not disturb
+			ExpectEvictNum: 1,
+			ExpectEvicted:  []string{"c1/preemptee2"}, // let pod2 in the middle when sort tasks be preemptable and will not disturb
 		},
 		{
 			Name: "sort reclaimees when reclaiming from overusing queue",
@@ -96,8 +96,8 @@ func TestReclaim(t *testing.T) {
 				util.BuildQueue("q2", 1, nil),
 				util.BuildQueue("q3", 1, nil),
 			},
-			EvictNum: 1,
-			Evicted:  []string{"c1/preemptee2-1"}, // low priority job's preemptable pod is evicted
+			ExpectEvictNum: 1,
+			ExpectEvicted:  []string{"c1/preemptee2-1"}, // low priority job's preemptable pod is evicted
 		},
 	}
 

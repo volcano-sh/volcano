@@ -83,19 +83,19 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 			Nodes:     []*corev1.Node{n1, n2},
 			PodGroups: []*schedulingv1beta1.PodGroup{pg1, pg2},
 			Queues:    []*schedulingv1beta1.Queue{queue1},
-			BindMap: map[string]string{
+			ExpectBindMap: map[string]string{
 				"ns1/p2": "n1",
 			},
-			BindsNum: 1,
+			ExpectBindsNum: 1,
 		},
 		{
-			Name:      "case1: Pod not allocatable when queue exceed queue capability",
-			Plugins:   plugins,
-			Pods:      []*corev1.Pod{p3, p4},
-			Nodes:     []*corev1.Node{n1, n2},
-			PodGroups: []*schedulingv1beta1.PodGroup{pg3, pg4},
-			Queues:    []*schedulingv1beta1.Queue{queue2},
-			BindsNum:  0,
+			Name:           "case1: Pod not allocatable when queue exceed queue capability",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p3, p4},
+			Nodes:          []*corev1.Node{n1, n2},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg3, pg4},
+			Queues:         []*schedulingv1beta1.Queue{queue2},
+			ExpectBindsNum: 0,
 		},
 		{
 			Name:      "case2: Can reclaim from other queues when allocated < deserved",
@@ -104,11 +104,11 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 			Nodes:     []*corev1.Node{n1, n2},
 			PodGroups: []*schedulingv1beta1.PodGroup{pg5, pg6},
 			Queues:    []*schedulingv1beta1.Queue{queue3, queue4},
-			PipeLined: map[string][]string{
+			ExpectPipeLined: map[string][]string{
 				"ns1/pg6": {"n2"},
 			},
-			Evicted:  []string{"ns1/p6"},
-			EvictNum: 1,
+			ExpectEvicted:  []string{"ns1/p6"},
+			ExpectEvictNum: 1,
 		},
 	}
 
