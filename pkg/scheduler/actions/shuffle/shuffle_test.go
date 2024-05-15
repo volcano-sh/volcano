@@ -73,8 +73,8 @@ func TestShuffle(t *testing.T) {
 				util.BuildPodWithPriority("test", "pod3-1", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &lowPriority),
 				util.BuildPodWithPriority("test", "pod3-2", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &highPriority),
 			},
-			EvictNum: 3,
-			Evicted:  []string{"test/pod1-1", "test/pod2-1", "test/pod3-1"},
+			ExpectEvictNum: 3,
+			ExpectEvicted:  []string{"test/pod1-1", "test/pod2-1", "test/pod3-1"},
 		},
 	}
 	shuffle := New()

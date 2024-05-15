@@ -336,7 +336,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Nodes: []*v1.Node{
 					n1,
 				},
-				EvictNum: 2,
+				ExpectEvictNum: 2,
 			},
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",
@@ -358,7 +358,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Nodes: []*v1.Node{
 					n1,
 				},
-				EvictNum: 0,
+				ExpectEvictNum: 0,
 			},
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:00",
@@ -380,7 +380,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Nodes: []*v1.Node{
 					n1,
 				},
-				EvictNum: 3,
+				ExpectEvictNum: 3,
 			},
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",
@@ -402,7 +402,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Nodes: []*v1.Node{
 					n2,
 				},
-				EvictNum: 3,
+				ExpectEvictNum: 3,
 			},
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",
@@ -426,7 +426,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Nodes: []*v1.Node{
 					n1, n2,
 				},
-				EvictNum: 6,
+				ExpectEvictNum: 6,
 			},
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",
@@ -448,7 +448,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Nodes: []*v1.Node{
 					n2,
 				},
-				EvictNum: 3,
+				ExpectEvictNum: 3,
 			},
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",
@@ -470,7 +470,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Nodes: []*v1.Node{
 					n2,
 				},
-				EvictNum: 2,
+				ExpectEvictNum: 2,
 			},
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",
@@ -492,7 +492,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Nodes: []*v1.Node{
 					n2,
 				},
-				EvictNum: 3,
+				ExpectEvictNum: 3,
 			},
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",
@@ -516,7 +516,7 @@ func Test_TDM_victimsFn(t *testing.T) {
 				Nodes: []*v1.Node{
 					n1, n2,
 				},
-				EvictNum: 6,
+				ExpectEvictNum: 6,
 			},
 			args: framework.Arguments{
 				"tdm.revocable-zone.rz1": "0:00-0:01",

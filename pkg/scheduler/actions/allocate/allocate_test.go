@@ -70,11 +70,11 @@ func TestAllocate(t *testing.T) {
 			Queues: []*schedulingv1.Queue{
 				util.BuildQueue("c1", 1, nil),
 			},
-			BindMap: map[string]string{
+			ExpectBindMap: map[string]string{
 				"c1/p1": "n1",
 				"c1/p2": "n1",
 			},
-			BindsNum: 2,
+			ExpectBindsNum: 2,
 		},
 		{
 			Name: "two Jobs on one node",
@@ -102,11 +102,11 @@ func TestAllocate(t *testing.T) {
 				util.BuildQueue("c1", 1, nil),
 				util.BuildQueue("c2", 1, nil),
 			},
-			BindMap: map[string]string{
+			ExpectBindMap: map[string]string{
 				"c2/pg2-p-1": "n1",
 				"c1/pg1-p-1": "n1",
 			},
-			BindsNum: 2,
+			ExpectBindsNum: 2,
 		},
 		{
 			Name: "high priority queue should not block others",
@@ -128,10 +128,10 @@ func TestAllocate(t *testing.T) {
 				util.BuildQueue("c1", 1, nil),
 				util.BuildQueue("c2", 1, nil),
 			},
-			BindMap: map[string]string{
+			ExpectBindMap: map[string]string{
 				"c1/p2": "n1",
 			},
-			BindsNum: 1,
+			ExpectBindsNum: 1,
 		},
 	}
 

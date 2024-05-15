@@ -64,7 +64,7 @@ func TestPreempt(t *testing.T) {
 			Queues: []*schedulingv1beta1.Queue{
 				util.BuildQueue("q1", 1, nil),
 			},
-			EvictNum: 0,
+			ExpectEvictNum: 0,
 		},
 		{
 			Name: "do not preempt if job is pipelined",
@@ -86,7 +86,7 @@ func TestPreempt(t *testing.T) {
 			Queues: []*schedulingv1beta1.Queue{
 				util.BuildQueue("q1", 1, nil),
 			},
-			EvictNum: 0,
+			ExpectEvictNum: 0,
 		},
 		{
 			Name: "preempt one task of different job to fit both jobs on one node",
@@ -106,8 +106,8 @@ func TestPreempt(t *testing.T) {
 			Queues: []*schedulingv1beta1.Queue{
 				util.BuildQueue("q1", 1, nil),
 			},
-			Evicted:  []string{"c1/preemptee1"},
-			EvictNum: 1,
+			ExpectEvicted:  []string{"c1/preemptee1"},
+			ExpectEvictNum: 1,
 		},
 		{
 			Name: "preempt enough tasks to fit large task of different job",
@@ -129,8 +129,8 @@ func TestPreempt(t *testing.T) {
 			Queues: []*schedulingv1beta1.Queue{
 				util.BuildQueue("q1", 1, nil),
 			},
-			Evicted:  []string{"c1/preemptee2", "c1/preemptee1"},
-			EvictNum: 2,
+			ExpectEvicted:  []string{"c1/preemptee2", "c1/preemptee1"},
+			ExpectEvictNum: 2,
 		},
 		{
 			// case about #3161
@@ -149,8 +149,8 @@ func TestPreempt(t *testing.T) {
 			Queues: []*schedulingv1beta1.Queue{
 				util.BuildQueue("q1", 1, api.BuildResourceList("4", "4G")),
 			},
-			Evicted:  []string{"c1/preemptee1"},
-			EvictNum: 1,
+			ExpectEvicted:  []string{"c1/preemptee1"},
+			ExpectEvictNum: 1,
 		},
 		{
 			// case about #3161
@@ -169,7 +169,7 @@ func TestPreempt(t *testing.T) {
 			Queues: []*schedulingv1beta1.Queue{
 				util.BuildQueue("q1", 1, api.BuildResourceList("6", "6G")),
 			},
-			EvictNum: 0,
+			ExpectEvictNum: 0,
 		},
 		{
 			// case about issue #2232
@@ -190,8 +190,8 @@ func TestPreempt(t *testing.T) {
 			Queues: []*schedulingv1beta1.Queue{
 				util.BuildQueue("q1", 1, api.BuildResourceList("3", "3G")),
 			},
-			Evicted:  []string{"c1/preemptee2"},
-			EvictNum: 1,
+			ExpectEvicted:  []string{"c1/preemptee2"},
+			ExpectEvictNum: 1,
 		},
 		{
 			// case about #3335
@@ -210,8 +210,8 @@ func TestPreempt(t *testing.T) {
 			Queues: []*schedulingv1beta1.Queue{
 				util.BuildQueue("q1", 1, api.BuildResourceList("6", "6G")),
 			},
-			Evicted:  []string{"c1/preemptee1"},
-			EvictNum: 1,
+			ExpectEvicted:  []string{"c1/preemptee1"},
+			ExpectEvictNum: 1,
 		},
 		{
 			// case about #3335
@@ -230,8 +230,8 @@ func TestPreempt(t *testing.T) {
 			Queues: []*schedulingv1beta1.Queue{
 				util.BuildQueue("q1", 1, api.BuildResourceList("6", "6G")),
 			},
-			Evicted:  []string{"c1/preemptee1"},
-			EvictNum: 1,
+			ExpectEvicted:  []string{"c1/preemptee1"},
+			ExpectEvictNum: 1,
 		},
 	}
 
