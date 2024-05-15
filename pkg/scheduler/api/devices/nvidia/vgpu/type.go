@@ -54,6 +54,16 @@ const (
 
 	// DeviceName used to indicate this device
 	DeviceName = "vgpu4pd"
+
+	// binpack means the lower device memory remained after this allocation, the better
+	binpackPolicy = "binpack"
+	// spread means better put this task into an idle GPU card than a shared GPU card
+	spreadPolicy = "spread"
+	// 101 means wo don't assign defaultMemPercentage value
+
+	DefaultMemPercentage = 101
+	binpackMultiplier    = 100
+	spreadMultiplier     = 100
 )
 
 type ContainerDeviceRequest struct {
