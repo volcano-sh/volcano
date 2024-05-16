@@ -69,10 +69,12 @@ var (
 
 func (gs *GPUDevices) GetStatus() string {
 	for _, val := range gs.Device {
-		VGPUDevicesSharedNumber.WithLabelValues(val.UUID).Set(float64(val.UsedNum))
-		VGPUDevicesSharedMemory.WithLabelValues(val.UUID).Set(float64(val.UsedMem))
-		VGPUDevicesMemoryLimit.WithLabelValues(val.UUID).Set(float64(val.Memory))
-		VGPUDevicesSharedCores.WithLabelValues(val.UUID).Set(float64(val.UsedCore))
+		if val != nil {
+			VGPUDevicesSharedNumber.WithLabelValues(val.UUID).Set(float64(val.UsedNum))
+			VGPUDevicesSharedMemory.WithLabelValues(val.UUID).Set(float64(val.UsedMem))
+			VGPUDevicesMemoryLimit.WithLabelValues(val.UUID).Set(float64(val.Memory))
+			VGPUDevicesSharedCores.WithLabelValues(val.UUID).Set(float64(val.UsedCore))
+		}
 	}
 	return ""
 }
