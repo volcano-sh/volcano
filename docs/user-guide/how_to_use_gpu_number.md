@@ -8,6 +8,8 @@
 
 Refer to [Install Guide](../../installer/README.md) to install volcano.
 
+> **Note** The Volcano VGPU feature has been transferred to the HAMI project, click [here](https://github.com/Project-HAMi/volcano-vgpu-device-plugin) to access
+
 After installed, update the scheduler configuration:
 
 ```shell script

@@ -59,7 +59,7 @@ type GPUDevices struct {
 	Name string
 
 	// We cache score in filter step according to schedulePolicy, to avoid recalculating in score
-	ScoreMap map[string]float64
+	Score float64
 
 	Device map[int]*GPUDevice
 }
@@ -103,7 +103,7 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 			klog.Infof("node %v device %s leave", node.Name, handshake)
 
 			tmppat := make(map[string]string)
-			tmppat[handshake] = "Deleted_" + time.Now().Format("2006.01.02 15:04:05")
+			tmppat[VolcanoVGPUHandshake] = "Deleted_" + time.Now().Format("2006.01.02 15:04:05")
 			patchNodeAnnotations(node, tmppat)
 			return nil
 		}
@@ -122,8 +122,7 @@ func (gs *GPUDevices) ScoreNode(pod *v1.Pod, schedulePolicy string) float64 {
 	a higher score than those needs to evict a task */
 
 	// Use cached stored in filter state in order to avoid recalculating.
-	klog.V(3).Infof("Scoring pod %s with to node %s with score %f", gs.Name, pod.Name, gs.ScoreMap[pod.Name])
-	return gs.ScoreMap[pod.Name]
+	return gs.Score
 }
 
 func (gs *GPUDevices) GetIgnoredDevices() []string {
@@ -197,9 +196,9 @@ func (gs *GPUDevices) FilterNode(pod *v1.Pod, schedulePolicy string) (int, strin
 		fit, _, score, err := checkNodeGPUSharingPredicateAndScore(pod, gs, true, schedulePolicy)
 		if err != nil || !fit {
 			klog.Errorln("deviceSharing err=", err.Error())
-			return devices.Unschedulable, fmt.Sprintf("4pdvgpuDeviceSharing %s", err.Error()), err
+			return devices.Unschedulable, fmt.Sprintf("hami-vgpuDeviceSharing %s", err.Error()), err
 		}
-		gs.ScoreMap[pod.Name] = score
+		gs.Score = score
 		klog.V(4).Infoln("hami-vgpu DeviceSharing successfully filters pods")
 	}
 	return devices.Success, "", nil

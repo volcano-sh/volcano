@@ -24,18 +24,13 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/framework"
-)
-
-var (
-	SchedulePolicy string = ""
-	scheduleWeight int    = 0
 )
 
 // PluginName indicates name of volcano scheduler plugin.
@@ -55,19 +50,24 @@ const (
 type deviceSharePlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
+	schedulePolicy  string
+	scheduleWeight  int
 }
 
 // New return priority plugin
 func New(arguments framework.Arguments) framework.Plugin {
-	return &deviceSharePlugin{pluginArguments: arguments}
+	dsp := &deviceSharePlugin{pluginArguments: arguments, schedulePolicy: "", scheduleWeight: 0}
+	enablePredicate(dsp)
+	return dsp
 }
 
 func (dp *deviceSharePlugin) Name() string {
 	return PluginName
 }
 
-func enablePredicate(args framework.Arguments) {
+func enablePredicate(dsp *deviceSharePlugin) {
 	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
+	args := dsp.pluginArguments
 	args.GetBool(&gpushare.GpuSharingEnable, GPUSharingPredicate)
 	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
 	args.GetBool(&gpushare.NodeLockEnable, NodeLockEnable)
@@ -75,9 +75,9 @@ func enablePredicate(args framework.Arguments) {
 
 	_, ok := args[SchedulePolicyArgument]
 	if ok {
-		SchedulePolicy = args[SchedulePolicyArgument].(string)
+		dsp.schedulePolicy = args[SchedulePolicyArgument].(string)
 	}
-	args.GetInt(&scheduleWeight, ScheduleWeight)
+	args.GetInt(&dsp.scheduleWeight, ScheduleWeight)
 
 	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {
 		klog.Fatal("can not define true in both gpu sharing and gpu number")
@@ -108,7 +108,6 @@ func getDeviceScore(ctx context.Context, pod *v1.Pod, node *api.NodeInfo, schedu
 }
 
 func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
-	enablePredicate(dp.pluginArguments)
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddPredicateFn(dp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		predicateStatus := make([]*api.Status, 0)
@@ -127,7 +126,7 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 					klog.V(4).Infof("pod %s/%s did not request device %s on %s, skipping it", task.Pod.Namespace, task.Pod.Name, val, node.Name)
 					continue
 				}
-				code, msg, err := dev.FilterNode(task.Pod, SchedulePolicy)
+				code, msg, err := dev.FilterNode(task.Pod, dp.schedulePolicy)
 				if err != nil {
 					predicateStatus = append(predicateStatus, createStatus(code, msg))
 					return predicateStatus, err
@@ -150,16 +149,16 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddNodeOrderFn(dp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		// DeviceScore
-		if len(SchedulePolicy) > 0 {
-			score, status := getDeviceScore(context.TODO(), task.Pod, node, SchedulePolicy)
+		if len(dp.schedulePolicy) > 0 {
+			score, status := getDeviceScore(context.TODO(), task.Pod, node, dp.schedulePolicy)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Calculate Device Score Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
 			}
 
 			// TODO: we should use a seperate plugin for devices, and seperate them from predicates and nodeOrder plugin.
-			nodeScore := float64(score) * float64(scheduleWeight)
-			klog.V(5).Infof("Node: %s, task<%s/%s> Device Score weight %d, score: %f", node.Name, task.Namespace, task.Name, scheduleWeight, nodeScore)
+			nodeScore := float64(score) * float64(dp.scheduleWeight)
+			klog.V(5).Infof("Node: %s, task<%s/%s> Device Score weight %d, score: %f", node.Name, task.Namespace, task.Name, dp.scheduleWeight, nodeScore)
 		}
 		return 0, nil
 	})
