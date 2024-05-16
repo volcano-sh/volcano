@@ -101,6 +101,72 @@ func Test_readTopologyFromPgAnnotations(t *testing.T) {
 			err: nil,
 		},
 		{
+			description: "correct annotation with tasks whose names contain `-`",
+			job: &api.JobInfo{
+				Name:      "job1",
+				Namespace: "default",
+				Tasks: map[api.TaskID]*api.TaskInfo{
+					"0": {
+						Name: "job1-ps-some-0",
+					},
+					"1": {
+						Name: "job1-ps-some-1",
+					},
+					"2": {
+						Name: "job1-worker-another-some-0",
+					},
+					"3": {
+						Name: "job1-worker-another-some-1",
+					},
+					"4": {
+						Name: "job1-chief-kk-0",
+					},
+					"5": {
+						Name: "job1-evaluator-tt-0",
+					},
+				},
+				PodGroup: &api.PodGroup{
+					PodGroup: scheduling.PodGroup{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								JobAffinityAnnotations:     "ps-some,worker-another-some;ps-some,chief-kk",
+								JobAntiAffinityAnnotations: "ps-some;worker-another-some,chief-kk",
+								TaskOrderAnnotations:       "ps-some,worker-another-some,chief-kk,evaluator-tt",
+							},
+						},
+					},
+				},
+			},
+			topology: &TaskTopology{
+				Affinity: [][]string{
+					{
+						"ps-some",
+						"worker-another-some",
+					},
+					{
+						"ps-some",
+						"chief-kk",
+					},
+				},
+				AntiAffinity: [][]string{
+					{
+						"ps-some",
+					},
+					{
+						"worker-another-some",
+						"chief-kk",
+					},
+				},
+				TaskOrder: []string{
+					"ps-some",
+					"worker-another-some",
+					"chief-kk",
+					"evaluator-tt",
+				},
+			},
+			err: nil,
+		},
+		{
 			description: "nil annotation",
 			job: &api.JobInfo{
 				PodGroup: &api.PodGroup{

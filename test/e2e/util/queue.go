@@ -58,7 +58,7 @@ func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
 }
 
 // CreateQueue creates Queue with the specified name
-func CreateQueue(ctx *TestContext, q string) {
+func CreateQueue(ctx *TestContext, q string, deservedResource v1.ResourceList) {
 	_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 	if err != nil {
 		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
@@ -66,7 +66,8 @@ func CreateQueue(ctx *TestContext, q string) {
 				Name: q,
 			},
 			Spec: schedulingv1beta1.QueueSpec{
-				Weight: 1,
+				Weight:   1,
+				Deserved: deservedResource,
 			},
 		}, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", q)
@@ -78,7 +79,7 @@ func CreateQueues(ctx *TestContext) {
 	By("Creating Queues")
 
 	for _, queue := range ctx.Queues {
-		CreateQueue(ctx, queue)
+		CreateQueue(ctx, queue, ctx.DeservedResource[queue])
 	}
 
 	// wait for all queues state open

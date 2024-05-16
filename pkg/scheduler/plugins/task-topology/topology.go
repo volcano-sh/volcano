@@ -247,10 +247,15 @@ func affinityCheck(job *api.JobInfo, affinity [][]string) error {
 
 	var taskNumber = len(job.Tasks)
 	var taskRef = make(map[string]bool, taskNumber)
+	var jobNamePrefix = job.Name + "-"
 	for _, task := range job.Tasks {
-		tmpStrings := strings.Split(task.Name, "-")
-		if _, exist := taskRef[tmpStrings[len(tmpStrings)-2]]; !exist {
-			taskRef[tmpStrings[len(tmpStrings)-2]] = true
+		// the full task name looks like "${job name}-${task name}-${index}",
+		// so we can trim the jobNamePrefix and the indexSuffix to get the short task name.
+		tmpTaskName := task.Name[:strings.LastIndex(task.Name, "-")]
+		tmpTaskName = strings.TrimPrefix(tmpTaskName, jobNamePrefix)
+
+		if _, exist := taskRef[tmpTaskName]; !exist {
+			taskRef[tmpTaskName] = true
 		}
 	}
 

@@ -95,6 +95,10 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
 			continue
 		}
+		if !ssn.Preemptive(queue) {
+			klog.V(3).Infof("Queue <%s> can not reclaim by preempt others, ignore it.", queue.Name)
+			continue
+		}
 
 		// Found "high" priority job
 		jobs, found := preemptorsMap[queue.UID]
@@ -124,14 +128,10 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		assigned := false
 		for _, n := range ssn.Nodes {
 			var statusSets util.StatusSets
-			statusSets, err := ssn.PredicateFn(task, n)
-			if err != nil {
-				klog.V(5).Infof("reclaim predicates failed for task <%s/%s> on node <%s>: %v",
-					task.Namespace, task.Name, n.Name, err)
-				continue
-			}
+			statusSets, _ = ssn.PredicateFn(task, n)
 
-			// Allows scheduling to nodes that are in Success or Unschedulable state after filtering by predicate.
+			// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
+			// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
 			if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
 				klog.V(5).Infof("predicates failed in reclaim for task <%s/%s> on node <%s>, reason is %s.",
 					task.Namespace, task.Name, n.Name, statusSets.Message())
@@ -174,11 +174,14 @@ func (ra *Action) Execute(ssn *framework.Session) {
 				continue
 			}
 
+			victimsQueue := ssn.BuildVictimsPriorityQueue(victims)
+
 			resreq := task.InitResreq.Clone()
 			reclaimed := api.EmptyResource()
 
 			// Reclaim victims for tasks.
-			for _, reclaimee := range victims {
+			for !victimsQueue.Empty() {
+				reclaimee := victimsQueue.Pop().(*api.TaskInfo)
 				klog.Errorf("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
 					reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
 				if err := ssn.Evict(reclaimee, "reclaim"); err != nil {

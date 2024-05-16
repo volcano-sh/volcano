@@ -1,9 +1,5 @@
 # GPU Number User guide
 
-## Note: GPU Number will be deprecated in volcano v1.9, please use volcano vgpu instead
-
-[Volcano vgpu](./how_to_use_vgpu.md)
-
 ## Environment setup
 
 ### Install volcano
@@ -12,11 +8,42 @@
 
 Refer to [Install Guide](../../installer/README.md) to install volcano.
 
+> **Note** The Volcano VGPU feature has been transferred to the HAMI project, click [here](https://github.com/Project-HAMi/volcano-vgpu-device-plugin) to access
+
 After installed, update the scheduler configuration:
 
 ```shell script
 kubectl edit cm -n volcano-system volcano-scheduler-configmap
 ```
+
+For volcano v1.8.2+(v1.8.2 excluded), use the following configMap 
+
+```yaml
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: volcano-scheduler-configmap
+  namespace: volcano-system
+data:
+  volcano-scheduler.conf: |
+    actions: "enqueue, allocate, backfill"
+    tiers:
+    - plugins:
+      - name: priority
+      - name: gang
+      - name: conformance
+    - plugins:
+      - name: drf
+      - name: deviceshare
+        arguments:
+          deviceshare.GPUNumberEnable: true # enable gpu number
+      - name: predicates
+      - name: proportion
+      - name: nodeorder
+      - name: binpack
+```
+
+For volcano v1.8.2-(v1.8.2 included), use the following configMap 
 
 ```yaml
 kind: ConfigMap
