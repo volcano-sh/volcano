@@ -53,7 +53,7 @@ const (
 	UnhealthyGPUIDs = "volcano.sh/gpu-unhealthy-ids"
 
 	// DeviceName used to indicate this device
-	DeviceName = "vgpu4pd"
+	DeviceName = "hamivgpu"
 
 	// binpack means the lower device memory remained after this allocation, the better
 	binpackPolicy = "binpack"

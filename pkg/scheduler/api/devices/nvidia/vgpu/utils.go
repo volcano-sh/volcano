@@ -40,7 +40,7 @@ func init() {
 	var err error
 	kubeClient, err = NewClient()
 	if err != nil {
-		klog.Errorf("init kubeclient in 4pdvgpu failed: %s", err.Error())
+		klog.Errorf("init kubeclient in hamivgpu failed: %s", err.Error())
 	} else {
 		klog.V(3).Infoln("init kubeclient success")
 	}
@@ -94,27 +94,25 @@ func decodeNodeDevices(name string, str string) *GPUDevices {
 	}
 	tmp := strings.Split(str, ":")
 	retval := &GPUDevices{
-		Name:     name,
-		Device:   make(map[int]*GPUDevice),
-		ScoreMap: make(map[string]float64),
+		Name:   name,
+		Device: make(map[int]*GPUDevice),
+		Score:  float64(0),
 	}
 	for index, val := range tmp {
-		if len(val) > 0 {
-			if strings.Contains(val, ",") {
-				items := strings.Split(val, ",")
-				count, _ := strconv.Atoi(items[1])
-				devmem, _ := strconv.Atoi(items[2])
-				health, _ := strconv.ParseBool(items[4])
-				i := GPUDevice{
-					ID:     index,
-					UUID:   items[0],
-					Number: uint(count),
-					Memory: uint(devmem),
-					Type:   items[3],
-					Health: health,
-				}
-				retval.Device[index] = &i
+		if strings.Contains(val, ",") {
+			items := strings.Split(val, ",")
+			count, _ := strconv.Atoi(items[1])
+			devmem, _ := strconv.Atoi(items[2])
+			health, _ := strconv.ParseBool(items[4])
+			i := GPUDevice{
+				ID:     index,
+				UUID:   items[0],
+				Number: uint(count),
+				Memory: uint(devmem),
+				Type:   items[3],
+				Health: health,
 			}
+			retval.Device[index] = &i
 		}
 	}
 	return retval
@@ -308,9 +306,9 @@ func checkType(annos map[string]string, d GPUDevice, n ContainerDeviceRequest) b
 
 func getGPUDeviceSnapShot(snap *GPUDevices) *GPUDevices {
 	ret := GPUDevices{
-		Name:     snap.Name,
-		Device:   make(map[int]*GPUDevice),
-		ScoreMap: make(map[string]float64),
+		Name:   snap.Name,
+		Device: make(map[int]*GPUDevice),
+		Score:  float64(0),
 	}
 	for index, val := range snap.Device {
 		if val != nil {
@@ -333,7 +331,6 @@ func getGPUDeviceSnapShot(snap *GPUDevices) *GPUDevices {
 
 // checkNodeGPUSharingPredicate checks if a pod with gpu requirement can be scheduled on a node.
 func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, replicate bool, schedulePolicy string) (bool, []ContainerDevices, float64, error) {
-
 	// no gpu sharing request
 	score := float64(0)
 	if !checkVGPUResourcesInPod(pod) {
@@ -398,10 +395,10 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 					Usedmem:   val.Memreq,
 					Usedcores: val.Coresreq,
 				})
-				switch {
-				case schedulePolicy == binpackPolicy:
+				switch schedulePolicy {
+				case binpackPolicy:
 					score += binpackMultiplier * (float64(gs.Device[i].UsedMem) / float64(gs.Device[i].Memory))
-				case schedulePolicy == spreadPolicy:
+				case spreadPolicy:
 					if gs.Device[i].UsedNum == 1 {
 						score += spreadMultiplier
 					}
