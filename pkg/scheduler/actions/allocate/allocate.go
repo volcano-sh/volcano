@@ -309,7 +309,7 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) ([]*api.S
 
 	if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
 		statusSets.ContainsErrorSkipOrWait() {
-		return nil, api.NewFitStatus(task, node, statusSets)
+		return nil, api.NewFitStatus(task, node, statusSets...)
 	}
 	return nil, nil
 }

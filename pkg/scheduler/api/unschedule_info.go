@@ -118,7 +118,8 @@ func NewFitError(task *TaskInfo, node *NodeInfo, message ...string) *FitError {
 	return fe
 }
 
-func NewFitStatus(task *TaskInfo, node *NodeInfo, sts StatusSets) *FitError {
+// NewFitStatus returns a fit error with code and reason in it
+func NewFitStatus(task *TaskInfo, node *NodeInfo, sts ...*Status) *FitError {
 	fe := &FitError{
 		taskName:      task.Name,
 		taskNamespace: task.Namespace,
@@ -130,6 +131,9 @@ func NewFitStatus(task *TaskInfo, node *NodeInfo, sts StatusSets) *FitError {
 
 // Reasons returns the reasons
 func (fe *FitError) Reasons() []string {
+	if fe == nil {
+		return []string{}
+	}
 	return fe.Status.Reasons()
 }
 
