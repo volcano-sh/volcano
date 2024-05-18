@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 const (
@@ -67,6 +69,17 @@ func (f *FitErrors) SetNodeError(nodeName string, err error) {
 	f.nodes[nodeName] = fe
 }
 
+// GetUnschedulableAndUnresolvableNodes returns the set of nodes that has no help from preempting pods from it
+func (f *FitErrors) GetUnschedulableAndUnresolvableNodes() map[string]sets.Empty {
+	ret := make(map[string]sets.Empty)
+	for _, node := range f.nodes {
+		if node.Status.ContainsUnschedulableAndUnresolvable() {
+			ret[node.NodeName] = sets.Empty{}
+		}
+	}
+	return ret
+}
+
 // Error returns the final error message
 func (f *FitErrors) Error() string {
 	if f.err == "" {
@@ -103,7 +116,7 @@ type FitError struct {
 	Status        StatusSets
 }
 
-// NewFitError return FitError by message
+// NewFitError return FitError by message, setting default code to Error
 func NewFitError(task *TaskInfo, node *NodeInfo, message ...string) *FitError {
 	fe := &FitError{
 		taskName:      task.Name,
@@ -118,8 +131,8 @@ func NewFitError(task *TaskInfo, node *NodeInfo, message ...string) *FitError {
 	return fe
 }
 
-// NewFitStatus returns a fit error with code and reason in it
-func NewFitStatus(task *TaskInfo, node *NodeInfo, sts ...*Status) *FitError {
+// NewFitErrWithStatus returns a fit error with code and reason in it
+func NewFitErrWithStatus(task *TaskInfo, node *NodeInfo, sts ...*Status) *FitError {
 	fe := &FitError{
 		taskName:      task.Name,
 		taskNamespace: task.Namespace,
