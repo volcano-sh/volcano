@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 const (
@@ -32,16 +33,19 @@ func TestFitError(t *testing.T) {
 	tests := []struct {
 		task   *TaskInfo
 		node   *NodeInfo
-		reason []string
 		status []*Status
-		want   *FitError
+		// the wanted reason from fitError
+		reason []string
+		// the wanted fitError
+		wantErr *FitError
+		// string of fitError
 		errStr string
 	}{
 		{
 			task:   &TaskInfo{Name: "pod1", Namespace: "ns1"},
 			node:   &NodeInfo{Name: "node1"},
 			reason: []string{affinityRulesNotMatch, nodeAffinity},
-			want: &FitError{
+			wantErr: &FitError{
 				NodeName: "node1", taskNamespace: "ns1", taskName: "pod1",
 				Status: []*Status{{Reason: affinityRulesNotMatch, Code: Error}, {Reason: nodeAffinity, Code: Error}},
 			},
@@ -52,7 +56,7 @@ func TestFitError(t *testing.T) {
 			node:   &NodeInfo{Name: "node2"},
 			status: []*Status{{Reason: nodeAffinity, Code: UnschedulableAndUnresolvable}, {Reason: existingAntiAffinityNotMatch, Code: Error}},
 			reason: []string{nodeAffinity, existingAntiAffinityNotMatch},
-			want: &FitError{
+			wantErr: &FitError{
 				NodeName: "node2", taskNamespace: "ns2", taskName: "pod2",
 				Status: []*Status{{Reason: nodeAffinity, Code: UnschedulableAndUnresolvable}, {Reason: existingAntiAffinityNotMatch, Code: Error}},
 			},
@@ -63,12 +67,12 @@ func TestFitError(t *testing.T) {
 	var got *FitError
 	for _, test := range tests {
 		if len(test.status) != 0 {
-			got = NewFitStatus(test.task, test.node, test.status...)
+			got = NewFitErrWithStatus(test.task, test.node, test.status...)
 		} else if len(test.reason) != 0 {
 			got = NewFitError(test.task, test.node, test.reason...)
 		}
 
-		assert.Equal(t, test.want, got)
+		assert.Equal(t, test.wantErr, got)
 		assert.Equal(t, test.reason, got.Reasons())
 		assert.Equal(t, test.errStr, got.Error())
 	}
@@ -81,15 +85,20 @@ func TestFitErrors(t *testing.T) {
 		err    error
 		fiterr *FitError
 		want   string // expected error string
+		// nodes that are not helpful for preempting, which has a code of UnschedulableAndUnresolvable
+		filterNodes map[string]sets.Empty
 	}{
 		{
-			want: "0/0 nodes are unavailable", // base fit err string is empty, set as the default
+			want:        "0/0 nodes are unavailable", // base fit err string is empty, set as the default
+			filterNodes: map[string]sets.Empty{},
 		},
 		{
 			node:   "node1",
 			fitStr: "fit failed",
 			err:    fmt.Errorf(NodePodNumberExceeded),
 			want:   "fit failed: 1 node(s) pod number exceeded.",
+			// no node has UnschedulableAndUnresolvable
+			filterNodes: map[string]sets.Empty{},
 		},
 		{
 			node:   "node1",
@@ -100,6 +109,8 @@ func TestFitErrors(t *testing.T) {
 				Status: []*Status{{Reason: nodeAffinity, Code: UnschedulableAndUnresolvable}},
 			},
 			want: "NodeResourceFitFailed: 1 node(s) didn't match Pod's node affinity/selector, 1 node(s) pod number exceeded.",
+			// only node2 has UnschedulableAndUnresolvable
+			filterNodes: map[string]sets.Empty{"node2": {}},
 		},
 	}
 	for _, test := range tests {
@@ -113,5 +124,6 @@ func TestFitErrors(t *testing.T) {
 		}
 		got := fitErrs.Error()
 		assert.Equal(t, test.want, got)
+		assert.Equal(t, test.filterNodes, fitErrs.GetUnschedulableAndUnresolvableNodes())
 	}
 }
