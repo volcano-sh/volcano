@@ -43,19 +43,33 @@ func RegisterPlugins(plugins map[string]framework.PluginBuilder) {
 // TestCommonStruct is the most common used resource when do UT
 // others can wrap it in a new struct
 type TestCommonStruct struct {
-	Name      string
-	Plugins   map[string]framework.PluginBuilder // plugins for each case
-	Pods      []*v1.Pod
-	Nodes     []*v1.Node
-	PodGroups []*vcapisv1.PodGroup
-	Queues    []*vcapisv1.Queue
-	PriClass  []*schedulingv1.PriorityClass
-	Bind      map[string]string                      // bind results: ns/podName -> nodeName
-	PipeLined map[string][]string                    // pipelined results: map[jobID][]{nodename}
-	Evicted   []string                               // evicted pods list of ns/podName
-	Status    map[api.JobID]scheduling.PodGroupPhase // final status
-	BindsNum  int                                    // binds events numbers
-	EvictNum  int                                    // evict events numbers, include preempted and reclaimed evict events
+	// Name test case name
+	Name string
+	// Plugins plugins for each case
+	Plugins map[string]framework.PluginBuilder
+	// Resource objects that need to be added to schedulercache
+	Pods           []*v1.Pod
+	Nodes          []*v1.Node
+	PodGroups      []*vcapisv1.PodGroup
+	Queues         []*vcapisv1.Queue
+	PriClass       []*schedulingv1.PriorityClass
+	ResourceQuotas []*v1.ResourceQuota
+
+	// ExpectBindMap the expected bind results.
+	// bind results: ns/podName -> nodeName
+	ExpectBindMap map[string]string
+	// ExpectPipeLined the expected pipelined results.
+	// pipelined results: map[jobID][]{nodeName}
+	ExpectPipeLined map[string][]string
+	// ExpectEvicted the expected evicted results.
+	// evicted pods list of ns/podName
+	ExpectEvicted []string
+	// ExpectStatus the expected final podgroup status.
+	ExpectStatus map[api.JobID]scheduling.PodGroupPhase
+	// ExpectBindsNum the expected bind events numbers.
+	ExpectBindsNum int
+	// ExpectEvictNum the expected evict events numbers, include preempted and reclaimed evict events
+	ExpectEvictNum int
 
 	// fake interface instance when check results need
 	stop       chan struct{}
@@ -70,13 +84,17 @@ var _ Interface = &TestCommonStruct{}
 
 // RegisterSession open session with tiers and configuration, and mock schedulerCache with self-defined FakeBinder and FakeEvictor
 func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session {
-	binder := &util.FakeBinder{
-		Binds:   map[string]string{},
-		Channel: make(chan string),
-	}
-	evictor := &util.FakeEvictor{
-		Channel: make(chan string),
-	}
+	schedulerCache := test.createSchedulerCache()
+	RegisterPlugins(test.Plugins)
+	test.ssn = framework.OpenSession(schedulerCache, tiers, config)
+	schedulerCache.Run(test.stop)
+	return test.ssn
+}
+
+// createSchedulerCache create scheduler cache
+func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
+	binder := util.NewFakeBinder(0)
+	evictor := util.NewFakeEvictor(0)
 	stsUpdator := &util.FakeStatusUpdater{}
 	test.binder = binder
 	test.evictor = evictor
@@ -101,12 +119,11 @@ func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.C
 	for _, pc := range test.PriClass {
 		schedulerCache.AddPriorityClass(pc)
 	}
+	for _, rq := range test.ResourceQuotas {
+		schedulerCache.AddResourceQuota(rq)
+	}
 
-	RegisterPlugins(test.Plugins)
-	ssn := framework.OpenSession(schedulerCache, tiers, config)
-	test.ssn = ssn
-	schedulerCache.Run(test.stop)
-	return ssn
+	return schedulerCache
 }
 
 // Run choose to run passed in actions; if no actions provided, will panic
@@ -144,11 +161,11 @@ func (test *TestCommonStruct) CheckAll(caseIndex int) (err error) {
 
 // CheckBind check expected bind result
 func (test *TestCommonStruct) CheckBind(caseIndex int) error {
-	if test.BindsNum != len(test.Bind) {
-		return fmt.Errorf("invalid setting for binding check: want bind count %d, want bind result length %d", test.BindsNum, len(test.Bind))
+	if test.ExpectBindsNum != len(test.ExpectBindMap) {
+		return fmt.Errorf("invalid setting for binding check: want bind count %d, want bind result length %d", test.ExpectBindsNum, len(test.ExpectBindMap))
 	}
 	binder := test.binder.(*util.FakeBinder)
-	for i := 0; i < test.BindsNum; i++ {
+	for i := 0; i < test.ExpectBindsNum; i++ {
 		select {
 		case <-binder.Channel:
 		case <-time.After(300 * time.Millisecond):
@@ -156,11 +173,19 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 		}
 	}
 
-	if len(test.Bind) != len(binder.Binds) {
-		return fmt.Errorf("case %d(%s) check bind: \nwant: %v\n got %v ", caseIndex, test.Name, test.Bind, binder.Binds)
+	// in case expected test.BindsNum is 0, but actually there is a binding and wait the binding goroutine to run
+	select {
+	case <-time.After(50 * time.Millisecond):
+	case key := <-binder.Channel:
+		return fmt.Errorf("unexpect binding %s in case %d(%s)", key, caseIndex, test.Name)
 	}
-	for key, value := range test.Bind {
-		got := binder.Binds[key]
+
+	binds := binder.Binds()
+	if len(test.ExpectBindMap) != len(binds) {
+		return fmt.Errorf("case %d(%s) check bind: \nwant: %v\n got %v ", caseIndex, test.Name, test.ExpectBindMap, binds)
+	}
+	for key, value := range test.ExpectBindMap {
+		got := binds[key]
 		if value != got {
 			return fmt.Errorf("case %d(%s)  check bind: \nwant: %v->%v\n got: %v->%v ", caseIndex, test.Name, key, value, key, got)
 		}
@@ -170,11 +195,11 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 
 // CheckEvict check the evicted result
 func (test *TestCommonStruct) CheckEvict(caseIndex int) error {
-	if test.EvictNum != len(test.Evicted) {
-		return fmt.Errorf("invalid setting for evicting check: want evict count %d, want evict result length %d", test.EvictNum, len(test.Evicted))
+	if test.ExpectEvictNum != len(test.ExpectEvicted) {
+		return fmt.Errorf("invalid setting for evicting check: want evict count %d, want evict result length %d", test.ExpectEvictNum, len(test.ExpectEvicted))
 	}
 	evictor := test.evictor.(*util.FakeEvictor)
-	for i := 0; i < test.EvictNum; i++ {
+	for i := 0; i < test.ExpectEvictNum; i++ {
 		select {
 		case <-evictor.Channel:
 		case <-time.After(300 * time.Millisecond):
@@ -182,14 +207,21 @@ func (test *TestCommonStruct) CheckEvict(caseIndex int) error {
 		}
 	}
 
+	// in case expected test.EvictNum is 0, but actually there is an evicting and wait the evicting goroutine to run
+	select {
+	case <-time.After(50 * time.Millisecond):
+	case key := <-evictor.Channel:
+		return fmt.Errorf("unexpect evicted %s in case %d(%s)", key, caseIndex, test.Name)
+	}
+
 	evicts := evictor.Evicts()
-	if len(test.Evicted) != len(evicts) {
-		return fmt.Errorf("case %d(%s) check evict: \nwant: %v\n got %v ", caseIndex, test.Name, test.Evicted, evicts)
+	if len(test.ExpectEvicted) != len(evicts) {
+		return fmt.Errorf("case %d(%s) check evict: \nwant: %v\n got %v ", caseIndex, test.Name, test.ExpectEvicted, evicts)
 	}
 
 	expect := map[string]int{} // evicted number
 	got := map[string]int{}
-	for _, v := range test.Evicted {
+	for _, v := range test.ExpectEvicted {
 		expect[v]++
 	}
 	for _, v := range evicts {
@@ -205,7 +237,7 @@ func (test *TestCommonStruct) CheckEvict(caseIndex int) error {
 // CheckPGStatus check job's podgroups status
 func (test *TestCommonStruct) CheckPGStatus(caseIndex int) error {
 	ssn := test.ssn
-	for jobID, phase := range test.Status {
+	for jobID, phase := range test.ExpectStatus {
 		job := ssn.Jobs[jobID]
 		if job == nil {
 			return fmt.Errorf("case %d(%s) check podgroup status, job <%v> doesn't exist in session", caseIndex, test.Name, jobID)
@@ -221,7 +253,7 @@ func (test *TestCommonStruct) CheckPGStatus(caseIndex int) error {
 // CheckPipelined checks pipeline results
 func (test *TestCommonStruct) CheckPipelined(caseIndex int) error {
 	ssn := test.ssn
-	for jobID, nodes := range test.PipeLined {
+	for jobID, nodes := range test.ExpectPipeLined {
 		job := ssn.Jobs[api.JobID(jobID)]
 		if job == nil {
 			return fmt.Errorf("case %d(%s) check pipeline, job <%v> doesn't exist in session", caseIndex, test.Name, jobID)

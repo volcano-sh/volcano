@@ -80,10 +80,10 @@ func TestEventHandler(t *testing.T) {
 			PriClass:  []*schedulingv1.PriorityClass{p1, p2},
 			PodGroups: []*schedulingv1beta1.PodGroup{pg1, pg2},
 			Queues:    []*schedulingv1beta1.Queue{queue1},
-			Bind: map[string]string{ // podKey -> node
+			ExpectBindMap: map[string]string{ // podKey -> node
 				"ns1/worker-3": "node1",
 			},
-			BindsNum: 1,
+			ExpectBindsNum: 1,
 		},
 	}
 

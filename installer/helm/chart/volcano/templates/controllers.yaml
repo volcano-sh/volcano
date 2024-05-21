@@ -47,7 +47,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "delete", "update"]
+    verbs: ["get", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups", "queues", "queues/status"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
@@ -139,7 +139,7 @@ spec:
             resources:
             {{- toYaml .Values.custom.controller_resources | nindent 14 }}
             {{- end }}
-            image: {{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
+            image: {{ .Values.basic.image_registry }}/{{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
             args:
               - --logtostderr
               - --enable-healthz=true

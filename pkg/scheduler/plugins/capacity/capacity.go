@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2024 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,11 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package proportion
+package capacity
 
 import (
 	"math"
-	"reflect"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -31,13 +30,15 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
-// PluginName indicates name of volcano scheduler plugin.
-const PluginName = "proportion"
+const (
+	PluginName = "capacity"
+)
 
-type proportionPlugin struct {
+type capacityPlugin struct {
 	totalResource  *api.Resource
 	totalGuarantee *api.Resource
-	queueOpts      map[api.QueueID]*queueAttr
+
+	queueOpts map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
 }
@@ -45,7 +46,6 @@ type proportionPlugin struct {
 type queueAttr struct {
 	queueID api.QueueID
 	name    string
-	weight  int32
 	share   float64
 
 	deserved  *api.Resource
@@ -61,9 +61,9 @@ type queueAttr struct {
 	guarantee      *api.Resource
 }
 
-// New return proportion action
+// New return capacityPlugin action
 func New(arguments framework.Arguments) framework.Plugin {
-	return &proportionPlugin{
+	return &capacityPlugin{
 		totalResource:   api.EmptyResource(),
 		totalGuarantee:  api.EmptyResource(),
 		queueOpts:       map[api.QueueID]*queueAttr{},
@@ -71,34 +71,33 @@ func New(arguments framework.Arguments) framework.Plugin {
 	}
 }
 
-func (pp *proportionPlugin) Name() string {
+func (cp *capacityPlugin) Name() string {
 	return PluginName
 }
 
-func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
+func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Prepare scheduling data for this session.
-	pp.totalResource.Add(ssn.TotalResource)
+	cp.totalResource.Add(ssn.TotalResource)
 
-	klog.V(4).Infof("The total resource is <%v>", pp.totalResource)
+	klog.V(4).Infof("The total resource is <%v>", cp.totalResource)
 	for _, queue := range ssn.Queues {
 		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
 			continue
 		}
 		guarantee := api.NewResource(queue.Queue.Spec.Guarantee.Resource)
-		pp.totalGuarantee.Add(guarantee)
+		cp.totalGuarantee.Add(guarantee)
 	}
-	klog.V(4).Infof("The total guarantee resource is <%v>", pp.totalGuarantee)
+	klog.V(4).Infof("The total guarantee resource is <%v>", cp.totalGuarantee)
 	// Build attributes for Queues.
 	for _, job := range ssn.Jobs {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
-		if _, found := pp.queueOpts[job.Queue]; !found {
+		if _, found := cp.queueOpts[job.Queue]; !found {
 			queue := ssn.Queues[job.Queue]
 			attr := &queueAttr{
 				queueID: queue.UID,
 				name:    queue.Name,
-				weight:  queue.Weight,
 
-				deserved:  api.EmptyResource(),
+				deserved:  api.NewResource(queue.Queue.Spec.Deserved),
 				allocated: api.EmptyResource(),
 				request:   api.EmptyResource(),
 				elastic:   api.EmptyResource(),
@@ -117,18 +116,18 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
 				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
 			}
-			realCapability := pp.totalResource.Clone().Sub(pp.totalGuarantee).Add(attr.guarantee)
+			realCapability := cp.totalResource.Clone().Sub(cp.totalGuarantee).Add(attr.guarantee)
 			if attr.capability == nil {
 				attr.realCapability = realCapability
 			} else {
 				realCapability.MinDimensionResource(attr.capability, api.Infinity)
 				attr.realCapability = realCapability
 			}
-			pp.queueOpts[job.Queue] = attr
+			cp.queueOpts[job.Queue] = attr
 			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
 		}
 
-		attr := pp.queueOpts[job.Queue]
+		attr := cp.queueOpts[job.Queue]
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
@@ -160,19 +159,38 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.name, attr.allocated.String(), attr.request.String(), attr.inqueue.String(), attr.elastic.String())
 	}
 
+	for _, attr := range cp.queueOpts {
+		if attr.realCapability != nil {
+			attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
+		}
+		// When scalar resource not specified in deserved such as "pods", we should skip it and consider deserved resource as infinity.
+		attr.deserved.MinDimensionResource(attr.request, api.Infinity)
+
+		attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
+		cp.updateShare(attr)
+		klog.V(4).Infof("The attributes of queue <%s> in capacity: deserved <%v>, realCapability <%v>, allocate <%v>, request <%v>, elastic <%v>, share <%0.2f>",
+			attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
+	}
+
 	// Record metrics
 	for queueID, queueInfo := range ssn.Queues {
-		if attr, ok := pp.queueOpts[queueID]; ok {
+		queue := ssn.Queues[queueID]
+		if attr, ok := cp.queueOpts[queueID]; ok {
+			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
 			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
-			metrics.UpdateQueueWeight(attr.name, attr.weight)
-			queue := ssn.Queues[attr.queueID]
 			metrics.UpdateQueuePodGroupInqueueCount(attr.name, queue.Queue.Status.Inqueue)
 			metrics.UpdateQueuePodGroupPendingCount(attr.name, queue.Queue.Status.Pending)
 			metrics.UpdateQueuePodGroupRunningCount(attr.name, queue.Queue.Status.Running)
 			metrics.UpdateQueuePodGroupUnknownCount(attr.name, queue.Queue.Status.Unknown)
 			continue
 		}
+		deservedCPU, deservedMem := 0.0, 0.0
+		if queue.Queue.Spec.Deserved != nil {
+			deservedCPU = float64(queue.Queue.Spec.Deserved.Cpu().MilliValue())
+			deservedMem = float64(queue.Queue.Spec.Deserved.Memory().Value())
+		}
+		metrics.UpdateQueueDeserved(queueInfo.Name, deservedCPU, deservedMem)
 		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
 		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0)
 		metrics.UpdateQueuePodGroupInqueueCount(queueInfo.Name, 0)
@@ -181,97 +199,28 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		metrics.UpdateQueuePodGroupUnknownCount(queueInfo.Name, 0)
 	}
 
-	remaining := pp.totalResource.Clone()
-	meet := map[api.QueueID]struct{}{}
-	for {
-		totalWeight := int32(0)
-		for _, attr := range pp.queueOpts {
-			if _, found := meet[attr.queueID]; found {
-				continue
-			}
-			totalWeight += attr.weight
-		}
-
-		// If no queues, break
-		if totalWeight == 0 {
-			klog.V(4).Infof("Exiting when total weight is 0")
-			break
-		}
-
-		oldRemaining := remaining.Clone()
-		// Calculates the deserved of each Queue.
-		// increasedDeserved is the increased value for attr.deserved of processed queues
-		// decreasedDeserved is the decreased value for attr.deserved of processed queues
-		increasedDeserved := api.EmptyResource()
-		decreasedDeserved := api.EmptyResource()
-		for _, attr := range pp.queueOpts {
-			klog.V(4).Infof("Considering Queue <%s>: weight <%d>, total weight <%d>.",
-				attr.name, attr.weight, totalWeight)
-			if _, found := meet[attr.queueID]; found {
-				continue
-			}
-
-			oldDeserved := attr.deserved.Clone()
-			attr.deserved.Add(remaining.Clone().Multi(float64(attr.weight) / float64(totalWeight)))
-
-			if attr.realCapability != nil {
-				attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
-			}
-			attr.deserved.MinDimensionResource(attr.request, api.Zero)
-
-			attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
-			pp.updateShare(attr)
-			klog.V(4).Infof("Format queue <%s> deserved resource to <%v>", attr.name, attr.deserved)
-
-			if attr.request.LessEqual(attr.deserved, api.Zero) {
-				meet[attr.queueID] = struct{}{}
-				klog.V(4).Infof("queue <%s> is meet", attr.name)
-			} else if reflect.DeepEqual(attr.deserved, oldDeserved) {
-				meet[attr.queueID] = struct{}{}
-				klog.V(4).Infof("queue <%s> is meet cause of the capability", attr.name)
-			}
-
-			klog.V(4).Infof("The attributes of queue <%s> in proportion: deserved <%v>, realCapability <%v>, allocate <%v>, request <%v>, elastic <%v>, share <%0.2f>",
-				attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
-
-			increased, decreased := attr.deserved.Diff(oldDeserved, api.Zero)
-			increasedDeserved.Add(increased)
-			decreasedDeserved.Add(decreased)
-
-			// Record metrics
-			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
-		}
-
-		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
-		klog.V(4).Infof("Remaining resource is  <%s>", remaining)
-		if remaining.IsEmpty() || reflect.DeepEqual(remaining, oldRemaining) {
-			klog.V(4).Infof("Exiting when remaining is empty or no queue has more resource request:  <%v>", remaining)
-			break
-		}
-	}
-
-	ssn.AddQueueOrderFn(pp.Name(), func(l, r interface{}) int {
+	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
-		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
+		if cp.queueOpts[lv.UID].share == cp.queueOpts[rv.UID].share {
 			return 0
 		}
 
-		if pp.queueOpts[lv.UID].share < pp.queueOpts[rv.UID].share {
+		if cp.queueOpts[lv.UID].share < cp.queueOpts[rv.UID].share {
 			return -1
 		}
 
 		return 1
 	})
 
-	ssn.AddReclaimableFn(pp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+	ssn.AddReclaimableFn(cp.Name(), func(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
 		allocations := map[api.QueueID]*api.Resource{}
 
 		for _, reclaimee := range reclaimees {
 			job := ssn.Jobs[reclaimee.Job]
-			attr := pp.queueOpts[job.Queue]
+			attr := cp.queueOpts[job.Queue]
 
 			if _, found := allocations[job.Queue]; !found {
 				allocations[job.Queue] = attr.allocated.Clone()
@@ -283,46 +232,50 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				continue
 			}
 
-			if !allocated.LessEqual(attr.deserved, api.Zero) {
-				allocated.Sub(reclaimee.Resreq)
-				victims = append(victims, reclaimee)
+			exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
+			// When scalar resource not specified in deserved such as "pods", we should skip it and consider it as infinity,
+			// so the following first condition will be true and the current queue will not be reclaimed.
+			if allocated.LessEqual(attr.deserved, api.Infinity) || !attr.guarantee.LessEqual(exceptReclaimee, api.Zero) {
+				continue
 			}
+			allocated.Sub(reclaimee.Resreq)
+			victims = append(victims, reclaimee)
 		}
-		klog.V(4).Infof("Victims from proportion plugins are %+v", victims)
+		klog.V(4).InfoS("Victims from capacity plugin", "victims", victims, "reclaimer", reclaimer)
 		return victims, util.Permit
 	})
 
-	ssn.AddOverusedFn(pp.Name(), func(obj interface{}) bool {
+	ssn.AddPreemptiveFn(cp.Name(), func(obj interface{}) bool {
 		queue := obj.(*api.QueueInfo)
-		attr := pp.queueOpts[queue.UID]
+		attr := cp.queueOpts[queue.UID]
 
 		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
 		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
-			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>, share <%v>",
+			klog.V(3).Infof("Queue <%v> can not reclaim, deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)
 		}
 
-		return overused
+		return !overused
 	})
 
-	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
-		attr := pp.queueOpts[queue.UID]
+	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		attr := cp.queueOpts[queue.UID]
 
-		free, _ := attr.deserved.Diff(attr.allocated, api.Zero)
+		free, _ := attr.realCapability.Diff(attr.allocated, api.Zero)
 		allocatable := candidate.Resreq.LessEqual(free, api.Zero)
 		if !allocatable {
-			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
-				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
+			klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
+				queue.Name, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq)
 		}
 
 		return allocatable
 	})
 
-	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
+	ssn.AddJobEnqueueableFn(cp.Name(), func(obj interface{}) int {
 		job := obj.(*api.JobInfo)
 		queueID := job.Queue
-		attr := pp.queueOpts[queueID]
+		attr := cp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
 		// If no capability is set, always enqueue the job.
 		if attr.realCapability == nil {
@@ -363,39 +316,38 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
 			job := ssn.Jobs[event.Task.Job]
-			attr := pp.queueOpts[job.Queue]
+			attr := cp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
 
-			pp.updateShare(attr)
+			cp.updateShare(attr)
 
-			klog.V(4).Infof("Proportion AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			klog.V(4).Infof("Capacity AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			job := ssn.Jobs[event.Task.Job]
-			attr := pp.queueOpts[job.Queue]
+			attr := cp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
 
-			pp.updateShare(attr)
+			cp.updateShare(attr)
 
-			klog.V(4).Infof("Proportion EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			klog.V(4).Infof("Capacity EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 	})
 }
 
-func (pp *proportionPlugin) OnSessionClose(ssn *framework.Session) {
-	pp.totalResource = nil
-	pp.totalGuarantee = nil
-	pp.queueOpts = nil
+func (cp *capacityPlugin) OnSessionClose(ssn *framework.Session) {
+	cp.totalResource = nil
+	cp.totalGuarantee = nil
+	cp.queueOpts = nil
 }
 
-func (pp *proportionPlugin) updateShare(attr *queueAttr) {
+func (cp *capacityPlugin) updateShare(attr *queueAttr) {
 	res := float64(0)
 
-	// TODO(k82cn): how to handle fragment issues?
 	for _, rn := range attr.deserved.ResourceNames() {
 		share := helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn))
 		if share > res {
