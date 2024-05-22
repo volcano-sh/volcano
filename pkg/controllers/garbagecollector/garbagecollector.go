@@ -63,6 +63,8 @@ type gccontroller struct {
 
 	// queues that need to be updated.
 	queue workqueue.RateLimitingInterface
+
+	workers uint32
 }
 
 func (gc *gccontroller) Name() string {
@@ -81,6 +83,7 @@ func (gc *gccontroller) Initialize(opt *framework.ControllerOption) error {
 	gc.jobLister = jobInformer.Lister()
 	gc.jobSynced = jobInformer.Informer().HasSynced
 	gc.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	gc.workers = opt.WorkerThreadsForGC
 
 	jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    gc.addJob,
@@ -105,7 +108,9 @@ func (gc *gccontroller) Run(stopCh <-chan struct{}) {
 		}
 	}
 
-	go wait.Until(gc.worker, time.Second, stopCh)
+	for i := 0; i < int(gc.workers); i++ {
+		go wait.Until(gc.worker, time.Second, stopCh)
+	}
 
 	<-stopCh
 }

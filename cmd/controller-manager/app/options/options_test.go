@@ -76,6 +76,7 @@ func TestAddFlags(t *testing.T) {
 		},
 		LockObjectNamespace: defaultLockObjectNamespace,
 		WorkerThreadsForPG:  5,
+		WorkerThreadsForGC:  1,
 	}
 
 	if !reflect.DeepEqual(expected, s) {
