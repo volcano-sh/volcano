@@ -18,6 +18,7 @@ package api
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -345,21 +346,28 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 
 // setNodeOthersResource initialize sharable devices
 func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
+	if node == nil {
+		return
+	}
+
 	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
 	ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
-	IgnoredDevicesList.Set(
-		ni.Others[GPUSharingDevice].(Devices).GetIgnoredDevices(),
-		ni.Others[vgpu.DeviceName].(Devices).GetIgnoredDevices(),
-	)
+
+	for _, val := range ni.Others {
+		if dev, ok := val.(Devices); ok {
+			IgnoredDevicesList.Set(dev.GetIgnoredDevices())
+		}
+	}
 }
 
 // setNode sets kubernetes node object to nodeInfo object without assertion
 func (ni *NodeInfo) setNode(node *v1.Node) {
+	ni.Name = node.Name
+
 	ni.setOversubscription(node)
 	ni.setNodeOthersResource(node)
 	ni.setRevocableZone(node)
 
-	ni.Name = node.Name
 	ni.Node = node
 
 	ni.Allocatable = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)
@@ -493,14 +501,20 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 
 // addResource is used to add sharable devices
 func (ni *NodeInfo) addResource(pod *v1.Pod) {
-	ni.Others[GPUSharingDevice].(Devices).AddResource(pod)
-	ni.Others[vgpu.DeviceName].(Devices).AddResource(pod)
+	for _, val := range ni.Others {
+		if dev, ok := val.(Devices); ok && !reflect.ValueOf(dev).IsNil() {
+			dev.AddResource(pod)
+		}
+	}
 }
 
 // subResource is used to subtract sharable devices
 func (ni *NodeInfo) subResource(pod *v1.Pod) {
-	ni.Others[GPUSharingDevice].(Devices).SubResource(pod)
-	ni.Others[vgpu.DeviceName].(Devices).SubResource(pod)
+	for _, val := range ni.Others {
+		if dev, ok := val.(Devices); ok && !reflect.ValueOf(dev).IsNil() {
+			dev.SubResource(pod)
+		}
+	}
 }
 
 // UpdateTask is used to update a task in nodeInfo object.

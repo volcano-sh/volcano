@@ -57,9 +57,6 @@ func NewGPUDevice(id int, mem uint) *GPUDevice {
 }
 
 func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
-	if node == nil {
-		return nil
-	}
 	memory, ok := node.Status.Capacity[VolcanoGPUResource]
 	if !ok {
 		return nil

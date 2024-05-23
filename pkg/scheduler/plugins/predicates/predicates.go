@@ -19,6 +19,7 @@ package predicates
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -230,6 +231,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			//predicate gpu sharing
 			for _, val := range api.RegisteredDevices {
 				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
+					if reflect.ValueOf(devices).IsNil() {
+						continue
+					}
 					if !devices.HasDeviceRequest(pod) {
 						continue
 					}
@@ -264,6 +268,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			for _, val := range api.RegisteredDevices {
 				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
+					if reflect.ValueOf(devices).IsNil() {
+						continue
+					}
 					if !devices.HasDeviceRequest(pod) {
 						continue
 					}
