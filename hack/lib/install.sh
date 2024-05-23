@@ -59,7 +59,7 @@ function check-prerequisites {
     echo -e "\033[31mERROR\033[0m: kubectl not installed"
     exit 1
   else
-    echo -n "Found kubectl, version: " && kubectl version --short --client
+    echo -n "Found kubectl, version: " && kubectl version --client
   fi
 }
 
