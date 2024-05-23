@@ -60,8 +60,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 
 		if queue, found := ssn.Queues[job.Queue]; !found {
-			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>",
-				job.Queue, job.Namespace, job.Name)
+			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>", job.Queue, job.Namespace, job.Name)
 			continue
 		} else if _, existed := queueMap[queue.UID]; !existed {
 			klog.V(4).Infof("Added Queue <%s> for Job <%s/%s>", queue.Name, job.Namespace, job.Name)
@@ -137,8 +136,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 					task.Namespace, task.Name, n.Name, statusSets.Message())
 				continue
 			}
-			klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
-				task.Namespace, task.Name, n.Name)
+			klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.", task.Namespace, task.Name, n.Name)
 
 			var reclaimees []*api.TaskInfo
 			for _, task := range n.Tasks {
