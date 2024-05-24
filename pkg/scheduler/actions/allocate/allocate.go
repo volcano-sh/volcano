@@ -246,8 +246,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 
 		// Allocate idle resource to the task.
 		if task.InitResreq.LessEqual(bestNode.Idle, api.Zero) {
-			klog.V(3).Infof("Binding Task <%v/%v> to node <%v>",
-				task.Namespace, task.Name, bestNode.Name)
+			klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, bestNode.Name)
 			if err := stmt.Allocate(task, bestNode); err != nil {
 				klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 					task.UID, bestNode.Name, ssn.UID, err)

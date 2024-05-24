@@ -144,14 +144,14 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 			usageStatus.Code = api.UnschedulableAndUnresolvable
 			usageStatus.Reason = NodeUsageCPUExtend
 			predicateStatus = append(predicateStatus, usageStatus)
-			return predicateStatus, fmt.Errorf("Plugin %s predicates failed, because of %s", up.Name(), NodeUsageCPUExtend)
+			return predicateStatus, fmt.Errorf("plugin %s predicates failed, because of %s", up.Name(), NodeUsageCPUExtend)
 		}
 		if node.ResourceUsage.MEMUsageAvg[up.period] > up.memThresholds {
 			klog.V(3).Infof("Node %s mem usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.MEMUsageAvg[up.period], up.memThresholds)
 			usageStatus.Code = api.UnschedulableAndUnresolvable
 			usageStatus.Reason = NodeUsageMemoryExtend
 			predicateStatus = append(predicateStatus, usageStatus)
-			return predicateStatus, fmt.Errorf("Plugin %s predicates failed, because of %s", up.Name(), NodeUsageMemoryExtend)
+			return predicateStatus, fmt.Errorf("plugin %s predicates failed, because of %s", up.Name(), NodeUsageMemoryExtend)
 		}
 
 		klog.V(4).Infof("Usage plugin filter for task %s/%s on node %s pass.", task.Namespace, task.Name, node.Name)
@@ -180,7 +180,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 			return 0, nil
 		}
 		memoryScore := (100 - memoryUsage) / 100 * float64(up.memoryWeight)
-		score = (cpuScore + memoryScore) / float64((up.cpuWeight + up.memoryWeight))
+		score = (cpuScore + memoryScore) / float64(up.cpuWeight+up.memoryWeight)
 		score *= float64(k8sFramework.MaxNodeScore * int64(up.usageWeight))
 		klog.V(4).Infof("Node %s score for task %s is %f.", node.Name, task.Name, score)
 		return score, nil
