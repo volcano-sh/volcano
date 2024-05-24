@@ -568,6 +568,7 @@ func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 func (ji *JobInfo) Clone() *JobInfo {
 	info := &JobInfo{
 		UID:       ji.UID,
+		PgUID:     ji.PgUID,
 		Name:      ji.Name,
 		Namespace: ji.Namespace,
 		Queue:     ji.Queue,
