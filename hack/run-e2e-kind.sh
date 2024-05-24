@@ -30,17 +30,13 @@ export CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
 
 export KIND_OPT=${KIND_OPT:="--config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
 
-function get-k8s-server-version {
-    echo $(kubectl version --short=true | grep Server | sed "s/.*: v//" | tr "." " ")
-}
 
 function install-volcano {
   install-helm
 
   # judge crd version
-  serverVersion=($(get-k8s-server-version))
-  major=${serverVersion[0]}
-  minor=${serverVersion[1]}
+  major=$(kubectl version --output yaml | awk '/serverVersion/,0' |grep -E 'major:' | awk '{print $2}' | tr "\"" " ")
+  minor=$(kubectl version --output yaml | awk '/serverVersion/,0' |grep -E 'minor:' | awk '{print $2}' | tr "\"" " ")
   crd_version="v1"
   # if k8s version less than v1.18, crd version use v1beta
   if [ "$major" -le "1" ]; then
