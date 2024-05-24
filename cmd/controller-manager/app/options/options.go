@@ -19,6 +19,7 @@ package options
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -38,6 +39,7 @@ const (
 	defaultLockObjectNamespace = "volcano-system"
 	defaultPodGroupWorkers     = 5
 	defaultGCWorkers           = 1
+	defaultControllers         = "*"
 )
 
 // ServerOption is the main context object for the controllers.
@@ -75,6 +77,13 @@ type ServerOption struct {
 	// WorkerThreadsForGC is the number of threads for recycling jobs
 	// The larger the number, the faster the job recycling, but requires more CPU load.
 	WorkerThreadsForGC uint32
+	// Controllers specify controllers to set up.
+	// Case1: Use '*' for all controllers,
+	// Case2: "+gc-controller,+job-controller,+jobflow-controller,+jobtemplate-controller,+pg-controller,+queue-controller"
+	// to enable specific controllers,
+	// Case3: "-gc-controller,-job-controller,-jobflow-controller,-jobtemplate-controller,-pg-controller,-queue-controller"
+	// to disable specific controllers,
+	Controllers []string
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -85,7 +94,7 @@ func NewServerOption() *ServerOption {
 }
 
 // AddFlags adds flags for a specific CMServer to the specified FlagSet.
-func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
+func (s *ServerOption) AddFlags(fs *pflag.FlagSet, knownControllers []string) {
 	fs.StringVar(&s.KubeClientOptions.Master, "master", s.KubeClientOptions.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 	fs.StringVar(&s.KubeClientOptions.KubeConfig, "kubeconfig", s.KubeClientOptions.KubeConfig, "Path to kubeconfig file with authorization and master location information.")
 	fs.StringVar(&s.CaCertFile, "ca-cert-file", s.CaCertFile, "File containing the x509 Certificate for HTTPS.")
@@ -107,11 +116,44 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.InheritOwnerAnnotations, "inherit-owner-annotations", true, "Enable inherit owner annotations for pods when create podgroup; it is enabled by default")
 	fs.Uint32Var(&s.WorkerThreadsForPG, "worker-threads-for-podgroup", defaultPodGroupWorkers, "The number of threads syncing podgroup operations. The larger the number, the faster the podgroup processing, but requires more CPU load.")
 	fs.Uint32Var(&s.WorkerThreadsForGC, "worker-threads-for-gc", defaultGCWorkers, "The number of threads for recycling jobs. The larger the number, the faster the job recycling, but requires more CPU load.")
+	fs.StringSliceVar(&s.Controllers, "controllers", []string{defaultControllers}, fmt.Sprintf("Specify controller gates. Use '*' for all controllers, all knownController: %s ,and we can use "+
+		"'-' to disable controllers, e.g. \"-job-controller,-queue-controller\" to disable job and queue controllers.", knownControllers))
 }
 
-// CheckOptionOrDie check leader election flag when LeaderElection is enabled.
+// CheckOptionOrDie checks the option and returns error if it's invalid
 func (s *ServerOption) CheckOptionOrDie() error {
+	// check controllers option
+	if err := s.checkControllers(); err != nil {
+		return err
+	}
+	// check leader election flag when LeaderElection is enabled.
 	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
+}
+
+// checkControllers checks the controllers option and returns error if it's invalid
+func (s *ServerOption) checkControllers() error {
+	existenceMap := make(map[string]bool)
+	for _, c := range s.Controllers {
+		if c == "*" {
+			// wildcard '*' is not allowed to be combined with other input
+			if len(s.Controllers) > 1 {
+				return fmt.Errorf("wildcard '*' cannot be combined with other input")
+			}
+		} else {
+			if strings.HasPrefix(c, "-") || strings.HasPrefix(c, "+") {
+				if existenceMap[c[1:]] {
+					return fmt.Errorf("controllers option %s cannot have both '-' and '+' prefixes", c)
+				}
+				existenceMap[c[1:]] = true
+			} else {
+				if existenceMap[c] {
+					return fmt.Errorf("controllers option %s cannot have both '-' and '+' prefixes", c)
+				}
+				existenceMap[c] = true
+			}
+		}
+	}
+	return nil
 }
 
 // readCAFiles read data from ca file path
