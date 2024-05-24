@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sort"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -30,6 +31,7 @@ import (
 
 	"volcano.sh/volcano/cmd/controller-manager/app"
 	"volcano.sh/volcano/cmd/controller-manager/app/options"
+	"volcano.sh/volcano/pkg/controllers/framework"
 	_ "volcano.sh/volcano/pkg/controllers/garbagecollector"
 	_ "volcano.sh/volcano/pkg/controllers/job"
 	_ "volcano.sh/volcano/pkg/controllers/jobflow"
@@ -48,8 +50,17 @@ func main() {
 
 	fs := pflag.CommandLine
 	s := options.NewServerOption()
-
-	s.AddFlags(fs)
+	// knownControllers is a list of all known controllers.
+	var knownControllers = func() []string {
+		controllerNames := []string{}
+		fn := func(controller framework.Controller) {
+			controllerNames = append(controllerNames, controller.Name())
+		}
+		framework.ForeachController(fn)
+		sort.Strings(controllerNames)
+		return controllerNames
+	}
+	s.AddFlags(fs, knownControllers())
 	utilfeature.DefaultMutableFeatureGate.AddFlag(fs)
 
 	commonutil.LeaderElectionDefault(&s.LeaderElection)
