@@ -24,7 +24,6 @@ import (
 	"github.com/spf13/pflag"
 	_ "go.uber.org/automaxprocs"
 
-	"k8s.io/apimachinery/pkg/util/wait"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 
@@ -51,7 +50,7 @@ func main() {
 
 	cliflag.InitFlags()
 
-	go wait.Until(klog.Flush, *logFlushFreq, wait.NeverStop)
+	klog.StartFlushDaemon(*logFlushFreq)
 	defer klog.Flush()
 
 	if err := config.CheckPortOrDie(); err != nil {
