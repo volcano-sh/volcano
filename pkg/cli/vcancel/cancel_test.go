@@ -17,6 +17,7 @@ limitations under the License.
 package vcancel
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -58,7 +59,7 @@ func TestCancelJobJob(t *testing.T) {
 	}
 
 	for i, testcase := range testCases {
-		err := CancelJob()
+		err := CancelJob(context.TODO())
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}

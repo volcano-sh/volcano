@@ -17,6 +17,7 @@ limitations under the License.
 package queue
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -70,7 +71,7 @@ func TestDeleteQueue(t *testing.T) {
 	for _, testCase := range testCases {
 		deleteQueueFlags.Name = testCase.QueueName
 
-		err := DeleteQueue()
+		err := DeleteQueue(context.TODO())
 		if false == reflect.DeepEqual(err, testCase.ExpectValue) {
 			t.Errorf("Case '%s' failed, expected: '%v', got '%v'", testCase.Name, testCase.ExpectValue, err)
 		}

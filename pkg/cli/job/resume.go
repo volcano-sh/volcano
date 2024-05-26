@@ -17,6 +17,7 @@ limitations under the License.
 package job
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -26,7 +27,7 @@ import (
 )
 
 type resumeFlags struct {
-	commonFlags
+	util.CommonFlags
 
 	Namespace string
 	JobName   string
@@ -36,14 +37,14 @@ var resumeJobFlags = &resumeFlags{}
 
 // InitResumeFlags init resume command flags.
 func InitResumeFlags(cmd *cobra.Command) {
-	initFlags(cmd, &resumeJobFlags.commonFlags)
+	util.InitFlags(cmd, &resumeJobFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&resumeJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&resumeJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
 // ResumeJob resumes the job.
-func ResumeJob() error {
+func ResumeJob(ctx context.Context) error {
 	config, err := util.BuildConfig(resumeJobFlags.Master, resumeJobFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -53,7 +54,7 @@ func ResumeJob() error {
 		return err
 	}
 
-	return createJobCommand(config,
+	return createJobCommand(ctx, config,
 		resumeJobFlags.Namespace, resumeJobFlags.JobName,
 		v1alpha1.ResumeJobAction)
 }

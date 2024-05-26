@@ -17,6 +17,7 @@ limitations under the License.
 package job
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -26,7 +27,7 @@ import (
 )
 
 type suspendFlags struct {
-	commonFlags
+	util.CommonFlags
 
 	Namespace string
 	JobName   string
@@ -36,14 +37,14 @@ var suspendJobFlags = &suspendFlags{}
 
 // InitSuspendFlags init suspend related flags.
 func InitSuspendFlags(cmd *cobra.Command) {
-	initFlags(cmd, &suspendJobFlags.commonFlags)
+	util.InitFlags(cmd, &suspendJobFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&suspendJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&suspendJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
 // SuspendJob suspends the job.
-func SuspendJob() error {
+func SuspendJob(ctx context.Context) error {
 	config, err := util.BuildConfig(suspendJobFlags.Master, suspendJobFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -54,7 +55,7 @@ func SuspendJob() error {
 		return err
 	}
 
-	return createJobCommand(config,
+	return createJobCommand(ctx, config,
 		suspendJobFlags.Namespace, suspendJobFlags.JobName,
 		v1alpha1.AbortJobAction)
 }

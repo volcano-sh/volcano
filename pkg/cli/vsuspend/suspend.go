@@ -17,6 +17,7 @@ limitations under the License.
 package vsuspend
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -43,7 +44,7 @@ func InitSuspendFlags(cmd *cobra.Command) {
 }
 
 // SuspendJob suspends the job.
-func SuspendJob() error {
+func SuspendJob(ctx context.Context) error {
 	config, err := util.BuildConfig(suspendJobFlags.Master, suspendJobFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -54,7 +55,7 @@ func SuspendJob() error {
 		return err
 	}
 
-	return util.CreateJobCommand(config,
+	return util.CreateJobCommand(ctx, config,
 		suspendJobFlags.Namespace, suspendJobFlags.JobName,
 		v1alpha1.AbortJobAction)
 }

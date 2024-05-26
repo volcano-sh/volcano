@@ -46,7 +46,7 @@ func InitGetFlags(cmd *cobra.Command) {
 }
 
 // GetQueue gets a queue.
-func GetQueue() error {
+func GetQueue(ctx context.Context) error {
 	config, err := buildConfig(getQueueFlags.Master, getQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -58,7 +58,7 @@ func GetQueue() error {
 	}
 
 	queueClient := versioned.NewForConfigOrDie(config)
-	queue, err := queueClient.SchedulingV1beta1().Queues().Get(context.TODO(), getQueueFlags.Name, metav1.GetOptions{})
+	queue, err := queueClient.SchedulingV1beta1().Queues().Get(ctx, getQueueFlags.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}

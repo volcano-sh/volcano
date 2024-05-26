@@ -37,7 +37,7 @@ import (
 )
 
 type viewFlags struct {
-	commonFlags
+	util.CommonFlags
 
 	Namespace string
 	JobName   string
@@ -54,14 +54,14 @@ var viewJobFlags = &viewFlags{}
 
 // InitViewFlags init the view command flags.
 func InitViewFlags(cmd *cobra.Command) {
-	initFlags(cmd, &viewJobFlags.commonFlags)
+	util.InitFlags(cmd, &viewJobFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&viewJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&viewJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
 // ViewJob gives full details of the job.
-func ViewJob() error {
+func ViewJob(ctx context.Context) error {
 	config, err := util.BuildConfig(viewJobFlags.Master, viewJobFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -72,7 +72,7 @@ func ViewJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	job, err := jobClient.BatchV1alpha1().Jobs(viewJobFlags.Namespace).Get(context.TODO(), viewJobFlags.JobName, metav1.GetOptions{})
+	job, err := jobClient.BatchV1alpha1().Jobs(viewJobFlags.Namespace).Get(ctx, viewJobFlags.JobName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func ViewJob() error {
 		return nil
 	}
 	PrintJobInfo(job, os.Stdout)
-	PrintEvents(GetEvents(config, job), os.Stdout)
+	PrintEvents(GetEvents(ctx, config, job), os.Stdout)
 	return nil
 }
 
@@ -236,13 +236,13 @@ func PrintEvents(events []coreV1.Event, writer io.Writer) {
 }
 
 // GetEvents get the job event by config.
-func GetEvents(config *rest.Config, job *v1alpha1.Job) []coreV1.Event {
+func GetEvents(ctx context.Context, config *rest.Config, job *v1alpha1.Job) []coreV1.Event {
 	kubernetes, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return nil
 	}
-	events, _ := kubernetes.CoreV1().Events(viewJobFlags.Namespace).List(context.TODO(), metav1.ListOptions{})
+	events, _ := kubernetes.CoreV1().Events(viewJobFlags.Namespace).List(ctx, metav1.ListOptions{})
 	var jobEvents []coreV1.Event
 	for _, v := range events.Items {
 		if strings.HasPrefix(v.ObjectMeta.Name, job.Name+".") {

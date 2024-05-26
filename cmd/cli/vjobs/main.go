@@ -31,7 +31,7 @@ func main() {
 		Short: "view job information",
 		Long:  `view information of a job with specified name or jobs from the same namespace`,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckError(cmd, vjobs.ViewJob())
+			util.CheckError(cmd, vjobs.ViewJob(cmd.Context()))
 		},
 	}
 

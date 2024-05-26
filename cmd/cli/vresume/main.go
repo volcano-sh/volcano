@@ -31,7 +31,7 @@ func main() {
 		Short: "resume a job",
 		Long:  `resume an aborted job with specified name in default or specified namespace`,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckError(cmd, vresume.ResumeJob())
+			util.CheckError(cmd, vresume.ResumeJob(cmd.Context()))
 		},
 	}
 

@@ -17,6 +17,7 @@ limitations under the License.
 package queue
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -97,7 +98,7 @@ func TestCreateQueue(t *testing.T) {
 		},
 	}
 	for _, testcase := range testCases {
-		err := CreateQueue()
+		err := CreateQueue(context.TODO())
 		if err != nil {
 			t.Errorf("(%s): expected: %v, got %v ", testcase.Name, testcase.ExpectValue, err)
 		}
@@ -129,7 +130,7 @@ func TestGetQueue(t *testing.T) {
 	}
 	for _, testcase := range testCases {
 		getQueueFlags.Name = testcase.QueueName
-		err := GetQueue()
+		err := GetQueue(context.TODO())
 		if err != nil && (err.Error() != testcase.ExpectValue.Error()) {
 			t.Errorf("(%s): expected: %v, got %v ", testcase.Name, testcase.ExpectValue, err)
 		}
@@ -154,7 +155,7 @@ func TestListQueue_empty(t *testing.T) {
 		},
 	}
 	for _, testcase := range testCases {
-		err := ListQueue()
+		err := ListQueue(context.TODO())
 		if err != nil && (err.Error() != testcase.ExpectValue.Error()) {
 			t.Errorf("(%s): expected: %v, got %v ", testcase.Name, testcase.ExpectValue, err)
 		}
@@ -185,7 +186,7 @@ func TestListQueue_nonempty(t *testing.T) {
 		},
 	}
 	for _, testcase := range testCases {
-		err := ListQueue()
+		err := ListQueue(context.TODO())
 		if err != nil && err.Error() != testcase.ExpectValue.Error() {
 			t.Errorf("(%s): expected: %v, got %v ", testcase.Name, testcase.ExpectValue, err)
 		}

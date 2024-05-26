@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
+	"volcano.sh/volcano/cmd/cli/util"
 	"volcano.sh/volcano/pkg/cli/job"
 )
 
@@ -12,65 +13,64 @@ func buildJobCmd() *cobra.Command {
 		Short: "vcctl command line operation job",
 	}
 
-	jobRunCmd := &cobra.Command{
-		Use:   "run",
-		Short: "run job by parameters from the command line",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, job.RunJob())
+	jobCommandMap := map[string]struct {
+		Short       string
+		RunFunction func(cmd *cobra.Command, args []string)
+		InitFlags   func(cmd *cobra.Command)
+	}{
+		"run": {
+			Short: "run job by parameters from the command line",
+			RunFunction: func(cmd *cobra.Command, args []string) {
+				util.CheckError(cmd, job.RunJob(cmd.Context()))
+			},
+			InitFlags: job.InitRunFlags,
+		},
+		"list": {
+			Short: "list job information",
+			RunFunction: func(cmd *cobra.Command, args []string) {
+				util.CheckError(cmd, job.ListJobs(cmd.Context()))
+			},
+			InitFlags: job.InitListFlags,
+		},
+		"view": {
+			Short: "show job information",
+			RunFunction: func(cmd *cobra.Command, args []string) {
+				util.CheckError(cmd, job.ViewJob(cmd.Context()))
+			},
+			InitFlags: job.InitViewFlags,
+		},
+		"suspend": {
+			Short: "abort a job",
+			RunFunction: func(cmd *cobra.Command, args []string) {
+				util.CheckError(cmd, job.SuspendJob(cmd.Context()))
+			},
+			InitFlags: job.InitSuspendFlags,
+		},
+		"resume": {
+			Short: "resume a job",
+			RunFunction: func(cmd *cobra.Command, args []string) {
+				util.CheckError(cmd, job.ResumeJob(cmd.Context()))
+			},
+			InitFlags: job.InitResumeFlags,
+		},
+		"delete": {
+			Short: "delete a job",
+			RunFunction: func(cmd *cobra.Command, args []string) {
+				util.CheckError(cmd, job.DeleteJob(cmd.Context()))
+			},
+			InitFlags: job.InitDeleteFlags,
 		},
 	}
-	job.InitRunFlags(jobRunCmd)
-	jobCmd.AddCommand(jobRunCmd)
 
-	jobListCmd := &cobra.Command{
-		Use:   "list",
-		Short: "list job information",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, job.ListJobs())
-		},
+	for command, config := range jobCommandMap {
+		cmd := &cobra.Command{
+			Use:   command,
+			Short: config.Short,
+			Run:   config.RunFunction,
+		}
+		config.InitFlags(cmd)
+		jobCmd.AddCommand(cmd)
 	}
-	job.InitListFlags(jobListCmd)
-	jobCmd.AddCommand(jobListCmd)
-
-	jobViewCmd := &cobra.Command{
-		Use:   "view",
-		Short: "show job information",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, job.ViewJob())
-		},
-	}
-	job.InitViewFlags(jobViewCmd)
-	jobCmd.AddCommand(jobViewCmd)
-
-	jobSuspendCmd := &cobra.Command{
-		Use:   "suspend",
-		Short: "abort a job",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, job.SuspendJob())
-		},
-	}
-	job.InitSuspendFlags(jobSuspendCmd)
-	jobCmd.AddCommand(jobSuspendCmd)
-
-	jobResumeCmd := &cobra.Command{
-		Use:   "resume",
-		Short: "resume a job",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, job.ResumeJob())
-		},
-	}
-	job.InitResumeFlags(jobResumeCmd)
-	jobCmd.AddCommand(jobResumeCmd)
-
-	jobDelCmd := &cobra.Command{
-		Use:   "delete",
-		Short: "delete a job",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, job.DeleteJob())
-		},
-	}
-	job.InitDeleteFlags(jobDelCmd)
-	jobCmd.AddCommand(jobDelCmd)
 
 	return jobCmd
 }

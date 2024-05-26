@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 type commonFlags struct {
@@ -35,7 +37,7 @@ func initFlags(cmd *cobra.Command, cf *commonFlags) {
 
 	kubeConfFile := os.Getenv("KUBECONFIG")
 	if kubeConfFile == "" {
-		if home := homeDir(); home != "" {
+		if home := util.HomeDir(); home != "" {
 			kubeConfFile = filepath.Join(home, ".kube", "config")
 		}
 	}

@@ -46,7 +46,7 @@ func InitCancelFlags(cmd *cobra.Command) {
 }
 
 // CancelJob cancel the job.
-func CancelJob() error {
+func CancelJob(ctx context.Context) error {
 	config, err := util.BuildConfig(cancelJobFlags.Master, cancelJobFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -58,7 +58,7 @@ func CancelJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	err = jobClient.BatchV1alpha1().Jobs(cancelJobFlags.Namespace).Delete(context.TODO(), cancelJobFlags.JobName, metav1.DeleteOptions{})
+	err = jobClient.BatchV1alpha1().Jobs(cancelJobFlags.Namespace).Delete(ctx, cancelJobFlags.JobName, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}
