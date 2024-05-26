@@ -8,7 +8,7 @@ DRA(Dynamic resource allocation) is the new way of requesting access to resource
 
 DRA allows one to move away from the limited  "countable" API  provided by device plugins today. Volcano's implementation of device plugins is present in `https://github.com/volcano-sh/devices`.
 
-The KEP for k8s DRA implemenation: https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/4381-dra-structured-parameters/README.md
+The KEP for k8s DRA implementation: https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/3063-dynamic-resource-allocation/README.md
 
 ## Goals
 
@@ -50,6 +50,7 @@ Testing strategy: use k8's existing [test driver](https://github.com/kubernetes/
 
 Future work:
 1. [structured parameters](https://github.com/kubernetes/enhancements/issues/4381): support claim allocation through scheduler without relying on third-party driver.
+KEP for reference: https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/4381-dra-structured-parameters/README.md
 
 
 
