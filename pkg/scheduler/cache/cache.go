@@ -278,16 +278,16 @@ func podConditionHaveUpdate(status *v1.PodStatus, condition *v1.PodCondition) bo
 	return !isEqual
 }
 
-// UpdatePodCondition will Update pod with podCondition
-func (su *defaultStatusUpdater) UpdatePodCondition(pod *v1.Pod, condition *v1.PodCondition) (*v1.Pod, error) {
-	klog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
-	if podutil.UpdatePodCondition(&pod.Status, condition) {
-		return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
-	}
-	return pod, nil
+func podNominatedNodeNameNeedUpdate(status *v1.PodStatus, nodeName string) bool {
+	return status.NominatedNodeName != nodeName
 }
 
-// UpdatePodGroup will Update pod with podCondition
+// UpdatePodStatus will Update pod status
+func (su *defaultStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
+	return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
+}
+
+// UpdatePodGroup will Update PodGroup
 func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*schedulingapi.PodGroup, error) {
 	podgroup := &vcv1beta1.PodGroup{}
 	if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
@@ -982,7 +982,7 @@ func (sc *SchedulerCache) EventRecorder() record.EventRecorder {
 }
 
 // taskUnschedulable updates pod status of pending task
-func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason, message string) error {
+func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason, message, nominatedNodeName string) error {
 	pod := task.Pod
 
 	condition := &v1.PodCondition{
@@ -992,14 +992,28 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 		Message: message,
 	}
 
-	if podConditionHaveUpdate(&pod.Status, condition) {
+	updateCond := podConditionHaveUpdate(&pod.Status, condition)
+	updateNomiNode := podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
+
+	if updateCond || updateNomiNode {
 		pod = pod.DeepCopy()
+
+		if updateCond && podutil.UpdatePodCondition(&pod.Status, condition) {
+			klog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
+		}
+
+		// if nominatedNode field changed, we should update it to the pod status, for k8s
+		// autoscaler will check this field and ignore this pod when scale up.
+		if updateNomiNode {
+			klog.V(3).Infof("Updating pod nominatedNodeName for %s/%s from (%s) to (%s)", pod.Namespace, pod.Name, pod.Status.NominatedNodeName, nominatedNodeName)
+			pod.Status.NominatedNodeName = nominatedNodeName
+		}
 
 		// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
 		// k8s core, so using the same string here.
 		// The reason field in PodCondition can be "Unschedulable"
 		sc.Recorder.Eventf(pod, v1.EventTypeWarning, "FailedScheduling", message)
-		if _, err := sc.StatusUpdater.UpdatePodCondition(pod, condition); err != nil {
+		if _, err := sc.StatusUpdater.UpdatePodStatus(pod); err != nil {
 			return err
 		}
 	} else {
@@ -1434,13 +1448,13 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 	// Update podCondition for tasks Allocated and Pending before job discarded
 	for _, status := range []schedulingapi.TaskStatus{schedulingapi.Allocated, schedulingapi.Pending, schedulingapi.Pipelined} {
 		for _, taskInfo := range job.TaskStatusIndex[status] {
-			reason, msg := job.TaskSchedulingReason(taskInfo.UID)
+			reason, msg, nominatedNodeName := job.TaskSchedulingReason(taskInfo.UID)
 			if len(msg) == 0 {
 				msg = baseErrorMessage
 			}
-			if err := sc.taskUnschedulable(taskInfo, reason, msg); err != nil {
-				klog.Errorf("Failed to update unschedulable task status <%s/%s>: %v",
-					taskInfo.Namespace, taskInfo.Name, err)
+			if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {
+				klog.ErrorS(err, "Failed to update unschedulable task status", "task", klog.KRef(taskInfo.Namespace, taskInfo.Name),
+					"reason", reason, "message", msg)
 			}
 		}
 	}
