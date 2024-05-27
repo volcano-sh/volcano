@@ -285,7 +285,7 @@ func TestTaskSchedulingReason(t *testing.T) {
 		for uid, exp := range test.expected {
 			msg := job.JobFitErrors
 			if uid != "pg" {
-				_, msg = job.TaskSchedulingReason(TaskID(uid))
+				_, msg, _ = job.TaskSchedulingReason(TaskID(uid))
 			}
 			t.Logf("case #%d, task %v, result: %s", i, uid, msg)
 			if msg != exp {
