@@ -35,6 +35,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/cmd/controller-manager/app/options"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	"volcano.sh/volcano/pkg/kube"
@@ -122,6 +123,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.KubeClient = kubeclientset.NewForConfigOrDie(config)
 	controllerOpt.VolcanoClient = vcclientset.NewForConfigOrDie(config)
 	controllerOpt.SharedInformerFactory = informers.NewSharedInformerFactory(controllerOpt.KubeClient, 0)
+	controllerOpt.VCSharedInformerFactory = informerfactory.NewSharedInformerFactory(controllerOpt.VolcanoClient, 0)
 	controllerOpt.InheritOwnerAnnotations = opt.InheritOwnerAnnotations
 	controllerOpt.WorkerThreadsForPG = opt.WorkerThreadsForPG
 	controllerOpt.WorkerThreadsForGC = opt.WorkerThreadsForGC
