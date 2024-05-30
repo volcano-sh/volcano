@@ -306,13 +306,13 @@ func (fe *FakeEvictor) Evict(p *v1.Pod, reason string) error {
 type FakeStatusUpdater struct {
 }
 
-// UpdatePodCondition is a empty function
-func (ftsu *FakeStatusUpdater) UpdatePodCondition(pod *v1.Pod, podCondition *v1.PodCondition) (*v1.Pod, error) {
+// UpdatePodStatus is an empty function
+func (ftsu *FakeStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
 	// do nothing here
 	return nil, nil
 }
 
-// UpdatePodGroup is a empty function
+// UpdatePodGroup is an empty function
 func (ftsu *FakeStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error) {
 	// do nothing here
 	return nil, nil
