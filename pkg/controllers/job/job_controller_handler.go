@@ -19,10 +19,10 @@ package job
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
@@ -97,7 +97,7 @@ func (cc *jobcontroller) updateJob(oldObj, newObj interface{}) {
 
 	// NOTE: Since we only reconcile job based on Spec, we will ignore other attributes
 	// For Job status, it's used internally and always been updated via our controller.
-	if reflect.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.State.Phase == oldJob.Status.State.Phase {
+	if equality.Semantic.DeepEqual(newJob.Spec, oldJob.Spec) && newJob.Status.State.Phase == oldJob.Status.State.Phase {
 		klog.V(6).Infof("Job update event is ignored since no update in 'Spec'.")
 		return
 	}

@@ -19,13 +19,13 @@ package job
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	quotav1 "k8s.io/apiserver/pkg/quota/v1"
@@ -712,7 +712,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	}
 
 	minResources := cc.calcPGMinResources(job)
-	if pg.Spec.MinMember != job.Spec.MinAvailable || !reflect.DeepEqual(pg.Spec.MinResources, minResources) {
+	if pg.Spec.MinMember != job.Spec.MinAvailable || !equality.Semantic.DeepEqual(pg.Spec.MinResources, minResources) {
 		pg.Spec.MinMember = job.Spec.MinAvailable
 		pg.Spec.MinResources = minResources
 		pgShouldUpdate = true

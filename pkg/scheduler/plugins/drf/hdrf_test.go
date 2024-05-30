@@ -2,10 +2,10 @@ package drf
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -204,7 +204,7 @@ func TestHDRF(t *testing.T) {
 			defer test.Close()
 			test.Run([]framework.Action{allocate.New()})
 			for _, job := range ssn.Jobs {
-				if reflect.DeepEqual(test.expected, job.Allocated) {
+				if equality.Semantic.DeepEqual(test.expected, job.Allocated) {
 					t.Fatalf("%s: job %s expected resource %s, but got %s", test.Name, job.Name, test.expected[job.Name], job.Allocated)
 				}
 			}

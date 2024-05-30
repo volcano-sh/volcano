@@ -18,11 +18,11 @@ package api
 
 import (
 	"math"
-	"reflect"
 	"sort"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -56,7 +56,7 @@ func TestNewResource(t *testing.T) {
 
 	for _, test := range tests {
 		r := NewResource(test.resourceList)
-		if !reflect.DeepEqual(test.expected, r) {
+		if !equality.Semantic.DeepEqual(test.expected, r) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, r)
 		}
 	}
@@ -95,7 +95,7 @@ func TestResourceAddScalar(t *testing.T) {
 
 	for _, test := range tests {
 		test.resource.AddScalar(test.scalarName, test.scalarQuantity)
-		if !reflect.DeepEqual(test.expected, test.resource) {
+		if !equality.Semantic.DeepEqual(test.expected, test.resource) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource)
 		}
 	}
@@ -141,7 +141,7 @@ func TestSetMaxResource(t *testing.T) {
 
 	for _, test := range tests {
 		test.resource1.SetMaxResource(test.resource2)
-		if !reflect.DeepEqual(test.expected, test.resource1) {
+		if !equality.Semantic.DeepEqual(test.expected, test.resource1) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource1)
 		}
 	}
@@ -180,7 +180,7 @@ func TestIsZero(t *testing.T) {
 
 	for _, test := range tests {
 		flag := test.resource.IsZero(test.resourceName)
-		if !reflect.DeepEqual(test.expected, flag) {
+		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
 	}
@@ -243,7 +243,7 @@ func TestAddResource(t *testing.T) {
 
 	for _, test := range tests {
 		test.resource1.Add(test.resource2)
-		if !reflect.DeepEqual(test.expected, test.resource1) {
+		if !equality.Semantic.DeepEqual(test.expected, test.resource1) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource1)
 		}
 	}
@@ -289,7 +289,7 @@ func TestSubResource(t *testing.T) {
 
 	for _, test := range tests {
 		test.resource1.Sub(test.resource2)
-		if !reflect.DeepEqual(test.expected, test.resource1) {
+		if !equality.Semantic.DeepEqual(test.expected, test.resource1) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource1)
 		}
 	}
@@ -450,19 +450,19 @@ func TestDiff(t *testing.T) {
 
 	for _, test := range testsForDefaultZero {
 		increased, decreased := test.resource1.Diff(test.resource2, Zero)
-		if !reflect.DeepEqual(test.expectedIncreased, increased) {
+		if !equality.Semantic.DeepEqual(test.expectedIncreased, increased) {
 			t.Errorf("expected: %#v, got: %#v", test.expectedIncreased, increased)
 		}
-		if !reflect.DeepEqual(test.expectedDecreased, decreased) {
+		if !equality.Semantic.DeepEqual(test.expectedDecreased, decreased) {
 			t.Errorf("expected: %#v, got: %#v", test.expectedDecreased, decreased)
 		}
 	}
 	for _, test := range testsForDefaultInfinity {
 		increased, decreased := test.resource1.Diff(test.resource2, Infinity)
-		if !reflect.DeepEqual(test.expectedIncreased, increased) {
+		if !equality.Semantic.DeepEqual(test.expectedIncreased, increased) {
 			t.Errorf("expected: %#v, got: %#v", test.expectedIncreased, increased)
 		}
-		if !reflect.DeepEqual(test.expectedDecreased, decreased) {
+		if !equality.Semantic.DeepEqual(test.expectedDecreased, decreased) {
 			t.Errorf("expected: %#v, got: %#v", test.expectedDecreased, decreased)
 		}
 	}
@@ -577,13 +577,13 @@ func TestLess(t *testing.T) {
 
 	for caseID, test := range testsForDefaultZero {
 		flag := test.resource1.Less(test.resource2, Zero)
-		if !reflect.DeepEqual(test.expected, flag) {
+		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, flag)
 		}
 	}
 	for caseID, test := range testsForDefaultInfinity {
 		flag := test.resource1.Less(test.resource2, Infinity)
-		if !reflect.DeepEqual(test.expected, flag) {
+		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, flag)
 		}
 	}
@@ -741,13 +741,13 @@ func TestLessEqual(t *testing.T) {
 
 	for _, test := range testsForDefaultZero {
 		flag := test.resource1.LessEqual(test.resource2, Zero)
-		if !reflect.DeepEqual(test.expected, flag) {
+		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
 	}
 	for caseID, test := range testsForDefaultInfinity {
 		flag := test.resource1.LessEqual(test.resource2, Infinity)
-		if !reflect.DeepEqual(test.expected, flag) {
+		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, flag)
 		}
 	}
@@ -897,13 +897,13 @@ func TestLessPartly(t *testing.T) {
 
 	for caseID, test := range testsForDefaultZero {
 		flag := test.resource1.LessPartly(test.resource2, Zero)
-		if !reflect.DeepEqual(test.expected, flag) {
+		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, flag)
 		}
 	}
 	for _, test := range testsForDefaultInfinity {
 		flag := test.resource1.LessPartly(test.resource2, Infinity)
-		if !reflect.DeepEqual(test.expected, flag) {
+		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
 	}
@@ -1053,13 +1053,13 @@ func TestLessEqualPartly(t *testing.T) {
 
 	for _, test := range testsForDefaultZero {
 		flag := test.resource1.LessEqualPartly(test.resource2, Zero)
-		if !reflect.DeepEqual(test.expected, flag) {
+		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
 	}
 	for _, test := range testsForDefaultInfinity {
 		flag := test.resource1.LessEqualPartly(test.resource2, Infinity)
-		if !reflect.DeepEqual(test.expected, flag) {
+		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
 	}
@@ -1115,7 +1115,7 @@ func TestEqual(t *testing.T) {
 
 	for _, test := range tests {
 		flag := test.resource1.Equal(test.resource2, Zero)
-		if !reflect.DeepEqual(test.expected, flag) {
+		if !equality.Semantic.DeepEqual(test.expected, flag) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, flag)
 		}
 	}
@@ -1198,7 +1198,7 @@ func TestMinDimensionResourceZero(t *testing.T) {
 
 	for _, test := range tests {
 		test.resource1.MinDimensionResource(test.resource2, Zero)
-		if !reflect.DeepEqual(test.expected, test.resource1) {
+		if !equality.Semantic.DeepEqual(test.expected, test.resource1) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource1)
 		}
 	}
@@ -1247,7 +1247,7 @@ func TestMinDimensionResourceInfinity(t *testing.T) {
 
 	for _, test := range tests {
 		test.resource1.MinDimensionResource(test.resource2, Infinity)
-		if !reflect.DeepEqual(test.expected, test.resource1) {
+		if !equality.Semantic.DeepEqual(test.expected, test.resource1) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource1)
 		}
 	}
@@ -1383,7 +1383,7 @@ func TestResource_LessEqualResource(t *testing.T) {
 		_, reason := test.resource1.LessEqualWithResourcesName(test.resource2, Zero)
 		sort.Strings(test.expected)
 		sort.Strings(reason)
-		if !reflect.DeepEqual(test.expected, reason) {
+		if !equality.Semantic.DeepEqual(test.expected, reason) {
 			t.Errorf("expected: %#v, got: %#v", test.expected, reason)
 		}
 	}
@@ -1391,7 +1391,7 @@ func TestResource_LessEqualResource(t *testing.T) {
 		_, reason := test.resource1.LessEqualWithResourcesName(test.resource2, Infinity)
 		sort.Strings(test.expected)
 		sort.Strings(reason)
-		if !reflect.DeepEqual(test.expected, reason) {
+		if !equality.Semantic.DeepEqual(test.expected, reason) {
 			t.Errorf("caseID %d expected: %#v, got: %#v", caseID, test.expected, reason)
 		}
 	}

@@ -1,10 +1,10 @@
 package resourcequota
 
 import (
-	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -93,7 +93,7 @@ func TestResourceQuotaPlugin(t *testing.T) {
 			defer test.Close()
 			for _, job := range ssn.Jobs {
 				isEnqueue := ssn.JobEnqueueable(job)
-				if !reflect.DeepEqual(test.expectedEnqueueAble, isEnqueue) {
+				if !equality.Semantic.DeepEqual(test.expectedEnqueueAble, isEnqueue) {
 					t.Errorf("case: %s error,  expect %v, but get %v", test.Name, test.expectedEnqueueAble, isEnqueue)
 				}
 			}

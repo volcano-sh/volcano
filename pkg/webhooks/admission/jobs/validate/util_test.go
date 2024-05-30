@@ -1,9 +1,9 @@
 package validate
 
 import (
-	"reflect"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
@@ -128,7 +128,7 @@ func TestTopoSort(t *testing.T) {
 
 	for _, testcase := range testCases {
 		tasks, isDag := topoSort(testcase.job)
-		if isDag != testcase.isDag || !reflect.DeepEqual(tasks, testcase.sortedTasks) {
+		if isDag != testcase.isDag || !equality.Semantic.DeepEqual(tasks, testcase.sortedTasks) {
 			t.Errorf("%s failed, expect sortedTasks: %v, got: %v, expected isDag: %v, got: %v",
 				testcase.name, testcase.sortedTasks, tasks, testcase.isDag, isDag)
 		}

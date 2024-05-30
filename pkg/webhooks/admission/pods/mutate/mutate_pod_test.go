@@ -18,10 +18,10 @@ package mutate
 
 import (
 	"encoding/json"
-	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	webconfig "volcano.sh/volcano/pkg/webhooks/config"
@@ -209,7 +209,7 @@ func TestMutatePods(t *testing.T) {
 		t.Run(testCase.Name, func(t *testing.T) {
 			patchBytes, _ := createPatch(testCase.Pod)
 			expectBytes, _ := json.Marshal(testCase.expect)
-			if !reflect.DeepEqual(patchBytes, expectBytes) {
+			if !equality.Semantic.DeepEqual(patchBytes, expectBytes) {
 				t.Errorf("Test case '%s' failed, expect: %v, got: %v", testCase.Name,
 					expectBytes, patchBytes)
 			}

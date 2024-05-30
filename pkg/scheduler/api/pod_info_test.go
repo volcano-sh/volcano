@@ -17,11 +17,11 @@ limitations under the License.
 package api
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -90,7 +90,7 @@ func TestGetPodResourceRequest(t *testing.T) {
 
 	for i, test := range tests {
 		req := GetPodResourceRequest(test.pod)
-		if !reflect.DeepEqual(req, test.expectedResource) {
+		if !equality.Semantic.DeepEqual(req, test.expectedResource) {
 			t.Errorf("case %d(%s) failed: \n expected %v, \n got: %v \n",
 				i, test.name, test.expectedResource, req)
 		}
@@ -183,7 +183,7 @@ func TestGetPodResourceWithoutInitContainers(t *testing.T) {
 
 	for i, test := range tests {
 		req := GetPodResourceWithoutInitContainers(test.pod)
-		if !reflect.DeepEqual(req, test.expectedResource) {
+		if !equality.Semantic.DeepEqual(req, test.expectedResource) {
 			t.Errorf("case %d(%s) failed: \n expected %v, \n got: %v \n",
 				i, test.name, test.expectedResource, req)
 		}

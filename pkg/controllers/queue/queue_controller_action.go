@@ -19,9 +19,9 @@ package queue
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -75,7 +75,7 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 	}
 
 	// ignore update when status does not change
-	if reflect.DeepEqual(queueStatus, queue.Status) {
+	if equality.Semantic.DeepEqual(queueStatus, queue.Status) {
 		return nil
 	}
 

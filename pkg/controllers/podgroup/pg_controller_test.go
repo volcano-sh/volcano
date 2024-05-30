@@ -18,10 +18,10 @@ package podgroup
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
@@ -166,7 +166,7 @@ func TestAddPodGroup(t *testing.T) {
 			t.Errorf("Case %s failed when getting podGroup for %v", testCase.name, err)
 		}
 
-		if false == reflect.DeepEqual(pg.OwnerReferences, testCase.expectedPodGroup.OwnerReferences) {
+		if false == equality.Semantic.DeepEqual(pg.OwnerReferences, testCase.expectedPodGroup.OwnerReferences) {
 			t.Errorf("Case %s failed, expect %v, got %v", testCase.name, testCase.expectedPodGroup, pg)
 		}
 

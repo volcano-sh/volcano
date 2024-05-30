@@ -18,7 +18,7 @@ package jobtemplate
 
 import (
 	"context"
-	"reflect"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -115,7 +115,7 @@ func TestSyncJobTemplateFunc(t *testing.T) {
 			if got := fakeController.syncJobTemplate(tt.args.jobTemplate); got != tt.want.err {
 				t.Error("Expected deleteAllJobsCreateByJobFlow() return nil, but not nil")
 			}
-			if !reflect.DeepEqual(&tt.args.jobTemplate.Status, tt.want.jobTemplateStatus) {
+			if !equality.Semantic.DeepEqual(&tt.args.jobTemplate.Status, tt.want.jobTemplateStatus) {
 				t.Error("not the expected result")
 			}
 		})

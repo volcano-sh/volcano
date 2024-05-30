@@ -25,6 +25,7 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -322,10 +323,10 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 
 			allocate.Execute(ssn)
 			bindResults := binder.Binds()
-			if !reflect.DeepEqual(test.expectedBind, bindResults) {
+			if !equality.Semantic.DeepEqual(test.expectedBind, bindResults) {
 				t.Errorf("expected: %v, got %v ", test.expectedBind, bindResults)
 			}
-			if !reflect.DeepEqual(test.expectedActions, fakeVolumeBinder.Actions) {
+			if !equality.Semantic.DeepEqual(test.expectedActions, fakeVolumeBinder.Actions) {
 				t.Errorf("expected: %v, got %v ", test.expectedActions, fakeVolumeBinder.Actions)
 			}
 			fakeVolumeBinder.Actions = make(map[string][]string)

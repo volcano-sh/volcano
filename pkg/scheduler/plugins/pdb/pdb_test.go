@@ -17,11 +17,11 @@ limitations under the License.
 package pdb
 
 import (
-	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
 	pdbPolicy "k8s.io/api/policy/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -135,19 +135,19 @@ func TestPreemptableAndReclaimableFn(t *testing.T) {
 
 		// (e. test the Preemptable in pdb plugin
 		victims := ssn.Preemptable(&api.TaskInfo{}, test.preemptees)
-		if !reflect.DeepEqual(test.expectVictims, victims) {
+		if !equality.Semantic.DeepEqual(test.expectVictims, victims) {
 			t.Errorf("Test of preemptable: test name: %s, expected: %v, got %v ", test.name, test.expectVictims, victims)
 		}
 
 		// (f. test the Reclaimable in pdb plugin
 		victims = ssn.Reclaimable(&api.TaskInfo{}, test.preemptees)
-		if !reflect.DeepEqual(test.expectVictims, victims) {
+		if !equality.Semantic.DeepEqual(test.expectVictims, victims) {
 			t.Errorf("Test of reclaimable: test name: %s, expected: %v, got %v ", test.name, test.expectVictims, victims)
 		}
 
 		// (g. test the VictimTasks in pdb plugin
 		victimsMap := ssn.VictimTasks(test.preemptees)
-		if !reflect.DeepEqual(test.expectVictimsMap, victimsMap) {
+		if !equality.Semantic.DeepEqual(test.expectVictimsMap, victimsMap) {
 			t.Errorf("Test of victimTasks: test name %s, expected: %v, got %v ", test.name, test.expectVictims, victims)
 		}
 	}

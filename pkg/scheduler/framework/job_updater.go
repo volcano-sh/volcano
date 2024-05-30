@@ -3,9 +3,9 @@ package framework
 import (
 	"context"
 	"math/rand"
-	"reflect"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -66,7 +66,7 @@ func isPodGroupConditionsUpdated(newCondition, oldCondition []scheduling.PodGrou
 		newTransitionID := newCond.TransitionID
 		newCond.TransitionID = oldCond.TransitionID
 
-		shouldUpdate := !reflect.DeepEqual(&newCond, &oldCond)
+		shouldUpdate := !equality.Semantic.DeepEqual(&newCond, &oldCond)
 
 		newCond.LastTransitionTime = newTime
 		newCond.TransitionID = newTransitionID
@@ -84,7 +84,7 @@ func isPodGroupStatusUpdated(newStatus, oldStatus scheduling.PodGroupStatus) boo
 	oldCondition := oldStatus.Conditions
 	oldStatus.Conditions = nil
 
-	return !reflect.DeepEqual(newStatus, oldStatus) || isPodGroupConditionsUpdated(newCondition, oldCondition)
+	return !equality.Semantic.DeepEqual(newStatus, oldStatus) || isPodGroupConditionsUpdated(newCondition, oldCondition)
 }
 
 // updateJob update specified job

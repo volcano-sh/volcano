@@ -17,9 +17,9 @@ limitations under the License.
 package util
 
 import (
-	"reflect"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -53,7 +53,7 @@ func TestSelectBestNode(t *testing.T) {
 
 	oneOf := func(node *api.NodeInfo, nodes []*api.NodeInfo) bool {
 		for _, v := range nodes {
-			if reflect.DeepEqual(node, v) {
+			if equality.Semantic.DeepEqual(node, v) {
 				return true
 			}
 		}

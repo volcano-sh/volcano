@@ -17,10 +17,10 @@ limitations under the License.
 package cpumanager
 
 import (
-	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
 	"k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask"
@@ -200,7 +200,7 @@ func Test_GetTopologyHints(t *testing.T) {
 	for _, testcase := range teseCases {
 		provider := NewProvider()
 		topologyHintmap := provider.GetTopologyHints(&testcase.container, &numaInfo, testcase.resNumaSets)
-		if !(reflect.DeepEqual(topologyHintmap["cpu"], testcase.expect) ||
+		if !(equality.Semantic.DeepEqual(topologyHintmap["cpu"], testcase.expect) ||
 			(len(topologyHintmap["cpu"]) == 0 && len(testcase.expect) == 0)) {
 			t.Errorf("%s failed. topologyHintmap = %v\n", testcase.name, topologyHintmap)
 		}
@@ -325,7 +325,7 @@ func Test_Allocate(t *testing.T) {
 	for _, testcase := range teseCases {
 		provider := NewProvider()
 		assignMap := provider.Allocate(&testcase.container, testcase.bestHit, &numaInfo, testcase.resNumaSets)
-		if !(reflect.DeepEqual(assignMap["cpu"], testcase.expect)) {
+		if !(equality.Semantic.DeepEqual(assignMap["cpu"], testcase.expect)) {
 			t.Errorf("%s failed.\n", testcase.name)
 		}
 	}
