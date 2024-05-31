@@ -258,6 +258,8 @@ func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
 	newPod, err := sc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(context.TODO(), oldTask.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
+			sc.Mutex.Lock()
+			defer sc.Mutex.Unlock()
 			err := sc.deleteTask(oldTask)
 			if err != nil {
 				klog.Errorf("Failed to delete Pod <%v/%v> and remove from cache: %s", oldTask.Namespace, oldTask.Name, err.Error())
