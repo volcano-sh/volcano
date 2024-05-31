@@ -31,7 +31,7 @@ func main() {
 		Short: "cancel a job",
 		Long:  `cancel a running, pending, or aborted job with specified name in default or specified namespace`,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckError(cmd, vcancel.CancelJob())
+			util.CheckError(cmd, vcancel.CancelJob(cmd.Context()))
 		},
 	}
 

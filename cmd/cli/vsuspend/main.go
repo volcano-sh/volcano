@@ -31,7 +31,7 @@ func main() {
 		Short: "suspend a job",
 		Long:  `suspend a running or pending job with specified name in default or specified namespace`,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckError(cmd, vsuspend.SuspendJob())
+			util.CheckError(cmd, vsuspend.SuspendJob(cmd.Context()))
 		},
 	}
 

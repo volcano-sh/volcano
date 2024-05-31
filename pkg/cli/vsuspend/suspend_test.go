@@ -17,6 +17,7 @@ limitations under the License.
 package vsuspend
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -69,7 +70,7 @@ func TestSuspendJobJob(t *testing.T) {
 	}
 
 	for i, testcase := range testCases {
-		err := SuspendJob()
+		err := SuspendJob(context.TODO())
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}

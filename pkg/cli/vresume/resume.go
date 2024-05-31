@@ -17,6 +17,7 @@ limitations under the License.
 package vresume
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -43,7 +44,7 @@ func InitResumeFlags(cmd *cobra.Command) {
 }
 
 // ResumeJob resumes the job.
-func ResumeJob() error {
+func ResumeJob(ctx context.Context) error {
 	config, err := util.BuildConfig(resumeJobFlags.Master, resumeJobFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -53,7 +54,7 @@ func ResumeJob() error {
 		return err
 	}
 
-	return util.CreateJobCommand(config,
+	return util.CreateJobCommand(ctx, config,
 		resumeJobFlags.Namespace, resumeJobFlags.JobName,
 		v1alpha1.ResumeJobAction)
 }

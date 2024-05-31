@@ -31,7 +31,7 @@ func main() {
 		Short: "view queue information",
 		Long:  `view information of a queue with specified name or queues from the same namespace`,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckError(cmd, vqueues.GetQueue())
+			util.CheckError(cmd, vqueues.GetQueue(cmd.Context()))
 		},
 	}
 

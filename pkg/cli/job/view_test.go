@@ -17,6 +17,7 @@ limitations under the License.
 package job
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"net/http"
@@ -141,7 +142,7 @@ func TestViewJob(t *testing.T) {
 	}
 
 	for i, testcase := range testCases {
-		err := ViewJob()
+		err := ViewJob(context.TODO())
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}

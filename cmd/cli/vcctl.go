@@ -16,7 +16,6 @@ limitations under the License.
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -40,20 +39,6 @@ func main() {
 
 	code := cli.Run(&rootCmd)
 	os.Exit(code)
-}
-
-func checkError(cmd *cobra.Command, err error) {
-	if err != nil {
-		msg := "Failed to"
-
-		// Ignore the root command.
-		for cur := cmd; cur.Parent() != nil; cur = cur.Parent() {
-			msg += fmt.Sprintf(" %s", cur.Name())
-		}
-
-		fmt.Printf("%s: %v\n", msg, err)
-		os.Exit(2)
-	}
 }
 
 var versionExample = `vcctl version`

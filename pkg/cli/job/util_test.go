@@ -18,6 +18,7 @@ package job
 
 import (
 	"testing"
+	"volcano.sh/volcano/pkg/cli/util"
 
 	"time"
 )
@@ -101,7 +102,7 @@ func TestJobUtil(t *testing.T) {
 	}
 
 	for i, testcase := range testCases {
-		answer := HumanDuration(testcase.Duration)
+		answer := util.HumanDuration(testcase.Duration)
 		if answer != testcase.ExpectValue {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, answer)
 		}

@@ -62,7 +62,7 @@ func InitOperateFlags(cmd *cobra.Command) {
 }
 
 // OperateQueue operates queue
-func OperateQueue() error {
+func OperateQueue(ctx context.Context) error {
 	config, err := buildConfig(operateQueueFlags.Master, operateQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -87,7 +87,7 @@ func OperateQueue() error {
 
 		queueClient := versioned.NewForConfigOrDie(config)
 		patchBytes := []byte(fmt.Sprintf(`{"spec":{"weight":%d}}`, operateQueueFlags.Weight))
-		_, err := queueClient.SchedulingV1beta1().Queues().Patch(context.TODO(),
+		_, err := queueClient.SchedulingV1beta1().Queues().Patch(ctx,
 			operateQueueFlags.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
 
 		return err
@@ -98,5 +98,5 @@ func OperateQueue() error {
 			operateQueueFlags.Action, ActionOpen, ActionClose, ActionUpdate)
 	}
 
-	return createQueueCommand(config, action)
+	return createQueueCommand(ctx, config, action)
 }

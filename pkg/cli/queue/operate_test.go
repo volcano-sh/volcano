@@ -17,6 +17,7 @@ limitations under the License.
 package queue
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -108,7 +109,7 @@ func TestOperateQueue(t *testing.T) {
 		operateQueueFlags.Action = testCase.Action
 		operateQueueFlags.Weight = testCase.Weight
 
-		err := OperateQueue()
+		err := OperateQueue(context.TODO())
 		if false == reflect.DeepEqual(err, testCase.ExpectValue) {
 			t.Errorf("Case '%s' failed, expected: '%v', got '%v'", testCase.Name, testCase.ExpectValue, err)
 		}

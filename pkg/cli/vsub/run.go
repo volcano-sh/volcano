@@ -122,7 +122,7 @@ func setDefaultArgs() {
 var jobName = "job.volcano.sh"
 
 // RunJob creates the job.
-func RunJob() error {
+func RunJob(ctx context.Context) error {
 	config, err := util.BuildConfig(launchJobFlags.Master, launchJobFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -149,7 +149,7 @@ func RunJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	newJob, err := jobClient.BatchV1alpha1().Jobs(launchJobFlags.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	newJob, err := jobClient.BatchV1alpha1().Jobs(launchJobFlags.Namespace).Create(ctx, job, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}

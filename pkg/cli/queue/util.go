@@ -19,7 +19,6 @@ package queue
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,20 +32,13 @@ import (
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
-func homeDir() string {
-	if h := os.Getenv("HOME"); h != "" {
-		return h
-	}
-	return os.Getenv("USERPROFILE") // windows
-}
-
 func buildConfig(master, kubeconfig string) (*rest.Config, error) {
 	return clientcmd.BuildConfigFromFlags(master, kubeconfig)
 }
 
-func createQueueCommand(config *rest.Config, action busv1alpha1.Action) error {
+func createQueueCommand(ctx context.Context, config *rest.Config, action busv1alpha1.Action) error {
 	queueClient := versioned.NewForConfigOrDie(config)
-	queue, err := queueClient.SchedulingV1beta1().Queues().Get(context.TODO(), operateQueueFlags.Name, metav1.GetOptions{})
+	queue, err := queueClient.SchedulingV1beta1().Queues().Get(ctx, operateQueueFlags.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -64,7 +56,7 @@ func createQueueCommand(config *rest.Config, action busv1alpha1.Action) error {
 		Action:       string(action),
 	}
 
-	if _, err := queueClient.BusV1alpha1().Commands("default").Create(context.TODO(), cmd, metav1.CreateOptions{}); err != nil {
+	if _, err := queueClient.BusV1alpha1().Commands("default").Create(ctx, cmd, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 

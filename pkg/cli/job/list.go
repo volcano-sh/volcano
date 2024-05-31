@@ -33,7 +33,7 @@ import (
 )
 
 type listFlags struct {
-	commonFlags
+	util.CommonFlags
 
 	Namespace     string
 	SchedulerName string
@@ -81,7 +81,7 @@ var listJobFlags = &listFlags{}
 
 // InitListFlags init list command flags.
 func InitListFlags(cmd *cobra.Command) {
-	initFlags(cmd, &listJobFlags.commonFlags)
+	util.InitFlags(cmd, &listJobFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
@@ -90,7 +90,7 @@ func InitListFlags(cmd *cobra.Command) {
 }
 
 // ListJobs lists all jobs details.
-func ListJobs() error {
+func ListJobs(ctx context.Context) error {
 	config, err := util.BuildConfig(listJobFlags.Master, listJobFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -99,7 +99,7 @@ func ListJobs() error {
 		listJobFlags.Namespace = ""
 	}
 	jobClient := versioned.NewForConfigOrDie(config)
-	jobs, err := jobClient.BatchV1alpha1().Jobs(listJobFlags.Namespace).List(context.TODO(), metav1.ListOptions{})
+	jobs, err := jobClient.BatchV1alpha1().Jobs(listJobFlags.Namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
 	}

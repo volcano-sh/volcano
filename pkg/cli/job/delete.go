@@ -29,7 +29,7 @@ import (
 )
 
 type deleteFlags struct {
-	commonFlags
+	util.CommonFlags
 
 	Namespace string
 	JobName   string
@@ -39,14 +39,13 @@ var deleteJobFlags = &deleteFlags{}
 
 // InitDeleteFlags init the delete command flags.
 func InitDeleteFlags(cmd *cobra.Command) {
-	initFlags(cmd, &deleteJobFlags.commonFlags)
-
+	util.InitFlags(cmd, &deleteJobFlags.CommonFlags)
 	cmd.Flags().StringVarP(&deleteJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&deleteJobFlags.JobName, "name", "N", "", "the name of job")
 }
 
 // DeleteJob delete the job.
-func DeleteJob() error {
+func DeleteJob(ctx context.Context) error {
 	config, err := util.BuildConfig(deleteJobFlags.Master, deleteJobFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -58,7 +57,7 @@ func DeleteJob() error {
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	err = jobClient.BatchV1alpha1().Jobs(deleteJobFlags.Namespace).Delete(context.TODO(), deleteJobFlags.JobName, metav1.DeleteOptions{})
+	err = jobClient.BatchV1alpha1().Jobs(deleteJobFlags.Namespace).Delete(ctx, deleteJobFlags.JobName, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}

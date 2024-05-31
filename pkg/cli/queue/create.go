@@ -49,7 +49,7 @@ func InitCreateFlags(cmd *cobra.Command) {
 }
 
 // CreateQueue create queue.
-func CreateQueue() error {
+func CreateQueue(ctx context.Context) error {
 	config, err := buildConfig(createQueueFlags.Master, createQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ func CreateQueue() error {
 	}
 
 	queueClient := versioned.NewForConfigOrDie(config)
-	if _, err := queueClient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{}); err != nil {
+	if _, err := queueClient.SchedulingV1beta1().Queues().Create(ctx, queue, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 

@@ -17,10 +17,12 @@ limitations under the License.
 package job
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"volcano.sh/volcano/pkg/cli/util"
 
 	"github.com/spf13/cobra"
 
@@ -62,7 +64,7 @@ func TestListJob(t *testing.T) {
 
 	for i, testcase := range testCases {
 		listJobFlags = &listFlags{
-			commonFlags: commonFlags{
+			CommonFlags: util.CommonFlags{
 				Master: server.URL,
 			},
 			Namespace:    "test",
@@ -70,7 +72,7 @@ func TestListJob(t *testing.T) {
 			selector:     testcase.Selector,
 		}
 
-		err := ListJobs()
+		err := ListJobs(context.TODO())
 		if err != nil {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}

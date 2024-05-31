@@ -65,14 +65,14 @@ func InitListFlags(cmd *cobra.Command) {
 }
 
 // ListQueue lists all the queue.
-func ListQueue() error {
+func ListQueue(ctx context.Context) error {
 	config, err := buildConfig(listQueueFlags.Master, listQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}
 
 	jobClient := versioned.NewForConfigOrDie(config)
-	queues, err := jobClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
+	queues, err := jobClient.SchedulingV1beta1().Queues().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
 	}

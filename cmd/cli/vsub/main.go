@@ -31,7 +31,7 @@ func main() {
 		Short: "submit a job",
 		Long:  `submit a job with specified name and arguments. yaml/json file is not accepted, you may refer to kubectl.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckError(cmd, vsub.RunJob())
+			util.CheckError(cmd, vsub.RunJob(cmd.Context()))
 		},
 	}
 

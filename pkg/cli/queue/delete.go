@@ -44,7 +44,7 @@ func InitDeleteFlags(cmd *cobra.Command) {
 }
 
 // DeleteQueue delete queue.
-func DeleteQueue() error {
+func DeleteQueue(ctx context.Context) error {
 	config, err := buildConfig(deleteQueueFlags.Master, deleteQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
@@ -55,5 +55,5 @@ func DeleteQueue() error {
 	}
 
 	queueClient := versioned.NewForConfigOrDie(config)
-	return queueClient.SchedulingV1beta1().Queues().Delete(context.TODO(), deleteQueueFlags.Name, metav1.DeleteOptions{})
+	return queueClient.SchedulingV1beta1().Queues().Delete(ctx, deleteQueueFlags.Name, metav1.DeleteOptions{})
 }

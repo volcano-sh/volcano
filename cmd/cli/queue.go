@@ -19,6 +19,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
+	"volcano.sh/volcano/cmd/cli/util"
 	"volcano.sh/volcano/pkg/cli/queue"
 )
 
@@ -28,55 +29,63 @@ func buildQueueCmd() *cobra.Command {
 		Short: "Queue Operations",
 	}
 
-	queueCreateCmd := &cobra.Command{
-		Use:   "create",
-		Short: "creates queue",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, queue.CreateQueue())
+	commands := []struct {
+		Use         string
+		Short       string
+		RunFunction func(cmd *cobra.Command, args []string)
+		InitFlags   func(cmd *cobra.Command)
+	}{
+		{
+			Use:   "create",
+			Short: "creates queue",
+			RunFunction: func(cmd *cobra.Command, args []string) {
+				util.CheckError(cmd, queue.CreateQueue(cmd.Context()))
+			},
+			InitFlags: queue.InitCreateFlags,
+		},
+		{
+			Use:   "delete",
+			Short: "delete queue",
+			RunFunction: func(cmd *cobra.Command, args []string) {
+				util.CheckError(cmd, queue.DeleteQueue(cmd.Context()))
+			},
+			InitFlags: queue.InitDeleteFlags,
+		},
+		{
+			Use:   "operate",
+			Short: "operate queue",
+			RunFunction: func(cmd *cobra.Command, args []string) {
+				util.CheckError(cmd, queue.OperateQueue(cmd.Context()))
+			},
+			InitFlags: queue.InitOperateFlags,
+		},
+		{
+			Use:   "list",
+			Short: "lists all the queue",
+			RunFunction: func(cmd *cobra.Command, args []string) {
+				util.CheckError(cmd, queue.ListQueue(cmd.Context()))
+			},
+			InitFlags: queue.InitListFlags,
+		},
+		{
+			Use:   "get",
+			Short: "get a queue",
+			RunFunction: func(cmd *cobra.Command, args []string) {
+				util.CheckError(cmd, queue.GetQueue(cmd.Context()))
+			},
+			InitFlags: queue.InitGetFlags,
 		},
 	}
-	queue.InitCreateFlags(queueCreateCmd)
-	queueCmd.AddCommand(queueCreateCmd)
 
-	queueDeleteCmd := &cobra.Command{
-		Use:   "delete",
-		Short: "delete queue",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, queue.DeleteQueue())
-		},
+	for _, command := range commands {
+		cmd := &cobra.Command{
+			Use:   command.Use,
+			Short: command.Short,
+			Run:   command.RunFunction,
+		}
+		command.InitFlags(cmd)
+		queueCmd.AddCommand(cmd)
 	}
-	queue.InitDeleteFlags(queueDeleteCmd)
-	queueCmd.AddCommand(queueDeleteCmd)
-
-	queueOperateCmd := &cobra.Command{
-		Use:   "operate queue",
-		Short: "operate queue",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, queue.OperateQueue())
-		},
-	}
-	queue.InitOperateFlags(queueOperateCmd)
-	queueCmd.AddCommand(queueOperateCmd)
-
-	queueListCmd := &cobra.Command{
-		Use:   "list",
-		Short: "lists all the queue",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, queue.ListQueue())
-		},
-	}
-	queue.InitListFlags(queueListCmd)
-	queueCmd.AddCommand(queueListCmd)
-
-	queueGetCmd := &cobra.Command{
-		Use:   "get",
-		Short: "get a queue",
-		Run: func(cmd *cobra.Command, args []string) {
-			checkError(cmd, queue.GetQueue())
-		},
-	}
-	queue.InitGetFlags(queueGetCmd)
-	queueCmd.AddCommand(queueGetCmd)
 
 	return queueCmd
 }
