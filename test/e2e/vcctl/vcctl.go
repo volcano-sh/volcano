@@ -34,6 +34,7 @@ Usage:
 Available Commands:
   help        Help about any command
   job         vcctl command line operation job
+  jobtemplate vcctl command line operation jobtemplate
   queue       Queue Operations
   version     Print the version information
 

@@ -35,6 +35,7 @@ func main() {
 
 	rootCmd.AddCommand(buildJobCmd())
 	rootCmd.AddCommand(buildQueueCmd())
+	rootCmd.AddCommand(buildJobTemplateCmd())
 	rootCmd.AddCommand(versionCommand())
 
 	code := cli.Run(&rootCmd)
