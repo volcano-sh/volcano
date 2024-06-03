@@ -72,9 +72,6 @@ rules:
   - apiGroups: ["certificates.k8s.io"]
     resources: ["certificatesigningrequests/approval"]
     verbs: ["create", "update"]
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["create", "get", "patch"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
     verbs: ["get", "list"]
@@ -180,10 +177,11 @@ metadata:
     "helm.sh/hook-weight": "0"
 ---
 # Source: volcano/templates/admission-init.yaml
-kind: ClusterRole
+kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-admission-init
+  namespace: volcano-system
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
@@ -191,13 +189,14 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["create", "get", "patch"]
+    verbs: ["create", "get"]
 ---
 # Source: volcano/templates/admission-init.yaml
-kind: ClusterRoleBinding
+kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: volcano-admission-init-role
+  namespace: volcano-system
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
@@ -207,7 +206,7 @@ subjects:
     name: volcano-admission-init
     namespace: volcano-system
 roleRef:
-  kind: ClusterRole
+  kind: Role
   name: volcano-admission-init
   apiGroup: rbac.authorization.k8s.io
 ---
