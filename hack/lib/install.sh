@@ -69,7 +69,7 @@ function check-kind {
   which kind >/dev/null 2>&1
   if [[ $? -ne 0 ]]; then
     echo "Installing kind ..."
-    go install sigs.k8s.io/kind@v0.21.0
+    GOOS=${OS} go install sigs.k8s.io/kind@v0.21.0
   else
     echo -n "Found kind, version: " && kind version
   fi
@@ -94,7 +94,7 @@ function install-ginkgo-if-not-exist {
   which ginkgo >/dev/null 2>&1
   if [[ $? -ne 0 ]]; then
     echo "Installing ginkgo ..."
-    go install github.com/onsi/ginkgo/v2/ginkgo
+    GOOS=${OS} go install github.com/onsi/ginkgo/v2/ginkgo
   else
     echo -n "Found ginkgo, version: " && ginkgo version
   fi
