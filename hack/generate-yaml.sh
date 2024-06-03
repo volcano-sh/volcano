@@ -120,6 +120,7 @@ cat ${VK_ROOT}/installer/namespace.yaml > ${DEPLOYMENT_FILE}
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
       -s templates/admission.yaml \
+      -s templates/admission-init.yaml \
       -s templates/batch_v1alpha1_job.yaml \
       -s templates/bus_v1alpha1_command.yaml \
       -s templates/controllers.yaml \
