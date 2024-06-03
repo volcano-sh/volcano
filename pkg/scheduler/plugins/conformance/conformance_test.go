@@ -1,10 +1,10 @@
 package conformance
 
 import (
-	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -56,7 +56,7 @@ func TestConformancePlugin(t *testing.T) {
 			ssn := test.RegisterSession(tiers, nil)
 			defer test.Close()
 			victims := ssn.Preemptable(&api.TaskInfo{}, test.preemptees)
-			if !reflect.DeepEqual(victims, test.expectVictims) {
+			if !equality.Semantic.DeepEqual(victims, test.expectVictims) {
 				t.Errorf("case: %s error,  expect %v, but get %v", test.Name, test.expectVictims, victims)
 			}
 		})

@@ -18,11 +18,11 @@ package uthelper
 
 import (
 	"fmt"
-	"reflect"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -228,7 +228,7 @@ func (test *TestCommonStruct) CheckEvict(caseIndex int) error {
 		got[v]++
 	}
 
-	if !reflect.DeepEqual(expect, got) {
+	if !equality.Semantic.DeepEqual(expect, got) {
 		return fmt.Errorf("case %d(%s) check evict: \nwant: %v\n got: %v ", caseIndex, test.Name, expect, got)
 	}
 	return nil

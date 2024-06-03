@@ -1,10 +1,10 @@
 package helpers
 
 import (
-	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -36,7 +36,7 @@ func TestMax(t *testing.T) {
 		},
 	}
 	re := Max(l, r)
-	if !reflect.DeepEqual(expected, re) {
+	if !equality.Semantic.DeepEqual(expected, re) {
 		t.Errorf("expected: %#v, got: %#v", expected, re)
 	}
 }

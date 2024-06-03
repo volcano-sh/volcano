@@ -17,11 +17,11 @@ limitations under the License.
 package cdp
 
 import (
-	"reflect"
 	"testing"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -157,7 +157,7 @@ func TestPreemptableFn(t *testing.T) {
 	victims := ssn.Preemptable(&api.TaskInfo{}, preemptees)
 
 	expectVictims := []*api.TaskInfo{task2, task3}
-	if !reflect.DeepEqual(victims, expectVictims) {
+	if !equality.Semantic.DeepEqual(victims, expectVictims) {
 		t.Errorf("stable preempt test not equal! expect victims %v, actual %v", expectVictims, victims)
 	}
 }

@@ -20,10 +20,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"testing"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -904,7 +904,7 @@ func TestAdmitQueues(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			reviewResponse := AdmitQueues(testCase.AR)
-			if !reflect.DeepEqual(reviewResponse, testCase.reviewResponse) {
+			if !equality.Semantic.DeepEqual(reviewResponse, testCase.reviewResponse) {
 				t.Errorf("Test case %s failed, expect %v, got %v", testCase.Name,
 					testCase.reviewResponse, reviewResponse)
 			}

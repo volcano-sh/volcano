@@ -1,10 +1,10 @@
 package sla
 
 import (
-	"reflect"
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -119,11 +119,11 @@ func TestSlaPlugin(t *testing.T) {
 			ssn := test.RegisterSession(tiers, nil)
 			defer test.Close()
 			isOrder := ssn.JobOrderFn(job1, job2)
-			if !reflect.DeepEqual(test.expectedOrder, isOrder) {
+			if !equality.Semantic.DeepEqual(test.expectedOrder, isOrder) {
 				t.Errorf("case: %s error,  expect %v, but get %v", test.Name, test.expectedOrder, isOrder)
 			}
 			isEnqueue := ssn.JobEnqueueable(job1)
-			if !reflect.DeepEqual(test.expectedEnqueueAble, isEnqueue) {
+			if !equality.Semantic.DeepEqual(test.expectedEnqueueAble, isEnqueue) {
 				t.Errorf("case: %s error,  expect %v, but get %v", test.Name, test.expectedEnqueueAble, isEnqueue)
 			}
 		})

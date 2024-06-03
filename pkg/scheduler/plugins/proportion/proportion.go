@@ -18,9 +18,9 @@ package proportion
 
 import (
 	"math"
-	"reflect"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -226,7 +226,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			if attr.request.LessEqual(attr.deserved, api.Zero) {
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet", attr.name)
-			} else if reflect.DeepEqual(attr.deserved, oldDeserved) {
+			} else if equality.Semantic.DeepEqual(attr.deserved, oldDeserved) {
 				meet[attr.queueID] = struct{}{}
 				klog.V(4).Infof("queue <%s> is meet cause of the capability", attr.name)
 			}
@@ -244,7 +244,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
 		klog.V(4).Infof("Remaining resource is  <%s>", remaining)
-		if remaining.IsEmpty() || reflect.DeepEqual(remaining, oldRemaining) {
+		if remaining.IsEmpty() || equality.Semantic.DeepEqual(remaining, oldRemaining) {
 			klog.V(4).Infof("Exiting when remaining is empty or no queue has more resource request:  <%v>", remaining)
 			break
 		}

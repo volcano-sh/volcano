@@ -2,10 +2,10 @@ package pytorch
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -365,7 +365,7 @@ func TestPytorch(t *testing.T) {
 				}
 			}
 
-			if !reflect.DeepEqual(testcase.Pod.Spec.Containers[0].Env, testcase.envs) {
+			if !equality.Semantic.DeepEqual(testcase.Pod.Spec.Containers[0].Env, testcase.envs) {
 				t.Errorf("Case %d (%s): wrong envs, got %v, expected %v", index, testcase.Name, testcase.Pod.Spec.Containers[0].Env, testcase.envs)
 			}
 		})

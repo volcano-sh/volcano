@@ -17,11 +17,11 @@ limitations under the License.
 package options
 
 import (
-	"reflect"
 	"testing"
 	"time"
 
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/component-base/config"
@@ -78,7 +78,7 @@ func TestAddFlags(t *testing.T) {
 		CacheDumpFileDir:           "/tmp",
 	}
 
-	if !reflect.DeepEqual(expected, s) {
+	if !equality.Semantic.DeepEqual(expected, s) {
 		t.Errorf("Got different run options than expected.\nGot: %+v\nExpected: %+v\n", s, expected)
 	}
 }

@@ -19,11 +19,11 @@ package mutate
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -216,7 +216,7 @@ func TestMutateQueues(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			reviewResponse := Queues(testCase.AR)
-			if !reflect.DeepEqual(reviewResponse, testCase.reviewResponse) {
+			if !equality.Semantic.DeepEqual(reviewResponse, testCase.reviewResponse) {
 				t.Errorf("Test case '%s' failed, expect: %v, got: %v", testCase.Name,
 					testCase.reviewResponse, reviewResponse)
 			}

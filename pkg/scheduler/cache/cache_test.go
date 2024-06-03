@@ -24,6 +24,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -196,7 +197,7 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected to find task after failed bind")
 	}
-	if !reflect.DeepEqual(taskBeforeBind, taskAfterBind) {
+	if !equality.Semantic.DeepEqual(taskBeforeBind, taskAfterBind) {
 		t.Errorf("expected task to remain the same after failed bind: \n %#v\n %#v", taskBeforeBind, taskAfterBind)
 	}
 

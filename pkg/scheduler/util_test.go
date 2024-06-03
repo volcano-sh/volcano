@@ -17,8 +17,9 @@ limitations under the License.
 package scheduler
 
 import (
-	"reflect"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/api/equality"
 
 	_ "volcano.sh/volcano/pkg/scheduler/actions"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -204,11 +205,11 @@ tiers:
 	if err != nil {
 		t.Errorf("Failed to load Scheduler configuration: %v", err)
 	}
-	if !reflect.DeepEqual(tiers, expectedTiers) {
+	if !equality.Semantic.DeepEqual(tiers, expectedTiers) {
 		t.Errorf("Failed to set default settings for plugins, expected: %+v, got %+v",
 			expectedTiers, tiers)
 	}
-	if !reflect.DeepEqual(configurations, expectedConfigurations) {
+	if !equality.Semantic.DeepEqual(configurations, expectedConfigurations) {
 		t.Errorf("Wrong configuration, expected: %+v, got %+v",
 			expectedConfigurations, configurations)
 	}

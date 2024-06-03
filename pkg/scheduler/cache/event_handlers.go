@@ -20,12 +20,12 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"reflect"
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	sv1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -644,7 +644,7 @@ func (sc *SchedulerCache) UpdateCSINode(oldObj, newObj interface{}) {
 	if !ok {
 		return
 	}
-	if reflect.DeepEqual(oldCSINode.Spec, newCSINode.Spec) {
+	if equality.Semantic.DeepEqual(oldCSINode.Spec, newCSINode.Spec) {
 		return
 	}
 	sc.AddOrUpdateCSINode(newObj)

@@ -17,11 +17,11 @@ limitations under the License.
 package api
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -31,7 +31,7 @@ import (
 )
 
 func jobInfoEqual(l, r *JobInfo) bool {
-	return reflect.DeepEqual(l, r)
+	return equality.Semantic.DeepEqual(l, r)
 }
 
 func TestAddTaskInfo(t *testing.T) {
