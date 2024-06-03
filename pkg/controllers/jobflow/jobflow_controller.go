@@ -30,11 +30,9 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog"
 
-	jobflowstate "volcano.sh/volcano/pkg/controllers/jobflow/state"
-
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	versionedscheme "volcano.sh/apis/pkg/client/clientset/versioned/scheme"
-	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
 	flowinformer "volcano.sh/apis/pkg/client/informers/externalversions/flow/v1alpha1"
 	batchlister "volcano.sh/apis/pkg/client/listers/batch/v1alpha1"
@@ -42,6 +40,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	"volcano.sh/volcano/pkg/controllers/jobflow/state"
+	jobflowstate "volcano.sh/volcano/pkg/controllers/jobflow/state"
 )
 
 func init() {
@@ -57,6 +56,9 @@ type jobflowcontroller struct {
 	jobFlowInformer     flowinformer.JobFlowInformer
 	jobTemplateInformer flowinformer.JobTemplateInformer
 	jobInformer         batchinformer.JobInformer
+
+	//InformerFactory
+	vcInformerFactory vcinformer.SharedInformerFactory
 
 	//jobFlowLister
 	jobFlowLister flowlister.JobFlowLister
@@ -89,7 +91,10 @@ func (jf *jobflowcontroller) Initialize(opt *framework.ControllerOption) error {
 	jf.kubeClient = opt.KubeClient
 	jf.vcClient = opt.VolcanoClient
 
-	jf.jobFlowInformer = informerfactory.NewSharedInformerFactory(jf.vcClient, 0).Flow().V1alpha1().JobFlows()
+	factory := opt.VCSharedInformerFactory
+	jf.vcInformerFactory = factory
+
+	jf.jobFlowInformer = factory.Flow().V1alpha1().JobFlows()
 	jf.jobFlowSynced = jf.jobFlowInformer.Informer().HasSynced
 	jf.jobFlowLister = jf.jobFlowInformer.Lister()
 	jf.jobFlowInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -97,11 +102,11 @@ func (jf *jobflowcontroller) Initialize(opt *framework.ControllerOption) error {
 		UpdateFunc: jf.updateJobFlow,
 	})
 
-	jf.jobTemplateInformer = informerfactory.NewSharedInformerFactory(jf.vcClient, 0).Flow().V1alpha1().JobTemplates()
+	jf.jobTemplateInformer = factory.Flow().V1alpha1().JobTemplates()
 	jf.jobTemplateSynced = jf.jobTemplateInformer.Informer().HasSynced
 	jf.jobTemplateLister = jf.jobTemplateInformer.Lister()
 
-	jf.jobInformer = informerfactory.NewSharedInformerFactory(jf.vcClient, 0).Batch().V1alpha1().Jobs()
+	jf.jobInformer = factory.Batch().V1alpha1().Jobs()
 	jf.jobSynced = jf.jobInformer.Informer().HasSynced
 	jf.jobLister = jf.jobInformer.Lister()
 	jf.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -131,11 +136,13 @@ func (jf *jobflowcontroller) Initialize(opt *framework.ControllerOption) error {
 func (jf *jobflowcontroller) Run(stopCh <-chan struct{}) {
 	defer jf.queue.ShutDown()
 
-	go jf.jobFlowInformer.Informer().Run(stopCh)
-	go jf.jobTemplateInformer.Informer().Run(stopCh)
-	go jf.jobInformer.Informer().Run(stopCh)
-
-	cache.WaitForCacheSync(stopCh, jf.jobSynced, jf.jobFlowSynced, jf.jobTemplateSynced)
+	jf.vcInformerFactory.Start(stopCh)
+	for informerType, ok := range jf.vcInformerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			klog.Errorf("caches failed to sync: %v", informerType)
+			return
+		}
+	}
 
 	go wait.Until(jf.worker, time.Second, stopCh)
 

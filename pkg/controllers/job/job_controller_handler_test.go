@@ -33,6 +33,7 @@ import (
 	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
+	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
@@ -53,13 +54,15 @@ func newController() *jobcontroller {
 	})
 
 	sharedInformers := informers.NewSharedInformerFactory(kubeClientSet, 0)
+	vcSharedInformers := informerfactory.NewSharedInformerFactory(vcclient, 0)
 
 	controller := &jobcontroller{}
 	opt := &framework.ControllerOption{
-		VolcanoClient:         vcclient,
-		KubeClient:            kubeClientSet,
-		SharedInformerFactory: sharedInformers,
-		WorkerNum:             3,
+		VolcanoClient:           vcclient,
+		KubeClient:              kubeClientSet,
+		SharedInformerFactory:   sharedInformers,
+		VCSharedInformerFactory: vcSharedInformers,
+		WorkerNum:               3,
 	}
 
 	controller.Initialize(opt)

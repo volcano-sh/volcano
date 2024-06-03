@@ -41,7 +41,6 @@ import (
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcscheme "volcano.sh/apis/pkg/client/clientset/versioned/scheme"
-	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
 	businformer "volcano.sh/apis/pkg/client/informers/externalversions/bus/v1alpha1"
@@ -152,7 +151,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 		cc.queueList[i] = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	}
 
-	factory := informerfactory.NewSharedInformerFactory(cc.vcClient, 0)
+	factory := opt.VCSharedInformerFactory
 	cc.vcInformerFactory = factory
 	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
 		cc.jobInformer = factory.Batch().V1alpha1().Jobs()

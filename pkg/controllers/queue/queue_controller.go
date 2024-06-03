@@ -38,7 +38,6 @@ import (
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	versionedscheme "volcano.sh/apis/pkg/client/clientset/versioned/scheme"
-	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	busv1alpha1informer "volcano.sh/apis/pkg/client/informers/externalversions/bus/v1alpha1"
 	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
@@ -103,7 +102,7 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 	c.vcClient = opt.VolcanoClient
 	c.kubeClient = opt.KubeClient
 
-	factory := informerfactory.NewSharedInformerFactory(c.vcClient, 0)
+	factory := opt.VCSharedInformerFactory
 	queueInformer := factory.Scheduling().V1beta1().Queues()
 	pgInformer := factory.Scheduling().V1beta1().PodGroups()
 

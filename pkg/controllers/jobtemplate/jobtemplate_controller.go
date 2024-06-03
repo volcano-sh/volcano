@@ -32,7 +32,7 @@ import (
 
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	versionedscheme "volcano.sh/apis/pkg/client/clientset/versioned/scheme"
-	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	batchinformer "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
 	flowinformer "volcano.sh/apis/pkg/client/informers/externalversions/flow/v1alpha1"
 	batchlister "volcano.sh/apis/pkg/client/listers/batch/v1alpha1"
@@ -53,6 +53,9 @@ type jobtemplatecontroller struct {
 	//informer
 	jobTemplateInformer flowinformer.JobTemplateInformer
 	jobInformer         batchinformer.JobInformer
+
+	//InformerFactory
+	vcInformerFactory vcinformer.SharedInformerFactory
 
 	//jobTemplateLister
 	jobTemplateLister flowlister.JobTemplateLister
@@ -81,14 +84,17 @@ func (jt *jobtemplatecontroller) Initialize(opt *framework.ControllerOption) err
 	jt.kubeClient = opt.KubeClient
 	jt.vcClient = opt.VolcanoClient
 
-	jt.jobTemplateInformer = informerfactory.NewSharedInformerFactory(jt.vcClient, 0).Flow().V1alpha1().JobTemplates()
+	factory := opt.VCSharedInformerFactory
+	jt.vcInformerFactory = factory
+
+	jt.jobTemplateInformer = factory.Flow().V1alpha1().JobTemplates()
 	jt.jobTemplateSynced = jt.jobTemplateInformer.Informer().HasSynced
 	jt.jobTemplateLister = jt.jobTemplateInformer.Lister()
 	jt.jobTemplateInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: jt.addJobTemplate,
 	})
 
-	jt.jobInformer = informerfactory.NewSharedInformerFactory(jt.vcClient, 0).Batch().V1alpha1().Jobs()
+	jt.jobInformer = factory.Batch().V1alpha1().Jobs()
 	jt.jobSynced = jt.jobInformer.Informer().HasSynced
 	jt.jobLister = jt.jobInformer.Lister()
 	jt.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -117,10 +123,13 @@ func (jt *jobtemplatecontroller) Initialize(opt *framework.ControllerOption) err
 func (jt *jobtemplatecontroller) Run(stopCh <-chan struct{}) {
 	defer jt.queue.ShutDown()
 
-	go jt.jobTemplateInformer.Informer().Run(stopCh)
-	go jt.jobInformer.Informer().Run(stopCh)
-
-	cache.WaitForCacheSync(stopCh, jt.jobSynced, jt.jobTemplateSynced)
+	jt.vcInformerFactory.Start(stopCh)
+	for informerType, ok := range jt.vcInformerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			klog.Errorf("caches failed to sync: %v", informerType)
+			return
+		}
+	}
 
 	go wait.Until(jt.worker, time.Second, stopCh)
 

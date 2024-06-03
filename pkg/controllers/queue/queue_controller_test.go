@@ -27,6 +27,7 @@ import (
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
@@ -34,10 +35,13 @@ func newFakeController() *queuecontroller {
 	KubeBatchClientSet := vcclient.NewSimpleClientset()
 	KubeClientSet := kubeclient.NewSimpleClientset()
 
+	vcSharedInformers := informerfactory.NewSharedInformerFactory(KubeBatchClientSet, 0)
+
 	controller := &queuecontroller{}
 	opt := framework.ControllerOption{
-		VolcanoClient: KubeBatchClientSet,
-		KubeClient:    KubeClientSet,
+		VolcanoClient:           KubeBatchClientSet,
+		KubeClient:              KubeClientSet,
+		VCSharedInformerFactory: vcSharedInformers,
 	}
 
 	controller.Initialize(&opt)

@@ -22,11 +22,26 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	volcanoclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
+
+func newFakeController() *gccontroller {
+	volcanoClientSet := volcanoclient.NewSimpleClientset()
+	vcSharedInformers := informerfactory.NewSharedInformerFactory(volcanoClientSet, 0)
+
+	controller := &gccontroller{}
+	opt := &framework.ControllerOption{
+		VolcanoClient:           volcanoClientSet,
+		VCSharedInformerFactory: vcSharedInformers,
+	}
+
+	controller.Initialize(opt)
+
+	return controller
+}
 
 func TestGarbageCollector_ProcessJob(t *testing.T) {
 
@@ -84,10 +99,7 @@ func TestGarbageCollector_ProcessTTL(t *testing.T) {
 		},
 	}
 	for i, testcase := range testcases {
-		gc := &gccontroller{}
-		gc.Initialize(&framework.ControllerOption{
-			VolcanoClient: volcanoclient.NewSimpleClientset(),
-		})
+		gc := newFakeController()
 
 		expired, err := gc.processTTL(testcase.Job)
 		if err != nil {

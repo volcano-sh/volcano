@@ -30,7 +30,6 @@ import (
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
-	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	schedulinginformer "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
@@ -99,7 +98,7 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 		AddFunc: pg.addPod,
 	})
 
-	factory := informerfactory.NewSharedInformerFactory(pg.vcClient, 0)
+	factory := opt.VCSharedInformerFactory
 	pg.vcInformerFactory = factory
 	pg.pgInformer = factory.Scheduling().V1beta1().PodGroups()
 	pg.pgLister = pg.pgInformer.Lister()

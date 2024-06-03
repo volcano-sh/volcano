@@ -28,6 +28,7 @@ import (
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	volcanoclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
@@ -36,13 +37,15 @@ func newFakeController() *jobcontroller {
 	kubeClientSet := kubeclient.NewSimpleClientset()
 
 	sharedInformers := informers.NewSharedInformerFactory(kubeClientSet, 0)
+	vcSharedInformers := informerfactory.NewSharedInformerFactory(volcanoClientSet, 0)
 
 	controller := &jobcontroller{}
 	opt := &framework.ControllerOption{
-		VolcanoClient:         volcanoClientSet,
-		KubeClient:            kubeClientSet,
-		SharedInformerFactory: sharedInformers,
-		WorkerNum:             3,
+		VolcanoClient:           volcanoClientSet,
+		KubeClient:              kubeClientSet,
+		SharedInformerFactory:   sharedInformers,
+		VCSharedInformerFactory: vcSharedInformers,
+		WorkerNum:               3,
 	}
 
 	controller.Initialize(opt)
