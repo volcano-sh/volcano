@@ -4,6 +4,9 @@ kind: ClusterRoleBinding
 metadata:
   labels:
     app.kubernetes.io/name: kube-state-metrics
+    {{- if .Values.custom.common_labels }}
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
   name: kube-state-metrics
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -19,6 +22,9 @@ kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: kube-state-metrics
+    {{- if .Values.custom.common_labels }}
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
   name: kube-state-metrics
 rules:
 - apiGroups:
@@ -129,6 +135,9 @@ kind: ServiceAccount
 metadata:
   labels:
     app.kubernetes.io/name: kube-state-metrics
+    {{- if .Values.custom.common_labels }}
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
   name: kube-state-metrics
   namespace: {{ .Release.Namespace }}
 ---
@@ -139,6 +148,9 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     k8s-app: kube-state-metrics
+    {{- if .Values.custom.common_labels }}
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
 spec:
   progressDeadlineSeconds: 600
   replicas: 1
@@ -154,6 +166,9 @@ spec:
     metadata:
       labels:
         k8s-app: kube-state-metrics
+        {{- if .Values.custom.common_labels }}
+        {{- toYaml .Values.custom.common_labels | nindent 8 }}
+        {{- end }}
     spec:
       containers:
         - image: quay.io/coreos/kube-state-metrics:v1.9.7
@@ -180,6 +195,9 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: kube-state-metrics
+    {{- if .Values.custom.common_labels }}
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
   name: kube-state-metrics
   namespace: {{ .Release.Namespace }}
   annotations:
