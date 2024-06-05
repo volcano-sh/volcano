@@ -19,12 +19,14 @@ package job
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
@@ -134,6 +136,10 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 
 	// Update Job status
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
+	if errors.IsNotFound(err) {
+		klog.Errorf("Job %v/%v was not found", job.Namespace, job.Name)
+		return nil
+	}
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",
 			job.Namespace, job.Name, err)
@@ -445,7 +451,8 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			fmt.Sprintf("Error deleting pods: %+v", deletionErrs))
 		return fmt.Errorf("failed to delete %d pods of %d", len(deletionErrs), len(podToDelete))
 	}
-	job.Status = batch.JobStatus{
+
+	newStatus := batch.JobStatus{
 		State: job.Status.State,
 
 		Pending:             pending,
@@ -461,11 +468,17 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		Conditions:          job.Status.Conditions,
 		RetryCount:          job.Status.RetryCount,
 	}
+	oldStatus := job.Status
+	job.Status = newStatus
 
 	if updateStatus != nil && updateStatus(&job.Status) {
 		job.Status.State.LastTransitionTime = metav1.Now()
 		jobCondition = newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
 		job.Status.Conditions = append(job.Status.Conditions, jobCondition)
+	}
+
+	if reflect.DeepEqual(oldStatus, newStatus) {
+		return nil
 	}
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
