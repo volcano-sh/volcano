@@ -30,7 +30,7 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-OS=$(shell uname -s)
+OS=$(shell uname -s | tr '[:upper:]' '[:lower:]')
 
 # Get OS architecture
 OSARCH=$(shell uname -m)
@@ -85,11 +85,7 @@ vc-webhook-manager: init
 	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
 
 vcctl: init
-	if [ ${OS} = 'Darwin' ];then\
-		CC=${CC} CGO_ENABLED=0 GOOS=darwin go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli;\
-	else\
-		CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli;\
-	fi;
+	CC=${CC} CGO_ENABLED=0 GOOS=${OS} go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli
 
 image_bins: vc-scheduler vc-controller-manager vc-webhook-manager
 
@@ -115,8 +111,8 @@ manifests: controller-gen
 
 unit-test:
 	go clean -testcache
-	if [ ${OS} = 'Darwin' ];then\
-		GOOS=darwin go list ./... | grep -v "/e2e" | xargs  go test;\
+	if [ ${OS} = 'darwin' ];then\
+		go list ./... | grep -v "/e2e" | GOOS=${OS} xargs go test;\
 	else\
 		go test -p 8 -race $$(find pkg cmd -type f -name '*_test.go' | sed -r 's|/[^/]+$$||' | sort | uniq | sed "s|^|volcano.sh/volcano/|");\
 	fi;
@@ -146,8 +142,8 @@ generate-yaml: init manifests
 	./hack/generate-yaml.sh TAG=${RELEASE_VER} CRD_VERSION=${CRD_VERSION}
 
 generate-charts: init manifests
-	./hack/generate-charts.sh 
-	
+	./hack/generate-charts.sh
+
 release-env:
 	./hack/build-env.sh release
 
@@ -190,7 +186,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.14.0 ;\
+	GOOS=${OS} go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.14.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen
@@ -211,7 +207,7 @@ mod-download-go:
 
 .PHONY: mirror-licenses
 mirror-licenses: mod-download-go; \
-	go install istio.io/tools/cmd/license-lint@1.19.7; \
+	GOOS=${OS} go install istio.io/tools/cmd/license-lint@1.19.7; \
 	cd licenses; \
 	rm -rf `ls ./ | grep -v LICENSE`; \
 	cd -; \
