@@ -29,8 +29,8 @@ func getJobName(jobFlowName string, jobTemplateName string) string {
 	return jobFlowName + "-" + jobTemplateName
 }
 
-// GetTemplateString get the JobTemplate information string
-func GetTemplateString(namespace, name string) string {
+// GenerateObjectString generates the object information string using namespace and name
+func GenerateObjectString(namespace, name string) string {
 	return namespace + "." + name
 }
 

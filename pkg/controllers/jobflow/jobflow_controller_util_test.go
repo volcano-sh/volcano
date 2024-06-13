@@ -73,8 +73,8 @@ func TestGetConnectionOfJobAndJobTemplate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GetTemplateString(tt.args.namespace, tt.args.name); got != tt.want {
-				t.Errorf("GetTemplateString() = %v, want %v", got, tt.want)
+			if got := GenerateObjectString(tt.args.namespace, tt.args.name); got != tt.want {
+				t.Errorf("GenerateObjectString() = %v, want %v", got, tt.want)
 			}
 		})
 	}

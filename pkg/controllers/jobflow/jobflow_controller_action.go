@@ -260,10 +260,16 @@ func (jf *jobflowcontroller) loadJobTemplateAndSetJob(jobFlow *v1alpha1flow.JobF
 
 	*job = v1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        jobName,
-			Namespace:   jobFlow.Namespace,
-			Labels:      map[string]string{CreatedByJobTemplate: GetTemplateString(jobFlow.Namespace, flowName)},
-			Annotations: map[string]string{CreatedByJobTemplate: GetTemplateString(jobFlow.Namespace, flowName)},
+			Name:      jobName,
+			Namespace: jobFlow.Namespace,
+			Labels: map[string]string{
+				CreatedByJobTemplate: GenerateObjectString(jobFlow.Namespace, flowName),
+				CreatedByJobFlow:     GenerateObjectString(jobFlow.Namespace, jobFlow.Name),
+			},
+			Annotations: map[string]string{
+				CreatedByJobTemplate: GenerateObjectString(jobFlow.Namespace, flowName),
+				CreatedByJobFlow:     GenerateObjectString(jobFlow.Namespace, jobFlow.Name),
+			},
 		},
 		Spec:   jobTemplate.Spec,
 		Status: v1alpha1.JobStatus{},
@@ -292,7 +298,7 @@ func (jf *jobflowcontroller) deleteAllJobsCreatedByJobFlow(jobFlow *v1alpha1flow
 func (jf *jobflowcontroller) getAllJobsCreatedByJobFlow(jobFlow *v1alpha1flow.JobFlow) ([]*v1alpha1.Job, error) {
 	var flowNames []string
 	for _, flow := range jobFlow.Spec.Flows {
-		flowNames = append(flowNames, GetTemplateString(jobFlow.Namespace, flow.Name))
+		flowNames = append(flowNames, GenerateObjectString(jobFlow.Namespace, flow.Name))
 	}
 	selector := labels.NewSelector()
 	r, err := labels.NewRequirement(CreatedByJobTemplate, selection.In, flowNames)
