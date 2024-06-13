@@ -19,7 +19,6 @@ package job
 import (
 	"context"
 	"fmt"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -38,7 +36,6 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
-	"volcano.sh/volcano/pkg/controllers/util"
 )
 
 var calMutex sync.Mutex
@@ -769,6 +766,7 @@ func (cc *jobcontroller) deleteJobPod(jobName string, pod *v1.Pod) error {
 func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 	// sort task by priorityClasses
 	var tasksPriority TasksPriority
+	totalMinAvailable := int32(0)
 	for _, task := range job.Spec.Tasks {
 		tp := TaskPriority{0, task}
 		pc := task.Template.Spec.PriorityClassName
@@ -782,25 +780,23 @@ func (cc *jobcontroller) calcPGMinResources(job *batch.Job) *v1.ResourceList {
 			}
 		}
 		tasksPriority = append(tasksPriority, tp)
-	}
-
-	sort.Sort(tasksPriority)
-
-	minReq := v1.ResourceList{}
-	podCnt := int32(0)
-	for _, task := range tasksPriority {
-		for i := int32(0); i < task.Replicas; i++ {
-			if podCnt >= job.Spec.MinAvailable {
-				break
-			}
-
-			podCnt++
-			pod := &v1.Pod{
-				Spec: task.Template.Spec,
-			}
-			minReq = quotav1.Add(minReq, *util.GetPodQuotaUsage(pod))
+		if task.MinAvailable != nil { // actually, it can not be nil, because nil value will be patched in webhook
+			totalMinAvailable += *task.MinAvailable
+		} else {
+			totalMinAvailable += task.Replicas
 		}
 	}
+
+	// see docs https://github.com/volcano-sh/volcano/pull/2945
+	// 1. job.MinAvailable < sum(task.MinAvailable), regard podgroup's min resource as sum of the first minAvailable,
+	// according to https://github.com/volcano-sh/volcano/blob/c91eb07f2c300e4d5c826ff11a63b91781b3ac11/pkg/scheduler/api/job_info.go#L738-L740
+	if job.Spec.MinAvailable < totalMinAvailable {
+		minReq := tasksPriority.CalcFirstCountResources(job.Spec.MinAvailable)
+		return &minReq
+	}
+
+	// 2. job.MinAvailable >= sum(task.MinAvailable)
+	minReq := tasksPriority.CalcPGMinResources(job.Spec.MinAvailable)
 
 	return &minReq
 }
