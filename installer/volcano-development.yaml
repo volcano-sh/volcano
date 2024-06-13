@@ -72,9 +72,6 @@ rules:
   - apiGroups: ["certificates.k8s.io"]
     resources: ["certificatesigningrequests/approval"]
     verbs: ["create", "update"]
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["create", "get", "patch"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
     verbs: ["get", "list"]
@@ -168,19 +165,68 @@ spec:
           configMap:
             name: volcano-admission-configmap
 ---
-# Source: volcano/templates/admission.yaml
+# Source: volcano/templates/admission-init.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: volcano-admission-init
+  namespace: volcano-system
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "0"
+---
+# Source: volcano/templates/admission-init.yaml
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: volcano-admission-init
+  namespace: volcano-system
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "0"
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get"]
+---
+# Source: volcano/templates/admission-init.yaml
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: volcano-admission-init-role
+  namespace: volcano-system
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "0"
+subjects:
+  - kind: ServiceAccount
+    name: volcano-admission-init
+    namespace: volcano-system
+roleRef:
+  kind: Role
+  name: volcano-admission-init
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: volcano/templates/admission-init.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: volcano-admission-init
   namespace: volcano-system
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "5" # set a higher weight to reserve buffers.
   labels:
     app: volcano-admission-init
 spec:
   backoffLimit: 3
   template:
     spec:
-      serviceAccountName: volcano-admission
+      serviceAccountName: volcano-admission-init
       priorityClassName: system-cluster-critical
       restartPolicy: Never
       containers:
