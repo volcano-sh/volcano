@@ -476,11 +476,6 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	if reflect.DeepEqual(job.Status, newStatus) {
 		klog.V(3).Infof("Job <%s/%s> has not updated for no changing", job.Namespace, job.Name)
 		return nil
-	} else {
-		job.Status = newStatus
-		job.Status.State.LastTransitionTime = metav1.Now()
-		jobCondition = newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
-		job.Status.Conditions = append(job.Status.Conditions, jobCondition)
 	}
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
