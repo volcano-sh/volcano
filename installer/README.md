@@ -122,6 +122,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.admission_labels`|Labels for Admission deployment and job|`~`|
 |`custom.controller_labels`|Labels for Controller deployment|`~`|
 |`custom.scheduler_labels`|Labels for Scheduler deployment|`~`|
+|`custom.common_labels`|Labels for all chart objects except for CRDs |`~`|
 |`custom.admission_resources`|Resources for Admission pods|`~`|
 |`custom.controller_resources`|Resources for Controller pods|`~`|
 |`custom.scheduler_resources`|Resources for Scheduler pods|`~`|

@@ -8,6 +8,10 @@ kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-scheduler-configmap
   namespace: {{ .Release.Namespace }}
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
 data:
   {{- if .Values.custom.scheduler_config_override }}
   volcano-scheduler.conf: |
@@ -21,11 +25,19 @@ kind: ServiceAccount
 metadata:
   name: {{ .Release.Name }}-scheduler
   namespace: {{ .Release.Namespace }}
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-scheduler
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
@@ -95,6 +107,10 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: {{ .Release.Name }}-scheduler-role
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
 subjects:
   - kind: ServiceAccount
     name: {{ .Release.Name }}-scheduler
@@ -112,8 +128,8 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app: volcano-scheduler
-    {{- if .Values.custom.scheduler_labels }}
-    {{- toYaml .Values.custom.scheduler_labels | nindent 4 }}
+    {{- if or (.Values.custom.scheduler_labels) (.Values.custom.common_labels) }}
+    {{- mustMerge (.Values.custom.scheduler_labels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 4 }}
     {{- end }}
 spec:
   replicas: {{ .Values.custom.scheduler_replicas }}
@@ -124,8 +140,8 @@ spec:
     metadata:
       labels:
         app: volcano-scheduler
-        {{- if .Values.custom.scheduler_podLabels }}
-        {{- toYaml .Values.custom.scheduler_podLabels | nindent 8 }}
+        {{- if or (.Values.custom.scheduler_podLabels) (.Values.custom.common_labels) }}
+        {{- mustMerge (.Values.custom.scheduler_podLabels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 8 }}
         {{- end }}
     spec:
       {{- if $scheduler_tolerations }}
@@ -194,6 +210,9 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app: volcano-scheduler
+    {{- if .Values.custom.common_labels }}
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
 spec:
   ports:
   - port: 8080

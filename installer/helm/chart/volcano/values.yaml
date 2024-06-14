@@ -106,6 +106,10 @@ custom:
   scheduler_labels: ~
   controller_labels: ~
 
+# Specify labels for all Volcano helm chart objects except for CRDs
+  common_labels: ~
+
+
 # Specify resources for Volcano main component deployments and pods
 # For example:
 #
