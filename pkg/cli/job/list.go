@@ -35,6 +35,7 @@ import (
 type listFlags struct {
 	util.CommonFlags
 
+	QueueName     string
 	Namespace     string
 	SchedulerName string
 	allNamespace  bool
@@ -83,6 +84,7 @@ var listJobFlags = &listFlags{}
 func InitListFlags(cmd *cobra.Command) {
 	util.InitFlags(cmd, &listJobFlags.CommonFlags)
 
+	cmd.Flags().StringVarP(&listJobFlags.QueueName, "queue", "q", "", "list job with specified queue name")
 	cmd.Flags().StringVarP(&listJobFlags.Namespace, "namespace", "n", "default", "the namespace of job")
 	cmd.Flags().StringVarP(&listJobFlags.SchedulerName, "scheduler", "S", "", "list job with specified scheduler name")
 	cmd.Flags().BoolVarP(&listJobFlags.allNamespace, "all-namespaces", "", false, "list jobs in all namespaces")
@@ -104,11 +106,29 @@ func ListJobs(ctx context.Context) error {
 		return err
 	}
 
-	if len(jobs.Items) == 0 {
+	// define the filter callback function based on different flags
+	filterFunc := func(job v1alpha1.Job) bool {
+		// filter by QueueName if specified
+		if listJobFlags.QueueName != "" && listJobFlags.QueueName != job.Spec.Queue {
+			return false
+		}
+		// filter by SchedulerName if specified
+		if listJobFlags.SchedulerName != "" && listJobFlags.SchedulerName != job.Spec.SchedulerName {
+			return false
+		}
+		// filter by selector if specified
+		if listJobFlags.selector != "" && !strings.Contains(job.Name, listJobFlags.selector) {
+			return false
+		}
+		return true
+	}
+	filteredJobs := filterJobs(jobs, filterFunc)
+
+	if len(filteredJobs.Items) == 0 {
 		fmt.Printf("No resources found\n")
 		return nil
 	}
-	PrintJobs(jobs, os.Stdout)
+	PrintJobs(filteredJobs, os.Stdout)
 
 	return nil
 }
@@ -133,12 +153,6 @@ func PrintJobs(jobs *v1alpha1.JobList, writer io.Writer) {
 	}
 
 	for _, job := range jobs.Items {
-		if listJobFlags.SchedulerName != "" && listJobFlags.SchedulerName != job.Spec.SchedulerName {
-			continue
-		}
-		if !strings.Contains(job.Name, listJobFlags.selector) {
-			continue
-		}
 		replicas := int32(0)
 		for _, ts := range job.Spec.Tasks {
 			replicas += ts.Replicas
@@ -176,4 +190,15 @@ func getMaxLen(jobs *v1alpha1.JobList) []int {
 	}
 
 	return []int{maxNameLen + 3, maxNamespaceLen + 3}
+}
+
+// filterJobs filters jobs based on the provided filter callback function.
+func filterJobs(jobs *v1alpha1.JobList, filterFunc func(job v1alpha1.Job) bool) *v1alpha1.JobList {
+	filteredJobs := &v1alpha1.JobList{}
+	for _, job := range jobs.Items {
+		if filterFunc(job) {
+			filteredJobs.Items = append(filteredJobs.Items, job)
+		}
+	}
+	return filteredJobs
 }
