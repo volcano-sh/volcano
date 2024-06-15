@@ -483,7 +483,6 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 }
 
 func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskIndex int, job *batch.Job) bool {
-
 	if job.Spec.Tasks[taskIndex].DependsOn == nil {
 		return true
 	}
