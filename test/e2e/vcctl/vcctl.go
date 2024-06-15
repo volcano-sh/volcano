@@ -99,6 +99,7 @@ Flags:
   -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
   -s, --master string       the address of apiserver
   -n, --namespace string    the namespace of job (default "default")
+  -q, --queue string        list job with specified queue name
   -S, --scheduler string    list job with specified scheduler name
       --selector string     fuzzy matching jobName
 
