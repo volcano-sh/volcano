@@ -36,6 +36,7 @@ Available Commands:
   job         vcctl command line operation job
   jobflow     vcctl command line operation jobflow
   jobtemplate vcctl command line operation jobtemplate
+  pod         vcctl command line operation pod
   queue       Queue Operations
   version     Print the version information
 
