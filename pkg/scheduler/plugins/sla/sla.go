@@ -124,12 +124,15 @@ func (sp *slaPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		lCreationTimestamp := lv.CreationTimestamp
 		rCreationTimestamp := rv.CreationTimestamp
-		if lCreationTimestamp.Add(*lJobWaitingTime).Before(rCreationTimestamp.Add(*rJobWaitingTime)) {
+
+		switch {
+		case lCreationTimestamp.Add(*lJobWaitingTime).Before(rCreationTimestamp.Add(*rJobWaitingTime)):
 			return -1
-		} else if lCreationTimestamp.Add(*lJobWaitingTime).After(rCreationTimestamp.Add(*rJobWaitingTime)) {
+		case lCreationTimestamp.Add(*lJobWaitingTime).After(rCreationTimestamp.Add(*rJobWaitingTime)):
 			return 1
+		default:
+			return 0
 		}
-		return 0
 	}
 	ssn.AddJobOrderFn(sp.Name(), jobOrderFn)
 
