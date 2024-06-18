@@ -723,6 +723,27 @@ func (ji *JobInfo) PendingBestEffortTaskNum() int32 {
 	return int32(count)
 }
 
+// FitFailedRoles returns the job roles' failed fit records
+func (ji *JobInfo) FitFailedRoles() map[string]struct{} {
+	failedRoles := map[string]struct{}{}
+	for tid := range ji.NodesFitErrors {
+		task := ji.Tasks[tid]
+		failedRoles[task.TaskSpec] = struct{}{}
+	}
+	return failedRoles
+}
+
+// TaskHasFitErrors checks if the task has fit errors and can continue try predicating
+func (ji *JobInfo) TaskHasFitErrors(task *TaskInfo) bool {
+	// if the task didn't set the spec key, should not use the cache
+	if len(task.TaskSpec) == 0 {
+		return false
+	}
+
+	_, exist := ji.FitFailedRoles()[task.TaskSpec]
+	return exist
+}
+
 // CheckJobNeedContinueAllocating checks whether it can continue on allocating for current job
 // when its one pod predicated failed, there are two cases to continue:
 //  1. job's total allocatable number meet its minAvailable(each task role has no independent minMember setting):
@@ -732,12 +753,13 @@ func (ji *JobInfo) PendingBestEffortTaskNum() int32 {
 //     this is for the case that each task role has its own independent minMember.
 //     eg, current role's pod has a failed predicating result but its allocated number has meet its minMember,
 //     the other roles' pods which have no failed predicating results can continue on
+//
+// performance analysis:
+//
+//	As the failed predicating role has been pre-checked when it was poped from queue,
+//	this function will only be called at most as the number of roles in this job.
 func (ji *JobInfo) CheckJobNeedContinueAllocating() bool {
-	failedRoles := map[string]struct{}{}
-	for tid := range ji.NodesFitErrors {
-		task := ji.Tasks[tid]
-		failedRoles[task.TaskSpec] = struct{}{}
-	}
+	failedRoles := ji.FitFailedRoles()
 
 	pending := map[string]int32{}
 	for _, task := range ji.TaskStatusIndex[Pending] {

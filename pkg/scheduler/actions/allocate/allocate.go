@@ -178,6 +178,12 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			continue
 		}
 
+		// check if the task with its spec has already predicates failed
+		if job.TaskHasFitErrors(task) {
+			klog.V(5).Infof("Task %s with role spec %s has already predicated failed, skip", task.Name, task.TaskSpec)
+			continue
+		}
+
 		klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(ssn.Nodes), job.Namespace, job.Name)
 
 		if err := ssn.PrePredicateFn(task); err != nil {
