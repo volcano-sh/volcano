@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.21.8 AS builder
+FROM golang:1.22.2 AS builder
 WORKDIR /go/src/volcano.sh/
 COPY go.mod go.sum ./
 RUN go mod download
@@ -20,7 +20,7 @@ ADD . volcano
 RUN cd volcano && make vc-webhook-manager
 
 FROM alpine:latest
-ARG KUBE_VERSION="1.29.0"
+ARG KUBE_VERSION="1.30.0"
 ARG TARGETARCH
 ARG APK_MIRROR
 RUN if [[ -n "$APK_MIRROR" ]]; then sed -i "s@https://dl-cdn.alpinelinux.org@${APK_MIRROR}@g" /etc/apk/repositories ; fi && \
