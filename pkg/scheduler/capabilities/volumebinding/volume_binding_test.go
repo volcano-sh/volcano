@@ -19,6 +19,7 @@ package volumebinding
 import (
 	"context"
 	"testing"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -35,8 +36,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/runtime"
-
-	"volcano.sh/volcano/cmd/scheduler/app/options"
+	tf "k8s.io/kubernetes/pkg/scheduler/testing/framework"
 )
 
 var (
@@ -87,6 +87,7 @@ func TestVolumeBinding(t *testing.T) {
 		wantStateAfterPreFilter *stateData
 		wantFilterStatus        []*framework.Status
 		wantScores              []int64
+		wantPreScoreStatus      *framework.Status
 	}{
 		{
 			name: "pod has not pvcs",
@@ -98,9 +99,7 @@ func TestVolumeBinding(t *testing.T) {
 			wantFilterStatus: []*framework.Status{
 				nil,
 			},
-			wantScores: []int64{
-				0,
-			},
+			wantPreScoreStatus: framework.NewStatus(framework.Skip),
 		},
 		{
 			name: "all bound",
@@ -127,9 +126,7 @@ func TestVolumeBinding(t *testing.T) {
 			wantFilterStatus: []*framework.Status{
 				nil,
 			},
-			wantScores: []int64{
-				0,
-			},
+			wantPreScoreStatus: framework.NewStatus(framework.Skip),
 		},
 		{
 			name: "all bound with local volumes",
@@ -166,9 +163,7 @@ func TestVolumeBinding(t *testing.T) {
 			wantFilterStatus: []*framework.Status{
 				nil,
 			},
-			wantScores: []int64{
-				0,
-			},
+			wantPreScoreStatus: framework.NewStatus(framework.Skip),
 		},
 		{
 			name: "PVC does not exist",
@@ -241,9 +236,7 @@ func TestVolumeBinding(t *testing.T) {
 			wantFilterStatus: []*framework.Status{
 				framework.NewStatus(framework.UnschedulableAndUnresolvable, string(ErrReasonBindConflict)),
 			},
-			wantScores: []int64{
-				0,
-			},
+			wantPreScoreStatus: framework.NewStatus(framework.Skip),
 		},
 		{
 			name: "bound and unbound unsatisfied",
@@ -281,9 +274,7 @@ func TestVolumeBinding(t *testing.T) {
 			wantFilterStatus: []*framework.Status{
 				framework.NewStatus(framework.UnschedulableAndUnresolvable, string(ErrReasonNodeConflict), string(ErrReasonBindConflict)),
 			},
-			wantScores: []int64{
-				0,
-			},
+			wantPreScoreStatus: framework.NewStatus(framework.Skip),
 		},
 		{
 			name: "pvc not found",
@@ -322,9 +313,7 @@ func TestVolumeBinding(t *testing.T) {
 			wantFilterStatus: []*framework.Status{
 				framework.NewStatus(framework.UnschedulableAndUnresolvable, `node(s) unavailable due to one or more pvc(s) bound to non-existent pv(s)`),
 			},
-			wantScores: []int64{
-				0,
-			},
+			wantPreScoreStatus: framework.NewStatus(framework.Skip),
 		},
 		{
 			name: "pv not found claim lost",
@@ -881,6 +870,15 @@ func TestVolumeBinding(t *testing.T) {
 			for i, nodeInfo := range nodeInfos {
 				gotStatus := p.Filter(ctx, state, item.pod, nodeInfo)
 				assert.Equal(t, item.wantFilterStatus[i], gotStatus)
+			}
+
+			t.Logf("Verify: call PreScore and check status")
+			gotPreScoreStatus := p.PreScore(ctx, state, item.pod, tf.BuildNodeInfos(item.nodes))
+			if diff := cmp.Diff(item.wantPreScoreStatus, gotPreScoreStatus); diff != "" {
+				t.Errorf("state got after prescore does not match (-want,+got):\n%s", diff)
+			}
+			if !gotPreScoreStatus.IsSuccess() {
+				return
 			}
 
 			t.Logf("Verify: Score")

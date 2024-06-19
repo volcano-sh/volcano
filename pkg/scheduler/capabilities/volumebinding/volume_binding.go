@@ -55,6 +55,9 @@ type stateData struct {
 	// it's initialized in the PreFilter phase
 	podVolumesByNode map[string]*PodVolumes
 	podVolumeClaims  *PodVolumeClaims
+	// hasStaticBindings declares whether the pod contains one or more StaticBinding.
+	// If not, vloumeBinding will skip score extension point.
+	hasStaticBindings bool
 	sync.Mutex
 }
 
@@ -76,6 +79,7 @@ var _ framework.PreFilterPlugin = &VolumeBinding{}
 var _ framework.FilterPlugin = &VolumeBinding{}
 var _ framework.ReservePlugin = &VolumeBinding{}
 var _ framework.PreBindPlugin = &VolumeBinding{}
+var _ framework.PreScorePlugin = &VolumeBinding{}
 var _ framework.ScorePlugin = &VolumeBinding{}
 var _ framework.EnqueueExtensions = &VolumeBinding{}
 
@@ -102,6 +106,16 @@ func (pl *VolumeBinding) EventsToRegister() []framework.ClusterEventWithHint {
 		// match the storage class's allowed topologies or PV's node affinity.
 		// A new or updated node may make pods schedulable.
 		{Event: framework.ClusterEvent{Resource: framework.Node, ActionType: framework.Add | framework.UpdateNodeLabel}},
+		//
+		// A note about UpdateNodeTaint event:
+		// NodeAdd QueueingHint isn't always called because of the internal feature called preCheck.
+		// As a common problematic scenario,
+		// when a node is added but not ready, NodeAdd event is filtered out by preCheck and doesn't arrive.
+		// In such cases, this plugin may miss some events that actually make pods schedulable.
+		// As a workaround, we add UpdateNodeTaint event to catch the case.
+		// We can remove UpdateNodeTaint when we remove the preCheck feature.
+		// See: https://github.com/kubernetes/kubernetes/issues/110175
+		{Event: framework.ClusterEvent{Resource: framework.Node, ActionType: framework.Add | framework.UpdateNodeLabel | framework.UpdateNodeTaint}},
 		// We rely on CSI node to translate in-tree PV to CSI.
 		{Event: framework.ClusterEvent{Resource: framework.CSINode, ActionType: framework.Add | framework.Update}},
 		// When CSIStorageCapacity is enabled, pods may become schedulable
@@ -260,8 +274,24 @@ func (pl *VolumeBinding) Filter(ctx context.Context, cs *framework.CycleState, p
 	// multiple goroutines call `Filter` on different nodes simultaneously and the `CycleState` may be duplicated, so we must use a local lock here
 	state.Lock()
 	state.podVolumesByNode[node.Name] = podVolumes
+	state.hasStaticBindings = state.hasStaticBindings || (podVolumes != nil && len(podVolumes.StaticBindings) > 0)
 	state.Unlock()
 	return nil
+}
+
+// PreScore invoked at the preScore extension point. It checks whether volumeBinding can skip Score
+func (pl *VolumeBinding) PreScore(ctx context.Context, cs *framework.CycleState, pod *v1.Pod, nodes []*framework.NodeInfo) *framework.Status {
+	if pl.scorer == nil {
+		return framework.NewStatus(framework.Skip)
+	}
+	state, err := getStateData(cs)
+	if err != nil {
+		return framework.AsStatus(err)
+	}
+	if state.hasStaticBindings {
+		return nil
+	}
+	return framework.NewStatus(framework.Skip)
 }
 
 // Score invoked at the score extension point.

@@ -20,13 +20,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"sort"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	storagev1beta1 "k8s.io/api/storage/v1beta1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	storageinformersv1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 
 	v1 "k8s.io/api/core/v1"
@@ -2457,12 +2457,12 @@ func TestGetEligibleNodes(t *testing.T) {
 		eligibleNodes := testEnv.binder.GetEligibleNodes(logger, scenario.pvcs)
 
 		// Validate
-		if equality.Semantic.DeepEqual(scenario.eligibleNodes, eligibleNodes) {
+		if reflect.DeepEqual(scenario.eligibleNodes, eligibleNodes) {
 			fmt.Println("foo")
 		}
 
 		if compDiff := cmp.Diff(scenario.eligibleNodes, eligibleNodes, cmp.Comparer(func(a, b sets.Set[string]) bool {
-			return equality.Semantic.DeepEqual(a, b)
+			return reflect.DeepEqual(a, b)
 		})); compDiff != "" {
 			t.Errorf("Unexpected eligible nodes (-want +got):\n%s", compDiff)
 		}

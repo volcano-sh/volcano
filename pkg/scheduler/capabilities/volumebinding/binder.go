@@ -275,7 +275,6 @@ func NewVolumeBinder(
 		b.csiDriverLister = capacityCheck.CSIDriverInformer.Lister()
 		b.csiStorageCapacityLister = capacityCheck.CSIStorageCapacityInformer.Lister()
 	}
-
 	return b
 }
 
