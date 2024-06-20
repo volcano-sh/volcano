@@ -68,6 +68,9 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Con
 
 				if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
 					klog.Errorf("Failed to update job condition: %v", err)
+				} else if ssn.IsNeedUpdateJobStatus(job) {
+					job.PodGroup.Status.Phase = scheduling.PodGroupPending
+					ssn.cache.UpdateJobStatus(job, true)
 				}
 			}
 

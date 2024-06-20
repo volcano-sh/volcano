@@ -21,7 +21,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
@@ -477,6 +476,14 @@ func (ssn *Session) UpdatePodGroupCondition(jobInfo *api.JobInfo, cond *scheduli
 	}
 
 	return nil
+}
+
+// IsNeedUpdateJobStatus checks if job status changes and need to update
+func (ssn *Session) IsNeedUpdateJobStatus(job *api.JobInfo) bool {
+	oldStatus, found := ssn.podGroupStatus[job.UID]
+	needUpdate := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
+
+	return needUpdate
 }
 
 // AddEventHandler add event handlers
