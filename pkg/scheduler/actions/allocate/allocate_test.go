@@ -19,6 +19,7 @@ package allocate
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
 
@@ -47,6 +48,11 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
+func TestMain(m *testing.M) {
+	options.Default()
+	os.Exit(m.Run())
+}
+
 func TestAllocate(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
 		drf.PluginName:        drf.New,
@@ -54,7 +60,6 @@ func TestAllocate(t *testing.T) {
 		predicates.PluginName: predicates.New,
 		nodeorder.PluginName:  nodeorder.New,
 	}
-	options.Default()
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name: "one Job with two Pods on one node",
@@ -163,6 +168,124 @@ func TestAllocate(t *testing.T) {
 		},
 	}
 
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.Plugins = plugins
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run([]framework.Action{New()})
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestFareShareAllocate(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		drf.PluginName:        drf.New,
+		proportion.PluginName: proportion.New,
+		predicates.PluginName: predicates.New,
+		nodeorder.PluginName:  nodeorder.New,
+	}
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name: "queue with low DRF share value has high priority, should allocate first",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg-small-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupRunning),
+				util.BuildPodGroup("pg-large-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupInqueue),
+				util.BuildPodGroup("pg-large-2", "ns-1", "q-2", 0, nil, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{ // allocate order: q-2/pg-large-2, q-1/pg-large-1
+				util.BuildPod("ns-1", "pod-small-1", "node-1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-small-1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("ns-1", "pod-large-1", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-large-1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("ns-1", "pod-large-2", "", v1.PodPending, api.BuildResourceList("3", "2G"), "pg-large-2", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("node-1", api.BuildResourceList("5", "5G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q-1", 1, nil),
+				util.BuildQueue("q-2", 1, nil),
+			},
+			ExpectBindMap: map[string]string{
+				"ns-1/pod-large-2": "node-1",
+			},
+			ExpectBindsNum: 1,
+		},
+		{
+			Name: "queue’s DRF share value will be updated and its priority will change before it is put back into the priority queue",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg-small-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupRunning),
+				util.BuildPodGroup("pg-large-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupInqueue),
+				util.BuildPodGroup("pg-small-2", "ns-1", "q-2", 0, nil, schedulingv1.PodGroupInqueue),
+				util.BuildPodGroup("pg-large-2", "ns-1", "q-2", 0, nil, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{ // allocate order: q-2/pg-large-2, q-1/pg-large-1, q-2/pg-small-2
+				util.BuildPod("ns-1", "pod-small-1", "node-1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-small-1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("ns-1", "pod-large-1", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-large-1", make(map[string]string), make(map[string]string)),
+				util.BuildPod("ns-1", "pod-large-2", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-large-2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("ns-1", "pod-small-2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-small-2", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("node-1", api.BuildResourceList("5", "5G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q-1", 1, nil),
+				util.BuildQueue("q-2", 1, nil),
+			},
+			ExpectBindMap: map[string]string{
+				"ns-1/pod-large-1": "node-1",
+				"ns-1/pod-large-2": "node-1",
+			},
+			ExpectBindsNum: 2,
+		},
+		{
+			Name: "queue’s one jobs has no pending tasks, should be put back to queues for next job",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupRunning),
+				util.BuildPodGroup("pg-2", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("ns-1", "pod-1", "node-1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-1", nil, nil),
+				util.BuildPod("ns-1", "pod-2", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-2", nil, nil),
+			},
+			Nodes:  []*v1.Node{util.BuildNode("node-1", api.BuildResourceList("5", "5G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))},
+			Queues: []*schedulingv1.Queue{util.BuildQueue("q-1", 1, nil)},
+			ExpectBindMap: map[string]string{
+				"ns-1/pod-2": "node-1",
+			},
+			ExpectBindsNum: 1,
+		},
+	}
+	trueValue := true
+	falseValue := false
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               drf.PluginName,
+					EnabledPreemptable: &trueValue,
+					EnabledJobOrder:    &trueValue,
+				},
+				{
+					Name:               proportion.PluginName,
+					EnabledQueueOrder:  &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledAllocatable: &falseValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:             nodeorder.PluginName,
+					EnabledNodeOrder: &trueValue,
+				},
+			},
+		},
+	}
 	for i, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			test.Plugins = plugins
