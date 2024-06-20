@@ -35,7 +35,7 @@ require (
 	k8s.io/csi-translation-lib v0.30.0
 	k8s.io/klog v1.0.0
 	k8s.io/klog/v2 v2.120.1
-	k8s.io/kubernetes v1.29.0
+	k8s.io/kubernetes v1.30.0
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.3.0
@@ -70,7 +70,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/google/cadvisor v0.48.1 // indirect
+	github.com/google/cadvisor v0.49.0 // indirect
 	github.com/google/cel-go v0.17.8 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
