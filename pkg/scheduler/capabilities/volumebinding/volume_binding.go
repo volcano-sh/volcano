@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -103,6 +104,7 @@ func (pl *VolumeBinding) EventsToRegister() []framework.ClusterEventWithHint {
 		// Pods may fail to find available PVs because the node labels do not
 		// match the storage class's allowed topologies or PV's node affinity.
 		// A new or updated node may make pods schedulable.
+		{Event: framework.ClusterEvent{Resource: framework.Node, ActionType: framework.Add | framework.UpdateNodeLabel}},
 		//
 		// A note about UpdateNodeTaint event:
 		// NodeAdd QueueingHint isn't always called because of the internal feature called preCheck.
@@ -409,9 +411,12 @@ func New(ctx context.Context, plArgs runtime.Object, fh framework.Handle, fts fe
 	pvInformer := fh.SharedInformerFactory().Core().V1().PersistentVolumes()
 	storageClassInformer := fh.SharedInformerFactory().Storage().V1().StorageClasses()
 	csiNodeInformer := fh.SharedInformerFactory().Storage().V1().CSINodes()
-	capacityCheck := CapacityCheck{
-		CSIDriverInformer:          fh.SharedInformerFactory().Storage().V1().CSIDrivers(),
-		CSIStorageCapacityInformer: fh.SharedInformerFactory().Storage().V1().CSIStorageCapacities(),
+	var capacityCheck CapacityCheck
+	if options.ServerOpts.EnableCSIStorage {
+		capacityCheck = CapacityCheck{
+			CSIDriverInformer:          fh.SharedInformerFactory().Storage().V1().CSIDrivers(),
+			CSIStorageCapacityInformer: fh.SharedInformerFactory().Storage().V1().CSIStorageCapacities(),
+		}
 	}
 	binder := NewVolumeBinder(klog.FromContext(ctx), fh.ClientSet(), podInformer, nodeInformer, csiNodeInformer, pvcInformer, pvInformer, storageClassInformer, capacityCheck, time.Duration(args.BindTimeoutSeconds)*time.Second)
 
