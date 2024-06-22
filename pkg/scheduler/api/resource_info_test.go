@@ -818,6 +818,21 @@ func TestLessEqualWithDimension(t *testing.T) {
 			},
 			expected: true,
 		},
+		{
+			resource1: &Resource{
+				MilliCPU: 110, Memory: 4000,
+				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1, "nvidia.com/A100": 1, "scalar": 1},
+			},
+			resource2: &Resource{
+				MilliCPU: 100, Memory: 8000,
+				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/A100": 1, "scalar": 1},
+			},
+			req: &Resource{
+				Memory:          4000,
+				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 0, "nvidia.com/A100": 1, "scalar": 1},
+			},
+			expected: true,
+		},
 	}
 
 	for i, test := range tests {

@@ -16,33 +16,37 @@ package proportion
 import (
 	"io"
 	"net/http"
-	"reflect"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/agiledragon/gomonkey/v2"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	apiv1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/workqueue"
-
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
+	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
+	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func TestMain(m *testing.M) {
+	options.Default()
+	os.Exit(m.Run())
+}
 
 func getWorkerAffinity() *apiv1.Affinity {
 	return &apiv1.Affinity{
@@ -102,22 +106,8 @@ func getLocalMetrics() int {
 
 func TestProportion(t *testing.T) {
 	c := make(chan bool, 1)
-	var tmp *cache.SchedulerCache
-	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, task *api.TaskInfo) error {
-		scCache.Binder.Bind(nil, []*api.TaskInfo{task})
-		return nil
-	})
-	defer patches.Reset()
 
-	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
-		return nil
-	})
-	defer patchUpdateQueueStatus.Reset()
-
-	framework.RegisterPluginBuilder(PluginName, New)
-	framework.RegisterPluginBuilder(gang.PluginName, gang.New)
-	framework.RegisterPluginBuilder(priority.PluginName, priority.New)
-	options.ServerOpts = options.NewServerOption()
+	uthelper.RegisterPlugins(map[string]framework.PluginBuilder{PluginName: New, gang.PluginName: gang.New, priority.PluginName: priority.New})
 	defer framework.CleanupPluginBuilders()
 
 	// Running pods
@@ -144,58 +134,16 @@ func TestProportion(t *testing.T) {
 	p1 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p1"}, Value: 1}
 	p2 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p2"}, Value: 2}
 	// podgroup
-	pg1 := &schedulingv1beta1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "ns1",
-			Name:      "pg1",
-		},
-		Spec: schedulingv1beta1.PodGroupSpec{
-			Queue:             "q1",
-			MinMember:         int32(2),
-			PriorityClassName: p2.Name,
-		},
-	}
-	pg2 := &schedulingv1beta1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "ns1",
-			Name:      "pg2",
-		},
-		Spec: schedulingv1beta1.PodGroupSpec{
-			Queue:             "q1",
-			MinMember:         int32(1),
-			PriorityClassName: p1.Name,
-		},
-	}
+	pg1 := util.BuildPodGroupWithPrio("pg1", "ns1", "q1", 2, nil, "", p2.Name)
+	pg2 := util.BuildPodGroupWithPrio("pg2", "ns1", "q1", 1, nil, "", p1.Name)
+	pg3 := util.BuildPodGroupWithPrio("pg3", "ns1", "q2", 1, nil, "", p1.Name)
+
 	pgRes3 := api.BuildResourceList("1", "1k", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}, {Name: "rdma/hca", Value: "1"}}...)
-	pg3 := &schedulingv1beta1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "ns1",
-			Name:      "pg3",
-		},
-		Spec: schedulingv1beta1.PodGroupSpec{
-			Queue:             "q2",
-			MinMember:         int32(1),
-			PriorityClassName: p1.Name,
-			MinResources:      &pgRes3,
-		},
-	}
+	pg3.Spec.MinResources = &pgRes3
 
 	// queue
-	queue1 := &schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "q1",
-		},
-	}
-
-	// queue
-	queue2 := &schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "q2",
-		},
-		Spec: schedulingv1beta1.QueueSpec{
-			Capability: api.BuildResourceList("2", "2k", []api.ScalarResource{{Name: "pods", Value: "10"}, {Name: "nvidia.com/gpu", Value: "4"}}...),
-		},
-	}
+	queue1 := util.BuildQueue("q1", 0, nil)
+	queue2 := util.BuildQueue("q2", 0, api.BuildResourceList("2", "2k", []api.ScalarResource{{Name: "pods", Value: "10"}, {Name: "nvidia.com/gpu", Value: "4"}}...))
 
 	// tests
 	tests := []struct {
@@ -238,18 +186,7 @@ func TestProportion(t *testing.T) {
 				t.Logf("%s: [Event] %s", test.name, event)
 			}
 		}()
-		schedulerCache := &cache.SchedulerCache{
-			Nodes:           make(map[string]*api.NodeInfo),
-			Jobs:            make(map[api.JobID]*api.JobInfo),
-			PriorityClasses: make(map[string]*schedulingv1.PriorityClass),
-			Queues:          make(map[api.QueueID]*api.QueueInfo),
-			Binder:          binder,
-			StatusUpdater:   &util.FakeStatusUpdater{},
-			VolumeBinder:    &util.FakeVolumeBinder{},
-			Recorder:        recorder,
-		}
-		// deletedJobs to DeletedJobs
-		schedulerCache.DeletedJobs = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+		schedulerCache := cache.NewCustomMockSchedulerCache("mock-test", binder, nil, &util.FakeStatusUpdater{}, nil, &util.FakeVolumeBinder{}, recorder)
 
 		for _, node := range test.nodes {
 			schedulerCache.AddOrUpdateNode(node)
@@ -348,5 +285,148 @@ func TestProportion(t *testing.T) {
 			}
 
 		}
+	}
+}
+
+func TestEnqueueAndAllocable(t *testing.T) {
+	// nodes
+	n1 := util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+	n2 := util.BuildNode("n2", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+
+	// resources
+	res1c2g := api.BuildResourceList("1", "2G")
+	res2c1g := api.BuildResourceList("2", "1G")
+	res1c0g := api.BuildResourceList("1", "0G")
+	res0c1g := api.BuildResourceList("0", "1G")
+	res1c1g := api.BuildResourceList("1", "1G")
+	// pod
+	p1 := util.BuildPod("ns1", "pod1", "n1", apiv1.PodRunning, res1c2g, "pg1", nil, nil)
+	p2 := util.BuildPod("ns1", "pod2", "n2", apiv1.PodRunning, res2c1g, "pg2", nil, nil)
+	p3 := util.BuildPod("ns1", "pod3", "", apiv1.PodPending, res1c0g, "pg3", nil, nil)
+	p4 := util.BuildPod("ns1", "pod4", "", apiv1.PodPending, res0c1g, "pg4", nil, nil)
+	p5 := util.BuildPod("ns1", "pod5", "", apiv1.PodPending, res1c1g, "pg5", nil, nil)
+
+	// podgroup
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg2 := util.BuildPodGroup("pg2", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg3 := util.BuildPodGroup("pg3", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pg4 := util.BuildPodGroup("pg4", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupPending)
+	pg5 := util.BuildPodGroup("pg5", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pg1.Spec.MinResources = &res1c2g
+	pg2.Spec.MinResources = &res2c1g
+	pg3.Spec.MinResources = &res1c0g
+	pg4.Spec.MinResources = &res0c1g
+	pg5.Spec.MinResources = &res1c1g
+
+	queue1 := util.BuildQueue("q1", 1, api.BuildResourceList("2", "2G"))
+	queue2 := util.BuildQueue("q2", 1, api.BuildResourceList("3", "3G"))
+
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue, falseValue := true, false
+	allEnable := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledOverused:    &trueValue,
+					EnabledJobEnqueued: &trueValue,
+				},
+			},
+		},
+	}
+	enqueueable := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &falseValue,
+					EnabledOverused:    &falseValue,
+					EnabledJobEnqueued: &trueValue,
+				},
+			},
+		},
+	}
+	allocatable := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledOverused:    &falseValue,
+					EnabledJobEnqueued: &falseValue,
+				},
+			},
+		},
+	}
+	tests := []struct {
+		uthelper.TestCommonStruct
+		tiers []conf.Tier
+	}{
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "case0: memory exceed derserved, job only request cpu can be enqueued and allocated",
+				Plugins:        plugins,
+				Pods:           []*apiv1.Pod{p1, p2, p3},
+				Nodes:          []*apiv1.Node{n1, n2},
+				PodGroups:      []*schedulingv1beta1.PodGroup{pg1, pg2, pg3},
+				Queues:         []*schedulingv1beta1.Queue{queue1, queue2},
+				ExpectBindsNum: 1,
+				ExpectBindMap:  map[string]string{"ns1/pod3": "n1"},
+			},
+			tiers: allEnable,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "case1: cpu exceed derserved, job only request memory can be enqueued and allocated",
+				Plugins:        plugins,
+				Pods:           []*apiv1.Pod{p1, p2, p4},
+				Nodes:          []*apiv1.Node{n1, n2},
+				PodGroups:      []*schedulingv1beta1.PodGroup{pg1, pg2, pg4},
+				Queues:         []*schedulingv1beta1.Queue{queue1, queue2},
+				ExpectBindsNum: 1,
+				ExpectBindMap:  map[string]string{"ns1/pod4": "n2"},
+			},
+			tiers: allEnable,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "case2: exceed capacity, can not enqueue",
+				Plugins:        plugins,
+				Pods:           []*apiv1.Pod{p1, p2, p5},
+				Nodes:          []*apiv1.Node{n1, n2},
+				PodGroups:      []*schedulingv1beta1.PodGroup{pg1, pg2, pg5},
+				Queues:         []*schedulingv1beta1.Queue{queue1, queue2},
+				ExpectBindsNum: 0,
+				ExpectBindMap:  map[string]string{},
+			},
+			tiers: enqueueable,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "case2: exceed deserved, can not allocate",
+				Plugins:        plugins,
+				Pods:           []*apiv1.Pod{p1, p2, p5},
+				Nodes:          []*apiv1.Node{n1, n2},
+				PodGroups:      []*schedulingv1beta1.PodGroup{pg1, pg2, pg5},
+				Queues:         []*schedulingv1beta1.Queue{queue1, queue2},
+				ExpectBindsNum: 0,
+				ExpectBindMap:  map[string]string{},
+			},
+			tiers: allocatable,
+		},
+	}
+	actions := []framework.Action{enqueue.New(), allocate.New()}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(test.tiers, nil)
+			defer test.Close()
+			test.Run(actions)
+
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
