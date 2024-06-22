@@ -19,6 +19,7 @@ package volumebinding
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -266,9 +267,10 @@ func NewVolumeBinder(
 		translator:    csitrans.New(),
 	}
 
-	b.csiDriverLister = capacityCheck.CSIDriverInformer.Lister()
-	b.csiStorageCapacityLister = capacityCheck.CSIStorageCapacityInformer.Lister()
-
+	if !reflect.DeepEqual(capacityCheck, CapacityCheck{}) {
+		b.csiDriverLister = capacityCheck.CSIDriverInformer.Lister()
+		b.csiStorageCapacityLister = capacityCheck.CSIStorageCapacityInformer.Lister()
+	}
 	return b
 }
 
@@ -983,7 +985,6 @@ func (b *volumeBinder) checkVolumeProvisions(logger klog.Logger, pod *v1.Pod, cl
 		}
 
 		dynamicProvisions = append(dynamicProvisions, claim)
-
 	}
 	logger.V(4).Info("Provisioning for claims of pod that has no matching volumes...", "claimCount", len(claimsToProvision), "pod", klog.KObj(pod), "node", klog.KObj(node))
 

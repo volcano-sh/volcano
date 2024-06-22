@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-	"volcano.sh/volcano/cmd/scheduler/app/options"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -36,6 +35,8 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/helper"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/names"
+
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 )
 
 const (
