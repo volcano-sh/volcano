@@ -302,13 +302,11 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		// InterPodAffinity
 		state := k8sframework.NewCycleState()
 		nodeInfos := make([]*k8sframework.NodeInfo, 0, len(nodeInfo))
+		nodes := make([]*v1.Node, 0, len(nodeInfo))
 		for _, node := range nodeInfo {
 			newNodeInfo := &k8sframework.NodeInfo{}
 			newNodeInfo.SetNode(node.Node)
 			nodeInfos = append(nodeInfos, newNodeInfo)
-		}
-		nodes := make([]*v1.Node, 0, len(nodeInfo))
-		for _, node := range nodeInfo {
 			nodes = append(nodes, node.Node)
 		}
 		nodeScores := make(map[string]float64, len(nodes))
