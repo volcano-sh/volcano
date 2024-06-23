@@ -296,14 +296,19 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	}
 
 	var jobCondition batch.JobCondition
+	oldStatus := job.Status
 	if !syncTask {
 		if updateStatus != nil {
-			if updateStatus(&job.Status) {
-				job.Status.State.LastTransitionTime = metav1.Now()
-				jobCondition = newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
-				job.Status.Conditions = append(job.Status.Conditions, jobCondition)
-			}
+			updateStatus(&job.Status)
 		}
+
+		if equality.Semantic.DeepEqual(job.Status, oldStatus) {
+			klog.V(4).Infof("Job <%s/%s> has not updated for no changing", job.Namespace, job.Name)
+			return nil
+		}
+		job.Status.State.LastTransitionTime = metav1.Now()
+		jobCondition = newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
+		job.Status.Conditions = append(job.Status.Conditions, jobCondition)
 		newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("Failed to update status of Job %v/%v: %v",
