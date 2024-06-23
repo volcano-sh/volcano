@@ -336,8 +336,9 @@ func (p TasksPriority) CalcPGMinResources(jobMinAvailable int32) v1.ResourceList
 // calTaskRequests returns requests resource with validReplica replicas
 func calTaskRequests(pod *v1.Pod, validReplica int32) v1.ResourceList {
 	minReq := v1.ResourceList{}
+	usage := *util.GetPodQuotaUsage(pod)
 	for i := int32(0); i < validReplica; i++ {
-		minReq = quotav1.Add(minReq, *util.GetPodQuotaUsage(pod))
+		minReq = quotav1.Add(minReq, usage)
 	}
 	return minReq
 }
