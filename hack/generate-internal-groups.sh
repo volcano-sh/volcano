@@ -79,21 +79,23 @@ for GVs in ${GROUPS_WITH_VERSIONS}; do
   done
 done
 
+SCRIPT_ROOT=$(unset CDPATH && cd $(dirname "${BASH_SOURCE[0]}")/.. && pwd)
 if [ "${GENS}" = "all" ] || grep -qw "deepcopy" <<<"${GENS}"; then
   echo "Generating deepcopy funcs"
   # the flag --output-base of deepcopy has be removed.
-  SCRIPT_ROOT=$(unset CDPATH && cd $(dirname "${BASH_SOURCE[0]}")/.. && pwd)
   "${GOPATH}/bin/deepcopy-gen" --bounding-dirs "$(codegen::join , "${ALL_FQ_APIS[@]}")" --output-file zz_generated.deepcopy --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 fi
 
 if [ "${GENS}" = "all" ] || grep -qw "defaulter" <<<"${GENS}"; then
   echo "Generating defaulters"
-  "${GOPATH}/bin/defaulter-gen"  --input-dirs "$(codegen::join , "${EXT_FQ_APIS[@]}")" -O zz_generated.defaults "$@"
+  # the flag --output-base of defaulter-gen has be removed.
+  "${GOPATH}/bin/defaulter-gen"  "${EXT_FQ_APIS[@]}" --output-file zz_generated.defaults --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 fi
 
 if [ "${GENS}" = "all" ] || grep -qw "conversion" <<<"${GENS}"; then
   echo "Generating conversions"
-  "${GOPATH}/bin/conversion-gen" --input-dirs "$(codegen::join , "${ALL_FQ_APIS[@]}")" -O zz_generated.conversion "$@"
+   # the flag --output-base of conversion-gen has be removed.
+  "${GOPATH}/bin/conversion-gen" "${ALL_FQ_APIS[@]}" --output-file zz_generated.conversion --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 fi
 
 if [ "${GENS}" = "all" ] || grep -qw "client" <<<"${GENS}"; then
@@ -126,9 +128,8 @@ if [ "${GENS}" = "all" ] || grep -qw "openapi" <<<"${GENS}"; then
   echo "Generating OpenAPI definitions for ${GROUPS_WITH_VERSIONS} at ${OUTPUT_PKG}/openapi"
   declare -a OPENAPI_EXTRA_PACKAGES
   "${GOPATH}/bin/openapi-gen" \
-           --input-dirs "$(codegen::join , "${EXT_FQ_APIS[@]}" "${OPENAPI_EXTRA_PACKAGES[@]+"${OPENAPI_EXTRA_PACKAGES[@]}"}")" \
-           --input-dirs "k8s.io/apimachinery/pkg/apis/meta/v1,k8s.io/apimachinery/pkg/runtime,k8s.io/apimachinery/pkg/version" \
-           --output-package "${OUTPUT_PKG}/openapi" \
-           -O zz_generated.openapi \
-           "$@"
+           "${EXT_FQ_APIS[@]},k8s.io/apimachinery/pkg/apis/meta/v1,k8s.io/apimachinery/pkg/runtime,k8s.io/apimachinery/pkg/version" \
+           --output-dir "${OUTPUT_PKG}" \
+           --output-pkg "openapi" \
+           --go-header-file ${SCRIPT_ROOT}/hack/boilerplate/boilerplate.go.txt
 fi
