@@ -329,7 +329,7 @@ func (fb *FakeBinder) Length() int {
 }
 
 // Bind used by fake binder struct to bind pods
-func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) ([]*api.TaskInfo, error) {
+func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) ([]*api.TaskInfo, []error) {
 	fb.Lock()
 	defer fb.Unlock()
 	for _, p := range tasks {

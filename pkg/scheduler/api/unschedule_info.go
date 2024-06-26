@@ -26,6 +26,10 @@ const (
 	// PodReasonSchedulable reason in PodScheduled PodCondition means that the scheduler
 	// can schedule the pod right now, but not bind yet
 	PodReasonSchedulable = "Schedulable"
+	// PodReasonSchedulerError reason in PodScheduled PodCondition means that the scheduler
+	// tried to schedule the pod, but went error when scheduling
+	// for example bind pod return error.
+	PodReasonSchedulerError = "SchedulerError"
 )
 
 // FitErrors is set of FitError on many nodes
