@@ -47,24 +47,25 @@ const (
 
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
-	KubeClientOptions    kube.ClientOptions
-	CertFile             string
-	KeyFile              string
-	CaCertFile           string
-	CertData             []byte
-	KeyData              []byte
-	CaCertData           []byte
-	SchedulerNames       []string
-	SchedulerConf        string
-	SchedulePeriod       time.Duration
-	EnableLeaderElection bool
-	LockObjectNamespace  string
-	DefaultQueue         string
-	PrintVersion         bool
-	EnableMetrics        bool
-	ListenAddress        string
-	EnablePriorityClass  bool
-	EnableCSIStorage     bool
+	KubeClientOptions                kube.ClientOptions
+	CertFile                         string
+	KeyFile                          string
+	CaCertFile                       string
+	CertData                         []byte
+	KeyData                          []byte
+	CaCertData                       []byte
+	SchedulerNames                   []string
+	SchedulerConf                    string
+	SchedulePeriod                   time.Duration
+	EnableLeaderElection             bool
+	LockObjectNamespace              string
+	DefaultQueue                     string
+	PrintVersion                     bool
+	EnableMetrics                    bool
+	ListenAddress                    string
+	EnablePriorityClass              bool
+	EnableCSIStorage                 bool
+	EnableDynamicResourcesAllocation bool
 	// vc-scheduler will load (not activate) custom plugins which are in this directory
 	PluginsDir    string
 	EnableHealthz bool
