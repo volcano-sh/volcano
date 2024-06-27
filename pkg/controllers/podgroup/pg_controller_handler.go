@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -61,6 +62,33 @@ func (pg *pgcontroller) addPod(obj interface{}) {
 	}
 
 	pg.queue.Add(req)
+	pg.deletePodGroup(obj)
+}
+
+func (pg *pgcontroller) updatePod(oldObj, newObj interface{}) {
+	pg.deletePodGroup(newObj)
+}
+
+// Delete PodGroup if the Pod is Succeed or Failed.
+func (pg *pgcontroller) deletePodGroup(newObj interface{}) {
+	pod, ok := newObj.(*v1.Pod)
+	if !ok {
+		klog.Errorf("Failed to convert %v to v1.Pod", newObj)
+		return
+	}
+
+	// pod has a controller ownerreference should not go through here
+	if len(pod.OwnerReferences) != 0 {
+		return
+	}
+
+	if podTerminated(pod.Status) {
+		pgName := batchv1alpha1.PodgroupNamePrefix + string(pod.UID)
+		err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			klog.Errorf("Failed to delete PodGroup <%s/%s>: %v", pod.Namespace, pgName, err)
+		}
+	}
 }
 
 func (pg *pgcontroller) addReplicaSet(obj interface{}) {
@@ -81,6 +109,49 @@ func (pg *pgcontroller) addReplicaSet(obj interface{}) {
 
 func (pg *pgcontroller) updateReplicaSet(oldObj, newObj interface{}) {
 	pg.addReplicaSet(newObj)
+}
+
+func (pg *pgcontroller) addStatefulSet(obj interface{}) {
+	sts, ok := obj.(*appsv1.StatefulSet)
+	if !ok {
+		klog.Errorf("Failed to convert %v to appsv1.StatefulSet", obj)
+		return
+	}
+
+	if *sts.Spec.Replicas == 0 {
+		pgName := batchv1alpha1.PodgroupNamePrefix + string(sts.UID)
+		err := pg.vcClient.SchedulingV1beta1().PodGroups(sts.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			klog.Errorf("Failed to delete PodGroup <%s/%s>: %v", sts.Namespace, pgName, err)
+		}
+	}
+}
+
+func (pg *pgcontroller) updateStatefulSet(oldObj, newObj interface{}) {
+	pg.addStatefulSet(newObj)
+}
+
+func (pg *pgcontroller) addJob(obj interface{}) {
+	job, ok := obj.(*batchv1.Job)
+	if !ok {
+		klog.Errorf("Failed to convert %v to batchv1.Job", obj)
+		return
+	}
+	// Delete PodGroup if the job is Complete or Failed or Suspended.
+	for _, condition := range job.Status.Conditions {
+		if jobTerminated(condition) {
+			pgName := batchv1alpha1.PodgroupNamePrefix + string(job.UID)
+			err := pg.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{})
+			if err != nil && !apierrors.IsNotFound(err) {
+				klog.Errorf("Failed to delete PodGroup <%s/%s>: %v", job.Namespace, pgName, err)
+			}
+			break
+		}
+	}
+}
+
+func (pg *pgcontroller) updateJob(oldObj, newObj interface{}) {
+	pg.addJob(newObj)
 }
 
 func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
@@ -250,4 +321,12 @@ func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
 	}
 	ref := metav1.NewControllerRef(pod, gvk)
 	return []metav1.OwnerReference{*ref}
+}
+
+func jobTerminated(condition batchv1.JobCondition) bool {
+	return condition.Status == v1.ConditionTrue && (condition.Type == batchv1.JobComplete || condition.Type == batchv1.JobFailed || condition.Type == batchv1.JobSuspended)
+}
+
+func podTerminated(podStatus v1.PodStatus) bool {
+	return podStatus.Phase == v1.PodSucceeded || podStatus.Phase == v1.PodFailed
 }
