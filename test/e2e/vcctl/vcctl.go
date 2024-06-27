@@ -35,6 +35,7 @@ Available Commands:
   help        Help about any command
   job         vcctl command line operation job
   jobtemplate vcctl command line operation jobtemplate
+  pod         vcctl command line operation pod
   queue       Queue Operations
   version     Print the version information
 
