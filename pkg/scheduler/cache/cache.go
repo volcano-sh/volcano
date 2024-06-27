@@ -173,8 +173,9 @@ type DefaultBinder struct {
 }
 
 // Bind will send bind request to api server
-func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) ([]*schedulingapi.TaskInfo, error) {
+func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) ([]*schedulingapi.TaskInfo, []error) {
 	var errTasks []*schedulingapi.TaskInfo
+	var errs []error
 	for _, task := range tasks {
 		p := task.Pod
 		if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
@@ -188,6 +189,7 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 			metav1.CreateOptions{}); err != nil {
 			klog.Errorf("Failed to bind pod <%v/%v> to node %s : %#v", p.Namespace, p.Name, task.NodeName, err)
 			errTasks = append(errTasks, task)
+			errs = append(errs, err)
 		} else {
 			db.recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", task.Namespace, task.Name, task.NodeName)
 			metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time)) // update metrics as soon as pod is bind
@@ -195,7 +197,7 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	}
 
 	if len(errTasks) > 0 {
-		return errTasks, fmt.Errorf("failed to bind pods")
+		return errTasks, errs
 	}
 
 	return nil, nil
@@ -895,11 +897,15 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 // Bind binds task to the target host.
 func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) {
 	tmp := time.Now()
-	errTasks, err := sc.Binder.Bind(sc.kubeClient, tasks)
-	if err == nil {
+	errTasks, errs := sc.Binder.Bind(sc.kubeClient, tasks)
+	if errs == nil {
 		klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
 	} else {
-		for _, task := range errTasks {
+		for i, task := range errTasks {
+			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", task.NodeName, errs[i])
+			if err := sc.taskUnschedulable(task, schedulingapi.PodReasonSchedulerError, unschedulableMsg, ""); err != nil {
+				klog.ErrorS(err, "Failed to update pod status when bind task error", "task", task.Name)
+			}
 			klog.V(2).Infof("resyncTask task %s", task.Name)
 			sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
 			sc.resyncTask(task)
