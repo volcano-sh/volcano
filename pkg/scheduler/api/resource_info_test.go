@@ -753,6 +753,81 @@ func TestLessEqual(t *testing.T) {
 	}
 }
 
+func TestLessEqualWithDimension(t *testing.T) {
+	tests := []struct {
+		resource1 *Resource
+		resource2 *Resource
+		req       *Resource
+		expected  bool
+	}{
+		{
+			resource1: &Resource{},
+			resource2: &Resource{},
+			req:       nil,
+			expected:  true,
+		},
+		{
+			resource1: &Resource{MilliCPU: 5000},
+			resource2: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000},
+			},
+			req:      &Resource{MilliCPU: 1000},
+			expected: false,
+		},
+		{
+			resource1: &Resource{MilliCPU: 3000, Memory: 3000},
+			resource2: &Resource{MilliCPU: 4000, Memory: 2000},
+			req:       &Resource{Memory: 1000},
+			expected:  false,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 4,
+				Memory:   4000,
+			},
+			resource2: &Resource{},
+			req:       &Resource{},
+			expected:  true,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 4, Memory: 4000,
+				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1},
+			},
+			resource2: &Resource{MilliCPU: 8, Memory: 8000},
+			req: &Resource{
+				MilliCPU: 4, Memory: 2000,
+				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1},
+			},
+			expected: false,
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 10, Memory: 4000,
+				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1},
+			},
+			resource2: &Resource{
+				MilliCPU: 100, Memory: 8000,
+				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/A100": 1},
+			},
+			req: &Resource{
+				MilliCPU: 10, Memory: 4000,
+				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 0, "nvidia.com/A100": 1, "scalar": 1},
+			},
+			expected: true,
+		},
+	}
+
+	for i, test := range tests {
+		flag := test.resource1.LessEqualWithDimension(test.resource2, test.req)
+		if !equality.Semantic.DeepEqual(test.expected, flag) {
+			t.Errorf("Case %v: expected: %#v, got: %#v", i, test.expected, flag)
+		}
+	}
+}
+
 func TestLessPartly(t *testing.T) {
 	testsForDefaultZero := []struct {
 		resource1 *Resource
