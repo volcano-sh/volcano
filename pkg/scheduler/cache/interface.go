@@ -39,6 +39,9 @@ type Cache interface {
 	// WaitForCacheSync waits for all cache synced
 	WaitForCacheSync(stopCh <-chan struct{})
 
+	// WaitForHandlersSync waits for EventHandlers to sync.
+	WaitForHandlersSync(stopCh <-chan struct{})
+
 	// AddBindTask binds Task to the target host.
 	// TODO(jinzhej): clean up expire Tasks.
 	AddBindTask(task *api.TaskInfo) error
