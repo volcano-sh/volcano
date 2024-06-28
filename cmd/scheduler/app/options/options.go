@@ -46,6 +46,7 @@ const (
 	defaultPercentageOfNodesToFind    = 0
 	defaultLockObjectNamespace        = "volcano-system"
 	defaultNodeWorkers                = 20
+	defaultWorkerNum                  = 16
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -85,6 +86,8 @@ type ServerOption struct {
 	CacheDumpFileDir  string
 	EnableCacheDumper bool
 	NodeWorkerThreads uint32
+	// the number of worker when execute in parallel
+	WorkerNum int
 
 	// IgnoredCSIProvisioners contains a list of provisioners, and pod request pvc with these provisioners will
 	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
@@ -145,6 +148,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
+	fs.IntVar(&s.WorkerNum, "worker-num", defaultWorkerNum, "The number of concurrent workers that can be used when multitasking is involved in the scheduler")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 }
 
