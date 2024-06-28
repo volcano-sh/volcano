@@ -2,14 +2,10 @@ package jobtemplate
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -17,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 func TestListJobTemplate(t *testing.T) {
@@ -47,16 +44,16 @@ test-jobtemplate    default`,
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			server := createTestServer(testCase.Response)
+			server := util.CreateTestServer(testCase.Response)
 			defer server.Close()
 			// Set the server URL as the master flag
 			listJobTemplateFlags.Master = server.URL
 			listJobTemplateFlags.Namespace = testCase.Namespace
 
-			r, oldStdout := redirectStdout()
+			r, oldStdout := util.RedirectStdout()
 			defer r.Close()
 			err := ListJobTemplate(context.TODO())
-			gotOutput := captureOutput(r, oldStdout)
+			gotOutput := util.CaptureOutput(r, oldStdout)
 
 			if !reflect.DeepEqual(err, testCase.ExpectedErr) {
 				t.Fatalf("test case: %s failed: got: %v, want: %v", testCase.name, err, testCase.ExpectedErr)
@@ -94,7 +91,7 @@ test-jobtemplate    default`,
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			server := createTestServer(testCase.Response)
+			server := util.CreateTestServer(testCase.Response)
 			defer server.Close()
 			// Set the server URL as the master flag
 			getJobTemplateFlags.Master = server.URL
@@ -102,10 +99,10 @@ test-jobtemplate    default`,
 			getJobTemplateFlags.Namespace = testCase.Namespace
 			getJobTemplateFlags.Name = testCase.Name
 
-			r, oldStdout := redirectStdout()
+			r, oldStdout := util.RedirectStdout()
 			defer r.Close()
 			err := GetJobTemplate(context.TODO())
-			gotOutput := captureOutput(r, oldStdout)
+			gotOutput := util.CaptureOutput(r, oldStdout)
 			if !reflect.DeepEqual(err, testCase.ExpectedErr) {
 				t.Fatalf("test case: %s failed: got: %v, want: %v", testCase.name, err, testCase.ExpectedErr)
 			}
@@ -156,7 +153,7 @@ Deleted JobTemplate: default/b`,
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			server := createTestServer(testCase.Response)
+			server := util.CreateTestServer(testCase.Response)
 			defer server.Close()
 			// Set the server URL as the master flag
 			deleteJobTemplateFlags.Master = server.URL
@@ -178,10 +175,10 @@ Deleted JobTemplate: default/b`,
 				}()
 			}
 
-			r, oldStdout := redirectStdout()
+			r, oldStdout := util.RedirectStdout()
 			defer r.Close()
 			err := DeleteJobTemplate(context.TODO())
-			gotOutput := captureOutput(r, oldStdout)
+			gotOutput := util.CaptureOutput(r, oldStdout)
 			if !reflect.DeepEqual(err, testCase.ExpectedErr) {
 				t.Fatalf("test case: %s failed: got: %v, want: %v", testCase.name, err, testCase.ExpectedErr)
 			}
@@ -216,7 +213,7 @@ Created JobTemplate: default/b`,
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			server := createTestServer(testCase.Response)
+			server := util.CreateTestServer(testCase.Response)
 			defer server.Close()
 			// Set the server URL as the master flag
 			createJobTemplateFlags.Master = server.URL
@@ -235,10 +232,10 @@ Created JobTemplate: default/b`,
 					}
 				}()
 			}
-			r, oldStdout := redirectStdout()
+			r, oldStdout := util.RedirectStdout()
 			defer r.Close()
 			err := CreateJobTemplate(context.TODO())
-			gotOutput := captureOutput(r, oldStdout)
+			gotOutput := util.CaptureOutput(r, oldStdout)
 			if !reflect.DeepEqual(err, testCase.ExpectedErr) {
 				t.Fatalf("test case: %s failed: got: %v, want: %v", testCase.name, err, testCase.ExpectedErr)
 			}
@@ -306,7 +303,7 @@ status: {}
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			server := createTestServer(testCase.Response)
+			server := util.CreateTestServer(testCase.Response)
 			defer server.Close()
 			// Set the server URL as the master flag
 			describeJobTemplateFlags.Master = server.URL
@@ -314,10 +311,10 @@ status: {}
 			describeJobTemplateFlags.Name = testCase.name
 			describeJobTemplateFlags.Format = testCase.Format
 
-			r, oldStdout := redirectStdout()
+			r, oldStdout := util.RedirectStdout()
 			defer r.Close()
 			err := DescribeJobTemplate(context.TODO())
-			gotOutput := captureOutput(r, oldStdout)
+			gotOutput := util.CaptureOutput(r, oldStdout)
 			if !reflect.DeepEqual(err, testCase.ExpectedErr) {
 				t.Fatalf("test case: %s failed: got: %v, want: %v", testCase.name, err, testCase.ExpectedErr)
 			}
@@ -326,36 +323,6 @@ status: {}
 			}
 		})
 	}
-}
-
-func createTestServer(response interface{}) *httptest.Server {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		val, err := json.Marshal(response)
-		if err == nil {
-			w.Write(val)
-		}
-	})
-
-	server := httptest.NewServer(handler)
-	return server
-}
-
-// redirectStdout redirects os.Stdout to a pipe and returns the read and write ends of the pipe.
-func redirectStdout() (*os.File, *os.File) {
-	r, w, _ := os.Pipe()
-	oldStdout := os.Stdout
-	os.Stdout = w
-	return r, oldStdout
-}
-
-// captureOutput reads from r until EOF and returns the result as a string.
-func captureOutput(r *os.File, oldStdout *os.File) string {
-	w := os.Stdout
-	os.Stdout = oldStdout
-	w.Close()
-	gotOutput, _ := io.ReadAll(r)
-	return strings.TrimSpace(string(gotOutput))
 }
 
 func createAndWriteFile(filePath, content string) error {

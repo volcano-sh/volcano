@@ -18,7 +18,11 @@ package util
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -199,4 +203,35 @@ func HumanDuration(d time.Duration) string {
 		return fmt.Sprintf("%dy%dd", hours/24/365, (hours/24)%365)
 	}
 	return fmt.Sprintf("%dy", hours/24/365)
+}
+
+// RedirectStdout redirects os.Stdout to a pipe and returns the read and write ends of the pipe.
+func RedirectStdout() (*os.File, *os.File) {
+	r, w, _ := os.Pipe()
+	oldStdout := os.Stdout
+	os.Stdout = w
+	return r, oldStdout
+}
+
+// CaptureOutput reads from r until EOF and returns the result as a string.
+func CaptureOutput(r *os.File, oldStdout *os.File) string {
+	w := os.Stdout
+	os.Stdout = oldStdout
+	w.Close()
+	gotOutput, _ := io.ReadAll(r)
+	return strings.TrimSpace(string(gotOutput))
+}
+
+// CreateTestServer creates an HTTP server that responds with the given response.
+func CreateTestServer(response interface{}) *httptest.Server {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		val, err := json.Marshal(response)
+		if err == nil {
+			w.Write(val)
+		}
+	})
+
+	server := httptest.NewServer(handler)
+	return server
 }
