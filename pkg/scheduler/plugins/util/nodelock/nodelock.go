@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -62,20 +63,11 @@ func UseClient(client kubernetes.Interface) error {
 	return nil
 }
 
-func setNodeLock(nodeName string, lockName string) error {
-	ctx := context.Background()
-	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-	if err != nil {
-		klog.Errorln("get node failed", err.Error())
-		return err
-	}
-	if _, ok := node.ObjectMeta.Annotations[lockName]; ok {
-		klog.V(3).Infof("node %s is locked", nodeName)
-		return fmt.Errorf("node %s is locked", nodeName)
-	}
+func updateNodeAnnotations(ctx context.Context, node *v1.Node, updateFunc func(annotations map[string]string)) error {
 	newNode := node.DeepCopy()
-	newNode.ObjectMeta.Annotations[lockName] = time.Now().Format(time.RFC3339)
-	_, err = kubeClient.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{})
+	updateFunc(newNode.ObjectMeta.Annotations)
+	nodeName := newNode.Name
+	_, err := kubeClient.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{})
 	for i := 0; i < MaxLockRetry && err != nil; i++ {
 		klog.ErrorS(err, "Failed to update node", "node", nodeName, "retry", i)
 		time.Sleep(100 * time.Millisecond)
@@ -84,10 +76,31 @@ func setNodeLock(nodeName string, lockName string) error {
 			klog.ErrorS(err, "Failed to get node when retry to update", "node", nodeName)
 			continue
 		}
-		newNode := node.DeepCopy()
-		newNode.ObjectMeta.Annotations[lockName] = time.Now().Format(time.RFC3339)
+		newNode = node.DeepCopy()
+		updateFunc(newNode.ObjectMeta.Annotations)
 		_, err = kubeClient.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{})
 	}
+	if err != nil {
+		klog.ErrorS(err, "Failed to update node", "node", nodeName)
+		return fmt.Errorf("failed to update node %s, exceeded retry count %d", nodeName, MaxLockRetry)
+	}
+	return nil
+}
+
+func setNodeLock(nodeName string, lockName string) error {
+	ctx := context.Background()
+	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if _, ok := node.ObjectMeta.Annotations[lockName]; ok {
+		klog.V(3).Infof("node %s is locked", nodeName)
+		return fmt.Errorf("node %s is locked", nodeName)
+	}
+	updateFunc := func(annotations map[string]string) {
+		annotations[lockName] = time.Now().Format(time.RFC3339)
+	}
+	err = updateNodeAnnotations(ctx, node, updateFunc)
 	if err != nil {
 		return fmt.Errorf("setNodeLock exceeds retry count %d", MaxLockRetry)
 	}
@@ -95,7 +108,6 @@ func setNodeLock(nodeName string, lockName string) error {
 	return nil
 }
 
-// ReleaseNodeLock release a certain device lock on a certain node
 func ReleaseNodeLock(nodeName string, lockName string) error {
 	ctx := context.Background()
 	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
@@ -106,21 +118,10 @@ func ReleaseNodeLock(nodeName string, lockName string) error {
 		klog.V(3).InfoS("Node lock not set", "node", nodeName)
 		return nil
 	}
-	newNode := node.DeepCopy()
-	delete(newNode.ObjectMeta.Annotations, lockName)
-	_, err = kubeClient.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{})
-	for i := 0; i < MaxLockRetry && err != nil; i++ {
-		klog.ErrorS(err, "Failed to update node", "node", nodeName, "retry", i)
-		time.Sleep(100 * time.Millisecond)
-		node, err = kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-		if err != nil {
-			klog.ErrorS(err, "Failed to get node when retry to update", "node", nodeName)
-			continue
-		}
-		newNode := node.DeepCopy()
-		delete(newNode.ObjectMeta.Annotations, lockName)
-		_, err = kubeClient.CoreV1().Nodes().Update(ctx, newNode, metav1.UpdateOptions{})
+	updateFunc := func(annotations map[string]string) {
+		delete(annotations, lockName)
 	}
+	err = updateNodeAnnotations(ctx, node, updateFunc)
 	if err != nil {
 		return fmt.Errorf("releaseNodeLock exceeds retry count %d", MaxLockRetry)
 	}
