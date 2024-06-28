@@ -77,9 +77,6 @@ func NewGPUDevice(id int, mem uint) *GPUDevice {
 }
 
 func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
-	if node == nil {
-		return nil
-	}
 	annos, ok := node.Annotations[VolcanoVGPURegister]
 	if !ok {
 		return nil
@@ -138,9 +135,6 @@ func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 	podDev := decodePodDevices(ids)
 	for _, val := range podDev {
 		for _, deviceused := range val {
-			if gs == nil {
-				break
-			}
 			for index, gsdevice := range gs.Device {
 				if gsdevice.UUID == deviceused.UUID {
 					klog.V(4).Infoln("VGPU recording pod", pod.Name, "device", deviceused)
@@ -163,9 +157,6 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 	podDev := decodePodDevices(ids)
 	for _, val := range podDev {
 		for _, deviceused := range val {
-			if gs == nil {
-				break
-			}
 			for index, gsdevice := range gs.Device {
 				if gsdevice.UUID == deviceused.UUID {
 					klog.V(4).Infoln("VGPU subsctracting pod", pod.Name, "device", deviceused)

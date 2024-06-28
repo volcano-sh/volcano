@@ -98,9 +98,11 @@ func createStatus(code int, reason string) *api.Status {
 func getDeviceScore(ctx context.Context, pod *v1.Pod, node *api.NodeInfo, schedulePolicy string) (int64, *k8sframework.Status) {
 	s := float64(0)
 	for _, devices := range node.Others {
-		if devices.(api.Devices).HasDeviceRequest(pod) {
-			ns := devices.(api.Devices).ScoreNode(pod, schedulePolicy)
-			s += ns
+		if dev, ok := devices.(api.Devices); ok && !reflect.ValueOf(dev).IsNil() {
+			if dev.HasDeviceRequest(pod) {
+				ns := dev.ScoreNode(pod, schedulePolicy)
+				s += ns
+			}
 		}
 	}
 	klog.V(4).Infof("deviceScore for task %s/%s is: %v", pod.Namespace, pod.Name, s)
