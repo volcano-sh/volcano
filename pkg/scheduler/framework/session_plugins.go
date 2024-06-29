@@ -626,6 +626,32 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 	return helpers.CompareTask(lv, rv)
 }
 
+// NodesWherePreemptionMightHelp filter out those node that has unscheduleandunre
+func (ssn *Session) NodesWherePreemptionMightHelp(task *api.TaskInfo) []*api.NodeInfo {
+	fitErrors, ok1 := ssn.Jobs[task.Job]
+	if !ok1 {
+		return ssn.NodeList
+	}
+	fitErr, ok2 := fitErrors.NodesFitErrors[task.UID]
+	if !ok2 {
+		return ssn.NodeList
+	}
+
+	skipNodes := fitErr.NotHelpfulForPreemptNodes()
+	if len(skipNodes) == 0 {
+		return ssn.NodeList
+	}
+
+	ret := make([]*api.NodeInfo, 0, len(ssn.Nodes))
+	for _, node := range ssn.Nodes {
+		if _, ok := skipNodes[node.Name]; !ok {
+			ret = append(ret, node)
+		}
+	}
+
+	return ret
+}
+
 // PredicateFn invoke predicate function of the plugins
 func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 	predicateStatus := make([]*api.Status, 0)
