@@ -1,33 +1,39 @@
+/*
+Copyright 2024 The Volcano Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package nodegroup
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
 
-	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/record"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func TestNodeGroup(t *testing.T) {
-	var tmp *cache.SchedulerCache
-	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
-		return nil
-	})
-	defer patchUpdateQueueStatus.Reset()
-
-	framework.RegisterPluginBuilder(PluginName, New)
-	defer framework.CleanupPluginBuilders()
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
 
 	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{
 		batch.QueueNameKey: "q1",
@@ -51,25 +57,8 @@ func TestNodeGroup(t *testing.T) {
 	})
 	n5 := util.BuildNode("n5", api.BuildResourceList("4", "16Gi"), make(map[string]string))
 
-	pg1 := &schedulingv1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pg1",
-			Namespace: "c1",
-		},
-		Spec: schedulingv1.PodGroupSpec{
-			Queue: "q1",
-		},
-	}
-
-	pg2 := &schedulingv1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "pg2",
-			Namespace: "c1",
-		},
-		Spec: schedulingv1.PodGroupSpec{
-			Queue: "q2",
-		},
-	}
+	pg1 := util.BuildPodGroup("pg1", "c1", "q1", 0, nil, "")
+	pg2 := util.BuildPodGroup("pg2", "c1", "q2", 0, nil, "")
 
 	queue1 := &schedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
@@ -110,28 +99,19 @@ func TestNodeGroup(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		podGroups      []*schedulingv1.PodGroup
-		pods           []*v1.Pod
-		nodes          []*v1.Node
-		queues         []*schedulingv1.Queue
+		uthelper.TestCommonStruct
 		arguments      framework.Arguments
 		expected       map[string]map[string]float64
 		expectedStatus map[string]map[string]int
 	}{
 		{
-			name: "case: soft constraints is subset of hard constraints",
-			podGroups: []*schedulingv1.PodGroup{
-				pg1,
-			},
-			queues: []*schedulingv1.Queue{
-				queue1,
-			},
-			pods: []*v1.Pod{
-				p1,
-			},
-			nodes: []*v1.Node{
-				n1, n2, n3, n4, n5,
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:      "case: soft constraints is subset of hard constraints",
+				PodGroups: []*schedulingv1.PodGroup{pg1},
+				Queues:    []*schedulingv1.Queue{queue1},
+				Pods:      []*v1.Pod{p1},
+				Nodes:     []*v1.Node{n1, n2, n3, n4, n5},
+				Plugins:   plugins,
 			},
 			arguments: framework.Arguments{},
 			expected: map[string]map[string]float64{
@@ -155,18 +135,13 @@ func TestNodeGroup(t *testing.T) {
 		},
 		{
 			// test unnormal case
-			name: "case: soft constraints is not subset of hard constraints",
-			podGroups: []*schedulingv1.PodGroup{
-				pg2,
-			},
-			queues: []*schedulingv1.Queue{
-				queue2,
-			},
-			pods: []*v1.Pod{
-				p2,
-			},
-			nodes: []*v1.Node{
-				n1, n2, n3, n4, n5,
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:      "case: soft constraints is not subset of hard constraints",
+				PodGroups: []*schedulingv1.PodGroup{pg2},
+				Queues:    []*schedulingv1.Queue{queue2},
+				Pods:      []*v1.Pod{p2},
+				Nodes:     []*v1.Node{n1, n2, n3, n4, n5},
+				Plugins:   plugins,
 			},
 			arguments: framework.Arguments{},
 			expected: map[string]map[string]float64{
@@ -191,34 +166,9 @@ func TestNodeGroup(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		t.Run(fmt.Sprintf("case %v %v", i, test.name), func(t *testing.T) {
-			binder := util.NewFakeBinder(0)
-			schedulerCache := &cache.SchedulerCache{
-				Nodes:         make(map[string]*api.NodeInfo),
-				Jobs:          make(map[api.JobID]*api.JobInfo),
-				Queues:        make(map[api.QueueID]*api.QueueInfo),
-				Binder:        binder,
-				StatusUpdater: &util.FakeStatusUpdater{},
-				VolumeBinder:  &util.FakeVolumeBinder{},
-
-				Recorder: record.NewFakeRecorder(100),
-			}
-
-			for _, node := range test.nodes {
-				schedulerCache.AddOrUpdateNode(node)
-			}
-			for _, pod := range test.pods {
-				schedulerCache.AddPod(pod)
-			}
-			for _, ss := range test.podGroups {
-				schedulerCache.AddPodGroupV1beta1(ss)
-			}
-			for _, q := range test.queues {
-				schedulerCache.AddQueueV1beta1(q)
-			}
-
+		t.Run(fmt.Sprintf("case %v %v", i, test.Name), func(t *testing.T) {
 			trueValue := true
-			ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+			tiers := []conf.Tier{
 				{
 					Plugins: []conf.PluginOption{
 						{
@@ -229,8 +179,9 @@ func TestNodeGroup(t *testing.T) {
 						},
 					},
 				},
-			}, nil)
-			defer framework.CloseSession(ssn)
+			}
+			ssn := test.RegisterSession(tiers, nil)
+			defer test.Close()
 
 			for _, job := range ssn.Jobs {
 				for _, task := range job.Tasks {
