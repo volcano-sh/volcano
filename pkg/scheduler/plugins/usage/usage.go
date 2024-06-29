@@ -133,7 +133,6 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 				"Usage plugin filter for task %s/%s on node %s pass, metrics time is %v. ", up.period, MetricsActiveTime, task.Namespace, task.Name, node.Name, node.ResourceUsage.MetricsTime)
 
 			usageStatus.Code = api.Success
-			predicateStatus = append(predicateStatus, usageStatus)
 			return nil
 		}
 
