@@ -17,7 +17,6 @@ limitations under the License.
 package backfill
 
 import (
-	"fmt"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -44,20 +43,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Backfill ...")
 	defer klog.V(5).Infof("Leaving Backfill ...")
 
-	predicateFunc := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
-		var statusSets api.StatusSets
-		statusSets, err := ssn.PredicateFn(task, node)
-		if err != nil {
-			return nil, err
-		}
-
-		// predicateHelper.PredicateNodes will print the log if predicate failed, so don't print log anymore here
-		if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
-			err := fmt.Errorf(statusSets.Message()) // should not include variables in api node errors
-			return nil, err
-		}
-		return nil, nil
-	}
+	predicateFunc := ssn.PredicateWhenAllocate
 
 	// TODO (k82cn): When backfill, it's also need to balance between Queues.
 	pendingTasks := backfill.pickUpPendingTasks(ssn)
