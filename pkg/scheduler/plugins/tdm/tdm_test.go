@@ -237,18 +237,8 @@ func Test_TDM(t *testing.T) {
 
 					predicatedNode := make([]*api.NodeInfo, 0)
 					for _, node := range ssn.Nodes {
-						predicateStatus, err := ssn.PredicateFn(task, node)
+						err := ssn.PredicateFn(task, node)
 						if err != nil {
-							continue
-						}
-						predicateIsSuccess := true
-						for _, status := range predicateStatus {
-							if status != nil && status.Code != api.Success {
-								predicateIsSuccess = false
-								break
-							}
-						}
-						if predicateIsSuccess == false {
 							continue
 						}
 						predicatedNode = append(predicatedNode, node)

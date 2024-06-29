@@ -313,6 +313,52 @@ func (ssn *Session) GetUnschedulableAndUnresolvableNodesForTask(task *api.TaskIn
 	return ret
 }
 
+// PredicateWhenAllocate checks if the predicate error contains
+// - Unschedulable
+// - UnschedulableAndUnresolvable
+// - ErrorSkipOrWait
+func (ssn *Session) PredicateWhenAllocate(task *api.TaskInfo, node *api.NodeInfo) error {
+	err := ssn.PredicateFn(task, node)
+	if err == nil {
+		return nil
+	}
+
+	fitError, ok := err.(*api.FitError)
+	if !ok {
+		return api.NewFitError(task, node, err.Error())
+	}
+
+	statusSets := fitError.Status
+	if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
+		statusSets.ContainsErrorSkipOrWait() {
+		return fitError
+	}
+	return nil
+}
+
+// PredicateWhenPreempt checks if the predicate error contains:
+// - UnschedulableAndUnresolvable
+// - ErrorSkipOrWait
+func (ssn *Session) PredicateWhenPreempt(task *api.TaskInfo, node *api.NodeInfo) error {
+	err := ssn.PredicateFn(task, node)
+	if err == nil {
+		return nil
+	}
+
+	fitError, ok := err.(*api.FitError)
+	if !ok {
+		return api.NewFitError(task, node, err.Error())
+	}
+
+	// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
+	// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
+	statusSets := fitError.Status
+	if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
+		return fitError
+	}
+	return nil
+}
+
 // Statement returns new statement object
 func (ssn *Session) Statement() *Statement {
 	return &Statement{

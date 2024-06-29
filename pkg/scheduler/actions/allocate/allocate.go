@@ -303,23 +303,14 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 	}
 }
 
-func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	// Check for Resource Predicate
 	var statusSets api.StatusSets
 	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
-		return nil, api.NewFitErrWithStatus(task, node, statusSets...)
+		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
-	statusSets, err := alloc.session.PredicateFn(task, node)
-	if err != nil {
-		return nil, api.NewFitError(task, node, err.Error())
-	}
-
-	if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
-		statusSets.ContainsErrorSkipOrWait() {
-		return nil, api.NewFitErrWithStatus(task, node, statusSets...)
-	}
-	return nil, nil
+	return alloc.session.PredicateWhenAllocate(task, node)
 }
 
 func (alloc *Action) UnInitialize() {}

@@ -246,9 +246,15 @@ func TestNodeGroup(t *testing.T) {
 							t.Errorf("case%d: task %s on node %s expect have score %v, but get %v", i, taskID, node.Name, expectScore, score)
 						}
 
-						status, _ := ssn.PredicateFn(task, node)
-						if expectStatus := test.expectedStatus[taskID][node.Name]; expectStatus != status[0].Code {
-							t.Errorf("case%d: task %s on node %s expect have status code %v, but get %v", i, taskID, node.Name, expectStatus, status[0].Code)
+						var code int
+						err = ssn.PredicateFn(task, node)
+						if err == nil {
+							code = api.Success
+						} else {
+							code = err.(*api.FitError).Status[0].Code
+						}
+						if expectStatus := test.expectedStatus[taskID][node.Name]; expectStatus != code {
+							t.Errorf("case%d: task %s on node %s expect have status code %v, but get %v", i, taskID, node.Name, expectStatus, code)
 						}
 
 					}

@@ -161,20 +161,27 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	if ep.config.predicateVerb != "" {
-		ssn.AddPredicateFn(ep.Name(), func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+		ssn.AddPredicateFn(ep.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 			resp := &PredicateResponse{}
 			err := ep.send(ep.config.predicateVerb, &PredicateRequest{Task: task, Node: node}, resp)
 			if err != nil {
 				klog.Warningf("Predicate failed with error %v", err)
 
 				if ep.config.ignorable {
-					return nil, nil
+					return nil
 				}
-				return nil, err
+				return api.NewFitError(task, node, err.Error())
 			}
 
-			predicateStatus := resp.Status
-			return predicateStatus, nil
+			if len(resp.ErrorMessage) == 0 {
+				return nil
+			}
+			// keep compatibility with old behavior: error messages length is not zero
+			// but didn't return a code, and code will be 0 for default. Change code to zero for corresponding
+			if resp.Code == api.Success {
+				resp.Code = api.Error
+			}
+			return api.NewFitErrWithStatus(task, node, &api.Status{Code: resp.Code, Reason: resp.ErrorMessage, Plugin: PluginName})
 		})
 	}
 
