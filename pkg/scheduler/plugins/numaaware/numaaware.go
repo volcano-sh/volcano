@@ -113,16 +113,19 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 		},
 	})
 
-	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		predicateStatus := make([]*api.Status, 0)
 		numaStatus := &api.Status{}
 		if v1qos.GetPodQOS(task.Pod) != v1.PodQOSGuaranteed {
 			klog.V(3).Infof("task %s isn't Guaranteed pod", task.Name)
-			return predicateStatus, nil
+			return nil
 		}
 
 		if fit, err := filterNodeByPolicy(task, node, pp.nodeResSets); !fit {
-			return predicateStatus, err
+			if err != nil {
+				return api.NewFitError(task, node, err.Error())
+			}
+			return nil
 		}
 
 		resNumaSets := pp.nodeResSets[node.Name].Clone()
@@ -134,11 +137,10 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 			hit, admit := taskPolicy.Predicate(providersHints)
 			if !admit {
 				numaStatus.Code = api.UnschedulableAndUnresolvable
-				numaStatus.Reason = fmt.Sprintf("plugin %s predicates failed for task %s container %s on node %s",
-					pp.Name(), task.Name, container.Name, node.Name)
+				numaStatus.Reason = fmt.Sprintf("container %s cannot be assigned by numa", container.Name)
+				numaStatus.Plugin = PluginName
 				predicateStatus = append(predicateStatus, numaStatus)
-				return predicateStatus, fmt.Errorf("plugin %s predicates failed for task %s container %s on node %s",
-					pp.Name(), task.Name, container.Name, node.Name)
+				return api.NewFitErrWithStatus(task, node, predicateStatus...)
 			}
 
 			klog.V(4).Infof("[numaaware] hits for task %s container '%v': %v on node %s, besthit: %v",
@@ -161,9 +163,7 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(4).Infof(" task %s's on node<%s> resAssignMap: %v",
 			task.Name, node.Name, pp.assignRes[task.UID][node.Name])
 
-		numaStatus.Code = api.Success
-		predicateStatus = append(predicateStatus, numaStatus)
-		return predicateStatus, nil
+		return nil
 	}
 
 	ssn.AddPredicateFn(pp.Name(), predicateFn)

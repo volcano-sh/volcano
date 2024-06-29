@@ -152,6 +152,7 @@ const (
 type Status struct {
 	Code   int
 	Reason string
+	Plugin string
 }
 
 // String represents status string
@@ -227,6 +228,30 @@ func (s StatusSets) Reasons() []string {
 	return all
 }
 
+// ConvertPredicateStatus return predicate status from k8sframework status
+func ConvertPredicateStatus(status *k8sframework.Status) *Status {
+	internalStatus := &Status{}
+	if status != nil {
+		internalStatus.Plugin = status.Plugin() // function didn't check whether Status is nil
+	}
+	if status.Code() == k8sframework.Success {
+		internalStatus.Code = Success
+		return internalStatus
+	} else if status.Code() == k8sframework.Unschedulable {
+		internalStatus.Code = Unschedulable
+		internalStatus.Reason = status.Message()
+		return internalStatus
+	} else if status.Code() == k8sframework.UnschedulableAndUnresolvable {
+		internalStatus.Code = UnschedulableAndUnresolvable
+		internalStatus.Reason = status.Message()
+		return internalStatus
+	} else {
+		internalStatus.Code = Error
+		internalStatus.Reason = status.Message()
+		return internalStatus
+	}
+}
+
 // ValidateExFn is the func declaration used to validate the result.
 type ValidateExFn func(interface{}) *ValidateResult
 
@@ -237,7 +262,7 @@ type VoteFn func(interface{}) int
 type JobEnqueuedFn func(interface{})
 
 // PredicateFn is the func declaration used to predicate node for task.
-type PredicateFn func(*TaskInfo, *NodeInfo) ([]*Status, error)
+type PredicateFn func(*TaskInfo, *NodeInfo) error
 
 // PrePredicateFn is the func declaration used to pre-predicate node for task.
 type PrePredicateFn func(*TaskInfo) error

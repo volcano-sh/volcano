@@ -345,7 +345,7 @@ func TestUsage_predicateFn(t *testing.T) {
 				for _, task := range job.Tasks {
 					taskID := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
 					for _, node := range ssn.Nodes {
-						predicateStatus, err := ssn.PredicateFn(task, node)
+						err := ssn.PredicateFn(task, node)
 						if (test.expected.err == nil || err == nil) && test.expected.err != err {
 							t.Errorf("case%d: task %s on node %s has error, expect: %v, actual: %v",
 								i, taskID, node.Name, test.expected.err, err)
@@ -356,7 +356,7 @@ func TestUsage_predicateFn(t *testing.T) {
 								i, taskID, node.Name, test.expected.err, err)
 							continue
 						}
-
+						predicateStatus := err.(*api.FitError).Status
 						for index := range predicateStatus {
 							if predicateStatus[index].Code != test.expected.predicateStatus[index].Code ||
 								predicateStatus[index].Reason != test.expected.predicateStatus[index].Reason {

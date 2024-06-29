@@ -262,24 +262,3 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 	}
 	return nodes, nil
 }
-
-// ConvertPredicateStatus return predicate status from k8sframework status
-func ConvertPredicateStatus(status *k8sframework.Status) *api.Status {
-	internalStatus := &api.Status{}
-	if status.Code() == k8sframework.Success {
-		internalStatus.Code = api.Success
-		return internalStatus
-	} else if status.Code() == k8sframework.Unschedulable {
-		internalStatus.Code = api.Unschedulable
-		internalStatus.Reason = status.Message()
-		return internalStatus
-	} else if status.Code() == k8sframework.UnschedulableAndUnresolvable {
-		internalStatus.Code = api.UnschedulableAndUnresolvable
-		internalStatus.Reason = status.Message()
-		return internalStatus
-	} else {
-		internalStatus.Code = api.Error
-		internalStatus.Reason = status.Message()
-		return internalStatus
-	}
-}

@@ -18,7 +18,6 @@ package deviceshare
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"reflect"
 
@@ -109,7 +108,7 @@ func getDeviceScore(ctx context.Context, pod *v1.Pod, node *api.NodeInfo, schedu
 
 func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 	// Register event handlers to update task info in PodLister & nodeMap
-	ssn.AddPredicateFn(dp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+	ssn.AddPredicateFn(dp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 		predicateStatus := make([]*api.Status, 0)
 		// Check PredicateWithCache
 		for _, val := range api.RegisteredDevices {
@@ -120,8 +119,9 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 						predicateStatus = append(predicateStatus, &api.Status{
 							Code:   devices.Unschedulable,
 							Reason: "node not initialized with device" + val,
+							Plugin: PluginName,
 						})
-						return predicateStatus, fmt.Errorf("node not initialized with device %s", val)
+						return api.NewFitErrWithStatus(task, node, predicateStatus...)
 					}
 					klog.V(4).Infof("pod %s/%s did not request device %s on %s, skipping it", task.Pod.Namespace, task.Pod.Name, val, node.Name)
 					continue
@@ -129,12 +129,12 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 				code, msg, err := dev.FilterNode(task.Pod, dp.schedulePolicy)
 				if err != nil {
 					predicateStatus = append(predicateStatus, createStatus(code, msg))
-					return predicateStatus, err
+					return api.NewFitErrWithStatus(task, node, predicateStatus...)
 				}
 				filterNodeStatus := createStatus(code, msg)
 				if filterNodeStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, filterNodeStatus)
-					return predicateStatus, fmt.Errorf("plugin device filternode predicates failed %s", msg)
+					return api.NewFitErrWithStatus(task, node, predicateStatus...)
 				}
 			} else {
 				klog.Warningf("Devices %s assertion conversion failed, skip", val)
@@ -144,7 +144,7 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(4).Infof("checkDevices predicates Task <%s/%s> on Node <%s>: fit ",
 			task.Namespace, task.Name, node.Name)
 
-		return predicateStatus, nil
+		return nil
 	})
 
 	ssn.AddNodeOrderFn(dp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {

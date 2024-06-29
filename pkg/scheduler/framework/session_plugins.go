@@ -653,8 +653,7 @@ func (ssn *Session) NodesWherePreemptionMightHelp(task *api.TaskInfo) []*api.Nod
 }
 
 // PredicateFn invoke predicate function of the plugins
-func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
-	predicateStatus := make([]*api.Status, 0)
+func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledPredicate) {
@@ -664,14 +663,59 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) ([]*api.
 			if !found {
 				continue
 			}
-			status, err := pfn(task, node)
-			predicateStatus = append(predicateStatus, status...)
+			err := pfn(task, node)
 			if err != nil {
-				return predicateStatus, err
+				return err
 			}
 		}
 	}
-	return predicateStatus, nil
+	return nil
+}
+
+// UnscheduleAndUnresolvedError checks if the predicate error contains
+// - Unschedulable
+// - UnschedulableAndUnresolvable
+// - ErrorSkipOrWait
+func (ssn *Session) UnscheduleAndUnresolvedError(task *api.TaskInfo, node *api.NodeInfo) error {
+	err := ssn.PredicateFn(task, node)
+	if err == nil {
+		return nil
+	}
+
+	fitError, ok := err.(*api.FitError)
+	if !ok {
+		return api.NewFitError(task, node, err.Error())
+	}
+
+	statusSets := fitError.Status
+	if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
+		statusSets.ContainsErrorSkipOrWait() {
+		return fitError
+	}
+	return nil
+}
+
+// UnresolvedError checks if the predicate error contains:
+// - UnschedulableAndUnresolvable
+// - ErrorSkipOrWait
+func (ssn *Session) UnresolvedError(task *api.TaskInfo, node *api.NodeInfo) error {
+	err := ssn.PredicateFn(task, node)
+	if err == nil {
+		return nil
+	}
+
+	fitError, ok := err.(*api.FitError)
+	if !ok {
+		return api.NewFitError(task, node, err.Error())
+	}
+
+	// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
+	// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
+	statusSets := fitError.Status
+	if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
+		return fitError
+	}
+	return nil
 }
 
 // PrePredicateFn invoke predicate function of the plugins

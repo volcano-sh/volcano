@@ -18,7 +18,6 @@ package nodegroup
 
 import (
 	"errors"
-	"fmt"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 
@@ -226,7 +225,7 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddNodeOrderFn(np.Name(), nodeOrderFn)
 
-	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		predicateStatus := make([]*api.Status, 0)
 
 		group := node.Node.Labels[NodeGroupNameKey]
@@ -237,15 +236,16 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 				Reason: "node not satisfy",
 			}
 			predicateStatus = append(predicateStatus, nodeStatus)
-			return predicateStatus, fmt.Errorf("<%s> predicates Task <%s/%s> on Node <%s> of nodegroup <%v> failed <%v>", np.Name(), task.Namespace, task.Name, node.Name, group, err)
+			return api.NewFitErrWithStatus(task, node, predicateStatus...)
 		}
 		klog.V(4).Infof("task <%s>/<%s> queue %s on node %s of nodegroup %v", task.Namespace, task.Name, queue, node.Name, group)
 		nodeStatus := &api.Status{
 			Code:   api.Success,
 			Reason: "node satisfy task",
+			Plugin: PluginName,
 		}
 		predicateStatus = append(predicateStatus, nodeStatus)
-		return predicateStatus, nil
+		return api.NewFitErrWithStatus(task, node, predicateStatus...)
 	}
 
 	ssn.AddPredicateFn(np.Name(), predicateFn)
