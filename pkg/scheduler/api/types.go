@@ -17,6 +17,8 @@ limitations under the License.
 package api
 
 import (
+	"strings"
+
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -150,11 +152,104 @@ const (
 type Status struct {
 	Code   int
 	Reason string
+	Plugin string
 }
 
 // String represents status string
 func (s Status) String() string {
 	return s.Reason
+}
+
+type StatusSets []*Status
+
+func (s StatusSets) ContainsUnschedulable() bool {
+	for _, status := range s {
+		if status == nil {
+			continue
+		}
+		if status.Code == Unschedulable {
+			return true
+		}
+	}
+	return false
+}
+
+func (s StatusSets) ContainsUnschedulableAndUnresolvable() bool {
+	for _, status := range s {
+		if status == nil {
+			continue
+		}
+		if status.Code == UnschedulableAndUnresolvable {
+			return true
+		}
+	}
+	return false
+}
+
+func (s StatusSets) ContainsErrorSkipOrWait() bool {
+	for _, status := range s {
+		if status == nil {
+			continue
+		}
+		if status.Code == Error || status.Code == Skip || status.Code == Wait {
+			return true
+		}
+	}
+	return false
+}
+
+// Message return the message generated from StatusSets
+func (s StatusSets) Message() string {
+	if s == nil {
+		return ""
+	}
+	all := make([]string, 0, len(s))
+	for _, status := range s {
+		if status.Reason == "" {
+			continue
+		}
+		all = append(all, status.Reason)
+	}
+	return strings.Join(all, ",")
+}
+
+// Reasons return the reasons list
+func (s StatusSets) Reasons() []string {
+	if s == nil {
+		return nil
+	}
+	all := make([]string, 0, len(s))
+	for _, status := range s {
+		if status.Reason == "" {
+			continue
+		}
+		all = append(all, status.Reason)
+	}
+	return all
+}
+
+// ConvertPredicateStatus return predicate status from k8sframework status
+func ConvertPredicateStatus(status *k8sframework.Status) *Status {
+	internalStatus := &Status{}
+	if status != nil {
+		internalStatus.Plugin = status.Plugin() // function didn't check whether Status is nil
+	}
+	if status.Code() == k8sframework.Success {
+		internalStatus.Code = Success
+		return internalStatus
+	} else if status.Code() == k8sframework.Unschedulable {
+		internalStatus.Code = Unschedulable
+		internalStatus.Reason = status.Message()
+		return internalStatus
+	} else if status.Code() == k8sframework.UnschedulableAndUnresolvable {
+		internalStatus.Code = UnschedulableAndUnresolvable
+		internalStatus.Reason = status.Message()
+		return internalStatus
+	} else {
+		internalStatus.Code = Error
+		internalStatus.Reason = status.Message()
+		return internalStatus
+	}
 }
 
 // ValidateExFn is the func declaration used to validate the result.
@@ -167,7 +262,7 @@ type VoteFn func(interface{}) int
 type JobEnqueuedFn func(interface{})
 
 // PredicateFn is the func declaration used to predicate node for task.
-type PredicateFn func(*TaskInfo, *NodeInfo) ([]*Status, error)
+type PredicateFn func(*TaskInfo, *NodeInfo) error
 
 // PrePredicateFn is the func declaration used to pre-predicate node for task.
 type PrePredicateFn func(*TaskInfo) error

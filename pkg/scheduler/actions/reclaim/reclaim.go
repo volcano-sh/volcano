@@ -125,17 +125,15 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 
 		assigned := false
-		for _, n := range ssn.Nodes {
-			var statusSets util.StatusSets
-			statusSets, _ = ssn.PredicateFn(task, n)
-
+		// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
+		totalNodes := ssn.NodesWherePreemptionMightHelp(task)
+		for _, n := range totalNodes {
 			// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
 			// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
-			if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
-				klog.V(5).Infof("predicates failed in reclaim for task <%s/%s> on node <%s>, reason is %s.",
-					task.Namespace, task.Name, n.Name, statusSets.Message())
+			if err := ssn.UnresolvedError(task, n); err != nil {
 				continue
 			}
+
 			klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.", task.Namespace, task.Name, n.Name)
 
 			var reclaimees []*api.TaskInfo

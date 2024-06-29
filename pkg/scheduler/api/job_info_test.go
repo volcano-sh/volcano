@@ -224,9 +224,9 @@ func TestTaskSchedulingReason(t *testing.T) {
 			nodefes: map[TaskID]*FitErrors{
 				TaskID(t6.UID): {
 					nodes: map[string]*FitError{
-						"node1": {Reasons: []string{NodePodNumberExceeded}},
-						"node2": {Reasons: []string{NodeResourceFitFailed}},
-						"node3": {Reasons: []string{NodeResourceFitFailed}},
+						"node1": {Status: []*Status{{Reason: NodePodNumberExceeded}}},
+						"node2": {Status: []*Status{{Reason: NodeResourceFitFailed}}},
+						"node3": {Status: []*Status{{Reason: NodeResourceFitFailed}}},
 					},
 				},
 			},

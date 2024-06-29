@@ -72,10 +72,7 @@ func predicate(w http.ResponseWriter, r *http.Request) {
 
 	resp := &extender.PredicateResponse{}
 	if req.Task.BestEffort && len(req.Node.Tasks) > 10 {
-		sts := api.Status{}
-		sts.Code = api.Unschedulable
-		sts.Reason = "Too many tasks on the node"
-		resp.Status = append(resp.Status, &sts)
+		resp.ErrorMessage = "Too many tasks on the node"
 	}
 	response, err := json.Marshal(resp)
 	if err != nil {
