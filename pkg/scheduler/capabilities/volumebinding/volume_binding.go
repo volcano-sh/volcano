@@ -412,10 +412,6 @@ func New(ctx context.Context, plArgs runtime.Object, fh framework.Handle, fts fe
 	pvInformer := fh.SharedInformerFactory().Core().V1().PersistentVolumes()
 	storageClassInformer := fh.SharedInformerFactory().Storage().V1().StorageClasses()
 	csiNodeInformer := fh.SharedInformerFactory().Storage().V1().CSINodes()
-	k8sVer, e := fh.ClientSet().Discovery().ServerVersion()
-	if e != nil {
-		return nil, e
-	}
 	var capacityCheck CapacityCheck
 	if options.ServerOpts.EnableCSIStorage {
 		capacityCheck = CapacityCheck{
