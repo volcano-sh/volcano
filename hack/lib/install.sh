@@ -19,7 +19,7 @@ function kind-up-cluster {
   check-kind
 
   echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}]"
-  kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}
+  kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT} --image kindest/node:v1.30.0
 
   echo
   check-images
