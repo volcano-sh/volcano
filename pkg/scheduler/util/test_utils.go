@@ -422,7 +422,7 @@ func NewFakeVolumeBinder(kubeClient kubernetes.Interface) *FakeVolumeBinder {
 	nodeInformer := informerFactory.Core().V1().Nodes()
 	csiNodeInformer := informerFactory.Storage().V1().CSINodes()
 	csiDriverInformer := informerFactory.Storage().V1().CSIDrivers()
-	csiStorageCapacityInformer := informerFactory.Storage().V1beta1().CSIStorageCapacities()
+	csiStorageCapacityInformer := informerFactory.Storage().V1().CSIStorageCapacities()
 
 	go podInformer.Informer().Run(context.TODO().Done())
 	go pvcInformer.Informer().Run(context.TODO().Done())
@@ -442,7 +442,7 @@ func NewFakeVolumeBinder(kubeClient kubernetes.Interface) *FakeVolumeBinder {
 		csiDriverInformer.Informer().HasSynced,
 		csiStorageCapacityInformer.Informer().HasSynced)
 
-	capacityCheck := &volumescheduling.CapacityCheck{
+	capacityCheck := volumescheduling.CapacityCheck{
 		CSIDriverInformer:          csiDriverInformer,
 		CSIStorageCapacityInformer: csiStorageCapacityInformer,
 	}
