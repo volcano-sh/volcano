@@ -113,11 +113,11 @@ func (f *Framework) NominatedPodsForNode(nodeName string) []*framework.PodInfo {
 	panic("implement me")
 }
 
-func (f *Framework) RunPreScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodes []*v1.Node) *framework.Status {
+func (f *Framework) RunPreScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeinfos []*framework.NodeInfo) *framework.Status {
 	panic("implement me")
 }
 
-func (f *Framework) RunScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodes []*v1.Node) ([]framework.NodePluginScores, *framework.Status) {
+func (f *Framework) RunScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeinfos []*framework.NodeInfo) ([]framework.NodePluginScores, *framework.Status) {
 	panic("implement me")
 }
 
