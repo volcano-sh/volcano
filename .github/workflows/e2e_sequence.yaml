@@ -9,14 +9,14 @@ on:
 
 jobs:
   e2e_sequence:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     name: E2E about Sequence
     timeout-minutes: 40
     steps:
       - name: Install Go
         uses: actions/setup-go@v4
         with:
-          go-version: 1.21.x
+          go-version: 1.22.x
 
       - name: Install musl
         run: |
@@ -31,8 +31,8 @@ jobs:
 
       - name: Install dependences
         run: |
-          GO111MODULE="on" go install sigs.k8s.io/kind@v0.21.0
-          curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.29.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+          GO111MODULE="on" go install sigs.k8s.io/kind@v0.23.0
+          curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.30.1/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
       - name: Checkout code
         uses: actions/checkout@v3
 
