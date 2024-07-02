@@ -19,7 +19,7 @@ function kind-up-cluster {
   check-kind
 
   echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}]"
-  kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT} --image kindest/node:v1.30.0
+  kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}
 
   echo
   check-images
@@ -69,7 +69,7 @@ function check-kind {
   which kind >/dev/null 2>&1
   if [[ $? -ne 0 ]]; then
     echo "Installing kind ..."
-    GOOS=${OS} go install sigs.k8s.io/kind@v0.21.0
+    GOOS=${OS} go install sigs.k8s.io/kind@v0.23.0
   else
     echo -n "Found kind, version: " && kind version
   fi
