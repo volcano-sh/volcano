@@ -19,7 +19,6 @@ package volumebinding
 import (
 	"context"
 	"testing"
-	"volcano.sh/volcano/cmd/scheduler/app/options"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -37,6 +36,8 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/runtime"
 	tf "k8s.io/kubernetes/pkg/scheduler/testing/framework"
+
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 )
 
 var (
