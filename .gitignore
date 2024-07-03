@@ -128,7 +128,7 @@ kubernetes.tar.gz
 
 # test coverage file
 coverage.txt
-coverprofile.out
+coverprofile.out*
 
 # go vendor directory
 vendor
