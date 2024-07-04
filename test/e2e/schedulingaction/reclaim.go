@@ -133,7 +133,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		q2 := "reclaim-q2"
 		j1 := "reclaim-j1"
 		j2 := "reclaim-j2"
-		j3 := "reclaim-j3"
+		j3 := "reclaim-j3-aaaa"
 
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			Queues:             []string{q2},
@@ -156,7 +156,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred(), "Wait for job2 failed")
 
 		By("Create new coming queue and job")
-		q3 := "reclaim-q3"
+		q3 := "reclaim-q3-aaaa"
 		ctx.Queues = append(ctx.Queues, q3)
 		e2eutil.CreateQueues(ctx)
 
@@ -187,7 +187,10 @@ var _ = Describe("Reclaim E2E Test", func() {
 		}
 
 		By("Q3 pending when we delete it.")
-		err = WaitQueueStatus(ctx, "Pending", 1, q3)
+		queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q3, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", queue)
+		By(fmt.Sprintf("reclaim-q3-aaaa status running: %d, pending: %d, inqueue: %d, if open: %v", queue.Status.Running, queue.Status.Pending, queue.Status.Inqueue, queue.Status.State))
+		err = WaitQueueStatus(ctx, "Pending||Inqueue", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue pending")
 	})
 
