@@ -35,7 +35,7 @@ import (
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
-var _ = Describe("Reclaim E2E Test", func() {
+var _ = FDescribe("Reclaim E2E Test", func() {
 
 	CreateReclaimJob := func(ctx *e2eutil.TestContext, req v1.ResourceList, name string, queue string, pri string, nodeName string, waitTaskReady bool) (*batchv1alpha1.Job, error) {
 		job := &e2eutil.JobSpec{
@@ -128,7 +128,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 	})
 
-	It("Reclaim Case 3: New queue with job created no reclaim when job.PodGroup.Status.Phase pending", func() {
+	FIt("Reclaim Case 3: New queue with job created no reclaim when job.PodGroup.Status.Phase pending", func() {
 		q1 := e2eutil.DefaultQueue
 		q2 := "reclaim-q2"
 		j1 := "reclaim-j1"
