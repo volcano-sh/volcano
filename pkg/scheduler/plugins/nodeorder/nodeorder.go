@@ -34,7 +34,8 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/noderesources"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
-
+	
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
@@ -354,12 +355,11 @@ func interPodAffinityScore(
 	// and the ParallelizeUntil guarantees only "workerNum" goroutines will be working simultaneously.
 	// so it's enough to allocate workerNum size for errCh.
 	// note that, in such case, size of errCh should be no less than parallelization number
-	workerNum := 16
-	errCh := make(chan error, workerNum)
+	errCh := make(chan error, options.ServerOpts.WorkerNum)
 	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
 	defer parallelizeCancel()
 
-	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodes), func(index int) {
+	workqueue.ParallelizeUntil(parallelizeContext, options.ServerOpts.WorkerNum, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -412,12 +412,11 @@ func taintTolerationScore(
 
 	nodeScoreList := make(k8sframework.NodeScoreList, len(nodes))
 	// size of errCh should be no less than parallelization number, see interPodAffinityScore.
-	workerNum := 16
-	errCh := make(chan error, workerNum)
+	errCh := make(chan error, options.ServerOpts.WorkerNum)
 	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
 	defer parallelizeCancel()
 
-	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodes), func(index int) {
+	workqueue.ParallelizeUntil(parallelizeContext, options.ServerOpts.WorkerNum, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -470,10 +469,9 @@ func podTopologySpreadScore(
 
 	nodeScoreList := make(k8sframework.NodeScoreList, len(nodes))
 	// size of errCh should be no less than parallelization number, see interPodAffinityScore.
-	workerNum := 16
-	errCh := make(chan error, workerNum)
+	errCh := make(chan error, options.ServerOpts.WorkerNum)
 	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
-	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodes), func(index int) {
+	workqueue.ParallelizeUntil(parallelizeContext, options.ServerOpts.WorkerNum, len(nodes), func(index int) {
 		nodeName := nodes[index].Name
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -509,6 +507,59 @@ func podTopologySpreadScore(
 	}
 
 	klog.V(4).Infof("pod topology spread Score for task %s/%s is: %v", pod.Namespace, pod.Name, nodeScores)
+	return nodeScores, nil
+}
+
+func selectorSpreadScore(
+	selectorSpread *selectorspread.SelectorSpread,
+	cycleState *k8sframework.CycleState,
+	pod *v1.Pod,
+	nodes []*v1.Node,
+	selectorSpreadWeight int,
+) (map[string]float64, error) {
+	preScoreStatus := selectorSpread.PreScore(context.TODO(), cycleState, pod, nodes)
+	if !preScoreStatus.IsSuccess() {
+		return nil, preScoreStatus.AsError()
+	}
+	nodeScoreList := make(k8sframework.NodeScoreList, len(nodes))
+	// size of errCh should be no less than parallelization number, see interPodAffinityScore.
+	errCh := make(chan error, options.ServerOpts.WorkerNum)
+	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
+	workqueue.ParallelizeUntil(parallelizeContext, options.ServerOpts.WorkerNum, len(nodes), func(index int) {
+		nodeName := nodes[index].Name
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		s, status := selectorSpread.Score(ctx, cycleState, pod, nodeName)
+		if !status.IsSuccess() {
+			parallelizeCancel()
+			errCh <- fmt.Errorf("calculate selector spread priority failed %v", status.Message())
+			return
+		}
+		nodeScoreList[index] = k8sframework.NodeScore{
+			Name:  nodeName,
+			Score: s,
+		}
+	})
+
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
+	}
+	selectorSpread.NormalizeScore(context.TODO(), cycleState, pod, nodeScoreList)
+
+	nodeScores := make(map[string]float64, len(nodes))
+	for i, nodeScore := range nodeScoreList {
+		// return error if score plugin returns invalid score.
+		if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
+			return nil, fmt.Errorf("selector spread returns an invalid score %v for node %s", nodeScore.Score, nodeScore.Name)
+		}
+		nodeScore.Score *= int64(selectorSpreadWeight)
+		nodeScoreList[i] = nodeScore
+		nodeScores[nodeScore.Name] = float64(nodeScore.Score)
+	}
+
+	klog.V(4).Infof("selector spread Score for task %s/%s is: %v", pod.Namespace, pod.Name, nodeScores)
 	return nodeScores, nil
 }
 

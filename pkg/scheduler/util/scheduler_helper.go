@@ -89,7 +89,7 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 		nodeOrderScoreMap[node.Name] = orderScore
 		workerLock.Unlock()
 	}
-	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), scoreNode)
+	workqueue.ParallelizeUntil(context.TODO(), options.ServerOpts.WorkerNum, len(nodes), scoreNode)
 	reduceScores, err := reduceFn(task, pluginNodeScoreMap)
 	if err != nil {
 		klog.Errorf("Error in Calculating Priority for the node:%v", err)

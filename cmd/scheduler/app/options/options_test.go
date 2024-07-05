@@ -75,6 +75,7 @@ func TestAddFlags(t *testing.T) {
 		MinPercentageOfNodesToFind: defaultMinPercentageOfNodesToFind,
 		PercentageOfNodesToFind:    defaultPercentageOfNodesToFind,
 		NodeWorkerThreads:          defaultNodeWorkers,
+		WorkerNum:                  defaultWorkerNum,
 		CacheDumpFileDir:           "/tmp",
 	}
 
