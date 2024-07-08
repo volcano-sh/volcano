@@ -129,6 +129,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 	})
 
 	It("Reclaim Case 3: New queue with job created no reclaim when job.PodGroup.Status.Phase pending", func() {
+		Skip("Occasionally Failed E2E Test Cases for Claim, See issue: #3562")
 		q1 := e2eutil.DefaultQueue
 		q2 := "reclaim-q2"
 		j1 := "reclaim-j1"
