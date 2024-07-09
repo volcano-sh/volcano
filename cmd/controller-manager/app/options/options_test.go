@@ -21,24 +21,29 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
+	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/component-base/config"
 	componentbaseoptions "k8s.io/component-base/config/options"
+	"k8s.io/component-base/featuregate"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/kube"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 func TestAddFlags(t *testing.T) {
-	fs := pflag.NewFlagSet("addflagstest", pflag.ContinueOnError)
+	fs := pflag.NewFlagSet("addflagstest", pflag.ExitOnError)
 	s := NewServerOption()
 
 	commonutil.LeaderElectionDefault(&s.LeaderElection)
 	s.LeaderElection.ResourceName = "vc-controller-manager"
 	componentbaseoptions.BindLeaderElectionFlags(&s.LeaderElection, fs)
 	s.AddFlags(fs)
+	utilfeature.DefaultMutableFeatureGate.AddFlag(fs)
 
 	args := []string{
 		"--master=127.0.0.1",
@@ -48,6 +53,7 @@ func TestAddFlags(t *testing.T) {
 		"--leader-elect-lease-duration=60s",
 		"--leader-elect-renew-deadline=20s",
 		"--leader-elect-retry-period=10s",
+		"--feature-gates=ResourceTopology=false",
 	}
 	fs.Parse(args)
 
@@ -78,14 +84,18 @@ func TestAddFlags(t *testing.T) {
 		WorkerThreadsForPG:  5,
 		WorkerThreadsForGC:  1,
 	}
+	expectedFeatureGates := map[featuregate.Feature]bool{features.ResourceTopology: false}
 
 	if !equality.Semantic.DeepEqual(expected, s) {
 		t.Errorf("Got different run options than expected.\nGot: %+v\nExpected: %+v\n", s, expected)
+	}
+
+	for k, v := range expectedFeatureGates {
+		assert.Equal(t, v, utilfeature.DefaultFeatureGate.Enabled(k))
 	}
 
 	err := s.CheckOptionOrDie()
 	if err != nil {
 		t.Errorf("expected nil but got %v\n", err)
 	}
-
 }
