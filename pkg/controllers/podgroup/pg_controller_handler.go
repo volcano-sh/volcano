@@ -229,6 +229,7 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				return err
 			}
 		}
+		klog.V(4).Infof("Create podgroup %s success", pgName)
 	}
 
 	return pg.updatePodAnnotations(pod, pgName)
