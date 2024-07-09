@@ -172,6 +172,7 @@ func (pg *pgcontroller) processNextReq() bool {
 	}
 
 	// normal pod use volcano
+	klog.V(4).Infof("Try to create podgroup for pod %s/%s", pod.Namespace, pod.Name)
 	if err := pg.createNormalPodPGIfNotExist(pod); err != nil {
 		klog.Errorf("Failed to handle Pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
 		pg.queue.AddRateLimited(req)
