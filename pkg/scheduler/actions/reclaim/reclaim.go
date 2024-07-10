@@ -50,7 +50,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		len(ssn.Jobs), len(ssn.Queues))
 
 	for _, job := range ssn.Jobs {
-		if job.IsPending() {
+		if job.IsPending() ||job.SchedulingGated() {
 			continue
 		}
 

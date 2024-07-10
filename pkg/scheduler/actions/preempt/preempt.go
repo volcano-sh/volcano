@@ -50,7 +50,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 	queues := map[api.QueueID]*api.QueueInfo{}
 
 	for _, job := range ssn.Jobs {
-		if job.IsPending() {
+		if job.IsPending()||job.SchedulingGated() {
 			continue
 		}
 

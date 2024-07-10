@@ -335,6 +335,7 @@ type JobInfo struct {
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
 	Budget        *DisruptionBudget
+
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
@@ -569,6 +570,23 @@ func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 
 	klog.Warningf("failed to find task <%v/%v> in job <%v/%v>", ti.Namespace, ti.Name, ji.Namespace, ji.Name)
 	return nil
+}
+
+// Judge if a Pod is SchedulingGated based on its Tasks
+// Should be called only when Pods are created 
+func (ji* JobInfo) SchedulingGated() bool{
+	for _,task:= range ji.Tasks{
+		if len(task.Pod.Spec.SchedulingGates) > 0 {
+			ji.PodGroup.Status.Phase=scheduling.PodGroupSchGated
+			return true
+		}
+	}
+
+	if ji.PodGroup.Status.Phase == scheduling.PodGroupSchGated{
+		ji.PodGroup.Status.Phase=scheduling.PodGroupInqueue
+	}
+
+	return false
 }
 
 // Clone is used to clone a jobInfo object
