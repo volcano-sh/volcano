@@ -60,6 +60,7 @@ func main() {
 
 	if s.PrintVersion {
 		version.PrintVersionAndExit()
+		return
 	}
 	if err := s.CheckOptionOrDie(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
