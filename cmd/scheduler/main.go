@@ -34,6 +34,7 @@ import (
 	"volcano.sh/volcano/cmd/scheduler/app"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	commonutil "volcano.sh/volcano/pkg/util"
+	"volcano.sh/volcano/pkg/version"
 
 	// Import default actions/plugins.
 	_ "volcano.sh/volcano/pkg/scheduler/actions"
@@ -62,6 +63,12 @@ func main() {
 	s.RegisterOptions()
 
 	cliflag.InitFlags()
+
+	if s.PrintVersion {
+		version.PrintVersionAndExit()
+		return
+	}
+
 	if err := s.CheckOptionOrDie(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)

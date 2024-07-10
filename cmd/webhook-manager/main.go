@@ -29,7 +29,7 @@ import (
 
 	"volcano.sh/volcano/cmd/webhook-manager/app"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
-
+	"volcano.sh/volcano/pkg/version"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/jobs/mutate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/jobs/validate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/podgroups/mutate"
@@ -49,6 +49,11 @@ func main() {
 	config.AddFlags(pflag.CommandLine)
 
 	cliflag.InitFlags()
+
+	if config.PrintVersion {
+		version.PrintVersionAndExit()
+		return
+	}
 
 	klog.StartFlushDaemon(*logFlushFreq)
 	defer klog.Flush()
