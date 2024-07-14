@@ -57,11 +57,29 @@ import (
 
 // GetPodResourceRequest returns all the resource required for that pod
 func GetPodResourceRequest(pod *v1.Pod) *Resource {
+	req := v1.ResourceList{}
+	restartableInitContainerReqs := v1.ResourceList{}
+	initContainerReqs := v1.ResourceList{}
+
 	result := GetPodResourceWithoutInitContainers(pod)
 
-	// take max_resource(sum_pod, any_init_container)
 	for _, container := range pod.Spec.InitContainers {
-		result.SetMaxResource(NewResource(container.Resources.Requests))
+		containerReq := container.Resources.Requests
+
+		if container.RestartPolicy != nil && *container.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			// and add them to the resulting cumulative container requests
+			addResourceList(req, containerReq)
+
+			// track our cumulative restartable init container resources
+			addResourceList(restartableInitContainerReqs, containerReq)
+			containerReq = restartableInitContainerReqs
+		} else {
+			tmp := v1.ResourceList{}
+			addResourceList(tmp, containerReq)
+			addResourceList(tmp, restartableInitContainerReqs)
+			containerReq = tmp
+		}
+		maxResourceList(initContainerReqs, containerReq)
 	}
 	result.AddScalar(v1.ResourcePods, 1)
 
@@ -153,4 +171,22 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 	}
 
 	return result
+}
+func addResourceList(list, newList v1.ResourceList) {
+	for name, quantity := range newList {
+		if value, ok := list[name]; !ok {
+			list[name] = quantity.DeepCopy()
+		} else {
+			value.Add(quantity)
+			list[name] = value
+		}
+	}
+}
+
+func maxResourceList(list, newList v1.ResourceList) {
+	for name, quantity := range newList {
+		if value, ok := list[name]; !ok || quantity.Cmp(value) > 0 {
+			list[name] = quantity.DeepCopy()
+		}
+	}
 }
