@@ -34,18 +34,12 @@ import (
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 	"volcano.sh/volcano/pkg/kube"
 	commonutil "volcano.sh/volcano/pkg/util"
-	"volcano.sh/volcano/pkg/version"
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 	"volcano.sh/volcano/pkg/webhooks/router"
 )
 
 // Run start the service of admission controller.
 func Run(config *options.Config) error {
-	if config.PrintVersion {
-		version.PrintVersionAndExit()
-		return nil
-	}
-
 	if config.EnableHealthz {
 		if err := helpers.StartHealthz(config.HealthzBindAddress, "volcano-admission", config.CaCertData, config.CertData, config.KeyData); err != nil {
 			return err

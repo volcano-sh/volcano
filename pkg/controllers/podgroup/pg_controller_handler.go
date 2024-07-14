@@ -72,9 +72,31 @@ func (pg *pgcontroller) addReplicaSet(obj interface{}) {
 
 	if *rs.Spec.Replicas == 0 {
 		pgName := batchv1alpha1.PodgroupNamePrefix + string(rs.UID)
+		klog.V(4).Infof("Delete podgroup %s for replicaset %s/%s spec.replicas == 0",
+			pgName, rs.Namespace, rs.Name)
 		err := pg.vcClient.SchedulingV1beta1().PodGroups(rs.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{})
 		if err != nil && !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to delete PodGroup <%s/%s>: %v", rs.Namespace, pgName, err)
+		}
+	}
+
+	// In the rolling upgrade scenario, the addReplicasSet(replicas=0) event may be received before
+	// the updateReplicaSet(replicas=1) event. In this event, need to create PodGroup for the pod.
+	if *rs.Spec.Replicas > 0 {
+		selector := metav1.LabelSelector{MatchLabels: rs.Spec.Selector.MatchLabels}
+		podList, err := pg.kubeClient.CoreV1().Pods(rs.Namespace).List(context.TODO(),
+			metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&selector)})
+		if err != nil {
+			klog.Errorf("Failed to list pods for ReplicaSet <%s/%s>: %v", rs.Namespace, rs.Name, err)
+			return
+		}
+		if podList != nil && len(podList.Items) > 0 {
+			pod := podList.Items[0]
+			klog.V(4).Infof("Try to create podgroup for pod %s/%s", pod.Namespace, pod.Name)
+			err := pg.createNormalPodPGIfNotExist(&pod)
+			if err != nil {
+				klog.Errorf("Failed to create PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
+			}
 		}
 	}
 }
@@ -227,7 +249,13 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
 					pod.Namespace, pod.Name, err)
 				return err
+			} else {
+				klog.V(4).Infof("PodGroup <%s/%s> already exists for Pod <%s/%s>",
+					pod.Namespace, pgName, pod.Namespace, pod.Name)
 			}
+		} else {
+			klog.V(4).Infof("PodGroup <%s/%s> created for Pod <%s/%s>",
+				pod.Namespace, pgName, pod.Namespace, pod.Name)
 		}
 	}
 

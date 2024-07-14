@@ -30,7 +30,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/signals"
 	commonutil "volcano.sh/volcano/pkg/util"
-	"volcano.sh/volcano/pkg/version"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -56,10 +55,6 @@ import (
 
 // Run the volcano scheduler.
 func Run(opt *options.ServerOption) error {
-	if opt.PrintVersion {
-		version.PrintVersionAndExit()
-	}
-
 	config, err := kube.BuildConfig(opt.KubeClientOptions)
 	if err != nil {
 		return err
