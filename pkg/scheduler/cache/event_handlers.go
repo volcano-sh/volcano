@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
@@ -47,7 +48,6 @@ import (
 
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
-	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
@@ -60,7 +60,7 @@ func isTerminated(status schedulingapi.TaskStatus) bool {
 // pi.Pod.Spec.SchedulerName is same as volcano scheduler's name, otherwise it will return nil.
 func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *schedulingapi.JobInfo {
 	if len(pi.Job) == 0 {
-		if !commonutil.Contains(sc.schedulerNames, pi.Pod.Spec.SchedulerName) {
+		if !slices.Contains(sc.schedulerNames, pi.Pod.Spec.SchedulerName) {
 			klog.V(4).Infof("Pod %s/%s will not scheduled by %#v, skip creating PodGroup and Job for it",
 				pi.Pod.Namespace, pi.Pod.Name, sc.schedulerNames)
 		}
