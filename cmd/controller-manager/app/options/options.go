@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/spf13/pflag"
+	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/component-base/config"
 	componentbaseconfigvalidation "k8s.io/component-base/config/validation"
@@ -120,14 +121,23 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet, knownControllers []string) {
 		"'-' to disable controllers, e.g. \"-job-controller,-queue-controller\" to disable job and queue controllers.", knownControllers))
 }
 
-// CheckOptionOrDie checks the option and returns error if it's invalid
+// CheckOptionOrDie checks all options and returns all errors if they are invalid.
+// If there are any invalid options, it aggregates all the errors and returns them.
 func (s *ServerOption) CheckOptionOrDie() error {
-	// check controllers option
+	var allErrors []error
+
+	// Check controllers option
 	if err := s.checkControllers(); err != nil {
-		return err
+		allErrors = append(allErrors, err)
 	}
-	// check leader election flag when LeaderElection is enabled.
-	return componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
+
+	// Check leader election flag when LeaderElection is enabled.
+	leaderElectionErr := componentbaseconfigvalidation.ValidateLeaderElectionConfiguration(
+		&s.LeaderElection, field.NewPath("leaderElection")).ToAggregate()
+	if leaderElectionErr != nil {
+		allErrors = append(allErrors, leaderElectionErr)
+	}
+	return errors.NewAggregate(allErrors)
 }
 
 // checkControllers checks the controllers option and returns error if it's invalid
