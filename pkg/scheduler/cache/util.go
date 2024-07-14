@@ -19,6 +19,7 @@ package cache
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -27,14 +28,13 @@ import (
 	"stathat.com/c/consistent"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 // responsibleForPod returns false at following conditions:
 // 1. The current scheduler is not specified scheduler in Pod's spec.
 // 2. The Job which the Pod belongs is not assigned to current scheduler based on the hash algorithm in multi-schedulers scenario
 func responsibleForPod(pod *v1.Pod, schedulerNames []string, mySchedulerPodName string, c *consistent.Consistent) bool {
-	if !commonutil.Contains(schedulerNames, pod.Spec.SchedulerName) {
+	if !slices.Contains(schedulerNames, pod.Spec.SchedulerName) {
 		return false
 	}
 	if c != nil {
