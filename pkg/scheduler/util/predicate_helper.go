@@ -100,7 +100,7 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 }
 
 func taskGroupID(task *api.TaskInfo) string {
-	return fmt.Sprintf("%s/%s", task.Job, task.GetTaskSpecKey())
+	return fmt.Sprintf("%s/%s", task.Job, task.TaskRole)
 }
 
 func NewPredicateHelper() PredicateHelper {

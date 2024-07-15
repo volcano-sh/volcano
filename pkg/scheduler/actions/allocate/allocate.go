@@ -181,6 +181,12 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			continue
 		}
 
+		// check if the task with its spec has already predicates failed
+		if job.TaskHasFitErrors(task) {
+			klog.V(5).Infof("Task %s with role spec %s has already predicated failed, skip", task.Name, task.TaskRole)
+			continue
+		}
+
 		klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(ssn.Nodes), job.Namespace, job.Name)
 
 		if err := ssn.PrePredicateFn(task); err != nil {
@@ -196,7 +202,14 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 		predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, alloc.predicate, true)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
-			break
+			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
+			// so we should break from continuously allocating.
+			// otherwise, should continue to find other allocatable task
+			if job.NeedContinueAllocating() {
+				continue
+			} else {
+				break
+			}
 		}
 
 		// Candidate nodes are divided into two gradients:
