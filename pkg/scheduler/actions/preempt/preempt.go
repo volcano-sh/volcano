@@ -208,23 +208,24 @@ func preempt(
 	predicateHelper util.PredicateHelper,
 ) (bool, error) {
 	assigned := false
-	allNodes := ssn.NodeList
+
 	if err := ssn.PrePredicateFn(preemptor); err != nil {
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
-		var statusSets util.StatusSets
+		var statusSets api.StatusSets
 		statusSets, _ = ssn.PredicateFn(task, node)
 
 		// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
 		// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
 		if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
-			return nil, api.NewFitError(task, node, statusSets.Message())
+			return nil, api.NewFitErrWithStatus(task, node, statusSets...)
 		}
 		return nil, nil
 	}
-
+	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
+	allNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(preemptor)
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, predicateFn, true)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
