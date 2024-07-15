@@ -21,13 +21,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func TestSchedulerCache_updateTask(t *testing.T) {
@@ -637,5 +640,68 @@ func TestSchedulerCache_DeleteQueueV1beta1(t *testing.T) {
 		if test.Expected != nil && queue != nil && queue.Queue != nil && (queue.Queue.Namespace != test.Expected.Namespace || queue.Queue.Name != test.Expected.Name) {
 			t.Errorf("Expected: %v but got: %v in case %d", test.Expected, queue.Queue, i)
 		}
+	}
+}
+
+func TestSchedulerCache_SyncNode(t *testing.T) {
+	tests := []struct {
+		name          string
+		cache         SchedulerCache
+		nodes         []*v1.Node
+		nodeName      string
+		nodeSelector  map[string]sets.Empty
+		expectedNodes map[string]struct{}
+		wantErr       bool
+	}{
+		{
+			name:          "Node not exists",
+			nodeName:      "n1",
+			expectedNodes: map[string]struct{}{},
+			wantErr:       true,
+		},
+		{
+			name: "Node added to cache",
+			nodes: []*v1.Node{
+				util.BuildNode("n1", nil, map[string]string{"label-key": "label-value"}),
+				util.BuildNode("n2", nil, map[string]string{"label-key": "label-value"})},
+			nodeName: "n1",
+			nodeSelector: map[string]sets.Empty{
+				"label-key:label-value": {},
+			},
+			expectedNodes: map[string]struct{}{"n1": {}},
+			wantErr:       false,
+		},
+		{
+			name: "Node not added to cache",
+			nodes: []*v1.Node{
+				util.BuildNode("n1", nil, map[string]string{}),
+				util.BuildNode("n2", nil, map[string]string{})},
+			nodeName: "n1",
+			nodeSelector: map[string]sets.Empty{
+				"label-key:label-value": {},
+			},
+			expectedNodes: map[string]struct{}{},
+			wantErr:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := NewDefaultMockSchedulerCache("volcano")
+			for _, node := range tt.nodes {
+				sc.nodeInformer.Informer().GetIndexer().Add(node)
+			}
+			sc.nodeSelectorLabels = tt.nodeSelector
+
+			if err := sc.SyncNode(tt.nodeName); (err != nil) != tt.wantErr {
+				t.Errorf("SyncNode() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			actualNodes := make(map[string]struct{})
+			for n := range sc.Nodes {
+				actualNodes[n] = struct{}{}
+			}
+			assert.Equal(t, tt.expectedNodes, actualNodes)
+		})
 	}
 }

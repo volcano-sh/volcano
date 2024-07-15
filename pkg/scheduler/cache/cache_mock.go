@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -109,7 +110,7 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		restConfig:          nil,
 		defaultQueue:        "default",
 		schedulerNames:      []string{schedulerName},
-		nodeSelectorLabels:  make(map[string]string),
+		nodeSelectorLabels:  make(map[string]sets.Empty),
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 		imageStates:         make(map[string]*imageState),

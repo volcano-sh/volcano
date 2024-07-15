@@ -50,6 +50,7 @@ import (
 	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
+	"stathat.com/c/consistent"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -101,7 +102,7 @@ type SchedulerCache struct {
 	defaultQueue string
 	// schedulerName is the name for volcano scheduler
 	schedulerNames     []string
-	nodeSelectorLabels map[string]string
+	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
 	podInformer                infov1.PodInformer
@@ -157,6 +158,15 @@ type SchedulerCache struct {
 	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
 	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
 	IgnoredCSIProvisioners sets.Set[string]
+
+	// multiSchedulerInfo holds multi schedulers info without using node selector, please see the following link for more details.
+	// https://github.com/volcano-sh/volcano/blob/master/docs/design/deploy-multi-volcano-schedulers-without-using-selector.md
+	multiSchedulerInfo
+}
+
+type multiSchedulerInfo struct {
+	schedulerPodName string
+	c                *consistent.Consistent
 }
 
 type imageState struct {
@@ -434,7 +444,7 @@ func (sc *SchedulerCache) updateNodeSelectors(nodeSelectors []string) {
 		nodeSelectorLabelName := strings.TrimSpace(nodeSelectorLabel[:index])
 		nodeSelectorLabelValue := strings.TrimSpace(nodeSelectorLabel[index+1:])
 		key := nodeSelectorLabelName + ":" + nodeSelectorLabelValue
-		sc.nodeSelectorLabels[key] = ""
+		sc.nodeSelectorLabels[key] = sets.Empty{}
 	}
 }
 
@@ -540,7 +550,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		restConfig:          config,
 		defaultQueue:        defaultQueue,
 		schedulerNames:      schedulerNames,
-		nodeSelectorLabels:  make(map[string]string),
+		nodeSelectorLabels:  make(map[string]sets.Empty),
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 		imageStates:         make(map[string]*imageState),
@@ -549,6 +559,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		nodeWorkers: nodeWorkers,
 	}
 
+	sc.schedulerPodName, sc.c = getMultiSchedulerInfo()
 	ignoredProvisionersSet := sets.New[string]()
 	for _, provisioner := range append(ignoredProvisioners, defaultIgnoredProvisioners...) {
 		ignoredProvisionersSet.Insert(provisioner)
@@ -596,7 +607,6 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 func (sc *SchedulerCache) addEventHandler() {
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
 	sc.informerFactory = informerFactory
-	mySchedulerPodName, c := getMultiSchedulerInfo()
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
 	// even with no error returned.
@@ -620,35 +630,20 @@ func (sc *SchedulerCache) addEventHandler() {
 	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
-				var node *v1.Node
 				switch t := obj.(type) {
 				case *v1.Node:
-					node = t
+					return true
 				case cache.DeletedFinalStateUnknown:
 					var ok bool
-					node, ok = t.Obj.(*v1.Node)
+					_, ok = t.Obj.(*v1.Node)
 					if !ok {
 						klog.Errorf("Cannot convert to *v1.Node: %v", t.Obj)
 						return false
 					}
+					return true
 				default:
 					return false
 				}
-
-				if !responsibleForNode(node.Name, mySchedulerPodName, c) {
-					return false
-				}
-				if len(sc.nodeSelectorLabels) == 0 {
-					return true
-				}
-				for labelName, labelValue := range node.Labels {
-					key := labelName + ":" + labelValue
-					if _, ok := sc.nodeSelectorLabels[key]; ok {
-						return true
-					}
-				}
-				klog.Infof("node %s ignore add/update/delete into schedulerCache", node.Name)
-				return false
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    sc.AddNode,
@@ -683,11 +678,11 @@ func (sc *SchedulerCache) addEventHandler() {
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
-					if !responsibleForPod(v, sc.schedulerNames, mySchedulerPodName, c) {
+					if !responsibleForPod(v, sc.schedulerNames, sc.schedulerPodName, sc.c) {
 						if len(v.Spec.NodeName) == 0 {
 							return false
 						}
-						if !responsibleForNode(v.Spec.NodeName, mySchedulerPodName, c) {
+						if !responsibleForNode(v.Spec.NodeName, sc.schedulerPodName, sc.c) {
 							return false
 						}
 					}
@@ -749,7 +744,7 @@ func (sc *SchedulerCache) addEventHandler() {
 					return false
 				}
 
-				return responsibleForPodGroup(pg, mySchedulerPodName, c)
+				return responsibleForPodGroup(pg, sc.schedulerPodName, sc.c)
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    sc.AddPodGroupV1beta1,
