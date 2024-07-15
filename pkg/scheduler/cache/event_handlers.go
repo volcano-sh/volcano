@@ -605,13 +605,34 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 		return err
 	}
 
+	if !sc.nodeCanAddCache(node) {
+		return nil
+	}
+	nodeCopy := node.DeepCopy()
 	csiNode, err := sc.csiNodeInformer.Lister().Get(nodeName)
 	if err == nil {
-		sc.setCSIResourceOnNode(csiNode, node)
+		sc.setCSIResourceOnNode(csiNode, nodeCopy)
 	} else if !errors.IsNotFound(err) {
 		return err
 	}
-	return sc.AddOrUpdateNode(node)
+	return sc.AddOrUpdateNode(nodeCopy)
+}
+
+func (sc *SchedulerCache) nodeCanAddCache(node *v1.Node) bool {
+	if !responsibleForNode(node.Name, sc.schedulerPodName, sc.c) {
+		return false
+	}
+	if len(sc.nodeSelectorLabels) == 0 {
+		return true
+	}
+	for labelName, labelValue := range node.Labels {
+		key := labelName + ":" + labelValue
+		if _, ok := sc.nodeSelectorLabels[key]; ok {
+			return true
+		}
+	}
+	klog.Infof("node %s ignore add/update/delete into schedulerCache", node.Name)
+	return false
 }
 
 func (sc *SchedulerCache) AddOrUpdateCSINode(obj interface{}) {
