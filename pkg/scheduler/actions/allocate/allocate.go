@@ -271,7 +271,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 				metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 			}
 		} else {
-			klog.V(3).Infof("Predicates failed in allocate for task <%s/%s> on node <%s> with limited resources",
+			klog.V(5).Infof("Predicates failed in allocate for task <%s/%s> on node <%s> with limited resources",
 				task.Namespace, task.Name, bestNode.Name)
 
 			// Allocate releasing resource to the task if any.
