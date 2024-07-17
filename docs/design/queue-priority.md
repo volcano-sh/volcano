@@ -12,7 +12,7 @@ While Volcano's current method of using queue shares effectively determines prio
 
 ## Implementation
 
-### Data Structure
+### API Change
 
 Add a `priority` attribute to the spec of `queues.scheduling.volcano.sh`. The priority attribute controls the order of queues in `capacity` and `proportion` plugins that implement QueueOrderFn.
 ```
