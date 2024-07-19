@@ -176,6 +176,7 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 			}
 		}
 	}
+	gs.GetStatus()
 }
 
 func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
