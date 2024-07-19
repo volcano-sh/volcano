@@ -22,13 +22,13 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
