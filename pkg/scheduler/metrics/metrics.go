@@ -40,7 +40,7 @@ var (
 			Subsystem: VolcanoNamespace,
 			Name:      "e2e_scheduling_latency_milliseconds",
 			Help:      "E2e scheduling latency in milliseconds (scheduling algorithm + binding)",
-			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
+			Buckets:   prometheus.ExponentialBuckets(5, 2, 20),
 		},
 	)
 
@@ -94,7 +94,7 @@ var (
 			Subsystem: VolcanoNamespace,
 			Name:      "action_scheduling_latency_microseconds",
 			Help:      "Action scheduling latency in microseconds",
-			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
+			Buckets:   prometheus.ExponentialBuckets(5, 2, 30),
 		}, []string{"action"},
 	)
 
