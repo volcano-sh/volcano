@@ -18,6 +18,8 @@ package schedulingaction
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
@@ -291,4 +293,80 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		err = e2eutil.WaitJobPending(ctx, queue1Job4)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
+
+	ginkgo.It("allocate skipping scheduling gated Tasks", func() {
+		q1 := "q1"
+		q2 := "q2"
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:        []string{q1, q2},
+			NodesNumLimit: 2,
+			NodesResourceLimit: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2000m"),
+				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+		})
+
+		defer e2eutil.CleanupTestContext(ctx)
+
+		slot1 := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("1000m"),
+			corev1.ResourceMemory: resource.MustParse("1024Mi")}
+		// slot2 := corev1.ResourceList{
+			// corev1.ResourceCPU:    resource.MustParse("1000m"),
+			// corev1.ResourceMemory: resource.MustParse("1024Mi")}
+
+
+		job := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot1,
+					Min: 1,
+					Rep: 1,
+					SchedulingGates: []string{"gate1"},
+				},
+
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot1,
+					Min: 1,
+					Rep: 1,
+				},
+
+			},
+		}
+		
+		
+		job.Name = "j1-q1"
+		job.Queue = q1
+		queue1Job1 := e2eutil.CreateJob(ctx, job)
+
+
+		//list all the pods
+
+		jobWatcher,err:=ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Watch(context.TODO(),metav1.ListOptions{})
+
+		// monitor the job for 10 seconds, make sure the schedulingGated task is not allocated
+		afterCh := time.After(10 * time.Second)
+		monitorLoop:
+		for {
+			select {
+			case jobUpdate := <-jobWatcher.ResultChan():
+				fmt.Println(jobUpdate)
+			case <-afterCh:
+				fmt.Println("Gated Tasks not run in 10 seconds.")
+				break monitorLoop
+			}
+		}
+
+		// When update, beware conflict
+		//remove the scheduling gates
+		pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Get(context.TODO(),"pod-name", metav1.GetOptions{})
+		pod.Spec.SchedulingGates=make([]corev1.PodSchedulingGate,0)
+		_,_=ctx.Kubeclient.CoreV1().Pods("ns").Update(context.TODO(),pod,metav1.UpdateOptions{})
+
+		err = e2eutil.WaitJobStateReady(ctx, queue1Job1)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+	})
+
 })

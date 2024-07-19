@@ -49,6 +49,7 @@ type TaskSpec struct {
 	Labels                map[string]string
 	Policies              []batchv1alpha1.LifecyclePolicy
 	RestartPolicy         v1.RestartPolicy
+	SchedulingGates	[]string
 	Tolerations           []v1.Toleration
 	DefaultGracefulPeriod *int64
 	Taskpriority          string
@@ -220,6 +221,12 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			maxRetry = -1
 		}
 
+		schedulingGates:=[]v1.PodSchedulingGate{}
+		for _,gateStr:= range task.SchedulingGates{
+			_=append(schedulingGates,v1.PodSchedulingGate{Name:gateStr});
+		}
+
+
 		ts := batchv1alpha1.TaskSpec{
 			Name:     name,
 			Replicas: task.Rep,
@@ -236,6 +243,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 					Affinity:          task.Affinity,
 					Tolerations:       task.Tolerations,
 					PriorityClassName: task.Taskpriority,
+					SchedulingGates:schedulingGates,
 				},
 			},
 		}
