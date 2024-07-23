@@ -66,11 +66,15 @@ func (dp *deviceSharePlugin) Name() string {
 
 func enablePredicate(dsp *deviceSharePlugin) {
 	// Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
+	nodeLockEnable := false
 	args := dsp.pluginArguments
 	args.GetBool(&gpushare.GpuSharingEnable, GPUSharingPredicate)
 	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
-	args.GetBool(&gpushare.NodeLockEnable, NodeLockEnable)
+	args.GetBool(&nodeLockEnable, NodeLockEnable)
 	args.GetBool(&vgpu.VGPUEnable, VGPUEnable)
+
+	gpushare.NodeLockEnable = nodeLockEnable
+	vgpu.NodeLockEnable = nodeLockEnable
 
 	_, ok := args[SchedulePolicyArgument]
 	if ok {
