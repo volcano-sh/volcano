@@ -355,12 +355,12 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 
 // setNode sets kubernetes node object to nodeInfo object without assertion
 func (ni *NodeInfo) setNode(node *v1.Node) {
-	ni.setOversubscription(node)
-	ni.setNodeOthersResource(node)
-	ni.setRevocableZone(node)
-
 	ni.Name = node.Name
 	ni.Node = node
+
+	ni.setOversubscription(node)
+	ni.setRevocableZone(node)
+	ni.setNodeOthersResource(node)
 
 	ni.Allocatable = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)
 	ni.Capacity = NewResource(node.Status.Capacity).Add(ni.OversubscriptionResource)
