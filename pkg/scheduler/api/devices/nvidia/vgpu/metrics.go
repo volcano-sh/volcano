@@ -39,7 +39,7 @@ var (
 			Name:      "vgpu_device_shared_number",
 			Help:      "The number of vgpu tasks sharing this card",
 		},
-		[]string{"devID"},
+		[]string{"devID", "NodeName"},
 	)
 	VGPUDevicesSharedMemory = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -47,7 +47,7 @@ var (
 			Name:      "vgpu_device_allocated_memory",
 			Help:      "The number of vgpu memory allocated in this card",
 		},
-		[]string{"devID"},
+		[]string{"devID", "NodeName"},
 	)
 	VGPUDevicesSharedCores = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -55,7 +55,7 @@ var (
 			Name:      "vgpu_device_allocated_cores",
 			Help:      "The percentage of gpu compute cores allocated in this card",
 		},
-		[]string{"devID"},
+		[]string{"devID", "NodeName"},
 	)
 	VGPUDevicesMemoryLimit = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -63,18 +63,26 @@ var (
 			Name:      "vgpu_device_memory_limit",
 			Help:      "The number of total device memory allocated in this card",
 		},
-		[]string{"devID"},
+		[]string{"devID", "NodeName"},
+	)
+	VGPUPodMemoryAllocated = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "vgpu_device_memory_allocation_for_a_vertain_pod",
+			Help:      "The vgpu device memory allocated for a certain pod",
+		},
+		[]string{"devID", "NodeName", "podName"},
+	)
+	VGPUPodCoreAllocated = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "vgpu_device_core_allocation_for_a_vertain_pod",
+			Help:      "The vgpu device core allocated for a certain pod",
+		},
+		[]string{"devID", "NodeName", "podName"},
 	)
 )
 
 func (gs *GPUDevices) GetStatus() string {
-	for _, val := range gs.Device {
-		if val != nil {
-			VGPUDevicesSharedNumber.WithLabelValues(val.UUID).Set(float64(val.UsedNum))
-			VGPUDevicesSharedMemory.WithLabelValues(val.UUID).Set(float64(val.UsedMem))
-			VGPUDevicesMemoryLimit.WithLabelValues(val.UUID).Set(float64(val.Memory))
-			VGPUDevicesSharedCores.WithLabelValues(val.UUID).Set(float64(val.UsedCore))
-		}
-	}
 	return ""
 }

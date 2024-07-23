@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -31,14 +32,21 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
 
+type GPUUsage struct {
+	UsedMem  uint
+	UsedCore uint
+}
+
 // GPUDevice include gpu id, memory and the pods that are sharing it.
 type GPUDevice struct {
 	// GPU ID
 	ID int
+	// Node this GPU Device belongs
+	Node string
 	// GPU Unique ID
 	UUID string
-	// The pods that are sharing this GPU
-	PodMap map[string]*v1.Pod
+	// The resource usage by pods that are sharing this GPU
+	PodMap map[string]*GPUUsage
 	// memory per card
 	Memory uint
 	// max sharing number
@@ -69,7 +77,7 @@ func NewGPUDevice(id int, mem uint) *GPUDevice {
 	return &GPUDevice{
 		ID:       id,
 		Memory:   mem,
-		PodMap:   map[string]*v1.Pod{},
+		PodMap:   make(map[string]*GPUUsage),
 		UsedNum:  0,
 		UsedMem:  0,
 		UsedCore: 0,
@@ -94,6 +102,16 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	}
 	for _, val := range nodedevices.Device {
 		klog.V(4).Infoln("name=", nodedevices.Name, "val=", *val)
+	}
+
+	for _, val := range nodedevices.Device {
+		klog.V(3).Infoln("Nvidia Device registered name=", nodedevices.Name, "val=", *val)
+		VGPUDevicesMemoryLimit.WithLabelValues(val.UUID, node.Name).Set(float64(val.Memory))
+		VGPUDevicesSharedNumber.WithLabelValues(val.UUID, node.Name).Set(0)
+		VGPUDevicesSharedCores.WithLabelValues(val.UUID, node.Name).Set(0)
+		VGPUDevicesSharedMemory.WithLabelValues(val.UUID, node.Name).Set(0)
+		VGPUPodMemoryAllocated.DeletePartialMatch(prometheus.Labels{"devID": val.UUID})
+		VGPUPodCoreAllocated.DeletePartialMatch(prometheus.Labels{"devID": val.UUID})
 	}
 
 	// We have to handshake here in order to avoid time-inconsistency between scheduler and nodes
@@ -147,11 +165,24 @@ func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 					gs.Device[index].UsedMem += uint(deviceused.Usedmem)
 					gs.Device[index].UsedNum++
 					gs.Device[index].UsedCore += uint(deviceused.Usedcores)
+					_, ok := gs.Device[index].PodMap[pod.Name]
+					if !ok {
+						gs.Device[index].PodMap[pod.Name] = &GPUUsage{
+							UsedMem:  0,
+							UsedCore: 0,
+						}
+					}
+					gs.Device[index].PodMap[pod.Name].UsedCore += uint(deviceused.Usedcores)
+					gs.Device[index].PodMap[pod.Name].UsedMem += uint(deviceused.Usedmem)
+					VGPUPodMemoryAllocated.WithLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name).Set(float64(gs.Device[index].PodMap[pod.Name].UsedMem))
+					VGPUPodCoreAllocated.WithLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name).Set(float64(gs.Device[index].PodMap[pod.Name].UsedCore))
+					VGPUDevicesSharedNumber.WithLabelValues(gsdevice.UUID, gsdevice.Node).Inc()
+					VGPUDevicesSharedCores.WithLabelValues(gsdevice.UUID, gsdevice.Node).Add(float64(deviceused.Usedcores))
+					VGPUDevicesSharedMemory.WithLabelValues(gsdevice.UUID, gsdevice.Node).Add(float64(deviceused.Usedmem))
 				}
 			}
 		}
 	}
-	gs.GetStatus()
 }
 
 // SubResource frees the gpu hold by the pod
@@ -172,6 +203,18 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 					gs.Device[index].UsedMem -= uint(deviceused.Usedmem)
 					gs.Device[index].UsedNum--
 					gs.Device[index].UsedCore -= uint(deviceused.Usedcores)
+					gs.Device[index].PodMap[pod.Name].UsedCore -= uint(deviceused.Usedcores)
+					gs.Device[index].PodMap[pod.Name].UsedMem -= uint(deviceused.Usedmem)
+					VGPUPodMemoryAllocated.WithLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name).Sub(float64(deviceused.Usedmem))
+					VGPUPodCoreAllocated.WithLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name).Sub(float64(deviceused.Usedcores))
+					if gs.Device[index].PodMap[pod.Name].UsedMem == 0 {
+						delete(gs.Device[index].PodMap, pod.Name)
+						VGPUPodMemoryAllocated.DeleteLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name)
+						VGPUPodCoreAllocated.DeleteLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name)
+					}
+					VGPUDevicesSharedNumber.WithLabelValues(gsdevice.UUID, gsdevice.Node).Dec()
+					VGPUDevicesSharedCores.WithLabelValues(gsdevice.UUID, gsdevice.Node).Sub(float64(deviceused.Usedcores))
+					VGPUDevicesSharedMemory.WithLabelValues(gsdevice.UUID, gsdevice.Node).Sub(float64(deviceused.Usedmem))
 				}
 			}
 		}
@@ -195,7 +238,7 @@ func (gs *GPUDevices) FilterNode(pod *v1.Pod, schedulePolicy string) (int, strin
 		klog.V(4).Infoln("hami-vgpu DeviceSharing starts filtering pods", pod.Name)
 		fit, _, score, err := checkNodeGPUSharingPredicateAndScore(pod, gs, true, schedulePolicy)
 		if err != nil || !fit {
-			klog.Errorln("deviceSharing err=", err.Error())
+			klog.ErrorS(err, "failed to allocate vgpu task")
 			return devices.Unschedulable, fmt.Sprintf("hami-vgpuDeviceSharing %s", err.Error()), err
 		}
 		gs.Score = score
@@ -209,14 +252,14 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 		klog.V(4).Infoln("hami-vgpu DeviceSharing:Into AllocateToPod", pod.Name)
 		fit, device, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, false, "")
 		if err != nil || !fit {
-			klog.Errorln("DeviceSharing err=", err.Error())
+			klog.ErrorS(err, "failed to allocate vgpu task")
 			return err
 		}
 		if NodeLockEnable {
 			nodelock.UseClient(kubeClient)
 			err = nodelock.LockNode(gs.Name, DeviceName)
 			if err != nil {
-				return errors.Errorf("node %s locked for lockname gpushare %s", gs.Name, err.Error())
+				return errors.Errorf("node %s locked for %s hamivgpu lockname %s", gs.Name, pod.Name, err.Error())
 			}
 		}
 
@@ -232,8 +275,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 		if err != nil {
 			return err
 		}
-		gs.GetStatus()
-		klog.V(3).Infoln("DeviceSharing:Allocate Success")
+		klog.V(3).InfoS("DeviceSharing:Allocate", pod.Name)
 	}
 	return nil
 }

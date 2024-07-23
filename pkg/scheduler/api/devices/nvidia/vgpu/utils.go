@@ -106,10 +106,12 @@ func decodeNodeDevices(name string, str string) *GPUDevices {
 			health, _ := strconv.ParseBool(items[4])
 			i := GPUDevice{
 				ID:     index,
+				Node:   name,
 				UUID:   items[0],
 				Number: uint(count),
 				Memory: uint(devmem),
 				Type:   items[3],
+				PodMap: make(map[string]*GPUUsage),
 				Health: health,
 			}
 			retval.Device[index] = &i
@@ -314,6 +316,7 @@ func getGPUDeviceSnapShot(snap *GPUDevices) *GPUDevices {
 		if val != nil {
 			ret.Device[index] = &GPUDevice{
 				ID:       val.ID,
+				Node:     val.Node,
 				UUID:     val.UUID,
 				PodMap:   val.PodMap,
 				Memory:   val.Memory,
@@ -363,7 +366,7 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 			if val.MemPercentagereq != 101 && val.Memreq == 0 {
 				val.Memreq = int32(gs.Device[i].Memory * uint(val.MemPercentagereq/100))
 			}
-			if gs.Device[i].Memory-gs.Device[i].UsedMem < uint(val.Memreq) {
+			if int(gs.Device[i].Memory)-int(gs.Device[i].UsedMem) < int(val.Memreq) {
 				continue
 			}
 			if 100-gs.Device[i].UsedCore < uint(val.Coresreq) {
