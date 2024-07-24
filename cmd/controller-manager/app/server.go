@@ -127,6 +127,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.InheritOwnerAnnotations = opt.InheritOwnerAnnotations
 	controllerOpt.WorkerThreadsForPG = opt.WorkerThreadsForPG
 	controllerOpt.WorkerThreadsForGC = opt.WorkerThreadsForGC
+	controllerOpt.Config = config
 
 	return func(ctx context.Context) {
 		framework.ForeachController(func(c framework.Controller) {
