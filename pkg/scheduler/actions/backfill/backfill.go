@@ -43,6 +43,7 @@ func (backfill *Action) Initialize() {}
 func (backfill *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Backfill ...")
 	defer klog.V(5).Infof("Leaving Backfill ...")
+	stmt := framework.NewStatement(ssn)
 
 	predicateFunc := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
 		var statusSets api.StatusSets
@@ -89,6 +90,17 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			if node == nil {
 				node = util.SelectBestNode(nodeScores)
 			}
+		}
+
+		// before allocating to a node, run prebind fn
+		if err := ssn.PreBindFn(task, node.Name); err != nil {
+			klog.V(3).Infof("PreBind for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+			// If prebind failed, we need to unallocate the task
+			err = stmt.Unallocate(task)
+			if err != nil {
+				klog.V(3).Infof("Unallocate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+			}
+			continue
 		}
 
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)

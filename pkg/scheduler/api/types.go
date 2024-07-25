@@ -277,3 +277,6 @@ type VictimTasksFn func([]*TaskInfo) []*TaskInfo
 
 // AllocatableFn is the func declaration used to check whether the task can be allocated
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool
+
+// PreBindFn is the func declaration used to do pre-bind operations.
+type PreBindFn func(task *TaskInfo, nodeName string) error

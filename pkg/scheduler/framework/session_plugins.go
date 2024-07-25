@@ -150,6 +150,11 @@ func (ssn *Session) AddJobStarvingFns(name string, fn api.ValidateFn) {
 	ssn.jobStarvingFns[name] = fn
 }
 
+// AddPreBindFns add preBindFns function
+func (ssn *Session) AddPreBindFns(name string, fn api.PreBindFn) {
+	ssn.preBindFns[name] = fn
+}
+
 // Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
@@ -806,4 +811,22 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo) *util.Pri
 		victimsQueue.Push(victim)
 	}
 	return victimsQueue
+}
+
+// PreBindFn invoke pre-bind function of the plugins
+// is called before binding a task to a node.
+func (ssn *Session) PreBindFn(task *api.TaskInfo, node string) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			pfn, found := ssn.preBindFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(task, node)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
