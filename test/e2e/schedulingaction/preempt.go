@@ -40,14 +40,19 @@ const (
 )
 
 var _ = Describe("Job E2E Test", func() {
+
+	var ctx *e2eutil.TestContext
+	AfterEach(func() {
+		e2eutil.CleanupTestContext(ctx)
+	})
+
 	It("schedule high priority job without preemption when resource is enough", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			PriorityClasses: map[string]int32{
 				highPriority: highPriorityValue,
 				lowPriority:  lowPriorityValue,
 			},
 		})
-		defer e2eutil.CleanupTestContext(ctx)
 
 		slot := e2eutil.OneCPU
 
@@ -63,13 +68,13 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		job.Name = "preemptee"
+		job.Name = "preemptee-0"
 		job.Pri = lowPriority
 		preempteeJob := e2eutil.CreateJob(ctx, job)
 		err := e2eutil.WaitTasksReady(ctx, preempteeJob, 1)
 		Expect(err).NotTo(HaveOccurred())
 
-		job.Name = "preemptor"
+		job.Name = "preemptor-0"
 		job.Pri = highPriority
 		preemptorJob := e2eutil.CreateJob(ctx, job)
 		err = e2eutil.WaitTasksReady(ctx, preempteeJob, 1)
@@ -80,13 +85,12 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("schedule high priority job with preemption when idle resource is NOT enough but preemptee resource is enough", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			PriorityClasses: map[string]int32{
 				highPriority: highPriorityValue,
 				lowPriority:  lowPriorityValue,
 			},
 		})
-		defer e2eutil.CleanupTestContext(ctx)
 
 		slot := e2eutil.OneCPU
 		rep := e2eutil.ClusterSize(ctx, slot)
@@ -103,13 +107,13 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		job.Name = "preemptee"
+		job.Name = "preemptee-1"
 		job.Pri = lowPriority
 		preempteeJob := e2eutil.CreateJob(ctx, job)
 		err := e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 
-		job.Name = "preemptor"
+		job.Name = "preemptor-1"
 		job.Pri = highPriority
 		job.Min = rep / 2
 		preemptorJob := e2eutil.CreateJob(ctx, job)
@@ -121,13 +125,12 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("preemption doesn't work when podgroup is pending due to insufficient resource", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			PriorityClasses: map[string]int32{
 				highPriority: highPriorityValue,
 				lowPriority:  lowPriorityValue,
 			},
 		})
-		defer e2eutil.CleanupTestContext(ctx)
 
 		pgName := "pending-pg"
 		pg := &schedulingv1beta1.PodGroup{
@@ -155,7 +158,7 @@ var _ = Describe("Job E2E Test", func() {
 				},
 			},
 		}
-		job.Name = "preemptee"
+		job.Name = "preemptee-2"
 		job.Pri = lowPriority
 		preempteeJob := e2eutil.CreateJob(ctx, job)
 		err = e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep))
@@ -186,14 +189,13 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("preemption only works in the same queue", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{"q1-preemption", "q2-reference"},
 			PriorityClasses: map[string]int32{
 				highPriority: highPriorityValue,
 				lowPriority:  lowPriorityValue,
 			},
 		})
-		defer e2eutil.CleanupTestContext(ctx)
 
 		slot := e2eutil.OneCPU
 		rep := e2eutil.ClusterSize(ctx, slot)
@@ -235,14 +237,13 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("preemption doesn't work when total resource of idle resource and preemptee is NOT enough", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{"q1-preemption", "q2-reference"},
 			PriorityClasses: map[string]int32{
 				highPriority: highPriorityValue,
 				lowPriority:  lowPriorityValue,
 			},
 		})
-		defer e2eutil.CleanupTestContext(ctx)
 
 		slot := e2eutil.OneCPU
 		rep := e2eutil.ClusterSize(ctx, slot)
@@ -290,7 +291,7 @@ var _ = Describe("Job E2E Test", func() {
 
 	It("multi-preemptor-jobs who are in different priority", func() {
 		Skip("https://github.com/volcano-sh/volcano/issues/911")
-		ctx := e2eutil.InitTestContext(e2eutil.Options{
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{"q1-preemption"},
 			PriorityClasses: map[string]int32{
 				highPriority:   highPriorityValue,
@@ -298,7 +299,6 @@ var _ = Describe("Job E2E Test", func() {
 				lowPriority:    lowPriorityValue,
 			},
 		})
-		defer e2eutil.CleanupTestContext(ctx)
 
 		slot := e2eutil.OneCPU
 		rep := e2eutil.ClusterSize(ctx, slot)
