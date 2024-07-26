@@ -165,7 +165,7 @@ case ${E2E_TYPE} in
     ;;
 esac
 
+generate-log
 if [[ $? -ne 0 ]]; then
-  generate-log
   exit 1
 fi
