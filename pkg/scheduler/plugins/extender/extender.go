@@ -176,8 +176,8 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 			if len(resp.ErrorMessage) == 0 {
 				return nil
 			}
-			// keep compatibility with old behavior: error messages length is not zero
-			// but didn't return a code, and code will be 0 for default. Change code to zero for corresponding
+			// keep compatibility with old behavior: error messages length is not zero,
+			// but didn't return a code, and code will be 0 for default. Change code to Error for corresponding
 			if resp.Code == api.Success {
 				resp.Code = api.Error
 			}

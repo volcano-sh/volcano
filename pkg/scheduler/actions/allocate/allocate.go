@@ -310,7 +310,7 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
-	return alloc.session.PredicateWhenAllocate(task, node)
+	return alloc.session.PredicateForAllocateAction(task, node)
 }
 
 func (alloc *Action) UnInitialize() {}

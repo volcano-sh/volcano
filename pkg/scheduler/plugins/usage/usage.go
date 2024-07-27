@@ -132,7 +132,6 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infof("The period(%s) is empty or the usage metrics data is not updated for more than %v minutes, "+
 				"Usage plugin filter for task %s/%s on node %s pass, metrics time is %v. ", up.period, MetricsActiveTime, task.Namespace, task.Name, node.Name, node.ResourceUsage.MetricsTime)
 
-			usageStatus.Code = api.Success
 			return nil
 		}
 
