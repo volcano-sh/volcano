@@ -213,7 +213,7 @@ func preempt(
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
 
-	predicateFn := ssn.PredicateWhenPreempt
+	predicateFn := ssn.PredicateForPreemptAction
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
 	allNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(preemptor)
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, predicateFn, true)

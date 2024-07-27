@@ -43,7 +43,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Backfill ...")
 	defer klog.V(5).Infof("Leaving Backfill ...")
 
-	predicateFunc := ssn.PredicateWhenAllocate
+	predicateFunc := ssn.PredicateForAllocateAction
 
 	// TODO (k82cn): When backfill, it's also need to balance between Queues.
 	pendingTasks := backfill.pickUpPendingTasks(ssn)

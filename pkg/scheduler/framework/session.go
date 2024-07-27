@@ -313,11 +313,11 @@ func (ssn *Session) GetUnschedulableAndUnresolvableNodesForTask(task *api.TaskIn
 	return ret
 }
 
-// PredicateWhenAllocate checks if the predicate error contains
+// PredicateForAllocateAction checks if the predicate error contains
 // - Unschedulable
 // - UnschedulableAndUnresolvable
 // - ErrorSkipOrWait
-func (ssn *Session) PredicateWhenAllocate(task *api.TaskInfo, node *api.NodeInfo) error {
+func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.NodeInfo) error {
 	err := ssn.PredicateFn(task, node)
 	if err == nil {
 		return nil
@@ -336,10 +336,10 @@ func (ssn *Session) PredicateWhenAllocate(task *api.TaskInfo, node *api.NodeInfo
 	return nil
 }
 
-// PredicateWhenPreempt checks if the predicate error contains:
+// PredicateForPreemptAction checks if the predicate error contains:
 // - UnschedulableAndUnresolvable
 // - ErrorSkipOrWait
-func (ssn *Session) PredicateWhenPreempt(task *api.TaskInfo, node *api.NodeInfo) error {
+func (ssn *Session) PredicateForPreemptAction(task *api.TaskInfo, node *api.NodeInfo) error {
 	err := ssn.PredicateFn(task, node)
 	if err == nil {
 		return nil
