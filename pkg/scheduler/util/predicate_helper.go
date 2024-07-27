@@ -3,7 +3,6 @@ package util
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -106,72 +105,4 @@ func taskGroupID(task *api.TaskInfo) string {
 
 func NewPredicateHelper() PredicateHelper {
 	return &predicateHelper{taskPredicateErrorCache: map[string]map[string]error{}}
-}
-
-type StatusSets []*api.Status
-
-func (s StatusSets) ContainsUnschedulable() bool {
-	for _, status := range s {
-		if status == nil {
-			continue
-		}
-		if status.Code == api.Unschedulable {
-			return true
-		}
-	}
-	return false
-}
-
-func (s StatusSets) ContainsUnschedulableAndUnresolvable() bool {
-	for _, status := range s {
-		if status == nil {
-			continue
-		}
-		if status.Code == api.UnschedulableAndUnresolvable {
-			return true
-		}
-	}
-	return false
-}
-
-func (s StatusSets) ContainsErrorSkipOrWait() bool {
-	for _, status := range s {
-		if status == nil {
-			continue
-		}
-		if status.Code == api.Error || status.Code == api.Skip || status.Code == api.Wait {
-			return true
-		}
-	}
-	return false
-}
-
-// Message return the message generated from StatusSets
-func (s StatusSets) Message() string {
-	if s == nil {
-		return ""
-	}
-	all := make([]string, 0, len(s))
-	for _, status := range s {
-		if status.Reason == "" {
-			continue
-		}
-		all = append(all, status.Reason)
-	}
-	return strings.Join(all, ",")
-}
-
-// Reasons return the reasons list
-func (s StatusSets) Reasons() []string {
-	if s == nil {
-		return nil
-	}
-	all := make([]string, 0, len(s))
-	for _, status := range s {
-		if status.Reason == "" {
-			continue
-		}
-		all = append(all, status.Reason)
-	}
-	return all
 }

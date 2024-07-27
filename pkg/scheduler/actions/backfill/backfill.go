@@ -45,7 +45,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 	defer klog.V(5).Infof("Leaving Backfill ...")
 
 	predicateFunc := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
-		var statusSets util.StatusSets
+		var statusSets api.StatusSets
 		statusSets, err := ssn.PredicateFn(task, node)
 		if err != nil {
 			return nil, err
