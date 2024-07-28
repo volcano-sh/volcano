@@ -273,6 +273,7 @@ func isJobFinished(job *v1alpha1.Job) bool {
 	return job.Status.State.Phase == v1alpha1.Completed ||
 		job.Status.State.Phase == v1alpha1.Failed ||
 		job.Status.State.Phase == v1alpha1.Terminated
+		job.Status.State.Phase == v1alpha1.Aborted
 }
 
 func getFinishAndExpireTime(j *v1alpha1.Job) (*time.Time, *time.Time, error) {
