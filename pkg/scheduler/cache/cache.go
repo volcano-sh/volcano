@@ -1236,29 +1236,33 @@ func (sc *SchedulerCache) AddBindTask(taskInfo *schedulingapi.TaskInfo) error {
 }
 
 func (sc *SchedulerCache) processBindTask() {
+	closed := false
 	for {
 		select {
 		case taskInfo, ok := <-sc.BindFlowChannel:
+			// the chan has been closed,
 			if !ok {
-				return
-			}
-
-			sc.bindCache = append(sc.bindCache, taskInfo)
-			if len(sc.bindCache) == sc.batchNum {
-				sc.BindTask()
+				closed = true
+			} else {
+				// bind task to node
+				sc.bindCache = append(sc.bindCache, taskInfo)
+				if len(sc.bindCache) == sc.batchNum {
+					sc.BindTask()
+				}
 			}
 		default:
 		}
-
-		if len(sc.BindFlowChannel) == 0 {
+		// the chan has been closed, break the loop
+		if closed {
 			break
 		}
 	}
 
-	if len(sc.bindCache) == 0 {
-		return
+	// the chan has been closed,
+	// we need to finish the last bind cache task
+	if len(sc.bindCache) > 0 {
+		sc.BindTask()
 	}
-	sc.BindTask()
 }
 
 // BindTask do k8s binding with a goroutine
