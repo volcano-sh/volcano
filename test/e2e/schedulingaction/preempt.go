@@ -18,12 +18,15 @@ package schedulingaction
 
 import (
 	"context"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
@@ -85,6 +88,35 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("schedule high priority job with preemption when idle resource is NOT enough but preemptee resource is enough", func() {
+		// Remove enqueue action first because it conflicts with preempt.
+		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
+		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+			vcScheConfStr, ok := data["volcano-scheduler-ci.conf"]
+			Expect(ok).To(BeTrue())
+
+			schedulerConf := &e2eutil.SchedulerConfiguration{}
+			err := yaml.Unmarshal([]byte(vcScheConfStr), schedulerConf)
+			Expect(err).NotTo(HaveOccurred())
+
+			changed = true
+			newActions := strings.TrimPrefix(schedulerConf.Actions, "enqueue, ")
+			if newActions == schedulerConf.Actions {
+				changed = false
+				klog.Warning("There is already no enqueue action")
+				return
+			}
+
+			schedulerConf.Actions = newActions
+			newVCScheConfBytes, err := yaml.Marshal(schedulerConf)
+			Expect(err).NotTo(HaveOccurred())
+
+			changedBefore = make(map[string]string)
+			changedBefore["volcano-scheduler-ci.conf"] = vcScheConfStr
+			data["volcano-scheduler-ci.conf"] = string(newVCScheConfBytes)
+			return
+		})
+		defer cmc.UndoChanged()
+
 		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			PriorityClasses: map[string]int32{
 				highPriority: highPriorityValue,
