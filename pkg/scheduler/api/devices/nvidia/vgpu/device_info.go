@@ -101,15 +101,14 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 		return nil
 	}
 	for _, val := range nodedevices.Device {
-		klog.V(4).Infoln("name=", nodedevices.Name, "val=", *val)
+		klog.V(4).InfoS("Nvidia Device registered name", "name", nodedevices.Name, "val", *val)
 	}
 
 	for _, val := range nodedevices.Device {
-		klog.V(3).Infoln("Nvidia Device registered name=", nodedevices.Name, "val=", *val)
 		VGPUDevicesMemoryLimit.WithLabelValues(val.UUID, node.Name).Set(float64(val.Memory))
 		VGPUDevicesSharedNumber.WithLabelValues(val.UUID, node.Name).Set(0)
-		VGPUDevicesSharedCores.WithLabelValues(val.UUID, node.Name).Set(0)
-		VGPUDevicesSharedMemory.WithLabelValues(val.UUID, node.Name).Set(0)
+		VGPUDevicesAllocatedCores.WithLabelValues(val.UUID, node.Name).Set(0)
+		VGPUDevicesAllocatedMemory.WithLabelValues(val.UUID, node.Name).Set(0)
 		VGPUPodMemoryAllocated.DeletePartialMatch(prometheus.Labels{"devID": val.UUID})
 		VGPUPodCoreAllocated.DeletePartialMatch(prometheus.Labels{"devID": val.UUID})
 	}
@@ -172,13 +171,7 @@ func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 							UsedCore: 0,
 						}
 					}
-					gs.Device[index].PodMap[pod.Name].UsedCore += uint(deviceused.Usedcores)
-					gs.Device[index].PodMap[pod.Name].UsedMem += uint(deviceused.Usedmem)
-					VGPUPodMemoryAllocated.WithLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name).Set(float64(gs.Device[index].PodMap[pod.Name].UsedMem))
-					VGPUPodCoreAllocated.WithLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name).Set(float64(gs.Device[index].PodMap[pod.Name].UsedCore))
-					VGPUDevicesSharedNumber.WithLabelValues(gsdevice.UUID, gsdevice.Node).Inc()
-					VGPUDevicesSharedCores.WithLabelValues(gsdevice.UUID, gsdevice.Node).Add(float64(deviceused.Usedcores))
-					VGPUDevicesSharedMemory.WithLabelValues(gsdevice.UUID, gsdevice.Node).Add(float64(deviceused.Usedmem))
+					gs.AddPodMetrics(index, pod.Name, deviceused)
 				}
 			}
 		}
@@ -205,16 +198,7 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 					gs.Device[index].UsedCore -= uint(deviceused.Usedcores)
 					gs.Device[index].PodMap[pod.Name].UsedCore -= uint(deviceused.Usedcores)
 					gs.Device[index].PodMap[pod.Name].UsedMem -= uint(deviceused.Usedmem)
-					VGPUPodMemoryAllocated.WithLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name).Sub(float64(deviceused.Usedmem))
-					VGPUPodCoreAllocated.WithLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name).Sub(float64(deviceused.Usedcores))
-					if gs.Device[index].PodMap[pod.Name].UsedMem == 0 {
-						delete(gs.Device[index].PodMap, pod.Name)
-						VGPUPodMemoryAllocated.DeleteLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name)
-						VGPUPodCoreAllocated.DeleteLabelValues(gsdevice.UUID, gsdevice.Node, pod.Name)
-					}
-					VGPUDevicesSharedNumber.WithLabelValues(gsdevice.UUID, gsdevice.Node).Dec()
-					VGPUDevicesSharedCores.WithLabelValues(gsdevice.UUID, gsdevice.Node).Sub(float64(deviceused.Usedcores))
-					VGPUDevicesSharedMemory.WithLabelValues(gsdevice.UUID, gsdevice.Node).Sub(float64(deviceused.Usedmem))
+					gs.SubPodMetrics(index, pod.Name, deviceused)
 				}
 			}
 		}
@@ -275,7 +259,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 		if err != nil {
 			return err
 		}
-		klog.V(3).InfoS("DeviceSharing:Allocate", pod.Name)
+		klog.V(3).Infoln("DeviceSharing:Allocate Success")
 	}
 	return nil
 }

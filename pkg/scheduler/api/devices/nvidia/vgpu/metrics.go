@@ -41,7 +41,7 @@ var (
 		},
 		[]string{"devID", "NodeName"},
 	)
-	VGPUDevicesSharedMemory = promauto.NewGaugeVec(
+	VGPUDevicesAllocatedMemory = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoNamespace,
 			Name:      "vgpu_device_allocated_memory",
@@ -49,7 +49,7 @@ var (
 		},
 		[]string{"devID", "NodeName"},
 	)
-	VGPUDevicesSharedCores = promauto.NewGaugeVec(
+	VGPUDevicesAllocatedCores = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoNamespace,
 			Name:      "vgpu_device_allocated_cores",
@@ -61,7 +61,7 @@ var (
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoNamespace,
 			Name:      "vgpu_device_memory_limit",
-			Help:      "The number of total device memory allocated in this card",
+			Help:      "The number of total device memory in this card",
 		},
 		[]string{"devID", "NodeName"},
 	)
@@ -85,4 +85,31 @@ var (
 
 func (gs *GPUDevices) GetStatus() string {
 	return ""
+}
+
+func (gs *GPUDevices) AddPodMetrics(index int, PodName string, cd ContainerDevice) {
+	UUID := gs.Device[index].UUID
+	NodeName := gs.Device[index].Node
+	usage := gs.Device[index].PodMap[PodName]
+	VGPUPodMemoryAllocated.WithLabelValues(UUID, NodeName, PodName).Set(float64(usage.UsedMem))
+	VGPUPodCoreAllocated.WithLabelValues(UUID, NodeName, PodName).Set(float64(usage.UsedCore))
+	VGPUDevicesSharedNumber.WithLabelValues(UUID, NodeName).Inc()
+	VGPUDevicesAllocatedCores.WithLabelValues(UUID, NodeName).Add(float64(cd.Usedcores))
+	VGPUDevicesAllocatedMemory.WithLabelValues(UUID, NodeName).Add(float64(cd.Usedmem))
+}
+
+func (gs *GPUDevices) SubPodMetrics(index int, PodName string, cd ContainerDevice) {
+	UUID := gs.Device[index].UUID
+	NodeName := gs.Device[index].Node
+	usage := gs.Device[index].PodMap[PodName]
+	VGPUPodMemoryAllocated.WithLabelValues(UUID, NodeName, PodName).Set(float64(usage.UsedMem))
+	VGPUPodCoreAllocated.WithLabelValues(UUID, NodeName, PodName).Set(float64(usage.UsedCore))
+	if usage.UsedMem == 0 {
+		delete(gs.Device[index].PodMap, PodName)
+		VGPUPodMemoryAllocated.DeleteLabelValues(UUID, NodeName, PodName)
+		VGPUPodCoreAllocated.DeleteLabelValues(UUID, NodeName, PodName)
+	}
+	VGPUDevicesSharedNumber.WithLabelValues(UUID, NodeName).Dec()
+	VGPUDevicesAllocatedCores.WithLabelValues(UUID, NodeName).Sub(float64(cd.Usedcores))
+	VGPUDevicesAllocatedMemory.WithLabelValues(UUID, NodeName).Sub(float64(cd.Usedmem))
 }
