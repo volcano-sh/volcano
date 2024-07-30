@@ -32,6 +32,7 @@ Assuming the overused queues do not enter the scheduling process, the `QueueOrde
 
 ### Reclaim
 
-The `reclaim` action is implemented for the reclaim logic between queues. Queue prioirty should be considered when reclaiming across queues.
+The `reclaim` action is implemented for the reclaim logic between queues. Queue priority should be considered when reclaiming across queues.
 - The queue reclaiming should be orderly processed from the highest priority queue to the lowest, as guaranteed by `QueueOrderFn`.
 - For the victim PriorityQueue construction, considering two victims with different job id, the one with the lower queue priority should be selected as the victim.
+- If a queue has reclaimed all lower-priority reclaimable resources and still does not meet its resource request, it will proceed to reclaim resources from higher-priority queues.
