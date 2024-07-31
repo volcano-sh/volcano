@@ -1,0 +1,18 @@
+name: Question
+description: Have a question about volcano
+body:
+  - type: textarea
+    attributes:
+      label: Please describe your problem in detail
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Any other relevant information
+      description: |
+        Kubernetes version, OS configuration, OS/Kernel version, etc.
+        Use the following commands:
+        $ kubectl version
+        $ cat /etc/os-release
+        $ uname -a
