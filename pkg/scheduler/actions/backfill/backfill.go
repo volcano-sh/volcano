@@ -22,15 +22,20 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-type Action struct{}
+type Action struct {
+	enablePredicateErrorCache bool
+}
 
 func New() *Action {
-	return &Action{}
+	return &Action{
+		enablePredicateErrorCache: true, // default to enable it
+	}
 }
 
 func (backfill *Action) Name() string {
@@ -39,9 +44,16 @@ func (backfill *Action) Name() string {
 
 func (backfill *Action) Initialize() {}
 
+func (backfill *Action) parseArguments(ssn *framework.Session) {
+	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, backfill.Name())
+	arguments.GetBool(&backfill.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+}
+
 func (backfill *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Backfill ...")
 	defer klog.V(5).Infof("Leaving Backfill ...")
+
+	backfill.parseArguments(ssn)
 
 	predicateFunc := ssn.PredicateForAllocateAction
 
@@ -62,7 +74,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			break
 		}
 
-		predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicateFunc, true)
+		predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicateFunc, backfill.enablePredicateErrorCache)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
 			break
