@@ -199,7 +199,10 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			break
 		}
 
-		predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, alloc.predicate, true)
+		// don't enable error cache if task's TaskRole is empty, because different pods with empty TaskRole will all
+		// have the same taskGroupID, and one pod predicate failed, all other pods will also be failed
+		// see issue: https://github.com/volcano-sh/volcano/issues/3527
+		predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, alloc.predicate, len(task.TaskRole) != 0)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
 			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
