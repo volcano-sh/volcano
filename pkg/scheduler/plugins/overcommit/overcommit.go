@@ -17,6 +17,8 @@ limitations under the License.
 package overcommit
 
 import (
+	"strings"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
@@ -32,28 +34,51 @@ const (
 	// overCommitFactor is resource overCommit factor for enqueue action
 	// It determines the number of `pending` pods that the scheduler will tolerate
 	// when the resources of the cluster is insufficient
+	// This field is used as the default key in factorMaps
 	overCommitFactor = "overcommit-factor"
 	// defaultOverCommitFactor defines the default overCommit resource factor for enqueue action
 	defaultOverCommitFactor = 1.2
 )
 
+const (
+	// overCommitFactorPrefix is the prefix of resource overCommit factor
+	// We use this prefix to segment the rules for custom resources
+	// in the configuration file.
+	overCommitFactorPrefix = "overcommit-factor."
+)
+
+// overcommitFactors defines the resource overCommit factors
+type overcommitFactors struct {
+	// factorMaps defines the resource overCommit factors
+	// key: resource, example: "cpu", "memory", "ephemeral-storage", "nvidia.com/gpu"
+	// value: overCommit factors
+	// when initializing, we will store a default value into this map
+	// key: "overcommit-factor", value: defaultOverCommitFactor
+	factorMaps map[string]float64
+}
+
 type overcommitPlugin struct {
-	// Arguments given for the plugin
-	pluginArguments  framework.Arguments
-	totalResource    *api.Resource
-	idleResource     *api.Resource
-	inqueueResource  *api.Resource
-	overCommitFactor float64
+	// pluginArguments Arguments given for the plugin
+	pluginArguments framework.Arguments
+	totalResource   *api.Resource
+	idleResource    *api.Resource
+	inqueueResource *api.Resource
+	// overCommitFactor is the different resource overCommit factors
+	overCommitFactors *overcommitFactors
 }
 
 // New function returns overcommit plugin object
 func New(arguments framework.Arguments) framework.Plugin {
 	return &overcommitPlugin{
-		pluginArguments:  arguments,
-		totalResource:    api.EmptyResource(),
-		idleResource:     api.EmptyResource(),
-		inqueueResource:  api.EmptyResource(),
-		overCommitFactor: defaultOverCommitFactor,
+		pluginArguments: arguments,
+		totalResource:   api.EmptyResource(),
+		idleResource:    api.EmptyResource(),
+		inqueueResource: api.EmptyResource(),
+		overCommitFactors: &overcommitFactors{
+			factorMaps: map[string]float64{
+				overCommitFactor: defaultOverCommitFactor,
+			},
+		},
 	}
 }
 
@@ -62,25 +87,28 @@ func (op *overcommitPlugin) Name() string {
 }
 
 /*
-User should give overcommit-factor through overcommit plugin arguments as format below:
+User should give overcommit factors through overcommit plugin arguments as format below:
+
+Example:
 
 actions: "enqueue, allocate, backfill"
 tiers:
 - plugins:
   - name: overcommit
     arguments:
-    overcommit-factor: 1.0
+    overcommit-factor.cpu: 1.2
+    overcommit-factor.memory: 1.0
+    overcommit-factor: 1.2
 */
 func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(5).Infof("Enter overcommit plugin ...")
 	defer klog.V(5).Infof("Leaving overcommit plugin.")
 
-	op.pluginArguments.GetFloat64(&op.overCommitFactor, overCommitFactor)
-	if op.overCommitFactor < 1.0 {
-		klog.Warningf("Invalid input %f for overcommit-factor, reason: overcommit-factor cannot be less than 1,"+
-			" using default value: %f.", op.overCommitFactor, defaultOverCommitFactor)
-		op.overCommitFactor = defaultOverCommitFactor
-	}
+	// parse plugin arguments
+	op.parse()
+
+	// validate plugin arguments
+	op.validate()
 
 	op.totalResource.Add(ssn.TotalResource)
 	// calculate idle resources of total cluster, overcommit resources included
@@ -88,7 +116,9 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 	for _, node := range ssn.Nodes {
 		used.Add(node.Used)
 	}
-	op.idleResource = op.totalResource.Clone().Multi(op.overCommitFactor).SubWithoutAssert(used)
+
+	op.idleResource = op.totalResource.Clone().
+		ScaleResourcesWithRatios(op.overCommitFactors.factorMaps, op.overCommitFactors.factorMaps[overCommitFactor]).SubWithoutAssert(used)
 
 	for _, job := range ssn.Jobs {
 		// calculate inqueue job resources
@@ -143,4 +173,59 @@ func (op *overcommitPlugin) OnSessionClose(ssn *framework.Session) {
 	op.totalResource = nil
 	op.idleResource = nil
 	op.inqueueResource = nil
+}
+
+// parseFactor iterates through the arguments map and extracts values based on the keys with specific prefixes.
+// If a key matches overCommitFactor, its corresponding value is directly added to the target map.
+// For keys starting with overCommitFactorPrefix,
+// the suffix after the prefix is extracted and used as the key in the target map along with the corresponding value.
+func (op *overcommitPlugin) parseFactor(arguments framework.Arguments, target map[string]float64) {
+	for key, value := range arguments {
+		switch v := value.(type) {
+		case float64:
+			if key == overCommitFactor {
+				// If the key is equal to overCommitFactor,
+				// directly add the value to the target map
+				target[overCommitFactor] = v
+			}
+
+			if strings.HasPrefix(key, overCommitFactorPrefix) {
+				// If the key starts with overCommitFactorPrefix
+				// Extract the suffix after the prefix
+				// Update target map with the extracted suffix and corresponding value
+				suffix := strings.TrimPrefix(key, overCommitFactorPrefix)
+				target[suffix] = v
+			}
+		case int:
+			// Handle int values by converting them to float64
+			floatValue := float64(v)
+			if key == overCommitFactor {
+				target[overCommitFactor] = floatValue
+			}
+
+			if strings.HasPrefix(key, overCommitFactorPrefix) {
+				suffix := strings.TrimPrefix(key, overCommitFactorPrefix)
+				target[suffix] = floatValue
+			}
+		default:
+			// we should log the unexpected value type here to prevent panics
+			klog.Warningf("Unexpected value type for key %s: %T\n", key, value)
+		}
+	}
+}
+
+func (op *overcommitPlugin) parse() {
+	op.parseFactor(op.pluginArguments, op.overCommitFactors.factorMaps)
+}
+
+// validate is used to validate the input parameters,
+// and if the input parameters are invalid, use the default value.
+func (op *overcommitPlugin) validate() {
+	for k, v := range op.overCommitFactors.factorMaps {
+		if v < 1.0 {
+			klog.Warningf("Invalid input %f for %v overcommit factor, reason: %v overcommit factor cannot be less than 1,"+
+				" using default value: %f.", v, k, k, defaultOverCommitFactor)
+			op.overCommitFactors.factorMaps[k] = defaultOverCommitFactor
+		}
+	}
 }
