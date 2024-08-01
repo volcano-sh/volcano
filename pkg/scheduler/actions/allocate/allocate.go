@@ -31,10 +31,14 @@ import (
 
 type Action struct {
 	session *framework.Session
+	// configured flag for error cache
+	enablePredicateErrorCache bool
 }
 
 func New() *Action {
-	return &Action{}
+	return &Action{
+		enablePredicateErrorCache: true, // default to enable it
+	}
 }
 
 func (alloc *Action) Name() string {
@@ -43,9 +47,16 @@ func (alloc *Action) Name() string {
 
 func (alloc *Action) Initialize() {}
 
+func (alloc *Action) parseArguments(ssn *framework.Session) {
+	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, alloc.Name())
+	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+}
+
 func (alloc *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Allocate ...")
 	defer klog.V(5).Infof("Leaving Allocate ...")
+
+	alloc.parseArguments(ssn)
 
 	// the allocation for pod may have many stages
 	// 1. pick a queue named Q (using ssn.QueueOrderFn)
@@ -204,7 +215,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			break
 		}
 
-		predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, alloc.predicate, true)
+		predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, alloc.predicate, alloc.enablePredicateErrorCache)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
 			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
