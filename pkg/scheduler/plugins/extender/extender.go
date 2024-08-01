@@ -258,10 +258,18 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	if ep.config.queueOverusedVerb != "" {
-		ssn.AddOverusedFn(ep.Name(), func(obj interface{}) bool {
+		ssn.AddOverusedFn(ep.Name(), func(obj interface{}, req interface{}) bool {
 			queue := obj.(*api.QueueInfo)
 			resp := &QueueOverusedResponse{}
-			err := ep.send(ep.config.queueOverusedVerb, &QueueOverusedRequest{Queue: queue}, resp)
+			requst := &QueueOverusedRequest{Queue: queue, Requsts: api.EmptyResource()}
+			if req != nil {
+				if job, ok := req.(*api.JobInfo); ok {
+					requst.Requsts.Add(job.GetMinResources())
+				} else if task, ok := req.(*api.TaskInfo); ok {
+					requst.Requsts.Add(task.Resreq)
+				}
+			}
+			err := ep.send(ep.config.queueOverusedVerb, requst, resp)
 			if err != nil {
 				klog.Warningf("QueueOverused failed with error %v", err)
 

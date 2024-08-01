@@ -58,7 +58,8 @@ type JobEnqueueableResponse struct {
 }
 
 type QueueOverusedRequest struct {
-	Queue *api.QueueInfo `json:"queue"`
+	Queue   *api.QueueInfo `json:"queue"`
+	Requsts *api.Resource  `json:"requsts"`
 }
 type QueueOverusedResponse struct {
 	Overused bool `json:"overused"`

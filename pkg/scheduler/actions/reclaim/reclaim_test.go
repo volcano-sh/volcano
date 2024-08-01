@@ -26,6 +26,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/capacity"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
@@ -190,6 +191,109 @@ func TestReclaim(t *testing.T) {
 	for i, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run([]framework.Action{reclaim})
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestEnableGangReclaim(t *testing.T) {
+	req1 := api.BuildResourceList("1", "1G")
+	req2 := api.BuildResourceList("2", "2G")
+	min := api.BuildResourceList("2", "2G")
+	mid := api.BuildResourceList("3", "3G")
+	max := api.BuildResourceList("4", "4G") // 2*req2
+	common := uthelper.TestCommonStruct{
+		Plugins: map[string]framework.PluginBuilder{
+			conformance.PluginName: conformance.New,
+			gang.PluginName:        gang.New,
+			capacity.PluginName:    capacity.New,
+		},
+		PodGroups: []*schedulingv1beta1.PodGroup{
+			util.BuildPodGroupWithMinResources("pg0", "c1", "q1", 0, nil, nil, schedulingv1beta1.PodGroupRunning),
+			util.BuildPodGroupWithMinResources("pg1", "c1", "q2", 1, nil, req1, schedulingv1beta1.PodGroupRunning),
+			util.BuildPodGroupWithMinResources("pg2", "c1", "q2", 2, nil, max, schedulingv1beta1.PodGroupInqueue),
+		},
+		Pods: []*v1.Pod{
+			util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, req2, "pg0", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+			util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, req1, "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+			util.BuildPod("c1", "preemptor1", "", v1.PodPending, req2, "pg2", nil, nil),
+			util.BuildPod("c1", "preemptor2", "", v1.PodPending, req2, "pg2", nil, nil),
+		},
+		Nodes: []*v1.Node{
+			util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+		},
+		Queues: []*schedulingv1beta1.Queue{
+			util.BuildQueueWithResourcesQuantity("q1", req1, min),
+			util.BuildQueueWithResourcesQuantity("q2", mid, max),
+		},
+	}
+	tests := []struct {
+		enableGang bool
+		uthelper.TestCommonStruct
+	}{
+		{
+			enableGang: false,
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "when enableGangCheckOverused=false, can reclaim one pod but can not meet gang",
+				Plugins:        common.Plugins,
+				PodGroups:      common.PodGroups,
+				Pods:           common.Pods,
+				Nodes:          common.Nodes,
+				Queues:         common.Queues,
+				ExpectEvictNum: 1,
+				ExpectEvicted:  []string{"c1/preemptee1"},
+			},
+		},
+		{
+			enableGang: true,
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "when enableGangCheckOverused=true, can not reclaim",
+				Plugins:        common.Plugins,
+				PodGroups:      common.PodGroups,
+				Pods:           common.Pods,
+				Nodes:          common.Nodes,
+				Queues:         common.Queues,
+				ExpectEvictNum: 0,
+				ExpectEvicted:  []string{},
+			},
+		},
+	}
+
+	reclaim := New()
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               conformance.PluginName,
+					EnabledReclaimable: &trueValue,
+				},
+				{
+					Name:               gang.PluginName,
+					EnabledReclaimable: &trueValue,
+				},
+				{
+					Name:               capacity.PluginName,
+					EnabledReclaimable: &trueValue,
+					EnabledOverused:    &trueValue,
+					EnabledAllocatable: &trueValue,
+					EnablePreemptive:   &trueValue,
+				},
+				{
+					Name:             priority.PluginName,
+					EnabledJobOrder:  &trueValue,
+					EnabledTaskOrder: &trueValue,
+				},
+			},
+		},
+	}
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(tiers, []conf.Configuration{{Name: reclaim.Name(), Arguments: map[string]interface{}{conf.EnableGangCheckOverusedKey: test.enableGang}}})
 			defer test.Close()
 			test.Run([]framework.Action{reclaim})
 			if err := test.CheckAll(i); err != nil {

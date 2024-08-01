@@ -106,7 +106,7 @@ func (ssn *Session) AddNodeReduceFn(name string, pf api.NodeReduceFn) {
 }
 
 // AddOverusedFn add overused function
-func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
+func (ssn *Session) AddOverusedFn(name string, fn api.ValidateWithCandidateFn) {
 	ssn.overusedFns[name] = fn
 }
 
@@ -255,7 +255,7 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 }
 
 // Overused invoke overused function of the plugins
-func (ssn *Session) Overused(queue *api.QueueInfo) bool {
+func (ssn *Session) Overused(queue *api.QueueInfo, req interface{}) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledOverused) {
@@ -265,7 +265,7 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 			if !found {
 				continue
 			}
-			if of(queue) {
+			if of(queue, req) {
 				return true
 			}
 		}
@@ -275,7 +275,7 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 }
 
 // Preemptive invoke can preemptive function of the plugins
-func (ssn *Session) Preemptive(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+func (ssn *Session) Preemptive(queue *api.QueueInfo, candidate interface{}) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			of, found := ssn.preemptiveFns[plugin.Name]
