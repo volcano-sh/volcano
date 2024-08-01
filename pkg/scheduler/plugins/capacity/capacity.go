@@ -245,13 +245,58 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, util.Permit
 	})
 
+	ssn.AddOverusedFn(cp.Name(), func(obj interface{}, req interface{}) bool {
+		queue := obj.(*api.QueueInfo)
+		attr := cp.queueOpts[queue.UID]
+		var overused, preemptable bool
+		var allocated *api.Resource
+		var candidateName string
+
+		// overused = false default, this will keep original: capacity has no overused check and return false
+		if req != nil {
+			allocated = attr.allocated.Clone()
+			var resReq *api.Resource
+			if job, ok := req.(*api.JobInfo); ok {
+				preemptable = job.Preemptable
+				resReq = job.GetMinResources()
+				allocated.Add(resReq) // future used resource when job is allocated
+				candidateName = job.Name
+			} else if task, ok := req.(*api.TaskInfo); ok {
+				preemptable = task.Preemptable
+				resReq = task.Resreq
+				allocated.Add(resReq)
+				candidateName = task.Name
+			}
+			if preemptable { // preemptable jobs/tasks can use up to capacity of queue
+				overused = !allocated.LessEqualWithDimension(attr.capability, resReq)
+			} else {
+				overused = !allocated.LessEqualWithDimension(attr.deserved, resReq)
+			}
+		}
+		// metrics.UpdateQueueOverused(attr.name, overused)
+		if overused {
+			klog.V(3).Infof("Queue <%v>: deserved <%v>, future allocated <%v>, share <%v>, capability <%v>, candidate=%s, preemptable=%v",
+				queue.Name, attr.deserved, allocated, attr.share, attr.capability, candidateName, preemptable)
+		}
+		return overused
+	})
+
 	ssn.AddPreemptiveFn(cp.Name(), func(obj interface{}, candidate interface{}) bool {
 		queue := obj.(*api.QueueInfo)
-		task := candidate.(*api.TaskInfo)
 		attr := cp.queueOpts[queue.UID]
 
-		overused := attr.deserved.LessEqualWithDimension(attr.allocated, task.InitResreq)
-		metrics.UpdateQueueOverused(attr.name, overused)
+		var overused bool // default preemptive is true
+		if task, ok1 := candidate.(*api.TaskInfo); ok1 {
+			overused = attr.deserved.LessEqualWithDimension(attr.allocated, task.InitResreq)
+		} else if job, ok2 := candidate.(*api.JobInfo); ok2 {
+			request := job.GetMinResources()
+			futureUsed := attr.allocated.Clone().Add(request)
+			// no matter preemtable or not, if used will exceed deserverd, cannot reclaim
+			preeptive := futureUsed.LessEqualWithDimension(attr.deserved, request)
+			overused = !preeptive
+		}
+
+		//metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
 			klog.V(3).Infof("Queue <%v> can not reclaim, deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)

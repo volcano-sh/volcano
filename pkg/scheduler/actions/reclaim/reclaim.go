@@ -20,14 +20,19 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-type Action struct{}
+type Action struct {
+	enableGangCheckOverused bool
+}
 
 func New() *Action {
-	return &Action{}
+	return &Action{
+		enableGangCheckOverused: false,
+	}
 }
 
 func (ra *Action) Name() string {
@@ -36,9 +41,16 @@ func (ra *Action) Name() string {
 
 func (ra *Action) Initialize() {}
 
+func (ra *Action) parseArguments(ssn *framework.Session) {
+	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, ra.Name())
+	arguments.GetBool(&ra.enableGangCheckOverused, conf.EnableGangCheckOverusedKey)
+}
+
 func (ra *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Reclaim ...")
 	defer klog.V(5).Infof("Leaving Reclaim ...")
+
+	ra.parseArguments(ssn)
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
@@ -90,9 +102,11 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		var task *api.TaskInfo
 
 		queue := queues.Pop().(*api.QueueInfo)
-		if ssn.Overused(queue) {
-			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
-			continue
+		if !ra.enableGangCheckOverused {
+			if ssn.Overused(queue, nil) {
+				klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
+				continue
+			}
 		}
 
 		// Found "high" priority job
@@ -110,14 +124,22 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			task = tasks.Pop().(*api.TaskInfo)
 		}
 
-		if !ssn.Allocatable(queue, task) {
-			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
-			continue
-		}
+		if ra.enableGangCheckOverused {
+			if !ssn.Preemptive(queue, job) {
+				klog.V(3).Infof("Queue <%s> can not reclaim by preempt others when considering job <%s> , ignore it.", queue.Name, job.Name)
+				queues.Push(queue) // need considering the next job in queue
+				continue
+			}
+		} else {
+			if !ssn.Allocatable(queue, task) {
+				klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
+				continue
+			}
 
-		if !ssn.Preemptive(queue, task) {
-			klog.V(3).Infof("Queue <%s> can not reclaim by preempt others when considering task <%s> , ignore it.", queue.Name, task.Name)
-			continue
+			if !ssn.Preemptive(queue, task) {
+				klog.V(3).Infof("Queue <%s> can not reclaim by preempt others when considering task <%s> , ignore it.", queue.Name, task.Name)
+				continue
+			}
 		}
 
 		if err := ssn.PrePredicateFn(task); err != nil {

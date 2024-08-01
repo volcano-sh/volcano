@@ -33,11 +33,13 @@ type Action struct {
 	session *framework.Session
 	// configured flag for error cache
 	enablePredicateErrorCache bool
+	enableGangCheckOverused   bool // indicates whether consider job's min request(gang-scheduling) when check overused
 }
 
 func New() *Action {
 	return &Action{
-		enablePredicateErrorCache: true, // default to enable it
+		enablePredicateErrorCache: true,  // default to enable it
+		enableGangCheckOverused:   false, // default to disable it
 	}
 }
 
@@ -50,6 +52,7 @@ func (alloc *Action) Initialize() {}
 func (alloc *Action) parseArguments(ssn *framework.Session) {
 	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, alloc.Name())
 	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+	arguments.GetBool(&alloc.enableGangCheckOverused, conf.EnableGangCheckOverusedKey)
 }
 
 func (alloc *Action) Execute(ssn *framework.Session) {
@@ -132,9 +135,11 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 
 		queue := queues.Pop().(*api.QueueInfo)
 
-		if ssn.Overused(queue) {
-			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
-			continue
+		if !alloc.enableGangCheckOverused {
+			if ssn.Overused(queue, nil) {
+				klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
+				continue
+			}
 		}
 
 		klog.V(3).Infof("Try to allocate resource to Jobs in Queue <%s>", queue.Name)
@@ -146,6 +151,21 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		}
 
 		job := jobs.Pop().(*api.JobInfo)
+
+		if len(job.TaskStatusIndex[api.Pending]) == 0 {
+			klog.V(4).Infof("Job <%v/%v> has no pending tasks, skip it.", job.Namespace, job.Name)
+			queues.Push(queue)
+			continue
+		}
+		// check if job's queue will overused when allocated resource for it
+		if alloc.enableGangCheckOverused {
+			if ssn.Overused(queue, job) {
+				klog.V(3).Infof("Queue <%s> will be overused if resource is allocated to job <%s/%s>, ignore it.", queue.Name, job.Namespace, job.Name)
+				queues.Push(queue) // should consider other jobs in this queue, so put it back
+				continue
+			}
+		}
+
 		if _, found = pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
