@@ -432,7 +432,7 @@ spec:
         k8s-app: kube-state-metrics
     spec:
       containers:
-        - image: quay.io/coreos/kube-state-metrics:v1.9.7
+        - image: volcanosh/kube-state-metrics:v2.0.0-beta
           imagePullPolicy: Always
           name: kube-state-metrics
           ports:
