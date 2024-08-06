@@ -120,9 +120,9 @@ custom:
   admission_resources: ~
   admission_log_level: 4
   scheduler_resources: ~
-  scheduler_log_level: 4
+  scheduler_log_level: 3
   controller_resources: ~
-  controller_log_level: 3
+  controller_log_level: 4
 
 # Specify additional namespace selector expressions for Volcano admission webhooks.
 # For example, if you want Volcano admission webhooks take effect in namespaces with
