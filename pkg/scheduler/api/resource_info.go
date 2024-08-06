@@ -429,6 +429,42 @@ func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) b
 	return true
 }
 
+// LessEqualWithDimension only compare the resource items in req param
+// @param req define the resource item to be compared
+// if req is nil, equals r.LessEqual(rr, zero)
+func (r *Resource) LessEqualWithDimension(rr *Resource, req *Resource) bool {
+	if r == nil {
+		return true
+	}
+	if rr == nil {
+		return false
+	}
+	if req == nil {
+		return r.LessEqual(rr, Zero)
+	}
+
+	if req.MilliCPU > 0 && r.MilliCPU > rr.MilliCPU {
+		return false
+	}
+	if req.Memory > 0 && r.Memory > rr.Memory {
+		return false
+	}
+
+	// if r.scalar is nil, whatever rr.scalar is, r is less or equal to rr
+	if r.ScalarResources == nil {
+		return true
+	}
+
+	for name, quant := range req.ScalarResources {
+		rQuant := r.ScalarResources[name]
+		rrQuant := rr.ScalarResources[name]
+		if quant > 0 && rQuant > rrQuant {
+			return false
+		}
+	}
+	return true
+}
+
 // LessEqualWithResourcesName returns true, []string{} only on condition that all dimensions of resources in r are less than or equal with that of rr,
 // Otherwise returns false and err string ,which show what resources are insufficient.
 // @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
