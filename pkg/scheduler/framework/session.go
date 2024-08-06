@@ -34,6 +34,8 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -50,6 +52,9 @@ type Session struct {
 	cache           cache.Cache
 	restConfig      *rest.Config
 	informerFactory informers.SharedInformerFactory
+
+	vcinformer.SharedInformerFactory
+	vcClient vcclient.Interface
 
 	TotalResource *api.Resource
 	// podGroupStatus cache podgroup status during schedule
@@ -111,6 +116,9 @@ func openSession(cache cache.Cache) *Session {
 		recorder:        cache.EventRecorder(),
 		cache:           cache,
 		informerFactory: cache.SharedInformerFactory(),
+
+		SharedInformerFactory: cache.VolcanoSharedInformerFactory(),
+		vcClient:              cache.VolcanoClient(),
 
 		TotalResource:  api.EmptyResource(),
 		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},

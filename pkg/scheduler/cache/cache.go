@@ -942,6 +942,9 @@ func (sc *SchedulerCache) Client() kubernetes.Interface {
 	return sc.kubeClient
 }
 
+// VolcanoClient returns the volcano clientSet
+func (sc *SchedulerCache) VolcanoClient() vcclient.Interface { return sc.vcClient }
+
 // ClientConfig returns the rest config
 func (sc *SchedulerCache) ClientConfig() *rest.Config {
 	return sc.restConfig
@@ -950,6 +953,9 @@ func (sc *SchedulerCache) ClientConfig() *rest.Config {
 // SharedInformerFactory returns the scheduler SharedInformerFactory
 func (sc *SchedulerCache) SharedInformerFactory() informers.SharedInformerFactory {
 	return sc.informerFactory
+}
+func (sc *SchedulerCache) VolcanoSharedInformerFactory() vcinformer.SharedInformerFactory {
+	return sc.vcInformerFactory
 }
 
 // SetSharedInformerFactory sets the scheduler SharedInformerFactory for unit test
