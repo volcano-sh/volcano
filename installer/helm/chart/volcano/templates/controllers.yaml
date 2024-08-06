@@ -159,7 +159,7 @@ spec:
               {{- if .Values.custom.leader_elect_enable }}
               - --leader-elect-resource-namespace={{ .Release.Namespace }}
               {{- end }}
-              - -v=4
+              - -v={{.Values.custom.controller_log_level}}
               - 2>&1
             imagePullPolicy: {{ .Values.basic.image_pull_policy }}
 {{- end }}
