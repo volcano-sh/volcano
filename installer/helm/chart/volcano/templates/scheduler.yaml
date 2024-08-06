@@ -183,7 +183,7 @@ spec:
             {{- if .Values.custom.leader_elect_enable }}
             - --leader-elect-resource-namespace={{ .Release.Namespace }}
             {{- end }}
-            - -v=3
+            - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1
           env:
             - name: DEBUG_SOCKET_DIR
