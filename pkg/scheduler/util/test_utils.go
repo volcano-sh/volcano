@@ -330,7 +330,7 @@ func (fb *FakeBinder) Length() int {
 }
 
 // Bind used by fake binder struct to bind pods
-func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) ([]*api.TaskInfo, []error) {
+func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) map[api.TaskID]string {
 	fb.Lock()
 	defer fb.Unlock()
 	for _, p := range tasks {
@@ -339,7 +339,7 @@ func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInf
 		fb.Channel <- key // need to wait binding pod because Bind process is asynchronous
 	}
 
-	return nil, nil
+	return nil
 }
 
 // FakeEvictor is used as fake evictor
