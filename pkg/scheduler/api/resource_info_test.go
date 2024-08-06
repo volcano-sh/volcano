@@ -249,6 +249,65 @@ func TestAddResource(t *testing.T) {
 	}
 }
 
+func TestAddForMinRequestResource(t *testing.T) {
+	tests := []struct {
+		resource1 *Resource
+		resource2 *Resource
+		expected  *Resource
+	}{
+		{
+			resource1: &Resource{},
+			resource2: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1, "hugepages-test": 2},
+			},
+			expected: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1, "hugepages-test": 2},
+			},
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1, "hugepages-test": 2},
+			},
+			resource2: &Resource{},
+			expected: &Resource{
+				MilliCPU:        0,
+				Memory:          0,
+				ScalarResources: map[v1.ResourceName]float64{},
+			},
+		},
+		{
+			resource1: &Resource{
+				MilliCPU:        4000,
+				Memory:          4000,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1, "nvidia.com/gpu": 2},
+			},
+			resource2: &Resource{
+				MilliCPU:        4000,
+				Memory:          0,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 4, "hugepages-test": 5},
+			},
+			expected: &Resource{
+				MilliCPU:        8000,
+				Memory:          0,
+				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 5, "hugepages-test": 5},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		test.resource1.AddForMinRequest(test.resource2)
+		if !reflect.DeepEqual(test.expected, test.resource1) {
+			t.Errorf("expected: %#v, got: %#v", test.expected, test.resource1)
+		}
+	}
+}
+
 func TestSubResource(t *testing.T) {
 	tests := []struct {
 		resource1 *Resource
