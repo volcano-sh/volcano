@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/pflag"
 	_ "go.uber.org/automaxprocs"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	cliflag "k8s.io/component-base/cli/flag"
 	componentbaseoptions "k8s.io/component-base/config/options"
 	"k8s.io/klog/v2"

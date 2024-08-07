@@ -23,6 +23,7 @@ import (
 
 	"github.com/spf13/pflag"
 	_ "go.uber.org/automaxprocs"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
