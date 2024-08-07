@@ -276,6 +276,13 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	// other fields under spec are not allowed to mutate
 	new.Spec.MinAvailable = old.Spec.MinAvailable
 	new.Spec.PriorityClassName = old.Spec.PriorityClassName
+
+	// use can only remove pod scheduling gates
+	// for schGate:=range	new.Spec.Tasks[0].Template.Spec.SchedulingGates{
+	// 	Slice.Contains(schGate)
+	// }
+
+
 	for i := range new.Spec.Tasks {
 		new.Spec.Tasks[i].Replicas = old.Spec.Tasks[i].Replicas
 		new.Spec.Tasks[i].MinAvailable = old.Spec.Tasks[i].MinAvailable

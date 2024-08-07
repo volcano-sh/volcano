@@ -23,8 +23,10 @@ import (
 	"github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
@@ -291,4 +293,74 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		err = e2eutil.WaitJobPending(ctx, queue1Job4)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
+
+	ginkgo.It("Schduling gates block pod scheduling. Pod allocated after removed.", func ()  {
+		// less than min available pods are allocated
+		q1 := "q1"
+		q2 := "q2"
+		ns:="test-namespace"
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Namespace: ns,
+			Queues:        []string{q1,q2},
+			NodesNumLimit: 4,
+			NodesResourceLimit: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2000m"),
+				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+		})
+
+		//defer e2eutil.CleanupTestContext(ctx)
+
+		slot1 := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("2000m"),
+			corev1.ResourceMemory: resource.MustParse("2048Mi")}
+
+		job := &e2eutil.JobSpec{
+			Namespace: ns,
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot1,
+					Min: 2,
+					Rep: 2,
+					SchGates: []v1.PodSchedulingGate{{Name: "example.com/g1"}},
+				},
+			},
+		}
+
+		job.Name = "j1-q1"
+		job.Queue = q1
+		queue1Job1 := e2eutil.CreateJob(ctx, job)
+		// job should be unschedulable 
+		err := e2eutil.WaitJobUnschedulable(ctx,queue1Job1)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		//remove scheduling gates by modifying job spec
+		// queue1Job1.Spec.Tasks[0].Template.Spec.SchedulingGates=[]v1.PodSchedulingGate{}
+		// err = e2eutil.UpdateJob(ctx,queue1Job1)
+		//gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		//we can also remove Sch gates at pod level
+		dPpatchData := []byte(`[
+			{
+				"op": "replace",
+				"path": "/spec/schedulingGates",
+				"value": []
+			}
+		]`)
+
+		for _,pod:= range e2eutil.GetTasksOfJob(ctx,queue1Job1){
+			_,err=ctx.Kubeclient.CoreV1().Pods(job.Namespace).Patch(context.TODO(),pod.Name,types.JSONPatchType,dPpatchData,metav1.PatchOptions{})
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		}
+
+		err = e2eutil.WaitJobStateReady(ctx, queue1Job1)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	})
+
+	// more than min available pods are allocated despite gated pods
+
+	//Resource consumption rules:
+	// Inqueue: scheduling gated pod does not take up inqueue resources
+	// Allocate: scheduling gated pod does not take up allocate resources, meaning that no pod will not be able
+	// to be allocated because of sch gated pods
 })

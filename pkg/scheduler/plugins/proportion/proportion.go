@@ -143,7 +143,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			attr.inqueue.Add(job.GetMinResources())
+			attr.inqueue.Add(job.GetNoneGatedPodResources())
 		}
 
 		// calculate inqueue resource for running jobs
@@ -352,7 +352,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		inqueue := r.LessEqual(rr, api.Infinity)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
-			attr.inqueue.Add(job.GetMinResources())
+			// what is pods is null
+			attr.inqueue.Add(job.GetNoneGatedPodResources())
 			return util.Permit
 		}
 		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")

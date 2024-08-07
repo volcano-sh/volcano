@@ -227,6 +227,10 @@ func (ti *TaskInfo) ClearLastTxContext() {
 	ti.LastTransaction = nil
 }
 
+func (ti* TaskInfo) SchedulingGated() bool {
+	return ti.Pod.Spec.SchedulingGates!=nil&&len(ti.Pod.Spec.SchedulingGates)!=0
+}
+
 func (ti *TaskInfo) SetPodResourceDecision() error {
 	if ti.NumaInfo == nil || len(ti.NumaInfo.ResMap) == 0 {
 		return nil
@@ -503,6 +507,17 @@ func (ji *JobInfo) GetMinResources() *Resource {
 	return NewResource(*ji.PodGroup.Spec.MinResources)
 }
 
+func (ji *JobInfo) GetNoneGatedPodResources() *Resource {
+	res := EmptyResource()
+	for _,task:=range ji.Tasks {
+		if task.SchedulingGated(){
+			continue
+		}
+		res.Add(task.Resreq)
+	}
+	return res
+}
+
 func (ji *JobInfo) GetElasticResources() *Resource {
 	minResource := ji.GetMinResources()
 	if ji.Allocated.LessEqualPartly(minResource, Zero) {
@@ -574,6 +589,17 @@ func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 	klog.Warningf("failed to find task <%v/%v> in job <%v/%v>", ti.Namespace, ti.Name, ji.Namespace, ji.Name)
 	return nil
 }
+
+func (ji* JobInfo) HaveSchGatedTask() bool{
+	for _,task:=range ji.Tasks{
+		if task.SchedulingGated(){
+			return true
+		}
+	}
+	return false
+}
+
+
 
 // Clone is used to clone a jobInfo object
 func (ji *JobInfo) Clone() *JobInfo {
