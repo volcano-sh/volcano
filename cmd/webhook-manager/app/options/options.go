@@ -29,8 +29,16 @@ const (
 	defaultSchedulerName    = "volcano"
 	defaultQPS              = 50.0
 	defaultBurst            = 100
-	defaultEnabledAdmission = "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
-	defaultHealthzAddress   = ":11251"
+	defaultEnabledAdmission = "/jobs/mutate," +
+		"/jobs/validate," +
+		"/podgroups/mutate," +
+		"/pods/validate," +
+		"/pods/mutate," +
+		"/queues/mutate," +
+		"/queues/validate" +
+		"/jobflows/validate" +
+		"/jobtemplates/validate"
+	defaultHealthzAddress = ":11251"
 )
 
 // Config admission-controller server config.
