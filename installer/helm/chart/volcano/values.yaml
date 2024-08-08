@@ -16,8 +16,10 @@ custom:
   admission_replicas: 1
   controller_enable: true
   controller_replicas: 1
+  controller_metrics_enable: true
   scheduler_enable: true
   scheduler_replicas: 1
+  scheduler_metrics_enable: true
   scheduler_name: ~
   leader_elect_enable: false
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"

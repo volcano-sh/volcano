@@ -446,9 +446,6 @@ spec:
             timeoutSeconds: 5
       dnsPolicy: ClusterFirst
       
-      nodeSelector:
-        node.kubernetes.io/instance-type: controlpanel
-      
       serviceAccountName: kube-state-metrics
 ---
 # Source: volcano/templates/grafana.yaml
