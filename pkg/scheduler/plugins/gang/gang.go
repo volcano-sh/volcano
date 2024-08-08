@@ -18,7 +18,6 @@ package gang
 
 import (
 	"fmt"
-	"slices"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -178,17 +177,8 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				return num + job.ReadyTaskNum()
 			}
 			unreadyTaskCount = job.MinAvailable - schedulableTaskNum()
-			
-		
-			var msg string
-			if job.HaveSchGatedTask(){
-				msg = fmt.Sprintf("%v/%v tasks in gang unschedulable due to scheduling gated tasks: %v",
+			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 				unreadyTaskCount, len(job.Tasks), job.FitError())
-			}else{
-				msg = fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
-				unreadyTaskCount, len(job.Tasks), job.FitError())
-
-			}
 			job.JobFitErrors = msg
 
 			unScheduleJobCount++
