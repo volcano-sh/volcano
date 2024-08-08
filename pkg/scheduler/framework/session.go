@@ -90,7 +90,7 @@ type Session struct {
 	overusedFns       map[string]api.ValidateFn
 	// preemptiveFns means whether current queue can reclaim from other queue,
 	// while reclaimableFns means whether current queue's resources can be reclaimed.
-	preemptiveFns     map[string]api.ValidateFn
+	preemptiveFns     map[string]api.ValidateWithCandidateFn
 	allocatableFns    map[string]api.AllocatableFn
 	jobReadyFns       map[string]api.ValidateFn
 	jobPipelinedFns   map[string]api.VoteFn
@@ -136,7 +136,7 @@ func openSession(cache cache.Cache) *Session {
 		preemptableFns:    map[string]api.EvictableFn{},
 		reclaimableFns:    map[string]api.EvictableFn{},
 		overusedFns:       map[string]api.ValidateFn{},
-		preemptiveFns:     map[string]api.ValidateFn{},
+		preemptiveFns:     map[string]api.ValidateWithCandidateFn{},
 		allocatableFns:    map[string]api.AllocatableFn{},
 		jobReadyFns:       map[string]api.ValidateFn{},
 		jobPipelinedFns:   map[string]api.VoteFn{},
