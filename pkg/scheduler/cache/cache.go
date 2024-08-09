@@ -61,6 +61,7 @@ import (
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	jobctl "volcano.sh/volcano/pkg/controllers/job/state"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
@@ -1065,6 +1066,9 @@ func (sc *SchedulerCache) processCleanupJob() {
 		if oldPgVersion == newPgVersion {
 			delete(sc.Jobs, job.UID)
 			metrics.DeleteJobMetrics(job.Name, string(job.Queue), job.Namespace)
+			if queue, ok := sc.Queues[job.Queue]; ok {
+				jobctl.DeleteJobMetrics(job.Name, queue.Name)
+			}
 			klog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
 		}
 		sc.DeletedJobs.Forget(obj)
