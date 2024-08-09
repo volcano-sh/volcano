@@ -99,13 +99,29 @@ function createSecret() {
       -n ${NAMESPACE}
 }
 
-ret=0
-kubectl get secret ${SECRET} -n ${NAMESPACE} > /dev/null || ret=$?
-if [[ ${ret} -eq 0 ]]; then
-  echo -e "The secret ${SECRET} -n ${NAMESPACE} already exists. Do not create it again."
-  exit 0
-fi
+function patchSecret() {
+  TLS_KEY=$(base64 < ${CERTDIR}/server.key | tr -d '\n')
+  TLS_CRT=$(base64 < ${CERTDIR}/server.crt | tr -d '\n')
+  CA_CRT=$(base64 < ${CERTDIR}/ca.crt | tr -d '\n')
+
+  cat <<EOF > patch.json
+[
+  {"op": "replace", "path": "/data/tls.key", "value": "$TLS_KEY"},
+  {"op": "replace", "path": "/data/tls.crt", "value": "$TLS_CRT"},
+  {"op": "replace", "path": "/data/ca.crt", "value": "$CA_CRT"},
+]
+EOF
+
+  kubectl patch secret ${SECRET} -n ${NAMESPACE} --type=json -p="$(cat patch.json)"
+}
 
 createCerts
 
-createSecret
+ret=0
+kubectl get secret ${SECRET} -n ${NAMESPACE} > /dev/null || ret=$?
+if [[ ${ret} -eq 0 ]];then
+  echo -e "The secret ${SECRET} -n ${NAMESPACE} already exists. Will update it."
+  patchSecret
+else
+  createSecret
+fi
