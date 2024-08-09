@@ -260,6 +260,17 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			}
 		}
 
+		// before allocating to a node, run prebind fn
+		if err := ssn.PreBindFn(task, bestNode.Name); err != nil {
+			klog.V(3).Infof("PreBind for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+			// If prebind failed, we need to unallocate the task
+			err = stmt.Unallocate(task)
+			if err != nil {
+				klog.V(3).Infof("Unallocate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+			}
+			continue
+		}
+
 		// Allocate idle resource to the task.
 		if task.InitResreq.LessEqual(bestNode.Idle, api.Zero) {
 			klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, bestNode.Name)

@@ -311,6 +311,11 @@ func (s *Statement) allocate(task *api.TaskInfo) error {
 	return nil
 }
 
+// Unallocate is called when the prebind function fails
+func (s *Statement) Unallocate(task *api.TaskInfo) error {
+	return s.unallocate(task)
+}
+
 // unallocate the pod for task
 func (s *Statement) unallocate(task *api.TaskInfo) error {
 	s.ssn.cache.RevertVolumes(task, task.PodVolumes)
