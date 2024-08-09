@@ -101,4 +101,72 @@ var _ = ginkgo.Describe("Enqueue E2E Test", func() {
 		err = e2eutil.WaitJobReady(ctx, highReqJob)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
+
+	ginkgo.It("Schduling gated task will not consume inqueue resources", func ()  {
+		// less than min available pods are allocated
+		q1 := "q1"
+		q2 := "q2"
+		ns:="test-namespace"
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Namespace: ns,
+			Queues:        []string{q1,q2},
+			NodesNumLimit: 4,
+			NodesResourceLimit: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2000m"),
+				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+		})
+
+		defer e2eutil.CleanupTestContext(ctx)
+
+		slot1 := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("2000m"),
+			corev1.ResourceMemory: resource.MustParse("2048Mi")}
+
+		jobgated := &e2eutil.JobSpec{
+			Namespace: ns,
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot1,
+					Min: 2,
+					Rep: 2,
+				},
+			},
+		}
+
+		job := &e2eutil.JobSpec{
+			Namespace: ns,
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot1,
+					Min: 2,
+					Rep: 2,
+				},
+			},
+		}
+
+		job.Name = "j1"
+		job.Queue = q1
+		jobgated.Name="j1-gated"
+		jobgated.Queue=q1
+
+		
+		queue1Job1 := e2eutil.CreateJob(ctx, job)
+		queue1JobGated := e2eutil.CreateJob(ctx, jobgated)
+		job.Name= "j2"
+		queue1Job2:=e2eutil.CreateJob(ctx,job)
+
+		// job should be unschedulable 
+		err := e2eutil.WaitJobUnschedulable(ctx,queue1JobGated)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		err = e2eutil.WaitJobStateReady(ctx, queue1Job1)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		err = e2eutil.WaitJobStateReady(ctx, queue1Job2)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		
+	})
+
 })

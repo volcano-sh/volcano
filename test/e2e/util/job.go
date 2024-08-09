@@ -53,6 +53,7 @@ type TaskSpec struct {
 	DefaultGracefulPeriod *int64
 	Taskpriority          string
 	MaxRetry              int32
+	SchGates []v1.PodSchedulingGate
 }
 
 type JobSpec struct {
@@ -236,6 +237,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 					Affinity:          task.Affinity,
 					Tolerations:       task.Tolerations,
 					PriorityClassName: task.Taskpriority,
+					SchedulingGates: task.SchGates,
 				},
 			},
 		}
