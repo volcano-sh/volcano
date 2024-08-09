@@ -17,6 +17,7 @@ limitations under the License.
 package app
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -101,7 +102,7 @@ func Run(config *options.Config) error {
 	}
 	go func() {
 		err = server.ListenAndServeTLS("", "")
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			klog.Fatalf("ListenAndServeTLS for admission webhook failed: %v", err)
 			close(webhookServeError)
 		}
