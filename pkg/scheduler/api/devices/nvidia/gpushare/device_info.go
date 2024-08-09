@@ -153,14 +153,18 @@ func (gs *GPUDevices) FilterNode(pod *v1.Pod, schedulePolicy string) (int, strin
 	if GpuSharingEnable {
 		fit, err := checkNodeGPUSharingPredicate(pod, gs)
 		if err != nil || !fit {
-			klog.Errorln("deviceSharing err=", err.Error())
+			err = fmt.Errorf("vGPU allocate for pod %s failed to check device %s, err: %v, fit: %v",
+				pod.Name, gs.Name, err, fit)
+			klog.Error(err)
 			return devices.Unschedulable, fmt.Sprintf("GpuShare %s", err.Error()), err
 		}
 	}
 	if GpuNumberEnable {
 		fit, err := checkNodeGPUNumberPredicate(pod, gs)
 		if err != nil || !fit {
-			klog.Errorln("deviceSharing err=", err.Error())
+			err = fmt.Errorf("vGPU allocate for pod %s failed to check device %s, err: %v, fit: %v",
+				pod.Name, gs.Name, err, fit)
+			klog.Error(err)
 			return devices.Unschedulable, fmt.Sprintf("GpuNumber %s", err.Error()), err
 		}
 	}
