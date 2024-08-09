@@ -139,6 +139,10 @@ type TaskInfo struct {
 	CustomBindErrHandlerSucceeded bool
 }
 
+func GetJobID(pod *v1.Pod) JobID {
+	return getJobID(pod)
+}
+
 func getJobID(pod *v1.Pod) JobID {
 	if gn, found := pod.Annotations[v1beta1.KubeGroupNameAnnotationKey]; found && len(gn) != 0 {
 		// Make sure Pod and PodGroup belong to the same namespace.

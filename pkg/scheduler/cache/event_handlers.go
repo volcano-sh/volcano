@@ -310,10 +310,55 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 		klog.V(4).Infof("Pod <%s/%v> already in cache with allocated status, ignore the update event", newPod.Namespace, newPod.Name)
 		return nil
 	}
+	// the version has not changed, nothing to do
+	if oldPod.ResourceVersion == newPod.ResourceVersion {
+		return nil
+	}
+	// task status has not changed, nothing to do
+	oldTaskStatus := schedulingapi.GetTaskStatus(oldPod)
+	newTaskStatus := schedulingapi.GetTaskStatus(newPod)
+	if oldTaskStatus == newTaskStatus {
+		return nil
+	}
 
-	if err := sc.deletePod(oldPod); err != nil {
+	var (
+		jobID    = schedulingapi.GetJobID(newPod)
+		taskID   = schedulingapi.TaskID(newPod.UID)
+		jobInfo  *schedulingapi.JobInfo
+		taskInfo *schedulingapi.TaskInfo
+	)
+
+	jobInfo = sc.Jobs[jobID]
+	if jobInfo == nil {
+		return fmt.Errorf("job %s not found in cache.Jobs", jobID)
+	}
+	taskInfo = jobInfo.Tasks[taskID]
+	if taskInfo == nil {
+		return fmt.Errorf("task %s not found in job.Tasks", taskID)
+	}
+
+	// delete taskInfo from job and node
+	if err := sc.deleteTask(taskInfo); err != nil {
 		return err
 	}
+
+	// update taskInfo by new pod
+	// 1. update taskInfo.Pod pointer, we don't hold oldPod pointer so that oldPod can be GC
+	// 2. update node name for pod bind event
+	// 3. update any other fields relative with annotations
+	// 4. update taskInfo status
+	taskInfo.Pod = newPod
+	taskInfo.NodeName = newPod.Spec.NodeName
+	taskInfo.Preemptable = schedulingapi.GetPodPreemptable(newPod)
+	taskInfo.RevocableZone = schedulingapi.GetPodRevocableZone(newPod)
+	taskInfo.NumaInfo = schedulingapi.GetPodTopologyInfo(newPod)
+	taskInfo.Status = newTaskStatus
+
+	// reuse taskInfo struct and add it to job and node, avoid being recyceld by GC
+	if err := sc.addTask(taskInfo); err != nil {
+		return err
+	}
+
 	//when delete pod, the ownerreference of pod will be set nil,just as orphan pod
 	if len(utils.GetController(newPod)) == 0 {
 		newPod.OwnerReferences = oldPod.OwnerReferences
