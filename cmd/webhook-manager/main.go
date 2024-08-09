@@ -38,6 +38,8 @@ import (
 	_ "volcano.sh/volcano/pkg/webhooks/admission/pods/validate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/queues/mutate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/queues/validate"
+	_ "volcano.sh/volcano/pkg/webhooks/admission/jobflows/validate"
+	_ "volcano.sh/volcano/pkg/webhooks/admission/jobtemplates/validate"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
