@@ -193,6 +193,9 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				Message:            msg,
 			}
 
+			// if the podgroup is gang unschedulable due to scheduling gates,
+			// do we need to add an additional reason?
+
 			if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
 				klog.Errorf("Failed to update job <%s/%s> condition: %v",
 					job.Namespace, job.Name, err)
