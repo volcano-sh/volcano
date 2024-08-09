@@ -23,6 +23,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
@@ -73,6 +75,8 @@ type Cache interface {
 
 	// Client returns the kubernetes clientSet, which can be used by plugins
 	Client() kubernetes.Interface
+	// VolcanoClient returns the volcano clientSet, which can be used by plugins
+	VolcanoClient() vcclient.Interface
 
 	// ClientConfig returns the rest config
 	ClientConfig() *rest.Config
@@ -81,6 +85,8 @@ type Cache interface {
 
 	// SharedInformerFactory return scheduler SharedInformerFactory
 	SharedInformerFactory() informers.SharedInformerFactory
+	// VolcanoSharedInformerFactory return volcano SharedInformerFactory
+	VolcanoSharedInformerFactory() vcinformer.SharedInformerFactory
 
 	// SetMetricsConf set the metrics server related configuration
 	SetMetricsConf(conf map[string]string)
