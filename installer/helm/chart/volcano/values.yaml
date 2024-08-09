@@ -121,6 +121,7 @@ custom:
   scheduler_resources: ~
   controller_resources: ~
 
+
 # Specify additional namespace selector expressions for Volcano admission webhooks.
 # For example, if you want Volcano admission webhooks take effect in namespaces with
 # label key="workload-type" and value="batch", and don't take effect in namespaces with
@@ -141,3 +142,8 @@ custom:
 # Note that {{ .Release.Namespace }} and kube-system namespaces are always ignored.
   webhooks_namespace_selector_expressions: ~
 
+
+# Specify log level for Volcano main component  
+  admission_log_level: 4
+  scheduler_log_level: 3
+  controller_log_level: 4
