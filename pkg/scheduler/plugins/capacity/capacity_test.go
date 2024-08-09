@@ -81,6 +81,29 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 	queue3 := util.BuildQueueWithResourcesQuantity("q3", api.BuildResourceList("2", "4Gi"), nil)
 	queue4 := util.BuildQueueWithResourcesQuantity("q4", api.BuildResourceList("2", "4Gi"), nil)
 
+	// resources for test case3
+	// nodes
+	n3 := util.BuildNode("n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "nvidia.com/A100", Value: "10"}, {Name: "pods", Value: "10"}}...), map[string]string{"selector": "worker"})
+	n4 := util.BuildNode("n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "nvidia.com/A100", Value: "10"}, {Name: "pods", Value: "10"}}...), map[string]string{})
+
+	// pod
+	p8 := util.BuildPod("ns1", "p8", "n3", corev1.PodRunning, api.BuildResourceList("0", "0Gi", []api.ScalarResource{{Name: "nvidia.com/A100", Value: "10"}}...), "pg7", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string))
+	p9 := util.BuildPod("ns1", "p9", "n4", corev1.PodRunning, api.BuildResourceList("0", "0Gi", []api.ScalarResource{{Name: "nvidia.com/A100", Value: "10"}}...), "pg7", make(map[string]string), make(map[string]string))
+
+	p10 := util.BuildPod("ns1", "p10", "n3", corev1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg8", make(map[string]string), make(map[string]string))
+	p11 := util.BuildPod("ns1", "p11", "n4", corev1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg8", make(map[string]string), make(map[string]string))
+
+	p12 := util.BuildPod("ns1", "p12", "", corev1.PodPending, api.BuildResourceList("0", "0Gi", []api.ScalarResource{{Name: "nvidia.com/A100", Value: "10"}}...), "pg9", make(map[string]string), make(map[string]string))
+
+	// podgroup
+	pg7 := util.BuildPodGroup("pg7", "ns1", "q5", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg8 := util.BuildPodGroup("pg8", "ns1", "q6", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg9 := util.BuildPodGroup("pg9", "ns1", "q6", 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+	// queue
+	queue5 := util.BuildQueueWithResourcesQuantity("q5", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "nvidia.com/A100", Value: "10"}}...), nil)
+	queue6 := util.BuildQueueWithResourcesQuantity("q6", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "nvidia.com/A100", Value: "10"}}...), nil)
+
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name:      "case0: Pod allocatable when queue has not exceed capability",
@@ -116,6 +139,19 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 			ExpectEvicted:  []string{"ns1/p6"},
 			ExpectEvictNum: 1,
 		},
+		{
+			Name:      "case3: CPU & Memory are overused, scalar resource is not overused, but candidate pod has not request CPU & Memory, reclaim should happen",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p8, p9, p10, p11, p12},
+			Nodes:     []*corev1.Node{n3, n4},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg7, pg8, pg9},
+			Queues:    []*schedulingv1beta1.Queue{queue5, queue6},
+			ExpectPipeLined: map[string][]string{
+				"ns1/pg9": {"n4"},
+			},
+			ExpectEvicted:  []string{"ns1/p9"},
+			ExpectEvictNum: 1,
+		},
 	}
 
 	tiers := []conf.Tier{
@@ -146,7 +182,7 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 	}
 }
 
-func TestEnqueueAndAllocable(t *testing.T) {
+func TestEnqueueAndAllocatable(t *testing.T) {
 	// nodes
 	n1 := util.BuildNode("n1", api.BuildResourceList("3", "3G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
 	n2 := util.BuildNode("n2", api.BuildResourceList("3", "3G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)

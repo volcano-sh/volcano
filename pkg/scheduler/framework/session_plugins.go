@@ -106,7 +106,7 @@ func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 }
 
 // AddPreemptiveFn add preemptive function
-func (ssn *Session) AddPreemptiveFn(name string, fn api.ValidateFn) {
+func (ssn *Session) AddPreemptiveFn(name string, fn api.ValidateWithCandidateFn) {
 	ssn.preemptiveFns[name] = fn
 }
 
@@ -273,7 +273,7 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 }
 
 // Preemptive invoke can preemptive function of the plugins
-func (ssn *Session) Preemptive(queue *api.QueueInfo) bool {
+func (ssn *Session) Preemptive(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			of, found := ssn.preemptiveFns[plugin.Name]
@@ -283,7 +283,7 @@ func (ssn *Session) Preemptive(queue *api.QueueInfo) bool {
 			if !found {
 				continue
 			}
-			if !of(queue) {
+			if !of(queue, candidate) {
 				return false
 			}
 		}

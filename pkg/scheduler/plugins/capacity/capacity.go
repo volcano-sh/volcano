@@ -245,17 +245,20 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, util.Permit
 	})
 
-	ssn.AddPreemptiveFn(cp.Name(), func(obj interface{}) bool {
+	ssn.AddPreemptiveFn(cp.Name(), func(obj interface{}, candidate interface{}) bool {
 		queue := obj.(*api.QueueInfo)
+		task := candidate.(*api.TaskInfo)
 		attr := cp.queueOpts[queue.UID]
 
-		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
+		overused := attr.deserved.LessEqualWithDimension(attr.allocated, task.InitResreq)
 		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
 			klog.V(3).Infof("Queue <%v> can not reclaim, deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)
 		}
 
+		// PreemptiveFn is the opposite of OverusedFn in proportion plugin cause as long as there is a one-dimensional
+		// resource whose deserved is greater than allocated, current task can reclaim by preempt others.
 		return !overused
 	})
 
