@@ -18,7 +18,7 @@ In preempt action, multiple plugin function are getting used like
 2.  JobOrderFn(Plugin: Priority, DRF, Gang),
 3.  NodeOrderFn(Plugin: NodeOrder),
 4.  PredicateFn(Plugin: Predicates),
-5.  PreemptableFn(Plugin: Conformance, Gang, DRF).
+5.  PreemptableFn(Plugin: Conformance, Gang, DRF, Priority).
 
 ### 1. TaskOrderFn:
 #### Priority:
