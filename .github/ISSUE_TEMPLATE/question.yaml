@@ -1,5 +1,6 @@
 name: Question
 description: Have a question about volcano
+labels: kind/question
 body:
   - type: textarea
     attributes:
