@@ -136,7 +136,7 @@ spec:
             - --enable-healthz=true
             - --logtostderr
             - --port={{.Values.basic.admission_port}}
-            - -v=4
+            - -v={{.Values.custom.admission_log_level}}
             - 2>&1
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
