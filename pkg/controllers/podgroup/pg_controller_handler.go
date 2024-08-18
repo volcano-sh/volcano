@@ -19,6 +19,7 @@ package podgroup
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -87,15 +88,19 @@ func (pg *pgcontroller) addReplicaSet(obj interface{}) {
 		podList, err := pg.kubeClient.CoreV1().Pods(rs.Namespace).List(context.TODO(),
 			metav1.ListOptions{LabelSelector: metav1.FormatLabelSelector(&selector)})
 		if err != nil {
-			klog.Errorf("Failed to list pods for ReplicaSet <%s/%s>: %v", rs.Namespace, rs.Name, err)
+			klog.Errorf("Failed to list pods for ReplicaSet %s: %v", klog.KObj(rs), err)
 			return
 		}
 		if podList != nil && len(podList.Items) > 0 {
 			pod := podList.Items[0]
-			klog.V(4).Infof("Try to create podgroup for pod %s/%s", pod.Namespace, pod.Name)
+			klog.V(4).Infof("Try to create podgroup for pod %s", klog.KObj(&pod))
+			if !slices.Contains(pg.schedulerNames, pod.Spec.SchedulerName) {
+				klog.V(4).Infof("Pod %s field SchedulerName is not matched", klog.KObj(&pod))
+				return
+			}
 			err := pg.createNormalPodPGIfNotExist(&pod)
 			if err != nil {
-				klog.Errorf("Failed to create PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
+				klog.Errorf("Failed to create PodGroup for pod %s: %v", klog.KObj(&pod), err)
 			}
 		}
 	}
