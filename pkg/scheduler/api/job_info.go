@@ -69,8 +69,9 @@ type TaskID types.UID
 
 // TransactionContext holds all the fields that needed by scheduling transaction
 type TransactionContext struct {
-	NodeName string
-	Status   TaskStatus
+	NodeName         string
+	EvictionOccurred bool
+	Status           TaskStatus
 }
 
 // Clone returns a clone of TransactionContext
@@ -679,7 +680,10 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason, msg, nominatedNodeN
 		return PodReasonSchedulable, msg, ""
 	case Pipelined:
 		msg = fmt.Sprintf("Pod %s/%s can possibly be assigned to %s, once resource is released", taskInfo.Namespace, taskInfo.Name, ctx.NodeName)
-		return PodReasonUnschedulable, msg, ctx.NodeName
+		if ctx.EvictionOccurred {
+			nominatedNodeName = ctx.NodeName
+		}
+		return PodReasonUnschedulable, msg, nominatedNodeName
 	case Pending:
 		if fe := ji.NodesFitErrors[tid]; fe != nil {
 			// Pod is unschedulable
