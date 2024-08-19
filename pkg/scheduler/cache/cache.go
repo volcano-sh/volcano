@@ -993,7 +993,13 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 	}
 
 	updateCond := podConditionHaveUpdate(&pod.Status, condition)
-	updateNomiNode := podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
+
+	// only update pod's nominatedNodeName when nominatedNodeName is not empty
+	// consider this situation:
+	// 1. at session 1, the pod A preempt another lower priority pod B, and we updated A's nominatedNodeName
+	// 2. at session 2, the pod B is still terminating, so the pod A is still pipelined, but it preempt none, so
+	// the nominatedNodeName is empty, but we should not override the A's nominatedNodeName to empty
+	updateNomiNode := len(nominatedNodeName) > 0 && podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
 
 	if updateCond || updateNomiNode {
 		pod = pod.DeepCopy()
