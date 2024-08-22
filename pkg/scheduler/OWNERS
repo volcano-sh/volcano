@@ -6,6 +6,8 @@ approvers:
   - zen-xu
   - qiankunli
   - lowang-bh
+  - Monokaix
+  - hwdef
 reviewers:
   - k82cn
   - animeshsingh
@@ -17,3 +19,4 @@ reviewers:
   - shinytang6
   - merryzhou
   - lowang-bh
+  - hwdef

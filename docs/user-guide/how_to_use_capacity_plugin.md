@@ -18,7 +18,10 @@ After installed, update the scheduler configuration:
 kubectl edit cm -n volcano-system volcano-scheduler-configmap
 ```
 
-Make sure capacity plugin are enabled and remove proportion plugin. 
+Please make sure
+
+- reclaim action is enabled.
+- capacity plugin is enabled and proportion plugin is removed.
 
 Note:  capacity and proportion plugin are in conflict, the two plugins cannot be used together.
 
@@ -30,7 +33,7 @@ metadata:
   namespace: volcano-system
 data:
   volcano-scheduler.conf: |
-    actions: "enqueue, allocate, backfill"
+    actions: "enqueue, allocate, backfill, reclaim" # add reclaim action.
     tiers:
     - plugins:
       - name: priority

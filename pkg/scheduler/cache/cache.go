@@ -50,6 +50,7 @@ import (
 	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
+	"stathat.com/c/consistent"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -101,7 +102,7 @@ type SchedulerCache struct {
 	defaultQueue string
 	// schedulerName is the name for volcano scheduler
 	schedulerNames     []string
-	nodeSelectorLabels map[string]string
+	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
 	podInformer                infov1.PodInformer
@@ -157,6 +158,15 @@ type SchedulerCache struct {
 	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
 	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
 	IgnoredCSIProvisioners sets.Set[string]
+
+	// multiSchedulerInfo holds multi schedulers info without using node selector, please see the following link for more details.
+	// https://github.com/volcano-sh/volcano/blob/master/docs/design/deploy-multi-volcano-schedulers-without-using-selector.md
+	multiSchedulerInfo
+}
+
+type multiSchedulerInfo struct {
+	schedulerPodName string
+	c                *consistent.Consistent
 }
 
 type imageState struct {
@@ -173,9 +183,8 @@ type DefaultBinder struct {
 }
 
 // Bind will send bind request to api server
-func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) ([]*schedulingapi.TaskInfo, []error) {
-	var errTasks []*schedulingapi.TaskInfo
-	var errs []error
+func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) map[schedulingapi.TaskID]string {
+	errMsg := make(map[schedulingapi.TaskID]string)
 	for _, task := range tasks {
 		p := task.Pod
 		if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
@@ -188,19 +197,13 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 			},
 			metav1.CreateOptions{}); err != nil {
 			klog.Errorf("Failed to bind pod <%v/%v> to node %s : %#v", p.Namespace, p.Name, task.NodeName, err)
-			errTasks = append(errTasks, task)
-			errs = append(errs, err)
+			errMsg[task.UID] = err.Error()
 		} else {
-			db.recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", task.Namespace, task.Name, task.NodeName)
 			metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time)) // update metrics as soon as pod is bind
 		}
 	}
 
-	if len(errTasks) > 0 {
-		return errTasks, errs
-	}
-
-	return nil, nil
+	return errMsg
 }
 
 // NewDefaultBinder create binder with kube client and event recorder, support fake binder if passed fake client and fake event recorder
@@ -441,7 +444,7 @@ func (sc *SchedulerCache) updateNodeSelectors(nodeSelectors []string) {
 		nodeSelectorLabelName := strings.TrimSpace(nodeSelectorLabel[:index])
 		nodeSelectorLabelValue := strings.TrimSpace(nodeSelectorLabel[index+1:])
 		key := nodeSelectorLabelName + ":" + nodeSelectorLabelValue
-		sc.nodeSelectorLabels[key] = ""
+		sc.nodeSelectorLabels[key] = sets.Empty{}
 	}
 }
 
@@ -547,7 +550,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		restConfig:          config,
 		defaultQueue:        defaultQueue,
 		schedulerNames:      schedulerNames,
-		nodeSelectorLabels:  make(map[string]string),
+		nodeSelectorLabels:  make(map[string]sets.Empty),
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 		imageStates:         make(map[string]*imageState),
@@ -556,6 +559,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		nodeWorkers: nodeWorkers,
 	}
 
+	sc.schedulerPodName, sc.c = getMultiSchedulerInfo()
 	ignoredProvisionersSet := sets.New[string]()
 	for _, provisioner := range append(ignoredProvisioners, defaultIgnoredProvisioners...) {
 		ignoredProvisionersSet.Insert(provisioner)
@@ -603,7 +607,6 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 func (sc *SchedulerCache) addEventHandler() {
 	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
 	sc.informerFactory = informerFactory
-	mySchedulerPodName, c := getMultiSchedulerInfo()
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
 	// even with no error returned.
@@ -627,35 +630,20 @@ func (sc *SchedulerCache) addEventHandler() {
 	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
-				var node *v1.Node
 				switch t := obj.(type) {
 				case *v1.Node:
-					node = t
+					return true
 				case cache.DeletedFinalStateUnknown:
 					var ok bool
-					node, ok = t.Obj.(*v1.Node)
+					_, ok = t.Obj.(*v1.Node)
 					if !ok {
 						klog.Errorf("Cannot convert to *v1.Node: %v", t.Obj)
 						return false
 					}
+					return true
 				default:
 					return false
 				}
-
-				if !responsibleForNode(node.Name, mySchedulerPodName, c) {
-					return false
-				}
-				if len(sc.nodeSelectorLabels) == 0 {
-					return true
-				}
-				for labelName, labelValue := range node.Labels {
-					key := labelName + ":" + labelValue
-					if _, ok := sc.nodeSelectorLabels[key]; ok {
-						return true
-					}
-				}
-				klog.Infof("node %s ignore add/update/delete into schedulerCache", node.Name)
-				return false
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    sc.AddNode,
@@ -690,11 +678,11 @@ func (sc *SchedulerCache) addEventHandler() {
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
-					if !responsibleForPod(v, sc.schedulerNames, mySchedulerPodName, c) {
+					if !responsibleForPod(v, sc.schedulerNames, sc.schedulerPodName, sc.c) {
 						if len(v.Spec.NodeName) == 0 {
 							return false
 						}
-						if !responsibleForNode(v.Spec.NodeName, mySchedulerPodName, c) {
+						if !responsibleForNode(v.Spec.NodeName, sc.schedulerPodName, sc.c) {
 							return false
 						}
 					}
@@ -756,7 +744,7 @@ func (sc *SchedulerCache) addEventHandler() {
 					return false
 				}
 
-				return responsibleForPodGroup(pg, mySchedulerPodName, c)
+				return responsibleForPodGroup(pg, sc.schedulerPodName, sc.c)
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    sc.AddPodGroupV1beta1,
@@ -897,12 +885,18 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 // Bind binds task to the target host.
 func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) {
 	tmp := time.Now()
-	errTasks, errs := sc.Binder.Bind(sc.kubeClient, tasks)
-	if errs == nil {
+	errMsg := sc.Binder.Bind(sc.kubeClient, tasks)
+	if len(errMsg) == 0 {
 		klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
 	} else {
-		for i, task := range errTasks {
-			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", task.NodeName, errs[i])
+		klog.V(3).Infof("There are %d tasks in total and %d binds failed, latency %v", len(tasks), len(errMsg), time.Since(tmp))
+	}
+
+	for _, task := range tasks {
+		if reason, ok := errMsg[task.UID]; !ok {
+			sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", task.Namespace, task.Name, task.NodeName)
+		} else {
+			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", task.NodeName, reason)
 			if err := sc.taskUnschedulable(task, schedulingapi.PodReasonSchedulerError, unschedulableMsg, ""); err != nil {
 				klog.ErrorS(err, "Failed to update pod status when bind task error", "task", task.Name)
 			}
@@ -999,7 +993,13 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 	}
 
 	updateCond := podConditionHaveUpdate(&pod.Status, condition)
-	updateNomiNode := podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
+
+	// only update pod's nominatedNodeName when nominatedNodeName is not empty
+	// consider this situation:
+	// 1. at session 1, the pod A preempt another lower priority pod B, and we updated A's nominatedNodeName
+	// 2. at session 2, the pod B is still terminating, so the pod A is still pipelined, but it preempt none, so
+	// the nominatedNodeName is empty, but we should not override the A's nominatedNodeName to empty
+	updateNomiNode := len(nominatedNodeName) > 0 && podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
 
 	if updateCond || updateNomiNode {
 		pod = pod.DeepCopy()

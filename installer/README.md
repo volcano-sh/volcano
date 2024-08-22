@@ -124,8 +124,11 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.scheduler_labels`|Labels for Scheduler deployment|`~`|
 |`custom.common_labels`|Labels for all chart objects except for CRDs |`~`|
 |`custom.admission_resources`|Resources for Admission pods|`~`|
+|`custom.admission_log_level`|Settings log print level for Admission|`4`|
 |`custom.controller_resources`|Resources for Controller pods|`~`|
+|`custom.controller_log_level`|Settings log print level for Controller|`4`|
 |`custom.scheduler_resources`|Resources for Scheduler pods|`~`|
+|`custom.scheduler_log_level`|Settings log print level for Scheduler|`3`|
 |`custom.webhooks_namespace_selector_expressions`|Additional namespace selector expressions for Volcano admission webhooks|`~`|
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,

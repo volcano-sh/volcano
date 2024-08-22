@@ -119,6 +119,9 @@ type CompareFn func(interface{}, interface{}) int
 // ValidateFn is the func declaration used to check object's status.
 type ValidateFn func(interface{}) bool
 
+// ValidateWithCandidateFn behaves like ValidateFn but take the candidate task into consideration.
+type ValidateWithCandidateFn func(interface{}, interface{}) bool
+
 // ValidateResult is struct to which can used to determine the result
 type ValidateResult struct {
 	Pass    bool
@@ -147,11 +150,15 @@ const (
 	Wait
 	// Skip is used when a Bind plugin chooses to skip binding.
 	Skip
+	// There is a Pending status in k8s.
+	// Pending means that the scheduling process is finished successfully,
+	// but the plugin wants to stop the scheduling cycle/binding cycle here.
 )
 
 type Status struct {
 	Code   int
 	Reason string
+	Plugin string
 }
 
 // String represents status string
@@ -227,6 +234,33 @@ func (s StatusSets) Reasons() []string {
 	return all
 }
 
+// ConvertPredicateStatus return predicate status from k8sframework status
+func ConvertPredicateStatus(status *k8sframework.Status) *Status {
+	internalStatus := &Status{}
+	if status != nil {
+		internalStatus.Plugin = status.Plugin() // function didn't check whether Status is nil
+	}
+	switch status.Code() {
+	case k8sframework.Error:
+		internalStatus.Code = Error
+	case k8sframework.Unschedulable:
+		internalStatus.Code = Unschedulable
+	case k8sframework.UnschedulableAndUnresolvable:
+		internalStatus.Code = UnschedulableAndUnresolvable
+	case k8sframework.Wait:
+		internalStatus.Code = Wait
+	case k8sframework.Skip:
+		internalStatus.Code = Skip
+	default:
+		internalStatus.Code = Success
+	}
+	// in case that pod's scheduling message is not identifiable with message: 'all nodes are unavailable'
+	if internalStatus.Code != Success {
+		internalStatus.Reason = status.Message()
+	}
+	return internalStatus
+}
+
 // ValidateExFn is the func declaration used to validate the result.
 type ValidateExFn func(interface{}) *ValidateResult
 
@@ -237,7 +271,7 @@ type VoteFn func(interface{}) int
 type JobEnqueuedFn func(interface{})
 
 // PredicateFn is the func declaration used to predicate node for task.
-type PredicateFn func(*TaskInfo, *NodeInfo) ([]*Status, error)
+type PredicateFn func(*TaskInfo, *NodeInfo) error
 
 // PrePredicateFn is the func declaration used to pre-predicate node for task.
 type PrePredicateFn func(*TaskInfo) error

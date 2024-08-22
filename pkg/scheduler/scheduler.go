@@ -87,7 +87,6 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	// Start cache for policy.
 	pc.cache.SetMetricsConf(pc.metricsConf)
 	pc.cache.Run(stopCh)
-	pc.cache.WaitForCacheSync(stopCh)
 	klog.V(2).Infof("Scheduler completes Initialization and start to run")
 	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
 	if options.ServerOpts.EnableCacheDumper {
