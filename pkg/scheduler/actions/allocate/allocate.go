@@ -278,7 +278,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			if task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero) {
 				klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 					task.Namespace, task.Name, bestNode.Name, task.InitResreq, bestNode.Releasing)
-				if err := stmt.Pipeline(task, bestNode.Name); err != nil {
+				if err := stmt.Pipeline(task, bestNode.Name, false); err != nil {
 					klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 						task.UID, bestNode.Name, ssn.UID, err)
 				} else {
@@ -303,23 +303,14 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 	}
 }
 
-func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	// Check for Resource Predicate
 	var statusSets api.StatusSets
 	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
-		return nil, api.NewFitErrWithStatus(task, node, statusSets...)
+		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
-	statusSets, err := alloc.session.PredicateFn(task, node)
-	if err != nil {
-		return nil, api.NewFitError(task, node, err.Error())
-	}
-
-	if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
-		statusSets.ContainsErrorSkipOrWait() {
-		return nil, api.NewFitErrWithStatus(task, node, statusSets...)
-	}
-	return nil, nil
+	return alloc.session.PredicateForAllocateAction(task, node)
 }
 
 func (alloc *Action) UnInitialize() {}

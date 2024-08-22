@@ -183,9 +183,8 @@ type DefaultBinder struct {
 }
 
 // Bind will send bind request to api server
-func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) ([]*schedulingapi.TaskInfo, []error) {
-	var errTasks []*schedulingapi.TaskInfo
-	var errs []error
+func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) map[schedulingapi.TaskID]string {
+	errMsg := make(map[schedulingapi.TaskID]string)
 	for _, task := range tasks {
 		p := task.Pod
 		if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
@@ -198,19 +197,13 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 			},
 			metav1.CreateOptions{}); err != nil {
 			klog.Errorf("Failed to bind pod <%v/%v> to node %s : %#v", p.Namespace, p.Name, task.NodeName, err)
-			errTasks = append(errTasks, task)
-			errs = append(errs, err)
+			errMsg[task.UID] = err.Error()
 		} else {
-			db.recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", task.Namespace, task.Name, task.NodeName)
 			metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time)) // update metrics as soon as pod is bind
 		}
 	}
 
-	if len(errTasks) > 0 {
-		return errTasks, errs
-	}
-
-	return nil, nil
+	return errMsg
 }
 
 // NewDefaultBinder create binder with kube client and event recorder, support fake binder if passed fake client and fake event recorder
@@ -892,12 +885,18 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 // Bind binds task to the target host.
 func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) {
 	tmp := time.Now()
-	errTasks, errs := sc.Binder.Bind(sc.kubeClient, tasks)
-	if errs == nil {
+	errMsg := sc.Binder.Bind(sc.kubeClient, tasks)
+	if len(errMsg) == 0 {
 		klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
 	} else {
-		for i, task := range errTasks {
-			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", task.NodeName, errs[i])
+		klog.V(3).Infof("There are %d tasks in total and %d binds failed, latency %v", len(tasks), len(errMsg), time.Since(tmp))
+	}
+
+	for _, task := range tasks {
+		if reason, ok := errMsg[task.UID]; !ok {
+			sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", task.Namespace, task.Name, task.NodeName)
+		} else {
+			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", task.NodeName, reason)
 			if err := sc.taskUnschedulable(task, schedulingapi.PodReasonSchedulerError, unschedulableMsg, ""); err != nil {
 				klog.ErrorS(err, "Failed to update pod status when bind task error", "task", task.Name)
 			}
@@ -994,7 +993,13 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 	}
 
 	updateCond := podConditionHaveUpdate(&pod.Status, condition)
-	updateNomiNode := podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
+
+	// only update pod's nominatedNodeName when nominatedNodeName is not empty
+	// consider this situation:
+	// 1. at session 1, the pod A preempt another lower priority pod B, and we updated A's nominatedNodeName
+	// 2. at session 2, the pod B is still terminating, so the pod A is still pipelined, but it preempt none, so
+	// the nominatedNodeName is empty, but we should not override the A's nominatedNodeName to empty
+	updateNomiNode := len(nominatedNodeName) > 0 && podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
 
 	if updateCond || updateNomiNode {
 		pod = pod.DeepCopy()

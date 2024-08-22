@@ -213,17 +213,7 @@ func preempt(
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
 
-	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
-		var statusSets api.StatusSets
-		statusSets, _ = ssn.PredicateFn(task, node)
-
-		// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
-		// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
-		if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
-			return nil, api.NewFitErrWithStatus(task, node, statusSets...)
-		}
-		return nil, nil
-	}
+	predicateFn := ssn.PredicateForPreemptAction
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
 	allNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(preemptor)
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, predicateFn, true)
@@ -288,13 +278,18 @@ func preempt(
 			preempted.Add(preemptee.Resreq)
 		}
 
+		evictionOccurred := false
+		if !preempted.IsEmpty() {
+			evictionOccurred = true
+		}
+
 		metrics.RegisterPreemptionAttempts()
 		klog.V(3).Infof("Preempted <%v> for Task <%s/%s> requested <%v>.",
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
 		// If preemptor's queue is overused, it means preemptor can not be allocated. So no need care about the node idle resource
 		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
-			if err := stmt.Pipeline(preemptor, node.Name); err != nil {
+			if err := stmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
 			}

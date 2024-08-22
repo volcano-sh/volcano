@@ -106,7 +106,7 @@ func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 }
 
 // AddPreemptiveFn add preemptive function
-func (ssn *Session) AddPreemptiveFn(name string, fn api.ValidateFn) {
+func (ssn *Session) AddPreemptiveFn(name string, fn api.ValidateWithCandidateFn) {
 	ssn.preemptiveFns[name] = fn
 }
 
@@ -273,7 +273,7 @@ func (ssn *Session) Overused(queue *api.QueueInfo) bool {
 }
 
 // Preemptive invoke can preemptive function of the plugins
-func (ssn *Session) Preemptive(queue *api.QueueInfo) bool {
+func (ssn *Session) Preemptive(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			of, found := ssn.preemptiveFns[plugin.Name]
@@ -283,7 +283,7 @@ func (ssn *Session) Preemptive(queue *api.QueueInfo) bool {
 			if !found {
 				continue
 			}
-			if !of(queue) {
+			if !of(queue, candidate) {
 				return false
 			}
 		}
@@ -627,8 +627,7 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 }
 
 // PredicateFn invoke predicate function of the plugins
-func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
-	predicateStatus := make([]*api.Status, 0)
+func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledPredicate) {
@@ -638,14 +637,13 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) ([]*api.
 			if !found {
 				continue
 			}
-			status, err := pfn(task, node)
-			predicateStatus = append(predicateStatus, status...)
+			err := pfn(task, node)
 			if err != nil {
-				return predicateStatus, err
+				return err
 			}
 		}
 	}
-	return predicateStatus, nil
+	return nil
 }
 
 // PrePredicateFn invoke predicate function of the plugins

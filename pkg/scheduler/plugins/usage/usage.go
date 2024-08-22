@@ -17,7 +17,6 @@ limitations under the License.
 package usage
 
 import (
-	"fmt"
 	"time"
 
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
@@ -124,18 +123,16 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 	}
 
-	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		predicateStatus := make([]*api.Status, 0)
-		usageStatus := &api.Status{}
+		usageStatus := &api.Status{Plugin: PluginName}
 
 		now := time.Now()
 		if up.period == "" || now.Sub(node.ResourceUsage.MetricsTime) > MetricsActiveTime {
 			klog.V(4).Infof("The period(%s) is empty or the usage metrics data is not updated for more than %v minutes, "+
 				"Usage plugin filter for task %s/%s on node %s pass, metrics time is %v. ", up.period, MetricsActiveTime, task.Namespace, task.Name, node.Name, node.ResourceUsage.MetricsTime)
 
-			usageStatus.Code = api.Success
-			predicateStatus = append(predicateStatus, usageStatus)
-			return predicateStatus, nil
+			return nil
 		}
 
 		klog.V(4).Infof("predicateFn cpuUsageAvg:%v,predicateFn memUsageAvg:%v", up.cpuThresholds, up.memThresholds)
@@ -144,18 +141,18 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 			usageStatus.Code = api.UnschedulableAndUnresolvable
 			usageStatus.Reason = NodeUsageCPUExtend
 			predicateStatus = append(predicateStatus, usageStatus)
-			return predicateStatus, fmt.Errorf("plugin %s predicates failed, because of %s", up.Name(), NodeUsageCPUExtend)
+			return api.NewFitErrWithStatus(task, node, predicateStatus...)
 		}
 		if node.ResourceUsage.MEMUsageAvg[up.period] > up.memThresholds {
 			klog.V(3).Infof("Node %s mem usage %f exceeds the threshold %f", node.Name, node.ResourceUsage.MEMUsageAvg[up.period], up.memThresholds)
 			usageStatus.Code = api.UnschedulableAndUnresolvable
 			usageStatus.Reason = NodeUsageMemoryExtend
 			predicateStatus = append(predicateStatus, usageStatus)
-			return predicateStatus, fmt.Errorf("plugin %s predicates failed, because of %s", up.Name(), NodeUsageMemoryExtend)
+			return api.NewFitErrWithStatus(task, node, predicateStatus...)
 		}
 
 		klog.V(4).Infof("Usage plugin filter for task %s/%s on node %s pass.", task.Namespace, task.Name, node.Name)
-		return predicateStatus, nil
+		return nil
 	}
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
