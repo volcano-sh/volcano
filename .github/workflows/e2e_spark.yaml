@@ -7,6 +7,9 @@ on:
       - master
   # PR triggered job
   pull_request:
+permissions:  
+  contents: read
+
 jobs:
   k8s-integration-tests:
     name: "E2E about Spark Integration test"
@@ -15,17 +18,17 @@ jobs:
 
     - name: Checkout current Volcano repository
       if: github.event.inputs.volcano-branch==''
-      uses: actions/checkout@v3
+      uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
 
     - name: Checkout Spark repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
       with:
         fetch-depth: 0
         repository: apache/spark
         ref: branch-3.4
         path: ${{ github.workspace }}/spark
     - name: Cache Scala, SBT and Maven
-      uses: actions/cache@v3
+      uses: actions/cache@e12d46a63a90f2fae62d114769bbf2a179198b5c # v3.3.3
       with:
         path: |
           build/apache-maven-*
@@ -36,24 +39,24 @@ jobs:
         restore-keys: |
           build-
     - name: Cache Coursier local repository
-      uses: actions/cache@v3
+      uses: actions/cache@e12d46a63a90f2fae62d114769bbf2a179198b5c # v3.3.3
       with:
         path: ~/.cache/coursier
         key: k8s-integration-coursier-${{ hashFiles('**/pom.xml', '**/plugins.sbt') }}
         restore-keys: |
           k8s-integration-coursier-
     - name: Install Java 8
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@0ab4596768b603586c0de567f2430c30f5b0d2b0 # v3.13.0
       with:
         distribution: temurin
         java-version: 8
     - name: Install Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
       with:
         go-version: 1.22.x
     - name: Set up Docker Buildx
       id: buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@885d1462b80bc1c1c7f0b00334ad271f09369c55 # v2.10.0
     - name: start minikube
       run: |
         # Use pre-install minikube
@@ -87,7 +90,7 @@ jobs:
         kubectl describe node
     - name: Upload Spark on K8S integration tests log files
       if: failure()
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@82c141cc518b40d92cc801eee768e7aafc9c2fa2 # v2.3.1
       with:
         name: spark-on-kubernetes-it-log
         path: |
