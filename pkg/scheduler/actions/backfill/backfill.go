@@ -59,13 +59,13 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 				fe.SetNodeError(ni.Name, err)
 			}
 			job.NodesFitErrors[task.UID] = fe
-			break
+			continue
 		}
 
 		predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicateFunc, true)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
-			break
+			continue
 		}
 
 		node := predicateNodes[0]
