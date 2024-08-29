@@ -278,7 +278,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			if task.InitResreq.LessEqual(bestNode.FutureIdle(), api.Zero) {
 				klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 					task.Namespace, task.Name, bestNode.Name, task.InitResreq, bestNode.Releasing)
-				if err := stmt.Pipeline(task, bestNode.Name); err != nil {
+				if err := stmt.Pipeline(task, bestNode.Name, false); err != nil {
 					klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 						task.UID, bestNode.Name, ssn.UID, err)
 				} else {
