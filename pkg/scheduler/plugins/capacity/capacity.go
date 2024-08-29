@@ -203,6 +203,11 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
+		if lv.Queue.Spec.Priority != rv.Queue.Spec.Priority {
+			// return negative means high priority
+			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
+		}
+
 		if cp.queueOpts[lv.UID].share == cp.queueOpts[rv.UID].share {
 			return 0
 		}

@@ -798,7 +798,14 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo) *util.Pri
 		if lv.Job == rv.Job {
 			return !ssn.TaskOrderFn(l, r)
 		}
-		return !ssn.JobOrderFn(ssn.Jobs[lv.Job], ssn.Jobs[rv.Job])
+
+		lvJob, lvJobFound := ssn.Jobs[lv.Job]
+		rvJob, rvJobFound := ssn.Jobs[rv.Job]
+		if lvJobFound && rvJobFound && lvJob.Queue != rvJob.Queue {
+			return !ssn.QueueOrderFn(ssn.Queues[lvJob.Queue], ssn.Queues[rvJob.Queue])
+		}
+
+		return !ssn.JobOrderFn(lvJob, rvJob)
 	})
 	for _, victim := range victims {
 		victimsQueue.Push(victim)
