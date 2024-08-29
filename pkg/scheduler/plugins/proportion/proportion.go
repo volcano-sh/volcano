@@ -254,6 +254,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
+		if lv.Queue.Spec.Priority != rv.Queue.Spec.Priority {
+			// return negative means high priority
+			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
+		}
+
 		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
 			return 0
 		}

@@ -104,6 +104,26 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 	queue5 := util.BuildQueueWithResourcesQuantity("q5", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "nvidia.com/A100", Value: "10"}}...), nil)
 	queue6 := util.BuildQueueWithResourcesQuantity("q6", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "nvidia.com/A100", Value: "10"}}...), nil)
 
+	// resource for test case 4
+	// nodes
+	n5 := util.BuildNode("n5", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n6 := util.BuildNode("n6", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+
+	// pod
+	p13 := util.BuildPod("ns1", "p13", "n5", corev1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg10", make(map[string]string), make(map[string]string))
+	p14 := util.BuildPod("ns1", "p14", "", corev1.PodPending, api.BuildResourceList("2", "4Gi"), "pg11", make(map[string]string), make(map[string]string))
+	p15 := util.BuildPod("ns1", "p15", "", corev1.PodPending, api.BuildResourceList("2", "4Gi"), "pg12", make(map[string]string), make(map[string]string))
+
+	// podgroup
+	pg10 := util.BuildPodGroup("pg10", "ns1", "q7", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg11 := util.BuildPodGroup("pg11", "ns1", "q8", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg12 := util.BuildPodGroup("pg12", "ns1", "q9", 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+	// queue
+	queue7 := util.BuildQueueWithPriorityAndResourcesQuantity("q7", 5, nil, api.BuildResourceList("2", "4Gi"))
+	queue8 := util.BuildQueueWithPriorityAndResourcesQuantity("q8", 1, nil, api.BuildResourceList("2", "4Gi"))
+	queue9 := util.BuildQueueWithPriorityAndResourcesQuantity("q9", 10, nil, api.BuildResourceList("2", "4Gi"))
+
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name:      "case0: Pod allocatable when queue has not exceed capability",
@@ -152,6 +172,18 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 			ExpectEvicted:  []string{"ns1/p9"},
 			ExpectEvictNum: 1,
 		},
+		{
+			Name:      "case4: Pods are assigned according to the order of Queue Priority in which PGs are placed",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p13, p14, p15},
+			Nodes:     []*corev1.Node{n5, n6},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg10, pg11, pg12},
+			Queues:    []*schedulingv1beta1.Queue{queue7, queue8, queue9},
+			ExpectBindMap: map[string]string{
+				"ns1/p15": "n6",
+			},
+			ExpectBindsNum: 1,
+		},
 	}
 
 	tiers := []conf.Tier{
@@ -162,6 +194,7 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 					EnabledAllocatable: &trueValue,
 					EnablePreemptive:   &trueValue,
 					EnabledReclaimable: &trueValue,
+					EnabledQueueOrder:  &trueValue,
 				},
 				{
 					Name:             predicates.PluginName,
