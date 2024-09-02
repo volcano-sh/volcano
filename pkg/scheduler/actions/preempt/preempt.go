@@ -178,6 +178,11 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					if preemptor.BestEffort && !task.BestEffort {
 						return false
 					}
+					// should skip not preemptable pod
+					if !task.Preemptable {
+						return false
+					}
+
 					// Preempt tasks within job.
 					return preemptor.Job == task.Job
 				}, ph)
