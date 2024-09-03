@@ -29,6 +29,7 @@ import (
 )
 
 func TestGetPodResourceRequest(t *testing.T) {
+	restartAlways := v1.ContainerRestartPolicyAlways
 	tests := []struct {
 		name             string
 		pod              *v1.Pod
@@ -85,6 +86,197 @@ func TestGetPodResourceRequest(t *testing.T) {
 				},
 			},
 			expectedResource: buildResource("3000m", "5G", map[string]string{"pods": "1"}, 0),
+		},
+		// test case with restartable containers, mainly derived from k8s.io/kubernetes/pkg/api/v1/resource/helpers_test.go#TestPodResourceRequests
+		{
+			name: "restartable init container",
+			// restartable init + regular container
+			expectedResource: buildResource("2", "0", map[string]string{"pods": "1"}, 0),
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					InitContainers: []v1.Container{
+						{
+							Name:          "restartable-init-1",
+							RestartPolicy: &restartAlways,
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("1"),
+								},
+							},
+						},
+					},
+
+					Containers: []v1.Container{
+						{
+							Name: "container-1",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("1"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "multiple restartable init containers",
+			// max(5, restartable init containers(3+2+1) + regular(1)) = 7
+			expectedResource: buildResource("7", "0", map[string]string{"pods": "1"}, 0),
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					InitContainers: []v1.Container{
+						{
+							Name: "init-1",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("5"),
+								},
+							},
+						},
+						{
+							Name:          "restartable-init-1",
+							RestartPolicy: &restartAlways,
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("1"),
+								},
+							},
+						},
+						{
+							Name:          "restartable-init-2",
+							RestartPolicy: &restartAlways,
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("2"),
+								},
+							},
+						},
+						{
+							Name:          "restartable-init-3",
+							RestartPolicy: &restartAlways,
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("3"),
+								},
+							},
+						},
+					},
+					Containers: []v1.Container{
+						{
+							Name: "container-1",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("1"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "multiple restartable and regular init containers",
+			// init-2 requires 5 + the previously running restartable init
+			// containers(1+2) = 8, the restartable init container that starts
+			// after it doesn't count
+			expectedResource: buildResource("8", "0", map[string]string{"pods": "1"}, 0),
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					InitContainers: []v1.Container{
+						{
+							Name: "init-1",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("5"),
+								},
+							},
+						},
+						{
+							Name:          "restartable-init-1",
+							RestartPolicy: &restartAlways,
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("1"),
+								},
+							},
+						},
+						{
+							Name:          "restartable-init-2",
+							RestartPolicy: &restartAlways,
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("2"),
+								},
+							},
+						},
+						{
+							Name: "init-2",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("5"),
+								},
+							},
+						},
+						{
+							Name:          "restartable-init-3",
+							RestartPolicy: &restartAlways,
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("3"),
+								},
+							},
+						},
+					},
+					Containers: []v1.Container{
+						{
+							Name: "container-1",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("1"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:             "restartable-init, init and regular",
+			expectedResource: buildResource("210", "0", map[string]string{"pods": "1"}, 0),
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					InitContainers: []v1.Container{
+						{
+							Name:          "restartable-init-1",
+							RestartPolicy: &restartAlways,
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("10"),
+								},
+							},
+						},
+						{
+							Name: "init-1",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("200"),
+								},
+							},
+						},
+					},
+					Containers: []v1.Container{
+						{
+							Name: "container-1",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU: resource.MustParse("100"),
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 

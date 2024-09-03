@@ -43,8 +43,6 @@ const (
 
 	// ResourceTopology supports resources like cpu/memory topology aware.
 	ResourceTopology featuregate.Feature = "ResourceTopology"
-
-	SidecarContainers featuregate.Feature = "SidecarContainers"
 )
 
 func init() {
@@ -58,7 +56,6 @@ var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec
 	QueueCommandSync:            {Default: true, PreRelease: featuregate.Alpha},
 	PriorityClass:               {Default: true, PreRelease: featuregate.Alpha},
 	// CSIStorage is explicitly set to false by default.
-	CSIStorage:        {Default: false, PreRelease: featuregate.Alpha},
-	ResourceTopology:  {Default: true, PreRelease: featuregate.Alpha},
-	SidecarContainers: {Default: false, PreRelease: featuregate.Alpha},
+	CSIStorage:       {Default: false, PreRelease: featuregate.Alpha},
+	ResourceTopology: {Default: true, PreRelease: featuregate.Alpha},
 }
