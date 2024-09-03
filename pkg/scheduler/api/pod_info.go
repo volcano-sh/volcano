@@ -26,7 +26,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
-// Refer k8s.io/kubernetes/pkg/scheduler/algorithm/predicates/predicates.go#GetResourceRequest.
+// Refer k8s.io/kubernetes/pkg/api/v1/resource/helpers.go#PodRequests.
 //
 // GetResourceRequest returns a *Resource that covers the largest width in each resource dimension.
 // Because init-containers run sequentially, we collect the max in each dimension iteratively.
@@ -57,30 +57,30 @@ import (
 
 // GetPodResourceRequest returns all the resource required for that pod
 func GetPodResourceRequest(pod *v1.Pod) *Resource {
-	req := v1.ResourceList{}
-	restartableInitContainerReqs := v1.ResourceList{}
-	initContainerReqs := v1.ResourceList{}
-
 	result := GetPodResourceWithoutInitContainers(pod)
 
+	restartableInitContainerReqs := EmptyResource()
+	initContainerReqs := EmptyResource()
 	for _, container := range pod.Spec.InitContainers {
-		containerReq := container.Resources.Requests
+		containerReq := NewResource(container.Resources.Requests)
 
 		if container.RestartPolicy != nil && *container.RestartPolicy == v1.ContainerRestartPolicyAlways {
-			// and add them to the resulting cumulative container requests
-			addResourceList(req, containerReq)
+			// Add the restartable container's req to the resulting cumulative container requests.
+			result.Add(containerReq)
 
-			// track our cumulative restartable init container resources
-			addResourceList(restartableInitContainerReqs, containerReq)
+			// Track our cumulative restartable init container resources
+			restartableInitContainerReqs.Add(containerReq)
 			containerReq = restartableInitContainerReqs
 		} else {
-			tmp := v1.ResourceList{}
-			addResourceList(tmp, containerReq)
-			addResourceList(tmp, restartableInitContainerReqs)
+			tmp := EmptyResource()
+			tmp.Add(containerReq)
+			tmp.Add(restartableInitContainerReqs)
 			containerReq = tmp
 		}
-		maxResourceList(initContainerReqs, containerReq)
+		initContainerReqs.SetMaxResource(containerReq)
 	}
+
+	result.SetMaxResource(initContainerReqs)
 	result.AddScalar(v1.ResourcePods, 1)
 
 	return result
@@ -171,22 +171,4 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 	}
 
 	return result
-}
-func addResourceList(list, newList v1.ResourceList) {
-	for name, quantity := range newList {
-		if value, ok := list[name]; !ok {
-			list[name] = quantity.DeepCopy()
-		} else {
-			value.Add(quantity)
-			list[name] = value
-		}
-	}
-}
-
-func maxResourceList(list, newList v1.ResourceList) {
-	for name, quantity := range newList {
-		if value, ok := list[name]; !ok || quantity.Cmp(value) > 0 {
-			list[name] = quantity.DeepCopy()
-		}
-	}
 }

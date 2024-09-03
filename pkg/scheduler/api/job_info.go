@@ -119,10 +119,11 @@ type TaskInfo struct {
 	// LastTransaction holds the context of last scheduling transaction
 	LastTransaction *TransactionContext
 
-	Priority    int32
-	VolumeReady bool
-	Preemptable bool
-	BestEffort  bool
+	Priority                    int32
+	VolumeReady                 bool
+	Preemptable                 bool
+	BestEffort                  bool
+	HasRestartableInitContainer bool
 
 	// RevocableZone supports setting volcano.sh/revocable-zone annotation or label for pod/podgroup
 	// we only support empty value or * value for this version and we will support specify revocable zone name for future releases
@@ -176,23 +177,25 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	revocableZone := GetPodRevocableZone(pod)
 	topologyInfo := GetPodTopologyInfo(pod)
 	role := getTaskRole(pod)
+	hasRestartableInitContainer := hasRestartableInitContainer(pod)
 
 	jobID := getJobID(pod)
 
 	ti := &TaskInfo{
-		UID:           TaskID(pod.UID),
-		Job:           jobID,
-		Name:          pod.Name,
-		Namespace:     pod.Namespace,
-		TaskRole:      role,
-		Priority:      1,
-		Pod:           pod,
-		Resreq:        resReq,
-		InitResreq:    initResReq,
-		Preemptable:   preemptable,
-		BestEffort:    bestEffort,
-		RevocableZone: revocableZone,
-		NumaInfo:      topologyInfo,
+		UID:                         TaskID(pod.UID),
+		Job:                         jobID,
+		Name:                        pod.Name,
+		Namespace:                   pod.Namespace,
+		TaskRole:                    role,
+		Priority:                    1,
+		Pod:                         pod,
+		Resreq:                      resReq,
+		InitResreq:                  initResReq,
+		Preemptable:                 preemptable,
+		BestEffort:                  bestEffort,
+		HasRestartableInitContainer: hasRestartableInitContainer,
+		RevocableZone:               revocableZone,
+		NumaInfo:                    topologyInfo,
 		TransactionContext: TransactionContext{
 			NodeName: pod.Spec.NodeName,
 			Status:   getTaskStatus(pod),
@@ -254,27 +257,38 @@ func (ti *TaskInfo) UnsetPodResourceDecision() {
 // Clone is used for cloning a task
 func (ti *TaskInfo) Clone() *TaskInfo {
 	return &TaskInfo{
-		UID:           ti.UID,
-		Job:           ti.Job,
-		Name:          ti.Name,
-		Namespace:     ti.Namespace,
-		TaskRole:      ti.TaskRole,
-		Priority:      ti.Priority,
-		PodVolumes:    ti.PodVolumes,
-		Pod:           ti.Pod,
-		Resreq:        ti.Resreq.Clone(),
-		InitResreq:    ti.InitResreq.Clone(),
-		VolumeReady:   ti.VolumeReady,
-		Preemptable:   ti.Preemptable,
-		BestEffort:    ti.BestEffort,
-		RevocableZone: ti.RevocableZone,
-		NumaInfo:      ti.NumaInfo.Clone(),
+		UID:                         ti.UID,
+		Job:                         ti.Job,
+		Name:                        ti.Name,
+		Namespace:                   ti.Namespace,
+		TaskRole:                    ti.TaskRole,
+		Priority:                    ti.Priority,
+		PodVolumes:                  ti.PodVolumes,
+		Pod:                         ti.Pod,
+		Resreq:                      ti.Resreq.Clone(),
+		InitResreq:                  ti.InitResreq.Clone(),
+		VolumeReady:                 ti.VolumeReady,
+		Preemptable:                 ti.Preemptable,
+		BestEffort:                  ti.BestEffort,
+		HasRestartableInitContainer: ti.HasRestartableInitContainer,
+		RevocableZone:               ti.RevocableZone,
+		NumaInfo:                    ti.NumaInfo.Clone(),
 		TransactionContext: TransactionContext{
 			NodeName: ti.NodeName,
 			Status:   ti.Status,
 		},
 		LastTransaction: ti.LastTransaction.Clone(),
 	}
+}
+
+// hasRestartableInitContainer returns whether pod has restartable container.
+func hasRestartableInitContainer(pod *v1.Pod) bool {
+	for _, c := range pod.Spec.InitContainers {
+		if c.RestartPolicy != nil && *c.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			return true
+		}
+	}
+	return false
 }
 
 // String returns the taskInfo details in a string

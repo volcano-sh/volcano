@@ -292,6 +292,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
 		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
+		EnableSidecarContainers:                      utilFeature.DefaultFeatureGate.Enabled(features.SidecarContainers),
 	}
 	// Initialize k8s plugins
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
@@ -337,6 +338,15 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			if err := handleSkipPrePredicatePlugin(status, task, skipPlugins, nodeports.Name); err != nil {
 				return err
 			}
+		}
+		// Check restartable container
+		if !features.EnableSidecarContainers && task.HasRestartableInitContainer {
+			// Scheduler will calculate resources usage for a Pod containing
+			// restartable init containers that will be equal or more than kubelet will
+			// require to run the Pod. So there will be no overbooking. However, to
+			// avoid the inconsistency in resource calculation between the scheduler
+			// and the older (before v1.28) kubelet, make the Pod unschedulable.
+			return fmt.Errorf("Pod has a restartable init container and the SidecarContainers feature is disabled")
 		}
 
 		// InterPodAffinity Predicate
