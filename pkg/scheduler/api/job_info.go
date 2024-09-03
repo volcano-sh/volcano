@@ -659,6 +659,20 @@ func (ji *JobInfo) FitError() string {
 	if len(reasons) > 0 {
 		reasonMsg += "; " + fmt.Sprintf("%s: %s", Pending.String(), strings.Join(sortReasonsHistogram(reasons), ", "))
 	}
+
+	// record the original reason: such as can not enqueue or failed reasons of first pod failed to predicated
+	if ji.JobFitErrors != "" {
+		reasonMsg += ". Origin reason is: " + ji.JobFitErrors
+	} else {
+		for _, taskInfo := range ji.Tasks {
+			fitError := ji.NodesFitErrors[taskInfo.UID]
+			if fitError != nil {
+				reasonMsg += fmt.Sprintf(". Origin reason is %v: %v", taskInfo.Name, fitError.Error())
+				break
+			}
+		}
+	}
+
 	return reasonMsg
 }
 
