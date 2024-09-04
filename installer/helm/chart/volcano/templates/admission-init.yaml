@@ -66,10 +66,6 @@ kind: Job
 metadata:
   name: {{ .Release.Name }}-admission-init
   namespace: {{ .Release.Namespace }}
-  {{- if .Values.custom.common_labels }}
-  labels:
-    {{- toYaml .Values.custom.common_labels | nindent 4 }}
-  {{- end }}
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
