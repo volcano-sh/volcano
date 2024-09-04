@@ -27,6 +27,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -58,7 +59,7 @@ func TestListPod(t *testing.T) {
 			JobName:     "",
 			ExpectedErr: nil,
 			ExpectedOutput: `Name          Ready      Status         Restart  Age       
-my-pod        0/1        Running        0        0s`,
+my-pod        0/1        Running        0        3d`,
 		},
 		{
 			name: "Normal Case with namespace filter",
@@ -72,7 +73,7 @@ my-pod        0/1        Running        0        0s`,
 			JobName:     "",
 			ExpectedErr: nil,
 			ExpectedOutput: `Name          Ready      Status         Restart  Age       
-my-pod        0/1        Running        0        0s`,
+my-pod        0/1        Running        0        3d`,
 		},
 		{
 			name: "Normal Case with jobName filter",
@@ -86,7 +87,7 @@ my-pod        0/1        Running        0        0s`,
 			JobName:     "my-job1",
 			ExpectedErr: nil,
 			ExpectedOutput: `Name          Ready      Status         Restart  Age       
-my-pod        0/1        Running        0        0s`,
+my-pod        0/1        Running        0        3d`,
 		},
 		{
 			name: "Normal Case with queueName filter",
@@ -104,9 +105,9 @@ my-pod        0/1        Running        0        0s`,
 			QueueName:   "my-queue1",
 			ExpectedErr: nil,
 			ExpectedOutput: `Name           Ready      Status         Restart  Age       
-my-pod1        0/1        Running        0        0s        
-my-pod2        0/1        Running        0        0s        
-my-pod3        0/1        Running        0        0s`,
+my-pod1        0/1        Running        0        3d        
+my-pod2        0/1        Running        0        3d        
+my-pod3        0/1        Running        0        3d`,
 		},
 		{
 			name: "Normal Case with queueName filter and jobName filter",
@@ -121,7 +122,7 @@ my-pod3        0/1        Running        0        0s`,
 			JobName:     "my-job1",
 			ExpectedErr: nil,
 			ExpectedOutput: `Name           Ready      Status         Restart  Age       
-my-pod1        0/1        Running        0        0s`,
+my-pod1        0/1        Running        0        3d`,
 		},
 		{
 			name: "Normal Case with queueName filter and jobName filter, and does not match",
@@ -202,7 +203,7 @@ func buildPod(namespace, name string, labels map[string]string, annotations map[
 			Namespace:         namespace,
 			Labels:            labels,
 			Annotations:       annotations,
-			CreationTimestamp: metav1.Now(),
+			CreationTimestamp: metav1.Time{Time: time.Now().UTC().AddDate(0, 0, -3)},
 		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
