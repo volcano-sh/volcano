@@ -71,9 +71,9 @@ func DescribeJobFlow(ctx context.Context) error {
 			// Remove managedFields
 			jobFlow.ManagedFields = nil
 			PrintJobFlowDetail(&jobFlow, describeJobFlowFlags.Format)
-			// Print a separator if it's not the last element
+			// Print space if it's not the last element
 			if len(jobFlows.Items) != 1 && i < len(jobFlows.Items)-1 {
-				fmt.Println("---------------------------------")
+				fmt.Printf("\n\n")
 			}
 		}
 		// Get jobflow detail
