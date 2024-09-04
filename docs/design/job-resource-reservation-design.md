@@ -2,6 +2,10 @@
 
 @[Thor-wl](https://github.com/Thor-wl); Aug 19th, 2020
 
+## Deprecated
+
+The `Reservation` plugin has been deleted. This doc is deprecated. It will be deleted in the future.
+
 ## Motivation
 As [issue 13](https://github.com/volcano-sh/volcano/issues/13) / [issue 748](https://github.com/volcano-sh/volcano/issues/748) 
 / [issue 947](https://github.com/volcano-sh/volcano/issues/947) mentioned, current scheduler strategy may result in 
