@@ -26,7 +26,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
-// Refer k8s.io/kubernetes/pkg/scheduler/algorithm/predicates/predicates.go#GetResourceRequest.
+// Refer k8s.io/kubernetes/pkg/api/v1/resource/helpers.go#PodRequests.
 //
 // GetResourceRequest returns a *Resource that covers the largest width in each resource dimension.
 // Because init-containers run sequentially, we collect the max in each dimension iteratively.
@@ -59,10 +59,28 @@ import (
 func GetPodResourceRequest(pod *v1.Pod) *Resource {
 	result := GetPodResourceWithoutInitContainers(pod)
 
-	// take max_resource(sum_pod, any_init_container)
+	restartableInitContainerReqs := EmptyResource()
+	initContainerReqs := EmptyResource()
 	for _, container := range pod.Spec.InitContainers {
-		result.SetMaxResource(NewResource(container.Resources.Requests))
+		containerReq := NewResource(container.Resources.Requests)
+
+		if container.RestartPolicy != nil && *container.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			// Add the restartable container's req to the resulting cumulative container requests.
+			result.Add(containerReq)
+
+			// Track our cumulative restartable init container resources
+			restartableInitContainerReqs.Add(containerReq)
+			containerReq = restartableInitContainerReqs
+		} else {
+			tmp := EmptyResource()
+			tmp.Add(containerReq)
+			tmp.Add(restartableInitContainerReqs)
+			containerReq = tmp
+		}
+		initContainerReqs.SetMaxResource(containerReq)
 	}
+
+	result.SetMaxResource(initContainerReqs)
 	result.AddScalar(v1.ResourcePods, 1)
 
 	return result
