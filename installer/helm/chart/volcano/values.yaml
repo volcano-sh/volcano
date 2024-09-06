@@ -147,3 +147,13 @@ custom:
   admission_log_level: 4
   scheduler_log_level: 3
   controller_log_level: 4
+
+# Specify container security context for admission
+# For example:
+#
+# admission_default_csc:
+#   allowPrivilegeEscalation: false
+#   runAsUser: 2000
+  admission_default_csc: ~
+  scheduler_default_csc: ~
+  controller_default_csc: ~

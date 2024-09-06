@@ -194,6 +194,10 @@ spec:
               mountPath: /volcano.scheduler
             - name: klog-sock
               mountPath: /tmp/klog-socks
+          {{- if .Values.custom.scheduler_default_csc }}
+          securityContext:
+            {{- toYaml .Values.custom.scheduler_default_csc | nindent 12 }}
+          {{- end }}
       volumes:
         - name: scheduler-config
           configMap:

@@ -151,6 +151,10 @@ spec:
               readOnly: true
             - mountPath: /admission.local.config/configmap
               name: admission-config
+          {{- if .Values.custom.admission_default_csc }}
+          securityContext:
+            {{- toYaml .Values.custom.admission_default_csc | nindent 12 }}
+          {{- end }}
       volumes:
         - name: admission-certs
           secret:

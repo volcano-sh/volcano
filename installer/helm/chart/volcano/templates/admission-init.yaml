@@ -110,4 +110,8 @@ spec:
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           command: ["./gen-admission-secret.sh", "--service", "{{ .Release.Name }}-admission-service", "--namespace",
                     "{{ .Release.Namespace }}", "--secret", "{{.Values.basic.admission_secret_name}}"]
+          {{- if .Values.custom.admission_default_csc }}
+          securityContext:
+            {{- toYaml .Values.custom.admission_default_csc | nindent 12 }}
+          {{- end }}
 {{- end }}
