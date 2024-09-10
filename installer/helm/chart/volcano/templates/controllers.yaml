@@ -162,4 +162,8 @@ spec:
               - -v={{.Values.custom.controller_log_level}}
               - 2>&1
             imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+            {{- if .Values.custom.controller_default_csc }}
+            securityContext:
+              {{- toYaml .Values.custom.controller_default_csc | nindent 14 }}
+            {{- end }}
 {{- end }}
