@@ -183,6 +183,9 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			unScheduleJobCount++
 			metrics.RegisterJobRetries(job.Name)
 
+			// TODO: If the Job is gang-unschedulable due to scheduling gates
+			// we need a new message and reason to tell users
+			// More detail in design doc pod-scheduling-readiness.md
 			jc := &scheduling.PodGroupCondition{
 				Type:               scheduling.PodGroupUnschedulableType,
 				Status:             v1.ConditionTrue,

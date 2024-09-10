@@ -121,6 +121,11 @@ func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskIn
 			if !task.BestEffort {
 				continue
 			}
+
+			if task.SchGated {
+				continue
+			}
+
 			if _, existed := tasks[job.UID]; !existed {
 				tasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			}

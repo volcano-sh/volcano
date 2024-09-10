@@ -28,12 +28,14 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+
+	"k8s.io/kubernetes/pkg/features"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
@@ -124,6 +126,7 @@ type TaskInfo struct {
 	Preemptable                 bool
 	BestEffort                  bool
 	HasRestartableInitContainer bool
+	SchGated                    bool
 
 	// RevocableZone supports setting volcano.sh/revocable-zone annotation or label for pod/podgroup
 	// we only support empty value or * value for this version and we will support specify revocable zone name for future releases
@@ -178,7 +181,8 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	topologyInfo := GetPodTopologyInfo(pod)
 	role := getTaskRole(pod)
 	hasRestartableInitContainer := hasRestartableInitContainer(pod)
-
+	// initialize pod scheduling gates info here since it will not change in a scheduling cycle
+	schGated := calSchedulingGated(pod)
 	jobID := getJobID(pod)
 
 	ti := &TaskInfo{
@@ -196,6 +200,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		HasRestartableInitContainer: hasRestartableInitContainer,
 		RevocableZone:               revocableZone,
 		NumaInfo:                    topologyInfo,
+		SchGated:                    schGated,
 		TransactionContext: TransactionContext{
 			NodeName: pod.Spec.NodeName,
 			Status:   getTaskStatus(pod),
@@ -229,6 +234,16 @@ func (ti *TaskInfo) GenerateLastTxContext() {
 // ClearLastTxContext clear context of last transaction for a task
 func (ti *TaskInfo) ClearLastTxContext() {
 	ti.LastTransaction = nil
+}
+
+// Return if the pod of a task is scheduling gated by checking if length of sch gates is zero
+// When the Pod is not yet created or sch gates field not set, return false
+func calSchedulingGated(pod *v1.Pod) bool {
+	// Only enable if features.PodSchedulingReadiness feature gate is enabled
+	if utilfeature.DefaultFeatureGate.Enabled(features.PodSchedulingReadiness) {
+		return pod != nil && pod.Spec.SchedulingGates != nil && len(pod.Spec.SchedulingGates) != 0
+	}
+	return false
 }
 
 func (ti *TaskInfo) SetPodResourceDecision() error {
@@ -273,6 +288,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		HasRestartableInitContainer: ti.HasRestartableInitContainer,
 		RevocableZone:               ti.RevocableZone,
 		NumaInfo:                    ti.NumaInfo.Clone(),
+		SchGated:                    ti.SchGated,
 		TransactionContext: TransactionContext{
 			NodeName: ti.NodeName,
 			Status:   ti.Status,
@@ -516,6 +532,44 @@ func (ji *JobInfo) GetMinResources() *Resource {
 	}
 
 	return NewResource(*ji.PodGroup.Spec.MinResources)
+}
+
+// Get the total resources of tasks whose pod is scheduling gated
+// By definition, if a pod is scheduling gated, it's status is Pending
+func (ji *JobInfo) GetSchGatedPodResources() *Resource {
+	res := EmptyResource()
+	for _, task := range ji.Tasks {
+		if task.SchGated {
+			res.Add(task.Resreq)
+		}
+	}
+	return res
+}
+
+// DeductSchGatedResources deduct resources of scheduling gated pod from Resource res;
+// If resource is less than gated resources, return zero;
+// Note: The purpose of this functionis to deduct the resources of scheduling gated tasks
+// in a job when calculating inqueued resources so that it will not block other jobs from being inqueued.
+func (ji *JobInfo) DeductSchGatedResources(res *Resource) *Resource {
+	schGatedResource := ji.GetSchGatedPodResources()
+	// Most jobs do not have any scheduling gated tasks, hence we add this short cut
+	if schGatedResource.IsEmpty() {
+		return res
+	}
+
+	result := res.Clone()
+	// schGatedResource can be larger than MinResource because minAvailable of a job can be smaller than number of replica
+	result.MilliCPU = max(result.MilliCPU-schGatedResource.MilliCPU, 0)
+	result.Memory = max(result.Memory-schGatedResource.Memory, 0)
+
+	// If a scalar resource is present in schGatedResource but not in minResource, skip it
+	for name, resource := range res.ScalarResources {
+		if schGatedRes, ok := schGatedResource.ScalarResources[name]; ok {
+			result.ScalarResources[name] = max(resource-schGatedRes, 0)
+		}
+	}
+	klog.V(3).Infof("Gated resources: %s, MinResource: %s: Result: %s", schGatedResource.String(), res.String(), result.String())
+	return result
 }
 
 func (ji *JobInfo) GetElasticResources() *Resource {

@@ -23,6 +23,7 @@ import (
 	"github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	//v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"gopkg.in/yaml.v2"
@@ -101,4 +102,62 @@ var _ = ginkgo.Describe("Enqueue E2E Test", func() {
 		err = e2eutil.WaitJobReady(ctx, highReqJob)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
+
+	ginkgo.It("Schduling gated task will not consume inqueue resources", func() {
+
+		ns := "test-namespace"
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Namespace:     ns,
+			NodesNumLimit: 1,
+		})
+		defer e2eutil.CleanupTestContext(ctx)
+
+		slot1 := e2eutil.OneCPU
+		rep := e2eutil.ClusterSize(ctx, slot1)
+		// j-gated needs all CPU resources in the cluster
+		jobGated := &e2eutil.JobSpec{
+			Namespace: ns,
+			Name:      "j-gated",
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img:      e2eutil.DefaultNginxImage,
+					Req:      slot1,
+					Rep:      rep,
+					Min:      rep,
+					SchGates: []corev1.PodSchedulingGate{{Name: "g1"}},
+				},
+			},
+		}
+
+		// job1 and job 2 each need half CPU resources of the cluster
+		// beware of overcommit gates
+		job := &e2eutil.JobSpec{
+			Namespace: ns,
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot1,
+					Min: rep / 2,
+					Rep: rep / 2,
+				},
+			},
+		}
+
+		jGated := e2eutil.CreateJob(ctx, jobGated)
+		job.Name = "job1"
+		j1 := e2eutil.CreateJob(ctx, job)
+		job.Name = "job2"
+		j2 := e2eutil.CreateJob(ctx, job)
+
+		err := e2eutil.WaitTasksPending(ctx, jGated, int(rep))
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		// Since all pods of j-gated are scheduling gated and does not take up resources
+		// j1 and j2 can run normally
+		err = e2eutil.WaitJobReady(ctx, j1)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		err = e2eutil.WaitJobReady(ctx, j2)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+	})
+
 })

@@ -143,7 +143,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			attr.inqueue.Add(job.GetMinResources())
+			attr.inqueue.Add(job.DeductSchGatedResources(job.GetMinResources()))
 		}
 
 		// calculate inqueue resource for running jobs
@@ -153,7 +153,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job.PodGroup.Spec.MinResources != nil &&
 			int32(util.CalculateAllocatedTaskNum(job)) >= job.PodGroup.Spec.MinMember {
 			inqueued := util.GetInqueueResource(job, job.Allocated)
-			attr.inqueue.Add(inqueued)
+			// deduct scheduling gated tasks from inqueue resources
+			attr.inqueue.Add(job.DeductSchGatedResources(inqueued))
 		}
 		attr.elastic.Add(job.GetElasticResources())
 		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
@@ -357,7 +358,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		inqueue := r.LessEqual(rr, api.Infinity)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
-			attr.inqueue.Add(job.GetMinResources())
+			// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
+			// so that it will not block other jobs from being inqueued.
+			attr.inqueue.Add(job.DeductSchGatedResources(minReq))
 			return util.Permit
 		}
 		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
