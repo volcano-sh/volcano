@@ -41,22 +41,28 @@ func Test_readTopologyFromPgAnnotations(t *testing.T) {
 				Namespace: "default",
 				Tasks: map[api.TaskID]*api.TaskInfo{
 					"0": {
-						Name: "job1-ps-0",
+						Name:     "job1-ps-0",
+						TaskRole: "ps",
 					},
 					"1": {
-						Name: "job1-ps-1",
+						Name:     "job1-ps-1",
+						TaskRole: "ps",
 					},
 					"2": {
-						Name: "job1-worker-0",
+						Name:     "job1-worker-0",
+						TaskRole: "worker",
 					},
 					"3": {
-						Name: "job1-worker-1",
+						Name:     "job1-worker-1",
+						TaskRole: "worker",
 					},
 					"4": {
-						Name: "job1-chief-0",
+						Name:     "job1-chief-0",
+						TaskRole: "chief",
 					},
 					"5": {
-						Name: "job1-evaluator-0",
+						Name:     "job1-evaluator-0",
+						TaskRole: "evaluator",
 					},
 				},
 				PodGroup: &api.PodGroup{
@@ -107,22 +113,28 @@ func Test_readTopologyFromPgAnnotations(t *testing.T) {
 				Namespace: "default",
 				Tasks: map[api.TaskID]*api.TaskInfo{
 					"0": {
-						Name: "job1-ps-some-0",
+						Name:     "job1-ps-some-0",
+						TaskRole: "ps-some",
 					},
 					"1": {
-						Name: "job1-ps-some-1",
+						Name:     "job1-ps-some-1",
+						TaskRole: "ps-some",
 					},
 					"2": {
-						Name: "job1-worker-another-some-0",
+						Name:     "job1-worker-another-some-0",
+						TaskRole: "worker-another-some",
 					},
 					"3": {
-						Name: "job1-worker-another-some-1",
+						Name:     "job1-worker-another-some-1",
+						TaskRole: "worker-another-some",
 					},
 					"4": {
-						Name: "job1-chief-kk-0",
+						Name:     "job1-chief-kk-0",
+						TaskRole: "chief-kk",
 					},
 					"5": {
-						Name: "job1-evaluator-tt-0",
+						Name:     "job1-evaluator-tt-0",
+						TaskRole: "evaluator-tt",
 					},
 				},
 				PodGroup: &api.PodGroup{
@@ -187,22 +199,28 @@ func Test_readTopologyFromPgAnnotations(t *testing.T) {
 				Namespace: "default",
 				Tasks: map[api.TaskID]*api.TaskInfo{
 					"0": {
-						Name: "job1-ps-0",
+						Name:     "job1-ps-0",
+						TaskRole: "ps",
 					},
 					"1": {
-						Name: "job1-ps-1",
+						Name:     "job1-ps-1",
+						TaskRole: "ps",
 					},
 					"2": {
-						Name: "job1-worker-0",
+						Name:     "job1-worker-0",
+						TaskRole: "worker",
 					},
 					"3": {
-						Name: "job1-worker-1",
+						Name:     "job1-worker-1",
+						TaskRole: "worker",
 					},
 					"4": {
-						Name: "job1-chief-0",
+						Name:     "job1-chief-0",
+						TaskRole: "chief",
 					},
 					"5": {
-						Name: "job1-evaluator-0",
+						Name:     "job1-evaluator-0",
+						TaskRole: "evaluator",
 					},
 				},
 				PodGroup: &api.PodGroup{
@@ -227,16 +245,20 @@ func Test_readTopologyFromPgAnnotations(t *testing.T) {
 				Namespace: "default",
 				Tasks: map[api.TaskID]*api.TaskInfo{
 					"0": {
-						Name: "job1-ps-0",
+						Name:     "job1-ps-0",
+						TaskRole: "ps",
 					},
 					"1": {
-						Name: "job1-ps-1",
+						Name:     "job1-ps-1",
+						TaskRole: "ps",
 					},
 					"2": {
-						Name: "job1-worker-0",
+						Name:     "job1-worker-0",
+						TaskRole: "worker",
 					},
 					"3": {
-						Name: "job1-worker-1",
+						Name:     "job1-worker-1",
+						TaskRole: "worker",
 					},
 				},
 				PodGroup: &api.PodGroup{
@@ -261,16 +283,20 @@ func Test_readTopologyFromPgAnnotations(t *testing.T) {
 				Namespace: "default",
 				Tasks: map[api.TaskID]*api.TaskInfo{
 					"0": {
-						Name: "job1-ps-0",
+						Name:     "job1-ps-0",
+						TaskRole: "ps",
 					},
 					"1": {
-						Name: "job1-ps-1",
+						Name:     "job1-ps-1",
+						TaskRole: "ps",
 					},
 					"2": {
-						Name: "job1-worker-0",
+						Name:     "job1-worker-0",
+						TaskRole: "worker",
 					},
 					"3": {
-						Name: "job1-worker-1",
+						Name:     "job1-worker-1",
+						TaskRole: "worker",
 					},
 				},
 				PodGroup: &api.PodGroup{
@@ -295,22 +321,28 @@ func Test_readTopologyFromPgAnnotations(t *testing.T) {
 				Namespace: "default",
 				Tasks: map[api.TaskID]*api.TaskInfo{
 					"0": {
-						Name: "job1-ps-0",
+						Name:     "job1-ps-0",
+						TaskRole: "ps",
 					},
 					"1": {
-						Name: "job1-ps-1",
+						Name:     "job1-ps-1",
+						TaskRole: "ps",
 					},
 					"2": {
-						Name: "job1-worker-0",
+						Name:     "job1-worker-0",
+						TaskRole: "worker",
 					},
 					"3": {
-						Name: "job1-worker-1",
+						Name:     "job1-worker-1",
+						TaskRole: "worker",
 					},
 					"4": {
-						Name: "job1-chief-0",
+						Name:     "job1-chief-0",
+						TaskRole: "chief",
 					},
 					"5": {
-						Name: "job1-evaluator-0",
+						Name:     "job1-evaluator-0",
+						TaskRole: "evaluator",
 					},
 				},
 				PodGroup: &api.PodGroup{
