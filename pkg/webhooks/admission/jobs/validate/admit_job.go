@@ -276,6 +276,10 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	// other fields under spec are not allowed to mutate
 	new.Spec.MinAvailable = old.Spec.MinAvailable
 	new.Spec.PriorityClassName = old.Spec.PriorityClassName
+
+	// K8S also permit mutating spec.schedulingGates
+	// We do not support this for vcjob  (More details in design doc pod-scheduling-readiness.md)
+
 	for i := range new.Spec.Tasks {
 		new.Spec.Tasks[i].Replicas = old.Spec.Tasks[i].Replicas
 		new.Spec.Tasks[i].MinAvailable = old.Spec.Tasks[i].MinAvailable

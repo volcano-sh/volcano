@@ -93,7 +93,9 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 	for _, job := range ssn.Jobs {
 		// calculate inqueue job resources
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue && job.PodGroup.Spec.MinResources != nil {
-			op.inqueueResource.Add(api.NewResource(*job.PodGroup.Spec.MinResources))
+			// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
+			// so that it will not block other jobs from being inqueued.
+			op.inqueueResource.Add(job.DeductSchGatedResources(job.GetMinResources()))
 			continue
 		}
 		// calculate inqueue resource for running jobs
@@ -103,7 +105,7 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 			job.PodGroup.Spec.MinResources != nil &&
 			int32(util.CalculateAllocatedTaskNum(job)) >= job.PodGroup.Spec.MinMember {
 			inqueued := util.GetInqueueResource(job, job.Allocated)
-			op.inqueueResource.Add(inqueued)
+			op.inqueueResource.Add(job.DeductSchGatedResources(inqueued))
 		}
 	}
 
@@ -118,7 +120,7 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		//TODO: if allow 1 more job to be inqueue beyond overcommit-factor, large job may be inqueue and create pods
-		jobMinReq := api.NewResource(*job.PodGroup.Spec.MinResources)
+		jobMinReq := job.GetMinResources()
 		if inqueue.Add(jobMinReq).LessEqualWithDimension(idle, jobMinReq) { // only compare the requested resource
 			klog.V(4).Infof("Sufficient resources, permit job <%s/%s> to be inqueue", job.Namespace, job.Name)
 			return util.Permit
@@ -134,8 +136,8 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 		if job.PodGroup.Spec.MinResources == nil {
 			return
 		}
-		jobMinReq := api.NewResource(*job.PodGroup.Spec.MinResources)
-		op.inqueueResource.Add(jobMinReq)
+		jobMinReq := job.GetMinResources()
+		op.inqueueResource.Add(job.DeductSchGatedResources(jobMinReq))
 	})
 }
 
