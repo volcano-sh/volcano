@@ -53,6 +53,7 @@ type TaskSpec struct {
 	DefaultGracefulPeriod *int64
 	Taskpriority          string
 	MaxRetry              int32
+	SchGates              []v1.PodSchedulingGate
 }
 
 type JobSpec struct {
@@ -236,6 +237,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 					Affinity:          task.Affinity,
 					Tolerations:       task.Tolerations,
 					PriorityClassName: task.Taskpriority,
+					SchedulingGates:   task.SchGates,
 				},
 			},
 		}
@@ -799,4 +801,24 @@ func WaitTasksCompleted(ctx *TestContext, job *batchv1alpha1.Job, successNum int
 		return fmt.Errorf("[Wait time out]: %s", additionalError)
 	}
 	return err
+}
+
+// Remove the scheduling gates (if any) of the tasks of a job at Pod level
+func RemovePodSchGates(ctx *TestContext, targetJob *batchv1alpha1.Job) error {
+
+	patchData := []byte(`[
+		{
+			"op": "replace",
+			"path": "/spec/schedulingGates",
+			"value": []
+		}
+	]`)
+
+	for _, pod := range GetTasksOfJob(ctx, targetJob) {
+		_, err := ctx.Kubeclient.CoreV1().Pods(targetJob.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, patchData, metav1.PatchOptions{})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

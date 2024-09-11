@@ -76,6 +76,9 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			underRequest = append(underRequest, job)
 			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
+				if task.SchGated {
+					continue
+				}
 				preemptorTasks[job.UID].Push(task)
 			}
 		}
@@ -155,6 +158,10 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			// Fix: preemptor numbers lose when in same job
 			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
+				// Again, skip scheduling gated tasks
+				if task.SchGated {
+					continue
+				}
 				preemptorTasks[job.UID].Push(task)
 			}
 			for {

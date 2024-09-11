@@ -138,6 +138,11 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		if _, found = pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
+				// Skip tasks whose pod are scheduling gated
+				if task.SchGated {
+					continue
+				}
+
 				// Skip BestEffort task in 'allocate' action.
 				if task.Resreq.IsEmpty() {
 					klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
