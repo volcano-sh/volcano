@@ -28,12 +28,14 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+
+	"k8s.io/kubernetes/pkg/features"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
@@ -108,6 +110,7 @@ type TaskInfo struct {
 
 	Name      string
 	Namespace string
+	TaskRole  string // value of "volcano.sh/task-spec"
 
 	// Resreq is the resource that used when task running.
 	Resreq *Resource
@@ -118,10 +121,12 @@ type TaskInfo struct {
 	// LastTransaction holds the context of last scheduling transaction
 	LastTransaction *TransactionContext
 
-	Priority    int32
-	VolumeReady bool
-	Preemptable bool
-	BestEffort  bool
+	Priority                    int32
+	VolumeReady                 bool
+	Preemptable                 bool
+	BestEffort                  bool
+	HasRestartableInitContainer bool
+	SchGated                    bool
 
 	// RevocableZone supports setting volcano.sh/revocable-zone annotation or label for pod/podgroup
 	// we only support empty value or * value for this version and we will support specify revocable zone name for future releases
@@ -149,9 +154,16 @@ func getJobID(pod *v1.Pod) JobID {
 	return ""
 }
 
-func getTaskID(pod *v1.Pod) TaskID {
+func getTaskRole(pod *v1.Pod) string {
+	if pod == nil {
+		return ""
+	}
 	if ts, found := pod.Annotations[batch.TaskSpecKey]; found && len(ts) != 0 {
-		return TaskID(ts)
+		return ts
+	}
+	// keep searching pod labels, as it is also added in labels in job controller
+	if ts, found := pod.Labels[batch.TaskSpecKey]; found && len(ts) != 0 {
+		return ts
 	}
 
 	return ""
@@ -167,22 +179,28 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	preemptable := GetPodPreemptable(pod)
 	revocableZone := GetPodRevocableZone(pod)
 	topologyInfo := GetPodTopologyInfo(pod)
-
+	role := getTaskRole(pod)
+	hasRestartableInitContainer := hasRestartableInitContainer(pod)
+	// initialize pod scheduling gates info here since it will not change in a scheduling cycle
+	schGated := calSchedulingGated(pod)
 	jobID := getJobID(pod)
 
 	ti := &TaskInfo{
-		UID:           TaskID(pod.UID),
-		Job:           jobID,
-		Name:          pod.Name,
-		Namespace:     pod.Namespace,
-		Priority:      1,
-		Pod:           pod,
-		Resreq:        resReq,
-		InitResreq:    initResReq,
-		Preemptable:   preemptable,
-		BestEffort:    bestEffort,
-		RevocableZone: revocableZone,
-		NumaInfo:      topologyInfo,
+		UID:                         TaskID(pod.UID),
+		Job:                         jobID,
+		Name:                        pod.Name,
+		Namespace:                   pod.Namespace,
+		TaskRole:                    role,
+		Priority:                    1,
+		Pod:                         pod,
+		Resreq:                      resReq,
+		InitResreq:                  initResReq,
+		Preemptable:                 preemptable,
+		BestEffort:                  bestEffort,
+		HasRestartableInitContainer: hasRestartableInitContainer,
+		RevocableZone:               revocableZone,
+		NumaInfo:                    topologyInfo,
+		SchGated:                    schGated,
 		TransactionContext: TransactionContext{
 			NodeName: pod.Spec.NodeName,
 			Status:   getTaskStatus(pod),
@@ -218,6 +236,16 @@ func (ti *TaskInfo) ClearLastTxContext() {
 	ti.LastTransaction = nil
 }
 
+// Return if the pod of a task is scheduling gated by checking if length of sch gates is zero
+// When the Pod is not yet created or sch gates field not set, return false
+func calSchedulingGated(pod *v1.Pod) bool {
+	// Only enable if features.PodSchedulingReadiness feature gate is enabled
+	if utilfeature.DefaultFeatureGate.Enabled(features.PodSchedulingReadiness) {
+		return pod != nil && pod.Spec.SchedulingGates != nil && len(pod.Spec.SchedulingGates) != 0
+	}
+	return false
+}
+
 func (ti *TaskInfo) SetPodResourceDecision() error {
 	if ti.NumaInfo == nil || len(ti.NumaInfo.ResMap) == 0 {
 		return nil
@@ -244,20 +272,23 @@ func (ti *TaskInfo) UnsetPodResourceDecision() {
 // Clone is used for cloning a task
 func (ti *TaskInfo) Clone() *TaskInfo {
 	return &TaskInfo{
-		UID:           ti.UID,
-		Job:           ti.Job,
-		Name:          ti.Name,
-		Namespace:     ti.Namespace,
-		Priority:      ti.Priority,
-		PodVolumes:    ti.PodVolumes,
-		Pod:           ti.Pod,
-		Resreq:        ti.Resreq.Clone(),
-		InitResreq:    ti.InitResreq.Clone(),
-		VolumeReady:   ti.VolumeReady,
-		Preemptable:   ti.Preemptable,
-		BestEffort:    ti.BestEffort,
-		RevocableZone: ti.RevocableZone,
-		NumaInfo:      ti.NumaInfo.Clone(),
+		UID:                         ti.UID,
+		Job:                         ti.Job,
+		Name:                        ti.Name,
+		Namespace:                   ti.Namespace,
+		TaskRole:                    ti.TaskRole,
+		Priority:                    ti.Priority,
+		PodVolumes:                  ti.PodVolumes,
+		Pod:                         ti.Pod,
+		Resreq:                      ti.Resreq.Clone(),
+		InitResreq:                  ti.InitResreq.Clone(),
+		VolumeReady:                 ti.VolumeReady,
+		Preemptable:                 ti.Preemptable,
+		BestEffort:                  ti.BestEffort,
+		HasRestartableInitContainer: ti.HasRestartableInitContainer,
+		RevocableZone:               ti.RevocableZone,
+		NumaInfo:                    ti.NumaInfo.Clone(),
+		SchGated:                    ti.SchGated,
 		TransactionContext: TransactionContext{
 			NodeName: ti.NodeName,
 			Status:   ti.Status,
@@ -266,18 +297,21 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 	}
 }
 
-func (ti *TaskInfo) GetTaskSpecKey() TaskID {
-	if ti.Pod == nil {
-		return ""
+// hasRestartableInitContainer returns whether pod has restartable container.
+func hasRestartableInitContainer(pod *v1.Pod) bool {
+	for _, c := range pod.Spec.InitContainers {
+		if c.RestartPolicy != nil && *c.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			return true
+		}
 	}
-	return getTaskID(ti.Pod)
+	return false
 }
 
 // String returns the taskInfo details in a string
 func (ti TaskInfo) String() string {
-	res := fmt.Sprintf("Task (%v:%v/%v): job %v, status %v, pri %v, "+
+	res := fmt.Sprintf("Task (%v:%v/%v): taskSpec %s, job %v, status %v, pri %v, "+
 		"resreq %v, preemptable %v, revocableZone %v",
-		ti.UID, ti.Namespace, ti.Name, ti.Job, ti.Status, ti.Priority,
+		ti.UID, ti.Namespace, ti.Name, ti.TaskRole, ti.Job, ti.Status, ti.Priority,
 		ti.Resreq, ti.Preemptable, ti.RevocableZone)
 
 	if ti.NumaInfo != nil {
@@ -317,7 +351,7 @@ type JobInfo struct {
 	// All tasks of the Job.
 	TaskStatusIndex       map[TaskStatus]tasksMap
 	Tasks                 tasksMap
-	TaskMinAvailable      map[TaskID]int32
+	TaskMinAvailable      map[string]int32 // key is value of "volcano.sh/task-spec", value is number
 	TaskMinAvailableTotal int32
 
 	Allocated    *Resource
@@ -348,7 +382,7 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 		TotalRequest:     EmptyResource(),
 		TaskStatusIndex:  map[TaskStatus]tasksMap{},
 		Tasks:            tasksMap{},
-		TaskMinAvailable: map[TaskID]int32{},
+		TaskMinAvailable: map[string]int32{},
 	}
 
 	for _, task := range tasks {
@@ -485,7 +519,7 @@ func (ji *JobInfo) extractBudget(pg *PodGroup) *DisruptionBudget {
 func (ji *JobInfo) ParseMinMemberInfo(pg *PodGroup) {
 	taskMinAvailableTotal := int32(0)
 	for task, member := range pg.Spec.MinTaskMember {
-		ji.TaskMinAvailable[TaskID(task)] = member
+		ji.TaskMinAvailable[task] = member
 		taskMinAvailableTotal += member
 	}
 	ji.TaskMinAvailableTotal = taskMinAvailableTotal
@@ -498,6 +532,44 @@ func (ji *JobInfo) GetMinResources() *Resource {
 	}
 
 	return NewResource(*ji.PodGroup.Spec.MinResources)
+}
+
+// Get the total resources of tasks whose pod is scheduling gated
+// By definition, if a pod is scheduling gated, it's status is Pending
+func (ji *JobInfo) GetSchGatedPodResources() *Resource {
+	res := EmptyResource()
+	for _, task := range ji.Tasks {
+		if task.SchGated {
+			res.Add(task.Resreq)
+		}
+	}
+	return res
+}
+
+// DeductSchGatedResources deduct resources of scheduling gated pod from Resource res;
+// If resource is less than gated resources, return zero;
+// Note: The purpose of this functionis to deduct the resources of scheduling gated tasks
+// in a job when calculating inqueued resources so that it will not block other jobs from being inqueued.
+func (ji *JobInfo) DeductSchGatedResources(res *Resource) *Resource {
+	schGatedResource := ji.GetSchGatedPodResources()
+	// Most jobs do not have any scheduling gated tasks, hence we add this short cut
+	if schGatedResource.IsEmpty() {
+		return res
+	}
+
+	result := res.Clone()
+	// schGatedResource can be larger than MinResource because minAvailable of a job can be smaller than number of replica
+	result.MilliCPU = max(result.MilliCPU-schGatedResource.MilliCPU, 0)
+	result.Memory = max(result.Memory-schGatedResource.Memory, 0)
+
+	// If a scalar resource is present in schGatedResource but not in minResource, skip it
+	for name, resource := range res.ScalarResources {
+		if schGatedRes, ok := schGatedResource.ScalarResources[name]; ok {
+			result.ScalarResources[name] = max(resource-schGatedRes, 0)
+		}
+	}
+	klog.V(3).Infof("Gated resources: %s, MinResource: %s: Result: %s", schGatedResource.String(), res.String(), result.String())
+	return result
 }
 
 func (ji *JobInfo) GetElasticResources() *Resource {
@@ -592,7 +664,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		PodGroup: ji.PodGroup.Clone(),
 
 		TaskStatusIndex:       map[TaskStatus]tasksMap{},
-		TaskMinAvailable:      make(map[TaskID]int32, len(ji.TaskMinAvailable)),
+		TaskMinAvailable:      make(map[string]int32, len(ji.TaskMinAvailable)),
 		TaskMinAvailableTotal: ji.TaskMinAvailableTotal,
 		Tasks:                 tasksMap{},
 		Preemptable:           ji.Preemptable,
@@ -655,6 +727,20 @@ func (ji *JobInfo) FitError() string {
 	if len(reasons) > 0 {
 		reasonMsg += "; " + fmt.Sprintf("%s: %s", Pending.String(), strings.Join(sortReasonsHistogram(reasons), ", "))
 	}
+
+	// record the original reason: such as can not enqueue or failed reasons of first pod failed to predicated
+	if ji.JobFitErrors != "" {
+		reasonMsg += ". Origin reason is: " + ji.JobFitErrors
+	} else {
+		for _, taskInfo := range ji.Tasks {
+			fitError := ji.NodesFitErrors[taskInfo.UID]
+			if fitError != nil {
+				reasonMsg += fmt.Sprintf(". Origin reason is %v: %v", taskInfo.Name, fitError.Error())
+				break
+			}
+		}
+	}
+
 	return reasonMsg
 }
 
@@ -723,6 +809,103 @@ func (ji *JobInfo) PendingBestEffortTaskNum() int32 {
 	return int32(count)
 }
 
+// FitFailedRoles returns the job roles' failed fit records
+func (ji *JobInfo) FitFailedRoles() map[string]struct{} {
+	failedRoles := map[string]struct{}{}
+	for tid := range ji.NodesFitErrors {
+		task := ji.Tasks[tid]
+		failedRoles[task.TaskRole] = struct{}{}
+	}
+	return failedRoles
+}
+
+// TaskHasFitErrors checks if the task has fit errors and can continue try predicating
+func (ji *JobInfo) TaskHasFitErrors(task *TaskInfo) bool {
+	// if the task didn't set the spec key, should not use the cache
+	if len(task.TaskRole) == 0 {
+		return false
+	}
+
+	_, exist := ji.FitFailedRoles()[task.TaskRole]
+	return exist
+}
+
+// NeedContinueAllocating checks whether it can continue on allocating for current job
+// when its one pod predicated failed, there are two cases to continue:
+//  1. job's total allocatable number meet its minAvailable(each task role has no independent minMember setting):
+//     because there are cases that some of the pods are not allocatable, but other pods are allocatable and
+//     the number of this kind pods can meet the gang-scheduling
+//  2. each task's allocable number meet its independent minAvailable
+//     this is for the case that each task role has its own independent minMember.
+//     eg, current role's pod has a failed predicating result but its allocated number has meet its minMember,
+//     the other roles' pods which have no failed predicating results can continue on
+//
+// performance analysis:
+//
+//	As the failed predicating role has been pre-checked when it was popped from queue,
+//	this function will only be called at most as the number of roles in this job.
+func (ji *JobInfo) NeedContinueAllocating() bool {
+	// Ensures all tasks must be running; if any pod allocation fails, further execution stops
+	if int(ji.MinAvailable) == len(ji.Tasks) {
+		return false
+	}
+	failedRoles := ji.FitFailedRoles()
+
+	pending := map[string]int32{}
+	for _, task := range ji.TaskStatusIndex[Pending] {
+		pending[task.TaskRole]++
+	}
+	// 1. don't consider each role's min, just consider total allocatable number vs job's MinAvailable
+	if ji.MinAvailable < ji.TaskMinAvailableTotal {
+		left := int32(0)
+		for role, cnt := range pending {
+			if _, ok := failedRoles[role]; !ok {
+				left += cnt
+			}
+		}
+		return ji.ReadyTaskNum()+left >= ji.MinAvailable
+	}
+
+	// 2. if each task role has its independent minMember, check it
+	allocated := ji.getJobAllocatedRoles()
+	for role := range failedRoles {
+		min := ji.TaskMinAvailable[role]
+		if min == 0 {
+			continue
+		}
+		// current role predicated failed and it means the left task with same role can not be allocated,
+		// and allocated number less than minAvailable, it can not be ready
+		if allocated[role] < min {
+			return false
+		}
+	}
+
+	return true
+}
+
+// getJobAllocatedRoles returns result records each role's allocated number
+func (ji *JobInfo) getJobAllocatedRoles() map[string]int32 {
+	occupiedMap := map[string]int32{}
+	for status, tasks := range ji.TaskStatusIndex {
+		if AllocatedStatus(status) ||
+			status == Succeeded {
+			for _, task := range tasks {
+				occupiedMap[task.TaskRole]++
+			}
+			continue
+		}
+
+		if status == Pending {
+			for _, task := range tasks {
+				if task.InitResreq.IsEmpty() {
+					occupiedMap[task.TaskRole]++
+				}
+			}
+		}
+	}
+	return occupiedMap
+}
+
 // CheckTaskValid returns whether each task of job is valid.
 func (ji *JobInfo) CheckTaskValid() bool {
 	// if job minAvailable is less than sum of(task minAvailable), skip this check
@@ -730,14 +913,14 @@ func (ji *JobInfo) CheckTaskValid() bool {
 		return true
 	}
 
-	actual := map[TaskID]int32{}
+	actual := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded ||
 			status == Pipelined ||
 			status == Pending {
 			for _, task := range tasks {
-				actual[getTaskID(task.Pod)]++
+				actual[task.TaskRole]++
 			}
 		}
 	}
@@ -760,27 +943,10 @@ func (ji *JobInfo) CheckTaskReady() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
-	occupiedMap := map[TaskID]int32{}
-	for status, tasks := range ji.TaskStatusIndex {
-		if AllocatedStatus(status) ||
-			status == Succeeded {
-			for _, task := range tasks {
-				occupiedMap[getTaskID(task.Pod)]++
-			}
-			continue
-		}
-
-		if status == Pending {
-			for _, task := range tasks {
-				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskID(task.Pod)]++
-				}
-			}
-		}
-	}
-	for taskID, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskID] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+	occupiedMap := ji.getJobAllocatedRoles()
+	for taskSpec, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[taskSpec] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskSpec, occupiedMap[taskSpec])
 			return false
 		}
 	}
@@ -792,13 +958,13 @@ func (ji *JobInfo) CheckTaskPipelined() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
-	occupiedMap := map[TaskID]int32{}
+	occupiedMap := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded ||
 			status == Pipelined {
 			for _, task := range tasks {
-				occupiedMap[getTaskID(task.Pod)]++
+				occupiedMap[task.TaskRole]++
 			}
 			continue
 		}
@@ -806,14 +972,14 @@ func (ji *JobInfo) CheckTaskPipelined() bool {
 		if status == Pending {
 			for _, task := range tasks {
 				if task.InitResreq.IsEmpty() {
-					occupiedMap[getTaskID(task.Pod)]++
+					occupiedMap[task.TaskRole]++
 				}
 			}
 		}
 	}
-	for taskID, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskID] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+	for taskSpec, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[taskSpec] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskSpec, occupiedMap[taskSpec])
 			return false
 		}
 	}
@@ -825,20 +991,20 @@ func (ji *JobInfo) CheckTaskStarving() bool {
 	if ji.MinAvailable < ji.TaskMinAvailableTotal {
 		return true
 	}
-	occupiedMap := map[TaskID]int32{}
+	occupiedMap := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
 			status == Succeeded ||
 			status == Pipelined {
 			for _, task := range tasks {
-				occupiedMap[getTaskID(task.Pod)]++
+				occupiedMap[task.TaskRole]++
 			}
 			continue
 		}
 	}
-	for taskID, minNum := range ji.TaskMinAvailable {
-		if occupiedMap[taskID] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min available", ji.Namespace, ji.Name, taskID, occupiedMap[taskID])
+	for taskSpec, minNum := range ji.TaskMinAvailable {
+		if occupiedMap[taskSpec] < minNum {
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min available", ji.Namespace, ji.Name, taskSpec, occupiedMap[taskSpec])
 			return true
 		}
 	}

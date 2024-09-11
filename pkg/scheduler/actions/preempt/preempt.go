@@ -76,6 +76,9 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			underRequest = append(underRequest, job)
 			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
+				if task.SchGated {
+					continue
+				}
 				preemptorTasks[job.UID].Push(task)
 			}
 		}
@@ -155,6 +158,10 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			// Fix: preemptor numbers lose when in same job
 			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
+				// Again, skip scheduling gated tasks
+				if task.SchGated {
+					continue
+				}
 				preemptorTasks[job.UID].Push(task)
 			}
 			for {
@@ -178,6 +185,11 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					if preemptor.BestEffort && !task.BestEffort {
 						return false
 					}
+					// should skip not preemptable pod
+					if !task.Preemptable {
+						return false
+					}
+
 					// Preempt tasks within job.
 					return preemptor.Job == task.Job
 				}, ph)
@@ -208,23 +220,14 @@ func preempt(
 	predicateHelper util.PredicateHelper,
 ) (bool, error) {
 	assigned := false
-	allNodes := ssn.NodeList
+
 	if err := ssn.PrePredicateFn(preemptor); err != nil {
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
 
-	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
-		var statusSets util.StatusSets
-		statusSets, _ = ssn.PredicateFn(task, node)
-
-		// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
-		// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
-		if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
-			return nil, api.NewFitError(task, node, statusSets.Message())
-		}
-		return nil, nil
-	}
-
+	predicateFn := ssn.PredicateForPreemptAction
+	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
+	allNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(preemptor)
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, predicateFn, true)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)

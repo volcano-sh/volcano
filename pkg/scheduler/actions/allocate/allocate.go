@@ -138,6 +138,11 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		if _, found = pendingTasks[job.UID]; !found {
 			tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
+				// Skip tasks whose pod are scheduling gated
+				if task.SchGated {
+					continue
+				}
+
 				// Skip BestEffort task in 'allocate' action.
 				if task.Resreq.IsEmpty() {
 					klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
@@ -181,6 +186,12 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			continue
 		}
 
+		// check if the task with its spec has already predicates failed
+		if job.TaskHasFitErrors(task) {
+			klog.V(5).Infof("Task %s with role spec %s has already predicated failed, skip", task.Name, task.TaskRole)
+			continue
+		}
+
 		klog.V(3).Infof("There are <%d> nodes for Job <%v/%v>", len(ssn.Nodes), job.Namespace, job.Name)
 
 		if err := ssn.PrePredicateFn(task); err != nil {
@@ -196,7 +207,14 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 		predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, alloc.predicate, true)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
-			break
+			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
+			// so we should break from continuously allocating.
+			// otherwise, should continue to find other allocatable task
+			if job.NeedContinueAllocating() {
+				continue
+			} else {
+				break
+			}
 		}
 
 		// Candidate nodes are divided into two gradients:
@@ -290,22 +308,14 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 	}
 }
 
-func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) ([]*api.Status, error) {
+func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	// Check for Resource Predicate
+	var statusSets api.StatusSets
 	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
-		return nil, api.NewFitError(task, node, api.WrapInsufficientResourceReason(resources))
+		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
+		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
-	var statusSets util.StatusSets
-	statusSets, err := alloc.session.PredicateFn(task, node)
-	if err != nil {
-		return nil, api.NewFitError(task, node, err.Error())
-	}
-
-	if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
-		statusSets.ContainsErrorSkipOrWait() {
-		return nil, api.NewFitError(task, node, statusSets.Message())
-	}
-	return nil, nil
+	return alloc.session.PredicateForAllocateAction(task, node)
 }
 
 func (alloc *Action) UnInitialize() {}

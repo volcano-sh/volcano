@@ -385,7 +385,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		go func(taskName string, podToCreateEachTask []*v1.Pod) {
 			taskIndex := jobhelpers.GetTaskIndexUnderJob(taskName, job)
 			if job.Spec.Tasks[taskIndex].DependsOn != nil {
-				if !cc.waitDependsOnTaskMeetCondition(taskName, taskIndex, podToCreateEachTask, job) {
+				if !cc.waitDependsOnTaskMeetCondition(taskIndex, job) {
 					klog.V(3).Infof("Job %s/%s depends on task not ready", job.Name, job.Namespace)
 					// release wait group
 					for _, pod := range podToCreateEachTask {
@@ -410,7 +410,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 						appendError(&creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
 					} else {
 						classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
-						calcPodStatus(pod, taskStatusCount)
+						calcPodStatus(newPod, taskStatusCount)
 						klog.V(5).Infof("Created Task <%s> of Job <%s/%s>",
 							pod.Name, job.Namespace, job.Name)
 					}
@@ -501,7 +501,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	return nil
 }
 
-func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskName string, taskIndex int, podToCreateEachTask []*v1.Pod, job *batch.Job) bool {
+func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskIndex int, job *batch.Job) bool {
 	if job.Spec.Tasks[taskIndex].DependsOn == nil {
 		return true
 	}

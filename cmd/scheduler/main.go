@@ -23,6 +23,8 @@ import (
 
 	"github.com/spf13/pflag"
 	_ "go.uber.org/automaxprocs"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	cliflag "k8s.io/component-base/cli/flag"
 	componentbaseoptions "k8s.io/component-base/config/options"
 	"k8s.io/klog/v2"
@@ -33,6 +35,7 @@ import (
 	"volcano.sh/volcano/cmd/scheduler/app"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	commonutil "volcano.sh/volcano/pkg/util"
+	"volcano.sh/volcano/pkg/version"
 
 	// Import default actions/plugins.
 	_ "volcano.sh/volcano/pkg/scheduler/actions"
@@ -53,12 +56,20 @@ func main() {
 	s := options.NewServerOption()
 
 	s.AddFlags(fs)
+	utilfeature.DefaultMutableFeatureGate.AddFlag(fs)
+
 	commonutil.LeaderElectionDefault(&s.LeaderElection)
 	s.LeaderElection.ResourceName = commonutil.GenerateComponentName(s.SchedulerNames)
 	componentbaseoptions.BindLeaderElectionFlags(&s.LeaderElection, fs)
 	s.RegisterOptions()
 
 	cliflag.InitFlags()
+
+	if s.PrintVersion {
+		version.PrintVersionAndExit()
+		return
+	}
+
 	if err := s.CheckOptionOrDie(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)

@@ -1,5 +1,9 @@
 # GPU Sharing User guide
 
+## Important Note
+
+> **Note**  GPU sharing is deprecated in volcano v1.9, recommended to use the Volcano VGPU feature, which is provided by HAMI project, click [here](https://github.com/Project-HAMi/volcano-vgpu-device-plugin)
+
 ## Environment setup
 
 ### Install volcano
@@ -7,8 +11,6 @@
 #### 1. Install from source
 
 Refer to [Install Guide](../../installer/README.md) to install volcano.
-
-> **Note** The Volcano VGPU feature has been transferred to the HAMI project, click [here](https://github.com/Project-HAMi/volcano-vgpu-device-plugin) to access
 
 After installed, update the scheduler configuration:
 

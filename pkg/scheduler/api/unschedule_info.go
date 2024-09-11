@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 const (
@@ -60,11 +62,22 @@ func (f *FitErrors) SetNodeError(nodeName string, err error) {
 	default:
 		fe = &FitError{
 			NodeName: nodeName,
-			Reasons:  []string{obj.Error()},
+			Status:   []*Status{{Code: Error, Reason: obj.Error()}},
 		}
 	}
 
 	f.nodes[nodeName] = fe
+}
+
+// GetUnschedulableAndUnresolvableNodes returns the set of nodes that has no help from preempting pods from it
+func (f *FitErrors) GetUnschedulableAndUnresolvableNodes() map[string]sets.Empty {
+	ret := make(map[string]sets.Empty)
+	for _, node := range f.nodes {
+		if node.Status.ContainsUnschedulableAndUnresolvable() {
+			ret[node.NodeName] = sets.Empty{}
+		}
+	}
+	return ret
 }
 
 // Error returns the final error message
@@ -78,7 +91,7 @@ func (f *FitErrors) Error() string {
 
 	reasons := make(map[string]int)
 	for _, node := range f.nodes {
-		for _, reason := range node.Reasons {
+		for _, reason := range node.Reasons() {
 			reasons[reason]++
 		}
 	}
@@ -100,23 +113,46 @@ type FitError struct {
 	taskNamespace string
 	taskName      string
 	NodeName      string
-	Reasons       []string
+	Status        StatusSets
 }
 
-// NewFitError return FitError by message
+// NewFitError return FitError by message, setting default code to Error
 func NewFitError(task *TaskInfo, node *NodeInfo, message ...string) *FitError {
 	fe := &FitError{
 		taskName:      task.Name,
 		taskNamespace: task.Namespace,
 		NodeName:      node.Name,
-		Reasons:       message,
+	}
+	sts := make([]*Status, 0, len(message))
+	for _, msg := range message {
+		sts = append(sts, &Status{Reason: msg, Code: Error})
+	}
+	fe.Status = StatusSets(sts)
+	return fe
+}
+
+// NewFitErrWithStatus returns a fit error with code and reason in it
+func NewFitErrWithStatus(task *TaskInfo, node *NodeInfo, sts ...*Status) *FitError {
+	fe := &FitError{
+		taskName:      task.Name,
+		taskNamespace: task.Namespace,
+		NodeName:      node.Name,
+		Status:        sts,
 	}
 	return fe
 }
 
+// Reasons returns the reasons
+func (fe *FitError) Reasons() []string {
+	if fe == nil {
+		return []string{}
+	}
+	return fe.Status.Reasons()
+}
+
 // Error returns the final error message
 func (f *FitError) Error() string {
-	return fmt.Sprintf("task %s/%s on node %s fit failed: %s", f.taskNamespace, f.taskName, f.NodeName, strings.Join(f.Reasons, ", "))
+	return fmt.Sprintf("task %s/%s on node %s fit failed: %s", f.taskNamespace, f.taskName, f.NodeName, strings.Join(f.Reasons(), ", "))
 }
 
 // WrapInsufficientResourceReason wrap insufficient resource reason.

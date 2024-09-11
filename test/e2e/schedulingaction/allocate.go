@@ -18,13 +18,18 @@ package schedulingaction
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
@@ -290,5 +295,98 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		queue1Job4 := e2eutil.CreateJob(ctx, job)
 		err = e2eutil.WaitJobPending(ctx, queue1Job4)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("Schduling gates block vcjob. vcjob allocated after removed.", func() {
+		// less than min available pods are allocated
+		q1 := "q1"
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:        []string{q1},
+			NodesNumLimit: 4,
+			NodesResourceLimit: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2000m"),
+				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+		})
+
+		defer e2eutil.CleanupTestContext(ctx)
+
+		slot1 := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("2000m"),
+			corev1.ResourceMemory: resource.MustParse("2048Mi")}
+
+		job := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img:      e2eutil.DefaultNginxImage,
+					Req:      slot1,
+					Min:      2,
+					Rep:      2,
+					SchGates: []v1.PodSchedulingGate{{Name: "example.com/g1"}},
+				},
+			},
+		}
+
+		job.Name = "j1-q1"
+		job.Queue = q1
+		queue1Job1 := e2eutil.CreateJob(ctx, job)
+		// job should be unschedulable
+		err := e2eutil.WaitJobUnschedulable(ctx, queue1Job1)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		//Remove the scheduling gates
+		err = e2eutil.RemovePodSchGates(ctx, queue1Job1)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		err = e2eutil.WaitJobStateReady(ctx, queue1Job1)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("Schduling gates block Deployment. Deployment allocated after removed.", func() {
+		// less than min available pods are allocated
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			NodesNumLimit: 4,
+			NodesResourceLimit: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2000m"),
+				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+		})
+		defer e2eutil.CleanupTestContext(ctx)
+
+		slot1 := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("2000m"),
+			corev1.ResourceMemory: resource.MustParse("2048Mi")}
+
+		dep := e2eutil.CreateDeploymentGated(ctx, "dep-gated", 4, e2eutil.DefaultNginxImage, slot1, []v1.PodSchedulingGate{{Name: "g1"}})
+
+		// need to wait for podgroup to be created
+		var pg *schedulingv1beta1.PodGroup
+		err := wait.Poll(time.Second, time.Minute, func() (bool, error) {
+			pgList, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+			if len(pgList.Items) == 1 {
+				pg = &pgList.Items[0]
+			}
+			return len(pgList.Items) == 1, err
+		})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		e2eutil.WaitPodGroupPhase(ctx, pg, schedulingv1beta1.PodGroupInqueue)
+
+		podList, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		patchData := []byte(`[
+			{
+				"op": "replace",
+				"path": "/spec/schedulingGates",
+				"value": []
+			}
+		]`)
+		for _, pod := range podList.Items {
+			// a naive way to tell if the pod belongs to the deployment
+			if strings.HasPrefix(pod.Name, dep.Name) {
+				//remove scheduling gates
+				_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, patchData, metav1.PatchOptions{})
+				gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			}
+		}
+		// Deployment should be running after gates removed
+		e2eutil.WaitPodGroupPhase(ctx, pg, schedulingv1beta1.PodGroupRunning)
 	})
 })

@@ -179,11 +179,13 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			unreadyTaskCount = job.MinAvailable - schedulableTaskNum()
 			msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 				unreadyTaskCount, len(job.Tasks), job.FitError())
-			job.JobFitErrors = msg
 
 			unScheduleJobCount++
 			metrics.RegisterJobRetries(job.Name)
 
+			// TODO: If the Job is gang-unschedulable due to scheduling gates
+			// we need a new message and reason to tell users
+			// More detail in design doc pod-scheduling-readiness.md
 			jc := &scheduling.PodGroupCondition{
 				Type:               scheduling.PodGroupUnschedulableType,
 				Status:             v1.ConditionTrue,
@@ -196,18 +198,6 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
 				klog.Errorf("Failed to update job <%s/%s> condition: %v",
 					job.Namespace, job.Name, err)
-			}
-
-			// allocated task should follow the job fit error
-			for _, taskInfo := range job.TaskStatusIndex[api.Allocated] {
-				fitError := job.NodesFitErrors[taskInfo.UID]
-				if fitError != nil {
-					continue
-				}
-
-				fitError = api.NewFitErrors()
-				job.NodesFitErrors[taskInfo.UID] = fitError
-				fitError.SetError(msg)
 			}
 		} else {
 			jc := &scheduling.PodGroupCondition{

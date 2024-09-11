@@ -285,6 +285,14 @@ func BuildQueueWithResourcesQuantity(qname string, deserved, cap v1.ResourceList
 	return queue
 }
 
+// BuildQueueWithPriorityAndResourcesQuantity return a queue with priority, deserved and capability resources quantity.
+func BuildQueueWithPriorityAndResourcesQuantity(qname string, priority int32, deserved, cap v1.ResourceList) *schedulingv1beta1.Queue {
+	queue := BuildQueue(qname, 1, cap)
+	queue.Spec.Deserved = deserved
+	queue.Spec.Priority = priority
+	return queue
+}
+
 // ////// build in resource //////
 // BuildPriorityClass return pc
 func BuildPriorityClass(name string, value int32) *schedulingv1.PriorityClass {

@@ -75,6 +75,9 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			preemptorsMap[job.Queue].Push(job)
 			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
+				if task.SchGated {
+					continue
+				}
 				preemptorTasks[job.UID].Push(task)
 			}
 		}
@@ -92,10 +95,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		queue := queues.Pop().(*api.QueueInfo)
 		if ssn.Overused(queue) {
 			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
-			continue
-		}
-		if !ssn.Preemptive(queue) {
-			klog.V(3).Infof("Queue <%s> can not reclaim by preempt others, ignore it.", queue.Name)
 			continue
 		}
 
@@ -119,23 +118,27 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
+		if !ssn.Preemptive(queue, task) {
+			klog.V(3).Infof("Queue <%s> can not reclaim by preempt others when considering task <%s> , ignore it.", queue.Name, task.Name)
+			continue
+		}
+
 		if err := ssn.PrePredicateFn(task); err != nil {
 			klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
 			continue
 		}
 
 		assigned := false
-		for _, n := range ssn.Nodes {
-			var statusSets util.StatusSets
-			statusSets, _ = ssn.PredicateFn(task, n)
-
+		// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
+		totalNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(task)
+		for _, n := range totalNodes {
 			// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
 			// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
-			if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
-				klog.V(5).Infof("predicates failed in reclaim for task <%s/%s> on node <%s>, reason is %s.",
-					task.Namespace, task.Name, n.Name, statusSets.Message())
+			if err := ssn.PredicateForPreemptAction(task, n); err != nil {
+				klog.V(4).Infof("Reclaim predicate for task %s/%s on node %s return error %v ", task.Namespace, task.Name, n.Name, err)
 				continue
 			}
+
 			klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.", task.Namespace, task.Name, n.Name)
 
 			var reclaimees []*api.TaskInfo
