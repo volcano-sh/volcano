@@ -26,12 +26,11 @@ import (
 )
 
 const (
-	defaultSchedulerName     = "volcano"
-	defaultQPS               = 50.0
-	defaultBurst             = 100
-	defaultEnabledAdmission  = "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
-	defaultIgnoredNamespaces = "volcano-system,kube-system"
-	defaultHealthzAddress    = ":11251"
+	defaultSchedulerName    = "volcano"
+	defaultQPS              = 50.0
+	defaultBurst            = 100
+	defaultEnabledAdmission = "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
+	defaultHealthzAddress   = ":11251"
 )
 
 // Config admission-controller server config.
@@ -52,7 +51,6 @@ type Config struct {
 	WebhookURL        string
 	ConfigPath        string
 	EnabledAdmission  string
-	IgnoredNamespaces string
 
 	EnableHealthz bool
 	// HealthzBindAddress is the IP address and port for the health check server to serve on
@@ -88,7 +86,6 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.EnabledAdmission, "enabled-admission", defaultEnabledAdmission, "enabled admission webhooks, if this parameter is modified, make sure corresponding webhook configurations are the same.")
 	fs.StringArrayVar(&c.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&c.ConfigPath, "admission-conf", "", "The configmap file of this webhook")
-	fs.StringVar(&c.IgnoredNamespaces, "ignored-namespaces", defaultIgnoredNamespaces, "Comma-separated list of namespaces to be ignored by admission webhooks")
 	fs.BoolVar(&c.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.StringVar(&c.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 }

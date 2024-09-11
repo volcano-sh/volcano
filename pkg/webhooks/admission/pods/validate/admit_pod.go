@@ -19,6 +19,7 @@ package validate
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -32,7 +33,6 @@ import (
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -101,7 +101,7 @@ allow pods to create when
 3. check pod budget annotations configure
 */
 func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) string {
-	if !commonutil.Contains(config.SchedulerNames, pod.Spec.SchedulerName) {
+	if !slices.Contains(config.SchedulerNames, pod.Spec.SchedulerName) {
 		return ""
 	}
 	pgName := ""

@@ -17,6 +17,8 @@ limitations under the License.
 package podgroup
 
 import (
+	"slices"
+
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
@@ -35,7 +37,6 @@ import (
 	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	"volcano.sh/volcano/pkg/features"
-	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 func init() {
@@ -160,7 +161,7 @@ func (pg *pgcontroller) processNextReq() bool {
 		return true
 	}
 
-	if !commonutil.Contains(pg.schedulerNames, pod.Spec.SchedulerName) {
+	if !slices.Contains(pg.schedulerNames, pod.Spec.SchedulerName) {
 		klog.V(5).Infof("pod %v/%v field SchedulerName is not matched", pod.Namespace, pod.Name)
 		return true
 	}

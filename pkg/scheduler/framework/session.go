@@ -90,7 +90,7 @@ type Session struct {
 	overusedFns       map[string]api.ValidateFn
 	// preemptiveFns means whether current queue can reclaim from other queue,
 	// while reclaimableFns means whether current queue's resources can be reclaimed.
-	preemptiveFns     map[string]api.ValidateFn
+	preemptiveFns     map[string]api.ValidateWithCandidateFn
 	allocatableFns    map[string]api.AllocatableFn
 	jobReadyFns       map[string]api.ValidateFn
 	jobPipelinedFns   map[string]api.VoteFn
@@ -136,7 +136,7 @@ func openSession(cache cache.Cache) *Session {
 		preemptableFns:    map[string]api.EvictableFn{},
 		reclaimableFns:    map[string]api.EvictableFn{},
 		overusedFns:       map[string]api.ValidateFn{},
-		preemptiveFns:     map[string]api.ValidateFn{},
+		preemptiveFns:     map[string]api.ValidateWithCandidateFn{},
 		allocatableFns:    map[string]api.AllocatableFn{},
 		jobReadyFns:       map[string]api.ValidateFn{},
 		jobPipelinedFns:   map[string]api.VoteFn{},
@@ -285,6 +285,78 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 	status.Succeeded = int32(len(jobInfo.TaskStatusIndex[api.Succeeded]))
 
 	return status
+}
+
+// GetUnschedulableAndUnresolvableNodesForTask filter out those node that has UnschedulableAndUnresolvable
+func (ssn *Session) GetUnschedulableAndUnresolvableNodesForTask(task *api.TaskInfo) []*api.NodeInfo {
+	fitErrors, ok1 := ssn.Jobs[task.Job]
+	if !ok1 {
+		return ssn.NodeList
+	}
+	fitErr, ok2 := fitErrors.NodesFitErrors[task.UID]
+	if !ok2 {
+		return ssn.NodeList
+	}
+
+	skipNodes := fitErr.GetUnschedulableAndUnresolvableNodes()
+	if len(skipNodes) == 0 {
+		return ssn.NodeList
+	}
+
+	ret := make([]*api.NodeInfo, 0, len(ssn.Nodes))
+	for _, node := range ssn.Nodes {
+		if _, ok := skipNodes[node.Name]; !ok {
+			ret = append(ret, node)
+		}
+	}
+
+	return ret
+}
+
+// PredicateForAllocateAction checks if the predicate error contains
+// - Unschedulable
+// - UnschedulableAndUnresolvable
+// - ErrorSkipOrWait
+func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.NodeInfo) error {
+	err := ssn.PredicateFn(task, node)
+	if err == nil {
+		return nil
+	}
+
+	fitError, ok := err.(*api.FitError)
+	if !ok {
+		return api.NewFitError(task, node, err.Error())
+	}
+
+	statusSets := fitError.Status
+	if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
+		statusSets.ContainsErrorSkipOrWait() {
+		return fitError
+	}
+	return nil
+}
+
+// PredicateForPreemptAction checks if the predicate error contains:
+// - UnschedulableAndUnresolvable
+// - ErrorSkipOrWait
+func (ssn *Session) PredicateForPreemptAction(task *api.TaskInfo, node *api.NodeInfo) error {
+	err := ssn.PredicateFn(task, node)
+	if err == nil {
+		return nil
+	}
+
+	fitError, ok := err.(*api.FitError)
+	if !ok {
+		return api.NewFitError(task, node, err.Error())
+	}
+
+	// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
+	// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
+	statusSets := fitError.Status
+	if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
+		return fitError
+	}
+	return nil
 }
 
 // Statement returns new statement object

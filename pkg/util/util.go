@@ -19,16 +19,6 @@ var (
 	defaultElectionRetryPeriod   = metav1.Duration{Duration: 2 * time.Second}
 )
 
-// Contains check if slice contains element
-func Contains(slice []string, element string) bool {
-	for _, item := range slice {
-		if item == element {
-			return true
-		}
-	}
-	return false
-}
-
 // GenerateComponentName generate component name volcano
 func GenerateComponentName(schedulerNames []string) string {
 	if len(schedulerNames) == 1 {

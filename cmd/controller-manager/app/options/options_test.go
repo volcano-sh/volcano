@@ -17,6 +17,8 @@ limitations under the License.
 package options
 
 import (
+	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -30,6 +32,13 @@ import (
 	componentbaseoptions "k8s.io/component-base/config/options"
 	"k8s.io/component-base/featuregate"
 
+	"volcano.sh/volcano/pkg/controllers/framework"
+	_ "volcano.sh/volcano/pkg/controllers/garbagecollector"
+	_ "volcano.sh/volcano/pkg/controllers/job"
+	_ "volcano.sh/volcano/pkg/controllers/jobflow"
+	_ "volcano.sh/volcano/pkg/controllers/jobtemplate"
+	_ "volcano.sh/volcano/pkg/controllers/podgroup"
+	_ "volcano.sh/volcano/pkg/controllers/queue"
 	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/kube"
 	commonutil "volcano.sh/volcano/pkg/util"
@@ -42,7 +51,17 @@ func TestAddFlags(t *testing.T) {
 	commonutil.LeaderElectionDefault(&s.LeaderElection)
 	s.LeaderElection.ResourceName = "vc-controller-manager"
 	componentbaseoptions.BindLeaderElectionFlags(&s.LeaderElection, fs)
-	s.AddFlags(fs)
+	// knownControllers is a list of all known controllers.
+	var knownControllers = func() []string {
+		controllerNames := []string{}
+		fn := func(controller framework.Controller) {
+			controllerNames = append(controllerNames, controller.Name())
+		}
+		framework.ForeachController(fn)
+		sort.Strings(controllerNames)
+		return controllerNames
+	}
+	s.AddFlags(fs, knownControllers())
 	utilfeature.DefaultMutableFeatureGate.AddFlag(fs)
 
 	args := []string{
@@ -83,6 +102,7 @@ func TestAddFlags(t *testing.T) {
 		LockObjectNamespace: defaultLockObjectNamespace,
 		WorkerThreadsForPG:  5,
 		WorkerThreadsForGC:  1,
+		Controllers:         []string{"*"},
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{features.ResourceTopology: false}
 
@@ -97,5 +117,53 @@ func TestAddFlags(t *testing.T) {
 	err := s.CheckOptionOrDie()
 	if err != nil {
 		t.Errorf("expected nil but got %v\n", err)
+	}
+}
+
+func TestCheckControllers(t *testing.T) {
+	testCases := []struct {
+		name         string
+		serverOption *ServerOption
+		expectErr    error
+	}{
+		{
+			name: "normal case: use *",
+			serverOption: &ServerOption{
+				Controllers: []string{"*"},
+			},
+			expectErr: nil,
+		},
+		{
+			name: "normal case: use specific controller",
+			serverOption: &ServerOption{
+				Controllers: []string{"+gc-controller", "+jobtemplate-controller", "+jobflow-controller"},
+			},
+			expectErr: nil,
+		},
+		{
+			name: "fail case: use duplicate job-controller",
+			serverOption: &ServerOption{
+				Controllers: []string{"+gc-controller", "+job-controller", "-job-controller"},
+			},
+			expectErr: fmt.Errorf("controllers option %s cannot have both '-' and '+' prefixes", "-job-controller"),
+		},
+		{
+			name: "fail case: use * but combined with other input",
+			serverOption: &ServerOption{
+				Controllers: []string{"*", "+job-controller"},
+			},
+			expectErr: fmt.Errorf("wildcard '*' cannot be combined with other input"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.serverOption.checkControllers()
+			if err != nil {
+				if err.Error() != tc.expectErr.Error() {
+					t.Errorf("test case %s failed: expected: %v, but got: %v", tc.name, tc.expectErr, err)
+				}
+			}
+		})
 	}
 }

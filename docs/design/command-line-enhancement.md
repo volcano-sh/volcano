@@ -2,12 +2,17 @@
 
 [@jiangkaihua](jiangkaihua1@huawei.com); Dec. 16, 2019
 
+[@googs1025](https://github.com/googs1025); Jul. 14, 2024
+
 ## Catalog
 - [`vcctl` Command Line Enhancement](#vcctl-command-line-enhancement)
   - [Catalog](#catalog)
   - [Functions of `vcctl`](#functions-of-vcctl)
     - [Command `vcctl job`](#command-vcctl-job)
     - [Command `vcctl queue`](#command-vcctl-queue)
+    - [Command `vcctl jobflow`](#command-vcctl-jobflow)
+    - [Command `vcctl jobtemplate`](#command-vcctl-jobtemplate)
+    - [Command `vcctl pod`](#command-vcctl-pod)
   - [`vcctl` vs. Slurm Command Line](#vcctl-vs-slurm-command-line)
   - [New Format of Volcano Command Line](#new-format-of-volcano-command-line)
     - [For Common User](#for-common-user)
@@ -22,7 +27,7 @@
 | Command Format | Usage |
 | - | - |
 | `vcctl job delete -N <job_name> -n <namespace>` | delete a job |
-| `vcctl job list -S <scheduler> -n <namespace>` | list job info |
+| `vcctl job list -S <scheduler> -n <namespace> -q <queue_name>` | list job info |
 | `vcctl job resume -N <job_name> -n <namespace>` | resume a job |
 | `vcctl job run -f <yaml_file> -i <image> -L <resource_limit> -m <min_available> -N <job_name> -n <namespace> -r <replicas> -R <resource_requeset> -S <scheduler>` | run job by parameters from the command line |
 | `vcctl job suspend -N <job_name> -n <namespace>` | suspend a job |
@@ -36,6 +41,30 @@
 | `vcctl queue get -n <queue_name>` | get a queue |
 | `vcctl queue list ` | list all the queue |
 | `vcctl queue operate -a <open/close/update> -n <queue_name> -w <weight>` | operate a queue |
+
+### Command `vcctl jobflow`
+| Command Format | Usage |
+| - | - |
+| `vcctl jobflow create -f <jobflow yaml file>` | create a jobflow from yaml file |
+| `vcctl jobflow delete -f <jobflow yaml file>` | delete a jobflow from yaml file |
+| `vcctl jobflow get -N <jobflow_name> -n <namespace>` | get a jobflow |
+| `vcctl jobflow list ` | list all the jobflow |
+| `vcctl jobflow describe -N <jobflow_name> -n <namespace>` | describe a jobflow |
+
+### Command `vcctl jobtemplate`
+| Command Format | Usage |
+| - | - |
+| `vcctl jobtemplate create -f <jobtemplate yaml file>` | create a jobtemplate from yaml file |
+| `vcctl jobtemplate delete -f <jobtemplate yaml file>` | delete a jobtemplate from yaml file |
+| `vcctl jobtemplate get -N <jobtemplate_name> -n <namespace>` | get a jobtemplate |
+| `vcctl jobtemplate list ` | list all the jobtemplate |
+| `vcctl jobtemplate describe -N <jobtemplate_name> -n <namespace>` | describe a jobtemplate |
+
+### Command `vcctl pod`
+| Command Format | Usage |
+| - | - |
+| `vcctl pod list -q=<queue_name> -j=<vcjob_name>` | list all the pod list with specified queue name and specified job name |
+
 
 ## `vcctl` vs. Slurm Command Line
 The similar Slurm command lines are listed below:

@@ -23,13 +23,14 @@ import (
 
 	"github.com/spf13/pflag"
 	_ "go.uber.org/automaxprocs"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/cmd/webhook-manager/app"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
-
+	"volcano.sh/volcano/pkg/version"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/jobs/mutate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/jobs/validate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/podgroups/mutate"
@@ -49,6 +50,11 @@ func main() {
 	config.AddFlags(pflag.CommandLine)
 
 	cliflag.InitFlags()
+
+	if config.PrintVersion {
+		version.PrintVersionAndExit()
+		return
+	}
 
 	klog.StartFlushDaemon(*logFlushFreq)
 	defer klog.Flush()

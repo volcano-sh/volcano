@@ -171,7 +171,7 @@ spec:
         {{- end }}
     spec:
       containers:
-        - image: quay.io/coreos/kube-state-metrics:v1.9.7
+        - image: docker.io/volcanosh/kube-state-metrics:v2.0.0-beta
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           name: kube-state-metrics
           ports:

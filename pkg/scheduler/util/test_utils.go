@@ -285,6 +285,14 @@ func BuildQueueWithResourcesQuantity(qname string, deserved, cap v1.ResourceList
 	return queue
 }
 
+// BuildQueueWithPriorityAndResourcesQuantity return a queue with priority, deserved and capability resources quantity.
+func BuildQueueWithPriorityAndResourcesQuantity(qname string, priority int32, deserved, cap v1.ResourceList) *schedulingv1beta1.Queue {
+	queue := BuildQueue(qname, 1, cap)
+	queue.Spec.Deserved = deserved
+	queue.Spec.Priority = priority
+	return queue
+}
+
 // ////// build in resource //////
 // BuildPriorityClass return pc
 func BuildPriorityClass(name string, value int32) *schedulingv1.PriorityClass {
@@ -330,7 +338,7 @@ func (fb *FakeBinder) Length() int {
 }
 
 // Bind used by fake binder struct to bind pods
-func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) ([]*api.TaskInfo, []error) {
+func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) map[api.TaskID]string {
 	fb.Lock()
 	defer fb.Unlock()
 	for _, p := range tasks {
@@ -339,7 +347,7 @@ func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInf
 		fb.Channel <- key // need to wait binding pod because Bind process is asynchronous
 	}
 
-	return nil, nil
+	return nil
 }
 
 // FakeEvictor is used as fake evictor

@@ -127,9 +127,15 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.InheritOwnerAnnotations = opt.InheritOwnerAnnotations
 	controllerOpt.WorkerThreadsForPG = opt.WorkerThreadsForPG
 	controllerOpt.WorkerThreadsForGC = opt.WorkerThreadsForGC
+	controllerOpt.Config = config
 
 	return func(ctx context.Context) {
 		framework.ForeachController(func(c framework.Controller) {
+			// if controller is not enabled, skip it
+			if !isControllerEnabled(c.Name(), opt.Controllers) {
+				klog.Infof("Controller <%s> is not enable", c.Name())
+				return
+			}
 			if err := c.Initialize(controllerOpt); err != nil {
 				klog.Errorf("Failed to initialize controller <%s>: %v", c.Name(), err)
 				return
@@ -140,4 +146,34 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 
 		<-ctx.Done()
 	}
+}
+
+// isControllerEnabled check if a specified controller enabled or not.
+// If the input controllers starts with a "+name" or "name", it is considered as an explicit inclusion.
+// Otherwise, it is considered as an explicit exclusion.
+func isControllerEnabled(name string, controllers []string) bool {
+	hasStar := false
+	// if no explicit inclusion or exclusion, enable all controllers by default
+	if len(controllers) == 0 {
+		return true
+	}
+	for _, ctrl := range controllers {
+		// if we get here, there was an explicit inclusion
+		if ctrl == name {
+			return true
+		}
+		// if we get here, there was an explicit inclusion
+		if ctrl == "+"+name {
+			return true
+		}
+		// if we get here, there was an explicit exclusion
+		if ctrl == "-"+name {
+			return false
+		}
+		if ctrl == "*" {
+			hasStar = true
+		}
+	}
+	// if we get here, there was no explicit inclusion or exclusion
+	return hasStar
 }

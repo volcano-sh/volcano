@@ -142,7 +142,9 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			attr.inqueue.Add(job.GetMinResources())
+			// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
+			// so that it will not block other jobs from being inqueued.
+			attr.inqueue.Add(job.DeductSchGatedResources(job.GetMinResources()))
 		}
 
 		// calculate inqueue resource for running jobs
@@ -152,7 +154,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			job.PodGroup.Spec.MinResources != nil &&
 			int32(util.CalculateAllocatedTaskNum(job)) >= job.PodGroup.Spec.MinMember {
 			inqueued := util.GetInqueueResource(job, job.Allocated)
-			attr.inqueue.Add(inqueued)
+			attr.inqueue.Add(job.DeductSchGatedResources(inqueued))
 		}
 		attr.elastic.Add(job.GetElasticResources())
 		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
@@ -203,6 +205,11 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
+		if lv.Queue.Spec.Priority != rv.Queue.Spec.Priority {
+			// return negative means high priority
+			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
+		}
+
 		if cp.queueOpts[lv.UID].share == cp.queueOpts[rv.UID].share {
 			return 0
 		}
@@ -245,17 +252,20 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return victims, util.Permit
 	})
 
-	ssn.AddPreemptiveFn(cp.Name(), func(obj interface{}) bool {
+	ssn.AddPreemptiveFn(cp.Name(), func(obj interface{}, candidate interface{}) bool {
 		queue := obj.(*api.QueueInfo)
+		task := candidate.(*api.TaskInfo)
 		attr := cp.queueOpts[queue.UID]
 
-		overused := attr.deserved.LessEqual(attr.allocated, api.Zero)
+		overused := attr.deserved.LessEqualWithDimension(attr.allocated, task.InitResreq)
 		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
 			klog.V(3).Infof("Queue <%v> can not reclaim, deserved <%v>, allocated <%v>, share <%v>",
 				queue.Name, attr.deserved, attr.allocated, attr.share)
 		}
 
+		// PreemptiveFn is the opposite of OverusedFn in proportion plugin cause as long as there is a one-dimensional
+		// resource whose deserved is greater than allocated, current task can reclaim by preempt others.
 		return !overused
 	})
 
@@ -305,7 +315,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		inqueue := r.LessEqual(rr, api.Infinity)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
-			attr.inqueue.Add(job.GetMinResources())
+			attr.inqueue.Add(job.DeductSchGatedResources(job.GetMinResources()))
 			return util.Permit
 		}
 		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")

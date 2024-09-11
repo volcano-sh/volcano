@@ -70,7 +70,5 @@ CHART_OUT_PATH=${RELEASE_FOLDER}/chart
 rm -rf ${RELEASE_FOLDER}/chart
 cp -r "${CHART_ORIGIN_PATH}" "${CHART_OUT_PATH}"
 sed_i "s|image_tag_version: \"latest\"|image_tag_version: \"${VOLCANO_IMAGE_TAG}\"|g" $(find ${CHART_OUT_PATH} -type f | grep values.yaml)
-sed_i "s|version: 1.5|version: ${VOLCANO_CHART_VERSION}|g" $(find ${CHART_OUT_PATH} -type f | grep Chart.yaml)
-sed_i "s|appVersion: 0.1|appVersion: ${VOLCANO_CHART_VERSION}|g" $(find ${CHART_OUT_PATH} -type f | grep Chart.yaml)
-helm package "${CHART_OUT_PATH}/volcano" -d "${CHART_OUT_PATH}"
+helm package --version ${VOLCANO_CHART_VERSION} --app-version ${VOLCANO_CHART_VERSION} "${CHART_OUT_PATH}/volcano" -d "${CHART_OUT_PATH}"
 echo "helm package end, charts is in ${CHART_OUT_PATH}"

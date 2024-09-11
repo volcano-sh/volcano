@@ -82,7 +82,7 @@ func TestAddTaskInfo(t *testing.T) {
 					},
 				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
-				TaskMinAvailable: make(map[TaskID]int32),
+				TaskMinAvailable: make(map[string]int32),
 				Budget:           &DisruptionBudget{},
 			},
 		},
@@ -149,7 +149,7 @@ func TestDeleteTaskInfo(t *testing.T) {
 					Running: {case01Task3.UID: case01Task3},
 				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
-				TaskMinAvailable: make(map[TaskID]int32),
+				TaskMinAvailable: make(map[string]int32),
 				Budget:           &DisruptionBudget{},
 			},
 		},
@@ -175,7 +175,7 @@ func TestDeleteTaskInfo(t *testing.T) {
 					},
 				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
-				TaskMinAvailable: make(map[TaskID]int32),
+				TaskMinAvailable: make(map[string]int32),
 				Budget:           &DisruptionBudget{},
 			},
 		},
@@ -210,10 +210,13 @@ func TestTaskSchedulingReason(t *testing.T) {
 	t5 := buildPod("ns1", "task-5", "node3", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
 	t6 := buildPod("ns1", "task-6", "", v1.PodPending, BuildResourceList("1", "1G"), nil, make(map[string]string))
 
+	originReason1 := ". Origin reason is task-6: 0/3 nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed."
+
 	tests := []struct {
 		desc     string
 		pods     []*v1.Pod
 		jobid    JobID
+		origin   string // origin reason string from first failed pod
 		nodefes  map[TaskID]*FitErrors
 		expected map[types.UID]string
 	}{
@@ -224,16 +227,16 @@ func TestTaskSchedulingReason(t *testing.T) {
 			nodefes: map[TaskID]*FitErrors{
 				TaskID(t6.UID): {
 					nodes: map[string]*FitError{
-						"node1": {Reasons: []string{NodePodNumberExceeded}},
-						"node2": {Reasons: []string{NodeResourceFitFailed}},
-						"node3": {Reasons: []string{NodeResourceFitFailed}},
+						"node1": {Status: []*Status{{Reason: NodePodNumberExceeded}}},
+						"node2": {Status: []*Status{{Reason: NodeResourceFitFailed}}},
+						"node3": {Status: []*Status{{Reason: NodeResourceFitFailed}}},
 					},
 				},
 			},
 			expected: map[types.UID]string{
-				"pg":   "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable",
-				t1.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable",
-				t2.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable",
+				"pg":   "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable" + originReason1,
+				t1.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable" + originReason1,
+				t2.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable" + originReason1,
 				t3.UID: "Pod ns1/task-3 can possibly be assigned to node1",
 				t4.UID: "Pod ns1/task-4 can possibly be assigned to node2",
 				t5.UID: "Pod ns1/task-5 can possibly be assigned to node3",
@@ -287,9 +290,8 @@ func TestTaskSchedulingReason(t *testing.T) {
 			if uid != "pg" {
 				_, msg, _ = job.TaskSchedulingReason(TaskID(uid))
 			}
-			t.Logf("case #%d, task %v, result: %s", i, uid, msg)
 			if msg != exp {
-				t.Errorf("[x] case #%d, task %v, expected: %s, got: %s", i, uid, exp, msg)
+				t.Errorf("[x] case #%d, task %v\nwant: %s\n got: %s", i, uid, exp, msg)
 			}
 		}
 	}

@@ -40,7 +40,7 @@ var (
 			Subsystem: VolcanoNamespace,
 			Name:      "e2e_scheduling_latency_milliseconds",
 			Help:      "E2e scheduling latency in milliseconds (scheduling algorithm + binding)",
-			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
+			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
 		},
 	)
 
@@ -83,18 +83,18 @@ var (
 	pluginSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoNamespace,
-			Name:      "plugin_scheduling_latency_microseconds",
-			Help:      "Plugin scheduling latency in microseconds",
-			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
+			Name:      "plugin_scheduling_latency_milliseconds",
+			Help:      "Plugin scheduling latency in milliseconds",
+			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
 		}, []string{"plugin", "OnSession"},
 	)
 
 	actionSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoNamespace,
-			Name:      "action_scheduling_latency_microseconds",
-			Help:      "Action scheduling latency in microseconds",
-			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
+			Name:      "action_scheduling_latency_milliseconds",
+			Help:      "Action scheduling latency in milliseconds",
+			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
 		}, []string{"action"},
 	)
 
@@ -103,7 +103,7 @@ var (
 			Subsystem: VolcanoNamespace,
 			Name:      "task_scheduling_latency_milliseconds",
 			Help:      "Task scheduling latency in milliseconds",
-			Buckets:   prometheus.ExponentialBuckets(5, 2, 10),
+			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
 		},
 	)
 
@@ -150,12 +150,12 @@ var (
 
 // UpdatePluginDuration updates latency for every plugin
 func UpdatePluginDuration(pluginName, onSessionStatus string, duration time.Duration) {
-	pluginSchedulingLatency.WithLabelValues(pluginName, onSessionStatus).Observe(DurationInMicroseconds(duration))
+	pluginSchedulingLatency.WithLabelValues(pluginName, onSessionStatus).Observe(DurationInMilliseconds(duration))
 }
 
 // UpdateActionDuration updates latency for every action
 func UpdateActionDuration(actionName string, duration time.Duration) {
-	actionSchedulingLatency.WithLabelValues(actionName).Observe(DurationInMicroseconds(duration))
+	actionSchedulingLatency.WithLabelValues(actionName).Observe(DurationInMilliseconds(duration))
 }
 
 // UpdateE2eDuration updates entire end to end scheduling latency

@@ -34,7 +34,9 @@ Usage:
 Available Commands:
   help        Help about any command
   job         vcctl command line operation job
+  jobflow     vcctl command line operation jobflow
   jobtemplate vcctl command line operation jobtemplate
+  pod         vcctl command line operation pod
   queue       Queue Operations
   version     Print the version information
 
@@ -99,6 +101,7 @@ Flags:
   -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
   -s, --master string       the address of apiserver
   -n, --namespace string    the namespace of job (default "default")
+  -q, --queue string        list job with specified queue name
   -S, --scheduler string    list job with specified scheduler name
       --selector string     fuzzy matching jobName
 

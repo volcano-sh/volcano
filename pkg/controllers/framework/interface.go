@@ -19,6 +19,7 @@ package framework
 import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -37,6 +38,10 @@ type ControllerOption struct {
 	InheritOwnerAnnotations bool
 	WorkerThreadsForPG      uint32
 	WorkerThreadsForGC      uint32
+
+	// Config holds the common attributes that can be passed to a Kubernetes client
+	// and controllers registered by the users can use it.
+	Config *rest.Config
 }
 
 // Controller is the interface of all controllers.
