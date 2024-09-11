@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -117,10 +116,6 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	job.Status.Unknown = unknown
 	job.Status.TaskStatusCount = taskStatusCount
 
-	// Update running duration
-	klog.V(3).Infof("Running duration is %s", metav1.Duration{Duration: time.Since(jobInfo.Job.CreationTimestamp.Time)}.ToUnstructured())
-	job.Status.RunningDuration = &metav1.Duration{Duration: time.Since(jobInfo.Job.CreationTimestamp.Time)}
-
 	if updateStatus != nil {
 		if updateStatus(&job.Status) {
 			job.Status.State.LastTransitionTime = metav1.Now()
@@ -128,6 +123,11 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 			job.Status.Conditions = append(job.Status.Conditions, jobCondition)
 		}
 	}
+
+	// Update running duration
+	runningDuration := metav1.Duration{Duration: job.Status.State.LastTransitionTime.Sub(jobInfo.Job.CreationTimestamp.Time)}
+	klog.V(3).Infof("Running duration is %s", runningDuration.ToUnstructured())
+	job.Status.RunningDuration = &runningDuration
 
 	// must be called before update job status
 	if err := cc.pluginOnJobDelete(job); err != nil {
