@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -196,7 +195,7 @@ func (gc *gccontroller) processJob(key string) error {
 	klog.V(4).Infof("Checking if Job %s/%s is ready for cleanup", namespace, name)
 	// Ignore the Jobs that are already deleted or being deleted, or the ones that don't need clean up.
 	job, err := gc.jobLister.Jobs(namespace).Get(name)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
@@ -214,7 +213,7 @@ func (gc *gccontroller) processJob(key string) error {
 	// If TTL is modified before we do this check, we cannot be sure if the TTL truly expires.
 	// The latest Job may have a different UID, but it's fine because the checks will be run again.
 	fresh, err := gc.vcClient.BatchV1alpha1().Jobs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
