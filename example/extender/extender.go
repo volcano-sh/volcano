@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 
+	"k8s.io/klog/v2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 )
@@ -49,6 +50,7 @@ func onSessionOpen(w http.ResponseWriter, r *http.Request) {
 		NamespaceInfo:  req.NamespaceInfo,
 		RevocableNodes: req.RevocableNodes,
 	}
+	klog.V(4).Infof("the snapshot of cluster %+v", *snapshot)
 }
 
 func onSessionClose(w http.ResponseWriter, r *http.Request) {
