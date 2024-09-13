@@ -52,8 +52,8 @@ func NewMetricsClient(restConfig *rest.Config, metricsConf map[string]string) (M
 	} else if metricsType == Metrics_Type_Prometheus_Adaptor {
 		return NewCustomMetricsClient(restConfig)
 	} else {
-		return nil, fmt.Errorf("Data cannot be collected from the %s monitoring system. "+
-			"The supported monitoring systems are %s, %s, and %s.",
+		return nil, fmt.Errorf("data cannot be collected from the %s monitoring system. "+
+			"The supported monitoring systems are %s, %s, and %s",
 			metricsType, Metrics_Type_Elasticsearch, Metrics_Tpye_Prometheus, Metrics_Type_Prometheus_Adaptor)
 	}
 }

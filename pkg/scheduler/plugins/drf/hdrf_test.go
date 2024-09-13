@@ -37,20 +37,6 @@ func mergePods(pods ...[]*v1.Pod) []*v1.Pod {
 	return ret
 }
 
-type queueSpec struct {
-	name      string
-	hierarchy string
-	weights   string
-}
-
-type pgSpec struct {
-	taskNum int
-	cpu     string
-	mem     string
-	pg      string
-	queue   string
-}
-
 func TestHDRF(t *testing.T) {
 	options.Default()
 

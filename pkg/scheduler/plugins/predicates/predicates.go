@@ -346,7 +346,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			// require to run the Pod. So there will be no overbooking. However, to
 			// avoid the inconsistency in resource calculation between the scheduler
 			// and the older (before v1.28) kubelet, make the Pod unschedulable.
-			return fmt.Errorf("Pod has a restartable init container and the SidecarContainers feature is disabled")
+			return fmt.Errorf("pod has a restartable init container and the SidecarContainers feature is disabled")
 		}
 
 		// InterPodAffinity Predicate
