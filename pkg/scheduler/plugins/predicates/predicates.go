@@ -491,8 +491,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		if predicate.nodeVolumeLimitsEnable {
 			status := nodeVolumeLimitsCSIFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 			nodeVolumeStatus := api.ConvertPredicateStatus(status)
-			predicateStatus = append(predicateStatus, nodeVolumeStatus)
-			return api.NewFitErrWithStatus(task, node, predicateStatus...)
+			if nodeVolumeStatus.Code != api.Success {
+				predicateStatus = append(predicateStatus, nodeVolumeStatus)
+				return api.NewFitErrWithStatus(task, node, predicateStatus...)
+			}
 		}
 
 		// Check VolumeZone
