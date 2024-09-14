@@ -125,6 +125,7 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 	})
 
 	ginkgo.It("allocate don't work when podgroup is pending", func() {
+		ginkgo.Skip("TODO: need to fix this test. It's useless to directly associate podgroup with job. The job will still create its own podgroup, so the resources are sufficient and j2 can be running.")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			NodesNumLimit: 2,
 			NodesResourceLimit: corev1.ResourceList{
