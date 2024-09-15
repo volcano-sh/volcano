@@ -22,15 +22,20 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-type Action struct{}
+type Action struct {
+	enablePredicateErrorCache bool
+}
 
 func New() *Action {
-	return &Action{}
+	return &Action{
+		enablePredicateErrorCache: true,
+	}
 }
 
 func (pmpt *Action) Name() string {
@@ -39,9 +44,16 @@ func (pmpt *Action) Name() string {
 
 func (pmpt *Action) Initialize() {}
 
+func (pmpt *Action) parseArguments(ssn *framework.Session) {
+	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, pmpt.Name())
+	arguments.GetBool(&pmpt.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+}
+
 func (pmpt *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Preempt ...")
 	defer klog.V(5).Infof("Leaving Preempt ...")
+
+	pmpt.parseArguments(ssn)
 
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
@@ -116,7 +128,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 				preemptor := preemptorTasks[preemptorJob.UID].Pop().(*api.TaskInfo)
 
-				assigned, err = preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
+				assigned, err = pmpt.preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
 					// Ignore non running task.
 					if !api.PreemptableStatus(task.Status) {
 						return false
@@ -176,7 +188,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 				preemptor := preemptorTasks[job.UID].Pop().(*api.TaskInfo)
 
 				stmt := framework.NewStatement(ssn)
-				assigned, err := preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
+				assigned, err := pmpt.preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
 					// Ignore non running task.
 					if !api.PreemptableStatus(task.Status) {
 						return false
@@ -212,7 +224,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 func (pmpt *Action) UnInitialize() {}
 
-func preempt(
+func (pmpt *Action) preempt(
 	ssn *framework.Session,
 	stmt *framework.Statement,
 	preemptor *api.TaskInfo,
@@ -228,7 +240,7 @@ func preempt(
 	predicateFn := ssn.PredicateForPreemptAction
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
 	allNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(preemptor)
-	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, predicateFn, true)
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, predicateFn, pmpt.enablePredicateErrorCache)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 

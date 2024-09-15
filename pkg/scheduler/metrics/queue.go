@@ -148,6 +148,11 @@ func UpdateQueueDeserved(queueName string, milliCPU, memory float64) {
 // UpdateQueueShare records share for one queue
 func UpdateQueueShare(queueName string, share float64) {
 	queueShare.WithLabelValues(queueName).Set(share)
+	if share > 1 {
+		queueOverused.WithLabelValues(queueName).Set(1)
+	} else {
+		queueOverused.WithLabelValues(queueName).Set(0)
+	}
 }
 
 // UpdateQueueWeight records weight for one queue
