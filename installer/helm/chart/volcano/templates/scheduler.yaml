@@ -189,6 +189,18 @@ spec:
             {{- if .Values.custom.leader_elect_enable }}
             - --leader-elect-resource-namespace={{ .Release.Namespace }}
             {{- end }}
+            {{- if .Values.custom.scheduler_kube_api_qps }}
+            - --kube-api-qps={{.Values.custom.scheduler_kube_api_qps}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_kube_api_burst }}
+            - --kube-api-burst={{.Values.custom.scheduler_kube_api_burst}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_schedule_period }}
+            - --schedule-period={{.Values.custom.scheduler_schedule_period}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_node_worker_threads }}
+            - --node-worker-threads={{.Values.custom.scheduler_node_worker_threads}}
+            {{- end }}
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1
           env:

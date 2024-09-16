@@ -144,33 +144,48 @@ spec:
       priorityClassName: system-cluster-critical
       {{- if .Values.basic.image_pull_secret }}
       imagePullSecrets:
-          - name: {{ .Values.basic.image_pull_secret }}
+        - name: {{ .Values.basic.image_pull_secret }}
       {{- end }}
       containers:
-          - name: {{ .Release.Name }}-controllers
+        - name: {{ .Release.Name }}-controllers
             {{- if .Values.custom.controller_resources }}
-            resources:
+          resources:
             {{- toYaml .Values.custom.controller_resources | nindent 14 }}
             {{- end }}
-            image: {{ .Values.basic.image_registry }}/{{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
-            args:
-              - --logtostderr
-              - --enable-healthz=true
+          image: {{ .Values.basic.image_registry }}/{{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
+          args:
+            - --logtostderr
+            - --enable-healthz=true
               {{- if .Values.custom.controller_metrics_enable }}
-              - --enable-metrics=true
+            - --enable-metrics=true
               {{- end }}
-              - --leader-elect={{ .Values.custom.leader_elect_enable }}
+            - --leader-elect={{ .Values.custom.leader_elect_enable }}
               {{- if $scheduler_name }}
-              - --scheduler-name={{- $scheduler_name }}
+            - --scheduler-name={{- $scheduler_name }}
               {{- end }}
               {{- if .Values.custom.leader_elect_enable }}
-              - --leader-elect-resource-namespace={{ .Release.Namespace }}
+            - --leader-elect-resource-namespace={{ .Release.Namespace }}
               {{- end }}
-              - -v={{.Values.custom.controller_log_level}}
-              - 2>&1
-            imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+              {{- if .Values.custom.controller_kube_api_qps }}
+            - --kube-api-qps={{.Values.custom.controller_kube_api_qps}}
+              {{- end }}
+              {{- if .Values.custom.controller_kube_api_burst }}
+            - --kube-api-burst={{.Values.custom.controller_kube_api_burst}}
+              {{- end }}
+              {{- if .Values.custom.controller_worker_threads }}
+            - --worker-threads={{.Values.custom.controller_worker_threads}}
+              {{- end }}
+              {{- if .Values.custom.controller_worker_threads_for_gc }}
+            - --worker-threads-for-gc={{.Values.custom.controller_worker_threads_for_gc}}
+              {{- end }}
+              {{- if .Values.custom.controller_worker_threads_for_podgroup }}
+            - --worker-threads-for-podgroup={{.Values.custom.controller_worker_threads_for_podgroup}}
+              {{- end }}
+            - -v={{.Values.custom.controller_log_level}}
+            - 2>&1
+          imagePullPolicy: {{ .Values.basic.image_pull_policy }}
             {{- if .Values.custom.controller_default_csc }}
-            securityContext:
+          securityContext:
               {{- toYaml .Values.custom.controller_default_csc | nindent 14 }}
             {{- end }}
 ---
