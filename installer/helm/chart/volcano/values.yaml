@@ -19,6 +19,10 @@ custom:
   scheduler_enable: true
   scheduler_replicas: 1
   leader_elect_enable: false
+  controller_kube_api_qps: 3000
+  controller_kube_api_burst: 3000
+  scheduler_kube_api_qps: 10000
+  scheduler_kube_api_burst: 10000
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
 
 # Override the configuration for admission or scheduler.
@@ -37,6 +41,8 @@ custom:
 #      - name: drf
 #        enablePreemptable: false
 #      - name: predicates
+#        arguments:
+#          predicate.CacheEnable: true
 #      - name: proportion
 #      - name: nodeorder
 #      - name: binpack
@@ -143,7 +149,7 @@ custom:
   webhooks_namespace_selector_expressions: ~
 
 
-# Specify log level for Volcano main component  
+# Specify log level for Volcano main component
   admission_log_level: 4
   scheduler_log_level: 3
   controller_log_level: 4
