@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -51,6 +52,16 @@ import (
 func TestMain(m *testing.M) {
 	options.Default()
 	os.Exit(m.Run())
+}
+
+func TestParseArgs(t *testing.T) {
+	test := uthelper.TestCommonStruct{Name: "set cache false"}
+
+	action := New()
+	test.RegisterSession(nil, []conf.Configuration{{Name: action.Name(),
+		Arguments: map[string]interface{}{conf.EnablePredicateErrCacheKey: false}}})
+	test.Run([]framework.Action{action})
+	assert.False(t, action.enablePredicateErrorCache)
 }
 
 func TestAllocate(t *testing.T) {
