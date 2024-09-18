@@ -124,6 +124,18 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 	queue8 := util.BuildQueueWithPriorityAndResourcesQuantity("q8", 1, nil, api.BuildResourceList("2", "4Gi"))
 	queue9 := util.BuildQueueWithPriorityAndResourcesQuantity("q9", 10, nil, api.BuildResourceList("2", "4Gi"))
 
+	// case5: p16 + p17 in queue10 will exceed queue's deserved, is not preemptive
+	p16 := util.BuildPod("ns1", "p16", "n1", corev1.PodRunning, api.BuildResourceList("1", "3Gi"), "pg16", make(map[string]string), nil)
+	p17 := util.BuildPod("ns1", "p17", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg17", make(map[string]string), nil)
+	p18 := util.BuildPod("ns1", "p18", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg18", make(map[string]string), nil)
+	// podgroup
+	pg16 := util.BuildPodGroup("pg16", "ns1", "q10", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg17 := util.BuildPodGroup("pg17", "ns1", "q10", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg18 := util.BuildPodGroup("pg18", "ns1", "q11", 1, nil, schedulingv1beta1.PodGroupRunning)
+	// queue
+	queue10 := util.BuildQueueWithResourcesQuantity("q10", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("4", "4Gi"))
+	queue11 := util.BuildQueueWithResourcesQuantity("q11", api.BuildResourceList("0", "0Gi"), api.BuildResourceList("2", "2Gi"))
+
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name:      "case0: Pod allocatable when queue has not exceed capability",
@@ -182,7 +194,19 @@ func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
 			ExpectBindMap: map[string]string{
 				"ns1/p15": "n6",
 			},
+
 			ExpectBindsNum: 1,
+		},
+		{
+			Name:            "case5: Can not reclaim from other queues when allocated + req > deserved",
+			Plugins:         plugins,
+			Pods:            []*corev1.Pod{p16, p17, p18},
+			Nodes:           []*corev1.Node{n1},
+			PodGroups:       []*schedulingv1beta1.PodGroup{pg16, pg17, pg18},
+			Queues:          []*schedulingv1beta1.Queue{queue10, queue11},
+			ExpectPipeLined: map[string][]string{},
+			ExpectEvicted:   []string{},
+			ExpectEvictNum:  0,
 		},
 	}
 

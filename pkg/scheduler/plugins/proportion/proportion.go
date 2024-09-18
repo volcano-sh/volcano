@@ -315,8 +315,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		attr := pp.queueOpts[queue.UID]
 
-		free, _ := attr.deserved.Diff(attr.allocated, api.Zero)
-		allocatable := candidate.Resreq.LessEqual(free, api.Zero)
+		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
+		allocatable := futureUsed.LessEqualWithDimension(attr.deserved, candidate.Resreq)
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
@@ -346,16 +346,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s>",
 			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String())
 		// The queue resource quota limit has not reached
-		r := minReq.Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
-		rr := attr.realCapability.Clone()
+		r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 
-		for name := range rr.ScalarResources {
-			if _, ok := r.ScalarResources[name]; !ok {
-				delete(rr.ScalarResources, name)
-			}
-		}
-
-		inqueue := r.LessEqual(rr, api.Infinity)
+		inqueue := r.LessEqualWithDimension(attr.realCapability, minReq)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
 			// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
