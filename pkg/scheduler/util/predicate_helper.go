@@ -25,6 +25,13 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 	var errorLock sync.RWMutex
 	fe := api.NewFitErrors()
 
+	// don't enable error cache if task's TaskRole is empty, because different pods with empty TaskRole will all
+	// have the same taskGroupID, and one pod predicate failed, all other pods will also be failed
+	// see issue: https://github.com/volcano-sh/volcano/issues/3527
+	if len(task.TaskRole) == 0 {
+		enableErrorCache = false
+	}
+
 	allNodes := len(nodes)
 	if allNodes == 0 {
 		return make([]*api.NodeInfo, 0), fe
