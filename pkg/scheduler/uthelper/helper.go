@@ -131,6 +131,13 @@ func (test *TestCommonStruct) Run(actions []framework.Action) {
 	if len(actions) == 0 {
 		panic("no actions provided, please specify a list of actions to execute")
 	}
+
+	// registry actions in conf variables
+	conf.EnabledActionMap = make(map[string]bool, len(actions))
+	for _, action := range actions {
+		conf.EnabledActionMap[action.Name()] = true
+	}
+
 	for _, action := range actions {
 		action.Initialize()
 		action.Execute(test.ssn)
