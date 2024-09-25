@@ -205,6 +205,12 @@ metadata:
     prometheus.io/port: "8080"
     prometheus.io/scrape: "true"
 spec:
+  {{- if .Values.service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.service.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.service.ipFamilies }}
+  ipFamilies: {{ toYaml .Values.service.ipFamilies | nindent 4 }}
+  {{- end }}
   ports:
   - name: http-metrics
     port: 8080
