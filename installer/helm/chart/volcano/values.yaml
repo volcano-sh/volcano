@@ -92,7 +92,7 @@ custom:
   admission_ns: ~
   scheduler_ns: ~
   controller_ns: ~
-
+  kube_state_metrics_ns: ~
 
 # Specify labels for Volcano main component deployments and pods
 # For example:

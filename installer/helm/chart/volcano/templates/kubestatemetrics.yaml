@@ -1,4 +1,5 @@
 {{- if .Values.custom.metrics_enable }}
+{{ $kube_state_metrics_ns := or .Values.custom.kube_state_metrics_ns .Values.custom.default_ns }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -184,9 +185,8 @@ spec:
             initialDelaySeconds: 5
             timeoutSeconds: 5
       dnsPolicy: ClusterFirst
-      {{ if .Values.custom.metrics_enable }}
-      nodeSelector:
-        node.kubernetes.io/instance-type: controlpanel
+      {{ if $kube_state_metrics_ns }}
+      nodeSelector: {{- toYaml $kube_state_metrics_ns | nindent 8 }}
       {{ end }}
       serviceAccountName: kube-state-metrics
 ---

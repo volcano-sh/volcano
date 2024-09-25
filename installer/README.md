@@ -116,6 +116,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.admission_ns`|nodeSelector for Admission pods|`~`|
 |`custom.controller_ns`|nodeSelector for Controller pods|`~`|
 |`custom.scheduler_ns`|nodeSelector for Scheduler pods|`~`|
+|`custom.kube_state_metrics_ns`|nodeSelector for Kube State Metrics pods|`~`|
 |`custom.admission_podLabels`|Pod labels for Admission pods|`~`|
 |`custom.controller_podLabels`|Pod labels for Controller pods|`~`|
 |`custom.scheduler_podLabels`|Pod labels for Scheduler pods|`~`|
