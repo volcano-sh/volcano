@@ -2,12 +2,6 @@
 
 @Vacant2333 2024/9/22
 
-容量管理需要: 决定目前是否还能提交任务, 是否达到容量上限(allocatable func)
-capacity插件, 是否用超deserve(overused func)
-queue的优先级排序也写在这里面,(从priority插件挪到这里, priority插件只管rb)
-调度的最终逻辑需要修改, 判断overused, 而不是一个queue把资源全部拿完
-
-
 ## Introduction
 
 Target issue: [OSPP 2024: Volcano Support Multi-Cloud AI Job Scheduling(queue capacity management)](https://github.com/volcano-sh/volcano/issues/3731)
@@ -28,4 +22,36 @@ This proposal targets the queue capacity management capability.
 - Support queue capacity management
 
 ## Proposal
+
+### Background
+
+![volcano-global-design](../images/volcano_global_design.png)
+
+Currently, the design goal of `volcano-global` is to implement dispatch capabilities in a manner similar to `Kueue`.
+When we create a `ResourceBinding` (a CRD in Karmada,
+used to describe the operation of 'resource distribution to worker clusters'),
+we suspend it similar to a Job resource.
+Then, it is handed over to our Dispatcher (Controller) to implement capabilities such as queuing,
+sorting, and capacity management.
+
+Currently, the Dispatcher can only handle queue and task sorting.
+
+We need to expand the extensibility of the Dispatcher on this basis, to implement capacity management and multi-tenant
+required capabilities such as **allocatable** (determining whether a task can be submitted), **overused**
+(judging whether it exceeds deserve before each task dispatch), and other support points that the Dispatcher should extend.
+
+### Capacity Plugin
+
+My implementation plan is to provide capacity management capabilities in the **Dispatcher** through the form of plugins.
+For example, job sorting capabilities in the **Dispatcher** are implemented through the **Priority** plugin.
+I will name this plugin **Capacity**,
+and it will provide the necessary functionality for capacity management by implementing the following **Func**.
+
+#### Enqueueable
+
+#### Allocatable
+
+#### QueueOrder
+
+#### Overused
 
