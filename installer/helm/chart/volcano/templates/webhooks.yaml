@@ -1,5 +1,5 @@
 {{- if .Values.custom.admission_enable }}
-
+{{ $scheduler_name := .Values.custom.scheduler_name | default "volcano" }}
 {{- if .Values.custom.enabled_admissions | regexMatch "/pods/mutate" }}
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -18,7 +18,7 @@ webhooks:
         namespace: {{ .Release.Namespace }}
         path: /pods/mutate
         port: 443
-    failurePolicy: Fail
+    failurePolicy: Ignore
     matchPolicy: Equivalent
     name: mutatepod.volcano.sh
     namespaceSelector:
@@ -33,6 +33,9 @@ webhooks:
 {{- end }}
     objectSelector: {}
     reinvocationPolicy: Never
+    matchConditions:
+    - expression: object.spec.schedulerName == '{{- $scheduler_name }}'
+      name: scheduler-name-match
     rules:
       - apiGroups:
           - ""
@@ -262,7 +265,7 @@ webhooks:
         namespace: {{ .Release.Namespace }}
         path: /pods/validate
         port: 443
-    failurePolicy: Fail
+    failurePolicy: Ignore
     matchPolicy: Equivalent
     name: validatepod.volcano.sh
     namespaceSelector:
@@ -276,6 +279,9 @@ webhooks:
         {{- toYaml .Values.custom.webhooks_namespace_selector_expressions | nindent 8 }}
 {{- end }}
     objectSelector: {}
+    matchConditions:
+    - expression: object.spec.schedulerName == '{{- $scheduler_name }}'
+      name: scheduler-name-match
     rules:
       - apiGroups:
           - ""
