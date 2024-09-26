@@ -92,9 +92,9 @@ func TestAddFlags(t *testing.T) {
 		InheritOwnerAnnotations: true,
 		LeaderElection: config.LeaderElectionConfiguration{
 			LeaderElect:       true,
-			LeaseDuration:     metav1.Duration{60 * time.Second},
-			RenewDeadline:     metav1.Duration{20 * time.Second},
-			RetryPeriod:       metav1.Duration{10 * time.Second},
+			LeaseDuration:     metav1.Duration{Duration: 60 * time.Second},
+			RenewDeadline:     metav1.Duration{Duration: 20 * time.Second},
+			RetryPeriod:       metav1.Duration{Duration: 10 * time.Second},
 			ResourceLock:      resourcelock.LeasesResourceLock,
 			ResourceNamespace: defaultLockObjectNamespace,
 			ResourceName:      "vc-controller-manager",
