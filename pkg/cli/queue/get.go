@@ -63,21 +63,38 @@ func GetQueue(ctx context.Context) error {
 		return err
 	}
 
-	PrintQueue(queue, os.Stdout)
+	// Currently CRD does not support filtering directly from kube-apiserver using fieldSelector,
+	// The featuregate called CustomResourceFieldSelectors is turned off by default in kube-apiserver
+	// and is still in alpha in v1.30. Therefore we can only get all the podgroups from kube-apiserver
+	// and then filtering them.
+	pgList, err := queueClient.SchedulingV1beta1().PodGroups("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list podgroup for queue %s with err: %v", getQueueFlags.Name, err)
+	}
+
+	pgStats := &podGroupStatistics{}
+	for _, pg := range pgList.Items {
+		if pg.Spec.Queue == getQueueFlags.Name {
+			pgStats.statPodGroupCountsForQueue(&pg)
+		}
+	}
+
+	PrintQueue(queue, pgStats, os.Stdout)
 
 	return nil
 }
 
 // PrintQueue prints queue information.
-func PrintQueue(queue *v1beta1.Queue, writer io.Writer) {
-	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s\n",
-		Name, Weight, State, Inqueue, Pending, Running, Unknown)
+func PrintQueue(queue *v1beta1.Queue, pgStats *podGroupStatistics, writer io.Writer) {
+	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s%-8s\n",
+		Name, Weight, State, Inqueue, Pending, Running, Unknown, Completed)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)
 	}
-	_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8d%-8d%-8d%-8d\n",
-		queue.Name, queue.Spec.Weight, queue.Status.State, queue.Status.Inqueue,
-		queue.Status.Pending, queue.Status.Running, queue.Status.Unknown)
+
+	_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8d%-8d%-8d%-8d%-8d\n",
+		queue.Name, queue.Spec.Weight, queue.Status.State, pgStats.inqueue,
+		pgStats.pending, pgStats.running, pgStats.unknown, pgStats.completed)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)
 	}
