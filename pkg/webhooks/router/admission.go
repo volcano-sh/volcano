@@ -58,6 +58,8 @@ func ForEachAdmission(config *options.Config, handler func(*AdmissionService) er
 			if err := handler(service); err != nil {
 				return err
 			}
+		} else {
+			return fmt.Errorf("enabled admission %s not found on the admission registered map", admission)
 		}
 	}
 	return nil
