@@ -20,11 +20,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"testing"
+	"time"
+
 	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"reflect"
-	"testing"
+	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingapi "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -663,4 +666,124 @@ func TestDeleteJobPod(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRecordPodGroupEvent(t *testing.T) {
+	job1 := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "job1",
+			Namespace:       "default",
+			ResourceVersion: "100",
+			UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+		},
+		Spec: v1alpha1.JobSpec{
+			Tasks: []v1alpha1.TaskSpec{},
+		},
+		Status: v1alpha1.JobStatus{
+			State: v1alpha1.JobState{
+				Phase: v1alpha1.Running,
+			},
+		},
+	}
+
+	pg1 := &schedulingapi.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
+			Namespace: "default",
+		},
+		Spec: schedulingapi.PodGroupSpec{
+			MinResources:  &v1.ResourceList{},
+			MinTaskMember: map[string]int32{},
+		},
+		Status: schedulingapi.PodGroupStatus{
+			Phase:      schedulingapi.PodGroupRunning,
+			Conditions: []schedulingapi.PodGroupCondition{},
+		},
+	}
+	testcases := []struct {
+		Name         string
+		pgConditions []schedulingapi.PodGroupCondition
+		ExpectEvent  string
+	}{
+		{
+			Name:         "pg with no conditions",
+			pgConditions: []schedulingapi.PodGroupCondition{},
+			ExpectEvent:  "",
+		},
+		{
+			Name: "pg with Unschedulable condition",
+			pgConditions: []schedulingapi.PodGroupCondition{
+				{
+					Type:               schedulingapi.PodGroupUnschedulableType,
+					Status:             v1.ConditionTrue,
+					Reason:             "test reason",
+					Message:            "test message",
+					LastTransitionTime: metav1.NewTime(time.Date(2024, time.July, 1, 15, 4, 5, 0, time.UTC)),
+				},
+			},
+			ExpectEvent: "Warning PodGroupPending PodGroup default:job1 unschedulable, reason: test message",
+		},
+		{
+			Name: "pg with Unschedulable later than Scheduled",
+			pgConditions: []schedulingapi.PodGroupCondition{
+				{
+					Type:               schedulingapi.PodGroupUnschedulableType,
+					Status:             v1.ConditionTrue,
+					Reason:             "test reason",
+					Message:            "test message",
+					LastTransitionTime: metav1.NewTime(time.Date(2024, time.July, 1, 15, 15, 5, 0, time.UTC)),
+				},
+				{
+					Type:               schedulingapi.PodGroupScheduled,
+					Status:             v1.ConditionTrue,
+					Reason:             "test reason",
+					Message:            "test message",
+					LastTransitionTime: metav1.NewTime(time.Date(2024, time.July, 1, 15, 4, 5, 0, time.UTC)),
+				},
+			},
+			ExpectEvent: "Warning PodGroupPending PodGroup default:job1 unschedulable, reason: test message",
+		},
+		{
+			Name: "pg with Scheduled later than Unschedulable ",
+			pgConditions: []schedulingapi.PodGroupCondition{
+				{
+					Type:               schedulingapi.PodGroupUnschedulableType,
+					Status:             v1.ConditionTrue,
+					Reason:             "test reason",
+					Message:            "test message",
+					LastTransitionTime: metav1.NewTime(time.Date(2024, time.July, 1, 15, 15, 5, 0, time.UTC)),
+				},
+				{
+					Type:               schedulingapi.PodGroupScheduled,
+					Status:             v1.ConditionTrue,
+					Reason:             "test reason",
+					Message:            "test message",
+					LastTransitionTime: metav1.NewTime(time.Date(2024, time.July, 1, 15, 20, 5, 0, time.UTC)),
+				},
+			},
+			ExpectEvent: "",
+		},
+	}
+	for _, tt := range testcases {
+		t.Run(tt.Name, func(t *testing.T) {
+			fakeController := newFakeController()
+			fakeController.recorder = record.NewFakeRecorder(100)
+			pg1.Status.Conditions = tt.pgConditions
+			fakeController.recordPodGroupEvent(job1, pg1)
+			r := fakeController.recorder.(*record.FakeRecorder)
+			close(r.Events)
+			event := <-r.Events
+
+			if len(tt.ExpectEvent) == 0 {
+				if len(event) != 0 {
+					t.Errorf("Testcase %s failed, expect no event, but got %s", tt.Name, event)
+				}
+			} else {
+				if tt.ExpectEvent != event {
+					t.Errorf("Testcase %s failed, expect event: %s, but got %s", tt.Name, tt.ExpectEvent, event)
+				}
+			}
+		})
+	}
+
 }

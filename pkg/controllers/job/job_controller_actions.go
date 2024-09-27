@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -286,13 +287,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
 			syncTask = true
 		}
-
-		for _, condition := range pg.Status.Conditions {
-			if condition.Type == scheduling.PodGroupUnschedulableType {
-				cc.recorder.Eventf(job, v1.EventTypeWarning, string(batch.PodGroupPending),
-					fmt.Sprintf("PodGroup %s:%s unschedule,reason: %s", job.Namespace, job.Name, condition.Message))
-			}
-		}
+		cc.recordPodGroupEvent(job, pg)
 	}
 
 	var jobCondition batch.JobCondition
@@ -843,6 +838,27 @@ func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	}
 
 	return newJob, nil
+}
+
+func (cc *jobcontroller) recordPodGroupEvent(job *batch.Job, podGroup *scheduling.PodGroup) {
+	var latestCondition *scheduling.PodGroupCondition
+
+	// Get the latest condition by timestamp
+	for _, condition := range podGroup.Status.Conditions {
+		if condition.Status == v1.ConditionTrue {
+			if latestCondition == nil ||
+				condition.LastTransitionTime.Time.After(latestCondition.LastTransitionTime.Time) {
+				latestCondition = &condition
+			}
+		}
+	}
+
+	// If the latest condition is not scheduled, then a warning event is recorded
+	if latestCondition != nil && latestCondition.Type != scheduling.PodGroupScheduled {
+		cc.recorder.Eventf(job, v1.EventTypeWarning, string(batch.PodGroupPending),
+			fmt.Sprintf("PodGroup %s:%s %s, reason: %s", job.Namespace, job.Name,
+				strings.ToLower(string(latestCondition.Type)), latestCondition.Message))
+	}
 }
 
 func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, failed, unknown *int32) {
