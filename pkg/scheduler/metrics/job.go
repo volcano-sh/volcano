@@ -37,6 +37,22 @@ var (
 			Help:      "Number of retry counts for one job",
 		}, []string{"job_id"},
 	)
+
+	jobSucceededCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "job_succeeded_counts",
+			Help:      "Number of succeeded job counts",
+		}, []string{"job_ns"},
+	)
+
+	jobFailedCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "job_failed_counts",
+			Help:      "Number of failed job counts",
+		}, []string{"job_name", "queue", "job_ns"},
+	)
 )
 
 // UpdateJobShare records share for one job
@@ -49,6 +65,16 @@ func RegisterJobRetries(jobID string) {
 	jobRetryCount.WithLabelValues(jobID).Inc()
 }
 
+// RegisterJobSucceeded total number of job succeeded.
+func RegisterJobSucceeded(jobNs string) {
+	jobSucceededCount.WithLabelValues(jobNs).Inc()
+}
+
+// RegisterJobFailed total number of job failed.
+func RegisterJobFailed(jobName, queue, jobNs string) {
+	jobFailedCount.WithLabelValues(jobName, queue, jobNs).Inc()
+}
+
 // DeleteJobMetrics delete all metrics related to the job
 func DeleteJobMetrics(jobName, queue, namespace string) {
 	e2eJobSchedulingDuration.DeleteLabelValues(jobName, queue, namespace)
@@ -57,4 +83,6 @@ func DeleteJobMetrics(jobName, queue, namespace string) {
 	unscheduleTaskCount.DeleteLabelValues(jobName)
 	jobShare.DeleteLabelValues(namespace, jobName)
 	jobRetryCount.DeleteLabelValues(jobName)
+	jobSucceededCount.DeleteLabelValues(namespace)
+	jobFailedCount.DeleteLabelValues(jobName, queue, namespace)
 }

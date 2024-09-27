@@ -2,13 +2,11 @@ package framework
 
 import (
 	"context"
-	"math/rand"
-	"time"
-
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-
+	"math/rand"
+	"time"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )

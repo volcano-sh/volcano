@@ -1482,6 +1482,15 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG b
 			return nil, err
 		}
 		job.PodGroup = pg
+
+		// record job Succeeded/Failed metrics
+		if job.PodGroup.Status.Phase == scheduling.PodGroupCompleted {
+			if job.PodGroup.Status.Failed > 0 {
+				metrics.RegisterJobFailed(job.Name, string(job.Queue), job.Namespace)
+			} else {
+				metrics.RegisterJobSucceeded(job.Namespace)
+			}
+		}
 	}
 
 	sc.RecordJobStatusEvent(job, updatePG)
