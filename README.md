@@ -51,13 +51,13 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 
 ## Ecosystem
 
-- [spark-operator](https://github.com/GoogleCloudPlatform/spark-on-k8s-operator/blob/master/docs/volcano-integration.md)
-- [kubeflow/tf-operator](https://www.kubeflow.org/docs/use-cases/job-scheduling/)
+- [spark-operator](https://www.kubeflow.org/docs/components/spark-operator/user-guide/volcano-integration/)
+- [kubeflow/training-operator](https://www.kubeflow.org/docs/components/training/user-guides/job-scheduling/)
 - [kubeflow/arena](https://github.com/kubeflow/arena/blob/master/docs/training/volcanojob/volcanojob.md)
 - [Horovod/MPI](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mpi)
 - [paddlepaddle](https://github.com/volcano-sh/volcano/tree/master/example/integrations/paddlepaddle)
 - [cromwell](https://github.com/broadinstitute/cromwell/blob/develop/docs/backends/Volcano.md)
-- [KubeRay](https://ray-project.github.io/kuberay/guidance/volcano-integration)
+- [KubeRay](https://docs.ray.io/en/master/cluster/kubernetes/k8s-ecosystem/volcano.html)
 
 ## Quick Start Guide
 
