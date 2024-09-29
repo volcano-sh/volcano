@@ -345,6 +345,11 @@ func (ni *NodeInfo) SetNode(node *v1.Node) {
 
 // setNodeOthersResource initialize sharable devices
 func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
+	if node == nil {
+		klog.Warningf("received argument of nil node, no need to set other resources for %s", ni.Name)
+		return
+	}
+
 	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
 	ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
 	IgnoredDevicesList.Set(
