@@ -22,6 +22,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -42,10 +43,17 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 		// Ignore error here, tt can not occur.
 		ns, name, _ := cache.SplitMetaNamespaceKey(pgKey)
 
-		// TODO: check NotFound error and sync local cache.
 		pg, err := c.pgLister.PodGroups(ns).Get(name)
 		if err != nil {
-			return err
+			if !errors.IsNotFound(err) {
+				return err
+			}
+
+			klog.V(4).Infof("The podGroup %s is not found, skip it and continue to sync cache", pgKey)
+			c.pgMutex.Lock()
+			delete(c.podGroups[queue.Name], pgKey)
+			c.pgMutex.Unlock()
+			continue
 		}
 
 		switch pg.Status.Phase {
