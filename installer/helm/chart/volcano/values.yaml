@@ -157,3 +157,15 @@ custom:
   admission_default_csc: ~
   scheduler_default_csc: ~
   controller_default_csc: ~
+
+service:
+  # @param service.ipFamilyPolicy [string], support SingleStack, PreferDualStack and RequireDualStack
+  #
+  ipFamilyPolicy: ""
+  # @param service.ipFamilies [array] List of IP families (e.g. IPv4, IPv6) assigned to the service.
+  # Ref: https://kubernetes.io/docs/concepts/services-networking/dual-stack/
+  # E.g.
+  # ipFamilies:
+  #   - IPv6
+  #   - IPv4
+  ipFamilies: []

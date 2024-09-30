@@ -221,6 +221,12 @@ metadata:
     {{- toYaml .Values.custom.common_labels | nindent 4 }}
     {{- end }}
 spec:
+  {{- if .Values.service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.service.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.service.ipFamilies }}
+  ipFamilies: {{ toYaml .Values.service.ipFamilies | nindent 4 }}
+  {{- end }}
   ports:
   - port: 8080
     protocol: TCP
