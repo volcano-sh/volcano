@@ -34,6 +34,10 @@ import (
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
+const (
+	KubeParentQueueLabelKey = "volcano.sh/parent-queue"
+)
+
 func init() {
 	router.RegisterAdmission(service)
 }
@@ -71,12 +75,31 @@ func AdmitQueues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse 
 	if err != nil {
 		return util.ToAdmissionResponse(err)
 	}
+	config.ConfigData.Lock()
+	enableHierarchy := config.ConfigData.EnableHierarchyCapacity
+	config.ConfigData.Unlock()
 
 	switch ar.Request.Operation {
 	case admissionv1.Create, admissionv1.Update:
 		err = validateQueue(queue)
+
+		if enableHierarchy && err == nil {
+			var oldQueue *schedulingv1beta1.Queue
+			if ar.Request.Operation == admissionv1.Update {
+				oldQueue, err = schema.DecodeQueue(ar.Request.OldObject, ar.Request.Resource)
+				if err != nil {
+					return util.ToAdmissionResponse(err)
+				}
+			}
+			if ar.Request.Operation == admissionv1.Create || oldQueue.Spec.Parent != queue.Spec.Parent {
+				err = validateHierarchicalQueue(queue)
+			}
+		}
 	case admissionv1.Delete:
 		err = validateQueueDeleting(ar.Request.Name)
+		if enableHierarchy && err == nil {
+			err = validateHierarchicalQueueDeleting(queue)
+		}
 	default:
 		return util.ToAdmissionResponse(fmt.Errorf("invalid operation `%s`, "+
 			"expect operation to be `CREATE`, `UPDATE` or `DELETE`", ar.Request.Operation))
@@ -203,5 +226,54 @@ func validateQueueDeleting(queue string) error {
 		return err
 	}
 
+	return nil
+}
+
+func validateHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
+	if queue.Spec.Parent == "" || queue.Spec.Parent == "root" {
+		return nil
+	}
+	parentQueue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue.Spec.Parent, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get parent queue of queue %s: %v", queue.Name, err)
+	}
+
+	if parentQueue.Status.Pending+parentQueue.Status.Running+parentQueue.Status.Unknown+parentQueue.Status.Inqueue > 0 {
+		return fmt.Errorf("queue %s cannot be the parent queue of queue %s because it has PodGroups (pending: %d, running: %d, unknown: %d, inqueue: %d)",
+			parentQueue.Name, queue.Name, parentQueue.Status.Pending,
+			parentQueue.Status.Running, parentQueue.Status.Unknown, parentQueue.Status.Inqueue)
+	}
+
+	klog.V(3).Infof("Validation passed for hierarchical queue %s with parent queue %s",
+		queue.Name, parentQueue.Name)
+	return nil
+}
+
+func validateHierarchicalQueueDeleting(queue *schedulingv1beta1.Queue) error {
+	if queue.Name == "root" {
+		return fmt.Errorf("root queue can not be deleted")
+	}
+
+	labelSelector := metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			KubeParentQueueLabelKey: queue.Name,
+		},
+	}
+	queueList, err := config.VolcanoClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(&labelSelector)})
+	if err != nil {
+		return fmt.Errorf("failed to list child queues of queue %s: %v", queue.Name, err)
+	}
+	childQueueNames := make([]string, len(queueList.Items))
+	for i, childQueue := range queueList.Items {
+		childQueueNames[i] = childQueue.Name
+	}
+
+	if len(queueList.Items) > 0 {
+		return fmt.Errorf("queue %s can not be deleted because it has %d child queues: %s",
+			queue.Name, len(queueList.Items), strings.Join(childQueueNames, ", "))
+	}
+
+	klog.V(3).Infof("Validation passed for deleting hierarchical queue %s", queue.Name)
 	return nil
 }

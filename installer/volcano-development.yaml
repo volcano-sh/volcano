@@ -27,6 +27,7 @@ metadata:
   namespace: volcano-system
 data:
   volcano-admission.conf: |
+    #enableHierarchyCapacity: true
     #resourceGroups:
     #- resourceGroup: management                    # set the resource group name
     #  object:
@@ -81,6 +82,9 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["bus.volcano.sh"]
+    resources: ["commands"]
+    verbs: ["create"]
 ---
 # Source: volcano/templates/admission.yaml
 kind: ClusterRoleBinding
@@ -4445,7 +4449,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
-    verbs: ["get", "list", "watch", "create", "delete"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues/status"]
     verbs: ["update"]
@@ -5090,6 +5094,7 @@ webhooks:
           - v1beta1
         operations:
           - CREATE
+          - UPDATE
         resources:
           - queues
         scope: '*'
