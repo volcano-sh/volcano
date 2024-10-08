@@ -741,7 +741,7 @@ func (cp *capacityPlugin) createOrUpdateRootQueue(vcClient vcclient.Interface) e
 			cp.makeRootQueue(queue)
 
 			return retry.OnError(wait.Backoff{
-				Steps:    60,
+				Steps:    5,
 				Duration: time.Second,
 				Factor:   1,
 				Jitter:   0.1,
@@ -758,7 +758,7 @@ func (cp *capacityPlugin) createOrUpdateRootQueue(vcClient vcclient.Interface) e
 
 	cp.makeRootQueue(queue)
 	return retry.OnError(wait.Backoff{
-		Steps:    60,
+		Steps:    5,
 		Duration: time.Second,
 		Factor:   1,
 		Jitter:   0.1,

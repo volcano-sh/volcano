@@ -116,7 +116,7 @@ func Queues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 		}
 	default:
 		return util.ToAdmissionResponse(fmt.Errorf("invalid operation `%s`, "+
-			"expect operation to be `CREATE`", ar.Request.Operation))
+			"expect operation to be `CREATE` or `UPDATE`", ar.Request.Operation))
 	}
 
 	if err != nil {

@@ -183,7 +183,7 @@ func TestMutateQueues(t *testing.T) {
 				},
 			},
 			reviewResponse: util.ToAdmissionResponse(fmt.Errorf("invalid operation `%s`, "+
-				"expect operation to be `CREATE`", "Invalid")),
+				"expect operation to be `CREATE` or `UPDATE`", "Invalid")),
 		},
 		{
 			Name: "Normal Case Append Default Root to The HDRF Attributes",
