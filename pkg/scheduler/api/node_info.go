@@ -298,25 +298,12 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 		klog.ErrorS(nil, "Node out of sync", "name", ni.Name, "resources", resources)
 	}
 
-	// If node not ready, e.g. power off
-	for _, cond := range node.Status.Conditions {
-		if cond.Type == v1.NodeReady && cond.Status != v1.ConditionTrue {
-			ni.State = NodeState{
-				Phase:  NotReady,
-				Reason: "NotReady",
-			}
-			klog.Warningf("set the node %s status to %s.", node.Name, NotReady.String())
-			return
-		}
-	}
-
-	// Node is ready (ignore node conditions because of taint/toleration)
+	// Node is ready (ignore node conditions because of taint/toleration), for more detail please see
+	// https://github.com/kubernetes/design-proposals-archive/blob/main/scheduling/taint-node-by-condition.md.
 	ni.State = NodeState{
 		Phase:  Ready,
 		Reason: "",
 	}
-
-	klog.V(4).Infof("set the node %s status to %s.", node.Name, Ready.String())
 }
 
 // SetNode sets kubernetes node object to nodeInfo object
