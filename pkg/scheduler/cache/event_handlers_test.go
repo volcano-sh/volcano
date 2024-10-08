@@ -30,6 +30,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -644,19 +645,23 @@ func TestSchedulerCache_DeleteQueueV1beta1(t *testing.T) {
 }
 
 func TestSchedulerCache_SyncNode(t *testing.T) {
+	n1 := util.BuildNode("n1", nil, map[string]string{"label-key": "label-value"})
+	expectedNodeInfo := schedulingapi.NewNodeInfo(n1)
+	expectedNodeInfo.State.Phase = schedulingapi.Ready
+
 	tests := []struct {
 		name          string
 		cache         SchedulerCache
 		nodes         []*v1.Node
 		nodeName      string
 		nodeSelector  map[string]sets.Empty
-		expectedNodes map[string]struct{}
+		expectedNodes map[string]*schedulingapi.NodeInfo
 		wantErr       bool
 	}{
 		{
 			name:          "Node not exists",
 			nodeName:      "n1",
-			expectedNodes: map[string]struct{}{},
+			expectedNodes: map[string]*schedulingapi.NodeInfo{},
 			wantErr:       true,
 		},
 		{
@@ -668,7 +673,7 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 			nodeSelector: map[string]sets.Empty{
 				"label-key:label-value": {},
 			},
-			expectedNodes: map[string]struct{}{"n1": {}},
+			expectedNodes: map[string]*schedulingapi.NodeInfo{"n1": expectedNodeInfo},
 			wantErr:       false,
 		},
 		{
@@ -680,7 +685,7 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 			nodeSelector: map[string]sets.Empty{
 				"label-key:label-value": {},
 			},
-			expectedNodes: map[string]struct{}{},
+			expectedNodes: map[string]*schedulingapi.NodeInfo{},
 			wantErr:       false,
 		},
 	}
@@ -697,9 +702,9 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 				t.Errorf("SyncNode() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			actualNodes := make(map[string]struct{})
-			for n := range sc.Nodes {
-				actualNodes[n] = struct{}{}
+			actualNodes := make(map[string]*schedulingapi.NodeInfo)
+			for n, i := range sc.Nodes {
+				actualNodes[n] = i
 			}
 			assert.Equal(t, tt.expectedNodes, actualNodes)
 		})

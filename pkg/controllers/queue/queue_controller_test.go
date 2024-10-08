@@ -19,8 +19,10 @@ package queue
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
@@ -242,23 +244,40 @@ func TestSyncQueue(t *testing.T) {
 	namespace := "c1"
 
 	testCases := []struct {
-		Name        string
-		podGroup    *schedulingv1beta1.PodGroup
-		queue       *schedulingv1beta1.Queue
-		ExpectValue int32
+		Name          string
+		pgsInCache    []*schedulingv1beta1.PodGroup
+		pgsInInformer []*schedulingv1beta1.PodGroup
+		queue         *schedulingv1beta1.Queue
+		ExpectStatus  schedulingv1beta1.QueueStatus
 	}{
 		{
 			Name: "syncQueue",
-			podGroup: &schedulingv1beta1.PodGroup{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pg1",
-					Namespace: namespace,
+			pgsInCache: []*schedulingv1beta1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: namespace,
+					},
+					Spec: schedulingv1beta1.PodGroupSpec{
+						Queue: "c1",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupPending,
+					},
 				},
-				Spec: schedulingv1beta1.PodGroupSpec{
-					Queue: "c1",
-				},
-				Status: schedulingv1beta1.PodGroupStatus{
-					Phase: schedulingv1beta1.PodGroupPending,
+			},
+			pgsInInformer: []*schedulingv1beta1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: namespace,
+					},
+					Spec: schedulingv1beta1.PodGroupSpec{
+						Queue: "c1",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupPending,
+					},
 				},
 			},
 			queue: &schedulingv1beta1.Queue{
@@ -269,28 +288,95 @@ func TestSyncQueue(t *testing.T) {
 					Weight: 1,
 				},
 			},
-			ExpectValue: 1,
+			ExpectStatus: schedulingv1beta1.QueueStatus{
+				Pending:     1,
+				Reservation: schedulingv1beta1.Reservation{},
+				Allocated:   v1.ResourceList{},
+			},
+		},
+		{
+			Name: "syncQueueHandlingNotFoundPg",
+			pgsInCache: []*schedulingv1beta1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg1",
+						Namespace: namespace,
+					},
+					Spec: schedulingv1beta1.PodGroupSpec{
+						Queue: "c2",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupPending,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: namespace,
+					},
+					Spec: schedulingv1beta1.PodGroupSpec{
+						Queue: "c2",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupPending,
+					},
+				},
+			},
+			pgsInInformer: []*schedulingv1beta1.PodGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pg2",
+						Namespace: namespace,
+					},
+					Spec: schedulingv1beta1.PodGroupSpec{
+						Queue: "c2",
+					},
+					Status: schedulingv1beta1.PodGroupStatus{
+						Phase: schedulingv1beta1.PodGroupPending,
+					},
+				},
+			},
+			queue: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "c2",
+				},
+				Spec: schedulingv1beta1.QueueSpec{
+					Weight: 1,
+				},
+			},
+			ExpectStatus: schedulingv1beta1.QueueStatus{
+				Pending:     1,
+				Reservation: schedulingv1beta1.Reservation{},
+				Allocated:   v1.ResourceList{},
+			},
 		},
 	}
 
 	for i, testcase := range testCases {
 		c := newFakeController()
 
-		key, _ := cache.MetaNamespaceKeyFunc(testcase.podGroup)
-		c.podGroups[testcase.podGroup.Spec.Queue] = make(map[string]struct{})
-		c.podGroups[testcase.podGroup.Spec.Queue][key] = struct{}{}
+		for j := range testcase.pgsInCache {
+			key, _ := cache.MetaNamespaceKeyFunc(testcase.pgsInCache[j])
+			if _, ok := c.podGroups[testcase.pgsInCache[j].Spec.Queue]; !ok {
+				c.podGroups[testcase.pgsInCache[j].Spec.Queue] = make(map[string]struct{})
+			}
+			c.podGroups[testcase.pgsInCache[j].Spec.Queue][key] = struct{}{}
+		}
 
-		c.pgInformer.Informer().GetIndexer().Add(testcase.podGroup)
+		for j := range testcase.pgsInInformer {
+			c.pgInformer.Informer().GetIndexer().Add(testcase.pgsInInformer[j])
+		}
+
 		c.queueInformer.Informer().GetIndexer().Add(testcase.queue)
 		c.vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), testcase.queue, metav1.CreateOptions{})
 
 		err := c.syncQueue(testcase.queue, nil)
+
 		item, _ := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), testcase.queue.Name, metav1.GetOptions{})
-		if err != nil && testcase.ExpectValue != item.Status.Pending {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, c.queue.Len())
+		if err != nil && !reflect.DeepEqual(testcase.ExpectStatus, item.Status) {
+			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectStatus, item.Status)
 		}
 	}
-
 }
 
 func TestProcessNextWorkItem(t *testing.T) {

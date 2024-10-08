@@ -456,6 +456,9 @@ func (r *Resource) LessEqualWithDimension(rr *Resource, req *Resource) bool {
 	}
 
 	for name, quant := range req.ScalarResources {
+		if IsIgnoredScalarResource(name) {
+			continue
+		}
 		rQuant := r.ScalarResources[name]
 		rrQuant := rr.ScalarResources[name]
 		if quant > 0 && rQuant > rrQuant {

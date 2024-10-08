@@ -377,4 +377,85 @@ var _ = Describe("Job E2E Test", func() {
 		err = e2eutil.WaitTasksReady(ctx, middlePriorityJob, 0)
 		Expect(err).NotTo(HaveOccurred())
 	})
+
+	It("Jobs unschedulable due to scheduling gates will not preempt other jobs despite sufficient preemptor", func() {
+		// Remove enqueue action first because it conflicts with preempt.
+		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
+		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+			vcScheConfStr, ok := data["volcano-scheduler-ci.conf"]
+			Expect(ok).To(BeTrue())
+
+			schedulerConf := &e2eutil.SchedulerConfiguration{}
+			err := yaml.Unmarshal([]byte(vcScheConfStr), schedulerConf)
+			Expect(err).NotTo(HaveOccurred())
+
+			changed = true
+			newActions := strings.TrimPrefix(schedulerConf.Actions, "enqueue, ")
+			if newActions == schedulerConf.Actions {
+				changed = false
+				klog.Warning("There is already no enqueue action")
+				return
+			}
+
+			schedulerConf.Actions = newActions
+			newVCScheConfBytes, err := yaml.Marshal(schedulerConf)
+			Expect(err).NotTo(HaveOccurred())
+
+			changedBefore = make(map[string]string)
+			changedBefore["volcano-scheduler-ci.conf"] = vcScheConfStr
+			data["volcano-scheduler-ci.conf"] = string(newVCScheConfBytes)
+			return
+		})
+		defer cmc.UndoChanged()
+
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			PriorityClasses: map[string]int32{
+				highPriority: highPriorityValue,
+				lowPriority:  lowPriorityValue,
+			},
+		})
+
+		slot := e2eutil.OneCPU
+		rep := e2eutil.ClusterSize(ctx, slot)
+
+		job := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    slot,
+					Min:    1,
+					Rep:    rep,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+				},
+			},
+		}
+
+		job.Name = "preemptee-1"
+		job.Pri = lowPriority
+		preempteeJob := e2eutil.CreateJob(ctx, job)
+		err := e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+
+		job.Name = "preemptor-1"
+		job.Pri = highPriority
+		job.Min = rep / 2
+		preemptorJob := e2eutil.CreateJob(ctx, job)
+		// All pods of preemptorJob will be created and remain in pending state
+		err = e2eutil.WaitTasksPending(ctx, preemptorJob, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+		// None of the tasks of preemptee should be evicted
+		err = e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+
+		// remove gate
+		err = e2eutil.RemovePodSchGates(ctx, preemptorJob)
+		Expect(err).NotTo(HaveOccurred())
+
+		// half jobs of preemptee will be evicted to make space for preemptorJob
+		err = e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+		err = e2eutil.WaitTasksReady(ctx, preemptorJob, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 })

@@ -1436,24 +1436,32 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 			job.PodGroup.Status.Phase == scheduling.PodGroupPending ||
 			job.PodGroup.Status.Phase == scheduling.PodGroupInqueue)
 
+	fitErrStr := job.FitError()
 	// If pending or unschedulable, record unschedulable event.
 	if pgUnschedulable {
 		msg := fmt.Sprintf("%v/%v tasks in gang unschedulable: %v",
 			len(job.TaskStatusIndex[schedulingapi.Pending]),
 			len(job.Tasks),
-			job.FitError())
+			fitErrStr)
+		// TODO: should we skip pod unschedulable event if pod group is unschedulable due to gates to avoid printing too many messages?
 		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeWarning, string(scheduling.PodGroupUnschedulableType), msg)
 	} else if updatePG {
 		sc.recordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupScheduled), string(scheduling.PodGroupReady))
 	}
 
-	baseErrorMessage := job.JobFitErrors
+	baseErrorMessage := fitErrStr
 	if baseErrorMessage == "" {
 		baseErrorMessage = schedulingapi.AllNodeUnavailableMsg
 	}
 	// Update podCondition for tasks Allocated and Pending before job discarded
 	for _, status := range []schedulingapi.TaskStatus{schedulingapi.Allocated, schedulingapi.Pending, schedulingapi.Pipelined} {
 		for _, taskInfo := range job.TaskStatusIndex[status] {
+			// The pod of a scheduling gated task is given
+			// the ScheduleGated condition by the api-server. Do not change it.
+			if taskInfo.SchGated {
+				continue
+			}
+
 			reason, msg, nominatedNodeName := job.TaskSchedulingReason(taskInfo.UID)
 			if len(msg) == 0 {
 				msg = baseErrorMessage

@@ -29,8 +29,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-// CreateDeployment creates a new deployment
 func CreateDeployment(ctx *TestContext, name string, rep int32, img string, req v1.ResourceList) *appv1.Deployment {
+	return CreateDeploymentGated(ctx, name, rep, img, req, []v1.PodSchedulingGate{})
+}
+
+// CreateDeployment creates a new deployment
+func CreateDeploymentGated(ctx *TestContext, name string, rep int32, img string, req v1.ResourceList, schGates []v1.PodSchedulingGate) *appv1.Deployment {
 	deploymentName := "deployment.k8s.io"
 	d := &appv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -61,6 +65,7 @@ func CreateDeployment(ctx *TestContext, name string, rep int32, img string, req 
 							},
 						},
 					},
+					SchedulingGates: schGates,
 				},
 			},
 		},

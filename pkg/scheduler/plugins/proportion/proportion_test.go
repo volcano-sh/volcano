@@ -28,11 +28,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
+	"volcano.sh/volcano/pkg/scheduler/actions/reclaim"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -424,6 +425,68 @@ func TestEnqueueAndAllocable(t *testing.T) {
 			defer test.Close()
 			test.Run(actions)
 
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestAllocate(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+	actions := []framework.Action{allocate.New(), reclaim.New()}
+
+	// nodes
+	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n2 := util.BuildNode("n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+
+	// pod
+	p1 := util.BuildPod("ns1", "p1", "n1", apiv1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p2 := util.BuildPod("ns1", "p2", "", apiv1.PodPending, api.BuildResourceList("2", "4Gi"), "pg2", make(map[string]string), make(map[string]string))
+	p3 := util.BuildPod("ns1", "p3", "", apiv1.PodPending, api.BuildResourceList("2", "4Gi"), "pg3", make(map[string]string), make(map[string]string))
+
+	// podgroup
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg2 := util.BuildPodGroup("pg2", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg3 := util.BuildPodGroup("pg3", "ns1", "q3", 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+	// queue
+	queue1 := util.BuildQueueWithPriorityAndResourcesQuantity("q1", 5, nil, api.BuildResourceList("2", "4Gi"))
+	queue2 := util.BuildQueueWithPriorityAndResourcesQuantity("q2", 1, nil, api.BuildResourceList("2", "4Gi"))
+	queue3 := util.BuildQueueWithPriorityAndResourcesQuantity("q3", 10, nil, api.BuildResourceList("2", "4Gi"))
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name:      "case0: Pods are assigned according to the order of Queue Priority in which PGs are placed",
+			Plugins:   plugins,
+			Pods:      []*apiv1.Pod{p1, p2, p3},
+			Nodes:     []*apiv1.Node{n1, n2},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg1, pg2, pg3},
+			Queues:    []*schedulingv1beta1.Queue{queue1, queue2, queue3},
+			ExpectBindMap: map[string]string{
+				"ns1/p3": "n2",
+			},
+			ExpectBindsNum: 1,
+		},
+	}
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:              PluginName,
+					EnabledQueueOrder: &trueValue,
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run(actions)
 			if err := test.CheckAll(i); err != nil {
 				t.Fatal(err)
 			}

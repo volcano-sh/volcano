@@ -116,6 +116,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.admission_ns`|nodeSelector for Admission pods|`~`|
 |`custom.controller_ns`|nodeSelector for Controller pods|`~`|
 |`custom.scheduler_ns`|nodeSelector for Scheduler pods|`~`|
+|`custom.kube_state_metrics_ns`|nodeSelector for Kube State Metrics pods|`~`|
 |`custom.admission_podLabels`|Pod labels for Admission pods|`~`|
 |`custom.controller_podLabels`|Pod labels for Controller pods|`~`|
 |`custom.scheduler_podLabels`|Pod labels for Scheduler pods|`~`|
@@ -130,6 +131,8 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.scheduler_resources`|Resources for Scheduler pods|`~`|
 |`custom.scheduler_log_level`|Settings log print level for Scheduler|`3`|
 |`custom.webhooks_namespace_selector_expressions`|Additional namespace selector expressions for Volcano admission webhooks|`~`|
+|`service.ipFamilyPolicy`|Settings service the family policy|``|
+|`service.ipFamilies`|Settings service the address families|`[]`|
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 

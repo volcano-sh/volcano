@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -66,14 +67,27 @@ func DescribeJobTemplate(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		for _, jobTemplate := range jobTemplates.Items {
+		for i, jobTemplate := range jobTemplates.Items {
+			// Remove managedFields
+			jobTemplate.ManagedFields = nil
 			PrintJobTemplateDetail(&jobTemplate, describeJobTemplateFlags.Format)
+			// Print space if it's not the last element
+			if len(jobTemplates.Items) != 1 && i < len(jobTemplates.Items)-1 {
+				fmt.Printf("\n\n")
+			}
 		}
 		// Get job template detail
 	} else {
 		jobTemplate, err := jobTemplateClient.FlowV1alpha1().JobTemplates(describeJobTemplateFlags.Namespace).Get(ctx, describeJobTemplateFlags.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
+		}
+		// Remove managedFields
+		jobTemplate.ManagedFields = nil
+		// Set APIVersion and Kind if not set
+		if jobTemplate.APIVersion == "" || jobTemplate.Kind == "" {
+			jobTemplate.APIVersion = v1alpha1.SchemeGroupVersion.String()
+			jobTemplate.Kind = "JobTemplate"
 		}
 		PrintJobTemplateDetail(jobTemplate, describeJobTemplateFlags.Format)
 	}
@@ -98,8 +112,8 @@ func printJSON(jobTemplate *v1alpha1.JobTemplate) {
 	if err != nil {
 		fmt.Printf("Error marshaling JSON: %v\n", err)
 	}
-	fmt.Println(string(b))
-	fmt.Println("---------------------------------")
+	os.Stdout.Write(b)
+	fmt.Println("")
 }
 
 func printYAML(jobTemplate *v1alpha1.JobTemplate) {
@@ -107,6 +121,5 @@ func printYAML(jobTemplate *v1alpha1.JobTemplate) {
 	if err != nil {
 		fmt.Printf("Error marshaling YAML: %v\n", err)
 	}
-	fmt.Println(string(b))
-	fmt.Println("---------------------------------")
+	os.Stdout.Write(b)
 }

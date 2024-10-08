@@ -20,9 +20,9 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -140,10 +140,6 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	job.Status.Unknown = unknown
 	job.Status.TaskStatusCount = taskStatusCount
 
-	// Update running duration
-	klog.V(3).Infof("Running duration is %s", metav1.Duration{Duration: time.Since(jobInfo.Job.CreationTimestamp.Time)}.ToUnstructured())
-	job.Status.RunningDuration = &metav1.Duration{Duration: time.Since(jobInfo.Job.CreationTimestamp.Time)}
-
 	if updateStatus != nil {
 		if updateStatus(&job.Status) {
 			job.Status.State.LastTransitionTime = metav1.Now()
@@ -151,6 +147,11 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 			job.Status.Conditions = append(job.Status.Conditions, jobCondition)
 		}
 	}
+
+	// Update running duration
+	runningDuration := metav1.Duration{Duration: job.Status.State.LastTransitionTime.Sub(jobInfo.Job.CreationTimestamp.Time)}
+	klog.V(3).Infof("Running duration is %s", runningDuration.ToUnstructured())
+	job.Status.RunningDuration = &runningDuration
 
 	// must be called before update job status
 	if err := cc.pluginOnJobDelete(job); err != nil {
@@ -318,13 +319,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
 			syncTask = true
 		}
-
-		for _, condition := range pg.Status.Conditions {
-			if condition.Type == scheduling.PodGroupUnschedulableType {
-				cc.recorder.Eventf(job, v1.EventTypeWarning, string(batch.PodGroupPending),
-					fmt.Sprintf("PodGroup %s:%s unschedule,reason: %s", job.Namespace, job.Name, condition.Message))
-			}
-		}
+		cc.recordPodGroupEvent(job, pg)
 	}
 
 	var jobCondition batch.JobCondition
@@ -862,6 +857,27 @@ func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	}
 
 	return newJob, nil
+}
+
+func (cc *jobcontroller) recordPodGroupEvent(job *batch.Job, podGroup *scheduling.PodGroup) {
+	var latestCondition *scheduling.PodGroupCondition
+
+	// Get the latest condition by timestamp
+	for _, condition := range podGroup.Status.Conditions {
+		if condition.Status == v1.ConditionTrue {
+			if latestCondition == nil ||
+				condition.LastTransitionTime.Time.After(latestCondition.LastTransitionTime.Time) {
+				latestCondition = &condition
+			}
+		}
+	}
+
+	// If the latest condition is not scheduled, then a warning event is recorded
+	if latestCondition != nil && latestCondition.Type != scheduling.PodGroupScheduled {
+		cc.recorder.Eventf(job, v1.EventTypeWarning, string(batch.PodGroupPending),
+			fmt.Sprintf("PodGroup %s:%s %s, reason: %s", job.Namespace, job.Name,
+				strings.ToLower(string(latestCondition.Type)), latestCondition.Message))
+	}
 }
 
 func classifyAndAddUpPodBaseOnPhase(pod *v1.Pod, pending, running, succeeded, failed, unknown *int32) {

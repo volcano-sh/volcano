@@ -75,6 +75,9 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			preemptorsMap[job.Queue].Push(job)
 			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
 			for _, task := range job.TaskStatusIndex[api.Pending] {
+				if task.SchGated {
+					continue
+				}
 				preemptorTasks[job.UID].Push(task)
 			}
 		}

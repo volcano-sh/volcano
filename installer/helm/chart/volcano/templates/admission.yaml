@@ -151,6 +151,10 @@ spec:
               readOnly: true
             - mountPath: /admission.local.config/configmap
               name: admission-config
+          {{- if .Values.custom.admission_default_csc }}
+          securityContext:
+            {{- toYaml .Values.custom.admission_default_csc | nindent 12 }}
+          {{- end }}
       volumes:
         - name: admission-certs
           secret:
@@ -172,6 +176,12 @@ metadata:
   name: {{ .Release.Name }}-admission-service
   namespace: {{ .Release.Namespace }}
 spec:
+  {{- if .Values.service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.service.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.service.ipFamilies }}
+  ipFamilies: {{ toYaml .Values.service.ipFamilies | nindent 4 }}
+  {{- end }}
   ports:
     - port: 443
       protocol: TCP
