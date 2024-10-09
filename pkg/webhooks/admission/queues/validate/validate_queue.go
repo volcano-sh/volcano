@@ -153,8 +153,10 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 		}
 		for _, queueInTree := range queueList.Items {
 			hierarchyInTree := queueInTree.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]
+			// Add a "/" char to be sure, that we only compare parts that are full nodes.
+			// For example if we have in the cluster queue /root/scidev and wants to create a /root/sci
 			if hierarchyInTree != "" && queue.Name != queueInTree.Name &&
-				strings.HasPrefix(hierarchyInTree, hierarchy) {
+				strings.HasPrefix(hierarchyInTree, hierarchy+"/") {
 				return append(errs, field.Invalid(fldPath, hierarchy,
 					fmt.Sprintf("%s is not allowed to be in the sub path of %s of queue %s",
 						hierarchy, hierarchyInTree, queueInTree.Name)))
