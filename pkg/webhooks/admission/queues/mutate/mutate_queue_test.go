@@ -281,79 +281,18 @@ func TestMutateHierarchicalQueues(t *testing.T) {
 		t.Errorf("Create root queue failed for %v.", err)
 	}
 
-	// case 1: Normal Case Close Queue
-	closeState := schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "close-state-queue",
-			Labels: map[string]string{
-				"volcano.sh/parent-queue": "root",
-			},
-		},
-		Spec: schedulingv1beta1.QueueSpec{
-			Parent: "root",
-		},
-		Status: schedulingv1beta1.QueueStatus{
-			State: schedulingv1beta1.QueueStateClosing,
-		},
-	}
-
-	closeStateJSON, err := json.Marshal(closeState)
-	if err != nil {
-		t.Errorf("Marshal queue with close state failed for %v.", err)
-	}
-
-	var closeStatePatch []patchOperation
-	closeStatePatch = append(closeStatePatch, patchOperation{
-		Op:    "replace",
-		Path:  fmt.Sprintf("/metadata/labels/%s", strings.ReplaceAll(KubeParentQueueLabelKey, "/", "~1")),
-		Value: "root",
-	})
-
-	closeStatePatchJSON, err := json.Marshal(closeStatePatch)
-	if err != nil {
-		t.Errorf("Marshal queue patch failed for %v.", err)
-	}
-
-	// case 2: Abnormal Case Close Root Queue
-	rootQueue := schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "root",
-		},
-		Spec: schedulingv1beta1.QueueSpec{},
-		Status: schedulingv1beta1.QueueStatus{
-			State: schedulingv1beta1.QueueStateClosing,
-		},
-	}
-	closeRootJSON, err := json.Marshal(rootQueue)
-	if err != nil {
-		t.Errorf("Marshal root queue with close state failed for %v.", err)
-	}
-
-	// case 3: Normal Case Open Queue
-	openParentQueue := schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "open-parent-queue",
-			Labels: map[string]string{
-				"volcano.sh/parent-queue": "root",
-			},
-		},
-		Spec: schedulingv1beta1.QueueSpec{
-			Parent: "root",
-		},
-	}
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &openParentQueue, metav1.CreateOptions{})
-	if err != nil {
-		t.Errorf("Create parent queue failed for %v.", err)
-	}
-
+	// case 1: Normal Case Update Parent Queue
 	openState := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "open-state-queue",
+			Labels: map[string]string{
+				"volcano.sh/parent-queue": "root",
+			},
 		},
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight:      1,
 			Reclaimable: &trueValue,
-			Parent:      "root",
+			Parent:      "parent-queue",
 		},
 		Status: schedulingv1beta1.QueueStatus{
 			State: schedulingv1beta1.QueueStateOpen,
@@ -365,57 +304,38 @@ func TestMutateHierarchicalQueues(t *testing.T) {
 		t.Errorf("Marshal queue with open state failed for %v.", err)
 	}
 
-	var openStatePatch []patchOperation
-	openStatePatch = append(openStatePatch, patchOperation{
-		Op:   "replace",
-		Path: "/metadata/labels",
-		Value: map[string]string{
-			KubeParentQueueLabelKey: "root",
-		},
-	})
-
-	openStatePatchJSON, err := json.Marshal(openStatePatch)
-	if err != nil {
-		t.Errorf("Marshal queue patch failed for %v.", err)
-	}
-
-	// case 4: Abnormal Case Open Queue with Closing Parent Queue
-	closingParentQueue := schedulingv1beta1.Queue{
+	oldOpenState := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "closing-parent-queue",
+			Name: "open-state-queue",
 			Labels: map[string]string{
 				"volcano.sh/parent-queue": "root",
 			},
 		},
 		Spec: schedulingv1beta1.QueueSpec{
-			Parent: "root",
-		},
-	}
-	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &closingParentQueue, metav1.CreateOptions{})
-	if err != nil {
-		t.Errorf("Create parent queue failed for %v.", err)
-	}
-	queue.Status.State = schedulingv1beta1.QueueStateClosing
-	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{})
-	if err != nil {
-		t.Errorf("Update parent queue failed for %v.", err)
-	}
-
-	openStateWithClosingParent := schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "abnormal-open-state-queue",
-		},
-		Spec: schedulingv1beta1.QueueSpec{
-			Parent: "closing-parent-queue",
+			Weight:      1,
+			Reclaimable: &trueValue,
+			Parent:      "root",
 		},
 		Status: schedulingv1beta1.QueueStatus{
 			State: schedulingv1beta1.QueueStateOpen,
 		},
 	}
 
-	openStateWithClosingParentJSON, err := json.Marshal(openStateWithClosingParent)
+	oldOpenStateJSON, err := json.Marshal(oldOpenState)
 	if err != nil {
 		t.Errorf("Marshal queue with open state failed for %v.", err)
+	}
+
+	var openStatePatch []patchOperation
+	openStatePatch = append(openStatePatch, patchOperation{
+		Op:    "replace",
+		Path:  fmt.Sprintf("/metadata/labels/%s", strings.ReplaceAll(KubeParentQueueLabelKey, "/", "~1")),
+		Value: "parent-queue",
+	})
+
+	openStatePatchJSON, err := json.Marshal(openStatePatch)
+	if err != nil {
+		t.Errorf("Marshal queue patch failed for %v.", err)
 	}
 
 	testCases := []struct {
@@ -455,70 +375,7 @@ func TestMutateHierarchicalQueues(t *testing.T) {
 			},
 		},
 		{
-			Name: "Normal Case Close queue",
-			AR: admissionv1.AdmissionReview{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "AdmissionReview",
-					APIVersion: "admission.k8s.io/v1",
-				},
-				Request: &admissionv1.AdmissionRequest{
-					Kind: metav1.GroupVersionKind{
-						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
-						Kind:    "Queue",
-					},
-					Resource: metav1.GroupVersionResource{
-						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
-						Resource: "queues",
-					},
-					Name:      "normal-case-close-queue",
-					Operation: "UPDATE",
-					Object: runtime.RawExtension{
-						Raw: closeStateJSON,
-					},
-				},
-			},
-			reviewResponse: &admissionv1.AdmissionResponse{
-				Allowed:   true,
-				PatchType: &pt,
-				Patch:     closeStatePatchJSON,
-			},
-		},
-		{
-			Name: "Abnormal Case Close Root Queue",
-			AR: admissionv1.AdmissionReview{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "AdmissionReview",
-					APIVersion: "admission.k8s.io/v1",
-				},
-				Request: &admissionv1.AdmissionRequest{
-					Kind: metav1.GroupVersionKind{
-						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
-						Kind:    "Queue",
-					},
-					Resource: metav1.GroupVersionResource{
-						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
-						Resource: "queues",
-					},
-					Name:      "abnormal-case-close-root-queue",
-					Operation: "UPDATE",
-					Object: runtime.RawExtension{
-						Raw: closeRootJSON,
-					},
-				},
-			},
-			reviewResponse: &admissionv1.AdmissionResponse{
-				Allowed: false,
-				Result: &metav1.Status{
-					Message: "root queue can not be closed",
-				},
-			},
-		},
-		{
-			Name: "Normal Case Open Queue",
+			Name: "Normal Case Update Parent Queue",
 			AR: admissionv1.AdmissionReview{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "AdmissionReview",
@@ -540,44 +397,15 @@ func TestMutateHierarchicalQueues(t *testing.T) {
 					Object: runtime.RawExtension{
 						Raw: openStateJSON,
 					},
+					OldObject: runtime.RawExtension{
+						Raw: oldOpenStateJSON,
+					},
 				},
 			},
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed:   true,
 				PatchType: &pt,
 				Patch:     openStatePatchJSON,
-			},
-		},
-		{
-			Name: "Abnormal Case Open Queue with Closing Parent Queue",
-			AR: admissionv1.AdmissionReview{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "AdmissionReview",
-					APIVersion: "admission.k8s.io/v1",
-				},
-				Request: &admissionv1.AdmissionRequest{
-					Kind: metav1.GroupVersionKind{
-						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
-						Kind:    "Queue",
-					},
-					Resource: metav1.GroupVersionResource{
-						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
-						Resource: "queues",
-					},
-					Name:      "abnormal-case-open-queue",
-					Operation: "UPDATE",
-					Object: runtime.RawExtension{
-						Raw: openStateWithClosingParentJSON,
-					},
-				},
-			},
-			reviewResponse: &admissionv1.AdmissionResponse{
-				Allowed: false,
-				Result: &metav1.Status{
-					Message: "failed to create/update open queue abnormal-open-state-queue because of its closed/closing parent queue closing-parent-queue",
-				},
 			},
 		},
 	}

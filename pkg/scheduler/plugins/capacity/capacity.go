@@ -286,6 +286,8 @@ func (cp *capacityPlugin) OnSessionClose(ssn *framework.Session) {
 				klog.Warningf("Failed to create/update root queue, error: %v", err)
 			}
 		}
+
+		delete(ssn.Queues, api.QueueID(cp.rootQueue))
 	}
 
 	cp.totalResource = nil
@@ -440,9 +442,14 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	// Set the root queue
 	cp.rootQueue = rootQueueID
 	ssn.Queues[api.QueueID(cp.rootQueue)] = &api.QueueInfo{
-		UID:   api.QueueID(cp.rootQueue),
-		Name:  cp.rootQueue,
-		Queue: &scheduling.Queue{},
+		UID:  api.QueueID(cp.rootQueue),
+		Name: cp.rootQueue,
+		Queue: &scheduling.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: string(cp.rootQueue),
+			},
+			Spec: scheduling.QueueSpec{},
+		},
 	}
 
 	// Initialize queue attributes
