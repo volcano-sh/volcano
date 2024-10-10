@@ -127,11 +127,14 @@ func (cc *jobcontroller) deleteJob(obj interface{}) {
 			return
 		}
 	}
-
-	if err := cc.cache.Delete(job); err != nil {
-		klog.Errorf("Failed to delete job <%s/%s>: %v in cache",
-			job.Namespace, job.Name, err)
+	req := apis.Request{
+		Namespace:         job.Namespace,
+		JobName:           job.Name,
+		IsDeleteJobAction: true,
 	}
+	key := jobhelpers.GetJobKeyByReq(&req)
+	queue := cc.getWorkerQueue(key)
+	queue.Add(req)
 }
 
 func (cc *jobcontroller) addPod(obj interface{}) {

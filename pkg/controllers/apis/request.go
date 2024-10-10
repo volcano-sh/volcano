@@ -30,10 +30,11 @@ type Request struct {
 	TaskName  string
 	QueueName string
 
-	Event      v1alpha1.Event
-	ExitCode   int32
-	Action     v1alpha1.Action
-	JobVersion int32
+	Event             v1alpha1.Event
+	ExitCode          int32
+	Action            v1alpha1.Action
+	JobVersion        int32
+	IsDeleteJobAction bool
 }
 
 // String function returns the request in string format.

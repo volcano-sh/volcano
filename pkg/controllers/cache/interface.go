@@ -25,13 +25,11 @@ import (
 
 // Cache Interface.
 type Cache interface {
-	Run(stopCh <-chan struct{})
-
 	Get(key string) (*apis.JobInfo, error)
 	GetStatus(key string) (*v1alpha1.JobStatus, error)
 	Add(obj *v1alpha1.Job) error
 	Update(obj *v1alpha1.Job) error
-	Delete(obj *v1alpha1.Job) error
+	Delete(key string) error
 
 	AddPod(pod *v1.Pod) error
 	UpdatePod(pod *v1.Pod) error
