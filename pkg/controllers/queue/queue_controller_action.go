@@ -19,6 +19,7 @@ package queue
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -28,8 +29,14 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/queue/state"
+)
+
+const (
+	KubeParentQueueLabelKey = "volcano.sh/parent-queue"
 )
 
 func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
@@ -100,6 +107,18 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to open queue %s.", queue.Name)
 
+	// check if hierarchical queue is enabled
+	enableHierarchy := false
+	if queue.Labels != nil {
+		_, enableHierarchy = queue.Labels[KubeParentQueueLabelKey]
+	}
+	if enableHierarchy && queue.Status.State != schedulingv1beta1.QueueStateOpen {
+		continued, err := c.openHierarchicalQueue(queue)
+		if !continued {
+			return err
+		}
+	}
+
 	newQueue := queue.DeepCopy()
 	newQueue.Status.State = schedulingv1beta1.QueueStateOpen
 
@@ -142,6 +161,18 @@ func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateF
 func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
 	klog.V(4).Infof("Begin to close queue %s.", queue.Name)
 
+	// Check if hierarchical queue is enabled
+	enableHierarchy := false
+	if queue.Labels != nil {
+		_, enableHierarchy = queue.Labels[KubeParentQueueLabelKey]
+	}
+	if enableHierarchy && queue.Status.State != schedulingv1beta1.QueueStateClosed && queue.Status.State != schedulingv1beta1.QueueStateClosing {
+		continued, err := c.closeHierarchicalQueue(queue)
+		if !continued {
+			return err
+		}
+	}
+
 	newQueue := queue.DeepCopy()
 	newQueue.Status.State = schedulingv1beta1.QueueStateClosed
 
@@ -180,4 +211,61 @@ func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateState
 	}
 
 	return nil
+}
+
+func (c *queuecontroller) openHierarchicalQueue(queue *schedulingv1beta1.Queue) (bool, error) {
+	if queue.Spec.Parent == "" || queue.Spec.Parent == "root" {
+		return true, nil
+	}
+
+	parentQueue, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue.Spec.Parent, metav1.GetOptions{})
+	if err != nil {
+		return false, fmt.Errorf("Failed to get parent queue <%s> of queue <%s>: %v", queue.Spec.Parent, queue.Name, err)
+	}
+
+	if parentQueue.Status.State == schedulingv1beta1.QueueStateClosing || parentQueue.Status.State == schedulingv1beta1.QueueStateClosed {
+		klog.Errorf("Failed to open queue %s because its parent queue %s is closing or closed. Open the parent queue first.", queue.Name, queue.Spec.Parent)
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (c *queuecontroller) closeHierarchicalQueue(queue *schedulingv1beta1.Queue) (bool, error) {
+	if queue.Name == "root" {
+		klog.Errorf("Root queue cannot be closed")
+		return false, nil
+	}
+
+	labelSelector := metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			KubeParentQueueLabelKey: queue.Name,
+		},
+	}
+	childQueueList, err := c.vcClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{
+		LabelSelector: metav1.FormatLabelSelector(&labelSelector),
+	})
+	if err != nil {
+		return false, err
+	}
+
+	openChildQueue := make([]string, 0)
+	for _, childQueue := range childQueueList.Items {
+		if childQueue.Status.State != schedulingv1beta1.QueueStateClosed && childQueue.Status.State != schedulingv1beta1.QueueStateClosing {
+			req := &apis.Request{
+				QueueName: childQueue.Name,
+				Action:    busv1alpha1.CloseQueueAction,
+			}
+
+			c.enqueue(req)
+			openChildQueue = append(openChildQueue, childQueue.Name)
+			klog.V(3).Infof("Closing child queue <%s> because its parent queue %s is closing or closed.", childQueue.Name, queue.Name)
+		}
+	}
+
+	if len(openChildQueue) > 0 {
+		return false, fmt.Errorf("failed to close queue %s because its child queues %v are still open", queue.Name, strings.Join(openChildQueue, ","))
+	}
+
+	return true, nil
 }

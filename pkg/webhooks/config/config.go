@@ -48,7 +48,8 @@ type ResGroupConfig struct {
 // AdmissionConfiguration defines the configuration of admission.
 type AdmissionConfiguration struct {
 	sync.Mutex
-	ResGroupsConfig []ResGroupConfig `yaml:"resourceGroups"`
+	ResGroupsConfig         []ResGroupConfig `yaml:"resourceGroups"`
+	EnableHierarchyCapacity bool             `yaml:"enableHierarchyCapacity"`
 }
 
 var admissionConf AdmissionConfiguration
@@ -73,6 +74,7 @@ func LoadAdmissionConf(confPath string) *AdmissionConfiguration {
 
 	admissionConf.Lock()
 	admissionConf.ResGroupsConfig = data.ResGroupsConfig
+	admissionConf.EnableHierarchyCapacity = data.EnableHierarchyCapacity
 	admissionConf.Unlock()
 	return &admissionConf
 }

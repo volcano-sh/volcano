@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
@@ -73,6 +74,9 @@ type Cache interface {
 
 	// Client returns the kubernetes clientSet, which can be used by plugins
 	Client() kubernetes.Interface
+
+	// VCClient returns the volcano clientSet, which can be used by plugins
+	VCClient() vcclient.Interface
 
 	// ClientConfig returns the rest config
 	ClientConfig() *rest.Config

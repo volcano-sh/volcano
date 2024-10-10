@@ -45,6 +45,10 @@ import (
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
+const (
+	KubeParentQueueLabelKey = "volcano.sh/parent-queue"
+)
+
 func init() {
 	capabilities.Initialize(capabilities.Capabilities{
 		AllowPrivileged: true,
@@ -229,6 +233,31 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	} else if queue.Status.State != schedulingv1beta1.QueueStateOpen {
 		msg += fmt.Sprintf(" can only submit job to queue with state `Open`, "+
 			"queue `%s` status is `%s`;", queue.Name, queue.Status.State)
+	} else if config.ConfigData != nil {
+		config.ConfigData.Lock()
+		enableHierarchyCapacity := config.ConfigData.EnableHierarchyCapacity
+		config.ConfigData.Unlock()
+		if enableHierarchyCapacity {
+			if queue.Name == "root" {
+				msg += " can not submit job to root queue;"
+			} else {
+				labelSelector := metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						KubeParentQueueLabelKey: queue.Name,
+					},
+				}
+				childQueueList, err := config.VolcanoClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{
+					LabelSelector: metav1.FormatLabelSelector(&labelSelector),
+				})
+
+				if err != nil {
+					msg += fmt.Sprintf("failed to get child queues of queue `%s`: %v;", queue.Name, err)
+				}
+				if len(childQueueList.Items) > 0 {
+					msg += fmt.Sprintf(" can only submit job to leaf queue, "+"queue `%s` has %d child queues;", queue.Name, len(childQueueList.Items))
+				}
+			}
+		}
 	}
 
 	if hasDependenciesBetweenTasks {
