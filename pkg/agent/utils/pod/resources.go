@@ -90,6 +90,12 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 	if cpuSharesTotal == 0 {
 		cpuSharesTotal = minShares
 	}
+
+	// pod didn't request any extend resources, skip setting cgroup.
+	if cpuLimitsTotal == 0 && !cpuLimitsDeclared && !memoryLimitsDeclared {
+		return containerRes
+	}
+
 	containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUShareFileName, Value: cpuSharesTotal})
 
 	// pod level should not set limit when exits one container has no cpu limit.

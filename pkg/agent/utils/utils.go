@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/state"
 
@@ -47,6 +48,9 @@ const (
 	defaultKubeletRootDir = "/var/lib/kubelet"
 
 	cpuManagerState = "cpu_manager_state"
+
+	evictionKind            = "Eviction"
+	evictionSubResourceName = "pods/eviction"
 )
 
 func UpdateFile(path string, content []byte) error {
@@ -151,4 +155,18 @@ func GetCPUManagerPolicy() string {
 		return ""
 	}
 	return s.PolicyName
+}
+
+func GetEvictionVersion(kubeClient clientset.Interface) (string, error) {
+	resourceList, err := kubeClient.Discovery().ServerResourcesForGroupVersion("v1")
+	if err != nil {
+		return "", err
+	}
+
+	for _, apiResource := range resourceList.APIResources {
+		if apiResource.Name == evictionSubResourceName && apiResource.Kind == evictionKind {
+			return apiResource.Version, nil
+		}
+	}
+	return "", fmt.Errorf("eviction version not found")
 }

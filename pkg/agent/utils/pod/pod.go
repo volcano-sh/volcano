@@ -31,7 +31,7 @@ import (
 // ActivePods returns pods bound to the kubelet that are active (i.e. non-terminal state)
 type ActivePods func() ([]*v1.Pod, error)
 
-type KillPod func(ctx context.Context, client clientset.Interface, gracePeriodSeconds *int64, pod *v1.Pod) error
+type KillPod func(ctx context.Context, client clientset.Interface, gracePeriodSeconds *int64, pod *v1.Pod, evictionVersion string) error
 
 type FilterPodsFunc func(*v1.Pod, v1.ResourceName) bool
 

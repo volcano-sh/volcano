@@ -35,6 +35,8 @@ import (
 	"volcano.sh/volcano/pkg/agent/utils/cgroup"
 	"volcano.sh/volcano/pkg/metriccollect"
 	"volcano.sh/volcano/pkg/networkqos"
+
+	_ "volcano.sh/volcano/pkg/agent/oversubscription/policy/extend"
 )
 
 func NewVolcanoAgentCommand(ctx context.Context) *cobra.Command {

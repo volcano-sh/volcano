@@ -18,15 +18,18 @@ package eviction
 
 import (
 	"context"
+	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/kubelet/types"
 
+	"volcano.sh/volcano/pkg/agent/utils"
 	utilpod "volcano.sh/volcano/pkg/agent/utils/pod"
 )
 
@@ -41,21 +44,37 @@ const (
 	Reason = "Evicted"
 )
 
-func evictPod(ctx context.Context, client clientset.Interface, gracePeriodSeconds *int64, pod *corev1.Pod) error {
+func evictPod(ctx context.Context, client clientset.Interface, gracePeriodSeconds *int64, pod *corev1.Pod, evictionVersion string) error {
 	if *gracePeriodSeconds < int64(0) {
 		*gracePeriodSeconds = int64(0)
 	}
-	eviction := &policyv1.Eviction{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pod.Name,
-			Namespace: pod.Namespace,
-		},
-		DeleteOptions: &metav1.DeleteOptions{
-			GracePeriodSeconds: gracePeriodSeconds,
-		},
+
+	switch evictionVersion {
+	case "v1":
+		eviction := &policyv1.Eviction{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pod.Name,
+				Namespace: pod.Namespace,
+			},
+			DeleteOptions: &metav1.DeleteOptions{
+				GracePeriodSeconds: gracePeriodSeconds,
+			},
+		}
+		return client.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction)
+	case "v1beta1":
+		eviction := &policyv1beta1.Eviction{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pod.Name,
+				Namespace: pod.Namespace,
+			},
+			DeleteOptions: &metav1.DeleteOptions{
+				GracePeriodSeconds: gracePeriodSeconds,
+			},
+		}
+		return client.PolicyV1beta1().Evictions(pod.Namespace).Evict(ctx, eviction)
+	default:
+		return fmt.Errorf("unsupported eviction version: %s", evictionVersion)
 	}
-	// TODO: get policy version dynamically using discovery client.
-	return client.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction)
 }
 
 type Eviction interface {
@@ -63,17 +82,24 @@ type Eviction interface {
 }
 
 type eviction struct {
-	kubeClient  clientset.Interface
-	nodeName    string
-	killPodFunc utilpod.KillPod
+	kubeClient      clientset.Interface
+	nodeName        string
+	killPodFunc     utilpod.KillPod
+	evictionVersion string
 }
 
 func NewEviction(client clientset.Interface, nodeName string) Eviction {
-	return &eviction{
+	e := &eviction{
 		kubeClient:  client,
 		nodeName:    nodeName,
 		killPodFunc: evictPod,
 	}
+	version, err := utils.GetEvictionVersion(client)
+	if err != nil {
+		klog.ErrorS(err, "Failed to get eviction version")
+	}
+	e.evictionVersion = version
+	return e
 }
 
 func (e *eviction) Evict(ctx context.Context, pod *corev1.Pod, eventRecorder record.EventRecorder, gracePeriodSeconds int64, evictMsg string) bool {
@@ -82,13 +108,13 @@ func (e *eviction) Evict(ctx context.Context, pod *corev1.Pod, eventRecorder rec
 		return false
 	}
 
-	eventRecorder.Eventf(pod, corev1.EventTypeWarning, Reason, evictMsg)
-	err := e.killPodFunc(ctx, e.kubeClient, &gracePeriodSeconds, pod)
+	err := e.killPodFunc(ctx, e.kubeClient, &gracePeriodSeconds, pod, e.evictionVersion)
 	if err != nil {
 		klog.ErrorS(err, "Failed to evict pod", "pod", klog.KObj(pod))
 		return false
 	}
 
+	eventRecorder.Eventf(pod, corev1.EventTypeWarning, Reason, evictMsg)
 	klog.InfoS("Successfully evicted pod", "pod", klog.KObj(pod))
 	return true
 }

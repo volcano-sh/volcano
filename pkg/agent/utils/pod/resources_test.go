@@ -115,6 +115,50 @@ func TestCalculateExtendResources(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "no extend resources",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name: "container-1",
+							Resources: v1.ResourceRequirements{
+								Limits: map[v1.ResourceName]resource.Quantity{
+									"cpu": *resource.NewQuantity(5, resource.DecimalSI),
+								},
+								Requests: map[v1.ResourceName]resource.Quantity{
+									"cpu":    *resource.NewQuantity(500, resource.DecimalSI),
+									"memory": *resource.NewQuantity(100, resource.BinarySI),
+								},
+							},
+						},
+						{
+							Name: "container-2",
+							Resources: v1.ResourceRequirements{
+								Limits: map[v1.ResourceName]resource.Quantity{
+									"cpu":    *resource.NewQuantity(1000, resource.DecimalSI),
+									"memory": *resource.NewQuantity(200, resource.BinarySI),
+								},
+								Requests: map[v1.ResourceName]resource.Quantity{
+									"memory": *resource.NewQuantity(100, resource.BinarySI),
+								},
+							},
+						},
+					},
+				},
+				Status: v1.PodStatus{ContainerStatuses: []v1.ContainerStatus{
+					{
+						Name:        "container-1",
+						ContainerID: fmt.Sprintf("containerd://%s", "111"),
+					},
+					{
+						Name:        "container-2",
+						ContainerID: fmt.Sprintf("docker://%s", "222"),
+					},
+				}},
+			},
+			want: []Resources{},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
