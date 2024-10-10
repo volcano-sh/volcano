@@ -5032,7 +5032,7 @@ webhooks:
         namespace: volcano-system
         path: /pods/mutate
         port: 443
-    failurePolicy: Fail
+    failurePolicy: Ignore
     matchPolicy: Equivalent
     name: mutatepod.volcano.sh
     namespaceSelector:
@@ -5044,6 +5044,9 @@ webhooks:
             - kube-system
     objectSelector: {}
     reinvocationPolicy: Never
+    matchConditions:
+    - expression: object.spec.schedulerName == 'volcano'
+      name: scheduler-name-match
     rules:
       - apiGroups:
           - ""
@@ -5227,7 +5230,7 @@ webhooks:
         namespace: volcano-system
         path: /pods/validate
         port: 443
-    failurePolicy: Fail
+    failurePolicy: Ignore
     matchPolicy: Equivalent
     name: validatepod.volcano.sh
     namespaceSelector:
@@ -5238,6 +5241,9 @@ webhooks:
             - volcano-system
             - kube-system
     objectSelector: {}
+    matchConditions:
+    - expression: object.spec.schedulerName == 'volcano'
+      name: scheduler-name-match
     rules:
       - apiGroups:
           - ""
