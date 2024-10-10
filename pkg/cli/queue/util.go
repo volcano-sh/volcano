@@ -29,6 +29,7 @@ import (
 
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
 
@@ -61,4 +62,27 @@ func createQueueCommand(ctx context.Context, config *rest.Config, action busv1al
 	}
 
 	return nil
+}
+
+type podGroupStatistics struct {
+	inqueue   int
+	pending   int
+	running   int
+	unknown   int
+	completed int
+}
+
+func (pgStats *podGroupStatistics) statPodGroupCountsForQueue(pg *v1beta1.PodGroup) {
+	switch pg.Status.Phase {
+	case v1beta1.PodGroupInqueue:
+		pgStats.inqueue++
+	case v1beta1.PodGroupPending:
+		pgStats.pending++
+	case v1beta1.PodGroupRunning:
+		pgStats.running++
+	case v1beta1.PodGroupUnknown:
+		pgStats.unknown++
+	case v1beta1.PodGroupCompleted:
+		pgStats.completed++
+	}
 }
