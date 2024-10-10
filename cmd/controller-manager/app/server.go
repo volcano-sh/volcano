@@ -81,7 +81,9 @@ func Run(opt *options.ServerOption) error {
 	// add a uniquifier so that two processes on the same host don't accidentally both become active
 	id := hostname + "_" + string(uuid.NewUUID())
 	// set ResourceNamespace value to LockObjectNamespace when it's not empty,compatible with old flag
+	//lint:ignore SA1019 LockObjectNamespace is deprecated and will be removed in a future release
 	if len(opt.LockObjectNamespace) > 0 {
+		//lint:ignore SA1019 LockObjectNamespace is deprecated and will be removed in a future release
 		opt.LeaderElection.ResourceNamespace = opt.LockObjectNamespace
 	}
 	rl, err := resourcelock.New(opt.LeaderElection.ResourceLock,
