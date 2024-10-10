@@ -17,6 +17,7 @@ limitations under the License.
 package reclaim
 
 import (
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -111,6 +112,15 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			continue
 		} else {
 			task = tasks.Pop().(*api.TaskInfo)
+		}
+
+		if task.Pod.Spec.PreemptionPolicy != nil && *task.Pod.Spec.PreemptionPolicy == v1.PreemptNever {
+			klog.V(3).Infof("Task %s/%s is not eligible to preempt other tasks due to preemptionPolicy is Never", task.Namespace, task.Name)
+			// TODO: In order to avoid blocking other tasks in the job or other jobs in the queue to reclaim resources, the job and queue need
+			// to be pushed back to the priority queue. Need to refactor the framework of reclaim action, see issue: https://github.com/volcano-sh/volcano/issues/3738
+			jobs.Push(job)
+			queues.Push(queue)
+			continue
 		}
 
 		if !ssn.Allocatable(queue, task) {
