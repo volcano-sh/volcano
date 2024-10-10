@@ -213,56 +213,53 @@ func TestProportion(t *testing.T) {
 		// proportion
 		go func() {
 			for {
-				select {
-				default:
-					ssn := framework.OpenSession(schedulerCache, []conf.Tier{
-						{
-							Plugins: []conf.PluginOption{
-								{
-									Name:             PluginName,
-									EnabledPredicate: &trueValue,
-								},
-								{
-									Name:                gang.PluginName,
-									EnabledJobReady:     &trueValue,
-									EnabledJobPipelined: &trueValue,
-								},
-								{
-									Name:            priority.PluginName,
-									EnabledJobOrder: &trueValue,
-								},
+				ssn := framework.OpenSession(schedulerCache, []conf.Tier{
+					{
+						Plugins: []conf.PluginOption{
+							{
+								Name:             PluginName,
+								EnabledPredicate: &trueValue,
+							},
+							{
+								Name:                gang.PluginName,
+								EnabledJobReady:     &trueValue,
+								EnabledJobPipelined: &trueValue,
+							},
+							{
+								Name:            priority.PluginName,
+								EnabledJobOrder: &trueValue,
 							},
 						},
-					}, nil)
+					},
+				}, nil)
 
-					allocator := allocate.New()
-					allocator.Execute(ssn)
-					framework.CloseSession(ssn)
-					time.Sleep(time.Second * 3)
-					if num == 1 {
-						metrics := getLocalMetrics()
-						if metrics == 12000 {
-							t.Logf("init queue_allocated metrics is ok,%v", metrics)
-						}
-						schedulerCache.DeletePodGroupV1beta1(pg1)
-					} else if num == 2 {
-						metrics := getLocalMetrics()
-						if metrics == 4000 {
-							t.Logf("after delete vcjob pg1, queue_allocated metrics is ok,%v", metrics)
-						}
-						schedulerCache.DeletePodGroupV1beta1(pg2)
-					} else {
-						metrics := getLocalMetrics()
-						if metrics != 0 {
-							t.Errorf("after delete vcjob pg2, queue_allocated metrics is fail,%v", metrics)
-							c <- false
-							return
-						}
-						t.Logf("after delete vcjob pg2, queue_allocated metrics is ok,%v", metrics)
-						c <- true
+				allocator := allocate.New()
+				allocator.Execute(ssn)
+				framework.CloseSession(ssn)
+				time.Sleep(time.Second * 3)
+				if num == 1 {
+					metrics := getLocalMetrics()
+					if metrics == 12000 {
+						t.Logf("init queue_allocated metrics is ok,%v", metrics)
 					}
-					num++
+					schedulerCache.DeletePodGroupV1beta1(pg1)
+				} else if num == 2 {
+					metrics := getLocalMetrics()
+					if metrics == 4000 {
+						t.Logf("after delete vcjob pg1, queue_allocated metrics is ok,%v", metrics)
+					}
+					schedulerCache.DeletePodGroupV1beta1(pg2)
+				} else {
+					metrics := getLocalMetrics()
+					if metrics != 0 {
+						t.Errorf("after delete vcjob pg2, queue_allocated metrics is fail,%v", metrics)
+						c <- false
+						return
+					}
+					t.Logf("after delete vcjob pg2, queue_allocated metrics is ok,%v", metrics)
+					c <- true
 				}
+				num++
 			}
 		}()
 
@@ -274,17 +271,13 @@ func TestProportion(t *testing.T) {
 			}
 		}()
 
-		for {
-			select {
-			case res := <-c:
-				if !res {
-					t.Error("TestProportion failed")
-				} else {
-					t.Log("TestProportion successful")
-				}
-				return
+		for res := range c {
+			if !res {
+				t.Error("TestProportion failed")
+			} else {
+				t.Log("TestProportion successful")
 			}
-
+			return
 		}
 	}
 }

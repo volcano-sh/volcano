@@ -18,6 +18,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -173,7 +174,7 @@ type imageState struct {
 	// Size of the image
 	size int64
 	// A set of node names for nodes having this image present
-	nodes sets.String
+	nodes sets.Set[string]
 }
 
 // DefaultBinder with kube client and event recorder
@@ -370,11 +371,11 @@ func (dvb *defaultVolumeBinder) GetPodVolumes(task *schedulingapi.TaskInfo,
 	if err != nil {
 		return nil, err
 	} else if len(reasons) > 0 {
-		var errors []string
+		var errorslice []string
 		for _, reason := range reasons {
-			errors = append(errors, string(reason))
+			errorslice = append(errorslice, string(reason))
 		}
-		return nil, fmt.Errorf(strings.Join(errors, ","))
+		return nil, errors.New(strings.Join(errorslice, ","))
 	}
 
 	return podVolumes, err

@@ -211,7 +211,7 @@ func (g *GPUDevice) getUsedGPUMemory() uint {
 
 // isIdleGPU check if the device is idled.
 func (g *GPUDevice) isIdleGPU() bool {
-	return g.PodMap == nil || len(g.PodMap) == 0
+	return len(g.PodMap) == 0
 }
 
 // getGPUMemoryPod returns the GPU memory required by the pod.

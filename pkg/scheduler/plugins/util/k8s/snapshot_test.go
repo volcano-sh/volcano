@@ -125,7 +125,7 @@ func TestSnapshot(t *testing.T) {
 				t.Fatalf("unexpected list PodsWithRequiredAntiAffinity nodeInfos value (+got: %s/-want: %s), err: %s", nodeInfoList, tc.expectedNodeInfos, err)
 			}
 
-			sel, err := labels.Parse("test==test")
+			sel, _ := labels.Parse("test==test")
 			pods, err := snapshot.Pods().List(sel)
 			if !reflect.DeepEqual(tc.expectedPods, pods) || err != nil {
 				t.Fatalf("unexpected list pods value (+got: %s/-want: %s), err: %s", pods, tc.expectedNodeInfos, err)

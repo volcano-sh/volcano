@@ -39,7 +39,6 @@ import (
 	flowlister "volcano.sh/apis/pkg/client/listers/flow/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/framework"
-	"volcano.sh/volcano/pkg/controllers/jobflow/state"
 	jobflowstate "volcano.sh/volcano/pkg/controllers/jobflow/state"
 )
 
@@ -129,7 +128,7 @@ func (jf *jobflowcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	jf.syncHandler = jf.handleJobFlow
 
-	state.SyncJobFlow = jf.syncJobFlow
+	jobflowstate.SyncJobFlow = jf.syncJobFlow
 	return nil
 }
 
