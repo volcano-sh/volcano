@@ -2,13 +2,11 @@ package framework
 
 import (
 	"context"
-	"math/rand"
-	"time"
-
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-
+	"math/rand"
+	"time"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -95,6 +93,7 @@ func (ju *jobUpdater) updateJob(index int) {
 	job.PodGroup.Status = jobStatus(ssn, job)
 	oldStatus, found := ssn.podGroupStatus[job.UID]
 	updatePG := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
+	klog.Infof("oldStatus: %v, newStatus: %v, updatePG: %v", oldStatus, job.PodGroup.Status, updatePG)
 	if _, err := ssn.cache.UpdateJobStatus(job, updatePG); err != nil {
 		klog.Errorf("Failed to update job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
