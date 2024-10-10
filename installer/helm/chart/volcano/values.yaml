@@ -2,6 +2,7 @@ basic:
   controller_image_name: "volcanosh/vc-controller-manager"
   scheduler_image_name: "volcanosh/vc-scheduler"
   admission_image_name: "volcanosh/vc-webhook-manager"
+  agent_image_name: "volcanosh/vc-agent"
   admission_secret_name: "volcano-admission-secret"
   admission_config_file: "config/volcano-admission.conf"
   scheduler_config_file: "config/volcano-scheduler.conf"
@@ -23,6 +24,7 @@ custom:
   scheduler_name: ~
   leader_elect_enable: false
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
+  colocation_enable: false
 
 # Override the configuration for admission or scheduler.
 # For example:
@@ -62,6 +64,7 @@ custom:
   admission_affinity: ~
   controller_affinity: ~
   scheduler_affinity: ~
+  agent_affinity: ~
 
 # Specify tolerations for all main Volcano components or per component
 # For example:
@@ -74,6 +77,10 @@ custom:
   admission_tolerations: ~
   controller_tolerations: ~
   scheduler_tolerations: ~
+  agent_tolerations:
+  - key: "volcano.sh/offline-job-evicting"
+    operator: "Exists"
+    effect: "NoSchedule"
 
 # Specify securityContext for all main Volcano components or per component
 # For example:
@@ -85,6 +92,7 @@ custom:
   scheduler_sc: ~
   admission_sc: ~
   controller_sc: ~
+  agent_sc: ~
 
 # Specify nodeSelector for all main Volcano components or per component
 # For example:
@@ -96,6 +104,7 @@ custom:
   scheduler_ns: ~
   controller_ns: ~
   kube_state_metrics_ns: ~
+  agent_ns: ~
 
 # Specify labels for Volcano main component deployments and pods
 # For example:
@@ -123,6 +132,7 @@ custom:
   admission_resources: ~
   scheduler_resources: ~
   controller_resources: ~
+  agent_resources: ~
 
 
 # Specify additional namespace selector expressions for Volcano admission webhooks.
@@ -161,6 +171,9 @@ custom:
   scheduler_default_csc: ~
   controller_default_csc: ~
 
+  # Specify agent cni config path.
+  agent_cni_config_path: /etc/cni/net.d/cni.conflist
+
 service:
   # @param service.ipFamilyPolicy [string], support SingleStack, PreferDualStack and RequireDualStack
   #
@@ -172,3 +185,5 @@ service:
   #   - IPv6
   #   - IPv4
   ipFamilies: []
+
+

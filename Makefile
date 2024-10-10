@@ -65,7 +65,7 @@ include Makefile.def
 
 .EXPORT_ALL_VARIABLES:
 
-all: vc-scheduler vc-controller-manager vc-webhook-manager vcctl command-lines
+all: vc-scheduler vc-controller-manager vc-webhook-manager vc-agent vcctl command-lines
 
 init:
 	mkdir -p ${BIN_DIR}
@@ -84,14 +84,18 @@ vc-controller-manager: init
 vc-webhook-manager: init
 	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-webhook-manager ./cmd/webhook-manager
 
+vc-agent: init
+	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-agent ./cmd/agent
+	CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/network-qos ./cmd/network-qos
+
 vcctl: init
 	CC=${CC} CGO_ENABLED=0 GOOS=${OS} go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli
 
-image_bins: vc-scheduler vc-controller-manager vc-webhook-manager
+image_bins: vc-scheduler vc-controller-manager vc-webhook-manager vc-agent
 
 images:
-	for name in controller-manager scheduler webhook-manager; do\
-		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR}; \
+	for name in controller-manager scheduler webhook-manager agent; do\
+		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
 	done
 
 generate-code:
