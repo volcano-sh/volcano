@@ -3,6 +3,7 @@
 {{ $admission_tolerations := or .Values.custom.admission_tolerations .Values.custom.default_tolerations }}
 {{ $admission_sc := or .Values.custom.admission_sc .Values.custom.default_sc }}
 {{ $admission_ns := or .Values.custom.admission_ns .Values.custom.default_ns }}
+{{ $scheduler_name := .Values.custom.scheduler_name }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -133,6 +134,9 @@ spec:
             - --admission-conf=/admission.local.config/configmap/{{base .Values.basic.admission_config_file}}
             - --webhook-namespace={{ .Release.Namespace }}
             - --webhook-service-name={{ .Release.Name }}-admission-service
+            {{- if $scheduler_name }}
+            - --scheduler-name={{- $scheduler_name }}
+            {{- end }}
             - --enable-healthz=true
             - --logtostderr
             - --port={{.Values.basic.admission_port}}

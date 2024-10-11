@@ -3,6 +3,7 @@
 {{ $controller_tolerations := or .Values.custom.controller_tolerations .Values.custom.default_tolerations }}
 {{ $controller_sc := or .Values.custom.controller_sc .Values.custom.default_sc }}
 {{ $controller_ns := or .Values.custom.controller_ns .Values.custom.default_ns }}
+{{ $scheduler_name := .Values.custom.scheduler_name }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -156,6 +157,9 @@ spec:
               - --logtostderr
               - --enable-healthz=true
               - --leader-elect={{ .Values.custom.leader_elect_enable }}
+              {{- if $scheduler_name }}
+              - --scheduler-name={{- $scheduler_name }}
+              {{- end }}
               {{- if .Values.custom.leader_elect_enable }}
               - --leader-elect-resource-namespace={{ .Release.Namespace }}
               {{- end }}
