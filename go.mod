@@ -140,7 +140,6 @@ require (
 
 replace (
 	github.com/opencontainers/runc => github.com/opencontainers/runc v1.0.3
-	google.golang.org/grpc => google.golang.org/grpc v1.57.0
 	k8s.io/api => k8s.io/api v0.31.1
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.31.1
 	k8s.io/apimachinery => k8s.io/apimachinery v0.31.1
