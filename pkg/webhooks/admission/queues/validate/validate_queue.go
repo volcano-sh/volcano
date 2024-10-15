@@ -224,7 +224,7 @@ func validateQueueDeleting(queueName string) error {
 
 	queueList, err := config.VolcanoClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to list queue: %v", err)
+		return fmt.Errorf("failed to list queues: %v", err)
 	}
 	childQueueNames := make([]string, 0)
 	for _, childQueue := range queueList.Items {

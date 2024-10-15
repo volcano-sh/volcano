@@ -238,7 +238,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		} else {
 			queueList, err := config.VolcanoClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
 			if err != nil {
-				msg += fmt.Sprintf("failed to get child queues of queue `%s`: %v;", queue.Name, err)
+				msg += fmt.Sprintf("failed to get list queues: %v;", err)
 			}
 			childQueues := make([]schedulingv1beta1.Queue, 0)
 			for _, childQueue := range queueList.Items {
