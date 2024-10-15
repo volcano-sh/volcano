@@ -23,6 +23,7 @@ import (
 // Event structure
 type Event struct {
 	Task *api.TaskInfo
+	Err  error
 }
 
 // EventHandler structure
