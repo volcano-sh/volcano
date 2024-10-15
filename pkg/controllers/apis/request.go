@@ -19,6 +19,8 @@ package apis
 import (
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/types"
+
 	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 )
@@ -27,6 +29,7 @@ import (
 type Request struct {
 	Namespace string
 	JobName   string
+	JobUid    types.UID
 	TaskName  string
 	QueueName string
 

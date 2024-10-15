@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -140,9 +141,13 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		klog.Errorf("Failed to convert %v to v1.Pod", obj)
 		return
 	}
+
+	var jobUid types.UID
 	// Filter out pods that are not created from volcano job
 	if !isControlledBy(pod, helpers.JobKind) {
 		return
+	} else {
+		jobUid = metav1.GetControllerOf(pod).UID
 	}
 
 	jobName, found := pod.Annotations[batch.JobNameKey]
@@ -174,6 +179,7 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
+		JobUid:    jobUid,
 
 		Event:      bus.OutOfSyncEvent,
 		JobVersion: int32(dVersion),
@@ -201,9 +207,12 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
+	var jobUid types.UID
 	// Filter out pods that are not created from volcano job
 	if !isControlledBy(newPod, helpers.JobKind) {
 		return
+	} else {
+		jobUid = metav1.GetControllerOf(newPod).UID
 	}
 
 	if newPod.ResourceVersion == oldPod.ResourceVersion {
@@ -275,6 +284,7 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 	req := apis.Request{
 		Namespace: newPod.Namespace,
 		JobName:   jobName,
+		JobUid:    jobUid,
 		TaskName:  taskName,
 
 		Event:      event,
@@ -303,9 +313,12 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 		}
 	}
 
+	var jobUid types.UID
 	// Filter out pods that are not created from volcano job
 	if !isControlledBy(pod, helpers.JobKind) {
 		return
+	} else {
+		jobUid = metav1.GetControllerOf(pod).UID
 	}
 
 	taskName, found := pod.Annotations[batch.TaskSpecKey]
@@ -339,6 +352,7 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 	req := apis.Request{
 		Namespace: pod.Namespace,
 		JobName:   jobName,
+		JobUid:    jobUid,
 		TaskName:  taskName,
 
 		Event:      bus.PodEvictedEvent,
