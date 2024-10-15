@@ -46,7 +46,7 @@ func addCaCertForWebhook(kubeClient *kubernetes.Clientset, service *router.Admis
 		var mutatingWebhookName = volcanoAdmissionPrefix + strings.ReplaceAll(service.Path, "/", "-")
 		var mutatingWebhook *v1.MutatingWebhookConfiguration
 		webhookChanged := false
-		if err := wait.Poll(time.Second, 5*time.Minute, func() (done bool, err error) {
+		if err := wait.PollUntilContextTimeout(context.Background(), time.Second, 5*time.Minute, true, func(_ context.Context) (done bool, err error) {
 			mutatingWebhook, err = kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookName, metav1.GetOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
@@ -79,7 +79,7 @@ func addCaCertForWebhook(kubeClient *kubernetes.Clientset, service *router.Admis
 		var validatingWebhookName = volcanoAdmissionPrefix + strings.ReplaceAll(service.Path, "/", "-")
 		var validatingWebhook *v1.ValidatingWebhookConfiguration
 		webhookChanged := false
-		if err := wait.Poll(time.Second, 5*time.Minute, func() (done bool, err error) {
+		if err := wait.PollUntilContextTimeout(context.Background(), time.Second, 5*time.Minute, true, func(_ context.Context) (done bool, err error) {
 			validatingWebhook, err = kubeClient.AdmissionregistrationV1().ValidatingWebhookConfigurations().Get(context.TODO(), validatingWebhookName, metav1.GetOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {

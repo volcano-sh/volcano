@@ -271,6 +271,22 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal hierarchicalQueueInSubPathOfAnotherQueue failed for %v.", err)
 	}
 
+	hierarchicalQueueWithNameThatIsSubstringOfOtherQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "hierarchical-queue-with-name-that-is-substring-of-other-queue",
+			Annotations: map[string]string{
+				schedulingv1beta1.KubeHierarchyAnnotationKey:       "root/node",
+				schedulingv1beta1.KubeHierarchyWeightAnnotationKey: "1/4",
+			},
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+	hierarchicalQueueWithNameThatIsSubstringOfOtherQueueJSON, err := json.Marshal(hierarchicalQueueWithNameThatIsSubstringOfOtherQueue)
+	if err != nil {
+		t.Errorf("Marshal  hierarchicalQueueWithNameThatIsSubstringOfOtherQueue failed for %v.", err)
+	}
 	config.VolcanoClient = fakeclient.NewSimpleClientset()
 	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &openStateForDelete, metav1.CreateOptions{})
 	if err != nil {
@@ -585,6 +601,35 @@ func TestAdmitQueues(t *testing.T) {
 					Operation: "DELETE",
 					Object: runtime.RawExtension{
 						Raw: openStateForDeleteJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: true,
+			},
+		},
+		{
+			Name: "Normal Case Hierarchy Is A Substring of Another Queue",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: hierarchicalQueueWithNameThatIsSubstringOfOtherQueueJSON,
 					},
 				},
 			},

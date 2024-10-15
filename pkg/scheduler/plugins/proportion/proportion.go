@@ -143,7 +143,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		if job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
-			attr.inqueue.Add(job.GetMinResources())
+			attr.inqueue.Add(job.DeductSchGatedResources(job.GetMinResources()))
 		}
 
 		// calculate inqueue resource for running jobs
@@ -153,7 +153,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job.PodGroup.Spec.MinResources != nil &&
 			int32(util.CalculateAllocatedTaskNum(job)) >= job.PodGroup.Spec.MinMember {
 			inqueued := util.GetInqueueResource(job, job.Allocated)
-			attr.inqueue.Add(inqueued)
+			// deduct scheduling gated tasks from inqueue resources
+			attr.inqueue.Add(job.DeductSchGatedResources(inqueued))
 		}
 		attr.elastic.Add(job.GetElasticResources())
 		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
@@ -254,6 +255,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.QueueInfo)
 		rv := r.(*api.QueueInfo)
 
+		if lv.Queue.Spec.Priority != rv.Queue.Spec.Priority {
+			// return negative means high priority
+			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
+		}
+
 		if pp.queueOpts[lv.UID].share == pp.queueOpts[rv.UID].share {
 			return 0
 		}
@@ -309,8 +315,8 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		attr := pp.queueOpts[queue.UID]
 
-		free, _ := attr.deserved.Diff(attr.allocated, api.Zero)
-		allocatable := candidate.Resreq.LessEqual(free, api.Zero)
+		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
+		allocatable := futureUsed.LessEqualWithDimension(attr.deserved, candidate.Resreq)
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
@@ -340,19 +346,14 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s>",
 			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String())
 		// The queue resource quota limit has not reached
-		r := minReq.Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
-		rr := attr.realCapability.Clone()
+		r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 
-		for name := range rr.ScalarResources {
-			if _, ok := r.ScalarResources[name]; !ok {
-				delete(rr.ScalarResources, name)
-			}
-		}
-
-		inqueue := r.LessEqual(rr, api.Infinity)
+		inqueue := r.LessEqualWithDimension(attr.realCapability, minReq)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
-			attr.inqueue.Add(job.GetMinResources())
+			// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
+			// so that it will not block other jobs from being inqueued.
+			attr.inqueue.Add(job.DeductSchGatedResources(minReq))
 			return util.Permit
 		}
 		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")

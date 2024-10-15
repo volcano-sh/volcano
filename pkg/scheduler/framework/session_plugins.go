@@ -153,7 +153,6 @@ func (ssn *Session) AddJobStarvingFns(name string, fn api.ValidateFn) {
 // Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
-	var init bool
 
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -173,9 +172,9 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 				victims = nil
 				break
 			}
-			if !init {
+			// first iteration - initialize victims list
+			if victims == nil {
 				victims = candidates
-				init = true
 			} else {
 				var intersection []*api.TaskInfo
 				// Get intersection of victims and candidates.
@@ -203,7 +202,6 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 // Preemptable invoke preemptable function of the plugins
 func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
-	var init bool
 
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -224,10 +222,9 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 				victims = nil
 				break
 			}
-
-			if !init {
+			// first iteration - initialize victims list
+			if victims == nil {
 				victims = candidates
-				init = true
 			} else {
 				var intersection []*api.TaskInfo
 				// Get intersection of victims and candidates.
@@ -798,7 +795,14 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo) *util.Pri
 		if lv.Job == rv.Job {
 			return !ssn.TaskOrderFn(l, r)
 		}
-		return !ssn.JobOrderFn(ssn.Jobs[lv.Job], ssn.Jobs[rv.Job])
+
+		lvJob, lvJobFound := ssn.Jobs[lv.Job]
+		rvJob, rvJobFound := ssn.Jobs[rv.Job]
+		if lvJobFound && rvJobFound && lvJob.Queue != rvJob.Queue {
+			return !ssn.QueueOrderFn(ssn.Queues[lvJob.Queue], ssn.Queues[rvJob.Queue])
+		}
+
+		return !ssn.JobOrderFn(lvJob, rvJob)
 	})
 	for _, victim := range victims {
 		victimsQueue.Push(victim)

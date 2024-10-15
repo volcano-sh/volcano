@@ -28,12 +28,14 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+
+	"k8s.io/kubernetes/pkg/features"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
@@ -119,10 +121,12 @@ type TaskInfo struct {
 	// LastTransaction holds the context of last scheduling transaction
 	LastTransaction *TransactionContext
 
-	Priority    int32
-	VolumeReady bool
-	Preemptable bool
-	BestEffort  bool
+	Priority                    int32
+	VolumeReady                 bool
+	Preemptable                 bool
+	BestEffort                  bool
+	HasRestartableInitContainer bool
+	SchGated                    bool
 
 	// RevocableZone supports setting volcano.sh/revocable-zone annotation or label for pod/podgroup
 	// we only support empty value or * value for this version and we will support specify revocable zone name for future releases
@@ -176,23 +180,27 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	revocableZone := GetPodRevocableZone(pod)
 	topologyInfo := GetPodTopologyInfo(pod)
 	role := getTaskRole(pod)
-
+	hasRestartableInitContainer := hasRestartableInitContainer(pod)
+	// initialize pod scheduling gates info here since it will not change in a scheduling cycle
+	schGated := calSchedulingGated(pod)
 	jobID := getJobID(pod)
 
 	ti := &TaskInfo{
-		UID:           TaskID(pod.UID),
-		Job:           jobID,
-		Name:          pod.Name,
-		Namespace:     pod.Namespace,
-		TaskRole:      role,
-		Priority:      1,
-		Pod:           pod,
-		Resreq:        resReq,
-		InitResreq:    initResReq,
-		Preemptable:   preemptable,
-		BestEffort:    bestEffort,
-		RevocableZone: revocableZone,
-		NumaInfo:      topologyInfo,
+		UID:                         TaskID(pod.UID),
+		Job:                         jobID,
+		Name:                        pod.Name,
+		Namespace:                   pod.Namespace,
+		TaskRole:                    role,
+		Priority:                    1,
+		Pod:                         pod,
+		Resreq:                      resReq,
+		InitResreq:                  initResReq,
+		Preemptable:                 preemptable,
+		BestEffort:                  bestEffort,
+		HasRestartableInitContainer: hasRestartableInitContainer,
+		RevocableZone:               revocableZone,
+		NumaInfo:                    topologyInfo,
+		SchGated:                    schGated,
 		TransactionContext: TransactionContext{
 			NodeName: pod.Spec.NodeName,
 			Status:   getTaskStatus(pod),
@@ -228,6 +236,16 @@ func (ti *TaskInfo) ClearLastTxContext() {
 	ti.LastTransaction = nil
 }
 
+// Return if the pod of a task is scheduling gated by checking if length of sch gates is zero
+// When the Pod is not yet created or sch gates field not set, return false
+func calSchedulingGated(pod *v1.Pod) bool {
+	// Only enable if features.PodSchedulingReadiness feature gate is enabled
+	if utilfeature.DefaultFeatureGate.Enabled(features.PodSchedulingReadiness) {
+		return pod != nil && pod.Spec.SchedulingGates != nil && len(pod.Spec.SchedulingGates) != 0
+	}
+	return false
+}
+
 func (ti *TaskInfo) SetPodResourceDecision() error {
 	if ti.NumaInfo == nil || len(ti.NumaInfo.ResMap) == 0 {
 		return nil
@@ -254,27 +272,39 @@ func (ti *TaskInfo) UnsetPodResourceDecision() {
 // Clone is used for cloning a task
 func (ti *TaskInfo) Clone() *TaskInfo {
 	return &TaskInfo{
-		UID:           ti.UID,
-		Job:           ti.Job,
-		Name:          ti.Name,
-		Namespace:     ti.Namespace,
-		TaskRole:      ti.TaskRole,
-		Priority:      ti.Priority,
-		PodVolumes:    ti.PodVolumes,
-		Pod:           ti.Pod,
-		Resreq:        ti.Resreq.Clone(),
-		InitResreq:    ti.InitResreq.Clone(),
-		VolumeReady:   ti.VolumeReady,
-		Preemptable:   ti.Preemptable,
-		BestEffort:    ti.BestEffort,
-		RevocableZone: ti.RevocableZone,
-		NumaInfo:      ti.NumaInfo.Clone(),
+		UID:                         ti.UID,
+		Job:                         ti.Job,
+		Name:                        ti.Name,
+		Namespace:                   ti.Namespace,
+		TaskRole:                    ti.TaskRole,
+		Priority:                    ti.Priority,
+		PodVolumes:                  ti.PodVolumes,
+		Pod:                         ti.Pod,
+		Resreq:                      ti.Resreq.Clone(),
+		InitResreq:                  ti.InitResreq.Clone(),
+		VolumeReady:                 ti.VolumeReady,
+		Preemptable:                 ti.Preemptable,
+		BestEffort:                  ti.BestEffort,
+		HasRestartableInitContainer: ti.HasRestartableInitContainer,
+		RevocableZone:               ti.RevocableZone,
+		NumaInfo:                    ti.NumaInfo.Clone(),
+		SchGated:                    ti.SchGated,
 		TransactionContext: TransactionContext{
 			NodeName: ti.NodeName,
 			Status:   ti.Status,
 		},
 		LastTransaction: ti.LastTransaction.Clone(),
 	}
+}
+
+// hasRestartableInitContainer returns whether pod has restartable container.
+func hasRestartableInitContainer(pod *v1.Pod) bool {
+	for _, c := range pod.Spec.InitContainers {
+		if c.RestartPolicy != nil && *c.RestartPolicy == v1.ContainerRestartPolicyAlways {
+			return true
+		}
+	}
+	return false
 }
 
 // String returns the taskInfo details in a string
@@ -504,6 +534,44 @@ func (ji *JobInfo) GetMinResources() *Resource {
 	return NewResource(*ji.PodGroup.Spec.MinResources)
 }
 
+// Get the total resources of tasks whose pod is scheduling gated
+// By definition, if a pod is scheduling gated, it's status is Pending
+func (ji *JobInfo) GetSchGatedPodResources() *Resource {
+	res := EmptyResource()
+	for _, task := range ji.Tasks {
+		if task.SchGated {
+			res.Add(task.Resreq)
+		}
+	}
+	return res
+}
+
+// DeductSchGatedResources deduct resources of scheduling gated pod from Resource res;
+// If resource is less than gated resources, return zero;
+// Note: The purpose of this functionis to deduct the resources of scheduling gated tasks
+// in a job when calculating inqueued resources so that it will not block other jobs from being inqueued.
+func (ji *JobInfo) DeductSchGatedResources(res *Resource) *Resource {
+	schGatedResource := ji.GetSchGatedPodResources()
+	// Most jobs do not have any scheduling gated tasks, hence we add this short cut
+	if schGatedResource.IsEmpty() {
+		return res
+	}
+
+	result := res.Clone()
+	// schGatedResource can be larger than MinResource because minAvailable of a job can be smaller than number of replica
+	result.MilliCPU = max(result.MilliCPU-schGatedResource.MilliCPU, 0)
+	result.Memory = max(result.Memory-schGatedResource.Memory, 0)
+
+	// If a scalar resource is present in schGatedResource but not in minResource, skip it
+	for name, resource := range res.ScalarResources {
+		if schGatedRes, ok := schGatedResource.ScalarResources[name]; ok {
+			result.ScalarResources[name] = max(resource-schGatedRes, 0)
+		}
+	}
+	klog.V(3).Infof("Gated resources: %s, MinResource: %s: Result: %s", schGatedResource.String(), res.String(), result.String())
+	return result
+}
+
 func (ji *JobInfo) GetElasticResources() *Resource {
 	minResource := ji.GetMinResources()
 	if ji.Allocated.LessEqualPartly(minResource, Zero) {
@@ -659,6 +727,20 @@ func (ji *JobInfo) FitError() string {
 	if len(reasons) > 0 {
 		reasonMsg += "; " + fmt.Sprintf("%s: %s", Pending.String(), strings.Join(sortReasonsHistogram(reasons), ", "))
 	}
+
+	// record the original reason: such as can not enqueue or failed reasons of first pod failed to predicated
+	if ji.JobFitErrors != "" {
+		reasonMsg += ". Origin reason is: " + ji.JobFitErrors
+	} else {
+		for _, taskInfo := range ji.Tasks {
+			fitError := ji.NodesFitErrors[taskInfo.UID]
+			if fitError != nil {
+				reasonMsg += fmt.Sprintf(". Origin reason is %v: %v", taskInfo.Name, fitError.Error())
+				break
+			}
+		}
+	}
+
 	return reasonMsg
 }
 

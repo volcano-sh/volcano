@@ -27,6 +27,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -49,7 +50,7 @@ func TestListJobFlow(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{
 							Name:              "test-jobflow",
 							Namespace:         "default",
-							CreationTimestamp: metav1.Now(),
+							CreationTimestamp: metav1.Time{Time: time.Now().UTC().AddDate(0, 0, -3)},
 						},
 						Status: flowv1alpha1.JobFlowStatus{
 							State: flowv1alpha1.State{
@@ -62,7 +63,7 @@ func TestListJobFlow(t *testing.T) {
 			Namespace:   "default",
 			ExpectedErr: nil,
 			ExpectedOutput: `Name            Namespace    Phase      Age    
-test-jobflow    default      Succeed    0s`,
+test-jobflow    default      Succeed    3d`,
 		},
 	}
 	for _, testCase := range testCases {

@@ -284,14 +284,14 @@ func TestDescribeJobTemplate(t *testing.T) {
 			Name:        "test-jobtemplate",
 			Format:      "yaml",
 			ExpectedErr: nil,
-			ExpectedOutput: `metadata:
+			ExpectedOutput: `apiVersion: flow.volcano.sh/v1alpha1
+kind: JobTemplate
+metadata:
   creationTimestamp: null
   name: test-jobtemplate
   namespace: default
 spec: {}
-status: {}
-
----------------------------------`,
+status: {}`,
 		},
 		{
 			name: "Normal Case, use json format",
@@ -306,6 +306,8 @@ status: {}
 			Format:      "json",
 			ExpectedErr: nil,
 			ExpectedOutput: `{
+  "kind": "JobTemplate",
+  "apiVersion": "flow.volcano.sh/v1alpha1",
   "metadata": {
     "name": "test-jobtemplate",
     "namespace": "default",
@@ -313,8 +315,7 @@ status: {}
   },
   "spec": {},
   "status": {}
-}
----------------------------------`,
+}`,
 		},
 	}
 	for _, testCase := range testCases {

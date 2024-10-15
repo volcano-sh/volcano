@@ -169,6 +169,14 @@ func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
 		return v1alpha1.SyncJobAction
 	}
 
+	// Solve the scenario: When pod events accumulate and vcjobs with the same name are frequently created,
+	// it is easy for the pod to cause abnormal status of the newly created vcjob with the same name.
+	if len(req.JobUid) != 0 && job != nil && req.JobUid != job.UID {
+		klog.V(2).Infof("The req belongs to job(%s/%s) and job uid is %v, but the uid of job(%s/%s) is %v in cache, perform %v action",
+			req.Namespace, req.JobName, req.JobUid, job.Namespace, job.Name, job.UID, v1alpha1.SyncJobAction)
+		return v1alpha1.SyncJobAction
+	}
+
 	// For all the requests triggered from discarded job resources will perform sync action instead
 	if req.JobVersion < job.Status.Version {
 		klog.Infof("Request %s is outdated, will perform sync instead.", req)

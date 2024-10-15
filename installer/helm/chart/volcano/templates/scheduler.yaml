@@ -194,6 +194,10 @@ spec:
               mountPath: /volcano.scheduler
             - name: klog-sock
               mountPath: /tmp/klog-socks
+          {{- if .Values.custom.scheduler_default_csc }}
+          securityContext:
+            {{- toYaml .Values.custom.scheduler_default_csc | nindent 12 }}
+          {{- end }}
       volumes:
         - name: scheduler-config
           configMap:
@@ -217,6 +221,12 @@ metadata:
     {{- toYaml .Values.custom.common_labels | nindent 4 }}
     {{- end }}
 spec:
+  {{- if .Values.service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.service.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.service.ipFamilies }}
+  ipFamilies: {{ toYaml .Values.service.ipFamilies | nindent 4 }}
+  {{- end }}
   ports:
   - port: 8080
     protocol: TCP
