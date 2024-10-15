@@ -911,3 +911,256 @@ func TestAdmitQueues(t *testing.T) {
 		})
 	}
 }
+
+func TestAdmitHierarchicalQueues(t *testing.T) {
+	parentQueueWithJobs := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "parent-queue-with-jobs",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "queue-with-jobs",
+			Weight: 1,
+		},
+	}
+
+	parentQueueWithJobsJSON, err := json.Marshal(parentQueueWithJobs)
+	if err != nil {
+		t.Errorf("Marshal queue with parent queue failed for %v.", err)
+	}
+
+	parentQueueWithoutJobs := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "parent-queue-without-jobs",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "queue-without-jobs",
+			Weight: 1,
+		},
+	}
+
+	parentQueueWithoutJobsJSON, err := json.Marshal(parentQueueWithoutJobs)
+	if err != nil {
+		t.Errorf("Marshal queue with parent queue failed for %v.", err)
+	}
+
+	queueWithChild := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "queue-with-child-queues",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+		},
+	}
+	queueWithChildJSON, err := json.Marshal(queueWithChild)
+	if err != nil {
+		t.Errorf("Marshal queue with child queue failed for %v.", err)
+	}
+
+	queueWithoutChild := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "queue-without-child-queues",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+		},
+	}
+	queueWithoutChildJSON, err := json.Marshal(queueWithoutChild)
+	if err != nil {
+		t.Errorf("Marshal queue with child queue failed for %v.", err)
+	}
+
+	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	queueWithJobs := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "queue-with-jobs",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+		},
+		Status: schedulingv1beta1.QueueStatus{
+			Running: 2,
+		},
+	}
+
+	queueWithoutJobs := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "queue-without-jobs",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+		},
+	}
+
+	childQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "child-queue",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "queue-with-child-queues",
+		},
+	}
+
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queueWithJobs, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create queue with jobs failed for %v.", err)
+	}
+
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queueWithoutJobs, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create queue without jobs failed for %v.", err)
+	}
+
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &childQueue, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create child queue failed for %v.", err)
+	}
+
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queueWithChild, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create queue failed for %v.", err)
+	}
+
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queueWithoutChild, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create queue failed for %v.", err)
+	}
+
+	testCases := []struct {
+		Name           string
+		AR             admissionv1.AdmissionReview
+		reviewResponse *admissionv1.AdmissionResponse
+	}{
+		{
+			Name: "Parent Queue has jobs",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "parent-queue-with-jobs",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: parentQueueWithJobsJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "queue queue-with-jobs cannot be the parent queue of queue parent-queue-with-jobs because it has PodGroups (pending: 0, running: 2, unknown: 0, inqueue: 0)",
+				},
+			},
+		},
+		{
+			Name: "Parent Queue has no jobs",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "parent-queue-without-jobs",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: parentQueueWithoutJobsJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: true,
+			},
+		},
+		{
+			Name: "Delete queue with child queue",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "queue-with-child-queues",
+					Operation: "DELETE",
+					Object: runtime.RawExtension{
+						Raw: queueWithChildJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "queue queue-with-child-queues can not be deleted because it has 1 child queues: child-queue",
+				},
+			},
+		},
+		{
+			Name: "Delete queue without child queue",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "queue-without-child-queues",
+					Operation: "DELETE",
+					Object: runtime.RawExtension{
+						Raw: queueWithoutChildJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: true,
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			reviewResponse := AdmitQueues(testCase.AR)
+			if !equality.Semantic.DeepEqual(reviewResponse, testCase.reviewResponse) {
+				t.Errorf("Test case %s failed, expect %v, got %v", testCase.Name,
+					testCase.reviewResponse, reviewResponse)
+			}
+		})
+	}
+}

@@ -75,6 +75,21 @@ func AdmitQueues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse 
 	switch ar.Request.Operation {
 	case admissionv1.Create, admissionv1.Update:
 		err = validateQueue(queue)
+		if err != nil {
+			break
+		}
+		var oldQueue *schedulingv1beta1.Queue
+		if ar.Request.Operation == admissionv1.Update {
+			oldQueue, err = schema.DecodeQueue(ar.Request.OldObject, ar.Request.Resource)
+			if err != nil {
+				break
+			}
+		}
+
+		if ar.Request.Operation == admissionv1.Create || oldQueue.Spec.Parent != queue.Spec.Parent {
+			err = validateHierarchicalQueue(queue)
+		}
+
 	case admissionv1.Delete:
 		err = validateQueueDeleting(ar.Request.Name)
 	default:
@@ -193,15 +208,58 @@ func validateWeightOfQueue(value int32, fldPath *field.Path) field.ErrorList {
 	return append(errs, field.Invalid(fldPath, value, "queue weight must be a positive integer"))
 }
 
-func validateQueueDeleting(queue string) error {
-	if queue == "default" {
+func validateQueueDeleting(queueName string) error {
+	if queueName == "default" {
 		return fmt.Errorf("`%s` queue can not be deleted", "default")
 	}
 
-	_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
+	if queueName == "root" {
+		return fmt.Errorf("`%s` queue can not be deleted", "root")
+	}
+
+	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
+	queueList, err := config.VolcanoClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list queue: %v", err)
+	}
+	childQueueNames := make([]string, 0)
+	for _, childQueue := range queueList.Items {
+		if childQueue.Spec.Parent != queueName {
+			continue
+		}
+		childQueueNames = append(childQueueNames, childQueue.Name)
+	}
+
+	if len(childQueueNames) > 0 {
+		return fmt.Errorf("queue %s can not be deleted because it has %d child queues: %s",
+			queue.Name, len(childQueueNames), strings.Join(childQueueNames, ", "))
+	}
+
+	klog.V(3).Infof("Validation passed for deleting hierarchical queue %s", queue.Name)
+
+	return nil
+}
+
+func validateHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
+	if queue.Spec.Parent == "" || queue.Spec.Parent == "root" {
+		return nil
+	}
+	parentQueue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue.Spec.Parent, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get parent queue of queue %s: %v", queue.Name, err)
+	}
+
+	if parentQueue.Status.Pending+parentQueue.Status.Running+parentQueue.Status.Unknown+parentQueue.Status.Inqueue > 0 {
+		return fmt.Errorf("queue %s cannot be the parent queue of queue %s because it has PodGroups (pending: %d, running: %d, unknown: %d, inqueue: %d)",
+			parentQueue.Name, queue.Name, parentQueue.Status.Pending,
+			parentQueue.Status.Running, parentQueue.Status.Unknown, parentQueue.Status.Inqueue)
+	}
+
+	klog.V(3).Infof("Validation passed for hierarchical queue %s with parent queue %s",
+		queue.Name, parentQueue.Name)
 	return nil
 }
