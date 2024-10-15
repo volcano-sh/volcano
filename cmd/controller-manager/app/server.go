@@ -128,6 +128,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.VCSharedInformerFactory = informerfactory.NewSharedInformerFactory(controllerOpt.VolcanoClient, 0)
 	controllerOpt.InheritOwnerAnnotations = opt.InheritOwnerAnnotations
 	controllerOpt.WorkerThreadsForPG = opt.WorkerThreadsForPG
+	controllerOpt.WorkerThreadsForQueue = opt.WorkerThreadsForQueue
 	controllerOpt.WorkerThreadsForGC = opt.WorkerThreadsForGC
 	controllerOpt.Config = config
 
