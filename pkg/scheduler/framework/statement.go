@@ -293,6 +293,7 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 		}
 	}()
 
+	successEventHandlers := make([]*EventHandler, 0)
 	// Callbacks
 	for _, eh := range s.ssn.eventHandlers {
 		if eh.AllocateFunc != nil {
@@ -303,7 +304,7 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 			if eventInfo.Err != nil {
 				klog.Errorf("Failed to exec allocate callback functions for task <%v/%v> to node <%v> when allocating in Session <%v>: %v",
 					task.Namespace, task.Name, hostname, s.ssn.UID, eventInfo.Err)
-				for _, reh := range s.ssn.eventHandlers {
+				for _, reh := range successEventHandlers {
 					if reh.DeallocateFunc != nil {
 						reh.DeallocateFunc(&Event{
 							Task: task,
@@ -311,6 +312,8 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 					}
 				}
 				return fmt.Errorf("Failed to exec allocate callback functions")
+			} else {
+				successEventHandlers = append(successEventHandlers, eh)
 			}
 		}
 	}
