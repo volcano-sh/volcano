@@ -4331,6 +4331,28 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ---
 # Source: volcano/templates/controllers.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8081"
+    prometheus.io/scrape: "true"
+  name: volcano-controllers-service
+  namespace: volcano-system
+  labels:
+    app: volcano-controller
+spec:
+  ports:
+    - port: 8081
+      protocol: TCP
+      targetPort: 8081
+      name: "metrics"
+  selector:
+    app: volcano-controller
+  type: ClusterIP
+---
+# Source: volcano/templates/controllers.yaml
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -4356,6 +4378,7 @@ spec:
             args:
               - --logtostderr
               - --enable-healthz=true
+              - --enable-metrics=true
               - --leader-elect=false
               - -v=4
               - 2>&1

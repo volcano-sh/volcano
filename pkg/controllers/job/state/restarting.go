@@ -17,6 +17,8 @@ limitations under the License.
 package state
 
 import (
+	"fmt"
+
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
@@ -34,6 +36,7 @@ func (ps *restartingState) Execute(action v1alpha1.Action) error {
 		if status.RetryCount >= maxRetry {
 			// Failed is the phase that the job is restarted failed reached the maximum number of retries.
 			status.State.Phase = vcbatch.Failed
+			UpdateJobFailed(fmt.Sprintf("%s/%s", ps.job.Job.Namespace, ps.job.Job.Name), ps.job.Job.Spec.Queue)
 			return true
 		}
 		total := int32(0)

@@ -182,7 +182,9 @@ spec:
             - --scheduler-name={{- $scheduler_name }}
             {{- end }}
             - --enable-healthz=true
+            {{- if .Values.custom.scheduler_metrics_enable }}
             - --enable-metrics=true
+            {{- end }}
             - --leader-elect={{ .Values.custom.leader_elect_enable }}
             {{- if .Values.custom.leader_elect_enable }}
             - --leader-elect-resource-namespace={{ .Release.Namespace }}
