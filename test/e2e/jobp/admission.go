@@ -1349,6 +1349,102 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
+	ginkgo.It("job validate check: create job with root queue", func() {
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": 1,
+			 "queue": "root",
+			 "tasks": [
+				 {
+					 "replicas": 2,
+					 "template": {
+						 "spec": {
+							 "containers": [
+								 {
+									 "image": "nginx",
+									 "imagePullPolicy": "IfNotPresent",
+									 "name": "nginx",
+									 "resources": {
+										 "requests": {
+											 "cpu": "1"
+										 }
+									 }
+								 }
+							 ],
+							 "restartPolicy": "Never"
+						 }
+					 }
+				 }
+			 ]
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
+	ginkgo.It("job validate check: create job with non-leaf queue", func() {
+
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues: []string{"q1", "q11"},
+			QueueParent: map[string]string{
+				"q1":  "root",
+				"q11": "q1",
+			},
+		})
+		ctx.Queues = []string{"q11", "q1"}
+		defer e2eutil.CleanupTestContext(ctx)
+
+		var job v1alpha1.Job
+		jsonData := []byte(`{
+			"apiVersion": "batch.volcano.sh/v1alpha1",
+			"kind": "Job",
+		 	"metadata": {
+			"name": "test-job"
+		 },
+		 "spec": {
+			 "minAvailable": 1,
+			 "queue": "q1",
+			 "tasks": [
+				 {
+					 "replicas": 2,
+					 "template": {
+						 "spec": {
+							 "containers": [
+								 {
+									 "image": "nginx",
+									 "imagePullPolicy": "IfNotPresent",
+									 "name": "nginx",
+									 "resources": {
+										 "requests": {
+											 "cpu": "1"
+										 }
+									 }
+								 }
+							 ],
+							 "restartPolicy": "Never"
+						 }
+					 }
+				 }
+			 ]
+		 }
+	 }`)
+		err := json.Unmarshal(jsonData, &job)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
+		gomega.Expect(err).To(gomega.HaveOccurred())
+	})
+
 	ginkgo.It("job validate check: create job with priviledged container", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)

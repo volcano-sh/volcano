@@ -121,6 +121,7 @@ type TestContext struct {
 	Namespace        string
 	Queues           []string
 	DeservedResource map[string]v1.ResourceList
+	QueueParent      map[string]string
 	PriorityClasses  map[string]int32
 	UsingPlaceHolder bool
 }
@@ -129,6 +130,7 @@ type Options struct {
 	Namespace          string
 	Queues             []string
 	DeservedResource   map[string]v1.ResourceList
+	QueueParent        map[string]string
 	PriorityClasses    map[string]int32
 	NodesNumLimit      int
 	NodesResourceLimit v1.ResourceList
@@ -147,6 +149,7 @@ func InitTestContext(o Options) *TestContext {
 		Namespace:        o.Namespace,
 		Queues:           o.Queues,
 		DeservedResource: o.DeservedResource,
+		QueueParent:      o.QueueParent,
 		PriorityClasses:  o.PriorityClasses,
 		Vcclient:         VcClient,
 		Kubeclient:       KubeClient,
