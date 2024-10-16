@@ -25,7 +25,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
@@ -1027,10 +1026,10 @@ func TestTaskPriority_CalcPGMin(t *testing.T) {
 
 func TestCalcPGMinResources(t *testing.T) {
 	jc := newFakeController()
-	job := &batch.Job{
+	job := &v1alpha1.Job{
 		TypeMeta: metav1.TypeMeta{},
-		Spec: batch.JobSpec{
-			Tasks: []batch.TaskSpec{
+		Spec: v1alpha1.JobSpec{
+			Tasks: []v1alpha1.TaskSpec{
 				master, worker,
 			},
 		},
