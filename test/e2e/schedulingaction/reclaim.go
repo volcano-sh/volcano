@@ -649,6 +649,122 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 	})
 
+	// Reclaim for hierarchical capacity plugin.
+	It("Capacity Reclaim Case 12: Multi reclaimed queue", func() {
+		// First replace configmap with hierarchical capacity plugin.
+		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
+		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+			vcScheConfStr, ok := data["volcano-scheduler-ci.conf"]
+			Expect(ok).To(BeTrue())
+
+			schedulerConf := &e2eutil.SchedulerConfiguration{}
+			err := yaml.Unmarshal([]byte(vcScheConfStr), schedulerConf)
+			Expect(err).NotTo(HaveOccurred())
+			trueValue := true
+			schedulerConf.Tiers = []e2eutil.Tier{
+				{
+					Plugins: []e2eutil.PluginOption{
+						{
+							Name:               "capacity",
+							EnabledHierarchy:   &trueValue,
+							EnabledJobOrder:    &trueValue,
+							EnabledReclaimable: &trueValue,
+							EnabledQueueOrder:  &trueValue,
+						},
+					},
+				},
+			}
+			newVCScheConfBytes, err := yaml.Marshal(schedulerConf)
+			Expect(err).NotTo(HaveOccurred())
+
+			changed = true
+			changedBefore = make(map[string]string)
+			changedBefore["volcano-scheduler-ci.conf"] = vcScheConfStr
+			data["volcano-scheduler-ci.conf"] = string(newVCScheConfBytes)
+			return
+		})
+		defer cmc.UndoChanged()
+
+		q1 := "reclaim-q1"
+		q2 := "reclaim-q2"
+		q11 := "reclaim-q11"
+		q12 := "reclaim-q12"
+		rootQueue := "root"
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:        []string{q1, q2, q11, q12},
+			NodesNumLimit: 4,
+			DeservedResource: map[string]v1.ResourceList{
+				q1:  {v1.ResourceCPU: *resource.NewQuantity(4, resource.DecimalSI), v1.ResourceMemory: *resource.NewQuantity(4*1024*1024*1024, resource.BinarySI)},
+				q2:  {v1.ResourceCPU: *resource.NewQuantity(4, resource.DecimalSI), v1.ResourceMemory: *resource.NewQuantity(4*1024*1024*1024, resource.BinarySI)},
+				q11: {v1.ResourceCPU: *resource.NewQuantity(2, resource.DecimalSI), v1.ResourceMemory: *resource.NewQuantity(2*1024*1024*1024, resource.BinarySI)},
+				q12: {v1.ResourceCPU: *resource.NewQuantity(2, resource.DecimalSI), v1.ResourceMemory: *resource.NewQuantity(2*1024*1024*1024, resource.BinarySI)},
+			},
+			QueueParent: map[string]string{
+				q1:  rootQueue,
+				q2:  rootQueue,
+				q11: q1,
+				q12: q1,
+			},
+			NodesResourceLimit: e2eutil.CPU2Mem2,
+			PriorityClasses: map[string]int32{
+				"low-priority": 10,
+			},
+		})
+
+		ctx.Queues = []string{q11, q12, q1, q2}
+		defer e2eutil.CleanupTestContext(ctx)
+
+		By("Setup initial jobs")
+
+		spec := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    e2eutil.CPU2Mem2,
+					Min:    1,
+					Rep:    1,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+				},
+			},
+		}
+
+		spec.Name = "reclaim-j1"
+		spec.Queue = q2
+		spec.Pri = "low-priority"
+		job1 := e2eutil.CreateJob(ctx, spec)
+		err := e2eutil.WaitJobReady(ctx, job1)
+		Expect(err).NotTo(HaveOccurred())
+
+		spec.Name = "reclaim-j2"
+		spec.Queue = q11
+		spec.Pri = "low-priority"
+		job2 := e2eutil.CreateJob(ctx, spec)
+		err = e2eutil.WaitJobReady(ctx, job2)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue11 running")
+
+		err = WaitQueueStatus(ctx, "Running", 1, q11)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue2 running")
+
+		By("Create coming jobs")
+
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q12, "low-priority", "", true)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
+
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j4", q11, "low-priority", "", true)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
+
+		By("Make sure all job running")
+
+		err = WaitQueueStatus(ctx, "Running", 1, q12)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue12 running")
+
+		err = WaitQueueStatus(ctx, "Running", 2, q11)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue11 running")
+	})
+
 	It("Reclaim", func() {
 		Skip("skip: the case has some problem")
 		q1, q2 := "reclaim-q1", "reclaim-q2"

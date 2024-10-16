@@ -102,6 +102,10 @@ func Queues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 func createQueuePatch(queue *schedulingv1beta1.Queue) ([]byte, error) {
 	var patch []patchOperation
 
+	patchParent := patchRootParent(queue)
+	if patchParent != nil {
+		patch = append(patch, *patchParent)
+	}
 	// add root node if the root node not specified
 	hierarchy := queue.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]
 	hierarchicalWeights := queue.Annotations[schedulingv1beta1.KubeHierarchyWeightAnnotationKey]
@@ -140,4 +144,17 @@ func createQueuePatch(queue *schedulingv1beta1.Queue) ([]byte, error) {
 	}
 
 	return json.Marshal(patch)
+}
+
+func patchRootParent(queue *schedulingv1beta1.Queue) *patchOperation {
+	if queue.Name == "root" {
+		return nil
+	}
+
+	// Add root parent if not specified.
+	if queue.Spec.Parent == "" {
+		return &patchOperation{Op: "add", Path: "/spec/parent", Value: "root"}
+	}
+
+	return nil
 }

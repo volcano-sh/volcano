@@ -34,6 +34,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -46,6 +47,7 @@ type Session struct {
 	UID types.UID
 
 	kubeClient      kubernetes.Interface
+	vcClient        vcclient.Interface
 	recorder        record.EventRecorder
 	cache           cache.Cache
 	restConfig      *rest.Config
@@ -72,22 +74,23 @@ type Session struct {
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
 
-	plugins           map[string]Plugin
-	eventHandlers     []*EventHandler
-	jobOrderFns       map[string]api.CompareFn
-	queueOrderFns     map[string]api.CompareFn
-	taskOrderFns      map[string]api.CompareFn
-	clusterOrderFns   map[string]api.CompareFn
-	predicateFns      map[string]api.PredicateFn
-	prePredicateFns   map[string]api.PrePredicateFn
-	bestNodeFns       map[string]api.BestNodeFn
-	nodeOrderFns      map[string]api.NodeOrderFn
-	batchNodeOrderFns map[string]api.BatchNodeOrderFn
-	nodeMapFns        map[string]api.NodeMapFn
-	nodeReduceFns     map[string]api.NodeReduceFn
-	preemptableFns    map[string]api.EvictableFn
-	reclaimableFns    map[string]api.EvictableFn
-	overusedFns       map[string]api.ValidateFn
+	plugins             map[string]Plugin
+	eventHandlers       []*EventHandler
+	jobOrderFns         map[string]api.CompareFn
+	queueOrderFns       map[string]api.CompareFn
+	victimQueueOrderFns map[string]api.VictimCompareFn
+	taskOrderFns        map[string]api.CompareFn
+	clusterOrderFns     map[string]api.CompareFn
+	predicateFns        map[string]api.PredicateFn
+	prePredicateFns     map[string]api.PrePredicateFn
+	bestNodeFns         map[string]api.BestNodeFn
+	nodeOrderFns        map[string]api.NodeOrderFn
+	batchNodeOrderFns   map[string]api.BatchNodeOrderFn
+	nodeMapFns          map[string]api.NodeMapFn
+	nodeReduceFns       map[string]api.NodeReduceFn
+	preemptableFns      map[string]api.EvictableFn
+	reclaimableFns      map[string]api.EvictableFn
+	overusedFns         map[string]api.ValidateFn
 	// preemptiveFns means whether current queue can reclaim from other queue,
 	// while reclaimableFns means whether current queue's resources can be reclaimed.
 	preemptiveFns     map[string]api.ValidateWithCandidateFn
@@ -107,6 +110,7 @@ func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
 		UID:             uuid.NewUUID(),
 		kubeClient:      cache.Client(),
+		vcClient:        cache.VCClient(),
 		restConfig:      cache.ClientConfig(),
 		recorder:        cache.EventRecorder(),
 		cache:           cache,
@@ -121,32 +125,33 @@ func openSession(cache cache.Cache) *Session {
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
 
-		plugins:           map[string]Plugin{},
-		jobOrderFns:       map[string]api.CompareFn{},
-		queueOrderFns:     map[string]api.CompareFn{},
-		taskOrderFns:      map[string]api.CompareFn{},
-		clusterOrderFns:   map[string]api.CompareFn{},
-		predicateFns:      map[string]api.PredicateFn{},
-		prePredicateFns:   map[string]api.PrePredicateFn{},
-		bestNodeFns:       map[string]api.BestNodeFn{},
-		nodeOrderFns:      map[string]api.NodeOrderFn{},
-		batchNodeOrderFns: map[string]api.BatchNodeOrderFn{},
-		nodeMapFns:        map[string]api.NodeMapFn{},
-		nodeReduceFns:     map[string]api.NodeReduceFn{},
-		preemptableFns:    map[string]api.EvictableFn{},
-		reclaimableFns:    map[string]api.EvictableFn{},
-		overusedFns:       map[string]api.ValidateFn{},
-		preemptiveFns:     map[string]api.ValidateWithCandidateFn{},
-		allocatableFns:    map[string]api.AllocatableFn{},
-		jobReadyFns:       map[string]api.ValidateFn{},
-		jobPipelinedFns:   map[string]api.VoteFn{},
-		jobValidFns:       map[string]api.ValidateExFn{},
-		jobEnqueueableFns: map[string]api.VoteFn{},
-		jobEnqueuedFns:    map[string]api.JobEnqueuedFn{},
-		targetJobFns:      map[string]api.TargetJobFn{},
-		reservedNodesFns:  map[string]api.ReservedNodesFn{},
-		victimTasksFns:    map[string][]api.VictimTasksFn{},
-		jobStarvingFns:    map[string]api.ValidateFn{},
+		plugins:             map[string]Plugin{},
+		jobOrderFns:         map[string]api.CompareFn{},
+		queueOrderFns:       map[string]api.CompareFn{},
+		victimQueueOrderFns: map[string]api.VictimCompareFn{},
+		taskOrderFns:        map[string]api.CompareFn{},
+		clusterOrderFns:     map[string]api.CompareFn{},
+		predicateFns:        map[string]api.PredicateFn{},
+		prePredicateFns:     map[string]api.PrePredicateFn{},
+		bestNodeFns:         map[string]api.BestNodeFn{},
+		nodeOrderFns:        map[string]api.NodeOrderFn{},
+		batchNodeOrderFns:   map[string]api.BatchNodeOrderFn{},
+		nodeMapFns:          map[string]api.NodeMapFn{},
+		nodeReduceFns:       map[string]api.NodeReduceFn{},
+		preemptableFns:      map[string]api.EvictableFn{},
+		reclaimableFns:      map[string]api.EvictableFn{},
+		overusedFns:         map[string]api.ValidateFn{},
+		preemptiveFns:       map[string]api.ValidateWithCandidateFn{},
+		allocatableFns:      map[string]api.AllocatableFn{},
+		jobReadyFns:         map[string]api.ValidateFn{},
+		jobPipelinedFns:     map[string]api.VoteFn{},
+		jobValidFns:         map[string]api.ValidateExFn{},
+		jobEnqueueableFns:   map[string]api.VoteFn{},
+		jobEnqueuedFns:      map[string]api.JobEnqueuedFn{},
+		targetJobFns:        map[string]api.TargetJobFn{},
+		reservedNodesFns:    map[string]api.ReservedNodesFn{},
+		victimTasksFns:      map[string][]api.VictimTasksFn{},
+		jobStarvingFns:      map[string]api.ValidateFn{},
 	}
 
 	snapshot := cache.Snapshot()
@@ -588,6 +593,11 @@ func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNuma
 // KubeClient returns the kubernetes client
 func (ssn Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
+}
+
+// VCClient returns the volcano client
+func (ssn Session) VCClient() vcclient.Interface {
+	return ssn.vcClient
 }
 
 // ClientConfig returns the rest client

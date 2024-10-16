@@ -515,6 +515,35 @@ func newDefaultQueue(vcClient vcclient.Interface, defaultQueue string) {
 	}
 }
 
+// newRootQueue init root queue
+func newRootQueue(vcClient vcclient.Interface) {
+	reclaimable := false
+	rootQueue := vcv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "root",
+		},
+		Spec: vcv1beta1.QueueSpec{
+			Reclaimable: &reclaimable,
+			Weight:      1,
+		},
+	}
+
+	err := retry.OnError(wait.Backoff{
+		Steps:    60,
+		Duration: time.Second,
+		Factor:   1,
+		Jitter:   0.1,
+	}, func(err error) bool {
+		return !apierrors.IsAlreadyExists(err)
+	}, func() error {
+		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &rootQueue, metav1.CreateOptions{})
+		return err
+	})
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		panic(fmt.Errorf("failed init root queue, with err: %v", err))
+	}
+}
+
 func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -532,6 +561,10 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	// create default queue
 	newDefaultQueue(vcClient, defaultQueue)
 	klog.Infof("Create init queue named default")
+
+	// create root queue
+	newRootQueue(vcClient)
+	klog.Infof("Create init queue named root")
 
 	errTaskRateLimiter := workqueue.NewMaxOfRateLimiter(
 		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 1000*time.Second),
@@ -940,6 +973,11 @@ func (sc *SchedulerCache) RevertVolumes(task *schedulingapi.TaskInfo, podVolumes
 // Client returns the kubernetes clientSet
 func (sc *SchedulerCache) Client() kubernetes.Interface {
 	return sc.kubeClient
+}
+
+// VCClient returns the volcano clientSet
+func (sc *SchedulerCache) VCClient() vcclient.Interface {
+	return sc.vcClient
 }
 
 // ClientConfig returns the rest config

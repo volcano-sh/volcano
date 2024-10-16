@@ -35,6 +35,11 @@ func (ssn *Session) AddQueueOrderFn(name string, qf api.CompareFn) {
 	ssn.queueOrderFns[name] = qf
 }
 
+// AddVictimQueueOrderFn add victim job order function
+func (ssn *Session) AddVictimQueueOrderFn(name string, vcf api.VictimCompareFn) {
+	ssn.victimQueueOrderFns[name] = vcf
+}
+
 // AddClusterOrderFn add queue order function
 func (ssn *Session) AddClusterOrderFn(name string, qf api.CompareFn) {
 	ssn.clusterOrderFns[name] = qf
@@ -591,6 +596,23 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 	return lv.Queue.CreationTimestamp.Before(&rv.Queue.CreationTimestamp)
 }
 
+// VictimQueueOrderFn invoke victimqueueorder function of the plugins
+func (ssn *Session) VictimQueueOrderFn(l, r, preemptor interface{}) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			qof, found := ssn.victimQueueOrderFns[plugin.Name]
+			if !found {
+				continue
+			}
+			if j := qof(l, r, preemptor); j != 0 {
+				return j < 0
+			}
+		}
+	}
+
+	return !ssn.QueueOrderFn(l, r)
+}
+
 // TaskCompareFns invoke taskorder function of the plugins
 func (ssn *Session) TaskCompareFns(l, r interface{}) int {
 	for _, tier := range ssn.Tiers {
@@ -788,7 +810,7 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 // BuildVictimsPriorityQueue returns a priority queue with victims sorted by:
 // if victims has same job id, sorted by !ssn.TaskOrderFn
 // if victims has different job id, sorted by !ssn.JobOrderFn
-func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo) *util.PriorityQueue {
+func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor *api.TaskInfo) *util.PriorityQueue {
 	victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
@@ -798,8 +820,10 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo) *util.Pri
 
 		lvJob, lvJobFound := ssn.Jobs[lv.Job]
 		rvJob, rvJobFound := ssn.Jobs[rv.Job]
-		if lvJobFound && rvJobFound && lvJob.Queue != rvJob.Queue {
-			return !ssn.QueueOrderFn(ssn.Queues[lvJob.Queue], ssn.Queues[rvJob.Queue])
+		preemptorJob, preemptorJobFound := ssn.Jobs[preemptor.Job]
+
+		if lvJobFound && rvJobFound && preemptorJobFound && lvJob.Queue != rvJob.Queue {
+			return ssn.VictimQueueOrderFn(ssn.Queues[lvJob.Queue], ssn.Queues[rvJob.Queue], ssn.Queues[preemptorJob.Queue])
 		}
 
 		return !ssn.JobOrderFn(lvJob, rvJob)
