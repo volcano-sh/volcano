@@ -289,7 +289,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	p, _ = interpodaffinity.New(context.TODO(), plArgs, handle)
 	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
 
-	p, _ = tainttoleration.New(context.TODO(), nil, handle)
+	p, _ = tainttoleration.New(context.TODO(), nil, handle, fts)
 	taintToleration := p.(*tainttoleration.TaintToleration)
 
 	ptsArgs := &config.PodTopologySpreadArgs{

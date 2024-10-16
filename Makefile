@@ -186,7 +186,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	GOOS=${OS} go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.15.0 ;\
+	GOOS=${OS} go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.4 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen

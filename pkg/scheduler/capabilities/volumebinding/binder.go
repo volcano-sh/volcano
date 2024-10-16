@@ -18,6 +18,7 @@ package volumebinding
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -48,6 +49,7 @@ import (
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding/metrics"
+	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 	"k8s.io/kubernetes/pkg/volume/util"
 )
 
@@ -221,8 +223,8 @@ type volumeBinder struct {
 	nodeLister    corelisters.NodeLister
 	csiNodeLister storagelisters.CSINodeLister
 
-	pvcCache PVCAssumeCache
-	pvCache  PVAssumeCache
+	pvcCache *PVCAssumeCache
+	pvCache  *PVAssumeCache
 
 	// Amount of time to wait for the bind operation to succeed
 	bindTimeout time.Duration
@@ -731,7 +733,7 @@ func (b *volumeBinder) checkBindings(logger klog.Logger, pod *v1.Pod, bindings [
 		if pvc.Spec.VolumeName != "" {
 			pv, err := b.pvCache.GetAPIPV(pvc.Spec.VolumeName)
 			if err != nil {
-				if _, ok := err.(*errNotFound); ok {
+				if errors.Is(err, assumecache.ErrNotFound) {
 					// We tolerate NotFound error here, because PV is possibly
 					// not found because of API delay, we can check next time.
 					// And if PV does not exist because it's deleted, PVC will
@@ -884,7 +886,7 @@ func (b *volumeBinder) checkBoundClaims(logger klog.Logger, claims []*v1.Persist
 		pvName := pvc.Spec.VolumeName
 		pv, err := b.pvCache.GetPV(pvName)
 		if err != nil {
-			if _, ok := err.(*errNotFound); ok {
+			if errors.Is(err, assumecache.ErrNotFound) {
 				err = nil
 			}
 			return true, false, err
@@ -923,7 +925,7 @@ func (b *volumeBinder) findMatchingVolumes(logger klog.Logger, pod *v1.Pod, clai
 		pvs := unboundVolumesDelayBinding[storageClassName]
 
 		// Find a matching PV
-		pv, err := volume.FindMatchingVolume(pvc, pvs, node, chosenPVs, true)
+		pv, err := volume.FindMatchingVolume(pvc, pvs, node, chosenPVs, true, utilfeature.DefaultFeatureGate.Enabled(features.VolumeAttributesClass))
 		if err != nil {
 			return false, nil, nil, err
 		}
@@ -1114,8 +1116,6 @@ func isCSIMigrationOnForPlugin(pluginName string) bool {
 		return true
 	case csiplugins.PortworxVolumePluginName:
 		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationPortworx)
-	case csiplugins.RBDVolumePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationRBD)
 	}
 	return false
 }
