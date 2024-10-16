@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.0
+    controller-gen.kubebuilder.io/version: v0.16.4
   name: jobs.batch.volcano.sh
 spec:
   group: batch.volcano.sh
@@ -928,9 +928,7 @@ spec:
                                         name:
                                           type: string
                                         protocol:
-                                          allOf:
-                                          - default: TCP
-                                          - default: TCP
+                                          default: TCP
                                           type: string
                                       required:
                                       - containerPort
@@ -1640,9 +1638,7 @@ spec:
                                         name:
                                           type: string
                                         protocol:
-                                          allOf:
-                                          - default: TCP
-                                          - default: TCP
+                                          default: TCP
                                           type: string
                                       required:
                                       - containerPort
@@ -2366,9 +2362,7 @@ spec:
                                         name:
                                           type: string
                                         protocol:
-                                          allOf:
-                                          - default: TCP
-                                          - default: TCP
+                                          default: TCP
                                           type: string
                                       required:
                                       - containerPort
