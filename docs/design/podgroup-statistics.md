@@ -1,0 +1,12 @@
+# PodGroup Statistics
+
+## Backgrounds
+
+Each time when podgroups states changed, the controller will update the statistics of podgroup of each state in the queue's status. And at the end of each scheduling session, the volcano scheduler will also update the allocated filed in queue's status to recored the amount of the amount of resources allocated. Both components use `UpdateStatus` api to update the queue status, which will cause conflict errors. When the controller encounter such an error, it will trigger `AddRateLimited` to push back the podgroup into work queue, resulting in accumulation of memory leak. See in issue #3597.
+
+## Alternative
+Currently the statistics of podgroup of eatch state are only used for display by vcctl, there is no need to be persisted in queue's status. So when users need to use `vcctl queue get -n [name]` or `vcctl list` to display queues and each state of podgroups in queue, vcctl should calculate podgroup statistics in client side and then display them. And we can export these statistics of podgroups in each state as metrics.  
+
+## Implementation
+- In `syncQueue` of queue controller, we should not stat counts of podgroups in each state here, instead these statistics should recorded as metrics and then be exported outside: https://github.com/volcano-sh/volcano/blob/release-1.10/pkg/controllers/queue/queue_controller_action.go#L41-L61. And `UpdateStatus` should not be used here: https://github.com/volcano-sh/volcano/blob/release-1.10/pkg/controllers/queue/queue_controller_action.go#L84-L87, the `UpdateStatus` interface will verify the resourceVersion in the apiserver, which may cause concurrent update conflicts. Instead, `ApplyStatus` should be used here to avoid this situation, because we only need to update the status of the queue. It should be noted that the controller currently does not have patch queue status permissions, so we should add a patch queue/status permission to the clusterrole.
+- `vcctl get -n [name]` and `vcctl list` display the statistics of podgroups in each state from queue's status directly, instead we should do one more step, query the podgroups owend in the queue, stat the counts of podgroups in each state at the `vcctl` side, and then display them. 
