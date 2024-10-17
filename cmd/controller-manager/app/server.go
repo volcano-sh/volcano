@@ -19,8 +19,12 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
@@ -31,6 +35,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/helpers"
@@ -48,11 +53,17 @@ func Run(opt *options.ServerOption) error {
 	if err != nil {
 		return err
 	}
-
 	if opt.EnableHealthz {
 		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-controller", opt.CaCertData, opt.CertData, opt.KeyData); err != nil {
 			return err
 		}
+	}
+
+	if opt.EnableMetrics {
+		go func() {
+			http.Handle("/metrics", promHandler())
+			klog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
+		}()
 	}
 
 	run := startControllers(config, opt)
@@ -178,4 +189,11 @@ func isControllerEnabled(name string, controllers []string) bool {
 	}
 	// if we get here, there was no explicit inclusion or exclusion
 	return hasStar
+}
+
+func promHandler() http.Handler {
+	// Unregister go and process related collector because it's duplicated and `legacyregistry.DefaultGatherer` also has registered them.
+	prometheus.DefaultRegisterer.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	prometheus.DefaultRegisterer.Unregister(collectors.NewGoCollector())
+	return promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.Gatherers{prometheus.DefaultGatherer, legacyregistry.DefaultGatherer}, promhttp.HandlerOpts{}))
 }

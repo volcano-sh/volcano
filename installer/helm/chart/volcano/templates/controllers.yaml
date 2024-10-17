@@ -59,7 +59,7 @@ rules:
     verbs: ["get", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups", "queues", "queues/status"]
-    verbs: ["get", "list", "watch", "create", "delete", "update"]
+    verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
   - apiGroups: ["flow.volcano.sh"]
     resources: ["jobflows", "jobtemplates"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
@@ -156,6 +156,7 @@ spec:
             args:
               - --logtostderr
               - --enable-healthz=true
+              - --enable-metrics=true
               - --leader-elect={{ .Values.custom.leader_elect_enable }}
               {{- if $scheduler_name }}
               - --scheduler-name={{- $scheduler_name }}
@@ -170,4 +171,28 @@ spec:
             securityContext:
               {{- toYaml .Values.custom.controller_default_csc | nindent 14 }}
             {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8080"
+    prometheus.io/scrape: "true"
+  name: {{ .Release.Name }}-controllers-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: volcano-controller
+    {{- if .Values.custom.common_labels }}
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
+spec:
+  ports:
+    - port: 8080
+      protocol: TCP
+      targetPort: 8080
+      name: "metrics"
+  selector:
+    app: volcano-controller
+  type: ClusterIP
 {{- end }}
