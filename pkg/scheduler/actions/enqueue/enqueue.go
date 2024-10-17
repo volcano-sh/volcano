@@ -44,7 +44,7 @@ func (enqueue *Action) Initialize() {}
 func (enqueue *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Enqueue ...")
 	defer klog.V(5).Infof("Leaving Enqueue ...")
-
+	stmt := framework.NewStatement(ssn)
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueSet := sets.NewString()
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
@@ -73,6 +73,8 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			}
 			klog.V(5).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
 			jobsMap[job.Queue].Push(job)
+		} else {
+			stmt.ActionJobFinishProcessed(enqueue.Name(), job)
 		}
 	}
 
@@ -97,6 +99,8 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
 			ssn.Jobs[job.UID] = job
 		}
+
+		stmt.ActionJobFinishProcessed(enqueue.Name(), job)
 
 		// Added Queue back until no job in Queue.
 		queues.Push(queue)
