@@ -1,0 +1,1 @@
+helm uninstall kube-prometheus-stack --namespace monitoring
