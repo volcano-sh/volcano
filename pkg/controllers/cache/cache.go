@@ -20,13 +20,8 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"time"
 
-	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
@@ -36,8 +31,7 @@ import (
 type jobCache struct {
 	sync.Mutex
 
-	jobs        map[string]*apis.JobInfo
-	deletedJobs workqueue.RateLimitingInterface
+	jobs map[string]*apis.JobInfo
 }
 
 func keyFn(ns, name string) string {
@@ -75,15 +69,8 @@ func jobKeyOfPod(pod *v1.Pod) (string, error) {
 
 // New gets the job Cache.
 func New() Cache {
-	queue := workqueue.NewMaxOfRateLimiter(
-		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 180*time.Second),
-		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
-		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
-	)
-
 	return &jobCache{
-		jobs:        map[string]*apis.JobInfo{},
-		deletedJobs: workqueue.NewRateLimitingQueue(queue),
+		jobs: map[string]*apis.JobInfo{},
 	}
 }
 
@@ -173,18 +160,10 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 	return nil
 }
 
-func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
-	jc.Lock()
-	defer jc.Unlock()
-
-	key := JobKey(obj)
-	jobInfo, found := jc.jobs[key]
-	if !found {
-		return fmt.Errorf("failed to find job <%v>", key)
-	}
-	jobInfo.Job = nil
-	jc.deleteJob(jobInfo)
-
+func (jc *jobCache) Delete(key string) error {
+	jc.Mutex.Lock()
+	defer jc.Mutex.Unlock()
+	delete(jc.jobs, key)
 	return nil
 }
 
@@ -250,14 +229,10 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 	}
 
 	if jobTerminated(job) {
-		jc.deleteJob(job)
+		jc.Delete(key)
 	}
 
 	return nil
-}
-
-func (jc *jobCache) Run(stopCh <-chan struct{}) {
-	wait.Until(jc.worker, 0, stopCh)
 }
 
 func (jc *jobCache) TaskCompleted(jobKey, taskName string) bool {
@@ -347,51 +322,4 @@ func (jc *jobCache) TaskFailed(jobKey, taskName string) bool {
 		}
 	}
 	return retried >= maxRetry
-}
-
-func (jc *jobCache) worker() {
-	for jc.processCleanupJob() {
-	}
-}
-
-func (jc *jobCache) processCleanupJob() bool {
-	obj, shutdown := jc.deletedJobs.Get()
-	if shutdown {
-		return false
-	}
-	defer jc.deletedJobs.Done(obj)
-
-	job, ok := obj.(*apis.JobInfo)
-	if !ok {
-		klog.Errorf("failed to convert %v to *apis.JobInfo", obj)
-		return true
-	}
-
-	jc.Mutex.Lock()
-	defer jc.Mutex.Unlock()
-
-	if jobTerminated(job) {
-		jc.deletedJobs.Forget(obj)
-		key := keyFn(job.Namespace, job.Name)
-		delete(jc.jobs, key)
-		klog.V(3).Infof("Job <%s> was deleted.", key)
-	} else {
-		// Retry
-		jc.retryDeleteJob(job)
-	}
-	return true
-}
-
-func (jc *jobCache) deleteJob(job *apis.JobInfo) {
-	klog.V(3).Infof("Try to delete Job <%v/%v>",
-		job.Namespace, job.Name)
-
-	jc.deletedJobs.Add(job)
-}
-
-func (jc *jobCache) retryDeleteJob(job *apis.JobInfo) {
-	klog.V(3).Infof("Retry to delete Job <%v/%v>",
-		job.Namespace, job.Name)
-
-	jc.deletedJobs.AddRateLimited(job)
 }
