@@ -32,6 +32,10 @@ func PodKey(pod *v1.Pod) TaskID {
 	return TaskID(key)
 }
 
+func GetTaskStatus(pod *v1.Pod) TaskStatus {
+	return getTaskStatus(pod)
+}
+
 func getTaskStatus(pod *v1.Pod) TaskStatus {
 	switch pod.Status.Phase {
 	case v1.PodRunning:
