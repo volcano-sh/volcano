@@ -29,6 +29,8 @@ import (
 
 	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	v1beta1apply "volcano.sh/apis/pkg/client/applyconfiguration/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/controllers/metrics"
 	"volcano.sh/volcano/pkg/controllers/queue/state"
 )
 
@@ -65,8 +67,17 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 			queueStatus.Unknown++
 		case schedulingv1beta1.PodGroupInqueue:
 			queueStatus.Inqueue++
+		case schedulingv1beta1.PodGroupCompleted:
+			queueStatus.Completed++
 		}
 	}
+
+	// Update the metrics
+	metrics.UpdatePgPendingPhaseNum(queue.Name, float64(queueStatus.Pending))
+	metrics.UpdatePgRunningPhaseNum(queue.Name, float64(queueStatus.Running))
+	metrics.UpdatePgUnknownPhaseNum(queue.Name, float64(queueStatus.Unknown))
+	metrics.UpdatePgInqueuePhaseNum(queue.Name, float64(queueStatus.Inqueue))
+	metrics.UpdatePgCompletedPhaseNum(queue.Name, float64(queueStatus.Completed))
 
 	if updateStateFn != nil {
 		updateStateFn(&queueStatus, podGroups)
@@ -87,10 +98,10 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 		return nil
 	}
 
-	newQueue := queue.DeepCopy()
-	newQueue.Status = queueStatus
-	if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
-		klog.Errorf("Failed to update status of Queue %s: %v.", newQueue.Name, err)
+	queueStatusApply := v1beta1apply.QueueStatus().WithState(queueStatus.State).WithAllocated(queueStatus.Allocated)
+	queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
+	if _, err := c.vcClient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: controllerName}); err != nil {
+		klog.Errorf("Failed to apply status of Queue %s: %v.", queue.Name, err)
 		return err
 	}
 

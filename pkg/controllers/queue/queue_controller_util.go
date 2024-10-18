@@ -22,6 +22,10 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
+const (
+	controllerName = "queue-controller"
+)
+
 // IsQueueReference return if ownerReference is Queue Kind.
 func IsQueueReference(ref *metav1.OwnerReference) bool {
 	if ref == nil {
