@@ -18,6 +18,7 @@ package validate
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -31,6 +32,7 @@ import (
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 )
 
 func TestValidateJobCreate(t *testing.T) {
@@ -1234,6 +1236,17 @@ func TestValidateJobCreate(t *testing.T) {
 			}
 			// create fake volcano clientset
 			config.VolcanoClient = fakeclient.NewSimpleClientset()
+			informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+			queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+			config.QueueLister = queueInformer.Lister()
+
+			stopCh := make(chan struct{})
+			informerFactory.Start(stopCh)
+			for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+				if !ok {
+					panic(fmt.Errorf("failed to sync cache: %v", informerType))
+				}
+			}
 
 			//create default queue
 			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultqueue, metav1.CreateOptions{})
@@ -1259,6 +1272,7 @@ func TestValidateJobCreate(t *testing.T) {
 			if testCase.ExpectErr == false && testCase.reviewResponse.Allowed != true {
 				t.Errorf("Expect Allowed as true but got false. %v", testCase.reviewResponse)
 			}
+			close(stopCh)
 		})
 	}
 }
@@ -1420,6 +1434,17 @@ func TestValidateHierarchyCreate(t *testing.T) {
 
 			// create fake volcano clientset
 			config.VolcanoClient = fakeclient.NewSimpleClientset()
+			informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+			queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+			config.QueueLister = queueInformer.Lister()
+
+			stopCh := make(chan struct{})
+			informerFactory.Start(stopCh)
+			for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+				if !ok {
+					panic(fmt.Errorf("failed to sync cache: %v", informerType))
+				}
+			}
 
 			//create root queue
 			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &rootQueue, metav1.CreateOptions{})
@@ -1455,6 +1480,7 @@ func TestValidateHierarchyCreate(t *testing.T) {
 			if testCase.ExpectErr == false && testCase.reviewResponse.Allowed != true {
 				t.Errorf("Expect Allowed as true but got false. %v", testCase.reviewResponse)
 			}
+			close(stopCh)
 		})
 	}
 }

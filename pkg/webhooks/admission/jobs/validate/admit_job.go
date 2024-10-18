@@ -17,7 +17,6 @@ limitations under the License.
 package validate
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -26,6 +25,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog/v2"
@@ -223,7 +223,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		msg += err.Error()
 	}
 
-	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), job.Spec.Queue, metav1.GetOptions{})
+	queue, err := config.QueueLister.Get(job.Spec.Queue)
 	if err != nil {
 		msg += fmt.Sprintf(" unable to find job queue: %v;", err)
 	} else {
@@ -236,12 +236,12 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		if queue.Name == "root" {
 			msg += " can not submit job to root queue;"
 		} else {
-			queueList, err := config.VolcanoClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
+			queueList, err := config.QueueLister.List(labels.Everything())
 			if err != nil {
 				msg += fmt.Sprintf("failed to get list queues: %v;", err)
 			}
-			childQueues := make([]schedulingv1beta1.Queue, 0)
-			for _, childQueue := range queueList.Items {
+			childQueues := make([]*schedulingv1beta1.Queue, 0)
+			for _, childQueue := range queueList {
 				if childQueue.Spec.Parent == queue.Name {
 					childQueues = append(childQueues, childQueue)
 				}

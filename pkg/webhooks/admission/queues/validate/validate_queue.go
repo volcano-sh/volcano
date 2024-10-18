@@ -17,7 +17,6 @@ limitations under the License.
 package validate
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -25,6 +24,7 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog/v2"
 
@@ -158,7 +158,7 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 
 		// The node is not allowed to be in the sub path of a node.
 		// For example, a queue with "root/sci" conflicts with a queue with "root/sci/dev"
-		queueList, err := config.VolcanoClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
+		queueList, err := config.QueueLister.List(labels.Everything())
 		if err != nil {
 			return append(errs, field.Invalid(fldPath, hierarchy,
 				fmt.Sprintf("checking %s, list queues failed: %v",
@@ -166,7 +166,7 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 					err,
 				)))
 		}
-		for _, queueInTree := range queueList.Items {
+		for _, queueInTree := range queueList {
 			hierarchyInTree := queueInTree.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]
 			if hierarchyInTree != "" && queue.Name != queueInTree.Name &&
 				strings.HasPrefix(hierarchyInTree, hierarchy) {
@@ -217,17 +217,17 @@ func validateQueueDeleting(queueName string) error {
 		return fmt.Errorf("`%s` queue can not be deleted", "root")
 	}
 
-	queue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
+	queue, err := config.QueueLister.Get(queueName)
 	if err != nil {
 		return err
 	}
 
-	queueList, err := config.VolcanoClient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
+	queueList, err := config.QueueLister.List(labels.Everything())
 	if err != nil {
 		return fmt.Errorf("failed to list queues: %v", err)
 	}
 	childQueueNames := make([]string, 0)
-	for _, childQueue := range queueList.Items {
+	for _, childQueue := range queueList {
 		if childQueue.Spec.Parent != queueName {
 			continue
 		}
@@ -248,7 +248,7 @@ func validateHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
 	if queue.Spec.Parent == "" || queue.Spec.Parent == "root" {
 		return nil
 	}
-	parentQueue, err := config.VolcanoClient.SchedulingV1beta1().Queues().Get(context.TODO(), queue.Spec.Parent, metav1.GetOptions{})
+	parentQueue, err := config.QueueLister.Get(queue.Spec.Parent)
 	if err != nil {
 		return fmt.Errorf("failed to get parent queue of queue %s: %v", queue.Name, err)
 	}

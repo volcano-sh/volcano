@@ -18,6 +18,7 @@ package queue
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -25,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -33,6 +35,12 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/queue/state"
+)
+
+const (
+	ClosedByParentAnnotationKey        = "volcano.sh/closed-by-parent"
+	ClosedByParentAnnotationTrueValue  = "true"
+	ClosedByParentAnnotationFalseValue = "false"
 )
 
 func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
@@ -78,16 +86,57 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 		queueStatus.Allocated = v1.ResourceList{}
 	}
 
+	newQueue := queue.DeepCopy()
 	// ignore update when status does not change
-	if equality.Semantic.DeepEqual(queueStatus, queue.Status) {
+	if !equality.Semantic.DeepEqual(queueStatus, queue.Status) {
+		newQueue.Status = queueStatus
+		var err error
+		newQueue, err = c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("Failed to update status of Queue %s: %v.", newQueue.Name, err)
+			return err
+		}
+	}
+
+	if newQueue.Name == "root" {
 		return nil
 	}
 
-	newQueue := queue.DeepCopy()
-	newQueue.Status = queueStatus
-	if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
-		klog.Errorf("Failed to update status of Queue %s: %v.", newQueue.Name, err)
+	parentQueue, err := c.queueLister.Get(newQueue.Spec.Parent)
+	if err != nil {
+		klog.Errorf("Failed to get parent queue of Queue %s: %v.", newQueue.Name, err)
 		return err
+	}
+
+	switch parentQueue.Status.State {
+	case schedulingv1beta1.QueueStateClosed, schedulingv1beta1.QueueStateClosing:
+		if newQueue.Status.State != schedulingv1beta1.QueueStateClosed && newQueue.Status.State != schedulingv1beta1.QueueStateClosing {
+			_, err = c.updateQueueAnnotation(newQueue, ClosedByParentAnnotationKey, ClosedByParentAnnotationTrueValue)
+			if err != nil {
+				klog.Errorf("Failed to patch annotation of Queue %s: %v.", newQueue.Name, err)
+				return err
+			}
+
+			req := &apis.Request{
+				QueueName: newQueue.Name,
+				Action:    busv1alpha1.CloseQueueAction,
+			}
+
+			c.enqueue(req)
+			klog.V(3).Infof("Closing queue %s because its parent queue %s is closing or closed.", newQueue.Name, parentQueue.Name)
+		}
+	case schedulingv1beta1.QueueStateOpen:
+		if newQueue.Status.State == schedulingv1beta1.QueueStateClosed || newQueue.Status.State == schedulingv1beta1.QueueStateClosing {
+			if newQueue.Annotations[ClosedByParentAnnotationKey] == ClosedByParentAnnotationTrueValue {
+				req := &apis.Request{
+					QueueName: newQueue.Name,
+					Action:    busv1alpha1.OpenQueueAction,
+				}
+
+				c.enqueue(req)
+				klog.V(3).Infof("Opening queue %s because its parent queue %s is opened.", newQueue.Name, parentQueue.Name)
+			}
+		}
 	}
 
 	return nil
@@ -114,32 +163,31 @@ func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateF
 		}
 
 		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.OpenQueueAction), "Open queue succeed")
-	} else {
-		return nil
-	}
 
-	q, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), newQueue.Name, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	newQueue = q.DeepCopy()
-	if updateStateFn != nil {
-		updateStateFn(&newQueue.Status, nil)
-	} else {
-		return fmt.Errorf("internal error, update state function should be provided")
-	}
-
-	if queue.Status.State != newQueue.Status.State {
-		if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
-				fmt.Sprintf("Update queue status from %s to %s failed for %v",
-					queue.Status.State, newQueue.Status.State, err))
+		q, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), newQueue.Name, metav1.GetOptions{})
+		if err != nil {
 			return err
+		}
+
+		newQueue = q.DeepCopy()
+		if updateStateFn != nil {
+			updateStateFn(&newQueue.Status, nil)
+		} else {
+			return fmt.Errorf("internal error, update state function should be provided")
+		}
+
+		if queue.Status.State != newQueue.Status.State {
+			if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
+				c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
+					fmt.Sprintf("Update queue status from %s to %s failed for %v",
+						queue.Status.State, newQueue.Status.State, err))
+				return err
+			}
 		}
 	}
 
-	return nil
+	_, err := c.updateQueueAnnotation(queue, ClosedByParentAnnotationKey, ClosedByParentAnnotationFalseValue)
+	return err
 }
 
 func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateStateFn state.UpdateQueueStatusFn) error {
@@ -193,20 +241,33 @@ func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateState
 }
 
 func (c *queuecontroller) openHierarchicalQueue(queue *schedulingv1beta1.Queue) (bool, error) {
-	if queue.Spec.Parent == "" || queue.Spec.Parent == "root" {
-		return true, nil
+	if queue.Spec.Parent != "" && queue.Spec.Parent != "root" {
+		parentQueue, err := c.queueLister.Get(queue.Spec.Parent)
+		if err != nil {
+			return false, fmt.Errorf("Failed to get parent queue %s of queue %s: %v", queue.Spec.Parent, queue.Name, err)
+		}
+		if parentQueue.Status.State == schedulingv1beta1.QueueStateClosing || parentQueue.Status.State == schedulingv1beta1.QueueStateClosed {
+			klog.Errorf("Failed to open queue %s because its parent queue %s is closing or closed. Open the parent queue first.", queue.Name, queue.Spec.Parent)
+			return false, nil
+		}
 	}
 
-	parentQueue, err := c.queueLister.Get(queue.Spec.Parent)
+	queueList, err := c.queueLister.List(labels.Everything())
 	if err != nil {
-		return false, fmt.Errorf("Failed to get parent queue <%s> of queue <%s>: %v", queue.Spec.Parent, queue.Name, err)
+		return false, err
 	}
 
-	if parentQueue.Status.State == schedulingv1beta1.QueueStateClosing || parentQueue.Status.State == schedulingv1beta1.QueueStateClosed {
-		klog.Errorf("Failed to open queue %s because its parent queue %s is closing or closed. Open the parent queue first.", queue.Name, queue.Spec.Parent)
-		return false, nil
-	}
+	for _, childQueue := range queueList {
+		if childQueue.Spec.Parent == queue.Name && len(childQueue.Annotations) > 0 && childQueue.Annotations[ClosedByParentAnnotationKey] == ClosedByParentAnnotationTrueValue {
+			req := &apis.Request{
+				QueueName: childQueue.Name,
+				Action:    busv1alpha1.OpenQueueAction,
+			}
 
+			c.enqueue(req)
+			klog.Infof("Opening queue %s because its parent queue %s is opened", childQueue.Name, queue.Name)
+		}
+	}
 	return true, nil
 }
 
@@ -221,26 +282,54 @@ func (c *queuecontroller) closeHierarchicalQueue(queue *schedulingv1beta1.Queue)
 		return false, err
 	}
 
-	openChildQueue := make([]string, 0)
 	for _, childQueue := range queueList {
 		if childQueue.Spec.Parent != queue.Name {
 			continue
 		}
 		if childQueue.Status.State != schedulingv1beta1.QueueStateClosed && childQueue.Status.State != schedulingv1beta1.QueueStateClosing {
+			_, err = c.updateQueueAnnotation(childQueue, ClosedByParentAnnotationKey, ClosedByParentAnnotationTrueValue)
+			if err != nil {
+				return false, fmt.Errorf("Failed to update annotations of queue %s: %v", childQueue.Name, err)
+			}
 			req := &apis.Request{
 				QueueName: childQueue.Name,
 				Action:    busv1alpha1.CloseQueueAction,
 			}
 
 			c.enqueue(req)
-			openChildQueue = append(openChildQueue, childQueue.Name)
-			klog.V(3).Infof("Closing child queue <%s> because its parent queue %s is closing or closed.", childQueue.Name, queue.Name)
+			klog.V(3).Infof("Closing child queue %s because its parent queue %s is closing or closed.", childQueue.Name, queue.Name)
 		}
 	}
 
-	if len(openChildQueue) > 0 {
-		return false, fmt.Errorf("failed to close queue %s because its child queues %v are still open", queue.Name, strings.Join(openChildQueue, ","))
+	return true, nil
+}
+
+func (c *queuecontroller) updateQueueAnnotation(queue *schedulingv1beta1.Queue, key string, value string) (*schedulingv1beta1.Queue, error) {
+	if len(queue.Annotations) > 0 && queue.Annotations[key] == value {
+		return queue, nil
 	}
 
-	return true, nil
+	var patch []patchOperation
+	if len(queue.Annotations) == 0 {
+		patch = append(patch, patchOperation{
+			Op:   "replace",
+			Path: "/metadata/annotations",
+			Value: map[string]string{
+				key: value,
+			},
+		})
+	} else {
+		patch = append(patch, patchOperation{
+			Op:    "replace",
+			Path:  fmt.Sprintf("/metadata/annotations/%s", strings.ReplaceAll(key, "/", "~1")),
+			Value: value,
+		})
+	}
+
+	patchBytes, err := json.Marshal(patch)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.vcClient.SchedulingV1beta1().Queues().Patch(context.TODO(), queue.Name, types.JSONPatchType, patchBytes, metav1.PatchOptions{})
 }

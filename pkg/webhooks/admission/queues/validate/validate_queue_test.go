@@ -30,6 +30,7 @@ import (
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
@@ -272,6 +273,19 @@ func TestAdmitQueues(t *testing.T) {
 	}
 
 	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+	config.QueueLister = queueInformer.Lister()
+
+	stopCh := make(chan struct{})
+
+	informerFactory.Start(stopCh)
+	for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			panic(fmt.Errorf("failed to sync cache: %v", informerType))
+		}
+	}
+
 	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &openStateForDelete, metav1.CreateOptions{})
 	if err != nil {
 		t.Errorf("Create queue with open state failed for %v.", err)
@@ -910,6 +924,7 @@ func TestAdmitQueues(t *testing.T) {
 			}
 		})
 	}
+	close(stopCh)
 }
 
 func TestAdmitHierarchicalQueues(t *testing.T) {
@@ -970,6 +985,18 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 	}
 
 	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+	config.QueueLister = queueInformer.Lister()
+
+	stopCh := make(chan struct{})
+	informerFactory.Start(stopCh)
+	for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			panic(fmt.Errorf("failed to sync cache: %v", informerType))
+		}
+	}
+
 	queueWithJobs := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "queue-with-jobs",
@@ -1163,4 +1190,5 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			}
 		})
 	}
+	close(stopCh)
 }
