@@ -4357,6 +4357,8 @@ spec:
               - --logtostderr
               - --enable-healthz=true
               - --leader-elect=false
+              - --kube-api-qps=3000
+              - --kube_api_burst=3000
               - -v=4
               - 2>&1
             imagePullPolicy: Always
@@ -4530,6 +4532,8 @@ spec:
             - --enable-healthz=true
             - --enable-metrics=true
             - --leader-elect=false
+            - --kube-api-qps=10000
+            - --kube_api_burst=10000
             - -v=3
             - 2>&1
           env:
