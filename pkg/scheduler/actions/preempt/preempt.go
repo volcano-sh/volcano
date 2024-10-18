@@ -19,6 +19,7 @@ package preempt
 import (
 	"fmt"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -231,6 +232,10 @@ func (pmpt *Action) preempt(
 	filter func(*api.TaskInfo) bool,
 	predicateHelper util.PredicateHelper,
 ) (bool, error) {
+	if preemptor.Pod.Spec.PreemptionPolicy != nil && *preemptor.Pod.Spec.PreemptionPolicy == v1.PreemptNever {
+		return false, fmt.Errorf("not eligible to preempt other tasks due to preemptionPolicy is Never")
+	}
+
 	assigned := false
 
 	if err := ssn.PrePredicateFn(preemptor); err != nil {
