@@ -28,6 +28,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -1012,12 +1013,9 @@ func (b *volumeBinder) revertAssumedPVCs(claims []*v1.PersistentVolumeClaim) {
 // hasEnoughCapacity checks whether the provisioner has enough capacity left for a new volume of the given size
 // that is available from the node.
 func (b *volumeBinder) hasEnoughCapacity(logger klog.Logger, provisioner string, claim *v1.PersistentVolumeClaim, storageClass *storagev1.StorageClass, node *v1.Node) (bool, error) {
-	// This is an optional feature. If disabled, we assume that
-	// there is enough storage.
 	if !b.capacityCheckEnabled {
 		return true, nil
 	}
-
 	quantity, ok := claim.Spec.Resources.Requests[v1.ResourceStorage]
 	if !ok {
 		// No capacity to check for.
@@ -1064,12 +1062,16 @@ func (b *volumeBinder) hasEnoughCapacity(logger klog.Logger, provisioner string,
 }
 
 func capacitySufficient(capacity *storagev1beta1.CSIStorageCapacity, sizeInBytes int64) bool {
-	limit := capacity.Capacity
+	limit := volumeLimit(capacity)
+	return limit != nil && limit.Value() >= sizeInBytes
+}
+
+func volumeLimit(capacity *storagev1beta1.CSIStorageCapacity) *resource.Quantity {
 	if capacity.MaximumVolumeSize != nil {
 		// Prefer MaximumVolumeSize if available, it is more precise.
-		limit = capacity.MaximumVolumeSize
+		return capacity.MaximumVolumeSize
 	}
-	return limit != nil && limit.Value() >= sizeInBytes
+	return capacity.Capacity
 }
 
 func (b *volumeBinder) nodeHasAccess(logger klog.Logger, node *v1.Node, capacity *storagev1beta1.CSIStorageCapacity) bool {
