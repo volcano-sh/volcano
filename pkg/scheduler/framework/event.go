@@ -20,13 +20,20 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
+type ActionJob struct {
+	ActionName string // enqueue allocate
+	Job        *api.JobInfo
+}
+
 // Event structure
 type Event struct {
-	Task *api.TaskInfo
+	Task      *api.TaskInfo
+	ActionJob *ActionJob
 }
 
 // EventHandler structure
 type EventHandler struct {
-	AllocateFunc   func(event *Event)
-	DeallocateFunc func(event *Event)
+	AllocateFunc                 func(event *Event)
+	DeallocateFunc               func(event *Event)
+	ActionJobFinishProcessedFunc func(event *Event)
 }
