@@ -117,7 +117,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
 				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
 			}
-			realCapability := pp.totalResource.Clone().Sub(pp.totalGuarantee).Add(attr.guarantee)
+			realCapability := api.ExceededPart(pp.totalResource, pp.totalGuarantee).Add(attr.guarantee)
 			if attr.capability == nil {
 				attr.realCapability = realCapability
 			} else {
