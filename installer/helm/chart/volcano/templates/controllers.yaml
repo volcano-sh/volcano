@@ -156,6 +156,9 @@ spec:
             args:
               - --logtostderr
               - --enable-healthz=true
+              {{- if .Values.custom.controller_metrics_enable }}
+              - --enable-metrics=true
+              {{- end }}
               - --leader-elect={{ .Values.custom.leader_elect_enable }}
               {{- if $scheduler_name }}
               - --scheduler-name={{- $scheduler_name }}
@@ -170,4 +173,28 @@ spec:
             securityContext:
               {{- toYaml .Values.custom.controller_default_csc | nindent 14 }}
             {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8081"
+    prometheus.io/scrape: "true"
+  name: {{ .Release.Name }}-controllers-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: volcano-controller
+    {{- if .Values.custom.common_labels }}
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
+spec:
+  ports:
+    - port: 8081
+      protocol: TCP
+      targetPort: 8081
+      name: "metrics"
+  selector:
+    app: volcano-controller
+  type: ClusterIP
 {{- end }}

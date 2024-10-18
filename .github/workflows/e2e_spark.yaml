@@ -62,6 +62,7 @@ jobs:
       run: |
         eval $(minikube docker-env)
         make TAG=latest update-development-yaml
+        sed -i 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/g' installer/volcano-development.yaml
         make TAG=latest images
         docker images | grep volcano
         cat ./installer/volcano-development.yaml  | grep image:

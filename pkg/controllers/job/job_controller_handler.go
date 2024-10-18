@@ -36,6 +36,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
+	"volcano.sh/volcano/pkg/controllers/job/state"
 )
 
 func (cc *jobcontroller) addCommand(obj interface{}) {
@@ -133,6 +134,9 @@ func (cc *jobcontroller) deleteJob(obj interface{}) {
 		klog.Errorf("Failed to delete job <%s/%s>: %v in cache",
 			job.Namespace, job.Name, err)
 	}
+
+	// Delete job metrics
+	state.DeleteJobMetrics(fmt.Sprintf("%s/%s", job.Namespace, job.Name), job.Spec.Queue)
 }
 
 func (cc *jobcontroller) addPod(obj interface{}) {
