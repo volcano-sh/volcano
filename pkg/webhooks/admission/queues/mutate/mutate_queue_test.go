@@ -38,6 +38,7 @@ func TestMutateQueues(t *testing.T) {
 			Name: "normal-case-refresh-default-state",
 		},
 		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
 			Weight: 1,
 		},
 	}
@@ -90,6 +91,7 @@ func TestMutateQueues(t *testing.T) {
 		Spec: schedulingv1beta1.QueueSpec{
 			Reclaimable: &trueValue,
 			Weight:      1,
+			Parent:      "root",
 		},
 		Status: schedulingv1beta1.QueueStatus{
 			State: schedulingv1beta1.QueueStateOpen,
@@ -114,6 +116,31 @@ func TestMutateQueues(t *testing.T) {
 	appendRootPatchJSON, err := json.Marshal(appendRootPatch)
 	if err != nil {
 		t.Errorf("Marshal appendRootPatch failed for %v", err)
+	}
+
+	stateNotSetParent := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "normal-case-append-default-parent",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight:      1,
+			Reclaimable: &trueValue,
+		},
+	}
+
+	stateNotSetParentJSON, err := json.Marshal(stateNotSetParent)
+	if err != nil {
+		t.Errorf("Marshal queue without parent failed for %v.", err)
+	}
+	var stateNotSetParentPatch []patchOperation
+	stateNotSetParentPatch = append(stateNotSetParentPatch, patchOperation{
+		Op:    "add",
+		Path:  "/spec/parent",
+		Value: "root",
+	})
+	stateNotSetParentPatchJSON, err := json.Marshal(stateNotSetParentPatch)
+	if err != nil {
+		t.Errorf("Marshal stateNotSetParentPatch failed for %v", err)
 	}
 
 	testCases := []struct {
@@ -209,6 +236,37 @@ func TestMutateQueues(t *testing.T) {
 				Allowed:   true,
 				PatchType: &pt,
 				Patch:     appendRootPatchJSON,
+			},
+		},
+		{
+			Name: "Normal Case Append Default Parent For Queue",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "qeueu-hierarchy-without-root",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: stateNotSetParentJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed:   true,
+				PatchType: &pt,
+				Patch:     stateNotSetParentPatchJSON,
 			},
 		},
 	}
