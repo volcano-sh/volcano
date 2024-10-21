@@ -3,6 +3,7 @@
 {{ $scheduler_tolerations := or .Values.custom.scheduler_tolerations .Values.custom.default_tolerations }}
 {{ $scheduler_sc := or .Values.custom.scheduler_sc .Values.custom.default_sc }}
 {{ $scheduler_ns := or .Values.custom.scheduler_ns .Values.custom.default_ns }}
+{{ $scheduler_name := .Values.custom.scheduler_name }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -177,6 +178,9 @@ spec:
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.scheduler_config_file}}
+            {{- if $scheduler_name }}
+            - --scheduler-name={{- $scheduler_name }}
+            {{- end }}
             - --enable-healthz=true
             - --enable-metrics=true
             - --leader-elect={{ .Values.custom.leader_elect_enable }}

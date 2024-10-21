@@ -25,7 +25,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
@@ -328,6 +327,50 @@ func TestApplyPolicies(t *testing.T) {
 			},
 			Request: &apis.Request{
 				Event: busv1alpha1.OutOfSyncEvent,
+			},
+			ReturnVal: busv1alpha1.SyncJobAction,
+		},
+		{
+			Name: "Test Apply policies where job uid is inconsistent, ignore the existing policy action in the job and execute syncjob",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+					UID:       "job1-uid-10001",
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+							Policies: []v1alpha1.LifecyclePolicy{
+								{
+									Action:   busv1alpha1.TerminateJobAction,
+									Event:    busv1alpha1.PodEvictedEvent,
+									ExitCode: &errorCode0,
+								},
+							},
+						},
+					},
+				},
+			},
+			Request: &apis.Request{
+				JobUid: "job1-uid-10000",
+				Event:  busv1alpha1.PodEvictedEvent,
 			},
 			ReturnVal: busv1alpha1.SyncJobAction,
 		},
@@ -983,10 +1026,10 @@ func TestTaskPriority_CalcPGMin(t *testing.T) {
 
 func TestCalcPGMinResources(t *testing.T) {
 	jc := newFakeController()
-	job := &batch.Job{
+	job := &v1alpha1.Job{
 		TypeMeta: metav1.TypeMeta{},
-		Spec: batch.JobSpec{
-			Tasks: []batch.TaskSpec{
+		Spec: v1alpha1.JobSpec{
+			Tasks: []v1alpha1.TaskSpec{
 				master, worker,
 			},
 		},

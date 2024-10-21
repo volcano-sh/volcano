@@ -36,7 +36,6 @@ import (
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/plugins"
 	controllerMpi "volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
@@ -144,8 +143,8 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 
 	if _, ok := job.Spec.Plugins[controllerMpi.MPIPluginName]; ok {
 		mp := controllerMpi.NewInstance(job.Spec.Plugins[controllerMpi.MPIPluginName])
-		masterIndex := helpers.GetTaskIndexUnderJob(mp.GetMasterName(), job)
-		workerIndex := helpers.GetTaskIndexUnderJob(mp.GetWorkerName(), job)
+		masterIndex := jobhelpers.GetTaskIndexUnderJob(mp.GetMasterName(), job)
+		workerIndex := jobhelpers.GetTaskIndexUnderJob(mp.GetWorkerName(), job)
 		if masterIndex == -1 {
 			reviewResponse.Allowed = false
 			return "The specified mpi master task was not found"

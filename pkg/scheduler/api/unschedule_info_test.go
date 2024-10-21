@@ -16,7 +16,7 @@ limitations under the License.
 package api
 
 import (
-	"fmt"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -95,7 +95,7 @@ func TestFitErrors(t *testing.T) {
 		{
 			node:   "node1",
 			fitStr: "fit failed",
-			err:    fmt.Errorf(NodePodNumberExceeded),
+			err:    errors.New(NodePodNumberExceeded),
 			want:   "fit failed: 1 node(s) pod number exceeded.",
 			// no node has UnschedulableAndUnresolvable
 			filterNodes: map[string]sets.Empty{},
@@ -103,7 +103,7 @@ func TestFitErrors(t *testing.T) {
 		{
 			node:   "node1",
 			fitStr: "NodeResourceFitFailed",
-			err:    fmt.Errorf(NodePodNumberExceeded),
+			err:    errors.New(NodePodNumberExceeded),
 			fiterr: &FitError{
 				taskNamespace: "ns1", taskName: "task1", NodeName: "node2",
 				Status: []*Status{{Reason: nodeAffinity, Code: UnschedulableAndUnresolvable}},

@@ -176,7 +176,7 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 		select {
 		case <-binder.Channel:
 		case <-time.After(300 * time.Millisecond):
-			return fmt.Errorf("Failed to get Bind request in case %d(%s).", caseIndex, test.Name)
+			return fmt.Errorf("failed to get Bind request in case %d(%s)", caseIndex, test.Name)
 		}
 	}
 
@@ -210,7 +210,7 @@ func (test *TestCommonStruct) CheckEvict(caseIndex int) error {
 		select {
 		case <-evictor.Channel:
 		case <-time.After(300 * time.Millisecond):
-			return fmt.Errorf("Failed to get Evict request in case %d(%s).", caseIndex, test.Name)
+			return fmt.Errorf("failed to get Evict request in case %d(%s)", caseIndex, test.Name)
 		}
 	}
 

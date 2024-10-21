@@ -458,7 +458,7 @@ func (sc *SchedulerCache) addNodeImageStates(node *v1.Node, nodeInfo *scheduling
 			if !ok {
 				state = &imageState{
 					size:  image.SizeBytes,
-					nodes: sets.NewString(node.Name),
+					nodes: sets.New(node.Name),
 				}
 				sc.imageStates[name] = state
 			} else {

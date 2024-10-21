@@ -37,6 +37,7 @@ type ControllerOption struct {
 
 	InheritOwnerAnnotations bool
 	WorkerThreadsForPG      uint32
+	WorkerThreadsForQueue   uint32
 	WorkerThreadsForGC      uint32
 
 	// Config holds the common attributes that can be passed to a Kubernetes client
