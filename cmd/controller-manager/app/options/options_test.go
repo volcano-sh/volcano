@@ -89,6 +89,7 @@ func TestAddFlags(t *testing.T) {
 		SchedulerNames:          []string{"volcano", "volcano2"},
 		MaxRequeueNum:           defaultMaxRequeueNum,
 		HealthzBindAddress:      ":11251",
+		ListenAddress:           defaultListenAddress,
 		InheritOwnerAnnotations: true,
 		LeaderElection: config.LeaderElectionConfiguration{
 			LeaderElect:       true,

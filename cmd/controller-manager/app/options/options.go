@@ -37,6 +37,7 @@ const (
 	defaultMaxRequeueNum       = 15
 	defaultSchedulerName       = "volcano"
 	defaultHealthzAddress      = ":11251"
+	defaultListenAddress       = ":8081"
 	defaultLockObjectNamespace = "volcano-system"
 	defaultPodGroupWorkers     = 5
 	defaultQueueWorkers        = 5
@@ -71,6 +72,8 @@ type ServerOption struct {
 	// defaulting to 0.0.0.0:11251
 	HealthzBindAddress string
 	EnableHealthz      bool
+	EnableMetrics      bool
+	ListenAddress      string
 	// To determine whether inherit owner's annotations for pods when create podgroup
 	InheritOwnerAnnotations bool
 	// WorkerThreadsForPG is the number of threads syncing podgroup operations
@@ -118,6 +121,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet, knownControllers []string) {
 	fs.IntVar(&s.MaxRequeueNum, "max-requeue-num", defaultMaxRequeueNum, "The number of times a job, queue or command will be requeued before it is dropped out of the queue")
 	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
+	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
+	fs.StringVar(&s.ListenAddress, "listen-address", defaultListenAddress, "The address to listen on for HTTP requests.")
 	fs.BoolVar(&s.InheritOwnerAnnotations, "inherit-owner-annotations", true, "Enable inherit owner annotations for pods when create podgroup; it is enabled by default")
 	fs.Uint32Var(&s.WorkerThreadsForPG, "worker-threads-for-podgroup", defaultPodGroupWorkers, "The number of threads syncing podgroup operations. The larger the number, the faster the podgroup processing, but requires more CPU load.")
 	fs.Uint32Var(&s.WorkerThreadsForGC, "worker-threads-for-gc", defaultGCWorkers, "The number of threads for recycling jobs. The larger the number, the faster the job recycling, but requires more CPU load.")

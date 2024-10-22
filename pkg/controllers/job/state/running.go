@@ -17,6 +17,8 @@ limitations under the License.
 package state
 
 import (
+	"fmt"
+
 	v1 "k8s.io/api/core/v1"
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -62,6 +64,7 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 			minSuccess := ps.job.Job.Spec.MinSuccess
 			if minSuccess != nil && status.Succeeded >= *minSuccess {
 				status.State.Phase = vcbatch.Completed
+				UpdateJobCompleted(fmt.Sprintf("%s/%s", ps.job.Job.Namespace, ps.job.Job.Name), ps.job.Job.Spec.Queue)
 				return true
 			}
 
@@ -76,6 +79,7 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 						if taskStatus, ok := status.TaskStatusCount[task.Name]; ok {
 							if taskStatus.Phase[v1.PodSucceeded] < *task.MinAvailable {
 								status.State.Phase = vcbatch.Failed
+								UpdateJobFailed(fmt.Sprintf("%s/%s", ps.job.Job.Namespace, ps.job.Job.Name), ps.job.Job.Spec.Queue)
 								return true
 							}
 						}
@@ -84,10 +88,13 @@ func (ps *runningState) Execute(action v1alpha1.Action) error {
 
 				if minSuccess != nil && status.Succeeded < *minSuccess {
 					status.State.Phase = vcbatch.Failed
+					UpdateJobFailed(fmt.Sprintf("%s/%s", ps.job.Job.Namespace, ps.job.Job.Name), ps.job.Job.Spec.Queue)
 				} else if status.Succeeded >= ps.job.Job.Spec.MinAvailable {
 					status.State.Phase = vcbatch.Completed
+					UpdateJobCompleted(fmt.Sprintf("%s/%s", ps.job.Job.Namespace, ps.job.Job.Name), ps.job.Job.Spec.Queue)
 				} else {
 					status.State.Phase = vcbatch.Failed
+					UpdateJobFailed(fmt.Sprintf("%s/%s", ps.job.Job.Namespace, ps.job.Job.Name), ps.job.Job.Spec.Queue)
 				}
 				return true
 			}

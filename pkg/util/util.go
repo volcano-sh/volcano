@@ -1,11 +1,17 @@
 package util
 
 import (
+	"net/http"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/component-base/config"
+	"k8s.io/component-base/metrics/legacyregistry"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -46,4 +52,11 @@ func LeaderElectionDefault(l *config.LeaderElectionConfiguration) {
 	l.RetryPeriod = defaultElectionRetryPeriod
 	l.ResourceLock = resourcelock.LeasesResourceLock
 	l.ResourceNamespace = defaultLockObjectNamespace
+}
+
+func PromHandler() http.Handler {
+	// Unregister go and process related collector because it's duplicated and `legacyregistry.DefaultGatherer` also has registered them.
+	prometheus.DefaultRegisterer.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	prometheus.DefaultRegisterer.Unregister(collectors.NewGoCollector())
+	return promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.Gatherers{prometheus.DefaultGatherer, legacyregistry.DefaultGatherer}, promhttp.HandlerOpts{}))
 }
