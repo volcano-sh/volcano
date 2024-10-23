@@ -190,6 +190,13 @@ func BuildPodWithPriority(namespace, name, nodeName string, p v1.PodPhase, req v
 	return pod
 }
 
+// BuildPodWithPreemptionPolicy builds a pod with preemptionPolicy
+func BuildPodWithPreeemptionPolicy(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, preemptionPolicy v1.PreemptionPolicy) *v1.Pod {
+	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
+	pod.Spec.PreemptionPolicy = &preemptionPolicy
+	return pod
+}
+
 // BuildPodGroup return podgroup with base spec and phase status
 func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase) *schedulingv1beta1.PodGroup {
 	return &schedulingv1beta1.PodGroup{
@@ -302,6 +309,13 @@ func BuildPriorityClass(name string, value int32) *schedulingv1.PriorityClass {
 		},
 		Value: value,
 	}
+}
+
+// BuildPriorityClassWithPreemptionPolicy return a priorityClass with value and preemptionPolicy
+func BuildPriorityClassWithPreemptionPolicy(name string, value int32, preemptionPolicy v1.PreemptionPolicy) *schedulingv1.PriorityClass {
+	pc := BuildPriorityClass(name, value)
+	pc.PreemptionPolicy = &preemptionPolicy
+	return pc
 }
 
 // FakeBinder is used as fake binder
