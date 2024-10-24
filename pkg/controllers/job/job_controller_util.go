@@ -62,6 +62,11 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 		pod.Spec.SchedulerName = job.Spec.SchedulerName
 	}
 
+	// If no priority class specified in pod template, use priority class specified in job
+	if len(pod.Spec.PriorityClassName) == 0 && len(job.Spec.PriorityClassName) != 0 {
+		pod.Spec.PriorityClassName = job.Spec.PriorityClassName
+	}
+
 	volumeMap := make(map[string]string)
 	for _, volume := range job.Spec.Volumes {
 		vcName := volume.VolumeClaimName

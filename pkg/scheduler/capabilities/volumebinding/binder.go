@@ -18,6 +18,7 @@ package volumebinding
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	storagev1beta1 "k8s.io/api/storage/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -48,6 +50,7 @@ import (
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumebinding/metrics"
+	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 	"k8s.io/kubernetes/pkg/volume/util"
 )
 
@@ -221,8 +224,8 @@ type volumeBinder struct {
 	nodeLister    corelisters.NodeLister
 	csiNodeLister storagelisters.CSINodeLister
 
-	pvcCache PVCAssumeCache
-	pvCache  PVAssumeCache
+	pvcCache *PVCAssumeCache
+	pvCache  *PVAssumeCache
 
 	// Amount of time to wait for the bind operation to succeed
 	bindTimeout time.Duration
@@ -731,7 +734,7 @@ func (b *volumeBinder) checkBindings(logger klog.Logger, pod *v1.Pod, bindings [
 		if pvc.Spec.VolumeName != "" {
 			pv, err := b.pvCache.GetAPIPV(pvc.Spec.VolumeName)
 			if err != nil {
-				if _, ok := err.(*errNotFound); ok {
+				if errors.Is(err, assumecache.ErrNotFound) {
 					// We tolerate NotFound error here, because PV is possibly
 					// not found because of API delay, we can check next time.
 					// And if PV does not exist because it's deleted, PVC will
@@ -884,7 +887,7 @@ func (b *volumeBinder) checkBoundClaims(logger klog.Logger, claims []*v1.Persist
 		pvName := pvc.Spec.VolumeName
 		pv, err := b.pvCache.GetPV(pvName)
 		if err != nil {
-			if _, ok := err.(*errNotFound); ok {
+			if errors.Is(err, assumecache.ErrNotFound) {
 				err = nil
 			}
 			return true, false, err
@@ -923,7 +926,7 @@ func (b *volumeBinder) findMatchingVolumes(logger klog.Logger, pod *v1.Pod, clai
 		pvs := unboundVolumesDelayBinding[storageClassName]
 
 		// Find a matching PV
-		pv, err := volume.FindMatchingVolume(pvc, pvs, node, chosenPVs, true)
+		pv, err := volume.FindMatchingVolume(pvc, pvs, node, chosenPVs, true, utilfeature.DefaultFeatureGate.Enabled(features.VolumeAttributesClass))
 		if err != nil {
 			return false, nil, nil, err
 		}
@@ -1010,12 +1013,9 @@ func (b *volumeBinder) revertAssumedPVCs(claims []*v1.PersistentVolumeClaim) {
 // hasEnoughCapacity checks whether the provisioner has enough capacity left for a new volume of the given size
 // that is available from the node.
 func (b *volumeBinder) hasEnoughCapacity(logger klog.Logger, provisioner string, claim *v1.PersistentVolumeClaim, storageClass *storagev1.StorageClass, node *v1.Node) (bool, error) {
-	// This is an optional feature. If disabled, we assume that
-	// there is enough storage.
 	if !b.capacityCheckEnabled {
 		return true, nil
 	}
-
 	quantity, ok := claim.Spec.Resources.Requests[v1.ResourceStorage]
 	if !ok {
 		// No capacity to check for.
@@ -1062,12 +1062,16 @@ func (b *volumeBinder) hasEnoughCapacity(logger klog.Logger, provisioner string,
 }
 
 func capacitySufficient(capacity *storagev1beta1.CSIStorageCapacity, sizeInBytes int64) bool {
-	limit := capacity.Capacity
+	limit := volumeLimit(capacity)
+	return limit != nil && limit.Value() >= sizeInBytes
+}
+
+func volumeLimit(capacity *storagev1beta1.CSIStorageCapacity) *resource.Quantity {
 	if capacity.MaximumVolumeSize != nil {
 		// Prefer MaximumVolumeSize if available, it is more precise.
-		limit = capacity.MaximumVolumeSize
+		return capacity.MaximumVolumeSize
 	}
-	return limit != nil && limit.Value() >= sizeInBytes
+	return capacity.Capacity
 }
 
 func (b *volumeBinder) nodeHasAccess(logger klog.Logger, node *v1.Node, capacity *storagev1beta1.CSIStorageCapacity) bool {
@@ -1114,8 +1118,6 @@ func isCSIMigrationOnForPlugin(pluginName string) bool {
 		return true
 	case csiplugins.PortworxVolumePluginName:
 		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationPortworx)
-	case csiplugins.RBDVolumePluginName:
-		return utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationRBD)
 	}
 	return false
 }

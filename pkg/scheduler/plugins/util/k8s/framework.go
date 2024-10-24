@@ -29,6 +29,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
+	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 
 	scheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
@@ -151,6 +152,10 @@ func (f *Framework) Extenders() []framework.Extender {
 
 func (f *Framework) Parallelizer() parallelize.Parallelizer {
 	return parallelize.NewParallelizer(16)
+}
+
+func (f *Framework) ResourceClaimCache() *assumecache.AssumeCache {
+	return nil
 }
 
 // NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.

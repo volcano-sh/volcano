@@ -310,7 +310,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	plugin, _ = nodeports.New(context.TODO(), nil, handle)
 	nodePortFilter := plugin.(*nodeports.NodePorts)
 	// 4. TaintToleration
-	plugin, _ = tainttoleration.New(context.TODO(), nil, handle)
+	plugin, _ = tainttoleration.New(context.TODO(), nil, handle, features)
 	tolerationFilter := plugin.(*tainttoleration.TaintToleration)
 	// 5. InterPodAffinity
 	plArgs := &config.InterPodAffinityArgs{}
