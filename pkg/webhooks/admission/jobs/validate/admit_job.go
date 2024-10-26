@@ -297,7 +297,7 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	}
 
 	if !apiequality.Semantic.DeepEqual(new.Spec, old.Spec) {
-		return fmt.Errorf("job updates may not change fields other than `minAvailable`, `tasks[*].replicas under spec`")
+		return fmt.Errorf("job updates may not change fields other than `minAvailable`, `tasks[*].replicas under spec` and `PriorityClassName`")
 	}
 
 	return nil
