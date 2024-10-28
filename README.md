@@ -47,7 +47,14 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 - [Volcano：基于云原生的高密计算解决方案 @ Huawei Connection 2019](https://e.huawei.com/cn/material/event/HC/09099dce0070415e9f26ada51b2216d7)
 - [Improving Performance of Deep Learning Workloads With Volcano @ KubeCon 2019 NA](https://sched.co/UaZi)
 - [Batch Capability of Kubernetes Intro @ KubeCon 2019 NA](https://sched.co/Uajv)
-- [Intro: Kubernetes Batch Scheduling @ KubeCon 2019 EU](https://sched.co/MPi7)
+- [Optimizing Knowledge Distillation Training With Volcano @ KubeCon 2021 EU](https://www.youtube.com/watch?v=cDPGmhVcj7Y&t=143s)
+- [Exploration About Mixing Technology of Online Services and Offline Jobs Based On Volcano @ KubeCon 2021 China](https://www.youtube.com/watch?v=daqkUlT5ReY)
+- [Volcano - Cloud Native Batch System for AI, BigData and HPC @ KubeCon 2022 EU](https://www.youtube.com/watch?v=wjy35HfIP_k)
+- [How to Leverage Volcano to Improve the Resource Utilization of AI Pharmaceuticals, Autonomous Driving, and Smart Buildings @ KubeCon 2023 EU](https://www.youtube.com/watch?v=ujHDV5xteqU)
+- [Run Your AI Workloads and Microservices on Kubernetes More Easily and Efficiently @ KubeCon 2023 China](https://www.youtube.com/watch?v=OO7zpyf7fgs)
+- [Optimize LLM Workflows with Smart Infrastructure Enhanced by Volcano @ KubeCon 2024 China](https://www.youtube.com/watch?v=77Qn1-I-muQ)
+- [How Volcano Enable Next Wave of Intelligent Applications @ KubeCon 2024 China](https://www.youtube.com/watch?v=IzR7zJQ8vMw)
+- [Leverage Topology Modeling and Topology-Aware Scheduling to Accelerate LLM Training @ KubeCon 2024 China](https://www.youtube.com/watch?v=IB54LHQQ8lI)
 
 
 ## Ecosystem
