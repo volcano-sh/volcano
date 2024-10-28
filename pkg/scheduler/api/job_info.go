@@ -572,12 +572,15 @@ func (ji *JobInfo) DeductSchGatedResources(res *Resource) *Resource {
 	return result
 }
 
+// GetElasticResources returns those partly resources in allocated which are more than its minResource
 func (ji *JobInfo) GetElasticResources() *Resource {
-	minResource := ji.GetMinResources()
-	if ji.Allocated.LessEqualPartly(minResource, Zero) {
+	if ji.Allocated == nil {
 		return EmptyResource()
 	}
-	return ji.Allocated.Clone().Sub(minResource)
+	minResource := ji.GetMinResources()
+	elastic := ExceededPart(ji.Allocated, minResource)
+
+	return elastic
 }
 
 func (ji *JobInfo) addTaskIndex(ti *TaskInfo) {
