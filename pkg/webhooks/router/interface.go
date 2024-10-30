@@ -23,6 +23,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/apis/pkg/client/clientset/versioned"
+	schedulinglister "volcano.sh/apis/pkg/client/listers/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/webhooks/config"
 )
 
@@ -33,6 +34,7 @@ type AdmissionServiceConfig struct {
 	SchedulerNames []string
 	KubeClient     kubernetes.Interface
 	VolcanoClient  versioned.Interface
+	QueueLister    schedulinglister.QueueLister
 	Recorder       record.EventRecorder
 	ConfigData     *config.AdmissionConfiguration
 }

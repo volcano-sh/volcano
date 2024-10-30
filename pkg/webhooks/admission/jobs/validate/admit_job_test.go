@@ -18,6 +18,7 @@ package validate
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -31,6 +32,7 @@ import (
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 )
 
 func TestValidateJobCreate(t *testing.T) {
@@ -1234,6 +1236,17 @@ func TestValidateJobCreate(t *testing.T) {
 			}
 			// create fake volcano clientset
 			config.VolcanoClient = fakeclient.NewSimpleClientset()
+			informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+			queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+			config.QueueLister = queueInformer.Lister()
+
+			stopCh := make(chan struct{})
+			informerFactory.Start(stopCh)
+			for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+				if !ok {
+					panic(fmt.Errorf("failed to sync cache: %v", informerType))
+				}
+			}
 
 			//create default queue
 			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultqueue, metav1.CreateOptions{})
@@ -1259,6 +1272,215 @@ func TestValidateJobCreate(t *testing.T) {
 			if testCase.ExpectErr == false && testCase.reviewResponse.Allowed != true {
 				t.Errorf("Expect Allowed as true but got false. %v", testCase.reviewResponse)
 			}
+			close(stopCh)
+		})
+	}
+}
+
+func TestValidateHierarchyCreate(t *testing.T) {
+	namespace := "test"
+
+	testCases := []struct {
+		Name           string
+		Job            v1alpha1.Job
+		ExpectErr      bool
+		reviewResponse admissionv1.AdmissionResponse
+		ret            string
+	}{
+		// job with root queue created
+		{
+			Name: "job-with-rootQueue",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-noQueue",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "root",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "can not submit job to root queue",
+			ExpectErr:      true,
+		},
+		// job with non leaf queue created
+		{
+			Name: "job-with-parentQueue",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-parentQueue",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "parentQueue",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "can only submit job to leaf queue",
+			ExpectErr:      true,
+		},
+		// job with leaf queue created
+		{
+			Name: "job-with-leafQueue",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-leafQueue",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "childQueue",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			rootQueue := schedulingv1beta2.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "root",
+				},
+				Spec: schedulingv1beta2.QueueSpec{},
+				Status: schedulingv1beta2.QueueStatus{
+					State: schedulingv1beta2.QueueStateOpen,
+				},
+			}
+			parentQueue := schedulingv1beta2.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "parentQueue",
+				},
+				Spec: schedulingv1beta2.QueueSpec{
+					Parent: "root",
+				},
+				Status: schedulingv1beta2.QueueStatus{
+					State: schedulingv1beta2.QueueStateOpen,
+				},
+			}
+
+			childQueue := schedulingv1beta2.Queue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "childQueue",
+				},
+				Spec: schedulingv1beta2.QueueSpec{
+					Parent: "parentQueue",
+				},
+				Status: schedulingv1beta2.QueueStatus{
+					State: schedulingv1beta2.QueueStateOpen,
+				},
+			}
+
+			// create fake volcano clientset
+			config.VolcanoClient = fakeclient.NewSimpleClientset()
+			informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+			queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+			config.QueueLister = queueInformer.Lister()
+
+			stopCh := make(chan struct{})
+			informerFactory.Start(stopCh)
+			for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+				if !ok {
+					panic(fmt.Errorf("failed to sync cache: %v", informerType))
+				}
+			}
+
+			//create root queue
+			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &rootQueue, metav1.CreateOptions{})
+			if err != nil {
+				t.Error("Queue Creation Failed")
+			}
+			//create parent queue
+			_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &parentQueue, metav1.CreateOptions{})
+			if err != nil {
+				t.Error("Queue Creation Failed")
+			}
+			// create parent queue
+			_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &childQueue, metav1.CreateOptions{})
+			if err != nil {
+				t.Error("Queue Creation Failed")
+			}
+
+			ret := validateJobCreate(&testCase.Job, &testCase.reviewResponse)
+
+			if testCase.ExpectErr == true && ret == "" {
+				t.Errorf("Expect error msg :%s, but got nil.", testCase.ret)
+			}
+			if testCase.ExpectErr == true && testCase.reviewResponse.Allowed != false {
+				t.Errorf("Expect Allowed as false but got true.")
+			}
+			if testCase.ExpectErr == true && !strings.Contains(ret, testCase.ret) {
+				t.Errorf("Expect error msg :%s, but got diff error %v", testCase.ret, ret)
+			}
+
+			if testCase.ExpectErr == false && ret != "" {
+				t.Errorf("Expect no error, but got error %v", ret)
+			}
+			if testCase.ExpectErr == false && testCase.reviewResponse.Allowed != true {
+				t.Errorf("Expect Allowed as true but got false. %v", testCase.reviewResponse)
+			}
+			close(stopCh)
 		})
 	}
 }
