@@ -40,7 +40,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func Test_capacityPlugin_OnSessionOpen(t *testing.T) {
+func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{PluginName: New, predicates.PluginName: predicates.New}
 	trueValue := true
 	actions := []framework.Action{allocate.New(), reclaim.New()}
@@ -332,4 +332,140 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New, predicates.PluginName: predicates.New}
+	trueValue := true
+	actions := []framework.Action{enqueue.New(), reclaim.New(), allocate.New()}
+
+	// nodes
+	n1 := util.BuildNode("n1", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+
+	// resources for test case 0
+	// pod
+	p1 := util.BuildPod("ns1", "p1", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), map[string]string{})
+	// podgroup
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q11", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	// queue
+	root := buildQueueWithParents("root", "", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
+	queue1 := buildQueueWithParents("q1", "root", nil, api.BuildResourceList("4", "4Gi"))
+	queue2 := buildQueueWithParents("q2", "root", nil, api.BuildResourceList("4", "4Gi"))
+	queue11 := buildQueueWithParents("q11", "q1", nil, api.BuildResourceList("1", "1Gi"))
+	queue12 := buildQueueWithParents("q12", "q1", nil, api.BuildResourceList("3", "3Gi"))
+
+	// resources for test case 1
+	// pod
+	p2 := util.BuildPod("ns1", "p2", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), map[string]string{})
+	// podgroup
+	pg2 := util.BuildPodGroup("pg2", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+
+	// resources for test case 2
+	// pod
+	p3 := util.BuildPod("ns1", "p3", "", corev1.PodPending, api.BuildResourceList("2", "2Gi"), "pg3", make(map[string]string), map[string]string{})
+	p4 := util.BuildPod("ns1", "p4", "", corev1.PodPending, api.BuildResourceList("2", "2Gi"), "pg3", make(map[string]string), map[string]string{})
+	// podgroup
+	pg3 := util.BuildPodGroup("pg3", "ns1", "q31", 2, nil, schedulingv1beta1.PodGroupInqueue)
+	// queue
+	queue3 := buildQueueWithParents("q3", "root", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
+	queue4 := buildQueueWithParents("q4", "root", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "1"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
+	queue31 := buildQueueWithParents("q31", "q3", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
+	queue32 := buildQueueWithParents("q32", "q3", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
+
+	// resources for test case 3
+	// pod
+	p5 := util.BuildPod("ns1", "p5", "n1", corev1.PodRunning, api.BuildResourceList("4", "4Gi"), "pg4", map[string]string{}, make(map[string]string))
+	p6 := util.BuildPod("ns1", "p6", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg5", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string))
+	p7 := util.BuildPod("ns1", "p7", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg5", make(map[string]string), make(map[string]string))
+	p8 := util.BuildPod("ns1", "p8", "", corev1.PodPending, api.BuildResourceList("2", "2Gi"), "pg6", make(map[string]string), map[string]string{})
+	// podgroup
+	pg4 := util.BuildPodGroup("pg4", "ns1", "q4", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg5 := util.BuildPodGroup("pg5", "ns1", "q31", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg6 := util.BuildPodGroup("pg6", "ns1", "q32", 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name:      "case0: Pod allocatable when queue is leaf queue",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p1},
+			Nodes:     []*corev1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg1},
+			Queues:    []*schedulingv1beta1.Queue{root, queue1, queue2, queue11, queue12},
+			ExpectBindMap: map[string]string{
+				"ns1/p1": "n1",
+			},
+			ExpectBindsNum: 1,
+		},
+		{
+			Name:           "case1: Pod not allocatable when queue is not leaf queue",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p2},
+			Nodes:          []*corev1.Node{n1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg2},
+			Queues:         []*schedulingv1beta1.Queue{root, queue1, queue2, queue11, queue12},
+			ExpectBindMap:  map[string]string{},
+			ExpectBindsNum: 0,
+		},
+		{
+			Name:      "case2: Pod allocatable when queue has not exceed capability",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p3, p4},
+			Nodes:     []*corev1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg3},
+			Queues:    []*schedulingv1beta1.Queue{root, queue3, queue4, queue31, queue32},
+			ExpectBindMap: map[string]string{
+				"ns1/p3": "n1",
+				"ns1/p4": "n1",
+			},
+			ExpectBindsNum: 2,
+		},
+		{
+			Name:      "case3: Can reclaim from other queues when allocated < deserved",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p5, p6, p7, p8},
+			Nodes:     []*corev1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg4, pg5, pg6},
+			Queues:    []*schedulingv1beta1.Queue{root, queue3, queue31, queue32, queue4},
+			ExpectPipeLined: map[string][]string{
+				"ns1/pg6": {"n1"},
+			},
+			ExpectEvicted:  []string{"ns1/p7"},
+			ExpectEvictNum: 1,
+		},
+	}
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnablePreemptive:   &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledQueueOrder:  &trueValue,
+					EnabledHierarchy:   &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+			},
+		},
+	}
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func buildQueueWithParents(name string, parent string, deserved corev1.ResourceList, cap corev1.ResourceList) *schedulingv1beta1.Queue {
+	queue := util.BuildQueueWithResourcesQuantity(name, deserved, cap)
+	queue.Spec.Parent = parent
+	return queue
 }

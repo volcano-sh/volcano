@@ -18,6 +18,7 @@ package jobseq
 
 import (
 	"context"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,5 +65,62 @@ var _ = Describe("Queue E2E Test", func() {
 		})
 		Expect(err).NotTo(HaveOccurred(), "Wait for reopen queue %s failed", q1)
 
+	})
+
+	It("Queue Command Close And Open With Hierarchical Queues", func() {
+		q1 := "queue1"
+		q2 := "queue2"
+		q11 := "queue11"
+		defaultQueue := "default"
+		rootQueue := "root"
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues: []string{q1, q2, q11},
+			QueueParent: map[string]string{
+				q1:  rootQueue,
+				q2:  rootQueue,
+				q11: q1,
+			},
+		})
+		ctx.Queues = []string{q11, q1, q2}
+		defer e2eutil.CleanupTestContext(ctx)
+
+		By("Close queue with child queues")
+		err := util.CreateQueueCommand(ctx.Vcclient, defaultQueue, q1, busv1alpha1.CloseQueueAction)
+		if err != nil {
+			Expect(err).NotTo(HaveOccurred(), "Error send close queue command")
+		}
+
+		err = e2eutil.WaitQueueStatus(func() (bool, error) {
+			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q11, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q11)
+			return queue.Status.State == schedulingv1beta1.QueueStateClosed, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Wait for closed queue %s failed", q11)
+
+		By("Open queue with closed parent queue")
+		err = util.CreateQueueCommand(ctx.Vcclient, defaultQueue, q11, busv1alpha1.OpenQueueAction)
+		if err != nil {
+			Expect(err).NotTo(HaveOccurred(), "Error send open queue command")
+		}
+
+		err = e2eutil.WaitQueueStatus(func() (bool, error) {
+			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q11, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q11)
+			return queue.Status.State == schedulingv1beta1.QueueStateClosed, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Wait for reopen queue %s failed", q11)
+
+		By("Open queue with open parent queue")
+		err = util.CreateQueueCommand(ctx.Vcclient, defaultQueue, q1, busv1alpha1.OpenQueueAction)
+		if err != nil {
+			Expect(err).NotTo(HaveOccurred(), "Error send open queue command")
+		}
+
+		err = e2eutil.WaitQueueStatus(func() (bool, error) {
+			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
+			return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
+		})
+		Expect(err).NotTo(HaveOccurred(), "Wait for reopen queue %s failed", q1)
 	})
 })

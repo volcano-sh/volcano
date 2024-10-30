@@ -53,7 +53,7 @@ var _ = ginkgo.Describe("[Stress] Queue Test", func() {
 					defer wg.Done()
 
 					queueName := fmt.Sprintf("queue-%d", index)
-					e2eutil.CreateQueue(ctx, queueName, nil)
+					e2eutil.CreateQueue(ctx, queueName, nil, "")
 					err := e2eutil.WaitQueueStatus(func() (bool, error) {
 						queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
 						gomega.Expect(err).NotTo(gomega.HaveOccurred())

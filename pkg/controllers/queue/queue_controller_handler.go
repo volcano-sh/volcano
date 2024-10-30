@@ -62,8 +62,13 @@ func (c *queuecontroller) deleteQueue(obj interface{}) {
 	delete(c.podGroups, queue.Name)
 }
 
-func (c *queuecontroller) updateQueue(_, _ interface{}) {
-	// currently do not care about queue update
+func (c *queuecontroller) updateQueue(oldObj, newObj interface{}) {
+	oldQueue := oldObj.(*schedulingv1beta1.Queue)
+	newQueue := newObj.(*schedulingv1beta1.Queue)
+
+	if oldQueue.Spec.Parent != newQueue.Spec.Parent {
+		c.addQueue(newObj)
+	}
 }
 
 func (c *queuecontroller) addPodGroup(obj interface{}) {

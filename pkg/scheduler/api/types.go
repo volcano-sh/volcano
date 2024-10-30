@@ -116,6 +116,9 @@ type LessFn func(interface{}, interface{}) bool
 // CompareFn is the func declaration used by sort or priority queue.
 type CompareFn func(interface{}, interface{}) int
 
+// VictimCompareFn is the func declaration used by sort or priority victims.
+type VictimCompareFn func(interface{}, interface{}, interface{}) int
+
 // ValidateFn is the func declaration used to check object's status.
 type ValidateFn func(interface{}) bool
 
