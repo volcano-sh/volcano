@@ -4402,16 +4402,21 @@ spec:
       serviceAccount: volcano-controllers
       priorityClassName: system-cluster-critical
       containers:
-          - name: volcano-controllers
-            image: docker.io/volcanosh/vc-controller-manager:latest
-            args:
-              - --logtostderr
-              - --enable-healthz=true
-              - --enable-metrics=true
-              - --leader-elect=false
-              - -v=4
-              - 2>&1
-            imagePullPolicy: Always
+        - name: volcano-controllers
+          image: docker.io/volcanosh/vc-controller-manager:latest
+          args:
+            - --logtostderr
+            - --enable-healthz=true
+            - --enable-metrics=true
+            - --leader-elect=false
+            - --kube-api-qps=50
+            - --kube-api-burst=100
+            - --worker-threads=3
+            - --worker-threads-for-gc=5
+            - --worker-threads-for-podgroup=5
+            - -v=4
+            - 2>&1
+          imagePullPolicy: Always
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
@@ -4582,6 +4587,10 @@ spec:
             - --enable-healthz=true
             - --enable-metrics=true
             - --leader-elect=false
+            - --kube-api-qps=2000
+            - --kube-api-burst=2000
+            - --schedule-period=1s
+            - --node-worker-threads=20
             - -v=3
             - 2>&1
           env:
