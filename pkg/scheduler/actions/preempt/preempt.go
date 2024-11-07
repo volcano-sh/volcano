@@ -31,6 +31,8 @@ import (
 
 type Action struct {
 	enablePredicateErrorCache bool
+	session                   *framework.Session
+	preemptableNodeMap        map[api.QueueID]map[string]int
 }
 
 func New() *Action {
@@ -54,7 +56,10 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Preempt ...")
 	defer klog.V(5).Infof("Leaving Preempt ...")
 
+	pmpt.session = ssn
 	pmpt.parseArguments(ssn)
+	util.CleanUnusedPredicateCache(ssn.Jobs)
+	pmpt.preemptableNodeMap = map[api.QueueID]map[string]int{}
 
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
@@ -67,6 +72,14 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
+		for _, task := range job.Tasks {
+			if api.PreemptableStatus(task.Status) {
+				if _, exist := pmpt.preemptableNodeMap[job.Queue]; !exist {
+					pmpt.preemptableNodeMap[job.Queue] = map[string]int{}
+				}
+				pmpt.preemptableNodeMap[job.Queue][task.NodeName]++
+			}
+		}
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
 			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip preemption, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue
@@ -155,6 +168,10 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 			// Commit changes only if job is pipelined, otherwise try next job.
 			if ssn.JobPipelined(preemptorJob) {
+				for _, task := range stmt.GetEvictTasks() {
+					queue := ssn.Jobs[task.Job].Queue
+					pmpt.preemptableNodeMap[queue][task.NodeName]--
+				}
 				stmt.Commit()
 			} else {
 				stmt.Discard()
@@ -209,6 +226,10 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 				if err != nil {
 					klog.V(3).Infof("Preemptor <%s/%s> failed to preempt Task , err: %s", preemptor.Namespace, preemptor.Name, err)
 				}
+				for _, task := range stmt.GetEvictTasks() {
+					queue := ssn.Jobs[task.Job].Queue
+					pmpt.preemptableNodeMap[queue][task.NodeName]--
+				}
 				stmt.Commit()
 
 				// If no preemption, next job.
@@ -243,10 +264,18 @@ func (pmpt *Action) preempt(
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
 
-	predicateFn := ssn.PredicateForPreemptAction
+	var allNodeIntersections []*api.NodeInfo
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
 	allNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(preemptor)
-	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, predicateFn, pmpt.enablePredicateErrorCache)
+	queue := ssn.Jobs[preemptor.Job].Queue
+	for _, node := range allNodes {
+		num, exist := pmpt.preemptableNodeMap[queue][node.Name]
+		if !exist || num <= 0 {
+			continue
+		}
+		allNodeIntersections = append(allNodeIntersections, node)
+	}
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodeIntersections, pmpt.predicate, pmpt.enablePredicateErrorCache)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
@@ -332,6 +361,15 @@ func (pmpt *Action) preempt(
 	}
 
 	return assigned, nil
+}
+
+func (pmpt *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
+	var statusSets api.StatusSets
+	if node.Allocatable.MaxTaskNum <= len(pmpt.session.NodeMap[node.Name].Pods) {
+		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.NodePodNumberExceeded})
+		return api.NewFitErrWithStatus(task, node, statusSets...)
+	}
+	return pmpt.session.PredicateForPreemptAction(task, node)
 }
 
 func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {

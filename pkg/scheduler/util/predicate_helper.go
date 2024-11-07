@@ -12,6 +12,41 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
+var (
+	predicateCache = map[api.JobID]map[api.TaskID]map[string]map[int64]error{}
+	rwMutex        = sync.RWMutex{}
+)
+
+func SetPredicateCache(jobID api.JobID, taskID api.TaskID, nodeName string, nodeResGen int64, predicateResult error) {
+	rwMutex.Lock()
+	defer rwMutex.Unlock()
+	if _, ok := predicateCache[jobID]; !ok {
+		predicateCache[jobID] = map[api.TaskID]map[string]map[int64]error{}
+	}
+	if _, ok := predicateCache[jobID][taskID]; !ok {
+		predicateCache[jobID][taskID] = map[string]map[int64]error{}
+	}
+	if _, ok := predicateCache[jobID][taskID][nodeName]; !ok {
+		predicateCache[jobID][taskID][nodeName] = map[int64]error{}
+	}
+	predicateCache[jobID][taskID][nodeName][nodeResGen] = predicateResult
+}
+
+func GetPredicateCache(jobID api.JobID, taskID api.TaskID, nodeName string, nodeResGen int64) (predicateResult error, exist bool) {
+	rwMutex.RLock()
+	defer rwMutex.RUnlock()
+	predicateResult, exist = predicateCache[jobID][taskID][nodeName][nodeResGen]
+	return
+}
+
+func CleanUnusedPredicateCache(jobs map[api.JobID]*api.JobInfo) {
+	for jobID := range predicateCache {
+		if _, ok := jobs[jobID]; !ok {
+			delete(predicateCache, jobID)
+		}
+	}
+}
+
 type PredicateHelper interface {
 	PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool) ([]*api.NodeInfo, *api.FitErrors)
 }

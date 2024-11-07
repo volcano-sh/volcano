@@ -388,7 +388,10 @@ func (ssn *Session) GetUnschedulableAndUnresolvableNodesForTask(task *api.TaskIn
 // - UnschedulableAndUnresolvable
 // - ErrorSkipOrWait
 func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.NodeInfo) error {
-	err := ssn.PredicateFn(task, node)
+	err, ok := util.GetPredicateCache(task.Job, task.UID, node.Name, node.Node.Generation)
+	if !ok {
+		err = ssn.PredicateFn(task, node)
+	}
 	if err == nil {
 		return nil
 	}
@@ -410,7 +413,10 @@ func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.Nod
 // - UnschedulableAndUnresolvable
 // - ErrorSkipOrWait
 func (ssn *Session) PredicateForPreemptAction(task *api.TaskInfo, node *api.NodeInfo) error {
-	err := ssn.PredicateFn(task, node)
+	err, ok := util.GetPredicateCache(task.Job, task.UID, node.Name, node.Node.Generation)
+	if !ok {
+		err = ssn.PredicateFn(task, node)
+	}
 	if err == nil {
 		return nil
 	}
