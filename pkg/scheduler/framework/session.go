@@ -41,6 +41,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
+	schedulingutil "volcano.sh/volcano/pkg/scheduler/util"
 )
 
 // Session information for the current session
@@ -295,6 +296,7 @@ func updateRootQueueResources(ssn *Session, allocated v1.ResourceList) {
 }
 
 func closeSession(ssn *Session) {
+	schedulingutil.CleanUnusedPodStatusLastSetCache(ssn.Jobs)
 	ju := newJobUpdater(ssn)
 	ju.UpdateAll()
 
