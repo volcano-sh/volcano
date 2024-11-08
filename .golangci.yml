@@ -57,7 +57,7 @@ linters:
     # other linters supported by golangci-lint.
     #- gosec
     #- revive
-    - whitespace 
+    - whitespace
 
 linters-settings:
   goimports:
