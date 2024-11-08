@@ -46,19 +46,18 @@ linters:
     - goimports
     - govet
     # linters default enabled by golangci-lint .
-    - deadcode
     - depguard
     #- errcheck
     - gosimple
     - ineffassign
     - staticcheck
     - typecheck
+    # deadcode and varcheck is deprecated (since v1.49.0). Replaced by unused.
     - unused
-    - varcheck
     # other linters supported by golangci-lint.
     #- gosec
     #- revive
-    - whitespace
+    - whitespace 
 
 linters-settings:
   goimports:
@@ -74,3 +73,5 @@ linters-settings:
         deny:
           - pkg: "k8s.io/klog$"
             desc: "k8s.io/klog is deprecated, use k8s.io/klog/v2 instead"
+          - pkg: "io/ioutil"
+            desc: "replaced by io and os packages since Go 1.16: https://tip.golang.org/doc/go1.16#ioutil"
