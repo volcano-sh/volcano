@@ -296,7 +296,6 @@ func updateRootQueueResources(ssn *Session, allocated v1.ResourceList) {
 }
 
 func closeSession(ssn *Session) {
-	schedulingutil.CleanUnusedPodStatusLastSetCache(ssn.Jobs)
 	ju := newJobUpdater(ssn)
 	ju.UpdateAll()
 
@@ -312,6 +311,9 @@ func closeSession(ssn *Session) {
 	ssn.clusterOrderFns = nil
 	ssn.NodeList = nil
 	ssn.TotalResource = nil
+
+	util.CleanUnusedPredicateCache(ssn.Jobs)
+	schedulingutil.CleanUnusedPodStatusLastSetCache(ssn.Jobs)
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }
@@ -393,6 +395,7 @@ func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.Nod
 	err, ok := util.GetPredicateCache(task.Job, task.UID, node.Name, node.Node.Generation)
 	if !ok {
 		err = ssn.PredicateFn(task, node)
+		util.SetPredicateCache(task.Job, task.UID, node.Name, node.Node.Generation, err)
 	}
 	if err == nil {
 		return nil
@@ -418,6 +421,7 @@ func (ssn *Session) PredicateForPreemptAction(task *api.TaskInfo, node *api.Node
 	err, ok := util.GetPredicateCache(task.Job, task.UID, node.Name, node.Node.Generation)
 	if !ok {
 		err = ssn.PredicateFn(task, node)
+		util.SetPredicateCache(task.Job, task.UID, node.Name, node.Node.Generation, err)
 	}
 	if err == nil {
 		return nil

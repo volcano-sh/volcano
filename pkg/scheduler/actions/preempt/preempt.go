@@ -58,7 +58,6 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 	pmpt.session = ssn
 	pmpt.parseArguments(ssn)
-	util.CleanUnusedPredicateCache(ssn.Jobs)
 	pmpt.preemptableNodeMap = map[api.QueueID]map[string]int{}
 
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
