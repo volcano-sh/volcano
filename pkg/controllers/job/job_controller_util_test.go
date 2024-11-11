@@ -19,6 +19,7 @@ package job
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -331,6 +332,41 @@ func TestApplyPolicies(t *testing.T) {
 			ReturnVal: busv1alpha1.SyncJobAction,
 		},
 		{
+			Name: "Test Apply policies where event is PodRunning",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Request: &apis.Request{
+				Event: busv1alpha1.PodRunningEvent,
+			},
+			ReturnVal: busv1alpha1.SyncJobAction,
+		},
+		{
 			Name: "Test Apply policies where job uid is inconsistent, ignore the existing policy action in the job and execute syncjob",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
@@ -571,6 +607,91 @@ func TestApplyPolicies(t *testing.T) {
 			ReturnVal: busv1alpha1.SyncJobAction,
 		},
 		{
+			Name: "Test Apply policies with job level policies, the event is PodPending with timeout",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Action: busv1alpha1.RestartPodAction,
+							Event:  busv1alpha1.PodPendingEvent,
+							Timeout: &metav1.Duration{
+								Duration: 10 * time.Second,
+							},
+						},
+					},
+				},
+			},
+			Request: &apis.Request{
+				Event: busv1alpha1.PodPendingEvent,
+			},
+			ReturnVal: busv1alpha1.RestartPodAction,
+		},
+		{
+			Name: "Test Apply policies with job level policies, the event is PodPending without timeout",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
+					Policies: []v1alpha1.LifecyclePolicy{
+						{
+							Action: busv1alpha1.RestartPodAction,
+							Event:  busv1alpha1.PodPendingEvent,
+						},
+					},
+				},
+			},
+			Request: &apis.Request{
+				Event: busv1alpha1.PodPendingEvent,
+			},
+			ReturnVal: busv1alpha1.SyncJobAction,
+		},
+		{
 			Name: "Test Apply policies with job level policies with exitcode",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
@@ -617,8 +738,8 @@ func TestApplyPolicies(t *testing.T) {
 		t.Run(testcase.Name, func(t *testing.T) {
 			action := applyPolicies(testcase.Job, testcase.Request)
 
-			if testcase.ReturnVal != "" && action != "" && testcase.ReturnVal != action {
-				t.Errorf("Expected return value to be %s but got %s in case %d", testcase.ReturnVal, action, i)
+			if testcase.ReturnVal != "" && action.action != "" && testcase.ReturnVal != action.action {
+				t.Errorf("Expected return value to be %s but got %s in case %d", testcase.ReturnVal, action.action, i)
 			}
 		})
 	}

@@ -298,12 +298,13 @@ func TestRequest_String(t *testing.T) {
 				JobName:    "testjobname",
 				QueueName:  "testqueuename",
 				TaskName:   "testtaskname",
+				PodName:    "testpodname",
 				Event:      vcbus.AnyEvent,
 				ExitCode:   0,
 				Action:     vcbus.SyncJobAction,
 				JobVersion: 0,
 			},
-			ExpectedValue: "Queue: testqueuename, Job: testnamespace/testjobname, Task:testtaskname, Event:*, ExitCode:0, Action:SyncJob, JobVersion: 0",
+			ExpectedValue: "Queue: testqueuename, Job: testnamespace/testjobname, Task:testtaskname, Pod:testpodname, Event:*, ExitCode:0, Action:SyncJob, JobVersion: 0",
 		},
 	}
 
