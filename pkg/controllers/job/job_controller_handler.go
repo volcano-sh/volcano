@@ -184,8 +184,9 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		Namespace: pod.Namespace,
 		JobName:   jobName,
 		JobUid:    jobUid,
+		PodName:   pod.Name,
 
-		Event:      bus.OutOfSyncEvent,
+		Event:      bus.PodPendingEvent,
 		JobVersion: int32(dVersion),
 	}
 
@@ -279,9 +280,19 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 			cc.cache.TaskCompleted(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
 			event = bus.TaskCompletedEvent
 		}
-	case v1.PodPending, v1.PodRunning:
+	case v1.PodRunning:
 		if cc.cache.TaskFailed(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
 			event = bus.TaskFailedEvent
+		}
+		if oldPod.Status.Phase != v1.PodRunning {
+			event = bus.PodRunningEvent
+		}
+	case v1.PodPending:
+		if cc.cache.TaskFailed(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
+			event = bus.TaskFailedEvent
+		}
+		if oldPod.Status.Phase != v1.PodPending {
+			event = bus.PodPendingEvent
 		}
 	}
 
@@ -290,6 +301,7 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		JobName:   jobName,
 		JobUid:    jobUid,
 		TaskName:  taskName,
+		PodName:   newPod.Name,
 
 		Event:      event,
 		ExitCode:   exitCode,
@@ -358,6 +370,7 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 		JobName:   jobName,
 		JobUid:    jobUid,
 		TaskName:  taskName,
+		PodName:   pod.Name,
 
 		Event:      bus.PodEvictedEvent,
 		JobVersion: int32(dVersion),
