@@ -54,6 +54,7 @@ function install-volcano {
     --set basic.image_tag_version=${TAG} \
     --set basic.scheduler_config_file=config/volcano-scheduler-ci.conf \
     --set basic.crd_version=${crd_version} \
+    --set custom.feature_gates=${FEATURE_GATES} \
     --wait
 }
 
@@ -138,6 +139,7 @@ case ${E2E_TYPE} in
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingbase/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingaction/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/vcctl/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo --focus="DRA E2E Test" --poll-progress-after='30s' --show-node-events ./test/e2e/dra/
     ;;
 "JOBP")
     echo "Running parallel job e2e suite..."
@@ -162,6 +164,10 @@ case ${E2E_TYPE} in
 "STRESS")
     echo "Running stress e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/stress/
+    ;;
+"DRA")
+    echo "Running dra e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo --focus="DRA E2E Test" --poll-progress-after='30s' --show-node-events ./test/e2e/dra/
     ;;
 esac
 
