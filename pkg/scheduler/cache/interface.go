@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -42,7 +43,7 @@ type Cache interface {
 
 	// AddBindTask binds Task to the target host.
 	// TODO(jinzhej): clean up expire Tasks.
-	AddBindTask(task *api.TaskInfo) error
+	AddBindTask(bindContext *BindContext) error
 
 	// BindPodGroup Pod/PodGroup to cluster
 	BindPodGroup(job *api.JobInfo, cluster string) error
@@ -91,6 +92,9 @@ type Cache interface {
 
 	// EventRecorder returns the event recorder
 	EventRecorder() record.EventRecorder
+
+	// GetResourceClaimCache returns the resource claim assume cache
+	GetResourceClaimCache() *assumecache.AssumeCache
 }
 
 // VolumeBinder interface for allocate and bind volumes

@@ -334,7 +334,8 @@ func (s *Statement) UnAllocate(task *api.TaskInfo) error {
 }
 
 func (s *Statement) allocate(task *api.TaskInfo) error {
-	if err := s.ssn.cache.AddBindTask(task); err != nil {
+	bindContext := s.ssn.CreateBindContext(task)
+	if err := s.ssn.cache.AddBindTask(bindContext); err != nil {
 		return err
 	}
 

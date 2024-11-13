@@ -37,12 +37,22 @@ import (
 // Framework is a K8S framework who mainly provides some methods
 // about snapshot and plugins such as predicates
 type Framework struct {
-	snapshot        framework.SharedLister
-	kubeClient      kubernetes.Interface
-	informerFactory informers.SharedInformerFactory
+	snapshot           framework.SharedLister
+	kubeClient         kubernetes.Interface
+	informerFactory    informers.SharedInformerFactory
+	resourceClaimCache *assumecache.AssumeCache
 }
 
 var _ framework.Handle = &Framework{}
+
+type Option func(*Framework)
+
+// WithResourceClaimCache sets the resource claim cache for the framework
+func WithResourceClaimCache(resourceClaimCache *assumecache.AssumeCache) Option {
+	return func(f *Framework) {
+		f.resourceClaimCache = resourceClaimCache
+	}
+}
 
 // SnapshotSharedLister returns the scheduler's SharedLister of the latest NodeInfo
 // snapshot. The snapshot is taken at the beginning of a scheduling cycle and remains
@@ -155,15 +165,21 @@ func (f *Framework) Parallelizer() parallelize.Parallelizer {
 }
 
 func (f *Framework) ResourceClaimCache() *assumecache.AssumeCache {
-	return nil
+	return f.resourceClaimCache
 }
 
 // NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
-func NewFrameworkHandle(nodeMap map[string]*framework.NodeInfo, client kubernetes.Interface, informerFactory informers.SharedInformerFactory) framework.Handle {
+func NewFrameworkHandle(nodeMap map[string]*framework.NodeInfo, client kubernetes.Interface, informerFactory informers.SharedInformerFactory, opts ...Option) framework.Handle {
 	snapshot := NewSnapshot(nodeMap)
-	return &Framework{
+	fw := &Framework{
 		snapshot:        snapshot,
 		kubeClient:      client,
 		informerFactory: informerFactory,
 	}
+
+	for _, opt := range opts {
+		opt(fw)
+	}
+
+	return fw
 }

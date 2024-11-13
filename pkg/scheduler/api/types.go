@@ -314,3 +314,9 @@ type VictimTasksFn func([]*TaskInfo) []*TaskInfo
 
 // AllocatableFn is the func declaration used to check whether the task can be allocated
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool
+
+// PreBindFn is the func declaration used to prebind resources for a pod before the pod needs to be bound onto the node
+type PreBindFn func(*TaskInfo, *NodeInfo) error
+
+// UnPreBindFn is the func declaration used to rollback resources prebinding if it fails
+type UnPreBindFn func(*TaskInfo, *NodeInfo)
