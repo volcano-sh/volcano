@@ -73,7 +73,7 @@ const (
 )
 
 const (
-	DefaultBusyBoxImage = "busybox:1.24"
+	DefaultBusyBoxImage = "busybox:1.37"
 	DefaultNginxImage   = "nginx:1.14"
 	DefaultMPIImage     = "volcanosh/example-mpi:0.0.3"
 	DefaultTFImage      = "volcanosh/dist-mnist-tf-example:0.0.1"

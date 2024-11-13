@@ -71,7 +71,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -113,7 +113,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -130,7 +130,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -166,7 +166,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -212,7 +212,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -248,7 +248,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -287,7 +287,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -324,7 +324,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -361,7 +361,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -415,7 +415,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -452,7 +452,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -488,7 +488,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -524,7 +524,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -567,7 +567,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -608,7 +608,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -650,7 +650,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -692,7 +692,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -736,7 +736,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -784,7 +784,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -830,7 +830,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -877,7 +877,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -928,7 +928,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -978,7 +978,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -1024,7 +1024,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -1059,7 +1059,7 @@ func TestValidateJobCreate(t *testing.T) {
 									InitContainers: []v1.Container{
 										{
 											Name:  "init-fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 											SecurityContext: &v1.SecurityContext{
 												Privileged: &priviledged,
 											},
@@ -1068,7 +1068,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -1103,7 +1103,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 											SecurityContext: &v1.SecurityContext{
 												Privileged: &priviledged,
 											},
@@ -1141,7 +1141,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -1156,7 +1156,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -1191,7 +1191,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -1206,7 +1206,7 @@ func TestValidateJobCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -1310,7 +1310,7 @@ func TestValidateHierarchyCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -1346,7 +1346,7 @@ func TestValidateHierarchyCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -1382,7 +1382,7 @@ func TestValidateHierarchyCreate(t *testing.T) {
 									Containers: []v1.Container{
 										{
 											Name:  "fake-name",
-											Image: "busybox:1.24",
+											Image: "busybox:1.37",
 										},
 									},
 								},
@@ -1582,7 +1582,7 @@ func TestValidateJobUpdate(t *testing.T) {
 							Containers: []v1.Container{
 								{
 									Name:  "fake-name",
-									Image: "busybox:1.24",
+									Image: "busybox:1.37",
 								},
 							},
 						},
@@ -1629,7 +1629,7 @@ func newJob() *v1alpha1.Job {
 							Containers: []v1.Container{
 								{
 									Name:  "fake-name",
-									Image: "busybox:1.24",
+									Image: "busybox:1.37",
 								},
 							},
 						},

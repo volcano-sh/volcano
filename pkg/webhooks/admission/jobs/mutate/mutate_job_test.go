@@ -53,7 +53,7 @@ func TestCreatePatchExecution(t *testing.T) {
 								Containers: []v1.Container{
 									{
 										Name:  "fake-name",
-										Image: "busybox:1.24",
+										Image: "busybox:1.37",
 									},
 								},
 							},
@@ -69,7 +69,7 @@ func TestCreatePatchExecution(t *testing.T) {
 								Containers: []v1.Container{
 									{
 										Name:  "fake-name",
-										Image: "busybox:1.24",
+										Image: "busybox:1.37",
 									},
 								},
 							},
@@ -93,7 +93,7 @@ func TestCreatePatchExecution(t *testing.T) {
 							Containers: []v1.Container{
 								{
 									Name:  "fake-name",
-									Image: "busybox:1.24",
+									Image: "busybox:1.37",
 								},
 							},
 						},
@@ -110,7 +110,7 @@ func TestCreatePatchExecution(t *testing.T) {
 							Containers: []v1.Container{
 								{
 									Name:  "fake-name",
-									Image: "busybox:1.24",
+									Image: "busybox:1.37",
 								},
 							},
 						},

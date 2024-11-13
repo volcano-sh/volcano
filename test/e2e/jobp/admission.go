@@ -336,7 +336,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 							"spec": {
 								"containers": [
 									{
-										"image": "busybox:1.24",
+										"image": "busybox:1.37",
 										"imagePullPolicy": "IfNotPresent",
 										"name": "busybox",
 										"resources": {
@@ -405,7 +405,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 							"spec": {
 								"containers": [
 									{
-										"image": "busybox:1.24",
+										"image": "busybox:1.37",
 										"imagePullPolicy": "IfNotPresent",
 										"name": "busybox",
 										"resources": {
