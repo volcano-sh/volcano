@@ -41,7 +41,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
-	schedulingutil "volcano.sh/volcano/pkg/scheduler/util"
 )
 
 // Session information for the current session
@@ -313,7 +312,7 @@ func closeSession(ssn *Session) {
 	ssn.TotalResource = nil
 
 	util.CleanUnusedPredicateCache(ssn.Jobs)
-	schedulingutil.CleanUnusedPodStatusLastSetCache(ssn.Jobs)
+	util.CleanUnusedPodStatusLastSetCache(ssn.Jobs)
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }
