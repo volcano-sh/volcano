@@ -5,6 +5,7 @@
 * Scheduler simulate is an effect solution of the problem above. It runs fast and needs much lesser resources than real cluster.
 ## design
 * The simulator includes simulator command, simulate-data-input, simulate-result-output, time simulator, kube-apiserver simulator
+![scheduler-simulate](images/scheduler-simulate.png) 
 ### simulator command
 * scheduler-simulate can be runned by command: vc-scheduler-simulate --running_time=24h --config_path=./config --output_path=./result
 ### simulate-data-input
