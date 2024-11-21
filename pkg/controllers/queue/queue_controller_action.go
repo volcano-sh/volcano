@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -34,7 +33,9 @@ import (
 	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	v1beta1apply "volcano.sh/apis/pkg/client/applyconfiguration/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
+	"volcano.sh/volcano/pkg/controllers/metrics"
 	"volcano.sh/volcano/pkg/controllers/queue/state"
 )
 
@@ -83,8 +84,13 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 			queueStatus.Unknown++
 		case schedulingv1beta1.PodGroupInqueue:
 			queueStatus.Inqueue++
+		case schedulingv1beta1.PodGroupCompleted:
+			queueStatus.Completed++
 		}
 	}
+
+	// Update the metrics
+	metrics.UpdateQueueMetrics(queue.Name, &queueStatus)
 
 	if updateStateFn != nil {
 		updateStateFn(&queueStatus, podGroups)
@@ -101,13 +107,12 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 	}
 
 	newQueue := queue.DeepCopy()
-	// ignore update when status does not change
-	if !equality.Semantic.DeepEqual(queueStatus, queue.Status) {
-		newQueue.Status = queueStatus
-		var err error
-		newQueue, err = c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{})
-		if err != nil {
-			klog.Errorf("Failed to update status of Queue %s: %v.", newQueue.Name, err)
+	// ignore update when state does not change
+	if queueStatus.State != queue.Status.State {
+		queueStatusApply := v1beta1apply.QueueStatus().WithState(queueStatus.State).WithAllocated(queueStatus.Allocated)
+		queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
+		if newQueue, err = c.vcClient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: controllerName}); err != nil {
+			klog.Errorf("Update queue state from %s to %s failed for %v", queue.Status.State, queueStatus.State, err)
 			return err
 		}
 	}
@@ -126,36 +131,18 @@ func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateF
 	}
 
 	newQueue := queue.DeepCopy()
-	newQueue.Status.State = schedulingv1beta1.QueueStateOpen
+	if updateStateFn != nil {
+		updateStateFn(&newQueue.Status, nil)
+	}
 
 	if queue.Status.State != newQueue.Status.State {
-		if _, err := c.vcClient.SchedulingV1beta1().Queues().Update(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
+		queueStatusApply := v1beta1apply.QueueStatus().WithState(newQueue.Status.State).WithAllocated(newQueue.Status.Allocated)
+		queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
+		if _, err := c.vcClient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: controllerName}); err != nil {
 			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
-				fmt.Sprintf("Open queue failed for %v", err))
+				fmt.Sprintf("Update queue status from %s to %s failed for %v",
+					queue.Status.State, newQueue.Status.State, err))
 			return err
-		}
-
-		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.OpenQueueAction), "Open queue succeed")
-
-		q, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), newQueue.Name, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		newQueue = q.DeepCopy()
-		if updateStateFn != nil {
-			updateStateFn(&newQueue.Status, nil)
-		} else {
-			return fmt.Errorf("internal error, update state function should be provided")
-		}
-
-		if queue.Status.State != newQueue.Status.State {
-			if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
-				c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
-					fmt.Sprintf("Update queue status from %s to %s failed for %v",
-						queue.Status.State, newQueue.Status.State, err))
-				return err
-			}
 		}
 	}
 
@@ -173,41 +160,21 @@ func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateState
 		}
 	}
 
+	podGroups := c.getPodGroups(queue.Name)
 	newQueue := queue.DeepCopy()
-	newQueue.Status.State = schedulingv1beta1.QueueStateClosed
+	if updateStateFn != nil {
+		updateStateFn(&newQueue.Status, podGroups)
+	}
 
 	if queue.Status.State != newQueue.Status.State {
-		if _, err := c.vcClient.SchedulingV1beta1().Queues().Update(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
+		queueStatusApply := v1beta1apply.QueueStatus().WithState(newQueue.Status.State).WithAllocated(newQueue.Status.Allocated)
+		queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
+		if _, err := c.vcClient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: controllerName}); err != nil {
 			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
 				fmt.Sprintf("Close queue failed for %v", err))
 			return err
 		}
-
 		c.recorder.Event(newQueue, v1.EventTypeNormal, string(v1alpha1.CloseQueueAction), "Close queue succeed")
-	} else {
-		return nil
-	}
-
-	q, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), newQueue.Name, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	newQueue = q.DeepCopy()
-	podGroups := c.getPodGroups(newQueue.Name)
-	if updateStateFn != nil {
-		updateStateFn(&newQueue.Status, podGroups)
-	} else {
-		return fmt.Errorf("internal error, update state function should be provided")
-	}
-
-	if queue.Status.State != newQueue.Status.State {
-		if _, err := c.vcClient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{}); err != nil {
-			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
-				fmt.Sprintf("Update queue status from %s to %s failed for %v",
-					queue.Status.State, newQueue.Status.State, err))
-			return err
-		}
 	}
 
 	return nil
