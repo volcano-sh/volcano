@@ -28,6 +28,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/cli/podgroup"
 )
 
 type getFlags struct {
@@ -63,21 +64,37 @@ func GetQueue(ctx context.Context) error {
 		return err
 	}
 
-	PrintQueue(queue, os.Stdout)
+	// Although the featuregate called CustomResourceFieldSelectors is enabled by default after v1.31, there are still
+	// users using k8s versions lower than v1.31. Therefore we can only get all the podgroups from kube-apiserver
+	// and then filtering them.
+	pgList, err := queueClient.SchedulingV1beta1().PodGroups("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list podgroup for queue %s with err: %v", getQueueFlags.Name, err)
+	}
+
+	pgStats := &podgroup.PodGroupStatistics{}
+	for _, pg := range pgList.Items {
+		if pg.Spec.Queue == getQueueFlags.Name {
+			pgStats.StatPodGroupCountsForQueue(&pg)
+		}
+	}
+
+	PrintQueue(queue, pgStats, os.Stdout)
 
 	return nil
 }
 
 // PrintQueue prints queue information.
-func PrintQueue(queue *v1beta1.Queue, writer io.Writer) {
-	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s\n",
-		Name, Weight, State, Inqueue, Pending, Running, Unknown)
+func PrintQueue(queue *v1beta1.Queue, pgStats *podgroup.PodGroupStatistics, writer io.Writer) {
+	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s%-8s\n",
+		Name, Weight, State, Inqueue, Pending, Running, Unknown, Completed)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)
 	}
-	_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8d%-8d%-8d%-8d\n",
-		queue.Name, queue.Spec.Weight, queue.Status.State, queue.Status.Inqueue,
-		queue.Status.Pending, queue.Status.Running, queue.Status.Unknown)
+
+	_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8d%-8d%-8d%-8d%-8d\n",
+		queue.Name, queue.Spec.Weight, queue.Status.State, pgStats.Inqueue,
+		pgStats.Pending, pgStats.Running, pgStats.Unknown, pgStats.Completed)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)
 	}

@@ -13,13 +13,13 @@ results based on their own hardware. This document is for demonstration purposes
 
 The information about the environment used for this test is as follows:
 
-| 属性         | 值       |
+| Attribute | Value  |
 |------------|---------|
-| 操作系统       | Mac     |
+| Operating System | Mac     |
 | Arch       | Arm     |
-| CPU核数      | 12      |
-| 内存         | 32GB    |
-| Volcano 版本 | v1.10.0 |
+| CPU Cores | 12      |
+| Memory   | 32GB    |
+| Volcano Version | v1.10.0 |
 
 ## Test Procedure
 
@@ -141,7 +141,7 @@ cd benchmark/sh
 ./benchmark.sh 6
 ```
 
-#### 测试结果：
+#### Test Results：
 
 Test results are output to benchmark/img/res/, with files like g1.png, g2.png, and g3.png.
 
@@ -154,7 +154,7 @@ Test results are output to benchmark/img/res/, with files like g1.png, g2.png, a
 | 5     | <img src='img/res/g5.png' width=60% /> |
 | 6     | <img src='img/res/g6.png' width=60% /> | 
 
-#### 指标实时观测
+#### Real-Time Observation of Indicators
 
 Metrics can be monitored in real-time via Grafana. Run the following command to open Grafana in your local browser
 at http://localhost:3000. The default username is `admin` and the password is `prom-operator`:

@@ -375,10 +375,6 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
 			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
-			metrics.UpdateQueuePodGroupInqueueCount(attr.name, queue.Queue.Status.Inqueue)
-			metrics.UpdateQueuePodGroupPendingCount(attr.name, queue.Queue.Status.Pending)
-			metrics.UpdateQueuePodGroupRunningCount(attr.name, queue.Queue.Status.Running)
-			metrics.UpdateQueuePodGroupUnknownCount(attr.name, queue.Queue.Status.Unknown)
 			continue
 		}
 		deservedCPU, deservedMem := 0.0, 0.0
@@ -389,10 +385,6 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		metrics.UpdateQueueDeserved(queueInfo.Name, deservedCPU, deservedMem)
 		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
 		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0)
-		metrics.UpdateQueuePodGroupInqueueCount(queueInfo.Name, 0)
-		metrics.UpdateQueuePodGroupPendingCount(queueInfo.Name, 0)
-		metrics.UpdateQueuePodGroupRunningCount(queueInfo.Name, 0)
-		metrics.UpdateQueuePodGroupUnknownCount(queueInfo.Name, 0)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
@@ -509,15 +501,10 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 
 	// Record metrics
 	for queueID := range ssn.Queues {
-		queue := ssn.Queues[queueID]
 		attr := cp.queueOpts[queueID]
 		metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
 		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
 		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
-		metrics.UpdateQueuePodGroupInqueueCount(attr.name, queue.Queue.Status.Inqueue)
-		metrics.UpdateQueuePodGroupPendingCount(attr.name, queue.Queue.Status.Pending)
-		metrics.UpdateQueuePodGroupRunningCount(attr.name, queue.Queue.Status.Running)
-		metrics.UpdateQueuePodGroupUnknownCount(attr.name, queue.Queue.Status.Unknown)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
