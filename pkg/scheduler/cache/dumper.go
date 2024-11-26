@@ -113,12 +113,12 @@ func (d *Dumper) printJobInfo(jobInfo *api.JobInfo) string {
 	return data.String()
 }
 
-func (d *Dumper) printHyperNodeInfo(HyperNodesListByTier map[int][]string, HyperNodes map[string]sets.Set[string]) {
+func (d *Dumper) printHyperNodeInfo(HyperNodesListByTier map[int]sets.Set[string], HyperNodes map[string]sets.Set[string]) {
 	var data strings.Builder
 	data.WriteString("\n")
 	for tier, hyperNodes := range HyperNodesListByTier {
-		for _, hyperNode := range hyperNodes {
-			data.WriteString(fmt.Sprintf("Tier: %d, HyperNodeName: %s, Nodes: %s\n", tier, hyperNode, HyperNodes[hyperNode]))
+		for hyperNode := range hyperNodes {
+			data.WriteString(fmt.Sprintf("Tier: %d, HyperNodeName: %s, Nodes: %s\n", tier, hyperNode, HyperNodes[hyperNode].UnsortedList()))
 		}
 	}
 	data.WriteString("\n")

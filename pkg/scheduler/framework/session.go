@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -80,7 +81,7 @@ type Session struct {
 	// HyperNodesListByTier contains a list of hyperNodes by tier from down to top, nodes under the same hyperNode
 	// have the same topology domain, e.g., nodes under the same switch or tor, jobs allocated in the same
 	// hyperNode can gain a better performance, the lower the tier of hyperNode, the better performance.
-	HyperNodesListByTier map[int][]string
+	HyperNodesListByTier map[int]sets.Set[string]
 	// HyperNodes maps hyperNode Name -> nodes under the hyperNode.
 	HyperNodes map[string][]*api.NodeInfo
 
