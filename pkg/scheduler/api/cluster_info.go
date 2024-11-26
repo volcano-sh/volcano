@@ -26,7 +26,7 @@ import (
 type ClusterInfo struct {
 	Jobs                 map[JobID]*JobInfo
 	Nodes                map[string]*NodeInfo
-	HyperNodesListByTier map[int][]string
+	HyperNodesListByTier map[int]sets.Set[string]
 	HyperNodes           map[string]sets.Set[string]
 	Queues               map[QueueID]*QueueInfo
 	NamespaceInfo        map[NamespaceName]*NamespaceInfo

@@ -244,7 +244,7 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 			klog.V(4).InfoS("Skip search for higher tier cause has found a suitable one", "tier", tier)
 			break
 		}
-		for _, hyperNodeName := range ssn.HyperNodesListByTier[tier] {
+		for hyperNodeName := range ssn.HyperNodesListByTier[tier] {
 			nodes, ok := ssn.HyperNodes[hyperNodeName]
 			if !ok {
 				klog.ErrorS(nil, "HyperNode not exists.", "jobName", job.UID, "name", hyperNodeName, "tier", tier)

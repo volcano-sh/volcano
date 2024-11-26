@@ -18,7 +18,6 @@ package util
 
 import (
 	"container/heap"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
