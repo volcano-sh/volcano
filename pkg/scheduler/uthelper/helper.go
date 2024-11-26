@@ -128,7 +128,7 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, rq := range test.ResourceQuotas {
 		schedulerCache.AddResourceQuota(rq)
 	}
-	schedulerCache.HyperNodesListByTier = test.HyperNodesListByTier
+	schedulerCache.HyperNodeListByTier = test.HyperNodesListByTier
 	schedulerCache.HyperNodes = test.HyperNodes
 
 	return schedulerCache
