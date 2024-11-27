@@ -73,6 +73,9 @@ func (d *Dumper) dumpAll() {
 		klog.Info(d.printJobInfo(jobInfo))
 	}
 
+	klog.Info("Dump of hyperNodes info in scheduler cache")
+	d.printHyperNodeInfo(snapshot.HyperNodesListByTier, snapshot.HyperNodes)
+
 	d.displaySchedulerMemStats()
 }
 
@@ -96,6 +99,17 @@ func (d *Dumper) printJobInfo(jobInfo *api.JobInfo) string {
 	data.WriteString(jobInfo.String())
 	data.WriteString("\n")
 	return data.String()
+}
+
+func (d *Dumper) printHyperNodeInfo(HyperNodesListByTier [][]string, HyperNodes map[string][]string) {
+	var data strings.Builder
+	data.WriteString("\n")
+	for tier, hyperNodes := range HyperNodesListByTier {
+		for _, hyperNode := range hyperNodes {
+			data.WriteString(fmt.Sprintf("Tier: %d, HyperNodeName: %s, Nodes: %s\n", tier+1, hyperNode, HyperNodes[hyperNode]))
+		}
+	}
+	data.WriteString("\n")
 }
 
 // ListenForSignal starts a goroutine that will respond when process

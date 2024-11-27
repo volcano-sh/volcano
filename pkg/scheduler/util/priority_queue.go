@@ -18,7 +18,6 @@ package util
 
 import (
 	"container/heap"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -64,6 +63,20 @@ func (q *PriorityQueue) Empty() bool {
 // Len returns Len of the priority queue
 func (q *PriorityQueue) Len() int {
 	return q.queue.Len()
+}
+
+func (q *PriorityQueue) Clone() *PriorityQueue {
+	newPq := &PriorityQueue{
+		queue: priorityQueue{
+			items:  make([]interface{}, 0),
+			lessFn: q.queue.lessFn,
+		},
+	}
+
+	for _, it := range q.queue.items {
+		newPq.Push(it)
+	}
+	return newPq
 }
 
 func (pq *priorityQueue) Len() int { return len(pq.items) }
