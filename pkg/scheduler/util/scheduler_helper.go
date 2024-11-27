@@ -143,7 +143,6 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeSc
 		for hyperNode, score := range scores {
 			klog.V(5).InfoS("Add plugin score at hypeNode", "jobName", job.UID, "pluginName", pluginName, "hyperNodeName", hyperNode, "score", score)
 			hyperNodesScoreMap[hyperNode] += score
-		}
 	}
 
 	// accumulate node scores in NodeOrder and hyperNode score itself as the final score of each hyperNode.
@@ -152,12 +151,6 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeSc
 		hyperNodesScoreMap[hyperNodeName] += score
 	}
 
-	hyperNodeScores := make(map[float64][]string)
-	hyperNodeScoreMap := make(map[string]float64)
-	for hyperNodeName := range candidateHyperNodes {
-		// If no plugin is applied to this node, the default is 0.0
-		score := 0.0
-		if value, ok := hyperNodesScoreMap[hyperNodeName]; ok {
 			score += value
 		}
 		hyperNodeScores[score] = append(hyperNodeScores[score], hyperNodeName)
@@ -202,6 +195,24 @@ func SelectBestNodeAndScore(nodeScores map[float64][]*api.NodeInfo) (*api.NodeIn
 	}
 
 	return bestNodes[rand.Intn(len(bestNodes))], maxScore
+}
+
+// SelectBestHyperNode return the best hyperNode name whose score is highest, pick one randomly if there are many hyperNodes with same score.
+func SelectBestHyperNode(hyperNodeScores map[float64][]string) string {
+	var bestHyperNodes []string
+	maxScore := -1.0
+	for score, hyperNodes := range hyperNodeScores {
+		if score > maxScore {
+			maxScore = score
+			bestHyperNodes = hyperNodes
+		}
+	}
+
+	if len(bestHyperNodes) == 0 {
+		return ""
+	}
+
+	return bestHyperNodes[rand.Intn(len(bestHyperNodes))]
 }
 
 // SelectBestHyperNode return the best hyperNode name whose score is highest, pick one randomly if there are many hyperNodes with same score.

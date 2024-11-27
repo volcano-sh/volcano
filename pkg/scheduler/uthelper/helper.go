@@ -189,6 +189,14 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 		}
 	}
 
+	if test.MinimalBindCheck {
+		return nil
+	}
+
+	if test.ExpectBindsNum != len(test.ExpectBindMap) {
+		return fmt.Errorf("invalid setting for binding check: want bind count %d, want bind result length %d", test.ExpectBindsNum, len(test.ExpectBindMap))
+	}
+
 	// in case expected test.BindsNum is 0, but actually there is a binding and wait the binding goroutine to run
 	select {
 	case <-time.After(50 * time.Millisecond):

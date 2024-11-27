@@ -19,6 +19,8 @@ package util
 import (
 	"testing"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/util/sets"
