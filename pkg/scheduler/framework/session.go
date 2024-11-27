@@ -77,6 +77,12 @@ type Session struct {
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
+	// HyperNodesListByTier contains a list of hyperNodes by tier from down to top, nodes under the same hyperNode
+	// have the same topology domain, e.g., nodes under the same switch or tor, jobs allocated in the same
+	// hyperNode can gain a better performance, the lower the tier of hyperNode, the better performance.
+	HyperNodesListByTier map[int][]string
+	// HyperNodes maps hyperNode Name -> nodes under the hyperNode.
+	HyperNodes map[string][]*api.NodeInfo
 
 	plugins             map[string]Plugin
 	eventHandlers       []*EventHandler
@@ -92,6 +98,7 @@ type Session struct {
 	batchNodeOrderFns   map[string]api.BatchNodeOrderFn
 	nodeMapFns          map[string]api.NodeMapFn
 	nodeReduceFns       map[string]api.NodeReduceFn
+	hyperNodeOrderFns   map[string]api.HyperNodeOrderFn
 	preemptableFns      map[string]api.EvictableFn
 	reclaimableFns      map[string]api.EvictableFn
 	overusedFns         map[string]api.ValidateFn
@@ -150,6 +157,7 @@ func openSession(cache cache.Cache) *Session {
 		batchNodeOrderFns:   map[string]api.BatchNodeOrderFn{},
 		nodeMapFns:          map[string]api.NodeMapFn{},
 		nodeReduceFns:       map[string]api.NodeReduceFn{},
+		hyperNodeOrderFns:   map[string]api.HyperNodeOrderFn{},
 		preemptableFns:      map[string]api.EvictableFn{},
 		reclaimableFns:      map[string]api.EvictableFn{},
 		overusedFns:         map[string]api.ValidateFn{},
@@ -175,6 +183,8 @@ func openSession(cache cache.Cache) *Session {
 		}
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
+	ssn.HyperNodesListByTier = snapshot.HyperNodesListByTier
+	ssn.HyperNodes = util.GetHyperNodeList(snapshot.HyperNodes, snapshot.Nodes)
 	ssn.Nodes = snapshot.Nodes
 	ssn.CSINodesStatus = snapshot.CSINodesStatus
 	ssn.RevocableNodes = snapshot.RevocableNodes

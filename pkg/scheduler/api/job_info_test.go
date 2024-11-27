@@ -440,3 +440,79 @@ func TestGetElasticResources(t *testing.T) {
 		}
 	}
 }
+
+func TestHasTopologyHardConstrain(t *testing.T) {
+	HighestTierAllowedTwo := 2
+	HighestTierAllowedThree := 3
+	tests := []struct {
+		name            string
+		jobInfo         *JobInfo
+		expectedHasHard bool
+		expectedTier    int
+	}{
+		{
+			name: "Nil PodGroup",
+			jobInfo: &JobInfo{
+				PodGroup: nil,
+			},
+			expectedHasHard: false,
+			expectedTier:    0,
+		},
+		{
+			name: "Nil NetworkTopologies",
+			jobInfo: &JobInfo{
+				PodGroup: &PodGroup{
+					PodGroup: scheduling.PodGroup{
+						Spec: scheduling.PodGroupSpec{
+							NetworkTopology: nil,
+						},
+					},
+				},
+			},
+			expectedHasHard: false,
+			expectedTier:    0,
+		},
+		{
+			name: "Hard Mode",
+			jobInfo: &JobInfo{
+				PodGroup: &PodGroup{
+					PodGroup: scheduling.PodGroup{
+						Spec: scheduling.PodGroupSpec{
+							NetworkTopology: &scheduling.NetworkTopologySpec{
+								Mode:               scheduling.HardNetworkTopologyMode,
+								HighestTierAllowed: &HighestTierAllowedTwo,
+							},
+						},
+					},
+				},
+			},
+			expectedHasHard: true,
+			expectedTier:    2,
+		},
+		{
+			name: "Soft Mode",
+			jobInfo: &JobInfo{
+				PodGroup: &PodGroup{
+					PodGroup: scheduling.PodGroup{
+						Spec: scheduling.PodGroupSpec{
+							NetworkTopology: &scheduling.NetworkTopologySpec{
+								Mode:               scheduling.SoftNetworkTopologyMode,
+								HighestTierAllowed: &HighestTierAllowedThree,
+							},
+						},
+					},
+				},
+			},
+			expectedHasHard: false,
+			expectedTier:    3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hasHard, tier := tt.jobInfo.HasTopologyHardConstrain()
+			assert.Equal(t, tt.expectedHasHard, hasHard)
+			assert.Equal(t, tt.expectedTier, tier)
+		})
+	}
+}

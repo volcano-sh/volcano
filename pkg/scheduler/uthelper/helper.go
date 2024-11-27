@@ -52,12 +52,14 @@ type TestCommonStruct struct {
 	// Plugins plugins for each case
 	Plugins map[string]framework.PluginBuilder
 	// Resource objects that need to be added to schedulercache
-	Pods           []*v1.Pod
-	Nodes          []*v1.Node
-	PodGroups      []*vcapisv1.PodGroup
-	Queues         []*vcapisv1.Queue
-	PriClass       []*schedulingv1.PriorityClass
-	ResourceQuotas []*v1.ResourceQuota
+	Pods                 []*v1.Pod
+	Nodes                []*v1.Node
+	HyperNodesListByTier map[int][]string
+	HyperNodes           map[string]sets.Set[string]
+	PodGroups            []*vcapisv1.PodGroup
+	Queues               []*vcapisv1.Queue
+	PriClass             []*schedulingv1.PriorityClass
+	ResourceQuotas       []*v1.ResourceQuota
 	// IgnoreProvisioners is the provisioners that need to be ignored
 	IgnoreProvisioners sets.Set[string]
 	PVs                []*v1.PersistentVolume
@@ -79,6 +81,9 @@ type TestCommonStruct struct {
 	ExpectBindsNum int
 	// ExpectEvictNum the expected evict events numbers, include preempted and reclaimed evict events
 	ExpectEvictNum int
+
+	// MinimalBindCheck true will only check both bind num, false by default.
+	MinimalBindCheck bool
 
 	// fake interface instance when check results need
 	stop       chan struct{}
@@ -142,6 +147,8 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, rq := range test.ResourceQuotas {
 		schedulerCache.AddResourceQuota(rq)
 	}
+	schedulerCache.HyperNodesListByTier = test.HyperNodesListByTier
+	schedulerCache.HyperNodes = test.HyperNodes
 
 	return schedulerCache
 }
@@ -192,9 +199,10 @@ func (test *TestCommonStruct) CheckAll(caseIndex int) (err error) {
 
 // CheckBind check expected bind result
 func (test *TestCommonStruct) CheckBind(caseIndex int) error {
-	if test.ExpectBindsNum != len(test.ExpectBindMap) {
+	if test.ExpectBindsNum != len(test.ExpectBindMap) && !test.MinimalBindCheck {
 		return fmt.Errorf("invalid setting for binding check: want bind count %d, want bind result length %d", test.ExpectBindsNum, len(test.ExpectBindMap))
 	}
+
 	binder := test.binder.(*util.FakeBinder)
 	for i := 0; i < test.ExpectBindsNum; i++ {
 		select {
@@ -209,6 +217,10 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 	case <-time.After(50 * time.Millisecond):
 	case key := <-binder.Channel:
 		return fmt.Errorf("unexpect binding %s in case %d(%s)", key, caseIndex, test.Name)
+	}
+
+	if test.MinimalBindCheck {
+		return nil
 	}
 
 	binds := binder.Binds()
