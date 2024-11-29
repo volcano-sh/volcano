@@ -1221,39 +1221,35 @@ func TestValidateJobCreate(t *testing.T) {
 		},
 	}
 
+	defaultqueue := &schedulingv1beta2.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "default",
+		},
+		Spec: schedulingv1beta2.QueueSpec{
+			Weight: 1,
+		},
+		Status: schedulingv1beta2.QueueStatus{
+			State: schedulingv1beta2.QueueStateOpen,
+		},
+	}
+
+	// create fake volcano clientset
+	config.VolcanoClient = fakeclient.NewSimpleClientset(defaultqueue)
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+	config.QueueLister = queueInformer.Lister()
+
+	stopCh := make(chan struct{})
+	informerFactory.Start(stopCh)
+	for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			panic(fmt.Errorf("failed to sync cache: %v", informerType))
+		}
+	}
+	defer close(stopCh)
+
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			defaultqueue := schedulingv1beta2.Queue{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "default",
-				},
-				Spec: schedulingv1beta2.QueueSpec{
-					Weight: 1,
-				},
-				Status: schedulingv1beta2.QueueStatus{
-					State: schedulingv1beta2.QueueStateOpen,
-				},
-			}
-			// create fake volcano clientset
-			config.VolcanoClient = fakeclient.NewSimpleClientset()
-			informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
-			queueInformer := informerFactory.Scheduling().V1beta1().Queues()
-			config.QueueLister = queueInformer.Lister()
-
-			stopCh := make(chan struct{})
-			informerFactory.Start(stopCh)
-			for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
-				if !ok {
-					panic(fmt.Errorf("failed to sync cache: %v", informerType))
-				}
-			}
-
-			//create default queue
-			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultqueue, metav1.CreateOptions{})
-			if err != nil {
-				t.Error("Queue Creation Failed")
-			}
-
 			ret := validateJobCreate(&testCase.Job, &testCase.reviewResponse)
 			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
 			if testCase.ExpectErr == true && ret == "" {
@@ -1272,7 +1268,6 @@ func TestValidateJobCreate(t *testing.T) {
 			if testCase.ExpectErr == false && testCase.reviewResponse.Allowed != true {
 				t.Errorf("Expect Allowed as true but got false. %v", testCase.reviewResponse)
 			}
-			close(stopCh)
 		})
 	}
 }
