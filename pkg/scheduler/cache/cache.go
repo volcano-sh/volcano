@@ -1373,11 +1373,14 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		copy(copiedHyperNodesListByTier[i], row)
 	}
 
+	hyperNodeLength := make(map[string]int)
 	snapshot.HyperNodesListByTier = copiedHyperNodesListByTier
 	copiedHyperNodes := make(map[string][]string, len(sc.HyperNodes))
 	for name, value := range sc.HyperNodes {
 		copiedHyperNodes[name] = make([]string, len(value))
 		copy(copiedHyperNodes[name], value)
+		hyperNodeLength[name] = len(value)
+
 	}
 	snapshot.HyperNodes = copiedHyperNodes
 
@@ -1434,8 +1437,8 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	}
 	wg.Wait()
 
-	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
-		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
+	klog.V(3).InfoS("SnapShot for scheduling", "jobNum", len(snapshot.Jobs), "QueueNum",
+		len(snapshot.Queues), "NodeNum", len(snapshot.Nodes), "tiers", snapshot.HyperNodesListByTier, "hyperNodeNum", hyperNodeLength)
 
 	return snapshot
 }

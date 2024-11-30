@@ -1061,3 +1061,9 @@ func (ji *JobInfo) HasTopologyHardConstrain() (bool, int) {
 
 	return ji.PodGroup.Spec.NetworkTopologies.Mode == scheduling.HardNetworkTopologyMode, ji.PodGroup.Spec.NetworkTopologies.HighestTierAllowed
 }
+
+// ResetFitErr will set job and node fit err to nil.
+func (ji *JobInfo) ResetFitErr() {
+	ji.JobFitErrors = ""
+	ji.NodesFitErrors = make(map[TaskID]*FitErrors)
+}

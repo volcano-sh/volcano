@@ -17,9 +17,10 @@
 package allocate
 
 import (
+	"time"
+
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
-	"time"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -180,9 +181,9 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		continueAllocate := false
 		var stmt *framework.Statement
 		if hardMode {
-			stmt, continueAllocate = alloc.allocateResourceForTasksWithTopology(tasks, job, jobs, queue, allNodes, highestAllowedTier)
+			stmt, continueAllocate = alloc.allocateResourceForTasksWithTopology(tasks, job, queue, allNodes, highestAllowedTier)
 		} else {
-			stmt, continueAllocate = alloc.allocateResourcesForTasks(tasks, job, jobs, queue, allNodes)
+			stmt, continueAllocate = alloc.allocateResourcesForTasks(tasks, job, queue, allNodes)
 		}
 		if continueAllocate {
 			jobs.Push(job)
@@ -197,7 +198,7 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 	}
 }
 
-func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQueue, job *api.JobInfo, jobs *util.PriorityQueue, queue *api.QueueInfo, allNodes []*api.NodeInfo, highestAllowedTier int) (*framework.Statement, bool) {
+func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQueue, job *api.JobInfo, queue *api.QueueInfo, allNodes []*api.NodeInfo, highestAllowedTier int) (*framework.Statement, bool) {
 	jobStmtsByTier := make(map[int]map[string]*framework.Statement)
 	hyperNodesHasLeftTasks := sets.New[string]()
 	ssn := alloc.session
@@ -210,7 +211,7 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 			break
 		}
 		if len(jobStmtsByTier) > 0 {
-			klog.V(4).InfoS("Skip search for higher  tier cause has found a suitable one", "tier", tier+1)
+			klog.V(4).InfoS("Skip search for higher tier cause has found a suitable one", "tier", tier+1)
 			break
 		}
 		for _, hyperNodeName := range hyperNodeNames {
@@ -220,10 +221,13 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 				continue
 			}
 
+			// Clone tasks queue and rest job's fit err to make sure it's a clean cache when everytime filter a hyperNode and do not affect each other between hyperNodes.
 			tasksMap := tasks.Clone()
+			job.ResetFitErr()
 			klog.V(3).InfoS("Try to allocate resource for job in hyperNode", "jobName", job.UID, "hyperNodeName", hyperNodeName, "tier", tier+1)
-			stmt, continueAllocate := alloc.allocateResourcesForTasks(tasksMap, job, jobs, queue, nodes)
+			stmt, continueAllocate := alloc.allocateResourcesForTasks(tasksMap, job, queue, nodes)
 			if stmt == nil {
+				klog.V(4).InfoS("Cannot allocate resources for job with network topology constrains", "jobName", job.UID, "hyperNodeName", hyperNodeName, "tier", tier+1)
 				continue
 			}
 
@@ -236,10 +240,19 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 			jobStmtsByTier[tier][hyperNodeName] = stmt.SaveOperations()
 			// Rollback current statement and try next hyperNode.
 			stmt.Discard()
+
 			if continueAllocate {
 				hyperNodesHasLeftTasks.Insert(hyperNodeName)
 			}
 		}
+	}
+
+	if len(jobStmtsByTier) > 0 {
+		hyperNodes := make([]string, 0, len(jobStmtsByTier[selectedTier]))
+		for hyperNodeName := range jobStmtsByTier[selectedTier] {
+			hyperNodes = append(hyperNodes, hyperNodeName)
+		}
+		klog.V(4).InfoS("Find available hyperNodes for job", "jobName", job.UID, "tier", selectedTier+1, "hyperNodes", hyperNodes)
 	}
 	stmt, hyperNode := alloc.selectBestHyperNode(jobStmtsByTier[selectedTier], job)
 	return stmt, hyperNodesHasLeftTasks.Has(hyperNode)
@@ -254,7 +267,7 @@ func (alloc *Action) selectBestHyperNode(jobStmts map[string]*framework.Statemen
 
 	switch {
 	case len(jobStmts) == 0:
-		klog.V(3).InfoS("Failed to allocate resource for job, no available hyperNode can meet tier limitation", "jobName", job.UID)
+		klog.V(3).InfoS("Failed to allocate resource for job, no available hyperNode is under highest allowed tier", "jobName", job.UID)
 		return nil, bestHyperNodeName
 	case len(jobStmts) == 1:
 		for hyperNodeName, stmt := range jobStmts {
@@ -298,7 +311,7 @@ func (alloc *Action) selectBestHyperNode(jobStmts map[string]*framework.Statemen
 	return finalStmt, bestHyperNodeName
 }
 
-func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *api.JobInfo, jobs *util.PriorityQueue, queue *api.QueueInfo, allNodes []*api.NodeInfo) (*framework.Statement, bool) {
+func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *api.JobInfo, queue *api.QueueInfo, allNodes []*api.NodeInfo) (*framework.Statement, bool) {
 	ssn := alloc.session
 	stmt := framework.NewStatement(ssn)
 	ph := util.NewPredicateHelper()
@@ -306,7 +319,6 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
-
 		if !ssn.Allocatable(queue, task) {
 			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
 			continue
