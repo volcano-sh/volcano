@@ -62,6 +62,7 @@ import (
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
@@ -109,6 +110,7 @@ type SchedulerCache struct {
 	nodeInformer               infov1.NodeInformer
 	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
 	queueInformerV1beta1       vcinformerv1.QueueInformer
+	hypernodeInformerv1alpha1  topologyinformerv1alpha1.HyperNodeInformer
 	pvInformer                 infov1.PersistentVolumeInformer
 	pvcInformer                infov1.PersistentVolumeClaimInformer
 	scInformer                 storagev1.StorageClassInformer
@@ -801,6 +803,13 @@ func (sc *SchedulerCache) addEventHandler() {
 			DeleteFunc: sc.DeleteNumaInfoV1alpha1,
 		})
 	}
+
+	// TODO: create informat for HyperNode(v1alpha1) information
+	sc.hypernodeInformerv1alpha1 = vcinformers.Topology().V1alpha1().HyperNodes()
+	sc.hypernodeInformerv1alpha1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: sc.AddHyperNodeV1alpha1,
+	})
+
 }
 
 // Run  starts the schedulerCache

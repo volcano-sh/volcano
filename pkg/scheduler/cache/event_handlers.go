@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 
@@ -48,6 +49,8 @@ import (
 
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+
+	networktopov1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 )
 
 var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
@@ -1260,4 +1263,127 @@ func (sc *SchedulerCache) setCSIResourceOnNode(csiNode *sv1.CSINode, node *v1.No
 		node.Status.Allocatable[resourceName] = quantity
 		node.Status.Capacity[resourceName] = quantity
 	}
+}
+
+func (sc *SchedulerCache) getNodeNamesByRegexMatchSelector(selector *networktopov1alpha1.RegexMatch) []string {
+	// Get all node names from sc.Nodes that match the regex pattern
+	var matchingNodes []string
+
+	// Compile the regular expression
+	re, err := regexp.Compile(selector.Pattern)
+	if err != nil {
+		klog.Errorf("Failed to compile regex pattern: %v. Err = %v", selector.Pattern, err)
+	}
+
+	// Iterate over the nodes in the cache
+	for nodeName := range sc.Nodes {
+		if re.MatchString(nodeName) {
+			matchingNodes = append(matchingNodes, nodeName)
+		}
+	}
+
+	return matchingNodes
+}
+
+func (sc *SchedulerCache) getHyperNodeNamesByRegexMatchSelector(selector *networktopov1alpha1.RegexMatch) []string {
+	// Get all hypernode names from sc.HyperNodes that match the regex pattern
+	var matchingHyperNodes []string
+
+	// Compile the regular expression
+	re, err := regexp.Compile(selector.Pattern)
+	if err != nil {
+		klog.Errorf("Failed to compile regex pattern: %v. Err = %v", selector.Pattern, err)
+	}
+
+	// Iterate over the hypernodes in the cache
+	for hyperNodeName := range sc.HyperNodes {
+		if re.MatchString(hyperNodeName) {
+			matchingHyperNodes = append(matchingHyperNodes, hyperNodeName)
+		}
+	}
+
+	return matchingHyperNodes
+}
+
+func (sc *SchedulerCache) updateHyperNodeListByTier(hyperNode *networktopov1alpha1.HyperNode) {
+	tier_str := hyperNode.Spec.Tier
+	tier, err := strconv.Atoi(tier_str)
+	if err != nil {
+		klog.Errorf("Failed to convert tier string to int: %v", tier_str)
+		return
+	}
+	// TODO: What if the node already exists in the cache? Should we update it?
+	// Or, shall we use a set (instead of a list) of nodes for each tier?
+	sc.HyperNodesListByTier[tier] = append(sc.HyperNodesListByTier[tier], hyperNode.Name)
+
+	// Add children nodes to the cache sc.HyperNodes
+	sc.HyperNodes[hyperNode.Name] = []string{}
+	for _, member := range hyperNode.Spec.Members {
+		switch member.Type {
+		case "Node":
+			// TODO: Define const string "node" as networktopov1alpha1.NodeType
+			// in /pkg/apis/topology/v1alpha1/node_types.go
+			nodeNames := []string{}
+			switch member.Selector.Type {
+			case networktopov1alpha1.ExactMatchMemberSelectorType:
+				nodeInfo := sc.Nodes[member.Selector.ExactMatch.Name]
+				if nodeInfo == nil {
+					klog.Errorf("Failed to get node by name: %v", member.Selector.ExactMatch.Name)
+					continue
+				}
+				nodeName := nodeInfo.Name
+				nodeNames = append(nodeNames, nodeName)
+			case networktopov1alpha1.RegexMatchMemberSelectorType:
+				matchingNodes := sc.getNodeNamesByRegexMatchSelector(member.Selector.RegexMatch)
+				nodeNames = append(nodeNames, matchingNodes...)
+			default:
+				klog.Errorf("Unknown member selector type: %v", member.Selector.Type)
+			}
+			sc.HyperNodes[hyperNode.Name] = append(sc.HyperNodes[hyperNode.Name], nodeNames...)
+		case "HyperNode":
+			// TODO: Define const string "HyperNode" as networktopov1alpha1.HyperNodeType
+			//  in /pkg/apis/topology/v1alpha1/hypernode_types.go
+			// sc.HyperNodes[hyperNode.Name] = append(sc.HyperNodes[hyperNode.Name], sc.HyperNodes[member]...)
+			nodeNames := []string{}
+			switch member.Selector.Type {
+			case networktopov1alpha1.ExactMatchMemberSelectorType:
+				nodeNames = sc.HyperNodes[member.Selector.ExactMatch.Name]
+			case networktopov1alpha1.RegexMatchMemberSelectorType:
+				matchinghyperNodes := sc.getHyperNodeNamesByRegexMatchSelector(member.Selector.RegexMatch)
+				for _, hyperNodeName := range matchinghyperNodes {
+					nodeNames = append(nodeNames, sc.HyperNodes[hyperNodeName]...)
+				}
+			default:
+				klog.Errorf("Unknown member selector type: %v", member.Selector.Type)
+			}
+			sc.HyperNodes[hyperNode.Name] = append(sc.HyperNodes[hyperNode.Name], nodeNames...)
+
+		default:
+			klog.Errorf("Unknown member type: %v", member.Type)
+		}
+
+	}
+}
+
+// AddHyperNode add hypernode to scheduler cache
+func (sc *SchedulerCache) AddHyperNodeV1alpha1(obj interface{}) {
+	ss, ok := (obj).(*networktopov1alpha1.HyperNode)
+	if !ok {
+		klog.Errorf("Cannot convert to *networktopov1alpha1.HyperNode: %v", obj)
+		return
+	}
+
+	hyperNode := networktopov1alpha1.HyperNode{}
+	if err := scheme.Scheme.Convert(ss, &hyperNode, nil); err != nil {
+		klog.Errorf("Failed to convert hypernode from %T to %T", ss, hyperNode)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	sc.updateHyperNodeListByTier(&hyperNode)
+
+	klog.V(4).Infof("Add HyperNode(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
+
 }
