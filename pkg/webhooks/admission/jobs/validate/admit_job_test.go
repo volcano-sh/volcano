@@ -17,7 +17,6 @@ limitations under the License.
 package validate
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -1392,70 +1391,56 @@ func TestValidateHierarchyCreate(t *testing.T) {
 		},
 	}
 
+	rootQueue := &schedulingv1beta2.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "root",
+		},
+		Spec: schedulingv1beta2.QueueSpec{},
+		Status: schedulingv1beta2.QueueStatus{
+			State: schedulingv1beta2.QueueStateOpen,
+		},
+	}
+	parentQueue := &schedulingv1beta2.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "parentQueue",
+		},
+		Spec: schedulingv1beta2.QueueSpec{
+			Parent: "root",
+		},
+		Status: schedulingv1beta2.QueueStatus{
+			State: schedulingv1beta2.QueueStateOpen,
+		},
+	}
+
+	childQueue := &schedulingv1beta2.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "childQueue",
+		},
+		Spec: schedulingv1beta2.QueueSpec{
+			Parent: "parentQueue",
+		},
+		Status: schedulingv1beta2.QueueStatus{
+			State: schedulingv1beta2.QueueStateOpen,
+		},
+	}
+
+	// create fake volcano clientset
+	config.VolcanoClient = fakeclient.NewSimpleClientset(rootQueue, parentQueue, childQueue)
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+	config.QueueLister = queueInformer.Lister()
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
+		if !ok {
+			panic(fmt.Errorf("failed to sync cache: %v", informerType))
+		}
+	}
+
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			rootQueue := schedulingv1beta2.Queue{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "root",
-				},
-				Spec: schedulingv1beta2.QueueSpec{},
-				Status: schedulingv1beta2.QueueStatus{
-					State: schedulingv1beta2.QueueStateOpen,
-				},
-			}
-			parentQueue := schedulingv1beta2.Queue{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "parentQueue",
-				},
-				Spec: schedulingv1beta2.QueueSpec{
-					Parent: "root",
-				},
-				Status: schedulingv1beta2.QueueStatus{
-					State: schedulingv1beta2.QueueStateOpen,
-				},
-			}
-
-			childQueue := schedulingv1beta2.Queue{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "childQueue",
-				},
-				Spec: schedulingv1beta2.QueueSpec{
-					Parent: "parentQueue",
-				},
-				Status: schedulingv1beta2.QueueStatus{
-					State: schedulingv1beta2.QueueStateOpen,
-				},
-			}
-
-			// create fake volcano clientset
-			config.VolcanoClient = fakeclient.NewSimpleClientset()
-			informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
-			queueInformer := informerFactory.Scheduling().V1beta1().Queues()
-			config.QueueLister = queueInformer.Lister()
-
-			stopCh := make(chan struct{})
-			informerFactory.Start(stopCh)
-			for informerType, ok := range informerFactory.WaitForCacheSync(stopCh) {
-				if !ok {
-					panic(fmt.Errorf("failed to sync cache: %v", informerType))
-				}
-			}
-
-			//create root queue
-			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &rootQueue, metav1.CreateOptions{})
-			if err != nil {
-				t.Error("Queue Creation Failed")
-			}
-			//create parent queue
-			_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &parentQueue, metav1.CreateOptions{})
-			if err != nil {
-				t.Error("Queue Creation Failed")
-			}
-			// create parent queue
-			_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &childQueue, metav1.CreateOptions{})
-			if err != nil {
-				t.Error("Queue Creation Failed")
-			}
 
 			ret := validateJobCreate(&testCase.Job, &testCase.reviewResponse)
 
@@ -1475,7 +1460,6 @@ func TestValidateHierarchyCreate(t *testing.T) {
 			if testCase.ExpectErr == false && testCase.reviewResponse.Allowed != true {
 				t.Errorf("Expect Allowed as true but got false. %v", testCase.reviewResponse)
 			}
-			close(stopCh)
 		})
 	}
 }
