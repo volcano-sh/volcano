@@ -25,9 +25,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-type Action struct {
-	session *framework.Session
-}
+type Action struct{}
 
 func New() *Action {
 	return &Action{}
@@ -43,7 +41,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Reclaim ...")
 	defer klog.V(5).Infof("Leaving Reclaim ...")
 
-	ra.session = ssn
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
 
@@ -147,7 +144,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		for _, n := range totalNodes {
 			// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
 			// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
-			if err := ra.session.PredicateForPreemptAction(task, n); err != nil {
+			if err := ssn.PredicateForPreemptAction(task, n); err != nil {
 				klog.V(4).Infof("Reclaim predicate for task %s/%s on node %s return error %v ", task.Namespace, task.Name, n.Name, err)
 				continue
 			}

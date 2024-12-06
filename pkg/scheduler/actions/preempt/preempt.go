@@ -31,7 +31,6 @@ import (
 
 type Action struct {
 	enablePredicateErrorCache bool
-	session                   *framework.Session
 	// map with key queueID, value map with key nodeName, value number of preemptable tasks on that node
 	preemptableNodeMap map[api.QueueID]map[string]int
 }
@@ -57,7 +56,6 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Preempt ...")
 	defer klog.V(5).Infof("Leaving Preempt ...")
 
-	pmpt.session = ssn
 	pmpt.parseArguments(ssn)
 	pmpt.preemptableNodeMap = map[api.QueueID]map[string]int{}
 
@@ -264,6 +262,7 @@ func (pmpt *Action) preempt(
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
 
+	predicateFn := ssn.PredicateForPreemptAction
 	var allNodeIntersections []*api.NodeInfo
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
 	allNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(preemptor)
@@ -275,7 +274,7 @@ func (pmpt *Action) preempt(
 		}
 		allNodeIntersections = append(allNodeIntersections, node)
 	}
-	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodeIntersections, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache)
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodeIntersections, predicateFn, pmpt.enablePredicateErrorCache)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
