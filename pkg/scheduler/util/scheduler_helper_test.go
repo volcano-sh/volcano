@@ -32,6 +32,7 @@ func TestSelectBestNode(t *testing.T) {
 		NodeScores map[float64][]*api.NodeInfo
 		// Expected node is one of ExpectedNodes
 		ExpectedNodes []*api.NodeInfo
+		ExpectedScore float64
 	}{
 		{
 			NodeScores: map[float64][]*api.NodeInfo{
@@ -39,6 +40,7 @@ func TestSelectBestNode(t *testing.T) {
 				2.0: {&api.NodeInfo{Name: "node3"}, &api.NodeInfo{Name: "node4"}},
 			},
 			ExpectedNodes: []*api.NodeInfo{{Name: "node3"}, {Name: "node4"}},
+			ExpectedScore: 2.0,
 		},
 		{
 			NodeScores: map[float64][]*api.NodeInfo{
@@ -47,6 +49,7 @@ func TestSelectBestNode(t *testing.T) {
 				2.0: {&api.NodeInfo{Name: "node4"}, &api.NodeInfo{Name: "node5"}},
 			},
 			ExpectedNodes: []*api.NodeInfo{{Name: "node3"}},
+			ExpectedScore: 3.0,
 		},
 		{
 			NodeScores:    map[float64][]*api.NodeInfo{},
@@ -63,9 +66,12 @@ func TestSelectBestNode(t *testing.T) {
 		return false
 	}
 	for i, test := range cases {
-		result := SelectBestNode(test.NodeScores)
+		result, score := SelectBestNodeAndScore(test.NodeScores)
 		if !oneOf(result, test.ExpectedNodes) {
 			t.Errorf("Failed test case #%d, expected: %#v, got %#v", i, test.ExpectedNodes, result)
+		}
+		if score != test.ExpectedScore {
+			t.Errorf("Failed test case #%d, expected: %#v, got %#v", i, test.ExpectedScore, score)
 		}
 	}
 }

@@ -85,7 +85,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 			node = ssn.BestNodeFn(task, nodeScores)
 			if node == nil {
-				node = util.SelectBestNode(nodeScores)
+				node, _ = util.SelectBestNodeAndScore(nodeScores)
 			}
 		}
 
