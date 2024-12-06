@@ -157,13 +157,7 @@ func (drf *drfPlugin) compareQueues(root *hierarchicalNode, lqueue *api.QueueInf
 	lpaths := strings.Split(lqueue.Hierarchy, "/")
 	rnode := root
 	rpaths := strings.Split(rqueue.Hierarchy, "/")
-	depth := 0
-	if len(lpaths) < len(rpaths) {
-		depth = len(lpaths)
-	} else {
-		depth = len(rpaths)
-	}
-	for i := 0; i < depth; i++ {
+	for i, depth := 0, min(len(lpaths), len(rpaths)); i < depth; i++ {
 		// Saturated nodes have minumun prioirty,
 		// so that demanding nodes will be poped first.
 		if !lnode.saturated && rnode.saturated {
