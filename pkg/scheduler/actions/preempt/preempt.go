@@ -32,7 +32,8 @@ import (
 type Action struct {
 	enablePredicateErrorCache bool
 	session                   *framework.Session
-	preemptableNodeMap        map[api.QueueID]map[string]int
+	// map with key queueID, value map with key nodeName, value number of preemptable tasks on that node
+	preemptableNodeMap map[api.QueueID]map[string]int
 }
 
 func New() *Action {
@@ -274,7 +275,7 @@ func (pmpt *Action) preempt(
 		}
 		allNodeIntersections = append(allNodeIntersections, node)
 	}
-	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodeIntersections, pmpt.predicate, pmpt.enablePredicateErrorCache)
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodeIntersections, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
 
@@ -360,15 +361,6 @@ func (pmpt *Action) preempt(
 	}
 
 	return assigned, nil
-}
-
-func (pmpt *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
-	var statusSets api.StatusSets
-	if node.Allocatable.MaxTaskNum <= len(pmpt.session.NodeMap[node.Name].Pods) {
-		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.NodePodNumberExceeded})
-		return api.NewFitErrWithStatus(task, node, statusSets...)
-	}
-	return pmpt.session.PredicateForPreemptAction(task, node)
 }
 
 func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {

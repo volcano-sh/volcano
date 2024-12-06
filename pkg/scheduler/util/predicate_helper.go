@@ -12,34 +12,41 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
+type TaskNodeKey struct {
+	TaskID     api.TaskID
+	NodeName   string
+	NodeResGen int64
+}
 type PredicateCache struct {
-	Cache map[api.JobID]map[api.TaskID]map[string]map[int64]error
+	Cache map[api.JobID]map[TaskNodeKey]error
 	sync.RWMutex
 }
 
 var (
-	predicateCache = PredicateCache{Cache: map[api.JobID]map[api.TaskID]map[string]map[int64]error{}}
+	predicateCache = PredicateCache{Cache: map[api.JobID]map[TaskNodeKey]error{}}
 )
 
 func SetPredicateCache(jobID api.JobID, taskID api.TaskID, nodeName string, nodeResGen int64, predicateResult error) {
 	predicateCache.Lock()
 	defer predicateCache.Unlock()
 	if _, ok := predicateCache.Cache[jobID]; !ok {
-		predicateCache.Cache[jobID] = map[api.TaskID]map[string]map[int64]error{}
+		predicateCache.Cache[jobID] = map[TaskNodeKey]error{}
 	}
-	if _, ok := predicateCache.Cache[jobID][taskID]; !ok {
-		predicateCache.Cache[jobID][taskID] = map[string]map[int64]error{}
-	}
-	if _, ok := predicateCache.Cache[jobID][taskID][nodeName]; !ok {
-		predicateCache.Cache[jobID][taskID][nodeName] = map[int64]error{}
-	}
-	predicateCache.Cache[jobID][taskID][nodeName][nodeResGen] = predicateResult
+	predicateCache.Cache[jobID][TaskNodeKey{
+		TaskID:     taskID,
+		NodeName:   nodeName,
+		NodeResGen: nodeResGen,
+	}] = predicateResult
 }
 
 func GetPredicateCache(jobID api.JobID, taskID api.TaskID, nodeName string, nodeResGen int64) (predicateResult error, exist bool) {
 	predicateCache.RLock()
 	defer predicateCache.RUnlock()
-	predicateResult, exist = predicateCache.Cache[jobID][taskID][nodeName][nodeResGen]
+	predicateResult, exist = predicateCache.Cache[jobID][TaskNodeKey{
+		TaskID:     taskID,
+		NodeName:   nodeName,
+		NodeResGen: nodeResGen,
+	}]
 	return
 }
 
