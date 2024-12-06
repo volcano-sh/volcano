@@ -43,6 +43,7 @@ const (
 	defaultQueueWorkers        = 5
 	defaultGCWorkers           = 1
 	defaultControllers         = "*"
+	defaultMemlimitRatio       = 0.0
 )
 
 // ServerOption is the main context object for the controllers.
@@ -92,6 +93,9 @@ type ServerOption struct {
 	// Case3: "-gc-controller,-job-controller,-jobflow-controller,-jobtemplate-controller,-pg-controller,-queue-controller"
 	// to disable specific controllers,
 	Controllers []string
+
+	// The ratio of reserved GOMEMLIMIT memory to the detected maximum container or system memory.
+	MemlimitRatio float64
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -129,6 +133,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet, knownControllers []string) {
 	fs.Uint32Var(&s.WorkerThreadsForQueue, "worker-threads-for-queue", defaultQueueWorkers, "The number of threads syncing queue operations. The larger the number, the faster the queue processing, but requires more CPU load.")
 	fs.StringSliceVar(&s.Controllers, "controllers", []string{defaultControllers}, fmt.Sprintf("Specify controller gates. Use '*' for all controllers, all knownController: %s ,and we can use "+
 		"'-' to disable controllers, e.g. \"-job-controller,-queue-controller\" to disable job and queue controllers.", knownControllers))
+	fs.Float64Var(&s.MemlimitRatio, "auto-gomemlimit-ratio", defaultMemlimitRatio, "The ratio of reserved GOMEMLIMIT memory to the detected maximum container or system memory. The value should be greater than 0.0 and less than 1.0. Default: 0.0 (disabled).")
 }
 
 // CheckOptionOrDie checks all options and returns all errors if they are invalid.
