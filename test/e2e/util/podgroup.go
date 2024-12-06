@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/cli/podgroup"
 )
 
 // CreatePodGroup creates a PodGroup with the specified name in the namespace
@@ -89,4 +90,16 @@ func PodGroupIsReady(ctx *TestContext, namespace string) (bool, error) {
 	}
 
 	return false, fmt.Errorf("pod group phase is Pending")
+}
+
+func GetPodGroupStatistics(ctx *TestContext, namespace, queue string) *podgroup.PodGroupStatistics {
+	pgList, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(namespace).List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred(), "List podgroups failed")
+	pgStats := &podgroup.PodGroupStatistics{}
+	for _, pg := range pgList.Items {
+		if pg.Spec.Queue == queue {
+			pgStats.StatPodGroupCountsForQueue(&pg)
+		}
+	}
+	return pgStats
 }

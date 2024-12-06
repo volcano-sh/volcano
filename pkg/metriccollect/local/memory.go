@@ -18,7 +18,6 @@ package local
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -91,7 +90,7 @@ func (c *MemoryResourceCollector) CollectLocalMetrics(metricInfo *LocalMetricInf
 func getMemoryUsage(cgroupRoot string) (int64, error) {
 	usage := int64(0)
 	cgroupMemory := filepath.Join(cgroupRoot, cgroup.MemoryUsageFile)
-	date, err := ioutil.ReadFile(cgroupMemory)
+	date, err := os.ReadFile(cgroupMemory)
 	if err != nil {
 		return 0, err
 	}

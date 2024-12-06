@@ -26,7 +26,6 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 	watchtools "k8s.io/client-go/tools/watch"
@@ -77,17 +76,15 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		By("Verify queue have pod groups inqueue")
 		err := e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
-			return queue.Status.Inqueue > 0, nil
+			pgStats := e2eutil.GetPodGroupStatistics(ctx, ctx.Namespace, q1)
+			return pgStats.Inqueue > 0, nil
 		})
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue inqueue")
 
 		By("Verify queue have pod groups running")
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
-			return queue.Status.Running > 0, nil
+			pgStats := e2eutil.GetPodGroupStatistics(ctx, ctx.Namespace, q1)
+			return pgStats.Running > 0, nil
 		})
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 	})
@@ -134,9 +131,8 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		By("Verify queue have pod groups running")
 		err := e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
-			return queue.Status.Running > 0, nil
+			pgStats := e2eutil.GetPodGroupStatistics(ctx, ctx.Namespace, q1)
+			return pgStats.Running > 0, nil
 		})
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
@@ -150,9 +146,8 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		By("Verify queue have pod groups Pending")
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
-			return queue.Status.Pending > 0, nil
+			pgStats := e2eutil.GetPodGroupStatistics(ctx, ctx.Namespace, q1)
+			return pgStats.Pending > 0, nil
 		})
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue Pending")
 	})
@@ -195,9 +190,8 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		By("Verify queue have pod groups running")
 		err := e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
-			return queue.Status.Running > 0, nil
+			pgStats := e2eutil.GetPodGroupStatistics(ctx, ctx.Namespace, q1)
+			return pgStats.Running > 0, nil
 		})
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
@@ -220,11 +214,9 @@ var _ = Describe("Queue Job Status Transition", func() {
 		}
 
 		By("Verify queue have pod groups unknown")
-		fieldSelector := fields.OneTermEqualSelector("metadata.name", q1).String()
 		w := &cache.ListWatch{
 			WatchFunc: func(options metav1.ListOptions) (i watch.Interface, e error) {
-				options.FieldSelector = fieldSelector
-				return ctx.Vcclient.SchedulingV1beta1().Queues().Watch(context.TODO(), options)
+				return ctx.Vcclient.SchedulingV1beta1().PodGroups(podNamespace).Watch(context.TODO(), options)
 			},
 		}
 		wctx, cancel := watchtools.ContextWithOptionalTimeout(context.Background(), 5*time.Minute)
@@ -232,8 +224,8 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		_, err = watchtools.Until(wctx, clusterPods.ResourceVersion, w, func(event watch.Event) (bool, error) {
 			switch t := event.Object.(type) {
-			case *v1beta1.Queue:
-				if t.Status.Unknown > 0 {
+			case *v1beta1.PodGroup:
+				if t.Status.Phase == v1beta1.PodGroupUnknown {
 					return true, nil
 				}
 			}
