@@ -131,19 +131,29 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 	return nodeScores
 }
 
-// PrioritizeHyperNodes prioritize hyperNodes score of all plugins for job and return hyperNode name with the highest score.
-func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, job *api.JobInfo, fn api.HyperNodeOrderMapFn) (map[float64][]string, error) {
-	pluginHyperNodesScoreMap := make(map[string]float64)
+// PrioritizeHyperNodes returns a map whose key is hyperNode's score and value are corresponding hyperNodes
+// it accumulates two parts score:
+// 1.node level scores of each hyperNode in NodeOrder extension.
+// 2.hyperNode level scores scored in HyperNodeOrder extension.
+func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeScoresInHyperNode map[string]float64, job *api.JobInfo, fn api.HyperNodeOrderMapFn) (map[float64][]string, error) {
+	hyperNodesScoreMap := make(map[string]float64)
 	mapScores, err := fn(job, candidateHyperNodes)
 	if err != nil {
 		return nil, err
 	}
 
+	// plugin scores of hyperNode.
 	for pluginName, scores := range mapScores {
 		for hyperNode, score := range scores {
 			klog.V(5).InfoS("Add plugin score at hypeNode", "jobName", job.UID, "pluginName", pluginName, "hyperNodeName", hyperNode, "score", score)
-			pluginHyperNodesScoreMap[hyperNode] += score
+			hyperNodesScoreMap[hyperNode] += score
 		}
+	}
+
+	// accumulate node scores in NodeOrder and hyperNode score itself as the final score of each hyperNode.
+	for hyperNodeName, score := range nodeScoresInHyperNode {
+		klog.V(5).InfoS("Add node level scores to final hyperNode score", "jobName", job.UID, "hyperNodeName", hyperNodeName, "score", score)
+		hyperNodesScoreMap[hyperNodeName] += score
 	}
 
 	hyperNodeScores := make(map[float64][]string)
@@ -151,7 +161,7 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, job *a
 	for hyperNodeName := range candidateHyperNodes {
 		// If no plugin is applied to this node, the default is 0.0
 		score := 0.0
-		if value, ok := pluginHyperNodesScoreMap[hyperNodeName]; ok {
+		if value, ok := hyperNodesScoreMap[hyperNodeName]; ok {
 			score += value
 		}
 		hyperNodeScores[score] = append(hyperNodeScores[score], hyperNodeName)
@@ -180,8 +190,8 @@ func SortNodes(nodeScores map[float64][]*api.NodeInfo) []*api.NodeInfo {
 	return nodesInorder
 }
 
-// SelectBestNode returns best node whose score is highest, pick one randomly if there are many nodes with same score.
-func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
+// SelectBestNodeAndScore returns the best node whose score is highest and the highest score, pick one randomly if there are many nodes with same score.
+func SelectBestNodeAndScore(nodeScores map[float64][]*api.NodeInfo) (*api.NodeInfo, float64) {
 	var bestNodes []*api.NodeInfo
 	maxScore := -1.0
 	for score, nodes := range nodeScores {
@@ -192,10 +202,10 @@ func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
 	}
 
 	if len(bestNodes) == 0 {
-		return nil
+		return nil, 0
 	}
 
-	return bestNodes[rand.Intn(len(bestNodes))]
+	return bestNodes[rand.Intn(len(bestNodes))], maxScore
 }
 
 // SelectBestHyperNode return the best hyperNode name whose score is highest, pick one randomly if there are many hyperNodes with same score.

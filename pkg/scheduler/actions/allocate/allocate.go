@@ -35,12 +35,18 @@ type Action struct {
 	// configured flag for error cache
 	enablePredicateErrorCache bool
 	hyperNodesTiers           []int
+
+	// hyperNodeScoresByJob stores job total score for all available hyperNodes, this is used for accumulate
+	// all nodes' scores in each available hyperNode only when job has hard network topology constrains
+	// jobUID -> hyperNodeName -> score
+	hyperNodeScoresByJob map[string]map[string]float64
 }
 
 func New() *Action {
 	return &Action{
 		enablePredicateErrorCache: true, // default to enable it
 		hyperNodesTiers:           []int{},
+		hyperNodeScoresByJob:      make(map[string]map[string]float64),
 	}
 }
 
@@ -306,7 +312,7 @@ func (alloc *Action) selectBestHyperNode(jobStmts map[string]*framework.Statemen
 			candidateHyperNodeGroups[hyperNodeName] = ssn.HyperNodes[hyperNodeName]
 		}
 
-		hyperNodeScores, err := util.PrioritizeHyperNodes(candidateHyperNodeGroups, job, ssn.HyperNodeOrderMapFn)
+		hyperNodeScores, err := util.PrioritizeHyperNodes(candidateHyperNodeGroups, alloc.hyperNodeScoresByJob[string(job.UID)], job, ssn.HyperNodeOrderMapFn)
 		if err != nil {
 			klog.V(3).ErrorS(err, "Failed to allocate resource for job", "jobName", job.UID)
 			return nil, bestHyperNodeName
@@ -394,54 +400,12 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			}
 		}
 
-		// Candidate nodes are divided into two gradients:
-		// - the first gradient node: a list of free nodes that satisfy the task resource request;
-		// - The second gradient node: the node list whose sum of node idle resources and future idle meets the task resource request;
-		// Score the first gradient node first. If the first gradient node meets the requirements, ignore the second gradient node list,
-		// otherwise, score the second gradient node and select the appropriate node.
-		var candidateNodes [][]*api.NodeInfo
-		var idleCandidateNodes []*api.NodeInfo
-		var futureIdleCandidateNodes []*api.NodeInfo
-		for _, n := range predicateNodes {
-			if task.InitResreq.LessEqual(n.Idle, api.Zero) {
-				idleCandidateNodes = append(idleCandidateNodes, n)
-			} else if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
-				futureIdleCandidateNodes = append(futureIdleCandidateNodes, n)
-			} else {
-				klog.V(5).Infof("Predicate filtered node %v, idle: %v and future idle: %v do not meet the requirements of task: %v",
-					n.Name, n.Idle, n.FutureIdle(), task.Name)
-			}
-		}
-		candidateNodes = append(candidateNodes, idleCandidateNodes)
-		candidateNodes = append(candidateNodes, futureIdleCandidateNodes)
-
-		var bestNode *api.NodeInfo
-		for index, nodes := range candidateNodes {
-			if klog.V(5).Enabled() {
-				for _, node := range nodes {
-					klog.V(5).Infof("node %v, idle: %v, future idle: %v", node.Name, node.Idle, node.FutureIdle())
-				}
-			}
-			switch {
-			case len(nodes) == 0:
-				klog.V(5).Infof("Task: %v, no matching node is found in the candidateNodes（index: %d） list.", task.Name, index)
-			case len(nodes) == 1: // If only one node after predicate, just use it.
-				bestNode = nodes[0]
-			case len(nodes) > 1: // If more than one node after predicate, using "the best" one
-				nodeScores := util.PrioritizeNodes(task, nodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
-
-				bestNode = ssn.BestNodeFn(task, nodeScores)
-				if bestNode == nil {
-					bestNode = util.SelectBestNode(nodeScores)
-				}
-			}
-
-			// If a proper node is found in idleCandidateNodes, skip futureIdleCandidateNodes and directly return the node information.
-			if bestNode != nil {
-				break
-			}
+		bestNode, highestScore := alloc.prioritizeNodes(ssn, task, predicateNodes)
+		if bestNode == nil {
+			continue
 		}
 
+		alloc.sumNodeScoresInHyperNode(string(job.UID), hyperNode, highestScore)
 		alloc.allocateResourcesForTask(stmt, task, bestNode, job)
 
 		if ssn.JobReady(job) && !tasks.Empty() {
@@ -458,6 +422,72 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 		}
 		return nil
 	}
+}
+
+func (alloc *Action) sumNodeScoresInHyperNode(jobUID, hyperNode string, score float64) {
+	// normal vc job without networkTopology has no hyperNode, skip node scores accumulation.
+	if hyperNode == "" {
+		return
+	}
+
+	if alloc.hyperNodeScoresByJob[jobUID] == nil {
+		alloc.hyperNodeScoresByJob[jobUID] = make(map[string]float64)
+	}
+
+	alloc.hyperNodeScoresByJob[jobUID][hyperNode] += score
+}
+
+// prioritizeNodes selects the highest score node.
+func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo, predicateNodes []*api.NodeInfo) (*api.NodeInfo, float64) {
+	// Candidate nodes are divided into two gradients:
+	// - the first gradient node: a list of free nodes that satisfy the task resource request;
+	// - The second gradient node: the node list whose sum of node idle resources and future idle meets the task resource request;
+	// Score the first gradient node first. If the first gradient node meets the requirements, ignore the second gradient node list,
+	// otherwise, score the second gradient node and select the appropriate node.
+	var candidateNodes [][]*api.NodeInfo
+	var idleCandidateNodes []*api.NodeInfo
+	var futureIdleCandidateNodes []*api.NodeInfo
+	for _, n := range predicateNodes {
+		if task.InitResreq.LessEqual(n.Idle, api.Zero) {
+			idleCandidateNodes = append(idleCandidateNodes, n)
+		} else if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
+			futureIdleCandidateNodes = append(futureIdleCandidateNodes, n)
+		} else {
+			klog.V(5).Infof("Predicate filtered node %v, idle: %v and future idle: %v do not meet the requirements of task: %v",
+				n.Name, n.Idle, n.FutureIdle(), task.Name)
+		}
+	}
+	candidateNodes = append(candidateNodes, idleCandidateNodes)
+	candidateNodes = append(candidateNodes, futureIdleCandidateNodes)
+
+	var bestNode *api.NodeInfo
+	var higestScore float64
+	for index, nodes := range candidateNodes {
+		if klog.V(5).Enabled() {
+			for _, node := range nodes {
+				klog.V(5).Infof("node %v, idle: %v, future idle: %v", node.Name, node.Idle, node.FutureIdle())
+			}
+		}
+		switch {
+		case len(nodes) == 0:
+			klog.V(5).Infof("Task: %v, no matching node is found in the candidateNodes（index: %d） list.", task.Name, index)
+		case len(nodes) == 1: // If only one node after predicate, just use it.
+			bestNode = nodes[0]
+		case len(nodes) > 1: // If more than one node after predicate, using "the best" one
+			nodeScores := util.PrioritizeNodes(task, nodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+
+			bestNode = ssn.BestNodeFn(task, nodeScores)
+			if bestNode == nil {
+				bestNode, higestScore = util.SelectBestNodeAndScore(nodeScores)
+			}
+		}
+
+		// If a proper node is found in idleCandidateNodes, skip futureIdleCandidateNodes and directly return the node information.
+		if bestNode != nil {
+			break
+		}
+	}
+	return bestNode, higestScore
 }
 
 func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) {
