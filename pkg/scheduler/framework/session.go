@@ -312,7 +312,6 @@ func closeSession(ssn *Session) {
 	ssn.TotalResource = nil
 
 	util.CleanUnusedPredicateCache(ssn.Jobs)
-	util.CleanUnusedPodStatusLastSetCache(ssn.Jobs)
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }
@@ -391,6 +390,11 @@ func (ssn *Session) GetUnschedulableAndUnresolvableNodesForTask(task *api.TaskIn
 // - UnschedulableAndUnresolvable
 // - ErrorSkipOrWait
 func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.NodeInfo) error {
+	var statusSets api.StatusSets
+	if node.Allocatable.MaxTaskNum <= len(ssn.NodeMap[node.Name].Pods) {
+		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.NodePodNumberExceeded})
+		return api.NewFitErrWithStatus(task, node, statusSets...)
+	}
 	err, ok := util.GetPredicateCache(task.Job, task.UID, node.Name, node.Node.Generation)
 	if !ok {
 		err = ssn.PredicateFn(task, node)
@@ -405,7 +409,7 @@ func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.Nod
 		return api.NewFitError(task, node, err.Error())
 	}
 
-	statusSets := fitError.Status
+	statusSets = fitError.Status
 	if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
 		statusSets.ContainsErrorSkipOrWait() {
 		return fitError

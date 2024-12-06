@@ -68,7 +68,6 @@ import (
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
-	schedulingutil "volcano.sh/volcano/pkg/scheduler/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -1463,7 +1462,6 @@ func (sc *SchedulerCache) String() string {
 
 // RecordJobStatusEvent records related events according to job status.
 func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updatePG bool) {
-	nowTs := time.Now().Unix()
 	pgUnschedulable := job.PodGroup != nil &&
 		(job.PodGroup.Status.Phase == scheduling.PodGroupUnknown ||
 			job.PodGroup.Status.Phase == scheduling.PodGroupPending ||
@@ -1499,13 +1497,9 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 			if len(msg) == 0 {
 				msg = baseErrorMessage
 			}
-			ts, exist := schedulingutil.GetPodStatusLastSetCache(job.UID, taskInfo.UID)
-			if !exist || nowTs-ts > 60 {
-				if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {
-					klog.ErrorS(err, "Failed to update unschedulable task status", "task", klog.KRef(taskInfo.Namespace, taskInfo.Name),
-						"reason", reason, "message", msg)
-				}
-				schedulingutil.SetPodStatusLastSetCache(job.UID, taskInfo.UID, nowTs)
+			if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {
+				klog.ErrorS(err, "Failed to update unschedulable task status", "task", klog.KRef(taskInfo.Namespace, taskInfo.Name),
+					"reason", reason, "message", msg)
 			}
 		}
 	}

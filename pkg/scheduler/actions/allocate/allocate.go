@@ -326,10 +326,6 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
-	if node.Allocatable.MaxTaskNum <= len(alloc.session.NodeMap[node.Name].Pods) {
-		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.NodePodNumberExceeded})
-		return api.NewFitErrWithStatus(task, node, statusSets...)
-	}
 	return alloc.session.PredicateForAllocateAction(task, node)
 }
 
