@@ -617,7 +617,7 @@ func TestApplyPolicies(t *testing.T) {
 		t.Run(testcase.Name, func(t *testing.T) {
 			action := applyPolicies(testcase.Job, testcase.Request)
 
-			if testcase.ReturnVal != "" && action != "" && testcase.ReturnVal != action {
+			if testcase.ReturnVal != "" && action.action != "" && testcase.ReturnVal != action.action {
 				t.Errorf("Expected return value to be %s but got %s in case %d", testcase.ReturnVal, action, i)
 			}
 		})

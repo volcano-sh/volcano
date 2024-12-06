@@ -64,11 +64,26 @@ func (cc *jobcontroller) generateRelatedPodGroupName(job *batch.Job) string {
 	return fmt.Sprintf("%s-%s", job.Name, string(job.UID))
 }
 
-func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
-	job := jobInfo.Job
-	klog.V(3).Infof("Killing Job <%s/%s>, current version %d", job.Namespace, job.Name, job.Status.Version)
-	defer klog.V(3).Infof("Finished Job <%s/%s> killing, current version %d", job.Namespace, job.Name, job.Status.Version)
+func (cc *jobcontroller) killTarget(jobInfo *apis.JobInfo, target state.Target, updateStatus state.UpdateStatusFn) error {
+	if target.Type == state.TargetTypeTask {
+		klog.V(3).Infof("Killing task <%s> of Job <%s/%s>, current version %d", target.TaskName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
+		defer klog.V(3).Infof("Finished task <%s> of Job <%s/%s> killing, current version %d", target.TaskName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
+	} else if target.Type == state.TargetTypePod {
+		klog.V(3).Infof("Killing pod <%s> of Job <%s/%s>, current version %d", target.PodName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
+		defer klog.V(3).Infof("Finished pod <%s> of Job <%s/%s> killing, current version %d", target.PodName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
+	}
+	return cc.killPods(jobInfo, nil, &target, updateStatus)
+}
 
+func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
+	klog.V(3).Infof("Killing Job <%s/%s>, current version %d", jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
+	defer klog.V(3).Infof("Finished Job <%s/%s> killing, current version %d", jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
+
+	return cc.killPods(jobInfo, podRetainPhase, nil, updateStatus)
+}
+
+func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, target *state.Target, updateStatus state.UpdateStatusFn) error {
+	job := jobInfo.Job
 	if job.DeletionTimestamp != nil {
 		klog.Infof("Job <%s/%s> is terminating, skip management process.",
 			job.Namespace, job.Name)
@@ -81,44 +96,66 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	var errs []error
 	var total int
 
-	for _, pods := range jobInfo.Pods {
-		for _, pod := range pods {
-			total++
+	podsToKill := make(map[string]*v1.Pod)
 
-			if pod.DeletionTimestamp != nil {
-				klog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
-				terminating++
-				continue
-			}
-
-			maxRetry := job.Spec.MaxRetry
-			lastRetry := false
-			if job.Status.RetryCount >= maxRetry-1 {
-				lastRetry = true
-			}
-
-			// Only retain the Failed and Succeeded pods at the last retry.
-			// If it is not the last retry, kill pod as defined in `podRetainPhase`.
-			retainPhase := podRetainPhase
-			if lastRetry {
-				retainPhase = state.PodRetainPhaseSoft
-			}
-			_, retain := retainPhase[pod.Status.Phase]
-
-			if !retain {
-				err := cc.deleteJobPod(job.Name, pod)
-				if err == nil {
+	if target != nil {
+		if target.Type == state.TargetTypeTask {
+			podsToKill = jobInfo.Pods[target.TaskName]
+		} else if target.Type == state.TargetTypePod {
+			podsToKill[target.PodName] = jobInfo.Pods[target.TaskName][target.PodName]
+		}
+		total += len(podsToKill)
+	} else {
+		// Job version is bumped only when job is killed
+		job.Status.Version++
+		for _, pods := range jobInfo.Pods {
+			for _, pod := range pods {
+				total++
+				if pod.DeletionTimestamp != nil {
+					klog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
 					terminating++
 					continue
 				}
-				// record the err, and then collect the pod info like retained pod
-				errs = append(errs, err)
-				cc.resyncTask(pod)
-			}
 
-			classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
-			calcPodStatus(pod, taskStatusCount)
+				maxRetry := job.Spec.MaxRetry
+				lastRetry := false
+				if job.Status.RetryCount >= maxRetry-1 {
+					lastRetry = true
+				}
+
+				// Only retain the Failed and Succeeded pods at the last retry.
+				// If it is not the last retry, kill pod as defined in `podRetainPhase`.
+				retainPhase := podRetainPhase
+				if lastRetry {
+					retainPhase = state.PodRetainPhaseSoft
+				}
+				_, retain := retainPhase[pod.Status.Phase]
+
+				if !retain {
+					podsToKill[pod.Name] = pod
+				}
+			}
 		}
+	}
+
+	for _, pod := range podsToKill {
+		if pod.DeletionTimestamp != nil {
+			klog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
+			terminating++
+			continue
+		}
+
+		err := cc.deleteJobPod(job.Name, pod)
+		if err == nil {
+			terminating++
+			continue
+		}
+		// record the err, and then collect the pod info like retained pod
+		errs = append(errs, err)
+		cc.resyncTask(pod)
+
+		classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
+		calcPodStatus(pod, taskStatusCount)
 	}
 
 	if len(errs) != 0 {
@@ -129,8 +166,6 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	}
 
 	job = job.DeepCopy()
-	// Job version is bumped only when job is killed
-	job.Status.Version++
 	job.Status.Pending = pending
 	job.Status.Running = running
 	job.Status.Succeeded = succeeded

@@ -28,27 +28,36 @@ type restartingState struct {
 	job *apis.JobInfo
 }
 
-func (ps *restartingState) Execute(action v1alpha1.Action) error {
-	return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
-		// Get the maximum number of retries.
-		maxRetry := ps.job.Job.Spec.MaxRetry
+func (ps *restartingState) restartingUpdateStatus(status *vcbatch.JobStatus) bool {
+	// Get the maximum number of retries.
+	maxRetry := ps.job.Job.Spec.MaxRetry
 
-		if status.RetryCount >= maxRetry {
-			// Failed is the phase that the job is restarted failed reached the maximum number of retries.
-			status.State.Phase = vcbatch.Failed
-			UpdateJobFailed(fmt.Sprintf("%s/%s", ps.job.Job.Namespace, ps.job.Job.Name), ps.job.Job.Spec.Queue)
-			return true
-		}
-		total := int32(0)
-		for _, task := range ps.job.Job.Spec.Tasks {
-			total += task.Replicas
-		}
+	if status.RetryCount >= maxRetry {
+		// Failed is the phase that the job is restarted failed reached the maximum number of retries.
+		status.State.Phase = vcbatch.Failed
+		UpdateJobFailed(fmt.Sprintf("%s/%s", ps.job.Job.Namespace, ps.job.Job.Name), ps.job.Job.Spec.Queue)
+		return true
+	}
+	total := int32(0)
+	for _, task := range ps.job.Job.Spec.Tasks {
+		total += task.Replicas
+	}
 
-		if total-status.Terminating >= status.MinAvailable {
-			status.State.Phase = vcbatch.Pending
-			return true
-		}
+	if total-status.Terminating >= status.MinAvailable {
+		status.State.Phase = vcbatch.Pending
+		return true
+	}
 
-		return false
-	})
+	return false
+}
+
+func (ps *restartingState) Execute(action Action) error {
+	switch action.Action {
+	case v1alpha1.SyncJobAction:
+		return SyncJob(ps.job, ps.restartingUpdateStatus)
+	case v1alpha1.RestartTaskAction, v1alpha1.RestartPodAction:
+		return KillTarget(ps.job, action.Target, ps.restartingUpdateStatus)
+	default:
+		return KillJob(ps.job, PodRetainPhaseNone, ps.restartingUpdateStatus)
+	}
 }

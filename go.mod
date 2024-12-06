@@ -49,6 +49,8 @@ require (
 	volcano.sh/apis v1.10.0-alpha.0.0.20241016111016-bb93758bd51f
 )
 
+replace volcano.sh/apis => github.com/bibibox/apis v0.0.0-20241122073311-ed24a54bdd4b
+
 require (
 	github.com/Microsoft/go-winio v0.6.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect

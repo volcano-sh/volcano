@@ -103,7 +103,7 @@ func TestAbortedState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = absState.Execute(testcase.Action)
+			err = absState.Execute(state.Action{Action: testcase.Action})
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -218,7 +218,7 @@ func TestAbortingState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = absState.Execute(testcase.Action)
+			err = absState.Execute(state.Action{Action: testcase.Action})
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -331,7 +331,7 @@ func TestCompletingState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(state.Action{Action: testcase.Action})
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -404,7 +404,7 @@ func TestFinishedState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(state.Action{Action: testcase.Action})
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -715,7 +715,7 @@ func TestPendingState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(state.Action{Action: testcase.Action})
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -850,7 +850,7 @@ func TestRestartingState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(state.Action{Action: testcase.Action})
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -1335,7 +1335,7 @@ func TestRunningState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(state.Action{Action: testcase.Action})
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}
@@ -1462,7 +1462,7 @@ func TestTerminatingState_Execute(t *testing.T) {
 				t.Error("Error while adding Job in cache")
 			}
 
-			err = testState.Execute(testcase.Action)
+			err = testState.Execute(state.Action{Action: testcase.Action})
 			if err != nil {
 				t.Errorf("Expected Error not to occur but got: %s", err)
 			}

@@ -32,6 +32,8 @@ var policyEventMap = map[busv1alpha1.Event]bool{
 	busv1alpha1.AnyEvent:           true,
 	busv1alpha1.PodFailedEvent:     true,
 	busv1alpha1.PodEvictedEvent:    true,
+	busv1alpha1.PodPendingEvent:    true,
+	busv1alpha1.PodRunningEvent:    true,
 	busv1alpha1.JobUnknownEvent:    true,
 	busv1alpha1.TaskCompletedEvent: true,
 	busv1alpha1.TaskFailedEvent:    true,

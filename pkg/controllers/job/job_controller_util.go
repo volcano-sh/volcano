@@ -32,7 +32,9 @@ import (
 	"volcano.sh/apis/pkg/apis/helpers"
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
+	jobcache "volcano.sh/volcano/pkg/controllers/cache"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
+	"volcano.sh/volcano/pkg/controllers/job/state"
 	"volcano.sh/volcano/pkg/controllers/util"
 )
 
@@ -165,13 +167,23 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 	return pod
 }
 
-func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
+func applyPolicies(job *batch.Job, req *apis.Request) (delayAct *delayAction) {
+	delayAct = &delayAction{
+		jobKey:   jobcache.JobKeyByReq(req),
+		event:    req.Event,
+		taskName: req.TaskName,
+		podName:  req.PodName,
+		// default action is sync job
+		action: v1alpha1.SyncJobAction,
+	}
+
 	if len(req.Action) != 0 {
-		return req.Action
+		delayAct.action = req.Action
+		return
 	}
 
 	if req.Event == v1alpha1.OutOfSyncEvent {
-		return v1alpha1.SyncJobAction
+		return
 	}
 
 	// Solve the scenario: When pod events accumulate and vcjobs with the same name are frequently created,
@@ -179,13 +191,13 @@ func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
 	if len(req.JobUid) != 0 && job != nil && req.JobUid != job.UID {
 		klog.V(2).Infof("The req belongs to job(%s/%s) and job uid is %v, but the uid of job(%s/%s) is %v in cache, perform %v action",
 			req.Namespace, req.JobName, req.JobUid, job.Namespace, job.Name, job.UID, v1alpha1.SyncJobAction)
-		return v1alpha1.SyncJobAction
+		return
 	}
 
 	// For all the requests triggered from discarded job resources will perform sync action instead
 	if req.JobVersion < job.Status.Version {
 		klog.Infof("Request %s is outdated, will perform sync instead.", req)
-		return v1alpha1.SyncJobAction
+		return
 	}
 
 	// Overwrite Job level policies
@@ -198,13 +210,21 @@ func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
 
 					if len(policyEvents) > 0 && len(req.Event) > 0 {
 						if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, v1alpha1.AnyEvent) {
-							return policy.Action
+							delayAct.action = policy.Action
+							if policy.Timeout != nil {
+								delayAct.delay = policy.Timeout.Duration
+							}
+							return
 						}
 					}
 
 					// 0 is not an error code, is prevented in validation admission controller
 					if policy.ExitCode != nil && *policy.ExitCode == req.ExitCode {
-						return policy.Action
+						delayAct.action = policy.Action
+						if policy.Timeout != nil {
+							delayAct.delay = policy.Timeout.Duration
+						}
+						return
 					}
 				}
 				break
@@ -218,17 +238,25 @@ func applyPolicies(job *batch.Job, req *apis.Request) v1alpha1.Action {
 
 		if len(policyEvents) > 0 && len(req.Event) > 0 {
 			if checkEventExist(policyEvents, req.Event) || checkEventExist(policyEvents, v1alpha1.AnyEvent) {
-				return policy.Action
+				delayAct.action = policy.Action
+				if policy.Timeout != nil {
+					delayAct.delay = policy.Timeout.Duration
+				}
+				return
 			}
 		}
 
 		// 0 is not an error code, is prevented in validation admission controller
 		if policy.ExitCode != nil && *policy.ExitCode == req.ExitCode {
-			return policy.Action
+			delayAct.action = policy.Action
+			if policy.Timeout != nil {
+				delayAct.delay = policy.Timeout.Duration
+			}
+			return
 		}
 	}
 
-	return v1alpha1.SyncJobAction
+	return
 }
 
 func getEventlist(policy batch.LifecyclePolicy) []v1alpha1.Event {
@@ -355,4 +383,30 @@ func calTaskRequests(pod *v1.Pod, validReplica int32) v1.ResourceList {
 		minReq = quotav1.Add(minReq, usage)
 	}
 	return minReq
+}
+
+// isInternalAction checks if the action is an internal action
+func isInternalAction(action v1alpha1.Action) bool {
+	switch action {
+	case v1alpha1.SyncJobAction,
+		v1alpha1.EnqueueAction,
+		v1alpha1.SyncQueueAction,
+		v1alpha1.OpenQueueAction,
+		v1alpha1.CloseQueueAction:
+		return true
+	default:
+		return false
+	}
+}
+
+func GetStateAction(delayAct *delayAction) state.Action {
+	action := state.Action{Action: delayAct.action}
+
+	if delayAct.action == v1alpha1.RestartTaskAction {
+		action.Target = state.Target{TaskName: delayAct.taskName, Type: state.TargetTypeTask}
+	} else if delayAct.action == v1alpha1.RestartPodAction {
+		action.Target = state.Target{TaskName: delayAct.taskName, PodName: delayAct.podName, Type: state.TargetTypePod}
+	}
+
+	return action
 }
