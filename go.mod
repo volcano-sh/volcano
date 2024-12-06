@@ -46,8 +46,10 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.4.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.10.0-alpha.0.0.20241016111016-bb93758bd51f
+	volcano.sh/apis v0.0.0-20241026062332-74ae85db0bc5
 )
+
+replace volcano.sh/apis v0.0.0-20241026062332-74ae85db0bc5 => github.com/lowang-bh/apis v0.0.0-20241026062332-74ae85db0bc5
 
 require (
 	github.com/Microsoft/go-winio v0.6.0 // indirect

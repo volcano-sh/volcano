@@ -224,7 +224,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.inqueue.Add(job.DeductSchGatedResources(minReq))
 			return util.Permit
 		}
-		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
+		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnenqueueable), "queue resource quota insufficient")
+		job.JobFitErrors = "queue resource quota insufficient"
 		return util.Reject
 	})
 
