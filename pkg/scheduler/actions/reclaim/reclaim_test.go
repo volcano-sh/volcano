@@ -129,6 +129,36 @@ func TestReclaim(t *testing.T) {
 			ExpectEvictNum: 1,
 			ExpectEvicted:  []string{"c1/preemptee1-1"}, // low queue priority job's preemptable pod is evicted
 		},
+		{
+			// case about #3642
+			Name: "can not reclaim resources when task preemption policy is never",
+			Plugins: map[string]framework.PluginBuilder{
+				conformance.PluginName: conformance.New,
+				gang.PluginName:        gang.New,
+				proportion.PluginName:  proportion.New,
+			},
+			PriClass: []*schedulingv1.PriorityClass{
+				util.BuildPriorityClass("low-priority", 100),
+				util.BuildPriorityClassWithPreemptionPolicy("high-priority", 1000, v1.PreemptNever),
+			},
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 0, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPodWithPreeemptionPolicy("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string), v1.PreemptNever),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "pods", Value: "1"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 5, nil),
+				util.BuildQueue("q2", 10, nil),
+			},
+			ExpectEvictNum: 0,
+			ExpectEvicted:  []string{}, // no victims should be reclaimed
+		},
 	}
 
 	reclaim := New()

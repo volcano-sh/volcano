@@ -74,7 +74,7 @@ rules:
     verbs: ["create", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["get"]
@@ -241,7 +241,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.16.4
   name: jobs.batch.volcano.sh
 spec:
   group: batch.volcano.sh
@@ -1088,6 +1088,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -1194,6 +1195,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -1274,6 +1276,8 @@ spec:
                                         items:
                                           properties:
                                             name:
+                                              type: string
+                                            request:
                                               type: string
                                           required:
                                           - name
@@ -1392,6 +1396,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -1793,6 +1798,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -1899,6 +1905,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -1979,6 +1986,8 @@ spec:
                                         items:
                                           properties:
                                             name:
+                                              type: string
+                                            request:
                                               type: string
                                           required:
                                           - name
@@ -2097,6 +2106,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -2512,6 +2522,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -2618,6 +2629,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -2698,6 +2710,8 @@ spec:
                                         items:
                                           properties:
                                             name:
+                                              type: string
+                                            request:
                                               type: string
                                           required:
                                           - name
@@ -2816,6 +2830,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -2980,13 +2995,10 @@ spec:
                                 properties:
                                   name:
                                     type: string
-                                  source:
-                                    properties:
-                                      resourceClaimName:
-                                        type: string
-                                      resourceClaimTemplateName:
-                                        type: string
-                                    type: object
+                                  resourceClaimName:
+                                    type: string
+                                  resourceClaimTemplateName:
+                                    type: string
                                 required:
                                 - name
                                 type: object
@@ -3062,6 +3074,8 @@ spec:
                                     type: integer
                                   type: array
                                   x-kubernetes-list-type: atomic
+                                supplementalGroupsPolicy:
+                                  type: string
                                 sysctls:
                                   items:
                                     properties:
@@ -3201,10 +3215,12 @@ spec:
                                       diskURI:
                                         type: string
                                       fsType:
+                                        default: ext4
                                         type: string
                                       kind:
                                         type: string
                                       readOnly:
+                                        default: false
                                         type: boolean
                                     required:
                                     - diskName
@@ -3581,6 +3597,13 @@ spec:
                                     required:
                                     - path
                                     type: object
+                                  image:
+                                    properties:
+                                      pullPolicy:
+                                        type: string
+                                      reference:
+                                        type: string
+                                    type: object
                                   iscsi:
                                     properties:
                                       chapAuthDiscovery:
@@ -3594,6 +3617,7 @@ spec:
                                       iqn:
                                         type: string
                                       iscsiInterface:
+                                        default: default
                                         type: string
                                       lun:
                                         format: int32
@@ -3842,6 +3866,7 @@ spec:
                                       image:
                                         type: string
                                       keyring:
+                                        default: /etc/ceph/keyring
                                         type: string
                                       monitors:
                                         items:
@@ -3849,6 +3874,7 @@ spec:
                                         type: array
                                         x-kubernetes-list-type: atomic
                                       pool:
+                                        default: rbd
                                         type: string
                                       readOnly:
                                         type: boolean
@@ -3860,6 +3886,7 @@ spec:
                                         type: object
                                         x-kubernetes-map-type: atomic
                                       user:
+                                        default: admin
                                         type: string
                                     required:
                                     - image
@@ -3868,6 +3895,7 @@ spec:
                                   scaleIO:
                                     properties:
                                       fsType:
+                                        default: xfs
                                         type: string
                                       gateway:
                                         type: string
@@ -3885,6 +3913,7 @@ spec:
                                       sslEnabled:
                                         type: boolean
                                       storageMode:
+                                        default: ThinProvisioned
                                         type: string
                                       storagePool:
                                         type: string
@@ -4153,7 +4182,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.16.4
   name: commands.bus.volcano.sh
 spec:
   group: bus.volcano.sh
@@ -4290,7 +4319,7 @@ rules:
     verbs: ["get", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups", "queues", "queues/status"]
-    verbs: ["get", "list", "watch", "create", "delete", "update"]
+    verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
   - apiGroups: ["flow.volcano.sh"]
     resources: ["jobflows", "jobtemplates"]
     verbs: ["get", "list", "watch", "create", "delete", "update"]
@@ -4331,6 +4360,28 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ---
 # Source: volcano/templates/controllers.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8081"
+    prometheus.io/scrape: "true"
+  name: volcano-controllers-service
+  namespace: volcano-system
+  labels:
+    app: volcano-controller
+spec:
+  ports:
+    - port: 8081
+      protocol: TCP
+      targetPort: 8081
+      name: "metrics"
+  selector:
+    app: volcano-controller
+  type: ClusterIP
+---
+# Source: volcano/templates/controllers.yaml
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -4351,15 +4402,21 @@ spec:
       serviceAccount: volcano-controllers
       priorityClassName: system-cluster-critical
       containers:
-          - name: volcano-controllers
-            image: docker.io/volcanosh/vc-controller-manager:latest
-            args:
-              - --logtostderr
-              - --enable-healthz=true
-              - --leader-elect=false
-              - -v=4
-              - 2>&1
-            imagePullPolicy: Always
+        - name: volcano-controllers
+          image: docker.io/volcanosh/vc-controller-manager:latest
+          args:
+            - --logtostderr
+            - --enable-healthz=true
+            - --enable-metrics=true
+            - --leader-elect=false
+            - --kube-api-qps=50
+            - --kube-api-burst=100
+            - --worker-threads=3
+            - --worker-threads-for-gc=5
+            - --worker-threads-for-podgroup=5
+            - -v=4
+            - 2>&1
+          imagePullPolicy: Always
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
@@ -4445,7 +4502,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
-    verbs: ["get", "list", "watch", "create", "delete"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues/status"]
     verbs: ["update"]
@@ -4530,6 +4587,10 @@ spec:
             - --enable-healthz=true
             - --enable-metrics=true
             - --leader-elect=false
+            - --kube-api-qps=2000
+            - --kube-api-burst=2000
+            - --schedule-period=1s
+            - --node-worker-threads=20
             - -v=3
             - 2>&1
           env:
@@ -4554,7 +4615,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.16.4
   name: podgroups.scheduling.volcano.sh
 spec:
   group: scheduling.volcano.sh
@@ -4716,7 +4777,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.16.4
   name: queues.scheduling.volcano.sh
 spec:
   group: scheduling.volcano.sh
@@ -4934,7 +4995,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.16.4
   name: numatopologies.nodeinfo.volcano.sh
 spec:
   group: nodeinfo.volcano.sh
@@ -5296,7 +5357,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.16.4
   name: jobtemplates.flow.volcano.sh
 spec:
   group: flow.volcano.sh
@@ -6125,6 +6186,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -6231,6 +6293,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -6311,6 +6374,8 @@ spec:
                                         items:
                                           properties:
                                             name:
+                                              type: string
+                                            request:
                                               type: string
                                           required:
                                           - name
@@ -6429,6 +6494,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -6830,6 +6896,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -6936,6 +7003,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -7016,6 +7084,8 @@ spec:
                                         items:
                                           properties:
                                             name:
+                                              type: string
+                                            request:
                                               type: string
                                           required:
                                           - name
@@ -7134,6 +7204,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -7549,6 +7620,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -7655,6 +7727,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -7735,6 +7808,8 @@ spec:
                                         items:
                                           properties:
                                             name:
+                                              type: string
+                                            request:
                                               type: string
                                           required:
                                           - name
@@ -7853,6 +7928,7 @@ spec:
                                             format: int32
                                             type: integer
                                           service:
+                                            default: ""
                                             type: string
                                         required:
                                         - port
@@ -8017,13 +8093,10 @@ spec:
                                 properties:
                                   name:
                                     type: string
-                                  source:
-                                    properties:
-                                      resourceClaimName:
-                                        type: string
-                                      resourceClaimTemplateName:
-                                        type: string
-                                    type: object
+                                  resourceClaimName:
+                                    type: string
+                                  resourceClaimTemplateName:
+                                    type: string
                                 required:
                                 - name
                                 type: object
@@ -8099,6 +8172,8 @@ spec:
                                     type: integer
                                   type: array
                                   x-kubernetes-list-type: atomic
+                                supplementalGroupsPolicy:
+                                  type: string
                                 sysctls:
                                   items:
                                     properties:
@@ -8238,10 +8313,12 @@ spec:
                                       diskURI:
                                         type: string
                                       fsType:
+                                        default: ext4
                                         type: string
                                       kind:
                                         type: string
                                       readOnly:
+                                        default: false
                                         type: boolean
                                     required:
                                     - diskName
@@ -8618,6 +8695,13 @@ spec:
                                     required:
                                     - path
                                     type: object
+                                  image:
+                                    properties:
+                                      pullPolicy:
+                                        type: string
+                                      reference:
+                                        type: string
+                                    type: object
                                   iscsi:
                                     properties:
                                       chapAuthDiscovery:
@@ -8631,6 +8715,7 @@ spec:
                                       iqn:
                                         type: string
                                       iscsiInterface:
+                                        default: default
                                         type: string
                                       lun:
                                         format: int32
@@ -8879,6 +8964,7 @@ spec:
                                       image:
                                         type: string
                                       keyring:
+                                        default: /etc/ceph/keyring
                                         type: string
                                       monitors:
                                         items:
@@ -8886,6 +8972,7 @@ spec:
                                         type: array
                                         x-kubernetes-list-type: atomic
                                       pool:
+                                        default: rbd
                                         type: string
                                       readOnly:
                                         type: boolean
@@ -8897,6 +8984,7 @@ spec:
                                         type: object
                                         x-kubernetes-map-type: atomic
                                       user:
+                                        default: admin
                                         type: string
                                     required:
                                     - image
@@ -8905,6 +8993,7 @@ spec:
                                   scaleIO:
                                     properties:
                                       fsType:
+                                        default: xfs
                                         type: string
                                       gateway:
                                         type: string
@@ -8922,6 +9011,7 @@ spec:
                                       sslEnabled:
                                         type: boolean
                                       storageMode:
+                                        default: ThinProvisioned
                                         type: string
                                       storagePool:
                                         type: string
@@ -9127,7 +9217,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.16.4
   name: jobflows.flow.volcano.sh
 spec:
   group: flow.volcano.sh

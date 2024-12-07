@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 
 	v1 "k8s.io/api/core/v1"
@@ -40,6 +41,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/framework"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/signals"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 // Run the controller.
@@ -48,11 +50,17 @@ func Run(opt *options.ServerOption) error {
 	if err != nil {
 		return err
 	}
-
 	if opt.EnableHealthz {
 		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-controller", opt.CaCertData, opt.CertData, opt.KeyData); err != nil {
 			return err
 		}
+	}
+
+	if opt.EnableMetrics {
+		go func() {
+			http.Handle("/metrics", commonutil.PromHandler())
+			klog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
+		}()
 	}
 
 	run := startControllers(config, opt)
@@ -128,6 +136,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.VCSharedInformerFactory = informerfactory.NewSharedInformerFactory(controllerOpt.VolcanoClient, 0)
 	controllerOpt.InheritOwnerAnnotations = opt.InheritOwnerAnnotations
 	controllerOpt.WorkerThreadsForPG = opt.WorkerThreadsForPG
+	controllerOpt.WorkerThreadsForQueue = opt.WorkerThreadsForQueue
 	controllerOpt.WorkerThreadsForGC = opt.WorkerThreadsForGC
 	controllerOpt.Config = config
 

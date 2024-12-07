@@ -2,6 +2,7 @@ basic:
   controller_image_name: "volcanosh/vc-controller-manager"
   scheduler_image_name: "volcanosh/vc-scheduler"
   admission_image_name: "volcanosh/vc-webhook-manager"
+  agent_image_name: "volcanosh/vc-agent"
   admission_secret_name: "volcano-admission-secret"
   admission_config_file: "config/volcano-admission.conf"
   scheduler_config_file: "config/volcano-scheduler.conf"
@@ -16,10 +17,23 @@ custom:
   admission_replicas: 1
   controller_enable: true
   controller_replicas: 1
+  controller_metrics_enable: true
   scheduler_enable: true
   scheduler_replicas: 1
+  scheduler_metrics_enable: true
+  scheduler_name: ~
   leader_elect_enable: false
+  controller_kube_api_qps: 50
+  controller_kube_api_burst: 100
+  controller_worker_threads: 3
+  controller_worker_threads_for_gc: 5
+  controller_worker_threads_for_podgroup: 5
+  scheduler_kube_api_qps: 2000
+  scheduler_kube_api_burst: 2000
+  scheduler_schedule_period: 1s
+  scheduler_node_worker_threads: 20
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
+  colocation_enable: false
 
 # Override the configuration for admission or scheduler.
 # For example:
@@ -59,6 +73,7 @@ custom:
   admission_affinity: ~
   controller_affinity: ~
   scheduler_affinity: ~
+  agent_affinity: ~
 
 # Specify tolerations for all main Volcano components or per component
 # For example:
@@ -71,6 +86,10 @@ custom:
   admission_tolerations: ~
   controller_tolerations: ~
   scheduler_tolerations: ~
+  agent_tolerations:
+  - key: "volcano.sh/offline-job-evicting"
+    operator: "Exists"
+    effect: "NoSchedule"
 
 # Specify securityContext for all main Volcano components or per component
 # For example:
@@ -82,6 +101,7 @@ custom:
   scheduler_sc: ~
   admission_sc: ~
   controller_sc: ~
+  agent_sc: ~
 
 # Specify nodeSelector for all main Volcano components or per component
 # For example:
@@ -93,6 +113,7 @@ custom:
   scheduler_ns: ~
   controller_ns: ~
   kube_state_metrics_ns: ~
+  agent_ns: ~
 
 # Specify labels for Volcano main component deployments and pods
 # For example:
@@ -120,6 +141,7 @@ custom:
   admission_resources: ~
   scheduler_resources: ~
   controller_resources: ~
+  agent_resources: ~
 
 
 # Specify additional namespace selector expressions for Volcano admission webhooks.
@@ -158,6 +180,9 @@ custom:
   scheduler_default_csc: ~
   controller_default_csc: ~
 
+  # Specify agent cni config path.
+  agent_cni_config_path: /etc/cni/net.d/cni.conflist
+
 service:
   # @param service.ipFamilyPolicy [string], support SingleStack, PreferDualStack and RequireDualStack
   #
@@ -169,3 +194,5 @@ service:
   #   - IPv6
   #   - IPv4
   ipFamilies: []
+
+

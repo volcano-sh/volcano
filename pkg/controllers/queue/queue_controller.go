@@ -90,6 +90,7 @@ type queuecontroller struct {
 	enqueueQueue func(req *apis.Request)
 
 	recorder      record.EventRecorder
+	workers       uint32
 	maxRequeueNum int
 }
 
@@ -125,6 +126,7 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 	if c.maxRequeueNum < 0 {
 		c.maxRequeueNum = -1
 	}
+	c.workers = opt.WorkerThreadsForQueue
 
 	queueInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addQueue,
@@ -187,8 +189,10 @@ func (c *queuecontroller) Run(stopCh <-chan struct{}) {
 		}
 	}
 
-	go wait.Until(c.worker, 0, stopCh)
-	go wait.Until(c.commandWorker, 0, stopCh)
+	for i := 0; i < int(c.workers); i++ {
+		go wait.Until(c.worker, 0, stopCh)
+		go wait.Until(c.commandWorker, 0, stopCh)
+	}
 
 	<-stopCh
 }

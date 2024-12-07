@@ -31,6 +31,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
+	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 	"volcano.sh/volcano/pkg/kube"
 	commonutil "volcano.sh/volcano/pkg/util"
@@ -64,6 +65,9 @@ func Run(config *options.Config) error {
 
 	vClient := getVolcanoClient(restConfig)
 	kubeClient := getKubeClient(restConfig)
+	factory := informers.NewSharedInformerFactory(vClient, 0)
+	queueInformer := factory.Scheduling().V1beta1().Queues()
+	queueLister := queueInformer.Lister()
 
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
@@ -72,6 +76,7 @@ func Run(config *options.Config) error {
 		if service.Config != nil {
 			service.Config.VolcanoClient = vClient
 			service.Config.KubeClient = kubeClient
+			service.Config.QueueLister = queueLister
 			service.Config.SchedulerNames = config.SchedulerNames
 			service.Config.Recorder = recorder
 			service.Config.ConfigData = admissionConf
@@ -94,6 +99,13 @@ func Run(config *options.Config) error {
 	webhookServeError := make(chan struct{})
 	stopChannel := make(chan os.Signal, 1)
 	signal.Notify(stopChannel, syscall.SIGTERM, syscall.SIGINT)
+
+	factory.Start(webhookServeError)
+	for informerType, ok := range factory.WaitForCacheSync(webhookServeError) {
+		if !ok {
+			return fmt.Errorf("failed to sync cache: %v", informerType)
+		}
+	}
 
 	server := &http.Server{
 		Addr:      config.ListenAddress + ":" + strconv.Itoa(config.Port),

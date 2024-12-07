@@ -359,7 +359,7 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 
 		for i := len(gs.Device) - 1; i >= 0; i-- {
 			klog.V(3).InfoS("Scoring pod request", "memReq", val.Memreq, "memPercentageReq", val.MemPercentagereq, "coresReq", val.Coresreq, "Nums", val.Nums, "Index", i, "ID", gs.Device[i].ID)
-			klog.V(3).InfoS("Current Device", "Index", i, "TotalMemory", gs.Device[i].Memory, "UsedMemory", gs.Device[i].UsedMem, "UsedCores", gs.Device[i].UsedNum)
+			klog.V(3).InfoS("Current Device", "Index", i, "TotalMemory", gs.Device[i].Memory, "UsedMemory", gs.Device[i].UsedMem, "UsedCores", gs.Device[i].UsedCore, "replicate", replicate)
 			if gs.Device[i].Number <= uint(gs.Device[i].UsedNum) {
 				continue
 			}
@@ -369,7 +369,7 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 			if int(gs.Device[i].Memory)-int(gs.Device[i].UsedMem) < int(val.Memreq) {
 				continue
 			}
-			if 100-gs.Device[i].UsedCore < uint(val.Coresreq) {
+			if 100-int32(gs.Device[i].UsedCore) < val.Coresreq {
 				continue
 			}
 			// Coresreq=100 indicates it want this card exclusively

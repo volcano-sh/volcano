@@ -19,10 +19,9 @@ package queue
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 
-	v1 "k8s.io/api/core/v1"
+	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
@@ -31,6 +30,7 @@ import (
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/framework"
+	"volcano.sh/volcano/pkg/controllers/queue/state"
 )
 
 func newFakeController() *queuecontroller {
@@ -241,141 +241,63 @@ func TestUpdatePodGroup(t *testing.T) {
 }
 
 func TestSyncQueue(t *testing.T) {
-	namespace := "c1"
-
 	testCases := []struct {
-		Name          string
-		pgsInCache    []*schedulingv1beta1.PodGroup
-		pgsInInformer []*schedulingv1beta1.PodGroup
-		queue         *schedulingv1beta1.Queue
-		ExpectStatus  schedulingv1beta1.QueueStatus
+		Name                  string
+		queue                 *schedulingv1beta1.Queue
+		updateStatusFnFactory func(queue *schedulingv1beta1.Queue) state.UpdateQueueStatusFn
+		ExpectState           schedulingv1beta1.QueueState
 	}{
 		{
-			Name: "syncQueue",
-			pgsInCache: []*schedulingv1beta1.PodGroup{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg1",
-						Namespace: namespace,
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue: "c1",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupPending,
-					},
-				},
-			},
-			pgsInInformer: []*schedulingv1beta1.PodGroup{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg1",
-						Namespace: namespace,
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue: "c1",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupPending,
-					},
-				},
-			},
+			Name: "From empty state to open",
 			queue: &schedulingv1beta1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "c1",
+					Name: "root",
 				},
-				Spec: schedulingv1beta1.QueueSpec{
-					Weight: 1,
+				Status: schedulingv1beta1.QueueStatus{
+					State: "",
 				},
 			},
-			ExpectStatus: schedulingv1beta1.QueueStatus{
-				Pending:     1,
-				Reservation: schedulingv1beta1.Reservation{},
-				Allocated:   v1.ResourceList{},
+			ExpectState: schedulingv1beta1.QueueStateOpen,
+			updateStatusFnFactory: func(queue *schedulingv1beta1.Queue) state.UpdateQueueStatusFn {
+				return func(status *schedulingv1beta1.QueueStatus, podGroupList []string) {
+					if len(queue.Status.State) == 0 {
+						status.State = schedulingv1beta1.QueueStateOpen
+					}
+				}
 			},
 		},
 		{
-			Name: "syncQueueHandlingNotFoundPg",
-			pgsInCache: []*schedulingv1beta1.PodGroup{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg1",
-						Namespace: namespace,
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue: "c2",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupPending,
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg2",
-						Namespace: namespace,
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue: "c2",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupPending,
-					},
-				},
-			},
-			pgsInInformer: []*schedulingv1beta1.PodGroup{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "pg2",
-						Namespace: namespace,
-					},
-					Spec: schedulingv1beta1.PodGroupSpec{
-						Queue: "c2",
-					},
-					Status: schedulingv1beta1.PodGroupStatus{
-						Phase: schedulingv1beta1.PodGroupPending,
-					},
-				},
-			},
+			Name: "From open to close",
 			queue: &schedulingv1beta1.Queue{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "c2",
+					Name: "root",
 				},
-				Spec: schedulingv1beta1.QueueSpec{
-					Weight: 1,
+				Status: schedulingv1beta1.QueueStatus{
+					State: schedulingv1beta1.QueueStateOpen,
 				},
 			},
-			ExpectStatus: schedulingv1beta1.QueueStatus{
-				Pending:     1,
-				Reservation: schedulingv1beta1.Reservation{},
-				Allocated:   v1.ResourceList{},
+			ExpectState: schedulingv1beta1.QueueStateClosed,
+			updateStatusFnFactory: func(queue *schedulingv1beta1.Queue) state.UpdateQueueStatusFn {
+				return func(status *schedulingv1beta1.QueueStatus, podGroupList []string) {
+					status.State = schedulingv1beta1.QueueStateClosed
+				}
 			},
 		},
 	}
 
-	for i, testcase := range testCases {
+	for _, testcase := range testCases {
 		c := newFakeController()
 
-		for j := range testcase.pgsInCache {
-			key, _ := cache.MetaNamespaceKeyFunc(testcase.pgsInCache[j])
-			if _, ok := c.podGroups[testcase.pgsInCache[j].Spec.Queue]; !ok {
-				c.podGroups[testcase.pgsInCache[j].Spec.Queue] = make(map[string]struct{})
-			}
-			c.podGroups[testcase.pgsInCache[j].Spec.Queue][key] = struct{}{}
-		}
+		_, err := c.vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), testcase.queue, metav1.CreateOptions{})
+		assert.NoError(t, err)
 
-		for j := range testcase.pgsInInformer {
-			c.pgInformer.Informer().GetIndexer().Add(testcase.pgsInInformer[j])
-		}
+		updateStatusFn := testcase.updateStatusFnFactory(testcase.queue)
+		err = c.syncQueue(testcase.queue, updateStatusFn)
+		assert.NoError(t, err)
 
-		c.queueInformer.Informer().GetIndexer().Add(testcase.queue)
-		c.vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), testcase.queue, metav1.CreateOptions{})
-
-		err := c.syncQueue(testcase.queue, nil)
-
-		item, _ := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), testcase.queue.Name, metav1.GetOptions{})
-		if err != nil && !reflect.DeepEqual(testcase.ExpectStatus, item.Status) {
-			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectStatus, item.Status)
-		}
+		item, err := c.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), testcase.queue.Name, metav1.GetOptions{})
+		assert.NoError(t, err)
+		assert.Equal(t, testcase.ExpectState, item.Status.State)
 	}
 }
 

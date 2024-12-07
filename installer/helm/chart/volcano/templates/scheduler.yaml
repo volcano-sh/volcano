@@ -3,6 +3,7 @@
 {{ $scheduler_tolerations := or .Values.custom.scheduler_tolerations .Values.custom.default_tolerations }}
 {{ $scheduler_sc := or .Values.custom.scheduler_sc .Values.custom.default_sc }}
 {{ $scheduler_ns := or .Values.custom.scheduler_ns .Values.custom.default_ns }}
+{{ $scheduler_name := .Values.custom.scheduler_name }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -86,7 +87,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues"]
-    verbs: ["get", "list", "watch", "create", "delete"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues/status"]
     verbs: ["update"]
@@ -177,11 +178,28 @@ spec:
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.scheduler_config_file}}
+            {{- if $scheduler_name }}
+            - --scheduler-name={{- $scheduler_name }}
+            {{- end }}
             - --enable-healthz=true
+            {{- if .Values.custom.scheduler_metrics_enable }}
             - --enable-metrics=true
+            {{- end }}
             - --leader-elect={{ .Values.custom.leader_elect_enable }}
             {{- if .Values.custom.leader_elect_enable }}
             - --leader-elect-resource-namespace={{ .Release.Namespace }}
+            {{- end }}
+            {{- if .Values.custom.scheduler_kube_api_qps }}
+            - --kube-api-qps={{.Values.custom.scheduler_kube_api_qps}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_kube_api_burst }}
+            - --kube-api-burst={{.Values.custom.scheduler_kube_api_burst}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_schedule_period }}
+            - --schedule-period={{.Values.custom.scheduler_schedule_period}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_node_worker_threads }}
+            - --node-worker-threads={{.Values.custom.scheduler_node_worker_threads}}
             {{- end }}
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1

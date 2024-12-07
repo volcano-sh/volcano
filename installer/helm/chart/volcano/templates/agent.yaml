@@ -1,0 +1,240 @@
+{{- if .Values.custom.colocation_enable }}
+{{ $agent_affinity := or .Values.custom.agent_affinity .Values.custom.default_affinity }}
+{{ $agent_tolerations := or .Values.custom.agent_tolerations .Values.custom.default_tolerations }}
+{{ $agent_sc := or .Values.custom.agent_sc .Values.custom.default_sc }}
+{{ $agent_ns := or .Values.custom.agent_ns .Values.custom.default_ns }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Release.Name }}-agent
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    matchLabels:
+      name: volcano-agent
+  template:
+    metadata:
+      name: volcano-agent
+      labels:
+        name: volcano-agent
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: '3300'
+        prometheus.io/scheme: http
+        prometheus.io/scrape: 'true'
+    spec:
+      {{- if $agent_tolerations }}
+      tolerations: {{- toYaml $agent_tolerations | nindent 8 }}
+      {{- end }}
+      {{- if $agent_ns }}
+      nodeSelector: {{- toYaml $agent_ns | nindent 8 }}
+      {{- end }}
+      {{- if $agent_affinity }}
+      affinity:
+        {{- toYaml $agent_affinity | nindent 8 }}
+      {{- end }}
+      {{- if $agent_sc }}
+      securityContext:
+        {{- toYaml $agent_sc | nindent 8 }}
+      {{- end }}
+      {{- if .Values.basic.image_pull_secret }}
+      imagePullSecrets:
+        - name: {{ .Values.basic.image_pull_secret }}
+      {{- end }}
+      serviceAccountName: {{ .Release.Name }}-agent
+      hostNetwork: true
+      priorityClassName: system-node-critical
+      restartPolicy: Always
+      dnsPolicy: Default
+      volumes:
+        - name: bwm-dir
+          hostPath:
+            path: /usr/share/bwmcli/
+            type: DirectoryOrCreate
+        - name: cni-plugin-dir
+          hostPath:
+            path: /opt/cni/bin
+            type: Directory
+        - name: host-etc
+          hostPath:
+            path: /etc
+            type: Directory
+        - name: host-sys-fs
+          hostPath:
+            path: /sys/fs
+            type: Directory
+        - name: host-proc-sys
+          hostPath:
+            path: /proc/sys
+            type: Directory
+        - name: log
+          hostPath:
+            path: /var/log/volcano/agent
+            type: ''
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+            type: ''
+        - name: kubelet-cpu-manager-policy
+          hostPath:
+            path: /var/lib/kubelet/
+            type: ''
+        - name: proc-stat
+          hostPath:
+            path: /proc/stat
+            type: File
+      initContainers:
+        - name: volcano-agent-init
+          image: {{ .Values.basic.image_registry }}/{{.Values.basic.agent_image_name}}:{{.Values.basic.image_tag_version}}
+          command:
+            - /bin/sh
+            - '-c'
+            - /usr/local/bin/install.sh
+          {{- if .Values.custom.agent_resources }}
+          resources:
+          {{- toYaml .Values.custom.agent_resources | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: bwm-dir
+              mountPath: /usr/share/bwmcli
+            - name: cni-plugin-dir
+              mountPath: /opt/cni/bin
+            - name: host-etc
+              mountPath: /host/etc
+            - mountPath: /var/log/volcano/agent
+              name: log
+            - name: host-proc-sys
+              mountPath: /host/proc/sys
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+      containers:
+        - name: volcano-agent
+          image: {{ .Values.basic.image_registry }}/{{.Values.basic.agent_image_name}}:{{.Values.basic.image_tag_version}}
+          command:
+            - /bin/sh
+            - '-c'
+            - /vc-agent --v=2 1>>/var/log/volcano/agent/volcano-agent.log 2>&1
+          env:
+            - name: SYS_FS_PATH
+              value: /host/sys/fs
+            - name: CNI_CONF_FILE_PATH
+              value: /host{{ .Values.custom.agent_cni_config_path }}
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: KUBE_POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: KUBE_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+          {{- if .Values.custom.agent_resources }}
+          resources:
+          {{- toYaml .Values.custom.agent_resources | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: bwm-dir
+              mountPath: /usr/share/bwmcli
+            - name: cni-plugin-dir
+              mountPath: /opt/cni/bin
+            - name: host-etc
+              mountPath: /host/etc
+            - mountPath: /var/log/volcano/agent
+              name: log
+            - name: host-sys-fs
+              mountPath: /host/sys/fs
+              mountPropagation: HostToContainer
+            - name: host-proc-sys
+              mountPath: /host/proc/sys
+            - name: localtime
+              readOnly: true
+              mountPath: /etc/localtime
+            - name: kubelet-cpu-manager-policy
+              readOnly: true
+              mountPath: /var/lib/kubelet
+            - name: proc-stat
+              readOnly: true
+              mountPath: /host/proc/stat
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3300
+              scheme: HTTP
+            initialDelaySeconds: 60
+            timeoutSeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 5
+          imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 10%
+      maxSurge: 0
+  revisionHistoryLimit: 10
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: volcano-agent
+  name: {{ .Release.Name }}-agent
+  namespace: {{ .Release.Namespace }}
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  labels:
+    app: volcano-agent
+  name: {{ .Release.Name }}-agent
+rules:
+  - apiGroups: [""]
+    resources: [ "nodes", "nodes/status" ]
+    verbs: [ "get", "list", "watch", "update", "patch" ]
+  - apiGroups: [ "" ]
+    resources: [ "secrets" ]
+    verbs: [ "get", "list", "watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "configmaps" ]
+    verbs: [ "get", "list", "watch", "create", "update" ]
+  - apiGroups: [ "" ]
+    resources: [ "pods" ]
+    verbs: [ "get", "list", "watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "pods/eviction" ]
+    verbs: [ "create" ]
+  - apiGroups: [ "" ]
+    resources: [ "configmaps" ]
+    verbs: ["get", "list", "watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "list", "watch", "create", "update", "patch" ]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  labels:
+    app: volcano-agent
+  name: {{ .Release.Name }}-agent-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-agent
+    namespace: {{ .Release.Namespace }}
+  - kind: User
+    apiGroup: rbac.authorization.k8s.io
+    name: {{ .Release.Name }}-agent
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-agent
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

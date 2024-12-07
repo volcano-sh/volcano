@@ -73,12 +73,13 @@ const (
 )
 
 const (
-	DefaultBusyBoxImage = "busybox:1.24"
-	DefaultNginxImage   = "nginx:1.14"
+	DefaultBusyBoxImage = "busybox"
+	DefaultNginxImage   = "nginx"
 	DefaultMPIImage     = "volcanosh/example-mpi:0.0.3"
 	DefaultTFImage      = "volcanosh/dist-mnist-tf-example:0.0.1"
 	// "volcanosh/pytorch-mnist-v1beta1-9ee8fda-example:0.0.1" is from "docker.io/kubeflowkatib/pytorch-mnist:v1beta1-9ee8fda"
 	DefaultPytorchImage = "volcanosh/pytorch-mnist-v1beta1-9ee8fda-example:0.0.1"
+	LogTimeFormat       = "[ 2006/01/02 15:04:05.000 ]"
 )
 
 func CPUResource(request string) v1.ResourceList {
@@ -121,6 +122,7 @@ type TestContext struct {
 	Namespace        string
 	Queues           []string
 	DeservedResource map[string]v1.ResourceList
+	QueueParent      map[string]string
 	PriorityClasses  map[string]int32
 	UsingPlaceHolder bool
 }
@@ -129,6 +131,7 @@ type Options struct {
 	Namespace          string
 	Queues             []string
 	DeservedResource   map[string]v1.ResourceList
+	QueueParent        map[string]string
 	PriorityClasses    map[string]int32
 	NodesNumLimit      int
 	NodesResourceLimit v1.ResourceList
@@ -147,6 +150,7 @@ func InitTestContext(o Options) *TestContext {
 		Namespace:        o.Namespace,
 		Queues:           o.Queues,
 		DeservedResource: o.DeservedResource,
+		QueueParent:      o.QueueParent,
 		PriorityClasses:  o.PriorityClasses,
 		Vcclient:         VcClient,
 		Kubeclient:       KubeClient,

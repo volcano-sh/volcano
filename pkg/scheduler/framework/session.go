@@ -17,6 +17,7 @@ limitations under the License.
 package framework
 
 import (
+	"context"
 	"fmt"
 
 	v1 "k8s.io/api/core/v1"
@@ -34,6 +35,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -46,12 +48,14 @@ type Session struct {
 	UID types.UID
 
 	kubeClient      kubernetes.Interface
+	vcClient        vcclient.Interface
 	recorder        record.EventRecorder
 	cache           cache.Cache
 	restConfig      *rest.Config
 	informerFactory informers.SharedInformerFactory
 
-	TotalResource *api.Resource
+	TotalResource  *api.Resource
+	TotalGuarantee *api.Resource
 	// podGroupStatus cache podgroup status during schedule
 	// This should not be mutated after initiated
 	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
@@ -72,22 +76,23 @@ type Session struct {
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
 
-	plugins           map[string]Plugin
-	eventHandlers     []*EventHandler
-	jobOrderFns       map[string]api.CompareFn
-	queueOrderFns     map[string]api.CompareFn
-	taskOrderFns      map[string]api.CompareFn
-	clusterOrderFns   map[string]api.CompareFn
-	predicateFns      map[string]api.PredicateFn
-	prePredicateFns   map[string]api.PrePredicateFn
-	bestNodeFns       map[string]api.BestNodeFn
-	nodeOrderFns      map[string]api.NodeOrderFn
-	batchNodeOrderFns map[string]api.BatchNodeOrderFn
-	nodeMapFns        map[string]api.NodeMapFn
-	nodeReduceFns     map[string]api.NodeReduceFn
-	preemptableFns    map[string]api.EvictableFn
-	reclaimableFns    map[string]api.EvictableFn
-	overusedFns       map[string]api.ValidateFn
+	plugins             map[string]Plugin
+	eventHandlers       []*EventHandler
+	jobOrderFns         map[string]api.CompareFn
+	queueOrderFns       map[string]api.CompareFn
+	victimQueueOrderFns map[string]api.VictimCompareFn
+	taskOrderFns        map[string]api.CompareFn
+	clusterOrderFns     map[string]api.CompareFn
+	predicateFns        map[string]api.PredicateFn
+	prePredicateFns     map[string]api.PrePredicateFn
+	bestNodeFns         map[string]api.BestNodeFn
+	nodeOrderFns        map[string]api.NodeOrderFn
+	batchNodeOrderFns   map[string]api.BatchNodeOrderFn
+	nodeMapFns          map[string]api.NodeMapFn
+	nodeReduceFns       map[string]api.NodeReduceFn
+	preemptableFns      map[string]api.EvictableFn
+	reclaimableFns      map[string]api.EvictableFn
+	overusedFns         map[string]api.ValidateFn
 	// preemptiveFns means whether current queue can reclaim from other queue,
 	// while reclaimableFns means whether current queue's resources can be reclaimed.
 	preemptiveFns     map[string]api.ValidateWithCandidateFn
@@ -107,12 +112,14 @@ func openSession(cache cache.Cache) *Session {
 	ssn := &Session{
 		UID:             uuid.NewUUID(),
 		kubeClient:      cache.Client(),
+		vcClient:        cache.VCClient(),
 		restConfig:      cache.ClientConfig(),
 		recorder:        cache.EventRecorder(),
 		cache:           cache,
 		informerFactory: cache.SharedInformerFactory(),
 
 		TotalResource:  api.EmptyResource(),
+		TotalGuarantee: api.EmptyResource(),
 		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
 
 		Jobs:           map[api.JobID]*api.JobInfo{},
@@ -121,32 +128,33 @@ func openSession(cache cache.Cache) *Session {
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
 
-		plugins:           map[string]Plugin{},
-		jobOrderFns:       map[string]api.CompareFn{},
-		queueOrderFns:     map[string]api.CompareFn{},
-		taskOrderFns:      map[string]api.CompareFn{},
-		clusterOrderFns:   map[string]api.CompareFn{},
-		predicateFns:      map[string]api.PredicateFn{},
-		prePredicateFns:   map[string]api.PrePredicateFn{},
-		bestNodeFns:       map[string]api.BestNodeFn{},
-		nodeOrderFns:      map[string]api.NodeOrderFn{},
-		batchNodeOrderFns: map[string]api.BatchNodeOrderFn{},
-		nodeMapFns:        map[string]api.NodeMapFn{},
-		nodeReduceFns:     map[string]api.NodeReduceFn{},
-		preemptableFns:    map[string]api.EvictableFn{},
-		reclaimableFns:    map[string]api.EvictableFn{},
-		overusedFns:       map[string]api.ValidateFn{},
-		preemptiveFns:     map[string]api.ValidateWithCandidateFn{},
-		allocatableFns:    map[string]api.AllocatableFn{},
-		jobReadyFns:       map[string]api.ValidateFn{},
-		jobPipelinedFns:   map[string]api.VoteFn{},
-		jobValidFns:       map[string]api.ValidateExFn{},
-		jobEnqueueableFns: map[string]api.VoteFn{},
-		jobEnqueuedFns:    map[string]api.JobEnqueuedFn{},
-		targetJobFns:      map[string]api.TargetJobFn{},
-		reservedNodesFns:  map[string]api.ReservedNodesFn{},
-		victimTasksFns:    map[string][]api.VictimTasksFn{},
-		jobStarvingFns:    map[string]api.ValidateFn{},
+		plugins:             map[string]Plugin{},
+		jobOrderFns:         map[string]api.CompareFn{},
+		queueOrderFns:       map[string]api.CompareFn{},
+		victimQueueOrderFns: map[string]api.VictimCompareFn{},
+		taskOrderFns:        map[string]api.CompareFn{},
+		clusterOrderFns:     map[string]api.CompareFn{},
+		predicateFns:        map[string]api.PredicateFn{},
+		prePredicateFns:     map[string]api.PrePredicateFn{},
+		bestNodeFns:         map[string]api.BestNodeFn{},
+		nodeOrderFns:        map[string]api.NodeOrderFn{},
+		batchNodeOrderFns:   map[string]api.BatchNodeOrderFn{},
+		nodeMapFns:          map[string]api.NodeMapFn{},
+		nodeReduceFns:       map[string]api.NodeReduceFn{},
+		preemptableFns:      map[string]api.EvictableFn{},
+		reclaimableFns:      map[string]api.EvictableFn{},
+		overusedFns:         map[string]api.ValidateFn{},
+		preemptiveFns:       map[string]api.ValidateWithCandidateFn{},
+		allocatableFns:      map[string]api.AllocatableFn{},
+		jobReadyFns:         map[string]api.ValidateFn{},
+		jobPipelinedFns:     map[string]api.VoteFn{},
+		jobValidFns:         map[string]api.ValidateExFn{},
+		jobEnqueueableFns:   map[string]api.VoteFn{},
+		jobEnqueuedFns:      map[string]api.JobEnqueuedFn{},
+		targetJobFns:        map[string]api.TargetJobFn{},
+		reservedNodesFns:    map[string]api.ReservedNodesFn{},
+		victimTasksFns:      map[string][]api.VictimTasksFn{},
+		jobStarvingFns:      map[string]api.ValidateFn{},
 	}
 
 	snapshot := cache.Snapshot()
@@ -195,6 +203,7 @@ func openSession(cache cache.Cache) *Session {
 
 // updateQueueStatus updates allocated field in queue status on session close.
 func updateQueueStatus(ssn *Session) {
+	rootQueue := api.QueueID("root")
 	// calculate allocated resources on each queue
 	var allocatedResources = make(map[api.QueueID]*api.Resource, len(ssn.Queues))
 	for queueID := range ssn.Queues {
@@ -203,6 +212,21 @@ func updateQueueStatus(ssn *Session) {
 	for _, job := range ssn.Jobs {
 		for _, runningTask := range job.TaskStatusIndex[api.Running] {
 			allocatedResources[job.Queue].Add(runningTask.Resreq)
+			// recursively updates the allocated resources of parent queues
+			queue := ssn.Queues[job.Queue].Queue
+			// compatibility unit testing
+			for ssn.Queues[rootQueue] != nil {
+				parent := string(rootQueue)
+				if queue.Spec.Parent != "" {
+					parent = queue.Spec.Parent
+				}
+				allocatedResources[api.QueueID(parent)].Add(runningTask.Resreq)
+
+				if parent == string(rootQueue) {
+					break
+				}
+				queue = ssn.Queues[api.QueueID(queue.Spec.Parent)].Queue
+			}
 		}
 	}
 
@@ -210,6 +234,11 @@ func updateQueueStatus(ssn *Session) {
 	for queueID := range ssn.Queues {
 		// convert api.Resource to v1.ResourceList
 		var queueStatus = util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
+		if queueID == rootQueue {
+			updateRootQueueResources(ssn, queueStatus)
+			continue
+		}
+
 		if equality.Semantic.DeepEqual(ssn.Queues[queueID].Queue.Status.Allocated, queueStatus) {
 			klog.V(5).Infof("Queue <%s> allocated resource keeps equal, no need to update queue status <%v>.",
 				queueID, ssn.Queues[queueID].Queue.Status.Allocated)
@@ -220,6 +249,47 @@ func updateQueueStatus(ssn *Session) {
 
 		if err := ssn.cache.UpdateQueueStatus(ssn.Queues[queueID]); err != nil {
 			klog.Errorf("failed to update queue <%s> status: %s", ssn.Queues[queueID].Name, err.Error())
+		}
+	}
+}
+
+// updateRootQueueResources updates the deserved/guaranteed resource and allocated resource of the root queue
+func updateRootQueueResources(ssn *Session, allocated v1.ResourceList) {
+	rootQueue := api.QueueID("root")
+	totalResource := util.ConvertRes2ResList(ssn.TotalResource).DeepCopy()
+	totalGuarantee := util.ConvertRes2ResList(ssn.TotalGuarantee).DeepCopy()
+
+	if equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Spec.Deserved, totalResource) &&
+		equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Spec.Guarantee.Resource, totalGuarantee) &&
+		equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Status.Allocated, allocated) {
+		klog.V(5).Infof("Root queue deserved/guaranteed resource and allocated resource remains the same, no need to update the queue.")
+		return
+	}
+
+	queue := &vcv1beta1.Queue{}
+	err := schedulingscheme.Scheme.Convert(ssn.Queues[rootQueue].Queue, queue, nil)
+	if err != nil {
+		klog.Errorf("failed to convert scheduling.Queue to v1beta1.Queue: %s", err.Error())
+		return
+	}
+
+	if !equality.Semantic.DeepEqual(queue.Spec.Deserved, totalResource) ||
+		!equality.Semantic.DeepEqual(queue.Spec.Guarantee.Resource, totalGuarantee) {
+		queue.Spec.Deserved = totalResource
+		queue.Spec.Guarantee.Resource = totalGuarantee
+		queue, err = ssn.VCClient().SchedulingV1beta1().Queues().Update(context.TODO(), queue, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update root queue: %s", err.Error())
+			return
+		}
+	}
+
+	if !equality.Semantic.DeepEqual(queue.Status.Allocated, allocated) {
+		queue.Status.Allocated = allocated
+		_, err = ssn.VCClient().SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{})
+		if err != nil {
+			klog.Errorf("failed to update root queue status: %s", err.Error())
+			return
 		}
 	}
 }
@@ -588,6 +658,11 @@ func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNuma
 // KubeClient returns the kubernetes client
 func (ssn Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
+}
+
+// VCClient returns the volcano client
+func (ssn Session) VCClient() vcclient.Interface {
+	return ssn.vcClient
 }
 
 // ClientConfig returns the rest client

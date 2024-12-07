@@ -12,6 +12,21 @@ jobs:
     name: "E2E about Spark Integration test"
     runs-on: ubuntu-20.04
     steps:
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@main
+      with:
+        # this might remove tools that are actually needed,
+        # if set to "true" but frees about 6 GB
+        tool-cache: false
+
+        # all of these default to true, but feel free to set to
+        # "false" if necessary for your workflow
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
 
     - name: Checkout current Volcano repository
       if: github.event.inputs.volcano-branch==''
@@ -62,6 +77,7 @@ jobs:
       run: |
         eval $(minikube docker-env)
         make TAG=latest update-development-yaml
+        sed -i 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/g' installer/volcano-development.yaml
         make TAG=latest images
         docker images | grep volcano
         cat ./installer/volcano-development.yaml  | grep image:

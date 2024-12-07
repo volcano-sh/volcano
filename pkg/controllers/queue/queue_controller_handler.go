@@ -23,6 +23,7 @@ import (
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
+	"volcano.sh/volcano/pkg/controllers/metrics"
 )
 
 func (c *queuecontroller) enqueue(req *apis.Request) {
@@ -57,13 +58,19 @@ func (c *queuecontroller) deleteQueue(obj interface{}) {
 		}
 	}
 
+	metrics.DeleteQueueMetrics(queue.Name)
 	c.pgMutex.Lock()
 	defer c.pgMutex.Unlock()
 	delete(c.podGroups, queue.Name)
 }
 
-func (c *queuecontroller) updateQueue(_, _ interface{}) {
-	// currently do not care about queue update
+func (c *queuecontroller) updateQueue(oldObj, newObj interface{}) {
+	oldQueue := oldObj.(*schedulingv1beta1.Queue)
+	newQueue := newObj.(*schedulingv1beta1.Queue)
+
+	if oldQueue.Spec.Parent != newQueue.Spec.Parent {
+		c.addQueue(newObj)
+	}
 }
 
 func (c *queuecontroller) addPodGroup(obj interface{}) {

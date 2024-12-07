@@ -26,7 +26,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
@@ -41,6 +40,29 @@ import (
 )
 
 var calMutex sync.Mutex
+
+// getPodGroupByJob returns the podgroup related to the vcjob.
+// it will return normal pg if it exist in cluster,
+// else it return legacy pg before version 1.5.
+func (cc *jobcontroller) getPodGroupByJob(job *batch.Job) (*scheduling.PodGroup, error) {
+	pgName := cc.generateRelatedPodGroupName(job)
+	pg, err := cc.pgLister.PodGroups(job.Namespace).Get(pgName)
+	if err == nil {
+		return pg, nil
+	}
+	if apierrors.IsNotFound(err) {
+		pg, err := cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
+		if err != nil {
+			return nil, err
+		}
+		return pg, nil
+	}
+	return nil, err
+}
+
+func (cc *jobcontroller) generateRelatedPodGroupName(job *batch.Job) string {
+	return fmt.Sprintf("%s-%s", job.Name, string(job.UID))
+}
 
 func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.PhaseMap, updateStatus state.UpdateStatusFn) error {
 	job := jobInfo.Job
@@ -137,7 +159,7 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 
 	// Update Job status
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		klog.Errorf("Job %v/%v was not found", job.Namespace, job.Name)
 		return nil
 	}
@@ -153,12 +175,17 @@ func (cc *jobcontroller) killJob(jobInfo *apis.JobInfo, podRetainPhase state.Pha
 	}
 
 	// Delete PodGroup
-	pgName := job.Name + "-" + string(job.UID)
-	if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{}); err != nil {
-		if !apierrors.IsNotFound(err) {
-			klog.Errorf("Failed to delete PodGroup of Job %v/%v: %v",
-				job.Namespace, job.Name, err)
-			return err
+	pg, err := cc.getPodGroupByJob(job)
+	if err != nil && !apierrors.IsNotFound(err) {
+		klog.Errorf("Failed to find PodGroup of Job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
+		return err
+	}
+	if pg != nil {
+		if err := cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Delete(context.TODO(), pg.Name, metav1.DeleteOptions{}); err != nil {
+			if !apierrors.IsNotFound(err) {
+				klog.Errorf("Failed to delete PodGroup of Job %s/%s: %v", job.Namespace, job.Name, err)
+				return err
+			}
 		}
 	}
 
@@ -282,8 +309,12 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 	}
 
 	var syncTask bool
-	pgName := job.Name + "-" + string(job.UID)
-	if pg, _ := cc.pgLister.PodGroups(job.Namespace).Get(pgName); pg != nil {
+	pg, err := cc.getPodGroupByJob(job)
+	if err != nil && !apierrors.IsNotFound(err) {
+		klog.Errorf("Failed to find PodGroup of Job: %s/%s, error: %s", job.Namespace, job.Name, err.Error())
+		return err
+	}
+	if pg != nil {
 		if pg.Status.Phase != "" && pg.Status.Phase != scheduling.PodGroupPending {
 			syncTask = true
 		}
@@ -657,63 +688,50 @@ func (cc *jobcontroller) createPVC(job *batch.Job, vcName string, volumeClaim *v
 
 func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	// If PodGroup does not exist, create one for Job.
-	pgName := job.Name + "-" + string(job.UID)
-	var pg *scheduling.PodGroup
-	var err error
-	pg, err = cc.pgLister.PodGroups(job.Namespace).Get(pgName)
+	pg, err := cc.getPodGroupByJob(job)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Errorf("Failed to get PodGroup for Job <%s/%s>: %v",
 				job.Namespace, job.Name, err)
 			return err
 		}
-		// try to get old pg if new pg not exist
-		pg, err = cc.pgLister.PodGroups(job.Namespace).Get(job.Name)
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				klog.Errorf("Failed to get PodGroup for Job <%s/%s>: %v",
+		minTaskMember := map[string]int32{}
+		for _, task := range job.Spec.Tasks {
+			if task.MinAvailable != nil {
+				minTaskMember[task.Name] = *task.MinAvailable
+			} else {
+				minTaskMember[task.Name] = task.Replicas
+			}
+		}
+
+		pg := &scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: job.Namespace,
+				// add job.UID into its name when create new PodGroup
+				Name:        cc.generateRelatedPodGroupName(job),
+				Annotations: job.Annotations,
+				Labels:      job.Labels,
+				OwnerReferences: []metav1.OwnerReference{
+					*metav1.NewControllerRef(job, helpers.JobKind),
+				},
+			},
+			Spec: scheduling.PodGroupSpec{
+				MinMember:         job.Spec.MinAvailable,
+				MinTaskMember:     minTaskMember,
+				Queue:             job.Spec.Queue,
+				MinResources:      cc.calcPGMinResources(job),
+				PriorityClassName: job.Spec.PriorityClassName,
+			},
+		}
+
+		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				klog.Errorf("Failed to create PodGroup for Job <%s/%s>: %v",
 					job.Namespace, job.Name, err)
 				return err
 			}
-
-			minTaskMember := map[string]int32{}
-			for _, task := range job.Spec.Tasks {
-				if task.MinAvailable != nil {
-					minTaskMember[task.Name] = *task.MinAvailable
-				} else {
-					minTaskMember[task.Name] = task.Replicas
-				}
-			}
-
-			pg := &scheduling.PodGroup{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: job.Namespace,
-					// add job.UID into its name when create new PodGroup
-					Name:        pgName,
-					Annotations: job.Annotations,
-					Labels:      job.Labels,
-					OwnerReferences: []metav1.OwnerReference{
-						*metav1.NewControllerRef(job, helpers.JobKind),
-					},
-				},
-				Spec: scheduling.PodGroupSpec{
-					MinMember:         job.Spec.MinAvailable,
-					MinTaskMember:     minTaskMember,
-					Queue:             job.Spec.Queue,
-					MinResources:      cc.calcPGMinResources(job),
-					PriorityClassName: job.Spec.PriorityClassName,
-				},
-			}
-
-			if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
-				if !apierrors.IsAlreadyExists(err) {
-					klog.Errorf("Failed to create PodGroup for Job <%s/%s>: %v",
-						job.Namespace, job.Name, err)
-					return err
-				}
-			}
-			return nil
 		}
+		return nil
 	}
 
 	pgShouldUpdate := false

@@ -89,6 +89,7 @@ func TestAddFlags(t *testing.T) {
 		SchedulerNames:          []string{"volcano", "volcano2"},
 		MaxRequeueNum:           defaultMaxRequeueNum,
 		HealthzBindAddress:      ":11251",
+		ListenAddress:           defaultListenAddress,
 		InheritOwnerAnnotations: true,
 		LeaderElection: config.LeaderElectionConfiguration{
 			LeaderElect:       true,
@@ -99,10 +100,11 @@ func TestAddFlags(t *testing.T) {
 			ResourceNamespace: defaultLockObjectNamespace,
 			ResourceName:      "vc-controller-manager",
 		},
-		LockObjectNamespace: defaultLockObjectNamespace,
-		WorkerThreadsForPG:  5,
-		WorkerThreadsForGC:  1,
-		Controllers:         []string{"*"},
+		LockObjectNamespace:   defaultLockObjectNamespace,
+		WorkerThreadsForPG:    5,
+		WorkerThreadsForQueue: 5,
+		WorkerThreadsForGC:    1,
+		Controllers:           []string{"*"},
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{features.ResourceTopology: false}
 

@@ -70,14 +70,25 @@ var _ = Describe("Reclaim E2E Test", func() {
 			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queue, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", queue)
 			switch status {
-			case "Running":
-				return queue.Status.Running == num, nil
 			case "Open":
 				return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
+			default:
+				return false, nil
+			}
+		})
+		return err
+	}
+
+	CheckPodGroupStatistics := func(ctx *e2eutil.TestContext, status string, num int, queue string) error {
+		err := e2eutil.WaitQueueStatus(func() (bool, error) {
+			pgStats := e2eutil.GetPodGroupStatistics(ctx, ctx.Namespace, queue)
+			switch status {
+			case "Running":
+				return pgStats.Running == num, nil
 			case "Pending":
-				return queue.Status.Pending == num, nil
+				return pgStats.Pending == num, nil
 			case "Inqueue":
-				return queue.Status.Inqueue == num, nil
+				return pgStats.Inqueue == num, nil
 			default:
 				return false, nil
 			}
@@ -117,13 +128,13 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		By("Make sure all job running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q3)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
 	})
@@ -176,10 +187,10 @@ var _ = Describe("Reclaim E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred(), "Get %s pod failed", j3)
 
 		By("Make sure q1 q2 with job running in it.")
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
 		for _, pod := range job3pods.Items {
@@ -188,7 +199,7 @@ var _ = Describe("Reclaim E2E Test", func() {
 		}
 
 		By("Q3 pending when we delete it.")
-		err = WaitQueueStatus(ctx, "Pending", 1, q3)
+		err = CheckPodGroupStatistics(ctx, "Pending", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue pending")
 	})
 
@@ -223,10 +234,10 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		By("Make sure all job running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 	})
 
@@ -265,10 +276,10 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		By("Make sure all job running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 	})
 
@@ -306,16 +317,16 @@ var _ = Describe("Reclaim E2E Test", func() {
 		time.Sleep(10 * time.Second)
 		By("Make sure all job running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q3)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Inqueue", 1, q3)
+		err = CheckPodGroupStatistics(ctx, "Inqueue", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue Inqueue")
 	})
 
@@ -352,14 +363,14 @@ var _ = Describe("Reclaim E2E Test", func() {
 		time.Sleep(10 * time.Second)
 		By("Make sure all job running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
 		// TODO: it is a bug : the job status is pending but podgroup status is running
-		err = WaitQueueStatus(ctx, "Running", 1, q3)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue Running")
 
 	})
@@ -412,13 +423,13 @@ var _ = Describe("Reclaim E2E Test", func() {
 		time.Sleep(10 * time.Second)
 		By("Make sure all job running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Inqueue", 1, q3)
+		err = CheckPodGroupStatistics(ctx, "Inqueue", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue Inqueue")
 	})
 
@@ -457,13 +468,13 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		By("Make sure all job running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q3)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
 	})
@@ -514,10 +525,10 @@ var _ = Describe("Reclaim E2E Test", func() {
 		err = e2eutil.WaitJobReady(ctx, job2)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue1 running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue2 running")
 
 		By("Create coming jobs")
@@ -530,10 +541,10 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		By("Make sure all job running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q3)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue3 running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q4)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q4)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue4 running")
 
 	})
@@ -619,10 +630,10 @@ var _ = Describe("Reclaim E2E Test", func() {
 		err = e2eutil.WaitJobReady(ctx, job2)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = WaitQueueStatus(ctx, "Running", 1, q1)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q1)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue1 running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q2)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q2)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue2 running")
 
 		By("Create coming jobs")
@@ -641,12 +652,128 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		By("Make sure all job running")
 
-		err = WaitQueueStatus(ctx, "Running", 1, q3)
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue3 running")
 
-		err = WaitQueueStatus(ctx, "Running", 3, q4)
+		err = CheckPodGroupStatistics(ctx, "Running", 3, q4)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue4 running")
 
+	})
+
+	// Reclaim for hierarchical capacity plugin.
+	It("Capacity Reclaim Case 12: Multi reclaimed queue", func() {
+		// First replace configmap with hierarchical capacity plugin.
+		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
+		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+			vcScheConfStr, ok := data["volcano-scheduler-ci.conf"]
+			Expect(ok).To(BeTrue())
+
+			schedulerConf := &e2eutil.SchedulerConfiguration{}
+			err := yaml.Unmarshal([]byte(vcScheConfStr), schedulerConf)
+			Expect(err).NotTo(HaveOccurred())
+			trueValue := true
+			schedulerConf.Tiers = []e2eutil.Tier{
+				{
+					Plugins: []e2eutil.PluginOption{
+						{
+							Name:               "capacity",
+							EnabledHierarchy:   &trueValue,
+							EnabledJobOrder:    &trueValue,
+							EnabledReclaimable: &trueValue,
+							EnabledQueueOrder:  &trueValue,
+						},
+					},
+				},
+			}
+			newVCScheConfBytes, err := yaml.Marshal(schedulerConf)
+			Expect(err).NotTo(HaveOccurred())
+
+			changed = true
+			changedBefore = make(map[string]string)
+			changedBefore["volcano-scheduler-ci.conf"] = vcScheConfStr
+			data["volcano-scheduler-ci.conf"] = string(newVCScheConfBytes)
+			return
+		})
+		defer cmc.UndoChanged()
+
+		q1 := "reclaim-q1"
+		q2 := "reclaim-q2"
+		q11 := "reclaim-q11"
+		q12 := "reclaim-q12"
+		rootQueue := "root"
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:        []string{q1, q2, q11, q12},
+			NodesNumLimit: 4,
+			DeservedResource: map[string]v1.ResourceList{
+				q1:  {v1.ResourceCPU: *resource.NewQuantity(4, resource.DecimalSI), v1.ResourceMemory: *resource.NewQuantity(4*1024*1024*1024, resource.BinarySI)},
+				q2:  {v1.ResourceCPU: *resource.NewQuantity(4, resource.DecimalSI), v1.ResourceMemory: *resource.NewQuantity(4*1024*1024*1024, resource.BinarySI)},
+				q11: {v1.ResourceCPU: *resource.NewQuantity(2, resource.DecimalSI), v1.ResourceMemory: *resource.NewQuantity(2*1024*1024*1024, resource.BinarySI)},
+				q12: {v1.ResourceCPU: *resource.NewQuantity(2, resource.DecimalSI), v1.ResourceMemory: *resource.NewQuantity(2*1024*1024*1024, resource.BinarySI)},
+			},
+			QueueParent: map[string]string{
+				q1:  rootQueue,
+				q2:  rootQueue,
+				q11: q1,
+				q12: q1,
+			},
+			NodesResourceLimit: e2eutil.CPU2Mem2,
+			PriorityClasses: map[string]int32{
+				"low-priority": 10,
+			},
+		})
+
+		ctx.Queues = []string{q11, q12, q1, q2}
+		defer e2eutil.CleanupTestContext(ctx)
+
+		By("Setup initial jobs")
+
+		spec := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img:    e2eutil.DefaultNginxImage,
+					Req:    e2eutil.CPU2Mem2,
+					Min:    1,
+					Rep:    1,
+					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
+				},
+			},
+		}
+
+		spec.Name = "reclaim-j1"
+		spec.Queue = q2
+		spec.Pri = "low-priority"
+		job1 := e2eutil.CreateJob(ctx, spec)
+		err := e2eutil.WaitJobReady(ctx, job1)
+		Expect(err).NotTo(HaveOccurred())
+
+		spec.Name = "reclaim-j2"
+		spec.Queue = q11
+		spec.Pri = "low-priority"
+		job2 := e2eutil.CreateJob(ctx, spec)
+		err = e2eutil.WaitJobReady(ctx, job2)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q2)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue11 running")
+
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q11)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue2 running")
+
+		By("Create coming jobs")
+
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q12, "low-priority", "", true)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
+
+		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j4", q11, "low-priority", "", true)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
+
+		By("Make sure all job running")
+
+		err = CheckPodGroupStatistics(ctx, "Running", 1, q12)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue12 running")
+
+		err = CheckPodGroupStatistics(ctx, "Running", 2, q11)
+		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue11 running")
 	})
 
 	It("Reclaim", func() {
@@ -684,9 +811,8 @@ var _ = Describe("Reclaim E2E Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred())
-			return queue.Status.Running == 1, nil
+			pgStats := e2eutil.GetPodGroupStatistics(ctx, ctx.Namespace, q1)
+			return pgStats.Running == 1, nil
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -726,9 +852,8 @@ var _ = Describe("Reclaim E2E Test", func() {
 		err = e2eutil.WaitJobStatePending(ctx, job3)
 		Expect(err).NotTo(HaveOccurred())
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred())
-			return queue.Status.Pending == 1, nil
+			pgStats := e2eutil.GetPodGroupStatistics(ctx, ctx.Namespace, q1)
+			return pgStats.Pending == 1, nil
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})
