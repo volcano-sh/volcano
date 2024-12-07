@@ -1,6 +1,6 @@
 # Volcano node resource reservation
 ## background
-* Consider such situation: there are thounsands of pods to be scheduled evert day, in 1 to 2 o'clock 500 low priority pods are created and schedulered which used 99% of cluster resource, in 2 to 3 o'clock 10 high priority pods are created, however, low priority pods are still running, high priority pods can not be scheduled due to lack of resource.
+* Consider such situation: there are thounsands of pods to be scheduled every day, in 1 to 2 o'clock 500 low priority pods are created and scheduled which used 99% of cluster resource, in 2 to 3 o'clock 10 high priority pods are created, however, low priority pods are still running, high priority pods can not be scheduled due to lack of resource.
 * Users want high priority tasks in 2 to 3 o'clock have resource to schedule immediately every day and high priority tasks not preempt low priority pods because some low priority pods have already run many days.
 ## design
 ![annotation](images/node-resource-reservation-annotation.png) 
@@ -35,7 +35,7 @@ which means this pod will run for a maximum of 500 seconds
 ```
 In the configuration, reservelabels is consisted by nodeSelector which represent a node list, resources represent a list of resource reservation configuration.The overall meaning is that from 3 to 4 o'clock every day, 32 cpu, 64Gi memory need to be reserved and should start reserve 2h ago, if 10 reserve tasks are scheduled during reserve time range, stop reserve. which can save more resources for non-reserved tasks after 10 reserved tasks are scheduled during reserve period.
 #### OpenSession
-* make cache of nodeForbidMap which is used to cache forbidden nodes to forbid non-reserved tasks to be scheduled on reserved nodes, the calculation algorithm is as follows: firstly, order the nodes desc by node idle. Node idle is consisted of node resource unused and the resource will be released in the future before reserve start time which is taken by the annotation of pod max running time. secondly, traverse the ordered nodes, accumulate the node allocatable resource, if the accumulated resource is less than the resource to be reserved, add the node to nodeForbidMap which means the system will have the trend to reserve big resource other than many small resources.
+* make cache of ReserveNodesMap which is used to cache forbidden nodes to forbid non-reserved tasks to be scheduled on reserved nodes, the calculation algorithm is as follows: firstly, order the nodes desc by node idle. Node idle is consisted of node resource unused and the resource will be released in the future before reserve start time which is taken by the annotation of pod max running time. secondly, traverse the ordered nodes, accumulate the node allocatable resource, if the accumulated resource is less than the resource to be reserved, add the node to ReserveNodesMap which means the system will have the trend to reserve big resource other than many small resources.
 * make cache of reservedTaskPendingResource which is used to cache the accumulated resource of pending tasks
 * make cache of reservedTaskAllocatedResource which is used to cache the accumulated resource of allocated tasks
 * make cache of resourceIdle which is used to accumulate the node futureidle resource.
@@ -46,11 +46,7 @@ Predicate is used to restrict other pods to be scheduled on reserved nodes. Rese
 * check if the task is a reserve task, if yes, permit the task to be scheduled on this node.
 * check if the current time is within the reserved time range, if no, permit the non-reserved task to be scheduled on this node.
 * check if the number of reserve pods which have been scheduled is larger than the max pod number configured, if yes, permit the non-reserved task to be scheduled on this node.
-* check if the node is in reserve node list(from nodeForbidMap cache), if yes, deny the non-reserved task to be scheduled on this node.
+* check if the node is in reserve node list(from ReserveNodesMap cache), if yes, deny the non-reserved task to be scheduled on this node.
 * check if the node idle resource(from resourceIdle cache) is larger than the reserve requirements(max(reservedTaskAllocatedResource + reservedTaskPendingResource, reserveResourcesConfig)), if yes, permit the non-reserved task to be scheduled on this node.
 
-![predicate](images/node-resource-reservation-predicate.png) 
-#### JobStarvingFn
-JobStarving is used in preempt action which is an expand of reserve because sometimes reserve node resource may not be completely accurate. If podgroup or pod is set the annotation of reserve, the job is starving and can preempt other possible pods.
-#### PreemptableFn 
-PreemptableFn is used to cooperate JobStarvingFn to filter the victims to be preempted. In reserve situation, the preemptor can preempt the task which have the same node label and the create time of preemptee is later than the preemptor which means to preempt the task which should not be scheduled before and the occupancy rate of the cluster is not effected.
+![predicate](images/node-resource-reservation-predicate.png)
