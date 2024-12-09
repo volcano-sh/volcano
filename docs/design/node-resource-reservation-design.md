@@ -1,11 +1,11 @@
 # Volcano node resource reservation
 ## background
-* Consider such situation: there are thounsands of pods to be scheduled every day, in 1 to 2 o'clock 500 low priority pods are created and scheduled which used 99% of cluster resource, in 2 to 3 o'clock 10 high priority pods are created, however, low priority pods are still running, high priority pods can not be scheduled due to lack of resource.
-* Users want high priority tasks in 2 to 3 o'clock have resource to schedule immediately every day and high priority tasks not preempt low priority pods because some low priority pods have already run many days.
+* Consider such situation: there are thounsands of pods to be scheduled every day, in 1 to 2 o'clock 500 low priority pods are created and scheduled which used 99% of cluster resource, in 2 to 3 o'clock 10 pods which need to be reserved are created, however, low priority pods are still running, pods which need to be reserved can not be scheduled due to lack of resource.
+* Users want pods which need to be reserved in 2 to 3 o'clock have resource to schedule immediately every day and not preempt low priority pods because some low priority pods have already run many days.
 ## design
 ![annotation](images/node-resource-reservation-annotation.png) 
-### recognize high priority pods
-There are two ways to recognize high priority pods:
+### recognize pods which need to be reserved
+There are two ways to recognize these pods:
 * set annotation volcano.sh/reserveable: true in podgroup 
 which means all pods under podgroup are reserve tasks
 * set annotation volcano.sh/reserveable: true in pod
