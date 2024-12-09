@@ -594,4 +594,27 @@ var _ = Describe("Job E2E Test", func() {
 		Expect(pgPhase).To(Equal(vcscheduling.PodGroupCompleted), "podGroup Phase is %s, should be %s",
 			ctx.Namespace, vcscheduling.PodGroupCompleted)
 	})
+
+	It("PodGroup's Phase should be Completed when Job fails", func() {
+		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(ctx)
+
+		jb := e2eutil.CreateFailK8sJob(ctx, "job1", e2eutil.DefaultNginxImage, e2eutil.OneCPU)
+		err := e2eutil.Waitk8sJobCompleted(ctx, jb.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		var pgPhase vcscheduling.PodGroupPhase
+		wait.Poll(time.Second, time.Second*30, func() (bool, error) {
+			pgs, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to list podGroups in namespace %s", ctx.Namespace)
+			Expect(len(pgs.Items)).To(Equal(1), "this test need a clean cluster")
+			pgPhase = pgs.Items[0].Status.Phase
+			if pgPhase != vcscheduling.PodGroupRunning {
+				return true, nil
+			}
+			return false, nil
+		})
+		Expect(pgPhase).To(Equal(vcscheduling.PodGroupCompleted), "podGroup Phase is %s, should be %s",
+			ctx.Namespace, vcscheduling.PodGroupCompleted)
+	})
 })

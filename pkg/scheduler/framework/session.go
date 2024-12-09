@@ -333,7 +333,7 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 	} else {
 		allocated := 0
 		for status, tasks := range jobInfo.TaskStatusIndex {
-			if api.AllocatedStatus(status) || status == api.Succeeded {
+			if api.AllocatedStatus(status) || api.CompletedStatus(status) {
 				allocated += len(tasks)
 			}
 		}
@@ -341,8 +341,8 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 		// If there're enough allocated resource, it's running
 		if int32(allocated) >= jobInfo.PodGroup.Spec.MinMember {
 			status.Phase = scheduling.PodGroupRunning
-			// If all allocated tasks is succeeded, it's completed
-			if len(jobInfo.TaskStatusIndex[api.Succeeded]) == allocated {
+			// If all allocated tasks is succeeded or failed, it's completed
+			if len(jobInfo.TaskStatusIndex[api.Succeeded])+len(jobInfo.TaskStatusIndex[api.Failed]) == allocated {
 				status.Phase = scheduling.PodGroupCompleted
 			}
 		} else if jobInfo.PodGroup.Status.Phase != scheduling.PodGroupInqueue {
