@@ -350,10 +350,6 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 		}
 	}
 
-	status.Running = int32(len(jobInfo.TaskStatusIndex[api.Running]))
-	status.Failed = int32(len(jobInfo.TaskStatusIndex[api.Failed]))
-	status.Succeeded = int32(len(jobInfo.TaskStatusIndex[api.Succeeded]))
-
 	return status
 }
 
