@@ -106,13 +106,13 @@ type jobcontroller struct {
 	queueSynced func() bool
 
 	// queue that need to sync up
-	queueList    []workqueue.RateLimitingInterface
-	commandQueue workqueue.RateLimitingInterface
+	queueList    []workqueue.TypedRateLimitingInterface[apis.Request]
+	commandQueue workqueue.TypedRateLimitingInterface[*busv1alpha1.Command]
 	cache        jobcache.Cache
 	// Job Event recorder
 	recorder record.EventRecorder
 
-	errTasks      workqueue.RateLimitingInterface
+	errTasks      workqueue.TypedRateLimitingInterface[*v1.Pod]
 	workers       uint32
 	maxRequeueNum int
 }
@@ -135,8 +135,8 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
 	cc.informerFactory = sharedInformers
-	cc.queueList = make([]workqueue.RateLimitingInterface, workers)
-	cc.commandQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	cc.queueList = make([]workqueue.TypedRateLimitingInterface[apis.Request], workers)
+	cc.commandQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[*busv1alpha1.Command]())
 	cc.cache = jobcache.New()
 	cc.errTasks = newRateLimitingQueue()
 	cc.recorder = recorder
@@ -148,7 +148,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	var i uint32
 	for i = 0; i < workers; i++ {
-		cc.queueList[i] = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+		cc.queueList[i] = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[apis.Request]())
 	}
 
 	factory := opt.VCSharedInformerFactory
@@ -292,7 +292,7 @@ func (cc *jobcontroller) belongsToThisRoutine(key string, count uint32) bool {
 	return val%cc.workers == count
 }
 
-func (cc *jobcontroller) getWorkerQueue(key string) workqueue.RateLimitingInterface {
+func (cc *jobcontroller) getWorkerQueue(key string) workqueue.TypedRateLimitingInterface[apis.Request] {
 	var hashVal hash.Hash32
 	var val uint32
 
@@ -308,13 +308,11 @@ func (cc *jobcontroller) getWorkerQueue(key string) workqueue.RateLimitingInterf
 
 func (cc *jobcontroller) processNextReq(count uint32) bool {
 	queue := cc.queueList[count]
-	obj, shutdown := queue.Get()
+	req, shutdown := queue.Get()
 	if shutdown {
 		klog.Errorf("Fail to pop item from queue")
 		return false
 	}
-
-	req := obj.(apis.Request)
 	defer queue.Done(req)
 
 	key := jobcache.JobKeyByReq(&req)
