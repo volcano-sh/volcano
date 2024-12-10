@@ -3,6 +3,7 @@ module volcano.sh/volcano
 go 1.22.0
 
 require (
+	github.com/KimMachineGun/automemlimit v0.6.1
 	github.com/agiledragon/gomonkey/v2 v2.11.0
 	github.com/cilium/ebpf v0.9.3
 	github.com/containernetworking/cni v1.1.2
@@ -35,7 +36,7 @@ require (
 	k8s.io/apimachinery v0.31.1
 	k8s.io/apiserver v0.31.1
 	k8s.io/client-go v0.31.1
-	k8s.io/code-generator v0.31.1
+	k8s.io/code-generator v0.31.2
 	k8s.io/component-base v0.31.1
 	k8s.io/component-helpers v0.31.1
 	k8s.io/csi-translation-lib v0.31.1
@@ -53,10 +54,13 @@ require (
 	github.com/Microsoft/go-winio v0.6.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/bits-and-blooms/bitset v1.2.0 // indirect
+	github.com/containerd/cgroups/v3 v3.0.1 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.4 // indirect
+	github.com/docker/go-units v0.5.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20220909204839-494a5a6aca78 // indirect
+	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.53.0 // indirect
