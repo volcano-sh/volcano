@@ -58,6 +58,8 @@ spec:
                                   path:
                                     type: string
                                   port:
+                                    maximum: 65535
+                                    minimum: 0
                                     type: integer
                                   taskName:
                                     type: string
@@ -76,6 +78,8 @@ spec:
                               items:
                                 properties:
                                   port:
+                                    maximum: 65535
+                                    minimum: 0
                                     type: integer
                                   taskName:
                                     type: string
@@ -90,12 +94,16 @@ spec:
                           type: array
                       type: object
                     name:
+                      minLength: 1
                       type: string
                   required:
                   - name
                   type: object
                 type: array
               jobRetainPolicy:
+                enum:
+                - retain
+                - delete
                 type: string
             type: object
           status:

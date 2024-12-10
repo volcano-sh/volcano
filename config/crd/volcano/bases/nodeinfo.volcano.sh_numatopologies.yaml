@@ -46,10 +46,13 @@ spec:
                   description: CPUInfo is the cpu topology detail
                   properties:
                     core:
+                      minimum: 0
                       type: integer
                     numa:
+                      minimum: 0
                       type: integer
                     socket:
+                      minimum: 0
                       type: integer
                   type: object
                 description: |-
