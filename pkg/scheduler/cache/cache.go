@@ -57,6 +57,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	v1beta1apply "volcano.sh/apis/pkg/client/applyconfiguration/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -300,7 +301,22 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 		return nil, err
 	}
 
-	updated, err := su.vcclient.SchedulingV1beta1().PodGroups(podgroup.Namespace).Update(context.TODO(), podgroup, metav1.UpdateOptions{})
+	conditions := make([]*v1beta1apply.PodGroupConditionApplyConfiguration, len(podgroup.Status.Conditions))
+	for i, cond := range podgroup.Status.Conditions {
+		conditions[i] = v1beta1apply.PodGroupCondition().
+			WithType(cond.Type).
+			WithTransitionID(cond.TransitionID).
+			WithStatus(cond.Status).
+			WithReason(cond.Reason).
+			WithMessage(cond.Message).
+			WithLastTransitionTime(cond.LastTransitionTime)
+	}
+	pgStatusApply := v1beta1apply.PodGroupStatus().
+		WithPhase(podgroup.Status.Phase).WithConditions(conditions...)
+	pgApply := v1beta1apply.PodGroup(podgroup.Name, podgroup.Namespace).
+		WithStatus(pgStatusApply)
+	updated, err := su.vcclient.SchedulingV1beta1().PodGroups(podgroup.Namespace).ApplyStatus(
+		context.TODO(), pgApply, metav1.ApplyOptions{FieldManager: "pg-controller"})
 	if err != nil {
 		klog.Errorf("Error while updating PodGroup with error: %v", err)
 		return nil, err
