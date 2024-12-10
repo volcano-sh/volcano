@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fake-deployment
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fake-deployment
+  template:
+    metadata:
+      labels:
+        app: fake-deployment
+    spec:
+      schedulerName: volcano
+      tolerations:
+      - key: "kwok.x-k8s.io/node"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: fake-container
+        image: fake-image
+        resources:
+          requests:
+            cpu: 2
+            memory: 4Gi
