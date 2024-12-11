@@ -133,35 +133,35 @@ install-ginkgo-if-not-exist
 case ${E2E_TYPE} in
 "ALL")
     echo "Running e2e..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --nodes=4 --compilers=4 --randomize-all --randomize-suites --fail-on-pending --cover --trace --race --slow-spec-threshold='30s' --progress ./test/e2e/jobp/
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/jobseq/
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingbase/
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingaction/
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/vcctl/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --nodes=4 --compilers=4 --randomize-all --randomize-suites --fail-on-pending --cover --trace --race --poll-progress-after='30s' --show-node-events ./test/e2e/jobp/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --poll-progress-after='30s' --show-node-events ./test/e2e/jobseq/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --poll-progress-after='30s' --show-node-events ./test/e2e/schedulingbase/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --poll-progress-after='30s' --show-node-events ./test/e2e/schedulingaction/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --poll-progress-after='30s' --show-node-events ./test/e2e/vcctl/
     ;;
 "JOBP")
     echo "Running parallel job e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --nodes=4 --compilers=4 --randomize-all --randomize-suites --fail-on-pending --cover --trace --race --slow-spec-threshold='30s' --progress ./test/e2e/jobp/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --nodes=4 --compilers=4 --randomize-all --randomize-suites --fail-on-pending --cover --trace --race --poll-progress-after='30s' --show-node-events ./test/e2e/jobp/
     ;;
 "JOBSEQ")
     echo "Running sequence job e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/jobseq/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --poll-progress-after='30s' --show-node-events ./test/e2e/jobseq/
     ;;
 "SCHEDULINGBASE")
     echo "Running scheduling base e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingbase/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --poll-progress-after='30s' --show-node-events ./test/e2e/schedulingbase/
     ;;
 "SCHEDULINGACTION")
     echo "Running scheduling action e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingaction/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --poll-progress-after='30s' --show-node-events ./test/e2e/schedulingaction/
     ;;
 "VCCTL")
     echo "Running vcctl e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/vcctl/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --poll-progress-after='30s' --show-node-events ./test/e2e/vcctl/
     ;;
 "STRESS")
     echo "Running stress e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/stress/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --poll-progress-after='30s' --show-node-events ./test/e2e/stress/
     ;;
 esac
 
