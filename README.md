@@ -153,6 +153,10 @@ make TAG=latest generate-yaml
 kubectl create -f _output/release/volcano-monitoring-latest.yaml
 ```
 
+### Install dashboard
+
+Please follow the guide [Volcano Dashboard](https://github.com/volcano-sh/dashboard#volcano-dashboard) to install volcano dashboard.
+
 ## Kubernetes compatibility
 
 |                       | Kubernetes 1.17 | Kubernetes 1.18 | Kubernetes 1.19 | Kubernetes 1.20 | Kubernetes 1.21 | Kubernetes 1.22 | Kubernetes 1.23 | Kubernetes 1.24 | Kubernetes 1.25 | Kubernetes 1.26 | Kubernetes 1.27 | Kubernetes 1.28 | Kubernetes 1.29 |Kubernetes 1.30 |Kubernetes 1.31 |

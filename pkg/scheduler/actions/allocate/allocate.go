@@ -282,6 +282,10 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			if err := stmt.Allocate(task, bestNode); err != nil {
 				klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 					task.UID, bestNode.Name, ssn.UID, err)
+				if rollbackErr := stmt.UnAllocate(task); rollbackErr != nil {
+					klog.Errorf("Failed to unallocate Task %v on %v in Session %v for %v.",
+						task.UID, bestNode.Name, ssn.UID, rollbackErr)
+				}
 			} else {
 				metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 				metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
@@ -297,6 +301,10 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 				if err := stmt.Pipeline(task, bestNode.Name, false); err != nil {
 					klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 						task.UID, bestNode.Name, ssn.UID, err)
+					if rollbackErr := stmt.UnPipeline(task); rollbackErr != nil {
+						klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
+							task.UID, bestNode.Name, ssn.UID, rollbackErr)
+					}
 				} else {
 					metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 					metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
