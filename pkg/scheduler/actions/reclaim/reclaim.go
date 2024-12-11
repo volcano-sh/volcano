@@ -69,7 +69,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			queues.Push(queue)
 		}
 
-		if job.HasPendingTasks() {
+		if job.IsStarving() {
 			if _, found := preemptorsMap[job.Queue]; !found {
 				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
