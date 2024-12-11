@@ -104,7 +104,7 @@ function patchSecret() {
   TLS_CRT=$(base64 < ${CERTDIR}/server.crt | tr -d '\n')
   CA_CRT=$(base64 < ${CERTDIR}/ca.crt | tr -d '\n')
 
-  cat <<EOF > patch.json
+  cat <<EOF > ${CERTDIR}/patch.json
 [
   {"op": "replace", "path": "/data/tls.key", "value": "$TLS_KEY"},
   {"op": "replace", "path": "/data/tls.crt", "value": "$TLS_CRT"},
@@ -112,7 +112,7 @@ function patchSecret() {
 ]
 EOF
 
-  kubectl patch secret ${SECRET} -n ${NAMESPACE} --type=json -p="$(cat patch.json)"
+  kubectl patch secret ${SECRET} -n ${NAMESPACE} --type=json -p="$(cat ${CERTDIR}/patch.json)"
 }
 
 createCerts

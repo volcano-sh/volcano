@@ -22,6 +22,10 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
+const (
+	controllerName = "queue-controller"
+)
+
 type patchOperation struct {
 	Op    string      `json:"op"`
 	Path  string      `json:"path"`
