@@ -54,7 +54,7 @@ func ResumeJob(ctx context.Context) error {
 		return err
 	}
 
-	return createJobCommand(ctx, config,
+	return util.CreateJobCommand(ctx, config,
 		resumeJobFlags.Namespace, resumeJobFlags.JobName,
 		v1alpha1.ResumeJobAction)
 }
