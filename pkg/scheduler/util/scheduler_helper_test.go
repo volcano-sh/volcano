@@ -17,10 +17,12 @@ limitations under the License.
 package util
 
 import (
-	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/api/equality"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -30,6 +32,7 @@ func TestSelectBestNode(t *testing.T) {
 		NodeScores map[float64][]*api.NodeInfo
 		// Expected node is one of ExpectedNodes
 		ExpectedNodes []*api.NodeInfo
+		ExpectedScore float64
 	}{
 		{
 			NodeScores: map[float64][]*api.NodeInfo{
@@ -37,6 +40,7 @@ func TestSelectBestNode(t *testing.T) {
 				2.0: {&api.NodeInfo{Name: "node3"}, &api.NodeInfo{Name: "node4"}},
 			},
 			ExpectedNodes: []*api.NodeInfo{{Name: "node3"}, {Name: "node4"}},
+			ExpectedScore: 2.0,
 		},
 		{
 			NodeScores: map[float64][]*api.NodeInfo{
@@ -45,6 +49,7 @@ func TestSelectBestNode(t *testing.T) {
 				2.0: {&api.NodeInfo{Name: "node4"}, &api.NodeInfo{Name: "node5"}},
 			},
 			ExpectedNodes: []*api.NodeInfo{{Name: "node3"}},
+			ExpectedScore: 3.0,
 		},
 		{
 			NodeScores:    map[float64][]*api.NodeInfo{},
@@ -61,9 +66,12 @@ func TestSelectBestNode(t *testing.T) {
 		return false
 	}
 	for i, test := range cases {
-		result := SelectBestNode(test.NodeScores)
+		result, score := SelectBestNodeAndScore(test.NodeScores)
 		if !oneOf(result, test.ExpectedNodes) {
 			t.Errorf("Failed test case #%d, expected: %#v, got %#v", i, test.ExpectedNodes, result)
+		}
+		if score != test.ExpectedScore {
+			t.Errorf("Failed test case #%d, expected: %#v, got %#v", i, test.ExpectedScore, score)
 		}
 	}
 }
@@ -160,15 +168,15 @@ func TestNumFeasibleNodesToFind(t *testing.T) {
 func TestGetHyperNodeList(t *testing.T) {
 	testCases := []struct {
 		name       string
-		hyperNodes map[string][]string
+		hyperNodes map[string]sets.Set[string]
 		allNodes   map[string]*api.NodeInfo
 		expected   map[string][]*api.NodeInfo
 	}{
 		{
 			name: "Normal case",
-			hyperNodes: map[string][]string{
-				"hyperNode1": {"node1", "node2"},
-				"hyperNode2": {"node3"},
+			hyperNodes: map[string]sets.Set[string]{
+				"hyperNode1": sets.New[string]("node1", "node2"),
+				"hyperNode2": sets.New[string]("node3"),
 			},
 			allNodes: map[string]*api.NodeInfo{
 				"node1": {Name: "node1"},
@@ -187,9 +195,9 @@ func TestGetHyperNodeList(t *testing.T) {
 		},
 		{
 			name: "Missing nodes",
-			hyperNodes: map[string][]string{
-				"hyperNode1": {"node1", "node4"},
-				"hyperNode2": {"node3"},
+			hyperNodes: map[string]sets.Set[string]{
+				"hyperNode1": sets.New[string]("node1", "node4"),
+				"hyperNode2": sets.New[string]("node3"),
 			},
 			allNodes: map[string]*api.NodeInfo{
 				"node1": {Name: "node1"},
@@ -206,7 +214,7 @@ func TestGetHyperNodeList(t *testing.T) {
 		},
 		{
 			name:       "Empty hyperNodes",
-			hyperNodes: map[string][]string{},
+			hyperNodes: map[string]sets.Set[string]{},
 			allNodes: map[string]*api.NodeInfo{
 				"node1": {Name: "node1"},
 				"node2": {Name: "node2"},
@@ -215,8 +223,8 @@ func TestGetHyperNodeList(t *testing.T) {
 		},
 		{
 			name: "Empty allNodes",
-			hyperNodes: map[string][]string{
-				"hyperNode1": {"node1", "node2"},
+			hyperNodes: map[string]sets.Set[string]{
+				"hyperNode1": sets.New[string]("node1", "node2"),
 			},
 			allNodes: map[string]*api.NodeInfo{},
 			expected: map[string][]*api.NodeInfo{

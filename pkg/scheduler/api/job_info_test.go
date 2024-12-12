@@ -442,6 +442,8 @@ func TestGetElasticResources(t *testing.T) {
 }
 
 func TestHasTopologyHardConstrain(t *testing.T) {
+	HighestTierAllowedTwo := 2
+	HighestTierAllowedThree := 3
 	tests := []struct {
 		name            string
 		jobInfo         *JobInfo
@@ -478,7 +480,7 @@ func TestHasTopologyHardConstrain(t *testing.T) {
 						Spec: scheduling.PodGroupSpec{
 							NetworkTopologies: &scheduling.NetworkTopologiesSpec{
 								Mode:               scheduling.HardNetworkTopologyMode,
-								HighestTierAllowed: 2,
+								HighestTierAllowed: &HighestTierAllowedTwo,
 							},
 						},
 					},
@@ -495,7 +497,7 @@ func TestHasTopologyHardConstrain(t *testing.T) {
 						Spec: scheduling.PodGroupSpec{
 							NetworkTopologies: &scheduling.NetworkTopologiesSpec{
 								Mode:               scheduling.SoftNetworkTopologyMode,
-								HighestTierAllowed: 3,
+								HighestTierAllowed: &HighestTierAllowedThree,
 							},
 						},
 					},

@@ -23,6 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -50,8 +51,8 @@ type TestCommonStruct struct {
 	// Resource objects that need to be added to schedulercache
 	Pods                 []*v1.Pod
 	Nodes                []*v1.Node
-	HyperNodesListByTier [][]string
-	HyperNodes           map[string][]string
+	HyperNodesListByTier map[int][]string
+	HyperNodes           map[string]sets.Set[string]
 	PodGroups            []*vcapisv1.PodGroup
 	Queues               []*vcapisv1.Queue
 	PriClass             []*schedulingv1.PriorityClass
@@ -73,8 +74,8 @@ type TestCommonStruct struct {
 	// ExpectEvictNum the expected evict events numbers, include preempted and reclaimed evict events
 	ExpectEvictNum int
 
-	// minimalBindCheck true will only check both bind num.
-	minimalBindCheck bool
+	// MinimalBindCheck true will only check both bind num, false by default.
+	MinimalBindCheck bool
 
 	// fake interface instance when check results need
 	stop       chan struct{}
@@ -184,7 +185,7 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 		}
 	}
 
-	if test.minimalBindCheck {
+	if test.MinimalBindCheck {
 		return nil
 	}
 
@@ -288,8 +289,4 @@ func (test *TestCommonStruct) CheckPipelined(caseIndex int) error {
 		}
 	}
 	return nil
-}
-
-func (test *TestCommonStruct) SetMinimalBindCheck(flag bool) {
-	test.minimalBindCheck = flag
 }

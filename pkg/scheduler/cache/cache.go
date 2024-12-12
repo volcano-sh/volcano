@@ -137,8 +137,8 @@ type SchedulerCache struct {
 	defaultPriorityClass *schedulingv1.PriorityClass
 	defaultPriority      int32
 	CSINodesStatus       map[string]*schedulingapi.CSINodeStatusInfo
-	HyperNodesListByTier [][]string
-	HyperNodes           map[string][]string
+	HyperNodesListByTier map[int][]string
+	HyperNodes           map[string]sets.Set[string]
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
@@ -586,8 +586,8 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		imageStates:         make(map[string]*imageState),
 
 		// HyperNode info
-		HyperNodesListByTier: make([][]string, 0),
-		HyperNodes:           make(map[string][]string),
+		HyperNodesListByTier: make(map[int][]string),
+		HyperNodes:           make(map[string]sets.Set[string]),
 
 		NodeList:    []string{},
 		nodeWorkers: nodeWorkers,
@@ -1344,8 +1344,8 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	snapshot := &schedulingapi.ClusterInfo{
 		Nodes:                make(map[string]*schedulingapi.NodeInfo),
-		HyperNodes:           make(map[string][]string),
-		HyperNodesListByTier: make([][]string, 0),
+		HyperNodesListByTier: make(map[int][]string),
+		HyperNodes:           make(map[string]sets.Set[string]),
 		Jobs:                 make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
 		Queues:               make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		NamespaceInfo:        make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
@@ -1376,20 +1376,18 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	}
 
 	// Snapshot hyperNodes.
-	copiedHyperNodesListByTier := make([][]string, len(sc.HyperNodesListByTier))
-	for i, row := range sc.HyperNodesListByTier {
-		copiedHyperNodesListByTier[i] = make([]string, len(row))
-		copy(copiedHyperNodesListByTier[i], row)
+	copiedHyperNodesListByTier := make(map[int][]string, len(sc.HyperNodesListByTier))
+	for tier, row := range sc.HyperNodesListByTier {
+		copiedHyperNodesListByTier[tier] = make([]string, len(row))
+		copy(copiedHyperNodesListByTier[tier], row)
 	}
 
 	hyperNodeLength := make(map[string]int)
 	snapshot.HyperNodesListByTier = copiedHyperNodesListByTier
-	copiedHyperNodes := make(map[string][]string, len(sc.HyperNodes))
+	copiedHyperNodes := make(map[string]sets.Set[string], len(sc.HyperNodes))
 	for name, value := range sc.HyperNodes {
-		copiedHyperNodes[name] = make([]string, len(value))
-		copy(copiedHyperNodes[name], value)
-		hyperNodeLength[name] = len(value)
-
+		copiedHyperNodes[name] = value.Clone()
+		hyperNodeLength[name] = value.Len()
 	}
 	snapshot.HyperNodes = copiedHyperNodes
 
