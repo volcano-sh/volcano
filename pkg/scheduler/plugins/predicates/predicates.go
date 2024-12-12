@@ -271,7 +271,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					// deallocate pod gpu id
 					err := devices.Release(ssn.KubeClient(), pod)
 					if err != nil {
-						klog.Errorf(err.Error())
+						klog.Errorf("Device %s release failed for pod %s/%s, err:%s", val, pod.Namespace, pod.Name, err.Error())
 						return
 					}
 				} else {
@@ -389,7 +389,15 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		predicateStatus := make([]*api.Status, 0)
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
-			return api.NewFitError(task, node, "node info not found")
+			klog.V(4).Infof("NodeInfo predicates Task <%s/%s> on Node <%s> failed, node info not found",
+				task.Namespace, task.Name, node.Name)
+			nodeInfoStatus := &api.Status{
+				Code:   api.Error,
+				Reason: "node info not found",
+				Plugin: pp.Name(),
+			}
+			predicateStatus = append(predicateStatus, nodeInfoStatus)
+			return api.NewFitErrWithStatus(task, node, predicateStatus...)
 		}
 
 		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods) {
@@ -398,18 +406,21 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			podsNumStatus := &api.Status{
 				Code:   api.Unschedulable,
 				Reason: api.NodePodNumberExceeded,
+				Plugin: pp.Name(),
 			}
 			predicateStatus = append(predicateStatus, podsNumStatus)
 		}
 
-		predicateByStablefilter := func(pod *v1.Pod, nodeInfo *k8sframework.NodeInfo) ([]*api.Status, bool, error) {
+		predicateByStablefilter := func(nodeInfo *k8sframework.NodeInfo) ([]*api.Status, bool, error) {
 			// CheckNodeUnschedulable
 			predicateStatus := make([]*api.Status, 0)
 			status := nodeUnscheduleFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 			nodeUnscheduleStatus := api.ConvertPredicateStatus(status)
 			if nodeUnscheduleStatus.Code != api.Success {
 				predicateStatus = append(predicateStatus, nodeUnscheduleStatus)
-				return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeUnscheduleFilter.Name(), status.Message())
+				if ShouldAbort(nodeUnscheduleStatus) {
+					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeUnscheduleFilter.Name(), status.Message())
+				}
 			}
 
 			// Check NodeAffinity
@@ -418,7 +429,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				nodeAffinityStatus := api.ConvertPredicateStatus(status)
 				if nodeAffinityStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, nodeAffinityStatus)
-					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeAffinityFilter.Name(), status.Message())
+					if ShouldAbort(nodeAffinityStatus) {
+						return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeAffinityFilter.Name(), status.Message())
+					}
 				}
 			}
 
@@ -428,7 +441,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				tolerationStatus := api.ConvertPredicateStatus(status)
 				if tolerationStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, tolerationStatus)
-					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", tolerationFilter.Name(), status.Message())
+					if ShouldAbort(tolerationStatus) {
+						return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", tolerationFilter.Name(), status.Message())
+					}
 				}
 			}
 
@@ -442,7 +457,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		if predicate.cacheEnable {
 			fit, err = pCache.PredicateWithCache(node.Name, task.Pod)
 			if err != nil {
-				predicateCacheStatus, fit, _ = predicateByStablefilter(task.Pod, nodeInfo)
+				predicateCacheStatus, fit, _ = predicateByStablefilter(nodeInfo)
 				pCache.UpdateCache(node.Name, task.Pod, fit)
 			} else {
 				if !fit {
@@ -453,7 +468,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				}
 			}
 		} else {
-			predicateCacheStatus, fit, _ = predicateByStablefilter(task.Pod, nodeInfo)
+			predicateCacheStatus, fit, _ = predicateByStablefilter(nodeInfo)
 		}
 
 		predicateStatus = append(predicateStatus, predicateCacheStatus...)
@@ -469,7 +484,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				nodePortStatus := api.ConvertPredicateStatus(status)
 				if nodePortStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, nodePortStatus)
-					return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					if ShouldAbort(nodePortStatus) {
+						return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					}
 				}
 			}
 		}
@@ -481,6 +498,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				status := podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 				podAffinityStatus := api.ConvertPredicateStatus(status)
 				if podAffinityStatus.Code != api.Success {
+					// TODO: Currently, preemption is not supported when Pod affinity filtering fails.
+					// Once supported, the logic here should be removed.
+					// See https://github.com/volcano-sh/volcano/issues/3845
+					podAffinityStatus.Code = api.UnschedulableAndUnresolvable
 					predicateStatus = append(predicateStatus, podAffinityStatus)
 					return api.NewFitErrWithStatus(task, node, predicateStatus...)
 				}
@@ -493,7 +514,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			nodeVolumeStatus := api.ConvertPredicateStatus(status)
 			if nodeVolumeStatus.Code != api.Success {
 				predicateStatus = append(predicateStatus, nodeVolumeStatus)
-				return api.NewFitErrWithStatus(task, node, predicateStatus...)
+				if ShouldAbort(nodeVolumeStatus) {
+					return api.NewFitErrWithStatus(task, node, predicateStatus...)
+				}
 			}
 		}
 
@@ -503,7 +526,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			volumeZoneStatus := api.ConvertPredicateStatus(status)
 			if volumeZoneStatus.Code != api.Success {
 				predicateStatus = append(predicateStatus, volumeZoneStatus)
-				return api.NewFitErrWithStatus(task, node, predicateStatus...)
+				if ShouldAbort(volumeZoneStatus) {
+					return api.NewFitErrWithStatus(task, node, predicateStatus...)
+				}
 			}
 		}
 
@@ -515,7 +540,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				podTopologyStatus := api.ConvertPredicateStatus(status)
 				if podTopologyStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, podTopologyStatus)
-					return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					if ShouldAbort(podTopologyStatus) {
+						return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					}
 				}
 			}
 		}
@@ -525,13 +552,39 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			proportionalStatus, _ := checkNodeResourceIsProportional(task, node, predicate.proportional)
 			if proportionalStatus.Code != api.Success {
 				predicateStatus = append(predicateStatus, proportionalStatus)
-				return api.NewFitErrWithStatus(task, node, predicateStatus...)
+				if ShouldAbort(proportionalStatus) {
+					return api.NewFitErrWithStatus(task, node, predicateStatus...)
+				}
 			}
 			klog.V(4).Infof("checkNodeResourceIsProportional predicates Task <%s/%s> on Node <%s>: fit %v",
 				task.Namespace, task.Name, node.Name, fit)
 		}
+
+		if len(predicateStatus) > 0 {
+			return api.NewFitErrWithStatus(task, node, predicateStatus...)
+		}
+
 		return nil
 	})
+}
+
+// ShouldAbort determines if the given status indicates that execution should be aborted.
+// It checks if the status code corresponds to any of the following conditions:
+// - UnschedulableAndUnresolvable: Indicates the task cannot be scheduled and resolved.
+// - Error: Represents an error state that prevents further execution.
+// - Wait: Suggests that the process should pause and not proceed further.
+// - Skip: Indicates that the operation should be skipped entirely.
+//
+// Parameters:
+// - status (*api.Status): The status object to evaluate.
+//
+// Returns:
+// - bool: True if the status code matches any of the abort conditions; false otherwise.
+func ShouldAbort(status *api.Status) bool {
+	return status.Code == api.UnschedulableAndUnresolvable ||
+		status.Code == api.Error ||
+		status.Code == api.Wait ||
+		status.Code == api.Skip
 }
 
 func handleSkipPredicatePlugin(task *api.TaskInfo, skipPlugins map[api.TaskID]sets.Set[string], pluginName string, node *api.NodeInfo) bool {

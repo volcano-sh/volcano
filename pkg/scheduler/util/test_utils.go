@@ -220,7 +220,7 @@ func BuildPodGroupWithNetWorkTopologies(name, ns, queue string, minMember int32,
 	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
 	pg.Spec.NetworkTopologies = &schedulingv1beta1.NetworkTopologiesSpec{
 		Mode:               schedulingv1beta1.NetworkTopologyMode(mode),
-		HighestTierAllowed: highestTierAllowed,
+		HighestTierAllowed: &highestTierAllowed,
 	}
 	return pg
 }

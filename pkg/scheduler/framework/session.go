@@ -20,8 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/util/sets"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -80,7 +78,7 @@ type Session struct {
 	// HyperNodesListByTier contains a list of hyperNodes by tier from down to top, nodes under the same hyperNode
 	// have the same topology domain, e.g., nodes under the same switch or tor, jobs allocated in the same
 	// hyperNode can gain a better performance, the lower the tier of hyperNode, the better performance.
-	HyperNodesListByTier [][]string
+	HyperNodesListByTier map[int][]string
 	// HyperNodes maps hyperNode Name -> nodes under the hyperNode.
 	HyperNodes map[string][]*api.NodeInfo
 
@@ -714,38 +712,4 @@ func (ssn Session) String() string {
 	}
 
 	return msg
-}
-
-func (ssn *Session) GetNodeGroupIDByJob(job *api.JobInfo) (string, error) {
-	nodeGroupIDs := sets.New[string]()
-
-	if hardMode, _ := job.HasTopologyHardConstrain(); !hardMode {
-		return "", nil
-	}
-
-	for _, ti := range job.Tasks {
-		if !api.AllocatedStatus(ti.Status) {
-			continue
-		}
-		nodeGroupIDs.Insert(ssn.findNodeGroupIDByNodeName(ti.NodeName))
-		if nodeGroupIDs.Len() > 1 {
-			return "", fmt.Errorf("job %s bound to multiple nodeGroups %v", job.UID, nodeGroupIDs)
-		}
-	}
-
-	if nodeGroupIDs.Len() == 0 {
-		return "", nil
-	}
-
-	if nodeGroupIDs.Len() > 1 {
-		return "", fmt.Errorf("job %s bound to multiple nodeGroups %v", job.UID, nodeGroupIDs)
-	}
-
-	return "", nil
-
-}
-
-func (ssn *Session) findNodeGroupIDByNodeName(nodeName string) string {
-	// TODO
-	return ""
 }

@@ -27,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -52,12 +53,23 @@ func (d *Dumper) dumpToJSONFile() {
 	}
 	defer file.Close()
 	klog.Infoln("Starting to dump info in scheduler cache to file", fName)
-	if err = json.NewEncoder(file).Encode(snapshot.Nodes); err != nil {
+
+	if err := encodeCache(file, snapshot.Nodes, snapshot.HyperNodesListByTier, snapshot.HyperNodes, snapshot.Jobs); err != nil {
 		klog.Errorf("Failed to dump info in scheduler cache, json encode error: %v", err)
 		return
 	}
 
 	klog.Infoln("Successfully dump info in scheduler cache to file", fName)
+}
+
+func encodeCache(file *os.File, v ...interface{}) error {
+	for _, item := range v {
+		err := json.NewEncoder(file).Encode(item)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // dumpAll prints all information to log
@@ -101,12 +113,12 @@ func (d *Dumper) printJobInfo(jobInfo *api.JobInfo) string {
 	return data.String()
 }
 
-func (d *Dumper) printHyperNodeInfo(HyperNodesListByTier [][]string, HyperNodes map[string][]string) {
+func (d *Dumper) printHyperNodeInfo(HyperNodesListByTier map[int][]string, HyperNodes map[string]sets.Set[string]) {
 	var data strings.Builder
 	data.WriteString("\n")
 	for tier, hyperNodes := range HyperNodesListByTier {
 		for _, hyperNode := range hyperNodes {
-			data.WriteString(fmt.Sprintf("Tier: %d, HyperNodeName: %s, Nodes: %s\n", tier+1, hyperNode, HyperNodes[hyperNode]))
+			data.WriteString(fmt.Sprintf("Tier: %d, HyperNodeName: %s, Nodes: %s\n", tier, hyperNode, HyperNodes[hyperNode]))
 		}
 	}
 	data.WriteString("\n")

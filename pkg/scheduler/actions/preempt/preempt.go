@@ -322,6 +322,10 @@ func (pmpt *Action) preempt(
 			if err := stmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
+				if rollbackErr := stmt.UnPipeline(preemptor); rollbackErr != nil {
+					klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
+						preemptor.UID, node.Name, ssn.UID, rollbackErr)
+				}
 			}
 
 			// Ignore pipeline error, will be corrected in next scheduling loop.
