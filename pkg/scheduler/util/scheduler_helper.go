@@ -26,6 +26,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
@@ -126,6 +127,50 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 	return nodeScores
 }
 
+// PrioritizeHyperNodes returns a map whose key is hyperNode's score and value are corresponding hyperNodes
+// it accumulates two parts score:
+// 1.node level scores of each hyperNode in NodeOrder extension.
+// 2.hyperNode level scores scored in HyperNodeOrder extension.
+func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeScoresInHyperNode map[string]float64, job *api.JobInfo, fn api.HyperNodeOrderMapFn) (map[float64][]string, error) {
+	hyperNodesScoreMap := make(map[string]float64)
+	mapScores, err := fn(job, candidateHyperNodes)
+	if err != nil {
+		return nil, err
+	}
+
+	// plugin scores of hyperNode.
+	for pluginName, scores := range mapScores {
+		for hyperNode, score := range scores {
+			klog.V(5).InfoS("Add plugin score at hypeNode", "jobName", job.UID, "pluginName", pluginName, "hyperNodeName", hyperNode, "score", score)
+			hyperNodesScoreMap[hyperNode] += score
+		}
+	}
+
+	// accumulate node scores in NodeOrder and hyperNode score itself as the final score of each hyperNode.
+	for hyperNodeName, score := range nodeScoresInHyperNode {
+		klog.V(5).InfoS("Add node level scores to final hyperNode score", "jobName", job.UID, "hyperNodeName", hyperNodeName, "score", score)
+		hyperNodesScoreMap[hyperNodeName] += score
+	}
+
+	hyperNodeScores := make(map[float64][]string)
+	hyperNodeScoreMap := make(map[string]float64)
+	for hyperNodeName := range candidateHyperNodes {
+		// If no plugin is applied to this node, the default is 0.0
+		score := 0.0
+		if value, ok := hyperNodesScoreMap[hyperNodeName]; ok {
+			score += value
+		}
+		hyperNodeScores[score] = append(hyperNodeScores[score], hyperNodeName)
+
+		if klog.V(5).Enabled() {
+			hyperNodeScoreMap[hyperNodeName] = score
+		}
+	}
+
+	klog.V(5).InfoS("Prioritize hyperNode score map for job", "jobName", job.UID, "scoreMap", hyperNodeScoreMap)
+	return hyperNodeScores, nil
+}
+
 // SortNodes returns nodes by order of score
 func SortNodes(nodeScores map[float64][]*api.NodeInfo) []*api.NodeInfo {
 	var nodesInorder []*api.NodeInfo
@@ -141,8 +186,8 @@ func SortNodes(nodeScores map[float64][]*api.NodeInfo) []*api.NodeInfo {
 	return nodesInorder
 }
 
-// SelectBestNode returns best node whose score is highest, pick one randomly if there are many nodes with same score.
-func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
+// SelectBestNodeAndScore returns the best node whose score is highest and the highest score, pick one randomly if there are many nodes with same score.
+func SelectBestNodeAndScore(nodeScores map[float64][]*api.NodeInfo) (*api.NodeInfo, float64) {
 	var bestNodes []*api.NodeInfo
 	maxScore := -1.0
 	for score, nodes := range nodeScores {
@@ -153,10 +198,28 @@ func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
 	}
 
 	if len(bestNodes) == 0 {
-		return nil
+		return nil, 0
 	}
 
-	return bestNodes[rand.Intn(len(bestNodes))]
+	return bestNodes[rand.Intn(len(bestNodes))], maxScore
+}
+
+// SelectBestHyperNode return the best hyperNode name whose score is highest, pick one randomly if there are many hyperNodes with same score.
+func SelectBestHyperNode(hyperNodeScores map[float64][]string) string {
+	var bestHyperNodes []string
+	maxScore := -1.0
+	for score, hyperNodes := range hyperNodeScores {
+		if score > maxScore {
+			maxScore = score
+			bestHyperNodes = hyperNodes
+		}
+	}
+
+	if len(bestHyperNodes) == 0 {
+		return ""
+	}
+
+	return bestHyperNodes[rand.Intn(len(bestHyperNodes))]
 }
 
 // GetNodeList returns values of the map 'nodes'
@@ -165,6 +228,20 @@ func GetNodeList(nodes map[string]*api.NodeInfo, nodeList []string) []*api.NodeI
 	for _, nodename := range nodeList {
 		if ni, ok := nodes[nodename]; ok {
 			result = append(result, ni)
+		}
+	}
+	return result
+}
+
+// GetHyperNodeList returns values of the map 'hyperNodes'.
+func GetHyperNodeList(hyperNodes map[string]sets.Set[string], allNodes map[string]*api.NodeInfo) map[string][]*api.NodeInfo {
+	result := make(map[string][]*api.NodeInfo)
+	for hyperNodeName, nodes := range hyperNodes {
+		result[hyperNodeName] = make([]*api.NodeInfo, 0, len(nodes))
+		for node := range nodes {
+			if ni, ok := allNodes[node]; ok {
+				result[hyperNodeName] = append(result[hyperNodeName], ni)
+			}
 		}
 	}
 	return result

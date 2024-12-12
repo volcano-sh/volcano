@@ -294,6 +294,18 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              networkTopologies:
+                properties:
+                  highestTierAllowed:
+                    default: 1
+                    type: integer
+                  mode:
+                    default: hard
+                    enum:
+                    - hard
+                    - soft
+                    type: string
+                type: object
               plugins:
                 additionalProperties:
                   items:
@@ -4701,6 +4713,24 @@ spec:
                   if there's not enough resources to start each task, the scheduler
                   will not start anyone.
                 type: object
+              networkTopologies:
+                description: NetworkTopologies defines the NetworkTopologies config,
+                  this field works in conjunction with network topology feature and
+                  hyperNode CRD.
+                properties:
+                  highestTierAllowed:
+                    default: 1
+                    description: HighestTierAllowed specifies the highest tier that
+                      a job allowed to cross when scheduling.
+                    type: integer
+                  mode:
+                    default: hard
+                    description: Mode specifies the mode of the network topology constrain.
+                    enum:
+                    - hard
+                    - soft
+                    type: string
+                type: object
               priorityClassName:
                 description: |-
                   If specified, indicates the PodGroup's priority. "system-node-critical" and
@@ -5079,6 +5109,194 @@ spec:
     served: true
     storage: true
 ---
+# Source: volcano/templates/topology_v1alpha1_hypernodes.yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.4
+  name: hypernodes.topology.volcano.sh
+spec:
+  group: topology.volcano.sh
+  names:
+    kind: HyperNode
+    listKind: HyperNodeList
+    plural: hypernodes
+    shortNames:
+    - hn
+    singular: hypernode
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.tier
+      name: Tier
+      type: string
+    - jsonPath: .status.nodeCount
+      name: NodeCount
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: HyperNode represents a collection of nodes sharing similar network
+          topology or performance characteristics.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec defines the desired configuration of the HyperNode.
+            properties:
+              members:
+                description: Members defines a list of node groups or individual nodes
+                  included in the HyperNode.
+                items:
+                  description: MemberSpec represents a specific node or a hyperNodes
+                    in the hyperNode.
+                  properties:
+                    selector:
+                      description: Selector defines the selection rules for this member.
+                      properties:
+                        exactMatch:
+                          description: ExactMatch defines the exact match criteria
+                            (required when Type is "Exact").
+                          properties:
+                            name:
+                              description: Name specifies the exact name of the node
+                                to match.
+                              type: string
+                          type: object
+                        regexMatch:
+                          description: RegexMatch defines the regex match criteria
+                            (required when Type is "Regex").
+                          properties:
+                            pattern:
+                              description: Pattern defines the regex pattern to match
+                                node names.
+                              type: string
+                          type: object
+                        type:
+                          description: |-
+                            Type specifies the selection method (Exact or Regex).
+                            // +required
+                          enum:
+                          - Exact
+                          - Regex
+                          type: string
+                      required:
+                      - type
+                      type: object
+                      x-kubernetes-validations:
+                      - message: ExactMatch must be specified when Type is 'Exact'
+                        rule: 'self.type == ''Exact'' ? has(self.exactMatch) : true'
+                      - message: RegexMatch must be specified when Type is 'Regex'
+                        rule: 'self.type == ''Regex'' ? has(self.regexMatch) : true'
+                    type:
+                      description: Type specifies the member type (e.g., "Node", "HyperNode").
+                      enum:
+                      - Node
+                      - HyperNode
+                      type: string
+                  required:
+                  - type
+                  type: object
+                type: array
+              tier:
+                description: Tier categorizes the performance level of the HyperNode.
+                type: string
+            required:
+            - tier
+            type: object
+          status:
+            description: Status provides the current state of the HyperNode.
+            properties:
+              conditions:
+                description: Conditions provide details about the current state of
+                  the HyperNode.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              nodeCount:
+                description: NodeCount is the total number of nodes currently in the
+                  HyperNode.
+                format: int64
+                minimum: 0
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
 # Source: volcano/templates/webhooks.yaml
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -5392,6 +5610,18 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              networkTopologies:
+                properties:
+                  highestTierAllowed:
+                    default: 1
+                    type: integer
+                  mode:
+                    default: hard
+                    enum:
+                    - hard
+                    - soft
+                    type: string
+                type: object
               plugins:
                 additionalProperties:
                   items:
