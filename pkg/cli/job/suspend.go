@@ -55,7 +55,7 @@ func SuspendJob(ctx context.Context) error {
 		return err
 	}
 
-	return createJobCommand(ctx, config,
+	return util.CreateJobCommand(ctx, config,
 		suspendJobFlags.Namespace, suspendJobFlags.JobName,
 		v1alpha1.AbortJobAction)
 }
