@@ -92,11 +92,13 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 		err = e2eutil.WaitJobStateReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(job.Status.RetryCount).To(Equal(int32(0)))
 
 		// Suspend job and wait status change
 		SuspendJob(jobName, ctx.Namespace)
 		err = e2eutil.WaitJobStateAborted(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(job.Status.RetryCount).To(Equal(int32(0)))
 
 		// Pod is gone
 		podName := jobctl.MakePodName(jobName, taskName, 0)
@@ -111,6 +113,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 		err = e2eutil.WaitJobStateReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(job.Status.RetryCount).To(Equal(int32(0)))
 
 	})
 
@@ -141,11 +144,13 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 		err = e2eutil.WaitJobStatePending(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(job.Status.RetryCount).To(Equal(int32(0)))
 
 		// Suspend job and wait status change
 		SuspendJob(jobName, ctx.Namespace)
 		err = e2eutil.WaitJobStateAborted(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(job.Status.RetryCount).To(Equal(int32(0)))
 
 		// Pod is gone
 		podName := jobctl.MakePodName(jobName, taskName, 0)

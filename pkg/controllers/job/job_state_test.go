@@ -228,8 +228,8 @@ func TestAbortingState_Execute(t *testing.T) {
 					t.Error("Error while retrieving value from Cache")
 				}
 
-				if jobInfo.Job.Status.RetryCount == 0 {
-					t.Error("Retry Count should not be zero")
+				if jobInfo.Job.Status.RetryCount != 0 {
+					t.Error("Retry Count should be zero")
 				}
 			}
 
