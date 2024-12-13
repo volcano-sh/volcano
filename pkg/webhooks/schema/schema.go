@@ -30,6 +30,7 @@ import (
 
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	hypernodev1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 )
 
 func init() {
@@ -126,4 +127,25 @@ func DecodePodGroup(object runtime.RawExtension, resource metav1.GroupVersionRes
 	}
 
 	return &podgroup, nil
+}
+
+// DecodeHyperNode decodes the hypernode using deserializer from the raw object.
+func DecodeHyperNode(object runtime.RawExtension, resource metav1.GroupVersionResource) (*hypernodev1alpha1.HyperNode, error) {
+	hypernodeResource := metav1.GroupVersionResource{
+		Group:    hypernodev1alpha1.SchemeGroupVersion.Group,
+		Version:  hypernodev1alpha1.SchemeGroupVersion.Version,
+		Resource: "hypernodes",
+	}
+
+	if resource != hypernodeResource {
+		klog.Errorf("expect resource to be %s", hypernodeResource)
+		return nil, fmt.Errorf("expect resource to be %s", hypernodeResource)
+	}
+
+	hypernode := hypernodev1alpha1.HyperNode{}
+	if _, _, err := Codecs.UniversalDeserializer().Decode(object.Raw, nil, &hypernode); err != nil {
+		return nil, err
+	}
+
+	return &hypernode, nil
 }
