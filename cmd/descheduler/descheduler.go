@@ -26,12 +26,15 @@ import (
 
 	"k8s.io/component-base/cli"
 	"sigs.k8s.io/descheduler/pkg/descheduler"
+	"sigs.k8s.io/descheduler/pkg/framework/pluginregistry"
 
 	"volcano.sh/volcano/cmd/descheduler/app"
+	"volcano.sh/volcano/pkg/descheduler/framework/plugins/loadaware"
 )
 
 func init() {
 	descheduler.SetupPlugins()
+	pluginregistry.Register(loadaware.LoadAwareUtilizationPluginName, loadaware.NewLoadAwareUtilization, &loadaware.LoadAwareUtilization{}, &loadaware.LoadAwareUtilizationArgs{}, loadaware.ValidateLoadAwareUtilizationArgs, loadaware.SetDefaults_LoadAwareUtilizationArgs, pluginregistry.PluginRegistry)
 }
 
 func main() {
