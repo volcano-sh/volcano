@@ -102,9 +102,9 @@ func (gs *GPUDevices) AddPodMetrics(index int, PodName string) {
 	usage := gs.Device[index].PodMap[PodName]
 	VGPUPodMemoryAllocated.WithLabelValues(UUID, NodeName, PodName).Set(float64(usage.UsedMem))
 	VGPUPodCoreAllocated.WithLabelValues(UUID, NodeName, PodName).Set(float64(usage.UsedCore))
-	VGPUDevicesSharedNumber.WithLabelValues(UUID, NodeName).Inc()
+	VGPUDevicesSharedNumber.WithLabelValues(UUID, NodeName).Set(float64(gs.Device[index].UsedNum))
 	VGPUDevicesAllocatedCores.WithLabelValues(UUID, NodeName).Set(float64(gs.Device[index].UsedCore))
-	VGPUDevicesAllocatedMemory.WithLabelValues(UUID, NodeName).Add(float64(gs.Device[index].UsedMem))
+	VGPUDevicesAllocatedMemory.WithLabelValues(UUID, NodeName).Set(float64(gs.Device[index].UsedMem))
 }
 
 func (gs *GPUDevices) SubPodMetrics(index int, PodName string) {
@@ -118,7 +118,7 @@ func (gs *GPUDevices) SubPodMetrics(index int, PodName string) {
 		VGPUPodMemoryAllocated.DeleteLabelValues(UUID, NodeName, PodName)
 		VGPUPodCoreAllocated.DeleteLabelValues(UUID, NodeName, PodName)
 	}
-	VGPUDevicesSharedNumber.WithLabelValues(UUID, NodeName).Dec()
-	VGPUDevicesAllocatedCores.WithLabelValues(UUID, NodeName).Sub(float64(gs.Device[index].UsedCore))
-	VGPUDevicesAllocatedMemory.WithLabelValues(UUID, NodeName).Sub(float64(gs.Device[index].UsedMem))
+	VGPUDevicesSharedNumber.WithLabelValues(UUID, NodeName).Set(float64(gs.Device[index].UsedNum))
+	VGPUDevicesAllocatedCores.WithLabelValues(UUID, NodeName).Set(float64(gs.Device[index].UsedCore))
+	VGPUDevicesAllocatedMemory.WithLabelValues(UUID, NodeName).Set(float64(gs.Device[index].UsedMem))
 }
