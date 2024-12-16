@@ -19,73 +19,149 @@ package validate
 import (
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	hypernodev1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 )
 
-func TestValidateHyperNodeMembers(t *testing.T) {
+func TestValidateHyperNode(t *testing.T) {
 	testCases := []struct {
 		Name      string
-		HyperNode *hypernodev1alpha1.HyperNode
-		ExpectErr string
+		HyperNode hypernodev1alpha1.HyperNode
+		ExpectErr bool
 	}{
 		{
 			Name: "validate valid hypernode",
-			HyperNode: &hypernodev1alpha1.HyperNode{
+			HyperNode: hypernodev1alpha1.HyperNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "hypernode-1",
+				},
 				Spec: hypernodev1alpha1.HyperNodeSpec{
 					Members: []hypernodev1alpha1.MemberSpec{
 						{
+							Type: hypernodev1alpha1.MemberTypeNode,
 							Selector: hypernodev1alpha1.MemberSelector{
-								ExactMatch: &hypernodev1alpha1.ExactMatch{
-									Name: "node-1",
+								ExactMatch: &hypernodev1alpha1.ExactMatch{Name: "node-1"},
+							},
+						},
+					},
+				},
+			},
+			ExpectErr: false,
+		},
+		{
+			Name: "validate invalid hypernode with empty exactMatch",
+			HyperNode: hypernodev1alpha1.HyperNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "hypernode-1",
+				},
+				Spec: hypernodev1alpha1.HyperNodeSpec{
+					Members: []hypernodev1alpha1.MemberSpec{
+						{
+							Type: hypernodev1alpha1.MemberTypeNode,
+							Selector: hypernodev1alpha1.MemberSelector{
+								ExactMatch: &hypernodev1alpha1.ExactMatch{Name: ""},
+							},
+						},
+					},
+				},
+			},
+			ExpectErr: true,
+		},
+		{
+			Name: "validate invalid hypernode with empty regexMatch",
+			HyperNode: hypernodev1alpha1.HyperNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "hypernode-1",
+				},
+				Spec: hypernodev1alpha1.HyperNodeSpec{
+					Members: []hypernodev1alpha1.MemberSpec{
+						{
+							Type: hypernodev1alpha1.MemberTypeNode,
+							Selector: hypernodev1alpha1.MemberSelector{
+								RegexMatch: &hypernodev1alpha1.RegexMatch{
+									Pattern: "",
 								},
 							},
 						},
 					},
 				},
 			},
-			ExpectErr: "",
+			ExpectErr: true,
 		},
 		{
-			Name: "validate invalid hypernode with empty selector",
-			HyperNode: &hypernodev1alpha1.HyperNode{
+			Name: "validate invalid hypernode with invalid regexMatch",
+			HyperNode: hypernodev1alpha1.HyperNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "hypernode-1",
+				},
 				Spec: hypernodev1alpha1.HyperNodeSpec{
 					Members: []hypernodev1alpha1.MemberSpec{
 						{
+							Type: hypernodev1alpha1.MemberTypeNode,
+							Selector: hypernodev1alpha1.MemberSelector{
+								RegexMatch: &hypernodev1alpha1.RegexMatch{
+									Pattern: "a(b",
+								},
+							},
+						},
+					},
+				},
+			},
+			ExpectErr: true,
+		},
+		{
+			Name: "validate invalid hypernode with both regexMatch and exactMatch",
+			HyperNode: hypernodev1alpha1.HyperNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "hypernode-1",
+				},
+				Spec: hypernodev1alpha1.HyperNodeSpec{
+					Members: []hypernodev1alpha1.MemberSpec{
+						{
+							Type: hypernodev1alpha1.MemberTypeNode,
+							Selector: hypernodev1alpha1.MemberSelector{
+								RegexMatch: &hypernodev1alpha1.RegexMatch{
+									Pattern: "node.*",
+								},
+								ExactMatch: &hypernodev1alpha1.ExactMatch{Name: "node-1"},
+							},
+						},
+					},
+				},
+			},
+			ExpectErr: true,
+		},
+		{
+			Name: "validate invalid hypernode with neither regexMatch nor exactMatch",
+			HyperNode: hypernodev1alpha1.HyperNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "hypernode-1",
+				},
+				Spec: hypernodev1alpha1.HyperNodeSpec{
+					Members: []hypernodev1alpha1.MemberSpec{
+						{
+							Type:     hypernodev1alpha1.MemberTypeNode,
 							Selector: hypernodev1alpha1.MemberSelector{},
 						},
 					},
 				},
 			},
-			ExpectErr: "either exactMatch or regexMatch must be specified",
-		},
-		{
-			Name: "validate invalid hypernode with both exactMatch and regexMatch",
-			HyperNode: &hypernodev1alpha1.HyperNode{
-				Spec: hypernodev1alpha1.HyperNodeSpec{
-					Members: []hypernodev1alpha1.MemberSpec{
-						{
-							Selector: hypernodev1alpha1.MemberSelector{
-								ExactMatch: &hypernodev1alpha1.ExactMatch{
-									Name: "node-1",
-								},
-								RegexMatch: &hypernodev1alpha1.RegexMatch{
-									Pattern: "node-1",
-								},
-							},
-						},
-					},
-				},
-			},
-			ExpectErr: "exactMatch and regexMatch cannot be specified together",
+			ExpectErr: true,
 		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			err := validateHyperNode(testCase.HyperNode)
-			if err != nil && err.Error() != testCase.ExpectErr {
-				t.Errorf("validateHyperNodeLabels failed: %v", err)
+			err := validateHyperNode(&testCase.HyperNode)
+			if !testCase.ExpectErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			} else if testCase.ExpectErr && err == nil {
+				t.Errorf("expected error but got nil")
+			} else {
+				t.Logf("error: %v", err)
 			}
 		})
 	}
+
 }
