@@ -16,9 +16,6 @@ limitations under the License.
 
 package vgpu
 
-var VGPUEnable bool
-var NodeLockEnable bool
-
 const (
 	GPUInUse                         = "nvidia.com/use-gputype"
 	GPUNoUse                         = "nvidia.com/nouse-gputype"
@@ -64,6 +61,14 @@ const (
 	DefaultMemPercentage = 101
 	binpackMultiplier    = 100
 	spreadMultiplier     = 100
+
+	vGPUControllerHAMICore = "hami-core"
+	vGPUControllerMIG      = "mig"
+)
+
+var (
+	VGPUEnable     bool
+	NodeLockEnable bool
 )
 
 type ContainerDeviceRequest struct {
