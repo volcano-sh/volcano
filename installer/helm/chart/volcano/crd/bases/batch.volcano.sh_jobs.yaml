@@ -46,6 +46,7 @@ spec:
           spec:
             properties:
               maxRetry:
+                default: 3
                 format: int32
                 type: integer
               minAvailable:
@@ -67,9 +68,33 @@ spec:
                     action:
                       type: string
                     event:
+                      enum:
+                      - '*'
+                      - PodPending
+                      - PodRunning
+                      - PodFailed
+                      - PodEvicted
+                      - Unknown
+                      - TaskCompleted
+                      - OutOfSync
+                      - CommandIssued
+                      - JobUpdated
+                      - TaskFailed
                       type: string
                     events:
                       items:
+                        enum:
+                        - '*'
+                        - PodPending
+                        - PodRunning
+                        - PodFailed
+                        - PodEvicted
+                        - Unknown
+                        - TaskCompleted
+                        - OutOfSync
+                        - CommandIssued
+                        - JobUpdated
+                        - TaskFailed
                         type: string
                       type: array
                     exitCode:
@@ -113,9 +138,33 @@ spec:
                           action:
                             type: string
                           event:
+                            enum:
+                            - '*'
+                            - PodPending
+                            - PodRunning
+                            - PodFailed
+                            - PodEvicted
+                            - Unknown
+                            - TaskCompleted
+                            - OutOfSync
+                            - CommandIssued
+                            - JobUpdated
+                            - TaskFailed
                             type: string
                           events:
                             items:
+                              enum:
+                              - '*'
+                              - PodPending
+                              - PodRunning
+                              - PodFailed
+                              - PodEvicted
+                              - Unknown
+                              - TaskCompleted
+                              - OutOfSync
+                              - CommandIssued
+                              - JobUpdated
+                              - TaskFailed
                               type: string
                             type: array
                           exitCode:
@@ -3756,6 +3805,11 @@ spec:
                           type: object
                       type: object
                     topologyPolicy:
+                      enum:
+                      - none
+                      - best-effort
+                      - restricted
+                      - single-numa-node
                       type: string
                   type: object
                 type: array
