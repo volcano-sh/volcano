@@ -239,13 +239,7 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 			return api.NewFitErrWithStatus(task, node, predicateStatus...)
 		}
 		klog.V(4).Infof("task <%s>/<%s> queue %s on node %s of nodegroup %v", task.Namespace, task.Name, queue, node.Name, group)
-		nodeStatus := &api.Status{
-			Code:   api.Success,
-			Reason: "node satisfy task",
-			Plugin: PluginName,
-		}
-		predicateStatus = append(predicateStatus, nodeStatus)
-		return api.NewFitErrWithStatus(task, node, predicateStatus...)
+		return nil
 	}
 
 	ssn.AddPredicateFn(np.Name(), predicateFn)
