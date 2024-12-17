@@ -19,9 +19,8 @@ package vgpu
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -29,40 +28,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+
+	"volcano.sh/volcano/pkg/scheduler/api/devices"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 )
-
-var kubeClient kubernetes.Interface
-
-func init() {
-	var err error
-	kubeClient, err = NewClient()
-	if err != nil {
-		klog.Errorf("init kubeclient in hamivgpu failed: %s", err.Error())
-	} else {
-		klog.V(3).Infoln("init kubeclient success")
-	}
-}
-
-// NewClient connects to an API server
-func NewClient() (kubernetes.Interface, error) {
-	kubeConfig := os.Getenv("KUBECONFIG")
-	if kubeConfig == "" {
-		kubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	}
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		config, err = clientcmd.BuildConfigFromFlags("", kubeConfig)
-		if err != nil {
-			return nil, err
-		}
-	}
-	client, err := kubernetes.NewForConfig(config)
-	kubeClient = client
-	return client, err
-}
 
 func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	type patchMetadata struct {
@@ -80,12 +50,29 @@ func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	if err != nil {
 		return err
 	}
-	_, err = kubeClient.CoreV1().Nodes().
+	_, err = devices.GetClient().CoreV1().Nodes().
 		Patch(context.Background(), node.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
 	if err != nil {
 		klog.Errorf("patch pod %v failed, %v", node.Name, err)
 	}
 	return err
+}
+
+func extractGeometryFromType(t string) ([]config.Geometry, error) {
+	if config.GetConfig() != nil {
+		for _, val := range config.GetConfig().NvidiaConfig.MigGeometriesList {
+			found := false
+			for _, migDevType := range val.Models {
+				if strings.Contains(t, migDevType) {
+					found = true
+				}
+			}
+			if found {
+				return val.Geometries, nil
+			}
+		}
+	}
+	return []config.Geometry{}, errors.New("mig type not found")
 }
 
 func decodeNodeDevices(name string, str string) *GPUDevices {
@@ -105,14 +92,28 @@ func decodeNodeDevices(name string, str string) *GPUDevices {
 			devmem, _ := strconv.Atoi(items[2])
 			health, _ := strconv.ParseBool(items[4])
 			i := GPUDevice{
-				ID:     index,
-				Node:   name,
-				UUID:   items[0],
-				Number: uint(count),
-				Memory: uint(devmem),
-				Type:   items[3],
-				PodMap: make(map[string]*GPUUsage),
-				Health: health,
+				ID:          index,
+				Node:        name,
+				UUID:        items[0],
+				Number:      uint(count),
+				Memory:      uint(devmem),
+				Type:        items[3],
+				PodMap:      make(map[string]*GPUUsage),
+				Health:      health,
+				Mode:        vGPUControllerHAMICore,
+				MigTemplate: []config.Geometry{},
+				MigUsage:    config.MigInUse{},
+			}
+			/* 5 is the length of items before dynamic-mig feature */
+			if len(items) > 5 {
+				i.Mode = items[5]
+				if i.Mode == vGPUControllerMIG {
+					var err error
+					i.MigTemplate, err = extractGeometryFromType(i.Type)
+					if err != nil {
+						i.Mode = vGPUControllerHAMICore
+					}
+				}
 			}
 			retval.Device[index] = &i
 		}
@@ -180,11 +181,11 @@ func decodePodDevices(str string) []ContainerDevices {
 
 func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 	for _, container := range pod.Spec.Containers {
-		_, ok := container.Resources.Limits[VolcanoVGPUMemory]
+		_, ok := container.Resources.Limits[config.VolcanoVGPUMemory]
 		if ok {
 			return true
 		}
-		_, ok = container.Resources.Limits[VolcanoVGPUNumber]
+		_, ok = container.Resources.Limits[config.VolcanoVGPUNumber]
 		if ok {
 			return true
 		}
@@ -193,10 +194,10 @@ func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 }
 
 func resourcereqs(pod *v1.Pod) []ContainerDeviceRequest {
-	resourceName := v1.ResourceName(VolcanoVGPUNumber)
-	resourceMem := v1.ResourceName(VolcanoVGPUMemory)
-	resourceMemPercentage := v1.ResourceName(VolcanoVGPUMemoryPercentage)
-	resourceCores := v1.ResourceName(VolcanoVGPUCores)
+	resourceName := v1.ResourceName(config.VolcanoVGPUNumber)
+	resourceMem := v1.ResourceName(config.VolcanoVGPUMemory)
+	resourceMemPercentage := v1.ResourceName(config.VolcanoVGPUMemoryPercentage)
+	resourceCores := v1.ResourceName(config.VolcanoVGPUCores)
 	counts := []ContainerDeviceRequest{}
 	//Count Nvidia GPU
 	for i := 0; i < len(pod.Spec.Containers); i++ {
@@ -421,7 +422,7 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 	return true, ctrdevs, score, nil
 }
 
-func patchPodAnnotations(pod *v1.Pod, annotations map[string]string) error {
+func patchPodAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod, annotations map[string]string) error {
 	type patchMetadata struct {
 		Annotations map[string]string `json:"annotations,omitempty"`
 	}
@@ -442,15 +443,6 @@ func patchPodAnnotations(pod *v1.Pod, annotations map[string]string) error {
 	if err != nil {
 		klog.Errorf("patch pod %v failed, %v", pod.Name, err)
 	}
-	/*
-		Can't modify Env of pods here
-
-		patch1 := addGPUIndexPatch()
-		_, err = s.kubeClient.CoreV1().Pods(pod.Namespace).
-			Patch(context.Background(), pod.Name, k8stypes.JSONPatchType, []byte(patch1), metav1.PatchOptions{})
-		if err != nil {
-			klog.Infof("Patch1 pod %v failed, %v", pod.Name, err)
-		}*/
 
 	return err
 }
