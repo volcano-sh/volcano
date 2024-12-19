@@ -159,6 +159,53 @@ func CreateSampleK8sJob(ctx *TestContext, name string, img string, req v1.Resour
 	return jb
 }
 
+// CreateFailK8sJob creates a new k8s job that fails
+func CreateFailK8sJob(ctx *TestContext, name string, img string, req v1.ResourceList) *batchv1.Job {
+	k8sjobname := "job.k8s.io"
+	defaultTrue := true
+	// no retries to save time
+	defaultBackoffLimit := int32(0)
+	j := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: batchv1.JobSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					k8sjobname: name,
+				},
+			},
+			ManualSelector: &defaultTrue,
+			BackoffLimit:   &defaultBackoffLimit,
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{k8sjobname: name},
+				},
+				Spec: v1.PodSpec{
+					SchedulerName: "volcano",
+					RestartPolicy: v1.RestartPolicyNever,
+					Containers: []v1.Container{
+						{
+							Image:           img,
+							Name:            name,
+							Command:         []string{"/bin/sh", "-c", "sleep 10 && exit 1"},
+							ImagePullPolicy: v1.PullIfNotPresent,
+							Resources: v1.ResourceRequirements{
+								Requests: req,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	jb, err := ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).Create(context.TODO(), j, metav1.CreateOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to create k8sjob %s", name)
+
+	return jb
+}
+
 func k8sjobCompleted(ctx *TestContext, name string) wait.ConditionFunc {
 	return func() (bool, error) {
 		jb, err := ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
@@ -173,7 +220,7 @@ func k8sjobCompleted(ctx *TestContext, name string) wait.ConditionFunc {
 			if !labelSelector.Matches(labels.Set(pod.Labels)) {
 				continue
 			}
-			if pod.Status.Phase == v1.PodSucceeded {
+			if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
 				return true, nil
 			}
 		}
