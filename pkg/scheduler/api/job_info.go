@@ -71,6 +71,8 @@ type TaskID types.UID
 
 // TransactionContext holds all the fields that needed by scheduling transaction
 type TransactionContext struct {
+	// The HyperNodeName is lowest common ancestor (LCA) of all hyperNodes for the job.
+	HyperNodeName    string
 	NodeName         string
 	EvictionOccurred bool
 	Status           TaskStatus
@@ -1051,4 +1053,19 @@ func (ji *JobInfo) IsPending() bool {
 // HasPendingTasks return whether job has pending tasks
 func (ji *JobInfo) HasPendingTasks() bool {
 	return len(ji.TaskStatusIndex[Pending]) != 0
+}
+
+// HasTopologyHardConstrain return pg's NetworkTopologies mode and highest allowed tier.
+func (ji *JobInfo) HasTopologyHardConstrain() (bool, int) {
+	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopologies == nil || ji.PodGroup.Spec.NetworkTopologies.HighestTierAllowed == nil {
+		return false, 0
+	}
+
+	return ji.PodGroup.Spec.NetworkTopologies.Mode == scheduling.HardNetworkTopologyMode, *ji.PodGroup.Spec.NetworkTopologies.HighestTierAllowed
+}
+
+// ResetFitErr will set job and node fit err to nil.
+func (ji *JobInfo) ResetFitErr() {
+	ji.JobFitErrors = ""
+	ji.NodesFitErrors = make(map[TaskID]*FitErrors)
 }

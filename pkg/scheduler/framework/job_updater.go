@@ -91,10 +91,12 @@ func isPodGroupStatusUpdated(newStatus, oldStatus scheduling.PodGroupStatus) boo
 func (ju *jobUpdater) updateJob(index int) {
 	job := ju.jobQueue[index]
 	ssn := ju.ssn
+	oldHyperNode := ssn.cache.Snapshot().Jobs[job.UID].PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode]
 
 	job.PodGroup.Status = jobStatus(ssn, job)
 	oldStatus, found := ssn.podGroupStatus[job.UID]
-	updatePG := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
+	updatePG := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus) || oldHyperNode != job.PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode]
+
 	if _, err := ssn.cache.UpdateJobStatus(job, updatePG); err != nil {
 		klog.Errorf("Failed to update job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
