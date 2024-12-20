@@ -33,6 +33,7 @@ type Action struct {
 	enablePredicateErrorCache bool
 	// map with key queueID, value map with key nodeName, value number of preemptable tasks on that node
 	preemptableNodeMap map[api.QueueID]map[string]int
+	session            *framework.Session
 }
 
 func New() *Action {
@@ -58,6 +59,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 
 	pmpt.parseArguments(ssn)
 	pmpt.preemptableNodeMap = map[api.QueueID]map[string]int{}
+	pmpt.session = ssn
 
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
@@ -262,7 +264,7 @@ func (pmpt *Action) preempt(
 		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
 	}
 
-	predicateFn := ssn.PredicateForPreemptAction
+	predicateFn := pmpt.predicate
 	var allNodeIntersections []*api.NodeInfo
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
 	allNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(preemptor)
@@ -386,4 +388,8 @@ func victimTasks(ssn *framework.Session) {
 		}
 	}
 	stmt.Commit()
+}
+
+func (pmpt *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
+	return pmpt.session.PredicateForPreemptAction(task, node, pmpt.enablePredicateErrorCache)
 }

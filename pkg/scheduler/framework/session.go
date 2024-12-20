@@ -389,16 +389,22 @@ func (ssn *Session) GetUnschedulableAndUnresolvableNodesForTask(task *api.TaskIn
 // - Unschedulable
 // - UnschedulableAndUnresolvable
 // - ErrorSkipOrWait
-func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.NodeInfo) error {
+func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.NodeInfo, cacheEnable bool) error {
 	var statusSets api.StatusSets
 	if node.Allocatable.MaxTaskNum <= len(ssn.NodeMap[node.Name].Pods) {
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.NodePodNumberExceeded})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
-	err, ok := util.GetPredicateCache(task.Job, task.UID, node.Name, node.Node.Generation)
+	var (
+		err error
+		ok  bool
+	)
+	if cacheEnable {
+		err, ok = util.GetPredicateCache(task.Job, task.UID, node.Name, node.HashValue)
+	}
 	if !ok {
 		err = ssn.PredicateFn(task, node)
-		util.SetPredicateCache(task.Job, task.UID, node.Name, node.Node.Generation, err)
+		util.SetPredicateCache(task.Job, task.UID, node.Name, node.HashValue, err)
 	}
 	if err == nil {
 		return nil
@@ -420,16 +426,22 @@ func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.Nod
 // PredicateForPreemptAction checks if the predicate error contains:
 // - UnschedulableAndUnresolvable
 // - ErrorSkipOrWait
-func (ssn *Session) PredicateForPreemptAction(task *api.TaskInfo, node *api.NodeInfo) error {
+func (ssn *Session) PredicateForPreemptAction(task *api.TaskInfo, node *api.NodeInfo, cacheEnable bool) error {
 	var statusSets api.StatusSets
 	if node.Allocatable.MaxTaskNum <= len(ssn.NodeMap[node.Name].Pods) {
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.NodePodNumberExceeded})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
-	err, ok := util.GetPredicateCache(task.Job, task.UID, node.Name, node.Node.Generation)
+	var (
+		err error
+		ok  bool
+	)
+	if cacheEnable {
+		err, ok = util.GetPredicateCache(task.Job, task.UID, node.Name, node.HashValue)
+	}
 	if !ok {
 		err = ssn.PredicateFn(task, node)
-		util.SetPredicateCache(task.Job, task.UID, node.Name, node.Node.Generation, err)
+		util.SetPredicateCache(task.Job, task.UID, node.Name, node.HashValue, err)
 	}
 	if err == nil {
 		return nil

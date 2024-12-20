@@ -13,9 +13,9 @@ import (
 )
 
 type TaskNodeKey struct {
-	TaskID     api.TaskID
-	NodeName   string
-	NodeResGen int64
+	TaskID        api.TaskID
+	NodeName      string
+	NodeHashValue uint32
 }
 type PredicateCache struct {
 	Cache map[api.JobID]map[TaskNodeKey]error
@@ -26,26 +26,26 @@ var (
 	predicateCache = PredicateCache{Cache: map[api.JobID]map[TaskNodeKey]error{}}
 )
 
-func SetPredicateCache(jobID api.JobID, taskID api.TaskID, nodeName string, nodeResGen int64, predicateResult error) {
+func SetPredicateCache(jobID api.JobID, taskID api.TaskID, nodeName string, nodeHashValue uint32, predicateResult error) {
 	predicateCache.Lock()
 	defer predicateCache.Unlock()
 	if _, ok := predicateCache.Cache[jobID]; !ok {
 		predicateCache.Cache[jobID] = map[TaskNodeKey]error{}
 	}
 	predicateCache.Cache[jobID][TaskNodeKey{
-		TaskID:     taskID,
-		NodeName:   nodeName,
-		NodeResGen: nodeResGen,
+		TaskID:        taskID,
+		NodeName:      nodeName,
+		NodeHashValue: nodeHashValue,
 	}] = predicateResult
 }
 
-func GetPredicateCache(jobID api.JobID, taskID api.TaskID, nodeName string, nodeResGen int64) (predicateResult error, exist bool) {
+func GetPredicateCache(jobID api.JobID, taskID api.TaskID, nodeName string, nodeHashValue uint32) (predicateResult error, exist bool) {
 	predicateCache.RLock()
 	defer predicateCache.RUnlock()
 	predicateResult, exist = predicateCache.Cache[jobID][TaskNodeKey{
-		TaskID:     taskID,
-		NodeName:   nodeName,
-		NodeResGen: nodeResGen,
+		TaskID:        taskID,
+		NodeName:      nodeName,
+		NodeHashValue: nodeHashValue,
 	}]
 	return
 }

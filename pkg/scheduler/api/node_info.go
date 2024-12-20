@@ -18,6 +18,8 @@ package api
 
 import (
 	"fmt"
+	"hash/crc32"
+	"sort"
 	"strconv"
 	"time"
 
@@ -88,6 +90,7 @@ type NodeInfo struct {
 	// checking an image's existence and advanced usage (e.g., image locality scheduling policy) based on the image
 	// state information.
 	ImageStates map[string]*k8sframework.ImageStateSummary
+	HashValue   uint32
 }
 
 // FutureIdle returns resources that will be idle in the future:
@@ -161,6 +164,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 	nodeInfo.setNodeOthersResource(node)
 	nodeInfo.setNodeState(node)
 	nodeInfo.setRevocableZone(node)
+	nodeInfo.setHashValue(node)
 
 	return nodeInfo
 }
@@ -306,6 +310,28 @@ func (ni *NodeInfo) setNodeState(node *v1.Node) {
 	}
 }
 
+func (ni *NodeInfo) setHashValue(node *v1.Node) {
+	var hashValue string
+	var labels []string
+	for k := range node.Labels {
+		labels = append(labels, k)
+	}
+	sort.Strings(labels)
+	for _, label := range labels {
+		hashValue += fmt.Sprintf("%s:%s", label, node.Labels[label])
+	}
+	var annotations []string
+	for k := range node.Annotations {
+		annotations = append(annotations, k)
+	}
+	sort.Strings(annotations)
+	for _, annotation := range annotations {
+		hashValue += fmt.Sprintf("%s:%s", annotation, node.Annotations[annotation])
+	}
+	hashValue += node.Spec.String()
+	ni.HashValue = crc32.ChecksumIEEE([]byte(hashValue))
+}
+
 // SetNode sets kubernetes node object to nodeInfo object
 func (ni *NodeInfo) SetNode(node *v1.Node) {
 	ni.setNodeState(node)
@@ -353,6 +379,7 @@ func (ni *NodeInfo) setNode(node *v1.Node) {
 	ni.setOversubscription(node)
 	ni.setRevocableZone(node)
 	ni.setNodeOthersResource(node)
+	ni.setHashValue(node)
 
 	ni.Allocatable = NewResource(node.Status.Allocatable).Add(ni.OversubscriptionResource)
 	ni.Capacity = NewResource(node.Status.Capacity).Add(ni.OversubscriptionResource)
