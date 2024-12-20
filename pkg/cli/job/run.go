@@ -79,12 +79,12 @@ func RunJob(ctx context.Context) error {
 		return err
 	}
 
-	req, err := populateResourceListV1(launchJobFlags.Requests)
+	req, err := util.PopulateResourceListV1(launchJobFlags.Requests)
 	if err != nil {
 		return err
 	}
 
-	limit, err := populateResourceListV1(launchJobFlags.Limits)
+	limit, err := util.PopulateResourceListV1(launchJobFlags.Limits)
 	if err != nil {
 		return err
 	}
