@@ -22,6 +22,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"sync/atomic"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -382,6 +383,7 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
+	atomic.AddInt32(&sc.PodNum, 1)
 	err := sc.addPod(pod)
 	if err != nil {
 		klog.Errorf("Failed to add pod <%s/%s> into cache: %v",
@@ -437,6 +439,7 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
+	atomic.AddInt32(&sc.PodNum, -1)
 	err := sc.deletePod(pod)
 	if err != nil {
 		klog.Errorf("Failed to delete pod %v from cache: %v", pod.Name, err)

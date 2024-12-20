@@ -172,3 +172,9 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 
 	return result
 }
+
+type PodStatusRateLimit struct {
+	Enable         bool
+	MinPodNum      int
+	MinIntervalSec int
+}
