@@ -45,9 +45,9 @@ type networkTopologyAwarePlugin struct {
 }
 
 // New function returns prioritizePlugin object
-func New(aruguments framework.Arguments) framework.Plugin {
+func New(arguments framework.Arguments) framework.Plugin {
 	return &networkTopologyAwarePlugin{
-		pluginArguments: aruguments,
+		pluginArguments: arguments,
 	}
 }
 
@@ -68,8 +68,8 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 	}()
 
 	weight := calculateWeight(nta.pluginArguments)
-	ntaFn := func(job *api.JobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
-		jobHyperNode := job.PodGroup.Annotations[api.TopologyAllocateLCAHyperNode]
+	hyperNodeFn := func(job *api.JobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
+		jobHyperNode := job.PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode]
 
 		hyperNodeScores := make(map[string]float64)
 		for hyperNode := range hyperNodes {
@@ -82,7 +82,20 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		return hyperNodeScores, nil
 	}
 
-	ssn.AddHyperNodeOrederFn(nta.Name(), ntaFn)
+	nodeFn := func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+		jobHyperNode := ssn.Jobs[task.Job].PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode]
+		nodeScores := make(map[string]float64)
+		for _, node := range nodes {
+			hyperNode := util.FindHyperNodeOfNode(node.Name, HyperNodeTree)
+			score := networkTopologyAwareScore(hyperNode, jobHyperNode, HyperNodeTree)
+			score *= float64(weight)
+			nodeScores[node.Name] = score
+		}
+		return nodeScores, nil
+	}
+
+	ssn.AddHyperNodeOrederFn(nta.Name(), hyperNodeFn)
+	ssn.AddBatchNodeOrderFn(nta.Name(), nodeFn)
 }
 
 func (bp *networkTopologyAwarePlugin) OnSessionClose(ssn *framework.Session) {

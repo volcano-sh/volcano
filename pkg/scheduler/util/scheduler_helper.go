@@ -222,6 +222,18 @@ func SelectBestHyperNode(hyperNodeScores map[float64][]string) string {
 	return bestHyperNodes[rand.Intn(len(bestHyperNodes))]
 }
 
+// Find the hyperNode to which the node belongs.
+func FindHyperNodeOfNode(nodeName string, hyperNodeTree []map[string][]string) string {
+	for hyperNode, nodes := range hyperNodeTree[len(hyperNodeTree)-1] {
+		for _, node := range nodes {
+			if node == nodeName {
+				return hyperNode
+			}
+		}
+	}
+	return ""
+}
+
 // FindOutRootHyperNode find out the root hypernode of the job when the hypernode join the job.
 func FindLCAHyperNode(hyperNodeName string, jobHyperNode string, hyperNodeTree []map[string][]string) (string, int) {
 	revertHyperNodeTree := make([]map[string][]string, len(hyperNodeTree))
