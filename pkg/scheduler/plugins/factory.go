@@ -26,6 +26,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	nettopology "volcano.sh/volcano/pkg/scheduler/plugins/network-topology"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodegroup"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware"
@@ -56,6 +57,7 @@ func init() {
 	framework.RegisterPluginBuilder(overcommit.PluginName, overcommit.New)
 	framework.RegisterPluginBuilder(sla.PluginName, sla.New)
 	framework.RegisterPluginBuilder(tasktopology.PluginName, tasktopology.New)
+	framework.RegisterPluginBuilder(nettopology.PluginName, nettopology.New)
 	framework.RegisterPluginBuilder(numaaware.PluginName, numaaware.New)
 	framework.RegisterPluginBuilder(cdp.PluginName, cdp.New)
 	framework.RegisterPluginBuilder(rescheduling.PluginName, rescheduling.New)
