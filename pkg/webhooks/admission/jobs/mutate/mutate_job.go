@@ -231,7 +231,7 @@ func patchDefaultPlugins(job *v1alpha1.Job) *patchOperation {
 		plugins[k] = v
 	}
 
-	// Because the tensorflow-plugin and mpi-plugin depends on svc-plugin.
+	// Because the tensorflow-plugin, mpi-plugin and pytorch-plugin depend on svc-plugin.
 	// If the svc-plugin is not defined, we should add it.
 	_, hasTf := job.Spec.Plugins[tensorflow.TFPluginName]
 	_, hasMPI := job.Spec.Plugins[mpi.MPIPluginName]
