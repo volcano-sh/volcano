@@ -21,9 +21,13 @@ import (
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
+	"volcano.sh/volcano/pkg/features"
 )
 
 // Refer k8s.io/kubernetes/pkg/api/v1/resource/helpers.go#PodRequests.
@@ -161,8 +165,22 @@ func GetPodTopologyInfo(pod *v1.Pod) *TopologyInfo {
 // init containers' resource request.
 func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 	result := EmptyResource()
+
+	inPlacePodVerticalScalingEnabled := utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling)
+
 	for _, container := range pod.Spec.Containers {
-		result.Add(NewResource(container.Resources.Requests))
+		req := container.Resources.Requests
+		if inPlacePodVerticalScalingEnabled {
+			cs, found := podutil.GetContainerStatus(pod.Status.ContainerStatuses, container.Name)
+			if found {
+				if pod.Status.Resize == v1.PodResizeStatusInfeasible {
+					req = cs.AllocatedResources
+				} else {
+					req = resourceListMax(container.Resources.Requests, cs.AllocatedResources)
+				}
+			}
+		}
+		result.Add(NewResource(req))
 	}
 
 	// if PodOverhead feature is supported, add overhead for running a pod
@@ -170,5 +188,26 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 		result.Add(NewResource(pod.Spec.Overhead))
 	}
 
+	return result
+}
+
+// resourceListMax returns the result of resourceListMax(a, b) for each named resource and is only used if we can't
+// accumulate into an existing resource list
+func resourceListMax(a v1.ResourceList, b v1.ResourceList) v1.ResourceList {
+	result := v1.ResourceList{}
+	for key, value := range a {
+		if other, found := b[key]; found {
+			if value.Cmp(other) <= 0 {
+				result[key] = other.DeepCopy()
+				continue
+			}
+		}
+		result[key] = value.DeepCopy()
+	}
+	for key, value := range b {
+		if _, found := result[key]; !found {
+			result[key] = value.DeepCopy()
+		}
+	}
 	return result
 }
