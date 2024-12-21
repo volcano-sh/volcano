@@ -71,8 +71,6 @@ type TaskID types.UID
 
 // TransactionContext holds all the fields that needed by scheduling transaction
 type TransactionContext struct {
-	// The HyperNodeName is lowest common ancestor (LCA) of all hyperNodes for the job.
-	HyperNodeName    string
 	NodeName         string
 	EvictionOccurred bool
 	Status           TaskStatus
