@@ -29,6 +29,7 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	"volcano.sh/volcano/pkg/controllers/queue/state"
 )
@@ -314,7 +315,7 @@ func TestProcessNextWorkItem(t *testing.T) {
 
 	for i, testcase := range testCases {
 		c := newFakeController()
-		c.queue.Add("test")
+		c.queue.Add(&apis.Request{JobName: "test"})
 		bVal := c.processNextWorkItem()
 		fmt.Println("The value of boolean is ", bVal)
 		if c.queue.Len() != 0 {

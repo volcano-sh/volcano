@@ -29,33 +29,26 @@ import (
 	"k8s.io/klog/v2"
 )
 
-func newRateLimitingQueue() workqueue.RateLimitingInterface {
-	return workqueue.NewRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
-		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 180*time.Second),
+func newRateLimitingQueue() workqueue.TypedRateLimitingInterface[*v1.Pod] {
+	return workqueue.NewTypedRateLimitingQueue(workqueue.NewTypedMaxOfRateLimiter[*v1.Pod](
+		workqueue.NewTypedItemExponentialFailureRateLimiter[*v1.Pod](5*time.Millisecond, 180*time.Second),
 		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
-		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+		&workqueue.TypedBucketRateLimiter[*v1.Pod]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 	))
 }
 
 func (cc *jobcontroller) processResyncTask() {
-	obj, shutdown := cc.errTasks.Get()
+	task, shutdown := cc.errTasks.Get()
 	if shutdown {
 		return
 	}
 
 	// one task only resync 10 times
-	if cc.errTasks.NumRequeues(obj) > 10 {
-		cc.errTasks.Forget(obj)
+	if cc.errTasks.NumRequeues(task) > 10 {
+		cc.errTasks.Forget(task)
 		return
 	}
-
-	defer cc.errTasks.Done(obj)
-
-	task, ok := obj.(*v1.Pod)
-	if !ok {
-		klog.Errorf("failed to convert %v to *v1.Pod", obj)
-		return
-	}
+	defer cc.errTasks.Done(task)
 
 	if err := cc.syncTask(task); err != nil {
 		klog.Errorf("Failed to sync pod <%v/%v>, retry it, err %v", task.Namespace, task.Name, err)
