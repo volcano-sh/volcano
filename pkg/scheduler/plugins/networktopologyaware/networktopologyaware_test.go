@@ -50,7 +50,7 @@ func TestArguments(t *testing.T) {
 	}
 	weight := calculateWeight(networkTopologyAware.pluginArguments)
 	if weight != 2 {
-		t.Errorf("weight should be 0.5, but get %v", weight)
+		t.Errorf("weight should be 2, but get %v", weight)
 	}
 }
 
@@ -62,6 +62,7 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 		hyperNodes    map[string][]*api.NodeInfo
 		hyperNodeTree []map[string][]string
 		jobHyperNode  string
+		tasks         map[string]string
 		expected      map[string]float64
 	}{
 		// test case 1：Job first scheduler when the `LCAHyperNode` of the job is empty and we are looking for the Lowest Common Ancestor (LCA) of job with the hyperNode,
@@ -176,6 +177,82 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				"hyperNode5": 0.0,
 			},
 		},
+		{
+			name: "HyperNode has same LCAhyperNode for the job and the hyperNode will has the same score",
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Plugins: map[string]framework.PluginBuilder{PluginName: New},
+			},
+			arguments: framework.Arguments{
+				"weight": 1,
+			},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode3": nil,
+				"hyperNode4": nil,
+				"hyperNode5": nil,
+			},
+			jobHyperNode: "hyperNode1",
+			hyperNodeTree: []map[string][]string{
+				{
+					"hyperNode0": []string{"hyperNode1", "hyperNode2"},
+				},
+				{
+					"hyperNode1": []string{"hyperNode3", "hyperNode4"},
+					"hyperNode2": []string{"hyperNode5", "hyperNode6"},
+				},
+				{
+					"hyperNode3": []string{"node1", "node2"},
+					"hyperNode4": []string{"node3", "node4"},
+					"hyperNode5": []string{"node5", "node6"},
+					"hyperNode6": []string{"node7", "node8"},
+				},
+			},
+			expected: map[string]float64{
+				"hyperNode3": 36.9,
+				"hyperNode4": 36.9,
+				"hyperNode5": 0.0,
+			},
+		},
+		{
+			name: "HyperNode has same LCAhyperNode for the job and the hyperNode will has the same score",
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Plugins: map[string]framework.PluginBuilder{PluginName: New},
+			},
+			arguments: framework.Arguments{
+				"weight": 1,
+			},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode3": nil,
+				"hyperNode4": nil,
+				"hyperNode5": nil,
+			},
+			jobHyperNode: "hyperNode1",
+			tasks: map[string]string{
+				"task1": "node1",
+				"task2": "node2",
+				"task3": "node3",
+				"test4": "",
+			},
+			hyperNodeTree: []map[string][]string{
+				{
+					"hyperNode0": []string{"hyperNode1", "hyperNode2"},
+				},
+				{
+					"hyperNode1": []string{"hyperNode3", "hyperNode4"},
+					"hyperNode2": []string{"hyperNode5", "hyperNode6"},
+				},
+				{
+					"hyperNode3": []string{"node1", "node2"},
+					"hyperNode4": []string{"node3", "node4"},
+					"hyperNode5": []string{"node5", "node6"},
+					"hyperNode6": []string{"node7", "node8"},
+				},
+			},
+			expected: map[string]float64{
+				"hyperNode3": 41.9,
+				"hyperNode4": 39.4,
+				"hyperNode5": 0.0,
+			},
+		},
 	}
 
 	trueValue := true
@@ -200,6 +277,16 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 			PodGroup: &api.PodGroup{},
 		}
 		job.PodGroup.SetAnnotations(map[string]string{api.TopologyAllocateLCAHyperNode: test.jobHyperNode})
+		job.Tasks = make(map[api.TaskID]*api.TaskInfo)
+		for name, node := range test.tasks {
+			taskInfo := &api.TaskInfo{
+				UID:  api.TaskID(name),
+				Name: name,
+				Job:  job.UID,
+			}
+			job.Tasks[taskInfo.UID] = taskInfo
+			taskInfo.NodeName = node
+		}
 		scores, err := ssn.HyperNodeOrderMapFn(job, ssn.HyperNodes)
 		if err != nil {
 			t.Errorf("case%d: task %s  has err %v", i, test.Name, err)
@@ -208,7 +295,7 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 		hyperNodesScore := scores[PluginName]
 		for hypernode, expected := range test.expected {
 			if math.Abs(hyperNodesScore[hypernode]-expected) > eps {
-				t.Errorf("case%d: task %s on hypernode %s expect have score %v, but get %v", i+1, test.Name, hypernode, expected, hyperNodesScore[hypernode])
+				t.Errorf("case%d: task %s on hypernode %s expect have score %v, but get %v", i+1, test.name, hypernode, expected, hyperNodesScore[hypernode])
 			}
 		}
 	}
@@ -222,6 +309,7 @@ func TestNetworkTopologyAwareNodeScore(t *testing.T) {
 		nodes         []*api.NodeInfo
 		hyperNodeTree []map[string][]string
 		jobHyperNode  string
+		tasks         map[string]string
 		expected      map[string]float64
 	}{
 		{
@@ -347,6 +435,94 @@ func TestNetworkTopologyAwareNodeScore(t *testing.T) {
 				"node5": 0.0,
 			},
 		},
+		{
+			name: "If the calculated LCAHyperNode is the same, the scores will be the same.",
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Plugins: map[string]framework.PluginBuilder{PluginName: New},
+			},
+			arguments: framework.Arguments{
+				"weight": 1,
+			},
+			nodes: []*api.NodeInfo{
+				{
+					Name: "node1",
+				},
+				{
+					Name: "node3",
+				},
+				{
+					Name: "node5",
+				},
+			},
+			jobHyperNode: "hyperNode1",
+			hyperNodeTree: []map[string][]string{
+				{
+					"hyperNode0": []string{"hyperNode1", "hyperNode2"},
+				},
+				{
+					"hyperNode1": []string{"hyperNode3", "hyperNode4"},
+					"hyperNode2": []string{"hyperNode5", "hyperNode6"},
+				},
+				{
+					"hyperNode3": []string{"node1", "node2"},
+					"hyperNode4": []string{"node3", "node4"},
+					"hyperNode5": []string{"node5", "node6"},
+					"hyperNode6": []string{"node7", "node8"},
+				},
+			},
+			expected: map[string]float64{
+				"node1": 36.9,
+				"node3": 36.9,
+				"node5": 0.0,
+			},
+		},
+		{
+			name: "If the calculated LCAHyperNode is the same, but the hyperNode has more tasks running, the score will be higher.",
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Plugins: map[string]framework.PluginBuilder{PluginName: New},
+			},
+			arguments: framework.Arguments{
+				"weight": 1,
+			},
+			nodes: []*api.NodeInfo{
+				{
+					Name: "node1",
+				},
+				{
+					Name: "node3",
+				},
+				{
+					Name: "node5",
+				},
+			},
+			jobHyperNode: "hyperNode1",
+			hyperNodeTree: []map[string][]string{
+				{
+					"hyperNode0": []string{"hyperNode1", "hyperNode2"},
+				},
+				{
+					"hyperNode1": []string{"hyperNode3", "hyperNode4"},
+					"hyperNode2": []string{"hyperNode5", "hyperNode6"},
+				},
+				{
+					"hyperNode3": []string{"node1", "node2"},
+					"hyperNode4": []string{"node3", "node4"},
+					"hyperNode5": []string{"node5", "node6"},
+					"hyperNode6": []string{"node7", "node8"},
+				},
+			},
+			tasks: map[string]string{
+				"task1": "node1",
+				"task2": "node2",
+				"task3": "node3",
+				"test4": "",
+			},
+			expected: map[string]float64{
+				"node1": 41.9,
+				"node3": 39.4,
+				"node5": 0.0,
+			},
+		},
 	}
 
 	trueValue := true
@@ -375,9 +551,19 @@ func TestNetworkTopologyAwareNodeScore(t *testing.T) {
 		ssn.Jobs = map[api.JobID]*api.JobInfo{
 			job.UID: job,
 		}
+		job.Tasks = make(map[api.TaskID]*api.TaskInfo)
+		for name, node := range test.tasks {
+			taskInfo := &api.TaskInfo{
+				UID:  api.TaskID(name),
+				Name: name,
+				Job:  job.UID,
+			}
+			job.Tasks[taskInfo.UID] = taskInfo
+			taskInfo.NodeName = node
+		}
 		// mock task
 		task := &api.TaskInfo{
-			Name: "test-task",
+			Name: "test4",
 			Job:  job.UID,
 		}
 		scores, err := ssn.BatchNodeOrderFn(task, test.nodes)
@@ -387,7 +573,7 @@ func TestNetworkTopologyAwareNodeScore(t *testing.T) {
 		}
 		for node, expected := range test.expected {
 			if math.Abs(scores[node]-expected) > eps {
-				t.Errorf("case%d: task %s on node %s expect have score %v, but get %v", i+1, test.Name, node, scores[node], expected)
+				t.Errorf("case%d: task %s on node %s expect have score %v, but get %v", i+1, test.name, node, scores[node], expected)
 			}
 		}
 	}

@@ -30,6 +30,7 @@ const (
 	// PluginName indicates name of volcano scheduler plugin.
 	PluginName            = "networktopologyaware"
 	BaseScore             = 100
+	TaskBaseScore         = 10
 	NetworkTopologyWeight = "weight"
 )
 
@@ -69,11 +70,9 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	weight := calculateWeight(nta.pluginArguments)
 	hyperNodeFn := func(job *api.JobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
-		jobHyperNode := job.PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode]
-
 		hyperNodeScores := make(map[string]float64)
 		for hyperNode := range hyperNodes {
-			score := networkTopologyAwareScore(hyperNode, jobHyperNode, HyperNodeTree)
+			score := networkTopologyAwareScore(hyperNode, job, HyperNodeTree)
 			score *= float64(weight)
 			hyperNodeScores[hyperNode] = score
 		}
@@ -83,14 +82,15 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	nodeFn := func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
-		jobHyperNode := ssn.Jobs[task.Job].PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode]
+		taskJob := ssn.Jobs[task.Job]
 		nodeScores := make(map[string]float64)
 		for _, node := range nodes {
 			hyperNode := util.FindHyperNodeOfNode(node.Name, HyperNodeTree)
-			score := networkTopologyAwareScore(hyperNode, jobHyperNode, HyperNodeTree)
+			score := networkTopologyAwareScore(hyperNode, taskJob, HyperNodeTree)
 			score *= float64(weight)
 			nodeScores[node.Name] = score
 		}
+		klog.V(1).Infof("networkTopologyAware score is: %v", nodeScores)
 		return nodeScores, nil
 	}
 
@@ -109,28 +109,43 @@ func (bp *networkTopologyAwarePlugin) OnSessionClose(ssn *framework.Session) {
 
 // Goals:
 // - The tier index to which the LCAHyperNode of a job belongs should be as low as possible.
-func networkTopologyAwareScore(hyperNode string, jobHyperNode string, hyperNodeTree []map[string][]string) float64 {
+// - Tasks under a job should be scheduled to one hyperNode as much as possible.
+func networkTopologyAwareScore(hyperNodeName string, job *api.JobInfo, hyperNodeTree []map[string][]string) float64 {
+	jobHyperNode := job.PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode]
 	// job fist first scheduler.
 	if jobHyperNode == "" {
 		return BaseScore
 	}
 
-	if jobHyperNode == hyperNode {
+	if jobHyperNode == hyperNodeName {
 		return BaseScore
 	}
 
-	_, index := util.FindLCAHyperNode(hyperNode, jobHyperNode, hyperNodeTree)
+	// Calculate hyperNode tier index score.
+	_, index := util.FindLCAHyperNode(hyperNodeName, jobHyperNode, hyperNodeTree)
 	if index <= 0 {
-		klog.V(4).Infof("find LCAhyperNode failed wtih %s in hyperNodeTree", hyperNode)
+		klog.V(4).Infof("find LCAhyperNode failed wtih %s in hyperNodeTree", hyperNodeName)
 		return 0.0
 	}
+	tierIndexScore := BaseScore * scoreHyperNodeWithIndex(index, 1, len(hyperNodeTree))
 
-	// Calculate scores.
-	return BaseScore * scoreHyperNodeWithIndex(index, 1, len(hyperNodeTree))
+	// Calculate tasks num score.
+	taskNum := util.FindJobTaskNumOfHyperNode(hyperNodeName, job, hyperNodeTree)
+	taskNumScore := 0.0
+	if len(job.Tasks) > 0 {
+		taskNumScore = TaskBaseScore * scoreHyperNodeWithTaskNum(taskNum, len(job.Tasks))
+	}
+	// aggregate scores
+	return tierIndexScore + taskNumScore
 }
 
 func scoreHyperNodeWithIndex(index int, minIndex int, maxIndex int) float64 {
 	// Use logarithmic operations to calculate scores and map the original values to the range between 0 and 1.
 	// Adjust the formula to ensure that the scores meet the requirements (excluding 0 and 1).
 	return (math.Log(float64(maxIndex)) - math.Log(float64(index))) / (math.Log(float64(maxIndex)) - math.Log(float64(minIndex)))
+}
+
+func scoreHyperNodeWithTaskNum(taskNum int, maxTaskNum int) float64 {
+	// Calculate task distribution rate as score and make sure the score to the range between 0 and 1.
+	return float64(taskNum) / float64(maxTaskNum)
 }
