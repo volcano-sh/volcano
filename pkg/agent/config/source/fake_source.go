@@ -46,7 +46,7 @@ func (f *fakeSource) GetLatestConfig() (cfg *api.ColocationConfig, err error) {
 func (f *fakeSource) Stop() {
 	for {
 		if f.queue.Len() == 0 {
-			f.queue.ShutDown()
+			f.queue.ShutDownWithDrain()
 			return
 		}
 		time.Sleep(1 * time.Second)
