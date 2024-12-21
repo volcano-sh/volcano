@@ -21,14 +21,20 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-type Action struct{}
+type Action struct {
+	session                   *framework.Session
+	enablePredicateErrorCache bool
+}
 
 func New() *Action {
-	return &Action{}
+	return &Action{
+		enablePredicateErrorCache: true,
+	}
 }
 
 func (ra *Action) Name() string {
@@ -37,10 +43,16 @@ func (ra *Action) Name() string {
 
 func (ra *Action) Initialize() {}
 
+func (ra *Action) parseArguments(ssn *framework.Session) {
+	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, ra.Name())
+	arguments.GetBool(&ra.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+}
+
 func (ra *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Reclaim ...")
 	defer klog.V(5).Infof("Leaving Reclaim ...")
-
+	ra.parseArguments(ssn)
+	ra.session = ssn
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
 
@@ -144,7 +156,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		for _, n := range totalNodes {
 			// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
 			// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
-			if err := ssn.PredicateForPreemptAction(task, n); err != nil {
+			if err := ra.predicate(task, n); err != nil {
 				klog.V(4).Infof("Reclaim predicate for task %s/%s on node %s return error %v ", task.Namespace, task.Name, n.Name, err)
 				continue
 			}
@@ -231,4 +243,8 @@ func (ra *Action) Execute(ssn *framework.Session) {
 }
 
 func (ra *Action) UnInitialize() {
+}
+
+func (ra *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
+	return ra.session.PredicateForPreemptAction(task, node, ra.enablePredicateErrorCache)
 }
