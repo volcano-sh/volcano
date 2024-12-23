@@ -135,6 +135,8 @@ type SchedulerCache struct {
 	defaultPriorityClass *schedulingv1.PriorityClass
 	defaultPriority      int32
 	CSINodesStatus       map[string]*schedulingapi.CSINodeStatusInfo
+	HyperNodesListByTier map[int][]string
+	HyperNodes           map[string]sets.Set[string]
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
@@ -580,6 +582,10 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 		imageStates:         make(map[string]*imageState),
+
+		// HyperNode info
+		HyperNodesListByTier: make(map[int][]string),
+		HyperNodes:           make(map[string]sets.Set[string]),
 
 		NodeList:    []string{},
 		nodeWorkers: nodeWorkers,
@@ -1328,13 +1334,15 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
-		Nodes:          make(map[string]*schedulingapi.NodeInfo),
-		Jobs:           make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Queues:         make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
-		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
-		NodeList:       make([]string, len(sc.NodeList)),
-		CSINodesStatus: make(map[string]*schedulingapi.CSINodeStatusInfo),
+		Nodes:                make(map[string]*schedulingapi.NodeInfo),
+		HyperNodesListByTier: make(map[int][]string),
+		HyperNodes:           make(map[string]sets.Set[string]),
+		Jobs:                 make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Queues:               make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		NamespaceInfo:        make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
+		RevocableNodes:       make(map[string]*schedulingapi.NodeInfo),
+		NodeList:             make([]string, len(sc.NodeList)),
+		CSINodesStatus:       make(map[string]*schedulingapi.CSINodeStatusInfo),
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)
@@ -1357,6 +1365,22 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
 		}
 	}
+
+	// Snapshot hyperNodes.
+	copiedHyperNodesListByTier := make(map[int][]string, len(sc.HyperNodesListByTier))
+	for tier, row := range sc.HyperNodesListByTier {
+		copiedHyperNodesListByTier[tier] = make([]string, len(row))
+		copy(copiedHyperNodesListByTier[tier], row)
+	}
+
+	hyperNodeLength := make(map[string]int)
+	snapshot.HyperNodesListByTier = copiedHyperNodesListByTier
+	copiedHyperNodes := make(map[string]sets.Set[string], len(sc.HyperNodes))
+	for name, value := range sc.HyperNodes {
+		copiedHyperNodes[name] = value.Clone()
+		hyperNodeLength[name] = value.Len()
+	}
+	snapshot.HyperNodes = copiedHyperNodes
 
 	for _, value := range sc.Queues {
 		snapshot.Queues[value.UID] = value.Clone()
@@ -1411,8 +1435,8 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	}
 	wg.Wait()
 
-	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
-		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
+	klog.V(3).InfoS("SnapShot for scheduling", "jobNum", len(snapshot.Jobs), "QueueNum",
+		len(snapshot.Queues), "NodeNum", len(snapshot.Nodes), "tiers", snapshot.HyperNodesListByTier, "hyperNodeNum", hyperNodeLength)
 
 	return snapshot
 }

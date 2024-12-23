@@ -90,6 +90,11 @@ func (ssn *Session) AddNodeOrderFn(name string, pf api.NodeOrderFn) {
 	ssn.nodeOrderFns[name] = pf
 }
 
+// AddHyperNodeOrederFn add hyperNode order function
+func (ssn *Session) AddHyperNodeOrederFn(name string, fn api.HyperNodeOrderFn) {
+	ssn.hyperNodeOrderFns[name] = fn
+}
+
 // AddBatchNodeOrderFn add Batch Node order function
 func (ssn *Session) AddBatchNodeOrderFn(name string, pf api.BatchNodeOrderFn) {
 	ssn.batchNodeOrderFns[name] = pf
@@ -782,6 +787,26 @@ func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[
 		}
 	}
 	return nodeScoreMap, priorityScore, nil
+}
+
+// HyperNodeOrderMapFn invoke hyperNode order function of the plugins
+func (ssn *Session) HyperNodeOrderMapFn(job *api.JobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]map[string]float64, error) {
+	nodeGroupScore := make(map[string]map[string]float64)
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			pfn, found := ssn.hyperNodeOrderFns[plugin.Name]
+			if !found {
+				continue
+			}
+			scoreTmp, err := pfn(job, hyperNodes)
+			if err != nil {
+				return nodeGroupScore, err
+			}
+
+			nodeGroupScore[plugin.Name] = scoreTmp
+		}
+	}
+	return nodeGroupScore, nil
 }
 
 // NodeOrderReduceFn invoke node order function of the plugins

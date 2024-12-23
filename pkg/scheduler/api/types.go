@@ -288,6 +288,9 @@ type EvictableFn func(*TaskInfo, []*TaskInfo) ([]*TaskInfo, int)
 // NodeOrderFn is the func declaration used to get priority score for a node for a particular task.
 type NodeOrderFn func(*TaskInfo, *NodeInfo) (float64, error)
 
+// HyperNodeOrderFn is the func declaration used to score hyperNodes for job.
+type HyperNodeOrderFn func(*JobInfo, map[string][]*NodeInfo) (map[string]float64, error)
+
 // BatchNodeOrderFn is the func declaration used to get priority score for ALL nodes for a particular task.
 type BatchNodeOrderFn func(*TaskInfo, []*NodeInfo) (map[string]float64, error)
 
@@ -299,6 +302,9 @@ type NodeReduceFn func(*TaskInfo, k8sframework.NodeScoreList) error
 
 // NodeOrderMapFn is the func declaration used to get priority score of all plugins for a node for a particular task.
 type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, error)
+
+// HyperNodeOrderMapFn is the func declaration used to get priority score of all plugins for a hyperNode for a particular job.
+type HyperNodeOrderMapFn func(*JobInfo, map[string][]*NodeInfo) (map[string]map[string]float64, error)
 
 // NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugin for a particular task.
 type NodeOrderReduceFn func(*TaskInfo, map[string]k8sframework.NodeScoreList) (map[string]float64, error)
