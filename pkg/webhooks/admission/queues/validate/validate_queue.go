@@ -17,6 +17,7 @@ limitations under the License.
 package validate
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/cli/podgroup"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -255,10 +257,21 @@ func validateHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
 		return fmt.Errorf("failed to get parent queue of queue %s: %v", queue.Name, err)
 	}
 
-	if parentQueue.Status.Pending+parentQueue.Status.Running+parentQueue.Status.Unknown+parentQueue.Status.Inqueue > 0 {
-		return fmt.Errorf("queue %s cannot be the parent queue of queue %s because it has PodGroups (pending: %d, running: %d, unknown: %d, inqueue: %d)",
-			parentQueue.Name, queue.Name, parentQueue.Status.Pending,
-			parentQueue.Status.Running, parentQueue.Status.Unknown, parentQueue.Status.Inqueue)
+	pgList, err := config.VolcanoClient.SchedulingV1beta1().PodGroups("").List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get all podgroups from api-server: %v", err)
+	}
+
+	pgStats := &podgroup.PodGroupStatistics{}
+	for _, pg := range pgList.Items {
+		if pg.Spec.Queue == parentQueue.Name {
+			pgStats.StatPodGroupCountsForQueue(&pg)
+		}
+	}
+
+	if pgStats.Pending+pgStats.Running+pgStats.Unknown+pgStats.Inqueue+pgStats.Completed > 0 {
+		return fmt.Errorf("queue %s cannot be the parent queue of queue %s because it has PodGroups (pending: %d, running: %d, unknown: %d, inqueue: %d, completed: %d)",
+			parentQueue.Name, queue.Name, pgStats.Pending, pgStats.Running, pgStats.Unknown, pgStats.Inqueue, pgStats.Completed)
 	}
 
 	klog.V(3).Infof("Validation passed for hierarchical queue %s with parent queue %s",
