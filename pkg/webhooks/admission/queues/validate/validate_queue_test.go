@@ -1049,8 +1049,18 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 		Spec: schedulingv1beta1.QueueSpec{
 			Parent: "root",
 		},
-		Status: schedulingv1beta1.QueueStatus{
-			Running: 2,
+	}
+
+	jobInQueue := schedulingv1beta1.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "job-in-queue",
+			Namespace: "test",
+		},
+		Spec: schedulingv1beta1.PodGroupSpec{
+			Queue: "queue-with-jobs",
+		},
+		Status: schedulingv1beta1.PodGroupStatus{
+			Phase: schedulingv1beta1.PodGroupRunning,
 		},
 	}
 
@@ -1075,6 +1085,11 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queueWithJobs, metav1.CreateOptions{})
 	if err != nil {
 		t.Errorf("Create queue with jobs failed for %v.", err)
+	}
+
+	_, err = config.VolcanoClient.SchedulingV1beta1().PodGroups("test").Create(context.TODO(), &jobInQueue, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create job %s/%s failed for %v", jobInQueue.Namespace, jobInQueue.Name, err)
 	}
 
 	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queueWithoutJobs, metav1.CreateOptions{})
@@ -1130,7 +1145,7 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: "queue queue-with-jobs cannot be the parent queue of queue parent-queue-with-jobs because it has PodGroups (pending: 0, running: 2, unknown: 0, inqueue: 0)",
+					Message: "queue queue-with-jobs cannot be the parent queue of queue parent-queue-with-jobs because it has PodGroups (pending: 0, running: 1, unknown: 0, inqueue: 0, completed: 0)",
 				},
 			},
 		},
