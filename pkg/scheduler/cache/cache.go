@@ -64,10 +64,12 @@ import (
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
+	schedulingutil "volcano.sh/volcano/pkg/scheduler/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -153,6 +155,7 @@ type SchedulerCache struct {
 	imageStates map[string]*imageState
 
 	nodeWorkers uint32
+	PodNum      int32
 
 	// IgnoredCSIProvisioners contains a list of provisioners, and pod request pvc with these provisioners will
 	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
@@ -1461,7 +1464,8 @@ func (sc *SchedulerCache) String() string {
 }
 
 // RecordJobStatusEvent records related events according to job status.
-func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updatePG bool) {
+func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updatePG bool, podStatusRateLimit *api.PodStatusRateLimit) {
+	nowTs := time.Now().Unix()
 	pgUnschedulable := job.PodGroup != nil &&
 		(job.PodGroup.Status.Phase == scheduling.PodGroupUnknown ||
 			job.PodGroup.Status.Phase == scheduling.PodGroupPending ||
@@ -1497,16 +1501,28 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 			if len(msg) == 0 {
 				msg = baseErrorMessage
 			}
-			if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {
-				klog.ErrorS(err, "Failed to update unschedulable task status", "task", klog.KRef(taskInfo.Namespace, taskInfo.Name),
-					"reason", reason, "message", msg)
+			var (
+				ts       int64
+				exist    bool
+				useCache = podStatusRateLimit.Enable && sc.PodNum >= int32(podStatusRateLimit.MinPodNum)
+			)
+			if useCache {
+				ts, exist = schedulingutil.GetPodStatusLastSetCache(job.UID, taskInfo.UID)
+			}
+
+			if !exist || nowTs-ts > int64(podStatusRateLimit.MinIntervalSec) {
+				if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {
+					klog.ErrorS(err, "Failed to update unschedulable task status", "task", klog.KRef(taskInfo.Namespace, taskInfo.Name),
+						"reason", reason, "message", msg)
+				}
+				schedulingutil.SetPodStatusLastSetCache(job.UID, taskInfo.UID, nowTs)
 			}
 		}
 	}
 }
 
 // UpdateJobStatus update the status of job and its tasks.
-func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG bool) (*schedulingapi.JobInfo, error) {
+func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG bool, podStatusRateLimit *api.PodStatusRateLimit) (*schedulingapi.JobInfo, error) {
 	if updatePG {
 		pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
 		if err != nil {
@@ -1515,7 +1531,7 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG b
 		job.PodGroup = pg
 	}
 
-	sc.RecordJobStatusEvent(job, updatePG)
+	sc.RecordJobStatusEvent(job, updatePG, podStatusRateLimit)
 
 	return job, nil
 }
