@@ -419,9 +419,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			continue
 		}
 
-		attr := cp.newQueueAttr(queue)
-		cp.queueOpts[queue.UID] = attr
-		err := cp.updateParents(queue, ssn)
+		err := cp.initializeHierarchicalQueueAttrs(queue, ssn)
 		if err != nil {
 			klog.Errorf("Failed to update Queue <%s> attributes, error: %v", queue.Name, err)
 			return false
@@ -579,7 +577,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	return true
 }
 
-func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
+func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo, parent *api.QueueInfo) *queueAttr {
 	attr := &queueAttr{
 		queueID:  queue.UID,
 		name:     queue.Name,
@@ -595,11 +593,13 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 	}
 	if len(queue.Queue.Spec.Capability) != 0 {
 		attr.capability = api.NewResource(queue.Queue.Spec.Capability)
+		parentCapability := api.NewResource(parent.Queue.Spec.Capability)
+		// If the user does not set CPU or memory in capability, we set the value to be the same as parent (we do not consider the situation where the user sets CPU or memory<=0)
 		if attr.capability.MilliCPU <= 0 {
-			attr.capability.MilliCPU = math.MaxFloat64
+			attr.capability.MilliCPU = parentCapability.MilliCPU
 		}
 		if attr.capability.Memory <= 0 {
-			attr.capability.Memory = math.MaxFloat64
+			attr.capability.Memory = parentCapability.Memory
 		}
 	}
 
@@ -610,8 +610,10 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 	return attr
 }
 
-func (cp *capacityPlugin) updateParents(queue *api.QueueInfo, ssn *framework.Session) error {
+func (cp *capacityPlugin) initializeHierarchicalQueueAttrs(queue *api.QueueInfo, ssn *framework.Session) error {
 	if queue.Name == cp.rootQueue {
+		// root's parent is itself
+		cp.queueOpts[queue.UID] = cp.newQueueAttr(queue, queue)
 		return nil
 	}
 
@@ -624,10 +626,11 @@ func (cp *capacityPlugin) updateParents(queue *api.QueueInfo, ssn *framework.Ses
 	}
 
 	parentInfo := ssn.Queues[api.QueueID(parent)]
+	curQueueAttr := cp.newQueueAttr(queue, parentInfo)
+	cp.queueOpts[curQueueAttr.queueID] = curQueueAttr
+
 	if _, found := cp.queueOpts[parentInfo.UID]; !found {
-		parentAttr := cp.newQueueAttr(parentInfo)
-		cp.queueOpts[parentAttr.queueID] = parentAttr
-		err := cp.updateParents(parentInfo, ssn)
+		err := cp.initializeHierarchicalQueueAttrs(parentInfo, ssn)
 		if err != nil {
 			return err
 		}
