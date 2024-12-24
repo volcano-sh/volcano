@@ -42,4 +42,7 @@ const (
 
 	// topologyDecisionAnnotation is the key of topology decision about pod request resource
 	topologyDecisionAnnotation = "volcano.sh/topology-decision"
+
+	// TopologyAllocateLCAHyperNode is the key to the lowest common ancestor of the network topology to which the tasks assigned to a job belong.
+	TopologyAllocateLCAHyperNode = "volcano.sh/allocate-lca-hypernode"
 )
