@@ -101,6 +101,16 @@ func AllocatedStatus(status TaskStatus) bool {
 	}
 }
 
+// CompletedStatus checks whether the tasks are completed (regardless of failure or success)
+func CompletedStatus(status TaskStatus) bool {
+	switch status {
+	case Failed, Succeeded:
+		return true
+	default:
+		return false
+	}
+}
+
 // MergeErrors is used to merge multiple errors into single error
 func MergeErrors(errs ...error) error {
 	msg := "errors: "
