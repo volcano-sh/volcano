@@ -183,15 +183,23 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 			unScheduleJobCount++
 			metrics.RegisterJobRetries(job.Name)
 
+			reason := scheduling.NotEnoughResourcesReason
+			condition := scheduling.PodGroupUnschedulableType
+			// if job is rejected to enqueue, record the reason with Unenqueueable, to distinguish from NotEnoughResources
+			if job.PodGroup.Status.Phase != scheduling.PodGroupInqueue {
+				reason = scheduling.UnEnqueueableReason
+				condition = scheduling.PodGroupUnenqueueable
+			}
+
 			// TODO: If the Job is gang-unschedulable due to scheduling gates
 			// we need a new message and reason to tell users
 			// More detail in design doc pod-scheduling-readiness.md
 			jc := &scheduling.PodGroupCondition{
-				Type:               scheduling.PodGroupUnschedulableType,
+				Type:               condition,
 				Status:             v1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
 				TransitionID:       string(ssn.UID),
-				Reason:             v1beta1.NotEnoughResourcesReason,
+				Reason:             reason,
 				Message:            msg,
 			}
 
