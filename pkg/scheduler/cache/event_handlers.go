@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 
@@ -48,6 +49,8 @@ import (
 
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
+
+	networktopov1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 )
 
 var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
@@ -1260,4 +1263,97 @@ func (sc *SchedulerCache) setCSIResourceOnNode(csiNode *sv1.CSINode, node *v1.No
 		node.Status.Allocatable[resourceName] = quantity
 		node.Status.Capacity[resourceName] = quantity
 	}
+}
+
+func (sc *SchedulerCache) getNodeNamesByRegexMatchSelector(selector *networktopov1alpha1.RegexMatch) []string {
+	// Get all node names from sc.Nodes that match the regex pattern
+	var matchingNodes []string
+
+	// Compile the regular expression
+	re, err := regexp.Compile(selector.Pattern)
+	if err != nil {
+		klog.Errorf("Failed to compile regex pattern: %v. Err = %v", selector.Pattern, err)
+	}
+
+	// Iterate over the nodes in the cache
+	for nodeName := range sc.Nodes {
+		if re.MatchString(nodeName) {
+			matchingNodes = append(matchingNodes, nodeName)
+		}
+	}
+
+	return matchingNodes
+}
+
+func (sc *SchedulerCache) getHyperNodeNamesByRegexMatchSelector(selector *networktopov1alpha1.RegexMatch) []string {
+	// Get all hypernode names from sc.HyperNodes that match the regex pattern
+	var matchingHyperNodes []string
+
+	// Compile the regular expression
+	re, err := regexp.Compile(selector.Pattern)
+	if err != nil {
+		klog.Errorf("Failed to compile regex pattern: %v. Err = %v", selector.Pattern, err)
+	}
+
+	// Iterate over the hypernodes in the cache
+	for hyperNodeName := range sc.HyperNodes {
+		if re.MatchString(hyperNodeName) {
+			matchingHyperNodes = append(matchingHyperNodes, hyperNodeName)
+		}
+	}
+
+	return matchingHyperNodes
+}
+
+// convertObjToHyperNode converts the given object to a HyperNode object.
+func (sc *SchedulerCache) convertObjToHyperNode(obj interface{}) (*networktopov1alpha1.HyperNode, error) {
+	ss, ok := obj.(*networktopov1alpha1.HyperNode)
+	if !ok {
+		return nil, fmt.Errorf("cannot convert to *networktopov1alpha1.HyperNode: %v", obj)
+	}
+
+	hyperNode := networktopov1alpha1.HyperNode{}
+	if err := scheme.Scheme.Convert(ss, &hyperNode, nil); err != nil {
+		return nil, fmt.Errorf("failed to convert hypernode from %T to %T", ss, hyperNode)
+	}
+
+	return &hyperNode, nil
+}
+
+// AddHyperNode add hypernode to scheduler cache
+func (sc *SchedulerCache) AddHyperNodeV1alpha1(obj interface{}) {
+	hyperNode, err := sc.convertObjToHyperNode(obj)
+	if err != nil {
+		klog.Errorf("Failed to convert object to HyperNode: %v", err)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	sc.addHyperNode(hyperNode)
+	klog.V(4).Infof("Added HyperNode(%s) into cache, spec(%#v)", hyperNode.Name, hyperNode.Spec)
+
+}
+
+// DeleteHyperNodeV1alpha1 delete hypernode from scheduler cache
+func (sc *SchedulerCache) DeleteHyperNodeV1alpha1(obj interface{}) {
+	hyperNode, err := sc.convertObjToHyperNode(obj)
+	if err != nil {
+		klog.Errorf("Failed to convert object to HyperNode: %v", err)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	sc.deleteHyperNode(hyperNode)
+	klog.V(4).Infof("Deleted HyperNode(%s) from cache", hyperNode.Name)
+}
+
+// UpdateHyperNodeV1alpha1 update hypernode in scheduler cache
+func (sc *SchedulerCache) UpdateHyperNodeV1alpha1(oldObj, newObj interface{}) {
+	sc.DeleteHyperNodeV1alpha1(oldObj)
+	sc.AddHyperNodeV1alpha1(newObj)
+	klog.V(4).Infof("Updated HyperNode(%s) in cache", newObj)
 }

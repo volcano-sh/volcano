@@ -215,6 +215,16 @@ func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[st
 	}
 }
 
+// BuildPodGroupWithNetWorkTopologies builds podGroup with NetWorkTopologies.
+func BuildPodGroupWithNetWorkTopologies(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode string, highestTierAllowed int) *schedulingv1beta1.PodGroup {
+	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
+	pg.Spec.NetworkTopologies = &schedulingv1beta1.NetworkTopologiesSpec{
+		Mode:               schedulingv1beta1.NetworkTopologyMode(mode),
+		HighestTierAllowed: &highestTierAllowed,
+	}
+	return pg
+}
+
 // BuildPodGroupWithMinResources return podgroup with base spec and phase status and minResources
 func BuildPodGroupWithMinResources(name, ns, queue string, minMember int32, taskMinMember map[string]int32, minResources v1.ResourceList, status schedulingv1beta1.PodGroupPhase) *schedulingv1beta1.PodGroup {
 	return &schedulingv1beta1.PodGroup{
