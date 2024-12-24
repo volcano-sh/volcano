@@ -400,11 +400,11 @@ func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.Nod
 		ok  bool
 	)
 	if cacheEnable {
-		err, ok = util.GetPredicateCache(task.Job, task.UID, node.Name, node.HashValue)
+		err, ok = util.GetPredicateCache(task.Job, task.UID, task.HashValue, node.Name, node.HashValue)
 	}
 	if !ok {
 		err = ssn.PredicateFn(task, node)
-		util.SetPredicateCache(task.Job, task.UID, node.Name, node.HashValue, err)
+		util.SetPredicateCache(task.Job, task.UID, task.HashValue, node.Name, node.HashValue, err)
 	}
 	if err == nil {
 		return nil
@@ -437,11 +437,11 @@ func (ssn *Session) PredicateForPreemptAction(task *api.TaskInfo, node *api.Node
 		ok  bool
 	)
 	if cacheEnable {
-		err, ok = util.GetPredicateCache(task.Job, task.UID, node.Name, node.HashValue)
+		err, ok = util.GetPredicateCache(task.Job, task.UID, task.HashValue, node.Name, node.HashValue)
 	}
 	if !ok {
 		err = ssn.PredicateFn(task, node)
-		util.SetPredicateCache(task.Job, task.UID, node.Name, node.HashValue, err)
+		util.SetPredicateCache(task.Job, task.UID, task.HashValue, node.Name, node.HashValue, err)
 	}
 	if err == nil {
 		return nil
