@@ -60,6 +60,9 @@ type Session struct {
 	// This should not be mutated after initiated
 	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
 
+	// recored old annotations for podgroup, used to detect changes
+	podGroupAnnotations map[api.JobID]map[string]string
+
 	Jobs           map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
 	CSINodesStatus map[string]*api.CSINodeStatusInfo
@@ -75,6 +78,12 @@ type Session struct {
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
+	// HyperNodesListByTier contains a list of hyperNodes by tier from down to top, nodes under the same hyperNode
+	// have the same topology domain, e.g., nodes under the same switch or tor, jobs allocated in the same
+	// hyperNode can gain a better performance, the lower the tier of hyperNode, the better performance.
+	HyperNodesListByTier map[int][]string
+	// HyperNodes maps hyperNode Name -> nodes under the hyperNode.
+	HyperNodes map[string][]*api.NodeInfo
 
 	plugins             map[string]Plugin
 	eventHandlers       []*EventHandler
@@ -90,6 +99,7 @@ type Session struct {
 	batchNodeOrderFns   map[string]api.BatchNodeOrderFn
 	nodeMapFns          map[string]api.NodeMapFn
 	nodeReduceFns       map[string]api.NodeReduceFn
+	hyperNodeOrderFns   map[string]api.HyperNodeOrderFn
 	preemptableFns      map[string]api.EvictableFn
 	reclaimableFns      map[string]api.EvictableFn
 	overusedFns         map[string]api.ValidateFn
@@ -118,15 +128,15 @@ func openSession(cache cache.Cache) *Session {
 		cache:           cache,
 		informerFactory: cache.SharedInformerFactory(),
 
-		TotalResource:  api.EmptyResource(),
-		TotalGuarantee: api.EmptyResource(),
-		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
-
-		Jobs:           map[api.JobID]*api.JobInfo{},
-		Nodes:          map[string]*api.NodeInfo{},
-		CSINodesStatus: map[string]*api.CSINodeStatusInfo{},
-		RevocableNodes: map[string]*api.NodeInfo{},
-		Queues:         map[api.QueueID]*api.QueueInfo{},
+		TotalResource:       api.EmptyResource(),
+		TotalGuarantee:      api.EmptyResource(),
+		podGroupStatus:      map[api.JobID]scheduling.PodGroupStatus{},
+		podGroupAnnotations: map[api.JobID]map[string]string{},
+		Jobs:                map[api.JobID]*api.JobInfo{},
+		Nodes:               map[string]*api.NodeInfo{},
+		CSINodesStatus:      map[string]*api.CSINodeStatusInfo{},
+		RevocableNodes:      map[string]*api.NodeInfo{},
+		Queues:              map[api.QueueID]*api.QueueInfo{},
 
 		plugins:             map[string]Plugin{},
 		jobOrderFns:         map[string]api.CompareFn{},
@@ -141,6 +151,7 @@ func openSession(cache cache.Cache) *Session {
 		batchNodeOrderFns:   map[string]api.BatchNodeOrderFn{},
 		nodeMapFns:          map[string]api.NodeMapFn{},
 		nodeReduceFns:       map[string]api.NodeReduceFn{},
+		hyperNodeOrderFns:   map[string]api.HyperNodeOrderFn{},
 		preemptableFns:      map[string]api.EvictableFn{},
 		reclaimableFns:      map[string]api.EvictableFn{},
 		overusedFns:         map[string]api.ValidateFn{},
@@ -163,6 +174,7 @@ func openSession(cache cache.Cache) *Session {
 	for _, job := range ssn.Jobs {
 		if job.PodGroup != nil {
 			ssn.podGroupStatus[job.UID] = *job.PodGroup.Status.DeepCopy()
+			ssn.podGroupAnnotations[job.UID] = job.PodGroup.GetAnnotations()
 		}
 
 		if vjr := ssn.JobValid(job); vjr != nil {
@@ -185,6 +197,8 @@ func openSession(cache cache.Cache) *Session {
 		}
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
+	ssn.HyperNodesListByTier = snapshot.HyperNodesListByTier
+	ssn.HyperNodes = util.GetHyperNodeList(snapshot.HyperNodes, snapshot.Nodes)
 	ssn.Nodes = snapshot.Nodes
 	ssn.CSINodesStatus = snapshot.CSINodesStatus
 	ssn.RevocableNodes = snapshot.RevocableNodes
