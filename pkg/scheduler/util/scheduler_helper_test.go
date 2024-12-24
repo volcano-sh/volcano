@@ -19,8 +19,6 @@ package util
 import (
 	"testing"
 
-	"k8s.io/apimachinery/pkg/util/sets"
-
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -239,6 +237,265 @@ func TestGetHyperNodeList(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			result := GetHyperNodeList(tc.hyperNodes, tc.allNodes)
 			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestFindLCAHyperNode(t *testing.T) {
+	testCases := []struct {
+		name          string
+		hyperNodeName string
+		JobHyperNode  string
+		hyperNodeTree []map[string][]string
+		expectedNode  string
+		expectedLevel int
+	}{
+		{
+			name:          "Job hyperNode is empty",
+			hyperNodeName: "hyperNode3",
+			JobHyperNode:  "",
+			hyperNodeTree: []map[string][]string{
+				{
+					"hyperNode0": []string{"hyperNode1", "hyperNode2"},
+				},
+				{
+					"hyperNode1": []string{"hyperNode3", "hyperNode4"},
+					"hyperNode2": []string{"hyperNode5", "hyperNode6"},
+				},
+				{
+					"hyperNode3": []string{},
+					"hyperNode4": []string{},
+					"hyperNode5": []string{},
+					"hyperNode6": []string{},
+				},
+			},
+			expectedNode:  "hyperNode3",
+			expectedLevel: 1,
+		},
+		{
+			name:          "Job hyperNode equals input hyperNodeName",
+			hyperNodeName: "hyperNode3",
+			JobHyperNode:  "hyperNode3",
+			hyperNodeTree: []map[string][]string{
+				{
+					"hyperNode0": []string{"hyperNode1", "hyperNode2"},
+				},
+				{
+					"hyperNode1": []string{"hyperNode3", "hyperNode4"},
+					"hyperNode2": []string{"hyperNode5", "hyperNode6"},
+				},
+				{
+					"hyperNode3": []string{},
+					"hyperNode4": []string{},
+					"hyperNode5": []string{},
+					"hyperNode6": []string{},
+				},
+			},
+			expectedNode:  "hyperNode3",
+			expectedLevel: 1,
+		},
+		{
+			name:          "Normal LCA find for non-leaf node",
+			hyperNodeName: "hyperNode4",
+			JobHyperNode:  "hyperNode1",
+			hyperNodeTree: []map[string][]string{
+				{
+					"hyperNode0": []string{"hyperNode1", "hyperNode2"},
+				},
+				{
+					"hyperNode1": []string{"hyperNode3", "hyperNode4"},
+					"hyperNode2": []string{"hyperNode5", "hyperNode6"},
+				},
+				{
+					"hyperNode3": []string{},
+					"hyperNode4": []string{},
+					"hyperNode5": []string{},
+					"hyperNode6": []string{},
+				},
+			},
+			expectedNode:  "hyperNode1",
+			expectedLevel: 2,
+		},
+		{
+			name:          "Find LCA for hyperNodes in different branches",
+			hyperNodeName: "hyperNode5",
+			JobHyperNode:  "hyperNode1",
+			hyperNodeTree: []map[string][]string{
+				{
+					"hyperNode0": []string{"hyperNode1", "hyperNode2"},
+				},
+				{
+					"hyperNode1": []string{"hyperNode3", "hyperNode4"},
+					"hyperNode2": []string{"hyperNode5", "hyperNode6"},
+				},
+				{
+					"hyperNode3": []string{},
+					"hyperNode4": []string{},
+					"hyperNode5": []string{},
+					"hyperNode6": []string{},
+				},
+			},
+			expectedNode:  "hyperNode0",
+			expectedLevel: 3,
+		},
+		{
+			name:          "Find LCA for hyperNodes in different branches",
+			hyperNodeName: "hyperNode1",
+			JobHyperNode:  "hyperNode2",
+			hyperNodeTree: []map[string][]string{
+				{
+					"hyperNode0": []string{"hyperNode1", "hyperNode2"},
+				},
+				{
+					"hyperNode1": []string{"hyperNode3", "hyperNode4"},
+					"hyperNode2": []string{"hyperNode5", "hyperNode6"},
+				},
+				{
+					"hyperNode3": []string{},
+					"hyperNode4": []string{},
+					"hyperNode5": []string{},
+					"hyperNode6": []string{},
+				},
+			},
+			expectedNode:  "hyperNode0",
+			expectedLevel: 3,
+		},
+		{
+			name:          "No LCA hyperNode found for non-existent node",
+			hyperNodeName: "nonExistentNode",
+			JobHyperNode:  "",
+			hyperNodeTree: []map[string][]string{
+				{
+					"hyperNode0": []string{"hyperNode1", "hyperNode2"},
+				},
+				{
+					"hyperNode1": []string{"hyperNode3", "hyperNode4"},
+					"hyperNode2": []string{"hyperNode5", "hyperNode6"},
+				},
+				{
+					"hyperNode3": []string{},
+					"hyperNode4": []string{},
+					"hyperNode5": []string{},
+					"hyperNode6": []string{},
+				},
+			},
+			expectedNode:  "",
+			expectedLevel: -1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resultNode, resultLevel := FindLCAHyperNode(tc.hyperNodeName, tc.JobHyperNode, tc.hyperNodeTree)
+			if resultNode != tc.expectedNode || resultLevel != tc.expectedLevel {
+				t.Errorf("Test case '%s' failed. Expected node: %s, level: %d. Got node: %s, level: %d",
+					tc.name, tc.expectedNode, tc.expectedLevel, resultNode, resultLevel)
+			}
+		})
+	}
+}
+
+func TestFindJobTaskNumOfHyperNode(t *testing.T) {
+	testCases := []struct {
+		name          string
+		hyperNodeName string
+		tasks         map[string]string
+		hyperNodes    map[string][]*api.NodeInfo
+		expectedRes   int
+	}{
+		{
+			name:          "Normal case with matching tasks",
+			hyperNodeName: "hyperNode1",
+			tasks: map[string]string{
+				"task1": "node1",
+				"task2": "node2",
+			},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+					{Name: "node3"},
+				},
+			},
+			expectedRes: 1,
+		},
+		{
+			name:          "No matching tasks case",
+			hyperNodeName: "hyperNode1",
+			tasks: map[string]string{
+				"task1": "node4",
+				"task2": "node5",
+			},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+					{Name: "node3"},
+				},
+			},
+			expectedRes: 0,
+		},
+		{
+			name:          "Empty job tasks map case",
+			hyperNodeName: "hyperNode1",
+			tasks:         map[string]string{},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+					{Name: "node3"},
+				},
+			},
+			expectedRes: 0,
+		},
+		{
+			name:          "Empty nodes list for hyperNode case",
+			hyperNodeName: "hyperNode2",
+			tasks: map[string]string{
+				"task1": "node1",
+				"task2": "node2",
+			},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode2": {},
+			},
+			expectedRes: 0,
+		},
+		{
+			name:          "Tasks with duplicate match in multiple hyperNodes",
+			hyperNodeName: "hyperNode1",
+			tasks: map[string]string{
+				"task1": "node1",
+			},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+				},
+				"hyperNode2": {
+					{Name: "node1"},
+				},
+			},
+			expectedRes: 1,
+		},
+	}
+
+	job := &api.JobInfo{
+		Name:     "test-job",
+		PodGroup: &api.PodGroup{},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			job.Tasks = make(map[api.TaskID]*api.TaskInfo)
+			for name, node := range tc.tasks {
+				taskInfo := &api.TaskInfo{
+					UID:  api.TaskID(name),
+					Name: name,
+					Job:  job.UID,
+				}
+				taskInfo.NodeName = node
+				job.Tasks[taskInfo.UID] = taskInfo
+			}
+			result := FindJobTaskNumOfHyperNode(tc.hyperNodeName, job, tc.hyperNodes)
+			if result != tc.expectedRes {
+				t.Errorf("Test case '%s' failed. Expected result: %d, but got: %d",
+					tc.name, tc.expectedRes, result)
+			}
 		})
 	}
 }
