@@ -1314,7 +1314,7 @@ func (sc *SchedulerCache) updateHyperNodeListByTier(hyperNode *networktopov1alph
 	}
 	// TODO: What if the node already exists in the cache? Should we update it?
 	// Or, shall we use a set (instead of a list) of nodes for each tier?
-	sc.HyperNodeListByTier[tier] = append(sc.HyperNodeListByTier[tier], hyperNode.Name)
+	sc.HyperNodeListByTier[tier].Insert(hyperNode.Name)
 
 	// // Add children nodes to the cache sc.HyperNodes
 	// sc.HyperNodes[hyperNode.Name] = sets.Set[string]{} // Initialize the set
@@ -1391,20 +1391,29 @@ func (sc *SchedulerCache) AddHyperNodeV1alpha1(obj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	sc.hypernodeForestbuilder.addHyperNode(hyperNode)
+	sc.addHyperNode(hyperNode)
+	klog.V(4).Infof("Added HyperNode(%s) into cache, spec(%#v)", hyperNode.Name, hyperNode.Spec)
 
-	// sc.updateHyperNodeListByTier(hyperNode)
-
-	// klog.V(4).Infof("Add HyperNode(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
-
-}
-
-// UpdateHyperNodeV1alpha1 update hypernode in scheduler cache
-func (sc *SchedulerCache) UpdateHyperNodeV1alpha1(oldObj, newObj interface{}) {
-	// TODO (penggu)
 }
 
 // DeleteHyperNodeV1alpha1 delete hypernode from scheduler cache
 func (sc *SchedulerCache) DeleteHyperNodeV1alpha1(obj interface{}) {
-	// TODO (penggu)
+	hyperNode, err := sc.convertObjToHyperNode(obj)
+	if err != nil {
+		klog.Errorf("Failed to convert object to HyperNode: %v", err)
+		return
+	}
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	sc.deleteHyperNode(hyperNode)
+	klog.V(4).Infof("Deleted HyperNode(%s) from cache", hyperNode.Name)
+}
+
+// UpdateHyperNodeV1alpha1 update hypernode in scheduler cache
+func (sc *SchedulerCache) UpdateHyperNodeV1alpha1(oldObj, newObj interface{}) {
+	sc.DeleteHyperNodeV1alpha1(oldObj)
+	sc.AddHyperNodeV1alpha1(newObj)
+	klog.V(4).Infof("Updated HyperNode(%s) in cache", newObj)
 }

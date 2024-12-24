@@ -139,7 +139,7 @@ type SchedulerCache struct {
 	defaultPriorityClass   *schedulingv1.PriorityClass
 	defaultPriority        int32
 	CSINodesStatus         map[string]*schedulingapi.CSINodeStatusInfo
-	HyperNodeListByTier    map[int][]string
+	HyperNodeListByTier    map[int]sets.Set[string]    // Maps tier to a set of hypernode names
 	HyperNodes             map[string]sets.Set[string] // Maps hypernode name to a set of node names
 	HyperNodeTreeRoots     HyperNodeSet
 	hypernodeForestbuilder *HyperNodeForestBuilder
@@ -232,7 +232,7 @@ type HyperNodeTreeNode struct {
 	Parent         *HyperNodeTreeNode
 	Members        sets.Set[*HyperNodeTreeNode]
 	MemberMatchers sets.Set[*MemberMatcher]
-	Nodes          sets.Set[string]
+	Nodes          sets.Set[*schedulingapi.NodeInfo]
 	NodeMatchers   sets.Set[*MemberMatcher]
 	HyperNodeRef   *networktopov1alpha1.HyperNode
 }
@@ -243,7 +243,7 @@ func NewHyperNodeTreeNode(name string) *HyperNodeTreeNode {
 		Tier:           -1, // Initialize to an invalid value
 		Members:        sets.New[*HyperNodeTreeNode](),
 		MemberMatchers: sets.New[*MemberMatcher](),
-		Nodes:          sets.New[string](),
+		Nodes:          sets.New[*schedulingapi.NodeInfo](),
 		NodeMatchers:   sets.New[*MemberMatcher](),
 	}
 }
@@ -264,63 +264,24 @@ func NewHyperNodeForestBuilder() *HyperNodeForestBuilder {
 	}
 }
 
-// addHyperNodeWithParent adds a HyperNodeTreeNode to the forest by its name
-// and parent name
-func (hnfb *HyperNodeForestBuilder) addHyperNodeWithParent(name string, parentName string) {
-	// Ensure the node exists in the map
-	if _, exists := hnfb.nodes[name]; !exists {
-		hnfb.nodes[name] = NewHyperNodeTreeNode(name)
-		klog.V(4).Infof("Adding node %s to the forest", name)
+// insertHyperNodeMember inserts a member into a hypernode and updates the forest
+func insertHyperNodeMember(hntn *HyperNodeTreeNode, hnfb *HyperNodeForestBuilder, memberName string, memberNode *HyperNodeTreeNode, sc *SchedulerCache) {
+	hntn.Members.Insert(memberNode)
+	memberNode.Parent = hntn
+	if hnfb.roots.Has(memberName) {
+		hnfb.roots.Delete(memberName)
 	}
-	node := hnfb.nodes[name]
+	sc.HyperNodeListByTier[memberNode.Tier].Insert(memberName)
 
-	if parentName == "" {
-		// If no parent name is provided, this is a root node
-		if !hnfb.roots.Has(name) && node.Parent == nil {
-			hnfb.roots.Insert(name)
-		} else {
-			// Ensure the parent exists in the map
-			if _, exists := hnfb.nodes[parentName]; !exists {
-				hnfb.nodes[parentName] = NewHyperNodeTreeNode(parentName)
-			}
-			parent := hnfb.nodes[parentName]
-
-			// Link parent and child
-			node.Parent = parent
-			parent.Members.Insert(node)
-
-			// If the child was previously a root, remove it
-			hnfb.roots.Delete(name)
-		}
-	}
-}
-
-// addHyperNodeWithChildren adds a HyperNodeTreeNode to the forest based on its own and its
-// children's names.
-func (hnfb *HyperNodeForestBuilder) addHyperNodeWithChildren(name string, children sets.Set[string]) {
-	// for each child, add the node as its parent
-	for child := range children {
-		hnfb.addHyperNodeWithParent(child, name)
-	}
-}
-
-// addWorkerNodeToHyperNode adds a k8s cluster worker node to a hypernode in the forest
-func (hnfb *HyperNodeForestBuilder) addWorkerNodeToHyperNode(hyperNodeName string, workerNodeName string) {
-	hyperNode := hnfb.nodes[hyperNodeName]
-	if hyperNode == nil {
-		klog.Errorf("HyperNode %s not found in the forest", hyperNodeName)
-		return
-	}
-
-	hyperNode.Nodes.Insert(workerNodeName)
-
+	sc.HyperNodes[hntn.Name].Union(sc.HyperNodes[memberName])
 }
 
 // addHyperNode adds a HyperNodeTreeNode to the forest based on v1apha1.HyperNode
 // Adding a hypernode can result in updating the entire forest, as it may add new
 // nodes, or link existing nodes - which could demote nodes from roots to child.
 // Because of regex matching, this can trigger ripple effects in the forest.
-func (hnfb *HyperNodeForestBuilder) addHyperNode(hn *networktopov1alpha1.HyperNode) {
+func (sc *SchedulerCache) addHyperNode(hn *networktopov1alpha1.HyperNode) {
+	hnfb := sc.hypernodeForestbuilder
 	hntn := NewHyperNodeTreeNode(hn.Name)
 	hntn.HyperNodeRef = hn
 	hnfb.nodes[hn.Name] = hntn
@@ -340,22 +301,39 @@ func (hnfb *HyperNodeForestBuilder) addHyperNode(hn *networktopov1alpha1.HyperNo
 		case networktopov1alpha1.MemberTypeNode:
 			switch member.Selector.Type {
 			case networktopov1alpha1.ExactMatchMemberSelectorType:
-				hntn.NodeMatchers.Insert(NewExactMatcher(member.Selector.ExactMatch.Name))
-				hnfb.addWorkerNodeToHyperNode(hn.Name, member.Selector.ExactMatch.Name)
+				nodeName := member.Selector.ExactMatch.Name
+				hntn.NodeMatchers.Insert(NewExactMatcher(nodeName))
+				workerNode := sc.Nodes[nodeName]
+				if workerNode == nil {
+					klog.Errorf("WorkerNode %s not found in the cache", nodeName)
+					return
+				}
+				hntn.Nodes.Insert(workerNode)
 			case networktopov1alpha1.RegexMatchMemberSelectorType:
-				// TODO
 				matcher, err := NewRegexMatcher(member.Selector.RegexMatch.Pattern)
 				if err != nil {
 					klog.Errorf("Failed to create regex matcher for %s: %v", member.Selector.RegexMatch.Pattern, err)
 					continue
 				}
 				hntn.NodeMatchers.Insert(matcher)
+				for _, nodeInfo := range sc.Nodes {
+					if matcher.Matches(nodeInfo.Name) {
+						hntn.Nodes.Insert(nodeInfo)
+					}
+				}
 			}
 		case networktopov1alpha1.MemberTypeHyperNode:
 			switch member.Selector.Type {
 			case networktopov1alpha1.ExactMatchMemberSelectorType:
-				// TODO
-				hntn.MemberMatchers.Insert(NewExactMatcher(member.Selector.ExactMatch.Name))
+				memberName := member.Selector.ExactMatch.Name
+				hntn.MemberMatchers.Insert(NewExactMatcher(memberName))
+				member := sc.hypernodeForestbuilder.nodes[memberName]
+				if member != nil {
+					insertHyperNodeMember(hntn, hnfb, memberName, member, sc)
+					if hntn.Parent != nil {
+						sc.HyperNodes[hntn.Parent.Name].Union(sc.HyperNodes[memberName])
+					}
+				}
 			case networktopov1alpha1.RegexMatchMemberSelectorType:
 				// TODO
 				matcher, err := NewRegexMatcher(member.Selector.RegexMatch.Pattern)
@@ -364,8 +342,49 @@ func (hnfb *HyperNodeForestBuilder) addHyperNode(hn *networktopov1alpha1.HyperNo
 					continue
 				}
 				hntn.MemberMatchers.Insert(matcher)
+				for memberName, memberNode := range sc.hypernodeForestbuilder.nodes {
+					if matcher.Matches(memberName) {
+						insertHyperNodeMember(hntn, hnfb, memberName, memberNode, sc)
+
+					}
+				}
+				if hntn.Parent != nil {
+					sc.HyperNodes[hntn.Parent.Name].Union(sc.HyperNodes[hntn.Name])
+				}
 			}
 		}
+	}
+}
+
+// deleteHyperNode deletes a HyperNodeTreeNode from the forest
+func (sc *SchedulerCache) deleteHyperNode(hn *networktopov1alpha1.HyperNode) {
+	hnfb := sc.hypernodeForestbuilder
+	hntn := hnfb.nodes[hn.Name]
+	if hntn == nil {
+		klog.Errorf("HyperNode %s not found in the forest", hn.Name)
+		return
+	}
+	klog.V(4).Infof("Deleting hypernode %s from the forest", hn.Name)
+	// Unlink each member from the parent, and they automatically become roots
+	for member := range hntn.Members {
+		member.Parent = nil
+		hnfb.roots.Insert(member.Name)
+	}
+	// Remove the node from its parent
+	if hntn.Parent != nil {
+		hntn.Parent.Members.Delete(hntn)
+	}
+
+	hntn.HyperNodeRef = nil
+	hntn.Members.Clear()
+	hntn.MemberMatchers.Clear()
+	hntn.Nodes.Clear()
+	hntn.NodeMatchers.Clear()
+
+	// Garbage collect the HyperNodeTreeNode
+	delete(hnfb.nodes, hn.Name)
+	if hnfb.roots.Has(hn.Name) {
+		hnfb.roots.Delete(hn.Name)
 	}
 
 }
@@ -801,7 +820,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		imageStates:         make(map[string]*imageState),
 
 		// HyperNode info
-		HyperNodeListByTier:    make(map[int][]string),
+		HyperNodeListByTier:    make(map[int]sets.Set[string]),
 		HyperNodes:             make(map[string]sets.Set[string]),
 		HyperNodeTreeRoots:     HyperNodeSet{},
 		hypernodeForestbuilder: NewHyperNodeForestBuilder(),
@@ -1563,7 +1582,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	snapshot := &schedulingapi.ClusterInfo{
 		Nodes:                make(map[string]*schedulingapi.NodeInfo),
-		HyperNodesListByTier: make(map[int][]string),
+		HyperNodesListByTier: make(map[int]sets.Set[string]),
 		HyperNodes:           make(map[string]sets.Set[string]),
 		Jobs:                 make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
 		Queues:               make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
@@ -1595,10 +1614,9 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	}
 
 	// Snapshot hyperNodes.
-	copiedHyperNodesListByTier := make(map[int][]string, len(sc.HyperNodeListByTier))
+	copiedHyperNodesListByTier := make(map[int]sets.Set[string], len(sc.HyperNodeListByTier))
 	for tier, row := range sc.HyperNodeListByTier {
-		copiedHyperNodesListByTier[tier] = make([]string, len(row))
-		copy(copiedHyperNodesListByTier[tier], row)
+		copiedHyperNodesListByTier[tier] = sets.Set[string].Clone(row)
 	}
 
 	hyperNodeLength := make(map[string]int)
