@@ -1305,66 +1305,6 @@ func (sc *SchedulerCache) getHyperNodeNamesByRegexMatchSelector(selector *networ
 	return matchingHyperNodes
 }
 
-func (sc *SchedulerCache) updateHyperNodeListByTier(hyperNode *networktopov1alpha1.HyperNode) {
-	tierStr := hyperNode.Spec.Tier
-	tier, err := strconv.Atoi(tierStr)
-	if err != nil {
-		klog.Errorf("Failed to convert tier string to int: %v", tierStr)
-		return
-	}
-	// TODO: What if the node already exists in the cache? Should we update it?
-	// Or, shall we use a set (instead of a list) of nodes for each tier?
-	sc.HyperNodeListByTier[tier].Insert(hyperNode.Name)
-
-	// // Add children nodes to the cache sc.HyperNodes
-	// sc.HyperNodes[hyperNode.Name] = sets.Set[string]{} // Initialize the set
-	// for _, member := range hyperNode.Spec.Members {
-	// 	switch member.Type {
-	// 	case "Node":
-	// 		// TODO: Define const string "node" as networktopov1alpha1.NodeType
-	// 		// in /pkg/apis/topology/v1alpha1/node_types.go
-	// 		nodeNames := []string{}
-	// 		switch member.Selector.Type {
-	// 		case networktopov1alpha1.ExactMatchMemberSelectorType:
-	// 			nodeInfo := sc.Nodes[member.Selector.ExactMatch.Name]
-	// 			if nodeInfo == nil {
-	// 				klog.Errorf("Failed to get node by name: %v", member.Selector.ExactMatch.Name)
-	// 				continue
-	// 			}
-	// 			nodeName := nodeInfo.Name
-	// 			nodeNames = append(nodeNames, nodeName)
-	// 		case networktopov1alpha1.RegexMatchMemberSelectorType:
-	// 			matchingNodes := sc.getNodeNamesByRegexMatchSelector(member.Selector.RegexMatch)
-	// 			nodeNames = append(nodeNames, matchingNodes...)
-	// 		default:
-	// 			klog.Errorf("Unknown member selector type: %v", member.Selector.Type)
-	// 		}
-	// 		sc.HyperNodes[hyperNode.Name] = append(sc.HyperNodes[hyperNode.Name], nodeNames...)
-	// 	case "HyperNode":
-	// 		// TODO: Define const string "HyperNode" as networktopov1alpha1.HyperNodeType
-	// 		//  in /pkg/apis/topology/v1alpha1/hypernode_types.go
-	// 		// sc.HyperNodes[hyperNode.Name] = append(sc.HyperNodes[hyperNode.Name], sc.HyperNodes[member]...)
-	// 		nodeNames := []string{}
-	// 		switch member.Selector.Type {
-	// 		case networktopov1alpha1.ExactMatchMemberSelectorType:
-	// 			nodeNames = sc.HyperNodes[member.Selector.ExactMatch.Name]
-	// 		case networktopov1alpha1.RegexMatchMemberSelectorType:
-	// 			matchinghyperNodes := sc.getHyperNodeNamesByRegexMatchSelector(member.Selector.RegexMatch)
-	// 			for _, hyperNodeName := range matchinghyperNodes {
-	// 				nodeNames = append(nodeNames, sc.HyperNodes[hyperNodeName]...)
-	// 			}
-	// 		default:
-	// 			klog.Errorf("Unknown member selector type: %v", member.Selector.Type)
-	// 		}
-	// 		sc.HyperNodes[hyperNode.Name] = append(sc.HyperNodes[hyperNode.Name], nodeNames...)
-
-	// 	default:
-	// 		klog.Errorf("Unknown member type: %v", member.Type)
-	// 	}
-
-	// }
-}
-
 // convertObjToHyperNode converts the given object to a HyperNode object.
 func (sc *SchedulerCache) convertObjToHyperNode(obj interface{}) (*networktopov1alpha1.HyperNode, error) {
 	ss, ok := obj.(*networktopov1alpha1.HyperNode)
