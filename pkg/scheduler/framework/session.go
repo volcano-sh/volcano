@@ -60,6 +60,9 @@ type Session struct {
 	// This should not be mutated after initiated
 	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
 
+	// recored old annotations for podgroup, used to detect changes
+	podGroupAnnotations map[api.JobID]map[string]string
+
 	Jobs           map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
 	CSINodesStatus map[string]*api.CSINodeStatusInfo
@@ -125,15 +128,15 @@ func openSession(cache cache.Cache) *Session {
 		cache:           cache,
 		informerFactory: cache.SharedInformerFactory(),
 
-		TotalResource:  api.EmptyResource(),
-		TotalGuarantee: api.EmptyResource(),
-		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
-
-		Jobs:           map[api.JobID]*api.JobInfo{},
-		Nodes:          map[string]*api.NodeInfo{},
-		CSINodesStatus: map[string]*api.CSINodeStatusInfo{},
-		RevocableNodes: map[string]*api.NodeInfo{},
-		Queues:         map[api.QueueID]*api.QueueInfo{},
+		TotalResource:       api.EmptyResource(),
+		TotalGuarantee:      api.EmptyResource(),
+		podGroupStatus:      map[api.JobID]scheduling.PodGroupStatus{},
+		podGroupAnnotations: map[api.JobID]map[string]string{},
+		Jobs:                map[api.JobID]*api.JobInfo{},
+		Nodes:               map[string]*api.NodeInfo{},
+		CSINodesStatus:      map[string]*api.CSINodeStatusInfo{},
+		RevocableNodes:      map[string]*api.NodeInfo{},
+		Queues:              map[api.QueueID]*api.QueueInfo{},
 
 		plugins:             map[string]Plugin{},
 		jobOrderFns:         map[string]api.CompareFn{},
@@ -171,6 +174,7 @@ func openSession(cache cache.Cache) *Session {
 	for _, job := range ssn.Jobs {
 		if job.PodGroup != nil {
 			ssn.podGroupStatus[job.UID] = *job.PodGroup.Status.DeepCopy()
+			ssn.podGroupAnnotations[job.UID] = job.PodGroup.GetAnnotations()
 		}
 
 		if vjr := ssn.JobValid(job); vjr != nil {

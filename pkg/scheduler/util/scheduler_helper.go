@@ -222,6 +222,91 @@ func SelectBestHyperNode(hyperNodeScores map[float64][]string) string {
 	return bestHyperNodes[rand.Intn(len(bestHyperNodes))]
 }
 
+// Find the hyperNode to which the node belongs.
+func FindHyperNodeOfNode(nodeName string, hyperNodeTree []map[string][]string) string {
+	for hyperNode, nodes := range hyperNodeTree[len(hyperNodeTree)-1] {
+		for _, node := range nodes {
+			if node == nodeName {
+				return hyperNode
+			}
+		}
+	}
+	return ""
+}
+
+func FindJobTaskNumOfHyperNode(hyperNodeName string, job *api.JobInfo, hyperNodeTree []map[string][]string) int {
+	revertHyperNodeTree := make([]map[string][]string, len(hyperNodeTree))
+	for i := len(hyperNodeTree) - 1; i >= 0; i-- {
+		revertHyperNodeTree[len(hyperNodeTree)-1-i] = hyperNodeTree[i]
+	}
+
+	hyperNodesMap := make(map[string]sets.Set[string])
+	for i := 0; i < len(revertHyperNodeTree); i++ {
+		for name, children := range revertHyperNodeTree[i] {
+			hyperNodesMap[name] = sets.Set[string]{}
+			hyperNodesMap[name].Insert(name)
+			for _, child := range children {
+				hyperNodesMap[name].Insert(child)
+				if v, ok := hyperNodesMap[child]; ok {
+					hyperNodesMap[name] = hyperNodesMap[name].Union(v)
+				}
+			}
+		}
+	}
+	// find the hyperNodeMap of the hyperNodeName
+	hyperNodeMap := hyperNodesMap[hyperNodeName]
+	taskCount := 0
+	for _, task := range job.Tasks {
+		if hyperNodeMap.Has(task.NodeName) {
+			taskCount++
+		}
+	}
+	return taskCount
+}
+
+// FindOutRootHyperNode find out the root hypernode of the job when the hypernode join the job.
+func FindLCAHyperNode(hyperNodeName string, jobHyperNode string, hyperNodeTree []map[string][]string) (string, int) {
+	revertHyperNodeTree := make([]map[string][]string, len(hyperNodeTree))
+	for i := len(hyperNodeTree) - 1; i >= 0; i-- {
+		revertHyperNodeTree[len(hyperNodeTree)-1-i] = hyperNodeTree[i]
+	}
+
+	hyperNodesMap := make(map[string]sets.Set[string])
+	for i := 0; i < len(revertHyperNodeTree); i++ {
+		for name, children := range revertHyperNodeTree[i] {
+			hyperNodesMap[name] = sets.Set[string]{}
+			hyperNodesMap[name].Insert(name)
+			for _, child := range children {
+				hyperNodesMap[name].Insert(child)
+				if v, ok := hyperNodesMap[child]; ok {
+					hyperNodesMap[name] = hyperNodesMap[name].Union(v)
+				}
+			}
+		}
+	}
+
+	hyperNodesListByTier := [][]string{}
+	for i := 0; i < len(revertHyperNodeTree); i++ {
+		hyperNodes := []string{}
+		for name := range revertHyperNodeTree[i] {
+			hyperNodes = append(hyperNodes, name)
+		}
+		hyperNodesListByTier = append(hyperNodesListByTier, hyperNodes)
+	}
+
+	for index, tierHyperNodes := range hyperNodesListByTier {
+		for _, hyperNode := range tierHyperNodes {
+			hyperNodeSet := hyperNodesMap[hyperNode]
+			if hyperNodeSet.Has(hyperNodeName) {
+				if jobHyperNode == "" || hyperNodeSet.Has(jobHyperNode) {
+					return hyperNode, index + 1
+				}
+			}
+		}
+	}
+	return "", -1
+}
+
 // GetNodeList returns values of the map 'nodes'
 func GetNodeList(nodes map[string]*api.NodeInfo, nodeList []string) []*api.NodeInfo {
 	result := make([]*api.NodeInfo, 0, len(nodeList))
