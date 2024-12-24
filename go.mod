@@ -1,6 +1,6 @@
 module volcano.sh/volcano
 
-go 1.22.0
+go 1.22.7
 
 require (
 	github.com/agiledragon/gomonkey/v2 v2.11.0
@@ -22,6 +22,7 @@ require (
 	github.com/prometheus/client_golang v1.19.1
 	github.com/prometheus/common v0.55.0
 	github.com/prometheus/prometheus v0.39.1
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
@@ -44,6 +45,7 @@ require (
 	k8s.io/metrics v0.0.0
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 	sigs.k8s.io/controller-runtime v0.13.0
+	sigs.k8s.io/descheduler v0.30.2
 	sigs.k8s.io/yaml v1.4.0
 	stathat.com/c/consistent v1.0.0
 	volcano.sh/apis v1.10.0-alpha.0.0.20241210014034-bf27f4e986d0
@@ -54,6 +56,7 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/bits-and-blooms/bitset v1.2.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.4 // indirect
+	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/opencontainers/runtime-spec v1.0.3-0.20220909204839-494a5a6aca78 // indirect
