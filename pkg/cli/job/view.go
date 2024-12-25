@@ -214,9 +214,9 @@ func PrintEvents(events []coreV1.Event, writer io.Writer) {
 		for _, e := range events {
 			var interval string
 			if e.Count > 1 {
-				interval = fmt.Sprintf("%s (x%d over %s)", translateTimestampSince(e.LastTimestamp), e.Count, translateTimestampSince(e.FirstTimestamp))
+				interval = fmt.Sprintf("%s (x%d over %s)", util.TranslateTimestampSince(e.LastTimestamp), e.Count, util.TranslateTimestampSince(e.FirstTimestamp))
 			} else {
-				interval = translateTimestampSince(e.FirstTimestamp)
+				interval = util.TranslateTimestampSince(e.FirstTimestamp)
 			}
 			EventSourceString := []string{e.Source.Component}
 			if len(e.Source.Host) > 0 {
