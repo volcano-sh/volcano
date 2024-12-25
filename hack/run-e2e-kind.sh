@@ -68,19 +68,6 @@ function generate-log {
     kubectl logs deployment/${CLUSTER_NAME}-scheduler -n ${NAMESPACE} > volcano-scheduler.log
 }
 
-function show-log() {
-  log_files=("volcano-admission.log" "volcano-controller.log" "volcano-scheduler.log")
-  for log_file in "${log_files[@]}"; do
-    if [ -f "$log_file" ]; then
-      echo "Showing ${log_file}..."
-      cat "$log_file"
-    else
-      echo "${log_file} not found"
-    fi
-  done
-}
-
-
 # clean up
 function cleanup {
   uninstall-volcano
@@ -89,7 +76,8 @@ function cleanup {
   kind delete cluster ${CLUSTER_CONTEXT}
 
   if [[ ${SHOW_VOLCANO_LOGS} -eq 1 ]]; then
-    show-log
+    #TODO: Add volcano logs support in future.
+    echo "Volcano logs are currently not supported."
   fi
 }
 
