@@ -19,6 +19,10 @@ package vgpu
 var VGPUEnable bool
 var NodeLockEnable bool
 
+var VGPUNumber string
+var VGPUMemory string
+var VGPUCores string
+
 const (
 	GPUInUse                         = "nvidia.com/use-gputype"
 	GPUNoUse                         = "nvidia.com/nouse-gputype"

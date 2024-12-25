@@ -134,7 +134,7 @@ func (gs *GPUDevices) ScoreNode(pod *v1.Pod, schedulePolicy string) float64 {
 }
 
 func (gs *GPUDevices) GetIgnoredDevices() []string {
-	return []string{VolcanoVGPUMemory, VolcanoVGPUMemoryPercentage, VolcanoVGPUCores}
+	return []string{VGPUMemory, VolcanoVGPUMemoryPercentage, VGPUCores}
 }
 
 // AddResource adds the pod to GPU pool if it is assigned
