@@ -354,6 +354,21 @@ func (sc *SchedulerCache) addHyperNode(hn *networktopov1alpha1.HyperNode) {
 			}
 		}
 	}
+
+	// Iterate over existing HyperNodes, if the name of the new HyperNode matches
+	// either the Exact or Regex matchers of a parent, add it as a child member
+	for _, parentNode := range sc.hypernodeForestbuilder.nodes {
+		for m := range parentNode.MemberMatchers {
+			if m.Exact != "" && m.Exact == hn.Name {
+				insertHyperNodeMember(parentNode, hnfb, hn.Name, hntn, sc)
+				break // Each HyperNode has at most one parent
+			}
+			if m.Regex != "" && m.Matches(hn.Name) {
+				insertHyperNodeMember(parentNode, hnfb, hn.Name, hntn, sc)
+				break // Each HyperNode has at most one parent
+			}
+		}
+	}
 }
 
 // deleteHyperNode deletes a HyperNodeTreeNode from the forest
