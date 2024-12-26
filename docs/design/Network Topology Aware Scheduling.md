@@ -4,24 +4,22 @@ Author: William Wang, Peng Gu, Kevin Wang, Klaus Ma, Xuzheng Chang
 
 # Motivation
 
-In the LLM training scenario, the model parallels have extremely high requirements for the network throughput to exchange data, making the networking to be a bottleneck. There are diverse network in the datacenter, e.g. IB, RoCE, Nvswitch and in each type of network, there might be multiple levels of switch having different throughput and latency. Use requires that the workload can be scheduled to the best performance domain with highest throughput and lowest latency to accelerate data exchanging for training.
+In the LLM training scenario, the model parallels have extremely high requirements for the network throughput to exchange data, making the networking to be a bottleneck. There are diverse network in the datacenter, e.g. IB, RoCE, Nvswitch and in each type of network, there might be multiple levels of switch having different throughput and latency. User requires that the workload can be scheduled to the best performance domain with highest throughput and lowest latency to accelerate data exchanging for training.
 
 ## Use Case 1
 
 1. A training Job: 8 GPU per Pod \* \~3k (5k) Pods  
-   1. MPI, PyTorch …  
+   eg,MPI, PyTorch …  
 2. 1 BF3, 8 CX7, 8 H100
 
 ![network topology usecase1](images/network-topology-aware/network-topology-usecase1.png)
-
-## 
 
 3. Schedule the job, prefer scheduling all pods to one tier1 topology zone, if not enough nodes, try to schedule all the pods to one tier2 topology zone.  
 4. Gang scheduling is also needed in this case, to make sure all pods are able to proceed with their work. 
 
 ## Use Case 2
 
-1. LLM training job:  16 NPU per pod, 3000 pod per job
+1. LLM training job:  16 NPU per pod, 3000 pods per job
 
 ![network topology usecase2](images/network-topology-aware/network-topology-usecase2.png)
 
@@ -53,6 +51,7 @@ Option 2: Describe network topology by CRD, NetworkTopology in Volcano → plugi
 
 - label \-\> NetworkTopology   
 - Rest API (NV, HW) \-\> NetworkTopology
+- system file \-\> NetworkTopology
 
 Pros: 
   * easier for debugging:  
@@ -69,25 +68,25 @@ Pros:
 
 ```go
 type HyperNode struct {
-	metav1.TypeMeta `json:”,inline”`
-	metav1.ObjectMeta `json:”metadata, omitempty”`
+  metav1.TypeMeta `json:”,inline”`
+  metav1.ObjectMeta `json:”metadata, omitempty”`
 
-	Spec HyperNodeSpec `json:”spec”`
-	Status HyperNodeStatus `json:”status”`
+  Spec HyperNodeSpec `json:”spec”`
+  Status HyperNodeStatus `json:”status”`
 }
 
 type HyperNodeSpec struct {
-	tier string	`json:"tier,omitempty"`
-	members []MemberSpec	`json:"members,omitempty"`
+  tier string	`json:"tier,omitempty"`
+  members []MemberSpec	`json:"members,omitempty"`
 }
 
 type MemberSpec struct {
-	name string	`json:"name,omitempty"`
-	type string	`json:"type,omitempty"`
+  name string	`json:"name,omitempty"`
+  type string	`json:"type,omitempty"`
 }
 
 type HyperNodeStatus struct {
-	……
+  ……
 }
 
 ```
@@ -98,46 +97,43 @@ Example 1:
 Here is a spine-leaf tree, there are three levels of switches, connecting the 8 nodes.
 ![network topology example1](images/network-topology-aware/network-topology-example1.png)
 
-```go
+```yaml
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s0
 spec:
-   tier: 1
-   members:
-    name: node0
+  tier: 1
+  members:
+  - name: node0
     name: node1
-
+---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s1
 spec:
-  HyperNode
    tier: 1
    members:
     name: node2
     name: node3
-
+---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s2
 spec:
-  HyperNode
    tier: 1
    members:
     name: node4
     name: node5
-
+---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s3
 spec:
-  HyperNode
    tier: 1
    members:
     name: node6
     name: node7
-
+---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s4
@@ -154,7 +150,7 @@ spec:
    members:
     name: s2
     name: s3
-
+---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: s6
@@ -170,82 +166,82 @@ Example 2:
 There are two roce networks in one Kubernetes cluster which are roce-network0 and roce-network1, and there are two nvlink-networks in each roce network. Each nvlink-network has 4 hosts. The CR is like this.
 ![network topology example2](images/network-topology-aware/network-topology-example2.png)
 
-```go
+```yaml
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: roce-network0
 spec:
 tier: 2
-	members:
-		- name: nvlink-network0
-		  type: HyperNode
-		- name: nvlink-network1
-		  type: HyperNode
-
+  members:
+  - name: nvlink-network0
+    type: HyperNode
+  - name: nvlink-network1
+    type: HyperNode
+---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: roce-network1
 spec:
-	tier: 2
-	members:
-		- name: nvlink-network2
-		  type: HyperNode
-		- name: nvlink-network3
-		  type: HyperNode
-
+  tier: 2
+  members:
+  - name: nvlink-network2
+    type: HyperNode
+  - name: nvlink-network3
+    type: HyperNode
+---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: nvlink_network-0
 spec:
-   tier: 1
-   members:
-    name: node1
+  tier: 1
+  members:
+  - name: node1
     type: Node
-    name:node2
+    name: node2
     type: Node
-
+---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: nvlink_network-1
 spec:
-   tier: 1
-   members:
-    name: node3
+  tier: 1
+  members:
+  - name: node3
     type: Node
-    name:node4
+    name: node4
     type: Node
-
+---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: nvlink_network-2
 spec:
-   tier: 1
-   members:
-    name: node5
+  tier: 1
+  members:
+  - name: node5
     type: Node
-    name:node6
+    name: node6
     type: Node
-
+---
 version: topology.volcano.sh/v1alpha1
 kind: HyperNode
 name: nvlink_network-3
 spec:
-   tier: 1
-   members:
-    name: node7
+  tier: 1
+  members:
+  - name: node7
     type: Node
     name: node8
     type: Node
 ```
 
-#### network topology generation and updation
+#### network topology generation and update
 
 * **Network topology discovery/detection tool**: a tool to generate network topology CR by analyzing labels, system file or API of HW vendor. The community will offer a tool to generate CR by label.  
 ![nework topology generation](images/network-topology-aware/nework-topology-generation.png)    
 
 ### Job management
 
-HyperJob is an API for managing a group of replicated volcano jobs, which aligns with HyperNode/SuperPod for optimal LLM training.
+HyperJob is an API for managing a group of replicated volcano jobs, which aligns with HyperNode/SuperPod for optimal LLM training. In the large model training scenario, users need to deploy a group of vcjobs, because some large model training requires a group of vcjobs to work together to complete. At the same time, when the training job is abnormal, users can restart only one of the vcjobs without restarting the entire training job. Different vcjobs are isolated from each other, which can improve training efficiency and availability. Each vcjob needs to occupy a hyperNode exclusively. Multiple vcjobs constitute a complete training job, and multiple vcjobs need to meet gang scheduling and topology constraint scheduling to meet the performance requirements of large model training.
 
 ```go
 type HyperJob struct {  
@@ -267,18 +263,22 @@ type HyperJobSpec struct {
 	// The minimal available Job to run for this HyperJob  
 	// Defaults to the summary of jobs' replicas  
 	// +optional  
-	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"\`  
-	  
-	Jobs []JobSepc `json:"jobs,omitempty" protobuf:"bytes,4,opt,name=jobs"\`  
-	  
-...  
+	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"\`
+
+    // NetworkTopology defines the NetworkTopology config, this field works in conjunction with network topology feature and hyperNode CRD.
+    // +optional
+    NetworkTopology *NetworkTopologySpec `json:"networkTopology,omitempty"
+
+    Jobs []JobSepc `json:"jobs,omitempty" protobuf:"bytes,4,opt,name=jobs"\`
+  
+    ...  
 }
 ```
 
 ##### Volcano Job sample:
 
-```go
-apiVersion: batch.volcano.sh/v1alpha1  
+```yaml
+apiVersion: topology.volcano.sh/v1alpha1
 kind: Job  
 metadata:  
   name: pytorch-job  
@@ -287,7 +287,7 @@ spec:
   schedulerName: volcano  
   // describes the network topology scheduling requirement of jobs  
   // example: hard, with highest-tier-allowed: 1, means for each job-foo, scheduler needs to find a tier1 to run all the job-foo pods.   
-  networkTopologies:  
+  networkTopology:  
   - mode: hard 
     highestTierAllowed: 1
   plugins:  
@@ -319,13 +319,13 @@ spec:
 
 ##### HyperJob sample:
 
-```go
-apiVersion: [batch.volcano.sh/v1aplha1](http://batch.volcano.sh/v1aplha1)  
+```yaml
+apiVersion: topology.volcano.sh/v1alpha1 
 kind: HyperJob  
 metadata:  
     name: multi-volcano-job  
 spec:  
-    networkTopologies: 
+    networkTopology: 
     - mode: hard** // we don’t really need to explicitly indicate the soft requirements, we can make it as a default algorithm behavior. And we need to describe the default behavior in the field comment  
       highestTierAllowed: 2**  
     replicatedJobs:  
@@ -334,7 +334,7 @@ spec:
       template:  
            // describes the network topology scheduling requirement of jobs  
            // example: hard, with highest-tier-allowed: 1, means for each job-foo, scheduler needs to find a tier1 to run all the job-foo pods.   
-        networkTopologies:
+        networkTopology:
         - mode: hard
           highestTierAllowed: 1
          schedulerName: volcano  
@@ -365,8 +365,10 @@ Phase 1 without hyperJob supported
 Phase 2 with hyperJob supported  
 ![network topology implementation 02](images/network-topology-aware/network-topology-implementation-02.png)  
 A naive way to build nodes by tier as an input of volcano scheduler, scheduler traverses sequentially from low to high tier, the selected nodeGroups of a hyperJob should be in one same tier because we start from the lowest tier, and will stop to search the upper tier when current tier can meet hyperJob/Job’s resources.  
+For prioritization phase of hard limit topology, the nodeOrder and hyperNodeOrder scores would be summed as the final score of a hyperNode and select the highest score hyperNode, the fewer layers a candidate hyperNode spans, and the more pods of the same job are deployed on the hyperNode, the higher the score of the hyperNode.
+.
 eg:  
-```go
+```shell
 tier0: [][] *node{ {node0,node1}, {node2,node3},{node4,node5}, {node6,node7} }  
 tier1: [][] *node{ {node0,node1,node2,node3}, {node4,node5,node6,node7} }  
 tier2: [][] *node{ {node0,node1,node2,node3, node4,node5,node6,node7} }
@@ -395,54 +397,50 @@ import (
 
 // HyperNode represents a collection of nodes sharing similar network topology or performance characteristics.
 type HyperNode struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+   metav1.TypeMeta   `json:",inline"`
+   metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// Spec defines the desired configuration of the HyperNode.
-	// +optional
-	Spec HyperNodeSpec `json:"spec"`
+   // Spec defines the desired configuration of the HyperNode.
+   // +optional
+   Spec HyperNodeSpec `json:"spec"`
 
-	// Status provides the current state of the HyperNode.
-	// +optional
-	Status HyperNodeStatus `json:"status,omitempty"`
+   // Status provides the current state of the HyperNode.
+   // +optional
+   Status HyperNodeStatus `json:"status,omitempty"`
 }
+
+// MemberType represents the member type, valid values are "Node" and "HyperNode".
+// +kubebuilder:validation:Enum=Node;HyperNode
+type MemberType string
+
+const (
+   // MemberTypeNode means the member type is a node.
+   MemberTypeNode MemberType = "Node"
+   // MemberTypeHyperNode means the member type is a hyperNode.
+   MemberTypeHyperNode MemberType = "HyperNode"
+)
 
 // HyperNodeSpec defines the desired state of a HyperNode.
 type HyperNodeSpec struct {
-	// Tier categorizes the performance level of the HyperNode.
-	// +required
-	Tier string `json:"tier,omitempty"`
+   // Tier categorizes the performance level of the HyperNode.
+   // +required
+   Tier string `json:"tier,omitempty"`
 
-	// Members defines a list of node groups or individual nodes included in the HyperNode.
-	// +optional
-	Members []MemberSpec `json:"members,omitempty"`
+   // Members defines a list of node groups or individual nodes included in the HyperNode.
+   // +optional
+   Members []MemberSpec `json:"members,omitempty"`
 }
 
 // MemberSpec represents a specific node or a hyperNodes in the hyperNode.
 type MemberSpec struct {
-	// Type specifies the member type (e.g., "Node", "HyperNode").
-	// +kubebuilder:validation:Enum=Node;HyperNode
-	// +required
-	Type string `json:"type,omitempty"`
+   // Type specifies the member type.
+   // +required
+   Type MemberType `json:"type,omitempty"`
 
-	// Selector defines the selection rules for this member.
-	// +optional
-	Selector MemberSelector `json:"selector,omitempty"`
+   // Selector defines the selection rules for this member.
+   // +optional
+   Selector MemberSelector `json:"selector,omitempty"`
 }
-
-// MemberSelectorType specifies the selection method.
-type MemberSelectorType string
-
-const (
-	// ExactMatchMemberSelectorType matches nodes exactly by name.
-	ExactMatchMemberSelectorType MemberSelectorType = "Exact"
-
-	// RegexMatchMemberSelectorType matches nodes based on a regular expression.
-	RegexMatchMemberSelectorType MemberSelectorType = "Regex"
-)
-
-// +kubebuilder:validation:XValidation:rule="self.type == 'Exact' ? has(self.exactMatch) : true",message="ExactMatch must be specified when Type is 'Exact'"
-// +kubebuilder:validation:XValidation:rule="self.type == 'Regex' ? has(self.regexMatch) : true",message="RegexMatch must be specified when Type is 'Regex'"
 
 // MemberSelector defines the criteria for selecting nodes.
 //
@@ -450,7 +448,6 @@ const (
 //
 //	members:
 //	- selector:
-//	    type: Exact
 //	    exactMatch:
 //	      name: "node1"
 //
@@ -458,46 +455,43 @@ const (
 //
 //	members:
 //	- selector:
-//	    type: Regex
 //	    regexMatch:
 //	      pattern: "^node-[0-9]+$"
+//
+// +kubebuilder:validation:XValidation:rule="self.exactMatch != null || self.regexMatch != null",message="Either ExactMatch or RegexMatch must be specified"
+// +kubebuilder:validation:XValidation:rule="!(self.exactMatch != null && self.regexMatch != null)",message="ExactMatch and RegexMatch cannot be specified together"
 type MemberSelector struct {
-	// Type specifies the selection method (Exact or Regex).
-	// +kubebuilder:validation:Enum=Exact;Regex
-	// // +required
-	Type MemberSelectorType `json:"type"`
+   // ExactMatch defines the exact match criteria (required when Type is "Exact").
+   // +optional
+   ExactMatch *ExactMatch `json:"exactMatch,omitempty"`
 
-	// ExactMatch defines the exact match criteria (required when Type is "Exact").
-	// +optional
-	ExactMatch *ExactMatch `json:"exactMatch,omitempty"`
-
-	// RegexMatch defines the regex match criteria (required when Type is "Regex").
-	// +optional
-	RegexMatch *RegexMatch `json:"regexMatch,omitempty"`
+   // RegexMatch defines the regex match criteria (required when Type is "Regex").
+   // +optional
+   RegexMatch *RegexMatch `json:"regexMatch,omitempty"`
 }
 
 // ExactMatch represents the criteria for exact name matching.
 type ExactMatch struct {
-	// Name specifies the exact name of the node to match.
-	// +optional
-	Name string `json:"name"`
+   // Name specifies the exact name of the node or hyperNode to match.
+   // +optional
+   Name string `json:"name"`
 }
 
 // RegexMatch represents the criteria for regex-based matching.
 type RegexMatch struct {
-	// Pattern defines the regex pattern to match node names.
-	// +optional
-	Pattern string `json:"pattern"`
+   // Pattern defines the regex pattern to match node or hyperNode names.
+   // +optional
+   Pattern string `json:"pattern"`
 }
 
 // HyperNodeStatus represents the observed state of a HyperNode.
 type HyperNodeStatus struct {
-	// Conditions provide details about the current state of the HyperNode.
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+   // Conditions provide details about the current state of the HyperNode.
+   Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// NodeCount is the total number of nodes currently in the HyperNode.
-	// +kubebuilder:validation:Minimum=0
-	NodeCount int64 `json:"nodeCount,omitempty"`
+   // NodeCount is the total number of nodes currently in the HyperNode.
+   // +kubebuilder:validation:Minimum=0
+   NodeCount int64 `json:"nodeCount,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -505,11 +499,50 @@ type HyperNodeStatus struct {
 
 // HyperNodeList contains a list of HyperNode resources.
 type HyperNodeList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+   metav1.TypeMeta `json:",inline"`
+   metav1.ListMeta `json:"metadata,omitempty"`
 
-	// Items is the list of HyperNodes.
-	Items []HyperNode `json:"items"`
+   // Items is the list of HyperNodes.
+   Items []HyperNode `json:"items"`
+}
+
+```
+
+vcJob:
+
+```go
+type JobSpec struct {
+	...
+	
+	// New added field.
+	// NetworkTopology defines the NetworkTopology config, this field works in conjunction with network topology feature and hyperNode CRD.
+    // +optional
+    NetworkTopology *NetworkTopologySpec `json:"networkTopology,omitempty" protobuf:"bytes,13,opt,name=networkTopology"`
+}
+
+// NetworkTopologyMode represents the networkTopology mode, valid values are "hard" and "soft".
+// +kubebuilder:validation:Enum=hard;soft
+type NetworkTopologyMode string
+
+const (
+    // HardNetworkTopologyMode represents a strict network topology constraint that jobs must adhere to.
+    HardNetworkTopologyMode NetworkTopologyMode = "hard"
+
+    // SoftNetworkTopologyMode represents a flexible network topology constraint that allows jobs
+    // to cross network boundaries under certain conditions.
+    SoftNetworkTopologyMode NetworkTopologyMode = "soft"
+)
+
+type NetworkTopologySpec struct {
+    // Mode specifies the mode of the network topology constrain.
+    // +kubebuilder:default=hard
+    // +optional
+    Mode NetworkTopologyMode `json:"mode,omitempty" protobuf:"bytes,1,opt,name=mode"`
+
+    // HighestTierAllowed specifies the highest tier that a job allowed to cross when scheduling.
+    // +kubebuilder:default=1
+    // +optional
+    HighestTierAllowed *int `json:"highestTierAllowed,omitempty" protobuf:"bytes,2,opt,name=highestTierAllowed"`
 }
 ```
 
@@ -520,32 +553,45 @@ refer the API repo [volcano-sh/apis: The API (CRD) of Volcano (github.com)](http
 
 **configuration:**
 
-* allow users to configure the network topology policy in job  
-* allow users to enable/disable the network-topology-aware plugin in scheduler configmap
+- allow users to configure the network topology policy in job  
 
+- allow users to enable/disable the network-topology-aware plugin in scheduler configmap
 
-**action:** allocate  
-Allocate resources for queue-\> hyperJob \-\> Job \-\> Task，
+**action:** allocate
+
+Phase1:
+Allocate resources for queue-\> Job \-\> Task.
+
+Phase2:
+Allocate resources for queue-\> hyperJob \-\> Job \-\> Task.
 
 **plugin:** NetworkTopology
 
-* AddJobGroupReadyFn: check whether hyperJob minavailable is met.  
-* AddNodeGroupOrderFn: score for hyperNodes.(hard limit, binpack or spread strategy)  
-* AddNodeOrderFn: score for nodes.(soft limit, closest tiers have higher score)
+- AddJobGroupReadyFn: check whether hyperJob minAvailable is met.(phase 2)  
+
+- AddHyperNodeOrderFn: score for hyperNodes.(take effect in hard limit, closest tiers have higher score)
+
+- AddNodeOrderFn: score for nodes.(take effect in soft limit,take effect in )
 
 ### Webhook
 
-Add admission for job in file pkg/webhooks/admission/jobs/validate/admit\_job.go, this can be done by CRD definition.
+Add admission for hyperNode for two aspects validation
 
-* job.spec.network-topologies.mode must in \[“soft”,”hard”\]  
-* job.spec.network-topologies**.**highest-tier-allowed must be set when job.spec.network-topologies.mode==hard
+- `ExactMatch` and `RegexMatch` in `HyperNode.Spec.Members.Selector` can not both empty and cannot be specified at the same time.
+
+- `Pattern` in `HyperNode.Spec.Members.Selector.RegexMatch` should be a valid regex expression in go format.
 
 ### Controller
 
 Phase1:  
-Support unified interface to register hyperNode controllers by vendor.  
+
+- Nothing to do, users need create hyperNode CRs according to the cluster's network topology.
+
 Phase2:  
-Support hyperJob, create jobs when hyperJob is created.
+
+- Support hyperJob, create jobs when hyperJob is created.
+
+- Support update hyperNode.status, include node count, condition, etc.
 
 ### Effort and plan
 
@@ -561,11 +607,11 @@ Scheduler: 0.25 man-month
 
 ## Feature Interaction
 
-## Performance
+### Performance
 
-Build nodeGroups list from hyperNode CRD may increase the time complexity when there are too many nodes and switches
+Build nodeGroups list from hyperNode CRD may increase the time complexity when there are too many nodes and switches, and we need to optimize performance.
 
-## GUI/CLI
+### GUI/CLI
 
 topology-generator : a new tool/controller to generate topology CR by labels, a new tool to display the hierarchical switches and nodes intuitively.
 
