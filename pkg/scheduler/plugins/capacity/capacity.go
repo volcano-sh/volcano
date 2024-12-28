@@ -94,6 +94,7 @@ func (cp *capacityPlugin) HierarchyEnabled(ssn *framework.Session) bool {
 }
 
 func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
+
 	// Prepare scheduling data for this session.
 	cp.totalResource.Add(ssn.TotalResource)
 

@@ -32,7 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
-
+	"k8s.io/kubernetes/pkg/scheduler/metrics"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -65,6 +65,9 @@ func TestParseArgs(t *testing.T) {
 }
 
 func TestAllocate(t *testing.T) {
+
+	metrics.Register()
+
 	plugins := map[string]framework.PluginBuilder{
 		drf.PluginName:        drf.New,
 		proportion.PluginName: proportion.New,
@@ -269,6 +272,7 @@ func TestAllocate(t *testing.T) {
 }
 
 func TestFareShareAllocate(t *testing.T) {
+	metrics.Register()
 	plugins := map[string]framework.PluginBuilder{
 		drf.PluginName:        drf.New,
 		proportion.PluginName: proportion.New,
