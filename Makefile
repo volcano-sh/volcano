@@ -93,10 +93,17 @@ vcctl: init
 
 image_bins: vc-scheduler vc-controller-manager vc-webhook-manager vc-agent
 
-images:
-	for name in controller-manager scheduler webhook-manager agent; do\
-		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
-	done
+COMPONENTS=controller-manager scheduler webhook-manager agent
+
+images: $(addprefix image., $(COMPONENTS))
+
+$(addprefix image., $(COMPONENTS)):
+	docker buildx build -t "${IMAGE_PREFIX}/vc-$(patsubst image.%,%,$@):$(TAG)" . -f ./installer/dockerfile/$(patsubst image.%,%,$@)/Dockerfile \
+		--output=type=${BUILDX_OUTPUT_TYPE} \
+		--platform ${DOCKER_PLATFORMS} \
+		--build-arg APK_MIRROR=${APK_MIRROR} \
+		--build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}
+
 
 generate-code:
 	./hack/update-gencode.sh
