@@ -250,9 +250,12 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 			// job is scheduled for the first time
 			jobNewHyperNodeMap[hyperNodeName] = hyperNodeName
 			if jobHyperNode != "" {
-				jobNewHyperNode, _ := util.FindLCAHyperNode(hyperNodeName, jobHyperNode, nil)
-				// to do.
+				jobNewHyperNode, index := util.FindLCAHyperNode(hyperNodeName, jobHyperNode, nil)
 				// check whether the hyperNode meets the requirements of the topology hard tier.
+				if index+1 > highestAllowedTier {
+					klog.V(4).ErrorS(nil, "Skip search for higher tier cause highest allowed tier reached", "jobName", job.UID, "highestAllowedTier", highestAllowedTier, "tier", tier)
+					break
+				}
 				jobNewHyperNodeMap[hyperNodeName] = jobNewHyperNode
 			}
 
