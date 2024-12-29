@@ -64,6 +64,7 @@ import (
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -1536,9 +1537,11 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG b
 		if err != nil {
 			return nil, err
 		}
+		sc.Mutex.Lock()
+		sc.Jobs[job.UID].PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode] = job.PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode]
+		sc.Mutex.Unlock()
 		job.PodGroup = pg
 	}
-
 	sc.RecordJobStatusEvent(job, updatePG)
 
 	return job, nil
