@@ -123,11 +123,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		if !ssn.Allocatable(queue, task) {
-			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
-			continue
-		}
-
 		if !ssn.Preemptive(queue, task) {
 			klog.V(3).Infof("Queue <%s> can not reclaim by preempt others when considering task <%s> , ignore it.", queue.Name, task.Name)
 			continue
