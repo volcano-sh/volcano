@@ -371,6 +371,7 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	queue4 := buildQueueWithParents("q4", "root", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "1"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
 	queue31 := buildQueueWithParents("q31", "q3", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
 	queue32 := buildQueueWithParents("q32", "q3", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
+	queue33 := buildQueueWithParents("q33", "q3", api.BuildResourceList("0", "0Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
 
 	// resources for test case 3
 	// pod
@@ -378,10 +379,15 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	p6 := util.BuildPod("ns1", "p6", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg5", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string))
 	p7 := util.BuildPod("ns1", "p7", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg5", make(map[string]string), make(map[string]string))
 	p8 := util.BuildPod("ns1", "p8", "", corev1.PodPending, api.BuildResourceList("2", "2Gi"), "pg6", make(map[string]string), map[string]string{})
+	p9 := util.BuildPod("ns1", "p9", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg7", make(map[string]string), map[string]string{})
+	p10 := util.BuildPod("ns1", "p10", "", corev1.PodPending, api.BuildResourceList("3", "3Gi"), "pg8", make(map[string]string), make(map[string]string))
+
 	// podgroup
 	pg4 := util.BuildPodGroup("pg4", "ns1", "q4", 1, nil, schedulingv1beta1.PodGroupRunning)
 	pg5 := util.BuildPodGroup("pg5", "ns1", "q31", 1, nil, schedulingv1beta1.PodGroupRunning)
 	pg6 := util.BuildPodGroup("pg6", "ns1", "q32", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg7 := util.BuildPodGroup("pg7", "ns1", "q32", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg8 := util.BuildPodGroup("pg8", "ns1", "q33", 1, nil, schedulingv1beta1.PodGroupInqueue)
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -431,6 +437,16 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			},
 			ExpectEvicted:  []string{"ns1/p7"},
 			ExpectEvictNum: 1,
+		},
+		{
+			Name:           "case4: Pod is not allocatable when ancestor queue's real capability not enough",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p6, p9, p10},
+			Nodes:          []*corev1.Node{n1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg5, pg7, pg8},
+			Queues:         []*schedulingv1beta1.Queue{root, queue3, queue31, queue32, queue33},
+			ExpectBindMap:  map[string]string{},
+			ExpectBindsNum: 0,
 		},
 	}
 
