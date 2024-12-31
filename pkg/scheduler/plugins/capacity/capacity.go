@@ -697,10 +697,7 @@ func (cp *capacityPlugin) updateShare(attr *queueAttr) {
 	res := float64(0)
 
 	for _, rn := range attr.deserved.ResourceNames() {
-		share := helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn))
-		if share > res {
-			res = share
-		}
+		res = max(res, helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn)))
 	}
 
 	attr.share = res
