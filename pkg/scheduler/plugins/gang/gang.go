@@ -99,7 +99,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		klog.V(4).InfoS("Victims from Gang plugins", "victims", victims, "preemptor", preemptor)
+		klog.V(4).Infof("Victims from Gang plugins, victims=%+v preemptor=%s", victims, preemptor)
 
 		return victims, util.Permit
 	}

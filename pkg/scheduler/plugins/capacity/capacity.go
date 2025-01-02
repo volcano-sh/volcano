@@ -138,7 +138,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			allocated.Sub(reclaimee.Resreq)
 			victims = append(victims, reclaimee)
 		}
-		klog.V(4).InfoS("Victims from capacity plugin", "victims", victims, "reclaimer", reclaimer)
+		klog.V(4).Infof("Victims from capacity plugin, victims=%+v reclaimer=%s", victims, reclaimer)
 		return victims, util.Permit
 	})
 
@@ -697,10 +697,7 @@ func (cp *capacityPlugin) updateShare(attr *queueAttr) {
 	res := float64(0)
 
 	for _, rn := range attr.deserved.ResourceNames() {
-		share := helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn))
-		if share > res {
-			res = share
-		}
+		res = max(res, helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn)))
 	}
 
 	attr.share = res

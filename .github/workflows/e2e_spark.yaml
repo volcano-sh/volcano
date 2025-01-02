@@ -113,3 +113,19 @@ jobs:
       if: always()
       run: |
         minikube delete
+
+    - name: export logs for e2e spark
+      if: failure()
+      run: |
+        export ARTIFACTS_PATH=${{ github.workspace }}/e2e-spark-logs
+        mkdir -p $ARTIFACTS_PATH
+            
+        kdir -p $ARTIFACTS_PATH/integration
+        kind export logs --name=integration $ARTIFACTS_PATH/integration
+
+    - name: upload e2e spark logs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: volcano_e2e_spark_logs
+        path: ${{ github.workspace }}/e2e-spark-logs
