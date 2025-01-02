@@ -137,7 +137,6 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeSc
 	if err != nil {
 		return nil, err
 	}
-
 	// plugin scores of hyperNode.
 	for pluginName, scores := range mapScores {
 		for hyperNode, score := range scores {
@@ -145,13 +144,11 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeSc
 			hyperNodesScoreMap[hyperNode] += score
 		}
 	}
-
 	// accumulate node scores in NodeOrder and hyperNode score itself as the final score of each hyperNode.
 	for hyperNodeName, score := range nodeScoresInHyperNode {
 		klog.V(5).InfoS("Add node level scores to final hyperNode score", "jobName", job.UID, "hyperNodeName", hyperNodeName, "score", score)
 		hyperNodesScoreMap[hyperNodeName] += score
 	}
-
 	hyperNodeScores := make(map[float64][]string)
 	hyperNodeScoreMap := make(map[string]float64)
 	for hyperNodeName := range candidateHyperNodes {
@@ -161,12 +158,10 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeSc
 			score += value
 		}
 		hyperNodeScores[score] = append(hyperNodeScores[score], hyperNodeName)
-
 		if klog.V(5).Enabled() {
 			hyperNodeScoreMap[hyperNodeName] = score
 		}
 	}
-
 	klog.V(5).InfoS("Prioritize hyperNode score map for job", "jobName", job.UID, "scoreMap", hyperNodeScoreMap)
 	return hyperNodeScores, nil
 }
@@ -294,4 +289,74 @@ func ConvertRes2ResList(res *api.Resource) v1.ResourceList {
 		rl[resourceName] = *resource.NewMilliQuantity(int64(f), resource.DecimalSI)
 	}
 	return rl
+}
+
+// Find the hyperNode to which the node belongs.
+func FindHyperNodeOfNode(nodeName string, hyperNodes map[string][]*api.NodeInfo) string {
+	for hyperNode, nodes := range hyperNodes {
+		for _, node := range nodes {
+			if node.Name == nodeName {
+				return hyperNode
+			}
+		}
+	}
+	return ""
+}
+
+// FindJobTaskNumOfHyperNode find out the number of tasks in the job that belong to the hyperNode.
+func FindJobTaskNumOfHyperNode(hyperNodeName string, job *api.JobInfo, hyperNodes map[string][]*api.NodeInfo) int {
+	nodes := hyperNodes[hyperNodeName]
+	taskCount := 0
+	for _, task := range job.Tasks {
+		for _, node := range nodes {
+			if node.Name == task.NodeName {
+				taskCount++
+				break
+			}
+		}
+	}
+	return taskCount
+}
+
+// FindLCAHyperNode finds out the common ancestor of the current hypernode and the hypernode where the job is scheduled
+func FindLCAHyperNode(hyperNodeName string, jobHyperNode string, hyperNodeTree []map[string][]string) (string, int) {
+	revertHyperNodeTree := make([]map[string][]string, len(hyperNodeTree))
+	for i := len(hyperNodeTree) - 1; i >= 0; i-- {
+		revertHyperNodeTree[len(hyperNodeTree)-1-i] = hyperNodeTree[i]
+	}
+
+	hyperNodesMap := make(map[string]sets.Set[string])
+	for i := 0; i < len(revertHyperNodeTree); i++ {
+		for name, children := range revertHyperNodeTree[i] {
+			hyperNodesMap[name] = sets.Set[string]{}
+			hyperNodesMap[name].Insert(name)
+			for _, child := range children {
+				hyperNodesMap[name].Insert(child)
+				if v, ok := hyperNodesMap[child]; ok {
+					hyperNodesMap[name] = hyperNodesMap[name].Union(v)
+				}
+			}
+		}
+	}
+
+	hyperNodesListByTier := [][]string{}
+	for i := 0; i < len(revertHyperNodeTree); i++ {
+		hyperNodes := []string{}
+		for name := range revertHyperNodeTree[i] {
+			hyperNodes = append(hyperNodes, name)
+		}
+		hyperNodesListByTier = append(hyperNodesListByTier, hyperNodes)
+	}
+
+	for index, tierHyperNodes := range hyperNodesListByTier {
+		for _, hyperNode := range tierHyperNodes {
+			hyperNodeSet := hyperNodesMap[hyperNode]
+			if hyperNodeSet.Has(hyperNodeName) {
+				if jobHyperNode == "" || hyperNodeSet.Has(jobHyperNode) {
+					return hyperNode, index + 1
+				}
+			}
+		}
+	}
+	return "", -1
 }

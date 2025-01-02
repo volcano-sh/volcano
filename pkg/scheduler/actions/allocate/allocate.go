@@ -233,6 +233,8 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 	hyperNodesWithLeftTasks := make(map[string]*util.PriorityQueue)
 	ssn := alloc.session
 	selectedTier := 0
+	jobNewHyperNodeMap := map[string]string{}
+	jobHyperNode := job.PodGroup.Annotations[api.TopologyAllocateLCAHyperNode]
 
 	// Find a suitable hyperNode in one tier from down to top everytime to ensure that the selected hyperNode spans the least tier.
 	for index, tier := range alloc.hyperNodesTiers {
@@ -245,6 +247,15 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 			break
 		}
 		for _, hyperNodeName := range ssn.HyperNodesListByTier[tier] {
+			// job is scheduled for the first time
+			jobNewHyperNodeMap[hyperNodeName] = hyperNodeName
+			if jobHyperNode != "" {
+				jobNewHyperNode, _ := util.FindLCAHyperNode(hyperNodeName, jobHyperNode, nil)
+				// to do.
+				// check whether the hyperNode meets the requirements of the topology hard tier.
+				jobNewHyperNodeMap[hyperNodeName] = jobNewHyperNode
+			}
+
 			nodes, ok := ssn.HyperNodes[hyperNodeName]
 			if !ok {
 				klog.ErrorS(nil, "HyperNode not exists.", "jobName", job.UID, "name", hyperNodeName, "tier", tier)
@@ -286,6 +297,8 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 		klog.V(4).InfoS("Find available hyperNodes for job", "jobName", job.UID, "tier", selectedTier, "hyperNodes", hyperNodes)
 	}
 	stmt, hyperNode := alloc.selectBestHyperNode(jobStmtsByTier[selectedTier], job)
+	jobNewHyperNode := jobNewHyperNodeMap[hyperNode]
+	job.PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode] = jobNewHyperNode
 	return stmt, hyperNodesWithLeftTasks[hyperNode]
 }
 
@@ -388,6 +401,18 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 		bestNode, highestScore := alloc.prioritizeNodes(ssn, task, predicateNodes)
 		if bestNode == nil {
 			continue
+		}
+
+		// recored hyperNode of the job
+		if hyperNode == "" {
+			jobHyperNode := job.PodGroup.Annotations[api.TopologyAllocateLCAHyperNode]
+			hyperNodeOfNode := util.FindHyperNodeOfNode(bestNode.Name, ssn.HyperNodes)
+			newJobHyperNode := hyperNodeOfNode
+			if jobHyperNode != "" {
+				// job is not scheduled for the first time
+				newJobHyperNode, _ = util.FindLCAHyperNode(hyperNodeOfNode, jobHyperNode, ssn.HyperNodeTree)
+			}
+			job.PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode] = newJobHyperNode
 		}
 
 		alloc.sumNodeScoresInHyperNode(string(job.UID), hyperNode, highestScore)
