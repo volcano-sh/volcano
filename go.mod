@@ -39,6 +39,7 @@ require (
 	k8s.io/component-base v0.31.3
 	k8s.io/component-helpers v0.31.3
 	k8s.io/csi-translation-lib v0.31.3
+	k8s.io/dynamic-resource-allocation v0.31.3
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubernetes v1.31.3
 	k8s.io/metrics v0.0.0
@@ -147,7 +148,7 @@ require (
 	k8s.io/kms v0.31.3 // indirect
 	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect
 	k8s.io/kube-scheduler v0.0.0 // indirect
-	k8s.io/kubelet v0.0.0 // indirect
+	k8s.io/kubelet v0.31.3 // indirect
 	k8s.io/mount-utils v0.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.30.3 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect

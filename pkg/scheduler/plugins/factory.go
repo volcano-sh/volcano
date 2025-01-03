@@ -24,6 +24,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/deviceshare"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
+	"volcano.sh/volcano/pkg/scheduler/plugins/dynamicresources"
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodegroup"
@@ -72,4 +73,7 @@ func init() {
 
 	// Plugins for ResourceQuota
 	framework.RegisterPluginBuilder(resourcequota.PluginName, resourcequota.New)
+
+	// Plugin for DynamicResourceAllocation
+	framework.RegisterPluginBuilder(dynamicresources.PluginName, dynamicresources.New)
 }

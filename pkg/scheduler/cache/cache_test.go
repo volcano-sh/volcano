@@ -138,7 +138,7 @@ func TestSchedulerCache_Bind_NodeWithSufficientResources(t *testing.T) {
 		Jobs:            make(map[api.JobID]*api.JobInfo),
 		Nodes:           make(map[string]*api.NodeInfo),
 		Binder:          util.NewFakeBinder(0),
-		BindFlowChannel: make(chan *api.TaskInfo, 5000),
+		BindFlowChannel: make(chan *BindContext, 5000),
 	}
 
 	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1000m", "1G"),
@@ -154,7 +154,8 @@ func TestSchedulerCache_Bind_NodeWithSufficientResources(t *testing.T) {
 		t.Errorf("failed to add task %v", err)
 	}
 	task.NodeName = "n1"
-	err := cache.AddBindTask(task)
+	bindContext := &BindContext{TaskInfo: task}
+	err := cache.AddBindTask(bindContext)
 	if err != nil {
 		t.Errorf("failed to bind pod to node: %v", err)
 	}
@@ -167,7 +168,7 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 		Jobs:            make(map[api.JobID]*api.JobInfo),
 		Nodes:           make(map[string]*api.NodeInfo),
 		Binder:          util.NewFakeBinder(0),
-		BindFlowChannel: make(chan *api.TaskInfo, 5000),
+		BindFlowChannel: make(chan *BindContext, 5000),
 	}
 
 	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("5000m", "50G"),
@@ -188,7 +189,8 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 	taskBeforeBind := task.Clone()
 	nodeBeforeBind := cache.Nodes["n1"].Clone()
 
-	err := cache.AddBindTask(task)
+	bindContext := &BindContext{TaskInfo: task}
+	err := cache.AddBindTask(bindContext)
 	if err == nil {
 		t.Errorf("expected bind to fail for node with insufficient resources")
 	}
@@ -329,7 +331,8 @@ func TestBindTasks(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	task := api.NewTaskInfo(pod)
 	task.NodeName = "n1"
-	err := sc.AddBindTask(task)
+	bindContext := &BindContext{TaskInfo: task}
+	err := sc.AddBindTask(bindContext)
 	if err != nil {
 		t.Errorf("failed to bind pod to node: %v", err)
 	}
