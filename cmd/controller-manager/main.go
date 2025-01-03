@@ -18,12 +18,10 @@ package main
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"sort"
 	"time"
 
 	"github.com/spf13/pflag"
-	_ "go.uber.org/automaxprocs"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	cliflag "k8s.io/component-base/cli/flag"
@@ -46,7 +44,6 @@ import (
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	klog.InitFlags(nil)
 
 	fs := pflag.CommandLine
@@ -87,6 +84,9 @@ func main() {
 
 	klog.StartFlushDaemon(*logFlushFreq)
 	defer klog.Flush()
+
+	commonutil.SetMaxProcs()
+	commonutil.SetMemLimit(s.MemlimitRatio)
 
 	if err := app.Run(s); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
