@@ -19,6 +19,7 @@ package jobseq
 import (
 	"context"
 	"strconv"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -142,6 +143,50 @@ var _ = Describe("Job Error Handling", func() {
 
 		// job phase: pending -> running -> Aborting -> Aborted
 		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Aborting, vcbatch.Aborted})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("job level LifecyclePolicy, Event: PodFailed, Action: RestartPod; Event PodEvicted, Action: TerminateJob, Timeout: 5m", func() {
+		By("init test context")
+		context := e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(context)
+
+		By("create job")
+		job := e2eutil.CreateJob(context, &e2eutil.JobSpec{
+			Name: "failed-restart-job",
+			Policies: []vcbatch.LifecyclePolicy{
+				{
+					Action: vcbus.RestartPodAction,
+					Event:  vcbus.PodFailedEvent,
+				},
+				{
+					Action: vcbus.TerminateJobAction,
+					Event:  vcbus.PodEvictedEvent,
+					Timeout: &metav1.Duration{
+						Duration: 5 * time.Minute,
+					},
+				},
+			},
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Name: "success",
+					Img:  e2eutil.DefaultNginxImage,
+					Min:  2,
+					Rep:  2,
+				},
+				{
+					Name:          "fail",
+					Img:           e2eutil.DefaultNginxImage,
+					Min:           2,
+					Rep:           2,
+					Command:       "sleep 10s && xxx",
+					RestartPolicy: v1.RestartPolicyNever,
+				},
+			},
+		})
+
+		// job phase: pending -> running -> restarting -> running
+		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 

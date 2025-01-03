@@ -32,6 +32,7 @@ type Request struct {
 	JobUid    types.UID
 	TaskName  string
 	QueueName string
+	PodName   string
 
 	Event      v1alpha1.Event
 	ExitCode   int32
@@ -42,8 +43,8 @@ type Request struct {
 // String function returns the request in string format.
 func (r Request) String() string {
 	return fmt.Sprintf(
-		"Queue: %s, Job: %s/%s, Task:%s, Event:%s, ExitCode:%d, Action:%s, JobVersion: %d",
-		r.QueueName, r.Namespace, r.JobName, r.TaskName, r.Event, r.ExitCode, r.Action, r.JobVersion)
+		"Queue: %s, Job: %s/%s, Task:%s, Pod:%s, Event:%s, ExitCode:%d, Action:%s, JobVersion: %d",
+		r.QueueName, r.Namespace, r.JobName, r.TaskName, r.PodName, r.Event, r.ExitCode, r.Action, r.JobVersion)
 }
 
 // FlowRequest The object of sync operation, used for JobFlow and JobTemplate
