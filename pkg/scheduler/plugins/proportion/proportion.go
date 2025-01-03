@@ -303,7 +303,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return overused
 	})
 
-	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+	queueAllocatable := func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		attr := pp.queueOpts[queue.UID]
 
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
@@ -314,6 +314,15 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		return allocatable
+	}
+
+	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		return queueAllocatable(queue, candidate)
+	})
+	ssn.AddPreemptiveFn(pp.Name(), func(obj interface{}, candidate interface{}) bool {
+		queue := obj.(*api.QueueInfo)
+		task := candidate.(*api.TaskInfo)
+		return queueAllocatable(queue, task)
 	})
 
 	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
