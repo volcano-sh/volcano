@@ -27,6 +27,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
+	deviceconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -44,6 +45,8 @@ const (
 
 	SchedulePolicyArgument = "deviceshare.SchedulePolicy"
 	ScheduleWeight         = "deviceshare.ScheduleWeight"
+
+	deviceConfigMapName = "deviceshare.configMapName"
 )
 
 type deviceSharePlugin struct {
@@ -80,6 +83,14 @@ func enablePredicate(dsp *deviceSharePlugin) {
 	if ok {
 		dsp.schedulePolicy = args[SchedulePolicyArgument].(string)
 	}
+
+	_, ok = args[deviceConfigMapName]
+	if ok {
+		deviceconfig.InitDevicesConfig(args[deviceConfigMapName].(string))
+	} else {
+		deviceconfig.InitDevicesConfig("")
+	}
+
 	args.GetInt(&dsp.scheduleWeight, ScheduleWeight)
 
 	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {

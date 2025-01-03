@@ -14,6 +14,16 @@ limitations under the License.
 
 package devices
 
+import (
+	"os"
+	"path/filepath"
+
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog"
+)
+
 // These are predefined codes used in a Status.
 const (
 	// Success means that plugin ran correctly and found pod schedulable.
@@ -36,3 +46,37 @@ const (
 	// Skip is used when a Bind plugin chooses to skip binding.
 	Skip
 )
+
+var kubeClient kubernetes.Interface
+
+func init() {
+	var err error
+	kubeClient, err = NewClient()
+	if err != nil {
+		klog.Errorf("init kubeclient in hamivgpu failed: %s", err.Error())
+	} else {
+		klog.V(3).Infoln("init kubeclient success")
+	}
+}
+
+func GetClient() kubernetes.Interface {
+	return kubeClient
+}
+
+// NewClient connects to an API server
+func NewClient() (kubernetes.Interface, error) {
+	kubeConfig := os.Getenv("KUBECONFIG")
+	if kubeConfig == "" {
+		kubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
+	}
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		config, err = clientcmd.BuildConfigFromFlags("", kubeConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+	client, err := kubernetes.NewForConfig(config)
+	kubeClient = client
+	return client, err
+}

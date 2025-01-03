@@ -28,6 +28,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
+	deviceconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
 
@@ -60,6 +61,12 @@ type GPUDevice struct {
 	UsedMem uint
 	// number of core used
 	UsedCore uint
+	// working node of this GPU
+	Mode string
+	// MigTemplate for this GPU
+	MigTemplate []deviceconfig.Geometry
+	/// MigUsage for this GPU
+	MigUsage deviceconfig.MigInUse
 }
 
 type GPUDevices struct {
