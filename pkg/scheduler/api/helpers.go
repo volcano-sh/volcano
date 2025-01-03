@@ -18,6 +18,8 @@ package api
 
 import (
 	"fmt"
+	"hash/crc32"
+	"sort"
 
 	v1 "k8s.io/api/core/v1"
 	clientcache "k8s.io/client-go/tools/cache"
@@ -58,6 +60,25 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 	}
 
 	return Unknown
+}
+
+func getTaskHashValue(pod *v1.Pod) uint32 {
+	var hashValue string
+	var keys []string
+	for k := range pod.Spec.NodeSelector {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		hashValue += fmt.Sprintf("%s:%s", k, pod.Spec.NodeSelector[k])
+	}
+	for _, u := range pod.Spec.Tolerations {
+		hashValue += u.String()
+	}
+	if pod.Spec.Affinity != nil {
+		hashValue += pod.Spec.Affinity.String()
+	}
+	return crc32.ChecksumIEEE([]byte(hashValue))
 }
 
 // PreemptableStatus checks whether the task can be preempted
