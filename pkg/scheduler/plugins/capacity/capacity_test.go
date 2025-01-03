@@ -348,7 +348,7 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	// podgroup
 	pg1 := util.BuildPodGroup("pg1", "ns1", "q11", 1, nil, schedulingv1beta1.PodGroupInqueue)
 	// queue
-	root := buildQueueWithParents("root", "", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
+	root := buildQueueWithParents("root", "", nil, nil)
 	queue1 := buildQueueWithParents("q1", "root", nil, api.BuildResourceList("4", "4Gi"))
 	queue2 := buildQueueWithParents("q2", "root", nil, api.BuildResourceList("4", "4Gi"))
 	queue11 := buildQueueWithParents("q11", "q1", nil, api.BuildResourceList("1", "1Gi"))
@@ -382,6 +382,15 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	pg4 := util.BuildPodGroup("pg4", "ns1", "q4", 1, nil, schedulingv1beta1.PodGroupRunning)
 	pg5 := util.BuildPodGroup("pg5", "ns1", "q31", 1, nil, schedulingv1beta1.PodGroupRunning)
 	pg6 := util.BuildPodGroup("pg6", "ns1", "q32", 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+	// resources for test case 4
+	// queue
+	queue5 := buildQueueWithParents("q5", "root", nil, api.BuildResourceList("", "4Gi", []api.ScalarResource{}...))
+	queue51 := buildQueueWithParents("q51", "q5", nil, api.BuildResourceList("", "2Gi", []api.ScalarResource{}...))
+	// podgroup
+	pg7 := util.BuildPodGroup("pg7", "ns1", "q51", 1, nil, schedulingv1beta1.PodGroupRunning)
+	// pod
+	p9 := util.BuildPod("ns1", "p9", "", corev1.PodPending, api.BuildResourceList("1", ""), "pg7", make(map[string]string), map[string]string{})
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -431,6 +440,18 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			},
 			ExpectEvicted:  []string{"ns1/p7"},
 			ExpectEvictNum: 1,
+		},
+		{
+			Name:      "case4: If the capability cpu or memory is not specified, the value should be inherited from parent queue",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p9},
+			Nodes:     []*corev1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg7},
+			Queues:    []*schedulingv1beta1.Queue{root, queue5, queue51},
+			ExpectBindMap: map[string]string{
+				"ns1/p9": "n1",
+			},
+			ExpectBindsNum: 1,
 		},
 	}
 

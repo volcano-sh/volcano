@@ -94,10 +94,16 @@ type ScalarResource struct {
 
 // BuildResourceList builds resource list object
 func BuildResourceList(cpu string, memory string, scalarResources ...ScalarResource) v1.ResourceList {
-	resourceList := v1.ResourceList{
-		v1.ResourceCPU:    resource.MustParse(cpu),
-		v1.ResourceMemory: resource.MustParse(memory),
+	resourceList := v1.ResourceList{}
+
+	if len(cpu) > 0 {
+		resourceList[v1.ResourceCPU] = resource.MustParse(cpu)
 	}
+
+	if len(memory) > 0 {
+		resourceList[v1.ResourceMemory] = resource.MustParse(memory)
+	}
+
 	for _, scalar := range scalarResources {
 		resourceList[v1.ResourceName(scalar.Name)] = resource.MustParse(scalar.Value)
 	}
@@ -107,13 +113,9 @@ func BuildResourceList(cpu string, memory string, scalarResources ...ScalarResou
 
 // BuildResourceListWithGPU builds resource list with GPU
 func BuildResourceListWithGPU(cpu string, memory string, GPU string, scalarResources ...ScalarResource) v1.ResourceList {
-	resourceList := v1.ResourceList{
-		v1.ResourceCPU:    resource.MustParse(cpu),
-		v1.ResourceMemory: resource.MustParse(memory),
-		GPUResourceName:   resource.MustParse(GPU),
-	}
-	for _, scalar := range scalarResources {
-		resourceList[v1.ResourceName(scalar.Name)] = resource.MustParse(scalar.Value)
+	resourceList := BuildResourceList(cpu, memory, scalarResources...)
+	if len(GPU) > 0 {
+		resourceList[GPUResourceName] = resource.MustParse(GPU)
 	}
 
 	return resourceList
