@@ -20,49 +20,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+
+	"volcano.sh/volcano/pkg/scheduler/api/devices"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 )
-
-var kubeClient kubernetes.Interface
-
-func init() {
-	var err error
-	kubeClient, err = NewClient()
-	if err != nil {
-		klog.Errorf("init kubeclient in hamivgpu failed: %s", err.Error())
-	} else {
-		klog.V(3).Infoln("init kubeclient success")
-	}
-}
-
-// NewClient connects to an API server
-func NewClient() (kubernetes.Interface, error) {
-	kubeConfig := os.Getenv("KUBECONFIG")
-	if kubeConfig == "" {
-		kubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	}
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		config, err = clientcmd.BuildConfigFromFlags("", kubeConfig)
-		if err != nil {
-			return nil, err
-		}
-	}
-	client, err := kubernetes.NewForConfig(config)
-	kubeClient = client
-	return client, err
-}
 
 func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	type patchMetadata struct {
@@ -80,7 +48,7 @@ func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	if err != nil {
 		return err
 	}
-	_, err = kubeClient.CoreV1().Nodes().
+	_, err = devices.GetClient().CoreV1().Nodes().
 		Patch(context.Background(), node.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
 	if err != nil {
 		klog.Errorf("patch pod %v failed, %v", node.Name, err)
@@ -105,14 +73,17 @@ func decodeNodeDevices(name string, str string) *GPUDevices {
 			devmem, _ := strconv.Atoi(items[2])
 			health, _ := strconv.ParseBool(items[4])
 			i := GPUDevice{
-				ID:     index,
-				Node:   name,
-				UUID:   items[0],
-				Number: uint(count),
-				Memory: uint(devmem),
-				Type:   items[3],
-				PodMap: make(map[string]*GPUUsage),
-				Health: health,
+				ID:          index,
+				Node:        name,
+				UUID:        items[0],
+				Number:      uint(count),
+				Memory:      uint(devmem),
+				Type:        items[3],
+				PodMap:      make(map[string]*GPUUsage),
+				Health:      health,
+				Mode:        "hami-core",
+				MigTemplate: []config.Geometry{},
+				MigUsage:    config.MigInUse{},
 			}
 			retval.Device[index] = &i
 		}
@@ -437,7 +408,7 @@ func patchPodAnnotations(pod *v1.Pod, annotations map[string]string) error {
 	if err != nil {
 		return err
 	}
-	_, err = kubeClient.CoreV1().Pods(pod.Namespace).
+	_, err = devices.GetClient().CoreV1().Pods(pod.Namespace).
 		Patch(context.Background(), pod.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
 	if err != nil {
 		klog.Errorf("patch pod %v failed, %v", pod.Name, err)
