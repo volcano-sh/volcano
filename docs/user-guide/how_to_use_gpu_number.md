@@ -4,6 +4,19 @@
 
 > **Note** GPU Number is deprecated in volcano v1.9, recommended to use the Volcano VGPU feature, which is provided by HAMI project, click [here](https://github.com/Project-HAMi/volcano-vgpu-device-plugin)
 
+## Arguments
+| ID  | Name                          | Type           | Default Value | Required | Description                                          | Example                                       |
+|-----|-------------------------------|-----------------|---------------|----------|------------------------------------------------------|-----------------------------------------------|
+| 1   | `GPUSharingEnable` | bool | `false` | N | whether enable gpu sharing | deviceshare.GPUSharingEnable: true |
+| 2   | `NodeLockEnable` | bool | `false` | N | whether enable node lock | deviceshare.NodeLockEnable: true |
+| 3   | `GPUNumberEnable` | bool | `false` | N | whether enable gpu number | deviceshare.GPUNumberEnable: true |
+| 4   | `VGPUEnable` | bool | `false` | N | whether enable vgpu | deviceshare.VGPUEnable: true |
+| 5   | `SchedulePolicy` | string | `` | N | schedule policy | deviceshare.SchedulePolicy: binpack |
+| 6   | `ScheduleWeight` | int | 0 | N | schedule weight | deviceshare.ScheduleWeight: 10 |
+| 7   | `VGPUNumber` | string | `volcano.sh/vgpu-number` | N | resource name for vgpu number | deviceshare.VGPUNumber: volcano.sh/vgpu-number |
+| 8   | `VGPUMemory` | string | `volcano.sh/vgpu-memory` | N | resource name for vgpu memory | deviceshare.VGPUMemory: volcano.sh/vgpu-memory |
+| 9   | `VGPUCores` | string | `volcano.sh/vgpu-cores` | N | resource name for vgpu cores | deviceshare.VGPUCores: volcano.sh/vgpu-cores |
+
 ## Environment setup
 
 ### Install volcano
