@@ -389,11 +389,10 @@ func (cc *jobcontroller) handleCommands() {
 }
 
 func (cc *jobcontroller) processNextCommand() bool {
-	obj, shutdown := cc.commandQueue.Get()
+	cmd, shutdown := cc.commandQueue.Get()
 	if shutdown {
 		return false
 	}
-	cmd := obj.(*bus.Command)
 	defer cc.commandQueue.Done(cmd)
 
 	if err := cc.vcClient.BusV1alpha1().Commands(cmd.Namespace).Delete(context.TODO(), cmd.Name, metav1.DeleteOptions{}); err != nil {
