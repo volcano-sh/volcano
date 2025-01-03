@@ -46,7 +46,7 @@ jobs:
           export ARTIFACTS_PATH=${{ github.workspace }}/e2e-scheduling-actions-logs
           mkdir -p $ARTIFACTS_PATH
           
-          kdir -p $ARTIFACTS_PATH/integration
+          mkdir -p $ARTIFACTS_PATH/integration
           kind export logs --name=integration $ARTIFACTS_PATH/integration
 
       - name: upload e2e scheduling actions logs
