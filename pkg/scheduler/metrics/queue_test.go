@@ -60,15 +60,11 @@ func retryOnConnectionRefused(fn func() error) error {
 }
 
 func TestQueueResourceMetric(t *testing.T) {
-	UpdateQueueAllocated("queue1", 100, 1024, map[v1.ResourceName]float64{
-		"nvidia.com/gpu": 0,
-	})
-	UpdateQueueRequest("queue2", 200, 2048, map[v1.ResourceName]float64{
-		"nvidia.com/gpu": 1,
-	})
-	UpdateQueueDeserved("queue3", 300, 3096, map[v1.ResourceName]float64{
-		"nvidia.com/gpu": 2,
-	})
+	UpdateQueueAllocated("queue1", 100, 1024, map[v1.ResourceName]float64{"nvidia.com/gpu": 0})
+	UpdateQueueRequest("queue2", 200, 2048, map[v1.ResourceName]float64{"nvidia.com/gpu": 1})
+	UpdateQueueDeserved("queue3", 300, 3096, map[v1.ResourceName]float64{"nvidia.com/gpu": 2})
+	UpdateQueueCapacity("queue1", 200., 2048., map[v1.ResourceName]float64{v1.ResourceName("nvidia.com/gpu"): 10.})
+	UpdateQueueRealCapacity("queue2", 200., 2048., map[v1.ResourceName]float64{v1.ResourceName("nvidia.com/gpu"): 10.})
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
 		err := http.ListenAndServe(":8081", nil)
@@ -93,6 +89,16 @@ func TestQueueResourceMetric(t *testing.T) {
 			assert.Contains(t, m, "volcano_queue_deserved_scalar_resources{queue_name=\"queue3\",resource=\"nvidia.com/gpu\"}",
 				"volcano_queue_deserved_scalar_resources for queue3 and resource nvidia.com/gpu should be present")
 			assert.Equal(t, 2., m["volcano_queue_deserved_scalar_resources{queue_name=\"queue3\",resource=\"nvidia.com/gpu\"}"])
+			assert.Equal(t, 200., m["volcano_queue_capacity_milli_cpu{queue_name=\"queue1\"}"])
+			assert.Equal(t, 2048., m["volcano_queue_capacity_memory_bytes{queue_name=\"queue1\"}"])
+			assert.Contains(t, m, "volcano_queue_capacity_scalar_resources{queue_name=\"queue1\",resource=\"nvidia.com/gpu\"}",
+				"volcano_queue_capacity_scalar_resources for queue1 and resource nvidia.com/gpu should be present")
+			assert.Equal(t, 10., m["volcano_queue_capacity_scalar_resources{queue_name=\"queue1\",resource=\"nvidia.com/gpu\"}"])
+			assert.Equal(t, 200., m["volcano_queue_real_capacity_milli_cpu{queue_name=\"queue2\"}"])
+			assert.Equal(t, 2048., m["volcano_queue_real_capacity_memory_bytes{queue_name=\"queue2\"}"])
+			assert.Contains(t, m, "volcano_queue_real_capacity_scalar_resources{queue_name=\"queue2\",resource=\"nvidia.com/gpu\"}",
+				"volcano_queue_real_capacity_scalar_resources for queue1 and resource nvidia.com/gpu should be present")
+			assert.Equal(t, 10., m["volcano_queue_real_capacity_scalar_resources{queue_name=\"queue2\",resource=\"nvidia.com/gpu\"}"])
 		})
 	})
 	if err != nil {
@@ -108,6 +114,18 @@ func TestQueueResourceMetric(t *testing.T) {
 				"volcano_queue_allocated_memory_bytes for queue1 should be removed")
 			assert.NotContains(t, m, "volcano_queue_allocated_scalar_resources{queue_name=\"queue1\",resource=\"nvidia.com/gpu\"}",
 				"volcano_queue_allocated_scalar_resources for queue1 should be removed")
+			assert.NotContains(t, m, "volcano_queue_capacity_milli_cpu{queue_name=\"queue1\"}",
+				"volcano_queue_capacity_milli_cpu for queue1 should be removed")
+			assert.NotContains(t, m, "volcano_queue_capacity_memory_bytes{queue_name=\"queue1\"}",
+				"volcano_queue_capacity_memory_bytes for queue1 should be removed")
+			assert.NotContains(t, m, "volcano_queue_capacity_scalar_resources{queue_name=\"queue1\",resource=\"nvidia.com/gpu\"}",
+				"volcano_queue_capacity_scalar_resources for queue1 should be removed")
+			assert.NotContains(t, m, "volcano_queue_real_capacity_milli_cpu{queue_name=\"queue2\"}",
+				"volcano_queue_real_capacity_milli_cpu for queue1 should be removed")
+			assert.NotContains(t, m, "volcano_queue_real_capacity_memory_bytes{queue_name=\"queue2\"}",
+				"volcano_queue_real_capacity_memory_bytes for queue1 should be removed")
+			assert.NotContains(t, m, "volcano_queue_real_capacity_scalar_resources{queue_name=\"queue2\",resource=\"nvidia.com/gpu\"}",
+				"volcano_queue_real_capacity_scalar_resources for queue1 should be removed")
 			assert.NotContains(t, m, "volcano_queue_request_milli_cpu{queue_name=\"queue2\"}",
 				"volcano_queue_request_milli_cpu for queue2 should be removed")
 			assert.NotContains(t, m, "volcano_queue_request_memory_bytes{queue_name=\"queue2\"}",
@@ -123,6 +141,7 @@ func TestQueueResourceMetric(t *testing.T) {
 			assert.Contains(t, m, "volcano_queue_deserved_scalar_resources{queue_name=\"queue3\",resource=\"nvidia.com/gpu\"}",
 				"volcano_queue_deserved_scalar_resources for queue3 & nvidia.com/gpu should not be removed")
 			assert.Equal(t, 2., m["volcano_queue_deserved_scalar_resources{queue_name=\"queue3\",resource=\"nvidia.com/gpu\"}"])
+
 		})
 	})
 	if err != nil {
