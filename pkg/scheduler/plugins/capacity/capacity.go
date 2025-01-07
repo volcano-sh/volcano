@@ -165,25 +165,38 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return !overused
 	})
 
-	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
-		if !readyToSchedule {
-			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
-			return false
-		}
-
-		if hierarchyEnabled && !cp.isLeafQueue(queue.UID) {
-			return false
-		}
+	queueAllocatable := func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		attr := cp.queueOpts[queue.UID]
-
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
 		allocatable := futureUsed.LessEqualWithDimension(attr.realCapability, candidate.Resreq)
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq)
 		}
-
 		return allocatable
+	}
+
+	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		if !readyToSchedule {
+			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
+			return false
+		}
+		if hierarchyEnabled && !cp.isLeafQueue(queue.UID) {
+			klog.V(3).Infof("Queue <%s> is not a leaf queue, can not allocate task <%s>.", queue.Name, candidate.Name)
+			return false
+		}
+		list := append(cp.queueOpts[queue.UID].parents, queue.UID)
+		for i := len(list) - 1; i >= 0; i-- {
+			if !queueAllocatable(ssn.Queues[list[i]], candidate) {
+				if klog.V(5).Enabled() {
+					for i--; i >= 0; i-- {
+						queueAllocatable(ssn.Queues[list[i]], candidate)
+					}
+				}
+				return false
+			}
+		}
+		return true
 	})
 
 	ssn.AddJobEnqueueableFn(cp.Name(), func(obj interface{}) int {

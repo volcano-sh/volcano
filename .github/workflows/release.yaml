@@ -54,7 +54,7 @@ jobs:
           make verify
           make TAG=${{ env.TAG }} generate-yaml
           make verify-generated-yaml
-          make unit-test
+          sudo make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
 
       - name: Login to DockerHub

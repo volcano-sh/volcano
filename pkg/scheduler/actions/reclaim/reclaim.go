@@ -123,11 +123,8 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		if !ssn.Allocatable(queue, task) {
-			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
-			continue
-		}
-
+		//In allocate action we need check all the ancestor queues' capability but in reclaim action we should just check current queue's capability, and reclaim happens when queue not allocatable so we just need focus on the reclaim here.
+		//So it's more descriptive to user preempt related semantics.
 		if !ssn.Preemptive(queue, task) {
 			klog.V(3).Infof("Queue <%s> can not reclaim by preempt others when considering task <%s> , ignore it.", queue.Name, task.Name)
 			continue

@@ -33,65 +33,71 @@ data:
       knownMigGeometries:
       - models: [ "A30" ]
         allowedGeometries:
-          - 
+          - group: group1 
+            geometries: 
             - name: 1g.6gb
               memory: 6144
               count: 4
-          - 
+          - group: group2
+            geometries:
             - name: 2g.12gb
               memory: 12288
               count: 2
-          - 
+          - group: group3
+            geometries:
             - name: 4g.24gb
               memory: 24576
               count: 1
       - models: [ "A100-SXM4-40GB", "A100-40GB-PCIe", "A100-PCIE-40GB", "A100-SXM4-40GB" ]
         allowedGeometries:
-          - 
+          - group: group1
+            geometries:
             - name: 1g.5gb
               memory: 5120
               count: 7
-          - 
+          - group: group2
+            geometries:
             - name: 2g.10gb
               memory: 10240
               count: 3
             - name: 1g.5gb
               memory: 5120
               count: 1
-          - 
+          - group: group3
+            geometries:
             - name: 3g.20gb
               memory: 20480
               count: 2
-          - 
+          - group: group4
+            geometries:
             - name: 7g.40gb
               memory: 40960
               count: 1
       - models: [ "A100-SXM4-80GB", "A100-80GB-PCIe", "A100-PCIE-80GB"]
         allowedGeometries:
-          - 
+          - group: group1
+            geometries:
             - name: 1g.10gb
               memory: 10240
               count: 7
-          - 
+          - group: group2
+            geometries:
             - name: 2g.20gb
               memory: 20480
               count: 3
             - name: 1g.10gb
               memory: 10240
               count: 1
-          - 
+          - group: group3
+            geometries:
             - name: 3g.40gb
               memory: 40960
               count: 2
-          - 
+          - group: group4
+            geometries:
             - name: 7g.79gb
               memory: 80896
               count: 1
-      nodeconfig: 
-          - name: nodeA
-            operatingmode: hami-core
-          - name: nodeB
-            operatingmode: mig
 ```
 
 ## Structure
@@ -147,12 +153,19 @@ The Procedure of a vGPU task which uses dynamic-mig is shown below:
 
 Note that after submited a task, deviceshare plugin will iterate over templates defined in configMap `volcano-device-share`, and find the first available template to fit. You can always change the content of that configMap, and restart vc-scheduler to customize.
 
-If you submit the example on an empty A100-PCIE-40GB node, then it will select a GPU and chosse MIG template below:
+If you submit the example above(a pod requests 2 * 8G GPUs) to a cluster, which has an empty A100-PCIE-40GB node, then it will follow the procedure below:
+
+<img src="./images/dynamic-mig-example.png" width = "400" /> 
+
+As the figure shows, after the procedure, it will adopt geometry 'group2' to that GPU with the definiation below:
 
 ```yaml
+group2:
   2g.10gb : 3
   1g.5gb : 1
 ```
 
-Then start the container with 2g.10gb instances * 2
+There are four mig instances in total, vc-scheduler will return 2 '2g.10gb' instances to the task, and add the remaining instances (1 '2g.10gb' + 1 '1g.5gb' ) to the available empty mig instances, for future usage.
+
+In the end, start the container with 2g.10gb instances * 2
 
