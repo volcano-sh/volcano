@@ -155,6 +155,16 @@ func (ssn *Session) AddJobStarvingFns(name string, fn api.ValidateFn) {
 	ssn.jobStarvingFns[name] = fn
 }
 
+// AddPreBindFns add preBindFn function
+func (ssn *Session) AddPreBindFns(name string, fn api.PreBindFn) {
+	ssn.preBindFns[name] = fn
+}
+
+// AddUnPreBindFns add unPreBindFn function
+func (ssn *Session) AddUnPreBindFns(name string, fn api.UnPreBindFn) {
+	ssn.unPreBindFns[name] = fn
+}
+
 // Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo

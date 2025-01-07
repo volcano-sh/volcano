@@ -106,6 +106,9 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "create", "update", "watch"]
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["*"]
+    verbs: ["*"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -200,6 +203,9 @@ spec:
             {{- end }}
             {{- if .Values.custom.scheduler_node_worker_threads }}
             - --node-worker-threads={{.Values.custom.scheduler_node_worker_threads}}
+            {{- end }}
+            {{- if .Values.custom.feature_gates }}
+            - --feature-gates={{.Values.custom.feature_gates}}
             {{- end }}
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1

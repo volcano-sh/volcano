@@ -1,0 +1,41 @@
+name: E2E DRA
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+  pull_request:
+
+jobs:
+  e2e_dra:
+    runs-on: ubuntu-24.04
+    name: E2E about DRA
+    timeout-minutes: 40
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.22.x
+
+      - name: Install musl
+        run: |
+          wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
+          tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+          ./configure
+          make && sudo make install
+      - uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Install dependences
+        run: |
+          GO111MODULE="on" go install sigs.k8s.io/kind@v0.24.0
+          curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.31.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run E2E Tests
+        run: |
+          make e2e-test-dra CC=/usr/local/musl/bin/musl-gcc

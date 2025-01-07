@@ -60,11 +60,10 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 	// TODO (k82cn): When backfill, it's also need to balance between Queues.
 	pendingTasks := backfill.pickUpPendingTasks(ssn)
 	for _, task := range pendingTasks {
+		stmt := framework.NewStatement(ssn)
 		job := ssn.Jobs[task.Job]
 		ph := util.NewPredicateHelper()
-		allocated := false
 		fe := api.NewFitErrors()
-
 		if err := ssn.PrePredicateFn(task); err != nil {
 			klog.V(3).Infof("PrePredicate for task %s/%s failed in backfill for: %v", task.Namespace, task.Name, err)
 			for _, ni := range ssn.Nodes {
@@ -90,19 +89,24 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 		}
 
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
-		if err := ssn.Allocate(task, node); err != nil {
-			klog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
+		if err := stmt.Allocate(task, node); err != nil {
+			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v", task.UID, node.Name, ssn.UID, err)
 			fe.SetNodeError(node.Name, err)
+			job.NodesFitErrors[task.UID] = fe
+			if rollbackErr := stmt.UnAllocate(task); rollbackErr != nil {
+				klog.Errorf("Failed to unallocate Task %v on %v in Session %v for %v.",
+					task.UID, node.Name, ssn.UID, rollbackErr)
+			}
 			continue
 		}
 
 		metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 		metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
-		allocated = true
 
-		if !allocated {
-			job.NodesFitErrors[task.UID] = fe
+		if ssn.JobReady(job) {
+			stmt.Commit()
 		}
+
 		// TODO (k82cn): backfill for other case.
 	}
 }

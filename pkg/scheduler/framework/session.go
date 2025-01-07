@@ -19,6 +19,7 @@ package framework
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -31,6 +32,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
@@ -106,6 +108,20 @@ type Session struct {
 	reservedNodesFns  map[string]api.ReservedNodesFn
 	victimTasksFns    map[string][]api.VictimTasksFn
 	jobStarvingFns    map[string]api.ValidateFn
+	preBindFns        map[string]api.PreBindFn
+	unPreBindFns      map[string]api.UnPreBindFn
+
+	// CycleStatesMap is used to temporarily store the scheduling status of each pod, its life cycle is same as Session.
+	// Because state needs to be passed between different extension points (not only used in PreFilter and Filter),
+	// in order to avoid different Pod scheduling states from being overwritten,
+	// the state needs to be temporarily stored in cycleStatesMap when an extension point is executed.
+	// The key is task's UID, value is the CycleState.
+	CycleStatesMap sync.Map
+
+	// In Bind, some plugins need to execute extension points such as PreBind and UnReserve, so when passing BindContext to execute Bind,
+	// BindContext needs to carry more information such as PreBindFn, NodeInfo, EventHandler, etc.
+	// BindContextEnabledPlugins indicates the name of the plugins that needs to pass this information.
+	BindContextEnabledPlugins []string
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -155,6 +171,8 @@ func openSession(cache cache.Cache) *Session {
 		reservedNodesFns:    map[string]api.ReservedNodesFn{},
 		victimTasksFns:      map[string][]api.VictimTasksFn{},
 		jobStarvingFns:      map[string]api.ValidateFn{},
+		preBindFns:          map[string]api.PreBindFn{},
+		unPreBindFns:        map[string]api.UnPreBindFn{},
 	}
 
 	snapshot := cache.Snapshot()
@@ -197,6 +215,8 @@ func openSession(cache cache.Cache) *Session {
 
 	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
+
+	ssn.BindContextEnabledPlugins = make([]string, 0)
 
 	return ssn
 }
@@ -554,7 +574,8 @@ func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 }
 
 func (ssn *Session) dispatch(task *api.TaskInfo) error {
-	if err := ssn.cache.AddBindTask(task); err != nil {
+	bindContext := ssn.CreateBindContext(task)
+	if err := ssn.cache.AddBindTask(bindContext); err != nil {
 		return err
 	}
 
@@ -573,6 +594,20 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 
 	metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
 	return nil
+}
+
+func (ssn *Session) CreateBindContext(task *api.TaskInfo) *cache.BindContext {
+	bindContext := &cache.BindContext{TaskInfo: task}
+	if len(ssn.BindContextEnabledPlugins) > 0 {
+		bindContext.NodeInfo = ssn.Nodes[task.NodeName]
+		bindContext.PreBindFns = make([]api.PreBindFn, 0, len(ssn.BindContextEnabledPlugins))
+		bindContext.UnPreBindFns = make([]api.UnPreBindFn, 0, len(ssn.BindContextEnabledPlugins))
+		for _, plugin := range ssn.BindContextEnabledPlugins {
+			bindContext.PreBindFns = append(bindContext.PreBindFns, ssn.preBindFns[plugin])
+			bindContext.UnPreBindFns = append(bindContext.UnPreBindFns, ssn.unPreBindFns[plugin])
+		}
+	}
+	return bindContext
 }
 
 // Evict the task in the session
@@ -656,27 +691,27 @@ func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNuma
 }
 
 // KubeClient returns the kubernetes client
-func (ssn Session) KubeClient() kubernetes.Interface {
+func (ssn *Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
 }
 
 // VCClient returns the volcano client
-func (ssn Session) VCClient() vcclient.Interface {
+func (ssn *Session) VCClient() vcclient.Interface {
 	return ssn.vcClient
 }
 
 // ClientConfig returns the rest client
-func (ssn Session) ClientConfig() *rest.Config {
+func (ssn *Session) ClientConfig() *rest.Config {
 	return ssn.restConfig
 }
 
 // InformerFactory returns the scheduler ShareInformerFactory
-func (ssn Session) InformerFactory() informers.SharedInformerFactory {
+func (ssn *Session) InformerFactory() informers.SharedInformerFactory {
 	return ssn.informerFactory
 }
 
 // RecordPodGroupEvent records podGroup events
-func (ssn Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason, msg string) {
+func (ssn *Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason, msg string) {
 	if podGroup == nil {
 		return
 	}
@@ -689,8 +724,13 @@ func (ssn Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason
 	ssn.recorder.Eventf(pg, eventType, reason, msg)
 }
 
+// GetResourceClaimCache gets the resource claim cache from SchedulerCache
+func (ssn *Session) GetResourceClaimCache() *assumecache.AssumeCache {
+	return ssn.cache.GetResourceClaimCache()
+}
+
 // String return nodes and jobs information in the session
-func (ssn Session) String() string {
+func (ssn *Session) String() string {
 	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
 
 	for _, job := range ssn.Jobs {
