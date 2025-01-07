@@ -23,7 +23,9 @@ import (
 	"testing"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -1050,7 +1052,9 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			Parent: "root",
 		},
 		Status: schedulingv1beta1.QueueStatus{
-			Running: 2,
+			Allocated: v1.ResourceList{
+				v1.ResourcePods: resource.MustParse("1"),
+			},
 		},
 	}
 
@@ -1060,6 +1064,11 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 		},
 		Spec: schedulingv1beta1.QueueSpec{
 			Parent: "root",
+		},
+		Status: schedulingv1beta1.QueueStatus{
+			Allocated: v1.ResourceList{
+				v1.ResourcePods: resource.MustParse("0"),
+			},
 		},
 	}
 
@@ -1130,7 +1139,7 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: "queue queue-with-jobs cannot be the parent queue of queue parent-queue-with-jobs because it has PodGroups (pending: 0, running: 2, unknown: 0, inqueue: 0)",
+					Message: "queue queue-with-jobs cannot be the parent queue of queue parent-queue-with-jobs because it has allocated Pods: 1",
 				},
 			},
 		},
