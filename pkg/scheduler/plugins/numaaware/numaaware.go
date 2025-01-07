@@ -169,15 +169,11 @@ func (pp *numaPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddPredicateFn(pp.Name(), predicateFn)
 
 	batchNodeOrderFn := func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
+		if _, found := pp.assignRes[task.UID]; !found || task.NumaInfo == nil || task.NumaInfo.Policy == "" || task.NumaInfo.Policy == "none" {
+			return nil, nil
+		}
+
 		nodeScores := make(map[string]float64, len(nodeInfo))
-		if task.NumaInfo == nil || task.NumaInfo.Policy == "" || task.NumaInfo.Policy == "none" {
-			return nodeScores, nil
-		}
-
-		if _, found := pp.assignRes[task.UID]; !found {
-			return nodeScores, nil
-		}
-
 		scoreList := getNodeNumaNumForTask(nodeInfo, pp.assignRes[task.UID])
 		util.NormalizeScore(api.DefaultMaxNodeScore, true, scoreList)
 
