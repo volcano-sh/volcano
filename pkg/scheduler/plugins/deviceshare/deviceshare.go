@@ -20,6 +20,7 @@ import (
 	"context"
 	"math"
 	"reflect"
+	"sync"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -54,11 +55,13 @@ type deviceSharePlugin struct {
 	pluginArguments framework.Arguments
 	schedulePolicy  string
 	scheduleWeight  int
+	deviceCM        string
+	once            sync.Once
 }
 
 // New return priority plugin
 func New(arguments framework.Arguments) framework.Plugin {
-	dsp := &deviceSharePlugin{pluginArguments: arguments, schedulePolicy: "", scheduleWeight: 0}
+	dsp := &deviceSharePlugin{pluginArguments: arguments, schedulePolicy: "", scheduleWeight: 0, once: sync.Once{}}
 	enablePredicate(dsp)
 	return dsp
 }
@@ -86,9 +89,9 @@ func enablePredicate(dsp *deviceSharePlugin) {
 
 	_, ok = args[deviceConfigMapName]
 	if ok {
-		deviceconfig.InitDevicesConfig(args[deviceConfigMapName].(string))
+		dsp.deviceCM = args[deviceConfigMapName].(string)
 	} else {
-		deviceconfig.InitDevicesConfig("")
+		dsp.deviceCM = ""
 	}
 
 	args.GetInt(&dsp.scheduleWeight, ScheduleWeight)
@@ -124,6 +127,9 @@ func getDeviceScore(ctx context.Context, pod *v1.Pod, node *api.NodeInfo, schedu
 func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddPredicateFn(dp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		dp.once.Do(func() {
+			deviceconfig.InitDevicesConfig(ssn.KubeClient(), dp.deviceCM)
+		})
 		predicateStatus := make([]*api.Status, 0)
 		// Check PredicateWithCache
 		for _, val := range api.RegisteredDevices {

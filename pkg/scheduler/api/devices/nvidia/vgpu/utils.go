@@ -26,6 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
@@ -392,7 +393,7 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 	return true, ctrdevs, score, nil
 }
 
-func patchPodAnnotations(pod *v1.Pod, annotations map[string]string) error {
+func patchPodAnnotations(kubeClient kubernetes.Interface, pod *v1.Pod, annotations map[string]string) error {
 	type patchMetadata struct {
 		Annotations map[string]string `json:"annotations,omitempty"`
 	}
@@ -408,20 +409,11 @@ func patchPodAnnotations(pod *v1.Pod, annotations map[string]string) error {
 	if err != nil {
 		return err
 	}
-	_, err = devices.GetClient().CoreV1().Pods(pod.Namespace).
+	_, err = kubeClient.CoreV1().Pods(pod.Namespace).
 		Patch(context.Background(), pod.Name, k8stypes.StrategicMergePatchType, bytes, metav1.PatchOptions{})
 	if err != nil {
 		klog.Errorf("patch pod %v failed, %v", pod.Name, err)
 	}
-	/*
-		Can't modify Env of pods here
-
-		patch1 := addGPUIndexPatch()
-		_, err = s.kubeClient.CoreV1().Pods(pod.Namespace).
-			Patch(context.Background(), pod.Name, k8stypes.JSONPatchType, []byte(patch1), metav1.PatchOptions{})
-		if err != nil {
-			klog.Infof("Patch1 pod %v failed, %v", pod.Name, err)
-		}*/
 
 	return err
 }

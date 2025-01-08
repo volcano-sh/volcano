@@ -19,13 +19,11 @@ package config
 import (
 	"context"
 	"errors"
-	"sync"
 
 	"gopkg.in/yaml.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-
-	"volcano.sh/volcano/pkg/scheduler/api/devices"
 )
 
 type Config struct {
@@ -34,17 +32,16 @@ type Config struct {
 
 var (
 	configs *Config
-	once    sync.Once
 )
 
 func GetConfig() *Config {
 	return configs
 }
 
-func LoadConfigFromCM(cmName string) (*Config, error) {
-	cm, err := devices.GetClient().CoreV1().ConfigMaps("kube-system").Get(context.Background(), cmName, metav1.GetOptions{})
+func LoadConfigFromCM(kubeClient kubernetes.Interface, cmName string) (*Config, error) {
+	cm, err := kubeClient.CoreV1().ConfigMaps("kube-system").Get(context.Background(), cmName, metav1.GetOptions{})
 	if err != nil {
-		cm, err = devices.GetClient().CoreV1().ConfigMaps("volcano-system").Get(context.Background(), cmName, metav1.GetOptions{})
+		cm, err = kubeClient.CoreV1().ConfigMaps("volcano-system").Get(context.Background(), cmName, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -61,29 +58,27 @@ func LoadConfigFromCM(cmName string) (*Config, error) {
 	return &yamlData, nil
 }
 
-func InitDevicesConfig(cmName string) {
-	once.Do(func() {
-		var err error
-		if len(cmName) == 0 {
-			cmName = "volcano-vgpu-device-config"
+func InitDevicesConfig(kubeClient kubernetes.Interface, cmName string) {
+	var err error
+	if len(cmName) == 0 {
+		cmName = "volcano-vgpu-device-config"
+	}
+	configs, err = LoadConfigFromCM(kubeClient, cmName)
+	if err != nil {
+		configs = &Config{
+			NvidiaConfig: NvidiaConfig{
+				ResourceCountName:   "volcano.sh/vgpu-number",
+				ResourceCoreName:    "volcano.sh/vgpu-cores",
+				ResourceMemoryName:  "volcano.sh/vgpu-memory",
+				DefaultMemory:       0,
+				DefaultCores:        0,
+				DefaultGPUNum:       1,
+				DeviceSplitCount:    10,
+				DeviceMemoryScaling: 1,
+				DeviceCoreScaling:   1,
+				DisableCoreLimit:    false,
+			},
 		}
-		configs, err = LoadConfigFromCM(cmName)
-		if err != nil {
-			configs = &Config{
-				NvidiaConfig: NvidiaConfig{
-					ResourceCountName:   "volcano.sh/vgpu-number",
-					ResourceCoreName:    "volcano.sh/vgpu-cores",
-					ResourceMemoryName:  "volcano.sh/vgpu-memory",
-					DefaultMemory:       0,
-					DefaultCores:        0,
-					DefaultGPUNum:       1,
-					DeviceSplitCount:    10,
-					DeviceMemoryScaling: 1,
-					DeviceCoreScaling:   1,
-					DisableCoreLimit:    false,
-				},
-			}
-		}
-		klog.V(3).InfoS("Initializing volcano vgpu config", "device-configs", configs)
-	})
+	}
+	klog.V(3).InfoS("Initializing volcano vgpu config", "device-configs", configs)
 }
