@@ -204,7 +204,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	naArgs := &config.NodeAffinityArgs{
 		AddedAffinity: &v1.NodeAffinity{},
 	}
-	p, _ = nodeaffinity.New(context.TODO(), naArgs, handle)
+	p, _ = nodeaffinity.New(context.TODO(), naArgs, handle, feature.Features{})
 	nodeAffinity := p.(*nodeaffinity.NodeAffinity)
 
 	// 5. ImageLocality
@@ -286,7 +286,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
 
 	plArgs := &config.InterPodAffinityArgs{}
-	p, _ = interpodaffinity.New(context.TODO(), plArgs, handle)
+	p, _ = interpodaffinity.New(context.TODO(), plArgs, handle, feature.Features{})
 	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
 
 	p, _ = tainttoleration.New(context.TODO(), nil, handle, fts)
