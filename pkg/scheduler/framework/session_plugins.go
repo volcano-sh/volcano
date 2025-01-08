@@ -19,6 +19,7 @@ package framework
 import (
 	"context"
 
+	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -561,12 +562,15 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 		}
 	}
 
-	// If no job order funcs, order job by CreationTimestamp first, then by UID.
+	// If no job order funcs, order job by CreationTimestamp first, then by Name.
 	lv := l.(*api.JobInfo)
 	rv := r.(*api.JobInfo)
 	if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
-		return lv.UID < rv.UID
+		// Use the Name of the Job instead of UID to get deterministic order by Job name
+		klog.V(3).Infof("Creation timestamps are the same for job %v and %v: %v . using name to order", lv.Name, rv.Name, lv.CreationTimestamp)
+		return lv.Name < rv.Name
 	}
+	klog.V(3).Infof("Using creationTimestamp to order job priority %v: %v -- %v: %v ", lv.Name, lv.CreationTimestamp, rv.Name, rv.CreationTimestamp)
 	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
 }
 
