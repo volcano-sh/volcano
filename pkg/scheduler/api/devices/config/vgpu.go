@@ -28,7 +28,10 @@ type MigTemplateUsage struct {
 	InUse  bool   `json:"inuse,omitempty"`
 }
 
-type Geometry []MigTemplate
+type Geometry struct {
+	Group     string        `yaml:"group"`
+	Instances []MigTemplate `yaml:"geometries"`
+}
 
 type MIGS []MigTemplateUsage
 
