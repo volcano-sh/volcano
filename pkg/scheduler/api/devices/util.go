@@ -16,7 +16,6 @@ package devices
 
 import (
 	"os"
-	"path/filepath"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -47,36 +46,29 @@ const (
 	Skip
 )
 
-var kubeClient kubernetes.Interface
-
-func init() {
-	var err error
-	kubeClient, err = NewClient()
-	if err != nil {
-		klog.Errorf("init kubeclient in hamivgpu failed: %s", err.Error())
-	} else {
-		klog.V(3).Infoln("init kubeclient success")
-	}
-}
+var kubeClient *kubernetes.Clientset
 
 func GetClient() kubernetes.Interface {
+	var err error
+	if kubeClient == nil {
+		kubeClient, err = NewClient()
+		if err != nil {
+			klog.ErrorS(err, "deviceshare initClient failed")
+		}
+	}
 	return kubeClient
 }
 
 // NewClient connects to an API server
-func NewClient() (kubernetes.Interface, error) {
-	kubeConfig := os.Getenv("KUBECONFIG")
-	if kubeConfig == "" {
-		kubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	}
+func NewClient() (*kubernetes.Clientset, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
+		kubeConfig := os.Getenv("KUBECONFIG")
 		config, err = clientcmd.BuildConfigFromFlags("", kubeConfig)
 		if err != nil {
 			return nil, err
 		}
 	}
 	client, err := kubernetes.NewForConfig(config)
-	kubeClient = client
 	return client, err
 }
