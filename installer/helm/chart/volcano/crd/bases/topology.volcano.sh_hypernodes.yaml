@@ -82,9 +82,9 @@ spec:
                       type: object
                       x-kubernetes-validations:
                       - message: Either ExactMatch or RegexMatch must be specified
-                        rule: self.exactMatch != null || self.regexMatch != null
+                        rule: has(self.exactMatch) || has(self.regexMatch)
                       - message: ExactMatch and RegexMatch cannot be specified together
-                        rule: '!(self.exactMatch != null && self.regexMatch != null)'
+                        rule: '!(has(self.exactMatch) && has(self.regexMatch))'
                     type:
                       description: Type specifies the member type.
                       enum:
@@ -97,7 +97,7 @@ spec:
                 type: array
               tier:
                 description: Tier categorizes the performance level of the HyperNode.
-                type: string
+                type: integer
             required:
             - tier
             type: object

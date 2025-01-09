@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"regexp"
+	"reflect"
 	"slices"
 	"strconv"
 
@@ -45,12 +45,10 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
-
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
-
-	networktopov1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 )
 
 var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
@@ -1265,229 +1263,73 @@ func (sc *SchedulerCache) setCSIResourceOnNode(csiNode *sv1.CSINode, node *v1.No
 	}
 }
 
-func (sc *SchedulerCache) getNodeNamesByRegexMatchSelector(selector *networktopov1alpha1.RegexMatch) []string {
-	// Get all node names from sc.Nodes that match the regex pattern
-	var matchingNodes []string
-
-	// Compile the regular expression
-	re, err := regexp.Compile(selector.Pattern)
-	if err != nil {
-		klog.Errorf("Failed to compile regex pattern: %v. Err = %v", selector.Pattern, err)
-	}
-
-	// Iterate over the nodes in the cache
-	for nodeName := range sc.Nodes {
-		if re.MatchString(nodeName) {
-			matchingNodes = append(matchingNodes, nodeName)
-		}
-	}
-
-	return matchingNodes
-}
-
-func (sc *SchedulerCache) getHyperNodeNamesByRegexMatchSelector(selector *networktopov1alpha1.RegexMatch) []string {
-	// Get all hypernode names from sc.HyperNodes that match the regex pattern
-	var matchingHyperNodes []string
-
-	// Compile the regular expression
-	re, err := regexp.Compile(selector.Pattern)
-	if err != nil {
-		klog.Errorf("Failed to compile regex pattern: %v. Err = %v", selector.Pattern, err)
-	}
-
-	// Iterate over the hypernodes in the cache
-	for hyperNodeName := range sc.HyperNodes {
-		if re.MatchString(hyperNodeName) {
-			matchingHyperNodes = append(matchingHyperNodes, hyperNodeName)
-		}
-	}
-
-	return matchingHyperNodes
-}
-
-// convertObjToHyperNode converts the given object to a HyperNode object.
-func (sc *SchedulerCache) convertObjToHyperNode(obj interface{}) (*networktopov1alpha1.HyperNode, error) {
-	ss, ok := obj.(*networktopov1alpha1.HyperNode)
+// AddHyperNode adds HyperNode and rebuild HyperNodesInfo cache.
+func (sc *SchedulerCache) AddHyperNode(obj interface{}) {
+	hyperNode, ok := obj.(*topologyv1alpha1.HyperNode)
 	if !ok {
-		return nil, fmt.Errorf("cannot convert to *networktopov1alpha1.HyperNode: %v", obj)
-	}
-
-	hyperNode := networktopov1alpha1.HyperNode{}
-	if err := scheme.Scheme.Convert(ss, &hyperNode, nil); err != nil {
-		return nil, fmt.Errorf("failed to convert hypernode from %T to %T", ss, hyperNode)
-	}
-
-	return &hyperNode, nil
-}
-
-// AddHyperNode add hypernode to scheduler cache
-func (sc *SchedulerCache) AddHyperNodeV1alpha1(obj interface{}) {
-	hyperNode, err := sc.convertObjToHyperNode(obj)
-	if err != nil {
-		klog.Errorf("Failed to convert object to HyperNode: %v", err)
+		klog.ErrorS(nil, "Cannot convert to *topologyv1alpha1.HyperNode", "type", reflect.TypeOf(obj))
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.HyperNodesInfo.Lock()
+	defer sc.HyperNodesInfo.Unlock()
 
-	sc.addHyperNode(hyperNode)
-	klog.V(4).Infof("Added HyperNode(%s) into cache, spec(%#v)", hyperNode.Name, hyperNode.Spec)
-
+	if err := sc.updateHyperNode(hyperNode); err != nil {
+		klog.ErrorS(err, "Failed to update HyperNode", "type", reflect.TypeOf(hyperNode))
+		return
+	}
+	klog.V(3).InfoS("Added HyperNode in cache", "name", hyperNode.Name)
 }
 
-// DeleteHyperNodeV1alpha1 delete hypernode from scheduler cache
-func (sc *SchedulerCache) DeleteHyperNodeV1alpha1(obj interface{}) {
-	hyperNode, err := sc.convertObjToHyperNode(obj)
-	if err != nil {
-		klog.Errorf("Failed to convert object to HyperNode: %v", err)
+// UpdateHyperNode updates HyperNode and rebuild HyperNodesInfo cache, it does three things in order:
+// 1.update parent map if members reduced.
+// 2.reset current hyperNode and its ancestors' cache.
+func (sc *SchedulerCache) UpdateHyperNode(oldObj, newObj interface{}) {
+	newHyperNode, ok := newObj.(*topologyv1alpha1.HyperNode)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert newObj to *topologyv1alpha1.HyperNode: %v", reflect.TypeOf(newObj))
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.HyperNodesInfo.Lock()
+	defer sc.HyperNodesInfo.Unlock()
 
-	sc.deleteHyperNode(hyperNode)
-	klog.V(4).Infof("Deleted HyperNode(%s) from cache", hyperNode.Name)
-}
-
-// UpdateHyperNodeV1alpha1 update hypernode in scheduler cache
-func (sc *SchedulerCache) UpdateHyperNodeV1alpha1(oldObj, newObj interface{}) {
-	sc.DeleteHyperNodeV1alpha1(oldObj)
-	sc.AddHyperNodeV1alpha1(newObj)
-	klog.V(4).Infof("Updated HyperNode(%s) in cache", newObj)
-}
-
-// addHyperNode adds a HyperNodeTreeNode to the forest based on v1apha1.HyperNode
-// Adding a hypernode can result in updating the entire forest, as it may add new
-// nodes, or link existing nodes - which could demote nodes from roots to child.
-// Because of regex matching, this can trigger ripple effects in the forest.
-func (sc *SchedulerCache) addHyperNode(hn *networktopov1alpha1.HyperNode) {
-	hnfb := sc.hypernodeForestbuilder
-	hntn := NewHyperNodeTreeNode(hn.Name)
-	hntn.HyperNodeRef = hn
-	hnfb.nodes[hn.Name] = hntn
-
-	tierStr := hn.Spec.Tier
-	tier, err := strconv.Atoi(tierStr)
-	if err != nil {
-		klog.Errorf("Failed to convert tier %s to int: %v", tierStr, err)
+	sc.HyperNodesInfo.UpdateParentMap(newHyperNode)
+	if err := sc.updateHyperNode(newHyperNode); err != nil {
+		klog.ErrorS(err, "Failed to update HyperNode", "name", newHyperNode.Name)
 		return
 	}
-	hntn.Tier = tier
-	klog.V(4).Infof("Adding hypernode %s to the forest, in %d tier", hn.Name, tier)
+	klog.V(3).InfoS("Updated HyperNode in cache", "name", newHyperNode.Name)
+}
 
-	// Iterate over members and add them to the forest
-	for _, member := range hn.Spec.Members {
-		switch member.Type {
-		case networktopov1alpha1.MemberTypeNode:
-			switch member.Selector.Type {
-			case networktopov1alpha1.ExactMatchMemberSelectorType:
-				nodeName := member.Selector.ExactMatch.Name
-				hntn.NodeMatchers.Insert(NewExactMatcher(nodeName))
-				workerNode := sc.Nodes[nodeName]
-				if workerNode == nil {
-					klog.Errorf("WorkerNode %s not found in the cache", nodeName)
-					return
-				}
-				hntn.Nodes.Insert(workerNode)
-			case networktopov1alpha1.RegexMatchMemberSelectorType:
-				matcher, err := NewRegexMatcher(member.Selector.RegexMatch.Pattern)
-				if err != nil {
-					klog.Errorf("Failed to create regex matcher for %s: %v", member.Selector.RegexMatch.Pattern, err)
-					continue
-				}
-				hntn.NodeMatchers.Insert(matcher)
-				for _, nodeInfo := range sc.Nodes {
-					if matcher.Matches(nodeInfo.Name) {
-						hntn.Nodes.Insert(nodeInfo)
-					}
-				}
-			}
-		case networktopov1alpha1.MemberTypeHyperNode:
-			switch member.Selector.Type {
-			case networktopov1alpha1.ExactMatchMemberSelectorType:
-				memberName := member.Selector.ExactMatch.Name
-				hntn.MemberMatchers.Insert(NewExactMatcher(memberName))
-				member := sc.hypernodeForestbuilder.nodes[memberName]
-				if member != nil {
-					insertHyperNodeMember(hntn, hnfb, memberName, member, sc)
-					if hntn.Parent != nil {
-						// All members of a HyperNode are also members of its parent
-						sc.HyperNodes[hntn.Parent.Name] = sc.HyperNodes[hntn.Parent.Name].Union(sc.HyperNodes[memberName])
-					}
-				}
-			case networktopov1alpha1.RegexMatchMemberSelectorType:
-				// TODO
-				matcher, err := NewRegexMatcher(member.Selector.RegexMatch.Pattern)
-				if err != nil {
-					klog.Errorf("Failed to create regex matcher for %s: %v", member.Selector.RegexMatch.Pattern, err)
-					continue
-				}
-				hntn.MemberMatchers.Insert(matcher)
-				for memberName, memberNode := range sc.hypernodeForestbuilder.nodes {
-					if matcher.Matches(memberName) {
-						insertHyperNodeMember(hntn, hnfb, memberName, memberNode, sc)
-
-					}
-				}
-				if hntn.Parent != nil {
-					// All members of a HyperNode are also members of its parent
-					sc.HyperNodes[hntn.Parent.Name] = sc.HyperNodes[hntn.Parent.Name].Union(sc.HyperNodes[hntn.Name])
-				}
-			}
+// DeleteHyperNode deletes HyperNode and rebuild HyperNodesInfo cache.
+// It clears current hyperNode and update ancestors' cache.
+func (sc *SchedulerCache) DeleteHyperNode(obj interface{}) {
+	var hn *topologyv1alpha1.HyperNode
+	switch t := obj.(type) {
+	case *topologyv1alpha1.HyperNode:
+		hn = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		hn, ok = t.Obj.(*topologyv1alpha1.HyperNode)
+		if !ok {
+			klog.ErrorS(nil, "Cannot convert to HyperNode", "type", reflect.TypeOf(t.Obj))
+			return
 		}
-	}
-
-	// Iterate over existing HyperNodes, if the name of the new HyperNode matches
-	// either the Exact or Regex matchers of a parent, add it as a child member
-	for _, parentNode := range sc.hypernodeForestbuilder.nodes {
-		for m := range parentNode.MemberMatchers {
-			if m.Exact != "" && m.Exact == hn.Name {
-				insertHyperNodeMember(parentNode, hnfb, hn.Name, hntn, sc)
-				break // Each HyperNode has at most one parent
-			}
-			if m.Regex != "" && m.Matches(hn.Name) {
-				insertHyperNodeMember(parentNode, hnfb, hn.Name, hntn, sc)
-				break // Each HyperNode has at most one parent
-			}
-		}
-	}
-}
-
-// deleteHyperNode deletes a HyperNodeTreeNode from the forest
-func (sc *SchedulerCache) deleteHyperNode(hn *networktopov1alpha1.HyperNode) {
-	hnfb := sc.hypernodeForestbuilder
-	hntn := hnfb.nodes[hn.Name]
-	if hntn == nil {
-		klog.Errorf("HyperNode %s not found in the forest", hn.Name)
+	default:
+		klog.ErrorS(nil, "Cannot convert to HyperNode", "type", reflect.TypeOf(t))
 		return
 	}
-	klog.V(4).Infof("Deleting hypernode %s from the forest", hn.Name)
-	// Unlink each member from the parent, and they automatically become roots
-	for member := range hntn.Members {
-		member.Parent = nil
-		hnfb.roots.Insert(member.Name)
+
+	sc.HyperNodesInfo.Lock()
+	defer sc.HyperNodesInfo.Unlock()
+
+	if err := sc.HyperNodesInfo.DeleteHyperNode(hn.Name); err != nil {
+		klog.ErrorS(err, "Failed to delete HyperNode", "name", hn.Name)
 	}
-	// Remove the node from its parent
-	if hntn.Parent != nil {
-		hntn.Parent.Members.Delete(hntn)
-	}
+	klog.V(3).InfoS("Deleted HyperNode from cache", "name", hn.Name)
+}
 
-	hntn.HyperNodeRef = nil
-	hntn.Members.Clear()
-	hntn.MemberMatchers.Clear()
-	hntn.Nodes.Clear()
-	hntn.NodeMatchers.Clear()
-
-	// Garbage collect the HyperNodeTreeNode
-	delete(hnfb.nodes, hn.Name)
-	if hnfb.roots.Has(hn.Name) {
-		hnfb.roots.Delete(hn.Name)
-	}
-
-	// Remove the HyperNode from sc.HyperNodeListByTier and sc.HyperNodes
-	delete(sc.HyperNodeListByTier, hntn.Tier)
-	delete(sc.HyperNodes, hntn.Name)
-
+func (sc *SchedulerCache) updateHyperNode(hyperNode *topologyv1alpha1.HyperNode) error {
+	return sc.HyperNodesInfo.UpdateHyperNode(hyperNode)
 }

@@ -36,6 +36,7 @@ func NewCustomMockSchedulerCache(schedulerName string,
 	// use custom volume binder
 	msc.VolumeBinder = volumeBinder
 	checkAndSetDefaultInterface(msc)
+	msc.HyperNodesInfo = schedulingapi.NewHyperNodesInfo(msc.nodeInformer.Lister())
 	return msc
 }
 
@@ -47,6 +48,7 @@ func NewDefaultMockSchedulerCache(schedulerName string) *SchedulerCache {
 	// add all events handlers
 	msc.addEventHandler()
 	checkAndSetDefaultInterface(msc)
+	msc.HyperNodesInfo = schedulingapi.NewHyperNodesInfo(msc.nodeInformer.Lister())
 	return msc
 }
 

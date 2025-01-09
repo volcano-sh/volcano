@@ -18,6 +18,7 @@ package uthelper
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -28,6 +29,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -49,14 +51,15 @@ type TestCommonStruct struct {
 	// Plugins plugins for each case
 	Plugins map[string]framework.PluginBuilder
 	// Resource objects that need to be added to schedulercache
-	Pods                 []*v1.Pod
-	Nodes                []*v1.Node
-	HyperNodesListByTier map[int][]string
-	HyperNodes           map[string]sets.Set[string]
-	PodGroups            []*vcapisv1.PodGroup
-	Queues               []*vcapisv1.Queue
-	PriClass             []*schedulingv1.PriorityClass
-	ResourceQuotas       []*v1.ResourceQuota
+	Pods                      []*v1.Pod
+	Nodes                     []*v1.Node
+	HyperNodesSetByTier       map[int]sets.Set[string]
+	HyperNodes                map[string]sets.Set[string]
+	HyperNodesReadyToSchedule bool
+	PodGroups                 []*vcapisv1.PodGroup
+	Queues                    []*vcapisv1.Queue
+	PriClass                  []*schedulingv1.PriorityClass
+	ResourceQuotas            []*v1.ResourceQuota
 
 	// ExpectBindMap the expected bind results.
 	// bind results: ns/podName -> nodeName
@@ -128,8 +131,9 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, rq := range test.ResourceQuotas {
 		schedulerCache.AddResourceQuota(rq)
 	}
-	schedulerCache.HyperNodeListByTier = test.HyperNodesListByTier
-	schedulerCache.HyperNodes = test.HyperNodes
+	ready := new(atomic.Bool)
+	ready.Store(true)
+	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesSetByTier, test.HyperNodes, ready)
 
 	return schedulerCache
 }
