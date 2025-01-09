@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 )
 
 func buildNode(name string, alloc v1.ResourceList) *v1.Node {
@@ -133,4 +134,32 @@ func BuildPodgroup(name, ns string, minMember int32, minResource v1.ResourceList
 			MinResources: &minResource,
 		},
 	}
+}
+
+// BuildHyperNode builds a hyperNode.
+func BuildHyperNode(name string, tier int, memberType topologyv1alpha1.MemberType, members []string, selector string) *topologyv1alpha1.HyperNode {
+	hn := &topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: topologyv1alpha1.HyperNodeSpec{
+			Tier:    tier,
+			Members: make([]topologyv1alpha1.MemberSpec, len(members)),
+		},
+	}
+
+	for i, member := range members {
+		hn.Spec.Members[i] = topologyv1alpha1.MemberSpec{
+			Type: memberType,
+		}
+		if selector == "exact" {
+			hn.Spec.Members[i].Selector.ExactMatch = &topologyv1alpha1.ExactMatch{Name: member}
+			continue
+		}
+		if selector == "regex" {
+			hn.Spec.Members[i].Selector.RegexMatch = &topologyv1alpha1.RegexMatch{Pattern: member}
+			continue
+		}
+	}
+	return hn
 }

@@ -367,7 +367,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 			},
-			HyperNodesListByTier: map[int][]string{0: {"s0", "s1"}, 1: {"s2"}},
+			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("s0", "s1"), 1: sets.New[string]("s2")},
 			HyperNodes: map[string]sets.Set[string]{
 				"s0": sets.New[string]("s0-n1", "s0-n2"),
 				"s1": sets.New[string]("s1-n3", "s1-n4"),
@@ -396,7 +396,8 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 			},
-			HyperNodesListByTier: map[int][]string{1: {"s0", "s1"}, 2: {"s2"}},
+
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
 			HyperNodes: map[string]sets.Set[string]{
 				"s0": sets.New[string]("s0-n1", "s0-n2"),
 				"s1": sets.New[string]("s1-n3", "s1-n4"),
@@ -425,7 +426,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 			},
-			HyperNodesListByTier: map[int][]string{1: {"s0", "s1"}, 2: {"s2"}},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
 			HyperNodes: map[string]sets.Set[string]{
 				"s0": sets.New[string]("s0-n1", "s0-n2"),
 				"s1": sets.New[string]("s1-n3", "s1-n4"),
@@ -453,7 +454,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 			},
-			HyperNodesListByTier: map[int][]string{2: {"s0", "s1"}, 3: {"s2"}},
+			HyperNodesSetByTier: map[int]sets.Set[string]{2: sets.New[string]("s0", "s1"), 3: sets.New[string]("s2")},
 			HyperNodes: map[string]sets.Set[string]{
 				"s0": sets.New[string]("s0-n1", "s0-n2"),
 				"s1": sets.New[string]("s1-n3", "s1-n4"),
@@ -481,7 +482,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 			},
-			HyperNodesListByTier: map[int][]string{1: {"s0", "s1"}, 2: {"s2"}},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
 			HyperNodes: map[string]sets.Set[string]{
 				"s0": sets.New[string]("s0-n1", "s0-n2"),
 				"s1": sets.New[string]("s1-n3", "s1-n4"),
@@ -505,7 +506,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 				util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 				util.BuildNode("s1-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "master"}),
 			},
-			HyperNodesListByTier: map[int][]string{0: {"s0", "s1"}},
+			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("s0", "s1")},
 			HyperNodes: map[string]sets.Set[string]{
 				"s0": sets.New[string]("s0-n1"),
 				"s1": sets.New[string]("s1-n2"),
@@ -579,7 +580,7 @@ func TestNodeLevelScoreWithNetWorkTopologies(t *testing.T) {
 				util.BuildNode("s1-n3", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 				util.BuildNode("s1-n4", api.BuildResourceList("8", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 			},
-			HyperNodesListByTier: map[int][]string{0: {"s0", "s1"}},
+			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("s0", "s1")},
 			HyperNodes: map[string]sets.Set[string]{
 				"s0": sets.New[string]("s0-n1", "s0-n2"),
 				"s1": sets.New[string]("s1-n3", "s1-n4"),

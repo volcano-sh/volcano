@@ -33,6 +33,7 @@ func NewCustomMockSchedulerCache(schedulerName string,
 	msc.StatusUpdater = statusUpdater
 	msc.PodGroupBinder = PodGroupBinder
 	checkAndSetDefaultInterface(msc)
+	msc.HyperNodesInfo = schedulingapi.NewHyperNodesInfo(msc.nodeInformer.Lister())
 	return msc
 }
 
@@ -44,6 +45,7 @@ func NewDefaultMockSchedulerCache(schedulerName string) *SchedulerCache {
 	// add all events handlers
 	msc.addEventHandler()
 	checkAndSetDefaultInterface(msc)
+	msc.HyperNodesInfo = schedulingapi.NewHyperNodesInfo(msc.nodeInformer.Lister())
 	return msc
 }
 

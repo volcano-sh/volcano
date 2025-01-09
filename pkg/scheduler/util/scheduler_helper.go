@@ -237,8 +237,8 @@ func GetNodeList(nodes map[string]*api.NodeInfo, nodeList []string) []*api.NodeI
 	return result
 }
 
-// GetHyperNodeList returns values of the map 'hyperNodes'.
-func GetHyperNodeList(hyperNodes map[string]sets.Set[string], allNodes map[string]*api.NodeInfo) map[string][]*api.NodeInfo {
+// GetRealNodesListByHyperNode returns values of the map 'hyperNodes'.
+func GetRealNodesListByHyperNode(hyperNodes map[string]sets.Set[string], allNodes map[string]*api.NodeInfo) map[string][]*api.NodeInfo {
 	result := make(map[string][]*api.NodeInfo)
 	for hyperNodeName, nodes := range hyperNodes {
 		result[hyperNodeName] = make([]*api.NodeInfo, 0, len(nodes))

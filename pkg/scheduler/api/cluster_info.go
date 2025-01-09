@@ -24,15 +24,16 @@ import (
 
 // ClusterInfo is a snapshot of cluster by cache.
 type ClusterInfo struct {
-	Jobs                 map[JobID]*JobInfo
-	Nodes                map[string]*NodeInfo
-	HyperNodesListByTier map[int]sets.Set[string]
-	HyperNodes           map[string]sets.Set[string]
-	Queues               map[QueueID]*QueueInfo
-	NamespaceInfo        map[NamespaceName]*NamespaceInfo
-	RevocableNodes       map[string]*NodeInfo
-	NodeList             []string
-	CSINodesStatus       map[string]*CSINodeStatusInfo
+	Jobs                      map[JobID]*JobInfo
+	Nodes                     map[string]*NodeInfo
+	HyperNodesSetByTier       map[int]sets.Set[string]
+	RealNodesSet              map[string]sets.Set[string]
+	HyperNodesReadyToSchedule bool
+	Queues                    map[QueueID]*QueueInfo
+	NamespaceInfo             map[NamespaceName]*NamespaceInfo
+	RevocableNodes            map[string]*NodeInfo
+	NodeList                  []string
+	CSINodesStatus            map[string]*CSINodeStatusInfo
 }
 
 func (ci ClusterInfo) String() string {

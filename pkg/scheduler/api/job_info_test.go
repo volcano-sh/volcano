@@ -375,7 +375,7 @@ func TestJobInfo(t *testing.T) {
 			t.Errorf("unexpected PendingBestEffortTaskNum; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedPendingBestEffortTaskNum, actualPendingBestEffortTaskNum)
 		}
 		if !assert.Equal(t, actualIsReady, tc.expectedIsReady) {
-			t.Errorf("unexpected IsReady; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsReady, actualIsReady)
+			t.Errorf("unexpected Ready; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsReady, actualIsReady)
 		}
 		if !assert.Equal(t, actualIsPipelined, tc.expectedIsPipelined) {
 			t.Errorf("unexpected IsPipelined; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsPipelined, actualIsPipelined)

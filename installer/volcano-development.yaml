@@ -4655,6 +4655,9 @@ rules:
   - apiGroups: ["nodeinfo.volcano.sh"]
     resources: ["numatopologies"]
     verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: ["topology.volcano.sh"]
+    resources: ["hypernodes", "hypernodes/status"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "create", "delete", "update"]
@@ -5267,7 +5270,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.4
+    controller-gen.kubebuilder.io/version: v0.17.0
   name: hypernodes.topology.volcano.sh
 spec:
   group: topology.volcano.sh
@@ -5327,17 +5330,62 @@ spec:
                       description: Selector defines the selection rules for this member.
                       properties:
                         exactMatch:
-                          description: ExactMatch defines the exact match criteria
-                            (required when Type is "Exact").
+                          description: ExactMatch defines the exact match criteria.
                           properties:
                             name:
                               description: Name specifies the exact name of the node
                                 to match.
                               type: string
                           type: object
+                        labelMatch:
+                          description: LabelMatch defines the labels match criteria
+                            (only take effect when Member Type is "Node").
+                          properties:
+                            matchExpressions:
+                              description: matchExpressions is a list of label selector
+                                requirements. The requirements are ANDed.
+                              items:
+                                description: |-
+                                  A label selector requirement is a selector that contains values, a key, and an operator that
+                                  relates the key and values.
+                                properties:
+                                  key:
+                                    description: key is the label key that the selector
+                                      applies to.
+                                    type: string
+                                  operator:
+                                    description: |-
+                                      operator represents a key's relationship to a set of values.
+                                      Valid operators are In, NotIn, Exists and DoesNotExist.
+                                    type: string
+                                  values:
+                                    description: |-
+                                      values is an array of string values. If the operator is In or NotIn,
+                                      the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                      the values array must be empty. This array is replaced during a strategic
+                                      merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                    x-kubernetes-list-type: atomic
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            matchLabels:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                operator is "In", and the values array contains only "value". The requirements are ANDed.
+                              type: object
+                          type: object
+                          x-kubernetes-map-type: atomic
                         regexMatch:
-                          description: RegexMatch defines the regex match criteria
-                            (required when Type is "Regex").
+                          description: RegexMatch defines the regex match criteria.
                           properties:
                             pattern:
                               description: Pattern defines the regex pattern to match
@@ -5346,10 +5394,13 @@ spec:
                           type: object
                       type: object
                       x-kubernetes-validations:
-                      - message: Either ExactMatch or RegexMatch must be specified
-                        rule: self.exactMatch != null || self.regexMatch != null
-                      - message: ExactMatch and RegexMatch cannot be specified together
-                        rule: '!(self.exactMatch != null && self.regexMatch != null)'
+                      - message: Either ExactMatch or RegexMatch or LabelMatch must
+                          be specified
+                        rule: has(self.exactMatch) || has(self.regexMatch) || has(self.labelMatch)
+                      - message: Only one of ExactMatch, RegexMatch, or LabelMatch
+                          can be specified
+                        rule: '(has(self.exactMatch) ? 1 : 0) + (has(self.regexMatch)
+                          ? 1 : 0) + (has(self.labelMatch) ? 1 : 0) <= 1'
                     type:
                       description: Type specifies the member type.
                       enum:
@@ -5362,7 +5413,7 @@ spec:
                 type: array
               tier:
                 description: Tier categorizes the performance level of the HyperNode.
-                type: string
+                type: integer
             required:
             - tier
             type: object

@@ -78,12 +78,13 @@ type Session struct {
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
-	// HyperNodesListByTier contains a list of hyperNodes by tier from down to top, nodes under the same hyperNode
+	// HyperNodesSetByTier contains a set of hyperNodes by tier from down to top, nodes under the same hyperNode
 	// have the same topology domain, e.g., nodes under the same switch or tor, jobs allocated in the same
 	// hyperNode can gain a better performance, the lower the tier of hyperNode, the better performance.
-	HyperNodesListByTier map[int]sets.Set[string]
-	// HyperNodes maps hyperNode Name -> nodes under the hyperNode.
-	HyperNodes map[string][]*api.NodeInfo
+	HyperNodesSetByTier map[int]sets.Set[string]
+	// RealNodesList maps hyperNode Name -> nodes under the hyperNode.
+	RealNodesList             map[string][]*api.NodeInfo
+	HyperNodesReadyToSchedule bool
 
 	plugins             map[string]Plugin
 	eventHandlers       []*EventHandler
@@ -184,8 +185,9 @@ func openSession(cache cache.Cache) *Session {
 		}
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
-	ssn.HyperNodesListByTier = snapshot.HyperNodesListByTier
-	ssn.HyperNodes = util.GetHyperNodeList(snapshot.HyperNodes, snapshot.Nodes)
+	ssn.HyperNodesSetByTier = snapshot.HyperNodesSetByTier
+	ssn.RealNodesList = util.GetRealNodesListByHyperNode(snapshot.RealNodesSet, snapshot.Nodes)
+	ssn.HyperNodesReadyToSchedule = snapshot.HyperNodesReadyToSchedule
 	ssn.Nodes = snapshot.Nodes
 	ssn.CSINodesStatus = snapshot.CSINodesStatus
 	ssn.RevocableNodes = snapshot.RevocableNodes

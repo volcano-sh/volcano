@@ -62,13 +62,13 @@ func (alloc *Action) parseArguments(ssn *framework.Session) {
 }
 
 func (alloc *Action) parseHyperNodesTiers(ssn *framework.Session) {
-	if ssn.HyperNodesListByTier == nil || len(ssn.HyperNodesListByTier) == 0 {
+	if ssn.HyperNodesSetByTier == nil || len(ssn.HyperNodesSetByTier) == 0 {
 		return
 	}
 
 	// sort to guarantee the traverse order is from down to top.
 	var tiers []int
-	for tier := range ssn.HyperNodesListByTier {
+	for tier := range ssn.HyperNodesSetByTier {
 		tiers = append(tiers, tier)
 	}
 	sort.Ints(tiers)
@@ -204,6 +204,10 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		var stmt *framework.Statement
 		var tasksQueue *util.PriorityQueue
 		if hardMode {
+			if !alloc.session.HyperNodesReadyToSchedule {
+				klog.ErrorS(nil, "RealNodesList not completely populated and not ready to schedule, please check logs for more details", "job", job.UID)
+				continue
+			}
 			stmt, tasksQueue = alloc.allocateResourceForTasksWithTopology(tasks, job, queue, highestAllowedTier)
 			// There are still left tasks that need to be allocated when min available < replicas, put the job back and set pending tasks.
 			if tasksQueue != nil {
@@ -244,8 +248,8 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 			klog.V(4).InfoS("Skip search for higher tier cause has found a suitable one", "tier", tier)
 			break
 		}
-		for hyperNodeName := range ssn.HyperNodesListByTier[tier] {
-			nodes, ok := ssn.HyperNodes[hyperNodeName]
+		for hyperNodeName := range ssn.HyperNodesSetByTier[tier] {
+			nodes, ok := ssn.RealNodesList[hyperNodeName]
 			if !ok {
 				klog.ErrorS(nil, "HyperNode not exists.", "jobName", job.UID, "name", hyperNodeName, "tier", tier)
 				continue
@@ -309,7 +313,7 @@ func (alloc *Action) selectBestHyperNode(jobStmts map[string]*framework.Statemen
 	case len(jobStmts) > 1:
 		candidateHyperNodeGroups := make(map[string][]*api.NodeInfo)
 		for hyperNodeName := range jobStmts {
-			candidateHyperNodeGroups[hyperNodeName] = ssn.HyperNodes[hyperNodeName]
+			candidateHyperNodeGroups[hyperNodeName] = ssn.RealNodesList[hyperNodeName]
 		}
 
 		hyperNodeScores, err := util.PrioritizeHyperNodes(candidateHyperNodeGroups, alloc.hyperNodeScoresByJob[string(job.UID)], job, ssn.HyperNodeOrderMapFn)
