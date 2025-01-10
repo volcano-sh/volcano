@@ -118,7 +118,7 @@ func (d *Dumper) printHyperNodeInfo(HyperNodesSetByTier map[int]sets.Set[string]
 	data.WriteString("\n")
 	for tier, hyperNodes := range HyperNodesSetByTier {
 		for hyperNode := range hyperNodes {
-			data.WriteString(fmt.Sprintf("Tier: %d, HyperNodeName: %s, Nodes: %s\n", tier, hyperNode, HyperNodes[hyperNode]))
+			data.WriteString(fmt.Sprintf("tier: %d, HyperNodeName: %s, Nodes: %s\n", tier, hyperNode, HyperNodes[hyperNode]))
 		}
 	}
 	data.WriteString("\n")
