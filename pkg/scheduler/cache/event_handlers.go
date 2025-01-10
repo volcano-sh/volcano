@@ -1294,7 +1294,6 @@ func (sc *SchedulerCache) UpdateHyperNode(oldObj, newObj interface{}) {
 	sc.HyperNodesInfo.Lock()
 	defer sc.HyperNodesInfo.Unlock()
 
-	sc.HyperNodesInfo.UpdateParentMap(newHyperNode)
 	if err := sc.updateHyperNode(newHyperNode); err != nil {
 		klog.ErrorS(err, "Failed to update HyperNode", "name", newHyperNode.Name)
 		return
