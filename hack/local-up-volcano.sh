@@ -16,7 +16,7 @@
 
 VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 CLUSTER_NAME=${CLUSTER_NAME:-volcano}
-CLUSTER_CONTEXT="--name ${CLUSTER_NAME}"
+CLUSTER_CONTEXT=("--name" "${CLUSTER_NAME}")
 KIND_OPT=${KIND_OPT:-}
 INSTALL_MODE=${INSTALL_MODE:-"kind"}
 VOLCANO_NAMESPACE=${VOLCANO_NAMESPACE:-"volcano-system"}
@@ -55,8 +55,8 @@ function cleanup {
   uninstall-volcano
 
   if [ "${INSTALL_MODE}" == "kind" ]; then
-    echo "Running kind: [kind delete cluster ${CLUSTER_CONTEXT}]"
-    kind delete cluster ${CLUSTER_CONTEXT}
+    echo "Running kind: [kind delete cluster ${CLUSTER_CONTEXT[*]}]"
+    kind delete cluster "${CLUSTER_CONTEXT[@]}"
   fi
 }
 
