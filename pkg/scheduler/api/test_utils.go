@@ -136,8 +136,13 @@ func BuildPodgroup(name, ns string, minMember int32, minResource v1.ResourceList
 	}
 }
 
-// BuildHyperNode builds a hyperNode.
-func BuildHyperNode(name string, tier int, memberType topologyv1alpha1.MemberType, members []string, selector string) *topologyv1alpha1.HyperNode {
+type MemberConfig struct {
+	Name     string
+	Type     topologyv1alpha1.MemberType
+	Selector string
+}
+
+func BuildHyperNode(name string, tier int, members []MemberConfig) *topologyv1alpha1.HyperNode {
 	hn := &topologyv1alpha1.HyperNode{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -149,17 +154,20 @@ func BuildHyperNode(name string, tier int, memberType topologyv1alpha1.MemberTyp
 	}
 
 	for i, member := range members {
-		hn.Spec.Members[i] = topologyv1alpha1.MemberSpec{
-			Type: memberType,
+		memberSpec := topologyv1alpha1.MemberSpec{
+			Type: member.Type,
 		}
-		if selector == "exact" {
-			hn.Spec.Members[i].Selector.ExactMatch = &topologyv1alpha1.ExactMatch{Name: member}
-			continue
+		switch member.Selector {
+		case "exact":
+			memberSpec.Selector.ExactMatch = &topologyv1alpha1.ExactMatch{Name: member.Name}
+		case "regex":
+			memberSpec.Selector.RegexMatch = &topologyv1alpha1.RegexMatch{Pattern: member.Name}
+		default:
+			return nil
 		}
-		if selector == "regex" {
-			hn.Spec.Members[i].Selector.RegexMatch = &topologyv1alpha1.RegexMatch{Pattern: member}
-			continue
-		}
+
+		hn.Spec.Members[i] = memberSpec
 	}
+
 	return hn
 }
