@@ -45,7 +45,8 @@ type HyperNodesInfo struct {
 	// s0->node0, node1, s1->node2, node3, s4->node0, node1, s1->node2, node3
 	realNodesSet map[string]sets.Set[string]
 	// nodeLister Lister to list Kubernetes nodes.
-	nodeLister listerv1.NodeLister
+	nodeLister        listerv1.NodeLister
+	builtErrHyperNode string
 
 	// ready indicates whether the HyperNodesInfo is ready (build process is complete).
 	ready *atomic.Bool
@@ -105,6 +106,15 @@ func (hni *HyperNodeInfo) String() string {
 // HyperNodes returns the map of all HyperNode information.
 func (hni *HyperNodesInfo) HyperNodes() map[string]*HyperNodeInfo {
 	return hni.hyperNodes
+}
+
+// HyperNode returns a hyperNode by name.
+func (hni *HyperNodesInfo) HyperNode(name string) *topologyv1alpha1.HyperNode {
+	hn := hni.hyperNodes[name]
+	if hn == nil {
+		return nil
+	}
+	return hn.HyperNode
 }
 
 // HyperNodesSetByTier returns a deep copy of the map that groups HyperNode names by their tier.
@@ -278,7 +288,6 @@ func (hni *HyperNodesInfo) GetAncestors(name string) sets.Set[string] {
 				ancestors.Insert(parent)
 				queue = append(queue, parent)
 			}
-
 		}
 	}
 	return ancestors
@@ -324,6 +333,67 @@ func (hni *HyperNodesInfo) getChildren(hyperNodeName string) sets.Set[string] {
 	return children
 }
 
+// GetLeafNodes returns the leaf hyperNodes set for a given hyperNode.
+func (hni *HyperNodesInfo) GetLeafNodes(hyperNodeName string) sets.Set[string] {
+	leafNodes := sets.New[string]()
+	ancestorsChain := sets.New[string]()
+	hni.findLeafNodesWithCycleCheck(hyperNodeName, leafNodes, ancestorsChain)
+	return leafNodes
+}
+
+func (hni *HyperNodesInfo) findLeafNodesWithCycleCheck(hyperNodeName string, leafNodes sets.Set[string], ancestorsChain sets.Set[string]) {
+	if ancestorsChain.Has(hyperNodeName) {
+		klog.ErrorS(nil, "Cycle detected in HyperNode hierarchy", "hyperNode", hyperNodeName)
+		return
+	}
+
+	hn, ok := hni.hyperNodes[hyperNodeName]
+	if !ok {
+		return
+	}
+
+	ancestorsChain.Insert(hyperNodeName)
+	defer ancestorsChain.Delete(hyperNodeName)
+
+	isLeaf := true
+	for _, member := range hn.HyperNode.Spec.Members {
+		if member.Type == topologyv1alpha1.MemberTypeHyperNode {
+			isLeaf = false
+			hni.findLeafNodesWithCycleCheck(member.Selector.ExactMatch.Name, leafNodes, ancestorsChain)
+		}
+	}
+
+	if isLeaf {
+		leafNodes.Insert(hyperNodeName)
+	}
+}
+
+// GetRegexSelectorLeafHyperNodes returns leaf hyperNodes whose member's selector is regex match.
+func (hni *HyperNodesInfo) GetRegexSelectorLeafHyperNodes() sets.Set[string] {
+	leaf := sets.New[string]()
+	for name, hnInfo := range hni.hyperNodes {
+		if hnInfo == nil || hnInfo.HyperNode == nil {
+			continue
+		}
+
+		isLeaf := true
+		hasRegexMatch := false
+		for _, member := range hnInfo.HyperNode.Spec.Members {
+			if member.Type == topologyv1alpha1.MemberTypeHyperNode {
+				isLeaf = false
+				break
+			}
+			if member.Selector.RegexMatch != nil {
+				hasRegexMatch = true
+			}
+		}
+		if isLeaf && hasRegexMatch {
+			leaf.Insert(name)
+		}
+	}
+	return leaf
+}
+
 // setParent sets the parent of a HyperNode member.
 func (hni *HyperNodesInfo) setParent(member, parent string) error {
 	hn, ok := hni.hyperNodes[member]
@@ -343,6 +413,7 @@ func (hni *HyperNodesInfo) setParent(member, parent string) error {
 	}
 
 	if currentParent != parent {
+		hni.builtErrHyperNode = parent
 		return fmt.Errorf("HyperNode %s already has a parent %s, and cannot set another parent %s", member, currentParent, parent)
 	}
 
@@ -410,8 +481,28 @@ func (hni *HyperNodesInfo) exactMatchMember(selector topologyv1alpha1.MemberSele
 }
 
 func (hni *HyperNodesInfo) updateAncestors(name string) error {
+	if err := hni.rebuildCache(name); err != nil {
+		hni.setReady(false)
+		return err
+	}
+	// When last time BuildHyperNodeCache has an err that a hyperNode has multi parents, after the parent is updated
+	// we should find the parent hyperNode to rebuild the correct cache.
+	if hni.builtErrHyperNode == name {
+		klog.InfoS("Rebuilt parent hyperNode", "name", hni.builtErrHyperNode)
+		leafHyperNodes := hni.GetLeafNodes(name)
+		for leaf := range leafHyperNodes {
+			if err := hni.rebuildCache(leaf); err != nil {
+				return err
+			}
+		}
+	}
+	hni.builtErrHyperNode = ""
+	hni.setReady(true)
+	return nil
+}
+
+func (hni *HyperNodesInfo) rebuildCache(name string) error {
 	ancestors := hni.GetAncestors(name)
-	fmt.Println("acxx", ancestors)
 	// Clear realNodesSet of hyperNode before rebuild hyperNode cache.
 	for ancestor := range ancestors {
 		delete(hni.realNodesSet, ancestor)
@@ -429,12 +520,11 @@ func (hni *HyperNodesInfo) updateAncestors(name string) error {
 	for ancestor := range ancestors {
 		if hn, ok := hni.hyperNodes[ancestor]; ok {
 			if err := hni.BuildHyperNodeCache(hn, processed, ancestorsChain, ancestors, nodes); err != nil {
-				hni.setReady(false)
 				return err
 			}
 		}
 	}
-	hni.setReady(true)
+
 	return nil
 }
 
@@ -516,4 +606,35 @@ func (hni *HyperNodesInfo) HyperNodesInfo() map[string]string {
 		actualHyperNodes[name] = hn.String()
 	}
 	return actualHyperNodes
+}
+
+// NodeRegexMatchLeafHyperNode checks if a given node regex matches the MemberSelector of a HyperNode.
+func (hni *HyperNodesInfo) NodeRegexMatchLeafHyperNode(nodeName string, hyperNodeName string) (bool, error) {
+	hn, ok := hni.hyperNodes[hyperNodeName]
+	if !ok {
+		return false, fmt.Errorf("HyperNode %s not found in cache", hyperNodeName)
+	}
+
+	for _, member := range hn.HyperNode.Spec.Members {
+		if member.Type == topologyv1alpha1.MemberTypeNode {
+			if hni.nodeMatchRegexSelector(nodeName, member.Selector) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// nodeMatchRegexSelector checks if a node matches a MemberSelector.
+func (hni *HyperNodesInfo) nodeMatchRegexSelector(nodeName string, selector topologyv1alpha1.MemberSelector) bool {
+	if selector.RegexMatch == nil {
+		return false
+	}
+
+	reg, err := regexp.Compile(selector.RegexMatch.Pattern)
+	if err != nil {
+		klog.ErrorS(err, "Failed to compile regex pattern", "pattern", selector.RegexMatch.Pattern)
+		return false
+	}
+	return reg.MatchString(nodeName)
 }

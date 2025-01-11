@@ -62,6 +62,7 @@ import (
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
@@ -107,6 +108,7 @@ type SchedulerCache struct {
 
 	podInformer                infov1.PodInformer
 	nodeInformer               infov1.NodeInformer
+	hyperNodeInformer          topologyinformerv1alpha1.HyperNodeInformer
 	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
 	queueInformerV1beta1       vcinformerv1.QueueInformer
 	pvInformer                 infov1.PersistentVolumeInformer
@@ -139,9 +141,10 @@ type SchedulerCache struct {
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
-	errTasks    workqueue.RateLimitingInterface
-	nodeQueue   workqueue.RateLimitingInterface
-	DeletedJobs workqueue.RateLimitingInterface
+	errTasks        workqueue.RateLimitingInterface
+	nodeQueue       workqueue.RateLimitingInterface
+	DeletedJobs     workqueue.RateLimitingInterface
+	hyperNodesQueue workqueue.TypedRateLimitingInterface[string]
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -572,6 +575,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		errTasks:            workqueue.NewRateLimitingQueue(errTaskRateLimiter),
 		nodeQueue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
 		restConfig:          config,
@@ -798,8 +802,8 @@ func (sc *SchedulerCache) addEventHandler() {
 		})
 	}
 
-	hyperNodeInformer := sc.vcInformerFactory.Topology().V1alpha1().HyperNodes()
-	hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	sc.hyperNodeInformer = sc.vcInformerFactory.Topology().V1alpha1().HyperNodes()
+	sc.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddHyperNode,
 		UpdateFunc: sc.UpdateHyperNode,
 		DeleteFunc: sc.DeleteHyperNode,
@@ -814,6 +818,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	for i := 0; i < int(sc.nodeWorkers); i++ {
 		go wait.Until(sc.runNodeWorker, 0, stopCh)
 	}
+
+	// Sync hyperNode.
+	go wait.Until(sc.processSyncHyperNode, 0, stopCh)
 
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
@@ -1233,6 +1240,29 @@ func (sc *SchedulerCache) processSyncNode() bool {
 	klog.Errorf("Failed to sync node <%s>, retry it.", nodeName)
 	sc.nodeQueue.AddRateLimited(nodeName)
 	return true
+}
+
+func (sc *SchedulerCache) processSyncHyperNode() {
+	worker := func() bool {
+		name, shutdown := sc.hyperNodesQueue.Get()
+		if shutdown {
+			return false
+		}
+		defer sc.hyperNodesQueue.Done(name)
+
+		klog.V(5).Infof("started sync hyperNode %s", name)
+		err := sc.SyncHyperNode(name)
+		if err == nil {
+			sc.hyperNodesQueue.Forget(name)
+			return true
+		}
+
+		klog.ErrorS(err, "Failed to sync hyperNode, retry it.", "name", name)
+		sc.hyperNodesQueue.AddRateLimited(name)
+		return true
+	}
+	for worker() {
+	}
 }
 
 // AddBindTask add task to be bind to a cache which consumes by go runtime
