@@ -18,6 +18,7 @@ package cache
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"testing"
 
@@ -29,6 +30,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -709,4 +711,644 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 			assert.Equal(t, tt.expectedNodes, actualNodes)
 		})
 	}
+}
+
+func TestSchedulerCache_AddHyperNode(t *testing.T) {
+	exactSelector := "exact"
+	s5 := schedulingapi.BuildHyperNode("s5", 2, topologyv1alpha1.MemberTypeHyperNode, []string{"s2", "s3"}, exactSelector)
+	s4 := schedulingapi.BuildHyperNode("s4", 2, topologyv1alpha1.MemberTypeHyperNode, []string{"s0", "s1"}, exactSelector)
+	s3 := schedulingapi.BuildHyperNode("s3", 1, topologyv1alpha1.MemberTypeNode, []string{"node-6", "node-7"}, exactSelector)
+	s1 := schedulingapi.BuildHyperNode("s1", 1, topologyv1alpha1.MemberTypeNode, []string{"node-2", "node-3"}, exactSelector)
+	s2 := schedulingapi.BuildHyperNode("s2", 1, topologyv1alpha1.MemberTypeNode, []string{"node-4", "node-5"}, exactSelector)
+	s0 := schedulingapi.BuildHyperNode("s0", 1, topologyv1alpha1.MemberTypeNode, []string{"node-0", "node-1"}, exactSelector)
+	initialHyperNodes0 := []*topologyv1alpha1.HyperNode{s5, s0, s4, s3, s1, s2}
+
+	regexSelector := "regex"
+	s00 := schedulingapi.BuildHyperNode("s0", 1, topologyv1alpha1.MemberTypeNode, []string{"node-0", "node-1"}, regexSelector)
+	s10 := schedulingapi.BuildHyperNode("s1", 1, topologyv1alpha1.MemberTypeNode, []string{"node-[2-3]"}, regexSelector)
+	s20 := schedulingapi.BuildHyperNode("s2", 1, topologyv1alpha1.MemberTypeNode, []string{"^prefix"}, regexSelector)
+	initialHyperNodes1 := []*topologyv1alpha1.HyperNode{s5, s00, s4, s3, s10, s20}
+	s6 := schedulingapi.BuildHyperNode("s6", 3, topologyv1alpha1.MemberTypeHyperNode, []string{"s4", "s5"}, exactSelector)
+	tests := []struct {
+		name                        string
+		nodes                       []*v1.Node
+		initialHyperNodes           []*topologyv1alpha1.HyperNode
+		hypeNodesToAdd              []*topologyv1alpha1.HyperNode
+		expectedHyperNodesSetByTier map[int]sets.Set[string]
+		expectedRealNodesSet        map[string]sets.Set[string]
+		expectedParentMap           map[string]string
+		expectedHyperNodes          map[string]string
+		ready                       bool
+	}{
+		{
+			name:              "Add hyperNodes with exact match",
+			initialHyperNodes: initialHyperNodes0,
+			hypeNodesToAdd:    []*topologyv1alpha1.HyperNode{s6},
+			expectedHyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("s0", "s1", "s2", "s3"),
+				2: sets.New[string]("s4", "s5"),
+				3: sets.New[string]("s6"),
+			},
+			expectedRealNodesSet: map[string]sets.Set[string]{
+				"s0": sets.New[string]("node-0", "node-1"),
+				"s1": sets.New[string]("node-2", "node-3"),
+				"s2": sets.New[string]("node-4", "node-5"),
+				"s3": sets.New[string]("node-6", "node-7"),
+				"s4": sets.New[string]("node-0", "node-1", "node-2", "node-3"),
+				"s5": sets.New[string]("node-4", "node-5", "node-6", "node-7"),
+				"s6": sets.New[string]("node-0", "node-1", "node-2", "node-3", "node-4", "node-5", "node-6", "node-7"),
+			},
+			expectedParentMap: map[string]string{
+				"s0": "s4",
+				"s1": "s4",
+				"s2": "s5",
+				"s3": "s5",
+				"s4": "s6",
+				"s5": "s6",
+			},
+			expectedHyperNodes: map[string]string{
+				"s0": schedulingapi.NewHyperNodeInfo(s0, 1).String(),
+				"s1": schedulingapi.NewHyperNodeInfo(s1, 1).String(),
+				"s2": schedulingapi.NewHyperNodeInfo(s2, 1).String(),
+				"s3": schedulingapi.NewHyperNodeInfo(s3, 1).String(),
+				"s4": schedulingapi.NewHyperNodeInfo(s4, 2).String(),
+				"s5": schedulingapi.NewHyperNodeInfo(s5, 2).String(),
+				"s6": schedulingapi.NewHyperNodeInfo(s6, 3).String(),
+			},
+			ready: true,
+		},
+		{
+			name: "Add hyperNodes with regex match",
+			nodes: []*v1.Node{
+				util.BuildNode("node-0", nil, nil),
+				util.BuildNode("node-1", nil, nil),
+				util.BuildNode("node-2", nil, nil),
+				util.BuildNode("node-3", nil, nil),
+				util.BuildNode("prefix-0", nil, nil),
+				util.BuildNode("prefix-1", nil, nil),
+			},
+			initialHyperNodes: initialHyperNodes1,
+			hypeNodesToAdd:    []*topologyv1alpha1.HyperNode{s6},
+			expectedHyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("s0", "s1", "s2", "s3"),
+				2: sets.New[string]("s4", "s5"),
+				3: sets.New[string]("s6"),
+			},
+			expectedRealNodesSet: map[string]sets.Set[string]{
+				"s0": sets.New[string]("node-0", "node-1"),
+				"s1": sets.New[string]("node-2", "node-3"),
+				"s2": sets.New[string]("prefix-0", "prefix-1"),
+				"s3": sets.New[string]("node-6", "node-7"),
+				"s4": sets.New[string]("node-0", "node-1", "node-2", "node-3"),
+				"s5": sets.New[string]("node-6", "node-7", "prefix-0", "prefix-1"),
+				"s6": sets.New[string]("node-0", "node-1", "node-2", "node-3", "node-6", "node-7", "prefix-0", "prefix-1"),
+			},
+			expectedParentMap: map[string]string{
+				"s0": "s4",
+				"s1": "s4",
+				"s2": "s5",
+				"s3": "s5",
+				"s4": "s6",
+				"s5": "s6",
+			},
+			expectedHyperNodes: map[string]string{
+				"s0": schedulingapi.NewHyperNodeInfo(s0, 1).String(),
+				"s1": schedulingapi.NewHyperNodeInfo(s1, 1).String(),
+				"s2": schedulingapi.NewHyperNodeInfo(s2, 1).String(),
+				"s3": schedulingapi.NewHyperNodeInfo(s3, 1).String(),
+				"s4": schedulingapi.NewHyperNodeInfo(s4, 2).String(),
+				"s5": schedulingapi.NewHyperNodeInfo(s5, 2).String(),
+				"s6": schedulingapi.NewHyperNodeInfo(s6, 3).String(),
+			},
+			ready: true,
+		},
+		{
+			name:              "Add hyperNodes with two trees",
+			initialHyperNodes: initialHyperNodes0,
+			expectedHyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("s0", "s1", "s2", "s3"),
+				2: sets.New[string]("s4", "s5"),
+			},
+			expectedRealNodesSet: map[string]sets.Set[string]{
+				"s0": sets.New[string]("node-0", "node-1"),
+				"s1": sets.New[string]("node-2", "node-3"),
+				"s2": sets.New[string]("node-4", "node-5"),
+				"s3": sets.New[string]("node-6", "node-7"),
+				"s4": sets.New[string]("node-0", "node-1", "node-2", "node-3"),
+				"s5": sets.New[string]("node-4", "node-5", "node-6", "node-7"),
+			},
+			expectedParentMap: map[string]string{
+				"s0": "s4",
+				"s1": "s4",
+				"s2": "s5",
+				"s3": "s5",
+			},
+			expectedHyperNodes: map[string]string{
+				"s0": schedulingapi.NewHyperNodeInfo(s0, 1).String(),
+				"s1": schedulingapi.NewHyperNodeInfo(s1, 1).String(),
+				"s2": schedulingapi.NewHyperNodeInfo(s2, 1).String(),
+				"s3": schedulingapi.NewHyperNodeInfo(s3, 1).String(),
+				"s4": schedulingapi.NewHyperNodeInfo(s4, 2).String(),
+				"s5": schedulingapi.NewHyperNodeInfo(s5, 2).String(),
+			},
+			ready: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := NewDefaultMockSchedulerCache("volcano")
+			// Add some nodes to match regex selector.
+			for _, node := range tt.nodes {
+				sc.nodeInformer.Informer().GetIndexer().Add(node)
+			}
+			for _, hyperNode := range tt.initialHyperNodes {
+				sc.AddHyperNode(hyperNode)
+			}
+			for _, hyperNode := range tt.hypeNodesToAdd {
+				sc.AddHyperNode(hyperNode)
+			}
+			assert.Equal(t, tt.expectedHyperNodesSetByTier, sc.HyperNodesInfo.HyperNodesSetByTier())
+			assert.Equal(t, tt.expectedRealNodesSet, sc.HyperNodesInfo.RealNodesSet())
+			assert.Equal(t, tt.expectedParentMap, sc.HyperNodesInfo.ParentMap())
+			actualHyperNodes := getActualNodeSet(sc.HyperNodesInfo.HyperNodes())
+			assert.Equal(t, tt.expectedHyperNodes, actualHyperNodes)
+			assert.Equal(t, tt.ready, sc.HyperNodesInfo.Ready())
+		})
+	}
+}
+
+func TestSchedulerCache_Delete_Then_AddBack(t *testing.T) {
+	exactSelector := "exact"
+	s5 := schedulingapi.BuildHyperNode("s5", 2, topologyv1alpha1.MemberTypeHyperNode, []string{"s2", "s3"}, exactSelector)
+	s4 := schedulingapi.BuildHyperNode("s4", 2, topologyv1alpha1.MemberTypeHyperNode, []string{"s0", "s1"}, exactSelector)
+	s3 := schedulingapi.BuildHyperNode("s3", 1, topologyv1alpha1.MemberTypeNode, []string{"node-6", "node-7"}, exactSelector)
+	s1 := schedulingapi.BuildHyperNode("s1", 1, topologyv1alpha1.MemberTypeNode, []string{"node-2", "node-3"}, exactSelector)
+	s2 := schedulingapi.BuildHyperNode("s2", 1, topologyv1alpha1.MemberTypeNode, []string{"node-4", "node-5"}, exactSelector)
+	s0 := schedulingapi.BuildHyperNode("s0", 1, topologyv1alpha1.MemberTypeNode, []string{"node-0", "node-1"}, exactSelector)
+	s6 := schedulingapi.BuildHyperNode("s6", 3, topologyv1alpha1.MemberTypeHyperNode, []string{"s4", "s5"}, exactSelector)
+	initialHyperNodes := []*topologyv1alpha1.HyperNode{s6, s5, s0, s4, s3, s1, s2}
+	tests := []struct {
+		name                        string
+		nodes                       []*v1.Node
+		initialHyperNodes           []*topologyv1alpha1.HyperNode
+		hypeNodesToDelete           []*topologyv1alpha1.HyperNode
+		expectedHyperNodesSetByTier map[int]sets.Set[string]
+		expectedRealNodesSet        map[string]sets.Set[string]
+		expectedParentMap           map[string]string
+		expectedHyperNodes          map[string]string
+		ready                       bool
+	}{
+		{
+			name:              "Delete hyperNode and then add it back",
+			initialHyperNodes: initialHyperNodes,
+			hypeNodesToDelete: []*topologyv1alpha1.HyperNode{s0},
+			expectedHyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("s0", "s1", "s2", "s3"),
+				2: sets.New[string]("s4", "s5"),
+				3: sets.New[string]("s6"),
+			},
+			expectedRealNodesSet: map[string]sets.Set[string]{
+				"s0": sets.New[string]("node-0", "node-1"),
+				"s1": sets.New[string]("node-2", "node-3"),
+				"s2": sets.New[string]("node-4", "node-5"),
+				"s3": sets.New[string]("node-6", "node-7"),
+				"s4": sets.New[string]("node-0", "node-1", "node-2", "node-3"),
+				"s5": sets.New[string]("node-4", "node-5", "node-6", "node-7"),
+				"s6": sets.New[string]("node-0", "node-1", "node-2", "node-3", "node-4", "node-5", "node-6", "node-7"),
+			},
+			expectedParentMap: map[string]string{
+				"s0": "s4",
+				"s1": "s4",
+				"s2": "s5",
+				"s3": "s5",
+				"s4": "s6",
+				"s5": "s6",
+			},
+			expectedHyperNodes: map[string]string{
+				"s0": schedulingapi.NewHyperNodeInfo(s0, 1).String(),
+				"s1": schedulingapi.NewHyperNodeInfo(s1, 1).String(),
+				"s2": schedulingapi.NewHyperNodeInfo(s2, 1).String(),
+				"s3": schedulingapi.NewHyperNodeInfo(s3, 1).String(),
+				"s4": schedulingapi.NewHyperNodeInfo(s4, 2).String(),
+				"s5": schedulingapi.NewHyperNodeInfo(s5, 2).String(),
+				"s6": schedulingapi.NewHyperNodeInfo(s6, 3).String(),
+			},
+			ready: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := NewDefaultMockSchedulerCache("volcano")
+			// Add some nodes to match regex selector.
+			for _, node := range tt.nodes {
+				assert.NoError(t, sc.nodeInformer.Informer().GetIndexer().Add(node))
+			}
+			for _, hyperNode := range tt.initialHyperNodes {
+				sc.AddHyperNode(hyperNode)
+			}
+			for _, hyperNode := range tt.hypeNodesToDelete {
+				sc.DeleteHyperNode(hyperNode)
+			}
+			log.Println("begin add...")
+			// add it back.
+			for _, hyperNode := range tt.hypeNodesToDelete {
+				sc.AddHyperNode(hyperNode)
+			}
+			assert.Equal(t, tt.expectedHyperNodesSetByTier, sc.HyperNodesInfo.HyperNodesSetByTier())
+			assert.Equal(t, tt.expectedRealNodesSet, sc.HyperNodesInfo.RealNodesSet())
+			assert.Equal(t, tt.expectedParentMap, sc.HyperNodesInfo.ParentMap())
+			actualHyperNodes := getActualNodeSet(sc.HyperNodesInfo.HyperNodes())
+			assert.Equal(t, tt.expectedHyperNodes, actualHyperNodes)
+			assert.Equal(t, tt.ready, sc.HyperNodesInfo.Ready())
+		})
+	}
+}
+
+func TestSchedulerCache_UpdateHyperNode(t *testing.T) {
+	exactSelector := "exact"
+	regexSelector := "regex"
+
+	s0 := schedulingapi.BuildHyperNode("s0", 1, topologyv1alpha1.MemberTypeNode, []string{"node-0", "node-1"}, exactSelector)
+	s1 := schedulingapi.BuildHyperNode("s1", 1, topologyv1alpha1.MemberTypeNode, []string{"node-2", "node-3"}, exactSelector)
+	s2 := schedulingapi.BuildHyperNode("s2", 1, topologyv1alpha1.MemberTypeNode, []string{"node-4", "node-5"}, exactSelector)
+	s3 := schedulingapi.BuildHyperNode("s3", 1, topologyv1alpha1.MemberTypeNode, []string{"node-6", "node-7"}, exactSelector)
+	s4 := schedulingapi.BuildHyperNode("s4", 2, topologyv1alpha1.MemberTypeHyperNode, []string{"s0", "s1"}, exactSelector)
+	s5 := schedulingapi.BuildHyperNode("s5", 2, topologyv1alpha1.MemberTypeHyperNode, []string{"s2", "s3"}, exactSelector)
+	s6 := schedulingapi.BuildHyperNode("s6", 3, topologyv1alpha1.MemberTypeHyperNode, []string{"s4", "s5"}, exactSelector)
+	initialHyperNodes := []*topologyv1alpha1.HyperNode{s0, s1, s2, s3, s4, s5, s6}
+
+	tests := []struct {
+		name                        string
+		nodes                       []*v1.Node
+		initialHyperNodes           []*topologyv1alpha1.HyperNode
+		hyperNodesToUpdated         []*topologyv1alpha1.HyperNode
+		expectedHyperNodesSetByTier []map[int]sets.Set[string]
+		expectedRealNodesSet        []map[string]sets.Set[string]
+		expectedParentMap           []map[string]string
+		expectedHyperNodes          []map[string]string
+		ready                       bool
+	}{
+		{
+			name:              "Update non-leaf hyperNode's members",
+			initialHyperNodes: initialHyperNodes,
+			hyperNodesToUpdated: []*topologyv1alpha1.HyperNode{
+				// first remove s2 from s5.
+				schedulingapi.BuildHyperNode("s5", 2, topologyv1alpha1.MemberTypeHyperNode, []string{"s3"}, exactSelector),
+				// second add s2 to s4.
+				schedulingapi.BuildHyperNode("s4", 2, topologyv1alpha1.MemberTypeHyperNode, []string{"s0", "s1", "s2"}, exactSelector),
+			},
+			expectedHyperNodesSetByTier: []map[int]sets.Set[string]{
+				{
+					1: sets.New[string]("s0", "s1", "s2", "s3"),
+					2: sets.New[string]("s4", "s5"),
+					3: sets.New[string]("s6"),
+				},
+				{
+					1: sets.New[string]("s0", "s1", "s2", "s3"),
+					2: sets.New[string]("s4", "s5"),
+					3: sets.New[string]("s6"),
+				},
+			},
+			expectedRealNodesSet: []map[string]sets.Set[string]{
+				{
+					"s0": sets.New[string]("node-0", "node-1"),
+					"s1": sets.New[string]("node-2", "node-3"),
+					"s2": sets.New[string]("node-4", "node-5"),
+					"s3": sets.New[string]("node-6", "node-7"),
+					"s4": sets.New[string]("node-0", "node-1", "node-2", "node-3"),
+					"s5": sets.New[string]("node-6", "node-7"),
+					"s6": sets.New[string]("node-0", "node-1", "node-2", "node-3", "node-6", "node-7"),
+				},
+				{
+					"s0": sets.New[string]("node-0", "node-1"),
+					"s1": sets.New[string]("node-2", "node-3"),
+					"s2": sets.New[string]("node-4", "node-5"),
+					"s3": sets.New[string]("node-6", "node-7"),
+					"s4": sets.New[string]("node-0", "node-1", "node-2", "node-3", "node-4", "node-5"),
+					"s5": sets.New[string]("node-6", "node-7"),
+					"s6": sets.New[string]("node-0", "node-1", "node-2", "node-3", "node-4", "node-5", "node-6", "node-7"),
+				},
+			},
+			expectedParentMap: []map[string]string{
+				{
+					"s0": "s4",
+					"s1": "s4",
+					"s3": "s5",
+					"s4": "s6",
+					"s5": "s6",
+				},
+				{
+					"s0": "s4",
+					"s1": "s4",
+					"s2": "s4",
+					"s3": "s5",
+					"s4": "s6",
+					"s5": "s6",
+				},
+			},
+			expectedHyperNodes: []map[string]string{
+				{
+					"s0": schedulingapi.NewHyperNodeInfo(s0, 1).String(),
+					"s1": schedulingapi.NewHyperNodeInfo(s1, 1).String(),
+					"s2": schedulingapi.NewHyperNodeInfo(s2, 1).String(),
+					"s3": schedulingapi.NewHyperNodeInfo(s3, 1).String(),
+					"s4": schedulingapi.NewHyperNodeInfo(s4, 2).String(),
+					"s5": schedulingapi.NewHyperNodeInfo(s5, 2).String(),
+					"s6": schedulingapi.NewHyperNodeInfo(s6, 3).String(),
+				},
+				{
+					"s0": schedulingapi.NewHyperNodeInfo(s0, 1).String(),
+					"s1": schedulingapi.NewHyperNodeInfo(s1, 1).String(),
+					"s2": schedulingapi.NewHyperNodeInfo(s2, 1).String(),
+					"s3": schedulingapi.NewHyperNodeInfo(s3, 1).String(),
+					"s4": schedulingapi.NewHyperNodeInfo(s4, 2).String(),
+					"s5": schedulingapi.NewHyperNodeInfo(s5, 2).String(),
+					"s6": schedulingapi.NewHyperNodeInfo(s6, 3).String(),
+				},
+			},
+			ready: true,
+		},
+		{
+			name:              "Remove hyperNode s3's members node-6 and node-7.",
+			initialHyperNodes: initialHyperNodes,
+			hyperNodesToUpdated: []*topologyv1alpha1.HyperNode{
+				schedulingapi.BuildHyperNode("s3", 1, topologyv1alpha1.MemberTypeNode, []string{}, exactSelector),
+			},
+			expectedHyperNodesSetByTier: []map[int]sets.Set[string]{
+				{
+					1: sets.New[string]("s0", "s1", "s2", "s3"),
+					2: sets.New[string]("s4", "s5"),
+					3: sets.New[string]("s6"),
+				},
+			},
+			expectedRealNodesSet: []map[string]sets.Set[string]{
+				{
+					"s0": sets.New[string]("node-0", "node-1"),
+					"s1": sets.New[string]("node-2", "node-3"),
+					"s2": sets.New[string]("node-4", "node-5"),
+
+					"s4": sets.New[string]("node-0", "node-1", "node-2", "node-3"),
+					"s5": sets.New[string]("node-4", "node-5"),
+					"s6": sets.New[string]("node-0", "node-1", "node-2", "node-3", "node-4", "node-5"),
+				},
+			},
+			expectedParentMap: []map[string]string{
+				{
+					"s0": "s4",
+					"s1": "s4",
+					"s2": "s5",
+					"s3": "s5",
+					"s4": "s6",
+					"s5": "s6",
+				},
+			},
+			expectedHyperNodes: []map[string]string{
+				{
+					"s0": schedulingapi.NewHyperNodeInfo(s0, 1).String(),
+					"s1": schedulingapi.NewHyperNodeInfo(s1, 1).String(),
+					"s2": schedulingapi.NewHyperNodeInfo(s2, 1).String(),
+					"s3": schedulingapi.NewHyperNodeInfo(s3, 1).String(),
+					"s4": schedulingapi.NewHyperNodeInfo(s4, 2).String(),
+					"s5": schedulingapi.NewHyperNodeInfo(s5, 2).String(),
+					"s6": schedulingapi.NewHyperNodeInfo(s6, 3).String(),
+				},
+			},
+			ready: true,
+		},
+		{
+			name: "Update hyperNode s2's members to regex match",
+			nodes: []*v1.Node{
+				util.BuildNode("4-suffix", nil, nil),
+				util.BuildNode("5-suffix", nil, nil),
+			},
+			initialHyperNodes: initialHyperNodes,
+			hyperNodesToUpdated: []*topologyv1alpha1.HyperNode{
+				schedulingapi.BuildHyperNode("s2", 1, topologyv1alpha1.MemberTypeNode, []string{"-suffix"}, regexSelector),
+			},
+			expectedHyperNodesSetByTier: []map[int]sets.Set[string]{
+				{
+					1: sets.New[string]("s0", "s1", "s2", "s3"),
+					2: sets.New[string]("s4", "s5"),
+					3: sets.New[string]("s6"),
+				},
+			},
+			expectedRealNodesSet: []map[string]sets.Set[string]{
+				{
+					"s0": sets.New[string]("node-0", "node-1"),
+					"s1": sets.New[string]("node-2", "node-3"),
+					"s2": sets.New[string]("4-suffix", "5-suffix"),
+					"s3": sets.New[string]("node-6", "node-7"),
+					"s4": sets.New[string]("node-0", "node-1", "node-2", "node-3"),
+					"s5": sets.New[string]("4-suffix", "5-suffix", "node-6", "node-7"),
+					"s6": sets.New[string]("node-0", "node-1", "node-2", "node-3", "4-suffix", "5-suffix", "node-6", "node-7"),
+				},
+			},
+			expectedParentMap: []map[string]string{
+				{
+					"s0": "s4",
+					"s1": "s4",
+					"s2": "s5",
+					"s3": "s5",
+					"s4": "s6",
+					"s5": "s6",
+				},
+			},
+			expectedHyperNodes: []map[string]string{
+				{
+					"s0": schedulingapi.NewHyperNodeInfo(s0, 1).String(),
+					"s1": schedulingapi.NewHyperNodeInfo(s1, 1).String(),
+					"s2": schedulingapi.NewHyperNodeInfo(s2, 1).String(),
+					"s3": schedulingapi.NewHyperNodeInfo(s3, 1).String(),
+					"s4": schedulingapi.NewHyperNodeInfo(s4, 2).String(),
+					"s5": schedulingapi.NewHyperNodeInfo(s5, 2).String(),
+					"s6": schedulingapi.NewHyperNodeInfo(s6, 3).String(),
+				},
+			},
+			ready: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := NewDefaultMockSchedulerCache("volcano")
+			// Add some nodes to match regex selector.
+			for _, node := range tt.nodes {
+				sc.nodeInformer.Informer().GetIndexer().Add(node)
+			}
+			for _, hyperNode := range tt.initialHyperNodes {
+				sc.AddHyperNode(hyperNode)
+			}
+
+			log.Println("begin update...")
+			// compare the result by index as we have updated multi hyperNodes.
+			for i, hyperNode := range tt.hyperNodesToUpdated {
+				sc.UpdateHyperNode(nil, hyperNode)
+				assert.Equal(t, tt.expectedHyperNodesSetByTier[i], sc.HyperNodesInfo.HyperNodesSetByTier())
+				if !assert.Equal(t, tt.expectedRealNodesSet[i], sc.HyperNodesInfo.RealNodesSet(), "RealNodesSet mismatch, index %d", i) {
+					fmt.Printf("%+v\n", tt.expectedRealNodesSet[i])
+					fmt.Printf("%+v\n", sc.HyperNodesInfo.RealNodesSet())
+				}
+				assert.Equal(t, tt.expectedParentMap[i], sc.HyperNodesInfo.ParentMap())
+				actualHyperNodes := getActualNodeSet(sc.HyperNodesInfo.HyperNodes())
+				assert.Equal(t, tt.expectedHyperNodes[i], actualHyperNodes)
+				assert.Equal(t, tt.ready, sc.HyperNodesInfo.Ready())
+			}
+		})
+	}
+}
+
+func TestSchedulerCache_DeleteHyperNode(t *testing.T) {
+	selector := "exact"
+	s0 := schedulingapi.BuildHyperNode("s0", 1, topologyv1alpha1.MemberTypeNode, []string{"node-0", "node-1"}, selector)
+	s1 := schedulingapi.BuildHyperNode("s1", 1, topologyv1alpha1.MemberTypeNode, []string{"node-2", "node-3"}, selector)
+	s2 := schedulingapi.BuildHyperNode("s2", 1, topologyv1alpha1.MemberTypeNode, []string{"node-4", "node-5"}, selector)
+	s3 := schedulingapi.BuildHyperNode("s3", 1, topologyv1alpha1.MemberTypeNode, []string{"node-6", "node-7"}, selector)
+	s4 := schedulingapi.BuildHyperNode("s4", 2, topologyv1alpha1.MemberTypeHyperNode, []string{"s0", "s1"}, selector)
+	s5 := schedulingapi.BuildHyperNode("s5", 2, topologyv1alpha1.MemberTypeHyperNode, []string{"s2", "s3"}, selector)
+	s6 := schedulingapi.BuildHyperNode("s6", 3, topologyv1alpha1.MemberTypeHyperNode, []string{"s4", "s5"}, selector)
+	initialHyperNodes := []*topologyv1alpha1.HyperNode{s0, s1, s2, s3, s4, s5, s6}
+
+	tests := []struct {
+		name                        string
+		initialHyperNodes           []*topologyv1alpha1.HyperNode
+		typerNodesToDelete          *topologyv1alpha1.HyperNode
+		expectedHyperNodesSetByTier map[int]sets.Set[string]
+		expectedParentMap           map[string]string
+		expectedRealNodesSet        map[string]sets.Set[string]
+		expectedHyperNodes          map[string]string
+		ready                       bool
+	}{
+		{
+			name:               "Delete non-leaf hyperNode s4",
+			initialHyperNodes:  initialHyperNodes,
+			typerNodesToDelete: s4,
+			expectedHyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("s0", "s1", "s2", "s3"),
+				2: sets.New[string]("s5"),
+				3: sets.New[string]("s6"),
+			},
+			expectedParentMap: map[string]string{
+				"s2": "s5",
+				"s3": "s5",
+				"s5": "s6",
+			},
+
+			expectedRealNodesSet: map[string]sets.Set[string]{
+				"s0": sets.New[string]("node-0", "node-1"),
+				"s1": sets.New[string]("node-2", "node-3"),
+				"s2": sets.New[string]("node-4", "node-5"),
+				"s3": sets.New[string]("node-6", "node-7"),
+				"s5": sets.New[string]("node-4", "node-5", "node-6", "node-7"),
+				"s6": sets.New[string]("node-4", "node-5", "node-6", "node-7"),
+			},
+
+			expectedHyperNodes: map[string]string{
+				"s0": schedulingapi.NewHyperNodeInfo(s0, 1).String(),
+				"s1": schedulingapi.NewHyperNodeInfo(s1, 1).String(),
+				"s2": schedulingapi.NewHyperNodeInfo(s2, 1).String(),
+				"s3": schedulingapi.NewHyperNodeInfo(s3, 1).String(),
+				"s5": schedulingapi.NewHyperNodeInfo(s5, 2).String(),
+				"s6": schedulingapi.NewHyperNodeInfo(s6, 3).String(),
+			},
+			ready: true,
+		},
+		{
+			name:               "Delete leaf hyperNode s0",
+			initialHyperNodes:  initialHyperNodes,
+			typerNodesToDelete: s0,
+			expectedHyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("s1", "s2", "s3"),
+				2: sets.New[string]("s4", "s5"),
+				3: sets.New[string]("s6"),
+			},
+			expectedParentMap: map[string]string{
+				"s1": "s4",
+				"s2": "s5",
+				"s3": "s5",
+				"s4": "s6",
+				"s5": "s6",
+			},
+			expectedRealNodesSet: map[string]sets.Set[string]{
+				"s1": sets.New[string]("node-2", "node-3"),
+				"s2": sets.New[string]("node-4", "node-5"),
+				"s3": sets.New[string]("node-6", "node-7"),
+				"s4": sets.New[string]("node-2", "node-3"),
+				"s5": sets.New[string]("node-4", "node-5", "node-6", "node-7"),
+				"s6": sets.New[string]("node-2", "node-3", "node-4", "node-5", "node-6", "node-7"),
+			},
+			expectedHyperNodes: map[string]string{
+				"s1": schedulingapi.NewHyperNodeInfo(s1, 1).String(),
+				"s2": schedulingapi.NewHyperNodeInfo(s2, 1).String(),
+				"s3": schedulingapi.NewHyperNodeInfo(s3, 1).String(),
+				"s4": schedulingapi.NewHyperNodeInfo(s4, 2).String(),
+				"s5": schedulingapi.NewHyperNodeInfo(s5, 2).String(),
+				"s6": schedulingapi.NewHyperNodeInfo(s6, 3).String(),
+			},
+			ready: true,
+		},
+		{
+			name:               "Delete root hyperNode s6",
+			initialHyperNodes:  initialHyperNodes,
+			typerNodesToDelete: s6,
+			expectedHyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("s0", "s1", "s2", "s3"),
+				2: sets.New[string]("s4", "s5"),
+			},
+			expectedParentMap: map[string]string{
+				"s0": "s4",
+				"s1": "s4",
+				"s2": "s5",
+				"s3": "s5",
+			},
+			expectedRealNodesSet: map[string]sets.Set[string]{
+				"s0": sets.New[string]("node-0", "node-1"),
+				"s1": sets.New[string]("node-2", "node-3"),
+				"s2": sets.New[string]("node-4", "node-5"),
+				"s3": sets.New[string]("node-6", "node-7"),
+				"s4": sets.New[string]("node-0", "node-1", "node-2", "node-3"),
+				"s5": sets.New[string]("node-4", "node-5", "node-6", "node-7"),
+			},
+			expectedHyperNodes: map[string]string{
+				"s0": schedulingapi.NewHyperNodeInfo(s0, 1).String(),
+				"s1": schedulingapi.NewHyperNodeInfo(s1, 1).String(),
+				"s2": schedulingapi.NewHyperNodeInfo(s2, 1).String(),
+				"s3": schedulingapi.NewHyperNodeInfo(s3, 1).String(),
+				"s4": schedulingapi.NewHyperNodeInfo(s4, 2).String(),
+				"s5": schedulingapi.NewHyperNodeInfo(s5, 2).String(),
+			},
+			ready: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := NewDefaultMockSchedulerCache("volcano")
+			for _, hyperNode := range tt.initialHyperNodes {
+				sc.AddHyperNode(hyperNode)
+			}
+
+			log.Println("begin delete...")
+			sc.DeleteHyperNode(tt.typerNodesToDelete)
+			assert.Equal(t, tt.expectedHyperNodesSetByTier, sc.HyperNodesInfo.HyperNodesSetByTier())
+			if !assert.Equal(t, tt.expectedRealNodesSet, sc.HyperNodesInfo.RealNodesSet(), "RealNodesSet mismatch") {
+				fmt.Printf("expect: %+v\n", tt.expectedRealNodesSet)
+				fmt.Printf("actual: %+v\n", sc.HyperNodesInfo.RealNodesSet())
+			}
+			assert.Equal(t, tt.expectedParentMap, sc.HyperNodesInfo.ParentMap())
+
+			actualHyperNodes := getActualNodeSet(sc.HyperNodesInfo.HyperNodes())
+			assert.Equal(t, tt.expectedHyperNodes, actualHyperNodes)
+			assert.Equal(t, tt.ready, sc.HyperNodesInfo.Ready())
+		})
+	}
+}
+
+func getActualNodeSet(hns map[string]*schedulingapi.HyperNodeInfo) map[string]string {
+	actualHyperNodes := make(map[string]string)
+	for name, hn := range hns {
+		actualHyperNodes[name] = hn.String()
+	}
+	return actualHyperNodes
 }

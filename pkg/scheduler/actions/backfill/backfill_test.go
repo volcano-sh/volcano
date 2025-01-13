@@ -121,6 +121,7 @@ func TestPickUpPendingTasks(t *testing.T) {
 			VolumeBinder:    &util.FakeVolumeBinder{},
 			Recorder:        record.NewFakeRecorder(100),
 			PriorityClasses: tc.PriorityClasses,
+			HyperNodesInfo:  api.NewHyperNodesInfo(nil),
 		}
 
 		for _, q := range tc.queues {

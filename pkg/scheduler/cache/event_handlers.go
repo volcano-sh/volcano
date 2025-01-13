@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"strconv"
 
@@ -44,8 +45,8 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
-
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
@@ -1260,4 +1261,75 @@ func (sc *SchedulerCache) setCSIResourceOnNode(csiNode *sv1.CSINode, node *v1.No
 		node.Status.Allocatable[resourceName] = quantity
 		node.Status.Capacity[resourceName] = quantity
 	}
+}
+
+// AddHyperNode adds HyperNode and rebuild HyperNodesInfo cache.
+func (sc *SchedulerCache) AddHyperNode(obj interface{}) {
+	hyperNode, ok := obj.(*topologyv1alpha1.HyperNode)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert to *topologyv1alpha1.HyperNode", "type", reflect.TypeOf(obj))
+		return
+	}
+
+	sc.HyperNodesInfo.Lock()
+	defer sc.HyperNodesInfo.Unlock()
+
+	if err := sc.updateHyperNode(hyperNode); err != nil {
+		klog.ErrorS(err, "Failed to update HyperNode", "type", reflect.TypeOf(hyperNode))
+		return
+	}
+	klog.V(3).InfoS("Added HyperNode in cache", "name", hyperNode.Name)
+}
+
+// UpdateHyperNode updates HyperNode and rebuild HyperNodesInfo cache, it does three things in order:
+// 1.update parent map if members reduced.
+// 2.reset current hyperNode and its ancestors' cache.
+func (sc *SchedulerCache) UpdateHyperNode(oldObj, newObj interface{}) {
+	newHyperNode, ok := newObj.(*topologyv1alpha1.HyperNode)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert newObj to *topologyv1alpha1.HyperNode: %v", reflect.TypeOf(newObj))
+		return
+	}
+
+	sc.HyperNodesInfo.Lock()
+	defer sc.HyperNodesInfo.Unlock()
+
+	sc.HyperNodesInfo.UpdateParentMap(newHyperNode)
+	if err := sc.updateHyperNode(newHyperNode); err != nil {
+		klog.ErrorS(err, "Failed to update HyperNode", "name", newHyperNode.Name)
+		return
+	}
+	klog.V(3).InfoS("Updated HyperNode in cache", "name", newHyperNode.Name)
+}
+
+// DeleteHyperNode deletes HyperNode and rebuild HyperNodesInfo cache.
+// It clears current hyperNode and update ancestors' cache.
+func (sc *SchedulerCache) DeleteHyperNode(obj interface{}) {
+	var hn *topologyv1alpha1.HyperNode
+	switch t := obj.(type) {
+	case *topologyv1alpha1.HyperNode:
+		hn = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		hn, ok = t.Obj.(*topologyv1alpha1.HyperNode)
+		if !ok {
+			klog.ErrorS(nil, "Cannot convert to HyperNode", "type", reflect.TypeOf(t.Obj))
+			return
+		}
+	default:
+		klog.ErrorS(nil, "Cannot convert to HyperNode", "type", reflect.TypeOf(t))
+		return
+	}
+
+	sc.HyperNodesInfo.Lock()
+	defer sc.HyperNodesInfo.Unlock()
+
+	if err := sc.HyperNodesInfo.DeleteHyperNode(hn.Name); err != nil {
+		klog.ErrorS(err, "Failed to delete HyperNode", "name", hn.Name)
+	}
+	klog.V(3).InfoS("Deleted HyperNode from cache", "name", hn.Name)
+}
+
+func (sc *SchedulerCache) updateHyperNode(hyperNode *topologyv1alpha1.HyperNode) error {
+	return sc.HyperNodesInfo.UpdateHyperNode(hyperNode)
 }

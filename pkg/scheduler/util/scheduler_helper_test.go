@@ -170,7 +170,7 @@ func TestGetHyperNodeList(t *testing.T) {
 		name       string
 		hyperNodes map[string]sets.Set[string]
 		allNodes   map[string]*api.NodeInfo
-		expected   map[string][]*api.NodeInfo
+		expected   map[string]sets.Set[string]
 	}{
 		{
 			name: "Normal case",
@@ -183,14 +183,9 @@ func TestGetHyperNodeList(t *testing.T) {
 				"node2": {Name: "node2"},
 				"node3": {Name: "node3"},
 			},
-			expected: map[string][]*api.NodeInfo{
-				"hyperNode1": {
-					{Name: "node1"},
-					{Name: "node2"},
-				},
-				"hyperNode2": {
-					{Name: "node3"},
-				},
+			expected: map[string]sets.Set[string]{
+				"hyperNode1": sets.New[string]("node1", "node2"),
+				"hyperNode2": sets.New[string]("node3"),
 			},
 		},
 		{
@@ -203,13 +198,9 @@ func TestGetHyperNodeList(t *testing.T) {
 				"node1": {Name: "node1"},
 				"node3": {Name: "node3"},
 			},
-			expected: map[string][]*api.NodeInfo{
-				"hyperNode1": {
-					{Name: "node1"},
-				},
-				"hyperNode2": {
-					{Name: "node3"},
-				},
+			expected: map[string]sets.Set[string]{
+				"hyperNode1": sets.New[string]("node1"),
+				"hyperNode2": sets.New[string]("node3"),
 			},
 		},
 		{
@@ -219,7 +210,7 @@ func TestGetHyperNodeList(t *testing.T) {
 				"node1": {Name: "node1"},
 				"node2": {Name: "node2"},
 			},
-			expected: map[string][]*api.NodeInfo{},
+			expected: map[string]sets.Set[string]{},
 		},
 		{
 			name: "Empty allNodes",
@@ -227,7 +218,7 @@ func TestGetHyperNodeList(t *testing.T) {
 				"hyperNode1": sets.New[string]("node1", "node2"),
 			},
 			allNodes: map[string]*api.NodeInfo{},
-			expected: map[string][]*api.NodeInfo{
+			expected: map[string]sets.Set[string]{
 				"hyperNode1": {},
 			},
 		},
@@ -235,8 +226,16 @@ func TestGetHyperNodeList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GetHyperNodeList(tc.hyperNodes, tc.allNodes)
-			assert.Equal(t, tc.expected, result)
+			result := GetRealNodesListByHyperNode(tc.hyperNodes, tc.allNodes)
+			nodesSet := make(map[string]sets.Set[string])
+			for name, nodes := range result {
+				s := sets.New[string]()
+				for _, node := range nodes {
+					s.Insert(node.Name)
+				}
+				nodesSet[name] = s
+			}
+			assert.Equal(t, tc.expected, nodesSet)
 		})
 	}
 }
