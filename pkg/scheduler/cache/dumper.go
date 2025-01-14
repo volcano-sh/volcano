@@ -54,7 +54,7 @@ func (d *Dumper) dumpToJSONFile() {
 	defer file.Close()
 	klog.Infoln("Starting to dump info in scheduler cache to file", fName)
 
-	if err := encodeCache(file, snapshot.Nodes, snapshot.HyperNodesSetByTier, snapshot.RealNodesSet, snapshot.Jobs); err != nil {
+	if err := encodeCache(file, snapshot.Nodes, snapshot.HyperNodesSetByTier, snapshot.RealNodesSet, snapshot.HyperNodes, snapshot.Jobs); err != nil {
 		klog.Errorf("Failed to dump info in scheduler cache, json encode error: %v", err)
 		return
 	}
@@ -86,7 +86,7 @@ func (d *Dumper) dumpAll() {
 	}
 
 	klog.Info("Dump of hyperNodes info in scheduler cache")
-	d.printHyperNodeInfo(snapshot.HyperNodesSetByTier, snapshot.RealNodesSet)
+	d.printHyperNodeInfo(snapshot.HyperNodesSetByTier, snapshot.RealNodesSet, snapshot.HyperNodes)
 
 	d.displaySchedulerMemStats()
 }
@@ -113,12 +113,12 @@ func (d *Dumper) printJobInfo(jobInfo *api.JobInfo) string {
 	return data.String()
 }
 
-func (d *Dumper) printHyperNodeInfo(HyperNodesSetByTier map[int]sets.Set[string], HyperNodes map[string]sets.Set[string]) {
+func (d *Dumper) printHyperNodeInfo(HyperNodesSetByTier map[int]sets.Set[string], realNodesSet map[string]sets.Set[string], hyperNodeInfoMap api.HyperNodeInfoMap) {
 	var data strings.Builder
 	data.WriteString("\n")
 	for tier, hyperNodes := range HyperNodesSetByTier {
 		for hyperNode := range hyperNodes {
-			data.WriteString(fmt.Sprintf("Tier: %d, HyperNodeName: %s, Nodes: %s\n", tier, hyperNode, HyperNodes[hyperNode]))
+			data.WriteString(fmt.Sprintf("Tier: %d, HyperNodeName: %s, Nodes: %s, HyperNodeInfo: %#v\n", tier, hyperNode, realNodesSet[hyperNode], hyperNodeInfoMap[hyperNode]))
 		}
 	}
 	data.WriteString("\n")

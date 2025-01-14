@@ -1368,6 +1368,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	snapshot := &schedulingapi.ClusterInfo{
 		Nodes:               make(map[string]*schedulingapi.NodeInfo),
+		HyperNodes:          make(map[string]*schedulingapi.HyperNodeInfo),
 		HyperNodesSetByTier: make(map[int]sets.Set[string]),
 		RealNodesSet:        make(map[string]sets.Set[string]),
 		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
@@ -1401,6 +1402,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	// Snapshot hyperNodes.
 	sc.HyperNodesInfo.Lock()
+	snapshot.HyperNodes = sc.HyperNodesInfo.HyperNodes()
 	snapshot.HyperNodesSetByTier = sc.HyperNodesInfo.HyperNodesSetByTier()
 	snapshot.RealNodesSet = sc.HyperNodesInfo.RealNodesSet()
 	snapshot.HyperNodesReadyToSchedule = sc.HyperNodesInfo.Ready()

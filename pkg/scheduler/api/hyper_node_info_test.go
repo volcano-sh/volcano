@@ -472,25 +472,25 @@ func TestHyperNodesInfo_GetAncestors(t *testing.T) {
 		name              string
 		hyperNodeName     string
 		initialHyperNodes []*topologyv1alpha1.HyperNode
-		expectedAncestors sets.Set[string]
+		expectedAncestors []string
 	}{
 		{
 			name:              "Get ancestors for leaf node",
 			hyperNodeName:     "s0",
 			initialHyperNodes: initialHyperNodes,
-			expectedAncestors: sets.New[string]("s0", "s2", "s3", "s4"),
+			expectedAncestors: []string{"s0", "s2", "s3", "s4"},
 		},
 		{
 			name:              "Get ancestors for intermediate node",
 			hyperNodeName:     "s2",
 			initialHyperNodes: initialHyperNodes,
-			expectedAncestors: sets.New[string]("s2", "s3", "s4"),
+			expectedAncestors: []string{"s2", "s3", "s4"},
 		},
 		{
 			name:              "Get ancestors for root node",
 			hyperNodeName:     "s4",
 			initialHyperNodes: initialHyperNodes,
-			expectedAncestors: sets.New[string]("s4"),
+			expectedAncestors: []string{"s4"},
 		},
 	}
 
@@ -505,8 +505,86 @@ func TestHyperNodesInfo_GetAncestors(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			actualAncestors := hni.GetAncestors(tt.hyperNodeName)
+			actualAncestors := hni.hyperNodes.GetAncestors(tt.hyperNodeName)
 			assert.Equal(t, tt.expectedAncestors, actualAncestors)
+		})
+	}
+}
+
+func TestGetLCAHyperNode(t *testing.T) {
+	selector := "exact"
+	hnim := HyperNodeInfoMap{
+		"s0": {parent: "s4", tier: 1, HyperNode: BuildHyperNode("s0", 1, []MemberConfig{
+			{"node-0", topologyv1alpha1.MemberTypeNode, selector},
+			{"node-1", topologyv1alpha1.MemberTypeNode, selector},
+		})},
+		"s1": {parent: "s4", tier: 1, HyperNode: BuildHyperNode("s1", 1, []MemberConfig{
+			{"node-2", topologyv1alpha1.MemberTypeNode, selector},
+			{"node-3", topologyv1alpha1.MemberTypeNode, selector},
+		})},
+		"s2": {parent: "s5", tier: 1, HyperNode: BuildHyperNode("s2", 1, []MemberConfig{
+			{"node-4", topologyv1alpha1.MemberTypeNode, selector},
+			{"node-5", topologyv1alpha1.MemberTypeNode, selector},
+		})},
+		"s3": {parent: "s5", tier: 1, HyperNode: BuildHyperNode("s3", 1, []MemberConfig{
+			{"node-6", topologyv1alpha1.MemberTypeNode, selector},
+			{"node-7", topologyv1alpha1.MemberTypeNode, selector},
+		})},
+		"s4": {parent: "s6", tier: 2, HyperNode: BuildHyperNode("s4", 2, []MemberConfig{
+			{"s0", topologyv1alpha1.MemberTypeHyperNode, selector},
+			{"s1", topologyv1alpha1.MemberTypeHyperNode, selector},
+		})},
+		"s5": {parent: "s6", tier: 2, HyperNode: BuildHyperNode("s5", 2, []MemberConfig{
+			{"s2", topologyv1alpha1.MemberTypeHyperNode, selector},
+			{"s3", topologyv1alpha1.MemberTypeHyperNode, selector},
+		})},
+		"s6": {parent: "", tier: 3, HyperNode: BuildHyperNode("s6", 3, []MemberConfig{
+			{"s4", topologyv1alpha1.MemberTypeHyperNode, selector},
+			{"s5", topologyv1alpha1.MemberTypeHyperNode, selector},
+		})},
+		// s-orphan is an orphan hypernode that does not have parent
+		"s-orphan": {parent: "", tier: 1, HyperNode: BuildHyperNode("s-orphan", 1, []MemberConfig{
+			{"node-8", topologyv1alpha1.MemberTypeNode, selector},
+			{"node-9", topologyv1alpha1.MemberTypeNode, selector},
+		})},
+	}
+
+	tests := []struct {
+		name         string
+		hypernode    string
+		jobHyperNode string
+		expectedLCA  string
+	}{
+		{
+			name:         "Sibling hypernode",
+			hypernode:    "s0",
+			jobHyperNode: "s1",
+			expectedLCA:  "s4",
+		},
+		{
+			name:         "No common ancestor",
+			hypernode:    "s0",
+			jobHyperNode: "s-orphan",
+			expectedLCA:  "",
+		},
+		{
+			name:         "One is ancestor of the other",
+			hypernode:    "s4",
+			jobHyperNode: "s0",
+			expectedLCA:  "s4",
+		},
+		{
+			name:         "Both are the same node",
+			hypernode:    "node6",
+			jobHyperNode: "node6",
+			expectedLCA:  "node6",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lca := hnim.GetLCAHyperNode(tt.hypernode, tt.jobHyperNode)
+			assert.Equal(t, tt.expectedLCA, lca)
 		})
 	}
 }
