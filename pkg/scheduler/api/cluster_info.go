@@ -26,6 +26,7 @@ import (
 type ClusterInfo struct {
 	Jobs                      map[JobID]*JobInfo
 	Nodes                     map[string]*NodeInfo
+	HyperNodes                HyperNodeInfoMap
 	HyperNodesSetByTier       map[int]sets.Set[string]
 	RealNodesSet              map[string]sets.Set[string]
 	HyperNodesReadyToSchedule bool
