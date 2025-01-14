@@ -19,12 +19,12 @@ package api
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
 	listerv1 "k8s.io/client-go/listers/core/v1"
@@ -44,10 +44,9 @@ type HyperNodesInfo struct {
 	// realNodesSet stores the set of real nodes for each HyperNode, eg, s0 and s1 are members of s4,
 	// s0->node0, node1, s1->node2, node3, s4->node0, node1, s1->node2, node3
 	realNodesSet map[string]sets.Set[string]
-	// parentMap stores the parent of each HyperNode.
-	parentMap map[string]string
 	// nodeLister Lister to list Kubernetes nodes.
-	nodeLister listerv1.NodeLister
+	nodeLister        listerv1.NodeLister
+	builtErrHyperNode string
 
 	// ready indicates whether the HyperNodesInfo is ready (build process is complete).
 	ready *atomic.Bool
@@ -59,7 +58,6 @@ func NewHyperNodesInfo(lister listerv1.NodeLister) *HyperNodesInfo {
 		hyperNodes:          make(map[string]*HyperNodeInfo),
 		hyperNodesSetByTier: make(map[int]sets.Set[string]),
 		realNodesSet:        make(map[string]sets.Set[string]),
-		parentMap:           make(map[string]string),
 		nodeLister:          lister,
 		ready:               new(atomic.Bool),
 	}
@@ -73,7 +71,6 @@ func NewHyperNodesInfoWithCache(hyperNodesSetByTier map[int]sets.Set[string], re
 		hyperNodes:          make(map[string]*HyperNodeInfo),
 		hyperNodesSetByTier: hyperNodesSetByTier,
 		realNodesSet:        realNodesSet,
-		parentMap:           make(map[string]string),
 		ready:               ready,
 	}
 }
@@ -82,28 +79,42 @@ func NewHyperNodesInfoWithCache(hyperNodesSetByTier map[int]sets.Set[string], re
 type HyperNodeInfo struct {
 	Name      string
 	HyperNode *topologyv1alpha1.HyperNode
-	Tier      int
 
+	tier       int
+	parent     string
 	isDeleting bool
 }
 
 // NewHyperNodeInfo creates a new HyperNodeInfo instance.
-func NewHyperNodeInfo(hn *topologyv1alpha1.HyperNode, tier int) *HyperNodeInfo {
+func NewHyperNodeInfo(hn *topologyv1alpha1.HyperNode) *HyperNodeInfo {
 	return &HyperNodeInfo{
 		Name:      hn.Name,
 		HyperNode: hn,
-		Tier:      tier,
+		tier:      hn.Spec.Tier,
 	}
 }
 
 // String returns a string representation of the HyperNodeInfo.
 func (hni *HyperNodeInfo) String() string {
-	return strings.Join([]string{hni.Name, strconv.Itoa(hni.Tier)}, "/")
+	return strings.Join([]string{
+		fmt.Sprintf("Name: %s", hni.Name),
+		fmt.Sprintf(" Tier: %d", hni.tier),
+		fmt.Sprintf(" Parent: %s", hni.parent)},
+		",")
 }
 
 // HyperNodes returns the map of all HyperNode information.
 func (hni *HyperNodesInfo) HyperNodes() map[string]*HyperNodeInfo {
 	return hni.hyperNodes
+}
+
+// HyperNode returns a hyperNode by name.
+func (hni *HyperNodesInfo) HyperNode(name string) *topologyv1alpha1.HyperNode {
+	hn := hni.hyperNodes[name]
+	if hn == nil {
+		return nil
+	}
+	return hn.HyperNode
 }
 
 // HyperNodesSetByTier returns a deep copy of the map that groups HyperNode names by their tier.
@@ -128,11 +139,6 @@ func (hni *HyperNodesInfo) RealNodesSet() map[string]sets.Set[string] {
 	return copiedRealNodesSet
 }
 
-// ParentMap returns the map of parent-child relationships between HyperNodes.
-func (hni *HyperNodesInfo) ParentMap() map[string]string {
-	return hni.parentMap
-}
-
 // DeleteHyperNode deletes a HyperNode from the cache and update hyperNode tree.
 func (hni *HyperNodesInfo) DeleteHyperNode(name string) error {
 	hni.markHyperNodeIsDeleting(name)
@@ -147,8 +153,19 @@ func (hni *HyperNodesInfo) DeleteHyperNode(name string) error {
 }
 
 func (hni *HyperNodesInfo) UpdateHyperNode(hn *topologyv1alpha1.HyperNode) error {
-	hni.updateHyperNode(hn)
-	return hni.updateAncestors(hn.Name)
+	hni.updateParent(hn)
+	hni.updateHyperNodesSetByTier(hn)
+
+	name := hn.Name
+	old, exists := hni.hyperNodes[name]
+	if exists {
+		old.HyperNode = hn
+		old.tier = hn.Spec.Tier
+	} else {
+		hni.hyperNodes[name] = NewHyperNodeInfo(hn)
+	}
+
+	return hni.updateAncestors(name)
 }
 
 func (hni *HyperNodesInfo) BuildHyperNodeCache(hn *HyperNodeInfo, processed sets.Set[string], ancestorsChain sets.Set[string], ancestors sets.Set[string], nodes []*corev1.Node) error {
@@ -168,7 +185,7 @@ func (hni *HyperNodesInfo) BuildHyperNodeCache(hn *HyperNodeInfo, processed sets
 	ancestorsChain.Insert(hn.Name)
 	defer ancestorsChain.Delete(hn.Name)
 
-	if hni.HyperNodeIsDeleting(hn.Name) {
+	if hni.hyperNodeIsDeleting(hn.Name) {
 		klog.InfoS("HyperNode is being deleted", "name", hn.Name)
 		return nil
 	}
@@ -190,7 +207,7 @@ func (hni *HyperNodesInfo) BuildHyperNodeCache(hn *HyperNodeInfo, processed sets
 				continue
 			}
 
-			if err := hni.setParent(hn, memberName); err != nil {
+			if err := hni.setParent(memberName, hn.Name); err != nil {
 				return err
 			}
 
@@ -231,19 +248,11 @@ func (hni *HyperNodesInfo) setReady(ready bool) {
 	hni.ready.Store(ready)
 }
 
-// UpdateParentMap updates the parent-child relationships in the parentMap.
-func (hni *HyperNodesInfo) UpdateParentMap(hyperNode *topologyv1alpha1.HyperNode) {
-	oldMembers := sets.New[string]()
-	if oldHyperNodeInfo, ok := hni.hyperNodes[hyperNode.Name]; ok {
-		for _, member := range oldHyperNodeInfo.HyperNode.Spec.Members {
-			if member.Type == topologyv1alpha1.MemberTypeHyperNode && member.Selector.ExactMatch != nil {
-				oldMembers.Insert(member.Selector.ExactMatch.Name)
-			}
-		}
-	}
-
+// updateParent updates the parent-child relationships if members are removed.
+func (hni *HyperNodesInfo) updateParent(hn *topologyv1alpha1.HyperNode) {
+	oldMembers := hni.getChildren(hn.Name)
 	newMembers := sets.New[string]()
-	for _, member := range hyperNode.Spec.Members {
+	for _, member := range hn.Spec.Members {
 		if member.Type == topologyv1alpha1.MemberTypeHyperNode && member.Selector.ExactMatch != nil {
 			newMembers.Insert(member.Selector.ExactMatch.Name)
 		}
@@ -253,9 +262,8 @@ func (hni *HyperNodesInfo) UpdateParentMap(hyperNode *topologyv1alpha1.HyperNode
 	if removedMembers.Len() == 0 {
 		return
 	}
-
 	for member := range removedMembers {
-		delete(hni.parentMap, member)
+		hni.resetParent(member)
 	}
 }
 
@@ -268,13 +276,18 @@ func (hni *HyperNodesInfo) GetAncestors(name string) sets.Set[string] {
 		current := queue[0]
 		queue = queue[1:]
 
-		parent, ok := hni.parentMap[current]
-		if !ok {
+		parent := ""
+		hn, ok := hni.hyperNodes[current]
+		if ok && hn.parent != "" {
+			parent = hn.parent
+		} else {
 			parent = hni.getParent(name)
 		}
 		if parent != "" && !ancestors.Has(parent) {
-			ancestors.Insert(parent)
-			queue = append(queue, parent)
+			if !ancestors.Has(parent) {
+				ancestors.Insert(parent)
+				queue = append(queue, parent)
+			}
 		}
 	}
 	return ancestors
@@ -308,7 +321,6 @@ func (hni *HyperNodesInfo) getChildren(hyperNodeName string) sets.Set[string] {
 	children := sets.New[string]()
 	hn, ok := hni.hyperNodes[hyperNodeName]
 	if !ok {
-		klog.ErrorS(nil, "HyperNode not found", "name", hyperNodeName)
 		return children
 	}
 
@@ -321,14 +333,90 @@ func (hni *HyperNodesInfo) getChildren(hyperNodeName string) sets.Set[string] {
 	return children
 }
 
-// setParent sets the parent of a HyperNode member.
-func (hni *HyperNodesInfo) setParent(hn *HyperNodeInfo, memberName string) error {
-	parent, ok := hni.parentMap[memberName]
-	if ok && parent != hn.Name {
-		return fmt.Errorf("HyperNode %s already has a parent %s, and cannot set another parent %s", memberName, parent, hn.Name)
-	} else {
-		hni.parentMap[memberName] = hn.Name
+// GetLeafNodes returns the leaf hyperNodes set for a given hyperNode.
+func (hni *HyperNodesInfo) GetLeafNodes(hyperNodeName string) sets.Set[string] {
+	leafNodes := sets.New[string]()
+	ancestorsChain := sets.New[string]()
+	hni.findLeafNodesWithCycleCheck(hyperNodeName, leafNodes, ancestorsChain)
+	return leafNodes
+}
+
+func (hni *HyperNodesInfo) findLeafNodesWithCycleCheck(hyperNodeName string, leafNodes sets.Set[string], ancestorsChain sets.Set[string]) {
+	if ancestorsChain.Has(hyperNodeName) {
+		klog.ErrorS(nil, "Cycle detected in HyperNode hierarchy", "hyperNode", hyperNodeName)
+		return
 	}
+
+	hn, ok := hni.hyperNodes[hyperNodeName]
+	if !ok {
+		return
+	}
+
+	ancestorsChain.Insert(hyperNodeName)
+	defer ancestorsChain.Delete(hyperNodeName)
+
+	isLeaf := true
+	for _, member := range hn.HyperNode.Spec.Members {
+		if member.Type == topologyv1alpha1.MemberTypeHyperNode {
+			isLeaf = false
+			hni.findLeafNodesWithCycleCheck(member.Selector.ExactMatch.Name, leafNodes, ancestorsChain)
+		}
+	}
+
+	if isLeaf {
+		leafNodes.Insert(hyperNodeName)
+	}
+}
+
+// GetRegexSelectorLeafHyperNodes returns leaf hyperNodes whose member's selector is regex match.
+func (hni *HyperNodesInfo) GetRegexSelectorLeafHyperNodes() sets.Set[string] {
+	leaf := sets.New[string]()
+	for name, hnInfo := range hni.hyperNodes {
+		if hnInfo == nil || hnInfo.HyperNode == nil {
+			continue
+		}
+
+		isLeaf := true
+		hasRegexMatch := false
+		for _, member := range hnInfo.HyperNode.Spec.Members {
+			if member.Type == topologyv1alpha1.MemberTypeHyperNode {
+				isLeaf = false
+				break
+			}
+			if member.Selector.RegexMatch != nil {
+				hasRegexMatch = true
+			}
+		}
+		if isLeaf && hasRegexMatch {
+			leaf.Insert(name)
+		}
+	}
+	return leaf
+}
+
+// setParent sets the parent of a HyperNode member.
+func (hni *HyperNodesInfo) setParent(member, parent string) error {
+	hn, ok := hni.hyperNodes[member]
+	if !ok {
+		klog.InfoS("HyperNode not exists in cache, maybe not created or not be watched, will set parent first", "name", member, "parent", parent)
+		hn = NewHyperNodeInfo(&topologyv1alpha1.HyperNode{ObjectMeta: metav1.ObjectMeta{
+			Name: member,
+		}})
+		hni.hyperNodes[member] = hn
+		hn.parent = parent
+		return nil
+	}
+	currentParent := hn.parent
+	if currentParent == "" {
+		hn.parent = parent
+		return nil
+	}
+
+	if currentParent != parent {
+		hni.builtErrHyperNode = parent
+		return fmt.Errorf("HyperNode %s already has a parent %s, and cannot set another parent %s", member, currentParent, parent)
+	}
+
 	return nil
 }
 
@@ -337,10 +425,10 @@ func (hni *HyperNodesInfo) setParent(hn *HyperNodeInfo, memberName string) error
 func (hni *HyperNodesInfo) getParent(name string) string {
 	tier := -1
 	if hn, ok := hni.hyperNodes[name]; ok {
-		tier = hn.Tier
+		tier = hn.tier
 	}
 	for _, hn := range hni.hyperNodes {
-		if hn.Tier <= tier {
+		if hn.tier <= tier {
 			continue
 		}
 		for _, member := range hn.HyperNode.Spec.Members {
@@ -393,11 +481,32 @@ func (hni *HyperNodesInfo) exactMatchMember(selector topologyv1alpha1.MemberSele
 }
 
 func (hni *HyperNodesInfo) updateAncestors(name string) error {
+	if err := hni.rebuildCache(name); err != nil {
+		hni.setReady(false)
+		return err
+	}
+	// When last time BuildHyperNodeCache has an err that a hyperNode has multi parents, after the parent is updated
+	// we should find the parent hyperNode to rebuild the correct cache.
+	if hni.builtErrHyperNode == name {
+		klog.InfoS("Rebuilt parent hyperNode", "name", hni.builtErrHyperNode)
+		leafHyperNodes := hni.GetLeafNodes(name)
+		for leaf := range leafHyperNodes {
+			if err := hni.rebuildCache(leaf); err != nil {
+				return err
+			}
+		}
+	}
+	hni.builtErrHyperNode = ""
+	hni.setReady(true)
+	return nil
+}
+
+func (hni *HyperNodesInfo) rebuildCache(name string) error {
 	ancestors := hni.GetAncestors(name)
-	// Clear expectedRealNodesSet of hyperNode before rebuild hyperNode cache.
+	// Clear realNodesSet of hyperNode before rebuild hyperNode cache.
 	for ancestor := range ancestors {
 		delete(hni.realNodesSet, ancestor)
-		delete(hni.parentMap, ancestor)
+		hni.resetParent(ancestor)
 	}
 
 	processed := sets.New[string]()
@@ -411,26 +520,12 @@ func (hni *HyperNodesInfo) updateAncestors(name string) error {
 	for ancestor := range ancestors {
 		if hn, ok := hni.hyperNodes[ancestor]; ok {
 			if err := hni.BuildHyperNodeCache(hn, processed, ancestorsChain, ancestors, nodes); err != nil {
-				hni.setReady(false)
 				return err
 			}
 		}
 	}
-	hni.setReady(true)
-	return nil
-}
 
-// UpdateHyperNode updates the information of a HyperNode.
-func (hni *HyperNodesInfo) updateHyperNode(hyperNode *topologyv1alpha1.HyperNode) {
-	tier := hyperNode.Spec.Tier
-	old, exists := hni.hyperNodes[hyperNode.Name]
-	if exists {
-		if old.Tier != hyperNode.Spec.Tier {
-			hni.removeFromTierSet(hyperNode.Name, old.Tier)
-		}
-	}
-	hni.hyperNodes[hyperNode.Name] = NewHyperNodeInfo(hyperNode, tier)
-	hni.updateHyperNodeListByTier(hyperNode, tier)
+	return nil
 }
 
 // removeFromTierSet removes a HyperNode from the tier set.
@@ -446,8 +541,14 @@ func (hni *HyperNodesInfo) removeFromTierSet(hyperNodeName string, tier int) {
 	}
 }
 
-// updateHyperNodeListByTier updates the list of HyperNodes by tier.
-func (hni *HyperNodesInfo) updateHyperNodeListByTier(hyperNode *topologyv1alpha1.HyperNode, tier int) {
+func (hni *HyperNodesInfo) updateHyperNodesSetByTier(hyperNode *topologyv1alpha1.HyperNode) {
+	tier := hyperNode.Spec.Tier
+	old, exists := hni.hyperNodes[hyperNode.Name]
+	if exists {
+		if old.tier != hyperNode.Spec.Tier {
+			hni.removeFromTierSet(hyperNode.Name, old.tier)
+		}
+	}
 	if _, ok := hni.hyperNodesSetByTier[tier]; !ok {
 		hni.hyperNodesSetByTier[tier] = sets.New[string]()
 	}
@@ -455,10 +556,16 @@ func (hni *HyperNodesInfo) updateHyperNodeListByTier(hyperNode *topologyv1alpha1
 }
 
 // removeParent removes the parent of a HyperNode.
-func (hni *HyperNodesInfo) removeParent(hyperNodeName string) {
-	children := hni.getChildren(hyperNodeName)
+func (hni *HyperNodesInfo) removeParent(name string) {
+	children := hni.getChildren(name)
 	for child := range children {
-		delete(hni.parentMap, child)
+		hni.resetParent(child)
+	}
+}
+
+func (hni *HyperNodesInfo) resetParent(name string) {
+	if hn, ok := hni.hyperNodes[name]; ok {
+		hn.parent = ""
 	}
 }
 
@@ -469,8 +576,7 @@ func (hni *HyperNodesInfo) deleteHyperNode(name string) {
 		return
 	}
 	delete(hni.hyperNodes, name)
-	hni.removeFromTierSet(name, hn.Tier)
-	delete(hni.parentMap, name)
+	hni.removeFromTierSet(name, hn.tier)
 }
 
 // markHyperNodeIsDeleting marks a HyperNode as being deleted.
@@ -483,12 +589,52 @@ func (hni *HyperNodesInfo) markHyperNodeIsDeleting(name string) {
 	hn.isDeleting = true
 }
 
-// HyperNodeIsDeleting checks if a HyperNode is being deleted.
-func (hni *HyperNodesInfo) HyperNodeIsDeleting(name string) bool {
+// hyperNodeIsDeleting checks if a HyperNode is being deleted.
+func (hni *HyperNodesInfo) hyperNodeIsDeleting(name string) bool {
 	hn, ok := hni.hyperNodes[name]
 	if !ok {
 		klog.ErrorS(nil, "HyperNode not exists in cache", "name", name)
 		return false
 	}
 	return hn.isDeleting
+}
+
+// HyperNodesInfo returns the hyperNodes info with a human-readable string.
+func (hni *HyperNodesInfo) HyperNodesInfo() map[string]string {
+	actualHyperNodes := make(map[string]string)
+	for name, hn := range hni.hyperNodes {
+		actualHyperNodes[name] = hn.String()
+	}
+	return actualHyperNodes
+}
+
+// NodeRegexMatchLeafHyperNode checks if a given node regex matches the MemberSelector of a HyperNode.
+func (hni *HyperNodesInfo) NodeRegexMatchLeafHyperNode(nodeName string, hyperNodeName string) (bool, error) {
+	hn, ok := hni.hyperNodes[hyperNodeName]
+	if !ok {
+		return false, fmt.Errorf("HyperNode %s not found in cache", hyperNodeName)
+	}
+
+	for _, member := range hn.HyperNode.Spec.Members {
+		if member.Type == topologyv1alpha1.MemberTypeNode {
+			if hni.nodeMatchRegexSelector(nodeName, member.Selector) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// nodeMatchRegexSelector checks if a node matches a MemberSelector.
+func (hni *HyperNodesInfo) nodeMatchRegexSelector(nodeName string, selector topologyv1alpha1.MemberSelector) bool {
+	if selector.RegexMatch == nil {
+		return false
+	}
+
+	reg, err := regexp.Compile(selector.RegexMatch.Pattern)
+	if err != nil {
+		klog.ErrorS(err, "Failed to compile regex pattern", "pattern", selector.RegexMatch.Pattern)
+		return false
+	}
+	return reg.MatchString(nodeName)
 }

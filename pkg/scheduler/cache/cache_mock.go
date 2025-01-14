@@ -107,6 +107,7 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		errTasks:            workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		nodeQueue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		kubeClient:          fake.NewSimpleClientset(),
 		vcClient:            fakevcClient.NewSimpleClientset(),
 		restConfig:          nil,

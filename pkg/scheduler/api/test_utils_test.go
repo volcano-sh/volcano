@@ -30,18 +30,17 @@ func TestBuildHyperNode(t *testing.T) {
 		name          string
 		hyperNodeName string
 		tier          int
-		memberType    topologyv1alpha1.MemberType
-		members       []string
-		selector      string
+		members       []MemberConfig
 		want          *topologyv1alpha1.HyperNode
 	}{
 		{
 			name:          "build leaf hyperNode",
 			hyperNodeName: "s0",
 			tier:          1,
-			memberType:    topologyv1alpha1.MemberTypeNode,
-			members:       []string{"node-1", "node-2"},
-			selector:      "exact",
+			members: []MemberConfig{
+				{"node-1", topologyv1alpha1.MemberTypeNode, "regex"},
+				{"node-2", topologyv1alpha1.MemberTypeNode, "exact"},
+			},
 			want: &topologyv1alpha1.HyperNode{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "s0",
@@ -49,7 +48,7 @@ func TestBuildHyperNode(t *testing.T) {
 				Spec: topologyv1alpha1.HyperNodeSpec{
 					Tier: 1,
 					Members: []topologyv1alpha1.MemberSpec{
-						{Type: topologyv1alpha1.MemberTypeNode, Selector: topologyv1alpha1.MemberSelector{ExactMatch: &topologyv1alpha1.ExactMatch{Name: "node-1"}}},
+						{Type: topologyv1alpha1.MemberTypeNode, Selector: topologyv1alpha1.MemberSelector{RegexMatch: &topologyv1alpha1.RegexMatch{Pattern: "node-1"}}},
 						{Type: topologyv1alpha1.MemberTypeNode, Selector: topologyv1alpha1.MemberSelector{ExactMatch: &topologyv1alpha1.ExactMatch{Name: "node-2"}}},
 					},
 				},
@@ -59,9 +58,10 @@ func TestBuildHyperNode(t *testing.T) {
 			name:          "build non-leaf hyperNode",
 			hyperNodeName: "s4",
 			tier:          2,
-			selector:      "exact",
-			memberType:    topologyv1alpha1.MemberTypeHyperNode,
-			members:       []string{"s0", "s1"},
+			members: []MemberConfig{
+				{"s0", topologyv1alpha1.MemberTypeHyperNode, "exact"},
+				{"s1", topologyv1alpha1.MemberTypeHyperNode, "exact"},
+			},
 			want: &topologyv1alpha1.HyperNode{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "s4",
@@ -78,7 +78,7 @@ func TestBuildHyperNode(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equalf(t, tt.want, BuildHyperNode(tt.hyperNodeName, tt.tier, tt.memberType, tt.members, tt.selector), "BuildHyperNode(%v, %v, %v, %v)", tt.hyperNodeName, tt.tier, tt.memberType, tt.members)
+			assert.Equalf(t, tt.want, BuildHyperNode(tt.hyperNodeName, tt.tier, tt.members), "BuildHyperNode(%v, %v, %v)", tt.hyperNodeName, tt.tier, tt.members)
 		})
 	}
 }

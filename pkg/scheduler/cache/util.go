@@ -30,6 +30,13 @@ import (
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
+type hyperNodeEventSource string
+
+const (
+	hyperNodeEventSourceNode      hyperNodeEventSource = "node"
+	hyperNodeEventSourceHyperNode hyperNodeEventSource = "hyperNode"
+)
+
 // responsibleForPod returns false at following conditions:
 // 1. The current scheduler is not specified scheduler in Pod's spec.
 // 2. The Job which the Pod belongs is not assigned to current scheduler based on the hash algorithm in multi-schedulers scenario
@@ -116,4 +123,12 @@ func getMultiSchedulerInfo() (schedulerPodName string, c *consistent.Consistent)
 		}
 	}
 	return mySchedulerPodName, c
+}
+
+func getHyperNodeEventSource(source string) []string {
+	parts := strings.Split(source, "/")
+	if len(parts) != 2 {
+		return nil
+	}
+	return parts
 }
