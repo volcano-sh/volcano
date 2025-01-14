@@ -464,7 +464,7 @@ func TestHasTopologyHardConstrain(t *testing.T) {
 				PodGroup: &PodGroup{
 					PodGroup: scheduling.PodGroup{
 						Spec: scheduling.PodGroupSpec{
-							NetworkTopology: nil,
+							NetworkTopologies: nil,
 						},
 					},
 				},
@@ -478,7 +478,7 @@ func TestHasTopologyHardConstrain(t *testing.T) {
 				PodGroup: &PodGroup{
 					PodGroup: scheduling.PodGroup{
 						Spec: scheduling.PodGroupSpec{
-							NetworkTopology: &scheduling.NetworkTopologySpec{
+							NetworkTopologies: &scheduling.NetworkTopologiesSpec{
 								Mode:               scheduling.HardNetworkTopologyMode,
 								HighestTierAllowed: &HighestTierAllowedTwo,
 							},
@@ -495,7 +495,7 @@ func TestHasTopologyHardConstrain(t *testing.T) {
 				PodGroup: &PodGroup{
 					PodGroup: scheduling.PodGroup{
 						Spec: scheduling.PodGroupSpec{
-							NetworkTopology: &scheduling.NetworkTopologySpec{
+							NetworkTopologies: &scheduling.NetworkTopologiesSpec{
 								Mode:               scheduling.SoftNetworkTopologyMode,
 								HighestTierAllowed: &HighestTierAllowedThree,
 							},

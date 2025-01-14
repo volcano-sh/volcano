@@ -1055,11 +1055,11 @@ func (ji *JobInfo) HasPendingTasks() bool {
 
 // HasTopologyHardConstrain return pg's NetworkTopologies mode and highest allowed tier.
 func (ji *JobInfo) HasTopologyHardConstrain() (bool, int) {
-	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopology == nil || ji.PodGroup.Spec.NetworkTopology.HighestTierAllowed == nil {
+	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopologies == nil || ji.PodGroup.Spec.NetworkTopologies.HighestTierAllowed == nil {
 		return false, 0
 	}
 
-	return ji.PodGroup.Spec.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode, *ji.PodGroup.Spec.NetworkTopology.HighestTierAllowed
+	return ji.PodGroup.Spec.NetworkTopologies.Mode == scheduling.HardNetworkTopologyMode, *ji.PodGroup.Spec.NetworkTopologies.HighestTierAllowed
 }
 
 // ResetFitErr will set job and node fit err to nil.
