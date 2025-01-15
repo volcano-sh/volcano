@@ -216,8 +216,9 @@ func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[st
 }
 
 // BuildPodGroupWithNetWorkTopologies builds podGroup with NetWorkTopologies.
-func BuildPodGroupWithNetWorkTopologies(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode string, highestTierAllowed int) *schedulingv1beta1.PodGroup {
+func BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode string, highestTierAllowed int) *schedulingv1beta1.PodGroup {
 	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
+	pg.Annotations = map[string]string{api.JobAllocatedHyperNode: hyperNodeName}
 	pg.Spec.NetworkTopology = &schedulingv1beta1.NetworkTopologySpec{
 		Mode:               schedulingv1beta1.NetworkTopologyMode(mode),
 		HighestTierAllowed: &highestTierAllowed,

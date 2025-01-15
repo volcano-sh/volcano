@@ -65,6 +65,7 @@ import (
 	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -1558,18 +1559,26 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 }
 
 // UpdateJobStatus update the status of job and its tasks.
-func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG bool) (*schedulingapi.JobInfo, error) {
-	if updatePG {
+func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePGStatus, updatePGAnnotations bool) (*schedulingapi.JobInfo, error) {
+	if updatePGStatus || updatePGAnnotations {
+		if updatePGAnnotations {
+			sc.updateJobAnnotations(job)
+		}
 		pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
 		if err != nil {
 			return nil, err
 		}
 		job.PodGroup = pg
 	}
-
-	sc.RecordJobStatusEvent(job, updatePG)
+	sc.RecordJobStatusEvent(job, updatePGStatus)
 
 	return job, nil
+}
+
+func (sc *SchedulerCache) updateJobAnnotations(job *schedulingapi.JobInfo) {
+	sc.Mutex.Lock()
+	sc.Jobs[job.UID].PodGroup.GetAnnotations()[api.JobAllocatedHyperNode] = job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode]
+	sc.Mutex.Unlock()
 }
 
 // UpdateQueueStatus update the status of queue.
