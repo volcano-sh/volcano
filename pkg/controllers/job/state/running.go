@@ -30,10 +30,16 @@ type runningState struct {
 	job *apis.JobInfo
 }
 
-func (ps *runningState) Execute(action v1alpha1.Action) error {
-	switch action {
+func (ps *runningState) Execute(action Action) error {
+	switch action.Action {
 	case v1alpha1.RestartJobAction:
 		return KillJob(ps.job, PodRetainPhaseNone, func(status *vcbatch.JobStatus) bool {
+			status.State.Phase = vcbatch.Restarting
+			status.RetryCount++
+			return true
+		})
+	case v1alpha1.RestartTaskAction, v1alpha1.RestartPodAction:
+		return KillTarget(ps.job, action.Target, func(status *vcbatch.JobStatus) bool {
 			status.State.Phase = vcbatch.Restarting
 			status.RetryCount++
 			return true
