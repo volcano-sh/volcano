@@ -19,6 +19,7 @@ package api
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -38,7 +39,7 @@ type HyperNodesInfo struct {
 	sync.Mutex
 
 	// hyperNodes stores information about all HyperNodes.
-	hyperNodes map[string]*HyperNodeInfo
+	hyperNodes HyperNodeInfoMap
 	// hyperNodesSetByTier stores HyperNode names grouped by their tier.
 	hyperNodesSetByTier map[int]sets.Set[string]
 	// realNodesSet stores the set of real nodes for each HyperNode, eg, s0 and s1 are members of s4,
@@ -51,6 +52,8 @@ type HyperNodesInfo struct {
 	// ready indicates whether the HyperNodesInfo is ready (build process is complete).
 	ready *atomic.Bool
 }
+
+type HyperNodeInfoMap map[string]*HyperNodeInfo
 
 // NewHyperNodesInfo initializes a new HyperNodesInfo instance.
 func NewHyperNodesInfo(lister listerv1.NodeLister) *HyperNodesInfo {
@@ -103,9 +106,36 @@ func (hni *HyperNodeInfo) String() string {
 		",")
 }
 
-// HyperNodes returns the map of all HyperNode information.
-func (hni *HyperNodesInfo) HyperNodes() map[string]*HyperNodeInfo {
-	return hni.hyperNodes
+// Tier returns the tier of the hypernode
+func (hni *HyperNodeInfo) Tier() int {
+	return hni.tier
+}
+
+func (hni *HyperNodeInfo) DeepCopy() *HyperNodeInfo {
+	if hni == nil {
+		return nil
+	}
+
+	copiedHyperNodeInfo := &HyperNodeInfo{
+		Name:       hni.Name,
+		tier:       hni.tier,
+		HyperNode:  hni.HyperNode.DeepCopy(),
+		isDeleting: hni.isDeleting,
+		parent:     hni.parent,
+	}
+
+	return copiedHyperNodeInfo
+}
+
+// HyperNodesSetByTier returns a deep copy of the map that store hypernode info.
+// This ensures that the returned map is independent of the original, preventing unintended modifications.
+func (hni *HyperNodesInfo) HyperNodes() HyperNodeInfoMap {
+	copiedHyperNodes := make(map[string]*HyperNodeInfo, len(hni.hyperNodes))
+	for hn, info := range hni.hyperNodes {
+		copiedHyperNodes[hn] = info.DeepCopy()
+	}
+
+	return copiedHyperNodes
 }
 
 // HyperNode returns a hyperNode by name.
@@ -267,32 +297,6 @@ func (hni *HyperNodesInfo) updateParent(hn *topologyv1alpha1.HyperNode) {
 	}
 }
 
-// GetAncestors returns all ancestors of a given HyperNode.
-func (hni *HyperNodesInfo) GetAncestors(name string) sets.Set[string] {
-	ancestors := sets.New[string](name)
-	queue := []string{name}
-
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-
-		parent := ""
-		hn, ok := hni.hyperNodes[current]
-		if ok && hn.parent != "" {
-			parent = hn.parent
-		} else {
-			parent = hni.getParent(name)
-		}
-		if parent != "" && !ancestors.Has(parent) {
-			if !ancestors.Has(parent) {
-				ancestors.Insert(parent)
-				queue = append(queue, parent)
-			}
-		}
-	}
-	return ancestors
-}
-
 // GetDescendants returns all descendants of a given HyperNode.
 func (hni *HyperNodesInfo) GetDescendants(hyperNodeName string) sets.Set[string] {
 	queue := []string{hyperNodeName}
@@ -420,32 +424,6 @@ func (hni *HyperNodesInfo) setParent(member, parent string) error {
 	return nil
 }
 
-// getParent returns hyperNode's parent, this is usually used when a new hyperNode is added
-// but the BuildHyperNodeCache has not built the hyperNode's cache.
-func (hni *HyperNodesInfo) getParent(name string) string {
-	tier := -1
-	if hn, ok := hni.hyperNodes[name]; ok {
-		tier = hn.tier
-	}
-	for _, hn := range hni.hyperNodes {
-		if hn.tier <= tier {
-			continue
-		}
-		for _, member := range hn.HyperNode.Spec.Members {
-			// hyperNode's parent must also be a hyperNode.
-			if member.Type == topologyv1alpha1.MemberTypeNode || member.Selector.ExactMatch == nil {
-				continue
-			}
-			memberName := member.Selector.ExactMatch.Name
-			if memberName == name {
-				// just find one is ok.
-				return hn.Name
-			}
-		}
-	}
-	return ""
-}
-
 // getMembers retrieves the members of a HyperNode based on the selector.
 func (hni *HyperNodesInfo) getMembers(selector topologyv1alpha1.MemberSelector, nodes []*corev1.Node) sets.Set[string] {
 	if selector.ExactMatch != nil {
@@ -502,9 +480,9 @@ func (hni *HyperNodesInfo) updateAncestors(name string) error {
 }
 
 func (hni *HyperNodesInfo) rebuildCache(name string) error {
-	ancestors := hni.GetAncestors(name)
+	ancestors := hni.hyperNodes.GetAncestors(name)
 	// Clear realNodesSet of hyperNode before rebuild hyperNode cache.
-	for ancestor := range ancestors {
+	for _, ancestor := range ancestors {
 		delete(hni.realNodesSet, ancestor)
 		hni.resetParent(ancestor)
 	}
@@ -517,9 +495,9 @@ func (hni *HyperNodesInfo) rebuildCache(name string) error {
 		return err
 	}
 
-	for ancestor := range ancestors {
+	for _, ancestor := range ancestors {
 		if hn, ok := hni.hyperNodes[ancestor]; ok {
-			if err := hni.BuildHyperNodeCache(hn, processed, ancestorsChain, ancestors, nodes); err != nil {
+			if err := hni.BuildHyperNodeCache(hn, processed, ancestorsChain, sets.New[string](ancestors...), nodes); err != nil {
 				return err
 			}
 		}
@@ -637,4 +615,73 @@ func (hni *HyperNodesInfo) nodeMatchRegexSelector(nodeName string, selector topo
 		return false
 	}
 	return reg.MatchString(nodeName)
+}
+
+// GetAncestors returns all ancestors of a given HyperNode.
+func (hnim HyperNodeInfoMap) GetAncestors(name string) []string {
+	ancestors := []string{name}
+	queue := []string{name}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		parent := ""
+		hn, ok := hnim[current]
+		if ok && hn.parent != "" {
+			parent = hn.parent
+		} else {
+			parent = hnim.getParent(current)
+		}
+		if parent != "" && !slices.Contains(ancestors, parent) {
+			ancestors = append(ancestors, parent)
+			queue = append(queue, parent)
+		}
+	}
+	return ancestors
+}
+
+// getParent returns hyperNode's parent, this is usually used when a new hyperNode is added
+// but the BuildHyperNodeCache has not built the hyperNode's cache.
+func (hnim HyperNodeInfoMap) getParent(name string) string {
+	tier := -1
+	if hn, ok := hnim[name]; ok {
+		tier = hn.tier
+	}
+	for _, hn := range hnim {
+		if hn.tier <= tier {
+			continue
+		}
+		for _, member := range hn.HyperNode.Spec.Members {
+			// hyperNode's parent must also be a hyperNode.
+			if member.Type == topologyv1alpha1.MemberTypeNode || member.Selector.ExactMatch == nil {
+				continue
+			}
+			memberName := member.Selector.ExactMatch.Name
+			if memberName == name {
+				// just find one is ok.
+				return hn.Name
+			}
+		}
+	}
+	return ""
+}
+
+// GetLCAHyperNode returns the least common ancestor hypernode of the hypernode to be allocated and job's already allocated hypernode
+func (hnim HyperNodeInfoMap) GetLCAHyperNode(hypernode, jobHyperNode string) string {
+	hyperNodeAncestors := hnim.GetAncestors(hypernode)
+	jobHyperNodeAncestors := hnim.GetAncestors(jobHyperNode)
+
+	hyperNodeAncestorsMap := make(map[string]bool)
+	for _, ancestor := range hyperNodeAncestors {
+		hyperNodeAncestorsMap[ancestor] = true
+	}
+
+	for _, ancestor := range jobHyperNodeAncestors {
+		if hyperNodeAncestorsMap[ancestor] {
+			return ancestor
+		}
+	}
+
+	return ""
 }
