@@ -103,15 +103,21 @@ func isPodGroupStatusUpdated(newStatus, oldStatus scheduling.PodGroupStatus) boo
 	return !equality.Semantic.DeepEqual(newStatus, oldStatus) || isPodGroupConditionsUpdated(newCondition, oldCondition)
 }
 
+func (ju *jobUpdater) isJobAllocatedHyperNodeChanged(job *api.JobInfo) bool {
+	oldHyperNode := ju.ssn.PodGroupOldState.Annotations[job.UID][api.JobAllocatedHyperNode]
+	return oldHyperNode != job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode]
+}
+
 // updateJob update specified job
 func (ju *JobUpdater) updateJob(index int) {
 	job := ju.jobQueue[index]
 	ssn := ju.ssn
 
 	job.PodGroup.Status = jobStatus(ssn, job)
-	oldStatus, found := ssn.podGroupStatus[job.UID]
-	updatePG := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
-	if _, err := ssn.cache.UpdateJobStatus(job, updatePG); err != nil {
+	oldStatus, found := ssn.PodGroupOldState.Status[job.UID]
+	updatePGStatus := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
+	updatePGAnnotations := ju.isJobAllocatedHyperNodeChanged(job)
+	if _, err := ssn.cache.UpdateJobStatus(job, updatePGStatus, updatePGAnnotations); err != nil {
 		klog.Errorf("Failed to update job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
 	}

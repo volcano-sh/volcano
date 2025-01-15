@@ -237,10 +237,12 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 	hyperNodesWithLeftTasks := make(map[string]*util.PriorityQueue)
 	ssn := alloc.session
 	selectedTier := 0
+	LCAHyperNodeMap := map[string]string{}
+	jobAllocatedHyperNode := job.PodGroup.Annotations[api.JobAllocatedHyperNode]
 
 	// Find a suitable hyperNode in one tier from down to top everytime to ensure that the selected hyperNode spans the least tier.
-	for index, tier := range alloc.hyperNodesTiers {
-		if index+1 > highestAllowedTier {
+	for _, tier := range alloc.hyperNodesTiers {
+		if tier > highestAllowedTier {
 			klog.V(4).ErrorS(nil, "Skip search for higher tier cause highest allowed tier reached", "jobName", job.UID, "highestAllowedTier", highestAllowedTier, "tier", tier)
 			break
 		}
@@ -254,7 +256,21 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 				klog.ErrorS(nil, "HyperNode not exists.", "jobName", job.UID, "name", hyperNodeName, "tier", tier)
 				continue
 			}
-
+			LCAHyperNodeMap[hyperNodeName] = hyperNodeName
+			// The job still has remaining tasks to be scheduled, check whether the least common ancestor hyperNode still meets the requirement of the highest allowed tier
+			if jobAllocatedHyperNode != "" {
+				LCAHyperNode := ssn.HyperNodes.GetLCAHyperNode(hyperNodeName, jobAllocatedHyperNode)
+				klog.V(3).InfoS("Get LCAHyperNode for job", "jobName", job.UID, "hyperNodeName", hyperNodeName, "jobAllocatedHyperNode", jobAllocatedHyperNode, "tier", tier, "LCAHyperNode", LCAHyperNode)
+				hyperNodeInfo, ok := ssn.HyperNodes[LCAHyperNode]
+				if !ok {
+					continue
+				}
+				if hyperNodeInfo.Tier() > highestAllowedTier {
+					klog.V(4).InfoS("Current tier of LCAHyperNode is higher than highestAllowedTier, skipping", "jobName", job.UID, "highestAllowedTier", highestAllowedTier, "tier", hyperNodeInfo.Tier())
+					continue
+				}
+				LCAHyperNodeMap[hyperNodeName] = LCAHyperNode
+			}
 			// Clone tasks queue and rest job's fit err to make sure it's a clean cache when everytime filter a hyperNode and do not affect each other between hyperNodes.
 			tasksQueue := tasks.Clone()
 			job.ResetFitErr()
@@ -264,7 +280,11 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 				klog.V(4).InfoS("Cannot allocate resources for job with network topology constrains", "jobName", job.UID, "hyperNodeName", hyperNodeName, "tier", tier)
 				continue
 			}
-
+			// If the hyperNode of selected has no enough resources stmt.Operations are empty when minavailiable < replicas and tasks in job rescheduled, skip it.
+			if len(stmt.Operations()) == 0 {
+				klog.V(4).InfoS("Cannot allocate resources for job with network topology constrains when the stmt.Operations be empty", "jobName", job.UID, "hyperNodeName", hyperNodeName, "tier", tier)
+				continue
+			}
 			// Find an available hyperNode.
 			if _, ok = jobStmtsByTier[tier]; !ok {
 				jobStmtsByTier[tier] = make(map[string]*framework.Statement)
@@ -290,6 +310,11 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 		klog.V(4).InfoS("Find available hyperNodes for job", "jobName", job.UID, "tier", selectedTier, "hyperNodes", hyperNodes)
 	}
 	stmt, hyperNode := alloc.selectBestHyperNode(jobStmtsByTier[selectedTier], job)
+	if jobNewHyperNode, ok := LCAHyperNodeMap[hyperNode]; ok {
+		if jobNewHyperNode != jobAllocatedHyperNode {
+			job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode] = jobNewHyperNode
+		}
+	}
 	return stmt, hyperNodesWithLeftTasks[hyperNode]
 }
 

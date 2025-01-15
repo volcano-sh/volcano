@@ -58,6 +58,7 @@ type TestCommonStruct struct {
 	Nodes                     []*v1.Node
 	HyperNodesSetByTier       map[int]sets.Set[string]
 	HyperNodes                map[string]sets.Set[string]
+	HyperNodesMap             map[string]*api.HyperNodeInfo
 	HyperNodesReadyToSchedule bool
 	PodGroups                 []*vcapisv1.PodGroup
 	Queues                    []*vcapisv1.Queue
@@ -152,7 +153,7 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	}
 	ready := new(atomic.Bool)
 	ready.Store(true)
-	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesSetByTier, test.HyperNodes, ready)
+	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
 
 	return schedulerCache
 }
@@ -218,7 +219,7 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 
 	// in case expected test.BindsNum is 0, but actually there is a binding and wait the binding goroutine to run
 	select {
-	case <-time.After(50 * time.Millisecond):
+	case <-time.After(300 * time.Millisecond):
 	case key := <-binder.Channel:
 		return fmt.Errorf("unexpect binding %s in case %d(%s)", key, caseIndex, test.Name)
 	}
