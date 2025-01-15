@@ -19,7 +19,6 @@ package api
 import (
 	"fmt"
 	"regexp"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -69,9 +68,9 @@ func NewHyperNodesInfo(lister listerv1.NodeLister) *HyperNodesInfo {
 // NewHyperNodesInfoWithCache initializes a new HyperNodesInfo instance with cache.
 // This is just used for ut.
 // TODO: abstract an interface to mock for ut.
-func NewHyperNodesInfoWithCache(hyperNodesSetByTier map[int]sets.Set[string], realNodesSet map[string]sets.Set[string], ready *atomic.Bool) *HyperNodesInfo {
+func NewHyperNodesInfoWithCache(hyperNodesMap map[string]*HyperNodeInfo, hyperNodesSetByTier map[int]sets.Set[string], realNodesSet map[string]sets.Set[string], ready *atomic.Bool) *HyperNodesInfo {
 	return &HyperNodesInfo{
-		hyperNodes:          make(map[string]*HyperNodeInfo),
+		hyperNodes:          hyperNodesMap,
 		hyperNodesSetByTier: hyperNodesSetByTier,
 		realNodesSet:        realNodesSet,
 		ready:               ready,
@@ -620,6 +619,8 @@ func (hni *HyperNodesInfo) nodeMatchRegexSelector(nodeName string, selector topo
 // GetAncestors returns all ancestors of a given HyperNode.
 func (hnim HyperNodeInfoMap) GetAncestors(name string) []string {
 	ancestors := []string{name}
+
+	sets.New[string](name)
 	queue := []string{name}
 
 	for len(queue) > 0 {
@@ -631,11 +632,13 @@ func (hnim HyperNodeInfoMap) GetAncestors(name string) []string {
 		if ok && hn.parent != "" {
 			parent = hn.parent
 		} else {
-			parent = hnim.getParent(current)
+			parent = hnim.getParent(name)
 		}
-		if parent != "" && !slices.Contains(ancestors, parent) {
-			ancestors = append(ancestors, parent)
-			queue = append(queue, parent)
+		if ancestorSet := sets.New[string](ancestors...); parent != "" && !ancestorSet.Has(parent) {
+			if !ancestorSet.Has(parent) {
+				ancestors = append(ancestors, parent)
+				queue = append(queue, parent)
+			}
 		}
 	}
 	return ancestors
@@ -669,17 +672,14 @@ func (hnim HyperNodeInfoMap) getParent(name string) string {
 
 // GetLCAHyperNode returns the least common ancestor hypernode of the hypernode to be allocated and job's already allocated hypernode
 func (hnim HyperNodeInfoMap) GetLCAHyperNode(hypernode, jobHyperNode string) string {
-	hyperNodeAncestors := hnim.GetAncestors(hypernode)
+	hypernodeAncestors := hnim.GetAncestors(hypernode)
 	jobHyperNodeAncestors := hnim.GetAncestors(jobHyperNode)
 
-	hyperNodeAncestorsMap := make(map[string]bool)
-	for _, ancestor := range hyperNodeAncestors {
-		hyperNodeAncestorsMap[ancestor] = true
-	}
+	minLen := min(len(hypernodeAncestors), len(jobHyperNodeAncestors))
 
-	for _, ancestor := range jobHyperNodeAncestors {
-		if hyperNodeAncestorsMap[ancestor] {
-			return ancestor
+	for index := 0; index < minLen; index++ {
+		if hypernodeAncestors[index] == jobHyperNodeAncestors[index] {
+			return hypernodeAncestors[index]
 		}
 	}
 

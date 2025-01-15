@@ -25,6 +25,7 @@ import (
 	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
@@ -88,6 +89,15 @@ type NodeInfo struct {
 	// checking an image's existence and advanced usage (e.g., image locality scheduling policy) based on the image
 	// state information.
 	ImageStates map[string]*k8sframework.ImageStateSummary
+}
+
+// Recored podgroup old state
+type PodGroupOldState struct {
+	// podGroupStatus cache podgroup status during schedule
+	// This should not be mutated after initiated
+	Status map[JobID]scheduling.PodGroupStatus
+	// recored old annotations for podgroup, used to detect changes
+	Annotations map[JobID]map[string]string
 }
 
 // FutureIdle returns resources that will be idle in the future:

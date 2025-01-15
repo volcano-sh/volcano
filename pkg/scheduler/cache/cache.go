@@ -65,6 +65,7 @@ import (
 	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -1564,12 +1565,19 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG b
 		if err != nil {
 			return nil, err
 		}
+		sc.UpdateJobAnnotations(job)
 		job.PodGroup = pg
 	}
 
 	sc.RecordJobStatusEvent(job, updatePG)
 
 	return job, nil
+}
+
+func (sc *SchedulerCache) UpdateJobAnnotations(job *schedulingapi.JobInfo) {
+	sc.Mutex.Lock()
+	sc.Jobs[job.UID].PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode] = job.PodGroup.GetAnnotations()[api.TopologyAllocateLCAHyperNode]
+	sc.Mutex.Unlock()
 }
 
 // UpdateQueueStatus update the status of queue.
