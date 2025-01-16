@@ -124,27 +124,15 @@ func validateHyperNodeMemberSelector(selector hypernodev1alpha1.MemberSelector, 
 	return errs
 }
 
-// validateHyperNodeMemberType is to validate hypernode member type.
-func validateHyperNodeMemberType(memberType hypernodev1alpha1.MemberType, fldPath *field.Path) field.ErrorList {
-	errs := field.ErrorList{}
-	switch memberType {
-	case hypernodev1alpha1.MemberTypeNode, hypernodev1alpha1.MemberTypeHyperNode:
-	default:
-		err := field.Invalid(fldPath, memberType, fmt.Sprintf("unknown member type %s", memberType))
-		errs = append(errs, err)
-	}
-	return errs
-}
-
 // validateHyperNode is to validate hypernode.
 func validateHyperNode(hypernode *hypernodev1alpha1.HyperNode) error {
-
 	errs := field.ErrorList{}
 	resourcePath := field.NewPath("")
-
+	if len(hypernode.Spec.Members) == 0 {
+		errs = append(errs, field.Invalid(resourcePath.Child("spec").Child("members"), hypernode.Spec.Members,
+			"member must have at least one member"))
+	}
 	for _, member := range hypernode.Spec.Members {
-		errs = append(errs, validateHyperNodeMemberType(member.Type,
-			resourcePath.Child("spec").Child("members").Child("type"))...)
 		errs = append(errs, validateHyperNodeMemberSelector(member.Selector,
 			resourcePath.Child("spec").Child("members").Child("selector"))...)
 	}

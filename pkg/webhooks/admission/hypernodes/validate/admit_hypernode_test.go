@@ -149,6 +149,16 @@ func TestValidateHyperNode(t *testing.T) {
 			},
 			ExpectErr: true,
 		},
+		{
+			Name: "validate none members",
+			HyperNode: hypernodev1alpha1.HyperNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "hypernode-1",
+				},
+				Spec: hypernodev1alpha1.HyperNodeSpec{},
+			},
+			ExpectErr: true,
+		},
 	}
 
 	for _, testCase := range testCases {
