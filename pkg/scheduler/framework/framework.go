@@ -33,7 +33,7 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Con
 	ssn.Configurations = configurations
 	ssn.NodeMap = GenerateNodeMapAndSlice(ssn.Nodes)
 	ssn.PodLister = NewPodLister(ssn)
-
+	ssn.parsePodStatusRateLimitArguments()
 	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
 			if pb, found := GetPluginBuilder(plugin.Name); !found {

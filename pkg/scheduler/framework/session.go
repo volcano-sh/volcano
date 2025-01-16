@@ -95,17 +95,18 @@ type Session struct {
 	overusedFns         map[string]api.ValidateFn
 	// preemptiveFns means whether current queue can reclaim from other queue,
 	// while reclaimableFns means whether current queue's resources can be reclaimed.
-	preemptiveFns     map[string]api.ValidateWithCandidateFn
-	allocatableFns    map[string]api.AllocatableFn
-	jobReadyFns       map[string]api.ValidateFn
-	jobPipelinedFns   map[string]api.VoteFn
-	jobValidFns       map[string]api.ValidateExFn
-	jobEnqueueableFns map[string]api.VoteFn
-	jobEnqueuedFns    map[string]api.JobEnqueuedFn
-	targetJobFns      map[string]api.TargetJobFn
-	reservedNodesFns  map[string]api.ReservedNodesFn
-	victimTasksFns    map[string][]api.VictimTasksFn
-	jobStarvingFns    map[string]api.ValidateFn
+	preemptiveFns      map[string]api.ValidateWithCandidateFn
+	allocatableFns     map[string]api.AllocatableFn
+	jobReadyFns        map[string]api.ValidateFn
+	jobPipelinedFns    map[string]api.VoteFn
+	jobValidFns        map[string]api.ValidateExFn
+	jobEnqueueableFns  map[string]api.VoteFn
+	jobEnqueuedFns     map[string]api.JobEnqueuedFn
+	targetJobFns       map[string]api.TargetJobFn
+	reservedNodesFns   map[string]api.ReservedNodesFn
+	victimTasksFns     map[string][]api.VictimTasksFn
+	jobStarvingFns     map[string]api.ValidateFn
+	podStatusRateLimit *api.PodStatusRateLimit
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -155,6 +156,11 @@ func openSession(cache cache.Cache) *Session {
 		reservedNodesFns:    map[string]api.ReservedNodesFn{},
 		victimTasksFns:      map[string][]api.VictimTasksFn{},
 		jobStarvingFns:      map[string]api.ValidateFn{},
+		podStatusRateLimit: &api.PodStatusRateLimit{
+			Enable:         true,
+			MinPodNum:      10000,
+			MinIntervalSec: 60,
+		},
 	}
 
 	snapshot := cache.Snapshot()
@@ -310,6 +316,8 @@ func closeSession(ssn *Session) {
 	ssn.clusterOrderFns = nil
 	ssn.NodeList = nil
 	ssn.TotalResource = nil
+
+	util.CleanUnusedPodStatusLastSetCache(ssn.Jobs)
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }
@@ -653,6 +661,13 @@ func (ssn *Session) AddEventHandler(eh *EventHandler) {
 // UpdateSchedulerNumaInfo update SchedulerNumaInfo
 func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNumaSets) {
 	ssn.cache.UpdateSchedulerNumaInfo(AllocatedSets)
+}
+
+func (ssn *Session) parsePodStatusRateLimitArguments() {
+	arguments := GetArgOfActionFromConf(ssn.Configurations, "podStatusRateLimit")
+	arguments.GetInt(&ssn.podStatusRateLimit.MinIntervalSec, "minIntervalSec")
+	arguments.GetInt(&ssn.podStatusRateLimit.MinPodNum, "minPodNum")
+	arguments.GetBool(&ssn.podStatusRateLimit.Enable, "enable")
 }
 
 // KubeClient returns the kubernetes client
