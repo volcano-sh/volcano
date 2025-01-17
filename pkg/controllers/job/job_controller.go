@@ -25,6 +25,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
@@ -71,6 +72,9 @@ type delayAction struct {
 
 	// The name of the pod
 	podName string
+
+	// The UID of the pod
+	podUID types.UID
 
 	// The event caused the action
 	event busv1alpha1.Event
@@ -405,7 +409,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 
 	// If the action is not an internal action, cancel all delayed actions
 	if !isInternalAction(delayAct.action) {
-		cc.cleanupDelayActions(delayAct.jobKey)
+		cc.cleanupDelayActions(delayAct)
 	}
 
 	return true
@@ -416,6 +420,11 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 //   - cancel corresponding Pod Pending delayed action
 //   - if the event is PodRunning state, cancel corresponding Pod Failed and Pod Evicted delayed actions
 func (cc *jobcontroller) CleanPodDelayActionsIfNeed(req apis.Request) {
+	// Skip cleaning delayed actions for non-pod events
+	if !cc.isPodEvent(req) {
+		return
+	}
+
 	if req.Event != busv1alpha1.PodPendingEvent {
 		key := jobcache.JobKeyByReq(&req)
 		cc.delayActionMapLock.Lock()
@@ -426,7 +435,12 @@ func (cc *jobcontroller) CleanPodDelayActionsIfNeed(req apis.Request) {
 				shouldCancel := false
 
 				if delayAct.event == busv1alpha1.PodPendingEvent {
-					shouldCancel = true
+					// For PodPending delayed action, we need to check if the Pod UID matches
+					// Because if a Pod is deleted and immediately recreated,
+					// the new Pod's pending event may be queued before the old Pod's delete event
+					if req.PodUID == delayAct.podUID {
+						shouldCancel = true
+					}
 				}
 
 				if (delayAct.event == busv1alpha1.PodFailedEvent || delayAct.event == busv1alpha1.PodEvictedEvent) &&
@@ -435,13 +449,20 @@ func (cc *jobcontroller) CleanPodDelayActionsIfNeed(req apis.Request) {
 				}
 
 				if shouldCancel {
-					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> of Job <%s>", delayAct.action, req.PodName, delayAct.jobKey)
+					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> of Job <%s>", delayAct.action, req.PodName, req.Event, delayAct.jobKey)
 					delayAct.cancel()
 					delete(taskMap, req.PodName)
 				}
 			}
 		}
 	}
+}
+
+func (cc *jobcontroller) isPodEvent(req apis.Request) bool {
+	return req.Event == busv1alpha1.PodPendingEvent ||
+		req.Event == busv1alpha1.PodRunningEvent ||
+		req.Event == busv1alpha1.PodFailedEvent ||
+		req.Event == busv1alpha1.PodEvictedEvent
 }
 
 func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayAction) {
@@ -490,7 +511,7 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 
 		queue.Forget(req)
 
-		cc.cleanupDelayActions(delayAct.jobKey)
+		cc.cleanupDelayActions(delayAct)
 	}()
 }
 
@@ -513,16 +534,42 @@ func (cc *jobcontroller) handleJobError(queue workqueue.TypedRateLimitingInterfa
 		req.Namespace, req.JobName, err)
 }
 
-func (cc *jobcontroller) cleanupDelayActions(jobKey string) {
+// cleanupDelayActions cleans up delayed actions
+// After a delayed action is executed, other delayed actions of the same type need to be cleaned up to avoid duplicate execution
+// Parameters:
+//   - currentDelayAction: the delayed action that has just been executed
+//
+// Implementation logic:
+//  1. Get the type of current delayed action (Job level, Task level or Pod level)
+//  2. Iterate through all delayed actions under this Job
+//  3. If the delayed action type matches, cancel it and remove from the map
+//
+// Usage scenarios:
+//   - When a Pod failure triggers Job termination, need to cancel other Job delayed actions under this Job
+func (cc *jobcontroller) cleanupDelayActions(currentDelayAction *delayAction) {
 	cc.delayActionMapLock.Lock()
 	defer cc.delayActionMapLock.Unlock()
 
-	if m, exists := cc.delayActionMap[jobKey]; exists {
+	actionType := GetActionType(currentDelayAction.action)
+
+	if m, exists := cc.delayActionMap[currentDelayAction.jobKey]; exists {
 		for _, delayAct := range m {
-			if delayAct.cancel != nil {
-				delayAct.cancel()
+			if GetActionType(delayAct.action) == actionType {
+				// For Task level actions, only cancel delayed actions for the same task
+				if actionType == TaskAction && delayAct.taskName != currentDelayAction.taskName {
+					continue
+				}
+				// For Pod level actions, only cancel delayed actions for the same pod
+				if actionType == PodAction && delayAct.podName != currentDelayAction.podName {
+					continue
+				}
+
+				if delayAct.cancel != nil {
+					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> and action <%s> of Job <%s>", delayAct.action, delayAct.podName, currentDelayAction.event, currentDelayAction.action, delayAct.jobKey)
+					delayAct.cancel()
+				}
+				delete(m, delayAct.podName)
 			}
 		}
-		cc.delayActionMap[jobKey] = make(map[string]*delayAction)
 	}
 }
