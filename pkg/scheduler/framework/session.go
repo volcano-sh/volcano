@@ -57,9 +57,9 @@ type Session struct {
 
 	TotalResource  *api.Resource
 	TotalGuarantee *api.Resource
-	// podGroupStatus cache podgroup status during schedule
+	// PodGroupOldState contains podgroup status and annotations during schedule
 	// This should not be mutated after initiated
-	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
+	api.PodGroupOldState
 
 	Jobs           map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
@@ -131,8 +131,10 @@ func openSession(cache cache.Cache) *Session {
 
 		TotalResource:  api.EmptyResource(),
 		TotalGuarantee: api.EmptyResource(),
-		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
-
+		PodGroupOldState: api.PodGroupOldState{
+			Status:      map[api.JobID]scheduling.PodGroupStatus{},
+			Annotations: map[api.JobID]map[string]string{},
+		},
 		Jobs:           map[api.JobID]*api.JobInfo{},
 		Nodes:          map[string]*api.NodeInfo{},
 		CSINodesStatus: map[string]*api.CSINodeStatusInfo{},
@@ -174,7 +176,8 @@ func openSession(cache cache.Cache) *Session {
 	ssn.Jobs = snapshot.Jobs
 	for _, job := range ssn.Jobs {
 		if job.PodGroup != nil {
-			ssn.podGroupStatus[job.UID] = *job.PodGroup.Status.DeepCopy()
+			ssn.PodGroupOldState.Status[job.UID] = *job.PodGroup.Status.DeepCopy()
+			ssn.PodGroupOldState.Annotations[job.UID] = job.PodGroup.GetAnnotations()
 		}
 
 		if vjr := ssn.JobValid(job); vjr != nil {

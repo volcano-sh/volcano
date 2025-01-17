@@ -57,6 +57,11 @@ func NewStatement(ssn *Session) *Statement {
 	}
 }
 
+// AddOperation adds operation to statement
+func (s *Statement) Operations() []operation {
+	return s.operations
+}
+
 // Evict the pod
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session

@@ -69,9 +69,9 @@ func NewHyperNodesInfo(lister listerv1.NodeLister) *HyperNodesInfo {
 // NewHyperNodesInfoWithCache initializes a new HyperNodesInfo instance with cache.
 // This is just used for ut.
 // TODO: abstract an interface to mock for ut.
-func NewHyperNodesInfoWithCache(hyperNodesSetByTier map[int]sets.Set[string], realNodesSet map[string]sets.Set[string], ready *atomic.Bool) *HyperNodesInfo {
+func NewHyperNodesInfoWithCache(hyperNodesMap map[string]*HyperNodeInfo, hyperNodesSetByTier map[int]sets.Set[string], realNodesSet map[string]sets.Set[string], ready *atomic.Bool) *HyperNodesInfo {
 	return &HyperNodesInfo{
-		hyperNodes:          make(map[string]*HyperNodeInfo),
+		hyperNodes:          hyperNodesMap,
 		hyperNodesSetByTier: hyperNodesSetByTier,
 		realNodesSet:        realNodesSet,
 		ready:               ready,
@@ -127,7 +127,7 @@ func (hni *HyperNodeInfo) DeepCopy() *HyperNodeInfo {
 	return copiedHyperNodeInfo
 }
 
-// HyperNodesSetByTier returns a deep copy of the map that store hypernode info.
+// HyperNodes returns a deep copy of the map that store hypernode info.
 // This ensures that the returned map is independent of the original, preventing unintended modifications.
 func (hni *HyperNodesInfo) HyperNodes() HyperNodeInfoMap {
 	copiedHyperNodes := make(map[string]*HyperNodeInfo, len(hni.hyperNodes))
@@ -682,6 +682,5 @@ func (hnim HyperNodeInfoMap) GetLCAHyperNode(hypernode, jobHyperNode string) str
 			return ancestor
 		}
 	}
-
 	return ""
 }
