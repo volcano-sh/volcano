@@ -33,6 +33,7 @@ type Request struct {
 	TaskName  string
 	QueueName string
 	PodName   string
+	PodUID    types.UID
 
 	Event      v1alpha1.Event
 	ExitCode   int32
