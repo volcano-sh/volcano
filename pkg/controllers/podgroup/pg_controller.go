@@ -23,6 +23,7 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	appinformers "k8s.io/client-go/informers/apps/v1"
+	batchformers "k8s.io/client-go/informers/batch/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -51,6 +52,8 @@ type pgcontroller struct {
 	podInformer coreinformers.PodInformer
 	pgInformer  schedulinginformer.PodGroupInformer
 	rsInformer  appinformers.ReplicaSetInformer
+	stsInformer appinformers.StatefulSetInformer
+	jobInformer batchformers.JobInformer
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -65,6 +68,12 @@ type pgcontroller struct {
 
 	// A store of replicaset
 	rsSynced func() bool
+
+	// A store of statefulset
+	stsSynced func() bool
+
+	// A store of job
+	jobSynced func() bool
 
 	queue workqueue.RateLimitingInterface
 
@@ -96,7 +105,8 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.podLister = pg.podInformer.Lister()
 	pg.podSynced = pg.podInformer.Informer().HasSynced
 	pg.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: pg.addPod,
+		AddFunc:    pg.addPod,
+		UpdateFunc: pg.updatePod,
 	})
 
 	factory := opt.VCSharedInformerFactory
@@ -111,6 +121,19 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 		pg.rsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    pg.addReplicaSet,
 			UpdateFunc: pg.updateReplicaSet,
+		})
+		pg.stsInformer = pg.informerFactory.Apps().V1().StatefulSets()
+		pg.stsSynced = pg.stsInformer.Informer().HasSynced
+		pg.stsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    pg.addStatefulSet,
+			UpdateFunc: pg.updateStatefulSet,
+		})
+
+		pg.jobInformer = pg.informerFactory.Batch().V1().Jobs()
+		pg.jobSynced = pg.jobInformer.Informer().HasSynced
+		pg.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    pg.addJob,
+			UpdateFunc: pg.updateJob,
 		})
 	}
 	return nil
