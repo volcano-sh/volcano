@@ -100,7 +100,6 @@ func TestAddFlags(t *testing.T) {
 			ResourceNamespace: defaultLockObjectNamespace,
 			ResourceName:      "vc-controller-manager",
 		},
-		LockObjectNamespace:   defaultLockObjectNamespace,
 		WorkerThreadsForPG:    5,
 		WorkerThreadsForQueue: 5,
 		WorkerThreadsForGC:    1,
