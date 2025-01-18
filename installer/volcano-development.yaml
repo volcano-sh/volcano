@@ -140,7 +140,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - args:
-            - --enabled-admission=/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate
+            - --enabled-admission=/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
@@ -5684,6 +5684,36 @@ webhooks:
           - podgroups
         scope: '*'
     sideEffects: NoneOnDryRun
+    timeoutSeconds: 10
+---
+# Source: volcano/templates/webhooks.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: volcano-admission-service-hypernodes-validate
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: volcano-admission-service
+        namespace: volcano-system
+        path: /hypernodes/validate
+        port: 443
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    name: validatehypernodes.volcano.sh
+    rules:
+      - apiGroups:
+          - topology.volcano.sh
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - hypernodes
+    sideEffects: None
     timeoutSeconds: 10
 ---
 # Source: jobflow/templates/flow_v1alpha1_jobflows.yaml
