@@ -328,7 +328,7 @@ func (cc *jobcontroller) belongsToThisRoutine(key string, count uint32) bool {
 	return val%cc.workers == count
 }
 
-func (cc *jobcontroller) getWorkerQueue(key string) workqueue.RateLimitingInterface {
+func (cc *jobcontroller) getWorkerQueue(key string) workqueue.TypedRateLimitingInterface[any] {
 	var hashVal hash.Hash32
 	var val uint32
 
