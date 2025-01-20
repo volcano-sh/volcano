@@ -66,7 +66,7 @@ type pgcontroller struct {
 	// A store of replicaset
 	rsSynced func() bool
 
-	queue workqueue.RateLimitingInterface
+	queue workqueue.TypedRateLimitingInterface[podRequest]
 
 	schedulerNames []string
 	workers        uint32
@@ -85,7 +85,7 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.vcClient = opt.VolcanoClient
 	pg.workers = opt.WorkerThreadsForPG
 
-	pg.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	pg.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[podRequest]())
 
 	pg.schedulerNames = make([]string, len(opt.SchedulerNames))
 	copy(pg.schedulerNames, opt.SchedulerNames)
@@ -146,13 +146,12 @@ func (pg *pgcontroller) worker() {
 }
 
 func (pg *pgcontroller) processNextReq() bool {
-	obj, shutdown := pg.queue.Get()
+	req, shutdown := pg.queue.Get()
 	if shutdown {
 		klog.Errorf("Fail to pop item from queue")
 		return false
 	}
 
-	req := obj.(podRequest)
 	defer pg.queue.Done(req)
 
 	pod, err := pg.podLister.Pods(req.podNamespace).Get(req.podName)
