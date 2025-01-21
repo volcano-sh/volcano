@@ -35,7 +35,7 @@ jobs:
         run: |
           make lint
           make verify
-          make TAG=latest generate-yaml
+          make TAG=v1.11.0-network-topology-preview.0 generate-yaml
           make verify-generated-yaml
           sudo make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
