@@ -32,12 +32,14 @@ var policyEventMap = map[busv1alpha1.Event]bool{
 	busv1alpha1.AnyEvent:           true,
 	busv1alpha1.PodFailedEvent:     true,
 	busv1alpha1.PodEvictedEvent:    true,
+	busv1alpha1.PodPendingEvent:    true,
 	busv1alpha1.JobUnknownEvent:    true,
 	busv1alpha1.TaskCompletedEvent: true,
 	busv1alpha1.TaskFailedEvent:    true,
+	busv1alpha1.JobUpdatedEvent:    true,
 	busv1alpha1.OutOfSyncEvent:     false,
 	busv1alpha1.CommandIssuedEvent: false,
-	busv1alpha1.JobUpdatedEvent:    true,
+	busv1alpha1.PodRunningEvent:    false,
 }
 
 // policyActionMap defines all policy actions and whether to allow external use.
@@ -45,6 +47,7 @@ var policyActionMap = map[busv1alpha1.Action]bool{
 	busv1alpha1.AbortJobAction:     true,
 	busv1alpha1.RestartJobAction:   true,
 	busv1alpha1.RestartTaskAction:  true,
+	busv1alpha1.RestartPodAction:   true,
 	busv1alpha1.TerminateJobAction: true,
 	busv1alpha1.CompleteJobAction:  true,
 	busv1alpha1.ResumeJobAction:    true,

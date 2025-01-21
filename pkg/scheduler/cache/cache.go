@@ -74,6 +74,8 @@ import (
 const (
 	// default interval for sync data from metrics server, the value is 30s
 	defaultMetricsInternal = 30 * time.Second
+
+	taskUpdaterWorker = 16
 )
 
 // defaultIgnoredProvisioners contains provisioners that will be ignored during pod pvc request computation and preemption.
@@ -1486,22 +1488,31 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 	}
 	// Update podCondition for tasks Allocated and Pending before job discarded
 	for _, status := range []schedulingapi.TaskStatus{schedulingapi.Allocated, schedulingapi.Pending, schedulingapi.Pipelined} {
-		for _, taskInfo := range job.TaskStatusIndex[status] {
+		statusTasks := job.TaskStatusIndex[status]
+		taskInfos := make([]*schedulingapi.TaskInfo, 0, len(statusTasks))
+		for _, task := range statusTasks {
+			taskInfos = append(taskInfos, task)
+		}
+
+		workqueue.ParallelizeUntil(context.TODO(), taskUpdaterWorker, len(taskInfos), func(index int) {
+			taskInfo := taskInfos[index]
+
 			// The pod of a scheduling gated task is given
 			// the ScheduleGated condition by the api-server. Do not change it.
 			if taskInfo.SchGated {
-				continue
+				return
 			}
 
 			reason, msg, nominatedNodeName := job.TaskSchedulingReason(taskInfo.UID)
 			if len(msg) == 0 {
 				msg = baseErrorMessage
 			}
+
 			if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {
 				klog.ErrorS(err, "Failed to update unschedulable task status", "task", klog.KRef(taskInfo.Namespace, taskInfo.Name),
 					"reason", reason, "message", msg)
 			}
-		}
+		})
 	}
 }
 

@@ -494,8 +494,13 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			attr.name, attr.allocated.String(), attr.request.String(), attr.inqueue.String(), attr.elastic.String())
 	}
 
+	// init root queue realCapability/capability/deserved as cp.totalResource
+	rootQueueAttr := cp.queueOpts[api.QueueID(cp.rootQueue)]
+	rootQueueAttr.capability = cp.totalResource
+	rootQueueAttr.realCapability = cp.totalResource
+	rootQueueAttr.deserved = cp.totalResource
 	// Check the hierarchical structure of queues
-	err := cp.checkHierarchicalQueue(cp.queueOpts[api.QueueID(cp.rootQueue)])
+	err := cp.checkHierarchicalQueue(rootQueueAttr)
 	if err != nil {
 		klog.Errorf("Failed to check queue's hierarchical structure, error: %v", err)
 		return false
@@ -599,21 +604,16 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 		ancestors: make([]api.QueueID, 0),
 		children:  make(map[api.QueueID]*queueAttr),
 
-		deserved:  api.NewResource(queue.Queue.Spec.Deserved),
-		allocated: api.EmptyResource(),
-		request:   api.EmptyResource(),
-		elastic:   api.EmptyResource(),
-		inqueue:   api.EmptyResource(),
-		guarantee: api.EmptyResource(),
+		deserved:   api.NewResource(queue.Queue.Spec.Deserved),
+		allocated:  api.EmptyResource(),
+		request:    api.EmptyResource(),
+		elastic:    api.EmptyResource(),
+		inqueue:    api.EmptyResource(),
+		guarantee:  api.EmptyResource(),
+		capability: api.EmptyResource(),
 	}
 	if len(queue.Queue.Spec.Capability) != 0 {
 		attr.capability = api.NewResource(queue.Queue.Spec.Capability)
-		if attr.capability.MilliCPU <= 0 {
-			attr.capability.MilliCPU = math.MaxFloat64
-		}
-		if attr.capability.Memory <= 0 {
-			attr.capability.Memory = math.MaxFloat64
-		}
 	}
 
 	if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
@@ -657,8 +657,15 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 	for _, childAttr := range attr.children {
 		totalDeserved.Add(childAttr.deserved)
 		totalGuarantee.Add(childAttr.guarantee)
+		// if the user does not set CPU or memory in capability, we set the value to be the same as parent(we do not consider the situation where the user sets CPU or memory<=0)
+		if childAttr.capability.MilliCPU <= 0 {
+			childAttr.capability.MilliCPU = attr.capability.MilliCPU
+		}
+		if childAttr.capability.Memory <= 0 {
+			childAttr.capability.Memory = attr.capability.Memory
+		}
 		// Check if the parent queue's capability is less than the child queue's capability
-		if attr.capability != nil && childAttr.capability != nil && attr.capability.LessPartly(childAttr.capability, api.Zero) {
+		if attr.capability.LessPartly(childAttr.capability, api.Zero) {
 			return fmt.Errorf("queue <%s> capability is less than its child queue <%s>", attr.name, childAttr.name)
 		}
 	}
@@ -666,8 +673,6 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 	if attr.name == cp.rootQueue {
 		attr.guarantee = totalGuarantee
 		cp.totalGuarantee = totalGuarantee
-		attr.realCapability = cp.totalResource
-		attr.deserved = cp.totalResource
 	}
 
 	for _, childAttr := range attr.children {

@@ -23,6 +23,7 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -255,10 +256,9 @@ func validateHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
 		return fmt.Errorf("failed to get parent queue of queue %s: %v", queue.Name, err)
 	}
 
-	if parentQueue.Status.Pending+parentQueue.Status.Running+parentQueue.Status.Unknown+parentQueue.Status.Inqueue > 0 {
-		return fmt.Errorf("queue %s cannot be the parent queue of queue %s because it has PodGroups (pending: %d, running: %d, unknown: %d, inqueue: %d)",
-			parentQueue.Name, queue.Name, parentQueue.Status.Pending,
-			parentQueue.Status.Running, parentQueue.Status.Unknown, parentQueue.Status.Inqueue)
+	if allocated, ok := parentQueue.Status.Allocated[v1.ResourcePods]; ok && !allocated.IsZero() {
+		return fmt.Errorf("queue %s cannot be the parent queue of queue %s because it has allocated Pods: %d",
+			parentQueue.Name, queue.Name, allocated.Value())
 	}
 
 	klog.V(3).Infof("Validation passed for hierarchical queue %s with parent queue %s",
