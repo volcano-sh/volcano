@@ -73,6 +73,8 @@ type JobSpec struct {
 	MinSuccess *int32
 	// job max retry
 	MaxRetry int32
+	// network topology mode hard or soft
+	NetworkTopology *batchv1alpha1.NetworkTopologySpec
 }
 
 func Namespace(context *TestContext, job *JobSpec) string {
@@ -202,6 +204,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			TTLSecondsAfterFinished: jobSpec.TTL,
 			MinSuccess:              jobSpec.MinSuccess,
 			MaxRetry:                jobSpec.MaxRetry,
+			NetworkTopology:         jobSpec.NetworkTopology,
 		},
 	}
 
@@ -854,4 +857,9 @@ func RemovePodSchGates(ctx *TestContext, targetJob *batchv1alpha1.Job) error {
 		}
 	}
 	return nil
+}
+
+func DeleteJob(ctx *TestContext, job *batchv1alpha1.Job) {
+	err := ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to delete job %s", job.Name)
 }
