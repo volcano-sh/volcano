@@ -204,8 +204,12 @@ func FileExist(name string) bool {
 func CleanupTestContext(ctx *TestContext) {
 	By("Cleaning up test context")
 
+	// Clean up hypernodes first
+	err := CleanupHyperNodes(ctx)
+	Expect(err).NotTo(HaveOccurred(), "failed to clean up hypernodes")
+
 	foreground := metav1.DeletePropagationForeground
-	err := ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
+	err = ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
 	Expect(err).NotTo(HaveOccurred(), "failed to delete namespace")

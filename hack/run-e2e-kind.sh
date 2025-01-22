@@ -121,6 +121,7 @@ source "${VK_ROOT}/hack/lib/install.sh"
 
 check-prerequisites
 kind-up-cluster
+install-kwok-with-helm
 
 if [[ -z ${KUBECONFIG+x} ]]; then
     export KUBECONFIG="${HOME}/.kube/config"
@@ -165,6 +166,12 @@ case ${E2E_TYPE} in
 "STRESS")
     echo "Running stress e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/stress/
+    ;;
+"HYPERNODE")
+    echo "Creating fake nodes with kwok"
+    kubectl apply -f test/e2e/hypernode/kwok.yaml
+    echo "Running hypernode e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/hypernode/
     ;;
 esac
 
