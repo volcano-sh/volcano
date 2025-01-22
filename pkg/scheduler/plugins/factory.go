@@ -74,4 +74,7 @@ func init() {
 
 	// Plugins for ResourceQuota
 	framework.RegisterPluginBuilder(resourcequota.PluginName, resourcequota.New)
+
+	// Plugins for NetworkTopologyAware
+	framework.RegisterPluginBuilder(networktopologyaware.PluginName, networktopologyaware.New)
 }
