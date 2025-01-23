@@ -76,12 +76,11 @@ jobs:
     - name: Build lastest volcano images
       run: |
         eval $(minikube docker-env)
-        make TAG=latest update-development-yaml
-        sed -i 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/g' installer/volcano-development.yaml
-        make TAG=latest images
+        make TAG=v1.11.0-network-topology-preview.0 update-development-yaml
+        make TAG=v1.11.0-network-topology-preview.0 images
         docker images | grep volcano
         cat ./installer/volcano-development.yaml  | grep image:
-        minikube kubectl -- replace --force -f ./installer/volcano-development.yaml
+        sed 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/' ./installer/volcano-development.yaml | minikube kubectl -- replace --force -f -
     - name: Show all K8S pods and nodes
       run: |
         # Use minikube kubectl

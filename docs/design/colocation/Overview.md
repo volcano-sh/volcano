@@ -34,7 +34,7 @@ You can set different qos levels to identify workloads of different priorities, 
 Follow the [installation guide](https://github.com/volcano-sh/volcano?tab=readme-ov-file#quick-start-guide) to install volcano first, and then install volcano agent via kubectl, this way is both available for x86_64 and arm64 architecture. 
 
 ```shell
-kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-agent-development.yaml
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/network-topology/installer/volcano-agent-development.yaml
 ```
 
 Check volcano components including agent runs successfully.
