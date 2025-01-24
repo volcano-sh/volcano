@@ -1,0 +1,245 @@
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+    kwok.x-k8s.io/node: fake
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: kwok-node-0
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    node-role.kubernetes.io/agent: ""
+    type: kwok
+  name: kwok-node-0
+spec:
+  taints: # Avoid scheduling actual running pods to fake Node
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  capacity:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+  allocatable:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+    kwok.x-k8s.io/node: fake
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: kwok-node-1
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    node-role.kubernetes.io/agent: ""
+    type: kwok
+  name: kwok-node-1
+spec:
+  taints: # Avoid scheduling actual running pods to fake Node
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  capacity:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+  allocatable:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+    kwok.x-k8s.io/node: fake
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: kwok-node-2
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    node-role.kubernetes.io/agent: ""
+    type: kwok
+  name: kwok-node-2
+spec:
+  taints: # Avoid scheduling actual running pods to fake Node
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  capacity:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+  allocatable:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+    kwok.x-k8s.io/node: fake
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: kwok-node-3
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    node-role.kubernetes.io/agent: ""
+    type: kwok
+  name: kwok-node-3
+spec:
+  taints: # Avoid scheduling actual running pods to fake Node
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  capacity:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+  allocatable:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+    kwok.x-k8s.io/node: fake
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: kwok-node-4
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    node-role.kubernetes.io/agent: ""
+    type: kwok
+  name: kwok-node-4
+spec:
+  taints: # Avoid scheduling actual running pods to fake Node
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  capacity:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+  allocatable:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+    kwok.x-k8s.io/node: fake
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: kwok-node-5
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    node-role.kubernetes.io/agent: ""
+    type: kwok
+  name: kwok-node-5
+spec:
+  taints: # Avoid scheduling actual running pods to fake Node
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  capacity:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+  allocatable:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+    kwok.x-k8s.io/node: fake
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: kwok-node-6
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    node-role.kubernetes.io/agent: ""
+    type: kwok
+  name: kwok-node-6
+spec:
+  taints: # Avoid scheduling actual running pods to fake Node
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  capacity:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+  allocatable:
+    cpu: "4"
+    memory: "4Gi"
+    pods: "110"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+    kwok.x-k8s.io/node: fake
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: kwok-node-7
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    node-role.kubernetes.io/agent: ""
+    type: kwok
+  name: kwok-node-7
+spec:
+  taints: # Avoid scheduling actual running pods to fake Node
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  capacity:
+    cpu: "2"
+    memory: "4Gi"
+  allocatable:
+    cpu: "2"
+    memory: "4Gi"
