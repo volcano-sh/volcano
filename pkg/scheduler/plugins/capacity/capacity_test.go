@@ -19,6 +19,8 @@ package capacity
 import (
 	"os"
 	"testing"
+	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
+	"volcano.sh/volcano/pkg/scheduler/actions/preempt"
 
 	corev1 "k8s.io/api/core/v1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -473,6 +475,88 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 				"ns1/p11": "n1",
 			},
 			ExpectBindsNum: 1,
+		},
+	}
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnablePreemptive:   &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledQueueOrder:  &trueValue,
+					EnabledHierarchy:   &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:               gang.PluginName,
+					EnabledJobStarving: &trueValue,
+				},
+			},
+		},
+	}
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func buildQueueWithParentsGuarantee(name string, parent string, deserved corev1.ResourceList, cap, guarantee corev1.ResourceList) *schedulingv1beta1.Queue {
+	queue := buildQueueWithParents(name, parent, deserved, cap)
+	queue.Spec.Guarantee.Resource = guarantee
+	t := true
+	queue.Spec.Reclaimable = &t
+	return queue
+}
+
+func Test_capacityPlugin_OnSessionOpenWithHierarchyReclaim(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New, predicates.PluginName: predicates.New, gang.PluginName: gang.New}
+	trueValue := true
+	actions := []framework.Action{enqueue.New(), reclaim.New(), allocate.New(), preempt.New(), backfill.New()}
+
+	// nodes
+	n1 := util.BuildNode("n1", api.BuildResourceList("20", "20Gi"), map[string]string{})
+
+	// resources for test case 0
+	// pod
+	p1 := util.BuildPod("ns1", "p1", "n1", corev1.PodRunning, api.BuildResourceList("15", "15Gi"), "pg1", make(map[string]string), map[string]string{})
+	p2 := util.BuildPod("ns1", "p2", "", corev1.PodPending, api.BuildResourceList("10", "10Gi"), "pg2", make(map[string]string), map[string]string{})
+	// podgroup
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q11", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg2 := util.BuildPodGroup("pg2", "ns1", "q12", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	// queue
+	root := buildQueueWithParents("root", "", nil, nil)
+	queue1 := buildQueueWithParentsGuarantee("q1", "root",
+		api.BuildResourceList("20", "20Gi"), api.BuildResourceList("20", "20Gi"), api.BuildResourceList("20", "20Gi"))
+	queue11 := buildQueueWithParentsGuarantee("q11", "q1",
+		api.BuildResourceList("10", "10Gi"), api.BuildResourceList("20", "20Gi"), api.BuildResourceList("5", "5Gi"))
+	queue12 := buildQueueWithParentsGuarantee("q12", "q1",
+		api.BuildResourceList("10", "10Gi"), api.BuildResourceList("20", "20Gi"), api.BuildResourceList("5", "5Gi"))
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name:      "case0: Pod Evicted when queue exceed queue deserved",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p1, p2},
+			Nodes:     []*corev1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg1, pg2},
+			Queues:    []*schedulingv1beta1.Queue{root, queue1, queue11, queue12},
+			ExpectPipeLined: map[string][]string{
+				"ns1/pg2": {"n1"},
+			},
+			ExpectEvicted:  []string{"ns1/p1"},
+			ExpectEvictNum: 1,
 		},
 	}
 

@@ -132,7 +132,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
 			// When scalar resource not specified in deserved such as "pods", we should skip it and consider it as infinity,
 			// so the following first condition will be true and the current queue will not be reclaimed.
-			if allocated.LessEqual(attr.deserved, api.Infinity) || !attr.guarantee.LessEqual(exceptReclaimee, api.Zero) {
+			if allocated.LessEqual(attr.deserved, api.Infinity) || attr.guarantee.LessEqual(exceptReclaimee, api.Zero) {
 				continue
 			}
 			allocated.Sub(reclaimee.Resreq)
