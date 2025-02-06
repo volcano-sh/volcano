@@ -38,4 +38,12 @@ jobs:
 
       - name: Run E2E Tests
         run: |
+          export ARTIFACTS_PATH=${{ github.workspace }}/e2e-sequence-logs
           make e2e-test-jobseq CC=/usr/local/musl/bin/musl-gcc
+
+      - name: Upload e2e sequence logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: volcano_e2e_sequence_logs
+          path: ${{ github.workspace }}/e2e-sequence-logs
