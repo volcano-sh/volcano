@@ -17,6 +17,7 @@ limitations under the License.
 package framework
 
 import (
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -29,6 +30,7 @@ import (
 type ControllerOption struct {
 	KubeClient              kubernetes.Interface
 	VolcanoClient           vcclientset.Interface
+	DynamicClient           dynamic.Interface
 	SharedInformerFactory   informers.SharedInformerFactory
 	VCSharedInformerFactory vcinformer.SharedInformerFactory
 	SchedulerNames          []string
