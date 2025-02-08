@@ -221,6 +221,43 @@ var _ = Describe("Job E2E Test", func() {
 	})
 
 	It("preemption only works in the same queue", func() {
+		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
+		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+			vcScheConfStr, ok := data["volcano-scheduler-ci.conf"]
+			Expect(ok).To(BeTrue())
+
+			schedulerConf := &e2eutil.SchedulerConfiguration{}
+			err := yaml.Unmarshal([]byte(vcScheConfStr), schedulerConf)
+			Expect(err).NotTo(HaveOccurred())
+
+			changed = true
+			actions := strings.Split(schedulerConf.Actions, ",")
+			newActions := make([]string, 0)
+			// remove reclaim action
+			for _, action := range actions {
+				action = strings.TrimSpace(action)
+				if action != "reclaim" {
+					newActions = append(newActions, action)
+				}
+			}
+
+			if len(newActions) == len(actions) {
+				changed = false
+				klog.Warning("There is already no reclaim action")
+				return
+			}
+
+			schedulerConf.Actions = strings.Join(newActions, ", ")
+			newVCScheConfBytes, err := yaml.Marshal(schedulerConf)
+			Expect(err).NotTo(HaveOccurred())
+
+			changedBefore = make(map[string]string)
+			changedBefore["volcano-scheduler-ci.conf"] = vcScheConfStr
+			data["volcano-scheduler-ci.conf"] = string(newVCScheConfBytes)
+			return
+		})
+		defer cmc.UndoChanged()
+
 		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{"q1-preemption", "q2-reference"},
 			PriorityClasses: map[string]int32{
@@ -236,7 +273,7 @@ var _ = Describe("Job E2E Test", func() {
 				{
 					Img:    e2eutil.DefaultNginxImage,
 					Req:    slot,
-					Min:    1,
+					Min:    rep / 2,
 					Rep:    rep / 2,
 					Labels: map[string]string{schedulingv1beta1.PodPreemptable: "true"},
 				},

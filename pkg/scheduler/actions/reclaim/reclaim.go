@@ -69,7 +69,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			queues.Push(queue)
 		}
 
-		if job.HasPendingTasks() {
+		if ssn.JobStarving(job) {
 			if _, found := preemptorsMap[job.Queue]; !found {
 				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
@@ -108,7 +108,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 
 		// Found "high" priority task to reclaim others
-		if tasks, found := preemptorTasks[job.UID]; !found || tasks.Empty() {
+		if tasks, found := preemptorTasks[job.UID]; !found || tasks.Empty() || !ssn.JobStarving(job) {
 			continue
 		} else {
 			task = tasks.Pop().(*api.TaskInfo)

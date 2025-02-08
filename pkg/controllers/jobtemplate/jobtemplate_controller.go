@@ -68,7 +68,7 @@ type jobtemplatecontroller struct {
 	// JobTemplate Event recorder
 	recorder record.EventRecorder
 
-	queue              workqueue.RateLimitingInterface
+	queue              workqueue.TypedRateLimitingInterface[apis.FlowRequest]
 	enqueueJobTemplate func(req apis.FlowRequest)
 
 	syncHandler func(req *apis.FlowRequest) error
@@ -111,7 +111,7 @@ func (jt *jobtemplatecontroller) Initialize(opt *framework.ControllerOption) err
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: jt.kubeClient.CoreV1().Events("")})
 
 	jt.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
-	jt.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	jt.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[apis.FlowRequest]())
 
 	jt.enqueueJobTemplate = jt.enqueue
 
@@ -144,7 +144,7 @@ func (jt *jobtemplatecontroller) worker() {
 }
 
 func (jt *jobtemplatecontroller) processNextWorkItem() bool {
-	obj, shutdown := jt.queue.Get()
+	req, shutdown := jt.queue.Get()
 	if shutdown {
 		// Stop working
 		return false
@@ -156,16 +156,10 @@ func (jt *jobtemplatecontroller) processNextWorkItem() bool {
 	// not call Forget if a transient error occurs, instead the item is
 	// put back on the workqueue and attempted again after a back-off
 	// period.
-	defer jt.queue.Done(obj)
-
-	req, ok := obj.(apis.FlowRequest)
-	if !ok {
-		klog.Errorf("%v is not a valid queue request struct.", obj)
-		return true
-	}
+	defer jt.queue.Done(req)
 
 	err := jt.syncHandler(&req)
-	jt.handleJobTemplateErr(err, obj)
+	jt.handleJobTemplateErr(err, req)
 
 	return true
 }
@@ -195,23 +189,22 @@ func (jt *jobtemplatecontroller) handleJobTemplate(req *apis.FlowRequest) error 
 	return nil
 }
 
-func (jt *jobtemplatecontroller) handleJobTemplateErr(err error, obj interface{}) {
+func (jt *jobtemplatecontroller) handleJobTemplateErr(err error, req apis.FlowRequest) {
 	if err == nil {
-		jt.queue.Forget(obj)
+		jt.queue.Forget(req)
 		return
 	}
 
-	if jt.maxRequeueNum == -1 || jt.queue.NumRequeues(obj) < jt.maxRequeueNum {
-		klog.V(4).Infof("Error syncing jobTemplate request %v for %v.", obj, err)
-		jt.queue.AddRateLimited(obj)
+	if jt.maxRequeueNum == -1 || jt.queue.NumRequeues(req) < jt.maxRequeueNum {
+		klog.V(4).Infof("Error syncing jobTemplate request %v for %v.", req, err)
+		jt.queue.AddRateLimited(req)
 		return
 	}
 
-	req, _ := obj.(*apis.FlowRequest)
 	jt.recordEventsForJobTemplate(req.Namespace, req.JobTemplateName, v1.EventTypeWarning, string(req.Action),
 		fmt.Sprintf("%v JobTemplate failed for %v", req.Action, err))
-	klog.V(2).Infof("Dropping JobTemplate request %v out of the queue for %v.", obj, err)
-	jt.queue.Forget(obj)
+	klog.V(2).Infof("Dropping JobTemplate request %v out of the queue for %v.", req, err)
+	jt.queue.Forget(req)
 }
 
 func (jt *jobtemplatecontroller) recordEventsForJobTemplate(namespace, name, eventType, reason, message string) {
