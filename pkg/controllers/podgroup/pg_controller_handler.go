@@ -19,6 +19,7 @@ package podgroup
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -103,6 +104,55 @@ func (pg *pgcontroller) addReplicaSet(obj interface{}) {
 
 func (pg *pgcontroller) updateReplicaSet(oldObj, newObj interface{}) {
 	pg.addReplicaSet(newObj)
+}
+
+func (pg *pgcontroller) addStatefulSet(obj interface{}) {
+	sts, ok := obj.(*appsv1.StatefulSet)
+	if !ok {
+		klog.Errorf("Failed to convert %v to appsv1.StatefulSet", obj)
+		return
+	}
+
+	if *sts.Spec.Replicas == 0 {
+		pgName := batchv1alpha1.PodgroupNamePrefix + string(sts.UID)
+		err := pg.vcClient.SchedulingV1beta1().PodGroups(sts.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			klog.Errorf("Failed to delete PodGroup <%s/%s>: %v", sts.Namespace, pgName, err)
+		}
+	}
+
+	// In the rolling upgrade scenario, the addStatefulSet(replicas=0) event may be received before
+	// the updateStatefulSet(replicas=1) event, and after the addPod event for the new created pod.
+	// In this event, need to create PodGroup for the pod.
+	if *sts.Spec.Replicas > 0 {
+		selector := metav1.LabelSelector{MatchLabels: sts.Spec.Selector.MatchLabels}
+		labelSelector, err := metav1.LabelSelectorAsSelector(&selector)
+		if err != nil {
+			klog.Errorf("Failed to convert label selector for StatefulSet <%s/%s>: %v", sts.Namespace, sts.Name, err)
+			return
+		}
+		pods, err := pg.podInformer.Lister().List(labelSelector)
+		if err != nil {
+			klog.Errorf("Failed to list pods for StatefulSet <%s/%s>: %v", sts.Namespace, sts.Name, err)
+			return
+		}
+		if len(pods) > 0 {
+			pod := pods[0]
+			klog.V(4).Infof("Try to create podgroup for pod %s/%s", pod.Namespace, pod.Name)
+			if !slices.Contains(pg.schedulerNames, pod.Spec.SchedulerName) {
+				klog.V(4).Infof("Pod %s field SchedulerName is not matched", klog.KObj(pod))
+				return
+			}
+			err := pg.createNormalPodPGIfNotExist(pod)
+			if err != nil {
+				klog.Errorf("Failed to create PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
+			}
+		}
+	}
+}
+
+func (pg *pgcontroller) updateStatefulSet(oldObj, newObj interface{}) {
+	pg.addStatefulSet(newObj)
 }
 
 func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
