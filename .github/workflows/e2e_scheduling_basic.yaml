@@ -38,18 +38,10 @@ jobs:
 
       - name: Run E2E Tests
         run: |
+          export ARTIFACTS_PATH=${{ github.workspace }}/e2e-scheduling-basic-logs
           make e2e-test-schedulingbase CC=/usr/local/musl/bin/musl-gcc
 
-      - name: export logs for e2e scheduling basic
-        if: failure()
-        run: |
-          export ARTIFACTS_PATH=${{ github.workspace }}/e2e-scheduling-basic-logs
-          mkdir -p $ARTIFACTS_PATH
-          
-          kdir -p $ARTIFACTS_PATH/integration
-          kind export logs --name=integration $ARTIFACTS_PATH/integration
-
-      - name: upload e2e scheduling basic logs
+      - name: Upload e2e scheduling basic logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:

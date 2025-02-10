@@ -61,7 +61,7 @@ type gccontroller struct {
 	jobSynced func() bool
 
 	// queues that need to be updated.
-	queue workqueue.RateLimitingInterface
+	queue workqueue.TypedRateLimitingInterface[string]
 
 	workers uint32
 }
@@ -81,7 +81,7 @@ func (gc *gccontroller) Initialize(opt *framework.ControllerOption) error {
 	gc.jobInformer = jobInformer
 	gc.jobLister = jobInformer.Lister()
 	gc.jobSynced = jobInformer.Informer().HasSynced
-	gc.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	gc.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
 	gc.workers = opt.WorkerThreadsForGC
 
 	jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -165,13 +165,13 @@ func (gc *gccontroller) processNextWorkItem() bool {
 	}
 	defer gc.queue.Done(key)
 
-	err := gc.processJob(key.(string))
+	err := gc.processJob(key)
 	gc.handleErr(err, key)
 
 	return true
 }
 
-func (gc *gccontroller) handleErr(err error, key interface{}) {
+func (gc *gccontroller) handleErr(err error, key string) {
 	if err == nil {
 		gc.queue.Forget(key)
 		return

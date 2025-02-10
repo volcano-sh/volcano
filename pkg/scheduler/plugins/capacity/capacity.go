@@ -47,11 +47,11 @@ type capacityPlugin struct {
 }
 
 type queueAttr struct {
-	queueID  api.QueueID
-	name     string
-	share    float64
-	parents  []api.QueueID
-	children map[api.QueueID]*queueAttr
+	queueID   api.QueueID
+	name      string
+	share     float64
+	ancestors []api.QueueID
+	children  map[api.QueueID]*queueAttr
 
 	deserved  *api.Resource
 	allocated *api.Resource
@@ -185,7 +185,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(3).Infof("Queue <%s> is not a leaf queue, can not allocate task <%s>.", queue.Name, candidate.Name)
 			return false
 		}
-		list := append(cp.queueOpts[queue.UID].parents, queue.UID)
+		list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
 		for i := len(list) - 1; i >= 0; i-- {
 			if !queueAllocatable(ssn.Queues[list[i]], candidate) {
 				if klog.V(5).Enabled() {
@@ -251,9 +251,9 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			cp.updateShare(attr)
 			if hierarchyEnabled {
-				for _, parentID := range attr.parents {
-					parentAttr := cp.queueOpts[parentID]
-					parentAttr.allocated.Add(event.Task.Resreq)
+				for _, ancestorID := range attr.ancestors {
+					ancestorAttr := cp.queueOpts[ancestorID]
+					ancestorAttr.allocated.Add(event.Task.Resreq)
 				}
 			}
 
@@ -268,9 +268,9 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			cp.updateShare(attr)
 			if hierarchyEnabled {
-				for _, parentID := range attr.parents {
-					parentAttr := cp.queueOpts[parentID]
-					parentAttr.allocated.Sub(event.Task.Resreq)
+				for _, ancestorID := range attr.ancestors {
+					ancestorAttr := cp.queueOpts[ancestorID]
+					ancestorAttr.allocated.Sub(event.Task.Resreq)
 				}
 			}
 
@@ -434,7 +434,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 
 		attr := cp.newQueueAttr(queue)
 		cp.queueOpts[queue.UID] = attr
-		err := cp.updateParents(queue, ssn)
+		err := cp.updateAncestors(queue, ssn)
 		if err != nil {
 			klog.Errorf("Failed to update Queue <%s> attributes, error: %v", queue.Name, err)
 			return false
@@ -482,20 +482,25 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		}
 		attr.elastic.Add(job.GetElasticResources())
 
-		for _, parentID := range attr.parents {
-			parentAttr := cp.queueOpts[parentID]
-			parentAttr.allocated.Add(attr.allocated.Clone().Sub(oldAllocated))
-			parentAttr.request.Add(attr.request.Clone().Sub(oldRequest))
-			parentAttr.inqueue.Add(attr.inqueue.Clone().Sub(oldInqueue))
-			parentAttr.elastic.Add(attr.elastic.Clone().Sub(oldElastic))
+		for _, ancestor := range attr.ancestors {
+			ancestorAttr := cp.queueOpts[ancestor]
+			ancestorAttr.allocated.Add(attr.allocated.Clone().Sub(oldAllocated))
+			ancestorAttr.request.Add(attr.request.Clone().Sub(oldRequest))
+			ancestorAttr.inqueue.Add(attr.inqueue.Clone().Sub(oldInqueue))
+			ancestorAttr.elastic.Add(attr.elastic.Clone().Sub(oldElastic))
 		}
 
 		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
 			attr.name, attr.allocated.String(), attr.request.String(), attr.inqueue.String(), attr.elastic.String())
 	}
 
+	// init root queue realCapability/capability/deserved as cp.totalResource
+	rootQueueAttr := cp.queueOpts[api.QueueID(cp.rootQueue)]
+	rootQueueAttr.capability = cp.totalResource
+	rootQueueAttr.realCapability = cp.totalResource
+	rootQueueAttr.deserved = cp.totalResource
 	// Check the hierarchical structure of queues
-	err := cp.checkHierarchicalQueue(cp.queueOpts[api.QueueID(cp.rootQueue)])
+	err := cp.checkHierarchicalQueue(rootQueueAttr)
 	if err != nil {
 		klog.Errorf("Failed to check queue's hierarchical structure, error: %v", err)
 		return false
@@ -552,11 +557,11 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		level := getQueueLevel(lvAttr, rvAttr)
 		lvParentID := lvAttr.queueID
 		rvParentID := rvAttr.queueID
-		if level+1 < len(lvAttr.parents) {
-			lvParentID = lvAttr.parents[level+1]
+		if level+1 < len(lvAttr.ancestors) {
+			lvParentID = lvAttr.ancestors[level+1]
 		}
-		if level+1 < len(rvAttr.parents) {
-			rvParentID = rvAttr.parents[level+1]
+		if level+1 < len(rvAttr.ancestors) {
+			rvParentID = rvAttr.ancestors[level+1]
 		}
 
 		if cp.queueOpts[lvParentID].share == cp.queueOpts[rvParentID].share {
@@ -594,26 +599,21 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 
 func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 	attr := &queueAttr{
-		queueID:  queue.UID,
-		name:     queue.Name,
-		parents:  make([]api.QueueID, 0),
-		children: make(map[api.QueueID]*queueAttr),
+		queueID:   queue.UID,
+		name:      queue.Name,
+		ancestors: make([]api.QueueID, 0),
+		children:  make(map[api.QueueID]*queueAttr),
 
-		deserved:  api.NewResource(queue.Queue.Spec.Deserved),
-		allocated: api.EmptyResource(),
-		request:   api.EmptyResource(),
-		elastic:   api.EmptyResource(),
-		inqueue:   api.EmptyResource(),
-		guarantee: api.EmptyResource(),
+		deserved:   api.NewResource(queue.Queue.Spec.Deserved),
+		allocated:  api.EmptyResource(),
+		request:    api.EmptyResource(),
+		elastic:    api.EmptyResource(),
+		inqueue:    api.EmptyResource(),
+		guarantee:  api.EmptyResource(),
+		capability: api.EmptyResource(),
 	}
 	if len(queue.Queue.Spec.Capability) != 0 {
 		attr.capability = api.NewResource(queue.Queue.Spec.Capability)
-		if attr.capability.MilliCPU <= 0 {
-			attr.capability.MilliCPU = math.MaxFloat64
-		}
-		if attr.capability.Memory <= 0 {
-			attr.capability.Memory = math.MaxFloat64
-		}
 	}
 
 	if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
@@ -623,7 +623,7 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 	return attr
 }
 
-func (cp *capacityPlugin) updateParents(queue *api.QueueInfo, ssn *framework.Session) error {
+func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.Session) error {
 	if queue.Name == cp.rootQueue {
 		return nil
 	}
@@ -640,14 +640,14 @@ func (cp *capacityPlugin) updateParents(queue *api.QueueInfo, ssn *framework.Ses
 	if _, found := cp.queueOpts[parentInfo.UID]; !found {
 		parentAttr := cp.newQueueAttr(parentInfo)
 		cp.queueOpts[parentAttr.queueID] = parentAttr
-		err := cp.updateParents(parentInfo, ssn)
+		err := cp.updateAncestors(parentInfo, ssn)
 		if err != nil {
 			return err
 		}
 	}
 
 	cp.queueOpts[parentInfo.UID].children[queue.UID] = cp.queueOpts[queue.UID]
-	cp.queueOpts[queue.UID].parents = append(cp.queueOpts[parentInfo.UID].parents, parentInfo.UID)
+	cp.queueOpts[queue.UID].ancestors = append(cp.queueOpts[parentInfo.UID].ancestors, parentInfo.UID)
 	return nil
 }
 
@@ -657,8 +657,15 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 	for _, childAttr := range attr.children {
 		totalDeserved.Add(childAttr.deserved)
 		totalGuarantee.Add(childAttr.guarantee)
+		// if the user does not set CPU or memory in capability, we set the value to be the same as parent(we do not consider the situation where the user sets CPU or memory<=0)
+		if childAttr.capability.MilliCPU <= 0 {
+			childAttr.capability.MilliCPU = attr.capability.MilliCPU
+		}
+		if childAttr.capability.Memory <= 0 {
+			childAttr.capability.Memory = attr.capability.Memory
+		}
 		// Check if the parent queue's capability is less than the child queue's capability
-		if attr.capability != nil && childAttr.capability != nil && attr.capability.LessPartly(childAttr.capability, api.Zero) {
+		if attr.capability.LessPartly(childAttr.capability, api.Zero) {
 			return fmt.Errorf("queue <%s> capability is less than its child queue <%s>", attr.name, childAttr.name)
 		}
 	}
@@ -666,8 +673,6 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 	if attr.name == cp.rootQueue {
 		attr.guarantee = totalGuarantee
 		cp.totalGuarantee = totalGuarantee
-		attr.realCapability = cp.totalResource
-		attr.deserved = cp.totalResource
 	}
 
 	for _, childAttr := range attr.children {
@@ -724,8 +729,8 @@ func (cp *capacityPlugin) isLeafQueue(queueID api.QueueID) bool {
 func getQueueLevel(l *queueAttr, r *queueAttr) int {
 	level := 0
 
-	for i := 0; i < min(len(l.parents), len(r.parents)); i++ {
-		if l.parents[i] == r.parents[i] {
+	for i := 0; i < min(len(l.ancestors), len(r.ancestors)); i++ {
+		if l.ancestors[i] == r.ancestors[i] {
 			level = i
 		} else {
 			return level

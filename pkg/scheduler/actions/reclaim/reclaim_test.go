@@ -44,8 +44,8 @@ func TestReclaim(t *testing.T) {
 				proportion.PluginName:  proportion.New,
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
-				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 0, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
 			},
 			Pods: []*v1.Pod{
 				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
@@ -77,9 +77,9 @@ func TestReclaim(t *testing.T) {
 				util.BuildPriorityClass("high-priority", 1000),
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
-				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 0, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"), // reclaimed first
-				util.BuildPodGroupWithPrio("pg3", "c1", "q3", 0, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"), // reclaimed first
+				util.BuildPodGroupWithPrio("pg3", "c1", "q3", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
 			},
 			Pods: []*v1.Pod{
 				util.BuildPod("c1", "preemptee1-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
@@ -107,9 +107,9 @@ func TestReclaim(t *testing.T) {
 				proportion.PluginName:  proportion.New,
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
-				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 0, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
-				util.BuildPodGroupWithPrio("pg3", "c1", "q3", 0, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
+				util.BuildPodGroupWithPrio("pg3", "c1", "q3", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
 			},
 			Pods: []*v1.Pod{
 				util.BuildPod("c1", "preemptee1-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
@@ -173,6 +173,7 @@ func TestReclaim(t *testing.T) {
 				{
 					Name:               gang.PluginName,
 					EnabledReclaimable: &trueValue,
+					EnabledJobStarving: &trueValue,
 				},
 				{ // proportion plugin will cause deserved resource large than preemptable pods's usage, and return less victims
 					Name:               proportion.PluginName,

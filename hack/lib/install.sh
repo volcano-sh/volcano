@@ -18,17 +18,17 @@
 function kind-up-cluster {
   check-kind
 
-  echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}]"
-  kind create cluster ${CLUSTER_CONTEXT} ${KIND_OPT}
+  echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT[*]} ${KIND_OPT}]"
+  kind create cluster "${CLUSTER_CONTEXT[@]}" ${KIND_OPT}
 
   echo
   check-images
 
   echo
   echo "Loading docker images into kind cluster"
-  kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG} ${CLUSTER_CONTEXT}
-  kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG} ${CLUSTER_CONTEXT}
+  kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}"
+  kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG} "${CLUSTER_CONTEXT[@]}"
+  kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG} "${CLUSTER_CONTEXT[@]}"
 }
 
 # check if the required images exist
