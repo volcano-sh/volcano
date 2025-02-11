@@ -79,7 +79,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 func (alloc *Action) pickUpQueuesAndJobs(queues *util.PriorityQueue, jobsMap map[api.QueueID]*util.PriorityQueue) {
 	ssn := alloc.session
 	for _, job := range ssn.Jobs {
-		// If not config enqueue action, change Pending pg into Inqueue statue to avoid blocking job scheduling.
+		// If not config enqueue action, change Pending pg into Inqueue state to avoid blocking job scheduling.
 		if job.IsPending() {
 			if conf.EnabledActionMap["enqueue"] {
 				klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: job status is pending.",

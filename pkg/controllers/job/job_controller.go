@@ -17,12 +17,15 @@ limitations under the License.
 package job
 
 import (
+	"context"
 	"fmt"
 	"hash"
 	"hash/fnv"
+	"sync"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
@@ -58,6 +61,32 @@ import (
 
 func init() {
 	framework.RegisterController(&jobcontroller{})
+}
+
+type delayAction struct {
+	// The namespacing name of the job
+	jobKey string
+
+	// The name of the task
+	taskName string
+
+	// The name of the pod
+	podName string
+
+	// The UID of the pod
+	podUID types.UID
+
+	// The event caused the action
+	event busv1alpha1.Event
+
+	// The action to take.
+	action busv1alpha1.Action
+
+	// The delay before the action is executed
+	delay time.Duration
+
+	// The cancel function of the action
+	cancel context.CancelFunc
 }
 
 // jobcontroller the Job jobcontroller type.
@@ -106,15 +135,20 @@ type jobcontroller struct {
 	queueSynced func() bool
 
 	// queue that need to sync up
-	queueList    []workqueue.RateLimitingInterface
-	commandQueue workqueue.RateLimitingInterface
+	queueList    []workqueue.TypedRateLimitingInterface[any]
+	commandQueue workqueue.TypedRateLimitingInterface[any]
 	cache        jobcache.Cache
 	// Job Event recorder
 	recorder record.EventRecorder
 
-	errTasks      workqueue.RateLimitingInterface
+	errTasks      workqueue.TypedRateLimitingInterface[any]
 	workers       uint32
 	maxRequeueNum int
+
+	delayActionMapLock sync.RWMutex
+	// delayActionMap stores delayed actions for jobs, where outer map key is job key (namespace/name),
+	// inner map key is pod name, and value is the delayed action to be performed
+	delayActionMap map[string]map[string]*delayAction
 }
 
 func (cc *jobcontroller) Name() string {
@@ -135,8 +169,8 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
 	cc.informerFactory = sharedInformers
-	cc.queueList = make([]workqueue.RateLimitingInterface, workers)
-	cc.commandQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	cc.queueList = make([]workqueue.TypedRateLimitingInterface[any], workers)
+	cc.commandQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	cc.cache = jobcache.New()
 	cc.errTasks = newRateLimitingQueue()
 	cc.recorder = recorder
@@ -148,7 +182,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	var i uint32
 	for i = 0; i < workers; i++ {
-		cc.queueList[i] = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+		cc.queueList[i] = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	}
 
 	factory := opt.VCSharedInformerFactory
@@ -226,10 +260,12 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.queueLister = cc.queueInformer.Lister()
 	cc.queueSynced = cc.queueInformer.Informer().HasSynced
 
+	cc.delayActionMap = make(map[string]map[string]*delayAction)
+
 	// Register actions
 	state.SyncJob = cc.syncJob
 	state.KillJob = cc.killJob
-
+	state.KillTarget = cc.killTarget
 	return nil
 }
 
@@ -292,7 +328,7 @@ func (cc *jobcontroller) belongsToThisRoutine(key string, count uint32) bool {
 	return val%cc.workers == count
 }
 
-func (cc *jobcontroller) getWorkerQueue(key string) workqueue.RateLimitingInterface {
+func (cc *jobcontroller) getWorkerQueue(key string) workqueue.TypedRateLimitingInterface[any] {
 	var hashVal hash.Hash32
 	var val uint32
 
@@ -327,6 +363,8 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 
 	klog.V(3).Infof("Try to handle request <%v>", req)
 
+	cc.CleanPodDelayActionsIfNeed(req)
+
 	jobInfo, err := cc.cache.Get(key)
 	if err != nil {
 		// TODO(k82cn): ignore not-ready error.
@@ -341,34 +379,197 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 		return true
 	}
 
-	action := applyPolicies(jobInfo.Job, &req)
-	klog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
-		action, req.Namespace, req.JobName, jobInfo.Job.Status.State.Phase, st)
+	delayAct := applyPolicies(jobInfo.Job, &req)
 
-	if action != busv1alpha1.SyncJobAction {
+	if delayAct.delay != 0 {
+		klog.V(3).Infof("Execute <%v> on Job <%s/%s> after %s",
+			delayAct.action, req.Namespace, req.JobName, delayAct.delay.String())
 		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
-			"Start to execute action %s ", action))
+			"Execute action %s after %s", delayAct.action, delayAct.delay.String()))
+		cc.AddDelayActionForJob(req, delayAct)
+		return true
 	}
 
-	if err := st.Execute(action); err != nil {
-		if cc.maxRequeueNum == -1 || queue.NumRequeues(req) < cc.maxRequeueNum {
-			klog.V(2).Infof("Failed to handle Job <%s/%s>: %v",
-				jobInfo.Job.Namespace, jobInfo.Job.Name, err)
-			// If any error, requeue it.
-			queue.AddRateLimited(req)
-			return true
-		}
+	klog.V(3).Infof("Execute <%v> on Job <%s/%s> in <%s> by <%T>.",
+		delayAct.action, req.Namespace, req.JobName, jobInfo.Job.Status.State.Phase, st)
+
+	if delayAct.action != busv1alpha1.SyncJobAction {
 		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
-			"Job failed on action %s for retry limit reached", action))
-		klog.Warningf("Terminating Job <%s/%s> and releasing resources", jobInfo.Job.Namespace, jobInfo.Job.Name)
-		if err = st.Execute(busv1alpha1.TerminateJobAction); err != nil {
-			klog.Errorf("Failed to terminate Job<%s/%s>: %v", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
-		}
-		klog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached", jobInfo.Job.Namespace, jobInfo.Job.Name, err)
+			"Start to execute action %s ", delayAct.action))
+	}
+
+	action := GetStateAction(delayAct)
+
+	if err := st.Execute(action); err != nil {
+		cc.handleJobError(queue, req, st, err, delayAct.action)
 	}
 
 	// If no error, forget it.
 	queue.Forget(req)
 
+	// If the action is not an internal action, cancel all delayed actions
+	if !isInternalAction(delayAct.action) {
+		cc.cleanupDelayActions(delayAct)
+	}
+
 	return true
+}
+
+// CleanPodDelayActionsIfNeed is used to clean delayed actions for Pod events when the pod phase changed:
+// if the event is not PodPending event:
+//   - cancel corresponding Pod Pending delayed action
+//   - if the event is PodRunning state, cancel corresponding Pod Failed and Pod Evicted delayed actions
+func (cc *jobcontroller) CleanPodDelayActionsIfNeed(req apis.Request) {
+	// Skip cleaning delayed actions for non-pod events
+	if !cc.isPodEvent(req) {
+		return
+	}
+
+	if req.Event != busv1alpha1.PodPendingEvent {
+		key := jobcache.JobKeyByReq(&req)
+		cc.delayActionMapLock.Lock()
+		defer cc.delayActionMapLock.Unlock()
+
+		if taskMap, exists := cc.delayActionMap[key]; exists {
+			if delayAct, exists := taskMap[req.PodName]; exists {
+				shouldCancel := false
+
+				if delayAct.event == busv1alpha1.PodPendingEvent {
+					// For PodPending delayed action, we need to check if the Pod UID matches
+					// Because if a Pod is deleted and immediately recreated,
+					// the new Pod's pending event may be queued before the old Pod's delete event
+					if req.PodUID == delayAct.podUID {
+						shouldCancel = true
+					}
+				}
+
+				if (delayAct.event == busv1alpha1.PodFailedEvent || delayAct.event == busv1alpha1.PodEvictedEvent) &&
+					req.Event == busv1alpha1.PodRunningEvent {
+					shouldCancel = true
+				}
+
+				if shouldCancel {
+					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> of Job <%s>", delayAct.action, req.PodName, req.Event, delayAct.jobKey)
+					delayAct.cancel()
+					delete(taskMap, req.PodName)
+				}
+			}
+		}
+	}
+}
+
+func (cc *jobcontroller) isPodEvent(req apis.Request) bool {
+	return req.Event == busv1alpha1.PodPendingEvent ||
+		req.Event == busv1alpha1.PodRunningEvent ||
+		req.Event == busv1alpha1.PodFailedEvent ||
+		req.Event == busv1alpha1.PodEvictedEvent
+}
+
+func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayAction) {
+	cc.delayActionMapLock.Lock()
+	defer cc.delayActionMapLock.Unlock()
+
+	m, ok := cc.delayActionMap[delayAct.jobKey]
+	if !ok {
+		m = make(map[string]*delayAction)
+		cc.delayActionMap[delayAct.jobKey] = m
+	}
+	if oldDelayAct, exists := m[req.PodName]; exists && oldDelayAct.action == delayAct.action {
+		return
+	}
+	m[req.PodName] = delayAct
+
+	ctx, cancel := context.WithTimeout(context.Background(), delayAct.delay)
+	delayAct.cancel = cancel
+
+	go func() {
+		<-ctx.Done()
+		if ctx.Err() == context.Canceled {
+			klog.V(4).Infof("Job<%s/%s>'s delayed action %s is canceled", req.Namespace, req.JobName, delayAct.action)
+			return
+		}
+
+		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, execute it", req.Namespace, req.JobName, delayAct.action)
+
+		jobInfo, err := cc.cache.Get(delayAct.jobKey)
+		if err != nil {
+			klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
+			return
+		}
+
+		st := state.NewState(jobInfo)
+		if st == nil {
+			klog.Errorf("Invalid state <%s> of Job <%v/%v>",
+				jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
+			return
+		}
+		queue := cc.getWorkerQueue(delayAct.jobKey)
+
+		if err := st.Execute(GetStateAction(delayAct)); err != nil {
+			cc.handleJobError(queue, req, st, err, delayAct.action)
+		}
+
+		queue.Forget(req)
+
+		cc.cleanupDelayActions(delayAct)
+	}()
+}
+
+func (cc *jobcontroller) handleJobError(queue workqueue.TypedRateLimitingInterface[any], req apis.Request, st state.State, err error, action busv1alpha1.Action) {
+	if cc.maxRequeueNum == -1 || queue.NumRequeues(req) < cc.maxRequeueNum {
+		klog.V(2).Infof("Failed to handle Job <%s/%s>: %v",
+			req.Namespace, req.JobName, err)
+		queue.AddRateLimited(req)
+		return
+	}
+
+	cc.recordJobEvent(req.Namespace, req.JobName, batchv1alpha1.ExecuteAction,
+		fmt.Sprintf("Job failed on action %s for retry limit reached", action))
+	klog.Warningf("Terminating Job <%s/%s> and releasing resources", req.Namespace, req.JobName)
+
+	if err = st.Execute(state.Action{Action: busv1alpha1.TerminateJobAction}); err != nil {
+		klog.Errorf("Failed to terminate Job<%s/%s>: %v", req.Namespace, req.JobName, err)
+	}
+	klog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached",
+		req.Namespace, req.JobName, err)
+}
+
+// cleanupDelayActions cleans up delayed actions
+// After a delayed action is executed, other delayed actions of the same type need to be cleaned up to avoid duplicate execution
+// Parameters:
+//   - currentDelayAction: the delayed action that has just been executed
+//
+// Implementation logic:
+//  1. Get the type of current delayed action (Job level, Task level or Pod level)
+//  2. Iterate through all delayed actions under this Job
+//  3. If the delayed action type matches, cancel it and remove from the map
+//
+// Usage scenarios:
+//   - When a Pod failure triggers Job termination, need to cancel other Job delayed actions under this Job
+func (cc *jobcontroller) cleanupDelayActions(currentDelayAction *delayAction) {
+	cc.delayActionMapLock.Lock()
+	defer cc.delayActionMapLock.Unlock()
+
+	actionType := GetActionType(currentDelayAction.action)
+
+	if m, exists := cc.delayActionMap[currentDelayAction.jobKey]; exists {
+		for _, delayAct := range m {
+			if GetActionType(delayAct.action) == actionType {
+				// For Task level actions, only cancel delayed actions for the same task
+				if actionType == TaskAction && delayAct.taskName != currentDelayAction.taskName {
+					continue
+				}
+				// For Pod level actions, only cancel delayed actions for the same pod
+				if actionType == PodAction && delayAct.podName != currentDelayAction.podName {
+					continue
+				}
+
+				if delayAct.cancel != nil {
+					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> and action <%s> of Job <%s>", delayAct.action, delayAct.podName, currentDelayAction.event, currentDelayAction.action, delayAct.jobKey)
+					delayAct.cancel()
+				}
+				delete(m, delayAct.podName)
+			}
+		}
+	}
 }

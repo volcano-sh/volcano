@@ -37,7 +37,7 @@ type jobCache struct {
 	sync.Mutex
 
 	jobs        map[string]*apis.JobInfo
-	deletedJobs workqueue.RateLimitingInterface
+	deletedJobs workqueue.TypedRateLimitingInterface[*apis.JobInfo]
 }
 
 func keyFn(ns, name string) string {
@@ -75,15 +75,15 @@ func jobKeyOfPod(pod *v1.Pod) (string, error) {
 
 // New gets the job Cache.
 func New() Cache {
-	queue := workqueue.NewMaxOfRateLimiter(
-		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 180*time.Second),
+	queue := workqueue.NewTypedMaxOfRateLimiter(
+		workqueue.NewTypedItemExponentialFailureRateLimiter[*apis.JobInfo](5*time.Millisecond, 180*time.Second),
 		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
-		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+		&workqueue.TypedBucketRateLimiter[*apis.JobInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 	)
 
 	return &jobCache{
 		jobs:        map[string]*apis.JobInfo{},
-		deletedJobs: workqueue.NewRateLimitingQueue(queue),
+		deletedJobs: workqueue.NewTypedRateLimitingQueue(queue),
 	}
 }
 
@@ -355,23 +355,17 @@ func (jc *jobCache) worker() {
 }
 
 func (jc *jobCache) processCleanupJob() bool {
-	obj, shutdown := jc.deletedJobs.Get()
+	job, shutdown := jc.deletedJobs.Get()
 	if shutdown {
 		return false
 	}
-	defer jc.deletedJobs.Done(obj)
-
-	job, ok := obj.(*apis.JobInfo)
-	if !ok {
-		klog.Errorf("failed to convert %v to *apis.JobInfo", obj)
-		return true
-	}
+	defer jc.deletedJobs.Done(job)
 
 	jc.Mutex.Lock()
 	defer jc.Mutex.Unlock()
 
 	if jobTerminated(job) {
-		jc.deletedJobs.Forget(obj)
+		jc.deletedJobs.Forget(job)
 		key := keyFn(job.Namespace, job.Name)
 		delete(jc.jobs, key)
 		klog.V(3).Infof("Job <%s> was deleted.", key)
