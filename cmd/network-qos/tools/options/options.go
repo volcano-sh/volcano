@@ -39,5 +39,5 @@ func (o *Options) AddFlags(c *cobra.Command) {
 		"bandwidth usage of online jobs exceeds the defined threshold(online-bandwidth-watermark)")
 	c.Flags().StringVar(&o.OfflineHighBandwidth, utils.OfflineHighBandwidthKey, o.OfflineHighBandwidth, "offline-high-bandwidth is the maximum amount of network bandwidth that can be used by offline jobs when the"+
 		"bandwidth usage of online jobs not reach to the defined threshold(online-bandwidth-watermark)")
-	c.Flags().BoolVar(&o.EnableNetworkQoS, utils.EnableNetworkQoS, o.EnableNetworkQoS, "enbale networkqos")
+	c.Flags().BoolVar(&o.EnableNetworkQoS, utils.EnableNetworkQoS, o.EnableNetworkQoS, "enable networkqos")
 }

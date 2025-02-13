@@ -103,7 +103,7 @@ func IsUnsupportedError(err error) bool {
 
 func (f *featureGate) Supported(feature Feature, cfg *config.Configuration) error {
 	if !cfg.IsFeatureSupported(string(feature)) {
-		return UnsupportedError(fmt.Sprintf("feature(%s) is not supprted by volcano-agent", string(feature)))
+		return UnsupportedError(fmt.Sprintf("feature(%s) is not supported by volcano-agent", string(feature)))
 	}
 
 	switch feature {
