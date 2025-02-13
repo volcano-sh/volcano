@@ -84,6 +84,9 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "create", "update", "watch"]
+  - apiGroups: ["topology.volcano.sh"]
+    resources: ["hypernodes", "hypernodes/status"]
+    verbs: ["list", "watch", "get", "create", "delete", "update", "patch"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1

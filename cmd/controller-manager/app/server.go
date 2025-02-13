@@ -139,6 +139,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.WorkerThreadsForQueue = opt.WorkerThreadsForQueue
 	controllerOpt.WorkerThreadsForGC = opt.WorkerThreadsForGC
 	controllerOpt.Config = config
+	controllerOpt.HyperNodeProviderDir = opt.HyperNodeProviderDir
 
 	return func(ctx context.Context) {
 		framework.ForeachController(func(c framework.Controller) {
