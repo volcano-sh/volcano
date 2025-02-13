@@ -19,7 +19,9 @@ package podgroup
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -145,28 +147,28 @@ func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 func (pg *pgcontroller) getAnnotationsFromUpperRes(kind string, name string, namespace string) map[string]string {
 	switch kind {
 	case "ReplicaSet":
-		rs, err := pg.kubeClient.AppsV1().ReplicaSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		rs, err := pg.rsLister.ReplicaSets(namespace).Get(name)
 		if err != nil {
 			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
 			return map[string]string{}
 		}
 		return rs.Annotations
 	case "DaemonSet":
-		ds, err := pg.kubeClient.AppsV1().DaemonSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		ds, err := pg.dsLister.DaemonSets(namespace).Get(name)
 		if err != nil {
 			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
 			return map[string]string{}
 		}
 		return ds.Annotations
 	case "StatefulSet":
-		ss, err := pg.kubeClient.AppsV1().StatefulSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		ss, err := pg.ssLister.StatefulSets(namespace).Get(name)
 		if err != nil {
 			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
 			return map[string]string{}
 		}
 		return ss.Annotations
 	case "Job":
-		job, err := pg.kubeClient.BatchV1().Jobs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		job, err := pg.jobLister.Jobs(namespace).Get(name)
 		if err != nil {
 			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
 			return map[string]string{}
@@ -175,6 +177,33 @@ func (pg *pgcontroller) getAnnotationsFromUpperRes(kind string, name string, nam
 	default:
 		return map[string]string{}
 	}
+}
+
+func (pg *pgcontroller) getMinMemberFromUpperRes(pod *v1.Pod) int32 {
+	minMember := int32(1)
+
+	for _, reference := range pod.OwnerReferences {
+		// Currently we assume the group-min-member annotation will be specified only once
+		if reference.Kind != "" && reference.Name != "" {
+			annotations := pg.getAnnotationsFromUpperRes(reference.Kind, reference.Name, pod.Namespace)
+			if minMemberAnno, ok := annotations[scheduling.VolcanoGroupMinMemberAnnotationKey]; ok {
+				minMemberFromAnno, err := strconv.Atoi(minMemberAnno)
+				if err != nil {
+					klog.Infof("Failed to convert minMemberAnnotation of Pod owners <%s/%s> into number, skipping",
+						pod.Namespace, pod.Name)
+					return minMember
+				}
+				if minMemberFromAnno < math.MinInt32 || minMemberFromAnno > math.MaxInt32 {
+					klog.Infof("minMember %d exceeds bounds of int32, skipping", minMember)
+					return minMember
+				}
+				minMember = int32(minMemberFromAnno)
+				break
+			}
+		}
+	}
+
+	return minMember
 }
 
 // Inherit annotations from upper resources.
@@ -203,6 +232,8 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			return err
 		}
 
+		minMember := pg.getMinMemberFromUpperRes(pod)
+		minResources := util.CalTaskRequests(pod, minMember)
 		obj := &scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:       pod.Namespace,
@@ -212,9 +243,9 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				Labels:          map[string]string{},
 			},
 			Spec: scheduling.PodGroupSpec{
-				MinMember:         1,
+				MinMember:         minMember,
 				PriorityClassName: pod.Spec.PriorityClassName,
-				MinResources:      util.GetPodQuotaUsage(pod),
+				MinResources:      &minResources,
 			},
 			Status: scheduling.PodGroupStatus{
 				Phase: scheduling.PodGroupPending,
