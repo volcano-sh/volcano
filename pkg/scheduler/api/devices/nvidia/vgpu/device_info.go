@@ -28,6 +28,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
+	deviceconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
 
@@ -60,6 +61,12 @@ type GPUDevice struct {
 	UsedMem uint
 	// number of core used
 	UsedCore uint
+	// working node of this GPU
+	Mode string
+	// MigTemplate for this GPU
+	MigTemplate []deviceconfig.Geometry
+	/// MigUsage for this GPU
+	MigUsage deviceconfig.MigInUse
 }
 
 type GPUDevices struct {
@@ -248,7 +255,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 
 		annotations[DeviceBindPhase] = "allocating"
 		annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
-		err = patchPodAnnotations(pod, annotations)
+		err = patchPodAnnotations(kubeClient, pod, annotations)
 		if err != nil {
 			return err
 		}
