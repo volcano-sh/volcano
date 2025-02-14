@@ -163,7 +163,7 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	var unreadyTaskCount int32
 	var unScheduleJobCount int
 	for _, job := range ssn.Jobs {
-		//	skip unavailable job
+		// skip unavailable job
 		if vr := validJobFn(job); !vr.Pass {
 			continue
 		}
