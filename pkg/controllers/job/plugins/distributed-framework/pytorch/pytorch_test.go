@@ -17,11 +17,12 @@ func TestPytorch(t *testing.T) {
 	plugins[PytorchPluginName] = []string{"--port=5000"}
 
 	testcases := []struct {
-		Name string
-		Job  *v1alpha1.Job
-		Pod  *v1.Pod
-		port int
-		envs []v1.EnvVar
+		Name    string
+		Job     *v1alpha1.Job
+		Pod     *v1.Pod
+		port    int
+		envs    []v1.EnvVar
+		wantErr error
 	}{
 		{
 			Name: "test pod without master",
@@ -35,6 +36,9 @@ func TestPytorch(t *testing.T) {
 							Template: v1.PodTemplateSpec{},
 						},
 					},
+				},
+				Status: v1alpha1.JobStatus{
+					ControlledResources: map[string]string{},
 				},
 			},
 			Pod: &v1.Pod{
@@ -69,6 +73,9 @@ func TestPytorch(t *testing.T) {
 							Template: v1.PodTemplateSpec{},
 						},
 					},
+				},
+				Status: v1alpha1.JobStatus{
+					ControlledResources: map[string]string{},
 				},
 			},
 			Pod: &v1.Pod{
@@ -123,6 +130,9 @@ func TestPytorch(t *testing.T) {
 							Template: v1.PodTemplateSpec{},
 						},
 					},
+				},
+				Status: v1alpha1.JobStatus{
+					ControlledResources: map[string]string{},
 				},
 			},
 			Pod: &v1.Pod{
@@ -184,6 +194,9 @@ func TestPytorch(t *testing.T) {
 						},
 					},
 				},
+				Status: v1alpha1.JobStatus{
+					ControlledResources: map[string]string{},
+				},
 			},
 			Pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
@@ -244,6 +257,9 @@ func TestPytorch(t *testing.T) {
 						},
 					},
 				},
+				Status: v1alpha1.JobStatus{
+					ControlledResources: map[string]string{},
+				},
 			},
 			Pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
@@ -303,6 +319,9 @@ func TestPytorch(t *testing.T) {
 							Template: v1.PodTemplateSpec{},
 						},
 					},
+				},
+				Status: v1alpha1.JobStatus{
+					ControlledResources: map[string]string{},
 				},
 			},
 			Pod: &v1.Pod{
@@ -367,6 +386,19 @@ func TestPytorch(t *testing.T) {
 
 			if !equality.Semantic.DeepEqual(testcase.Pod.Spec.Containers[0].Env, testcase.envs) {
 				t.Errorf("Case %d (%s): wrong envs, got %v, expected %v", index, testcase.Name, testcase.Pod.Spec.Containers[0].Env, testcase.envs)
+			}
+
+			err := mp.OnJobAdd(testcase.Job)
+			if !equality.Semantic.DeepEqual(err, testcase.wantErr) {
+				t.Fatalf("OnJobAdd error = %v, wantErr %v", err, testcase.wantErr)
+			}
+			err = mp.OnJobUpdate(testcase.Job)
+			if !equality.Semantic.DeepEqual(err, testcase.wantErr) {
+				t.Fatalf("OnJobUpdate error = %v, wantErr %v", err, testcase.wantErr)
+			}
+			err = mp.OnJobDelete(testcase.Job)
+			if !equality.Semantic.DeepEqual(err, testcase.wantErr) {
+				t.Fatalf("OnJobDelete error = %v, wantErr %v", err, testcase.wantErr)
 			}
 		})
 	}
