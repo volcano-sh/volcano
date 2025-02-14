@@ -48,35 +48,35 @@ func (gp *gangPlugin) Name() string {
 	return PluginName
 }
 
-func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
-	validJobFn := func(obj interface{}) *api.ValidateResult {
-		job, ok := obj.(*api.JobInfo)
-		if !ok {
-			return &api.ValidateResult{
-				Pass:    false,
-				Message: fmt.Sprintf("Failed to convert <%v> to *JobInfo", obj),
-			}
+func validJobFn(obj interface{}) *api.ValidateResult {
+	job, ok := obj.(*api.JobInfo)
+	if !ok {
+		return &api.ValidateResult{
+			Pass:    false,
+			Message: fmt.Sprintf("Failed to convert <%v> to *JobInfo", obj),
 		}
-
-		if valid := job.CheckTaskValid(); !valid {
-			return &api.ValidateResult{
-				Pass:    false,
-				Reason:  v1beta1.NotEnoughPodsOfTaskReason,
-				Message: "Not enough valid pods of each task for gang-scheduling",
-			}
-		}
-
-		vtn := job.ValidTaskNum()
-		if vtn < job.MinAvailable {
-			return &api.ValidateResult{
-				Pass:   false,
-				Reason: v1beta1.NotEnoughPodsReason,
-				Message: fmt.Sprintf("Not enough valid tasks for gang-scheduling, valid: %d, min: %d",
-					vtn, job.MinAvailable),
-			}
-		}
-		return nil
 	}
+
+	if valid := job.CheckTaskValid(); !valid {
+		return &api.ValidateResult{
+			Pass:    false,
+			Reason:  v1beta1.NotEnoughPodsOfTaskReason,
+			Message: "Not enough valid pods of each task for gang-scheduling",
+		}
+	}
+
+	vtn := job.ValidTaskNum()
+	if vtn < job.MinAvailable {
+		return &api.ValidateResult{
+			Pass:   false,
+			Reason: v1beta1.NotEnoughPodsReason,
+			Message: fmt.Sprintf("Not enough valid tasks for gang-scheduling, valid: %d, min: %d",
+				vtn, job.MinAvailable),
+		}
+	}
+	return nil
+}
+func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobValidFn(gp.Name(), validJobFn)
 
@@ -163,6 +163,10 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	var unreadyTaskCount int32
 	var unScheduleJobCount int
 	for _, job := range ssn.Jobs {
+		//	skip unavailable job
+		if vr := validJobFn(job); !vr.Pass {
+			continue
+		}
 		if !job.IsReady() {
 			schedulableTaskNum := func() (num int32) {
 				for _, task := range job.TaskStatusIndex[api.Pending] {
