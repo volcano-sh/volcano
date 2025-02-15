@@ -90,8 +90,8 @@ func (ssn *Session) AddNodeOrderFn(name string, pf api.NodeOrderFn) {
 	ssn.nodeOrderFns[name] = pf
 }
 
-// AddHyperNodeOrederFn add hyperNode order function
-func (ssn *Session) AddHyperNodeOrederFn(name string, fn api.HyperNodeOrderFn) {
+// AddHyperNodeOrderFn add hyperNode order function
+func (ssn *Session) AddHyperNodeOrderFn(name string, fn api.HyperNodeOrderFn) {
 	ssn.hyperNodeOrderFns[name] = fn
 }
 

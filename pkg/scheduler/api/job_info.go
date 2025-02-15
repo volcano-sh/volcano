@@ -71,9 +71,10 @@ type TaskID types.UID
 
 // TransactionContext holds all the fields that needed by scheduling transaction
 type TransactionContext struct {
-	NodeName         string
-	EvictionOccurred bool
-	Status           TaskStatus
+	NodeName              string
+	EvictionOccurred      bool
+	JobAllocatedHyperNode string
+	Status                TaskStatus
 }
 
 // Clone returns a clone of TransactionContext
