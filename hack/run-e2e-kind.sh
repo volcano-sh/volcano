@@ -31,6 +31,57 @@ export CLUSTER_CONTEXT=("--name" "${CLUSTER_NAME}")
 
 export KIND_OPT=${KIND_OPT:="--config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
 
+# kwok node config
+export KWOK_NODE_CPU=${KWOK_NODE_CPU:-4}      # 4 cores
+export KWOK_NODE_MEMORY=${KWOK_NODE_MEMORY:-4Gi}  # 4GB
+
+# generate kwok node config
+function generate-kwok-node-config() {
+  local node_index=$1
+  local cpu=$2
+  local memory=$3
+  
+  cat <<EOF > "${VK_ROOT}/hack/kwok-node-${node_index}.yaml"
+apiVersion: v1
+kind: Node
+metadata:
+  annotations:
+    node.alpha.kubernetes.io/ttl: "0"
+    kwok.x-k8s.io/node: fake
+  labels:
+    beta.kubernetes.io/arch: amd64
+    beta.kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: kwok-node-${node_index}
+    kubernetes.io/os: linux
+    kubernetes.io/role: agent
+    node-role.kubernetes.io/agent: ""
+    type: kwok
+  name: kwok-node-${node_index}
+spec:
+  taints:
+  - effect: NoSchedule
+    key: kwok.x-k8s.io/node
+    value: fake
+status:
+  capacity:
+    cpu: "${cpu}"
+    memory: "${memory}"
+    pods: "110"
+  allocatable:
+    cpu: "${cpu}"
+    memory: "${memory}"
+    pods: "110"
+EOF
+}
+
+# install kwok nodes
+function install-kwok-nodes(node_count) {
+  for i in $(seq 0 $((node_count-1))); do
+    generate-kwok-node-config $i "${KWOK_NODE_CPU}" "${KWOK_NODE_MEMORY}"
+    kubectl apply -f "${VK_ROOT}/hack/kwok-node-${i}.yaml"
+  done
+}
 
 function install-volcano {
   install-helm
@@ -121,6 +172,7 @@ source "${VK_ROOT}/hack/lib/install.sh"
 
 check-prerequisites
 kind-up-cluster
+install-kwok-with-helm
 
 if [[ -z ${KUBECONFIG+x} ]]; then
     export KUBECONFIG="${HOME}/.kube/config"
@@ -165,6 +217,12 @@ case ${E2E_TYPE} in
 "STRESS")
     echo "Running stress e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/stress/
+    ;;
+"HYPERNODE")
+    echo "Creating 8 kwok nodes for 3-tier topology"
+    install-kwok-nodes(8)
+    echo "Running hypernode e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/hypernode/
     ;;
 esac
 
