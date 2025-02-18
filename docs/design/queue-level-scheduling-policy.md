@@ -63,6 +63,42 @@ In this example:
 - The `type` subfield specifies the name of the scheduling policy (e.g., "FairShare").
 - The `parameters` subfield allows for policy-specific configurations.
 
+## Implementation
+
+This section outlines the proposed changes to implement queue-level scheduling policies in Volcano.
+
+### Required Changes
+
+1. Queue Controller (pkg/controllers/queue):
+   - Update the Queue CRD to include the new SchedulingPolicy field
+   - Modify the queue controller to handle the new SchedulingPolicy field
+   - Implement validation logic for the SchedulingPolicy
+
+2. Scheduler Package (pkg/scheduler):
+   - Create a new policy selector plugin (pkg/scheduler/plugins/policy_selector)
+   - Modify the scheduler framework to incorporate the policy selector plugin
+   - Update existing scheduling plugins to consider queue-specific policies
+
+### Process Flow
+
+The following flowchart illustrates the basic process of how queue-level scheduling policies would be implemented and applied in the Volcano scheduling process:
+
+```mermaid
+graph TD
+    A[Queue Creation/Update] --> B[Queue Controller]
+    B --> C{Validate SchedulingPolicy}
+    C -->|Valid| D[Update Queue Status]
+    C -->|Invalid| E[Reject Changes]
+    D --> F[Pod Creation]
+    F --> G[Scheduler]
+    G --> H[Policy Selector Plugin]
+    H --> I[Apply Queue-Specific Policy]
+    I --> J[Node Selection]
+    J --> K[Pod Binding]
+```
+
+Above flowchart demonstrates how the Queue Controller handles the creation and updating of queues with their specific policies, while the Scheduler uses the Policy Selector Plugin to apply the appropriate policy during the pod scheduling process.
+
 ## Considerations
 
 These are the challenges that need to be addressed when implementing queue-level scheduling policies.
