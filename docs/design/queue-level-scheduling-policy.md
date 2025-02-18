@@ -63,4 +63,18 @@ In this example:
 - The `type` subfield specifies the name of the scheduling policy (e.g., "FairShare").
 - The `parameters` subfield allows for policy-specific configurations.
 
----
+## Considerations
+
+These are the challenges that need to be addressed when implementing queue-level scheduling policies.
+
+### Policy Definition
+
+We should create a flexible and extensible system for defining scheduling policies. This includes implementing predefined policies (e.g., FairShare, FIFO, Priority), and allowing policy configuration with specific parameters.
+
+### Policy Conflicts
+
+Managing potential conflicts between queue-level and global policies is essential. We need to establish a clear policy application hierarchy, implement a conflict resolution mechanism, and create a validation webhook to prevent conflicting policies.
+
+### Default Policy
+
+For queues without explicitly specified policies, we should define a cluster-wide default policy. Additionally, allowing policy inheritance from parent queues and providing configurable default policy options will enhance flexibility.
