@@ -113,4 +113,4 @@ Managing potential conflicts between queue-level and global policies is essentia
 
 ### Default Policy
 
-For queues without explicitly specified policies, we should define a cluster-wide default policy. Additionally, allowing policy inheritance from parent queues and providing configurable default policy options will enhance flexibility.
+For queues without explicitly specified policies, we should define a cluster-wide default policy. Additionally, providing configurable default policy options will enhance flexibility.
