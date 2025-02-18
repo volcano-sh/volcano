@@ -1,7 +1,7 @@
 Queue Level Scheduling Policy
 ---
 
-by @mahdikhashan; 18 Feb, 2025.
+by [@mahdikhashan](http://github.com/mahdikhashan); 18 Feb, 2025.
 
 # Motivation
 
