@@ -26,7 +26,6 @@ import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
@@ -336,7 +335,6 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 		klog.Warningf("received argument of nil node, no need to set other resources for %s", ni.Name)
 		return
 	}
-
 	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
 	ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
 	IgnoredDevicesList.Set(

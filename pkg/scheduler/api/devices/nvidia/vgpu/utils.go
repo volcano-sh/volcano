@@ -19,6 +19,7 @@ package vgpu
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -57,6 +58,21 @@ func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 	return err
 }
 
+func extractGeoMetriyFromType(t string) ([]config.Geometry, error) {
+	for _, val := range config.GetConfig().NvidiaConfig.MigGeometriesList {
+		found := false
+		for _, migDevType := range val.Models {
+			if strings.Contains(t, migDevType) {
+				found = true
+			}
+		}
+		if found {
+			return val.Geometries, nil
+		}
+	}
+	return []config.Geometry{}, errors.New("mig type not found")
+}
+
 func decodeNodeDevices(name string, str string) *GPUDevices {
 	if !strings.Contains(str, ":") {
 		return nil
@@ -85,6 +101,16 @@ func decodeNodeDevices(name string, str string) *GPUDevices {
 				Mode:        "hami-core",
 				MigTemplate: []config.Geometry{},
 				MigUsage:    config.MigInUse{},
+			}
+			if len(items) > 5 {
+				i.Mode = items[5]
+				if i.Mode == "mig" {
+					var err error
+					i.MigTemplate, err = extractGeoMetriyFromType(i.Type)
+					if err != nil {
+						i.Mode = "hami-core"
+					}
+				}
 			}
 			retval.Device[index] = &i
 		}

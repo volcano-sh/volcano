@@ -18,6 +18,7 @@ package vgpu
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -102,12 +103,18 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	if !ok {
 		return nil
 	}
+	devicecm := os.Getenv("VOLCANO_DEVICE_CM")
+	if len(devicecm) == 0 {
+		devicecm = "volcano-vgpu-device-config"
+	}
+	deviceconfig.InitDevicesConfig(devicecm)
+
 	nodedevices := decodeNodeDevices(name, annos)
 	if (nodedevices == nil) || len(nodedevices.Device) == 0 {
 		return nil
 	}
 	for _, val := range nodedevices.Device {
-		klog.V(4).InfoS("Nvidia Device registered name", "name", nodedevices.Name, "val", *val)
+		klog.V(3).InfoS("Nvidia Device registered name", "name", nodedevices.Name, "val", *val)
 		ResetDeviceMetrics(val.UUID, node.Name, float64(val.Memory))
 	}
 

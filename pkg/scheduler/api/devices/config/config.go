@@ -19,11 +19,13 @@ package config
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"gopkg.in/yaml.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	"volcano.sh/volcano/pkg/scheduler/api/devices"
 )
 
 type Config struct {
@@ -32,6 +34,7 @@ type Config struct {
 
 var (
 	configs *Config
+	once    sync.Once
 )
 
 func GetConfig() *Config {
@@ -58,27 +61,29 @@ func LoadConfigFromCM(kubeClient kubernetes.Interface, cmName string) (*Config, 
 	return &yamlData, nil
 }
 
-func InitDevicesConfig(kubeClient kubernetes.Interface, cmName string) {
-	var err error
-	if len(cmName) == 0 {
-		cmName = "volcano-vgpu-device-config"
-	}
-	configs, err = LoadConfigFromCM(kubeClient, cmName)
-	if err != nil {
-		configs = &Config{
-			NvidiaConfig: NvidiaConfig{
-				ResourceCountName:   "volcano.sh/vgpu-number",
-				ResourceCoreName:    "volcano.sh/vgpu-cores",
-				ResourceMemoryName:  "volcano.sh/vgpu-memory",
-				DefaultMemory:       0,
-				DefaultCores:        0,
-				DefaultGPUNum:       1,
-				DeviceSplitCount:    10,
-				DeviceMemoryScaling: 1,
-				DeviceCoreScaling:   1,
-				DisableCoreLimit:    false,
-			},
+func InitDevicesConfig(cmName string) {
+	once.Do(func() {
+		var err error
+		if len(cmName) == 0 {
+			cmName = "volcano-vgpu-device-config"
 		}
-	}
-	klog.V(3).InfoS("Initializing volcano vgpu config", "device-configs", configs)
+		configs, err = LoadConfigFromCM(devices.GetClient(), cmName)
+		if err != nil {
+			configs = &Config{
+				NvidiaConfig: NvidiaConfig{
+					ResourceCountName:   "volcano.sh/vgpu-number",
+					ResourceCoreName:    "volcano.sh/vgpu-cores",
+					ResourceMemoryName:  "volcano.sh/vgpu-memory",
+					DefaultMemory:       0,
+					DefaultCores:        0,
+					DefaultGPUNum:       1,
+					DeviceSplitCount:    10,
+					DeviceMemoryScaling: 1,
+					DeviceCoreScaling:   1,
+					DisableCoreLimit:    false,
+				},
+			}
+		}
+		klog.V(3).InfoS("-=-=-=-=-=-=-=-=-=-=-=-Initializing volcano vgpu config", "device-configs", configs)
+	})
 }
