@@ -312,7 +312,7 @@ func Test_readTopologyFromPgAnnotations(t *testing.T) {
 				},
 			},
 			topology: nil,
-			err:      fmt.Errorf("task %s is duplicated in job <%s/%s>", "ps", "default", "job1"),
+			err:      fmt.Errorf("task %s is duplicate in job <%s/%s>", "ps", "default", "job1"),
 		},
 		{
 			description: "redundant punctuations",
