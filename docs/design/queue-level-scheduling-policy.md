@@ -10,3 +10,30 @@ The current global scheduling policy in Volcano is pretty rigid, applying the sa
 This change opens up some exciting possibilities. For instance, in a multi-tenant data science platform, research teams could use FairShare policies for fair resource distribution while production ML jobs could benefit from BinPacking strategies. Cloud providers could optimize mixed workloads with FIFO policies for batch processing and GPU-aware policies for machine learning tasks. Finally, this enhancement would boost performance and user experience.
 
 ---
+
+# API
+
+To support queue-level scheduling policies, I propose the following changes to the Queue Custom Resource Definition (CRD):
+
+```yaml
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: data-science-queue
+spec:
+  weight: 10
+  priority: 100
+  schedulingPolicy:
+    type: "FairShare"
+    parameters:
+      param1: "value1"
+      param2: "value2"
+```
+
+In this example:
+
+- A new `schedulingPolicy` field is added to the Queue spec.
+- The `type` subfield specifies the name of the scheduling policy (e.g., "FairShare").
+- The `parameters` subfield allows for policy-specific configurations.
+
+---
