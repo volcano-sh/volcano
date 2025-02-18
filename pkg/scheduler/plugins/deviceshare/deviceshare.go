@@ -80,7 +80,6 @@ func enablePredicate(dsp *deviceSharePlugin) {
 	if ok {
 		dsp.schedulePolicy = args[SchedulePolicyArgument].(string)
 	}
-
 	args.GetInt(&dsp.scheduleWeight, ScheduleWeight)
 
 	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {
