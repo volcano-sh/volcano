@@ -24,6 +24,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/informers"
 	kubeclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -132,6 +133,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	// TODO: add user agent for different controllers
 	controllerOpt.KubeClient = kubeclientset.NewForConfigOrDie(config)
 	controllerOpt.VolcanoClient = vcclientset.NewForConfigOrDie(config)
+	controllerOpt.DynamicClient = dynamic.NewForConfigOrDie(config)
 	controllerOpt.SharedInformerFactory = informers.NewSharedInformerFactory(controllerOpt.KubeClient, 0)
 	controllerOpt.VCSharedInformerFactory = informerfactory.NewSharedInformerFactory(controllerOpt.VolcanoClient, 0)
 	controllerOpt.InheritOwnerAnnotations = opt.InheritOwnerAnnotations
