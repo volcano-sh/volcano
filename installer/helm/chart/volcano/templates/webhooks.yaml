@@ -14,7 +14,7 @@ webhooks:
       - v1
     clientConfig:
       service:
-        name: {{ .Release.Name }}-admission-service
+        name: {{ include "volcano.admission.fullname" . }}-service
         namespace: {{ .Release.Namespace }}
         path: /pods/mutate
         port: 443
@@ -62,7 +62,7 @@ webhooks:
       - v1
     clientConfig:
       service:
-        name: {{ .Release.Name }}-admission-service
+        name: {{ include "volcano.admission.fullname" . }}-service
         namespace: {{ .Release.Namespace }}
         path: /queues/mutate
         port: 443
@@ -111,7 +111,7 @@ webhooks:
       - v1
     clientConfig:
       service:
-        name: {{ .Release.Name }}-admission-service
+        name: {{ include "volcano.admission.fullname" . }}-service
         namespace: {{ .Release.Namespace }}
         path: /podgroups/mutate
         port: 443
@@ -160,7 +160,7 @@ webhooks:
       - v1
     clientConfig:
       service:
-        name: {{ .Release.Name }}-admission-service
+        name: {{ include "volcano.admission.fullname" . }}-service
         namespace: {{ .Release.Namespace }}
         path: /jobs/mutate
         port: 443
@@ -209,7 +209,7 @@ webhooks:
       - v1
     clientConfig:
       service:
-        name: {{ .Release.Name }}-admission-service
+        name: {{ include "volcano.admission.fullname" . }}-service
         namespace: {{ .Release.Namespace }}
         path: /jobs/validate
         port: 443
@@ -258,7 +258,7 @@ webhooks:
       - v1
     clientConfig:
       service:
-        name: {{ .Release.Name }}-admission-service
+        name: {{ include "volcano.admission.fullname" . }}-service
         namespace: {{ .Release.Namespace }}
         path: /pods/validate
         port: 443
@@ -306,7 +306,7 @@ webhooks:
       - v1
     clientConfig:
       service:
-        name: {{ .Release.Name }}-admission-service
+        name: {{ include "volcano.admission.fullname" . }}-service
         namespace: {{ .Release.Namespace }}
         path: /queues/validate
         port: 443
