@@ -130,6 +130,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.controller_log_level`|Settings log print level for Controller|`4`|
 |`custom.scheduler_resources`|Resources for Scheduler pods|`~`|
 |`custom.scheduler_log_level`|Settings log print level for Scheduler|`3`|
+|`custom.scheduler_plugins_dir`| Settings dir for the Scheduler to load custom plugins|``|
 |`custom.webhooks_namespace_selector_expressions`|Additional namespace selector expressions for Volcano admission webhooks|`~`|
 |`service.ipFamilyPolicy`|Settings service the family policy|``|
 |`service.ipFamilies`|Settings service the address families|`[]`|
