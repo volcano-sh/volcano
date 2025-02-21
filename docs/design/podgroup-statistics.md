@@ -10,7 +10,7 @@ resulting in accumulation of memory leak. See in issue #3597: https://github.com
 
 ## Alternative
 Currently the statistics of podgroups of each state are only used for display by vcctl, there is no need to be persisted in queue's status. 
-So when users need to use `vcctl queue get -n [name]` or `vcctl list` to display queues and each state of podgroups in queue, 
+So when users need to use `vcctl queue get -n [name]` or `vcctl queue list` to display queues and each state of podgroups in queue, 
 vcctl should calculate podgroup statistics in client side and then display them. And we can export these statistics of podgroups in each state as metrics.  
 
 ## Implementation
@@ -20,7 +20,7 @@ And `UpdateStatus` should not be used here: https://github.com/volcano-sh/volcan
 the `UpdateStatus` interface will verify the resourceVersion in the apiserver, which may cause concurrent update conflicts. 
 Instead, `ApplyStatus` should be used here to avoid this situation, because we only need to update the status of the queue. 
 It should be noted that the controller currently does not have patch queue status permissions, so we should add a patch queue/status permission to the clusterrole.
-- `vcctl get -n [name]` and `vcctl list` display the statistics of podgroups in each state from queue's status directly, 
+- `vcctl queue get -n [name]` and `vcctl queue list` display the statistics of podgroups in each state from queue's status directly, 
 instead we should do one more step, query the podgroups owend in the queue, stat the counts of podgroups in each state at the `vcctl` side, and then display them. 
 - Those metrics called `queue_pod_group_[state]_count`, which are recorded in proportion/capacity plugins in scheduler, 
 now will be moved to controller to record. The metrics involved are as follows:
