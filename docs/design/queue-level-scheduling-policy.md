@@ -9,6 +9,10 @@ The current global scheduling policy in Volcano is pretty rigid, applying the sa
 
 This change opens up some exciting possibilities. For instance, in a multi-tenant data science platform, research teams could use FairShare policies for fair resource distribution while production ML jobs could benefit from BinPacking strategies. Cloud providers could optimize mixed workloads with FIFO policies for batch processing and GPU-aware policies for machine learning tasks. Finally, this enhancement would boost performance and user experience.
 
+## User Stories
+
+TODO
+
 ## Design
 
 ### Spec Changes
