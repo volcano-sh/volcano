@@ -62,7 +62,6 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 	for _, task := range pendingTasks {
 		job := ssn.Jobs[task.Job]
 		ph := util.NewPredicateHelper()
-		allocated := false
 		fe := api.NewFitErrors()
 
 		if err := ssn.PrePredicateFn(task); err != nil {
@@ -93,16 +92,13 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 		if err := ssn.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v", task.UID, node.Name, ssn.UID)
 			fe.SetNodeError(node.Name, err)
+			job.NodesFitErrors[task.UID] = fe
 			continue
 		}
 
 		metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 		metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
-		allocated = true
 
-		if !allocated {
-			job.NodesFitErrors[task.UID] = fe
-		}
 		// TODO (k82cn): backfill for other case.
 	}
 }
