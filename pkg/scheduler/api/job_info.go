@@ -364,7 +364,7 @@ type JobInfo struct {
 
 	Preemptable bool
 
-	// RevocableZone support set volcano.sh/revocable-zone annotaion or label for pod/podgroup
+	// RevocableZone support set volcano.sh/revocable-zone annotation or label for pod/podgroup
 	// we only support empty value or * value for this version and we will support specify revocable zone name for future release
 	// empty value means workload can not use revocable node
 	// * value means workload can use all the revocable node for during node active revocable time.
@@ -452,7 +452,7 @@ func (ji *JobInfo) extractWaitingTime(pg *PodGroup, waitingTimeKey string) (*tim
 
 // extractPreemptable return volcano.sh/preemptable value for job
 func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
-	// check annotaion first
+	// check annotation first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.PodPreemptable]; found {
 			b, err := strconv.ParseBool(value)
@@ -949,7 +949,7 @@ func (ji *JobInfo) CheckTaskReady() bool {
 	occupiedMap := ji.getJobAllocatedRoles()
 	for taskSpec, minNum := range ji.TaskMinAvailable {
 		if occupiedMap[taskSpec] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskSpec, occupiedMap[taskSpec])
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min available", ji.Namespace, ji.Name, taskSpec, occupiedMap[taskSpec])
 			return false
 		}
 	}
@@ -982,7 +982,7 @@ func (ji *JobInfo) CheckTaskPipelined() bool {
 	}
 	for taskSpec, minNum := range ji.TaskMinAvailable {
 		if occupiedMap[taskSpec] < minNum {
-			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min avaliable", ji.Namespace, ji.Name, taskSpec, occupiedMap[taskSpec])
+			klog.V(4).Infof("Job %s/%s Task %s occupied %v less than task min available", ji.Namespace, ji.Name, taskSpec, occupiedMap[taskSpec])
 			return false
 		}
 	}

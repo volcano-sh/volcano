@@ -39,7 +39,7 @@ func TestValidateJobCreate(t *testing.T) {
 	var policyExitCode int32 = -1
 	var invMinAvailable int32 = -1
 	namespace := "test"
-	priviledged := true
+	privileged := true
 
 	testCases := []struct {
 		Name           string
@@ -1037,7 +1037,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      true,
 		},
 		{
-			Name: "job with priviledged init container",
+			Name: "job with privileged init container",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "valid-job",
@@ -1060,7 +1060,7 @@ func TestValidateJobCreate(t *testing.T) {
 											Name:  "init-fake-name",
 											Image: "busybox:1.24",
 											SecurityContext: &v1.SecurityContext{
-												Privileged: &priviledged,
+												Privileged: &privileged,
 											},
 										},
 									},
@@ -1081,7 +1081,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      false,
 		},
 		{
-			Name: "job with priviledged container",
+			Name: "job with privileged container",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "valid-job",
@@ -1104,7 +1104,7 @@ func TestValidateJobCreate(t *testing.T) {
 											Name:  "fake-name",
 											Image: "busybox:1.24",
 											SecurityContext: &v1.SecurityContext{
-												Privileged: &priviledged,
+												Privileged: &privileged,
 											},
 										},
 									},
