@@ -85,6 +85,6 @@ func InitDevicesConfig(cmName string) {
 				},
 			}
 		}
-		klog.V(3).InfoS("-=-=-=-=-=-=-=-=-=-=-=-Initializing volcano vgpu config", "device-configs", configs)
+		klog.V(3).InfoS("Initializing volcano vgpu config", "device-configs", configs)
 	})
 }
