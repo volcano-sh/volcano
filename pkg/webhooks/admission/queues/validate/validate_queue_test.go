@@ -1031,6 +1031,45 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 		t.Errorf("Marshal queue with child queue failed for %v.", err)
 	}
 
+	parentQueueWithChildWithJobs := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "parent-queue-has-child-with-jobs",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+		},
+	}
+
+	childQueueAWithJobs := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "child-queue-a-with-jobs",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "parent-queue-has-child-with-jobs",
+			Weight: 1,
+		},
+		Status: schedulingv1beta1.QueueStatus{
+			Allocated: v1.ResourceList{
+				v1.ResourcePods: resource.MustParse("1"),
+			},
+		},
+	}
+
+	childQueueB := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "child-queue-b",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "parent-queue-has-child-with-jobs",
+			Weight: 1,
+		},
+	}
+
+	childQueueBJSON, err := json.Marshal(childQueueB)
+	if err != nil {
+		t.Errorf("Marshal queue with parent queue failed for %v.", err)
+	}
+
 	config.VolcanoClient = fakeclient.NewSimpleClientset()
 	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
 	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
@@ -1101,6 +1140,16 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 		t.Errorf("Create queue failed for %v.", err)
 	}
 
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &parentQueueWithChildWithJobs, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create parent queue failed for %v.", err)
+	}
+
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &childQueueAWithJobs, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create child queue with jobs failed for %v.", err)
+	}
+
 	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queueWithoutChild, metav1.CreateOptions{})
 	if err != nil {
 		t.Errorf("Create queue failed for %v.", err)
@@ -1165,6 +1214,35 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 					Operation: "CREATE",
 					Object: runtime.RawExtension{
 						Raw: parentQueueWithoutJobsJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: true,
+			},
+		},
+		{
+			Name: "Parent Queue has child with jobs",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "brother-queue-has-jobs",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: childQueueBJSON,
 					},
 				},
 			},
