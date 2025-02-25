@@ -19,6 +19,7 @@ IMAGE_PREFIX=volcanosh
 CRD_OPTIONS ?= "crd:crdVersions=v1,generateEmbeddedObjectMeta=true"
 CRD_OPTIONS_EXCLUDE_DESCRIPTION=${CRD_OPTIONS}",maxDescLen=0"
 CC ?= "gcc"
+MUSL_CC ?= "/usr/local/musl/bin/musl-gcc"
 SUPPORT_PLUGINS ?= "no"
 CRD_VERSION ?= v1
 BUILDX_OUTPUT_TYPE ?= "docker"
@@ -73,7 +74,7 @@ init:
 
 vc-scheduler: init
 	if [ ${SUPPORT_PLUGINS} = "yes" ];then\
-		CC=${CC} CGO_ENABLED=1 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
+		CC=${MUSL_CC} CGO_ENABLED=1 go build -ldflags ${LD_FLAGS_CGO} -o ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
 	else\
 		CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
 	fi;
