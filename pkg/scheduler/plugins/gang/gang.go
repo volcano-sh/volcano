@@ -163,6 +163,10 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	var unreadyTaskCount int32
 	var unScheduleJobCount int
 	for _, job := range ssn.Jobs {
+		// skip the jobs that have no tasks.
+		if len(job.Tasks) == 0 {
+			continue
+		}
 		if !job.IsReady() {
 			schedulableTaskNum := func() (num int32) {
 				for _, task := range job.TaskStatusIndex[api.Pending] {
