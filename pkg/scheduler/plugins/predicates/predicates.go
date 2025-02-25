@@ -483,10 +483,12 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				status := nodePortFilter.Filter(context.TODO(), state, nil, nodeInfo)
 				nodePortStatus := api.ConvertPredicateStatus(status)
 				if nodePortStatus.Code != api.Success {
+					// TODO: Currently, preemption is not supported when NodePort filtering fails.
+					// Once supported, the logic here should be removed.
+					// See https://github.com/volcano-sh/volcano/issues/3845
+					nodePortStatus.Code = api.UnschedulableAndUnresolvable
 					predicateStatus = append(predicateStatus, nodePortStatus)
-					if ShouldAbort(nodePortStatus) {
-						return api.NewFitErrWithStatus(task, node, predicateStatus...)
-					}
+					return api.NewFitErrWithStatus(task, node, predicateStatus...)
 				}
 			}
 		}
@@ -539,10 +541,12 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				status := podTopologySpreadFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 				podTopologyStatus := api.ConvertPredicateStatus(status)
 				if podTopologyStatus.Code != api.Success {
+					// TODO: Currently, preemption is not supported when Pod Topology Spread filtering fails.
+					// Once supported, the logic here should be removed.
+					// See https://github.com/volcano-sh/volcano/issues/3845
+					podTopologyStatus.Code = api.UnschedulableAndUnresolvable
 					predicateStatus = append(predicateStatus, podTopologyStatus)
-					if ShouldAbort(podTopologyStatus) {
-						return api.NewFitErrWithStatus(task, node, predicateStatus...)
-					}
+					return api.NewFitErrWithStatus(task, node, predicateStatus...)
 				}
 			}
 		}
