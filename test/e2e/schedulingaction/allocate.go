@@ -175,7 +175,7 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("allocate don't work when job NOT satisify predicates", func() {
+	ginkgo.It("allocate don't work when job NOT satisfy predicates", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			NodesNumLimit: 1,
 			NodesResourceLimit: corev1.ResourceList{

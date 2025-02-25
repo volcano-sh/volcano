@@ -202,7 +202,7 @@ func filterNodeByPolicy(task *api.TaskInfo, node *api.NodeInfo, nodeResSets map[
 		}
 
 		if task.NumaInfo.Policy != node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.TopologyManagerPolicy] {
-			return false, fmt.Errorf("task topology polocy[%s] is different with node[%s]",
+			return false, fmt.Errorf("task topology policy[%s] is different with node[%s]",
 				task.NumaInfo.Policy, node.NumaSchedulerInfo.Policies[nodeinfov1alpha1.TopologyManagerPolicy])
 		}
 

@@ -204,7 +204,7 @@ func (s *ServerOption) ParseCAFiles(decryptFunc DecryptFunc) error {
 		return err
 	}
 
-	// users can add one function to decrypt tha data by their own way if CA data is encrypted
+	// users can add one function to decrypt the data by their own way if CA data is encrypted
 	if decryptFunc != nil {
 		return decryptFunc(s)
 	}

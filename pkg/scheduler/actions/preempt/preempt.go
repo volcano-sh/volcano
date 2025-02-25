@@ -292,7 +292,7 @@ func (pmpt *Action) preempt(
 			// for case 1 and 2, high priority job/task can preempt low priority job/task in same queue;
 			// for case 3, it need to do reclaim resource from other queue, in reclaim action;
 			// so if current queue is not allocatable(the queue will be overused when consider current preemptor's requests)
-			// or current idle resource is not enougth for preemptor, it need to continue preempting
+			// or current idle resource is not enough for preemptor, it need to continue preempting
 			// otherwise, break out
 			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 				break

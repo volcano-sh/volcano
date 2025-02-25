@@ -24,43 +24,43 @@ import (
 
 func TestNewFakeBinder(t *testing.T) {
 	tests := []struct {
-		fkBinder   *FakeBinder
-		cap, lenth int
+		fkBinder    *FakeBinder
+		cap, length int
 	}{
 		{
 			fkBinder: NewFakeBinder(0),
-			cap:      0, lenth: 0,
+			cap:      0, length: 0,
 		},
 		{
 			fkBinder: NewFakeBinder(10),
-			cap:      10, lenth: 0,
+			cap:      10, length: 0,
 		},
 	}
 	for _, test := range tests {
 		assert.Equal(t, test.cap, cap(test.fkBinder.Channel))
-		assert.Equal(t, test.lenth, test.fkBinder.Length())
-		assert.Equal(t, test.lenth, len(test.fkBinder.Binds()))
+		assert.Equal(t, test.length, test.fkBinder.Length())
+		assert.Equal(t, test.length, len(test.fkBinder.Binds()))
 	}
 }
 
 func TestNewFakeEvictor(t *testing.T) {
 	tests := []struct {
-		fkEvictor  *FakeEvictor
-		cap, lenth int
+		fkEvictor   *FakeEvictor
+		cap, length int
 	}{
 		{
 			fkEvictor: NewFakeEvictor(0),
-			cap:       0, lenth: 0,
+			cap:       0, length: 0,
 		},
 		{
 			fkEvictor: NewFakeEvictor(10),
-			cap:       10, lenth: 0,
+			cap:       10, length: 0,
 		},
 	}
 	for _, test := range tests {
 		assert.Equal(t, test.cap, cap(test.fkEvictor.Channel))
 		assert.Equal(t, test.cap, cap(test.fkEvictor.evicts))
-		assert.Equal(t, test.lenth, test.fkEvictor.Length())
-		assert.Equal(t, test.lenth, len(test.fkEvictor.Evicts()))
+		assert.Equal(t, test.length, test.fkEvictor.Length())
+		assert.Equal(t, test.length, len(test.fkEvictor.Evicts()))
 	}
 }

@@ -68,7 +68,7 @@ type Session struct {
 	NamespaceInfo  map[api.NamespaceName]*api.NamespaceInfo
 
 	// NodeMap is like Nodes except that it uses k8s NodeInfo api and should only
-	// be used in k8s compatable api scenarios such as in predicates and nodeorder plugins.
+	// be used in k8s compatible api scenarios such as in predicates and nodeorder plugins.
 	NodeMap   map[string]*k8sframework.NodeInfo
 	PodLister *PodLister
 
