@@ -15,7 +15,7 @@
 ARG OPEN_EULER_IMAGE_TAG
 ARG BWM_RPM_NAME
 
-FROM golang:1.22.2 AS builder
+FROM golang:1.23.0 AS builder
 WORKDIR /go/src/volcano.sh/
 COPY go.mod go.sum ./
 RUN go mod download
