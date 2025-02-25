@@ -277,7 +277,7 @@ func Test_readTopologyFromPgAnnotations(t *testing.T) {
 			err:      fmt.Errorf("task %s do not exist in job <%s/%s>", "chief", "default", "job1"),
 		},
 		{
-			description: "duplicated task name",
+			description: "duplicate task name",
 			job: &api.JobInfo{
 				Name:      "job1",
 				Namespace: "default",
@@ -312,7 +312,7 @@ func Test_readTopologyFromPgAnnotations(t *testing.T) {
 				},
 			},
 			topology: nil,
-			err:      fmt.Errorf("task %s is duplicated in job <%s/%s>", "ps", "default", "job1"),
+			err:      fmt.Errorf("task %s is duplicate in job <%s/%s>", "ps", "default", "job1"),
 		},
 		{
 			description: "redundant punctuations",
