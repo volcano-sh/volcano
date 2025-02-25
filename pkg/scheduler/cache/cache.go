@@ -864,7 +864,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 
 	node, found := sc.Nodes[task.NodeName]
 	if !found {
-		return fmt.Errorf("failed to bind Task %v to host %v, host does not exist",
+		return fmt.Errorf("failed to evict Task %v from host %v, host does not exist",
 			task.UID, task.NodeName)
 	}
 
