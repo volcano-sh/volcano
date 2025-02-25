@@ -34,6 +34,7 @@ custom:
   scheduler_node_worker_threads: 20
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
   colocation_enable: false
+  controller_feature_gates: ""
 
 # Override the configuration for admission or scheduler.
 # For example:

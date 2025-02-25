@@ -19,6 +19,8 @@ package podgroup
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -26,19 +28,18 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
+	lwsv1 "sigs.k8s.io/lws/api/leaderworkerset/v1"
 
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	"volcano.sh/volcano/pkg/controllers/util"
 )
 
-type podRequest struct {
-	podName      string
-	podNamespace string
+type resourceRequest struct {
+	Name      string
+	Namespace string
 }
 
 type metadataForMergePatch struct {
@@ -56,12 +57,12 @@ func (pg *pgcontroller) addPod(obj interface{}) {
 		return
 	}
 
-	req := podRequest{
-		podName:      pod.Name,
-		podNamespace: pod.Namespace,
+	req := resourceRequest{
+		Name:      pod.Name,
+		Namespace: pod.Namespace,
 	}
 
-	pg.queue.Add(req)
+	pg.podQueue.Add(req)
 }
 
 func (pg *pgcontroller) addReplicaSet(obj interface{}) {
@@ -108,6 +109,36 @@ func (pg *pgcontroller) addReplicaSet(obj interface{}) {
 
 func (pg *pgcontroller) updateReplicaSet(oldObj, newObj interface{}) {
 	pg.addReplicaSet(newObj)
+}
+
+func (pg *pgcontroller) addLeaderWorkerSet(obj interface{}) {
+	lws, ok := obj.(*lwsv1.LeaderWorkerSet)
+	if !ok {
+		klog.Errorf("Failed to convert %T to LeaderWorkerSet", obj)
+		return
+	}
+
+	req := resourceRequest{
+		Name:      lws.Name,
+		Namespace: lws.Namespace,
+	}
+
+	pg.lwsQueue.Add(req)
+}
+
+func (pg *pgcontroller) updateLeaderWorkerSet(oldObj, newObj interface{}) {
+	newLws, ok := newObj.(*lwsv1.LeaderWorkerSet)
+	if !ok {
+		klog.Errorf("Failed to convert %T to LeaderWorkerSet", newObj)
+		return
+	}
+
+	req := resourceRequest{
+		Name:      newLws.Name,
+		Namespace: newLws.Namespace,
+	}
+
+	pg.lwsQueue.Add(req)
 }
 
 func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
@@ -194,7 +225,8 @@ func (pg *pgcontroller) inheritUpperAnnotations(pod *v1.Pod, obj *scheduling.Pod
 }
 
 func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
-	pgName := helpers.GeneratePodgroupName(pod)
+	podProvider := NewPodProvider(pod)
+	pgName := podProvider.GetName()
 
 	if _, err := pg.pgLister.PodGroups(pod.Namespace).Get(pgName); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -204,18 +236,8 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 		}
 
 		obj := &scheduling.PodGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace:       pod.Namespace,
-				Name:            pgName,
-				OwnerReferences: newPGOwnerReferences(pod),
-				Annotations:     map[string]string{},
-				Labels:          map[string]string{},
-			},
-			Spec: scheduling.PodGroupSpec{
-				MinMember:         1,
-				PriorityClassName: pod.Spec.PriorityClassName,
-				MinResources:      util.GetPodQuotaUsage(pod),
-			},
+			ObjectMeta: podProvider.GetObjectMeta(),
+			Spec:       podProvider.GetSpec(),
 			Status: scheduling.PodGroupStatus{
 				Phase: scheduling.PodGroupPending,
 			},
@@ -267,20 +289,115 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 	return pg.updatePodAnnotations(pod, pgName)
 }
 
-func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
-	if len(pod.OwnerReferences) != 0 {
-		for _, ownerReference := range pod.OwnerReferences {
-			if ownerReference.Controller != nil && *ownerReference.Controller {
-				return pod.OwnerReferences
-			}
+func (pg *pgcontroller) syncLeaderWorkerSetPodGroups(lws *lwsv1.LeaderWorkerSet) error {
+	targetReplicas := lws.Status.Replicas
+	// .Status.Replicas reflects the current number of groups in the LeaderWorkerSet, especially if the LeaderWorkerSet is
+	// undergoing a rolling update and MaxSurge is configured, the replicas of the LeaderWorkerSet will increase,
+	// requiring the creation of additional PodGroups.
+
+	labelSelector := &metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			lwsv1.SetNameLabelKey: lws.Name,
+		},
+	}
+	pgSelector, err := metav1.LabelSelectorAsSelector(labelSelector)
+	if err != nil {
+		klog.Errorf("failed to create label selector for leaderworkerset %s/%s: %v", lws.Namespace, lws.Name, err)
+		return err
+	}
+
+	existedPgs, err := pg.pgLister.PodGroups(lws.Namespace).List(pgSelector)
+	if err != nil {
+		klog.Errorf("failed to list podgroups for leaderworkerset %s/%s: %v", lws.Namespace, lws.Name, err)
+		return err
+	}
+
+	// Delete extra PodGroups, two scenarios:
+	// 1. Scale down
+	// 2. Rolling update completed, the additional maxSurge PodGroups need to be deleted
+	for index := targetReplicas; index < int32(len(existedPgs)); index++ {
+		pgName := fmt.Sprintf(LeaderWorkerSetPodGroupNameFmt, lws.Name, index)
+		err := pg.vcClient.SchedulingV1beta1().PodGroups(lws.Namespace).Delete(context.TODO(), pgName, metav1.DeleteOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			klog.Errorf("failed to delete podgroup <%s/%s>: %v", lws.Namespace, pgName, err)
+			return err
+		}
+
+		klog.V(4).Infof("deleted podgroup <%s/%s>", lws.Namespace, pgName)
+	}
+
+	for index := 0; index < int(targetReplicas); index++ {
+		err := pg.createOrUpdateLeaderWorkerSetPodGroup(lws, index)
+		if err != nil {
+			return fmt.Errorf("failed to create/update podgroup for leaderworkerset %s/%s at group index %d: %v", lws.Namespace, lws.Name, index, err)
 		}
 	}
 
-	gvk := schema.GroupVersionKind{
-		Group:   v1.SchemeGroupVersion.Group,
-		Version: v1.SchemeGroupVersion.Version,
-		Kind:    "Pod",
+	return nil
+}
+
+func (pg *pgcontroller) createOrUpdateLeaderWorkerSetPodGroup(lws *lwsv1.LeaderWorkerSet, index int) error {
+	lwsProvider := NewLeaderWorkerSetProvider(lws, index)
+	pgName := lwsProvider.GetName()
+
+	lwsPg, err := pg.pgLister.PodGroups(lws.Namespace).Get(pgName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			klog.Errorf("failed to get podgroup %s in local cache for LeaderWorkerSet %s/%s: %v",
+				pgName, lws.Namespace, lws.Name, err)
+			return err
+		}
+
+		// create new podgroup
+		lwsPg = &scheduling.PodGroup{
+			ObjectMeta: lwsProvider.GetObjectMeta(),
+			Spec:       lwsProvider.GetSpec(),
+		}
+
+		if _, err = pg.vcClient.SchedulingV1beta1().PodGroups(lws.Namespace).Create(context.TODO(), lwsPg, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+			return err
+		}
+
+		return nil
 	}
-	ref := metav1.NewControllerRef(pod, gvk)
-	return []metav1.OwnerReference{*ref}
+
+	// update podgroup
+	pgShouldUpdate := false
+
+	// inherit annotations change
+	if !reflect.DeepEqual(lwsPg.Annotations, lws.Annotations) {
+		lwsPg.Annotations = lws.Annotations
+		pgShouldUpdate = true
+	}
+
+	// inherit labels change
+	updatedLabels := make(map[string]string)
+	for k, v := range lwsPg.Labels {
+		updatedLabels[k] = v
+	}
+	// If there are same keys, take the value in lws as the standard
+	for k, v := range lws.Labels {
+		updatedLabels[k] = v
+	}
+	if !reflect.DeepEqual(lwsPg.Labels, updatedLabels) {
+		lwsPg.Labels = updatedLabels
+		pgShouldUpdate = true
+	}
+
+	// check whether podgroup min resources changed
+	newMinResources := lwsProvider.GetMinResources()
+	if !quotav1.Equals(*lwsPg.Spec.MinResources, *newMinResources) {
+		lwsPg.Spec.MinResources = newMinResources
+		pgShouldUpdate = true
+	}
+
+	if !pgShouldUpdate {
+		return nil
+	}
+
+	if _, err = pg.vcClient.SchedulingV1beta1().PodGroups(lws.Namespace).Update(context.TODO(), lwsPg, metav1.UpdateOptions{}); err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -20,6 +20,8 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	lwsclientset "sigs.k8s.io/lws/client-go/clientset/versioned"
+	lwsinformer "sigs.k8s.io/lws/client-go/informers/externalversions"
 
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -27,13 +29,15 @@ import (
 
 // ControllerOption is the main context object for the controllers.
 type ControllerOption struct {
-	KubeClient              kubernetes.Interface
-	VolcanoClient           vcclientset.Interface
-	SharedInformerFactory   informers.SharedInformerFactory
-	VCSharedInformerFactory vcinformer.SharedInformerFactory
-	SchedulerNames          []string
-	WorkerNum               uint32
-	MaxRequeueNum           int
+	KubeClient               kubernetes.Interface
+	VolcanoClient            vcclientset.Interface
+	LWSClient                lwsclientset.Interface
+	SharedInformerFactory    informers.SharedInformerFactory
+	VCSharedInformerFactory  vcinformer.SharedInformerFactory
+	LWSSharedInformerFactory lwsinformer.SharedInformerFactory
+	SchedulerNames           []string
+	WorkerNum                uint32
+	MaxRequeueNum            int
 
 	InheritOwnerAnnotations bool
 	WorkerThreadsForPG      uint32
