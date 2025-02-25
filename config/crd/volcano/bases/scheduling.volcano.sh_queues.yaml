@@ -18,6 +18,11 @@ spec:
   scope: Cluster
   versions:
   - name: v1beta1
+    additionalPrinterColumns:
+    - name: PARENT
+      type: string
+      description: The parent queue of this queue
+      jsonPath: .spec.parent
     schema:
       openAPIV3Schema:
         description: Queue is a queue of PodGroup.
