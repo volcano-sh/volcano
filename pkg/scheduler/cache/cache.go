@@ -90,8 +90,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners)
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod)
 }
 
 // SchedulerCache cache for the kube batch
@@ -107,6 +107,7 @@ type SchedulerCache struct {
 	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
+	resyncPeriod               time.Duration
 	podInformer                infov1.PodInformer
 	nodeInformer               infov1.NodeInformer
 	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
@@ -542,7 +543,7 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -587,6 +588,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		nodeWorkers: nodeWorkers,
 	}
 
+	sc.resyncPeriod = resyncPeriod
 	sc.schedulerPodName, sc.c = getMultiSchedulerInfo()
 	ignoredProvisionersSet := sets.New[string]()
 	for _, provisioner := range append(ignoredProvisioners, defaultIgnoredProvisioners...) {
@@ -633,7 +635,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 }
 
 func (sc *SchedulerCache) addEventHandler() {
-	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
+	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, sc.resyncPeriod)
 	sc.informerFactory = informerFactory
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
