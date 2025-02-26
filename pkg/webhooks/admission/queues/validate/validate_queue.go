@@ -225,16 +225,9 @@ func validateQueueDeleting(queueName string) error {
 		return err
 	}
 
-	queueList, err := config.QueueLister.List(labels.Everything())
+	childQueueNames, err := listQueueChild(queue.Name)
 	if err != nil {
-		return fmt.Errorf("failed to list queues: %v", err)
-	}
-	childQueueNames := make([]string, 0)
-	for _, childQueue := range queueList {
-		if childQueue.Spec.Parent != queueName {
-			continue
-		}
-		childQueueNames = append(childQueueNames, childQueue.Name)
+		return fmt.Errorf("failed to list child queues: %v", err)
 	}
 
 	if len(childQueueNames) > 0 {
@@ -251,17 +244,42 @@ func validateHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
 	if queue.Spec.Parent == "" || queue.Spec.Parent == "root" {
 		return nil
 	}
+
 	parentQueue, err := config.QueueLister.Get(queue.Spec.Parent)
 	if err != nil {
 		return fmt.Errorf("failed to get parent queue of queue %s: %v", queue.Name, err)
 	}
 
-	if allocated, ok := parentQueue.Status.Allocated[v1.ResourcePods]; ok && !allocated.IsZero() {
-		return fmt.Errorf("queue %s cannot be the parent queue of queue %s because it has allocated Pods: %d",
-			parentQueue.Name, queue.Name, allocated.Value())
+	childQueueNames, err := listQueueChild(queue.Name)
+	if err != nil {
+		return fmt.Errorf("failed to list child queues: %v", err)
+	}
+
+	if len(childQueueNames) == 0 {
+		if allocated, ok := parentQueue.Status.Allocated[v1.ResourcePods]; ok && !allocated.IsZero() {
+			return fmt.Errorf("queue %s cannot be the parent queue of queue %s because it has allocated Pods: %d",
+				parentQueue.Name, queue.Name, allocated.Value())
+		}
 	}
 
 	klog.V(3).Infof("Validation passed for hierarchical queue %s with parent queue %s",
 		queue.Name, parentQueue.Name)
 	return nil
+}
+
+func listQueueChild(queueName string) ([]string, error) {
+	queueList, err := config.QueueLister.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list queues: %v", err)
+	}
+
+	childQueueNames := make([]string, 0)
+	for _, childQueue := range queueList {
+		if childQueue.Spec.Parent != queueName {
+			continue
+		}
+		childQueueNames = append(childQueueNames, childQueue.Name)
+	}
+
+	return childQueueNames, nil
 }
