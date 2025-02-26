@@ -20,6 +20,9 @@ var VGPUEnable bool
 var NodeLockEnable bool
 
 const (
+	// DeviceName used to indicate this device
+	DeviceName = "hamivgpu"
+
 	GPUInUse                         = "nvidia.com/use-gputype"
 	GPUNoUse                         = "nvidia.com/nouse-gputype"
 	AssignedTimeAnnotations          = "volcano.sh/vgpu-time"
@@ -51,9 +54,6 @@ const (
 
 	// UnhealthyGPUIDs list of unhealthy gpu ids
 	UnhealthyGPUIDs = "volcano.sh/gpu-unhealthy-ids"
-
-	// DeviceName used to indicate this device
-	DeviceName = "hamivgpu"
 
 	// binpack means the lower device memory remained after this allocation, the better
 	binpackPolicy = "binpack"
