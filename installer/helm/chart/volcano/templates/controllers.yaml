@@ -74,7 +74,7 @@ rules:
     verbs: ["get", "create", "delete"]
   - apiGroups: ["apps"]
     resources: ["daemonsets", "statefulsets"]
-    verbs: ["get"]
+    verbs: ["get","list","watch"]
   - apiGroups: ["apps"]
     resources: ["replicasets"]
     verbs: ["get", "list", "watch"]
@@ -84,6 +84,11 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "create", "update", "watch"]
+  {{- if contains "LeaderWorkerSetSupport=true" .Values.custom.controller_feature_gates }}
+  - apiGroups: ["leaderworkerset.x-k8s.io"]
+    resources: ["leaderworkersets"]
+    verbs: ["get", "list", "watch"]
+  {{- end }}
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -180,6 +185,9 @@ spec:
               {{- end }}
               {{- if .Values.custom.controller_worker_threads_for_podgroup }}
             - --worker-threads-for-podgroup={{.Values.custom.controller_worker_threads_for_podgroup}}
+              {{- end }}
+              {{- if .Values.custom.controller_feature_gates }}
+            - --feature-gates={{.Values.custom.controller_feature_gates}}
               {{- end }}
             - -v={{.Values.custom.controller_log_level}}
             - 2>&1
