@@ -21,6 +21,9 @@ var NodeLockEnable bool
 var GpuNumberEnable bool
 
 const (
+	// DeviceName used to indicate this device
+	DeviceName = "GpuShare"
+
 	// VolcanoGPUResource extended gpu resource
 	VolcanoGPUResource = "volcano.sh/gpu-memory"
 	// VolcanoGPUNumber virtual GPU card number
