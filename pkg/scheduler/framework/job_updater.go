@@ -109,8 +109,7 @@ func (ju *jobUpdater) updateJob(index int) {
 	ssn := ju.ssn
 
 	job.PodGroup.Status = jobStatus(ssn, job)
-	oldStatus, found := ssn.podGroupStatus[job.UID]
-	updatePG := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
+	updatePG := ssn.IsNeedUpdateJobStatus(job)
 	if _, err := ssn.cache.UpdateJobStatus(job, updatePG); err != nil {
 		klog.Errorf("Failed to update job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
