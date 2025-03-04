@@ -156,8 +156,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		overused := !futureUsed.LessEqualWithDimension(attr.deserved, task.Resreq)
 		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
-			klog.V(3).Infof("Queue <%v> can not reclaim, deserved <%v>, allocated <%v>, share <%v>",
-				queue.Name, attr.deserved, attr.allocated, attr.share)
+			klog.V(3).Infof("Queue <%v> can not reclaim, deserved <%v>, allocated <%v>, share <%v>, requested <%v>",
+				queue.Name, attr.deserved, attr.allocated, attr.share, task.Resreq)
 		}
 
 		// PreemptiveFn is the opposite of OverusedFn in proportion plugin cause as long as there is a one-dimensional
