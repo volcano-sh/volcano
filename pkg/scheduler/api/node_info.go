@@ -337,10 +337,10 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 		return
 	}
 
-	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
+	ni.Others[gpushare.DeviceName] = gpushare.NewGPUDevices(ni.Name, node)
 	ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
 	IgnoredDevicesList.Set(
-		ni.Others[GPUSharingDevice].(Devices).GetIgnoredDevices(),
+		ni.Others[gpushare.DeviceName].(Devices).GetIgnoredDevices(),
 		ni.Others[vgpu.DeviceName].(Devices).GetIgnoredDevices(),
 	)
 }
@@ -485,13 +485,13 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 
 // addResource is used to add sharable devices
 func (ni *NodeInfo) addResource(pod *v1.Pod) {
-	ni.Others[GPUSharingDevice].(Devices).AddResource(pod)
+	ni.Others[gpushare.DeviceName].(Devices).AddResource(pod)
 	ni.Others[vgpu.DeviceName].(Devices).AddResource(pod)
 }
 
 // subResource is used to subtract sharable devices
 func (ni *NodeInfo) subResource(pod *v1.Pod) {
-	ni.Others[GPUSharingDevice].(Devices).SubResource(pod)
+	ni.Others[gpushare.DeviceName].(Devices).SubResource(pod)
 	ni.Others[vgpu.DeviceName].(Devices).SubResource(pod)
 }
 
