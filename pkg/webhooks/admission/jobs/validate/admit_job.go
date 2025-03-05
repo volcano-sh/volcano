@@ -231,7 +231,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 				"queue `%s` status is `%s`;", queue.Name, queue.Status.State)
 		}
 
-		// valiadate hierarchical queue
+		// validate hierarchical queue
 		if queue.Name == "root" {
 			msg += " can not submit job to root queue;"
 		} else {
