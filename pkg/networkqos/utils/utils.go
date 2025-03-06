@@ -114,7 +114,7 @@ func SizeStrConvertToByteSize(sizeStr string) (uint64, error) {
 	num := sizeStr[:index]
 	numInt, err := strconv.ParseUint(num, 10, 0)
 	if err != nil {
-		return 0, fmt.Errorf("size string %s is illegal, only supprt positive integer with unit like Kbps, Mbps, Gbps, Tbps: %v", sizeStr, err)
+		return 0, fmt.Errorf("size string %s is illegal, only support positive integer with unit like Kbps, Mbps, Gbps, Tbps: %v", sizeStr, err)
 	}
 
 	switch unit {
@@ -135,7 +135,7 @@ func SizeStrConvertToByteSize(sizeStr string) (uint64, error) {
 	case "Tibps":
 		return numInt * Tibps / 8, nil
 	default:
-		return 0, fmt.Errorf("size %s is illegal, only supprt positive integer with unit like Kbps, Mbps, Gbps, Tbps", sizeStr)
+		return 0, fmt.Errorf("size %s is illegal, only support positive integer with unit like Kbps, Mbps, Gbps, Tbps", sizeStr)
 	}
 }
 

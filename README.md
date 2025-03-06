@@ -118,7 +118,7 @@ job.batch/volcano-admission-init   1/1           48s        96s
 
 ### Install via helm
 
-To install official release, please visit to [helm-charts](https://github.com/volcano-sh/helm-charts) for details.
+To install official release, please visit [helm-charts](https://github.com/volcano-sh/helm-charts) for details.
 
 ```bash
 helm repo add volcano-sh https://volcano-sh.github.io/helm-charts

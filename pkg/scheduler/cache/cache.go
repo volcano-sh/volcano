@@ -397,7 +397,7 @@ type podgroupBinder struct {
 	vcclient   vcclient.Interface
 }
 
-// Bind will add silo cluster annotaion on pod and podgroup
+// Bind will add silo cluster annotation on pod and podgroup
 func (pgb *podgroupBinder) Bind(job *schedulingapi.JobInfo, cluster string) (*schedulingapi.JobInfo, error) {
 	if len(job.Tasks) == 0 {
 		klog.V(4).Infof("Job pods have not been created yet")
@@ -864,7 +864,7 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 
 	node, found := sc.Nodes[task.NodeName]
 	if !found {
-		return fmt.Errorf("failed to bind Task %v to host %v, host does not exist",
+		return fmt.Errorf("failed to evict Task %v from host %v, host does not exist",
 			task.UID, task.NodeName)
 	}
 

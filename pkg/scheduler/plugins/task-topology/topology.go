@@ -263,7 +263,7 @@ func affinityCheck(job *api.JobInfo, affinity [][]string) error {
 				return fmt.Errorf("task %s do not exist in job <%s/%s>", task, job.Namespace, job.Name)
 			}
 			if _, exist := affTasks[task]; exist {
-				return fmt.Errorf("task %s is duplicated in job <%s/%s>", task, job.Namespace, job.Name)
+				return fmt.Errorf("task %s is duplicate in job <%s/%s>", task, job.Namespace, job.Name)
 			}
 			affTasks[task] = true
 		}

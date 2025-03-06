@@ -6,7 +6,7 @@
 
 ## Backguards
 
-We intended to provide volcano the ability to share third-party resources link GPU,NPU,etc in the near future. These resources are usually registered and allocated in a daemonset called `device plugin`. When a pod requests any third-party resource, the api-server send an `AllocateRequest` to device plugin, containing the target device uuid it requests. However, it does not contain any information about the pod or container requesting the device, so it is impossible for deviceplugin to access the annotation of pod, because is does not know which pod sends this request.
+We intended to provide volcano the ability to share third-party resources link GPU,NPU,etc in the near future. These resources are usually registered and allocated in a daemonset called `device plugin`. When a pod requests any third-party resource, the kubelet send an `AllocateRequest` to device plugin, containing the target device uuid it requests. However, it does not contain any information about the pod or container requesting the device, so it is impossible for deviceplugin to access the annotation of pod, because is does not know which pod sends this request.
 Using `Node Lock` will resolve this problem because only one pod is requesting this resource on this node. So, device-plugin can access additional information in pod.annotations written by scheduler and will be able to do more fine-grained work As the figure shown below:
 
 ![img](./images/node-lock.jpg)

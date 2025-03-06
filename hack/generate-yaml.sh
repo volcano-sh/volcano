@@ -41,7 +41,7 @@ case $CRD_VERSION in
   v1beta1)
     ;;
   *)
-    echo Invaild CRD_VERSION $CRD_VERSION !!!
+    echo Invalid CRD_VERSION $CRD_VERSION !!!
     echo CRD_VERSION only support \"bases\", \"v1\" and \"v1beta1\"
     exit 1
     ;;

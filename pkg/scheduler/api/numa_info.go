@@ -40,7 +40,7 @@ const (
 	DefaultMaxNodeScore = 100
 )
 
-// PodResourceDecision is resource allocation determinated by scheduler,
+// PodResourceDecision is resource allocation determined by scheduler,
 // and passed to kubelet through pod annotation.
 type PodResourceDecision struct {
 	// NUMAResources is resource list with numa info indexed by numa id.
