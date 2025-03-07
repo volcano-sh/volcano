@@ -680,7 +680,7 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeleteNode,
 			},
 		},
-		0,
+		sc.resyncPeriod,
 	)
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
