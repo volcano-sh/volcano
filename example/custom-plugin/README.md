@@ -1,29 +1,45 @@
-# Build plugin
+# Build image and plugin
 
-## Use `musl-libc` build plugin
+## Use `musl-libc` build image and plugin
 
 Because the default `vc-scheduler` base image is `alpine`, which only has `musl-libc`, so we should use `musl-gcc` to
 build the plugin.
 
-### Build the plugin in `Docker`:
+### Build the image and plugin in `Docker`(Recommended):
 
+Please run this command at the root path of the project.
 ```bash
-# You may need run this command at the root path of the project, cause this need the go.mod file.
-docker run -v `pwd`:/volcano golang:1.20-alpine sh -c "cd /volcano && apk add musl-dev gcc && go build -buildmode=plugin -o example/custom-plugin/magic.so example/custom-plugin/magic.go"
+docker build -t volcanosh/vc-scheduler:custom-plugins -f example/custom-plugin/Dockerfile .
 ```
+And then replace the image and set `--plugins-dir=plugins` parameter in `vc-scheduler` deployment yaml file.
 
-### Build the plugin in local:
+### Build the image and plugin locally:
 
+Please run this command at the root path of the project.
 ```bash
 # install musl
-wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
-tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+wget http://musl.libc.org/releases/musl-latest.tar.gz
+mkdir musl-latest && tar -xf musl-latest.tar.gz -C musl-latest --strip-components=1 && cd musl-latest
 ./configure
 make && sudo make install
 
-# build plugin
-CC=/usr/local/musl/bin/musl-gcc CGO_ENABLED=1 go build -buildmode=plugin magic.go
+# build plugin .so file
+CC=/usr/local/musl/bin/musl-gcc CGO_ENABLED=1 go build -buildmode=plugin -ldflags '-linkmode=external' \
+    -o example/custom-plugin/magic.so example/custom-plugin/magic.go
+
+# build vc scheduler binary
+SUPPORT_PLUGINS=yes make vc-scheduler
+cat << EOF > Dockerfile
+FROM alpine:latest
+COPY _output/bin/vc-scheduler /vc-scheduler
+COPY example/custom-plugin/magic.so /plugins/magic.so
+ENTRYPOINT ["/vc-scheduler"]
+EOF
+
+# build vc scheduler image
+docker build -t volcanosh/vc-scheduler:custom-plugins .
 ```
+And then replace the image and set `--plugins-dir=plugins` parameter in `vc-scheduler` deployment yaml file.
 
 ## Use `gnu-libc` build plugin
 
