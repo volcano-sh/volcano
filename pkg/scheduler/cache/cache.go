@@ -140,9 +140,9 @@ type SchedulerCache struct {
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
-	errTasks    workqueue.RateLimitingInterface
-	nodeQueue   workqueue.RateLimitingInterface
-	DeletedJobs workqueue.RateLimitingInterface
+	errTasks    workqueue.TypedRateLimitingInterface[string]
+	nodeQueue   workqueue.TypedRateLimitingInterface[string]
+	DeletedJobs workqueue.TypedRateLimitingInterface[*schedulingapi.JobInfo]
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -557,12 +557,12 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	}
 
 	// create default queue and root queue
+	klog.Infof("Creating default queue and root queue")
 	newDefaultAndRootQueue(vcClient, defaultQueue)
-	klog.Infof("Create default queue and root queue")
 
-	errTaskRateLimiter := workqueue.NewMaxOfRateLimiter(
-		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 1000*time.Second),
-		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
+	errTaskRateLimiter := workqueue.NewTypedMaxOfRateLimiter[string](
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](5*time.Millisecond, 1000*time.Second),
+		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
 	)
 
 	sc := &SchedulerCache{
@@ -570,9 +570,9 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		Nodes:               make(map[string]*schedulingapi.NodeInfo),
 		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
-		errTasks:            workqueue.NewRateLimitingQueue(errTaskRateLimiter),
-		nodeQueue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		DeletedJobs:         workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		errTasks:            workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
+		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[*schedulingapi.JobInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.JobInfo]()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
 		restConfig:          config,
@@ -1075,18 +1075,12 @@ func (sc *SchedulerCache) retryDeleteJob(job *schedulingapi.JobInfo) {
 }
 
 func (sc *SchedulerCache) processCleanupJob() {
-	obj, shutdown := sc.DeletedJobs.Get()
+	job, shutdown := sc.DeletedJobs.Get()
 	if shutdown {
 		return
 	}
 
-	defer sc.DeletedJobs.Done(obj)
-
-	job, found := obj.(*schedulingapi.JobInfo)
-	if !found {
-		klog.Errorf("Failed to convert <%v> to *JobInfo", obj)
-		return
-	}
+	defer sc.DeletedJobs.Done(job)
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
@@ -1095,7 +1089,7 @@ func (sc *SchedulerCache) processCleanupJob() {
 		oldJob, found := sc.Jobs[job.UID]
 		if !found {
 			klog.V(3).Infof("Failed to find Job <%v:%v/%v>, ignore it", job.UID, job.Namespace, job.Name)
-			sc.DeletedJobs.Forget(obj)
+			sc.DeletedJobs.Forget(job)
 			return
 		}
 		newPgVersion := oldJob.PgUID
@@ -1106,7 +1100,7 @@ func (sc *SchedulerCache) processCleanupJob() {
 			metrics.DeleteJobMetrics(job.Name, string(job.Queue), job.Namespace)
 			klog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
 		}
-		sc.DeletedJobs.Forget(obj)
+		sc.DeletedJobs.Forget(job)
 	} else {
 		// Retry
 		sc.retryDeleteJob(job)
@@ -1151,26 +1145,19 @@ func (sc *SchedulerCache) parseErrTaskKey(key string) (*schedulingapi.TaskInfo, 
 }
 
 func (sc *SchedulerCache) processResyncTask() {
-	obj, shutdown := sc.errTasks.Get()
+	taskKey, shutdown := sc.errTasks.Get()
 	if shutdown {
 		return
 	}
 
 	klog.V(5).Infof("the length of errTasks is %d", sc.errTasks.Len())
 
-	defer sc.errTasks.Done(obj)
-
-	taskKey, ok := obj.(string)
-	if !ok {
-		klog.Errorf("Failed to convert %v to string.", obj)
-		sc.errTasks.Forget(obj)
-		return
-	}
+	defer sc.errTasks.Done(taskKey)
 
 	task, err := sc.parseErrTaskKey(taskKey)
 	if err != nil {
 		klog.ErrorS(err, "Failed to get task for sync task", "taskKey", taskKey)
-		sc.errTasks.Forget(obj)
+		sc.errTasks.Forget(taskKey)
 		return
 	}
 
@@ -1181,7 +1168,7 @@ func (sc *SchedulerCache) processResyncTask() {
 		reSynced = true
 	} else {
 		klog.V(4).Infof("Successfully synced task <%s/%s>", task.Namespace, task.Name)
-		sc.errTasks.Forget(obj)
+		sc.errTasks.Forget(taskKey)
 	}
 
 	// execute custom bind err handler call back func if exists.
@@ -1204,17 +1191,11 @@ func (sc *SchedulerCache) runNodeWorker() {
 }
 
 func (sc *SchedulerCache) processSyncNode() bool {
-	obj, shutdown := sc.nodeQueue.Get()
+	nodeName, shutdown := sc.nodeQueue.Get()
 	if shutdown {
 		return false
 	}
-	defer sc.nodeQueue.Done(obj)
-
-	nodeName, ok := obj.(string)
-	if !ok {
-		klog.Errorf("failed to convert %v to string", obj)
-		return true
-	}
+	defer sc.nodeQueue.Done(nodeName)
 
 	klog.V(5).Infof("started sync node %s", nodeName)
 	err := sc.SyncNode(nodeName)

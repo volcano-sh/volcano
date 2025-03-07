@@ -41,15 +41,15 @@ import (
 
 // DisruptionBudget define job min pod available and max pod unavailable value
 type DisruptionBudget struct {
-	MinAvailable  string
-	MaxUnavilable string
+	MinAvailable   string
+	MaxUnavailable string
 }
 
 // NewDisruptionBudget create disruption budget for job
-func NewDisruptionBudget(minAvailable, maxUnavilable string) *DisruptionBudget {
+func NewDisruptionBudget(minAvailable, maxUnavailable string) *DisruptionBudget {
 	disruptionBudget := &DisruptionBudget{
-		MinAvailable:  minAvailable,
-		MaxUnavilable: maxUnavilable,
+		MinAvailable:   minAvailable,
+		MaxUnavailable: maxUnavailable,
 	}
 	return disruptionBudget
 }
@@ -57,8 +57,8 @@ func NewDisruptionBudget(minAvailable, maxUnavilable string) *DisruptionBudget {
 // Clone return a clone of DisruptionBudget
 func (db *DisruptionBudget) Clone() *DisruptionBudget {
 	return &DisruptionBudget{
-		MinAvailable:  db.MinAvailable,
-		MaxUnavilable: db.MaxUnavilable,
+		MinAvailable:   db.MinAvailable,
+		MaxUnavailable: db.MaxUnavailable,
 	}
 }
 
@@ -698,7 +698,7 @@ func (ji JobInfo) String() string {
 	}
 
 	return fmt.Sprintf("Job (%v): namespace %v (%v), name %v, minAvailable %d, podGroup %+v, preemptable %+v, revocableZone %+v, minAvailable %+v, maxAvailable %+v",
-		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.RevocableZone, ji.Budget.MinAvailable, ji.Budget.MaxUnavilable) + res
+		ji.UID, ji.Namespace, ji.Queue, ji.Name, ji.MinAvailable, ji.PodGroup, ji.Preemptable, ji.RevocableZone, ji.Budget.MinAvailable, ji.Budget.MaxUnavailable) + res
 }
 
 // FitError returns detailed information on why a job's task failed to fit on
