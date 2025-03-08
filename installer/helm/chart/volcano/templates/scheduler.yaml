@@ -224,8 +224,7 @@ spec:
           configMap:
             name: {{ .Release.Name }}-scheduler-configmap
         - name: klog-sock
-          hostPath:
-            path: /tmp/klog-socks
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
