@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
@@ -585,6 +587,270 @@ func TestGetLCAHyperNode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			lca := hnim.GetLCAHyperNode(tt.hypernode, tt.jobHyperNode)
 			assert.Equal(t, tt.expectedLCA, lca)
+		})
+	}
+}
+
+func TestGetMembers(t *testing.T) {
+	type testCase struct {
+		name     string
+		selector topologyv1alpha1.MemberSelector
+		nodes    []*corev1.Node
+		expected sets.Set[string]
+	}
+
+	testCases := []testCase{
+		{
+			name: "Label match success with MatchLabels",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"role": "worker",
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string]("node1"),
+		},
+		{
+			name: "Label match failure with MatchLabels",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"role": "invalid-role",
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string](),
+		},
+		{
+			name: "Label selector is nil",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: nil,
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string](),
+		},
+		{
+			name: "MatchExpressions In operator match success",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "role",
+							Operator: metav1.LabelSelectorOpIn,
+							Values:   []string{"worker"},
+						},
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string]("node1"),
+		},
+		{
+			name: "MatchExpressions In operator match failure",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "role",
+							Operator: metav1.LabelSelectorOpIn,
+							Values:   []string{"invalid-role"},
+						},
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string](),
+		},
+		{
+			name: "MatchExpressions NotIn operator match success",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "role",
+							Operator: metav1.LabelSelectorOpNotIn,
+							Values:   []string{"master"},
+						},
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string]("node1"),
+		},
+		{
+			name: "MatchExpressions Exists operator match success",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "role",
+							Operator: metav1.LabelSelectorOpExists,
+						},
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "node2",
+						Labels: map[string]string{},
+					},
+				},
+			},
+			expected: sets.New[string]("node1"),
+		},
+		{
+			name: "MatchExpressions DoesNotExist operator match success",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "role",
+							Operator: metav1.LabelSelectorOpDoesNotExist,
+						},
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "node2",
+						Labels: map[string]string{},
+					},
+				},
+			},
+			expected: sets.New[string]("node2"),
+		},
+	}
+
+	hyperNodesInfor := HyperNodesInfo{}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := hyperNodesInfor.getMembers(tc.selector, tc.nodes)
+			if !result.Equal(tc.expected) {
+				t.Errorf("Test %s failed: Expected %v, but got %v", tc.name, tc.expected, result)
+			}
 		})
 	}
 }
