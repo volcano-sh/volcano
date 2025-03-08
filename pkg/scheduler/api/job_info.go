@@ -778,6 +778,7 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason, msg, nominatedNodeN
 			// Pod is unschedulable
 			return PodReasonUnschedulable, fe.Error(), ""
 		}
+		// TODO: job pending may be is not enqueued. so if job's podgroup is also Pending and has enable enqueue action, reason should be Unenqueueable
 		// Pod is not scheduled yet, keep UNSCHEDULABLE as the reason to support cluster autoscaler
 		return PodReasonUnschedulable, msg, ""
 	default:
