@@ -19,6 +19,7 @@ package metrics
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto" // auto-registry collectors in default registry
+	v1 "k8s.io/api/core/v1"
 )
 
 var (
@@ -38,6 +39,14 @@ var (
 		}, []string{"queue_name"},
 	)
 
+	queueAllocatedScalarResource = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_allocated_scalar_resources",
+			Help:      "Allocated scalar resources for one queue",
+		}, []string{"queue_name", "resource"},
+	)
+
 	queueRequestMilliCPU = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoNamespace,
@@ -54,6 +63,14 @@ var (
 		}, []string{"queue_name"},
 	)
 
+	queueRequestScalarResource = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_request_scalar_resources",
+			Help:      "Request scalar resources for one queue",
+		}, []string{"queue_name", "resource"},
+	)
+
 	queueDeservedMilliCPU = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoNamespace,
@@ -68,6 +85,14 @@ var (
 			Name:      "queue_deserved_memory_bytes",
 			Help:      "Deserved memory for one queue",
 		}, []string{"queue_name"},
+	)
+
+	queueDeservedScalarResource = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_deserved_scalar_resources",
+			Help:      "Deserved scalar resources for one queue",
+		}, []string{"queue_name", "resource"},
 	)
 
 	queueShare = promauto.NewGaugeVec(
@@ -93,24 +118,81 @@ var (
 			Help:      "If one queue is overused",
 		}, []string{"queue_name"},
 	)
+
+	queueCapacityMilliCPU = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_capacity_milli_cpu",
+			Help:      "Capacity CPU count for one queue",
+		}, []string{"queue_name"},
+	)
+
+	queueCapacityMemory = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_capacity_memory_bytes",
+			Help:      "Capacity memory for one queue",
+		}, []string{"queue_name"},
+	)
+
+	queueCapacityScalarResource = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_capacity_scalar_resources",
+			Help:      "Capacity scalar resources for one queue",
+		}, []string{"queue_name", "resource"},
+	)
+
+	queueRealCapacityMilliCPU = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_real_capacity_milli_cpu",
+			Help:      "Capacity CPU count for one queue",
+		}, []string{"queue_name"},
+	)
+
+	queueRealCapacityMemory = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_real_capacity_memory_bytes",
+			Help:      "Capacity memory for one queue",
+		}, []string{"queue_name"},
+	)
+
+	queueRealCapacityScalarResource = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoNamespace,
+			Name:      "queue_real_capacity_scalar_resources",
+			Help:      "Capacity scalar resources for one queue",
+		}, []string{"queue_name", "resource"},
+	)
 )
 
 // UpdateQueueAllocated records allocated resources for one queue
-func UpdateQueueAllocated(queueName string, milliCPU, memory float64) {
+func UpdateQueueAllocated(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
 	queueAllocatedMilliCPU.WithLabelValues(queueName).Set(milliCPU)
 	queueAllocatedMemory.WithLabelValues(queueName).Set(memory)
+	for resource, value := range scalarResources {
+		queueAllocatedScalarResource.WithLabelValues(queueName, string(resource)).Set(value)
+	}
 }
 
 // UpdateQueueRequest records request resources for one queue
-func UpdateQueueRequest(queueName string, milliCPU, memory float64) {
+func UpdateQueueRequest(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
 	queueRequestMilliCPU.WithLabelValues(queueName).Set(milliCPU)
 	queueRequestMemory.WithLabelValues(queueName).Set(memory)
+	for resource, value := range scalarResources {
+		queueRequestScalarResource.WithLabelValues(queueName, string(resource)).Set(value)
+	}
 }
 
 // UpdateQueueDeserved records deserved resources for one queue
-func UpdateQueueDeserved(queueName string, milliCPU, memory float64) {
+func UpdateQueueDeserved(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
 	queueDeservedMilliCPU.WithLabelValues(queueName).Set(milliCPU)
 	queueDeservedMemory.WithLabelValues(queueName).Set(memory)
+	for resource, value := range scalarResources {
+		queueDeservedScalarResource.WithLabelValues(queueName, string(resource)).Set(value)
+	}
 }
 
 // UpdateQueueShare records share for one queue
@@ -134,6 +216,22 @@ func UpdateQueueOverused(queueName string, overused bool) {
 	queueOverused.WithLabelValues(queueName).Set(value)
 }
 
+func UpdateQueueCapacity(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
+	queueCapacityMilliCPU.WithLabelValues(queueName).Set(milliCPU)
+	queueCapacityMemory.WithLabelValues(queueName).Set(memory)
+	for resource, value := range scalarResources {
+		queueCapacityScalarResource.WithLabelValues(queueName, string(resource)).Set(value)
+	}
+}
+
+func UpdateQueueRealCapacity(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
+	queueRealCapacityMilliCPU.WithLabelValues(queueName).Set(milliCPU)
+	queueRealCapacityMemory.WithLabelValues(queueName).Set(memory)
+	for resource, value := range scalarResources {
+		queueRealCapacityScalarResource.WithLabelValues(queueName, string(resource)).Set(value)
+	}
+}
+
 // DeleteQueueMetrics delete all metrics related to the queue
 func DeleteQueueMetrics(queueName string) {
 	queueAllocatedMilliCPU.DeleteLabelValues(queueName)
@@ -145,4 +243,14 @@ func DeleteQueueMetrics(queueName string) {
 	queueShare.DeleteLabelValues(queueName)
 	queueWeight.DeleteLabelValues(queueName)
 	queueOverused.DeleteLabelValues(queueName)
+	queueCapacityMilliCPU.DeleteLabelValues(queueName)
+	queueCapacityMemory.DeleteLabelValues(queueName)
+	queueRealCapacityMilliCPU.DeleteLabelValues(queueName)
+	queueRealCapacityMemory.DeleteLabelValues(queueName)
+	partialLabelMap := map[string]string{"queue_name": queueName}
+	queueAllocatedScalarResource.DeletePartialMatch(partialLabelMap)
+	queueRequestScalarResource.DeletePartialMatch(partialLabelMap)
+	queueDeservedScalarResource.DeletePartialMatch(partialLabelMap)
+	queueCapacityScalarResource.DeletePartialMatch(partialLabelMap)
+	queueRealCapacityScalarResource.DeletePartialMatch(partialLabelMap)
 }
