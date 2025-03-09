@@ -227,7 +227,8 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	cc.podInformer = sharedInformers.Core().V1().Pods()
 	cc.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    cc.addPod,
+		AddFunc: cc.addPod,
+		//  notice
 		UpdateFunc: cc.updatePod,
 		DeleteFunc: cc.deletePod,
 	})
@@ -245,6 +246,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	cc.pgInformer = factory.Scheduling().V1beta1().PodGroups()
 	cc.pgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		// notice
 		UpdateFunc: cc.updatePodGroup,
 	})
 	cc.pgLister = cc.pgInformer.Lister()
