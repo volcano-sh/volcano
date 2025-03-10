@@ -40,7 +40,7 @@ jobs:
         ref: branch-3.4
         path: ${{ github.workspace }}/spark
     - name: Cache Scala, SBT and Maven
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           build/apache-maven-*
@@ -51,7 +51,7 @@ jobs:
         restore-keys: |
           build-
     - name: Cache Coursier local repository
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/coursier
         key: k8s-integration-coursier-${{ hashFiles('**/pom.xml', '**/plugins.sbt') }}
