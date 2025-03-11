@@ -84,16 +84,20 @@ func (ra *Action) Execute(ssn *framework.Session) {
 	}
 
 	for !queues.Empty() {
+
 		queue := queues.Pop().(*api.QueueInfo)
-		jobs := preemptorsMap[queue.UID]
+		jobs, found := preemptorsMap[queue.UID]
+		if !found || jobs.Empty() {
+			continue
+		}
 		if ssn.Overused(queue) {
 			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
 			continue
 		}
 		for !jobs.Empty() {
 			job := jobs.Pop().(*api.JobInfo)
-			tasks := preemptorTasks[job.UID]
-			if !ssn.JobStarving(job) {
+			tasks, found := preemptorTasks[job.UID]
+			if !found || tasks.Empty() || !ssn.JobStarving(job) {
 				continue
 			}
 			for !tasks.Empty() {
