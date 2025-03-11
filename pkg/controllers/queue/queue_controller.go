@@ -77,8 +77,8 @@ type queuecontroller struct {
 	vcInformerFactory vcinformer.SharedInformerFactory
 
 	// queues that need to be updated.
-	queue        workqueue.RateLimitingInterface
-	commandQueue workqueue.RateLimitingInterface
+	queue        workqueue.TypedRateLimitingInterface[*apis.Request]
+	commandQueue workqueue.TypedRateLimitingInterface[*busv1alpha1.Command]
 
 	pgMutex sync.RWMutex
 	// queue name -> podgroup namespace/name
@@ -118,8 +118,8 @@ func (c *queuecontroller) Initialize(opt *framework.ControllerOption) error {
 	c.queueSynced = queueInformer.Informer().HasSynced
 	c.pgLister = pgInformer.Lister()
 	c.pgSynced = pgInformer.Informer().HasSynced
-	c.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
-	c.commandQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	c.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[*apis.Request]())
+	c.commandQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[*busv1alpha1.Command]())
 	c.podGroups = make(map[string]map[string]struct{})
 	c.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 	c.maxRequeueNum = opt.MaxRequeueNum
@@ -207,20 +207,14 @@ func (c *queuecontroller) worker() {
 }
 
 func (c *queuecontroller) processNextWorkItem() bool {
-	obj, shutdown := c.queue.Get()
+	req, shutdown := c.queue.Get()
 	if shutdown {
 		return false
 	}
-	defer c.queue.Done(obj)
-
-	req, ok := obj.(*apis.Request)
-	if !ok {
-		klog.Errorf("%v is not a valid queue request struct.", obj)
-		return true
-	}
+	defer c.queue.Done(req)
 
 	err := c.syncHandler(req)
-	c.handleQueueErr(err, obj)
+	c.handleQueueErr(err, req)
 
 	return true
 }
@@ -255,23 +249,22 @@ func (c *queuecontroller) handleQueue(req *apis.Request) error {
 	return nil
 }
 
-func (c *queuecontroller) handleQueueErr(err error, obj interface{}) {
+func (c *queuecontroller) handleQueueErr(err error, req *apis.Request) {
 	if err == nil {
-		c.queue.Forget(obj)
+		c.queue.Forget(req)
 		return
 	}
 
-	if c.maxRequeueNum == -1 || c.queue.NumRequeues(obj) < c.maxRequeueNum {
-		klog.V(4).Infof("Error syncing queue request %v for %v.", obj, err)
-		c.queue.AddRateLimited(obj)
+	if c.maxRequeueNum == -1 || c.queue.NumRequeues(req) < c.maxRequeueNum {
+		klog.V(4).Infof("Error syncing queue request %v for %v.", req, err)
+		c.queue.AddRateLimited(req)
 		return
 	}
 
-	req, _ := obj.(*apis.Request)
 	c.recordEventsForQueue(req.QueueName, v1.EventTypeWarning, string(req.Action),
 		fmt.Sprintf("%v queue failed for %v", req.Action, err))
-	klog.V(2).Infof("Dropping queue request %v out of the queue for %v.", obj, err)
-	c.queue.Forget(obj)
+	klog.V(2).Infof("Dropping queue request %v out of the queue for %v.", req, err)
+	c.queue.Forget(req)
 }
 
 func (c *queuecontroller) commandWorker() {
@@ -280,20 +273,14 @@ func (c *queuecontroller) commandWorker() {
 }
 
 func (c *queuecontroller) processNextCommand() bool {
-	obj, shutdown := c.commandQueue.Get()
+	cmd, shutdown := c.commandQueue.Get()
 	if shutdown {
 		return false
 	}
-	defer c.commandQueue.Done(obj)
-
-	cmd, ok := obj.(*busv1alpha1.Command)
-	if !ok {
-		klog.Errorf("%v is not a valid Command struct.", obj)
-		return true
-	}
+	defer c.commandQueue.Done(cmd)
 
 	err := c.syncCommandHandler(cmd)
-	c.handleCommandErr(err, obj)
+	c.handleCommandErr(err, cmd)
 
 	return true
 }
@@ -324,18 +311,18 @@ func (c *queuecontroller) handleCommand(cmd *busv1alpha1.Command) error {
 	return nil
 }
 
-func (c *queuecontroller) handleCommandErr(err error, obj interface{}) {
+func (c *queuecontroller) handleCommandErr(err error, cmd *busv1alpha1.Command) {
 	if err == nil {
-		c.commandQueue.Forget(obj)
+		c.commandQueue.Forget(cmd)
 		return
 	}
 
-	if c.maxRequeueNum == -1 || c.commandQueue.NumRequeues(obj) < c.maxRequeueNum {
-		klog.V(4).Infof("Error syncing command %v for %v.", obj, err)
-		c.commandQueue.AddRateLimited(obj)
+	if c.maxRequeueNum == -1 || c.commandQueue.NumRequeues(cmd) < c.maxRequeueNum {
+		klog.V(4).Infof("Error syncing command %v for %v.", cmd, err)
+		c.commandQueue.AddRateLimited(cmd)
 		return
 	}
 
-	klog.V(2).Infof("Dropping command %v out of the queue for %v.", obj, err)
-	c.commandQueue.Forget(obj)
+	klog.V(2).Infof("Dropping command %v out of the queue for %v.", cmd, err)
+	c.commandQueue.Forget(cmd)
 }

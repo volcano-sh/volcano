@@ -158,8 +158,8 @@ func (drf *drfPlugin) compareQueues(root *hierarchicalNode, lqueue *api.QueueInf
 	rnode := root
 	rpaths := strings.Split(rqueue.Hierarchy, "/")
 	for i, depth := 0, min(len(lpaths), len(rpaths)); i < depth; i++ {
-		// Saturated nodes have minumun prioirty,
-		// so that demanding nodes will be poped first.
+		// Saturated nodes have minimum priority,
+		// so that demanding nodes will be popped first.
 		if !lnode.saturated && rnode.saturated {
 			return -1
 		}
@@ -434,7 +434,7 @@ func (drf *drfPlugin) updateHierarchicalShare(node *hierarchicalNode,
 			node.hierarchy, node.attr.share, node.attr.dominantResource, node.attr.allocated, node.saturated)
 	} else {
 		var mdr float64 = 1
-		// get minimun dominant resource share
+		// get minimum dominant resource share
 		for _, child := range node.children {
 			drf.updateHierarchicalShare(child, demandingResources)
 			// skip empty child and saturated child

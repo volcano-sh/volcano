@@ -185,6 +185,7 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		JobName:   jobName,
 		JobUid:    jobUid,
 		PodName:   pod.Name,
+		PodUID:    pod.UID,
 
 		Event:      bus.PodPendingEvent,
 		JobVersion: int32(dVersion),
@@ -302,6 +303,7 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		JobUid:    jobUid,
 		TaskName:  taskName,
 		PodName:   newPod.Name,
+		PodUID:    newPod.UID,
 
 		Event:      event,
 		ExitCode:   exitCode,
@@ -371,6 +373,7 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 		JobUid:    jobUid,
 		TaskName:  taskName,
 		PodName:   pod.Name,
+		PodUID:    pod.UID,
 
 		Event:      bus.PodEvictedEvent,
 		JobVersion: int32(dVersion),

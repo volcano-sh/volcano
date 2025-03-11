@@ -25,7 +25,7 @@ CHECK_GIT_REMOTE=${CHECK_GIT_REMOTE:-true}
 # Useful Defaults
 ## Target github organization name
 TARGET_ORG=${TARGET_ORG:-"volcano-sh"}
-## main repo uptream configs
+## main repo upstream configs
 UPSTREAM=${UPSTREAM:-"upstream"}
 UPSTREAM_HEAD=${UPSTREAM_HEAD:-"master"}
 UPSTREAM_REPO_NAME=${UPSTREAM_REPO_NAME:-"volcano"}

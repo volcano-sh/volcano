@@ -133,8 +133,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	// Minimum percentage of nodes to find and score
 	fs.Int32Var(&s.MinPercentageOfNodesToFind, "minimum-percentage-nodes-to-find", defaultMinPercentageOfNodesToFind, "The minimum percentage of nodes to find and score")
 
-	// The percentage of nodes that would be scored in each scheduling cycle; if <= 0, an adpative percentage will be calcuated
-	fs.Int32Var(&s.PercentageOfNodesToFind, "percentage-nodes-to-find", defaultPercentageOfNodesToFind, "The percentage of nodes to find and score, if <=0 will be calcuated based on the cluster size")
+	// The percentage of nodes that would be scored in each scheduling cycle; if <= 0, an adaptive percentage will be calculated
+	fs.Int32Var(&s.PercentageOfNodesToFind, "percentage-nodes-to-find", defaultPercentageOfNodesToFind, "The percentage of nodes to find and score, if <=0 will be calculated based on the cluster size")
 
 	fs.StringVar(&s.PluginsDir, "plugins-dir", defaultPluginsDir, "vc-scheduler will load custom plugins which are in this directory")
 	fs.BoolVar(&s.EnableCSIStorage, "csi-storage", false,
