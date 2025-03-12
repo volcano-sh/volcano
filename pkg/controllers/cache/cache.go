@@ -273,11 +273,7 @@ func (jc *jobCache) TaskCompleted(jobKey, taskName string) bool {
 
 	taskPods, found := jobInfo.Pods[taskName]
 
-	if !found {
-		return false
-	}
-
-	if jobInfo.Job == nil {
+	if !found || jobInfo.Job == nil {
 		return false
 	}
 
