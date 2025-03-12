@@ -43,13 +43,13 @@ func (cc *jobcontroller) processResyncTask() {
 		return
 	}
 
+	defer cc.errTasks.Done(obj)
+
 	// one task only resync 10 times
 	if cc.errTasks.NumRequeues(obj) > 10 {
 		cc.errTasks.Forget(obj)
 		return
 	}
-
-	defer cc.errTasks.Done(obj)
 
 	task, ok := obj.(*v1.Pod)
 	if !ok {
