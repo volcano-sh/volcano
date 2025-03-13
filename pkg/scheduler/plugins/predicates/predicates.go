@@ -205,7 +205,6 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
-
 	pl := ssn.PodLister
 	nodeMap := ssn.NodeMap
 
@@ -305,7 +304,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeAffinityArgs := config.NodeAffinityArgs{
 		AddedAffinity: &v1.NodeAffinity{},
 	}
-
 	plugin, _ = nodeaffinity.New(context.TODO(), &nodeAffinityArgs, handle, features)
 	nodeAffinityFilter := plugin.(*nodeaffinity.NodeAffinity)
 	// 3. NodePorts
