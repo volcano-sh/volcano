@@ -296,12 +296,8 @@ func (jf *jobflowcontroller) deleteAllJobsCreatedByJobFlow(jobFlow *v1alpha1flow
 }
 
 func (jf *jobflowcontroller) getAllJobsCreatedByJobFlow(jobFlow *v1alpha1flow.JobFlow) ([]*v1alpha1.Job, error) {
-	var flowNames []string
-	for _, flow := range jobFlow.Spec.Flows {
-		flowNames = append(flowNames, GenerateObjectString(jobFlow.Namespace, flow.Name))
-	}
 	selector := labels.NewSelector()
-	r, err := labels.NewRequirement(CreatedByJobTemplate, selection.In, flowNames)
+	r, err := labels.NewRequirement(CreatedByJobFlow, selection.In, []string{GenerateObjectString(jobFlow.Namespace, jobFlow.Name)})
 	if err != nil {
 		return nil, err
 	}
