@@ -106,8 +106,8 @@ func (ra *Action) Execute(ssn *framework.Session) {
 					klog.V(3).Infof("Task %s/%s is not eligible to preempt other tasks due to preemptionPolicy is Never", task.Namespace, task.Name)
 					continue
 				}
-				//In allocate action we need check all the ancestor queues' capability but in reclaim action we should just check current queue's capability, and reclaim happens when queue not allocatable so we just need focus on the reclaim here.
-				//So it's more descriptive to user preempt related semantics.
+				// In allocate action we need check all the ancestor queues' capability but in reclaim action we should just check current queue's capability, and reclaim happens when queue not allocatable so we just need focus on the reclaim here.
+				// So it's more descriptive to user preempt related semantics.
 				if !ssn.Preemptive(queue, task) {
 					klog.V(3).Infof("Queue <%s> can not reclaim by preempt others when considering task <%s> , ignore it.", queue.Name, task.Name)
 					continue
@@ -119,12 +119,10 @@ func (ra *Action) Execute(ssn *framework.Session) {
 				// start reclaim
 				assigned := false
 				// we should filter out those nodes that are Unschedulable AndUnresolvable status got in allocate action
-				// 获取不可调度节点
 				totalNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(task)
 				for _, n := range totalNodes {
 					// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
 					// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
-					// 节点检查
 					if err := ssn.PredicateForPreemptAction(task, n); err != nil {
 						klog.V(4).Infof("Reclaim predicate for task %s/%s on node %s return error %v ", task.Namespace, task.Name, n.Name, err)
 						continue
