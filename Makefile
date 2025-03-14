@@ -191,7 +191,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	GOOS=${OS} go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.4 ;\
+	GOOS=${OS} go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.17.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen
@@ -202,6 +202,7 @@ endif
 update-development-yaml:
 	make generate-yaml TAG=latest RELEASE_DIR=installer
 	mv installer/volcano-latest.yaml installer/volcano-development.yaml
+	mv installer/volcano-agent-latest.yaml installer/volcano-agent-development.yaml
 
 mod-download-go:
 	@-GOFLAGS="-mod=readonly" find -name go.mod -execdir go mod download \;
