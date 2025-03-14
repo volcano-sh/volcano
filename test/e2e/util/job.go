@@ -277,28 +277,31 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 func WaitTaskPhase(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase, taskNum int) error {
 	var additionalError error
 	var podNotReadyCache map[string]*v1.Pod
+	var podReadyCache map[string]*v1.Pod
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
 		pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to list pods in namespace %s", job.Namespace)
 
 		readyTaskNum := 0
 		podNotReadyCache = make(map[string]*v1.Pod)
+		podReadyCache = make(map[string]*v1.Pod)
 		for _, pod := range pods.Items {
 			if !metav1.IsControlledBy(&pod, job) {
 				continue
 			}
 
+			podKey := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 			podReady := false
 			for _, p := range phase {
 				if pod.Status.Phase == p {
 					readyTaskNum++
 					podReady = true
+					podReadyCache[podKey] = &pod
 					break
 				}
 			}
 
 			if !podReady {
-				podKey := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
 				podNotReadyCache[podKey] = &pod
 			}
 		}
@@ -312,15 +315,19 @@ func WaitTaskPhase(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase
 		return ready, nil
 	})
 	if err != nil && strings.Contains(err.Error(), TimeOutMessage) {
-		logEventsOfNotReadyPods(ctx, podNotReadyCache, phase)
+		klog.Infof("Expected task phase: %v", phase)
+		klog.Infof("Begin log events of not ready pods")
+		logEventsOfPods(ctx, podNotReadyCache)
+		klog.Infof("Begin log events of ready pods")
+		logEventsOfPods(ctx, podReadyCache)
 		return fmt.Errorf("[Wait time out]: %s", additionalError)
 	}
 	return err
 }
 
-func logEventsOfNotReadyPods(ctx *TestContext, podNotReadyCache map[string]*v1.Pod, phase []v1.PodPhase) {
-	for _, pod := range podNotReadyCache {
-		klog.Errorf("The pod <%s/%s> is not in %v phase", pod.Namespace, pod.Name, phase)
+func logEventsOfPods(ctx *TestContext, pods map[string]*v1.Pod) {
+	for _, pod := range pods {
+		klog.Infof("Pod %v in phase %v", klog.KObj(pod), pod.Status.Phase)
 		// Currently, we only filter Failed event
 		fieldSelector := fmt.Sprintf("involvedObject.kind=Pod,involvedObject.name=%s,reason=Failed", pod.Name)
 		events, err := ctx.Kubeclient.CoreV1().Events(pod.Namespace).List(context.TODO(), metav1.ListOptions{
