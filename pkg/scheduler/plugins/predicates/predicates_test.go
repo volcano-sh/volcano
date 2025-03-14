@@ -7,7 +7,11 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/component-base/metrics/legacyregistry"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
+	"k8s.io/kubernetes/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/backfill"
 	"volcano.sh/volcano/pkg/scheduler/actions/preempt"
@@ -19,6 +23,33 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func init() {
+
+	metrics.Register()
+
+	utilfeature.DefaultMutableFeatureGate.Set("VolumeCapacityPriority=true," +
+		"NodeInclusionPolicyInPodTopologySpread=true," +
+		"MatchLabelKeysInPodTopologySpread=true," +
+		"SidecarContainers=true")
+}
+
+func setupMetrics() {
+
+	legacyregistry.Reset()
+
+	metrics.Register()
+
+}
+
+func setupTest() func() {
+	setupMetrics()
+
+	return func() {
+
+		legacyregistry.Reset()
+	}
+}
 
 func getWorkerAffinity() *apiv1.Affinity {
 	return &apiv1.Affinity{
@@ -42,6 +73,11 @@ func getWorkerAffinity() *apiv1.Affinity {
 }
 
 func TestEventHandler(t *testing.T) {
+	setupMetrics()
+
+	cleanup := setupTest()
+	defer cleanup()
+
 	plugins := map[string]framework.PluginBuilder{
 		PluginName:          New,
 		gang.PluginName:     gang.New,
@@ -124,6 +160,10 @@ func TestEventHandler(t *testing.T) {
 }
 
 func TestNodeNum(t *testing.T) {
+	setupMetrics()
+	cleanup := setupTest()
+	defer cleanup()
+
 	plugins := map[string]framework.PluginBuilder{
 		PluginName: New,
 	}
@@ -191,6 +231,9 @@ func TestNodeNum(t *testing.T) {
 }
 
 func TestPodAntiAffinity(t *testing.T) {
+	setupMetrics()
+	cleanup := setupTest()
+	defer cleanup()
 	plugins := map[string]framework.PluginBuilder{
 		PluginName:          New,
 		priority.PluginName: priority.New,
