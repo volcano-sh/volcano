@@ -24,6 +24,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -94,7 +95,6 @@ func (cp *capacityPlugin) HierarchyEnabled(ssn *framework.Session) bool {
 }
 
 func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
-
 	// Prepare scheduling data for this session.
 	cp.totalResource.Add(ssn.TotalResource)
 
