@@ -18,6 +18,7 @@ package jobflow
 
 import (
 	"context"
+	"sort"
 	"testing"
 	"time"
 
@@ -150,7 +151,14 @@ func TestSyncJobFlowFunc(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      getJobName(tt.args.jobFlow.Name, tt.args.jobTemplateList[i].Name),
 						Namespace: tt.args.jobFlow.Namespace,
-						Labels:    map[string]string{CreatedByJobTemplate: GenerateObjectString(tt.args.jobFlow.Namespace, tt.args.jobTemplateList[i].Name)},
+						Labels: map[string]string{
+							CreatedByJobTemplate: GenerateObjectString(tt.args.jobFlow.Namespace, tt.args.jobTemplateList[i].Name),
+							CreatedByJobFlow:     GenerateObjectString(tt.args.jobFlow.Namespace, tt.args.jobFlow.Name),
+						},
+						Annotations: map[string]string{
+							CreatedByJobTemplate: GenerateObjectString(tt.args.jobFlow.Namespace, tt.args.jobTemplateList[i].Name),
+							CreatedByJobFlow:     GenerateObjectString(tt.args.jobFlow.Namespace, tt.args.jobFlow.Name),
+						},
 					},
 					Spec: tt.args.jobTemplateList[i].Spec,
 					Status: v1alpha1.JobStatus{
@@ -256,10 +264,185 @@ func TestGetRunningHistoriesFunc(t *testing.T) {
 	}
 }
 
+func TestGetAllJobsCreatedByJobFlow(t *testing.T) {
+	createJobATime := time.Now()
+	createJobBTime := createJobATime.Add(time.Second)
+	tests := []struct {
+		name         string
+		jobFlow      *jobflowv1alpha1.JobFlow
+		allJobList   []v1alpha1.Job
+		wantJobsName []string
+		wantErr      bool
+	}{
+		{
+			name: "GetAllJobsCreatedByJobFlow success case",
+
+			jobFlow: &jobflowv1alpha1.JobFlow{
+				TypeMeta: metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "JobflowA",
+					Namespace: "default",
+				},
+				Spec: jobflowv1alpha1.JobFlowSpec{
+					Flows: []jobflowv1alpha1.Flow{
+						{
+							Name:      "A",
+							DependsOn: nil,
+						},
+						{
+							Name: "B",
+							DependsOn: &jobflowv1alpha1.DependsOn{
+								Targets: []string{"A"},
+							},
+						},
+					},
+					JobRetainPolicy: "",
+				},
+				Status: jobflowv1alpha1.JobFlowStatus{},
+			},
+
+			allJobList: []v1alpha1.Job{
+				{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "JobflowA-A",
+						Namespace:         "default",
+						CreationTimestamp: metav1.Time{Time: createJobATime},
+						Labels: map[string]string{
+							CreatedByJobTemplate: GenerateObjectString("default", "A"),
+							CreatedByJobFlow:     GenerateObjectString("default", "JobflowA"),
+						},
+						Annotations: map[string]string{
+							CreatedByJobTemplate: GenerateObjectString("default", "A"),
+							CreatedByJobFlow:     GenerateObjectString("default", "JobflowA"),
+						},
+						OwnerReferences: []metav1.OwnerReference{{
+							APIVersion: "volcano",
+							Kind:       JobFlow,
+							Name:       "JobflowA",
+						}},
+					},
+					Spec: v1alpha1.JobSpec{},
+					Status: v1alpha1.JobStatus{
+						State:           v1alpha1.JobState{Phase: v1alpha1.Completed},
+						RetryCount:      1,
+						RunningDuration: &metav1.Duration{Duration: time.Second},
+					},
+				},
+				{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "JobflowA-B",
+						Namespace:         "default",
+						CreationTimestamp: metav1.Time{Time: createJobBTime},
+						Labels: map[string]string{
+							CreatedByJobTemplate: GenerateObjectString("default", "B"),
+							CreatedByJobFlow:     GenerateObjectString("default", "JobflowA"),
+						},
+						Annotations: map[string]string{
+							CreatedByJobTemplate: GenerateObjectString("default", "B"),
+							CreatedByJobFlow:     GenerateObjectString("default", "JobflowA"),
+						},
+						OwnerReferences: []metav1.OwnerReference{{
+							APIVersion: "volcano",
+							Kind:       JobFlow,
+							Name:       "JobflowA",
+						}},
+					},
+					Spec: v1alpha1.JobSpec{},
+					Status: v1alpha1.JobStatus{
+						State: v1alpha1.JobState{Phase: v1alpha1.Running},
+					},
+				},
+				// Other jobflows reuse jobTemplate A and B and execute concurrently
+				{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "JobflowB-A",
+						Namespace:         "default",
+						CreationTimestamp: metav1.Time{Time: createJobATime},
+						Labels: map[string]string{
+							CreatedByJobTemplate: GenerateObjectString("default", "A"),
+							CreatedByJobFlow:     GenerateObjectString("default", "JobflowB"),
+						},
+						Annotations: map[string]string{
+							CreatedByJobTemplate: GenerateObjectString("default", "A"),
+							CreatedByJobFlow:     GenerateObjectString("default", "JobflowB"),
+						},
+						OwnerReferences: []metav1.OwnerReference{{
+							APIVersion: "volcano",
+							Kind:       JobFlow,
+							Name:       "JobflowB",
+						}},
+					},
+					Spec: v1alpha1.JobSpec{},
+					Status: v1alpha1.JobStatus{
+						State:           v1alpha1.JobState{Phase: v1alpha1.Completed},
+						RetryCount:      1,
+						RunningDuration: &metav1.Duration{Duration: time.Second},
+					},
+				},
+				{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "JobflowB-B",
+						Namespace:         "default",
+						CreationTimestamp: metav1.Time{Time: createJobBTime},
+						Labels: map[string]string{
+							CreatedByJobTemplate: GenerateObjectString("default", "B"),
+							CreatedByJobFlow:     GenerateObjectString("default", "JobflowB"),
+						},
+						Annotations: map[string]string{
+							CreatedByJobTemplate: GenerateObjectString("default", "B"),
+							CreatedByJobFlow:     GenerateObjectString("default", "JobflowB"),
+						},
+						OwnerReferences: []metav1.OwnerReference{{
+							APIVersion: "volcano",
+							Kind:       JobFlow,
+							Name:       "JobflowB",
+						}},
+					},
+					Spec: v1alpha1.JobSpec{},
+					Status: v1alpha1.JobStatus{
+						State: v1alpha1.JobState{Phase: v1alpha1.Running},
+					},
+				},
+			},
+			wantJobsName: []string{"JobflowA-A", "JobflowA-B"},
+			wantErr:      false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeController := newFakeController()
+			for i := range tt.allJobList {
+				err := fakeController.jobInformer.Informer().GetIndexer().Add(&tt.allJobList[i])
+				if err != nil {
+					t.Error("Error While add vcjob")
+				}
+			}
+
+			gotJobs, err := fakeController.getAllJobsCreatedByJobFlow(tt.jobFlow)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getAllJobsCreatedByJobFlow() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			var gotJobsName []string
+			for _, gotJob := range gotJobs {
+				gotJobsName = append(gotJobsName, gotJob.ObjectMeta.Name)
+			}
+
+			sort.Strings(gotJobsName)
+			sort.Strings(tt.wantJobsName)
+
+			if !equality.Semantic.DeepEqual(gotJobsName, tt.wantJobsName) {
+				t.Errorf("getAllJobsCreatedByJobFlow() gotJobsName = %v, wantJobsName %v", gotJobsName, tt.wantJobsName)
+			}
+		})
+	}
+}
+
 func TestGetAllJobStatusFunc(t *testing.T) {
-	// TODO(wangyang0616): First make sure that ut can run, and then fix the failed ut later.
-	// See issue for details: https://github.com/volcano-sh/volcano/issues/2851
-	t.Skip("Test cases are not as expected, fixed later. see issue: #2851")
 	type args struct {
 		jobFlow    *jobflowv1alpha1.JobFlow
 		allJobList *v1alpha1.JobList
@@ -279,7 +462,8 @@ func TestGetAllJobStatusFunc(t *testing.T) {
 				jobFlow: &jobflowv1alpha1.JobFlow{
 					TypeMeta: metav1.TypeMeta{},
 					ObjectMeta: metav1.ObjectMeta{
-						Name: jobFlowName,
+						Name:      jobFlowName,
+						Namespace: "default",
 					},
 					Spec: jobflowv1alpha1.JobFlowSpec{
 						Flows: []jobflowv1alpha1.Flow{
@@ -303,7 +487,12 @@ func TestGetAllJobStatusFunc(t *testing.T) {
 						{
 							TypeMeta: metav1.TypeMeta{},
 							ObjectMeta: metav1.ObjectMeta{
-								Name:              "jobFlowA-A",
+								Name:      "jobFlowA-A",
+								Namespace: "default",
+								Labels: map[string]string{
+									CreatedByJobTemplate: GenerateObjectString("default", "A"),
+									CreatedByJobFlow:     GenerateObjectString("default", jobFlowName),
+								},
 								CreationTimestamp: metav1.Time{Time: createJobATime},
 								OwnerReferences: []metav1.OwnerReference{{
 									APIVersion: "volcano",
@@ -322,7 +511,12 @@ func TestGetAllJobStatusFunc(t *testing.T) {
 							TypeMeta: metav1.TypeMeta{},
 							ObjectMeta: metav1.ObjectMeta{
 								Name:              "jobFlowA-B",
+								Namespace:         "default",
 								CreationTimestamp: metav1.Time{Time: createJobBTime},
+								Labels: map[string]string{
+									CreatedByJobTemplate: GenerateObjectString("default", "B"),
+									CreatedByJobFlow:     GenerateObjectString("default", jobFlowName),
+								},
 								OwnerReferences: []metav1.OwnerReference{{
 									APIVersion: "volcano",
 									Kind:       JobFlow,
