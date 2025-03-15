@@ -311,6 +311,8 @@ func closeSession(ssn *Session) {
 	ssn.NodeList = nil
 	ssn.TotalResource = nil
 
+	util.CleanUnusedPredicateCache(ssn.Jobs)
+
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }
 
@@ -387,8 +389,23 @@ func (ssn *Session) GetUnschedulableAndUnresolvableNodesForTask(task *api.TaskIn
 // - Unschedulable
 // - UnschedulableAndUnresolvable
 // - ErrorSkipOrWait
-func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.NodeInfo) error {
-	err := ssn.PredicateFn(task, node)
+func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.NodeInfo, cacheEnable bool) error {
+	var statusSets api.StatusSets
+	if node.Allocatable.MaxTaskNum <= len(ssn.NodeMap[node.Name].Pods) {
+		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.NodePodNumberExceeded})
+		return api.NewFitErrWithStatus(task, node, statusSets...)
+	}
+	var (
+		err error
+		ok  bool
+	)
+	if cacheEnable {
+		err, ok = util.GetPredicateCache(task.Job, task.UID, task.HashValue, node.Name, node.HashValue)
+	}
+	if !ok {
+		err = ssn.PredicateFn(task, node)
+		util.SetPredicateCache(task.Job, task.UID, task.HashValue, node.Name, node.HashValue, err)
+	}
 	if err == nil {
 		return nil
 	}
@@ -398,7 +415,7 @@ func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.Nod
 		return api.NewFitError(task, node, err.Error())
 	}
 
-	statusSets := fitError.Status
+	statusSets = fitError.Status
 	if statusSets.ContainsUnschedulable() || statusSets.ContainsUnschedulableAndUnresolvable() ||
 		statusSets.ContainsErrorSkipOrWait() {
 		return fitError
@@ -409,8 +426,23 @@ func (ssn *Session) PredicateForAllocateAction(task *api.TaskInfo, node *api.Nod
 // PredicateForPreemptAction checks if the predicate error contains:
 // - UnschedulableAndUnresolvable
 // - ErrorSkipOrWait
-func (ssn *Session) PredicateForPreemptAction(task *api.TaskInfo, node *api.NodeInfo) error {
-	err := ssn.PredicateFn(task, node)
+func (ssn *Session) PredicateForPreemptAction(task *api.TaskInfo, node *api.NodeInfo, cacheEnable bool) error {
+	var statusSets api.StatusSets
+	if node.Allocatable.MaxTaskNum <= len(ssn.NodeMap[node.Name].Pods) {
+		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.NodePodNumberExceeded})
+		return api.NewFitErrWithStatus(task, node, statusSets...)
+	}
+	var (
+		err error
+		ok  bool
+	)
+	if cacheEnable {
+		err, ok = util.GetPredicateCache(task.Job, task.UID, task.HashValue, node.Name, node.HashValue)
+	}
+	if !ok {
+		err = ssn.PredicateFn(task, node)
+		util.SetPredicateCache(task.Job, task.UID, task.HashValue, node.Name, node.HashValue, err)
+	}
 	if err == nil {
 		return nil
 	}
@@ -422,7 +454,7 @@ func (ssn *Session) PredicateForPreemptAction(task *api.TaskInfo, node *api.Node
 
 	// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
 	// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
-	statusSets := fitError.Status
+	statusSets = fitError.Status
 	if statusSets.ContainsUnschedulableAndUnresolvable() || statusSets.ContainsErrorSkipOrWait() {
 		return fitError
 	}

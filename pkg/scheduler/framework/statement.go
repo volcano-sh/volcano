@@ -440,3 +440,12 @@ func (s *Statement) Commit() {
 		}
 	}
 }
+
+func (s *Statement) GetEvictTasks() (tasks []*api.TaskInfo) {
+	for _, op := range s.operations {
+		if op.name == Evict {
+			tasks = append(tasks, op.task)
+		}
+	}
+	return
+}
