@@ -635,7 +635,6 @@ func (cc *jobcontroller) isDependsOnPodsReady(task string, job *batch.Job) bool 
 
 func (cc *jobcontroller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, error) {
 	// If PVC does not exist, create them for Job.
-	var needUpdate bool
 	if job.Status.ControlledResources == nil {
 		job.Status.ControlledResources = make(map[string]string)
 	}
@@ -653,7 +652,6 @@ func (cc *jobcontroller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, erro
 					continue
 				}
 				job.Spec.Volumes[index].VolumeClaimName = vcName
-				needUpdate = true
 				break
 			}
 			// TODO: check VolumeClaim must be set if VolumeClaimName is empty
@@ -661,6 +659,22 @@ func (cc *jobcontroller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, erro
 				if err := cc.createPVC(job, vcName, volume.VolumeClaim); err != nil {
 					return job, err
 				}
+				newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
+				if err != nil {
+					klog.Errorf("Failed to update Job %v/%v for volume claim name: %v ",
+						job.Namespace, job.Name, err)
+					return job, err
+				}
+				job.ResourceVersion = newJob.ResourceVersion
+
+				job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
+				newJob, err = cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
+				if err != nil {
+					klog.Errorf("Failed to update Job %v/%v for volume claim name: %v ",
+						job.Namespace, job.Name, err)
+					return job, err
+				}
+				job.ResourceVersion = newJob.ResourceVersion
 			}
 		} else {
 			exist, err := cc.checkPVCExist(job, vcName)
@@ -671,19 +685,8 @@ func (cc *jobcontroller) createJobIOIfNotExist(job *batch.Job) (*batch.Job, erro
 				return job, fmt.Errorf("pvc %s is not found, the job will be in the Pending state until the PVC is created", vcName)
 			}
 		}
-		job.Status.ControlledResources["volume-pvc-"+vcName] = vcName
 	}
-	if needUpdate {
-		newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).Update(context.TODO(), job, metav1.UpdateOptions{})
-		if err != nil {
-			klog.Errorf("Failed to update Job %v/%v for volume claim name: %v ",
-				job.Namespace, job.Name, err)
-			return job, err
-		}
 
-		newJob.Status = job.Status
-		return newJob, err
-	}
 	return job, nil
 }
 
