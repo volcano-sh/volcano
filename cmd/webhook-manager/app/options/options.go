@@ -31,6 +31,7 @@ const (
 	defaultBurst            = 100
 	defaultEnabledAdmission = "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
 	defaultHealthzAddress   = ":11251"
+	defaultMemlimitRatio    = 0.0
 )
 
 // Config admission-controller server config.
@@ -56,6 +57,9 @@ type Config struct {
 	// HealthzBindAddress is the IP address and port for the health check server to serve on
 	// defaulting to :11251
 	HealthzBindAddress string
+
+	// The ratio of reserved GOMEMLIMIT memory to the detected maximum container or system memory.
+	MemlimitRatio float64
 }
 
 type DecryptFunc func(c *Config) error
@@ -88,6 +92,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.ConfigPath, "admission-conf", "", "The configmap file of this webhook")
 	fs.BoolVar(&c.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.StringVar(&c.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
+	fs.Float64Var(&c.MemlimitRatio, "auto-gomemlimit-ratio", defaultMemlimitRatio, "The ratio of reserved GOMEMLIMIT memory to the detected maximum container or system memory. The value should be greater than 0.0 and less than 1.0. Default: 0.0 (disabled).")
 }
 
 // CheckPortOrDie check valid port range.
