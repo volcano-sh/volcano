@@ -327,10 +327,10 @@ func (p TasksPriority) CalcFirstCountResources(count int32) v1.ResourceList {
 
 	for _, task := range p {
 		if count <= task.Replicas {
-			minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, count))
+			minReq = quotav1.Add(minReq, util.CalTaskRequests(&v1.Pod{Spec: task.Template.Spec}, count))
 			break
 		} else {
-			minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, task.Replicas))
+			minReq = quotav1.Add(minReq, util.CalTaskRequests(&v1.Pod{Spec: task.Template.Spec}, task.Replicas))
 			count -= task.Replicas
 		}
 	}
@@ -353,7 +353,7 @@ func (p TasksPriority) CalcPGMinResources(jobMinAvailable int32) v1.ResourceList
 		if left := jobMinAvailable - podCnt; left < validReplics {
 			validReplics = left
 		}
-		minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, validReplics))
+		minReq = quotav1.Add(minReq, util.CalTaskRequests(&v1.Pod{Spec: task.Template.Spec}, validReplics))
 		podCnt += validReplics
 		if podCnt >= jobMinAvailable {
 			break
@@ -377,25 +377,15 @@ func (p TasksPriority) CalcPGMinResources(jobMinAvailable int32) v1.ResourceList
 		}
 
 		if leftCnt >= left {
-			minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, left))
+			minReq = quotav1.Add(minReq, util.CalTaskRequests(&v1.Pod{Spec: task.Template.Spec}, left))
 			leftCnt -= left
 		} else {
-			minReq = quotav1.Add(minReq, calTaskRequests(&v1.Pod{Spec: task.Template.Spec}, leftCnt))
+			minReq = quotav1.Add(minReq, util.CalTaskRequests(&v1.Pod{Spec: task.Template.Spec}, leftCnt))
 			leftCnt = 0
 		}
 		if leftCnt <= 0 {
 			break
 		}
-	}
-	return minReq
-}
-
-// calTaskRequests returns requests resource with validReplica replicas
-func calTaskRequests(pod *v1.Pod, validReplica int32) v1.ResourceList {
-	minReq := v1.ResourceList{}
-	usage := *util.GetPodQuotaUsage(pod)
-	for i := int32(0); i < validReplica; i++ {
-		minReq = quotav1.Add(minReq, usage)
 	}
 	return minReq
 }
