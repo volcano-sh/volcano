@@ -18,6 +18,7 @@ package vgpu
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
+	deviceconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
 
@@ -60,6 +62,12 @@ type GPUDevice struct {
 	UsedMem uint
 	// number of core used
 	UsedCore uint
+	// working node of this GPU
+	Mode string
+	// MigTemplate for this GPU
+	MigTemplate []deviceconfig.Geometry
+	/// MigUsage for this GPU
+	MigUsage deviceconfig.MigInUse
 }
 
 type GPUDevices struct {
@@ -95,12 +103,18 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	if !ok {
 		return nil
 	}
+	devicecm := os.Getenv("VOLCANO_DEVICE_CM")
+	if len(devicecm) == 0 {
+		devicecm = "volcano-vgpu-device-config"
+	}
+	deviceconfig.InitDevicesConfig(devicecm)
+
 	nodedevices := decodeNodeDevices(name, annos)
 	if (nodedevices == nil) || len(nodedevices.Device) == 0 {
 		return nil
 	}
 	for _, val := range nodedevices.Device {
-		klog.V(4).InfoS("Nvidia Device registered name", "name", nodedevices.Name, "val", *val)
+		klog.V(3).InfoS("Nvidia Device registered name", "name", nodedevices.Name, "val", *val)
 		ResetDeviceMetrics(val.UUID, node.Name, float64(val.Memory))
 	}
 
@@ -248,7 +262,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 
 		annotations[DeviceBindPhase] = "allocating"
 		annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
-		err = patchPodAnnotations(pod, annotations)
+		err = patchPodAnnotations(kubeClient, pod, annotations)
 		if err != nil {
 			return err
 		}
