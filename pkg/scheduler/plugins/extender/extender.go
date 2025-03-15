@@ -250,6 +250,7 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 				if ep.config.ignorable {
 					return util.Permit
 				}
+				job.JobFitErrors = "extender return error: " + err.Error()
 				return util.Reject
 			}
 
