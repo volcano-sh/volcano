@@ -84,21 +84,48 @@ func AdmitHyperNode(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespon
 }
 
 // validateHyperNodeMemberSelector is to validate hypernode member selector.
-func validateHyperNodeMemberSelector(selector hypernodev1alpha1.MemberSelector, fldPath *field.Path) field.ErrorList {
+func validateHyperNodeMemberSelector(selector hypernodev1alpha1.MemberSelector, fldPath *field.Path, memberType hypernodev1alpha1.MemberType) field.ErrorList {
 	errs := field.ErrorList{}
 
-	if selector.RegexMatch == nil && selector.ExactMatch == nil {
-		err := field.Invalid(fldPath, selector,
-			"member selector must have one of regexMatch or exactMatch")
+	if memberType != hypernodev1alpha1.MemberTypeHyperNode && memberType != hypernodev1alpha1.MemberTypeNode {
+		err := field.Invalid(fldPath, memberType, "hyperNode member type must be one of HyperNode or Node")
 		errs = append(errs, err)
 		return errs
 	}
-	if selector.RegexMatch != nil && selector.ExactMatch != nil {
-		err := field.Invalid(fldPath, selector,
-			"member selector cannot have both regexMatch and exactMatch")
-		errs = append(errs, err)
-		return errs
+	if memberType == hypernodev1alpha1.MemberTypeHyperNode {
+		if selector.RegexMatch == nil && selector.ExactMatch == nil {
+			err := field.Invalid(fldPath, selector,
+				"member selector must have one of regexMatch or exactMatch when member type is HyperNode")
+			errs = append(errs, err)
+			return errs
+		}
+	} else {
+		if selector.RegexMatch == nil && selector.ExactMatch == nil && selector.LabelMatch == nil {
+			err := field.Invalid(fldPath, selector,
+				"member selector must have one of regexMatch or exactMatch or labelMatch when member type is Node")
+			errs = append(errs, err)
+			return errs
+		}
 	}
+
+	if memberType == hypernodev1alpha1.MemberTypeHyperNode {
+		if selector.LabelMatch != nil || (selector.RegexMatch != nil && selector.ExactMatch != nil) {
+			err := field.Invalid(fldPath, selector,
+				"member selector cannot have labelMatch or both regexMatch and exactMatch when member type is HyperNode")
+			errs = append(errs, err)
+			return errs
+		}
+	} else {
+		if (selector.LabelMatch != nil && (selector.RegexMatch != nil || selector.ExactMatch != nil)) ||
+			(selector.RegexMatch != nil && (selector.LabelMatch != nil || selector.ExactMatch != nil)) ||
+			(selector.ExactMatch != nil && (selector.LabelMatch != nil || selector.RegexMatch != nil)) {
+			err := field.Invalid(fldPath, selector,
+				"member selector must have just one of regexMatch or exactMatch or labelMatch when member type is Node")
+			errs = append(errs, err)
+			return errs
+		}
+	}
+
 	if selector.ExactMatch != nil {
 		if selector.ExactMatch.Name == "" {
 			err := field.Invalid(fldPath.Child("exactMatch").Child("name"),
@@ -121,6 +148,15 @@ func validateHyperNodeMemberSelector(selector hypernodev1alpha1.MemberSelector, 
 			errs = append(errs, err)
 		}
 	}
+	if selector.LabelMatch != nil {
+		if (selector.LabelMatch.MatchExpressions == nil || len(selector.LabelMatch.MatchExpressions) == 1) &&
+			(selector.LabelMatch.MatchLabels == nil || len(selector.LabelMatch.MatchLabels) == 1) {
+			err := field.Invalid(fldPath, selector,
+				"matchExpressions and matchLabels can not both be empty")
+			errs = append(errs, err)
+			return errs
+		}
+	}
 	return errs
 }
 
@@ -134,7 +170,7 @@ func validateHyperNode(hypernode *hypernodev1alpha1.HyperNode) error {
 	}
 	for _, member := range hypernode.Spec.Members {
 		errs = append(errs, validateHyperNodeMemberSelector(member.Selector,
-			resourcePath.Child("spec").Child("members").Child("selector"))...)
+			resourcePath.Child("spec").Child("members").Child("selector"), member.Type)...)
 	}
 
 	if len(errs) > 0 {
