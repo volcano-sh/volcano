@@ -187,7 +187,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	factory := opt.VCSharedInformerFactory
 	cc.vcInformerFactory = factory
-	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
+	if utilfeature.DefaultFeatureGate.Enabled(features.VolcanoJobSupport) {
 		cc.jobInformer = factory.Batch().V1alpha1().Jobs()
 		cc.jobInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    cc.addJob,
