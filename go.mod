@@ -46,10 +46,8 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.4.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.10.0-alpha.0.0.20241210014034-bf27f4e986d0
+	volcano.sh/apis v1.11.1-0.20250319093701-9f6712252c5b
 )
-
-replace volcano.sh/apis => github.com/dongjiang1989/apis v0.0.0-20250306055858-f47c0ffcf2a4
 
 require (
 	cel.dev/expr v0.18.0 // indirect

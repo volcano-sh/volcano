@@ -20,10 +20,7 @@ import (
 	"os"
 	"testing"
 
-	"k8s.io/component-base/metrics/legacyregistry"
-
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/kubernetes/pkg/scheduler/metrics"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -39,32 +36,12 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-func init() {
-	metrics.Register()
-}
-
-func setupMetrics() {
-	legacyregistry.Reset()
-	metrics.Register()
-}
-
-func setupTest() func() {
-	setupMetrics()
-
-	return func() {
-		legacyregistry.Reset()
-	}
-}
-
 func TestMain(m *testing.M) {
 	options.Default()
 	os.Exit(m.Run())
 }
 
 func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
-	cleanup := setupTest()
-	defer cleanup()
-
 	plugins := map[string]framework.PluginBuilder{PluginName: New, predicates.PluginName: predicates.New, gang.PluginName: gang.New}
 	trueValue := true
 	actions := []framework.Action{allocate.New(), reclaim.New()}

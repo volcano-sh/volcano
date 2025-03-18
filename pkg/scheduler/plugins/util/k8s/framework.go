@@ -40,7 +40,6 @@ type Framework struct {
 	snapshot        framework.SharedLister
 	kubeClient      kubernetes.Interface
 	informerFactory informers.SharedInformerFactory
-	draManager      framework.SharedDRAManager
 }
 
 var _ framework.Handle = &Framework{}
@@ -160,17 +159,16 @@ func (f *Framework) ResourceClaimCache() *assumecache.AssumeCache {
 }
 
 func (f *Framework) Activate(logger klog.Logger, pods map[string]*v1.Pod) {
-
+	panic("implement me")
 }
 
 func (f *Framework) SharedDRAManager() framework.SharedDRAManager {
-	return f.draManager
+	return nil
 }
 
 // NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
 func NewFrameworkHandle(nodeMap map[string]*framework.NodeInfo, client kubernetes.Interface, informerFactory informers.SharedInformerFactory) framework.Handle {
 	snapshot := NewSnapshot(nodeMap)
-
 	return &Framework{
 		snapshot:        snapshot,
 		kubeClient:      client,
