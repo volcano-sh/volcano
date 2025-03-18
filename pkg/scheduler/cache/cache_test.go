@@ -336,6 +336,6 @@ func TestBindTasks(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	r := sc.Recorder.(*record.FakeRecorder)
 	if len(r.Events) != 1 {
-		t.Fatalf("succesfully binding task should have 1 event")
+		t.Fatalf("successfully binding task should have 1 event")
 	}
 }

@@ -43,7 +43,7 @@ func (mng *cpuMng) Name() string {
 	return "cpuMng"
 }
 
-// guaranteedCPUs return the intger num of request cpu
+// guaranteedCPUs return the integer num of request cpu
 func guaranteedCPUs(container *v1.Container) int {
 	cpuQuantity := container.Resources.Requests[v1.ResourceCPU]
 	if cpuQuantity.Value()*1000 != cpuQuantity.MilliValue() {

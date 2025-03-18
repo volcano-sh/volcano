@@ -87,7 +87,7 @@ func (tp *tensorflowPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 		return err
 	}
 
-	// Add TF_CONFIG enviroment variables
+	// Add TF_CONFIG environment variables
 	for i := range pod.Spec.Containers {
 		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
 			Name:  TFConfig,

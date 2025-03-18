@@ -144,7 +144,7 @@ func (m *NetworkQoSManagerImp) GetBandwidthConfigs(qosConf *api.NetworkQos) (onl
 func GetFlavorQuotaMinRate(node *corev1.Node) (int64, error) {
 	minRate, ok := node.Annotations[apis.NetworkBandwidthRateAnnotationKey]
 	if !ok {
-		return 0, fmt.Errorf("node %s network bandwidth rate not exists, annotion %s", node.Name, apis.NetworkBandwidthRateAnnotationKey)
+		return 0, fmt.Errorf("node %s network bandwidth rate not exists, annotation %s", node.Name, apis.NetworkBandwidthRateAnnotationKey)
 	}
 
 	minRateInt, err := strconv.ParseInt(minRate, 10, 64)

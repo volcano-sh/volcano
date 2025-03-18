@@ -267,7 +267,7 @@ func (test *TestCommonStruct) CheckPipelined(caseIndex int) error {
 		}
 		pipeLined := job.TaskStatusIndex[api.Pipelined]
 		if len(pipeLined) == 0 {
-			return fmt.Errorf("case %d(%s) check pipeline, want pipelined job: %v, actualy, no tasks pipelined to nodes %v", caseIndex, test.Name, jobID, nodes)
+			return fmt.Errorf("case %d(%s) check pipeline, want pipelined job: %v, actually, no tasks pipelined to nodes %v", caseIndex, test.Name, jobID, nodes)
 		}
 		for _, task := range pipeLined {
 			if !Contains(nodes, task.NodeName) {

@@ -95,7 +95,7 @@ func TestAllocate(t *testing.T) {
 			ExpectBindsNum: 1,
 		},
 		{
-			Name: "prepredicate failed and tasks are not used up, continue on untill min member meet",
+			Name: "prepredicate failed and tasks are not used up, continue on until min member meet",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroup("pg1", "c1", "c1", 2, map[string]int32{"master": 1, "worker": 1}, schedulingv1.PodGroupInqueue),
 			},

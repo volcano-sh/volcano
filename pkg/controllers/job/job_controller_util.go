@@ -173,6 +173,7 @@ func applyPolicies(job *batch.Job, req *apis.Request) (delayAct *delayAction) {
 		event:    req.Event,
 		taskName: req.TaskName,
 		podName:  req.PodName,
+		podUID:   req.PodUID,
 		// default action is sync job
 		action: v1alpha1.SyncJobAction,
 	}
@@ -435,4 +436,28 @@ func GetStateAction(delayAct *delayAction) state.Action {
 	}
 
 	return action
+}
+
+type ActionType int
+
+const (
+	JobAction ActionType = iota
+	TaskAction
+	PodAction
+)
+
+func GetActionType(action v1alpha1.Action) ActionType {
+	switch action {
+	case v1alpha1.AbortJobAction,
+		v1alpha1.RestartJobAction,
+		v1alpha1.TerminateJobAction,
+		v1alpha1.CompleteJobAction,
+		v1alpha1.ResumeJobAction:
+		return JobAction
+	case v1alpha1.RestartTaskAction:
+		return TaskAction
+	case v1alpha1.RestartPodAction:
+		return PodAction
+	}
+	return JobAction
 }
