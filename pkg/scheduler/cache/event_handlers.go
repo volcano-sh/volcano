@@ -1155,7 +1155,7 @@ func (sc *SchedulerCache) deleteNumaInfo(info *nodeinfov1alpha1.Numatopology) {
 	if sc.Nodes[info.Name] != nil {
 		sc.Nodes[info.Name].NumaInfo = nil
 		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoResetFlag
-		klog.V(3).Infof("delete numainfo in cahce for node<%s>", info.Name)
+		klog.V(3).Infof("delete numainfo in cache for node<%s>", info.Name)
 	}
 }
 
@@ -1184,7 +1184,7 @@ func (sc *SchedulerCache) UpdateNumaInfoV1alpha1(oldObj, newObj interface{}) {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 	sc.addNumaInfo(ss)
-	klog.V(3).Infof("update numaInfo<%s> in cahce, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
+	klog.V(3).Infof("update numaInfo<%s> in cache, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
 }
 
 // DeleteNumaInfoV1alpha1 delete numa information from scheduler cache
@@ -1209,7 +1209,7 @@ func (sc *SchedulerCache) DeleteNumaInfoV1alpha1(obj interface{}) {
 	defer sc.Mutex.Unlock()
 
 	sc.deleteNumaInfo(ss)
-	klog.V(3).Infof("Delete numaInfo<%s> from cahce, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
+	klog.V(3).Infof("Delete numaInfo<%s> from cache, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
 }
 
 // AddJob add job to scheduler cache

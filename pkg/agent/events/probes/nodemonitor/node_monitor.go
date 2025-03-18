@@ -95,7 +95,7 @@ func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 
 	m.Lock()
 	defer m.Unlock()
-	// reset historical statics
+	// reset historical statistics
 	// TODO: make this more fine-grained, only when new setting is a higher watermark should we reset.
 	m.highUsageCountByResName = map[v1.ResourceName]int{}
 	return nil

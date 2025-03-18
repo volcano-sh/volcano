@@ -1,24 +1,4 @@
 #### What type of PR is this?
-<!--
-Add one of the following kinds:
-/kind bug
-/kind cleanup
-/kind documentation
-/kind feature
-/kind failing-test
-/kind flake
-
-Optionally add one of the following areas, help us further classify and filter PRs:
-/area scheduling
-/area controllers
-/area cli
-/area dependency
-/area webhooks
-/area deploy
-/area documentation
-/area performance
-/area test
--->
 
 #### What this PR does / why we need it:
 

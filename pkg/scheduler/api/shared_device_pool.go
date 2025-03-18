@@ -26,10 +26,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
 
-const (
-	GPUSharingDevice = "GpuShare"
-)
-
 type Devices interface {
 	//following two functions used in node_info
 	//AddResource is to add the corresponding device resource of this 'pod' into current scheduler cache
@@ -78,9 +74,11 @@ type Devices interface {
 
 // make sure GPUDevices implements Devices interface
 var _ Devices = new(gpushare.GPUDevices)
+var _ Devices = new(vgpu.GPUDevices)
 
 var RegisteredDevices = []string{
-	GPUSharingDevice, vgpu.DeviceName,
+	gpushare.DeviceName,
+	vgpu.DeviceName,
 }
 
 var IgnoredDevicesList = ignoredDevicesList{}

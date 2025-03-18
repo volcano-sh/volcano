@@ -68,7 +68,7 @@ func HomeDir() string {
 	return os.Getenv("USERPROFILE") // windows
 }
 
-// BuildConfig builds the configure file for command lines.
+// BuildConfig builds the configuration file for command lines.
 func BuildConfig(master, kubeconfig string) (*rest.Config, error) {
 	return clientcmd.BuildConfigFromFlags(master, kubeconfig)
 }
