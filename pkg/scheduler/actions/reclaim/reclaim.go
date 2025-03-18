@@ -46,20 +46,16 @@ func (ra *Action) Execute(ssn *framework.Session) {
 
 	preemptorsMap := map[api.QueueID]*util.PriorityQueue{}
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
-
 	klog.V(3).Infof("There are <%d> Jobs and <%d> Queues in total for scheduling.",
 		len(ssn.Jobs), len(ssn.Queues))
-
 	for _, job := range ssn.Jobs {
 		if job.IsPending() {
 			continue
 		}
-
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
 			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip reclaim, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue
 		}
-
 		if queue, found := ssn.Queues[job.Queue]; !found {
 			klog.Errorf("Failed to find Queue <%s> for Job <%s/%s>", job.Queue, job.Namespace, job.Name)
 			continue
@@ -68,7 +64,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			queueMap[queue.UID] = queue
 			queues.Push(queue)
 		}
-
 		if ssn.JobStarving(job) {
 			if _, found := preemptorsMap[job.Queue]; !found {
 				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
@@ -83,9 +78,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			}
 		}
 	}
-
 	for !queues.Empty() {
-
 		queue := queues.Pop().(*api.QueueInfo)
 		jobs, found := preemptorsMap[queue.UID]
 		if !found || jobs.Empty() {
@@ -106,7 +99,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			taskToReQueue := util.NewPriorityQueue(ssn.TaskOrderFn)
 			jobAssigned := false
 			for !tasks.Empty() {
-
 				task := tasks.Pop().(*api.TaskInfo)
 				if task.Pod.Spec.PreemptionPolicy != nil && *task.Pod.Spec.PreemptionPolicy == v1.PreemptNever {
 					klog.V(3).Infof("Task %s/%s is not eligible to preempt other tasks due to preemptionPolicy is Never", task.Namespace, task.Name)
@@ -126,7 +118,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 				} else {
 					taskToReQueue.Push(task)
 				}
-
 			}
 			if !jobAssigned {
 				// 将未处理的任务放回原队列
@@ -146,7 +137,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			}
 		}
 	}
-
 }
 
 func (ra *Action) reclaimFromTask(ssn *framework.Session, jobInfo *api.JobInfo, task *api.TaskInfo) bool {
