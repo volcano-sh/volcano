@@ -135,7 +135,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - args:
-            - --enabled-admission=/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate
+            - --enabled-admission=/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/queues/mutate,/queues/validate
             - --tls-cert-file=/admission.local.config/certificates/tls.crt
             - --tls-private-key-file=/admission.local.config/certificates/tls.key
             - --ca-cert-file=/admission.local.config/certificates/ca.crt
@@ -5135,45 +5135,6 @@ spec:
         type: object
     served: true
     storage: true
----
-# Source: volcano/templates/webhooks.yaml
-apiVersion: admissionregistration.k8s.io/v1
-kind: MutatingWebhookConfiguration
-metadata:
-  name: volcano-admission-service-pods-mutate
-webhooks:
-  - admissionReviewVersions:
-      - v1
-    clientConfig:
-      service:
-        name: volcano-admission-service
-        namespace: volcano-system
-        path: /pods/mutate
-        port: 443
-    failurePolicy: Fail
-    matchPolicy: Equivalent
-    name: mutatepod.volcano.sh
-    namespaceSelector:
-      matchExpressions:
-        - key: kubernetes.io/metadata.name
-          operator: NotIn
-          values:
-            - volcano-system
-            - kube-system
-    objectSelector: {}
-    reinvocationPolicy: Never
-    rules:
-      - apiGroups:
-          - ""
-        apiVersions:
-          - v1
-        operations:
-          - CREATE
-        resources:
-          - pods
-        scope: '*'
-    sideEffects: NoneOnDryRun
-    timeoutSeconds: 10
 ---
 # Source: volcano/templates/webhooks.yaml
 apiVersion: admissionregistration.k8s.io/v1
