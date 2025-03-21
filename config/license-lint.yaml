@@ -66,6 +66,10 @@ allowlisted_modules:
 - github.com/google/cadvisor
 # Apache-2.0: k8s.io/kubernetes@v1.27.2/logo/LICENSE
 - k8s.io/kubernetes
+# Apache-2.0: github.com/spf13/cobra@v1.8.1/LICENSE
+- github.com/spf13/cobra
+# BSD: gopkg.in/inf.v0@v0.9.1/LICENSE
+- gopkg.in/inf.v0
 # BSD: github.com/gogo/protobuf@v1.3.2/LICENSE
 - github.com/gogo/protobuf
 # MIT: sigs.k8s.io/yaml@v1.3.0/LICENSE
