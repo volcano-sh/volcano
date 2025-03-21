@@ -144,6 +144,10 @@ If you don't have a kubernetes cluster, try one-click install from code base:
 
 This way is only available for x86_64 temporarily.
 
+### Install volcano agent
+
+Please follow the guide [Volcano Agent](https://volcano.sh/en/docs/colocation) to install volcano agent.
+
 ### Install monitoring system
 
 If you want to get prometheus and grafana volcano dashboard after volcano installed, try following commands:
@@ -196,4 +200,4 @@ If you have any question, feel free to reach out to us in the following ways:
 
 [Mailing List](https://groups.google.com/forum/#!forum/volcano-sh)
 
-Wechat: Add WeChat account `k8s2222` (华为云小助手2号) to let her pull you into the group.
+WeChat: Please add WeChat account `k8s2222` and request an invitation to the group chat.

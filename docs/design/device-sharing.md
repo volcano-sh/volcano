@@ -74,20 +74,29 @@ Details of methods mapping is shown in the table below:
 
 ## How to add a new device-share policy
 
-### 1. Define your device in /pkg/scheduler/api/shared_device_pool.go
+### 1. Create a new package in /pkg/scheduler/api/devices/"your device name"/"your policy name"
 
-Name your policy and put it in shared_device_pool.go as follows:
+For example, if you try to implement a NPU share policy, then you are recommended to create a package in /pkg/scheduler/api/device/ascend/npushare
+
+Define the device name in /pkg/scheduler/api/devices/"your device name"/"your policy name"/type.go:
 
 ```
 const (
-	GPUSharingDevice = "GpuShare"
-	Your_new_sharing_policy = "xxxxx"
+    DeviceName = "xxx"
 )
 ```
 
-### 2. Create a new package in /pkg/scheduler/api/devices/"your device name"/"your policy name"
+### 2. Register your device in /pkg/scheduler/api/shared_device_pool.go
 
-For example, if you try to implement a NPU share policy, then you are recommended to create a package in /pkg/scheduler/api/device/ascend/npushare
+Register your device name in shared_device_pool.go as follows:
+
+```
+var RegisteredDevices = []string{
+	gpushare.DeviceName,
+	vgpu.DeviceName,
+	"your new package name".DeviceName,  // add your device name here
+}
+```
 
 ### 3. Implement methods of interface shared_device_pool, and put them in your new package
 
@@ -112,15 +121,16 @@ This is the *only* place you hack into scheduler.api ,which you have to register
 
 // setNodeOthersResource initialize sharable devices
 func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
-	ni.Others[GPUSharingDevice] = gpushare.NewGPUDevices(ni.Name, node)
-	//ni.Others["your device sharing policy name"] = your device sharing package initialization method
+    ni.Others[gpushare.DeviceName] = gpushare.NewGPUDevices(ni.Name, node)
+    ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
+    ni.Others["your new package name".DeviceName] = your device sharing package initialization method // add your device sharing package initialization method here
 }
 
 ```
 
 ### 5. Check if your policy is enabled in /pkg/scheduler/plugins/predicate/predicates.go
 
-This is the *only* plae you hack into predicates.go, when the scheduler checks if your policy is enabled in scheduler configuration.
+This is the *only* place you hack into predicates.go, when the scheduler checks if your policy is enabled in scheduler configuration.
 
 predicates.go:
 
@@ -129,11 +139,7 @@ predicates.go:
 // Checks whether predicate.GPUSharingEnable is provided or not, if given, modifies the value in predicateEnable struct.
 args.GetBool(&gpushare.GpuSharingEnable, GPUSharingPredicate)
 args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
-args.GetBool(&gpushare.NodeLockEnable, NodeLockEnable)
+args.GetBool(&vgpu.VGPUEnable, VGPUEnable)
 args.GetBool("your policy enable variable","your policy enable parameter")
 ...
 ```
-
-
-
-

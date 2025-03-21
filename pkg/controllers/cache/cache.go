@@ -237,20 +237,13 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 		return err
 	}
 
-	job, found := jc.jobs[key]
-	if !found {
-		job = &apis.JobInfo{
-			Pods: make(map[string]map[string]*v1.Pod),
+	if job, found := jc.jobs[key]; found {
+		if err := job.DeletePod(pod); err != nil {
+			return err
 		}
-		jc.jobs[key] = job
-	}
-
-	if err := job.DeletePod(pod); err != nil {
-		return err
-	}
-
-	if jobTerminated(job) {
-		jc.deleteJob(job)
+		if jobTerminated(job) {
+			jc.deleteJob(job)
+		}
 	}
 
 	return nil
@@ -273,11 +266,7 @@ func (jc *jobCache) TaskCompleted(jobKey, taskName string) bool {
 
 	taskPods, found := jobInfo.Pods[taskName]
 
-	if !found {
-		return false
-	}
-
-	if jobInfo.Job == nil {
+	if !found || jobInfo.Job == nil {
 		return false
 	}
 
