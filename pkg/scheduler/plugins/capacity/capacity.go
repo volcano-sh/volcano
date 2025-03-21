@@ -165,17 +165,6 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return !overused
 	})
 
-	queueAllocatable := func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
-		attr := cp.queueOpts[queue.UID]
-		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
-		allocatable := futureUsed.LessEqualWithDimension(attr.realCapability, candidate.Resreq)
-		if !allocatable {
-			klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
-				queue.Name, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq)
-		}
-		return allocatable
-	}
-
 	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		if !readyToSchedule {
 			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
@@ -185,18 +174,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(3).Infof("Queue <%s> is not a leaf queue, can not allocate task <%s>.", queue.Name, candidate.Name)
 			return false
 		}
-		list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
-		for i := len(list) - 1; i >= 0; i-- {
-			if !queueAllocatable(ssn.Queues[list[i]], candidate) {
-				if klog.V(5).Enabled() {
-					for i--; i >= 0; i-- {
-						queueAllocatable(ssn.Queues[list[i]], candidate)
-					}
-				}
-				return false
-			}
-		}
-		return true
+
+		return cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
 	})
 
 	ssn.AddJobEnqueueableFn(cp.Name(), func(obj interface{}) int {
@@ -224,21 +203,23 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infof("job %s MinResources is null.", job.Name)
 			return util.Permit
 		}
-		minReq := job.GetMinResources()
 
-		klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s>",
-			job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String())
-		// The queue resource quota limit has not reached
-		r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
-
-		inqueue := r.LessEqualWithDimension(attr.realCapability, minReq)
-		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
-		if inqueue {
-			attr.inqueue.Add(job.DeductSchGatedResources(minReq))
-			return util.Permit
+		if !cp.checkJobEnqueueableHierarchically(ssn, queue, job) {
+			return util.Reject
 		}
-		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
-		return util.Reject
+
+		// job enqueued
+		deductedResources := job.DeductSchGatedResources(job.GetMinResources())
+		attr.inqueue.Add(deductedResources)
+		// If enable hierarchy, update the inqueue resource for all ancestors queues
+		if hierarchyEnabled {
+			for _, ancestorID := range attr.ancestors {
+				ancestorAttr := cp.queueOpts[ancestorID]
+				ancestorAttr.inqueue.Add(deductedResources)
+			}
+		}
+		klog.V(5).Infof("job <%s/%s> enqueued", job.Namespace, job.Name)
+		return util.Permit
 	})
 
 	// Register event handlers.
@@ -724,6 +705,68 @@ func (cp *capacityPlugin) updateShare(attr *queueAttr) {
 
 func (cp *capacityPlugin) isLeafQueue(queueID api.QueueID) bool {
 	return len(cp.queueOpts[queueID].children) == 0
+}
+
+func (cp *capacityPlugin) queueAllocatable(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+	attr := cp.queueOpts[queue.UID]
+	futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
+	allocatable := futureUsed.LessEqualWithDimension(attr.realCapability, candidate.Resreq)
+	if !allocatable {
+		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
+			queue.Name, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq)
+	}
+
+	return allocatable
+}
+
+func (cp *capacityPlugin) checkQueueAllocatableHierarchically(ssn *framework.Session, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+	// If hierarchical queue is not enabled, list will only contain the queue itself.
+	list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
+	// Check whether the candidate task can be allocated to the queue and all its ancestors.
+	for i := len(list) - 1; i >= 0; i-- {
+		if !cp.queueAllocatable(ssn.Queues[list[i]], candidate) {
+			// If log level is 5, print the information of all queues from leaf to ancestor.
+			if klog.V(5).Enabled() {
+				for j := i - 1; j >= 0; j-- {
+					cp.queueAllocatable(ssn.Queues[list[j]], candidate)
+				}
+			}
+			return false
+		}
+	}
+	return true
+}
+
+func (cp *capacityPlugin) jobEnqueueable(queue *api.QueueInfo, job *api.JobInfo) bool {
+	attr := cp.queueOpts[queue.UID]
+	minReq := job.GetMinResources()
+
+	klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s>",
+		job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String())
+	// The queue resource quota limit has not reached
+	r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
+
+	return r.LessEqualWithDimension(attr.realCapability, minReq)
+}
+
+func (cp *capacityPlugin) checkJobEnqueueableHierarchically(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo) bool {
+	// If hierarchical queue is not enabled, list will only contain the queue itself.
+	list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
+	// Check whether the job can be enqueued to the queue and all its ancestors.
+	for i := len(list) - 1; i >= 0; i-- {
+		if !cp.jobEnqueueable(ssn.Queues[list[i]], job) {
+			// If log level is 5, print the information of all queues from leaf to ancestor.
+			if klog.V(5).Enabled() {
+				for j := i - 1; j >= 0; j-- {
+					cp.jobEnqueueable(ssn.Queues[list[j]], job)
+				}
+			}
+			ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
+			return false
+		}
+	}
+
+	return true
 }
 
 func getQueueLevel(l *queueAttr, r *queueAttr) int {
