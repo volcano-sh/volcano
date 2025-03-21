@@ -62,6 +62,7 @@ func TestSyncJobFlowFunc(t *testing.T) {
 	type args struct {
 		jobFlow         *jobflowv1alpha1.JobFlow
 		jobTemplateList []*jobflowv1alpha1.JobTemplate
+		vcjobStatus     v1alpha1.JobPhase
 	}
 	type wantRes struct {
 		jobFlowStatus *jobflowv1alpha1.JobFlowStatus
@@ -99,6 +100,7 @@ func TestSyncJobFlowFunc(t *testing.T) {
 						Spec: v1alpha1.JobSpec{},
 					},
 				},
+				vcjobStatus: v1alpha1.Running,
 			},
 			want: wantRes{
 				jobFlowStatus: &jobflowv1alpha1.JobFlowStatus{
@@ -139,6 +141,74 @@ func TestSyncJobFlowFunc(t *testing.T) {
 				err: nil,
 			},
 		},
+		{
+			name: "SyncJobFlow success case with vcjob Status Failed",
+			args: args{
+				jobFlow: &jobflowv1alpha1.JobFlow{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "jobflow",
+						Namespace: "default",
+					},
+					Spec: jobflowv1alpha1.JobFlowSpec{
+						Flows: []jobflowv1alpha1.Flow{
+							{
+								Name:      "jobtemplate",
+								DependsOn: nil,
+							},
+						},
+						JobRetainPolicy: jobflowv1alpha1.Retain,
+					},
+				},
+				jobTemplateList: []*jobflowv1alpha1.JobTemplate{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "jobtemplate",
+							Namespace: "default",
+						},
+						Spec: v1alpha1.JobSpec{},
+					},
+				},
+				vcjobStatus: v1alpha1.Failed,
+			},
+			want: wantRes{
+				jobFlowStatus: &jobflowv1alpha1.JobFlowStatus{
+					PendingJobs:    make([]string, 0),
+					RunningJobs:    make([]string, 0),
+					FailedJobs:     []string{getJobName("jobflow", "jobtemplate")},
+					CompletedJobs:  make([]string, 0),
+					TerminatedJobs: make([]string, 0),
+					UnKnowJobs:     make([]string, 0),
+					JobStatusList: []jobflowv1alpha1.JobStatus{
+						{
+							Name:           getJobName("jobflow", "jobtemplate"),
+							State:          v1alpha1.Failed,
+							StartTimestamp: metav1.Time{},
+							EndTimestamp:   metav1.Time{},
+							RestartCount:   0,
+							RunningHistories: []jobflowv1alpha1.JobRunningHistory{
+								{
+									StartTimestamp: metav1.Time{},
+									EndTimestamp:   metav1.Time{},
+									State:          v1alpha1.Failed,
+								},
+							},
+						},
+					},
+					Conditions: map[string]jobflowv1alpha1.Condition{
+						getJobName("jobflow", "jobtemplate"): {
+							Phase:           v1alpha1.Failed,
+							CreateTimestamp: metav1.Time{},
+							RunningDuration: nil,
+							TaskStatusCount: nil,
+						},
+					},
+					State: jobflowv1alpha1.State{
+						Phase: jobflowv1alpha1.Failed,
+					},
+				},
+				err: nil,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -163,7 +233,7 @@ func TestSyncJobFlowFunc(t *testing.T) {
 					Spec: tt.args.jobTemplateList[i].Spec,
 					Status: v1alpha1.JobStatus{
 						State: v1alpha1.JobState{
-							Phase: v1alpha1.Running,
+							Phase: tt.args.vcjobStatus,
 						},
 					},
 				}
@@ -179,7 +249,9 @@ func TestSyncJobFlowFunc(t *testing.T) {
 			}
 
 			if got := fakeController.syncJobFlow(tt.args.jobFlow, func(status *jobflowv1alpha1.JobFlowStatus, allJobList int) {
-				if len(status.RunningJobs) > 0 || len(status.CompletedJobs) > 0 {
+				if len(status.CompletedJobs) == allJobList {
+					status.State.Phase = jobflowv1alpha1.Succeed
+				} else if (len(status.RunningJobs) > 0 || len(status.CompletedJobs) > 0) && len(status.FailedJobs) == 0 {
 					status.State.Phase = jobflowv1alpha1.Running
 				} else if len(status.FailedJobs) > 0 {
 					status.State.Phase = jobflowv1alpha1.Failed
