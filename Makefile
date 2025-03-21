@@ -191,7 +191,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	GOOS=${OS} go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.4 ;\
+	GOOS=${OS} go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.17.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen
@@ -202,6 +202,7 @@ endif
 update-development-yaml:
 	make generate-yaml TAG=latest RELEASE_DIR=installer
 	mv installer/volcano-latest.yaml installer/volcano-development.yaml
+	mv installer/volcano-agent-latest.yaml installer/volcano-agent-development.yaml
 
 mod-download-go:
 	@-GOFLAGS="-mod=readonly" find -name go.mod -execdir go mod download \;
@@ -212,7 +213,7 @@ mod-download-go:
 
 .PHONY: mirror-licenses
 mirror-licenses: mod-download-go; \
-	GOOS=${OS} go install istio.io/tools/cmd/license-lint@1.19.7; \
+	GOOS=${OS} go install istio.io/tools/cmd/license-lint@1.25.0; \
 	cd licenses; \
 	rm -rf `ls ./ | grep -v LICENSE`; \
 	cd -; \

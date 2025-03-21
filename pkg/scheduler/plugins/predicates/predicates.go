@@ -37,6 +37,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
+	"k8s.io/kubernetes/pkg/scheduler/metrics"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -298,29 +299,29 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
 	handle := k8s.NewFrameworkHandle(nodeMap, ssn.KubeClient(), ssn.InformerFactory())
 	// 1. NodeUnschedulable
-	plugin, _ := nodeunschedulable.New(context.TODO(), nil, handle)
+	plugin, _ := nodeunschedulable.New(context.TODO(), nil, handle, features)
 	nodeUnscheduleFilter := plugin.(*nodeunschedulable.NodeUnschedulable)
 	// 2. NodeAffinity
 	nodeAffinityArgs := config.NodeAffinityArgs{
 		AddedAffinity: &v1.NodeAffinity{},
 	}
-	plugin, _ = nodeaffinity.New(context.TODO(), &nodeAffinityArgs, handle)
+	plugin, _ = nodeaffinity.New(context.TODO(), &nodeAffinityArgs, handle, features)
 	nodeAffinityFilter := plugin.(*nodeaffinity.NodeAffinity)
 	// 3. NodePorts
-	plugin, _ = nodeports.New(context.TODO(), nil, handle)
+	plugin, _ = nodeports.New(context.TODO(), nil, handle, features)
 	nodePortFilter := plugin.(*nodeports.NodePorts)
 	// 4. TaintToleration
 	plugin, _ = tainttoleration.New(context.TODO(), nil, handle, features)
 	tolerationFilter := plugin.(*tainttoleration.TaintToleration)
 	// 5. InterPodAffinity
 	plArgs := &config.InterPodAffinityArgs{}
-	plugin, _ = interpodaffinity.New(context.TODO(), plArgs, handle)
+	plugin, _ = interpodaffinity.New(context.TODO(), plArgs, handle, features)
 	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
 	// 6. NodeVolumeLimits
 	plugin, _ = nodevolumelimits.NewCSI(context.TODO(), nil, handle, features)
 	nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
 	// 7. VolumeZone
-	plugin, _ = volumezone.New(context.TODO(), nil, handle)
+	plugin, _ = volumezone.New(context.TODO(), nil, handle, features)
 	volumeZoneFilter := plugin.(*volumezone.VolumeZone)
 	// 8. PodTopologySpread
 	// Setting cluster level default constraints is not support for now.
@@ -332,6 +333,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	skipPlugins := make(map[api.TaskID]sets.Set[string])
 
 	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {
+		metrics.Register()
 		// Check NodePorts
 		if predicate.nodePortEnable {
 			_, status := nodePortFilter.PreFilter(context.TODO(), state, task.Pod)

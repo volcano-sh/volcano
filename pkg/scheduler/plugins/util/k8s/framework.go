@@ -158,6 +158,14 @@ func (f *Framework) ResourceClaimCache() *assumecache.AssumeCache {
 	return nil
 }
 
+func (f *Framework) Activate(logger klog.Logger, pods map[string]*v1.Pod) {
+	panic("implement me")
+}
+
+func (f *Framework) SharedDRAManager() framework.SharedDRAManager {
+	return nil
+}
+
 // NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
 func NewFrameworkHandle(nodeMap map[string]*framework.NodeInfo, client kubernetes.Interface, informerFactory informers.SharedInformerFactory) framework.Handle {
 	snapshot := NewSnapshot(nodeMap)
