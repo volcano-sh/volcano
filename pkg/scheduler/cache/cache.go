@@ -1487,6 +1487,8 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 			reason, msg, nominatedNodeName := job.TaskSchedulingReason(taskInfo.UID)
 			if len(msg) == 0 {
 				msg = baseErrorMessage
+			} else if pgUnschedulable {
+				msg = fmt.Sprintf("%s: %s", schedulingapi.PodInGangUnschedulableMsg, msg)
 			}
 
 			if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {
