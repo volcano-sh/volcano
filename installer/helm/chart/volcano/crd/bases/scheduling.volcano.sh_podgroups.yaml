@@ -98,6 +98,7 @@ spec:
                   default.
                 type: string
               queue:
+                default: default
                 description: |-
                   Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
                   the PodGroup will not be scheduled. Defaults to `default` Queue with the lowest weight.
