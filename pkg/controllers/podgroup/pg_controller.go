@@ -23,8 +23,11 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	appinformers "k8s.io/client-go/informers/apps/v1"
+	batchinformers "k8s.io/client-go/informers/batch/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	appslisters "k8s.io/client-go/listers/apps/v1"
+	batchlisters "k8s.io/client-go/listers/batch/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -51,6 +54,9 @@ type pgcontroller struct {
 	podInformer coreinformers.PodInformer
 	pgInformer  schedulinginformer.PodGroupInformer
 	rsInformer  appinformers.ReplicaSetInformer
+	dsInformer  appinformers.DaemonSetInformer
+	ssInformer  appinformers.StatefulSetInformer
+	jobInformer batchinformers.JobInformer
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -63,8 +69,21 @@ type pgcontroller struct {
 	pgLister schedulinglister.PodGroupLister
 	pgSynced func() bool
 
-	// A store of replicaset
+	// A store of replicasets
+	rsLister appslisters.ReplicaSetLister
 	rsSynced func() bool
+
+	// A store of daemonsets
+	dsLister appslisters.DaemonSetLister
+	dsSynced func() bool
+
+	// A store of statefulsets
+	ssLister appslisters.StatefulSetLister
+	ssSynced func() bool
+
+	// A store of jobs
+	jobLister batchlisters.JobLister
+	jobSynced func() bool
 
 	queue workqueue.TypedRateLimitingInterface[podRequest]
 
@@ -99,6 +118,22 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 		AddFunc: pg.addPod,
 	})
 
+	pg.rsInformer = pg.informerFactory.Apps().V1().ReplicaSets()
+	pg.rsLister = pg.rsInformer.Lister()
+	pg.rsSynced = pg.rsInformer.Informer().HasSynced
+
+	pg.dsInformer = pg.informerFactory.Apps().V1().DaemonSets()
+	pg.dsLister = pg.dsInformer.Lister()
+	pg.dsSynced = pg.dsInformer.Informer().HasSynced
+
+	pg.ssInformer = pg.informerFactory.Apps().V1().StatefulSets()
+	pg.ssLister = pg.ssInformer.Lister()
+	pg.ssSynced = pg.ssInformer.Informer().HasSynced
+
+	pg.jobInformer = pg.informerFactory.Batch().V1().Jobs()
+	pg.jobLister = pg.jobInformer.Lister()
+	pg.jobSynced = pg.jobInformer.Informer().HasSynced
+
 	factory := opt.VCSharedInformerFactory
 	pg.vcInformerFactory = factory
 	pg.pgInformer = factory.Scheduling().V1beta1().PodGroups()
@@ -106,8 +141,6 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.pgSynced = pg.pgInformer.Informer().HasSynced
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
-		pg.rsInformer = pg.informerFactory.Apps().V1().ReplicaSets()
-		pg.rsSynced = pg.rsInformer.Informer().HasSynced
 		pg.rsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    pg.addReplicaSet,
 			UpdateFunc: pg.updateReplicaSet,
