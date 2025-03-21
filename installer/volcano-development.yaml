@@ -4696,8 +4696,7 @@ spec:
           configMap:
             name: volcano-scheduler-configmap
         - name: klog-sock
-          hostPath:
-            path: /tmp/klog-socks
+          emptyDir: {}
 ---
 # Source: volcano/templates/scheduling_v1beta1_podgroup.yaml
 apiVersion: apiextensions.k8s.io/v1
