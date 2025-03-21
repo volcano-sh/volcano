@@ -16,6 +16,9 @@ const (
 
 	// AllNodeUnavailableMsg is the default error message
 	AllNodeUnavailableMsg = "all nodes are unavailable"
+
+	// PodInGangUnschedulableMsg means pod is unschedulable because of gang scheduling policies
+	PodInGangUnschedulableMsg = "pod in gang unschedulable"
 )
 
 // These are reasons for a pod's transition to a condition.
