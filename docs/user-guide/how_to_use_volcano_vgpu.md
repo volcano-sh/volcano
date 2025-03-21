@@ -131,6 +131,10 @@ curl {volcano device plugin pod ip}:9394/metrics
 ```
 ![img](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/doc/vgpu_device_plugin_metrics.png)
 
+### Customize
+
+You can customize volcano-vgpu feature by modifying configMap **volcano-vgpu-device-config**, that configMap is automatically deployed when you setup volcano-vgpu-device-plugin. You can change **resourceCountName**, **resourceMemoryName**, **gpuMemoryFactor**, **MigTemplates**, and others related to volcano-vgpu by editing that configMap, for more information, refer to volcano-vgpu-device-plugin.
+
 # Issues and Contributing
 
 * You can report a bug by [filing a new issue](https://github.com/volcano-sh/volcano/issues)

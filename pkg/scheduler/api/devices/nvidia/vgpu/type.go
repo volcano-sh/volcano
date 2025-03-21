@@ -16,9 +16,6 @@ limitations under the License.
 
 package vgpu
 
-var VGPUEnable bool
-var NodeLockEnable bool
-
 const (
 	// DeviceName used to indicate this device
 	DeviceName = "hamivgpu"
@@ -64,6 +61,11 @@ const (
 	DefaultMemPercentage = 101
 	binpackMultiplier    = 100
 	spreadMultiplier     = 100
+)
+
+var (
+	VGPUEnable     bool
+	NodeLockEnable bool
 )
 
 type ContainerDeviceRequest struct {
