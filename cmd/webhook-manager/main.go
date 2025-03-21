@@ -18,11 +18,9 @@ package main
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/spf13/pflag"
-	_ "go.uber.org/automaxprocs"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	cliflag "k8s.io/component-base/cli/flag"
@@ -30,6 +28,7 @@ import (
 
 	"volcano.sh/volcano/cmd/webhook-manager/app"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
+	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/version"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/jobs/mutate"
 	_ "volcano.sh/volcano/pkg/webhooks/admission/jobs/validate"
@@ -43,7 +42,6 @@ import (
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	klog.InitFlags(nil)
 
 	config := options.NewConfig()
@@ -58,6 +56,9 @@ func main() {
 
 	klog.StartFlushDaemon(*logFlushFreq)
 	defer klog.Flush()
+
+	commonutil.SetMaxProcs()
+	commonutil.SetMemLimit(config.MemlimitRatio)
 
 	if err := config.CheckPortOrDie(); err != nil {
 		klog.Fatalf("Configured port is invalid: %v", err)
