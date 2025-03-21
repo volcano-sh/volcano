@@ -33,7 +33,7 @@ custom:
   scheduler_kube_api_burst: 2000
   scheduler_schedule_period: 1s
   scheduler_node_worker_threads: 20
-  enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/queues/mutate,/queues/validate"
+  enabled_admissions: "/jobs/mutate,/jobs/validate,/pods/validate,/queues/mutate,/queues/validate"
   colocation_enable: false
 
 # Override the configuration for admission or scheduler.

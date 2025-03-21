@@ -102,21 +102,24 @@ func PodGroups(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 }
 
 func createPodGroupPatch(podgroup *schedulingv1beta1.PodGroup) ([]byte, error) {
-	var patch []patchOperation
-	if len(podgroup.Spec.Queue) == 0 {
-		queueName := schedulingv1beta1.DefaultQueue
-		ns, err := config.KubeClient.CoreV1().Namespaces().Get(context.TODO(), podgroup.Namespace, metav1.GetOptions{})
-		if err == nil {
-			if val, ok := ns.GetAnnotations()[schedulingv1beta1.QueueNameAnnotationKey]; ok {
-				queueName = val
-			}
-		}
+	if podgroup.Spec.Queue != schedulingv1beta1.DefaultQueue {
+		return nil, nil
+	}
+	ns, err := config.KubeClient.CoreV1().Namespaces().Get(context.TODO(), podgroup.Namespace, metav1.GetOptions{})
+	if err != nil {
+		klog.ErrorS(err, "Failed to get namespace", "namespace", podgroup.Namespace)
+		return nil, nil
+	}
+
+	if val, ok := ns.GetAnnotations()[schedulingv1beta1.QueueNameAnnotationKey]; ok {
+		var patch []patchOperation
 		patch = append(patch, patchOperation{
 			Op:    "add",
 			Path:  "/spec/queue",
-			Value: queueName,
+			Value: val,
 		})
+		return json.Marshal(patch)
 	}
 
-	return json.Marshal(patch)
+	return nil, nil
 }
