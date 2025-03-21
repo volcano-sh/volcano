@@ -450,23 +450,18 @@ func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 		return
 	}
 
-	jobNameKey := newPG.Name
-	ors := newPG.OwnerReferences
-	for _, or := range ors {
-		if or.Kind == "Job" {
-			jobNameKey = or.Name
-		}
+	if !isControlledBy(newPG, helpers.JobKind) {
+		return
 	}
 
-	_, err := cc.cache.Get(jobcache.JobKeyByName(newPG.Namespace, jobNameKey))
-	if err != nil && newPG.Annotations != nil {
-		klog.Warningf(
-			"Failed to find job in cache by PodGroup(%s/%s), this may not be a PodGroup for volcano job.", newPG.Namespace, newPG.Name)
-	}
+	jobRef := metav1.GetControllerOf(newPG)
+	jobUid := jobRef.UID
+	jobNameKey := jobRef.Name
 
 	if newPG.Status.Phase != oldPG.Status.Phase {
 		req := apis.Request{
 			Namespace: newPG.Namespace,
+			JobUid:    jobUid,
 			JobName:   jobNameKey,
 		}
 		switch newPG.Status.Phase {
