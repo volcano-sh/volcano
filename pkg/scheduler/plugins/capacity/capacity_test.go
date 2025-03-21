@@ -23,6 +23,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
@@ -403,6 +404,16 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	// pod
 	p11 := util.BuildPod("ns1", "p11", "", corev1.PodPending, api.BuildResourceList("1", ""), "pg9", make(map[string]string), map[string]string{})
 
+	// resources for test case 6
+	// queue
+	queue6 := buildQueueWithParents("q6", "root", nil, api.BuildResourceList("2", "4Gi", []api.ScalarResource{}...))
+	// sub queue 61 and 62's capability is not specified, should be inherited from parent queue
+	queue61 := buildQueueWithParents("q61", "q6", nil, nil)
+	queue62 := buildQueueWithParents("q62", "q6", nil, nil)
+	// podgroup
+	pg10 := util.BuildPodGroupWithMinResources("pg10", "ns1", "q61", 1, nil, api.BuildResourceList("2", "4Gi"), schedulingv1beta1.PodGroupPending)
+	pg11 := util.BuildPodGroupWithMinResources("pg11", "ns1", "q62", 1, nil, api.BuildResourceList("2", "4Gi"), schedulingv1beta1.PodGroupPending)
+
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name:      "case0: Pod allocatable when queue is leaf queue",
@@ -474,6 +485,17 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			},
 			ExpectBindsNum: 1,
 		},
+		{
+			Name:      "case6: podgroup can't be enqueued when any ancestor queue's capability is not enough",
+			Plugins:   plugins,
+			Nodes:     []*corev1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg10, pg11},
+			Queues:    []*schedulingv1beta1.Queue{root, queue6, queue61, queue62},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"ns1/pg10": scheduling.PodGroupInqueue,
+				"ns1/pg11": scheduling.PodGroupPending,
+			},
+		},
 	}
 
 	tiers := []conf.Tier{
@@ -486,6 +508,7 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 					EnabledReclaimable: &trueValue,
 					EnabledQueueOrder:  &trueValue,
 					EnabledHierarchy:   &trueValue,
+					EnabledJobEnqueued: &trueValue,
 				},
 				{
 					Name:             predicates.PluginName,
