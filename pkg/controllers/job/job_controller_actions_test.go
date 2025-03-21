@@ -26,6 +26,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 
@@ -499,12 +500,45 @@ func TestCreateJobIOIfNotExistFunc(t *testing.T) {
 			},
 			ExpextVal: errors.New("pvc pvc1 is not found, the job will be in the Pending state until the PVC is created"),
 		},
+		{
+			Name: "Create Job IO case",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "job2",
+					Namespace:       namespace,
+					ResourceVersion: "100",
+				},
+				Spec: v1alpha1.JobSpec{
+					Volumes: []v1alpha1.VolumeSpec{
+						{
+							VolumeClaim: &v1.PersistentVolumeClaimSpec{
+								AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+								Resources: v1.VolumeResourceRequirements{
+									Requests: map[v1.ResourceName]resource.Quantity{
+										"storage": resource.MustParse("10Gi"),
+									},
+								},
+							},
+						},
+						{
+							VolumeClaimName: "pvc2",
+						},
+					},
+				},
+			},
+			ExpextVal: errors.New("pvc pvc2 is not found, the job will be in the Pending state until the PVC is created"),
+		},
 	}
 
 	for i, testcase := range testcases {
 
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
+
+			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.Job, metav1.CreateOptions{})
+			if err != nil {
+				t.Errorf("Expected no Error while creating job, but got error: %s", err)
+			}
 
 			job, err := fakeController.createJobIOIfNotExist(testcase.Job)
 			if testcase.ExpextVal == nil {
@@ -519,6 +553,11 @@ func TestCreateJobIOIfNotExistFunc(t *testing.T) {
 
 			if len(job.Spec.Volumes) == 0 {
 				t.Errorf("Expected number of volumes to be greater than 0 but got: %d in case: %d", len(job.Spec.Volumes), i)
+			}
+			for _, vol := range job.Spec.Volumes {
+				if vol.VolumeClaim != nil && vol.VolumeClaimName == "" {
+					t.Errorf("Expected PVC name to be set after creating the PVC, but got: %v in case: %d", vol.VolumeClaimName, i)
+				}
 			}
 		})
 	}
