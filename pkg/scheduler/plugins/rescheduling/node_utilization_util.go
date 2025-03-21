@@ -139,20 +139,27 @@ func getScoreForNode(index int, nodeUtilizationList []*NodeUtilization) float64 
 // sortPods return the pods in order according the priority and QoS
 func sortPods(pods []*v1.Pod) {
 	cmp := func(i, j int) bool {
+		// sort by pod priority
 		if pods[i].Spec.Priority == nil && pods[j].Spec.Priority != nil {
 			return true
 		}
 		if pods[j].Spec.Priority == nil && pods[i].Spec.Priority != nil {
 			return false
 		}
+		// sort by pod Qos
 		if (pods[j].Spec.Priority == nil && pods[i].Spec.Priority == nil) || (*pods[i].Spec.Priority == *pods[j].Spec.Priority) {
-			if v1qos.GetPodQOS(pods[i]) == v1.PodQOSBestEffort {
-				return true
+			if v1qos.GetPodQOS(pods[i]) != v1qos.GetPodQOS(pods[j]) {
+				if v1qos.GetPodQOS(pods[i]) == v1.PodQOSBestEffort {
+					return true
+				}
+				if v1qos.GetPodQOS(pods[i]) == v1.PodQOSBurstable && v1qos.GetPodQOS(pods[j]) == v1.PodQOSGuaranteed {
+					return true
+				}
+				return false
+			} else {
+				// sort by pod create time
+				return pods[i].GetCreationTimestamp().Time.After(pods[j].GetCreationTimestamp().Time)
 			}
-			if v1qos.GetPodQOS(pods[i]) == v1.PodQOSBurstable && v1qos.GetPodQOS(pods[j]) == v1.PodQOSGuaranteed {
-				return true
-			}
-			return false
 		}
 		return *pods[i].Spec.Priority < *pods[j].Spec.Priority
 	}
