@@ -29,6 +29,7 @@ import (
 )
 
 type Action struct {
+	session                   *framework.Session
 	enablePredicateErrorCache bool
 }
 
@@ -54,8 +55,9 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 	defer klog.V(5).Infof("Leaving Backfill ...")
 
 	backfill.parseArguments(ssn)
+	backfill.session = ssn
 
-	predicateFunc := ssn.PredicateForAllocateAction
+	predicateFunc := backfill.predicate
 
 	// TODO (k82cn): When backfill, it's also need to balance between Queues.
 	pendingTasks := backfill.pickUpPendingTasks(ssn)
@@ -186,4 +188,8 @@ func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskIn
 		}
 	}
 	return pendingTasks
+}
+
+func (backfill *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
+	return backfill.session.PredicateForAllocateAction(task, node, backfill.enablePredicateErrorCache)
 }

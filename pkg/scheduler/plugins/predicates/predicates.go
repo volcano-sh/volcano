@@ -402,17 +402,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return api.NewFitErrWithStatus(task, node, predicateStatus...)
 		}
 
-		if node.Allocatable.MaxTaskNum <= len(nodeInfo.Pods) {
-			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
-				task.Namespace, task.Name, node.Name, node.Allocatable.MaxTaskNum, len(nodeInfo.Pods))
-			podsNumStatus := &api.Status{
-				Code:   api.Unschedulable,
-				Reason: api.NodePodNumberExceeded,
-				Plugin: pp.Name(),
-			}
-			predicateStatus = append(predicateStatus, podsNumStatus)
-		}
-
 		predicateByStablefilter := func(nodeInfo *k8sframework.NodeInfo) ([]*api.Status, bool, error) {
 			// CheckNodeUnschedulable
 			predicateStatus := make([]*api.Status, 0)

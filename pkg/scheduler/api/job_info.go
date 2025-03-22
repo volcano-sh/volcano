@@ -142,6 +142,7 @@ type TaskInfo struct {
 	CustomBindErrHandler func() error `json:"-"`
 	// CustomBindErrHandlerSucceeded indicates whether CustomBindErrHandler is executed successfully.
 	CustomBindErrHandlerSucceeded bool
+	HashValue                     uint32
 }
 
 func getJobID(pod *v1.Pod) JobID {
@@ -205,6 +206,7 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 			NodeName: pod.Spec.NodeName,
 			Status:   getTaskStatus(pod),
 		},
+		HashValue: getTaskHashValue(pod),
 	}
 
 	if pod.Spec.Priority != nil {
@@ -294,6 +296,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 			Status:   ti.Status,
 		},
 		LastTransaction: ti.LastTransaction.Clone(),
+		HashValue:       ti.HashValue,
 	}
 }
 
