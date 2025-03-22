@@ -36,6 +36,9 @@ func TestArguments(t *testing.T) {
 		"deviceshare.VGPUEnable":     true,
 		"deviceshare.SchedulePolicy": "binpack",
 		"deviceshare.ScheduleWeight": 10,
+		"deviceshare.VGPUNumber":     "volcano.sh/vgpu-number",
+		"deviceshare.VGPUMemory":     "volcano.sh/vgpu-memory",
+		"deviceshare.VGPUCores":      "volcano.sh/vgpu-cores",
 	}
 
 	builder, ok := framework.GetPluginBuilder(PluginName)
