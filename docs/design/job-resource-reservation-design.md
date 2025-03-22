@@ -5,6 +5,7 @@
 ## Deprecated
 
 The `Reservation` plugin has been deleted. This doc is deprecated. It will be deleted in the future.
+`Reservation` is replaced by [SLA](sla-plugin.md).
 
 ## Motivation
 As [issue 13](https://github.com/volcano-sh/volcano/issues/13) / [issue 748](https://github.com/volcano-sh/volcano/issues/748) 
