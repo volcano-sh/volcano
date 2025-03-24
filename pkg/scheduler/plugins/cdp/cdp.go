@@ -72,15 +72,15 @@ func (sp *CooldownProtectionPlugin) podCooldownTime(pod *v1.Pod) (value time.Dur
 
 // OnSessionOpen implements framework.Plugin
 func (sp *CooldownProtectionPlugin) OnSessionOpen(ssn *framework.Session) {
-	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+	filterVictimFn := func(evictingTask *api.TaskInfo, candidateVictims []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		var victims []*api.TaskInfo
-		for _, preemptee := range preemptees {
-			cooldownTime, enabled := sp.podCooldownTime(preemptee.Pod)
+		for _, candidateVictim := range candidateVictims {
+			cooldownTime, enabled := sp.podCooldownTime(candidateVictim.Pod)
 			if !enabled {
-				victims = append(victims, preemptee)
+				victims = append(victims, candidateVictim)
 				continue
 			}
-			pod := preemptee.Pod
+			pod := candidateVictim.Pod
 			// find the time of pod really transform to running
 			// only running pod check stable time, others all put into victims
 			stableFiltered := false
@@ -96,7 +96,7 @@ func (sp *CooldownProtectionPlugin) OnSessionOpen(ssn *framework.Session) {
 				}
 			}
 			if !stableFiltered {
-				victims = append(victims, preemptee)
+				victims = append(victims, candidateVictim)
 			}
 		}
 
@@ -105,7 +105,8 @@ func (sp *CooldownProtectionPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	klog.V(4).Info("plugin cdp session open")
-	ssn.AddPreemptableFn(sp.Name(), preemptableFn)
+	ssn.AddPreemptableFn(sp.Name(), filterVictimFn)
+	ssn.AddReclaimableFn(sp.Name(), filterVictimFn)
 }
 
 // OnSessionClose implements framework.Plugin
