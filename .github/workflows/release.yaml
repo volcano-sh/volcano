@@ -16,9 +16,9 @@ jobs:
       GOPATH: /home/runner/work/${{ github.repository }}
     steps:
       - name: Install Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.22.x
+          go-version: 1.23.x
 
       - name: Install musl
         run: |
@@ -44,7 +44,7 @@ jobs:
           echo "TAG=latest" >> $GITHUB_ENV
           echo "RELEASE_VER=latest" >> $GITHUB_ENV
 
-      - uses: actions/cache@v2
+      - uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -54,11 +54,11 @@ jobs:
           make verify
           make TAG=${{ env.TAG }} generate-yaml
           make verify-generated-yaml
-          make unit-test
+          sudo make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
 
       - name: Login to DockerHub
-        uses: docker/login-action@v1 
+        uses: docker/login-action@v3 
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}

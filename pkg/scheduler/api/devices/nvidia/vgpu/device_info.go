@@ -110,7 +110,7 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	deviceconfig.InitDevicesConfig(devicecm)
 
 	nodedevices := decodeNodeDevices(name, annos)
-	if len(nodedevices.Device) == 0 {
+	if (nodedevices == nil) || len(nodedevices.Device) == 0 {
 		return nil
 	}
 	for _, val := range nodedevices.Device {

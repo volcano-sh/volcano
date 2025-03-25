@@ -99,7 +99,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		klog.V(4).InfoS("Victims from Gang plugins", "victims", victims, "preemptor", preemptor)
+		klog.V(4).Infof("Victims from Gang plugins, victims=%+v preemptor=%s", victims, preemptor)
 
 		return victims, util.Permit
 	}
@@ -163,6 +163,10 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 	var unreadyTaskCount int32
 	var unScheduleJobCount int
 	for _, job := range ssn.Jobs {
+		// skip the jobs that have no tasks.
+		if len(job.Tasks) == 0 {
+			continue
+		}
 		if !job.IsReady() {
 			schedulableTaskNum := func() (num int32) {
 				for _, task := range job.TaskStatusIndex[api.Pending] {

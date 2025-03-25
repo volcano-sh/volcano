@@ -23,6 +23,7 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -224,16 +225,9 @@ func validateQueueDeleting(queueName string) error {
 		return err
 	}
 
-	queueList, err := config.QueueLister.List(labels.Everything())
+	childQueueNames, err := listQueueChild(queueName)
 	if err != nil {
-		return fmt.Errorf("failed to list queues: %v", err)
-	}
-	childQueueNames := make([]string, 0)
-	for _, childQueue := range queueList {
-		if childQueue.Spec.Parent != queueName {
-			continue
-		}
-		childQueueNames = append(childQueueNames, childQueue.Name)
+		return fmt.Errorf("failed to list child queues: %v", err)
 	}
 
 	if len(childQueueNames) > 0 {
@@ -255,13 +249,36 @@ func validateHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
 		return fmt.Errorf("failed to get parent queue of queue %s: %v", queue.Name, err)
 	}
 
-	if parentQueue.Status.Pending+parentQueue.Status.Running+parentQueue.Status.Unknown+parentQueue.Status.Inqueue > 0 {
-		return fmt.Errorf("queue %s cannot be the parent queue of queue %s because it has PodGroups (pending: %d, running: %d, unknown: %d, inqueue: %d)",
-			parentQueue.Name, queue.Name, parentQueue.Status.Pending,
-			parentQueue.Status.Running, parentQueue.Status.Unknown, parentQueue.Status.Inqueue)
+	childQueueNames, err := listQueueChild(parentQueue.Name)
+	if err != nil {
+		return fmt.Errorf("failed to list child queues: %v", err)
+	}
+
+	if len(childQueueNames) == 0 {
+		if allocated, ok := parentQueue.Status.Allocated[v1.ResourcePods]; ok && !allocated.IsZero() {
+			return fmt.Errorf("queue %s cannot be the parent queue of queue %s because it has allocated Pods: %d",
+				parentQueue.Name, queue.Name, allocated.Value())
+		}
 	}
 
 	klog.V(3).Infof("Validation passed for hierarchical queue %s with parent queue %s",
 		queue.Name, parentQueue.Name)
 	return nil
+}
+
+func listQueueChild(parentQueueName string) ([]string, error) {
+	queueList, err := config.QueueLister.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list queues: %v", err)
+	}
+
+	childQueueNames := make([]string, 0)
+	for _, childQueue := range queueList {
+		if childQueue.Spec.Parent != parentQueueName {
+			continue
+		}
+		childQueueNames = append(childQueueNames, childQueue.Name)
+	}
+
+	return childQueueNames, nil
 }

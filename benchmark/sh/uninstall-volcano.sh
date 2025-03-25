@@ -15,3 +15,4 @@
 set -e
 
 helm uninstall volcano --namespace volcano-system
+kubectl delete namespace volcano-system

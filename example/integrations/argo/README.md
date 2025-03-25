@@ -67,7 +67,7 @@ spec:
       # of the resource (not just labels). Multiple AND conditions can be represented by comma
       # delimited expressions.
       # For more details: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
-      # argoexec will get the resource information by "kubectl get -o json -w resouce/name" and check if the conditions are match
+      # argoexec will get the resource information by "kubectl get -o json -w resource/name" and check if the conditions are match
       # Completed is the phase that all tasks of Job are completed
       # Failed is the phase that the job is restarted failed reached the maximum number of retries.
       # change the successCondition or failureCondition according to the actual situation

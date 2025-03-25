@@ -118,7 +118,7 @@ job.batch/volcano-admission-init   1/1           48s        96s
 
 ### Install via helm
 
-To install official release, please visit to [helm-charts](https://github.com/volcano-sh/helm-charts) for details.
+To install official release, please visit [helm-charts](https://github.com/volcano-sh/helm-charts) for details.
 
 ```bash
 helm repo add volcano-sh https://volcano-sh.github.io/helm-charts
@@ -144,6 +144,10 @@ If you don't have a kubernetes cluster, try one-click install from code base:
 
 This way is only available for x86_64 temporarily.
 
+### Install volcano agent
+
+Please follow the guide [Volcano Agent](https://volcano.sh/en/docs/colocation) to install volcano agent.
+
 ### Install monitoring system
 
 If you want to get prometheus and grafana volcano dashboard after volcano installed, try following commands:
@@ -159,14 +163,14 @@ Please follow the guide [Volcano Dashboard](https://github.com/volcano-sh/dashbo
 
 ## Kubernetes compatibility
 
-|                       | Kubernetes 1.17 | Kubernetes 1.18 | Kubernetes 1.19 | Kubernetes 1.20 | Kubernetes 1.21 | Kubernetes 1.22 | Kubernetes 1.23 | Kubernetes 1.24 | Kubernetes 1.25 | Kubernetes 1.26 | Kubernetes 1.27 | Kubernetes 1.28 | Kubernetes 1.29 |Kubernetes 1.30 |Kubernetes 1.31 |
-|-----------------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|---------------|---------------|
-| Volcano v1.6          | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | -               | -               | -               | -               | -               | -               |-              |-              |
-| Volcano v1.7          | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | -               |_              |_              |
-| Volcano v1.8          | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | -               |-              |_              |
-| Volcano v1.9          | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               |-              |_              |
-| Volcano v1.10         | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               |✓              |_              |
-| Volcano HEAD (master) | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               |✓              |✓              |
+|                       | Kubernetes 1.17 | Kubernetes 1.18 | Kubernetes 1.19 | Kubernetes 1.20 | Kubernetes 1.21 | Kubernetes 1.22 | Kubernetes 1.23 | Kubernetes 1.24 | Kubernetes 1.25 | Kubernetes 1.26 | Kubernetes 1.27 | Kubernetes 1.28 | Kubernetes 1.29 |Kubernetes 1.30 |Kubernetes 1.31 |Kubernetes 1.32 |
+|-----------------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|-----------------|---------------|---------------|---------------|
+| Volcano v1.6          | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | -               | -               | -               | -               | -               | -               |-              |-              |-              |
+| Volcano v1.7          | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | -               |_              |_              |-              |
+| Volcano v1.8          | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | -               |-              |_              |-              |
+| Volcano v1.9          | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               |-              |_              |-              |
+| Volcano v1.10         | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               |✓              |_              |-              |
+| Volcano HEAD (master) | -               | -               | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               |✓              |✓              |✓              |
 
 Key:
 * `✓` Volcano and the Kubernetes version are exactly compatible.
@@ -196,4 +200,4 @@ If you have any question, feel free to reach out to us in the following ways:
 
 [Mailing List](https://groups.google.com/forum/#!forum/volcano-sh)
 
-Wechat: Add WeChat account `k8s2222` (华为云小助手2号) to let her pull you into the group.
+WeChat: Please add WeChat account `k8s2222` and request an invitation to the group chat.

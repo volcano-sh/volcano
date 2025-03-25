@@ -19,6 +19,7 @@ IMAGE_PREFIX=volcanosh
 CRD_OPTIONS ?= "crd:crdVersions=v1,generateEmbeddedObjectMeta=true"
 CRD_OPTIONS_EXCLUDE_DESCRIPTION=${CRD_OPTIONS}",maxDescLen=0"
 CC ?= "gcc"
+MUSL_CC ?= "/usr/local/musl/bin/musl-gcc"
 SUPPORT_PLUGINS ?= "no"
 CRD_VERSION ?= v1
 BUILDX_OUTPUT_TYPE ?= "docker"
@@ -73,7 +74,7 @@ init:
 
 vc-scheduler: init
 	if [ ${SUPPORT_PLUGINS} = "yes" ];then\
-		CC=${CC} CGO_ENABLED=1 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
+		CC=${MUSL_CC} CGO_ENABLED=1 go build -ldflags ${LD_FLAGS_CGO} -o ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
 	else\
 		CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
 	fi;
@@ -190,7 +191,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	GOOS=${OS} go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.4 ;\
+	GOOS=${OS} go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.17.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen
@@ -201,6 +202,7 @@ endif
 update-development-yaml:
 	make generate-yaml TAG=latest RELEASE_DIR=installer
 	mv installer/volcano-latest.yaml installer/volcano-development.yaml
+	mv installer/volcano-agent-latest.yaml installer/volcano-agent-development.yaml
 
 mod-download-go:
 	@-GOFLAGS="-mod=readonly" find -name go.mod -execdir go mod download \;
@@ -211,7 +213,7 @@ mod-download-go:
 
 .PHONY: mirror-licenses
 mirror-licenses: mod-download-go; \
-	GOOS=${OS} go install istio.io/tools/cmd/license-lint@1.19.7; \
+	GOOS=${OS} go install istio.io/tools/cmd/license-lint@1.25.0; \
 	cd licenses; \
 	rm -rf `ls ./ | grep -v LICENSE`; \
 	cd -; \

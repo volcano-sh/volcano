@@ -14,13 +14,33 @@ permissions:
 
 jobs:
   approve:
-    name: Approve workflows if contains ok-to-test label
-    if: contains(github.event.pull_request.labels.*.name, 'ok-to-test')
+    name: Approve workflows based on contributor status
     runs-on: ubuntu-latest
     permissions:
       actions: write
     steps:
-      - name: Execute workflows
+      - name: Check if first-time contributor
+        id: check_first_time
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const contributor = context.payload.pull_request.user.login;
+            const repo = context.repo.repo;
+            const owner = context.repo.owner;
+
+            const { data: prs } = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'all',
+              per_page: 100
+            });
+
+            const isFirstTime = prs.filter(pr => pr.user.login === contributor).length <= 1;
+            core.setOutput('is_first_time', isFirstTime);
+
+      - name: Execute workflows if not first-time contributor or has ok-to-test label
+        if: steps.check_first_time.outputs.is_first_time == 'false' || contains(github.event.pull_request.labels.*.name, 'ok-to-test')
         uses: actions/github-script@v7
         continue-on-error: true
         with:

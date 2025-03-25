@@ -73,7 +73,7 @@ func (f *Framework) HasScorePlugins() bool {
 }
 
 // ListPlugins returns a map of extension point name to plugin names configured at each extension
-// point. Returns nil if no plugins where configred.
+// point. Returns nil if no plugins where configured.
 func (f *Framework) ListPlugins() map[string][]config.Plugin {
 	panic("not implemented")
 }
@@ -155,6 +155,14 @@ func (f *Framework) Parallelizer() parallelize.Parallelizer {
 }
 
 func (f *Framework) ResourceClaimCache() *assumecache.AssumeCache {
+	return nil
+}
+
+func (f *Framework) Activate(logger klog.Logger, pods map[string]*v1.Pod) {
+	panic("implement me")
+}
+
+func (f *Framework) SharedDRAManager() framework.SharedDRAManager {
 	return nil
 }
 

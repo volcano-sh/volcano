@@ -69,7 +69,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			queues.Push(queue)
 		}
 
-		if job.HasPendingTasks() {
+		if ssn.JobStarving(job) {
 			if _, found := preemptorsMap[job.Queue]; !found {
 				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
@@ -108,7 +108,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 
 		// Found "high" priority task to reclaim others
-		if tasks, found := preemptorTasks[job.UID]; !found || tasks.Empty() {
+		if tasks, found := preemptorTasks[job.UID]; !found || tasks.Empty() || !ssn.JobStarving(job) {
 			continue
 		} else {
 			task = tasks.Pop().(*api.TaskInfo)
@@ -123,11 +123,8 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		if !ssn.Allocatable(queue, task) {
-			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
-			continue
-		}
-
+		//In allocate action we need check all the ancestor queues' capability but in reclaim action we should just check current queue's capability, and reclaim happens when queue not allocatable so we just need focus on the reclaim here.
+		//So it's more descriptive to user preempt related semantics.
 		if !ssn.Preemptive(queue, task) {
 			klog.V(3).Infof("Queue <%s> can not reclaim by preempt others when considering task <%s> , ignore it.", queue.Name, task.Name)
 			continue

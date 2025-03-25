@@ -32,8 +32,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
-
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -95,7 +95,7 @@ func TestAllocate(t *testing.T) {
 			ExpectBindsNum: 1,
 		},
 		{
-			Name: "prepredicate failed and tasks are not used up, continue on untill min member meet",
+			Name: "prepredicate failed and tasks are not used up, continue on until min member meet",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroup("pg1", "c1", "c1", 2, map[string]int32{"master": 1, "worker": 1}, schedulingv1.PodGroupInqueue),
 			},

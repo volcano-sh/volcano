@@ -79,7 +79,7 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 func (alloc *Action) pickUpQueuesAndJobs(queues *util.PriorityQueue, jobsMap map[api.QueueID]*util.PriorityQueue) {
 	ssn := alloc.session
 	for _, job := range ssn.Jobs {
-		// If not config enqueue action, change Pending pg into Inqueue statue to avoid blocking job scheduling.
+		// If not config enqueue action, change Pending pg into Inqueue state to avoid blocking job scheduling.
 		if job.IsPending() {
 			if conf.EnabledActionMap["enqueue"] {
 				klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: job status is pending.",
@@ -215,7 +215,22 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			break
 		}
 
-		predicateNodes, fitErrors := ph.PredicateNodes(task, allNodes, alloc.predicate, alloc.enablePredicateErrorCache)
+		var predicateNodes []*api.NodeInfo
+		var fitErrors *api.FitErrors
+
+		// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
+		// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
+		if len(task.Pod.Status.NominatedNodeName) > 0 {
+			if nominatedNodeInfo, ok := ssn.Nodes[task.Pod.Status.NominatedNodeName]; ok && task.InitResreq.LessEqual(nominatedNodeInfo.Idle, api.Zero) {
+				predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache)
+			}
+		}
+
+		// If the nominated node is not found or the nominated node is not suitable for the task, we need to find a suitable node for the task from all nodes.
+		if len(predicateNodes) == 0 {
+			predicateNodes, fitErrors = ph.PredicateNodes(task, allNodes, alloc.predicate, alloc.enablePredicateErrorCache)
+		}
+
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
 			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,

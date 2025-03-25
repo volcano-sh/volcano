@@ -201,6 +201,9 @@ spec:
             {{- if .Values.custom.scheduler_node_worker_threads }}
             - --node-worker-threads={{.Values.custom.scheduler_node_worker_threads}}
             {{- end }}
+            {{- if .Values.custom.scheduler_plugins_dir }}
+            - --plugins-dir={{ .Values.custom.scheduler_plugins_dir }}
+            {{- end }}
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1
           env:
@@ -221,8 +224,7 @@ spec:
           configMap:
             name: {{ .Release.Name }}-scheduler-configmap
         - name: klog-sock
-          hostPath:
-            path: /tmp/klog-socks
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

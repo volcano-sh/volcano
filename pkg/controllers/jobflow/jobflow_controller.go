@@ -74,7 +74,7 @@ type jobflowcontroller struct {
 	// JobFlow Event recorder
 	recorder record.EventRecorder
 
-	queue          workqueue.RateLimitingInterface
+	queue          workqueue.TypedRateLimitingInterface[apis.FlowRequest]
 	enqueueJobFlow func(req apis.FlowRequest)
 
 	syncHandler func(req *apis.FlowRequest) error
@@ -122,7 +122,7 @@ func (jf *jobflowcontroller) Initialize(opt *framework.ControllerOption) error {
 	eventBroadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: jf.kubeClient.CoreV1().Events("")})
 
 	jf.recorder = eventBroadcaster.NewRecorder(versionedscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
-	jf.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	jf.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[apis.FlowRequest]())
 
 	jf.enqueueJobFlow = jf.enqueue
 
@@ -156,7 +156,7 @@ func (jf *jobflowcontroller) worker() {
 }
 
 func (jf *jobflowcontroller) processNextWorkItem() bool {
-	obj, shutdown := jf.queue.Get()
+	req, shutdown := jf.queue.Get()
 	if shutdown {
 		// Stop working
 		return false
@@ -168,16 +168,10 @@ func (jf *jobflowcontroller) processNextWorkItem() bool {
 	// not call Forget if a transient error occurs, instead the item is
 	// put back on the workqueue and attempted again after a back-off
 	// period.
-	defer jf.queue.Done(obj)
-
-	req, ok := obj.(apis.FlowRequest)
-	if !ok {
-		klog.Errorf("%v is not a valid queue request struct.", obj)
-		return true
-	}
+	defer jf.queue.Done(req)
 
 	err := jf.syncHandler(&req)
-	jf.handleJobFlowErr(err, obj)
+	jf.handleJobFlowErr(err, req)
 
 	return true
 }
@@ -212,23 +206,22 @@ func (jf *jobflowcontroller) handleJobFlow(req *apis.FlowRequest) error {
 	return nil
 }
 
-func (jf *jobflowcontroller) handleJobFlowErr(err error, obj interface{}) {
+func (jf *jobflowcontroller) handleJobFlowErr(err error, req apis.FlowRequest) {
 	if err == nil {
-		jf.queue.Forget(obj)
+		jf.queue.Forget(req)
 		return
 	}
 
-	if jf.maxRequeueNum == -1 || jf.queue.NumRequeues(obj) < jf.maxRequeueNum {
-		klog.V(4).Infof("Error syncing jobFlow request %v for %v.", obj, err)
-		jf.queue.AddRateLimited(obj)
+	if jf.maxRequeueNum == -1 || jf.queue.NumRequeues(req) < jf.maxRequeueNum {
+		klog.V(4).Infof("Error syncing jobFlow request %v for %v.", req, err)
+		jf.queue.AddRateLimited(req)
 		return
 	}
 
-	req, _ := obj.(apis.FlowRequest)
 	jf.recordEventsForJobFlow(req.Namespace, req.JobFlowName, v1.EventTypeWarning, string(req.Action),
 		fmt.Sprintf("%v JobFlow failed for %v", req.Action, err))
-	klog.V(4).Infof("Dropping JobFlow request %v out of the queue for %v.", obj, err)
-	jf.queue.Forget(obj)
+	klog.V(4).Infof("Dropping JobFlow request %v out of the queue for %v.", req, err)
+	jf.queue.Forget(req)
 }
 
 func (jf *jobflowcontroller) recordEventsForJobFlow(namespace, name, eventType, reason, message string) {
