@@ -402,6 +402,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 
 	if err := st.Execute(action); err != nil {
 		cc.handleJobError(queue, req, st, err, delayAct.action)
+		return true
 	}
 
 	// If no error, forget it.
