@@ -34,7 +34,11 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
-const baselinePercentageOfNodesToFind = 50
+const (
+	baselinePercentageOfNodesToFind = 50
+
+	DefaultComponentName = "vc-scheduler"
+)
 
 var lastProcessedNodeIndex int
 

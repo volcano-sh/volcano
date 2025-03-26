@@ -210,8 +210,6 @@ spec:
                 description: The number of 'Unknown' PodGroup in this queue.
                 format: int32
                 type: integer
-            required:
-            - allocated
             type: object
         type: object
     served: true
