@@ -35,6 +35,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	v1beta1apply "volcano.sh/apis/pkg/client/applyconfiguration/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -285,8 +286,9 @@ func updateRootQueueResources(ssn *Session, allocated v1.ResourceList) {
 	}
 
 	if !equality.Semantic.DeepEqual(queue.Status.Allocated, allocated) {
-		queue.Status.Allocated = allocated
-		_, err = ssn.VCClient().SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{})
+		queueStatusApply := v1beta1apply.QueueStatus().WithAllocated(allocated)
+		queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
+		_, err = ssn.VCClient().SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: util.DefaultComponentName})
 		if err != nil {
 			klog.Errorf("failed to update root queue status: %s", err.Error())
 			return

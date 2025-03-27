@@ -98,18 +98,10 @@ func (c *queuecontroller) syncQueue(queue *schedulingv1beta1.Queue, updateStateF
 		queueStatus.State = queue.Status.State
 	}
 
-	queueStatus.Allocated = queue.Status.Allocated.DeepCopy()
-	// queue.status.allocated will be updated after every session close in volcano scheduler, we should not depend on it because session may be time-consuming,
-	// and queue.status.allocated can't be updated timely. We initialize queue.status.allocated and update it here explicitly
-	// to avoid update queue err because update will fail when queue.status.allocated is nil.
-	if queueStatus.Allocated == nil {
-		queueStatus.Allocated = v1.ResourceList{}
-	}
-
 	newQueue := queue.DeepCopy()
 	// ignore update when state does not change
 	if queueStatus.State != queue.Status.State {
-		queueStatusApply := v1beta1apply.QueueStatus().WithState(queueStatus.State).WithAllocated(queueStatus.Allocated)
+		queueStatusApply := v1beta1apply.QueueStatus().WithState(queueStatus.State)
 		queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
 		if newQueue, err = c.vcClient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: controllerName}); err != nil {
 			klog.Errorf("Update queue state from %s to %s failed for %v", queue.Status.State, queueStatus.State, err)
@@ -136,7 +128,7 @@ func (c *queuecontroller) openQueue(queue *schedulingv1beta1.Queue, updateStateF
 	}
 
 	if queue.Status.State != newQueue.Status.State {
-		queueStatusApply := v1beta1apply.QueueStatus().WithState(newQueue.Status.State).WithAllocated(newQueue.Status.Allocated)
+		queueStatusApply := v1beta1apply.QueueStatus().WithState(newQueue.Status.State)
 		queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
 		if _, err := c.vcClient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: controllerName}); err != nil {
 			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.OpenQueueAction),
@@ -167,7 +159,7 @@ func (c *queuecontroller) closeQueue(queue *schedulingv1beta1.Queue, updateState
 	}
 
 	if queue.Status.State != newQueue.Status.State {
-		queueStatusApply := v1beta1apply.QueueStatus().WithState(newQueue.Status.State).WithAllocated(newQueue.Status.Allocated)
+		queueStatusApply := v1beta1apply.QueueStatus().WithState(newQueue.Status.State)
 		queueApply := v1beta1apply.Queue(queue.Name).WithStatus(queueStatusApply)
 		if _, err := c.vcClient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: controllerName}); err != nil {
 			c.recorder.Event(newQueue, v1.EventTypeWarning, string(v1alpha1.CloseQueueAction),
