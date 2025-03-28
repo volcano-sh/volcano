@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/errors"
@@ -31,18 +32,21 @@ import (
 )
 
 const (
-	defaultQPS                 = 50.0
-	defaultBurst               = 100
-	defaultWorkers             = 3
-	defaultMaxRequeueNum       = 15
-	defaultSchedulerName       = "volcano"
-	defaultHealthzAddress      = ":11251"
-	defaultListenAddress       = ":8081"
-	defaultLockObjectNamespace = "volcano-system"
-	defaultPodGroupWorkers     = 5
-	defaultQueueWorkers        = 5
-	defaultGCWorkers           = 1
-	defaultControllers         = "*"
+	defaultQPS                                    = 50.0
+	defaultBurst                                  = 100
+	defaultWorkers                                = 3
+	defaultMaxRequeueNum                          = 15
+	defaultSchedulerName                          = "volcano"
+	defaultHealthzAddress                         = ":11251"
+	defaultListenAddress                          = ":8081"
+	defaultLockObjectNamespace                    = "volcano-system"
+	defaultPodGroupWorkers                        = 5
+	defaultQueueWorkers                           = 5
+	defaultGCWorkers                              = 1
+	defaultControllers                            = "*"
+	defaultNetworkTopologyAutoDiscoveryWorkers    = 10
+	defaultNetworkTopologyAutoDiscoveryGCWorkers  = 10
+	defaultNetworkTopologyAutoDiscoverySyncPeriod = 1 * time.Second
 )
 
 // ServerOption is the main context object for the controllers.
@@ -92,6 +96,15 @@ type ServerOption struct {
 	// Case3: "-gc-controller,-job-controller,-jobflow-controller,-jobtemplate-controller,-pg-controller,-queue-controller"
 	// to disable specific controllers,
 	Controllers []string
+	// KubePodName is the namespace of the pod.
+	KubePodNamespace string
+
+	// NetworkTopologyAutoDiscoveryWorkerThreads is the number of threads syncing hypernodes for networkTopologyAutoDiscoveryController
+	NetworkTopologyAutoDiscoveryWorkerThreads uint32
+	// NetworkTopologyAutoDiscoveryGCWorkerThreads is the number of threads to gc hypernodes for networkTopologyAutoDiscoveryController
+	NetworkTopologyAutoDiscoveryGCWorkerThreads uint32
+	// NetworkTopologyAutoDiscoverySyncPeriod is the period between each hypernode syncing for networkTopologyAutoDiscoveryController
+	NetworkTopologyAutoDiscoverySyncPeriod time.Duration
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -129,6 +142,10 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet, knownControllers []string) {
 	fs.Uint32Var(&s.WorkerThreadsForQueue, "worker-threads-for-queue", defaultQueueWorkers, "The number of threads syncing queue operations. The larger the number, the faster the queue processing, but requires more CPU load.")
 	fs.StringSliceVar(&s.Controllers, "controllers", []string{defaultControllers}, fmt.Sprintf("Specify controller gates. Use '*' for all controllers, all knownController: %s ,and we can use "+
 		"'-' to disable controllers, e.g. \"-job-controller,-queue-controller\" to disable job and queue controllers.", knownControllers))
+	fs.StringVar(&s.KubePodNamespace, "kube-pod-namespace", os.Getenv("KUBE_POD_NAMESPACE"), "the namespace of the volcano controller pod")
+	fs.Uint32Var(&s.NetworkTopologyAutoDiscoveryWorkerThreads, "network-topo-autodiscovery-worker-threads", defaultNetworkTopologyAutoDiscoveryWorkers, "The number of threads syncing hypernodes for networkTopologyAutoDiscoveryController")
+	fs.Uint32Var(&s.NetworkTopologyAutoDiscoveryGCWorkerThreads, "network-topo-autodiscovery-gc-worker-threads-for-gc", defaultNetworkTopologyAutoDiscoveryGCWorkers, "the number of threads to gc hypernodes for networkTopologyAutoDiscoveryController")
+	fs.DurationVar(&s.NetworkTopologyAutoDiscoverySyncPeriod, "network-topo-autodiscovery-sync-period", defaultNetworkTopologyAutoDiscoverySyncPeriod, "The period between each hypernode syncing for networkTopologyAutoDiscoveryController")
 }
 
 // CheckOptionOrDie checks all options and returns all errors if they are invalid.
