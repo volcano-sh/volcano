@@ -180,11 +180,7 @@ func decodePodDevices(str string) []ContainerDevices {
 
 func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 	for _, container := range pod.Spec.Containers {
-		_, ok := container.Resources.Limits[VolcanoVGPUMemory]
-		if ok {
-			return true
-		}
-		_, ok = container.Resources.Limits[VolcanoVGPUNumber]
+		_, ok := container.Resources.Limits[VolcanoVGPUNumber]
 		if ok {
 			return true
 		}
