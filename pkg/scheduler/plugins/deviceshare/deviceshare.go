@@ -44,6 +44,10 @@ const (
 
 	SchedulePolicyArgument = "deviceshare.SchedulePolicy"
 	ScheduleWeight         = "deviceshare.ScheduleWeight"
+
+	VGPUNumberArgument = "deviceshare.VGPUNumber"
+	VGPUMemoryArgument = "deviceshare.VGPUMemory"
+	VGPUCoresArgument  = "deviceshare.VGPUCores"
 )
 
 type deviceSharePlugin struct {
@@ -87,6 +91,22 @@ func enablePredicate(dsp *deviceSharePlugin) {
 	}
 	if (gpushare.GpuSharingEnable || gpushare.GpuNumberEnable) && vgpu.VGPUEnable {
 		klog.Fatal("gpu-share and vgpu can't be used together")
+	}
+
+	if _, ok := args[VGPUNumberArgument]; ok {
+		vgpu.VGPUNumber = args[VGPUNumberArgument].(string)
+	} else {
+		vgpu.VGPUNumber = vgpu.VolcanoVGPUNumber
+	}
+	if _, ok := args[VGPUMemoryArgument]; ok {
+		vgpu.VGPUMemory = args[VGPUMemoryArgument].(string)
+	} else {
+		vgpu.VGPUMemory = vgpu.VolcanoVGPUMemory
+	}
+	if _, ok := args[VGPUCoresArgument]; ok {
+		vgpu.VGPUCores = args[VGPUCoresArgument].(string)
+	} else {
+		vgpu.VGPUCores = vgpu.VolcanoVGPUCores
 	}
 }
 
