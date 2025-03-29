@@ -76,8 +76,8 @@ jobs:
     - name: Build lastest volcano images
       run: |
         eval $(minikube docker-env)
-        make TAG=v1.11.0 update-development-yaml
-        make TAG=v1.11.0 images
+        make TAG=v1.11.1 update-development-yaml
+        make TAG=v1.11.1 images
         docker images | grep volcano
         cat ./installer/volcano-development.yaml  | grep image:
         sed 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/' ./installer/volcano-development.yaml | minikube kubectl -- replace --force -f -
