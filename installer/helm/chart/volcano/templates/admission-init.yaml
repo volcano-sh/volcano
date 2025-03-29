@@ -7,7 +7,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ .Release.Name }}-admission-init
+  name: {{ include "volcano.admission.fullname" . }}-init
   namespace: {{ .Release.Namespace }}
   {{- if .Values.custom.common_labels }}
   labels:
@@ -22,7 +22,7 @@ metadata:
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: {{ .Release.Name }}-admission-init
+  name: {{ include "volcano.admission.fullname" . }}-init
   namespace: {{ .Release.Namespace }}
   {{- if .Values.custom.common_labels }}
   labels:
@@ -41,7 +41,7 @@ rules:
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: {{ .Release.Name }}-admission-init-role
+  name: {{ include "volcano.admission.fullname" . }}-init-role
   namespace: {{ .Release.Namespace }}
   {{- if .Values.custom.common_labels }}
   labels:
@@ -53,18 +53,18 @@ metadata:
     "helm.sh/hook-weight": "0"
 subjects:
   - kind: ServiceAccount
-    name: {{ .Release.Name }}-admission-init
+    name: {{ include "volcano.admission.fullname" . }}-init
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: Role
-  name: {{ .Release.Name }}-admission-init
+  name: {{ include "volcano.admission.fullname" . }}-init
   apiGroup: rbac.authorization.k8s.io
 
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ .Release.Name }}-admission-init
+  name: {{ include "volcano.admission.fullname" . }}-init
   namespace: {{ .Release.Namespace }}
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
@@ -93,7 +93,7 @@ spec:
       securityContext:
         {{- toYaml $admission_sc | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ .Release.Name }}-admission-init
+      serviceAccountName: {{ include "volcano.admission.fullname" . }}-init
       priorityClassName: system-cluster-critical
       {{- if .Values.basic.image_pull_secret }}
       imagePullSecrets:
@@ -108,7 +108,7 @@ spec:
           {{- end }}
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
-          command: ["./gen-admission-secret.sh", "--service", "{{ .Release.Name }}-admission-service", "--namespace",
+          command: ["./gen-admission-secret.sh", "--service", "{{ include "volcano.admission.fullname" . }}-service", "--namespace",
                     "{{ .Release.Namespace }}", "--secret", "{{.Values.basic.admission_secret_name}}"]
           {{- if .Values.custom.admission_default_csc }}
           securityContext:
