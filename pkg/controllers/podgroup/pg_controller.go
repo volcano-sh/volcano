@@ -23,8 +23,11 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	appinformers "k8s.io/client-go/informers/apps/v1"
+	batchinformers "k8s.io/client-go/informers/batch/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	appslisters "k8s.io/client-go/listers/apps/v1"
+	batchlisters "k8s.io/client-go/listers/batch/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -51,20 +54,30 @@ type pgcontroller struct {
 	podInformer coreinformers.PodInformer
 	pgInformer  schedulinginformer.PodGroupInformer
 	rsInformer  appinformers.ReplicaSetInformer
+	dsInformer  appinformers.DaemonSetInformer
+	ssInformer  appinformers.StatefulSetInformer
+	jobInformer batchinformers.JobInformer
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
 
 	// A store of pods
 	podLister corelisters.PodLister
-	podSynced func() bool
 
 	// A store of podgroups
 	pgLister schedulinglister.PodGroupLister
-	pgSynced func() bool
 
-	// A store of replicaset
-	rsSynced func() bool
+	// A store of replicasets
+	rsLister appslisters.ReplicaSetLister
+
+	// A store of daemonsets
+	dsLister appslisters.DaemonSetLister
+
+	// A store of statefulsets
+	ssLister appslisters.StatefulSetLister
+
+	// A store of jobs
+	jobLister batchlisters.JobLister
 
 	queue workqueue.TypedRateLimitingInterface[podRequest]
 
@@ -73,6 +86,9 @@ type pgcontroller struct {
 
 	// To determine whether inherit owner's annotations for pods when create podgroup
 	inheritOwnerAnnotations bool
+
+	// NonVcjobMinMemberSupport can initialize podgroup minMember and minResources for non-vcjobs(deployment/statefulset/daemonset/job).
+	NonVcjobMinMemberSupport bool
 }
 
 func (pg *pgcontroller) Name() string {
@@ -90,24 +106,33 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.schedulerNames = make([]string, len(opt.SchedulerNames))
 	copy(pg.schedulerNames, opt.SchedulerNames)
 	pg.inheritOwnerAnnotations = opt.InheritOwnerAnnotations
+	pg.NonVcjobMinMemberSupport = opt.NonVcjobMinMemberSupport
 
 	pg.informerFactory = opt.SharedInformerFactory
 	pg.podInformer = opt.SharedInformerFactory.Core().V1().Pods()
 	pg.podLister = pg.podInformer.Lister()
-	pg.podSynced = pg.podInformer.Informer().HasSynced
 	pg.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: pg.addPod,
 	})
+
+	pg.rsInformer = pg.informerFactory.Apps().V1().ReplicaSets()
+	pg.rsLister = pg.rsInformer.Lister()
+
+	pg.dsInformer = pg.informerFactory.Apps().V1().DaemonSets()
+	pg.dsLister = pg.dsInformer.Lister()
+
+	pg.ssInformer = pg.informerFactory.Apps().V1().StatefulSets()
+	pg.ssLister = pg.ssInformer.Lister()
+
+	pg.jobInformer = pg.informerFactory.Batch().V1().Jobs()
+	pg.jobLister = pg.jobInformer.Lister()
 
 	factory := opt.VCSharedInformerFactory
 	pg.vcInformerFactory = factory
 	pg.pgInformer = factory.Scheduling().V1beta1().PodGroups()
 	pg.pgLister = pg.pgInformer.Lister()
-	pg.pgSynced = pg.pgInformer.Informer().HasSynced
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
-		pg.rsInformer = pg.informerFactory.Apps().V1().ReplicaSets()
-		pg.rsSynced = pg.rsInformer.Informer().HasSynced
 		pg.rsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    pg.addReplicaSet,
 			UpdateFunc: pg.updateReplicaSet,
