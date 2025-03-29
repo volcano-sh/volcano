@@ -165,25 +165,6 @@ func openSession(cache cache.Cache) *Session {
 		if job.PodGroup != nil {
 			ssn.podGroupStatus[job.UID] = *job.PodGroup.Status.DeepCopy()
 		}
-
-		if vjr := ssn.JobValid(job); vjr != nil {
-			if !vjr.Pass {
-				jc := &scheduling.PodGroupCondition{
-					Type:               scheduling.PodGroupUnschedulableType,
-					Status:             v1.ConditionTrue,
-					LastTransitionTime: metav1.Now(),
-					TransitionID:       string(ssn.UID),
-					Reason:             vjr.Reason,
-					Message:            vjr.Message,
-				}
-
-				if err := ssn.UpdatePodGroupCondition(job, jc); err != nil {
-					klog.Errorf("Failed to update job condition: %v", err)
-				}
-			}
-
-			delete(ssn.Jobs, job.UID)
-		}
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
 	ssn.Nodes = snapshot.Nodes
