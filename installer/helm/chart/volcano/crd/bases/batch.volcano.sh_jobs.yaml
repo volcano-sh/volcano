@@ -108,8 +108,6 @@ spec:
                 type: string
               queue:
                 type: string
-              runningEstimate:
-                type: string
               schedulerName:
                 type: string
               tasks:
