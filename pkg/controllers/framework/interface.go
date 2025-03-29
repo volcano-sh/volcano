@@ -17,6 +17,8 @@ limitations under the License.
 package framework
 
 import (
+	"time"
+
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -34,11 +36,17 @@ type ControllerOption struct {
 	SchedulerNames          []string
 	WorkerNum               uint32
 	MaxRequeueNum           int
+	// KubePodName is the namespace of the pod.
+	KubePodNamespace string
 
 	InheritOwnerAnnotations bool
 	WorkerThreadsForPG      uint32
 	WorkerThreadsForQueue   uint32
 	WorkerThreadsForGC      uint32
+
+	NetworkTopologyAutoDiscoveryWorkerThreads   uint32
+	NetworkTopologyAutoDiscoveryGCWorkerThreads uint32
+	NetworkTopologyAutoDiscoverySyncPeriod      time.Duration
 
 	// Config holds the common attributes that can be passed to a Kubernetes client
 	// and controllers registered by the users can use it.

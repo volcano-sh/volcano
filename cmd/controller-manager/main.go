@@ -37,6 +37,7 @@ import (
 	_ "volcano.sh/volcano/pkg/controllers/job"
 	_ "volcano.sh/volcano/pkg/controllers/jobflow"
 	_ "volcano.sh/volcano/pkg/controllers/jobtemplate"
+	_ "volcano.sh/volcano/pkg/controllers/networktopologyaware/topoautodiscovery"
 	_ "volcano.sh/volcano/pkg/controllers/podgroup"
 	_ "volcano.sh/volcano/pkg/controllers/queue"
 	commonutil "volcano.sh/volcano/pkg/util"

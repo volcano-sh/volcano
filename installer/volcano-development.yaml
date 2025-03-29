@@ -4410,6 +4410,12 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "create", "update", "watch"]
+  - apiGroups: ["topology.volcano.sh"]
+    resources: ["hypernodes"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
 ---
 # Source: volcano/templates/controllers.yaml
 kind: ClusterRoleBinding
@@ -4483,6 +4489,9 @@ spec:
             - -v=4
             - 2>&1
           imagePullPolicy: Always
+          env:
+            - name: KUBE_POD_NAMESPACE
+              value: volcano-system
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
