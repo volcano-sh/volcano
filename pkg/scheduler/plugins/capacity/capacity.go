@@ -124,11 +124,6 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				allocations[job.Queue] = attr.allocated.Clone()
 			}
 			allocated := allocations[job.Queue]
-			if allocated.LessPartly(reclaimer.Resreq, api.Zero) {
-				klog.V(3).Infof("Failed to allocate resource for Task <%s/%s> in Queue <%s>, not enough resource.",
-					reclaimee.Namespace, reclaimee.Name, job.Queue)
-				continue
-			}
 
 			exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
 			// When scalar resource not specified in deserved such as "pods", we should skip it and consider it as infinity,
