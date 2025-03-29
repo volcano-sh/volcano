@@ -229,7 +229,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := cp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			cp.updateShare(attr)
 			if hierarchyEnabled {
@@ -246,7 +246,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := cp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			cp.updateShare(attr)
 			if hierarchyEnabled {
@@ -367,19 +367,36 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 	for queueID, queueInfo := range ssn.Queues {
 		queue := ssn.Queues[queueID]
 		if attr, ok := cp.queueOpts[queueID]; ok {
-			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
-			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
+			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
+			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
+			if attr.capability != nil {
+				metrics.UpdateQueueCapacity(attr.name, attr.capability.MilliCPU, attr.capability.Memory, attr.capability.ScalarResources)
+			}
+			metrics.UpdateQueueRealCapacity(attr.name, attr.realCapability.MilliCPU, attr.realCapability.Memory, attr.realCapability.ScalarResources)
 			continue
 		}
-		deservedCPU, deservedMem := 0.0, 0.0
+		deservedCPU, deservedMem, scalarResources := 0.0, 0.0, map[v1.ResourceName]float64{}
 		if queue.Queue.Spec.Deserved != nil {
-			deservedCPU = float64(queue.Queue.Spec.Deserved.Cpu().MilliValue())
-			deservedMem = float64(queue.Queue.Spec.Deserved.Memory().Value())
+			attr := api.NewResource(queue.Queue.Spec.Deserved)
+			deservedCPU = attr.MilliCPU
+			deservedMem = attr.Memory
+			scalarResources = attr.ScalarResources
 		}
-		metrics.UpdateQueueDeserved(queueInfo.Name, deservedCPU, deservedMem)
-		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
-		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0)
+		metrics.UpdateQueueDeserved(queueInfo.Name, deservedCPU, deservedMem, scalarResources)
+		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		guarantee := api.EmptyResource()
+		if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
+			guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+		}
+		realCapacity := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(guarantee)
+		if len(queue.Queue.Spec.Capability) > 0 {
+			capacity := api.NewResource(queue.Queue.Spec.Capability)
+			realCapacity.MinDimensionResource(capacity, api.Infinity)
+			metrics.UpdateQueueCapacity(queueInfo.Name, capacity.MilliCPU, capacity.Memory, capacity.ScalarResources)
+		}
+		metrics.UpdateQueueRealCapacity(queueInfo.Name, realCapacity.MilliCPU, realCapacity.Memory, realCapacity.ScalarResources)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
@@ -502,9 +519,9 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	// Record metrics
 	for queueID := range ssn.Queues {
 		attr := cp.queueOpts[queueID]
-		metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
-		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
-		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
+		metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
+		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
+		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {

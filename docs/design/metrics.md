@@ -27,32 +27,41 @@ This metrics track execution of plugins and actions of volcano loop.
 ### volcano operations
 This metrics describe internal state of volcano.
 
-| **Metric Name**                 | **Metric Type** | **Labels**                                                  | **Description**                               |
-|---------------------------------|-----------------|-------------------------------------------------------------|-----------------------------------------------|
-| `schedule_attempts_total`       | Counter         | `result`=&lt;result&gt;                                     | The number of attempts to schedule pods       |
-| `pod_preemption_victims`        | Gauge           | None                                                        | The number of selected preemption victims     |
-| `total_preemption_attempts`     | Counter         | None                                                        | Total preemption attempts in the cluster      |
-| `unschedule_task_count`         | Gauge           | `job_id`=&lt;job_id&gt;                                     | The number of tasks failed to schedule        |
-| `unschedule_job_counts`         | Gauge           | None                                                        | The number of jobs could not be scheduled     |
-| `queue_allocated_milli_cpu`     | Gauge           | `queue_name`=&lt;queue_name&gt;                             | Allocated CPU count for one queue             |
-| `queue_allocated_memory_bytes`  | Gauge           | `queue_name`=&lt;queue_name&gt;                             | Allocated memory for one queue                |
-| `queue_request_milli_cpu`       | Gauge           | `queue_name`=&lt;queue_name&gt;                             | Requested CPU count for one queue             |
-| `queue_request_memory_bytes`    | Gauge           | `queue_name`=&lt;queue_name&gt;                             | Requested memory for one queue                |
-| `queue_deserved_milli_cpu`      | Gauge           | `queue_name`=&lt;queue_name&gt;                             | Deserved CPU count for one queue              |
-| `queue_deserved_memory_bytes`   | Gauge           | `queue_name`=&lt;queue_name&gt;                             | Deserved memory for one queue                 |
-| `queue_share`                   | Gauge           | `queue_name`=&lt;queue_name&gt;                             | Share for one queue                           |
-| `queue_weight`                  | Gauge           | `queue_name`=&lt;queue_name&gt;                             | Weight for one queue                          |
-| `queue_overused`                | Gauge           | `queue_name`=&lt;queue_name&gt;                             | Whether one queue is overused                 |
-| `queue_pod_group_inqueue_count` | Gauge           | `queue_name`=&lt;queue_name&gt;                             | The number of Inqueue PodGroups in this queue |
-| `queue_pod_group_pending_count` | Gauge           | `queue_name`=&lt;queue_name&gt;                             | The number of Pending PodGroups in this queue |
-| `queue_pod_group_running_count` | Gauge           | `queue_name`=&lt;queue_name&gt;                             | The number of Running PodGroups in this queue |
-| `queue_pod_group_unknown_count` | Gauge           | `queue_name`=&lt;queue_name&gt;                             | The number of Unknown PodGroups in this queue |
-| `namespace_share`               | Gauge           | `namespace_name`=&lt;namespace_name&gt;                     | Deserved CPU count for one namespace          |
-| `namespace_weight`              | Gauge           | `namespace_name`=&lt;namespace_name&gt;                     | Weight for one namespace                      |
-| `job_share`                     | Gauge           | `job_id`=&lt;job_id&gt;, `job_ns`=&lt;job_ns&gt;            | Share for one job                             |
-| `job_retry_counts`              | Counter         | `job_id`=&lt;job_id&gt;                                     | The number of retry counts for one job        |
-| `job_completed_phase_count`     | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt; | The number of job completed phase             |
-| `job_failed_phase_count`        | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt; | The number of job failed phase                |
+| **Metric Name**                        | **Metric Type** | **Labels**                                                        | **Description**                               |
+|----------------------------------------|-----------------|-------------------------------------------------------------------|-----------------------------------------------|
+| `schedule_attempts_total`              | Counter         | `result`=&lt;result&gt;                                           | The number of attempts to schedule pods       |
+| `pod_preemption_victims`               | Gauge           | None                                                              | The number of selected preemption victims     |
+| `total_preemption_attempts`            | Counter         | None                                                              | Total preemption attempts in the cluster      |
+| `unschedule_task_count`                | Gauge           | `job_id`=&lt;job_id&gt;                                           | The number of tasks failed to schedule        |
+| `unschedule_job_counts`                | Gauge           | None                                                              | The number of jobs could not be scheduled     |
+| `queue_allocated_milli_cpu`            | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Allocated CPU count for one queue             |
+| `queue_allocated_memory_bytes`         | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Allocated memory for one queue                |
+| `queue_allocated_scalar_resources`     | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Allocated scalar resource for one queue       |
+| `queue_request_milli_cpu`              | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Requested CPU count for one queue             |
+| `queue_request_memory_bytes`           | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Requested memory for one queue                |
+| `queue_request_scalar_resources`       | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Requested scalar resource for one queue       |
+| `queue_deserved_milli_cpu`             | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Deserved CPU count for one queue              |
+| `queue_deserved_memory_bytes`          | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Deserved memory for one queue                 |
+| `queue_deserved_scalar_resources`      | Gauge           | `queue_name`=&lt;queue_name&gt;,                                  | Deserved scalar resource for one queue        |
+| `queue_capacity_mill_cpu`              | Gauge           | `queue_name`=&lt;queue_name&gt;,                                  | CPU count capacity for one queue              |
+| `queue_capacity_memory_bytes`          | Gauge           | `queue_name`=&lt;queue_name&gt;,                                  | memory capacity for one queue                 |
+| `queue_capacity_scalar_resources`      | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Scalar resource capacity for one queue        |
+| `queue_real_capacity_mill_cpu`         | Gauge           | `queue_name`=&lt;queue_name&gt;,                                  | CPU count real capacity for one queue         |
+| `queue_real_capacity_memory_bytes`     | Gauge           | `queue_name`=&lt;queue_name&gt;,                                  | Memory real capacity for one queue            |
+| `queue_real_capacity_scalar_resources` | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Scalar resource real capacity for one queue   |
+| `queue_share`                          | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Share for one queue                           |
+| `queue_weight`                         | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Weight for one queue                          |
+| `queue_overused`                       | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Whether one queue is overused                 |
+| `queue_pod_group_inqueue_count`        | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | The number of Inqueue PodGroups in this queue |
+| `queue_pod_group_pending_count`        | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | The number of Pending PodGroups in this queue |
+| `queue_pod_group_running_count`        | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | The number of Running PodGroups in this queue |
+| `queue_pod_group_unknown_count`        | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | The number of Unknown PodGroups in this queue |
+| `namespace_share`                      | Gauge           | `namespace_name`=&lt;namespace_name&gt;                           | Deserved CPU count for one namespace          |
+| `namespace_weight`                     | Gauge           | `namespace_name`=&lt;namespace_name&gt;                           | Weight for one namespace                      |
+| `job_share`                            | Gauge           | `job_id`=&lt;job_id&gt;, `job_ns`=&lt;job_ns&gt;                  | Share for one job                             |
+| `job_retry_counts`                     | Counter         | `job_id`=&lt;job_id&gt;                                           | The number of retry counts for one job        |
+| `job_completed_phase_count`            | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job completed phase             |
+| `job_failed_phase_count`               | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job failed phase                |
 
 ### volcano Liveness
 Healthcheck last time of volcano activity and timeout
