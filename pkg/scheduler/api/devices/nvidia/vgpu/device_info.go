@@ -139,6 +139,9 @@ func (gs *GPUDevices) GetIgnoredDevices() []string {
 
 // AddResource adds the pod to GPU pool if it is assigned
 func (gs *GPUDevices) AddResource(pod *v1.Pod) {
+	if gs == nil {
+		return
+	}
 	ids, ok := pod.Annotations[AssignedIDsAnnotations]
 	if !ok {
 		return
@@ -146,9 +149,6 @@ func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 	podDev := decodePodDevices(ids)
 	for _, val := range podDev {
 		for _, deviceused := range val {
-			if gs == nil {
-				break
-			}
 			for index, gsdevice := range gs.Device {
 				if gsdevice.UUID == deviceused.UUID {
 					klog.V(4).Infoln("VGPU recording pod", pod.Name, "device", deviceused)
@@ -173,6 +173,9 @@ func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 
 // SubResource frees the gpu hold by the pod
 func (gs *GPUDevices) SubResource(pod *v1.Pod) {
+	if gs == nil {
+		return
+	}
 	ids, ok := pod.Annotations[AssignedIDsAnnotations]
 	if !ok {
 		return
@@ -180,9 +183,6 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 	podDev := decodePodDevices(ids)
 	for _, val := range podDev {
 		for _, deviceused := range val {
-			if gs == nil {
-				break
-			}
 			for index, gsdevice := range gs.Device {
 				if gsdevice.UUID == deviceused.UUID {
 					klog.V(4).Infoln("VGPU subsctracting pod", pod.Name, "device", deviceused)
