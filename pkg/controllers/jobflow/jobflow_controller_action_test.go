@@ -602,6 +602,9 @@ func TestGetAllJobStatusFunc(t *testing.T) {
 			if got != nil {
 				got.JobStatusList[0].RunningHistories[0].StartTimestamp = metav1.Time{}
 				got.JobStatusList[1].RunningHistories[0].StartTimestamp = metav1.Time{}
+				sort.Slice(got.JobStatusList, func(i, j int) bool {
+					return got.JobStatusList[i].StartTimestamp.Before(&got.JobStatusList[j].StartTimestamp)
+				})
 			}
 			if !equality.Semantic.DeepEqual(got, tt.want) {
 				t.Errorf("getAllJobStatus() got = %v, want %v", got, tt.want)
