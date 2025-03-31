@@ -218,9 +218,6 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			}
 		}
 	}
-
-	// call victimTasksFn to evict tasks
-	victimTasks(ssn)
 }
 
 func (pmpt *Action) UnInitialize() {}
@@ -344,18 +341,4 @@ func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
 	}
 
 	return nil
-}
-
-func victimTasks(ssn *framework.Session) {
-	stmt := framework.NewStatement(ssn)
-	tasks := make([]*api.TaskInfo, 0)
-	victimTasksMap := ssn.VictimTasks(tasks)
-	for victim := range victimTasksMap {
-		if err := stmt.Evict(victim.Clone(), "evict"); err != nil {
-			klog.Errorf("Failed to evict Task <%s/%s>: %v",
-				victim.Namespace, victim.Name, err)
-			continue
-		}
-	}
-	stmt.Commit()
 }

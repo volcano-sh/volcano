@@ -164,13 +164,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Record metrics
 	for queueID, queueInfo := range ssn.Queues {
 		if attr, ok := pp.queueOpts[queueID]; ok {
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
-			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
+			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
 			metrics.UpdateQueueWeight(attr.name, attr.weight)
 			continue
 		}
-		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
-		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0)
+		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
 	}
 
 	remaining := pp.totalResource.Clone()
@@ -231,7 +231,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			decreasedDeserved.Add(decreased)
 
 			// Record metrics
-			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
+			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
 		}
 
 		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
@@ -366,7 +366,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			pp.updateShare(attr)
 
@@ -377,7 +377,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			pp.updateShare(attr)
 
