@@ -229,8 +229,12 @@ type ReservationStatus struct {
 }
 
 type ReservationSpec struct {
-    // the spec of reservation, pod spec
-    Template *corev1.PodTemplateSpec `json:"template" protobuf:"bytes,1,opt,name=template"`
+	// the target type of reservation
+    TargetType ReservationTargetType `json:"targetType" protobuf:"bytes,1,opt,name=targetType"`
+
+    // the spec of reservation, pod spec or podgroup spec
+    PodTemplate      *corev1.PodTemplateSpec `json:"podTemplate,omitempty" protobuf:"bytes,2,opt,name=podTemplate"`
+    PodGroupTemplate *PodGroupTemplateSpec   `json:"podGroupTemplate,omitempty" protobuf:"bytes,3,opt,name=podGroupTemplate"`
 
     // owners of this reservation
     Owners []ReservationOwner `json:"owners" protobuf:"bytes,2,rep,name=owners"`
@@ -240,6 +244,14 @@ type ReservationSpec struct {
 
     ...
 }
+
+// ReservationTargetType
+type ReservationTargetType string
+
+const (
+    ReservationTargetPod      ReservationTargetType = "Pod"
+    ReservationTargetPodGroup ReservationTargetType = "PodGroup"
+)
 ```
 
 **Reservation Controller**：to manage the lifecycle of reservations, including creation, deletion, and updates.
@@ -297,7 +309,7 @@ Reservation Store：to store the reservation information in the cluster and the 
 ```go
 type ReservationStore interface {
     DeleteReservation(r *schedulingv1alpha1.Reservation) *frameworkext.ReservationInfo
-    GetReservationInfoByPod(pod *corev1.Pod, nodeName string) *frameworkext.ReservationInfo
+    GetReservationInfoByObject(object *corev1.ObjectReference, nodeName string) *frameworkext.ReservationInfo
 }
 
 type reservationStore struct {
