@@ -35,7 +35,7 @@ require (
 	k8s.io/apimachinery v0.31.3
 	k8s.io/apiserver v0.31.3
 	k8s.io/client-go v0.31.3
-	k8s.io/code-generator v0.31.3
+	k8s.io/code-generator v0.32.3
 	k8s.io/component-base v0.31.3
 	k8s.io/component-helpers v0.31.3
 	k8s.io/csi-translation-lib v0.31.3
@@ -46,7 +46,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.4.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.11.0-network-topology-preview.0
+	volcano.sh/apis v0.0.0-20250326070404-ed2d962a3a85
 )
 
 require (
