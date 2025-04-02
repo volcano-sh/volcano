@@ -30,7 +30,8 @@ func (p *pendingState) Execute(action jobflowv1alpha1.Action) error {
 		return SyncJobFlow(p.jobFlow, func(status *jobflowv1alpha1.JobFlowStatus, allJobList int) {
 			if (len(status.RunningJobs) > 0 || len(status.CompletedJobs) > 0) && len(status.FailedJobs) <= 0 {
 				status.State.Phase = jobflowv1alpha1.Running
-			} else if len(status.FailedJobs) > 0 { // TODO(dongjiang199) Modify it when the if condition judgment is implemented
+			} else if len(status.FailedJobs) > 0 { // TODO(dongjiang1989) Modify it when the if condition judgment is implemented
+				UpdateJobFlowFailed(p.jobFlow.Namespace)
 				status.State.Phase = jobflowv1alpha1.Failed
 			} else {
 				status.State.Phase = jobflowv1alpha1.Pending
