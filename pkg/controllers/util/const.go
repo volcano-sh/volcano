@@ -1,5 +1,5 @@
 /*
-Copyright 2022 The Volcano Authors.
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,23 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package state
+package util
 
-import "volcano.sh/apis/pkg/apis/flow/v1alpha1"
-
-type runningState struct {
-	jobFlow *v1alpha1.JobFlow
-}
-
-func (p *runningState) Execute(action v1alpha1.Action) error {
-	switch action {
-	case v1alpha1.SyncJobFlowAction:
-		return SyncJobFlow(p.jobFlow, func(status *v1alpha1.JobFlowStatus, allJobList int) {
-			if len(status.CompletedJobs) == allJobList {
-				UpdateJobFlowSucceed(p.jobFlow.Namespace)
-				status.State.Phase = v1alpha1.Succeed
-			}
-		})
-	}
-	return nil
-}
+const (
+	// VolcanoSubSystemName - subsystem name in prometheus used by volcano
+	VolcanoSubSystemName = "volcano"
+)
