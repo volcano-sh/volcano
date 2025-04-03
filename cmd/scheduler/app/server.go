@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/pprof"
 	"os"
 
 	"volcano.sh/apis/pkg/apis/helpers"
@@ -73,11 +74,8 @@ func Run(opt *options.ServerOption) error {
 		panic(err)
 	}
 
-	if opt.EnableMetrics {
-		go func() {
-			http.Handle("/metrics", promHandler())
-			klog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
-		}()
+	if opt.EnableMetrics || opt.EnablePprof {
+		go startMetricsServer(opt)
 	}
 
 	if opt.EnableHealthz {
@@ -150,4 +148,29 @@ func promHandler() http.Handler {
 	prometheus.DefaultRegisterer.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	prometheus.DefaultRegisterer.Unregister(collectors.NewGoCollector())
 	return promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.Gatherers{prometheus.DefaultGatherer, legacyregistry.DefaultGatherer}, promhttp.HandlerOpts{}))
+}
+
+func startMetricsServer(opt *options.ServerOption) {
+	mux := http.NewServeMux()
+
+	if opt.EnableMetrics {
+		mux.Handle("/metrics", promHandler())
+	}
+
+	if opt.EnablePprof {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
+
+	server := &http.Server{
+		Addr:    opt.ListenAddress,
+		Handler: mux,
+	}
+
+	if err := server.ListenAndServe(); err != nil {
+		klog.Errorf("start metrics/pprof http server failed: %v", err)
+	}
 }
