@@ -21,9 +21,6 @@ import (
 	"runtime"
 	"time"
 
-	// init pprof server
-	_ "net/http/pprof"
-
 	"github.com/spf13/pflag"
 	_ "go.uber.org/automaxprocs"
 
