@@ -3,9 +3,14 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: vcjob-viewer-role
-  {{- if .Values.aggregationRule_labels }}
+  {{- if or .Values.custom.aggregationRule_labels .Values.custom.common_labels }}
   labels:
-    {{- toYaml .Values.aggregationRule_labels | nindent 4 }}
+    {{- if .Values.custom.aggregationRule_labels }}
+      {{- toYaml .Values.custom.aggregationRule_labels | nindent 4 }}
+    {{- end }}
+    {{- if .Values.custom.common_labels }}
+      {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
   {{- end }}
 rules:
   - apiGroups: ["batch.volcano.sh"]
