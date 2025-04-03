@@ -185,6 +185,9 @@ spec:
             {{- if .Values.custom.scheduler_metrics_enable }}
             - --enable-metrics=true
             {{- end }}
+            {{- if .Values.custom.scheduler_pprof_enable }}
+            - --enable-pprof=true
+            {{- end }}
             - --leader-elect={{ .Values.custom.leader_elect_enable }}
             {{- if .Values.custom.leader_elect_enable }}
             - --leader-elect-resource-namespace={{ .Release.Namespace }}

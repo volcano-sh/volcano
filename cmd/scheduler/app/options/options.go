@@ -67,6 +67,7 @@ type ServerOption struct {
 	DefaultQueue        string
 	PrintVersion        bool
 	EnableMetrics       bool
+	EnablePprof         bool
 	ListenAddress       string
 	EnablePriorityClass bool
 	EnableCSIStorage    bool
@@ -141,6 +142,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"Enable tracking of available storage capacity that CSI drivers provide; it is false by default")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
+	fs.BoolVar(&s.EnablePprof, "enable-pprof", false, "Enable the pprof endpoint; it is false by default")
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
