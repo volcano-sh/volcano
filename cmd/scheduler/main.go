@@ -29,9 +29,6 @@ import (
 	componentbaseoptions "k8s.io/component-base/config/options"
 	"k8s.io/klog/v2"
 
-	// init pprof server
-	_ "net/http/pprof"
-
 	"volcano.sh/volcano/cmd/scheduler/app"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	commonutil "volcano.sh/volcano/pkg/util"

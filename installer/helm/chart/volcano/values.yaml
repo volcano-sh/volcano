@@ -21,6 +21,7 @@ custom:
   scheduler_enable: true
   scheduler_replicas: 1
   scheduler_metrics_enable: true
+  scheduler_pprof_enable: false
   scheduler_plugins_dir: ""
   scheduler_name: ~
   leader_elect_enable: false
