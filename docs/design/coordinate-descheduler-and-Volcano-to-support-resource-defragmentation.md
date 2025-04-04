@@ -342,9 +342,9 @@ func (pl *Plugin) Filter(ctx context.Context, cycleState *framework.CycleState, 
 
 * `PostFilter` function handles preemption logic.
 
-* `Reserve` function reserves resources during the scheduling cycle, modifies the Reservation Store, and ensures that the pod can use the reserved resources.
+* `AllocateFunc` function reserves resources during the scheduling cycle, modifies the Reservation Store, and ensures that the pod can use the reserved resources.
 
-* `UnReserve` function releases reserved resources during the scheduling cycle, modifies the Reservation Store, and frees up the reserved resources.
+* `DeallocateFunc` function releases reserved resources during the scheduling cycle, modifies the Reservation Store, and frees up the reserved resources.
 
 * `PreBind` function performs checks and preprocessing before the pod is bound to a node, mainly to ensure the correctness of the reservation binding.
 
