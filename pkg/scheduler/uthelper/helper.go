@@ -76,7 +76,6 @@ type TestCommonStruct struct {
 	binder     cache.Binder
 	evictor    cache.Evictor
 	stsUpdator cache.StatusUpdater
-	volBinder  cache.VolumeBinder
 	ssn        *framework.Session // store opened session
 }
 
@@ -100,9 +99,8 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	test.evictor = evictor
 	test.stop = make(chan struct{})
 	// Create scheduler cache with self-defined binder and evictor
-	schedulerCache := cache.NewCustomMockSchedulerCache("utmock-scheduler", binder, evictor, stsUpdator, nil, nil, nil)
+	schedulerCache := cache.NewCustomMockSchedulerCache("utmock-scheduler", binder, evictor, stsUpdator, nil, nil)
 	test.stsUpdator = schedulerCache.StatusUpdater
-	test.volBinder = schedulerCache.VolumeBinder
 
 	for _, node := range test.Nodes {
 		schedulerCache.AddOrUpdateNode(node)

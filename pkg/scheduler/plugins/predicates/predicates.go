@@ -37,10 +37,9 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
-	"k8s.io/kubernetes/pkg/scheduler/metrics"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	volcanometrics "volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 )
 
@@ -333,7 +332,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	skipPlugins := make(map[api.TaskID]sets.Set[string])
 
 	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {
-		metrics.Register()
+		volcanometrics.RegisterMetrics()
 		// Check NodePorts
 		if predicate.nodePortEnable {
 			_, status := nodePortFilter.PreFilter(context.TODO(), state, task.Pod)
