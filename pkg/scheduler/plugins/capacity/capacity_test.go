@@ -17,6 +17,7 @@ limitations under the License.
 package capacity
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	"os"
 	"testing"
 
@@ -414,6 +415,25 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	pg10 := util.BuildPodGroupWithMinResources("pg10", "ns1", "q61", 1, nil, api.BuildResourceList("2", "4Gi"), schedulingv1beta1.PodGroupPending)
 	pg11 := util.BuildPodGroupWithMinResources("pg11", "ns1", "q62", 1, nil, api.BuildResourceList("2", "4Gi"), schedulingv1beta1.PodGroupPending)
 
+	// resources for test case 7
+	// queue
+	queue7 := buildQueueWithParents("q7", "root", nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
+	// the sum of sub queue 71 and 72's guarantee exceeds the capacity of queue7, but should not panic
+	queue71 := buildQueueWithParents("q71", "q7", nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
+	queue72 := buildQueueWithParents("q72", "q7", nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
+	queue71.Spec.Guarantee = schedulingv1beta1.Guarantee{
+		Resource: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("4"),
+			corev1.ResourceMemory: resource.MustParse("3Gi"),
+		},
+	}
+	queue72.Spec.Guarantee = schedulingv1beta1.Guarantee{
+		Resource: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("4"),
+			corev1.ResourceMemory: resource.MustParse("3Gi"),
+		},
+	}
+
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name:      "case0: Pod allocatable when queue is leaf queue",
@@ -495,6 +515,12 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 				"ns1/pg10": scheduling.PodGroupInqueue,
 				"ns1/pg11": scheduling.PodGroupPending,
 			},
+		},
+		{
+			Name:    "case7: the sum of sub queue 71 and 72's guarantee exceeds the capacity of queue7, but should not panic",
+			Plugins: plugins,
+			Nodes:   []*corev1.Node{n1},
+			Queues:  []*schedulingv1beta1.Queue{root, queue7, queue71, queue72},
 		},
 	}
 

@@ -670,7 +670,7 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 	}
 
 	for _, childAttr := range attr.children {
-		realCapability := attr.realCapability.Clone().Sub(totalGuarantee).Add(childAttr.guarantee)
+		realCapability := api.ExceededPart(attr.realCapability, totalGuarantee).Add(childAttr.guarantee)
 		if childAttr.capability == nil {
 			childAttr.realCapability = realCapability
 		} else {
