@@ -237,7 +237,7 @@ spec:
 #### network topology generation and update
 
 * **Network topology discovery/detection tool**: a tool to generate network topology CR by analyzing labels, system file or API of HW vendor. The community will offer a tool to generate CR by label.  
-![nework topology generation](images/network-topology-aware/nework-topology-generation.png)    
+![network topology generation](images/network-topology-aware/nework-topology-generation.png)    
 
 ### Job management
 

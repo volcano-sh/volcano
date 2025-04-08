@@ -37,11 +37,11 @@ Administrator can create two queues with deserved capacity configured and the de
 
 ### Story 3
 
-Administrator can create two queues with guarantee and deserved resources configured and the deserved resource can be reclaim back. And different resource type can hold diffferent guarantee and deserved quantity. For example, we consume there are 2 orgs Org1 and Org2, and use Queue1 and Queue2 respectively, Queue1's guarantee resources are A100 GPU card number=10, V100 GPU card number=10, and deserved resources are A100 GPU card number=20, V00 GPU card number=50, for Queue2, its guarantee resources are A100 GPU card number=10,V100 GPU card number=10, and deserved resources are A100 GPU card number=80, V100 GPU card number=50. 
+Administrator can create two queues with guarantee and deserved resources configured and the deserved resource can be reclaim back. And different resource type can hold different guarantee and deserved quantity. For example, we consume there are 2 orgs Org1 and Org2, and use Queue1 and Queue2 respectively, Queue1's guarantee resources are A100 GPU card number=10, V100 GPU card number=10, and deserved resources are A100 GPU card number=20, V00 GPU card number=50, for Queue2, its guarantee resources are A100 GPU card number=10,V100 GPU card number=10, and deserved resources are A100 GPU card number=80, V100 GPU card number=50. 
 
 <div align="center"><img width="582" height="393" src="images/capacity-scheduling/queue-deserved.png" /></div>
 
-Queue1 can use cluster's total resoures when Queue2 is idle.
+Queue1 can use cluster's total resources when Queue2 is idle.
 
 <div align="center"><img width="612" height="303" src="images/capacity-scheduling/queue1-use-all.png" /></div>
 

@@ -298,7 +298,7 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Schduling gates block vcjob. vcjob allocated after removed.", func() {
+	ginkgo.It("Scheduling gates block vcjob. vcjob allocated after removed.", func() {
 		// less than min available pods are allocated
 		q1 := "q1"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
@@ -342,7 +342,7 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Schduling gates block Deployment. Deployment allocated after removed.", func() {
+	ginkgo.It("Scheduling gates block Deployment. Deployment allocated after removed.", func() {
 		// less than min available pods are allocated
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			NodesNumLimit: 4,
