@@ -17,11 +17,11 @@ limitations under the License.
 package capacity
 
 import (
-	"k8s.io/apimachinery/pkg/api/resource"
 	"os"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
