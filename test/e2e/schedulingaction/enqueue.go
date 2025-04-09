@@ -103,7 +103,7 @@ var _ = ginkgo.Describe("Enqueue E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Schduling gated task will not consume inqueue resources", func() {
+	ginkgo.It("Scheduling gated task will not consume inqueue resources", func() {
 
 		ns := "test-namespace"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
