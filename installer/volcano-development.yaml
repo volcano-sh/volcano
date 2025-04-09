@@ -147,7 +147,7 @@ spec:
             - --port=8443
             - -v=4
             - 2>&1
-          image: docker.io/volcanosh/vc-webhook-manager:v1.11.0-network-topology-preview.0
+          image: docker.io/volcanosh/vc-webhook-manager:v1.11.0-network-topology-preview.2
           imagePullPolicy: Always
           name: admission
           volumeMounts:
@@ -231,7 +231,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
-          image: docker.io/volcanosh/vc-webhook-manager:v1.11.0-network-topology-preview.0
+          image: docker.io/volcanosh/vc-webhook-manager:v1.11.0-network-topology-preview.2
           imagePullPolicy: Always
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
@@ -4469,7 +4469,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-controllers
-          image: docker.io/volcanosh/vc-controller-manager:v1.11.0-network-topology-preview.0
+          image: docker.io/volcanosh/vc-controller-manager:v1.11.0-network-topology-preview.2
           args:
             - --logtostderr
             - --enable-healthz=true
@@ -4571,7 +4571,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues/status"]
-    verbs: ["update"]
+    verbs: ["patch"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["list", "watch", "update"]
@@ -4649,7 +4649,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-scheduler
-          image: docker.io/volcanosh/vc-scheduler:v1.11.0-network-topology-preview.0
+          image: docker.io/volcanosh/vc-scheduler:v1.11.0-network-topology-preview.2
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
@@ -5068,8 +5068,6 @@ spec:
                 description: The number of 'Unknown' PodGroup in this queue.
                 format: int32
                 type: integer
-            required:
-            - allocated
             type: object
         type: object
     served: true
@@ -5234,17 +5232,62 @@ spec:
                       description: Selector defines the selection rules for this member.
                       properties:
                         exactMatch:
-                          description: ExactMatch defines the exact match criteria
-                            (required when Type is "Exact").
+                          description: ExactMatch defines the exact match criteria.
                           properties:
                             name:
                               description: Name specifies the exact name of the node
                                 to match.
                               type: string
                           type: object
+                        labelMatch:
+                          description: LabelMatch defines the labels match criteria
+                            (only take effect when Member Type is "Node").
+                          properties:
+                            matchExpressions:
+                              description: matchExpressions is a list of label selector
+                                requirements. The requirements are ANDed.
+                              items:
+                                description: |-
+                                  A label selector requirement is a selector that contains values, a key, and an operator that
+                                  relates the key and values.
+                                properties:
+                                  key:
+                                    description: key is the label key that the selector
+                                      applies to.
+                                    type: string
+                                  operator:
+                                    description: |-
+                                      operator represents a key's relationship to a set of values.
+                                      Valid operators are In, NotIn, Exists and DoesNotExist.
+                                    type: string
+                                  values:
+                                    description: |-
+                                      values is an array of string values. If the operator is In or NotIn,
+                                      the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                      the values array must be empty. This array is replaced during a strategic
+                                      merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                    x-kubernetes-list-type: atomic
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            matchLabels:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                operator is "In", and the values array contains only "value". The requirements are ANDed.
+                              type: object
+                          type: object
+                          x-kubernetes-map-type: atomic
                         regexMatch:
-                          description: RegexMatch defines the regex match criteria
-                            (required when Type is "Regex").
+                          description: RegexMatch defines the regex match criteria.
                           properties:
                             pattern:
                               description: Pattern defines the regex pattern to match
@@ -5253,10 +5296,13 @@ spec:
                           type: object
                       type: object
                       x-kubernetes-validations:
-                      - message: Either ExactMatch or RegexMatch must be specified
-                        rule: has(self.exactMatch) || has(self.regexMatch)
-                      - message: ExactMatch and RegexMatch cannot be specified together
-                        rule: '!(has(self.exactMatch) && has(self.regexMatch))'
+                      - message: Either ExactMatch or RegexMatch or LabelMatch must
+                          be specified
+                        rule: has(self.exactMatch) || has(self.regexMatch) || has(self.labelMatch)
+                      - message: Only one of ExactMatch, RegexMatch, or LabelMatch
+                          can be specified
+                        rule: '(has(self.exactMatch) ? 1 : 0) + (has(self.regexMatch)
+                          ? 1 : 0) + (has(self.labelMatch) ? 1 : 0) <= 1'
                     type:
                       description: Type specifies the member type.
                       enum:

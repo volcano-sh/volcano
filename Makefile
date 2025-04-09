@@ -199,9 +199,9 @@ CONTROLLER_GEN=$(shell which controller-gen)
 endif
 
 update-development-yaml:
-	make generate-yaml TAG=v1.11.0-network-topology-preview.0 RELEASE_DIR=installer
-	mv installer/volcano-v1.11.0-network-topology-preview.0.yaml installer/volcano-development.yaml
-	mv installer/volcano-agent-v1.11.0-network-topology-preview.0.yaml installer/volcano-agent-development.yaml
+	make generate-yaml TAG=v1.11.0-network-topology-preview.2 RELEASE_DIR=installer
+	mv installer/volcano-v1.11.0-network-topology-preview.2.yaml installer/volcano-development.yaml
+	mv installer/volcano-agent-v1.11.0-network-topology-preview.2.yaml installer/volcano-agent-development.yaml
 
 mod-download-go:
 	@-GOFLAGS="-mod=readonly" find -name go.mod -execdir go mod download \;
