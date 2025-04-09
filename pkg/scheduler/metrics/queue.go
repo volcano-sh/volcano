@@ -25,7 +25,7 @@ import (
 var (
 	queueAllocatedMilliCPU = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_allocated_milli_cpu",
 			Help:      "Allocated CPU count for one queue",
 		}, []string{"queue_name"},
@@ -33,7 +33,7 @@ var (
 
 	queueAllocatedMemory = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_allocated_memory_bytes",
 			Help:      "Allocated memory for one queue",
 		}, []string{"queue_name"},
@@ -41,7 +41,7 @@ var (
 
 	queueAllocatedScalarResource = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_allocated_scalar_resources",
 			Help:      "Allocated scalar resources for one queue",
 		}, []string{"queue_name", "resource"},
@@ -49,7 +49,7 @@ var (
 
 	queueRequestMilliCPU = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_request_milli_cpu",
 			Help:      "Request CPU count for one queue",
 		}, []string{"queue_name"},
@@ -57,7 +57,7 @@ var (
 
 	queueRequestMemory = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_request_memory_bytes",
 			Help:      "Request memory for one queue",
 		}, []string{"queue_name"},
@@ -65,7 +65,7 @@ var (
 
 	queueRequestScalarResource = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_request_scalar_resources",
 			Help:      "Request scalar resources for one queue",
 		}, []string{"queue_name", "resource"},
@@ -73,7 +73,7 @@ var (
 
 	queueDeservedMilliCPU = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_deserved_milli_cpu",
 			Help:      "Deserved CPU count for one queue",
 		}, []string{"queue_name"},
@@ -81,7 +81,7 @@ var (
 
 	queueDeservedMemory = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_deserved_memory_bytes",
 			Help:      "Deserved memory for one queue",
 		}, []string{"queue_name"},
@@ -89,7 +89,7 @@ var (
 
 	queueDeservedScalarResource = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_deserved_scalar_resources",
 			Help:      "Deserved scalar resources for one queue",
 		}, []string{"queue_name", "resource"},
@@ -97,7 +97,7 @@ var (
 
 	queueShare = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_share",
 			Help:      "Share for one queue",
 		}, []string{"queue_name"},
@@ -105,7 +105,7 @@ var (
 
 	queueWeight = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_weight",
 			Help:      "Weight for one queue",
 		}, []string{"queue_name"},
@@ -113,7 +113,7 @@ var (
 
 	queueOverused = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_overused",
 			Help:      "If one queue is overused",
 		}, []string{"queue_name"},
@@ -121,7 +121,7 @@ var (
 
 	queueCapacityMilliCPU = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_capacity_milli_cpu",
 			Help:      "Capacity CPU count for one queue",
 		}, []string{"queue_name"},
@@ -129,7 +129,7 @@ var (
 
 	queueCapacityMemory = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_capacity_memory_bytes",
 			Help:      "Capacity memory for one queue",
 		}, []string{"queue_name"},
@@ -137,7 +137,7 @@ var (
 
 	queueCapacityScalarResource = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_capacity_scalar_resources",
 			Help:      "Capacity scalar resources for one queue",
 		}, []string{"queue_name", "resource"},
@@ -145,7 +145,7 @@ var (
 
 	queueRealCapacityMilliCPU = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_real_capacity_milli_cpu",
 			Help:      "Capacity CPU count for one queue",
 		}, []string{"queue_name"},
@@ -153,7 +153,7 @@ var (
 
 	queueRealCapacityMemory = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_real_capacity_memory_bytes",
 			Help:      "Capacity memory for one queue",
 		}, []string{"queue_name"},
@@ -161,7 +161,7 @@ var (
 
 	queueRealCapacityScalarResource = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "queue_real_capacity_scalar_resources",
 			Help:      "Capacity scalar resources for one queue",
 		}, []string{"queue_name", "resource"},
