@@ -635,7 +635,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 }
 
 func (sc *SchedulerCache) addEventHandler() {
-	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, sc.resyncPeriod)
+	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
 	sc.informerFactory = informerFactory
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
