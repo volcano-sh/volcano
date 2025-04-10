@@ -211,22 +211,26 @@ func updateQueueStatus(ssn *Session) {
 		allocatedResources[queueID] = &api.Resource{}
 	}
 	for _, job := range ssn.Jobs {
-		for _, runningTask := range job.TaskStatusIndex[api.Running] {
-			allocatedResources[job.Queue].Add(runningTask.Resreq)
-			// recursively updates the allocated resources of parent queues
-			queue := ssn.Queues[job.Queue].Queue
-			// compatibility unit testing
-			for ssn.Queues[rootQueue] != nil {
-				parent := string(rootQueue)
-				if queue.Spec.Parent != "" {
-					parent = queue.Spec.Parent
-				}
-				allocatedResources[api.QueueID(parent)].Add(runningTask.Resreq)
+		for status, tasks := range job.TaskStatusIndex {
+			if api.AllocatedStatus(status) {
+				for _, task := range tasks {
+					allocatedResources[job.Queue].Add(task.Resreq)
+					// recursively updates the allocated resources of parent queues
+					queue := ssn.Queues[job.Queue].Queue
+					// compatibility unit testing
+					for ssn.Queues[rootQueue] != nil {
+						parent := string(rootQueue)
+						if queue.Spec.Parent != "" {
+							parent = queue.Spec.Parent
+						}
+						allocatedResources[api.QueueID(parent)].Add(task.Resreq)
 
-				if parent == string(rootQueue) {
-					break
+						if parent == string(rootQueue) {
+							break
+						}
+						queue = ssn.Queues[api.QueueID(queue.Spec.Parent)].Queue
+					}
 				}
-				queue = ssn.Queues[api.QueueID(queue.Spec.Parent)].Queue
 			}
 		}
 	}
