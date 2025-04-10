@@ -57,6 +57,21 @@ custom:
   admission_config_override: ~
   scheduler_config_override: ~
 
+# Override the configuration for network-topo-auto-discovery-controller.
+# For example:
+#
+#  node_label_based_topologies_override: 
+#    - name: topology1
+#      topo-level-keys:
+#        - topology1-tier1
+#        - topology1-tier2
+#    - name: topology2
+#      topo-level-keys:
+#        - topology2-tier1
+#        - topology2-tier2
+  node_label_based_topologies_override: ~
+
+
 # Specify affinity for all main Volcano components or per component.
 # For example:
 #
