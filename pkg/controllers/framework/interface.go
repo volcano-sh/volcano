@@ -43,6 +43,8 @@ type ControllerOption struct {
 	// Config holds the common attributes that can be passed to a Kubernetes client
 	// and controllers registered by the users can use it.
 	Config *rest.Config
+	// HyperNodeProviderDir specifies the directory where the hyperNode provider plugins are stored.
+	HyperNodeProviderDir string
 }
 
 // Controller is the interface of all controllers.
