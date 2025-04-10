@@ -142,6 +142,9 @@ e2e-test-vcctl: vcctl images
 e2e-test-stress: images
 	E2E_TYPE=STRESS ./hack/run-e2e-kind.sh
 
+e2e-test-hypernode: images
+	E2E_TYPE=HYPERNODE ./hack/run-e2e-kind.sh
+
 generate-yaml: init manifests
 	./hack/generate-yaml.sh TAG=${RELEASE_VER} CRD_VERSION=${CRD_VERSION}
 
