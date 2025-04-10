@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	// VolcanoNamespace - namespace in prometheus used by volcano
-	VolcanoNamespace = "volcano"
+	// VolcanoSubSystemName - subsystem name in prometheus used by volcano
+	VolcanoSubSystemName = "volcano"
 
 	// OnSessionOpen label
 	OnSessionOpen = "OnSessionOpen"
@@ -35,7 +35,7 @@ const (
 var (
 	VGPUDevicesSharedNumber = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "vgpu_device_shared_number",
 			Help:      "The number of vgpu tasks sharing this card",
 		},
@@ -43,7 +43,7 @@ var (
 	)
 	VGPUDevicesAllocatedMemory = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "vgpu_device_allocated_memory",
 			Help:      "The number of vgpu memory allocated in this card",
 		},
@@ -51,7 +51,7 @@ var (
 	)
 	VGPUDevicesAllocatedCores = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "vgpu_device_allocated_cores",
 			Help:      "The percentage of gpu compute cores allocated in this card",
 		},
@@ -59,7 +59,7 @@ var (
 	)
 	VGPUDevicesMemoryTotal = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "vgpu_device_memory_limit",
 			Help:      "The number of total device memory in this card",
 		},
@@ -67,7 +67,7 @@ var (
 	)
 	VGPUPodMemoryAllocated = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "vgpu_device_memory_allocation_for_a_certain_pod",
 			Help:      "The vgpu device memory allocated for a certain pod",
 		},
@@ -75,7 +75,7 @@ var (
 	)
 	VGPUPodCoreAllocated = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "vgpu_device_core_allocation_for_a_certain_pod",
 			Help:      "The vgpu device core allocated for a certain pod",
 		},

@@ -24,7 +24,7 @@ import (
 var (
 	jobShare = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "job_share",
 			Help:      "Share for one job",
 		}, []string{"job_ns", "job_id"},
@@ -32,7 +32,7 @@ var (
 
 	jobRetryCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "job_retry_counts",
 			Help:      "Number of retry counts for one job",
 		}, []string{"job_id"},

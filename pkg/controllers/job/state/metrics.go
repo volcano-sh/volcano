@@ -10,7 +10,7 @@ import (
 var (
 	jobCompletedPhaseCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Subsystem: metrics.VolcanoNamespace,
+			Subsystem: metrics.VolcanoSubSystemName,
 			Name:      "job_completed_phase_count",
 			Help:      "Number of job completed phase",
 		}, []string{"job_name", "queue_name"},
@@ -18,7 +18,7 @@ var (
 
 	jobFailedPhaseCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Subsystem: metrics.VolcanoNamespace,
+			Subsystem: metrics.VolcanoSubSystemName,
 			Name:      "job_failed_phase_count",
 			Help:      "Number of job failed phase",
 		}, []string{"job_name", "queue_name"},
