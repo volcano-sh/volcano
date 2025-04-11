@@ -76,6 +76,8 @@ type ServerOption struct {
 	ListenAddress      string
 	// To determine whether inherit owner's annotations for pods when create podgroup
 	InheritOwnerAnnotations bool
+	// NonVcjobMinMemberSupport can initialize podgroup minMember and minResources for non-vcjobs(deployment/statefulset/daemonset/job).
+	NonVcjobMinMemberSupport bool
 	// WorkerThreadsForPG is the number of threads syncing podgroup operations
 	// The larger the number, the faster the podgroup processing, but requires more CPU load.
 	WorkerThreadsForPG uint32
@@ -124,6 +126,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet, knownControllers []string) {
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.StringVar(&s.ListenAddress, "listen-address", defaultListenAddress, "The address to listen on for HTTP requests.")
 	fs.BoolVar(&s.InheritOwnerAnnotations, "inherit-owner-annotations", true, "Enable inherit owner annotations for pods when create podgroup; it is enabled by default")
+	fs.BoolVar(&s.NonVcjobMinMemberSupport, "non-vcjob-min-member-support", true, "NonVcjobMinMemberSupport can initialize podgroup minMember and minResources for non-vcjobs(deployment/statefulset/daemonset/job).")
 	fs.Uint32Var(&s.WorkerThreadsForPG, "worker-threads-for-podgroup", defaultPodGroupWorkers, "The number of threads syncing podgroup operations. The larger the number, the faster the podgroup processing, but requires more CPU load.")
 	fs.Uint32Var(&s.WorkerThreadsForGC, "worker-threads-for-gc", defaultGCWorkers, "The number of threads for recycling jobs. The larger the number, the faster the job recycling, but requires more CPU load.")
 	fs.Uint32Var(&s.WorkerThreadsForQueue, "worker-threads-for-queue", defaultQueueWorkers, "The number of threads syncing queue operations. The larger the number, the faster the queue processing, but requires more CPU load.")
