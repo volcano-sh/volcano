@@ -73,7 +73,22 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicateFunc, backfill.enablePredicateErrorCache)
+		var predicateNodes []*api.NodeInfo
+		var fitErrors *api.FitErrors
+
+		// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
+		// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
+		if len(task.Pod.Status.NominatedNodeName) > 0 {
+			if nominatedNodeInfo, ok := ssn.Nodes[task.Pod.Status.NominatedNodeName]; ok {
+				predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, predicateFunc, backfill.enablePredicateErrorCache)
+			}
+		}
+
+		// If the nominated node is not found or the nominated node is not suitable for the task, we need to find a suitable node for the task from all nodes.
+		if len(predicateNodes) == 0 {
+			predicateNodes, fitErrors = ph.PredicateNodes(task, ssn.NodeList, predicateFunc, backfill.enablePredicateErrorCache)
+		}
+
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
 			continue
