@@ -21,6 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 )
 
 func TestGetGPUMemoryOfPod(t *testing.T) {
@@ -37,16 +38,16 @@ func TestGetGPUMemoryOfPod(t *testing.T) {
 						{
 							Resources: v1.ResourceRequirements{
 								Limits: v1.ResourceList{
-									VolcanoVGPUNumber: resource.MustParse("1"),
-									VolcanoVGPUMemory: resource.MustParse("3000"),
+									config.VolcanoVGPUNumber: resource.MustParse("1"),
+									config.VolcanoVGPUMemory: resource.MustParse("3000"),
 								},
 							},
 						},
 						{
 							Resources: v1.ResourceRequirements{
 								Limits: v1.ResourceList{
-									VolcanoVGPUNumber: resource.MustParse("3"),
-									VolcanoVGPUMemory: resource.MustParse("5000"),
+									config.VolcanoVGPUNumber: resource.MustParse("3"),
+									config.VolcanoVGPUMemory: resource.MustParse("5000"),
 								},
 							},
 						},

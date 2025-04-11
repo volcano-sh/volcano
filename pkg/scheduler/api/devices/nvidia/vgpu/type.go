@@ -16,9 +16,6 @@ limitations under the License.
 
 package vgpu
 
-var VGPUEnable bool
-var NodeLockEnable bool
-
 const (
 	// DeviceName used to indicate this device
 	DeviceName = "hamivgpu"
@@ -33,19 +30,6 @@ const (
 	DeviceBindPhase                  = "volcano.sh/bind-phase"
 
 	NvidiaGPUDevice = "NVIDIA"
-
-	// VolcanoVGPUMemory extended gpu memory
-	VolcanoVGPUMemory = "volcano.sh/vgpu-memory"
-	// VolcanoVGPUMemoryPercentage extends gpu memory
-	VolcanoVGPUMemoryPercentage = "volcano.sh/vgpu-memory-percentage"
-	// VolcanoVGPUCores indicates utilization percentage of vgpu
-	VolcanoVGPUCores = "volcano.sh/vgpu-cores"
-	// VolcanoVGPUNumber virtual GPU card number
-	VolcanoVGPUNumber = "volcano.sh/vgpu-number"
-	// VolcanoVGPURegister virtual gpu information registered from device-plugin to scheduler
-	VolcanoVGPURegister = "volcano.sh/node-vgpu-register"
-	// VolcanoVGPUHandshake for vgpu
-	VolcanoVGPUHandshake = "volcano.sh/node-vgpu-handshake"
 
 	// PredicateTime is the key of predicate time
 	PredicateTime = "volcano.sh/predicate-time"
@@ -64,6 +48,14 @@ const (
 	DefaultMemPercentage = 101
 	binpackMultiplier    = 100
 	spreadMultiplier     = 100
+
+	vGPUControllerHAMICore = "hami-core"
+	vGPUControllerMIG      = "mig"
+)
+
+var (
+	VGPUEnable     bool
+	NodeLockEnable bool
 )
 
 type ContainerDeviceRequest struct {

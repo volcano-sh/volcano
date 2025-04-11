@@ -28,6 +28,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
+	deviceconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
 
@@ -60,6 +62,12 @@ type GPUDevice struct {
 	UsedMem uint
 	// number of core used
 	UsedCore uint
+	// working node of this GPU
+	Mode string
+	// MigTemplate for this GPU
+	MigTemplate []deviceconfig.Geometry
+	/// MigUsage for this GPU
+	MigUsage deviceconfig.MigInUse
 }
 
 type GPUDevices struct {
@@ -87,20 +95,21 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	if node == nil {
 		return nil
 	}
-	annos, ok := node.Annotations[VolcanoVGPURegister]
+	annos, ok := node.Annotations[deviceconfig.VolcanoVGPURegister]
 	if !ok {
 		return nil
 	}
-	handshake, ok := node.Annotations[VolcanoVGPUHandshake]
+	handshake, ok := node.Annotations[deviceconfig.VolcanoVGPUHandshake]
 	if !ok {
 		return nil
 	}
+	deviceconfig.InitDevicesConfig(config.ConfigMapName)
 	nodedevices := decodeNodeDevices(name, annos)
 	if (nodedevices == nil) || len(nodedevices.Device) == 0 {
 		return nil
 	}
 	for _, val := range nodedevices.Device {
-		klog.V(4).InfoS("Nvidia Device registered name", "name", nodedevices.Name, "val", *val)
+		klog.V(3).InfoS("Nvidia Device registered name", "name", nodedevices.Name, "val", *val)
 		ResetDeviceMetrics(val.UUID, node.Name, float64(val.Memory))
 	}
 
@@ -111,7 +120,7 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 			klog.Infof("node %v device %s leave", node.Name, handshake)
 
 			tmppat := make(map[string]string)
-			tmppat[VolcanoVGPUHandshake] = "Deleted_" + time.Now().Format("2006.01.02 15:04:05")
+			tmppat[deviceconfig.VolcanoVGPUHandshake] = "Deleted_" + time.Now().Format("2006.01.02 15:04:05")
 			patchNodeAnnotations(node, tmppat)
 			return nil
 		}
@@ -119,7 +128,7 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 		return nil
 	} else {
 		tmppat := make(map[string]string)
-		tmppat[VolcanoVGPUHandshake] = "Requesting_" + time.Now().Format("2006.01.02 15:04:05")
+		tmppat[deviceconfig.VolcanoVGPUHandshake] = "Requesting_" + time.Now().Format("2006.01.02 15:04:05")
 		patchNodeAnnotations(node, tmppat)
 	}
 	return nodedevices
@@ -134,7 +143,7 @@ func (gs *GPUDevices) ScoreNode(pod *v1.Pod, schedulePolicy string) float64 {
 }
 
 func (gs *GPUDevices) GetIgnoredDevices() []string {
-	return []string{VolcanoVGPUMemory, VolcanoVGPUMemoryPercentage, VolcanoVGPUCores}
+	return []string{deviceconfig.VolcanoVGPUMemory, deviceconfig.VolcanoVGPUMemoryPercentage, deviceconfig.VolcanoVGPUCores}
 }
 
 // AddResource adds the pod to GPU pool if it is assigned
@@ -248,7 +257,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 
 		annotations[DeviceBindPhase] = "allocating"
 		annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
-		err = patchPodAnnotations(pod, annotations)
+		err = patchPodAnnotations(kubeClient, pod, annotations)
 		if err != nil {
 			return err
 		}
