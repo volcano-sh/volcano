@@ -17,6 +17,7 @@ limitations under the License.
 package queue
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -29,6 +30,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/cli/podgroup"
 )
 
 func getTestQueueHTTPServer(t *testing.T) *httptest.Server {
@@ -137,8 +139,8 @@ func TestGetQueue(t *testing.T) {
 	}
 }
 
-func TestListQueue_empty(t *testing.T) {
-	InitListFlags(&cobra.Command{})
+func TestGetQueue_empty(t *testing.T) {
+	InitGetFlags(&cobra.Command{})
 	server := getTestQueueHTTPServer(t)
 	defer server.Close()
 
@@ -162,8 +164,8 @@ func TestListQueue_empty(t *testing.T) {
 	}
 }
 
-func TestListQueue_nonempty(t *testing.T) {
-	InitListFlags(&cobra.Command{})
+func TestGetQueue_nonempty(t *testing.T) {
+	InitGetFlags(&cobra.Command{})
 	server := getTestQueueListHTTPServer(t)
 	defer server.Close()
 
@@ -190,5 +192,59 @@ func TestListQueue_nonempty(t *testing.T) {
 		if err != nil && err.Error() != testcase.ExpectValue.Error() {
 			t.Errorf("(%s): expected: %v, got %v ", testcase.Name, testcase.ExpectValue, err)
 		}
+	}
+}
+
+func TestListQueue(t *testing.T) {
+	InitListFlags(&cobra.Command{})
+
+	testCases := []struct {
+		name       string
+		queues     *v1beta1.QueueList
+		queueStats map[string]*podgroup.PodGroupStatistics
+		expected   string
+	}{
+		{
+			name: "Single queue with formatting",
+			queues: &v1beta1.QueueList{
+				Items: []v1beta1.Queue{
+					{
+						ObjectMeta: v1.ObjectMeta{
+							Name: "test-queue",
+						},
+						Spec: v1beta1.QueueSpec{
+							Weight: 1,
+							Parent: "root",
+						},
+						Status: v1beta1.QueueStatus{
+							State: v1beta1.QueueStateOpen,
+						},
+					},
+				},
+			},
+			queueStats: map[string]*podgroup.PodGroupStatistics{
+				"test-queue": {
+					Inqueue:   1,
+					Pending:   2,
+					Running:   3,
+					Unknown:   4,
+					Completed: 5,
+				},
+			},
+			expected: `Name                     Weight  State   Parent  Inqueue Pending Running Unknown Completed
+test-queue               1       Open    root    1       2       3       4       5       
+`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			PrintQueues(tc.queues, tc.queueStats, &buf)
+			got := buf.String()
+			if got != tc.expected {
+				t.Errorf("expected %q, got %q", tc.expected, got)
+			}
+		})
 	}
 }

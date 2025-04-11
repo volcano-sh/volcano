@@ -59,6 +59,9 @@ const (
 
 	// State is state of queue
 	State string = "State"
+
+	// Parent of the queue
+	Parent string = "Parent"
 )
 
 var listQueueFlags = &listFlags{}
@@ -110,16 +113,18 @@ func ListQueue(ctx context.Context) error {
 
 // PrintQueues prints queue information.
 func PrintQueues(queues *v1beta1.QueueList, queueStats map[string]*podgroup.PodGroupStatistics, writer io.Writer) {
-	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s%-8s\n",
-		Name, Weight, State, Inqueue, Pending, Running, Unknown, Completed)
+	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s%-8s%-8s\n",
+		Name, Weight, State, Parent, Inqueue, Pending, Running, Unknown, Completed)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)
 	}
 
 	for _, queue := range queues.Items {
-		_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8d%-8d%-8d%-8d%-8d\n",
-			queue.Name, queue.Spec.Weight, queue.Status.State, queueStats[queue.Name].Inqueue, queueStats[queue.Name].Pending,
-			queueStats[queue.Name].Running, queueStats[queue.Name].Unknown, queueStats[queue.Name].Completed)
+		_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8s%-8d%-8d%-8d%-8d%-8d\n",
+			queue.Name, queue.Spec.Weight, queue.Status.State, queue.Spec.Parent,
+			queueStats[queue.Name].Inqueue, queueStats[queue.Name].Pending,
+			queueStats[queue.Name].Running, queueStats[queue.Name].Unknown,
+			queueStats[queue.Name].Completed)
 		if err != nil {
 			fmt.Printf("Failed to print queue command result: %s.\n", err)
 		}
