@@ -180,11 +180,11 @@ func decodePodDevices(str string) []ContainerDevices {
 
 func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 	for _, container := range pod.Spec.Containers {
-		_, ok := container.Resources.Limits[VolcanoVGPUMemory]
+		_, ok := container.Resources.Limits[v1.ResourceName(VGPUMemory)]
 		if ok {
 			return true
 		}
-		_, ok = container.Resources.Limits[VolcanoVGPUNumber]
+		_, ok = container.Resources.Limits[v1.ResourceName(VGPUNumber)]
 		if ok {
 			return true
 		}
@@ -193,10 +193,10 @@ func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 }
 
 func resourcereqs(pod *v1.Pod) []ContainerDeviceRequest {
-	resourceName := v1.ResourceName(VolcanoVGPUNumber)
-	resourceMem := v1.ResourceName(VolcanoVGPUMemory)
+	resourceName := v1.ResourceName(VGPUNumber)
+	resourceMem := v1.ResourceName(VGPUMemory)
 	resourceMemPercentage := v1.ResourceName(VolcanoVGPUMemoryPercentage)
-	resourceCores := v1.ResourceName(VolcanoVGPUCores)
+	resourceCores := v1.ResourceName(VGPUCores)
 	counts := []ContainerDeviceRequest{}
 	//Count Nvidia GPU
 	for i := 0; i < len(pod.Spec.Containers); i++ {
