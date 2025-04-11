@@ -22,7 +22,6 @@ func NewCustomMockSchedulerCache(schedulerName string,
 	evictor Evictor,
 	statusUpdater StatusUpdater,
 	PodGroupBinder BatchBinder,
-	volumeBinder VolumeBinder,
 	recorder record.EventRecorder,
 ) *SchedulerCache {
 	msc := newMockSchedulerCache(schedulerName)
@@ -33,8 +32,6 @@ func NewCustomMockSchedulerCache(schedulerName string,
 	msc.Evictor = evictor
 	msc.StatusUpdater = statusUpdater
 	msc.PodGroupBinder = PodGroupBinder
-	// use custom volume binder
-	msc.VolumeBinder = volumeBinder
 	checkAndSetDefaultInterface(msc)
 	return msc
 }
@@ -77,10 +74,6 @@ func checkAndSetDefaultInterface(sc *SchedulerCache) {
 			kubeclient: sc.kubeClient,
 			vcclient:   sc.vcClient,
 		}
-	}
-	// finally, init default fake volume binder which has dependencies on other informers
-	if sc.VolumeBinder == nil {
-		sc.setDefaultVolumeBinder()
 	}
 }
 
