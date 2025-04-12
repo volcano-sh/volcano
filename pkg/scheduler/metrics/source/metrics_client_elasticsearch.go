@@ -35,6 +35,9 @@ const (
 	esCPUUsageField = "host.cpu.usage"
 	// esMemUsageField is the field name of mem usage in the document
 	esMemUsageField = "system.memory.actual.used.pct"
+
+	// 1MB
+	maxBodySize = 1 << 20
 )
 
 type ElasticsearchMetricsClient struct {
@@ -151,6 +154,7 @@ func (e *ElasticsearchMetricsClient) NodeMetricsAvg(ctx context.Context, nodeNam
 			}
 		} `json:"aggregations"`
 	}
+	res.Body = http.MaxBytesReader(nil, res.Body, maxBodySize)
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
 		return nil, err
 	}
