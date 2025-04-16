@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
@@ -31,16 +33,16 @@ import (
 func TestHyperNodesInfo_UpdateHyperNode_Normal(t *testing.T) {
 	selector := "exact"
 	s0 := BuildHyperNode("s0", 1, []MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, selector},
-		{"node-1", topologyv1alpha1.MemberTypeNode, selector},
+		{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil},
 	})
 	s1 := BuildHyperNode("s1", 1, []MemberConfig{
-		{"node-2", topologyv1alpha1.MemberTypeNode, selector},
-		{"node-3", topologyv1alpha1.MemberTypeNode, selector},
+		{"node-2", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{"node-3", topologyv1alpha1.MemberTypeNode, selector, nil},
 	})
 	s2 := BuildHyperNode("s2", 2, []MemberConfig{
-		{"s1", topologyv1alpha1.MemberTypeHyperNode, selector},
-		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector},
+		{"s1", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
+		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
 	initialHyperNodes := []*topologyv1alpha1.HyperNode{s2, s0, s1}
 
@@ -96,19 +98,19 @@ func TestHyperNodesInfo_UpdateHyperNode_Normal(t *testing.T) {
 func TestHyperNodesInfo_UpdateHyperNode_WithCycle(t *testing.T) {
 	selector := "exact"
 	s0 := BuildHyperNode("s0", 1, []MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, selector},
-		{"node-1", topologyv1alpha1.MemberTypeNode, selector}})
+		{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil}})
 	s1 := BuildHyperNode("s1", 2, []MemberConfig{
-		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector},
-		{"s3", topologyv1alpha1.MemberTypeHyperNode, selector}})
+		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
+		{"s3", topologyv1alpha1.MemberTypeHyperNode, selector, nil}})
 	s11 := BuildHyperNode("s1", 2, []MemberConfig{
-		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector},
+		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
 	s2 := BuildHyperNode("s2", 3, []MemberConfig{
-		{"s1", topologyv1alpha1.MemberTypeHyperNode, selector},
+		{"s1", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
 	s3 := BuildHyperNode("s3", 4, []MemberConfig{
-		{"s2", topologyv1alpha1.MemberTypeHyperNode, selector},
+		{"s2", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
 	initialHyperNodes := []*topologyv1alpha1.HyperNode{s2, s0, s1, s3}
 
@@ -260,32 +262,32 @@ func TestHyperNodesInfo_GetRegexSelectorLeafHyperNodes(t *testing.T) {
 	exactSelector := "exact"
 	regexSelector := "regex"
 	s0 := BuildHyperNode("s0", 1, []MemberConfig{
-		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector},
-		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector},
+		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
 	s1 := BuildHyperNode("s1", 1, []MemberConfig{
-		{"node-2", topologyv1alpha1.MemberTypeNode, regexSelector},
-		{"node-3", topologyv1alpha1.MemberTypeNode, regexSelector},
+		{"node-2", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
+		{"node-3", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
 	})
 	s2 := BuildHyperNode("s2", 1, []MemberConfig{
-		{"node-4", topologyv1alpha1.MemberTypeNode, regexSelector},
-		{"node-5", topologyv1alpha1.MemberTypeHyperNode, exactSelector},
+		{"node-4", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
+		{"node-5", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
 	s3 := BuildHyperNode("s3", 1, []MemberConfig{
-		{"node-6", topologyv1alpha1.MemberTypeNode, regexSelector},
-		{"node-7", topologyv1alpha1.MemberTypeNode, exactSelector},
+		{"node-6", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
+		{"node-7", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
 	s4 := BuildHyperNode("s4", 2, []MemberConfig{
-		{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector},
-		{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector},
+		{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
 	s5 := BuildHyperNode("s5", 2, []MemberConfig{
-		{"s2", topologyv1alpha1.MemberTypeHyperNode, regexSelector},
-		{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector},
+		{"s2", topologyv1alpha1.MemberTypeHyperNode, regexSelector, nil},
+		{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
 	s6 := BuildHyperNode("s6", 3, []MemberConfig{
-		{"s4", topologyv1alpha1.MemberTypeHyperNode, exactSelector},
-		{"s5", topologyv1alpha1.MemberTypeHyperNode, exactSelector},
+		{"s4", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{"s5", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
 	})
 	tests := []struct {
 		name      string
@@ -304,7 +306,7 @@ func TestHyperNodesInfo_GetRegexSelectorLeafHyperNodes(t *testing.T) {
 			for _, hn := range tt.hyperNods {
 				hni.hyperNodes[hn.Name] = NewHyperNodeInfo(hn)
 			}
-			assert.Equalf(t, tt.want, hni.GetRegexSelectorLeafHyperNodes(), "GetRegexSelcectorLeafHyperNodes()")
+			assert.Equalf(t, tt.want, hni.GetRegexOrLabelMatchLeafHyperNodes(), "GetRegexSelcectorLeafHyperNodes()")
 		})
 	}
 }
@@ -312,19 +314,19 @@ func TestHyperNodesInfo_GetRegexSelectorLeafHyperNodes(t *testing.T) {
 func TestHyperNodesInfo_GetLeafNodes(t *testing.T) {
 	selector := "exact"
 	s0 := BuildHyperNode("s0", 1, []MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, selector},
-		{"node-1", topologyv1alpha1.MemberTypeNode, selector},
+		{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil},
 	})
 	s1 := BuildHyperNode("s1", 1, []MemberConfig{
-		{"node-2", topologyv1alpha1.MemberTypeNode, selector},
-		{"node-3", topologyv1alpha1.MemberTypeNode, selector},
+		{"node-2", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{"node-3", topologyv1alpha1.MemberTypeNode, selector, nil},
 	})
 	s2 := BuildHyperNode("s2", 2, []MemberConfig{
-		{"s1", topologyv1alpha1.MemberTypeHyperNode, selector},
-		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector},
+		{"s1", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
+		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
 	s3 := BuildHyperNode("s3", 3, []MemberConfig{
-		{"s2", topologyv1alpha1.MemberTypeHyperNode, selector},
+		{"s2", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
 	initialHyperNodes := []*topologyv1alpha1.HyperNode{s2, s3, s0, s1}
 
@@ -358,25 +360,51 @@ func TestHyperNodesInfo_GetLeafNodes(t *testing.T) {
 	}
 }
 
-func TestHyperNodesInfo_NodeRegexMatchHyperNode(t *testing.T) {
+func TestHyperNodesInfo_NodeRegexOrLabelMatchHyperNode(t *testing.T) {
 	exactSelector := "exact"
 	regexSelector := "regex"
+	labelSelector := "label"
 	s0 := BuildHyperNode("s0", 1, []MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector},
-		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector},
+		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
 	})
 	s1 := BuildHyperNode("s1", 1, []MemberConfig{
-		{"^prefix", topologyv1alpha1.MemberTypeNode, regexSelector},
-		{"node-2", topologyv1alpha1.MemberTypeNode, regexSelector},
+		{"^prefix", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
+		{"node-2", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
 	})
 	s2 := BuildHyperNode("s2", 1, []MemberConfig{
-		{"^not-match-prefix", topologyv1alpha1.MemberTypeHyperNode, regexSelector},
-		{"node-3", topologyv1alpha1.MemberTypeNode, regexSelector},
+		{"^not-match-prefix", topologyv1alpha1.MemberTypeHyperNode, regexSelector, nil},
+		{"node-3", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
 	})
 	s3 := BuildHyperNode("s3", 1, []MemberConfig{
-		{"node-4", topologyv1alpha1.MemberTypeHyperNode, regexSelector},
+		{"node-4", topologyv1alpha1.MemberTypeHyperNode, regexSelector, nil},
 	})
-	initialHyperNodes := []*topologyv1alpha1.HyperNode{s2, s3, s0, s1}
+	s4 := BuildHyperNode("s4", 1, []MemberConfig{
+		{"node-5", topologyv1alpha1.MemberTypeNode, labelSelector, &metav1.LabelSelector{
+			MatchLabels: map[string]string{"role": "worker"},
+		}},
+	})
+	s5 := BuildHyperNode("s5", 1, []MemberConfig{
+		{"node-5", topologyv1alpha1.MemberTypeNode, labelSelector, &metav1.LabelSelector{
+			MatchLabels: map[string]string{"role": "invalid-role"},
+		}},
+	})
+	s6 := BuildHyperNode("s6", 1, []MemberConfig{
+		{"node-6", topologyv1alpha1.MemberTypeNode, labelSelector, &metav1.LabelSelector{
+			MatchExpressions: []metav1.LabelSelectorRequirement{
+				{
+					Key:      "role",
+					Operator: metav1.LabelSelectorOpIn,
+					Values:   []string{"master"},
+				},
+			},
+		}},
+	})
+	initialHyperNodes := []*topologyv1alpha1.HyperNode{s2, s3, s0, s1, s4, s5, s6}
+
+	n5 := buildNode("node-5", map[string]string{"role": "worker"}, nil)
+	n6 := buildNode("node-6", map[string]string{"role": "master"}, nil)
+	initialNodes := []*corev1.Node{n5, n6}
 
 	tests := []struct {
 		name          string
@@ -385,6 +413,13 @@ func TestHyperNodesInfo_NodeRegexMatchHyperNode(t *testing.T) {
 		expectedMatch bool
 		expectedErr   bool
 	}{
+		{
+			name:          "match",
+			nodeName:      "node-5",
+			hyperNodeName: "s4",
+			expectedMatch: true,
+			expectedErr:   false,
+		},
 		{
 			name:          "not match",
 			nodeName:      "node-0",
@@ -427,19 +462,37 @@ func TestHyperNodesInfo_NodeRegexMatchHyperNode(t *testing.T) {
 			expectedMatch: false,
 			expectedErr:   false,
 		},
+		{
+			name:          "not match",
+			nodeName:      "node-5",
+			hyperNodeName: "s5",
+			expectedMatch: false,
+			expectedErr:   false,
+		},
+		{
+			name:          "match",
+			nodeName:      "node-6",
+			hyperNodeName: "s6",
+			expectedMatch: true,
+			expectedErr:   false,
+		},
 	}
 
 	informerFactory := informers.NewSharedInformerFactory(fakeclientset.NewClientset(), 0)
-	nodeLister := informerFactory.Core().V1().Nodes().Lister()
-	hni := NewHyperNodesInfo(nodeLister)
+	nodeInformer := informerFactory.Core().V1().Nodes()
+	hni := NewHyperNodesInfo(nodeInformer.Lister())
 	for _, node := range initialHyperNodes {
 		err := hni.UpdateHyperNode(node)
+		assert.NoError(t, err)
+	}
+	for _, node := range initialNodes {
+		err := nodeInformer.Informer().GetStore().Add(node)
 		assert.NoError(t, err)
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			match, err := hni.NodeRegexMatchLeafHyperNode(tt.nodeName, tt.hyperNodeName)
+			match, err := hni.NodeRegexOrLabelMatchLeafHyperNode(tt.nodeName, tt.hyperNodeName)
 			assert.Equal(t, tt.expectedMatch, match)
 			assert.Equal(t, tt.expectedErr, err != nil)
 		})
@@ -449,22 +502,22 @@ func TestHyperNodesInfo_NodeRegexMatchHyperNode(t *testing.T) {
 func TestHyperNodesInfo_GetAncestors(t *testing.T) {
 	selector := "exact"
 	s0 := BuildHyperNode("s0", 1, []MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, selector},
-		{"node-1", topologyv1alpha1.MemberTypeNode, selector},
+		{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil},
 	})
 	s1 := BuildHyperNode("s1", 1, []MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, selector},
-		{"node-1", topologyv1alpha1.MemberTypeNode, selector},
+		{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil},
 	})
 	s2 := BuildHyperNode("s2", 2, []MemberConfig{
-		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector},
-		{"s1", topologyv1alpha1.MemberTypeHyperNode, selector},
+		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
+		{"s1", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
 	s3 := BuildHyperNode("s3", 3, []MemberConfig{
-		{"s2", topologyv1alpha1.MemberTypeHyperNode, selector},
+		{"s2", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
 	s4 := BuildHyperNode("s4", 4, []MemberConfig{
-		{"s3", topologyv1alpha1.MemberTypeHyperNode, selector},
+		{"s3", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})
 	initialHyperNodes := []*topologyv1alpha1.HyperNode{s0, s4, s1, s2, s3}
 
@@ -515,37 +568,37 @@ func TestGetLCAHyperNode(t *testing.T) {
 	selector := "exact"
 	hnim := HyperNodeInfoMap{
 		"s0": {parent: "s4", tier: 1, HyperNode: BuildHyperNode("s0", 1, []MemberConfig{
-			{"node-0", topologyv1alpha1.MemberTypeNode, selector},
-			{"node-1", topologyv1alpha1.MemberTypeNode, selector},
+			{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil},
+			{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil},
 		})},
 		"s1": {parent: "s4", tier: 1, HyperNode: BuildHyperNode("s1", 1, []MemberConfig{
-			{"node-2", topologyv1alpha1.MemberTypeNode, selector},
-			{"node-3", topologyv1alpha1.MemberTypeNode, selector},
+			{"node-2", topologyv1alpha1.MemberTypeNode, selector, nil},
+			{"node-3", topologyv1alpha1.MemberTypeNode, selector, nil},
 		})},
 		"s2": {parent: "s5", tier: 1, HyperNode: BuildHyperNode("s2", 1, []MemberConfig{
-			{"node-4", topologyv1alpha1.MemberTypeNode, selector},
-			{"node-5", topologyv1alpha1.MemberTypeNode, selector},
+			{"node-4", topologyv1alpha1.MemberTypeNode, selector, nil},
+			{"node-5", topologyv1alpha1.MemberTypeNode, selector, nil},
 		})},
 		"s3": {parent: "s5", tier: 1, HyperNode: BuildHyperNode("s3", 1, []MemberConfig{
-			{"node-6", topologyv1alpha1.MemberTypeNode, selector},
-			{"node-7", topologyv1alpha1.MemberTypeNode, selector},
+			{"node-6", topologyv1alpha1.MemberTypeNode, selector, nil},
+			{"node-7", topologyv1alpha1.MemberTypeNode, selector, nil},
 		})},
 		"s4": {parent: "s6", tier: 2, HyperNode: BuildHyperNode("s4", 2, []MemberConfig{
-			{"s0", topologyv1alpha1.MemberTypeHyperNode, selector},
-			{"s1", topologyv1alpha1.MemberTypeHyperNode, selector},
+			{"s0", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
+			{"s1", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 		})},
 		"s5": {parent: "s6", tier: 2, HyperNode: BuildHyperNode("s5", 2, []MemberConfig{
-			{"s2", topologyv1alpha1.MemberTypeHyperNode, selector},
-			{"s3", topologyv1alpha1.MemberTypeHyperNode, selector},
+			{"s2", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
+			{"s3", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 		})},
 		"s6": {parent: "", tier: 3, HyperNode: BuildHyperNode("s6", 3, []MemberConfig{
-			{"s4", topologyv1alpha1.MemberTypeHyperNode, selector},
-			{"s5", topologyv1alpha1.MemberTypeHyperNode, selector},
+			{"s4", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
+			{"s5", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 		})},
 		// s-orphan is an orphan hypernode that does not have parent
 		"s-orphan": {parent: "", tier: 1, HyperNode: BuildHyperNode("s-orphan", 1, []MemberConfig{
-			{"node-8", topologyv1alpha1.MemberTypeNode, selector},
-			{"node-9", topologyv1alpha1.MemberTypeNode, selector},
+			{"node-8", topologyv1alpha1.MemberTypeNode, selector, nil},
+			{"node-9", topologyv1alpha1.MemberTypeNode, selector, nil},
 		})},
 	}
 
@@ -585,6 +638,295 @@ func TestGetLCAHyperNode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			lca := hnim.GetLCAHyperNode(tt.hypernode, tt.jobHyperNode)
 			assert.Equal(t, tt.expectedLCA, lca)
+		})
+	}
+}
+
+func TestGetMembers(t *testing.T) {
+	type testCase struct {
+		name     string
+		selector topologyv1alpha1.MemberSelector
+		nodes    []*corev1.Node
+		expected sets.Set[string]
+	}
+
+	testCases := []testCase{
+		{
+			name: "Label match success with MatchLabels",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"role": "worker",
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string]("node1"),
+		},
+		{
+			name: "Label match failure with MatchLabels",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"role": "invalid-role",
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string](),
+		},
+		{
+			name: "Label selector is nil",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: nil,
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string](),
+		},
+		{
+			name: "Label selector is not nil, but MatchLabels and MatchExpressions is empty",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: nil,
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string](),
+		},
+		{
+			name: "MatchExpressions In operator match success",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "role",
+							Operator: metav1.LabelSelectorOpIn,
+							Values:   []string{"worker"},
+						},
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string]("node1"),
+		},
+		{
+			name: "MatchExpressions In operator match failure",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "role",
+							Operator: metav1.LabelSelectorOpIn,
+							Values:   []string{"invalid-role"},
+						},
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string](),
+		},
+		{
+			name: "MatchExpressions NotIn operator match success",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "role",
+							Operator: metav1.LabelSelectorOpNotIn,
+							Values:   []string{"master"},
+						},
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node2",
+						Labels: map[string]string{
+							"role": "master",
+						},
+					},
+				},
+			},
+			expected: sets.New[string]("node1"),
+		},
+		{
+			name: "MatchExpressions Exists operator match success",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "role",
+							Operator: metav1.LabelSelectorOpExists,
+						},
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "node2",
+						Labels: map[string]string{},
+					},
+				},
+			},
+			expected: sets.New[string]("node1"),
+		},
+		{
+			name: "MatchExpressions DoesNotExist operator match success",
+			selector: topologyv1alpha1.MemberSelector{
+				LabelMatch: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "role",
+							Operator: metav1.LabelSelectorOpDoesNotExist,
+						},
+					},
+				},
+			},
+			nodes: []*corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"role": "worker",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "node2",
+						Labels: map[string]string{},
+					},
+				},
+			},
+			expected: sets.New[string]("node2"),
+		},
+	}
+
+	hyperNodesInfor := HyperNodesInfo{}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := hyperNodesInfor.getMembers(tc.selector, tc.nodes)
+			if !result.Equal(tc.expected) {
+				t.Errorf("Test %s failed: Expected %v, but got %v", tc.name, tc.expected, result)
+			}
 		})
 	}
 }

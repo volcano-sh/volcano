@@ -28,10 +28,11 @@ import (
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 )
 
-func buildNode(name string, alloc v1.ResourceList) *v1.Node {
+func buildNode(name string, labels map[string]string, alloc v1.ResourceList) *v1.Node {
 	return &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: labels,
 		},
 		Status: v1.NodeStatus{
 			Capacity:    alloc,
@@ -137,9 +138,10 @@ func BuildPodgroup(name, ns string, minMember int32, minResource v1.ResourceList
 }
 
 type MemberConfig struct {
-	Name     string
-	Type     topologyv1alpha1.MemberType
-	Selector string
+	Name          string
+	Type          topologyv1alpha1.MemberType
+	Selector      string
+	LabelSelector *metav1.LabelSelector
 }
 
 func BuildHyperNode(name string, tier int, members []MemberConfig) *topologyv1alpha1.HyperNode {
@@ -162,6 +164,8 @@ func BuildHyperNode(name string, tier int, members []MemberConfig) *topologyv1al
 			memberSpec.Selector.ExactMatch = &topologyv1alpha1.ExactMatch{Name: member.Name}
 		case "regex":
 			memberSpec.Selector.RegexMatch = &topologyv1alpha1.RegexMatch{Pattern: member.Name}
+		case "label":
+			memberSpec.Selector.LabelMatch = member.LabelSelector
 		default:
 			return nil
 		}
