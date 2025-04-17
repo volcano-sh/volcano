@@ -569,9 +569,9 @@ func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskIndex int, job *batc
 	dependsOn := *job.Spec.Tasks[taskIndex].DependsOn
 	switch dependsOn.Iteration {
 	case batch.IterationAny:
-		// any ready to create task, return true
-		for _, task := range dependsOn.Name {
-			if cc.isDependsOnPodsReady(task, job) {
+		// any ready to create task, return truechi
+		for _, taskName := range dependsOn.Name {
+			if cc.isDependsOnPodsReady(taskName, job) {
 				return true
 			}
 		}
