@@ -51,6 +51,7 @@ type pgcontroller struct {
 	podInformer coreinformers.PodInformer
 	pgInformer  schedulinginformer.PodGroupInformer
 	rsInformer  appinformers.ReplicaSetInformer
+	stsInformer appinformers.StatefulSetInformer
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -64,7 +65,8 @@ type pgcontroller struct {
 	pgSynced func() bool
 
 	// A store of replicaset
-	rsSynced func() bool
+	rsSynced  func() bool
+	stsSynced func() bool
 
 	queue workqueue.TypedRateLimitingInterface[podRequest]
 
@@ -111,6 +113,13 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 		pg.rsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    pg.addReplicaSet,
 			UpdateFunc: pg.updateReplicaSet,
+		})
+
+		pg.stsInformer = pg.informerFactory.Apps().V1().StatefulSets()
+		pg.stsSynced = pg.stsInformer.Informer().HasSynced
+		pg.stsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    pg.addStatefulSet,
+			UpdateFunc: pg.updateStatefulSet,
 		})
 	}
 	return nil
