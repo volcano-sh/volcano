@@ -38,8 +38,8 @@ func TestBuildHyperNode(t *testing.T) {
 			hyperNodeName: "s0",
 			tier:          1,
 			members: []MemberConfig{
-				{"node-1", topologyv1alpha1.MemberTypeNode, "regex"},
-				{"node-2", topologyv1alpha1.MemberTypeNode, "exact"},
+				{"node-1", topologyv1alpha1.MemberTypeNode, "regex", nil},
+				{"node-2", topologyv1alpha1.MemberTypeNode, "exact", nil},
 			},
 			want: &topologyv1alpha1.HyperNode{
 				ObjectMeta: metav1.ObjectMeta{
@@ -59,8 +59,8 @@ func TestBuildHyperNode(t *testing.T) {
 			hyperNodeName: "s4",
 			tier:          2,
 			members: []MemberConfig{
-				{"s0", topologyv1alpha1.MemberTypeHyperNode, "exact"},
-				{"s1", topologyv1alpha1.MemberTypeHyperNode, "exact"},
+				{"s0", topologyv1alpha1.MemberTypeHyperNode, "exact", nil},
+				{"s1", topologyv1alpha1.MemberTypeHyperNode, "exact", nil},
 			},
 			want: &topologyv1alpha1.HyperNode{
 				ObjectMeta: metav1.ObjectMeta{

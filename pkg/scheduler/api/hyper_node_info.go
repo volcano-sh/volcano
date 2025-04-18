@@ -372,8 +372,8 @@ func (hni *HyperNodesInfo) findLeafNodesWithCycleCheck(hyperNodeName string, lea
 	}
 }
 
-// GetRegexSelectorLeafHyperNodes returns leaf hyperNodes whose member's selector is regex match.
-func (hni *HyperNodesInfo) GetRegexSelectorLeafHyperNodes() sets.Set[string] {
+// GetRegexOrLabelMatchLeafHyperNodes returns leaf hyperNodes whose member's selector is regex or label match.
+func (hni *HyperNodesInfo) GetRegexOrLabelMatchLeafHyperNodes() sets.Set[string] {
 	leaf := sets.New[string]()
 	for name, hnInfo := range hni.hyperNodes {
 		if hnInfo == nil || hnInfo.HyperNode == nil {
@@ -381,17 +381,17 @@ func (hni *HyperNodesInfo) GetRegexSelectorLeafHyperNodes() sets.Set[string] {
 		}
 
 		isLeaf := true
-		hasRegexMatch := false
+		hasMatch := false
 		for _, member := range hnInfo.HyperNode.Spec.Members {
 			if member.Type == topologyv1alpha1.MemberTypeHyperNode {
 				isLeaf = false
 				break
 			}
-			if member.Selector.RegexMatch != nil {
-				hasRegexMatch = true
+			if member.Selector.RegexMatch != nil || member.Selector.LabelMatch != nil {
+				hasMatch = true
 			}
 		}
-		if isLeaf && hasRegexMatch {
+		if isLeaf && hasMatch {
 			leaf.Insert(name)
 		}
 	}
@@ -447,6 +447,24 @@ func (hni *HyperNodesInfo) getMembers(selector topologyv1alpha1.MemberSelector, 
 			}
 		}
 	}
+
+	if selector.LabelMatch != nil {
+		if len(selector.LabelMatch.MatchLabels) == 0 && len(selector.LabelMatch.MatchExpressions) == 0 {
+			return members
+		}
+		labelSelector, err := metav1.LabelSelectorAsSelector(selector.LabelMatch)
+		if err != nil {
+			klog.ErrorS(err, "Failed to convert labelMatch to labelSelector", "LabelMatch", selector.LabelMatch)
+			return sets.Set[string]{}
+		}
+		for _, node := range nodes {
+			nodeLabels := labels.Set(node.Labels)
+			if labelSelector.Matches(nodeLabels) {
+				members.Insert(node.Name)
+			}
+		}
+	}
+
 	return members
 }
 
@@ -586,8 +604,8 @@ func (hni *HyperNodesInfo) HyperNodesInfo() map[string]string {
 	return actualHyperNodes
 }
 
-// NodeRegexMatchLeafHyperNode checks if a given node regex matches the MemberSelector of a HyperNode.
-func (hni *HyperNodesInfo) NodeRegexMatchLeafHyperNode(nodeName string, hyperNodeName string) (bool, error) {
+// NodeRegexOrLabelMatchLeafHyperNode checks if a given node matches the MemberSelector of a HyperNode.
+func (hni *HyperNodesInfo) NodeRegexOrLabelMatchLeafHyperNode(nodeName string, hyperNodeName string) (bool, error) {
 	hn, ok := hni.hyperNodes[hyperNodeName]
 	if !ok {
 		return false, fmt.Errorf("HyperNode %s not found in cache", hyperNodeName)
@@ -595,7 +613,7 @@ func (hni *HyperNodesInfo) NodeRegexMatchLeafHyperNode(nodeName string, hyperNod
 
 	for _, member := range hn.HyperNode.Spec.Members {
 		if member.Type == topologyv1alpha1.MemberTypeNode {
-			if hni.nodeMatchRegexSelector(nodeName, member.Selector) {
+			if hni.nodeMatchSelector(nodeName, member.Selector) {
 				return true, nil
 			}
 		}
@@ -603,18 +621,41 @@ func (hni *HyperNodesInfo) NodeRegexMatchLeafHyperNode(nodeName string, hyperNod
 	return false, nil
 }
 
-// nodeMatchRegexSelector checks if a node matches a MemberSelector.
-func (hni *HyperNodesInfo) nodeMatchRegexSelector(nodeName string, selector topologyv1alpha1.MemberSelector) bool {
-	if selector.RegexMatch == nil {
+// nodeMatchSelector checks if a node matches a MemberSelector.
+func (hni *HyperNodesInfo) nodeMatchSelector(nodeName string, selector topologyv1alpha1.MemberSelector) bool {
+	if selector.RegexMatch == nil && selector.LabelMatch == nil {
 		return false
 	}
 
-	reg, err := regexp.Compile(selector.RegexMatch.Pattern)
-	if err != nil {
-		klog.ErrorS(err, "Failed to compile regex pattern", "pattern", selector.RegexMatch.Pattern)
-		return false
+	if selector.RegexMatch != nil {
+		reg, err := regexp.Compile(selector.RegexMatch.Pattern)
+		if err != nil {
+			klog.ErrorS(err, "Failed to compile regex pattern", "pattern", selector.RegexMatch.Pattern)
+			return false
+		}
+		return reg.MatchString(nodeName)
 	}
-	return reg.MatchString(nodeName)
+	if selector.LabelMatch != nil {
+		if len(selector.LabelMatch.MatchLabels) == 0 && len(selector.LabelMatch.MatchExpressions) == 0 {
+			return false
+		}
+		labelSelector, err := metav1.LabelSelectorAsSelector(selector.LabelMatch)
+		if err != nil {
+			klog.ErrorS(err, "Failed to convert labelMatch to labelSelector", "LabelMatch", selector.LabelMatch)
+			return false
+		}
+		node, err := hni.nodeLister.Get(nodeName)
+
+		if err != nil {
+			klog.ErrorS(err, "Failed to get node", "nodeName", nodeName)
+			return false
+		}
+		nodeLabels := labels.Set(node.Labels)
+		if labelSelector.Matches(nodeLabels) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetAncestors returns all ancestors of a given HyperNode.
