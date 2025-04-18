@@ -4,13 +4,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/controllers/util"
 )
 
 var (
 	jobCompletedPhaseCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Subsystem: metrics.VolcanoSubSystemName,
+			Subsystem: util.VolcanoSubSystemName,
 			Name:      "job_completed_phase_count",
 			Help:      "Number of job completed phase",
 		}, []string{"job_name", "queue_name"},
@@ -18,7 +18,7 @@ var (
 
 	jobFailedPhaseCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Subsystem: metrics.VolcanoSubSystemName,
+			Subsystem: util.VolcanoSubSystemName,
 			Name:      "job_failed_phase_count",
 			Help:      "Number of job failed phase",
 		}, []string{"job_name", "queue_name"},
