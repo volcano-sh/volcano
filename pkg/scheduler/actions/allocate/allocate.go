@@ -182,7 +182,6 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		klog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v/%v>",
 			tasks.Len(), job.Namespace, job.Name)
 
-		// hardMode, highestAllowedTier := job.HasTopologyHardConstrain()
 		var stmt *framework.Statement
 		var tasksQueue *util.PriorityQueue
 		if job.EnableTopology() {
@@ -414,7 +413,8 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			// normal vc job without networkTopology has no hyperNode, skip node scores accumulation.
 			alloc.sumNodeScoresInHyperNode(string(job.UID), hyperNode, highestScore)
 		}
-		if softMode {
+
+		if err := alloc.allocateResourcesForTask(stmt, task, bestNode, job); err == nil && softMode {
 			hyperNode = util.FindHyperNodeForNode(bestNode.Name, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
 			if hyperNode != "" {
 				if jobAllocatedNewHyperNode == "" {
@@ -424,7 +424,6 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 				}
 			}
 		}
-		alloc.allocateResourcesForTask(stmt, task, bestNode, job)
 
 		if ssn.JobReady(job) && !tasks.Empty() {
 			break
@@ -434,7 +433,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 	if ssn.JobReady(job) {
 		klog.V(3).InfoS("Job ready, return statement", "jobName", job.UID)
 		if softMode {
-			if jobAllocatedNewHyperNode != "" && jobAllocatedNewHyperNode != jobAllocatedHyperNode {
+			if jobAllocatedNewHyperNode != jobAllocatedHyperNode {
 				job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode] = jobAllocatedNewHyperNode
 			}
 		}
@@ -508,11 +507,11 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 	return bestNode, higestScore
 }
 
-func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) {
+func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) (err error) {
 	// Allocate idle resource to the task.
 	if task.InitResreq.LessEqual(node.Idle, api.Zero) {
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
-		if err := stmt.Allocate(task, node); err != nil {
+		if err = stmt.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 				task.UID, node.Name, alloc.session.UID, err)
 			if rollbackErr := stmt.UnAllocate(task); rollbackErr != nil {
@@ -533,7 +532,7 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 	if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 		klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 			task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
-		if err := stmt.Pipeline(task, node.Name, false); err != nil {
+		if err = stmt.Pipeline(task, node.Name, false); err != nil {
 			klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 				task.UID, node.Name, alloc.session.UID, err)
 		} else {
@@ -541,6 +540,7 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 			metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 		}
 	}
+	return
 }
 
 func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {

@@ -1063,7 +1063,7 @@ func (ji *JobInfo) HasTopologyHardConstrain() (bool, int) {
 	return ji.PodGroup.Spec.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode, *ji.PodGroup.Spec.NetworkTopology.HighestTierAllowed
 }
 
-// HasTopologyHardConstrain return pg's NetworkTopologies mode and highest allowed tier.
+// EnableTopology returns whether the job has configured network topologies
 func (ji *JobInfo) EnableTopology() bool {
 	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopology == nil {
 		return false
