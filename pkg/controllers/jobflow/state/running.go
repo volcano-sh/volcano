@@ -27,6 +27,7 @@ func (p *runningState) Execute(action v1alpha1.Action) error {
 	case v1alpha1.SyncJobFlowAction:
 		return SyncJobFlow(p.jobFlow, func(status *v1alpha1.JobFlowStatus, allJobList int) {
 			if len(status.CompletedJobs) == allJobList {
+				UpdateJobFlowSucceed(p.jobFlow.Namespace)
 				status.State.Phase = v1alpha1.Succeed
 			}
 		})
