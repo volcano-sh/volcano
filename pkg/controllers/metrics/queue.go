@@ -5,13 +5,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	"volcano.sh/volcano/pkg/scheduler/metrics"
+	"volcano.sh/volcano/pkg/controllers/util"
 )
 
 var (
 	queuePodGroupInqueue = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: metrics.VolcanoSubSystemName,
+			Subsystem: util.VolcanoSubSystemName,
 			Name:      "queue_pod_group_inqueue_count",
 			Help:      "The number of Inqueue PodGroup in this queue",
 		}, []string{"queue_name"},
@@ -19,7 +19,7 @@ var (
 
 	queuePodGroupPending = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: metrics.VolcanoSubSystemName,
+			Subsystem: util.VolcanoSubSystemName,
 			Name:      "queue_pod_group_pending_count",
 			Help:      "The number of Pending PodGroup in this queue",
 		}, []string{"queue_name"},
@@ -27,7 +27,7 @@ var (
 
 	queuePodGroupRunning = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: metrics.VolcanoSubSystemName,
+			Subsystem: util.VolcanoSubSystemName,
 			Name:      "queue_pod_group_running_count",
 			Help:      "The number of Running PodGroup in this queue",
 		}, []string{"queue_name"},
@@ -35,7 +35,7 @@ var (
 
 	queuePodGroupUnknown = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: metrics.VolcanoSubSystemName,
+			Subsystem: util.VolcanoSubSystemName,
 			Name:      "queue_pod_group_unknown_count",
 			Help:      "The number of Unknown PodGroup in this queue",
 		}, []string{"queue_name"},
@@ -43,7 +43,7 @@ var (
 
 	queuePodGroupCompleted = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: metrics.VolcanoSubSystemName,
+			Subsystem: util.VolcanoSubSystemName,
 			Name:      "queue_pod_group_completed_count",
 			Help:      "The number of Completed PodGroup in this queue",
 		}, []string{"queue_name"},

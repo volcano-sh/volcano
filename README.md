@@ -14,20 +14,15 @@
 [![Gurubase](https://img.shields.io/badge/Gurubase-Ask%20Volcano%20Guru-006BFF)](https://gurubase.io/g/volcano)
 
 
-[Volcano](https://volcano.sh/) is a batch system built on Kubernetes. It provides a suite of mechanisms that are commonly required by
-many classes of batch & elastic workload including: machine learning/deep learning, bioinformatics/genomics and
-other "big data" applications. These types of applications typically run on generalized domain frameworks like
-TensorFlow, Spark, Ray, PyTorch, MPI, etc, which Volcano integrates with.
 
-Volcano builds upon a decade and a half of experience running a wide
-variety of high performance workloads at scale using several systems
-and platforms, combined with best-of-breed ideas and practices from
-the open source community.
+[Volcano](https://volcano.sh/) is a Kubernetes-native batch scheduling system, extending and enhancing the capabilities of the standard kube-scheduler. It provides a comprehensive set of features specifically designed to manage and optimize various batch and elastic workloads, including Artificial Intelligence (AI) / machine learning (ML) / deep learning (DL), bioinformatics / genomics, and other "Big Data" applications.
 
-Until June 2021, Volcano has been widely used around the world at a variety of industries such as Internet/Cloud/Finance/
-Manufacturing/Medical. More than 20 companies or institutions are not only end users but also active contributors. Hundreds
-of contributors are taking active part in the code commit/PR review/issue discussion/docs update and design provision. We
-are looking forward to your participation.
+These workloads commonly leverage AI, Big Data, and HPC frameworks such as Spark, Flink, Ray, TensorFlow, PyTorch, Argo, MindSpore, PaddlePaddle, Kubeflow, MPI, Horovod, MXNet, KubeGene, and others, with which Volcano offers robust integration.
+
+Volcano incorporates over fifteen years of collective experience in operating diverse high-performance workloads at scale across multiple systems and platforms. It combines proven best practices and innovative concepts from the open-source community to deliver a powerful and flexible scheduling solution.
+
+As of 2025, Volcano has seen widespread adoption across numerous industries globally, including Internet/Cloud, Finance, Manufacturing, and Medical sectors. Many organizations and institutions are not only end-users but also active contributors to the project. Hundreds of contributors actively participate in code commits, pull request reviews, issue discussions, documentation updates, and design proposals. We encourage your participation in the ongoing development and growth of the Volcano project.
+
 
 **NOTE**: the scheduler is built based on [kube-batch](https://github.com/kubernetes-sigs/kube-batch);
 refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](https://github.com/volcano-sh/volcano/pull/288) for more detail.
@@ -49,7 +44,7 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 - [Batch Capability of Kubernetes Intro @ KubeCon 2019 NA](https://sched.co/Uajv)
 - [Optimizing Knowledge Distillation Training With Volcano @ KubeCon 2021 EU](https://www.youtube.com/watch?v=cDPGmhVcj7Y&t=143s)
 - [Exploration About Mixing Technology of Online Services and Offline Jobs Based On Volcano @ KubeCon 2021 China](https://www.youtube.com/watch?v=daqkUlT5ReY)
-- [Volcano - Cloud Native Batch System for AI, BigData and HPC @ KubeCon 2022 EU](https://www.youtube.com/watch?v=wjy35HfIP_k)
+- [Volcano - Cloud Native Batch System for AI, Big Data and HPC @ KubeCon 2022 EU](https://www.youtube.com/watch?v=wjy35HfIP_k)
 - [How to Leverage Volcano to Improve the Resource Utilization of AI Pharmaceuticals, Autonomous Driving, and Smart Buildings @ KubeCon 2023 EU](https://www.youtube.com/watch?v=ujHDV5xteqU)
 - [Run Your AI Workloads and Microservices on Kubernetes More Easily and Efficiently @ KubeCon 2023 China](https://www.youtube.com/watch?v=OO7zpyf7fgs)
 - [Optimize LLM Workflows with Smart Infrastructure Enhanced by Volcano @ KubeCon 2024 China](https://www.youtube.com/watch?v=77Qn1-I-muQ)
@@ -59,13 +54,37 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 
 ## Ecosystem
 
-- [spark-operator](https://www.kubeflow.org/docs/components/spark-operator/user-guide/volcano-integration/)
+- [Spark Operator](https://www.kubeflow.org/docs/components/spark-operator/user-guide/volcano-integration/)
+- [Native Spark](https://spark.apache.org/docs/3.5.0/running-on-kubernetes.html#using-volcano-as-customized-scheduler-for-spark-on-kubernetes)
+- [Flink](https://github.com/GoogleCloudPlatform/flink-on-k8s-operator/blob/master/docs/volcano_integration.md)
+- [KubeRay](https://docs.ray.io/en/master/cluster/kubernetes/k8s-ecosystem/volcano.html)
+- [PyTorch](https://github.com/volcano-sh/volcano/blob/master/docs/user-guide/how_to_use_pytorch_plugin.md)
+- [TensorFlow](https://github.com/volcano-sh/volcano/tree/master/example/integrations/tensorflow)
 - [kubeflow/training-operator](https://www.kubeflow.org/docs/components/training/user-guides/job-scheduling/)
 - [kubeflow/arena](https://github.com/kubeflow/arena/blob/master/docs/training/volcanojob/volcanojob.md)
-- [Horovod/MPI](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mpi)
-- [paddlepaddle](https://github.com/volcano-sh/volcano/tree/master/example/integrations/paddlepaddle)
-- [cromwell](https://github.com/broadinstitute/cromwell/blob/develop/docs/backends/Volcano.md)
-- [KubeRay](https://docs.ray.io/en/master/cluster/kubernetes/k8s-ecosystem/volcano.html)
+- [MPI](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mpi)
+- [Horovod](https://github.com/volcano-sh/volcano/blob/master/example/kubecon-2019-china/horovod-sample/lm-horovod-tf-mnist-v0.5.yaml)
+- [PaddlePaddle](https://github.com/volcano-sh/volcano/tree/master/example/integrations/paddlepaddle)
+- [Cromwell](https://github.com/broadinstitute/cromwell/blob/develop/docs/backends/Volcano.md)
+- [MindSpore](https://github.com/volcano-sh/volcano/tree/master/example/MindSpore-example)
+- [MXNet](https://github.com/volcano-sh/volcano/tree/master/example/integrations/mxnet/train)
+- [Argo](https://github.com/volcano-sh/volcano/tree/master/example/integrations/argo)
+- [KubeGene](https://github.com/volcano-sh/kubegene)
+
+## Use Cases
+- [Why Spark chooses Volcano as built-in batch scheduler on Kubernetes?](https://www.cncf.io/blog/2022/06/30/why-spark-chooses-volcano-as-built-in-batch-scheduler-on-kubernetes/)
+- [ING Bank: How Volcano empowers its big data analytics platform](https://www.cncf.io/blog/2023/02/21/ing-bank-how-volcano-empowers-its-big-data-analytics-platform/)
+- [Using Volcano as a custom scheduler for Apache Spark on Amazon EMR on EKS](https://docs.aws.amazon.com/emr/latest/EMR-on-EKS-DevelopmentGuide/tutorial-volcano.html)
+- [Deploy Azure Machine Learning extension on AKS or Arc Kubernetes cluster](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-deploy-kubernetes-extension?view=azureml-api-2&tabs=deploy-extension-with-cli)
+- [Practical Tips for Preventing GPU Fragmentation for Volcano Scheduler](https://developer.nvidia.com/blog/practical-tips-for-preventing-gpu-fragmentation-for-volcano-scheduler/)
+- [Using Volcano in Large-Scale, Distributed Offline Computing](https://volcano.sh/en/blog/ruitian2-en/)
+- [OpenI-Octopus: How to Avoid Resource Preemption in Kubernetes Clusters](https://volcano.sh/en/blog/pengcheng-en/)
+- [How Does Volcano Empower a Content Recommendation Engine in Xiaohongshu](https://volcano.sh/en/blog/xiaohongshu-en/)
+- [How Ruitian Used Volcano to Run Large-Scale Offline HPC Jobs](https://volcano.sh/en/blog/ruitian-en/)
+- [Integrating Volcano into the Leinao Cloud OS](https://volcano.sh/en/blog/leinao-en/)
+- [HPC on Volcano: How Containers Support HPC Applications in the Meteorological Industry](https://volcano.sh/en/blog/hpc-en/)
+- [iQIYI:Volcano-based Cloud Native Migration Practices](https://volcano.sh/en/blog/aiqiyi-en/)
+- [PaddlePaddle Distributed Training on Volcano](https://volcano.sh/en/blog/paddlepaddle-en/)
 
 ## Quick Start Guide
 
@@ -94,7 +113,6 @@ Enjoy! Volcano will create the following resources in `volcano-system` namespace
 ```
 NAME                                       READY   STATUS      RESTARTS   AGE
 pod/volcano-admission-5bd5756f79-dnr4l     1/1     Running     0          96s
-pod/volcano-admission-init-4hjpx           0/1     Completed   0          96s
 pod/volcano-controllers-687948d9c8-nw4b4   1/1     Running     0          96s
 pod/volcano-scheduler-94998fc64-4z8kh      1/1     Running     0          96s
 
