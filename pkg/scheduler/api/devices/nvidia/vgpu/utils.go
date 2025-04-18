@@ -365,7 +365,7 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 				continue
 			}
 			if val.MemPercentagereq != 101 && val.Memreq == 0 {
-				val.Memreq = int32(gs.Device[i].Memory * uint(val.MemPercentagereq/100))
+				val.Memreq = int32(float64(gs.Device[i].Memory) * float64(val.MemPercentagereq) / 100.0)
 			}
 			if int(gs.Device[i].Memory)-int(gs.Device[i].UsedMem) < int(val.Memreq) {
 				continue
