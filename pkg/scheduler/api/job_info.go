@@ -71,9 +71,10 @@ type TaskID types.UID
 
 // TransactionContext holds all the fields that needed by scheduling transaction
 type TransactionContext struct {
-	NodeName         string
-	EvictionOccurred bool
-	Status           TaskStatus
+	NodeName              string
+	EvictionOccurred      bool
+	JobAllocatedHyperNode string
+	Status                TaskStatus
 }
 
 // Clone returns a clone of TransactionContext
@@ -1060,6 +1061,14 @@ func (ji *JobInfo) HasTopologyHardConstrain() (bool, int) {
 	}
 
 	return ji.PodGroup.Spec.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode, *ji.PodGroup.Spec.NetworkTopology.HighestTierAllowed
+}
+
+// EnableTopology returns whether the job has configured network topologies
+func (ji *JobInfo) EnableTopology() bool {
+	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopology == nil {
+		return false
+	}
+	return true
 }
 
 // ResetFitErr will set job and node fit err to nil.
