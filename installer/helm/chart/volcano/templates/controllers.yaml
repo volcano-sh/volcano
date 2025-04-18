@@ -84,6 +84,13 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "create", "update", "watch"]
+  - apiGroups: ["topology.volcano.sh"]
+    resources: ["hypernodes"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -188,6 +195,9 @@ spec:
           securityContext:
               {{- toYaml .Values.custom.controller_default_csc | nindent 14 }}
             {{- end }}
+          env:
+            - name: KUBE_POD_NAMESPACE
+              value: {{ .Release.Namespace }}
 ---
 apiVersion: v1
 kind: Service
@@ -212,4 +222,24 @@ spec:
   selector:
     app: volcano-controller
   type: ClusterIP
+
+  {{- if .Values.custom.node_label_based_topologies_override }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-networktopologyaware-configuration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: volcano-controller
+    {{- if .Values.custom.common_labels }}
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
+data:
+  node-label-based-topologies: |
+    topologies:
+  {{- if .Values.custom.node_label_based_topologies_override }}
+       {{- toYaml .Values.custom.node_label_based_topologies_override | nindent 4 }}
+  {{- end }}
+  {{- end }}
 {{- end }}

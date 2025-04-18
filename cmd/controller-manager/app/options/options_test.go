@@ -100,10 +100,13 @@ func TestAddFlags(t *testing.T) {
 			ResourceNamespace: defaultLockObjectNamespace,
 			ResourceName:      "vc-controller-manager",
 		},
-		WorkerThreadsForPG:    5,
-		WorkerThreadsForQueue: 5,
-		WorkerThreadsForGC:    1,
-		Controllers:           []string{"*"},
+		WorkerThreadsForPG:                          5,
+		WorkerThreadsForQueue:                       5,
+		WorkerThreadsForGC:                          1,
+		Controllers:                                 []string{"*"},
+		NetworkTopologyAutoDiscoveryWorkerThreads:   defaultNetworkTopologyAutoDiscoveryWorkers,
+		NetworkTopologyAutoDiscoveryGCWorkerThreads: defaultNetworkTopologyAutoDiscoveryGCWorkers,
+		NetworkTopologyAutoDiscoverySyncPeriod:      defaultNetworkTopologyAutoDiscoverySyncPeriod,
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{features.ResourceTopology: false}
 
