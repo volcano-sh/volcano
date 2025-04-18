@@ -25,7 +25,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.9.0
-	github.com/vishvananda/netlink v1.3.1-0.20240905180732-b1ce50cfa9be
+	github.com/vishvananda/netlink v1.3.1-0.20250206174618-62fb240731fa
 	go.uber.org/automaxprocs v1.5.1
 	golang.org/x/crypto v0.37.0
 	golang.org/x/sys v0.32.0
@@ -40,7 +40,7 @@ require (
 	k8s.io/component-helpers v0.32.2
 	k8s.io/csi-translation-lib v0.32.2
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/kubernetes v1.32.2
+	k8s.io/kubernetes v1.32.3
 	k8s.io/metrics v0.0.0
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738
 	sigs.k8s.io/controller-runtime v0.13.0
