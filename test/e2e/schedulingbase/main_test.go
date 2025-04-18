@@ -17,11 +17,13 @@ limitations under the License.
 package schedulingbase
 
 import (
+	"flag"
 	"os"
 	"testing"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/kubernetes/test/e2e/framework"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 
@@ -34,5 +36,16 @@ func TestMain(m *testing.M) {
 	config, _ := clientcmd.BuildConfigFromFlags(e2eutil.MasterURL(), configPath)
 	e2eutil.VcClient = vcclient.NewForConfigOrDie(config)
 	e2eutil.KubeClient = kubernetes.NewForConfigOrDie(config)
+	// init k8s e2e testing framework
+	handleFlags()
+	framework.TestContext.CloudConfig = framework.CloudConfig{
+		Provider: framework.NullProvider{},
+	}
 	os.Exit(m.Run())
+}
+
+func handleFlags() {
+	framework.RegisterCommonFlags(flag.CommandLine)
+	framework.RegisterClusterFlags(flag.CommandLine)
+	flag.Parse()
 }

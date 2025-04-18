@@ -833,3 +833,8 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor
 	}
 	return victimsQueue
 }
+
+// RegisterBindHandler registers the passed bind handler to the cache
+func (ssn *Session) RegisterBindHandler(name string, handler interface{}) {
+	ssn.cache.RegisterBindHandler(name, handler)
+}

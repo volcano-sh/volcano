@@ -388,9 +388,8 @@ func TestFareShareAllocate(t *testing.T) {
 
 func TestAllocateWithDynamicPVC(t *testing.T) {
 	var tmp *cache.SchedulerCache
-	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, task *api.TaskInfo) error {
-		scCache.VolumeBinder.BindVolumes(task, task.PodVolumes)
-		scCache.Binder.Bind(nil, []*api.TaskInfo{task})
+	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, bindCtx *cache.BindContext) error {
+		scCache.Binder.Bind(nil, []*api.TaskInfo{bindCtx.TaskInfo})
 		return nil
 	})
 	defer patches.Reset()
@@ -486,7 +485,6 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
 			}
 
-			fakeVolumeBinder := util.NewFakeVolumeBinder(kubeClient)
 			binder := util.NewFakeBinder(10)
 			schedulerCache := &cache.SchedulerCache{
 				Nodes:         make(map[string]*api.NodeInfo),
@@ -494,7 +492,6 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 				Queues:        make(map[api.QueueID]*api.QueueInfo),
 				Binder:        binder,
 				StatusUpdater: &util.FakeStatusUpdater{},
-				VolumeBinder:  fakeVolumeBinder,
 				Recorder:      record.NewFakeRecorder(100),
 			}
 			schedulerCache.AddQueueV1beta1(queue)
@@ -536,10 +533,6 @@ func TestAllocateWithDynamicPVC(t *testing.T) {
 			if !equality.Semantic.DeepEqual(test.expectedBind, bindResults) {
 				t.Errorf("expected: %v, got %v ", test.expectedBind, bindResults)
 			}
-			if !equality.Semantic.DeepEqual(test.expectedActions, fakeVolumeBinder.Actions) {
-				t.Errorf("expected: %v, got %v ", test.expectedActions, fakeVolumeBinder.Actions)
-			}
-			fakeVolumeBinder.Actions = make(map[string][]string)
 		})
 	}
 }
