@@ -149,6 +149,13 @@ func TestCheckControllers(t *testing.T) {
 			expectErr: fmt.Errorf("controllers option %s cannot have both '-' and '+' prefixes", "-job-controller"),
 		},
 		{
+			name: "fail case: use duplicate job-controller",
+			serverOption: &ServerOption{
+				Controllers: []string{"+job-controller", "job-controller"},
+			},
+			expectErr: fmt.Errorf("controllers option %s cannot have both '-' and '+' prefixes", "job-controller"),
+		},
+		{
 			name: "fail case: use * but combined with other input",
 			serverOption: &ServerOption{
 				Controllers: []string{"*", "+job-controller"},

@@ -10,7 +10,7 @@ spec:
   plugins:
     ssh: []
     svc: []
-  # 如果有pod被 杀死，重启整个作业
+  # Restart the entire job if any pod is killed.
   policies:
     - event: PodEvicted
       action: RestartJob
