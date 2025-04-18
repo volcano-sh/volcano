@@ -20,24 +20,25 @@ set -o pipefail
 
 VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
+export RELEASE_TAG=${RELEASE_TAG:-"latest"}
 
-if ! diff ${VK_ROOT}/installer/volcano-development.yaml ${RELEASE_FOLDER}/volcano-latest.yaml ; then
+if ! diff ${VK_ROOT}/installer/volcano-development.yaml ${RELEASE_FOLDER}/volcano-${RELEASE_TAG}.yaml ; then
 	{
 		echo
 		echo "The Generated yaml is different from the one in installer/volcano-development.yaml"
-		echo "please run 'make generate-yaml TAG=latest RELEASE_DIR=installer \
-		&& mv ${VK_ROOT}/installer/volcano-latest.yaml ${VK_ROOT}/installer/volcano-development.yaml' to update"
+		echo "please run 'make generate-yaml RELEASE_TAG=${RELEASE_TAG} RELEASE_DIR=installer \
+		&& mv ${VK_ROOT}/installer/volcano-${RELEASE_TAG}.yaml ${VK_ROOT}/installer/volcano-development.yaml' to update"
 		echo
 	} >&2
 	false
 fi
 
-if ! diff ${VK_ROOT}/installer/volcano-agent-development.yaml ${RELEASE_FOLDER}/volcano-agent-latest.yaml ; then
+if ! diff ${VK_ROOT}/installer/volcano-agent-development.yaml ${RELEASE_FOLDER}/volcano-agent-${RELEASE_TAG}.yaml ; then
 	{
 		echo
 		echo "The Generated yaml is different from the one in installer/volcano-agent-development.yaml"
-		echo "please run 'make generate-yaml TAG=latest RELEASE_DIR=installer \
-		&& mv ${VK_ROOT}/installer/volcano-agent-latest.yaml ${VK_ROOT}/installer/volcano-agent-development.yaml' to update"
+		echo "please run 'make generate-yaml RELEASE_TAG=${RELEASE_TAG} RELEASE_DIR=installer \
+		&& mv ${VK_ROOT}/installer/volcano-agent-${RELEASE_TAG}.yaml ${VK_ROOT}/installer/volcano-agent-development.yaml' to update"
 		echo
 	} >&2
 	false
