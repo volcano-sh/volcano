@@ -52,6 +52,7 @@ var _ = Describe("Predicates E2E Test", func() {
 		err := e2eutil.WaitTasksReady(context, job, nn)
 		Expect(err).NotTo(HaveOccurred())
 
+		// TODO: fix it
 		err = e2eutil.WaitTasksPending(context, job, nn)
 		Expect(err).NotTo(HaveOccurred())
 	})
