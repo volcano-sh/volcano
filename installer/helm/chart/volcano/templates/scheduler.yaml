@@ -147,6 +147,10 @@ spec:
         {{- if or (.Values.custom.scheduler_podLabels) (.Values.custom.common_labels) }}
         {{- mustMerge (.Values.custom.scheduler_podLabels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 8 }}
         {{- end }}
+      annotations:
+        {{- if or (.Values.custom.scheduler_podAnnotations) (.Values.custom.common_annotations) }}
+        {{- mustMerge (.Values.custom.scheduler_podAnnotations | default (dict)) (.Values.custom.common_annotations | default (dict)) | toYaml | nindent 8 }}
+        {{- end }}
     spec:
       {{- if $scheduler_tolerations }}
       tolerations: {{- toYaml $scheduler_tolerations | nindent 8 }}

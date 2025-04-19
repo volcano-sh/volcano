@@ -128,9 +128,19 @@ custom:
   admission_labels: ~
   scheduler_labels: ~
   controller_labels: ~
+  admission_podAnnotations: ~
+  scheduler_podAnnotations: 
+    prometheus.io/scrape: 'true'
+    prometheus.io/path: '/metrics'
+    prometheus.io/port: '8080'
+  controller_podAnnotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/path: '/metrics'
+    prometheus.io/port: '8081'  
 
 # Specify labels for all Volcano helm chart objects except for CRDs
   common_labels: ~
+  common_annotations: ~
 
 
 # Specify resources for Volcano main component deployments and pods

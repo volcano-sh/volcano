@@ -125,6 +125,10 @@ spec:
         {{- if or (.Values.custom.controller_podLabels) (.Values.custom.common_labels) }}
         {{- mustMerge (.Values.custom.controller_podLabels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 8 }}
         {{- end }}
+      annotations:
+        {{- if or (.Values.custom.controller_podAnnotations) (.Values.custom.common_annotations) }}
+        {{- mustMerge (.Values.custom.controller_podAnnotations | default (dict)) (.Values.custom.common_annotations | default (dict)) | toYaml | nindent 8 }}
+        {{- end }}
     spec:
       {{- if $controller_tolerations }}
       tolerations: {{- toYaml $controller_tolerations | nindent 8 }}
