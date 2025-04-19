@@ -168,7 +168,7 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		return
 	}
 
-	dVersion, err := strconv.Atoi(version)
+	dVersion, err := strconv.ParseInt(version, 10, 32)
 	if err != nil {
 		klog.Infof("Failed to convert jobVersion of Pod <%s/%s> into number, skipping",
 			pod.Namespace, pod.Name)
@@ -251,7 +251,7 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		return
 	}
 
-	dVersion, err := strconv.Atoi(version)
+	dVersion, err := strconv.ParseInt(version, 10, 32)
 	if err != nil {
 		klog.Infof("Failed to convert jobVersion of Pod into number <%s/%s>, skipping",
 			newPod.Namespace, newPod.Name)
@@ -360,7 +360,7 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 		return
 	}
 
-	dVersion, err := strconv.Atoi(version)
+	dVersion, err := strconv.ParseInt(version, 10, 32)
 	if err != nil {
 		klog.Infof("Failed to convert jobVersion of Pod <%s/%s> into number, skipping",
 			pod.Namespace, pod.Name)
