@@ -7,7 +7,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-scheduler-configmap
+  name: {{ include "volcano.scheduler.fullname" . }}-configmap
   namespace: {{ .Release.Namespace }}
   {{- if .Values.custom.common_labels }}
   labels:
@@ -24,7 +24,7 @@ data:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ .Release.Name }}-scheduler
+  name: {{ include "volcano.scheduler.fullname" . }}
   namespace: {{ .Release.Namespace }}
   {{- if .Values.custom.common_labels }}
   labels:
@@ -34,7 +34,7 @@ metadata:
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: {{ .Release.Name }}-scheduler
+  name: {{ include "volcano.scheduler.fullname" . }}
   {{- if .Values.custom.common_labels }}
   labels:
     {{- toYaml .Values.custom.common_labels | nindent 4 }}
@@ -110,25 +110,25 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: {{ .Release.Name }}-scheduler-role
+  name: {{ include "volcano.scheduler.fullname" . }}-role
   {{- if .Values.custom.common_labels }}
   labels:
     {{- toYaml .Values.custom.common_labels | nindent 4 }}
   {{- end }}
 subjects:
   - kind: ServiceAccount
-    name: {{ .Release.Name }}-scheduler
+    name: {{ include "volcano.scheduler.fullname" . }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: {{ .Release.Name }}-scheduler
+  name: {{ include "volcano.scheduler.fullname" . }}
   apiGroup: rbac.authorization.k8s.io
 
 ---
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: {{ .Release.Name }}-scheduler
+  name: {{ include "volcano.scheduler.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     app: volcano-scheduler
@@ -162,14 +162,14 @@ spec:
       securityContext:
         {{- toYaml $scheduler_sc | nindent 8 }}
       {{- end }}
-      serviceAccount: {{ .Release.Name }}-scheduler
+      serviceAccount: {{ include "volcano.scheduler.fullname" . }}
       priorityClassName: system-cluster-critical
       {{- if .Values.basic.image_pull_secret }}
       imagePullSecrets:
           - name: {{ .Values.basic.image_pull_secret }}
       {{- end }}
       containers:
-        - name: {{ .Release.Name }}-scheduler
+        - name: {{ include "volcano.scheduler.fullname" . }}
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
           {{- if .Values.custom.scheduler_resources }}
           resources:
@@ -225,7 +225,7 @@ spec:
       volumes:
         - name: scheduler-config
           configMap:
-            name: {{ .Release.Name }}-scheduler-configmap
+            name: {{ include "volcano.scheduler.fullname" . }}-configmap
         - name: klog-sock
           emptyDir: {}
 ---
@@ -236,7 +236,7 @@ metadata:
     prometheus.io/path: /metrics
     prometheus.io/port: "8080"
     prometheus.io/scrape: "true"
-  name: {{ .Release.Name }}-scheduler-service
+  name: {{ include "volcano.scheduler.fullname" . }}-service
   namespace: {{ .Release.Namespace }}
   labels:
     app: volcano-scheduler
