@@ -281,7 +281,7 @@ func checkGPUtype(annos map[string]string, cardtype string) bool {
 	if ok {
 		if !strings.Contains(nouse, ",") {
 			if strings.Contains(strings.ToUpper(cardtype), strings.ToUpper(nouse)) {
-				return true
+				return false
 			}
 		} else {
 			for _, val := range strings.Split(nouse, ",") {
