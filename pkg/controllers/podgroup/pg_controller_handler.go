@@ -191,39 +191,28 @@ func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 	return nil
 }
 
-func (pg *pgcontroller) getAnnotationsFromUpperRes(kind string, name string, namespace string) map[string]string {
-	switch kind {
-	case "ReplicaSet":
-		rs, err := pg.kubeClient.AppsV1().ReplicaSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
-			return map[string]string{}
-		}
-		return rs.Annotations
-	case "DaemonSet":
-		ds, err := pg.kubeClient.AppsV1().DaemonSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
-			return map[string]string{}
-		}
-		return ds.Annotations
-	case "StatefulSet":
-		ss, err := pg.kubeClient.AppsV1().StatefulSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
-			return map[string]string{}
-		}
-		return ss.Annotations
-	case "Job":
-		job, err := pg.kubeClient.BatchV1().Jobs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
-			return map[string]string{}
-		}
-		return job.Annotations
-	default:
-		return map[string]string{}
+func (pg *pgcontroller) getAnnotationsFromUpperRes(ref metav1.OwnerReference, ns string) map[string]string {
+	gv, err := schema.ParseGroupVersion(ref.APIVersion)
+	if err != nil {
+		klog.ErrorS(err, "Failed to parse GroupVersion", "apiVersion", ref.APIVersion)
+		return nil
 	}
+	mapping, err := pg.restMapper.RESTMapping(schema.GroupKind{
+		Group: gv.Group,
+		Kind:  ref.Kind,
+	})
+
+	if err != nil {
+		klog.ErrorS(err, "Failed to get resource mapping from reference", "ref", ref)
+		return nil
+	}
+
+	resource, err := pg.dynamicClient.Resource(mapping.Resource).Namespace(ns).Get(context.Background(), ref.Name, metav1.GetOptions{})
+	if err != nil {
+		klog.ErrorS(err, "Failed to get resource", "name", ref.Name, "namespace", ns)
+		return nil
+	}
+	return resource.GetAnnotations()
 }
 
 // Inherit annotations from upper resources.
@@ -231,7 +220,7 @@ func (pg *pgcontroller) inheritUpperAnnotations(pod *v1.Pod, obj *scheduling.Pod
 	if pg.inheritOwnerAnnotations {
 		for _, reference := range pod.OwnerReferences {
 			if reference.Kind != "" && reference.Name != "" {
-				var upperAnnotations = pg.getAnnotationsFromUpperRes(reference.Kind, reference.Name, pod.Namespace)
+				var upperAnnotations = pg.getAnnotationsFromUpperRes(reference, pod.Namespace)
 				for k, v := range upperAnnotations {
 					if strings.HasPrefix(k, scheduling.AnnotationPrefix) {
 						obj.Annotations[k] = v
