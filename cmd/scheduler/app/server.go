@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"volcano.sh/apis/pkg/apis/helpers"
-
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
@@ -175,8 +174,11 @@ func startMetricsServer(opt *options.ServerOption) {
 	}
 
 	server := &http.Server{
-		Addr:    opt.ListenAddress,
-		Handler: mux,
+		Addr:              opt.ListenAddress,
+		Handler:           mux,
+		ReadHeaderTimeout: helpers.DefaultReadHeaderTimeout,
+		ReadTimeout:       helpers.DefaultReadTimeout,
+		WriteTimeout:      helpers.DefaultWriteTimeout,
 	}
 
 	if err := server.ListenAndServe(); err != nil {
