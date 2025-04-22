@@ -61,6 +61,10 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 	var client api.Client
 	var err error
 	insecureSkipVerify := p.conf["tls.insecureSkipVerify"] == "true"
+	if insecureSkipVerify {
+		klog.Warningf("WARNING: TLS certificate verification is disabled which is insecure. This should not be used in production environments")
+	}
+
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: insecureSkipVerify,
