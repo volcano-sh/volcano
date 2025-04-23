@@ -60,16 +60,29 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 	klog.V(4).Infof("Get node metrics from Prometheus: %s", p.address)
 	var client api.Client
 	var err error
+	basicauth := p.conf["basicauth"] == "true"
 	insecureSkipVerify := p.conf["tls.insecureSkipVerify"] == "true"
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: insecureSkipVerify,
-		},
+	if basicauth {
+		bat := &BasicAuthTransport{
+			Username: p.conf["username"],
+			Password: p.conf["password"],
+		}
+		client, err = api.NewClient(api.Config{
+			Address:      p.address,
+			RoundTripper: bat,
+		})
+	} else {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: insecureSkipVerify,
+			},
+		}
+		client, err = api.NewClient(api.Config{
+			Address:      p.address,
+			RoundTripper: tr,
+		})
 	}
-	client, err = api.NewClient(api.Config{
-		Address:      p.address,
-		RoundTripper: tr,
-	})
+	
 	if err != nil {
 		return nil, err
 	}
