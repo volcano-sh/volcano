@@ -64,7 +64,15 @@ func GetNetworkQoSManager(config *config.Configuration) NetworkQoSManager {
 }
 
 func (m *NetworkQoSManagerImp) Init() error {
-	return InstallNetworkQoS()
+	checkErr := features.CheckNodeSupportNetworkQoS()
+	if checkErr != nil {
+		if features.IsUnsupportedError(checkErr) {
+			klog.InfoS("Skip installing network-qos, os/network-mode not supported")
+			return nil
+		}
+		return checkErr
+	}
+	return nil
 }
 
 func (m *NetworkQoSManagerImp) HealthCheck() error {
@@ -185,36 +193,6 @@ func GetOfflineHighBandwidthPercent(serverRateQuota int64, qosConf *api.NetworkQ
 	}
 
 	return strconv.FormatInt(serverRateQuota*int64(offlineHighBandwidthPercent)/100, 10) + "Mbps", nil
-}
-
-func InstallNetworkQoS() error {
-	checkErr := features.CheckNodeSupportNetworkQoS()
-	if checkErr != nil {
-		if features.IsUnsupportedError(checkErr) {
-			klog.InfoS("Skip installing network-qos, os/network-mode not supported")
-			return nil
-		}
-		return checkErr
-	}
-
-	klog.InfoS("Start to install network-qos")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cmd := "sudo /bin/cp -f /usr/local/bin/bwm_tc.o /usr/share/bwmcli"
-	output, err := exec.GetExecutor().CommandContext(ctx, cmd)
-	if err != nil {
-		klog.ErrorS(err, "Failed to install bwm_tc.o to /usr/share/bwmcli", "output", output)
-		return err
-	}
-
-	cmd = "sudo /bin/cp -f /usr/local/bin/network-qos /opt/cni/bin"
-	output, err = exec.GetExecutor().CommandContext(ctx, cmd)
-	if err != nil {
-		klog.ErrorS(err, "Failed to install network-qos to /opt/cni/bin; %s", "output", output)
-		return err
-	}
-	klog.InfoS("Successfully installed network-qos")
-	return nil
 }
 
 func CheckNetworkQoSStatus() error {

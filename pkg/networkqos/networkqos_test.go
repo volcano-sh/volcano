@@ -17,9 +17,6 @@ limitations under the License.
 package networkqos
 
 import (
-	"fmt"
-	"os"
-	"path"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -33,7 +30,6 @@ import (
 	"volcano.sh/volcano/pkg/agent/utils/exec"
 	mockexec "volcano.sh/volcano/pkg/agent/utils/exec/mocks"
 	"volcano.sh/volcano/pkg/config"
-	"volcano.sh/volcano/pkg/networkqos/utils"
 )
 
 func TestGetOnlineBandwidthWatermark(t *testing.T) {
@@ -213,85 +209,5 @@ func TestEnableNetworkQoS(t *testing.T) {
 		actualErr := mgr.EnableNetworkQoS(tc.qosConf)
 		gomock.InOrder(tc.apiCall...)
 		assert.Equal(t, tc.expectedErr, actualErr != nil, tc.name)
-	}
-}
-
-var openEulerOS = `
-NAME="openEuler"
-VERSION="22.03 (LTS-SP2)"
-ID="openEuler"
-VERSION_ID="22.03"
-PRETTY_NAME="openEuler 22.03 (LTS-SP2)"
-ANSI_COLOR="0;31"
-
-`
-
-var ubuntuOS = `
-NAME="Ubuntu"
-VERSION="16.04.5 LTS (Xenial Xerus)"
-ID=ubuntu
-ID_LIKE=debian
-PRETTY_NAME="Ubuntu 16.04.5 LTS"
-VERSION_ID="16.04"
-`
-
-func TestInstallNetworkQoS(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "MkdirTemp")
-	defer func() {
-		err = os.RemoveAll(dir)
-		if err != nil {
-			t.Errorf("remove dir(%s) failed: %v", dir, err)
-		}
-		assert.Equal(t, err == nil, true)
-	}()
-	assert.Equal(t, err == nil, true)
-	tmpFile := path.Join(dir, "os-release")
-	if err = os.WriteFile(tmpFile, []byte(openEulerOS), 0660); err != nil {
-		assert.Equal(t, nil, err)
-	}
-	if err = os.Setenv(utils.HostOSReleasePathEnv, tmpFile); err != nil {
-		assert.Equal(t, nil, err)
-	}
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-	mockExec := mockexec.NewMockExecInterface(mockController)
-	exec.SetExecutor(mockExec)
-
-	testCases := []struct {
-		name          string
-		apiCall       []*gomock.Call
-		expectedError bool
-	}{
-		{
-			name: "install network-qos successfully && existed old bwm_tc.o && existed old network-qos",
-			apiCall: []*gomock.Call{
-				mockExec.EXPECT().CommandContext(gomock.Any(), "sudo /bin/cp -f /usr/local/bin/bwm_tc.o /usr/share/bwmcli").Return("", nil),
-				mockExec.EXPECT().CommandContext(gomock.Any(), "sudo /bin/cp -f /usr/local/bin/network-qos /opt/cni/bin").Return("", nil),
-			},
-			expectedError: false,
-		},
-
-		{
-			name: "install bwm_tc.o failed",
-			apiCall: []*gomock.Call{
-				mockExec.EXPECT().CommandContext(gomock.Any(), "sudo /bin/cp -f /usr/local/bin/bwm_tc.o /usr/share/bwmcli").Return("", fmt.Errorf("errors")),
-			},
-			expectedError: true,
-		},
-
-		{
-			name: "install network-qos failed",
-			apiCall: []*gomock.Call{
-				mockExec.EXPECT().CommandContext(gomock.Any(), "sudo /bin/cp -f /usr/local/bin/bwm_tc.o /usr/share/bwmcli").Return("", nil),
-				mockExec.EXPECT().CommandContext(gomock.Any(), "sudo /bin/cp -f /usr/local/bin/network-qos /opt/cni/bin").Return("", fmt.Errorf("errors")),
-			},
-			expectedError: true,
-		},
-	}
-
-	for _, tc := range testCases {
-		actualErr := InstallNetworkQoS()
-		assert.Equal(t, tc.expectedError, actualErr != nil, tc.name)
 	}
 }

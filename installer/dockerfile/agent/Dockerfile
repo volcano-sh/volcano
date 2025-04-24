@@ -29,10 +29,9 @@ RUN yum install -y cpio && \
     rpm2cpio $(ls | grep oncn-bwm) | cpio -div
 
 FROM alpine:latest
-RUN apk add sudo
 COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-agent /vc-agent
-COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/network-qos \
-                    /go/src/volcano.sh/volcano/installer/build/volcano-agent/install.sh /usr/local/bin/
-COPY --from=repo /usr/share/bwmcli/bwm_tc.o /usr/local/bin/
+COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/network-qos /opt/cni/bin/
+COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/network-qos /usr/local/bin/
+COPY --from=builder /go/src/volcano.sh/volcano/installer/build/volcano-agent/install.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/install.sh
 
