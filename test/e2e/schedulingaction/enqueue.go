@@ -26,7 +26,6 @@ import (
 	//v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	"gopkg.in/yaml.v2"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
 )
 
@@ -34,16 +33,10 @@ var _ = ginkgo.Describe("Enqueue E2E Test", func() {
 	ginkgo.It("allocate work even not config enqueue action", func() {
 		ginkgo.By("remove action enqueue from configmap")
 		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
-		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
-			vcScheConfStr, ok := data["volcano-scheduler-ci.conf"]
-			gomega.Expect(ok).To(gomega.BeTrue())
-
-			schedulerConf := &e2eutil.SchedulerConfiguration{}
-			err := yaml.Unmarshal([]byte(vcScheConfStr), schedulerConf)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		modifier := func(sc *e2eutil.SchedulerConfiguration) bool {
 			actstring := ""
-			if strings.Contains(schedulerConf.Actions, "enqueue") {
-				acts := strings.Split(schedulerConf.Actions, ",")
+			if strings.Contains(sc.Actions, "enqueue") {
+				acts := strings.Split(sc.Actions, ",")
 				for i, act := range acts {
 					acts[i] = strings.TrimSpace(act)
 					if acts[i] != "enqueue" {
@@ -51,17 +44,13 @@ var _ = ginkgo.Describe("Enqueue E2E Test", func() {
 					}
 				}
 				actstring = strings.TrimRight(actstring, ",")
-				schedulerConf.Actions = actstring
+				sc.Actions = actstring
+				return true
 			}
-
-			newVCScheConfBytes, err := yaml.Marshal(schedulerConf)
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-			changed = true
-			changedBefore = make(map[string]string)
-			changedBefore["volcano-scheduler-ci.conf"] = vcScheConfStr
-			data["volcano-scheduler-ci.conf"] = string(newVCScheConfBytes)
-			return
+			return false
+		}
+		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+			return e2eutil.ModifySchedulerConfig(data, modifier)
 		})
 		defer cmc.UndoChanged()
 
