@@ -2,10 +2,10 @@ package util
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/onsi/gomega"
+	"gopkg.in/yaml.v2"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,9 +46,6 @@ func (c *ConfigMapCase) ChangeBy(fn func(data map[string]string) (changed bool, 
 		schedulerPods, err := KubeClient.CoreV1().Pods("volcano-system").List(context.TODO(), metav1.ListOptions{LabelSelector: "app=volcano-scheduler"})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		for _, scheduler := range schedulerPods.Items {
-			if !strings.Contains(scheduler.Name, "scheduler") {
-				continue
-			}
 			if scheduler.Annotations == nil {
 				scheduler.Annotations = make(map[string]string)
 			}
@@ -81,14 +78,33 @@ func (c *ConfigMapCase) UndoChanged() error {
 	schedulerPods, err := KubeClient.CoreV1().Pods("volcano-system").List(context.TODO(), metav1.ListOptions{LabelSelector: "app=volcano-scheduler"})
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	for _, scheduler := range schedulerPods.Items {
-		if !strings.HasPrefix(scheduler.Name, "volcano-scheduler") {
-			continue
-		}
 		scheduler.Annotations["refreshts"] = time.Now().Format("060102150405.000")
 		_, err = KubeClient.CoreV1().Pods("volcano-system").Update(context.TODO(), &scheduler, metav1.UpdateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	}
 	return nil
+}
+
+func ModifySchedulerConfig(data map[string]string, modifier func(*SchedulerConfiguration) bool) (changed bool, changedBefore map[string]string) {
+	vcScheConfStr, ok := data["volcano-scheduler-ci.conf"]
+	gomega.Expect(ok).To(gomega.BeTrue())
+
+	schedulerConf := &SchedulerConfiguration{}
+	err := yaml.Unmarshal([]byte(vcScheConfStr), schedulerConf)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+	changed = modifier(schedulerConf)
+	if !changed {
+		return false, nil
+	}
+
+	newVCScheConfBytes, err := yaml.Marshal(schedulerConf)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+	changedBefore = make(map[string]string)
+	changedBefore["volcano-scheduler-ci.conf"] = vcScheConfStr
+	data["volcano-scheduler-ci.conf"] = string(newVCScheConfBytes)
+	return
 }
 
 // SchedulerConfiguration defines the configuration of scheduler.
