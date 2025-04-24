@@ -126,7 +126,7 @@ spec:
             type: File
       initContainers:
         - name: volcano-agent-init
-          image: docker.io/volcanosh/vc-agent:v1.11.1
+          image: docker.io/volcanosh/vc-agent:v1.11.2
           command:
             - /bin/sh
             - '-c'
@@ -147,7 +147,7 @@ spec:
           imagePullPolicy: Always
       containers:
         - name: volcano-agent
-          image: docker.io/volcanosh/vc-agent:v1.11.1
+          image: docker.io/volcanosh/vc-agent:v1.11.2
           command:
             - /bin/sh
             - '-c'
