@@ -19,7 +19,6 @@ package job
 import (
 	"context"
 	"fmt"
-	"hash"
 	"hash/fnv"
 	"sync"
 	"time"
@@ -317,29 +316,20 @@ func (cc *jobcontroller) worker(i uint32) {
 }
 
 func (cc *jobcontroller) belongsToThisRoutine(key string, count uint32) bool {
-	var hashVal hash.Hash32
-	var val uint32
-
-	hashVal = fnv.New32()
-	hashVal.Write([]byte(key))
-
-	val = hashVal.Sum32()
-
+	val := cc.genHash(key)
 	return val%cc.workers == count
 }
 
 func (cc *jobcontroller) getWorkerQueue(key string) workqueue.TypedRateLimitingInterface[any] {
-	var hashVal hash.Hash32
-	var val uint32
-
-	hashVal = fnv.New32()
-	hashVal.Write([]byte(key))
-
-	val = hashVal.Sum32()
-
+	val := cc.genHash(key)
 	queue := cc.queueList[val%cc.workers]
-
 	return queue
+}
+
+func (cc *jobcontroller) genHash(key string) uint32 {
+	hashVal := fnv.New32()
+	hashVal.Write([]byte(key))
+	return hashVal.Sum32()
 }
 
 func (cc *jobcontroller) processNextReq(count uint32) bool {

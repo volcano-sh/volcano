@@ -62,6 +62,7 @@ basic:
   crd_version: ${crd_version}
 
 custom:
+  scheduler_log_level: 5
   admission_tolerations:
     - key: "node-role.kubernetes.io/control-plane"
       operator: "Exists"

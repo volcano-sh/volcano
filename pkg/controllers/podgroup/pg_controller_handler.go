@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strconv"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -191,52 +192,80 @@ func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 	return nil
 }
 
-func (pg *pgcontroller) getAnnotationsFromUpperRes(kind string, name string, namespace string) map[string]string {
-	switch kind {
-	case "ReplicaSet":
-		rs, err := pg.kubeClient.AppsV1().ReplicaSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
-			return map[string]string{}
+func (pg *pgcontroller) getAnnotationsFromUpperRes(pod *v1.Pod) map[string]string {
+	var annotations = make(map[string]string)
+
+	for _, reference := range pod.OwnerReferences {
+		if reference.Kind != "" && reference.Name != "" {
+			tmp := make(map[string]string)
+			switch reference.Kind {
+			case "ReplicaSet":
+				rs, err := pg.kubeClient.AppsV1().ReplicaSets(pod.Namespace).Get(context.TODO(), reference.Name, metav1.GetOptions{})
+				if err != nil {
+					klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", reference.Kind, pod.Namespace, reference.Name, err)
+					continue
+				}
+				tmp = rs.Annotations
+			case "DaemonSet":
+				ds, err := pg.kubeClient.AppsV1().DaemonSets(pod.Namespace).Get(context.TODO(), reference.Name, metav1.GetOptions{})
+				if err != nil {
+					klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", reference.Kind, pod.Namespace, reference.Name, err)
+					continue
+				}
+				tmp = ds.Annotations
+			case "StatefulSet":
+				ss, err := pg.kubeClient.AppsV1().StatefulSets(pod.Namespace).Get(context.TODO(), reference.Name, metav1.GetOptions{})
+				if err != nil {
+					klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", reference.Kind, pod.Namespace, reference.Name, err)
+					continue
+				}
+				tmp = ss.Annotations
+			case "Job":
+				job, err := pg.kubeClient.BatchV1().Jobs(pod.Namespace).Get(context.TODO(), reference.Name, metav1.GetOptions{})
+				if err != nil {
+					klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", reference.Kind, pod.Namespace, reference.Name, err)
+					continue
+				}
+				tmp = job.Annotations
+			}
+
+			for k, v := range tmp {
+				if _, ok := annotations[k]; !ok {
+					annotations[k] = v
+				}
+			}
 		}
-		return rs.Annotations
-	case "DaemonSet":
-		ds, err := pg.kubeClient.AppsV1().DaemonSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
-			return map[string]string{}
-		}
-		return ds.Annotations
-	case "StatefulSet":
-		ss, err := pg.kubeClient.AppsV1().StatefulSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
-			return map[string]string{}
-		}
-		return ss.Annotations
-	case "Job":
-		job, err := pg.kubeClient.BatchV1().Jobs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil {
-			klog.Errorf("Failed to get upper %s for Pod <%s/%s>: %v", kind, namespace, name, err)
-			return map[string]string{}
-		}
-		return job.Annotations
-	default:
-		return map[string]string{}
 	}
+
+	return annotations
+}
+
+func (pg *pgcontroller) getMinMemberFromUpperRes(upperAnnotations map[string]string, namespance, name string) int32 {
+	minMember := int32(1)
+
+	if minMemberAnno, ok := upperAnnotations[scheduling.VolcanoGroupMinMemberAnnotationKey]; ok {
+		minMemberFromAnno, err := strconv.ParseInt(minMemberAnno, 10, 32)
+		if err != nil {
+			klog.Errorf("Failed to convert minMemberAnnotation of Pod owners <%s/%s> into number: %v, minMember remains as 1",
+				namespance, name, err)
+			return minMember
+		}
+		if minMemberFromAnno < 0 {
+			klog.Errorf("minMemberAnnotation %d is not positive, minMember remains as 1", minMemberFromAnno)
+			return minMember
+		}
+		minMember = int32(minMemberFromAnno)
+	}
+
+	return minMember
 }
 
 // Inherit annotations from upper resources.
-func (pg *pgcontroller) inheritUpperAnnotations(pod *v1.Pod, obj *scheduling.PodGroup) {
+func (pg *pgcontroller) inheritUpperAnnotations(upperAnnotations map[string]string, obj *scheduling.PodGroup) {
 	if pg.inheritOwnerAnnotations {
-		for _, reference := range pod.OwnerReferences {
-			if reference.Kind != "" && reference.Name != "" {
-				var upperAnnotations = pg.getAnnotationsFromUpperRes(reference.Kind, reference.Name, pod.Namespace)
-				for k, v := range upperAnnotations {
-					if strings.HasPrefix(k, scheduling.AnnotationPrefix) {
-						obj.Annotations[k] = v
-					}
-				}
+		for k, v := range upperAnnotations {
+			if strings.HasPrefix(k, scheduling.AnnotationPrefix) {
+				obj.Annotations[k] = v
 			}
 		}
 	}
@@ -252,6 +281,13 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			return err
 		}
 
+		var minMember = int32(1)
+		var ownerAnnotations = make(map[string]string)
+		if pg.inheritOwnerAnnotations {
+			ownerAnnotations = pg.getAnnotationsFromUpperRes(pod)
+			minMember = pg.getMinMemberFromUpperRes(ownerAnnotations, pod.Namespace, pod.Name)
+		}
+		minResources := util.CalTaskRequests(pod, minMember)
 		obj := &scheduling.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:       pod.Namespace,
@@ -261,16 +297,16 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 				Labels:          map[string]string{},
 			},
 			Spec: scheduling.PodGroupSpec{
-				MinMember:         1,
+				MinMember:         minMember,
 				PriorityClassName: pod.Spec.PriorityClassName,
-				MinResources:      util.GetPodQuotaUsage(pod),
+				MinResources:      &minResources,
 			},
 			Status: scheduling.PodGroupStatus{
 				Phase: scheduling.PodGroupPending,
 			},
 		}
 
-		pg.inheritUpperAnnotations(pod, obj)
+		pg.inheritUpperAnnotations(ownerAnnotations, obj)
 		// Individual annotations on pods would overwrite annotations inherited from upper resources.
 		if queueName, ok := pod.Annotations[scheduling.QueueNameAnnotationKey]; ok {
 			obj.Spec.Queue = queueName

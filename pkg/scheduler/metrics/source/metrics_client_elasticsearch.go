@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v7"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -65,6 +66,10 @@ func NewElasticsearchMetricsClient(conf map[string]string) (*ElasticsearchMetric
 	}
 	var err error
 	insecureSkipVerify := conf["tls.insecureSkipVerify"] == "true"
+	if insecureSkipVerify {
+		klog.Warningf("WARNING: TLS certificate verification is disabled which is insecure. This should not be used in production environments")
+	}
+
 	e.es, err = elasticsearch.NewClient(elasticsearch.Config{
 		Addresses: []string{address},
 		Username:  conf["elasticsearch.username"],

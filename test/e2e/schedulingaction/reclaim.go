@@ -23,7 +23,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -553,30 +552,21 @@ var _ = Describe("Reclaim E2E Test", func() {
 	It("Capacity Reclaim Case 11: Multi reclaimed queue", func() {
 		// First replace proportion with capacity plugin.
 		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
-		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
-			vcScheConfStr, ok := data["volcano-scheduler-ci.conf"]
-			Expect(ok).To(BeTrue())
-
-			schedulerConf := &e2eutil.SchedulerConfiguration{}
-			err := yaml.Unmarshal([]byte(vcScheConfStr), schedulerConf)
-			Expect(err).NotTo(HaveOccurred())
-			for _, tier := range schedulerConf.Tiers {
+		modifier := func(sc *e2eutil.SchedulerConfiguration) bool {
+			for _, tier := range sc.Tiers {
 				for i, plugin := range tier.Plugins {
 					if plugin.Name == "proportion" {
-						tier.Plugins[i].Name = "capacity"
-						break
+						tier.Plugins[i] = e2eutil.PluginOption{
+							Name: "capacity",
+						}
+						return true
 					}
 				}
 			}
-
-			newVCScheConfBytes, err := yaml.Marshal(schedulerConf)
-			Expect(err).NotTo(HaveOccurred())
-
-			changed = true
-			changedBefore = make(map[string]string)
-			changedBefore["volcano-scheduler-ci.conf"] = vcScheConfStr
-			data["volcano-scheduler-ci.conf"] = string(newVCScheConfBytes)
-			return
+			return false
+		}
+		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+			return e2eutil.ModifySchedulerConfig(data, modifier)
 		})
 		defer cmc.UndoChanged()
 
@@ -664,35 +654,23 @@ var _ = Describe("Reclaim E2E Test", func() {
 	It("Capacity Reclaim Case 12: Multi reclaimed queue", func() {
 		// First replace configmap with hierarchical capacity plugin.
 		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
-		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
-			vcScheConfStr, ok := data["volcano-scheduler-ci.conf"]
-			Expect(ok).To(BeTrue())
-
-			schedulerConf := &e2eutil.SchedulerConfiguration{}
-			err := yaml.Unmarshal([]byte(vcScheConfStr), schedulerConf)
-			Expect(err).NotTo(HaveOccurred())
+		modifier := func(sc *e2eutil.SchedulerConfiguration) bool {
 			trueValue := true
-			schedulerConf.Tiers = []e2eutil.Tier{
-				{
-					Plugins: []e2eutil.PluginOption{
-						{
-							Name:               "capacity",
-							EnabledHierarchy:   &trueValue,
-							EnabledJobOrder:    &trueValue,
-							EnabledReclaimable: &trueValue,
-							EnabledQueueOrder:  &trueValue,
-						},
-					},
-				},
+			for _, tier := range sc.Tiers {
+				for i, plugin := range tier.Plugins {
+					if plugin.Name == "proportion" {
+						tier.Plugins[i] = e2eutil.PluginOption{
+							Name:             "capacity",
+							EnabledHierarchy: &trueValue,
+						}
+						return true
+					}
+				}
 			}
-			newVCScheConfBytes, err := yaml.Marshal(schedulerConf)
-			Expect(err).NotTo(HaveOccurred())
-
-			changed = true
-			changedBefore = make(map[string]string)
-			changedBefore["volcano-scheduler-ci.conf"] = vcScheConfStr
-			data["volcano-scheduler-ci.conf"] = string(newVCScheConfBytes)
-			return
+			return false
+		}
+		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+			return e2eutil.ModifySchedulerConfig(data, modifier)
 		})
 		defer cmc.UndoChanged()
 

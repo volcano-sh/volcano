@@ -32,6 +32,7 @@ import (
 	"k8s.io/controller-manager/pkg/clientbuilder"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/volcano/cmd/agent/app/options"
 	"volcano.sh/volcano/pkg/agent/healthcheck"
 	"volcano.sh/volcano/pkg/agent/utils"
@@ -81,8 +82,11 @@ func RunServer(checker healthcheck.HealthChecker, address string, port int) {
 		mux.HandleFunc("/healthz", checker.HealthCheck)
 		mux.Handle("/metrics", promhttp.Handler())
 		s := &http.Server{
-			Addr:    net.JoinHostPort(address, strconv.Itoa(port)),
-			Handler: mux,
+			Addr:              net.JoinHostPort(address, strconv.Itoa(port)),
+			Handler:           mux,
+			ReadHeaderTimeout: helpers.DefaultReadHeaderTimeout,
+			ReadTimeout:       helpers.DefaultReadTimeout,
+			WriteTimeout:      helpers.DefaultWriteTimeout,
 		}
 		if err := s.ListenAndServe(); err != nil {
 			klog.Fatalf("failed to start health check server: %v", err)
