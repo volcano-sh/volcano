@@ -108,8 +108,11 @@ func Run(config *options.Config) error {
 	}
 
 	server := &http.Server{
-		Addr:      config.ListenAddress + ":" + strconv.Itoa(config.Port),
-		TLSConfig: configTLS(config, restConfig),
+		Addr:              config.ListenAddress + ":" + strconv.Itoa(config.Port),
+		TLSConfig:         configTLS(config, restConfig),
+		ReadHeaderTimeout: helpers.DefaultReadHeaderTimeout,
+		ReadTimeout:       helpers.DefaultReadTimeout,
+		WriteTimeout:      helpers.DefaultWriteTimeout,
 	}
 	go func() {
 		err = server.ListenAndServeTLS("", "")

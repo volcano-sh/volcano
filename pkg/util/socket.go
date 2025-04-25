@@ -31,6 +31,8 @@ import (
 	"golang.org/x/sys/unix"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/klog/v2"
+
+	"volcano.sh/apis/pkg/apis/helpers"
 )
 
 const (
@@ -201,7 +203,10 @@ func listenUnix(componentName string, socketDir string) (net.Listener, error) {
 // serveOnListener starts the server using given listener, loops forever.
 func serveOnListener(l net.Listener, m *http.ServeMux) error {
 	server := http.Server{
-		Handler: m,
+		Handler:           m,
+		ReadHeaderTimeout: helpers.DefaultReadHeaderTimeout,
+		ReadTimeout:       helpers.DefaultReadTimeout,
+		WriteTimeout:      helpers.DefaultWriteTimeout,
 	}
 	return server.Serve(l)
 }
