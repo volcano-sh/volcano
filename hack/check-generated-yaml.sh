@@ -21,12 +21,12 @@ set -o pipefail
 VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 
-if ! diff ${VK_ROOT}/installer/volcano-development.yaml ${RELEASE_FOLDER}/volcano-v1.10.1.yaml ; then
+if ! diff ${VK_ROOT}/installer/volcano-development.yaml ${RELEASE_FOLDER}/volcano-v1.10.2.yaml ; then
 	{
 		echo
 		echo "The Generated yaml is different from the one in installer/volcano-development.yaml"
-		echo "please run 'make generate-yaml TAG=v1.10.1 RELEASE_DIR=installer \
-		&& mv ${VK_ROOT}/installer/volcano-v1.10.1.yaml ${VK_ROOT}/installer/volcano-development.yaml' to update"
+		echo "please run 'make generate-yaml TAG=v1.10.2 RELEASE_DIR=installer \
+		&& mv ${VK_ROOT}/installer/volcano-v1.10.2.yaml ${VK_ROOT}/installer/volcano-development.yaml' to update"
 		echo
 	} >&2
 	false
