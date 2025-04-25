@@ -155,6 +155,9 @@ spec:
             - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.scheduler_config_file}}
             - --enable-healthz=true
             - --enable-metrics=true
+            {{- if .Values.custom.scheduler_pprof_enable }}
+            - --enable-pprof=true
+            {{- end }}
             - --leader-elect={{ .Values.custom.leader_elect_enable }}
             {{- if .Values.custom.leader_elect_enable }}
             - --lock-object-namespace={{ .Release.Namespace }}
