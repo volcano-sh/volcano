@@ -25,7 +25,7 @@ jobs:
         ref: branch-3.4
         path: ${{ github.workspace }}/spark
     - name: Cache Scala, SBT and Maven
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           build/apache-maven-*
@@ -36,7 +36,7 @@ jobs:
         restore-keys: |
           build-
     - name: Cache Coursier local repository
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/coursier
         key: k8s-integration-coursier-${{ hashFiles('**/pom.xml', '**/plugins.sbt') }}
@@ -61,8 +61,8 @@ jobs:
     - name: Build lastest volcano images
       run: |
         eval $(minikube docker-env)
-        make TAG=v1.9.0 update-development-yaml
-        make TAG=v1.9.0 images
+        make TAG=v1.9.1 update-development-yaml
+        make TAG=v1.9.1 images
         docker images | grep volcano
         cat ./installer/volcano-development.yaml  | grep "image: "
         sed 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/' ./installer/volcano-development.yaml | minikube kubectl -- replace --force -f -
