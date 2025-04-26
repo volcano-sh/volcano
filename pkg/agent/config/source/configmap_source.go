@@ -96,14 +96,14 @@ func (cs *configMapSource) nodeAdd(obj interface{}) {
 func (cs *configMapSource) nodeUpdate(oldObj, newObj interface{}) {
 	oldNode, ok := oldObj.(*corev1.Node)
 	if !ok {
-		klog.ErrorS(nil, "can not covert interface object to Node", "oldobj", oldObj)
+		klog.ErrorS(nil, "can not convert interface object to Node", "oldobj", oldObj)
 		cs.queue.Add("node")
 		return
 	}
 
 	newNode, ok := newObj.(*corev1.Node)
 	if !ok {
-		klog.ErrorS(nil, "can not covert interface object to Node", "newobj", newObj)
+		klog.ErrorS(nil, "can not convert interface object to Node", "newobj", newObj)
 		cs.queue.Add("node")
 		return
 	}

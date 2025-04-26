@@ -27,7 +27,7 @@ type ResGroup interface {
 	IsBelongResGroup(pod *v1.Pod, resGroupConfig wkconfig.ResGroupConfig) bool
 }
 
-// GetResGroup return the interface besed on resourceGroup.Object.Key
+// GetResGroup return the interface based on resourceGroup.Object.Key
 func GetResGroup(resourceGroup wkconfig.ResGroupConfig) ResGroup {
 	switch resourceGroup.Object.Key {
 	case "namespace":

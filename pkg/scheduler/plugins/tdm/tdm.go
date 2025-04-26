@@ -318,14 +318,14 @@ func (tp *tdmPlugin) maxVictims(job *api.JobInfo, victims []*api.TaskInfo) []*ap
 // get max pod evict number from job budget configure
 func (tp *tdmPlugin) getMaxPodEvictNum(job *api.JobInfo) int {
 	jobRunningTaskNum := len(job.TaskStatusIndex[api.Running])
-	if job.Budget.MaxUnavilable != "" {
-		maxUnavilable := tp.parseIntStr(job.Budget.MaxUnavilable, len(job.Tasks))
+	if job.Budget.MaxUnavailable != "" {
+		maxUnavailable := tp.parseIntStr(job.Budget.MaxUnavailable, len(job.Tasks))
 		finalTaskNum := len(job.TaskStatusIndex[api.Succeeded]) + len(job.TaskStatusIndex[api.Failed])
-		realUnavilable := len(job.Tasks) - finalTaskNum - jobRunningTaskNum
-		if realUnavilable >= maxUnavilable {
+		realUnavailable := len(job.Tasks) - finalTaskNum - jobRunningTaskNum
+		if realUnavailable >= maxUnavailable {
 			return 0
 		}
-		return maxUnavilable - realUnavilable
+		return maxUnavailable - realUnavailable
 	}
 
 	if job.Budget.MinAvailable != "" {
