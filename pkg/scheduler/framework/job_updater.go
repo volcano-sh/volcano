@@ -103,7 +103,7 @@ func isPodGroupStatusUpdated(newStatus, oldStatus scheduling.PodGroupStatus) boo
 	return !equality.Semantic.DeepEqual(newStatus, oldStatus) || isPodGroupConditionsUpdated(newCondition, oldCondition)
 }
 
-func (ju *jobUpdater) isJobAllocatedHyperNodeChanged(job *api.JobInfo) bool {
+func (ju *JobUpdater) isJobAllocatedHyperNodeChanged(job *api.JobInfo) bool {
 	oldHyperNode := ju.ssn.PodGroupOldState.Annotations[job.UID][api.JobAllocatedHyperNode]
 	return oldHyperNode != job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode]
 }

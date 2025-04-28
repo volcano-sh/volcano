@@ -17,7 +17,6 @@
 package allocate
 
 import (
-	"sort"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -34,7 +33,6 @@ type Action struct {
 	session *framework.Session
 	// configured flag for error cache
 	enablePredicateErrorCache bool
-	hyperNodesTiers           []int
 
 	// hyperNodeScoresByJob stores job total score for all available hyperNodes, this is used for accumulate
 	// all nodes' scores in each available hyperNode only when job has hard network topology constrains
@@ -45,7 +43,6 @@ type Action struct {
 func New() *Action {
 	return &Action{
 		enablePredicateErrorCache: true, // default to enable it
-		hyperNodesTiers:           []int{},
 		hyperNodeScoresByJob:      make(map[string]map[string]float64),
 	}
 }
@@ -61,26 +58,11 @@ func (alloc *Action) parseArguments(ssn *framework.Session) {
 	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
 }
 
-func (alloc *Action) parseHyperNodesTiers(ssn *framework.Session) {
-	if ssn.HyperNodesSetByTier == nil || len(ssn.HyperNodesSetByTier) == 0 {
-		return
-	}
-
-	// sort to guarantee the traverse order is from down to top.
-	var tiers []int
-	for tier := range ssn.HyperNodesSetByTier {
-		tiers = append(tiers, tier)
-	}
-	sort.Ints(tiers)
-	alloc.hyperNodesTiers = tiers
-}
-
 func (alloc *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Allocate ...")
 	defer klog.V(5).Infof("Leaving Allocate ...")
 
 	alloc.parseArguments(ssn)
-	alloc.parseHyperNodesTiers(ssn)
 
 	// the allocation for pod may have many stages
 	// 1. pick a queue named Q (using ssn.QueueOrderFn)
@@ -200,7 +182,7 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		klog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v/%v>",
 			tasks.Len(), job.Namespace, job.Name)
 
-		hardMode, highestAllowedTier := job.HasTopologyHardConstrain()
+		hardMode, highestAllowedTier := job.IsHardTopologyMode()
 		var stmt *framework.Statement
 		var tasksQueue *util.PriorityQueue
 		if hardMode {
@@ -241,7 +223,7 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 	jobAllocatedHyperNode := job.PodGroup.Annotations[api.JobAllocatedHyperNode]
 
 	// Find a suitable hyperNode in one tier from down to top everytime to ensure that the selected hyperNode spans the least tier.
-	for _, tier := range alloc.hyperNodesTiers {
+	for _, tier := range ssn.HyperNodesTiers {
 		if tier > highestAllowedTier {
 			klog.V(4).ErrorS(nil, "Skip search for higher tier cause highest allowed tier reached", "jobName", job.UID, "highestAllowedTier", highestAllowedTier, "tier", tier)
 			break
@@ -375,6 +357,8 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 	ssn := alloc.session
 	stmt := framework.NewStatement(ssn)
 	ph := util.NewPredicateHelper()
+	// For TopologyNetworkSoftMode
+	jobNewAllocatedHyperNode := job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode]
 
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
@@ -429,13 +413,20 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			}
 		}
 
+		if job.IsSoftTopologyMode() {
+			task.JobAllocatedHyperNode = jobNewAllocatedHyperNode
+		}
+
 		bestNode, highestScore := alloc.prioritizeNodes(ssn, task, predicateNodes)
 		if bestNode == nil {
 			continue
 		}
 
 		alloc.sumNodeScoresInHyperNode(string(job.UID), hyperNode, highestScore)
-		alloc.allocateResourcesForTask(stmt, task, bestNode, job)
+
+		if err := alloc.allocateResourcesForTask(stmt, task, bestNode, job); err == nil {
+			jobNewAllocatedHyperNode = getJobNewAllocatedHyperNode(ssn, bestNode.Name, job, jobNewAllocatedHyperNode)
+		}
 
 		if ssn.JobReady(job) && !tasks.Empty() {
 			break
@@ -444,6 +435,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 
 	if ssn.JobReady(job) {
 		klog.V(3).InfoS("Job ready, return statement", "jobName", job.UID)
+		updateJobAllocatedHyperNode(job, jobNewAllocatedHyperNode)
 		return stmt
 	} else {
 		if !ssn.JobPipelined(job) {
@@ -453,12 +445,40 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 	}
 }
 
+// getJobNewAllocatedHyperNode Obtain the newly allocated hyperNode for the job in soft topology mode
+func getJobNewAllocatedHyperNode(ssn *framework.Session, bestNode string, job *api.JobInfo, jobAllocatedHyperNode string) string {
+	if !job.IsSoftTopologyMode() {
+		return ""
+	}
+
+	jobNewAllocatedHyperNode := jobAllocatedHyperNode
+	hyperNode := util.FindHyperNodeForNode(bestNode, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
+	if hyperNode != "" {
+		if jobNewAllocatedHyperNode == "" {
+			jobNewAllocatedHyperNode = hyperNode
+		} else {
+			jobNewAllocatedHyperNode = ssn.HyperNodes.GetLCAHyperNode(hyperNode, jobNewAllocatedHyperNode)
+		}
+	}
+	return jobNewAllocatedHyperNode
+}
+
+// updateJobAllocatedHyperNode update job allocated hyperNode in soft topology mode
+func updateJobAllocatedHyperNode(job *api.JobInfo, jobNewAllocatedHyperNode string) {
+	if !job.IsSoftTopologyMode() {
+		return
+	}
+
+	if job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode] != jobNewAllocatedHyperNode {
+		job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode] = jobNewAllocatedHyperNode
+	}
+}
+
 func (alloc *Action) sumNodeScoresInHyperNode(jobUID, hyperNode string, score float64) {
 	// normal vc job without networkTopology has no hyperNode, skip node scores accumulation.
 	if hyperNode == "" {
 		return
 	}
-
 	if alloc.hyperNodeScoresByJob[jobUID] == nil {
 		alloc.hyperNodeScoresByJob[jobUID] = make(map[string]float64)
 	}
@@ -519,11 +539,11 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 	return bestNode, higestScore
 }
 
-func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) {
+func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) (err error) {
 	// Allocate idle resource to the task.
 	if task.InitResreq.LessEqual(node.Idle, api.Zero) {
 		klog.V(3).Infof("Binding Task <%v/%v> to node <%v>", task.Namespace, task.Name, node.Name)
-		if err := stmt.Allocate(task, node); err != nil {
+		if err = stmt.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 				task.UID, node.Name, alloc.session.UID, err)
 			if rollbackErr := stmt.UnAllocate(task); rollbackErr != nil {
@@ -544,7 +564,7 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 	if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 		klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 			task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
-		if err := stmt.Pipeline(task, node.Name, false); err != nil {
+		if err = stmt.Pipeline(task, node.Name, false); err != nil {
 			klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 				task.UID, node.Name, alloc.session.UID, err)
 		} else {
@@ -552,6 +572,7 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 			metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 		}
 	}
+	return
 }
 
 func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {

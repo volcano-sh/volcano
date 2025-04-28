@@ -510,7 +510,7 @@ func TestHasTopologyHardConstrain(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hasHard, tier := tt.jobInfo.HasTopologyHardConstrain()
+			hasHard, tier := tt.jobInfo.IsHardTopologyMode()
 			assert.Equal(t, tt.expectedHasHard, hasHard)
 			assert.Equal(t, tt.expectedTier, tier)
 		})

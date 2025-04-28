@@ -19,6 +19,7 @@ package framework
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
@@ -84,6 +85,7 @@ type Session struct {
 	// have the same topology domain, e.g., nodes under the same switch or tor, jobs allocated in the same
 	// hyperNode can gain a better performance, the lower the tier of hyperNode, the better performance.
 	HyperNodesSetByTier map[int]sets.Set[string]
+	HyperNodesTiers     []int
 	// RealNodesList maps hyperNode Name -> nodes under the hyperNode.
 	RealNodesList             map[string][]*api.NodeInfo
 	HyperNodesReadyToSchedule bool
@@ -192,6 +194,7 @@ func openSession(cache cache.Cache) *Session {
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
 	ssn.HyperNodes = snapshot.HyperNodes
 	ssn.HyperNodesSetByTier = snapshot.HyperNodesSetByTier
+	ssn.parseHyperNodesTiers()
 	ssn.RealNodesList = util.GetRealNodesListByHyperNode(snapshot.RealNodesSet, snapshot.Nodes)
 	ssn.HyperNodesReadyToSchedule = snapshot.HyperNodesReadyToSchedule
 	ssn.Nodes = snapshot.Nodes
@@ -210,6 +213,20 @@ func openSession(cache cache.Cache) *Session {
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
 
 	return ssn
+}
+
+func (ssn *Session) parseHyperNodesTiers() {
+	if len(ssn.HyperNodesSetByTier) == 0 {
+		return
+	}
+
+	// sort to guarantee the traverse order is from down to top.
+	var tiers []int
+	for tier := range ssn.HyperNodesSetByTier {
+		tiers = append(tiers, tier)
+	}
+	sort.Ints(tiers)
+	ssn.HyperNodesTiers = tiers
 }
 
 // updateQueueStatus updates allocated field in queue status on session close.

@@ -59,6 +59,7 @@ type TestCommonStruct struct {
 	HyperNodesSetByTier       map[int]sets.Set[string]
 	HyperNodes                map[string]sets.Set[string]
 	HyperNodesMap             map[string]*api.HyperNodeInfo
+	RealNodesList             map[string][]*api.NodeInfo
 	HyperNodesReadyToSchedule bool
 	PodGroups                 []*vcapisv1.PodGroup
 	Queues                    []*vcapisv1.Queue
