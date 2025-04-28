@@ -180,7 +180,10 @@ func (bp *binpackPlugin) OnSessionOpen(ssn *framework.Session) {
 				notFoundResource = append(notFoundResource, string(resource))
 			}
 		}
-		klog.V(4).Infof("resources [%s] record in weight but not found on any node", strings.Join(notFoundResource, ", "))
+
+		if len(notFoundResource) > 0 {
+			klog.V(4).Infof("resources [%s] record in weight but not found on any node", strings.Join(notFoundResource, ", "))
+		}
 	}
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
