@@ -299,3 +299,35 @@ func ConvertRes2ResList(res *api.Resource) v1.ResourceList {
 	}
 	return rl
 }
+
+// FindHyperNodeForNode Find the hyperNode to which the node belongs.
+func FindHyperNodeForNode(nodeName string, hyperNodes map[string][]*api.NodeInfo, hyperNodesTiers []int, hyperNodesSetByTier map[int]sets.Set[string]) string {
+	if len(hyperNodesTiers) == 0 {
+		return ""
+	}
+	nodeTypeHyperNodes := hyperNodesSetByTier[hyperNodesTiers[0]]
+	for hyperNode := range nodeTypeHyperNodes {
+		nodes := hyperNodes[hyperNode]
+		for _, node := range nodes {
+			if node.Name == nodeName {
+				return hyperNode
+			}
+		}
+	}
+	return ""
+}
+
+// FindJobTaskNumOfHyperNode find out the number of tasks in the job that belong to the hyperNode.
+func FindJobTaskNumOfHyperNode(hyperNodeName string, job *api.JobInfo, hyperNodes map[string][]*api.NodeInfo) int {
+	nodes := hyperNodes[hyperNodeName]
+	taskCount := 0
+	for _, task := range job.Tasks {
+		for _, node := range nodes {
+			if node.Name == task.NodeName {
+				taskCount++
+				break
+			}
+		}
+	}
+	return taskCount
+}
