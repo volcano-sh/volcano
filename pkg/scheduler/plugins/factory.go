@@ -37,6 +37,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/rescheduling"
 	"volcano.sh/volcano/pkg/scheduler/plugins/resourcequota"
 	"volcano.sh/volcano/pkg/scheduler/plugins/sla"
+	"volcano.sh/volcano/pkg/scheduler/plugins/sra"
 	tasktopology "volcano.sh/volcano/pkg/scheduler/plugins/task-topology"
 	"volcano.sh/volcano/pkg/scheduler/plugins/tdm"
 	"volcano.sh/volcano/pkg/scheduler/plugins/usage"
@@ -62,6 +63,7 @@ func init() {
 	framework.RegisterPluginBuilder(usage.PluginName, usage.New)
 	framework.RegisterPluginBuilder(pdb.PluginName, pdb.New)
 	framework.RegisterPluginBuilder(nodegroup.PluginName, nodegroup.New)
+	framework.RegisterPluginBuilder(sra.PluginName, sra.New)
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)
