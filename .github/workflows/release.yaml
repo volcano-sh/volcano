@@ -53,7 +53,7 @@ jobs:
         run: |
           make verify
           make TAG=${{ env.TAG }} generate-yaml
-          make verify-generated-yaml
+          make RELEASE_TAG=${{ env.TAG }} verify-generated-yaml
           sudo make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
 
