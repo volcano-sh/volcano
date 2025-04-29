@@ -71,12 +71,24 @@ const (
 	// CachePredicate control cache predicate feature
 	CachePredicate = "predicate.CacheEnable"
 
+	// PredicateResource is the key for additional resource key name
+	PredicateResource = "predicate.resources"
+
 	// ProportionalPredicate is the key for enabling Proportional Predicate in YAML
 	ProportionalPredicate = "predicate.ProportionalEnable"
-	// ProportionalResource is the key for additional resource key name
-	ProportionalResource = "predicate.resources"
-	// ProportionalResourcesPrefix is the key prefix for additional resource key name
-	ProportionalResourcesPrefix = ProportionalResource + "."
+	// ProportionalResourcesPrefix is the key prefix for proportional resource key name
+	ProportionalResourcesPrefix = PredicateResource + "."
+
+	// SraEnable is the key for enabling Sra Predicate in YAML
+	SraEnable = "predicate.sraEnable"
+	// SraWeight is the key for providing Sra Weight in YAML
+	SraWeight = "predicate.sra.weight"
+	// SraResource is the key for sra resource key name
+	SraResource = "predicate.sra.resources"
+	// SraResourcesPrefix is the key prefix for sra resource key name
+	SraResourcesPrefix = SraResource + "."
+	// resourceFmt is the format for resource key
+	resourceFmt = "%s[%d]"
 )
 
 type predicatesPlugin struct {
@@ -98,6 +110,36 @@ type baseResource struct {
 	Memory float64
 }
 
+type resourceWeight struct {
+	Weight             int
+	Resources          map[v1.ResourceName]int
+	ResourcesWeightSum int
+}
+
+func (w *resourceWeight) String() string {
+	length := 1
+	if extendLength := len(w.Resources); extendLength == 0 {
+		length++
+	} else {
+		length += extendLength
+	}
+
+	msg := make([]string, 0, length)
+	msg = append(msg,
+		fmt.Sprintf(resourceFmt, SraWeight, w.Weight),
+	)
+
+	if len(w.Resources) == 0 {
+		msg = append(msg, "no extend resources.")
+	} else {
+		for name, weight := range w.Resources {
+			msg = append(msg, fmt.Sprintf(resourceFmt, name, weight))
+		}
+	}
+
+	return strings.Join(msg, ", ")
+}
+
 type predicateEnable struct {
 	nodeAffinityEnable      bool
 	nodePortEnable          bool
@@ -108,40 +150,45 @@ type predicateEnable struct {
 	podTopologySpreadEnable bool
 	cacheEnable             bool
 	proportionalEnable      bool
+	sraEnable               bool
 	proportional            map[v1.ResourceName]baseResource
+	sra                     resourceWeight
 }
 
 func enablePredicate(args framework.Arguments) predicateEnable {
 	/*
-	   User Should give predicatesEnable in this format(predicate.GPUSharingEnable).
-	   Currently supported only GPUSharing predicate checks.
+		   User Should give predicatesEnable in this format(predicate.GPUSharingEnable).
+		   Currently supported only GPUSharing predicate checks.
 
-	   actions: "reclaim, allocate, backfill, preempt"
-	   tiers:
-	   - plugins:
-	     - name: priority
-	     - name: gang
-	     - name: conformance
-	   - plugins:
-	     - name: drf
-	     - name: predicates
-	       arguments:
-	         predicate.NodeAffinityEnable: true
-	         predicate.NodePortsEnable: true
-	         predicate.TaintTolerationEnable: true
-	         predicate.PodAffinityEnable: true
-	         predicate.NodeVolumeLimitsEnable: true
-	         predicate.VolumeZoneEnable: true
-	         predicate.PodTopologySpreadEnable: true
-	         predicate.GPUSharingEnable: true
-	         predicate.GPUNumberEnable: true
-	         predicate.CacheEnable: true
-	         predicate.ProportionalEnable: true
-	         predicate.resources: nvidia.com/gpu
-	         predicate.resources.nvidia.com/gpu.cpu: 4
-	         predicate.resources.nvidia.com/gpu.memory: 8
-	     - name: proportion
-	     - name: nodeorder
+		   actions: "reclaim, allocate, backfill, preempt"
+		   tiers:
+		   - plugins:
+		     - name: priority
+		     - name: gang
+		     - name: conformance
+		   - plugins:
+		     - name: drf
+		     - name: predicates
+		       arguments:
+		         predicate.NodeAffinityEnable: true
+		         predicate.NodePortsEnable: true
+		         predicate.TaintTolerationEnable: true
+		         predicate.PodAffinityEnable: true
+		         predicate.NodeVolumeLimitsEnable: true
+		         predicate.VolumeZoneEnable: true
+		         predicate.PodTopologySpreadEnable: true
+		         predicate.GPUSharingEnable: true
+		         predicate.GPUNumberEnable: true
+		         predicate.CacheEnable: true
+		         predicate.resources: nvidia.com/gpu
+		         predicate.ProportionalEnable: true
+		         predicate.resources.nvidia.com/gpu.cpu: 4
+		         predicate.resources.nvidia.com/gpu.memory: 8
+				 predicate.sraEnable: false
+				 predicate.sra.weight: 10
+				 predicate.sra.resources.nvidia.com/gpu: 1
+		     - name: proportion
+		     - name: nodeorder
 	*/
 
 	predicate := predicateEnable{
@@ -154,6 +201,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		podTopologySpreadEnable: true,
 		cacheEnable:             false,
 		proportionalEnable:      false,
+		sraEnable:               false,
 	}
 
 	// Checks whether predicate enable args is provided or not.
@@ -169,37 +217,63 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	args.GetBool(&predicate.cacheEnable, CachePredicate)
 	// Checks whether predicate.ProportionalEnable is provided or not, if given, modifies the value in predicateEnable struct.
 	args.GetBool(&predicate.proportionalEnable, ProportionalPredicate)
-	resourcesProportional := make(map[v1.ResourceName]baseResource)
-	resourcesStr, ok := args[ProportionalResource].(string)
+	// Checks whether predicate.sraEnable is provided or not, if given, modifies the value in predicateEnable struct.
+	args.GetBool(&predicate.sraEnable, SraEnable)
+
+	// Obtain resource key name
+	resourcesStr, ok := args[PredicateResource].(string)
 	if !ok {
 		resourcesStr = ""
 	}
 	resources := strings.Split(resourcesStr, ",")
-	for _, resource := range resources {
-		resource = strings.TrimSpace(resource)
-		if resource == "" {
-			continue
-		}
-		// proportional.resources.[ResourceName]
-		cpuResourceKey := ProportionalResourcesPrefix + resource + ".cpu"
-		cpuResourceRate := 1.0
-		args.GetFloat64(&cpuResourceRate, cpuResourceKey)
-		if cpuResourceRate < 0 {
-			cpuResourceRate = 1.0
-		}
-		memoryResourceKey := ProportionalResourcesPrefix + resource + ".memory"
-		memoryResourceRate := 1.0
-		args.GetFloat64(&memoryResourceRate, memoryResourceKey)
-		if memoryResourceRate < 0 {
-			memoryResourceRate = 1.0
-		}
-		r := baseResource{
-			CPU:    cpuResourceRate,
-			Memory: memoryResourceRate,
-		}
-		resourcesProportional[v1.ResourceName(resource)] = r
+
+	resourcesProportional := make(map[v1.ResourceName]baseResource)
+	resourcesSra := resourceWeight{
+		Weight:             1,
+		Resources:          make(map[v1.ResourceName]int),
+		ResourcesWeightSum: 0,
 	}
+
+	// When both proportionalEnable and sraEnable are true, only proportional is allowed to take effect.
+	if predicate.proportionalEnable && predicate.sraEnable {
+		predicate.sraEnable = false
+		klog.V(4).Infof("%s and %s cannot take effect at the same time. %s will take effect",
+			ProportionalPredicate, SraEnable, ProportionalPredicate)
+	}
+
+	if predicate.proportionalEnable {
+		for _, resource := range resources {
+			resource = strings.TrimSpace(resource)
+			if resource == "" {
+				continue
+			}
+			// proportional.resources.[ResourceName]
+			cpuResourceKey := ProportionalResourcesPrefix + resource + ".cpu"
+			cpuResourceRate := 1.0
+			args.GetFloat64(&cpuResourceRate, cpuResourceKey)
+			if cpuResourceRate < 0 {
+				cpuResourceRate = 1.0
+			}
+			memoryResourceKey := ProportionalResourcesPrefix + resource + ".memory"
+			memoryResourceRate := 1.0
+			args.GetFloat64(&memoryResourceRate, memoryResourceKey)
+			if memoryResourceRate < 0 {
+				memoryResourceRate = 1.0
+			}
+			r := baseResource{
+				CPU:    cpuResourceRate,
+				Memory: memoryResourceRate,
+			}
+			resourcesProportional[v1.ResourceName(resource)] = r
+		}
+	}
+
+	if predicate.sraEnable {
+		resourcesSra = calculateWeight(resources, args)
+	}
+
 	predicate.proportional = resourcesProportional
+	predicate.sra = resourcesSra
 
 	return predicate
 }
@@ -566,6 +640,43 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		return nil
 	})
+
+	if predicate.sraEnable {
+		klog.V(5).Infof("sra resources weight is %s ", predicate.sra.String())
+
+		if klog.V(4).Enabled() {
+			notFoundResource := []string{}
+			for resource := range predicate.sra.Resources {
+				found := false
+				for _, nodeInfo := range ssn.Nodes {
+					if nodeInfo.Capacity.Get(resource) > 0 {
+						found = true
+						break
+					}
+				}
+				if !found {
+					notFoundResource = append(notFoundResource, string(resource))
+				}
+			}
+
+			if len(notFoundResource) > 0 {
+				klog.V(4).Infof("resources [%s] record in predicate.resources but not found on any node",
+					strings.Join(notFoundResource, ", "))
+			}
+		}
+
+		nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+			sraScore := sraScore(task, node, predicate.sra)
+
+			klog.V(4).Infof("predicate.sraScore for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, sraScore)
+			return sraScore, nil
+		}
+		if predicate.sra.Weight != 0 {
+			ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
+		} else {
+			klog.Infof("predicate.sra.weight is zero, skip node order function")
+		}
+	}
 }
 
 // ShouldAbort determines if the given status indicates that execution should be aborted.
