@@ -56,7 +56,11 @@ custom:
 #  default_sc:
 #    runAsUser: 3000
 #    runAsGroup: 3000
-  default_sc: ~
+  default_sc:
+    seccompProfile:
+      type: RuntimeDefault
+    seLinuxOptions:
+      level: "s0:c123,c456"
   scheduler_sc: ~
   admission_sc: ~
   controller_sc: ~
@@ -114,3 +118,23 @@ custom:
 #
 # Note that {{ .Release.Namespace }} and kube-system namespaces are always ignored.
   webhooks_namespace_selector_expressions: ~
+
+# Specify container security context for admission
+# For example:
+#
+# default_csc:
+#   allowPrivilegeEscalation: false
+#   runAsUser: 2000
+  default_csc:
+    runAsNonRoot: true
+    runAsUser: 1000
+    # Disable all capabilities by default, components can add capabilities as needed
+    capabilities:
+      add: ["DAC_OVERRIDE"]
+      drop: [ "ALL" ]
+    allowPrivilegeEscalation: false
+  admission_main_csc: ~
+  admission_init_csc: ~
+  scheduler_main_csc: ~
+  controller_main_csc: ~
+
