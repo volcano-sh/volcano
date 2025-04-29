@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -e
+
 VOLCANO_AGENT_LOG_DIR="/var/log/volcano/agent"
 VOLCANO_AGENT_LOG_PATH="${VOLCANO_AGENT_LOG_DIR}/volcano-agent.log"
 NETWORK_QOS_LOG_PATH="${VOLCANO_AGENT_LOG_DIR}/network-qos.log"
@@ -52,6 +54,10 @@ function set_memory_qos_enabled(){
 touch ${VOLCANO_AGENT_LOG_PATH}
 touch ${NETWORK_QOS_LOG_PATH}
 touch ${NETWORK_QOS_TOOLS_LOG_PATH}
+
+chmod 750 ${VOLCANO_AGENT_LOG_DIR}
+chown -R 1000:1000 ${VOLCANO_AGENT_LOG_DIR}
+chmod 640 ${VOLCANO_AGENT_LOG_DIR}/*.log
 
 set_memory_qos_enabled
 set_sched_prio_load_balance_enabled
