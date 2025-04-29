@@ -148,6 +148,10 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.WorkerThreadsForQueue = opt.WorkerThreadsForQueue
 	controllerOpt.WorkerThreadsForGC = opt.WorkerThreadsForGC
 	controllerOpt.Config = config
+	controllerOpt.KubePodNamespace = opt.KubePodNamespace
+	controllerOpt.NetworkTopologyAutoDiscoveryWorkerThreads = opt.NetworkTopologyAutoDiscoveryWorkerThreads
+	controllerOpt.NetworkTopologyAutoDiscoveryGCWorkerThreads = opt.NetworkTopologyAutoDiscoveryGCWorkerThreads
+	controllerOpt.NetworkTopologyAutoDiscoverySyncPeriod = opt.NetworkTopologyAutoDiscoverySyncPeriod
 
 	return func(ctx context.Context) {
 		framework.ForeachController(func(c framework.Controller) {
