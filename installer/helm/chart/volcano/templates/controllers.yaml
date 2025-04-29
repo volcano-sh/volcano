@@ -2,6 +2,7 @@
 {{ $controller_affinity := or .Values.custom.controller_affinity .Values.custom.default_affinity }}
 {{ $controller_tolerations := or .Values.custom.controller_tolerations .Values.custom.default_tolerations }}
 {{ $controller_sc := or .Values.custom.controller_sc .Values.custom.default_sc }}
+{{ $controller_main_csc := or .Values.custom.controller_main_csc .Values.custom.default_csc }}
 {{ $controller_ns := or .Values.custom.controller_ns .Values.custom.default_ns }}
 {{ $scheduler_name := .Values.custom.scheduler_name }}
 apiVersion: v1
@@ -184,9 +185,9 @@ spec:
             - -v={{.Values.custom.controller_log_level}}
             - 2>&1
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
-            {{- if .Values.custom.controller_default_csc }}
+            {{- if $controller_main_csc }}
           securityContext:
-              {{- toYaml .Values.custom.controller_default_csc | nindent 14 }}
+              {{- toYaml $controller_main_csc | nindent 14 }}
             {{- end }}
 ---
 apiVersion: v1

@@ -99,7 +99,11 @@ custom:
 #  default_sc:
 #    runAsUser: 3000
 #    runAsGroup: 3000
-  default_sc: ~
+  default_sc:
+    seccompProfile:
+      type: RuntimeDefault
+    seLinuxOptions:
+      level: "s0:c123,c456"
   scheduler_sc: ~
   admission_sc: ~
   controller_sc: ~
@@ -175,12 +179,33 @@ custom:
 # Specify container security context for admission
 # For example:
 #
-# admission_default_csc:
+# default_csc:
 #   allowPrivilegeEscalation: false
 #   runAsUser: 2000
-  admission_default_csc: ~
-  scheduler_default_csc: ~
-  controller_default_csc: ~
+  default_csc:
+    runAsNonRoot: true
+    runAsUser: 1000
+    # Disable all capabilities by default, components can add capabilities as needed
+    capabilities:
+      add: ["DAC_OVERRIDE"]
+      drop: [ "ALL" ]
+    allowPrivilegeEscalation: false
+  admission_main_csc: ~
+  admission_init_csc: ~
+  scheduler_main_csc: ~
+  controller_main_csc: ~
+  agent_main_csc:
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      add: ["DAC_OVERRIDE", "SETUID", "SETGID", "SETFCAP", "BPF"]
+      drop: [ "ALL" ]
+  agent_init_csc:
+    runAsUser: 0
+    capabilities:
+      add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
+      drop: [ "ALL" ]
+    allowPrivilegeEscalation: false
 
   # Specify agent cni config path.
   agent_cni_config_path: /etc/cni/net.d/cni.conflist

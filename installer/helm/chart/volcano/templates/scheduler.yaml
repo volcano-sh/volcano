@@ -2,6 +2,7 @@
 {{ $scheduler_affinity := or .Values.custom.scheduler_affinity .Values.custom.default_affinity }}
 {{ $scheduler_tolerations := or .Values.custom.scheduler_tolerations .Values.custom.default_tolerations }}
 {{ $scheduler_sc := or .Values.custom.scheduler_sc .Values.custom.default_sc }}
+{{ $scheduler_main_csc := or .Values.custom.scheduler_main_csc .Values.custom.default_csc }}
 {{ $scheduler_ns := or .Values.custom.scheduler_ns .Values.custom.default_ns }}
 {{ $scheduler_name := .Values.custom.scheduler_name }}
 apiVersion: v1
@@ -218,9 +219,9 @@ spec:
               mountPath: /volcano.scheduler
             - name: klog-sock
               mountPath: /tmp/klog-socks
-          {{- if .Values.custom.scheduler_default_csc }}
+          {{- if $scheduler_main_csc }}
           securityContext:
-            {{- toYaml .Values.custom.scheduler_default_csc | nindent 12 }}
+            {{- toYaml $scheduler_main_csc | nindent 12 }}
           {{- end }}
       volumes:
         - name: scheduler-config

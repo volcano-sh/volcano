@@ -2,6 +2,8 @@
 {{ $agent_affinity := or .Values.custom.agent_affinity .Values.custom.default_affinity }}
 {{ $agent_tolerations := or .Values.custom.agent_tolerations .Values.custom.default_tolerations }}
 {{ $agent_sc := or .Values.custom.agent_sc .Values.custom.default_sc }}
+{{ $agent_main_csc := or .Values.custom.agent_main_csc .Values.custom.default_csc }}
+{{ $agent_init_csc := or .Values.custom.agent_init_csc .Values.custom.default_csc }}
 {{ $agent_ns := or .Values.custom.agent_ns .Values.custom.default_ns }}
 apiVersion: apps/v1
 kind: DaemonSet
@@ -86,6 +88,10 @@ spec:
       initContainers:
         - name: volcano-agent-init
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.agent_image_name}}:{{.Values.basic.image_tag_version}}
+          {{- if $agent_init_csc }}
+          securityContext:
+            {{- toYaml $agent_init_csc | nindent 12 }}
+          {{- end }}
           command:
             - /bin/sh
             - '-c'
@@ -111,6 +117,10 @@ spec:
       containers:
         - name: volcano-agent
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.agent_image_name}}:{{.Values.basic.image_tag_version}}
+          {{- if $agent_main_csc }}
+          securityContext:
+            {{- toYaml $agent_main_csc | nindent 12 }}
+          {{- end }}
           command:
             - /bin/sh
             - '-c'
