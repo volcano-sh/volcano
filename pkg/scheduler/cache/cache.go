@@ -437,54 +437,38 @@ func (sc *SchedulerCache) setBatchBindParallel() {
 
 // newDefaultAndRootQueue init default queue and root queue
 func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
-	reclaimable := false
-	rootQueue := vcv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "root",
-		},
-		Spec: vcv1beta1.QueueSpec{
-			Reclaimable: &reclaimable,
-			Weight:      1,
-		},
+	createQueue := func(name string, reclaimable bool) error {
+		queue := vcv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name,
+			},
+			Spec: vcv1beta1.QueueSpec{
+				Reclaimable: &reclaimable,
+				Weight:      1,
+			},
+		}
+
+		return retry.OnError(wait.Backoff{
+			Steps:    60,
+			Duration: time.Second,
+			Factor:   1,
+			Jitter:   0.1,
+		}, func(err error) bool {
+			return !apierrors.IsAlreadyExists(err)
+		}, func() error {
+			_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queue, metav1.CreateOptions{})
+			return err
+		})
 	}
 
-	err := retry.OnError(wait.Backoff{
-		Steps:    60,
-		Duration: time.Second,
-		Factor:   1,
-		Jitter:   0.1,
-	}, func(err error) bool {
-		return !apierrors.IsAlreadyExists(err)
-	}, func() error {
-		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &rootQueue, metav1.CreateOptions{})
-		return err
-	})
+	// Create root queue
+	err := createQueue("root", false)
 	if err != nil && !apierrors.IsAlreadyExists(err) {
-		panic(fmt.Errorf("failed init root queue, with err: %v", err))
+		panic(fmt.Errorf("failed init root queue, with err:%v", err))
 	}
 
-	reclaimable = true
-	defaultQue := vcv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: defaultQueue,
-		},
-		Spec: vcv1beta1.QueueSpec{
-			Reclaimable: &reclaimable,
-			Weight:      1,
-		},
-	}
-
-	err = retry.OnError(wait.Backoff{
-		Steps:    60,
-		Duration: time.Second,
-		Factor:   1,
-		Jitter:   0.1,
-	}, func(err error) bool {
-		return !apierrors.IsAlreadyExists(err)
-	}, func() error {
-		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{})
-		return err
-	})
+	// Create default queue
+	err = createQueue(defaultQueue, true)
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		panic(fmt.Errorf("failed init default queue, with err: %v", err))
 	}
