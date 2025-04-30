@@ -2,6 +2,8 @@
 {{ $admission_affinity := or .Values.custom.admission_affinity .Values.custom.default_affinity }}
 {{ $admission_tolerations := or .Values.custom.admission_tolerations .Values.custom.default_tolerations }}
 {{ $admission_sc := or .Values.custom.admission_sc .Values.custom.default_sc }}
+{{ $admission_main_csc := or .Values.custom.admission_main_csc .Values.custom.default_csc }}
+{{ $admission_init_csc := or .Values.custom.admission_init_csc .Values.custom.default_csc }}
 {{ $admission_ns := or .Values.custom.admission_ns .Values.custom.default_ns }}
 apiVersion: v1
 kind: ConfigMap
@@ -133,6 +135,10 @@ spec:
               readOnly: true
             - mountPath: /admission.local.config/configmap
               name: admission-config
+          {{- if $admission_main_csc }}
+          securityContext:
+            {{- toYaml $admission_main_csc | nindent 12 }}
+          {{- end }}
       volumes:
         - name: admission-certs
           secret:
@@ -205,4 +211,8 @@ spec:
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           command: ["./gen-admission-secret.sh", "--service", "{{ .Release.Name }}-admission-service", "--namespace",
                     "{{ .Release.Namespace }}", "--secret", "{{.Values.basic.admission_secret_name}}"]
+          {{- if $admission_init_csc }}
+          securityContext:
+            {{- toYaml $admission_init_csc | nindent 12 }}
+          {{- end }}
 {{- end }}
