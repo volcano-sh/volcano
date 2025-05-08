@@ -92,6 +92,9 @@ type ServerOption struct {
 	// Case3: "-gc-controller,-job-controller,-jobflow-controller,-jobtemplate-controller,-pg-controller,-queue-controller"
 	// to disable specific controllers,
 	Controllers []string
+	// HyperNodeProviderDir is the directory of hyperNode provider, vc controller
+	// read .so file in this directory to load hyperNode provider plugins.
+	HyperNodeProviderDir string
 }
 
 type DecryptFunc func(c *ServerOption) error
@@ -129,6 +132,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet, knownControllers []string) {
 	fs.Uint32Var(&s.WorkerThreadsForQueue, "worker-threads-for-queue", defaultQueueWorkers, "The number of threads syncing queue operations. The larger the number, the faster the queue processing, but requires more CPU load.")
 	fs.StringSliceVar(&s.Controllers, "controllers", []string{defaultControllers}, fmt.Sprintf("Specify controller gates. Use '*' for all controllers, all knownController: %s ,and we can use "+
 		"'-' to disable controllers, e.g. \"-job-controller,-queue-controller\" to disable job and queue controllers.", knownControllers))
+	fs.StringVar(&s.HyperNodeProviderDir, "hypernode-provider-dir", "", "The directory of hyperNode provider, vc controller read .so file in this directory to load hyperNode provider plugin.")
 }
 
 // CheckOptionOrDie checks all options and returns all errors if they are invalid.
