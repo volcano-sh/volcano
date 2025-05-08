@@ -3,6 +3,7 @@ module volcano.sh/volcano
 go 1.23.0
 
 require (
+	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6
 	github.com/agiledragon/gomonkey/v2 v2.11.0
 	github.com/cilium/ebpf v0.9.3
 	github.com/containernetworking/cni v1.1.2
