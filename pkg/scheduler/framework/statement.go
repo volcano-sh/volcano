@@ -248,6 +248,7 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 		}
 	}
 	task.NodeName = ""
+	task.JobAllocatedHyperNode = ""
 
 	return nil
 }
@@ -392,6 +393,7 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 		}
 	}
 	task.NodeName = ""
+	task.JobAllocatedHyperNode = ""
 
 	return nil
 }
