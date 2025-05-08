@@ -349,8 +349,6 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		if attr.realCapability != nil {
 			attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
 		}
-		// When scalar resource not specified in deserved such as "pods", we should skip it and consider deserved resource as infinity.
-		attr.deserved.MinDimensionResource(attr.request, api.Infinity)
 
 		attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
 		cp.updateShare(attr)
@@ -679,7 +677,6 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 		}
 		oldDeserved := childAttr.deserved.Clone()
 		childAttr.deserved.MinDimensionResource(childAttr.realCapability, api.Infinity)
-		childAttr.deserved.MinDimensionResource(childAttr.request, api.Zero)
 
 		childAttr.deserved = helpers.Max(childAttr.deserved, childAttr.guarantee)
 		totalDeserved.Sub(oldDeserved).Add(childAttr.deserved)
