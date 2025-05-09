@@ -347,7 +347,7 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	actions := []framework.Action{enqueue.New(), reclaim.New(), allocate.New()}
 
 	// nodes
-	n1 := util.BuildNode("n1", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	n1 := util.BuildNode("n1", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "11"}}...), map[string]string{})
 
 	// resources for test case 0
 	// pod
