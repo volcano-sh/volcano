@@ -30,10 +30,10 @@ jobs:
 
     - name: Checkout current Volcano repository
       if: github.event.inputs.volcano-branch==''
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Checkout Spark repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
         repository: apache/spark
