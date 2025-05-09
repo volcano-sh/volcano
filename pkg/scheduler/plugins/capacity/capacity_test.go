@@ -263,6 +263,7 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 	p3 := util.BuildPod("ns1", "pod3", "", corev1.PodPending, res1c0g, "pg3", nil, nil)
 	p4 := util.BuildPod("ns1", "pod4", "", corev1.PodPending, res0c1g, "pg4", nil, nil)
 	p5 := util.BuildPod("ns1", "pod5", "", corev1.PodPending, res1c1g, "pg5", nil, nil)
+	p6 := util.BuildPod("ns1", "pod6", "", corev1.PodPending, res1c1g, "pg6", nil, nil)
 
 	// podgroup
 	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning)
@@ -270,14 +271,17 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 	pg3 := util.BuildPodGroup("pg3", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
 	pg4 := util.BuildPodGroup("pg4", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupPending)
 	pg5 := util.BuildPodGroup("pg5", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pg6WithClosedQueue := util.BuildPodGroup("pg6", "ns1", "q3", 1, nil, schedulingv1beta1.PodGroupPending)
 	pg1.Spec.MinResources = &res1c3g
 	pg2.Spec.MinResources = &res3c1g
 	pg3.Spec.MinResources = &res1c0g
 	pg4.Spec.MinResources = &res0c1g
 	pg5.Spec.MinResources = &res1c1g
+	pg6WithClosedQueue.Spec.MinResources = &res1c1g
 
 	queue1 := util.BuildQueueWithResourcesQuantity("q1", api.BuildResourceList("2", "2G"), api.BuildResourceList("2", "2G"))
 	queue2 := util.BuildQueueWithResourcesQuantity("q2", api.BuildResourceList("2", "2G"), api.BuildResourceList("3", "3G"))
+	closedQueue3 := util.BuildQueueWithState("q3", 1, api.BuildResourceList("3", "3G"), schedulingv1beta1.QueueStateClosed)
 
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 	trueValue := true
@@ -322,6 +326,16 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 			Nodes:          []*corev1.Node{n1, n2},
 			PodGroups:      []*schedulingv1beta1.PodGroup{pg1, pg2, pg5},
 			Queues:         []*schedulingv1beta1.Queue{queue1, queue2},
+			ExpectBindsNum: 0,
+			ExpectBindMap:  map[string]string{},
+		},
+		{
+			Name:           "case4: queue with  non-open state, can not enqueue",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p6},
+			Nodes:          []*corev1.Node{n1, n2},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg6WithClosedQueue},
+			Queues:         []*schedulingv1beta1.Queue{closedQueue3},
 			ExpectBindsNum: 0,
 			ExpectBindMap:  map[string]string{},
 		},
