@@ -291,35 +291,25 @@ var _ = Describe("Job E2E Test", func() {
 		basePods := e2eutil.GetTasksOfJob(ctx, baseJob)
 		basePod := basePods[0]
 		baseNodeName := basePod.Spec.NodeName
-
 		node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), baseNodeName, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred(), "failed to get node")
 
-		clusterPods, err := ctx.Kubeclient.CoreV1().Pods(v1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		usedResource, usedPodNumber := e2eutil.NodeUsed(ctx)
 
-		alloc := schedulingapi.NewResource(node.Status.Allocatable)
-		for _, pod := range clusterPods.Items {
-			nodeName := pod.Spec.NodeName
-			if nodeName != baseNodeName || len(nodeName) == 0 || pod.DeletionTimestamp != nil {
-				continue
-			}
-
-			if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
-				continue
-			}
-
-			for _, c := range pod.Spec.Containers {
-				req := schedulingapi.NewResource(c.Resources.Requests)
-				alloc.Sub(req)
-			}
-		}
+		alloc := usedResource[baseNodeName]
+		allocedPodNumber := usedPodNumber[baseNodeName]
 
 		need := schedulingapi.NewResource(v1.ResourceList{"cpu": resource.MustParse("500m")})
 		var count int32
 		for need.LessEqual(alloc, schedulingapi.Zero) {
 			count++
 			alloc.Sub(need)
+		}
+		allocatablePods, _ := node.Status.Allocatable.Pods().AsInt64()
+		canAllocPods := int32(allocatablePods - int64(allocedPodNumber))
+
+		if canAllocPods < count {
+			count = canAllocPods
 		}
 
 		By(fmt.Sprintf("create test job with %d pods", count))
