@@ -191,7 +191,7 @@ func BuildPodWithPriority(namespace, name, nodeName string, p v1.PodPhase, req v
 }
 
 // BuildPodWithPreemptionPolicy builds a pod with preemptionPolicy
-func BuildPodWithPreeemptionPolicy(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, preemptionPolicy v1.PreemptionPolicy) *v1.Pod {
+func BuildPodWithPreemptionPolicy(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, preemptionPolicy v1.PreemptionPolicy) *v1.Pod {
 	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
 	pod.Spec.PreemptionPolicy = &preemptionPolicy
 	return pod
