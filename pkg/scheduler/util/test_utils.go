@@ -265,7 +265,7 @@ func BuildPodGroupWithAnno(name, ns, queue string, minMember int32, taskMinMembe
 
 ///////////// function to build queue  ///////////////////
 
-// BuildQueue return a scheduling Queue
+// BuildQueue returns a new Queue object with the "Open" state.
 func BuildQueue(qname string, weight int32, cap v1.ResourceList) *schedulingv1beta1.Queue {
 	return &schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
@@ -274,6 +274,24 @@ func BuildQueue(qname string, weight int32, cap v1.ResourceList) *schedulingv1be
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight:     weight,
 			Capability: cap,
+		},
+		Status: schedulingv1beta1.QueueStatus{
+			State: schedulingv1beta1.QueueStateOpen,
+		},
+	}
+}
+
+func BuildQueueWithState(qname string, weight int32, cap v1.ResourceList, state schedulingv1beta1.QueueState) *schedulingv1beta1.Queue {
+	return &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: qname,
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight:     weight,
+			Capability: cap,
+		},
+		Status: schedulingv1beta1.QueueStatus{
+			State: state,
 		},
 	}
 }

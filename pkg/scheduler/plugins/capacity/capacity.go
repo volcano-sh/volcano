@@ -188,6 +188,10 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		attr := cp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
+		// If the queue is not open, do not enqueue
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			return util.Reject
+		}
 		// If no capability is set, always enqueue the job.
 		if attr.realCapability == nil {
 			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
