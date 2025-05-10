@@ -30,7 +30,7 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-{{ .Release.Name }}-dashboard-config
+  name: grafana-{{ include "volcano.fullname" . }}-dashboard-config
   namespace: {{ .Release.Namespace }}
   {{- if .Values.custom.common_labels }}
   labels:
@@ -50,7 +50,7 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-{{ .Release.Name }}-dashboard
+  name: grafana-{{ include "volcano.fullname" . }}-dashboard
   namespace: {{ .Release.Namespace }}
   {{- if .Values.custom.common_labels }}
   labels:
@@ -117,26 +117,26 @@ spec:
             name: grafana-datasources
             readOnly: false
           - mountPath: /var/lib/grafana/dashboards
-            name: grafana-{{ .Release.Name }}-dashboard 
+            name: grafana-{{ include "volcano.fullname" . }}-dashboard 
             readOnly: false 
           - mountPath: /etc/grafana/provisioning/dashboards 
-            name: grafana-{{ .Release.Name }}-dashboard-config
+            name: grafana-{{ include "volcano.fullname" . }}-dashboard-config
             readOnly: true
       volumes:
         - name: grafana-storage
           emptyDir: {}
-        - name: grafana-{{ .Release.Name }}-dashboard
+        - name: grafana-{{ include "volcano.fullname" . }}-dashboard
           configMap:
               defaultMode: 420
-              name: grafana-{{ .Release.Name }}-dashboard
+              name: grafana-{{ include "volcano.fullname" . }}-dashboard
         - name: grafana-datasources
           configMap:
               defaultMode: 420
               name: grafana-datasources
-        - name: grafana-{{ .Release.Name }}-dashboard-config
+        - name: grafana-{{ include "volcano.fullname" . }}-dashboard-config
           configMap:
               defaultMode: 420
-              name: grafana-{{ .Release.Name }}-dashboard-config
+              name: grafana-{{ include "volcano.fullname" . }}-dashboard-config
 ---
 apiVersion: v1
 kind: Service
