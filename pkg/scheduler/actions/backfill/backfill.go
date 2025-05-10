@@ -73,7 +73,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicateFunc, backfill.enablePredicateErrorCache)
+		predicateNodes, fitErrors := framework.PredicateNodes(ssn, task, ssn.NodeList, ph, predicateFunc, backfill.enablePredicateErrorCache, false)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
 			continue
