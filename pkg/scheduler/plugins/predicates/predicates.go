@@ -434,6 +434,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
 		// the processing logic needs to be added to the return value result.
 		if predicate.podAffinityEnable {
+			klog.Infof("Executing podAffinityFilter PreFilter for task %s/%s", task.Namespace, task.Name)
 			_, status := podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
 			if err := handleSkipPrePredicatePlugin(status, state, task, interpodaffinity.Name); err != nil {
 				return err
@@ -590,12 +591,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				status := podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 				podAffinityStatus := api.ConvertPredicateStatus(status)
 				if podAffinityStatus.Code != api.Success {
-					// TODO: Currently, preemption is not supported when Pod affinity filtering fails.
-					// Once supported, the logic here should be removed.
-					// See https://github.com/volcano-sh/volcano/issues/3845
-					podAffinityStatus.Code = api.UnschedulableAndUnresolvable
 					predicateStatus = append(predicateStatus, podAffinityStatus)
-					return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					if ShouldAbort(podAffinityStatus) {
+						return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					}
 				}
 			}
 		}
@@ -711,6 +710,71 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.RegisterBinder(pp.Name(), pp)
+
+	// Add SimulateAddTask function
+	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+		podInfoToAdd, err := k8sframework.NewPodInfo(taskToAdd.Pod)
+		if err != nil {
+			return fmt.Errorf("failed to create pod info: %w", err)
+		}
+
+		k8sNodeInfo := k8sframework.NewNodeInfo(nodeInfo.Pods()...)
+		k8sNodeInfo.SetNode(nodeInfo.Node)
+
+		if predicate.podAffinityEnable {
+			isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, podAffinityFilter.Name())
+			if !isSkipInterPodAffinity {
+				status := podAffinityFilter.AddPod(ctx, cycleState, taskToSchedule.Pod, podInfoToAdd, k8sNodeInfo)
+				if !status.IsSuccess() {
+					return fmt.Errorf("failed to remove pod from node %s: %w", nodeInfo.Name, status.AsError())
+				}
+			}
+		}
+
+		return nil
+	})
+
+	// Add SimulateRemoveTask function
+	ssn.AddSimulateRemoveTaskFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+		podInfoToRemove, err := k8sframework.NewPodInfo(taskToRemove.Pod)
+		if err != nil {
+			return fmt.Errorf("failed to create pod info: %w", err)
+		}
+
+		k8sNodeInfo := k8sframework.NewNodeInfo(nodeInfo.Pods()...)
+		k8sNodeInfo.SetNode(nodeInfo.Node)
+
+		if predicate.podAffinityEnable {
+			isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, podAffinityFilter.Name())
+			if !isSkipInterPodAffinity {
+				status := podAffinityFilter.RemovePod(ctx, cycleState, taskToSchedule.Pod, podInfoToRemove, k8sNodeInfo)
+				if !status.IsSuccess() {
+					return fmt.Errorf("failed to remove pod from node %s: %w", nodeInfo.Name, status.AsError())
+				}
+			}
+		}
+		return nil
+	})
+
+	// Add SimulatePredicate function
+	ssn.AddSimulatePredicateFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, task *api.TaskInfo, node *api.NodeInfo) error {
+		k8sNodeInfo := k8sframework.NewNodeInfo(node.Pods()...)
+		k8sNodeInfo.SetNode(node.Node)
+
+		if predicate.podAffinityEnable {
+			isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, podAffinityFilter.Name())
+			if !isSkipInterPodAffinity {
+				status := podAffinityFilter.Filter(ctx, cycleState, task.Pod, k8sNodeInfo)
+
+				if !status.IsSuccess() {
+					return fmt.Errorf("failed to filter pod on node %s: %w", node.Name, status.AsError())
+				} else {
+					klog.Infof("pod affinity for task %s/%s filter success on node %s", task.Namespace, task.Name, node.Name)
+				}
+			}
+		}
+		return nil
+	})
 }
 
 func (pp *predicatesPlugin) runReservePlugins(ssn *framework.Session, event *framework.Event) {
