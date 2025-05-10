@@ -28,7 +28,26 @@ As a user, I expect high-priority Pod preemption to minimize impact on existing 
 
 When topology-sensitive resources like GPUs exist, the preemption process needs to consider resource topology relationships to ensure resource allocation after preemption still satisfies original topology constraints.
 
-For example, if a node has 2 GPUs (8GB each), Pod A and Pod B each use 4GB, and Pod C needs 8GB. Direct scheduling of Pod C will fail, triggering preemption. After removing Pod A, Pod C can be scheduled, but when re-adding Pod A, topology changes might occur due to binpack strategy. At this point, Pod C can still be scheduled, ultimately leading to preemption failure due to no pods being evicted.
+For example, if a node has 2 GPUs (8GB each), Pod A and Pod B each use 4GB, and Pod C needs 8GB. When Pod C needs to be scheduled, it triggers the preemption mechanism. During the simulation scheduling process, the system will try to preempt Pod A and reschedule it. There are two possible scenarios:
+
+1. If topology changes during simulation scheduling:
+
+   - System chooses to preempt Pod A
+   - The predicate function check successfully for Pod C
+   - When simulating the re-addition of Pod A, the binpack strategy causes Pod A to be scheduled to a different GPU
+   - After re-adding Pod A, the predicate function check still passes for Pod C
+   - This means Pod C can be scheduled without actually removing Pod A
+   - Therefore, the preemption is considered unnecessary and fails
+2. If topology remains consistent during simulation scheduling:
+
+   - System chooses to preempt Pod A
+   - The predicate function check successfully for Pod C
+   - When simulating the re-addition of Pod A, the original topology relationship is maintained
+   - After re-adding Pod A, the predicate function check fails for Pod C
+   - This confirms that Pod A must be removed for Pod C to be scheduled
+   - Therefore, the preemption is considered necessary and succeeds
+
+Therefore, when implementing the preemption mechanism, it's crucial to verify the necessity of preemption by checking if the topology changes during pod re-addition would affect the scheduling of the preempting pod.
 
 ![preempt-action-support-topology-1](images/preempt-action-support-topology/preempt-action-support-topology-1.png)
 
@@ -39,62 +58,38 @@ For example, if a node has 2 GPUs (8GB each), Pod A and Pod B each use 4GB, and 
 ![preempt-action-support-topology-2](images/preempt-action-support-topology/preempt-action-support-topology-2.png)
 
 1. Execute Predicate on all nodes that are not UnschedulableAndUnresolvable to obtain candidate node list, and perform parallel simulation scheduling on all candidate nodes.
-
 2. The simulation scheduling process for each node is as follows:
+
    1. First consider Pods with lower priority as potential victims on the node
    2. Sort the victim list (lower priority and non-PDB-violating victims come first)
    3. Remove victims in order, add each removed one to eviction candidates, and observe if the verification function passes
    4. Verification function: Try to add pods (pipelined) with higher priority targeting the current node, observe if they can pass predicate; then remove them and observe if they can pass predicate
    5. If passed, try to add back the previous eviction candidates in PDB and priority order (to minimize impact), calling verification function after each addition; if verification fails, add to final eviction list
    6. If final eviction list is not empty, return it
-
 3. Sort filtered nodes using PreemptNodeOrderFn
-
 4. Schedule Pod to the top-ranked node, evict victims list, and cancel nominatedNodeName of lower priority pods that had nominated this node, moving them from pipeline to pending schedule
 
 ### Key Function Modifications
 
-- `GetBestNodeByPreemptCost`: A function that finds the best node for preemption by calculating and comparing preemption costs. It takes a list of candidate nodes and their corresponding victim pods, iterates through them to compute the cost of preempting victims on each node using the provided cost function, and returns the node with the minimum preemption cost. This helps select the most suitable node that minimizes the impact of preemption.
-  
+- `SimulateRemoveTaskFn`: Simulate the removal of a task from a node, plugins implement this function to ensure the removal action does not cause topology changes
+
   ```go
-  func GetBestNodeByPreemptCost(nodes []*api.NodeInfo, victims map[string][]*api.TaskInfo, costFn PreemptCostNodeOrderFn) (*api.NodeInfo, error) {
-      // Initialize minimum cost and corresponding node
-      var minCostNode *api.NodeInfo  
-      minCost := math.MaxFloat64
-      
-      // Iterate through all candidate nodes
-      for _, node := range nodes {
-          // Get victim pods list for current node
-          nodeVictims := victims[node.Name]
-          
-          // Calculate preemption cost for this node
-          cost, err := costFn(nodeVictims, node)
-          if err != nil {
-              return nil, err
-          }
-          
-          // Update node with minimum cost
-          if cost < minCost {
-              minCost = cost
-              minCostNode = node
-          }
-      }
-      
-      return minCostNode, nil
-  }
+  type SimulateRemoveTaskFn func(ctx context.Context, state *k8sframework.CycleState, taskToSchedule *TaskInfo, taskInfoToRemove *TaskInfo, nodeInfo *NodeInfo) error
   ```
-
-  - `PreemptCostNodeOrderFn`: Calculate the cost of evicting the victims list from a Node, used to sort qualified candidates based on cost and select the node with minimum cost later
-- `SimulateRemovePodFn`: Simulate the removal of a pod from a node, plugins implement this function to ensure the removal action does not cause topology changes
+- `SimulateAddTaskFn`: Simulate the addition of a task to a node, plugins implement this function to ensure the addition action does not cause topology changes
 
   ```go
-  type SimulateRemovePodFn func(pod *api.TaskInfo, node *api.NodeInfo) error
+  type SimulateAddTaskFn func(ctx context.Context, state *k8sframework.CycleState, taskToSchedule *TaskInfo, taskInfoToAdd *TaskInfo, nodeInfo *NodeInfo) error
   ```
-
-- `SimulateAddPodFn`: Simulate the addition of a pod to a node, plugins implement this function to ensure the addition action does not cause topology changes
+- `SimulatePredicateFn`: Simulate the predicate check for a task on a node, plugins implement this function to verify if the task can be scheduled to the node while maintaining topology constraints
 
   ```go
-  type SimulateAddPodFn func(pod *api.TaskInfo, node *api.NodeInfo) error
+  type SimulatePredicateFn func(ctx context.Context, state *k8sframework.CycleState, task *TaskInfo, nodeInfo *NodeInfo) error
+  ```
+- `SimulateAllocatableFn`: Simulate the allocatable check for a node, plugins implement this function to verify if the queue has enough resources to schedule the task while maintaining topology constraints
+
+  ```go
+  type SimulateAllocatableFn func(ctx context.Context, state *k8sframework.CycleState, queue *QueueInfo, task *TaskInfo) bool
   ```
 
 ### Limitations
