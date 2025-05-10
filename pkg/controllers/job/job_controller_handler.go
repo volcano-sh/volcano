@@ -437,6 +437,7 @@ func (cc *jobcontroller) processNextCommand() bool {
 	return true
 }
 
+// notice
 func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 	oldPG, ok := oldObj.(*scheduling.PodGroup)
 	if !ok {
