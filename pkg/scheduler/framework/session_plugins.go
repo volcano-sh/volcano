@@ -17,6 +17,9 @@ limitations under the License.
 package framework
 
 import (
+	"context"
+
+	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -153,6 +156,26 @@ func (ssn *Session) AddVictimTasksFns(name string, fns []api.VictimTasksFn) {
 // AddJobStarvingFns add jobStarvingFns function
 func (ssn *Session) AddJobStarvingFns(name string, fn api.ValidateFn) {
 	ssn.jobStarvingFns[name] = fn
+}
+
+func (ssn *Session) AddInitCycleStateFn(name string, fn api.InitCycleStateFn) {
+	ssn.initCycleStateFns[name] = fn
+}
+
+func (ssn *Session) AddSimulateAddTaskFn(name string, fn api.SimulateAddTaskFn) {
+	ssn.simulateAddTaskFns[name] = fn
+}
+
+func (ssn *Session) AddSimulateRemoveTaskFn(name string, fn api.SimulateRemoveTaskFn) {
+	ssn.simulateRemoveTaskFns[name] = fn
+}
+
+func (ssn *Session) AddParallelAllocatableFn(name string, fn api.ParallelAllocatableFn) {
+	ssn.parallelAllocatableFns[name] = fn
+}
+
+func (ssn *Session) AddParallelPredicateFn(name string, fn api.ParallelPredicateFn) {
+	ssn.parallelPredicateFns[name] = fn
 }
 
 // Reclaimable invoke reclaimable function of the plugins
@@ -657,6 +680,110 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 				continue
 			}
 			err := pfn(task, node)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// InitCycleStateFn 调用插件的初始化CycleState函数
+func (ssn *Session) InitCycleStateFn(ctx context.Context, state *k8sframework.CycleState) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledAllocatable) && !isEnabled(plugin.EnabledPreemptable) {
+				continue
+			}
+			pfn, found := ssn.initCycleStateFns[plugin.Name]
+			if !found {
+				continue
+			}
+			klog.Infof("InitCycleStateFn, plugin: %v", plugin.Name)
+			err := pfn(ctx, state)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// ConcurrentAllocatableFn 调用插件的并发分配函数
+func (ssn *Session) ConcurrentAllocatableFn(ctx context.Context, state *k8sframework.CycleState, queue *api.QueueInfo, task *api.TaskInfo) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledAllocatable) {
+				klog.V(4).Infof("not enabled concurrentAllocatableFn, plugin: %v", plugin.Name)
+				continue
+			}
+			caf, found := ssn.parallelAllocatableFns[plugin.Name]
+			if !found {
+				klog.V(4).Infof("not found concurrentAllocatableFn, plugin: %v", plugin.Name)
+				continue
+			}
+			if !caf(ctx, state, queue, task) {
+				klog.V(4).Infof("ConcurrentAllocatableFn, plugin: %v, task: %v/%v", plugin.Name, task.Namespace, task.Name)
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// ParallelPredicateFn 调用插件的并发断言函数
+func (ssn *Session) ParallelPredicateFn(ctx context.Context, state *k8sframework.CycleState, task *api.TaskInfo, node *api.NodeInfo) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPredicate) {
+				continue
+			}
+			pfn, found := ssn.parallelPredicateFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(ctx, state, task, node)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// SimulateRemoveTaskFn 调用插件的模拟移除Task函数
+func (ssn *Session) SimulateRemoveTaskFn(ctx context.Context, state *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPreemptable) && !isEnabled(plugin.EnabledAllocatable) {
+				continue
+			}
+			pfn, found := ssn.simulateRemoveTaskFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(ctx, state, taskToSchedule, taskToRemove, nodeInfo)
+			klog.Infof("SimulateRemoveTaskFn, plugin: %v, task: %v/%v", plugin.Name, taskToRemove.Namespace, taskToRemove.Name)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// SimulateAddTaskFn 调用插件的模拟添加Task函数
+func (ssn *Session) SimulateAddTaskFn(ctx context.Context, state *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPreemptable) && !isEnabled(plugin.EnabledAllocatable) {
+				continue
+			}
+			pfn, found := ssn.simulateAddTaskFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(ctx, state, taskToSchedule, taskToAdd, nodeInfo)
 			if err != nil {
 				return err
 			}

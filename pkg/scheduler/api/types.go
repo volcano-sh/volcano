@@ -17,6 +17,8 @@ limitations under the License.
 package api
 
 import (
+	"context"
+	"errors"
 	"strings"
 
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
@@ -165,8 +167,44 @@ type Status struct {
 }
 
 // String represents status string
-func (s Status) String() string {
+func (s *Status) String() string {
 	return s.Reason
+}
+
+// IsSuccess returns true if and only if "Status" is nil or Code is "Success".
+func (s *Status) IsSuccess() bool {
+	return s == nil || s.Code == Success
+}
+
+// IsWait returns true if and only if "Status" is nil or Code is "Wait".
+func (s *Status) IsWait() bool {
+	return s.Code == Wait
+}
+
+// IsSkip returns true if and only if "Status" is nil or Code is "Skip".
+func (s *Status) IsSkip() bool {
+	return s.Code == Skip
+}
+
+// AsError returns nil if the status is a success, a wait or a skip; otherwise returns an "error" object
+// with a concatenated message on reasons of the Status.
+func (s *Status) AsError() error {
+	if s.IsSuccess() || s.IsWait() || s.IsSkip() {
+		return nil
+	}
+
+	return errors.New(s.String())
+}
+
+// AsStatus wraps an error in a Status.
+func AsStatus(err error) *Status {
+	if err == nil {
+		return nil
+	}
+	return &Status{
+		Code:   Error,
+		Reason: err.Error(),
+	}
 }
 
 type StatusSets []*Status
@@ -303,6 +341,9 @@ type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, err
 // NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugin for a particular task.
 type NodeOrderReduceFn func(*TaskInfo, map[string]k8sframework.NodeScoreList) (map[string]float64, error)
 
+// PreemptOrderMapFn is the func declaration used to calculate the score of a node for evicting victims
+type PreemptOrderMapFn func([]*TaskInfo, *NodeInfo) (map[string]float64, float64, error)
+
 // TargetJobFn is the func declaration used to select the target job satisfies some conditions
 type TargetJobFn func([]*JobInfo) *JobInfo
 
@@ -314,3 +355,20 @@ type VictimTasksFn func([]*TaskInfo) []*TaskInfo
 
 // AllocatableFn is the func declaration used to check whether the task can be allocated
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool
+
+type InitCycleStateFn func(ctx context.Context, state *k8sframework.CycleState) error
+
+// SimulateRemoveTaskFn is the func declaration used to simulate the result of removing a task from a node.
+type SimulateRemoveTaskFn func(ctx context.Context, state *k8sframework.CycleState, taskToSchedule *TaskInfo, taskInfoToRemove *TaskInfo, nodeInfo *NodeInfo) error
+
+// SimulateAddTaskFn is the func declaration used to simulate the result of adding a task to a node.
+type SimulateAddTaskFn func(ctx context.Context, state *k8sframework.CycleState, taskToSchedule *TaskInfo, taskInfoToAdd *TaskInfo, nodeInfo *NodeInfo) error
+
+// ParallelPredicateFn is the function declaration used to determine if a task can run on a node in parallel scenarios.
+// It ensures thread safety and state consistency in parallel environments.
+type ParallelPredicateFn func(ctx context.Context, state *k8sframework.CycleState, task *TaskInfo, nodeInfo *NodeInfo) error
+
+// ParallelAllocatableFn is the function declaration used to determine if a task can run on a node in concurrent scenarios.
+type ParallelAllocatableFn func(ctx context.Context, state *k8sframework.CycleState, queue *QueueInfo, task *TaskInfo) bool
+
+type EvictCostFn func(ctx context.Context, state *k8sframework.CycleState, task *TaskInfo, nodeInfo *NodeInfo) (int, error)

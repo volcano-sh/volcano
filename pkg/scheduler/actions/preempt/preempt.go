@@ -17,10 +17,23 @@ limitations under the License.
 package preempt
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"math"
+	"math/rand"
+	"sort"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	k8sutil "k8s.io/kubernetes/pkg/scheduler/util"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -30,12 +43,24 @@ import (
 )
 
 type Action struct {
+	ssn *framework.Session
+
 	enablePredicateErrorCache bool
+
+	enableTopologyAwarePreemption bool
+
+	minCandidateNodesPercentage int
+	minCandidateNodesAbsolute   int
+	maxCandidateNodesAbsolute   int
 }
 
 func New() *Action {
 	return &Action{
-		enablePredicateErrorCache: true,
+		enablePredicateErrorCache:     true,
+		enableTopologyAwarePreemption: true,
+		minCandidateNodesPercentage:   10,
+		minCandidateNodesAbsolute:     1,
+		maxCandidateNodesAbsolute:     100,
 	}
 }
 
@@ -48,6 +73,11 @@ func (pmpt *Action) Initialize() {}
 func (pmpt *Action) parseArguments(ssn *framework.Session) {
 	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, pmpt.Name())
 	arguments.GetBool(&pmpt.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+	arguments.GetBool(&pmpt.enableTopologyAwarePreemption, conf.EnableTopologyAwarePreemptionKey)
+	arguments.GetInt(&pmpt.minCandidateNodesPercentage, conf.MinCandidateNodesPercentageKey)
+	arguments.GetInt(&pmpt.minCandidateNodesAbsolute, conf.MinCandidateNodesAbsoluteKey)
+	arguments.GetInt(&pmpt.maxCandidateNodesAbsolute, conf.MaxCandidateNodesAbsoluteKey)
+	pmpt.ssn = ssn
 }
 
 func (pmpt *Action) Execute(ssn *framework.Session) {
@@ -229,6 +259,20 @@ func (pmpt *Action) preempt(
 	filter func(*api.TaskInfo) bool,
 	predicateHelper util.PredicateHelper,
 ) (bool, error) {
+	if pmpt.enableTopologyAwarePreemption {
+		return pmpt.topologyAwarePreempt(ssn, stmt, preemptor, filter, predicateHelper)
+	}
+
+	return pmpt.normalPreempt(ssn, stmt, preemptor, filter, predicateHelper)
+}
+
+func (pmpt *Action) normalPreempt(
+	ssn *framework.Session,
+	stmt *framework.Statement,
+	preemptor *api.TaskInfo,
+	filter func(*api.TaskInfo) bool,
+	predicateHelper util.PredicateHelper,
+) (bool, error) {
 	// Check whether the task is eligible to preempt others, e.g., check preemptionPolicy is `Never` or not
 	if err := pmpt.taskEligibleToPreempt(preemptor); err != nil {
 		return false, err
@@ -242,7 +286,7 @@ func (pmpt *Action) preempt(
 
 	predicateFn := ssn.PredicateForPreemptAction
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
-	allNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(preemptor)
+	allNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(preemptor)
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, predicateFn, pmpt.enablePredicateErrorCache)
 
 	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
@@ -341,4 +385,613 @@ func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
 	}
 
 	return nil
+}
+
+func (pmpt *Action) topologyAwarePreempt(
+	ssn *framework.Session,
+	stmt *framework.Statement,
+	preemptor *api.TaskInfo,
+	filter func(*api.TaskInfo) bool,
+	predicateHelper util.PredicateHelper,
+) (bool, error) {
+	if err := ssn.PrePredicateFn(preemptor); err != nil {
+		return false, fmt.Errorf("PrePredicate for task %s/%s failed for: %v", preemptor.Namespace, preemptor.Name, err)
+	}
+
+	_, found := ssn.Jobs[preemptor.Job]
+	if !found {
+		return false, fmt.Errorf("not found Job %s in Session", preemptor.Job)
+	}
+
+	// 1) Check whether the task is eligible to preempt others, e.g., check preemptionPolicy is `Never` or not
+	eligible, reason := pmpt.taskEligibleToPreemptOthers(preemptor)
+	if !eligible {
+		return false, fmt.Errorf("task %s/%s is not eligible to preempt others: %s", preemptor.Namespace, preemptor.Name, reason)
+	}
+
+	// 2) Find all preemption candidates.
+	candidates, nodeToStatusMap, err := pmpt.findCandidates(preemptor, filter, predicateHelper, stmt)
+	if err != nil && len(candidates) == 0 {
+		return false, err
+	}
+
+	// Return error when there are no candidates that fit the pod.
+	if len(candidates) == 0 {
+		// Specify nominatedNodeName to clear the pod's nominatedNodeName status, if applicable.
+		return false, fmt.Errorf("no candidates that fit the pod, the status of the nodes are %v", nodeToStatusMap)
+	}
+
+	// 3) Find the best candidate.
+	bestCandidate := SelectCandidate(candidates)
+	if bestCandidate == nil || len(bestCandidate.Name()) == 0 {
+		return false, fmt.Errorf("no candidate node for preemption")
+	}
+
+	if status := prepareCandidate(bestCandidate, preemptor.Pod, stmt, ssn); !status.IsSuccess() {
+		return false, fmt.Errorf("failed to prepare candidate: %v", status)
+	}
+
+	if err := stmt.Pipeline(preemptor, bestCandidate.Name(), true); err != nil {
+		klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
+			preemptor.Namespace, preemptor.Name, bestCandidate.Name())
+		if rollbackErr := stmt.UnPipeline(preemptor); rollbackErr != nil {
+			klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
+				preemptor.UID, bestCandidate.Name(), ssn.UID, rollbackErr)
+		}
+	}
+
+	return true, nil
+}
+
+func (pmpt *Action) taskEligibleToPreemptOthers(preemptor *api.TaskInfo) (bool, string) {
+	if preemptor.Pod.Spec.PreemptionPolicy != nil && *preemptor.Pod.Spec.PreemptionPolicy == v1.PreemptNever {
+		return false, "not eligible to preempt other tasks due to preemptionPolicy is Never"
+	}
+
+	nomNodeName := preemptor.Pod.Status.NominatedNodeName
+	if len(nomNodeName) > 0 {
+		nodeInfo, ok := pmpt.ssn.Nodes[nomNodeName]
+		if !ok {
+			return false, "not eligible due to the pod's nominated node is not found in the session"
+		}
+
+		err := pmpt.ssn.PredicateFn(preemptor, nodeInfo)
+		if err == nil {
+			return false, "not eligible due to the pod's nominated node is already schedulable, which should not happen as preemption means no node is schedulable"
+		}
+
+		fitError, ok := err.(*api.FitError)
+		if !ok {
+			return false, fmt.Sprintf("not eligible due to the predicate returned a non-FitError error, the error is: %v", err)
+		}
+
+		// If the pod's nominated node is considered as UnschedulableAndUnresolvable by the predicate,
+		// then the pod should be considered for preempting again.
+		if fitError.Status.ContainsUnschedulableAndUnresolvable() {
+			return true, ""
+		}
+
+		podPriority := PodPriority(preemptor.Pod)
+		for _, p := range nodeInfo.Pods() {
+			if PodPriority(p) < podPriority && podTerminatingByPreemption(p) {
+				// There is a terminating pod on the nominated node.
+				return false, "not eligible due to a terminating pod caused by preemption on the nominated node."
+			}
+		}
+	}
+	return true, ""
+}
+
+func (pmpt *Action) findCandidates(preemptor *api.TaskInfo, filter func(*api.TaskInfo) bool, predicateHelper util.PredicateHelper, stmt *framework.Statement) ([]Candidate, map[string]api.Status, error) {
+	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
+	allNodes := pmpt.ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(preemptor)
+	klog.Infof("the allNodes number is %d", len(allNodes))
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, pmpt.ssn.PredicateForPreemptAction, true)
+	if len(predicateNodes) == 0 {
+		klog.V(3).Infof("No nodes are eligible to preempt task %s/%s", preemptor.Namespace, preemptor.Name)
+		return nil, nil, nil
+	}
+	klog.Infof("the predicateNodes number is %d", len(predicateNodes))
+
+	nodeToStatusMap := make(map[string]api.Status)
+
+	offset, numCandidates := pmpt.GetOffsetAndNumCandidates(len(predicateNodes))
+
+	candidates, nodeStatuses, err := pmpt.DryRunPreemption(preemptor, predicateNodes, offset, numCandidates, filter, stmt)
+	for node, nodeStatus := range nodeStatuses {
+		nodeToStatusMap[node] = nodeStatus
+	}
+
+	return candidates, nodeToStatusMap, err
+}
+
+// prepareCandidate evicts the victim pods before nominating the selected candidate
+func prepareCandidate(c Candidate, pod *v1.Pod, stmt *framework.Statement, ssn *framework.Session) *api.Status {
+	for _, victim := range c.Victims() {
+		klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
+			victim.Namespace, victim.Name, pod.Namespace, pod.Name)
+		if err := stmt.Evict(victim, "preempt"); err != nil {
+			klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
+				victim.Namespace, victim.Name, pod.Namespace, pod.Name, err)
+			return api.AsStatus(err)
+		}
+	}
+
+	metrics.RegisterPreemptionAttempts()
+
+	return nil
+}
+
+// podTerminatingByPreemption returns true if the pod is in the termination state caused by preempt action.
+func podTerminatingByPreemption(p *v1.Pod) bool {
+	if p.DeletionTimestamp == nil {
+		return false
+	}
+
+	for _, condition := range p.Status.Conditions {
+		if condition.Type == v1.DisruptionTarget {
+			return condition.Status == v1.ConditionTrue && condition.Reason == v1.PodReasonPreemptionByScheduler
+		}
+	}
+	return false
+}
+
+// PodPriority returns priority of the given pod.
+func PodPriority(pod *v1.Pod) int32 {
+	if pod.Spec.Priority != nil {
+		return *pod.Spec.Priority
+	}
+	// When priority of a running pod is nil, it means it was created at a time
+	// that there was no global default priority class and the priority class
+	// name of the pod was empty. So, we resolve to the static default priority.
+	return 0
+}
+
+// calculateNumCandidates returns the number of candidates the FindCandidates
+// method must produce from dry running based on the constraints given by
+// <minCandidateNodesPercentage> and <minCandidateNodesAbsolute>. The number of
+// candidates returned will never be greater than <numNodes>.
+func (pmpt *Action) calculateNumCandidates(numNodes int) int {
+	n := (numNodes * pmpt.minCandidateNodesPercentage) / 100
+
+	if n < pmpt.minCandidateNodesAbsolute {
+		n = pmpt.minCandidateNodesAbsolute
+	}
+
+	if n > pmpt.maxCandidateNodesAbsolute {
+		n = pmpt.maxCandidateNodesAbsolute
+	}
+
+	if n > numNodes {
+		n = numNodes
+	}
+
+	return n
+}
+
+// GetOffsetAndNumCandidates chooses a random offset and calculates the number
+// of candidates that should be shortlisted for dry running preemption.
+func (pmpt *Action) GetOffsetAndNumCandidates(numNodes int) (int, int) {
+	return rand.Intn(numNodes), pmpt.calculateNumCandidates(numNodes)
+}
+
+func (pmpt *Action) DryRunPreemption(preemptor *api.TaskInfo, potentialNodes []*api.NodeInfo, offset, numCandidates int, filter func(*api.TaskInfo) bool, stmt *framework.Statement) ([]Candidate, map[string]api.Status, error) {
+	candidates := newCandidateList(numCandidates)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	nodeStatuses := make(map[string]api.Status)
+	var statusesLock sync.Mutex
+	var errs []error
+
+	job, found := pmpt.ssn.Jobs[preemptor.Job]
+	if !found {
+		return nil, nil, fmt.Errorf("not found Job %s in Session", preemptor.Job)
+	}
+
+	currentQueue := pmpt.ssn.Queues[job.Queue]
+
+	state := k8sframework.NewCycleState()
+	err := pmpt.ssn.InitCycleStateFn(ctx, state)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to init cycle state: %w", err)
+	}
+
+	checkNode := func(i int) {
+		nodeInfoCopy := potentialNodes[(int(offset)+i)%len(potentialNodes)].Clone()
+		stateCopy := state.Clone()
+		klog.V(4).Infof("checkNode: %v, checkTask: %v", nodeInfoCopy.Name, preemptor.Name)
+
+		victims, status := SelectVictimsOnNode(ctx, stateCopy, preemptor, currentQueue, nodeInfoCopy, pmpt.ssn, filter, stmt)
+		if status.IsSuccess() && len(victims) != 0 {
+			c := &candidate{
+				victims: victims,
+				name:    nodeInfoCopy.Name,
+			}
+			candidates.add(c)
+			if candidates.size() >= numCandidates {
+				cancel()
+			}
+			return
+		}
+		if status.IsSuccess() && len(victims) == 0 {
+			status = api.AsStatus(fmt.Errorf("expected at least one victim pod on node %q", nodeInfoCopy.Name))
+		}
+		statusesLock.Lock()
+		if status.Code == api.Error {
+			errs = append(errs, status.AsError())
+		}
+		nodeStatuses[nodeInfoCopy.Name] = *status
+		statusesLock.Unlock()
+	}
+	klog.Infof("the worker number is %d, the potentialNodes number is %d", 160, len(potentialNodes))
+	workqueue.ParallelizeUntil(ctx, 160, len(potentialNodes), checkNode)
+	return candidates.get(), nodeStatuses, utilerrors.NewAggregate(errs)
+}
+
+// Candidate represents a nominated node on which the preemptor can be scheduled,
+// along with the list of victims that should be evicted for the preemptor to fit the node.
+type Candidate interface {
+	// Victims wraps a list of to-be-preempted Pods and the number of PDB violation.
+	Victims() []*api.TaskInfo
+	// Name returns the target node name where the preemptor gets nominated to run.
+	Name() string
+}
+
+type candidate struct {
+	victims []*api.TaskInfo
+	name    string
+}
+
+// Victims returns s.victims.
+func (s *candidate) Victims() []*api.TaskInfo {
+	return s.victims
+}
+
+// Name returns s.name.
+func (s *candidate) Name() string {
+	return s.name
+}
+
+type candidateList struct {
+	idx   int32
+	items []Candidate
+}
+
+func newCandidateList(size int) *candidateList {
+	return &candidateList{idx: -1, items: make([]Candidate, size)}
+}
+
+// add adds a new candidate to the internal array atomically.
+func (cl *candidateList) add(c *candidate) {
+	if idx := atomic.AddInt32(&cl.idx, 1); idx < int32(len(cl.items)) {
+		cl.items[idx] = c
+	}
+}
+
+// size returns the number of candidate stored. Note that some add() operations
+// might still be executing when this is called, so care must be taken to
+// ensure that all add() operations complete before accessing the elements of
+// the list.
+func (cl *candidateList) size() int {
+	n := int(atomic.LoadInt32(&cl.idx) + 1)
+	if n >= len(cl.items) {
+		n = len(cl.items)
+	}
+	return n
+}
+
+// get returns the internal candidate array. This function is NOT atomic and
+// assumes that all add() operations have been completed.
+func (cl *candidateList) get() []Candidate {
+	return cl.items[:cl.size()]
+}
+
+// SelectVictimsOnNode finds minimum set of pods on the given node that should be preempted in order to make enough room
+// for "pod" to be scheduled.
+func SelectVictimsOnNode(
+	ctx context.Context,
+	state *k8sframework.CycleState,
+	preemptor *api.TaskInfo,
+	currentQueue *api.QueueInfo,
+	nodeInfo *api.NodeInfo,
+	ssn *framework.Session,
+	filter func(*api.TaskInfo) bool,
+	stmt *framework.Statement,
+) ([]*api.TaskInfo, *api.Status) {
+	var potentialVictims []*api.TaskInfo
+
+	removeTask := func(rti *api.TaskInfo) error {
+		err := ssn.SimulateRemoveTaskFn(ctx, state, preemptor, rti, nodeInfo)
+		if err != nil {
+			return err
+		}
+
+		if err := nodeInfo.RemoveTask(rti); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	addTask := func(ati *api.TaskInfo) error {
+		err := ssn.SimulateAddTaskFn(ctx, state, preemptor, ati, nodeInfo)
+		if err != nil {
+			return err
+		}
+
+		if err := nodeInfo.AddTask(ati); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	var preemptees []*api.TaskInfo
+	for _, task := range nodeInfo.Tasks {
+		if filter == nil {
+			preemptees = append(preemptees, task.Clone())
+		} else if filter(task) {
+			preemptees = append(preemptees, task.Clone())
+		}
+	}
+
+	klog.V(3).Infof("all preemptees: %v", preemptees)
+
+	allVictims := ssn.Preemptable(preemptor, preemptees)
+	metrics.UpdatePreemptionVictimsCount(len(allVictims))
+
+	if err := util.ValidateVictims(preemptor, nodeInfo, allVictims); err != nil {
+		klog.V(3).Infof("No validated victims on Node <%s>: %v", nodeInfo.Name, err)
+		return nil, api.AsStatus(fmt.Errorf("no validated victims on Node <%s>: %v", nodeInfo.Name, err))
+	}
+
+	klog.V(3).Infof("allVictims: %v", allVictims)
+
+	// Sort potentialVictims by pod priority from high to low, which ensures to
+	// reprieve higher priority pods first.
+	sort.Slice(allVictims, func(i, j int) bool { return k8sutil.MoreImportantPod(allVictims[i].Pod, allVictims[j].Pod) })
+
+	victimsQueue := ssn.BuildVictimsPriorityQueue(allVictims, preemptor)
+
+	for !victimsQueue.Empty() {
+		task := victimsQueue.Pop().(*api.TaskInfo)
+		potentialVictims = append(potentialVictims, task)
+		if err := removeTask(task); err != nil {
+			return nil, api.AsStatus(err)
+		}
+
+		if ssn.ConcurrentAllocatableFn(ctx, state, currentQueue, preemptor) && preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero) {
+			if err := ssn.ParallelPredicateFn(ctx, state, preemptor, nodeInfo); err == nil {
+				klog.V(3).Infof("Pod %v/%v can be scheduled on node %v after preempt %v/%v, stop evicting more pods", preemptor.Namespace, preemptor.Name, nodeInfo.Name, task.Namespace, task.Name)
+				break
+			}
+		}
+	}
+
+	// No potential victims are found, and so we don't need to evaluate the node again since its state didn't change.
+	if len(potentialVictims) == 0 {
+		return nil, api.AsStatus(fmt.Errorf("no preemption victims found for incoming pod"))
+	}
+
+	// If the new pod does not fit after removing all potential victim pods,
+	// we are almost done and this node is not suitable for preemption. The only
+	// condition that we could check is if the "pod" is failing to schedule due to
+	// inter-pod affinity to one or more victims, but we have decided not to
+	// support this case for performance reasons. Having affinity to lower
+	// priority pods is not a recommended configuration anyway.
+	if err := ssn.ParallelPredicateFn(ctx, state, preemptor, nodeInfo); err != nil {
+		return nil, api.AsStatus(fmt.Errorf("failed to predicate pod %s/%s on node %s: %v", preemptor.Namespace, preemptor.Name, nodeInfo.Name, err))
+	}
+
+	var victims []*api.TaskInfo
+
+	klog.V(3).Infof("potentialVictims---: %v, nodeInfo: %v", potentialVictims, nodeInfo.Name)
+
+	// TODO: consider the PDB violation here
+
+	reprievePod := func(pi *api.TaskInfo) (bool, error) {
+		if err := addTask(pi); err != nil {
+			klog.ErrorS(err, "Failed to add task", "task", klog.KObj(pi.Pod))
+			return false, err
+		}
+
+		var fits bool
+		if ssn.ConcurrentAllocatableFn(ctx, state, currentQueue, preemptor) && preemptor.InitResreq.LessEqual(nodeInfo.FutureIdle(), api.Zero) {
+			err := ssn.ParallelPredicateFn(ctx, state, preemptor, nodeInfo)
+			fits = err == nil
+		}
+
+		if !fits {
+			if err := removeTask(pi); err != nil {
+				return false, err
+			}
+			victims = append(victims, pi)
+			klog.V(3).Info("Pod is a potential preemption victim on node", "pod", klog.KObj(pi.Pod), "node", klog.KObj(nodeInfo.Node))
+		}
+		klog.Infof("reprievePod for task: %v, fits: %v", pi.Name, fits)
+		return fits, nil
+	}
+
+	// Now we try to reprieve non-violating victims.
+	for _, p := range potentialVictims {
+		if _, err := reprievePod(p); err != nil {
+			return nil, api.AsStatus(err)
+		}
+	}
+
+	klog.Infof("victims: %v", victims)
+
+	return victims, &api.Status{
+		Reason: "",
+	}
+}
+
+// SelectCandidate chooses the best-fit candidate from given <candidates> and return it.
+// NOTE: This method is exported for easier testing in default preemption.
+func SelectCandidate(candidates []Candidate) Candidate {
+	if len(candidates) == 0 {
+		return nil
+	}
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+
+	victimsMap := CandidatesToVictimsMap(candidates)
+	scoreFuncs := OrderedScoreFuncs(victimsMap)
+	candidateNode := pickOneNodeForPreemption(victimsMap, scoreFuncs)
+
+	// Same as candidatesToVictimsMap, this logic is not applicable for out-of-tree
+	// preemption plugins that exercise different candidates on the same nominated node.
+	if victims := victimsMap[candidateNode]; victims != nil {
+		return &candidate{
+			victims: victims,
+			name:    candidateNode,
+		}
+	}
+
+	// We shouldn't reach here.
+	klog.Error(errors.New("no candidate selected"), "Should not reach here", "candidates", candidates)
+	// To not break the whole flow, return the first candidate.
+	return candidates[0]
+}
+
+func CandidatesToVictimsMap(candidates []Candidate) map[string][]*api.TaskInfo {
+	m := make(map[string][]*api.TaskInfo, len(candidates))
+	for _, c := range candidates {
+		m[c.Name()] = c.Victims()
+	}
+	return m
+}
+
+func OrderedScoreFuncs(nodesToVictims map[string][]*api.TaskInfo) []func(node string) int64 {
+	return nil
+}
+
+// pickOneNodeForPreemption chooses one node among the given nodes.
+// It assumes pods in each map entry are ordered by decreasing priority.
+// If the scoreFuns is not empty, It picks a node based on score scoreFuns returns.
+// If the scoreFuns is empty,
+// It picks a node based on the following criteria:
+// 1. A node with minimum number of PDB violations.
+// 2. A node with minimum highest priority victim is picked.
+// 3. Ties are broken by sum of priorities of all victims.
+// 4. If there are still ties, node with the minimum number of victims is picked.
+// 5. If there are still ties, node with the latest start time of all highest priority victims is picked.
+// 6. If there are still ties, the first such node is picked (sort of randomly).
+// The 'minNodes1' and 'minNodes2' are being reused here to save the memory
+// allocation and garbage collection time.
+func pickOneNodeForPreemption(nodesToVictims map[string][]*api.TaskInfo, scoreFuncs []func(node string) int64) string {
+	if len(nodesToVictims) == 0 {
+		return ""
+	}
+
+	allCandidates := make([]string, 0, len(nodesToVictims))
+	for node := range nodesToVictims {
+		allCandidates = append(allCandidates, node)
+	}
+
+	if len(scoreFuncs) == 0 {
+		minHighestPriorityScoreFunc := func(node string) int64 {
+			// highestPodPriority is the highest priority among the victims on this node.
+			highestPodPriority := PodPriority(nodesToVictims[node][0].Pod)
+			// The smaller the highestPodPriority, the higher the score.
+			return -int64(highestPodPriority)
+		}
+		minSumPrioritiesScoreFunc := func(node string) int64 {
+			var sumPriorities int64
+			for _, task := range nodesToVictims[node] {
+				// We add MaxInt32+1 to all priorities to make all of them >= 0. This is
+				// needed so that a node with a few pods with negative priority is not
+				// picked over a node with a smaller number of pods with the same negative
+				// priority (and similar scenarios).
+				sumPriorities += int64(PodPriority(task.Pod)) + int64(math.MaxInt32+1)
+			}
+			// The smaller the sumPriorities, the higher the score.
+			return -sumPriorities
+		}
+		minNumPodsScoreFunc := func(node string) int64 {
+			// The smaller the length of pods, the higher the score.
+			return -int64(len(nodesToVictims[node]))
+		}
+		latestStartTimeScoreFunc := func(node string) int64 {
+			// Get the earliest start time of all pods on the current node.
+			earliestStartTimeOnNode := GetEarliestPodStartTime(nodesToVictims[node])
+			if earliestStartTimeOnNode == nil {
+				klog.Error(errors.New("earliestStartTime is nil for node"), "Should not reach here", "node", node)
+				return int64(math.MinInt64)
+			}
+			// The bigger the earliestStartTimeOnNode, the higher the score.
+			return earliestStartTimeOnNode.UnixNano()
+		}
+
+		// Each scoreFunc scores the nodes according to specific rules and keeps the name of the node
+		// with the highest score. If and only if the scoreFunc has more than one node with the highest
+		// score, we will execute the other scoreFunc in order of precedence.
+		scoreFuncs = []func(string) int64{
+			// A node with a minimum highest priority victim is preferable.
+			minHighestPriorityScoreFunc,
+			// A node with the smallest sum of priorities is preferable.
+			minSumPrioritiesScoreFunc,
+			// A node with the minimum number of pods is preferable.
+			minNumPodsScoreFunc,
+			// A node with the latest start time of all highest priority victims is preferable.
+			latestStartTimeScoreFunc,
+			// If there are still ties, then the first Node in the list is selected.
+		}
+	}
+
+	for _, f := range scoreFuncs {
+		selectedNodes := []string{}
+		maxScore := int64(math.MinInt64)
+		for _, node := range allCandidates {
+			score := f(node)
+			if score > maxScore {
+				maxScore = score
+				selectedNodes = []string{}
+			}
+			if score == maxScore {
+				selectedNodes = append(selectedNodes, node)
+			}
+		}
+		if len(selectedNodes) == 1 {
+			return selectedNodes[0]
+		}
+		allCandidates = selectedNodes
+	}
+
+	return allCandidates[0]
+}
+
+// GetEarliestPodStartTime returns the earliest start time of all pods that
+// have the highest priority among all victims.
+func GetEarliestPodStartTime(tasks []*api.TaskInfo) *metav1.Time {
+	if len(tasks) == 0 {
+		// should not reach here.
+		klog.Background().Error(nil, "victims.Pods is empty. Should not reach here")
+		return nil
+	}
+
+	earliestPodStartTime := GetPodStartTime(tasks[0].Pod)
+	maxPriority := PodPriority(tasks[0].Pod)
+
+	for _, task := range tasks {
+		if podPriority := PodPriority(task.Pod); podPriority == maxPriority {
+			if podStartTime := GetPodStartTime(task.Pod); podStartTime.Before(earliestPodStartTime) {
+				earliestPodStartTime = podStartTime
+			}
+		} else if podPriority > maxPriority {
+			maxPriority = podPriority
+			earliestPodStartTime = GetPodStartTime(task.Pod)
+		}
+	}
+
+	return earliestPodStartTime
+}
+
+// GetPodStartTime returns start time of the given pod or current timestamp
+// if it hasn't started yet.
+func GetPodStartTime(pod *v1.Pod) *metav1.Time {
+	if pod.Status.StartTime != nil {
+		return pod.Status.StartTime
+	}
+	// Assumed pods and bound pods that haven't started don't have a StartTime yet.
+	return &metav1.Time{Time: time.Now()}
 }
