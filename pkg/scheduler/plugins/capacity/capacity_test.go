@@ -330,7 +330,7 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 			ExpectBindMap:  map[string]string{},
 		},
 		{
-			Name:           "case4: queue with  non-open state, can not enqueue",
+			Name:           "case4: queue with non-open state, can not enqueue",
 			Plugins:        plugins,
 			Pods:           []*corev1.Pod{p6},
 			Nodes:          []*corev1.Node{n1, n2},
