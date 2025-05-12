@@ -51,8 +51,19 @@ func (shuffle *Action) Execute(ssn *framework.Session) {
 
 	// select pods that may be evicted
 	tasks := make([]*api.TaskInfo, 0)
-	for _, jobInfo := range ssn.Jobs {
-		for _, taskInfo := range jobInfo.Tasks {
+	for _, job := range ssn.Jobs {
+		schedulerPolicy := ssn.GetSchedulerPolicyFromJob(job)
+		if schedulerPolicy != nil && !schedulerPolicy.HasAction(shuffle.Name()) {
+			klog.Infof("job %v 属于的调度策略没有这个action %v，因此跳过", job.Name, shuffle.Name())
+			continue
+		}
+
+		if schedulerPolicy == nil && !ssn.HasAction(shuffle.Name()) {
+			klog.Infof("ssn 中没有action %v，因此跳过", shuffle.Name())
+			continue
+		}
+
+		for _, taskInfo := range job.Tasks {
 			if taskInfo.Status == api.Running {
 				tasks = append(tasks, taskInfo)
 			}

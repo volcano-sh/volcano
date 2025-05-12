@@ -50,6 +50,17 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
+		schedulerPolicy := ssn.GetSchedulerPolicyFromJob(job)
+		if schedulerPolicy != nil && !schedulerPolicy.HasAction(enqueue.Name()) {
+			klog.Infof("job %v 属于的调度策略没有这个action %v，因此跳过", job.Name, enqueue.Name())
+			continue
+		}
+
+		if schedulerPolicy == nil && !ssn.HasAction(enqueue.Name()) {
+			klog.Infof("ssn 中没有action %v，因此跳过", enqueue.Name())
+			continue
+		}
+
 		if job.ScheduleStartTimestamp.IsZero() {
 			ssn.Jobs[job.UID].ScheduleStartTimestamp = metav1.Time{
 				Time: time.Now(),

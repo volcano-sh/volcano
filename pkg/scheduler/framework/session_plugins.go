@@ -17,11 +17,13 @@ limitations under the License.
 package framework
 
 import (
+	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/volcano/pkg/cli/job"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -156,312 +158,844 @@ func (ssn *Session) AddJobStarvingFns(name string, fn api.ValidateFn) {
 }
 
 // Reclaimable invoke reclaimable function of the plugins
+// todo
+//func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
+//	var victims []*api.TaskInfo
+//
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledReclaimable) {
+//				continue
+//			}
+//			rf, found := ssn.reclaimableFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//
+//			candidates, abstain := rf(reclaimer, reclaimees)
+//			if abstain == 0 {
+//				continue
+//			}
+//			if len(candidates) == 0 {
+//				victims = nil
+//				break
+//			}
+//			// first iteration - initialize victims list
+//			if victims == nil {
+//				victims = candidates
+//			} else {
+//				var intersection []*api.TaskInfo
+//				// Get intersection of victims and candidates.
+//				for _, v := range victims {
+//					for _, c := range candidates {
+//						if v.UID == c.UID {
+//							intersection = append(intersection, v)
+//						}
+//					}
+//				}
+//
+//				// Update victims to intersection
+//				victims = intersection
+//			}
+//		}
+//		// Plugins in this tier made decision if victims is not nil
+//		if victims != nil {
+//			return victims
+//		}
+//	}
+//
+//	return victims
+//}
+
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
-	var victims []*api.TaskInfo
+	executeReclaimableFns := func(
+		tiers []conf.Tier,
+		reclaimableFns map[string]api.EvictableFn,
+	) []*api.TaskInfo {
+		var victims []*api.TaskInfo
 
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledReclaimable) {
-				continue
-			}
-			rf, found := ssn.reclaimableFns[plugin.Name]
-			if !found {
-				continue
-			}
-
-			candidates, abstain := rf(reclaimer, reclaimees)
-			if abstain == 0 {
-				continue
-			}
-			if len(candidates) == 0 {
-				victims = nil
-				break
-			}
-			// first iteration - initialize victims list
-			if victims == nil {
-				victims = candidates
-			} else {
-				var intersection []*api.TaskInfo
-				// Get intersection of victims and candidates.
-				for _, v := range victims {
-					for _, c := range candidates {
-						if v.UID == c.UID {
-							intersection = append(intersection, v)
-						}
-					}
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledReclaimable) {
+					continue
+				}
+				rf, found := reclaimableFns[plugin.Name]
+				if !found {
+					continue
 				}
 
-				// Update victims to intersection
-				victims = intersection
+				candidates, abstain := rf(reclaimer, reclaimees)
+				if abstain == 0 {
+					continue
+				}
+				if len(candidates) == 0 {
+					victims = nil
+					break
+				}
+				// first iteration - initialize victims list
+				if victims == nil {
+					victims = candidates
+				} else {
+					var intersection []*api.TaskInfo
+					// Get intersection of victims and candidates.
+					for _, v := range victims {
+						for _, c := range candidates {
+							if v.UID == c.UID {
+								intersection = append(intersection, v)
+							}
+						}
+					}
+
+					// Update victims to intersection
+					victims = intersection
+				}
+			}
+			// Plugins in this tier made decision if victims is not nil
+			if victims != nil {
+				return victims
 			}
 		}
-		// Plugins in this tier made decision if victims is not nil
-		if victims != nil {
-			return victims
-		}
+
+		return victims
 	}
 
-	return victims
+	// 优先使用 reclaimer 的调度策略（若存在）
+	schedulerPolicy := ssn.GetSchedulerPolicyFromTask(reclaimer)
+	if schedulerPolicy != nil {
+		klog.Infof("task:%v 使用调度策略 reclaimable，策略长度是：%v", reclaimer.Name, len(schedulerPolicy.reclaimableFns))
+		return executeReclaimableFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.reclaimableFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("task:%v 使用全局 reclaimable", reclaimer.Name)
+	return executeReclaimableFns(
+		ssn.Tiers,
+		ssn.reclaimableFns,
+	)
 }
 
 // Preemptable invoke preemptable function of the plugins
+// todo
+//func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
+//	var victims []*api.TaskInfo
+//
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledPreemptable) {
+//				continue
+//			}
+//
+//			pf, found := ssn.preemptableFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			candidates, abstain := pf(preemptor, preemptees)
+//			if abstain == 0 {
+//				continue
+//			}
+//			// intersection will be nil if length is 0, don't need to do any more check
+//			if len(candidates) == 0 {
+//				victims = nil
+//				break
+//			}
+//			// first iteration - initialize victims list
+//			if victims == nil {
+//				victims = candidates
+//			} else {
+//				var intersection []*api.TaskInfo
+//				// Get intersection of victims and candidates.
+//				for _, v := range victims {
+//					for _, c := range candidates {
+//						if v.UID == c.UID {
+//							intersection = append(intersection, v)
+//						}
+//					}
+//				}
+//
+//				// Update victims to intersection
+//				victims = intersection
+//			}
+//		}
+//		// Plugins in this tier made decision if victims is not nil
+//		if victims != nil {
+//			return victims
+//		}
+//	}
+//
+//	return victims
+//}
+
 func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
-	var victims []*api.TaskInfo
+	executePreemptableFns := func(
+		tiers []conf.Tier,
+		preemptableFns map[string]api.EvictableFn,
+	) []*api.TaskInfo {
+		var victims []*api.TaskInfo
 
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledPreemptable) {
-				continue
-			}
-
-			pf, found := ssn.preemptableFns[plugin.Name]
-			if !found {
-				continue
-			}
-			candidates, abstain := pf(preemptor, preemptees)
-			if abstain == 0 {
-				continue
-			}
-			// intersection will be nil if length is 0, don't need to do any more check
-			if len(candidates) == 0 {
-				victims = nil
-				break
-			}
-			// first iteration - initialize victims list
-			if victims == nil {
-				victims = candidates
-			} else {
-				var intersection []*api.TaskInfo
-				// Get intersection of victims and candidates.
-				for _, v := range victims {
-					for _, c := range candidates {
-						if v.UID == c.UID {
-							intersection = append(intersection, v)
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledPreemptable) {
+					continue
+				}
+				pf, found := preemptableFns[plugin.Name]
+				if !found {
+					continue
+				}
+				candidates, abstain := pf(preemptor, preemptees)
+				if abstain == 0 {
+					continue
+				}
+				if len(candidates) == 0 {
+					victims = nil
+					break
+				}
+				// first iteration - initialize victims list
+				if victims == nil {
+					victims = candidates
+				} else {
+					var intersection []*api.TaskInfo
+					// Get intersection of victims and candidates.
+					for _, v := range victims {
+						for _, c := range candidates {
+							if v.UID == c.UID {
+								intersection = append(intersection, v)
+							}
 						}
 					}
+					victims = intersection
 				}
-
-				// Update victims to intersection
-				victims = intersection
+			}
+			// Plugins in this tier made decision if victims is not nil
+			if victims != nil {
+				return victims
 			}
 		}
-		// Plugins in this tier made decision if victims is not nil
-		if victims != nil {
-			return victims
-		}
+
+		return victims
 	}
 
-	return victims
+	// 优先使用 preemptor 的调度策略（若存在）
+	schedulerPolicy := ssn.GetSchedulerPolicyFromTask(preemptor)
+	if schedulerPolicy != nil {
+		klog.Infof("task:%v 使用调度策略 preemptable，策略长度是：%v", preemptor.Name, len(schedulerPolicy.preemptableFns))
+		return executePreemptableFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.preemptableFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("task:%v 使用全局 preemptable", preemptor.Name)
+	return executePreemptableFns(
+		ssn.Tiers,
+		ssn.preemptableFns,
+	)
 }
 
 // Overused invoke overused function of the plugins
+// todo
+//func (ssn *Session) Overused(queue *api.QueueInfo) bool {
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledOverused) {
+//				continue
+//			}
+//			of, found := ssn.overusedFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			if of(queue) {
+//				return true
+//			}
+//		}
+//	}
+//
+//	return false
+//}
+
 func (ssn *Session) Overused(queue *api.QueueInfo) bool {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledOverused) {
-				continue
-			}
-			of, found := ssn.overusedFns[plugin.Name]
-			if !found {
-				continue
-			}
-			if of(queue) {
-				return true
+	executeOverusedFns := func(
+		tiers []conf.Tier,
+		overusedFns map[string]api.ValidateFn,
+	) bool {
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledOverused) {
+					continue
+				}
+				of, found := overusedFns[plugin.Name]
+				if !found {
+					continue
+				}
+				if of(queue) {
+					return true
+				}
 			}
 		}
+		return false
 	}
 
-	return false
+	// 优先使用队列的调度策略（若存在）
+	schedulerPolicy := ssn.GetSchedulerPolicyFromQueue(queue)
+	if schedulerPolicy != nil {
+		klog.Infof("queue:%v 使用调度策略 overused，策略长度是：%v", queue.Name, len(schedulerPolicy.overusedFns))
+		return executeOverusedFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.overusedFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("queue:%v 使用全局 overused", queue.Name)
+	return executeOverusedFns(
+		ssn.Tiers,
+		ssn.overusedFns,
+	)
 }
 
 // Preemptive invoke can preemptive function of the plugins
+// todo
+//func (ssn *Session) Preemptive(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			of, found := ssn.preemptiveFns[plugin.Name]
+//			if !isEnabled(plugin.EnablePreemptive) {
+//				continue
+//			}
+//			if !found {
+//				continue
+//			}
+//			if !of(queue, candidate) {
+//				return false
+//			}
+//		}
+//	}
+//
+//	return true
+//}
+
 func (ssn *Session) Preemptive(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			of, found := ssn.preemptiveFns[plugin.Name]
-			if !isEnabled(plugin.EnablePreemptive) {
-				continue
-			}
-			if !found {
-				continue
-			}
-			if !of(queue, candidate) {
-				return false
+	executePreemptiveFns := func(
+		tiers []conf.Tier,
+		preemptiveFns map[string]api.ValidateWithCandidateFn,
+	) bool {
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnablePreemptive) {
+					continue
+				}
+				of, found := preemptiveFns[plugin.Name]
+				if !found {
+					continue
+				}
+				if !of(queue, candidate) {
+					return false
+				}
 			}
 		}
+		return true
 	}
 
-	return true
+	// 优先使用队列的调度策略（若存在）
+	schedulerPolicy := ssn.GetSchedulerPolicyFromQueue(queue)
+	if schedulerPolicy != nil {
+		klog.Infof("queue:%v 使用调度策略 preemptive，策略长度是：%v", queue.Name, len(schedulerPolicy.preemptiveFns))
+		return executePreemptiveFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.preemptiveFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("queue:%v 使用全局 preemptive", queue.Name)
+	return executePreemptiveFns(
+		ssn.Tiers,
+		ssn.preemptiveFns,
+	)
 }
 
 // Allocatable invoke allocatable function of the plugins
+// todo
+//func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledAllocatable) {
+//				continue
+//			}
+//			af, found := ssn.allocatableFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			if !af(queue, candidate) {
+//				return false
+//			}
+//		}
+//	}
+//
+//	return true
+//}
+
 func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledAllocatable) {
-				continue
-			}
-			af, found := ssn.allocatableFns[plugin.Name]
-			if !found {
-				continue
-			}
-			if !af(queue, candidate) {
-				return false
+	executeAllocatableFns := func(
+		tiers []conf.Tier,
+		allocatableFns map[string]api.AllocatableFn,
+	) bool {
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledAllocatable) {
+					continue
+				}
+				af, found := allocatableFns[plugin.Name]
+				if !found {
+					continue
+				}
+				if !af(queue, candidate) {
+					return false
+				}
 			}
 		}
+		return true
 	}
 
-	return true
+	// 优先使用队列的调度策略（若存在）
+	schedulerPolicy := ssn.GetSchedulerPolicyFromQueue(queue)
+	if schedulerPolicy != nil {
+		klog.Infof("queue:%v 使用调度策略 allocatable，策略长度是：%v", queue.Name, len(schedulerPolicy.allocatableFns))
+		return executeAllocatableFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.allocatableFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("queue:%v 使用全局 allocatable", queue.Name)
+	return executeAllocatableFns(
+		ssn.Tiers,
+		ssn.allocatableFns,
+	)
 }
 
 // JobReady invoke jobready function of the plugins
-func (ssn *Session) JobReady(obj interface{}) bool {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledJobReady) {
-				continue
-			}
-			jrf, found := ssn.jobReadyFns[plugin.Name]
-			if !found {
-				continue
-			}
+// todo
+//func (ssn *Session) JobReady(obj interface{}) bool {
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledJobReady) {
+//				continue
+//			}
+//			jrf, found := ssn.jobReadyFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//
+//			if !jrf(obj) {
+//				return false
+//			}
+//		}
+//	}
+//
+//	return true
+//}
 
-			if !jrf(obj) {
-				return false
+func (ssn *Session) JobReady(obj interface{}) bool {
+	executeJobReadyFns := func(
+		tiers []conf.Tier,
+		jobReadyFns map[string]api.ValidateFn,
+	) bool {
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledJobReady) {
+					continue
+				}
+				jrf, found := jobReadyFns[plugin.Name]
+				if !found {
+					continue
+				}
+				if !jrf(obj) {
+					return false
+				}
 			}
 		}
+		return true
 	}
 
-	return true
+	schedulerPolicy := ssn.GetSchedulerPolicyFromJob(obj.(*api.JobInfo))
+	if schedulerPolicy != nil {
+		klog.Infof("job:%v 使用调度策略 jobReady，策略长度是：%v", job.Name, len(schedulerPolicy.jobReadyFns))
+		return executeJobReadyFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.jobReadyFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("job:%v 使用全局 jobReady", job.Name)
+	return executeJobReadyFns(
+		ssn.Tiers,
+		ssn.jobReadyFns,
+	)
 }
 
 // JobPipelined invoke pipelined function of the plugins
 // Check if job has get enough resource to run
-func (ssn *Session) JobPipelined(obj interface{}) bool {
-	var hasFound bool
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledJobPipelined) {
-				continue
-			}
-			jrf, found := ssn.jobPipelinedFns[plugin.Name]
-			if !found {
-				continue
-			}
+// todo
+//func (ssn *Session) JobPipelined(obj interface{}) bool {
+//	var hasFound bool
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledJobPipelined) {
+//				continue
+//			}
+//			jrf, found := ssn.jobPipelinedFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//
+//			res := jrf(obj)
+//			if res < 0 {
+//				return false
+//			}
+//			if res > 0 {
+//				hasFound = true
+//			}
+//		}
+//		// if plugin exists that votes permit, meanwhile other plugin votes abstention,
+//		// permit job to be pipelined, do not check next tier
+//		if hasFound {
+//			return true
+//		}
+//	}
+//
+//	return true
+//}
 
-			res := jrf(obj)
-			if res < 0 {
-				return false
+func (ssn *Session) JobPipelined(obj interface{}) bool {
+	executeJobPipelinedFns := func(
+		tiers []conf.Tier,
+		jobPipelinedFns map[string]api.VoteFn,
+	) bool {
+		var hasFound bool
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledJobPipelined) {
+					continue
+				}
+				jrf, found := jobPipelinedFns[plugin.Name]
+				if !found {
+					continue
+				}
+
+				res := jrf(obj)
+				if res < 0 {
+					return false
+				}
+				if res > 0 {
+					hasFound = true
+				}
 			}
-			if res > 0 {
-				hasFound = true
+			// if plugin exists that votes permit, meanwhile other plugin votes abstention,
+			// permit job to be pipelined, do not check next tier
+			if hasFound {
+				return true
 			}
 		}
-		// if plugin exists that votes permit, meanwhile other plugin votes abstention,
-		// permit job to be pipelined, do not check next tier
-		if hasFound {
-			return true
-		}
+		return true
 	}
 
-	return true
+	// 优先使用任务的调度策略（若存在）
+	schedulerPolicy := ssn.GetSchedulerPolicyFromJob(obj.(*api.JobInfo))
+	if schedulerPolicy != nil {
+		klog.Infof("job:%v 使用调度策略 jobPipelined，策略长度是：%v", job.Name, len(schedulerPolicy.jobPipelinedFns))
+		return executeJobPipelinedFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.jobPipelinedFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("job:%v 使用全局 jobPipelined", job.Name)
+	return executeJobPipelinedFns(
+		ssn.Tiers,
+		ssn.jobPipelinedFns,
+	)
 }
 
 // JobStarving invoke jobStarving function of the plugins
 // Check if job still need more resource
-func (ssn *Session) JobStarving(obj interface{}) bool {
-	var hasFound bool
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledJobStarving) {
-				continue
-			}
-			jrf, found := ssn.jobStarvingFns[plugin.Name]
-			if !found {
-				continue
-			}
-			hasFound = true
+// todo
+//func (ssn *Session) JobStarving(obj interface{}) bool {
+//	var hasFound bool
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledJobStarving) {
+//				continue
+//			}
+//			jrf, found := ssn.jobStarvingFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			hasFound = true
+//
+//			if !jrf(obj) {
+//				return false
+//			}
+//		}
+//		// this tier registered function
+//		if hasFound {
+//			return true
+//		}
+//	}
+//
+//	return false
+//}
 
-			if !jrf(obj) {
-				return false
+func (ssn *Session) JobStarving(obj interface{}) bool {
+	executeJobStarvingFns := func(
+		tiers []conf.Tier,
+		jobStarvingFns map[string]api.ValidateFn,
+	) bool {
+		var hasFound bool
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledJobStarving) {
+					continue
+				}
+				jrf, found := jobStarvingFns[plugin.Name]
+				if !found {
+					continue
+				}
+				hasFound = true
+
+				if !jrf(obj) {
+					return false
+				}
+			}
+			// this tier registered function
+			if hasFound {
+				return true
 			}
 		}
-		// this tier registered function
-		if hasFound {
-			return true
-		}
+		return false
 	}
 
-	return false
+	// 优先使用任务的调度策略（若存在）
+	schedulerPolicy := ssn.GetSchedulerPolicyFromJob(obj.(*api.JobInfo))
+	if schedulerPolicy != nil {
+		klog.Infof("job:%v 使用调度策略 jobStarving，策略长度是：%v", job.Name, len(schedulerPolicy.jobStarvingFns))
+		return executeJobStarvingFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.jobStarvingFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("job:%v 使用全局 jobStarving", job.Name)
+	return executeJobStarvingFns(
+		ssn.Tiers,
+		ssn.jobStarvingFns,
+	)
 }
 
 // JobValid invoke jobvalid function of the plugins
-func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			jrf, found := ssn.jobValidFns[plugin.Name]
-			if !found {
-				continue
-			}
+// todo
+//func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			jrf, found := ssn.jobValidFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//
+//			if vr := jrf(obj); vr != nil && !vr.Pass {
+//				return vr
+//			}
+//		}
+//	}
+//
+//	return nil
+//}
 
-			if vr := jrf(obj); vr != nil && !vr.Pass {
-				return vr
+func (ssn *Session) JobValid(obj interface{}) *api.ValidateResult {
+	executeJobValidFns := func(
+		tiers []conf.Tier,
+		jobValidFns map[string]api.ValidateExFn,
+	) *api.ValidateResult {
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				jrf, found := jobValidFns[plugin.Name]
+				if !found {
+					continue
+				}
+
+				if vr := jrf(obj); vr != nil && !vr.Pass {
+					return vr
+				}
 			}
 		}
+		return nil
 	}
 
-	return nil
+	schedulerPolicy := ssn.GetSchedulerPolicyFromJob(obj.(*api.JobInfo))
+	if schedulerPolicy != nil {
+		klog.Infof("job:%v 使用调度策略 jobValid，策略长度是：%v", job.Name, len(schedulerPolicy.jobValidFns))
+		return executeJobValidFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.jobValidFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("job:%v 使用全局 jobValid", job.Name)
+	return executeJobValidFns(
+		ssn.Tiers,
+		ssn.jobValidFns,
+	)
 }
 
 // JobEnqueueable invoke jobEnqueueableFns function of the plugins
-func (ssn *Session) JobEnqueueable(obj interface{}) bool {
-	var hasFound bool
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledJobEnqueued) {
-				continue
-			}
-			fn, found := ssn.jobEnqueueableFns[plugin.Name]
-			if !found {
-				continue
-			}
+// todo
+//func (ssn *Session) JobEnqueueable(obj interface{}) bool {
+//	var hasFound bool
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledJobEnqueued) {
+//				continue
+//			}
+//			fn, found := ssn.jobEnqueueableFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//
+//			res := fn(obj)
+//			if res < 0 {
+//				return false
+//			}
+//			if res > 0 {
+//				hasFound = true
+//			}
+//		}
+//		// if plugin exists that votes permit, meanwhile other plugin votes abstention,
+//		// permit job to be enqueueable, do not check next tier
+//		if hasFound {
+//			return true
+//		}
+//	}
+//
+//	return true
+//}
 
-			res := fn(obj)
-			if res < 0 {
-				return false
+func (ssn *Session) JobEnqueueable(obj interface{}) bool {
+	executeJobEnqueueableFns := func(
+		tiers []conf.Tier,
+		jobEnqueueableFns map[string]api.VoteFn,
+	) bool {
+		var hasFound bool
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledJobEnqueued) {
+					continue
+				}
+				fn, found := jobEnqueueableFns[plugin.Name]
+				if !found {
+					continue
+				}
+
+				res := fn(obj)
+				if res < 0 {
+					return false
+				}
+				if res > 0 {
+					hasFound = true
+				}
 			}
-			if res > 0 {
-				hasFound = true
+			// if plugin exists that votes permit, meanwhile other plugin votes abstention,
+			// permit job to be enqueueable, do not check next tier
+			if hasFound {
+				return true
 			}
 		}
-		// if plugin exists that votes permit, meanwhile other plugin votes abstention,
-		// permit job to be enqueueable, do not check next tier
-		if hasFound {
-			return true
-		}
+		return true
 	}
 
-	return true
+	schedulerPolicy := ssn.GetSchedulerPolicyFromJob(obj.(*api.JobInfo))
+	if schedulerPolicy != nil {
+		klog.Infof("job:%v 使用调度策略 jobEnqueueable，策略长度是：%v", job.Name, len(schedulerPolicy.jobEnqueueableFns))
+		return executeJobEnqueueableFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.jobEnqueueableFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("job:%v 使用全局 jobEnqueueable", job.Name)
+	return executeJobEnqueueableFns(
+		ssn.Tiers,
+		ssn.jobEnqueueableFns,
+	)
 }
 
 // JobEnqueued invoke jobEnqueuedFns function of the plugins
-func (ssn *Session) JobEnqueued(obj interface{}) {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledJobEnqueued) {
-				continue
-			}
-			fn, found := ssn.jobEnqueuedFns[plugin.Name]
-			if !found {
-				continue
-			}
+// todo
+//func (ssn *Session) JobEnqueued(obj interface{}) {
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledJobEnqueued) {
+//				continue
+//			}
+//			fn, found := ssn.jobEnqueuedFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//
+//			fn(obj)
+//		}
+//	}
+//}
 
-			fn(obj)
+func (ssn *Session) JobEnqueued(obj interface{}) {
+	executeJobEnqueuedFns := func(
+		tiers []conf.Tier,
+		jobEnqueuedFns map[string]api.JobEnqueuedFn,
+	) {
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledJobEnqueued) {
+					continue
+				}
+				fn, found := jobEnqueuedFns[plugin.Name]
+				if !found {
+					continue
+				}
+
+				fn(obj)
+			}
 		}
 	}
+
+	// 优先使用任务的调度策略（若存在）
+	schedulerPolicy := ssn.GetSchedulerPolicyFromJob(obj.(*api.JobInfo))
+	if schedulerPolicy != nil {
+		klog.Infof("job:%v 使用调度策略 jobEnqueued，策略长度是：%v", job.Name, len(schedulerPolicy.jobEnqueuedFns))
+		executeJobEnqueuedFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.jobEnqueuedFns,
+		)
+		return
+	}
+
+	// 默认使用全局策略
+	klog.Infof("job:%v 使用全局 jobEnqueued", job.Name)
+	executeJobEnqueuedFns(
+		ssn.Tiers,
+		ssn.jobEnqueuedFns,
+	)
 }
 
 // TargetJob invoke targetJobFns function of the plugins
+// todo
 func (ssn *Session) TargetJob(jobs []*api.JobInfo) *api.JobInfo {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -479,6 +1013,7 @@ func (ssn *Session) TargetJob(jobs []*api.JobInfo) *api.JobInfo {
 }
 
 // VictimTasks returns the victims selected
+// todo
 func (ssn *Session) VictimTasks(tasks []*api.TaskInfo) map[*api.TaskInfo]bool {
 	// different filters may add the same task to victims, so use a map to remove duplicate tasks.
 	victimSet := make(map[*api.TaskInfo]bool)
@@ -506,6 +1041,7 @@ func (ssn *Session) VictimTasks(tasks []*api.TaskInfo) map[*api.TaskInfo]bool {
 }
 
 // ReservedNodes invoke ReservedNodes function of the plugins
+// todo
 func (ssn *Session) ReservedNodes() {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -522,32 +1058,81 @@ func (ssn *Session) ReservedNodes() {
 }
 
 // JobOrderFn invoke joborder function of the plugins
+// todo
+//func (ssn *Session) JobOrderFn(l, r interface{}) bool {
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledJobOrder) {
+//				continue
+//			}
+//			jof, found := ssn.jobOrderFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			if j := jof(l, r); j != 0 {
+//				return j < 0
+//			}
+//		}
+//	}
+//
+//	// If no job order funcs, order job by CreationTimestamp first, then by UID.
+//	lv := l.(*api.JobInfo)
+//	rv := r.(*api.JobInfo)
+//	if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
+//		return lv.UID < rv.UID
+//	}
+//	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
+//}
+
 func (ssn *Session) JobOrderFn(l, r interface{}) bool {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledJobOrder) {
-				continue
-			}
-			jof, found := ssn.jobOrderFns[plugin.Name]
-			if !found {
-				continue
-			}
-			if j := jof(l, r); j != 0 {
-				return j < 0
+	executeJobOrderFns := func(
+		tiers []conf.Tier,
+		jobOrderFns map[string]api.CompareFn,
+	) bool {
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledJobOrder) {
+					continue
+				}
+				jof, found := jobOrderFns[plugin.Name]
+				if !found {
+					continue
+				}
+				if j := jof(l, r); j != 0 {
+					return j < 0
+				}
 			}
 		}
+
+		// If no job order funcs, order job by CreationTimestamp first, then by UID.
+		lv := l.(*api.JobInfo)
+		rv := r.(*api.JobInfo)
+		if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
+			return lv.UID < rv.UID
+		}
+		return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
 	}
 
-	// If no job order funcs, order job by CreationTimestamp first, then by UID.
-	lv := l.(*api.JobInfo)
-	rv := r.(*api.JobInfo)
-	if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
-		return lv.UID < rv.UID
+	// 获取左右两个任务的队列调度策略
+	schedulerPolicy := ssn.GetSchedulerPolicyFromJob(l.(*api.JobInfo))
+	if schedulerPolicy != nil {
+		klog.Infof("使用队列 %v 的调度策略 jobOrder，策略长度是：%v", l.(*api.JobInfo).Queue, len(schedulerPolicy.jobOrderFns))
+		return executeJobOrderFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.jobOrderFns,
+		)
 	}
-	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
+
+	// 使用全局策略
+	klog.Infof("使用全局 jobOrder")
+	return executeJobOrderFns(
+		ssn.Tiers,
+		ssn.jobOrderFns,
+	)
 }
 
 // ClusterOrderFn invoke ClusterOrderFn function of the plugins
+// todo
 func (ssn *Session) ClusterOrderFn(l, r interface{}) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -571,6 +1156,7 @@ func (ssn *Session) ClusterOrderFn(l, r interface{}) bool {
 }
 
 // QueueOrderFn invoke queueorder function of the plugins
+// todo
 func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -597,6 +1183,7 @@ func (ssn *Session) QueueOrderFn(l, r interface{}) bool {
 }
 
 // VictimQueueOrderFn invoke victimqueueorder function of the plugins
+// todo
 func (ssn *Session) VictimQueueOrderFn(l, r, preemptor interface{}) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -614,26 +1201,69 @@ func (ssn *Session) VictimQueueOrderFn(l, r, preemptor interface{}) bool {
 }
 
 // TaskCompareFns invoke taskorder function of the plugins
+// todo
+//func (ssn *Session) TaskCompareFns(l, r interface{}) int {
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledTaskOrder) {
+//				continue
+//			}
+//			tof, found := ssn.taskOrderFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			if j := tof(l, r); j != 0 {
+//				return j
+//			}
+//		}
+//	}
+//
+//	return 0
+//}
+
 func (ssn *Session) TaskCompareFns(l, r interface{}) int {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledTaskOrder) {
-				continue
-			}
-			tof, found := ssn.taskOrderFns[plugin.Name]
-			if !found {
-				continue
-			}
-			if j := tof(l, r); j != 0 {
-				return j
+	executeTaskCompareFns := func(
+		tiers []conf.Tier,
+		taskOrderFns map[string]api.CompareFn,
+	) int {
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledTaskOrder) {
+					continue
+				}
+				tof, found := taskOrderFns[plugin.Name]
+				if !found {
+					continue
+				}
+				if j := tof(l, r); j != 0 {
+					return j
+				}
 			}
 		}
+		return 0
 	}
 
-	return 0
+	// 获取任务所属job的调度策略
+	lv := l.(*api.TaskInfo)
+	schedulerPolicy := ssn.GetSchedulerPolicyFromTask(lv)
+	if schedulerPolicy != nil {
+		klog.Infof("task:%v 使用调度策略 taskCompare，策略长度是：%v", lv.Name, len(schedulerPolicy.taskOrderFns))
+		return executeTaskCompareFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.taskOrderFns,
+		)
+	}
+
+	// 使用全局策略
+	klog.Infof("task:%v 使用全局 taskCompare", lv.Name)
+	return executeTaskCompareFns(
+		ssn.Tiers,
+		ssn.taskOrderFns,
+	)
 }
 
 // TaskOrderFn invoke taskorder function of the plugins
+// todo
 func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 	if res := ssn.TaskCompareFns(l, r); res != 0 {
 		return res < 0
@@ -646,170 +1276,474 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 }
 
 // PredicateFn invoke predicate function of the plugins
+// todo
+//func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledPredicate) {
+//				continue
+//			}
+//			pfn, found := ssn.predicateFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			err := pfn(task, node)
+//			if err != nil {
+//				return err
+//			}
+//		}
+//	}
+//	return nil
+//}
+
 func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledPredicate) {
-				continue
-			}
-			pfn, found := ssn.predicateFns[plugin.Name]
-			if !found {
-				continue
-			}
-			err := pfn(task, node)
-			if err != nil {
-				return err
+	executePredicateFns := func(
+		tiers []conf.Tier,
+		predicateFns map[string]api.PredicateFn,
+	) error {
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledPredicate) {
+					continue
+				}
+				pfn, found := predicateFns[plugin.Name]
+				if !found {
+					continue
+				}
+				if err := pfn(task, node); err != nil {
+					return err
+				}
 			}
 		}
+		return nil
 	}
-	return nil
+
+	// 优先使用任务所属job的调度策略
+	schedulerPolicy := ssn.GetSchedulerPolicyFromTask(task)
+	if schedulerPolicy != nil {
+		klog.Infof("task:%v 使用调度策略 predicateFn，策略长度是：%v", task.Name, len(schedulerPolicy.predicateFns))
+		return executePredicateFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.predicateFns,
+		)
+	}
+
+	// 使用全局策略
+	klog.Infof("task:%v 使用全局 predicateFn", task.Name)
+	return executePredicateFns(
+		ssn.Tiers,
+		ssn.predicateFns,
+	)
 }
 
 // PrePredicateFn invoke predicate function of the plugins
+// todo
+//func (ssn *Session) PrePredicateFn(task *api.TaskInfo) error {
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			// we use same option as predicates for they are
+//			if !isEnabled(plugin.EnabledPredicate) {
+//				continue
+//			}
+//			pfn, found := ssn.prePredicateFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			err := pfn(task)
+//			if err != nil {
+//				return err
+//			}
+//		}
+//	}
+//	return nil
+//}
+
 func (ssn *Session) PrePredicateFn(task *api.TaskInfo) error {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			// we use same option as predicates for they are
-			if !isEnabled(plugin.EnabledPredicate) {
-				continue
-			}
-			pfn, found := ssn.prePredicateFns[plugin.Name]
-			if !found {
-				continue
-			}
-			err := pfn(task)
-			if err != nil {
-				return err
+	executePrePredicateFns := func(
+		tiers []conf.Tier,
+		prePredicateFns map[string]api.PrePredicateFn,
+	) error {
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				// we use same option as predicates for they are
+				if !isEnabled(plugin.EnabledPredicate) {
+					continue
+				}
+				pfn, found := prePredicateFns[plugin.Name]
+				if !found {
+					continue
+				}
+				if err := pfn(task); err != nil {
+					return err
+				}
 			}
 		}
+		return nil
 	}
-	return nil
+
+	// 获取任务所属job的调度策略
+	schedulerPolicy := ssn.GetSchedulerPolicyFromTask(task)
+	if schedulerPolicy != nil {
+		klog.Infof("task:%v 使用调度策略 prePredicateFn，策略长度是：%v", task.Name, len(schedulerPolicy.prePredicateFns))
+		return executePrePredicateFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.prePredicateFns,
+		)
+	}
+
+	// 使用全局策略
+	klog.Infof("task:%v 使用全局 prePredicateFn", task.Name)
+	return executePrePredicateFns(
+		ssn.Tiers,
+		ssn.prePredicateFns,
+	)
 }
 
-// BestNodeFn invoke bestNode function of the plugins
+//// BestNodeFn invoke bestNode function of the plugins
+//func (ssn *Session) BestNodeFn(task *api.TaskInfo, nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledBestNode) {
+//				continue
+//			}
+//			pfn, found := ssn.bestNodeFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			// Only the first plugin that enables and realizes bestNodeFn is allowed to choose best node for task
+//			if bestNode := pfn(task, nodeScores); bestNode != nil {
+//				return bestNode
+//			}
+//		}
+//	}
+//	return nil
+//}
+
 func (ssn *Session) BestNodeFn(task *api.TaskInfo, nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledBestNode) {
-				continue
-			}
-			pfn, found := ssn.bestNodeFns[plugin.Name]
-			if !found {
-				continue
-			}
-			// Only the first plugin that enables and realizes bestNodeFn is allowed to choose best node for task
-			if bestNode := pfn(task, nodeScores); bestNode != nil {
-				return bestNode
+	executeBestNodeFns := func(
+		tiers []conf.Tier,
+		bestNodeFns map[string]api.BestNodeFn,
+	) *api.NodeInfo {
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledBestNode) {
+					continue
+				}
+				pfn, found := bestNodeFns[plugin.Name]
+				if !found {
+					continue
+				}
+				if bestNode := pfn(task, nodeScores); bestNode != nil {
+					return bestNode
+				}
 			}
 		}
+		return nil
 	}
-	return nil
+
+	// 优先使用调度策略（若存在）
+	schedulerPolicy := ssn.GetSchedulerPolicyFromTask(task)
+	if schedulerPolicy != nil {
+		klog.Infof("task:%v 使用调度策略 bestNode，策略长度是：%v", task.Name, len(schedulerPolicy.bestNodeFns))
+		return executeBestNodeFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.bestNodeFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("task:%v 使用全局 bestNode", task.Name)
+	return executeBestNodeFns(
+		ssn.Tiers,
+		ssn.bestNodeFns,
+	)
 }
 
-// NodeOrderFn invoke node order function of the plugins
 func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-	priorityScore := 0.0
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledNodeOrder) {
-				continue
+	executeNodeOrderFns := func(tiers []conf.Tier, nodeOrderFns map[string]api.NodeOrderFn) (float64, error) {
+		priorityScore := 0.0
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledNodeOrder) {
+					continue
+				}
+				pfn, found := nodeOrderFns[plugin.Name]
+				if !found {
+					continue
+				}
+				score, err := pfn(task, node)
+				if err != nil {
+					return 0, err
+				}
+				priorityScore += score
 			}
-			pfn, found := ssn.nodeOrderFns[plugin.Name]
-			if !found {
-				continue
-			}
-			score, err := pfn(task, node)
-			if err != nil {
-				return 0, err
-			}
-			priorityScore += score
 		}
+		return priorityScore, nil
 	}
-	return priorityScore, nil
+
+	// 如果任务有绑定的调度策略，优先使用该策略的插件
+	schedulerPolicy := ssn.GetSchedulerPolicyFromTask(task)
+	if schedulerPolicy != nil {
+		klog.Infof("task:%v 使用nodeorder，长度是 %v", task.Name, len(schedulerPolicy.nodeOrderFns))
+		return executeNodeOrderFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.nodeOrderFns,
+		)
+	}
+
+	// 默认全局策略
+	klog.Infof("task:%v 使用全局nodeorder", task.Name)
+	return executeNodeOrderFns(ssn.Tiers, ssn.nodeOrderFns)
 }
 
-// BatchNodeOrderFn invoke node order function of the plugins
+//// NodeOrderFn invoke node order function of the plugins
+//func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+//	priorityScore := 0.0
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			//if !isEnabled(plugin.EnabledNodeOrder) {
+//			//	continue
+//			//}
+//			pfn, found := ssn.nodeOrderFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			score, err := pfn(task, node)
+//			if err != nil {
+//				return 0, err
+//			}
+//			priorityScore += score
+//		}
+//	}
+//	return priorityScore, nil
+//}
+
+//// BatchNodeOrderFn invoke node order function of the plugins
+//func (ssn *Session) BatchNodeOrderFn(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+//	priorityScore := make(map[string]float64, len(nodes))
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledNodeOrder) {
+//				continue
+//			}
+//			pfn, found := ssn.batchNodeOrderFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			score, err := pfn(task, nodes)
+//			if err != nil {
+//				return nil, err
+//			}
+//			for nodeName, score := range score {
+//				priorityScore[nodeName] += score
+//			}
+//		}
+//	}
+//	return priorityScore, nil
+//}
+
 func (ssn *Session) BatchNodeOrderFn(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
-	priorityScore := make(map[string]float64, len(nodes))
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledNodeOrder) {
-				continue
-			}
-			pfn, found := ssn.batchNodeOrderFns[plugin.Name]
-			if !found {
-				continue
-			}
-			score, err := pfn(task, nodes)
-			if err != nil {
-				return nil, err
-			}
-			for nodeName, score := range score {
-				priorityScore[nodeName] += score
+	executeBatchNodeOrderFns := func(tiers []conf.Tier, batchNodeOrderFns map[string]api.BatchNodeOrderFn) (map[string]float64, error) {
+		priorityScore := make(map[string]float64, len(nodes))
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledNodeOrder) {
+					continue
+				}
+				pfn, found := batchNodeOrderFns[plugin.Name]
+				if !found {
+					continue
+				}
+				scoreMap, err := pfn(task, nodes)
+				if err != nil {
+					return nil, err
+				}
+				for nodeName, score := range scoreMap {
+					priorityScore[nodeName] += score
+				}
 			}
 		}
+		return priorityScore, nil
 	}
-	return priorityScore, nil
+
+	// 优先使用任务指定的调度策略
+	klog.Infof("task的jobid是%v", task.Job)
+	schedulerPolicy := ssn.GetSchedulerPolicyFromTask(task)
+	if schedulerPolicy == nil {
+		klog.Infof("调度策略的batchNodeOrderFns为nil")
+	}
+
+	if schedulerPolicy != nil {
+		klog.Infof("task:%v 使用 batchNodeOrder，长度是：%v", task.Job, len(schedulerPolicy.batchNodeOrderFns))
+		return executeBatchNodeOrderFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.batchNodeOrderFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("task:%v 使用全局 batchNodeOrder", task.Name)
+	return executeBatchNodeOrderFns(ssn.Tiers, ssn.batchNodeOrderFns)
 }
 
 func isEnabled(enabled *bool) bool {
 	return enabled != nil && *enabled
 }
 
-// NodeOrderMapFn invoke node order function of the plugins
+// // NodeOrderMapFn invoke node order function of the plugins
+//
+//	func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
+//		nodeScoreMap := map[string]float64{}
+//		var priorityScore float64
+//		for _, tier := range ssn.Tiers {
+//			for _, plugin := range tier.Plugins {
+//				if !isEnabled(plugin.EnabledNodeOrder) {
+//					continue
+//				}
+//				if pfn, found := ssn.nodeOrderFns[plugin.Name]; found {
+//					score, err := pfn(task, node)
+//					if err != nil {
+//						return nodeScoreMap, priorityScore, err
+//					}
+//					priorityScore += score
+//				}
+//				if pfn, found := ssn.nodeMapFns[plugin.Name]; found {
+//					score, err := pfn(task, node)
+//					if err != nil {
+//						return nodeScoreMap, priorityScore, err
+//					}
+//					nodeScoreMap[plugin.Name] = score
+//				}
+//			}
+//		}
+//		return nodeScoreMap, priorityScore, nil
+//	}
 func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[string]float64, float64, error) {
-	nodeScoreMap := map[string]float64{}
-	var priorityScore float64
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledNodeOrder) {
-				continue
-			}
-			if pfn, found := ssn.nodeOrderFns[plugin.Name]; found {
-				score, err := pfn(task, node)
-				if err != nil {
-					return nodeScoreMap, priorityScore, err
+	executeNodeOrderMapFns := func(
+		tiers []conf.Tier,
+		nodeOrderFns map[string]api.NodeOrderFn,
+		nodeMapFns map[string]api.NodeMapFn,
+	) (map[string]float64, float64, error) {
+		nodeScoreMap := map[string]float64{}
+		var priorityScore float64
+
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledNodeOrder) {
+					continue
 				}
-				priorityScore += score
-			}
-			if pfn, found := ssn.nodeMapFns[plugin.Name]; found {
-				score, err := pfn(task, node)
-				if err != nil {
-					return nodeScoreMap, priorityScore, err
+				if pfn, found := nodeOrderFns[plugin.Name]; found {
+					score, err := pfn(task, node)
+					if err != nil {
+						return nodeScoreMap, priorityScore, err
+					}
+					priorityScore += score
 				}
-				nodeScoreMap[plugin.Name] = score
+				if pfn, found := nodeMapFns[plugin.Name]; found {
+					score, err := pfn(task, node)
+					if err != nil {
+						return nodeScoreMap, priorityScore, err
+					}
+					nodeScoreMap[plugin.Name] = score
+				}
 			}
 		}
+
+		return nodeScoreMap, priorityScore, nil
 	}
-	return nodeScoreMap, priorityScore, nil
+
+	// 使用调度策略（若有）
+	schedulerPolicy := ssn.GetSchedulerPolicyFromTask(task)
+	if schedulerPolicy != nil {
+		klog.Infof("task:%v 使用 nodeOrderMap，长度是：%v,使用nodeorder的长度是%v", task.Name, len(schedulerPolicy.nodeMapFns), len(schedulerPolicy.nodeOrderFns))
+		return executeNodeOrderMapFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.nodeOrderFns,
+			schedulerPolicy.nodeMapFns,
+		)
+	}
+
+	// 默认全局策略
+	klog.Infof("task:%v 使用全局 nodeOrderMap", task.Name)
+	return executeNodeOrderMapFns(
+		ssn.Tiers,
+		ssn.nodeOrderFns,
+		ssn.nodeMapFns,
+	)
 }
 
-// NodeOrderReduceFn invoke node order function of the plugins
+//// NodeOrderReduceFn invoke node order function of the plugins
+//func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map[string]k8sframework.NodeScoreList) (map[string]float64, error) {
+//	nodeScoreMap := map[string]float64{}
+//	for _, tier := range ssn.Tiers {
+//		for _, plugin := range tier.Plugins {
+//			if !isEnabled(plugin.EnabledNodeOrder) {
+//				continue
+//			}
+//			pfn, found := ssn.nodeReduceFns[plugin.Name]
+//			if !found {
+//				continue
+//			}
+//			if err := pfn(task, pluginNodeScoreMap[plugin.Name]); err != nil {
+//				return nodeScoreMap, err
+//			}
+//			for _, hp := range pluginNodeScoreMap[plugin.Name] {
+//				nodeScoreMap[hp.Name] += float64(hp.Score)
+//			}
+//		}
+//	}
+//	return nodeScoreMap, nil
+//}
+
 func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map[string]k8sframework.NodeScoreList) (map[string]float64, error) {
-	nodeScoreMap := map[string]float64{}
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledNodeOrder) {
-				continue
-			}
-			pfn, found := ssn.nodeReduceFns[plugin.Name]
-			if !found {
-				continue
-			}
-			if err := pfn(task, pluginNodeScoreMap[plugin.Name]); err != nil {
-				return nodeScoreMap, err
-			}
-			for _, hp := range pluginNodeScoreMap[plugin.Name] {
-				nodeScoreMap[hp.Name] += float64(hp.Score)
+	executeNodeReduceFns := func(
+		tiers []conf.Tier,
+		nodeReduceFns map[string]api.NodeReduceFn,
+	) (map[string]float64, error) {
+		nodeScoreMap := map[string]float64{}
+		for _, tier := range tiers {
+			for _, plugin := range tier.Plugins {
+				if !isEnabled(plugin.EnabledNodeOrder) {
+					continue
+				}
+				pfn, found := nodeReduceFns[plugin.Name]
+				if !found {
+					continue
+				}
+				scores, ok := pluginNodeScoreMap[plugin.Name]
+				if !ok {
+					continue
+				}
+				if err := pfn(task, scores); err != nil {
+					return nodeScoreMap, err
+				}
+				for _, hp := range scores {
+					nodeScoreMap[hp.Name] += float64(hp.Score)
+				}
 			}
 		}
+		return nodeScoreMap, nil
 	}
-	return nodeScoreMap, nil
+
+	// 优先使用任务的调度策略（若存在）
+	schedulerPolicy := ssn.GetSchedulerPolicyFromTask(task)
+	if schedulerPolicy != nil {
+		klog.Infof("task:%v 使用 nodeOrderReduce，长度是:%v", task.Name, len(schedulerPolicy.nodeReduceFns))
+		return executeNodeReduceFns(
+			schedulerPolicy.Tiers,
+			schedulerPolicy.nodeReduceFns,
+		)
+	}
+
+	// 默认使用全局策略
+	klog.Infof("task:%v 使用全局 nodeOrderReduce", task.Name)
+	return executeNodeReduceFns(ssn.Tiers, ssn.nodeReduceFns)
 }
 
 // BuildVictimsPriorityQueue returns a priority queue with victims sorted by:
 // if victims has same job id, sorted by !ssn.TaskOrderFn
 // if victims has different job id, sorted by !ssn.JobOrderFn
+// todo
 func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor *api.TaskInfo) *util.PriorityQueue {
 	victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
 		lv := l.(*api.TaskInfo)

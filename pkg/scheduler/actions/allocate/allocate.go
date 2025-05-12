@@ -79,6 +79,17 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 func (alloc *Action) pickUpQueuesAndJobs(queues *util.PriorityQueue, jobsMap map[api.QueueID]*util.PriorityQueue) {
 	ssn := alloc.session
 	for _, job := range ssn.Jobs {
+		schedulerPolicy := ssn.GetSchedulerPolicyFromJob(job)
+		if schedulerPolicy != nil && !schedulerPolicy.HasAction(alloc.Name()) {
+			klog.Infof("job %v 属于的调度策略没有这个action %v，因此跳过", job.Name, alloc.Name())
+			continue
+		}
+
+		if schedulerPolicy == nil && !ssn.HasAction(alloc.Name()) {
+			klog.Infof("ssn 中没有action %v，因此跳过", alloc.Name())
+			continue
+		}
+
 		// If not config enqueue action, change Pending pg into Inqueue state to avoid blocking job scheduling.
 		if job.IsPending() {
 			if conf.EnabledActionMap["enqueue"] {

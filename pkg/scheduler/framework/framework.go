@@ -17,22 +17,40 @@ limitations under the License.
 package framework
 
 import (
-	"time"
-
 	"k8s.io/klog/v2"
-
+	"time"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 // OpenSession start the session
-func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration) *Session {
+func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration, schedulerPolicies map[string]*SchedulerPolicy) *Session {
 	ssn := openSession(cache)
 	ssn.Tiers = tiers
 	ssn.Configurations = configurations
 	ssn.NodeMap = GenerateNodeMapAndSlice(ssn.Nodes)
 	ssn.PodLister = NewPodLister(ssn)
+	ssn.schedulerPolicies = schedulerPolicies
+	klog.Infof("调度策略的map是: %v", ssn.schedulerPolicies)
+
+	for name, schedulerPolicy := range schedulerPolicies {
+		schedulerPolicy.plugins = make(map[string]Plugin)
+		for _, tier := range schedulerPolicy.Tiers {
+			for _, plugin := range tier.Plugins {
+				if pb, found := GetPluginBuilder(plugin.Name); !found {
+					klog.Errorf("SchedulerPolicy: %v Failed to get plugin %s.", name, plugin.Name)
+				} else {
+					plugin := pb(plugin.Arguments)
+					schedulerPolicy.plugins[plugin.Name()] = plugin
+					klog.Infof("调度策略 %v 成功注册插件 %v", name, plugin.Name())
+					plugin.OnSessionOpen(ssn) // The queue-level or job-level plugin functions are registered into this temporary ssn.
+				}
+			}
+		}
+		copyAndClearSessionFunctions(schedulerPolicy, ssn)
+		klog.Infof("初始化调度策略：%v", schedulerPolicy)
+	}
 
 	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
@@ -57,6 +75,10 @@ func CloseSession(ssn *Session) {
 		plugin.OnSessionClose(ssn)
 		metrics.UpdatePluginDuration(plugin.Name(), metrics.OnSessionClose, metrics.Duration(onSessionCloseStart))
 	}
-
+	for _, schedulerPolicy := range ssn.schedulerPolicies {
+		for _, plugin := range schedulerPolicy.plugins {
+			plugin.OnSessionClose(ssn)
+		}
+	}
 	closeSession(ssn)
 }

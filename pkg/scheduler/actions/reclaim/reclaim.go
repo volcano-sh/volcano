@@ -51,6 +51,17 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		len(ssn.Jobs), len(ssn.Queues))
 
 	for _, job := range ssn.Jobs {
+		schedulerPolicy := ssn.GetSchedulerPolicyFromJob(job)
+		if schedulerPolicy != nil && !schedulerPolicy.HasAction(ra.Name()) {
+			klog.Infof("job %v 属于的调度策略没有这个action %v，因此跳过", job.Name, ra.Name())
+			continue
+		}
+
+		if schedulerPolicy == nil && !ssn.HasAction(ra.Name()) {
+			klog.Infof("ssn 中没有action %v，因此跳过", ra.Name())
+			continue
+		}
+
 		if job.IsPending() {
 			continue
 		}
