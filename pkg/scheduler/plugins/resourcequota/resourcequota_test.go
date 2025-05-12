@@ -6,7 +6,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 
-	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -21,16 +20,16 @@ func TestResourceQuotaPlugin(t *testing.T) {
 	normalResource := api.BuildResourceList("2000m", "2G")
 
 	// pg that requires normal resources
-	pg1 := util.BuildPodGroup("pg1", "default", "c1", 2, nil, schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue))
+	pg1 := util.MakePodGroup("pg1", "default").Queue("c1").MinMember(2).Phase(schedulingv1.PodGroupInqueue).Obj()
 	pg1.Spec.MinResources = &normalResource
 	// pg that requires small resources
-	pg2 := util.BuildPodGroup("pg2", "default", "c1", 2, nil, schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue))
+	pg2 := util.MakePodGroup("pg2", "default").Queue("c1").MinMember(2).Phase(schedulingv1.PodGroupInqueue).Obj()
 	pg2.Spec.MinResources = &hugeResource
 	// pg that no set requires
-	pg3 := util.BuildPodGroup("pg3", "default", "c1", 2, nil, schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue))
+	pg3 := util.MakePodGroup("pg3", "default").Queue("c1").MinMember(2).Phase(schedulingv1.PodGroupInqueue).Obj()
 
-	queue1 := util.BuildQueue("c1", 1, nil)
-	rq1 := util.BuildResourceQuota("test", "default", normalResource)
+	queue1 := util.MakeQueue("c1").Weight(1).Obj()
+	rq1 := util.MakeResourceQuota("test", "default").Hard(normalResource).Obj()
 
 	tests := []struct {
 		uthelper.TestCommonStruct

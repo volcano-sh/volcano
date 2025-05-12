@@ -109,14 +109,22 @@ func TestNode(t *testing.T) {
 	p4 := util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("3", "4Gi"), "pg1", make(map[string]string), make(map[string]string))
 	addResource(p4.Spec.Containers[0].Resources.Requests, FOO, "3")
 
-	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
-	n2 := util.BuildNode("n2", api.BuildResourceList("4", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n1 := util.MakeNode("n1").
+		Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Obj()
+	n2 := util.MakeNode("n2").
+		Allocatable(api.BuildResourceList("4", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Obj()
 	addResource(n2.Status.Allocatable, GPU, "4")
-	n3 := util.BuildNode("n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n3 := util.MakeNode("n3").
+		Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Obj()
 	addResource(n3.Status.Allocatable, FOO, "16")
-
-	pg1 := util.BuildPodGroup("pg1", "c1", "c1", 0, nil, "")
-	queue1 := util.BuildQueue("c1", 1, nil)
+	pg1 := util.MakePodGroup("pg1", "c1").Queue("c1").Obj()
+	queue1 := util.MakeQueue("c1").Weight(1).Obj()
 
 	tests := []struct {
 		uthelper.TestCommonStruct

@@ -50,9 +50,9 @@ func TestHDRF(t *testing.T) {
 				Name:    "rescaling test",
 				Plugins: plugins,
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroup("pg1", "default", "root-sci", 0, nil, schedulingv1.PodGroupInqueue),
-					util.BuildPodGroup("pg21", "default", "root-eng-dev", 0, nil, schedulingv1.PodGroupInqueue),
-					util.BuildPodGroup("pg22", "default", "root-eng-prod", 0, nil, schedulingv1.PodGroupInqueue),
+					util.MakePodGroup("pg1", "default").Queue("root-sci").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
+					util.MakePodGroup("pg21", "default").Queue("root-eng-devi").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
+					util.MakePodGroup("pg22", "default").Queue("root-eng-prod").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
 				},
 				Pods: mergePods(
 					makePods(10, "1", "1G", "pg1"),
@@ -60,20 +60,28 @@ func TestHDRF(t *testing.T) {
 					makePods(10, "0", "1G", "pg22"),
 				),
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueueWithAnnos("root-sci", 1, nil, map[string]string{
-						schedulingv1.KubeHierarchyAnnotationKey:       "root/sci",
-						schedulingv1.KubeHierarchyWeightAnnotationKey: "100/50",
-					}),
-					util.BuildQueueWithAnnos("root-eng-dev", 1, nil, map[string]string{
-						schedulingv1.KubeHierarchyAnnotationKey:       "root/eng/dev",
-						schedulingv1.KubeHierarchyWeightAnnotationKey: "100/50/50",
-					}),
-					util.BuildQueueWithAnnos("root-eng-prod", 1, nil, map[string]string{
-						schedulingv1.KubeHierarchyAnnotationKey:       "root/eng/prod",
-						schedulingv1.KubeHierarchyWeightAnnotationKey: "100/50/50",
-					}),
+					util.MakeQueue("root-sci").Weight(1).Capability(nil).Annotations(
+						map[string]string{
+							schedulingv1.KubeHierarchyAnnotationKey:       "root/sci",
+							schedulingv1.KubeHierarchyWeightAnnotationKey: "100/50",
+						}).Obj(),
+					util.MakeQueue("root-eng-dev").Weight(1).Capability(nil).Annotations(
+						map[string]string{
+							schedulingv1.KubeHierarchyAnnotationKey:       "root/eng/dev",
+							schedulingv1.KubeHierarchyWeightAnnotationKey: "100/50/50",
+						}).Obj(),
+					util.MakeQueue("root-eng-prod").Weight(1).Capability(nil).Annotations(
+						map[string]string{
+							schedulingv1.KubeHierarchyAnnotationKey:       "root/eng/prod",
+							schedulingv1.KubeHierarchyWeightAnnotationKey: "100/50/50",
+						}).Obj(),
 				},
-				Nodes: []*v1.Node{util.BuildNode("n", api.BuildResourceList("10", "10G", []api.ScalarResource{{Name: "pods", Value: "50"}}...), make(map[string]string))},
+				Nodes: []*v1.Node{
+					util.MakeNode("n").
+						Allocatable(api.BuildResourceList("10", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("10", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Obj(),
+				},
 			},
 			expected: map[string]*api.Resource{
 				"pg1": {
@@ -98,11 +106,11 @@ func TestHDRF(t *testing.T) {
 				Name:    "blocking nodes test",
 				Plugins: plugins,
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroup("pg1", "default", "root-pg1", 0, nil, schedulingv1.PodGroupInqueue),
-					util.BuildPodGroup("pg2", "default", "root-pg2", 0, nil, schedulingv1.PodGroupInqueue),
-					util.BuildPodGroup("pg31", "default", "root-pg3-pg31", 0, nil, schedulingv1.PodGroupInqueue),
-					util.BuildPodGroup("pg32", "default", "root-pg3-pg31", 0, nil, schedulingv1.PodGroupInqueue),
-					util.BuildPodGroup("pg4", "default", "root-pg4", 0, nil, schedulingv1.PodGroupInqueue),
+					util.MakePodGroup("pg1", "default").Queue("root-pg1").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
+					util.MakePodGroup("pg2", "default").Queue("root-pg2").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
+					util.MakePodGroup("pg31", "default").Queue("root-pg3-pg31").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
+					util.MakePodGroup("pg32", "default").Queue("root-pg3-pg31").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
+					util.MakePodGroup("pg4", "default").Queue("root-pg4").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
 				},
 				Pods: mergePods(
 					makePods(30, "1", "0G", "pg1"),
@@ -112,28 +120,38 @@ func TestHDRF(t *testing.T) {
 					makePods(30, "0", "1G", "pg4"),
 				),
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueueWithAnnos("root-pg1", 1, nil, map[string]string{
-						schedulingv1.KubeHierarchyAnnotationKey:       "root/pg1",
-						schedulingv1.KubeHierarchyWeightAnnotationKey: "100/25",
-					}),
-					util.BuildQueueWithAnnos("root-pg2", 1, nil, map[string]string{
-						schedulingv1.KubeHierarchyAnnotationKey:       "root/pg2",
-						schedulingv1.KubeHierarchyWeightAnnotationKey: "100/25",
-					}),
-					util.BuildQueueWithAnnos("root-pg3-pg31", 1, nil, map[string]string{
-						schedulingv1.KubeHierarchyAnnotationKey:       "root/pg3/pg31",
-						schedulingv1.KubeHierarchyWeightAnnotationKey: "100/25/50",
-					}),
-					util.BuildQueueWithAnnos("root-pg3-pg32", 1, nil, map[string]string{
-						schedulingv1.KubeHierarchyAnnotationKey:       "root/pg3/pg32",
-						schedulingv1.KubeHierarchyWeightAnnotationKey: "100/25/50",
-					}),
-					util.BuildQueueWithAnnos("root-pg4", 1, nil, map[string]string{
-						schedulingv1.KubeHierarchyAnnotationKey:       "root/pg4",
-						schedulingv1.KubeHierarchyWeightAnnotationKey: "100/25",
-					}),
+					util.MakeQueue("root-pg1").Weight(1).Capability(nil).Annotations(
+						map[string]string{
+							schedulingv1.KubeHierarchyAnnotationKey:       "root/pg1",
+							schedulingv1.KubeHierarchyWeightAnnotationKey: "100/25",
+						}).Obj(),
+					util.MakeQueue("root-pg2").Weight(1).Capability(nil).Annotations(
+						map[string]string{
+							schedulingv1.KubeHierarchyAnnotationKey:       "root/pg2",
+							schedulingv1.KubeHierarchyWeightAnnotationKey: "100/25",
+						}).Obj(),
+					util.MakeQueue("root-pg3-pg31").Weight(1).Capability(nil).Annotations(
+						map[string]string{
+							schedulingv1.KubeHierarchyAnnotationKey:       "root/pg3/pg31",
+							schedulingv1.KubeHierarchyWeightAnnotationKey: "100/25/50",
+						}).Obj(),
+					util.MakeQueue("root-pg3-pg32").Weight(1).Capability(nil).Annotations(
+						map[string]string{
+							schedulingv1.KubeHierarchyAnnotationKey:       "root/pg3/pg32",
+							schedulingv1.KubeHierarchyWeightAnnotationKey: "100/25/50",
+						}).Obj(),
+					util.MakeQueue("root-pg4").Weight(1).Capability(nil).Annotations(
+						map[string]string{
+							schedulingv1.KubeHierarchyAnnotationKey:       "root/pg4",
+							schedulingv1.KubeHierarchyWeightAnnotationKey: "100/25",
+						}).Obj(),
 				},
-				Nodes: []*v1.Node{util.BuildNode("n", api.BuildResourceList("30", "30G", []api.ScalarResource{{Name: "pods", Value: "500"}}...), make(map[string]string))},
+				Nodes: []*v1.Node{
+					util.MakeNode("n").
+						Allocatable(api.BuildResourceList("30", "30Gi", []api.ScalarResource{{Name: "pods", Value: "500"}}...)).
+						Capacity(api.BuildResourceList("30", "30Gi", []api.ScalarResource{{Name: "pods", Value: "500"}}...)).
+						Obj(),
+				},
 			},
 
 			expected: map[string]*api.Resource{

@@ -69,18 +69,26 @@ func TestAllocate(t *testing.T) {
 		{
 			Name: "prepredicate failed: node selector does not match",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(1).Phase(schedulingv1.PodGroupInqueue).Obj(),
 			},
 			Pods: []*v1.Pod{
 				// should use different role, because allocate actions default to enable the role caches when predicate
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeRole": "worker"}),
+				util.MakePod("c1", "p1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Labels(map[string]string{"volcano.sh/task-spec": "master"}).NodeSelector(map[string]string{"nodeRole": "master"}).Phase(v1.PodPending).Obj(),
+				util.MakePod("c1", "p2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Labels(map[string]string{"volcano.sh/task-spec": "master"}).NodeSelector(map[string]string{"nodeRole": "master"}).Phase(v1.PodPending).Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "worker"}),
+				util.MakeNode("n1").
+					Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Labels(map[string]string{"nodeRole": "worker"}).
+					Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
+				util.MakeQueue("c1").Weight(1).Obj(),
 			},
 			ExpectBindMap: map[string]string{
 				"c1/p2": "n1",
@@ -90,21 +98,37 @@ func TestAllocate(t *testing.T) {
 		{
 			Name: "prepredicate failed and tasks are not used up, continue on until min member meet",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 2, map[string]int32{"master": 1, "worker": 1}, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(2).TaskMinMember(map[string]int32{"master": 1, "worker": 1}).Phase(schedulingv1.PodGroupInqueue).Obj(),
 			},
 			Pods: []*v1.Pod{
 				// should use different role, because allocate actions default to enable the role caches when predicate
-				util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeRole": "worker"}),
-				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeRole": "worker"}),
+				util.MakePod("c1", "p0").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Labels(map[string]string{"volcano.sh/task-spec": "master"}).NodeSelector(map[string]string{"nodeRole": "master"}).Phase(v1.PodPending).Obj(),
+				util.MakePod("c1", "p1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Labels(map[string]string{"volcano.sh/task-spec": "master"}).NodeSelector(map[string]string{"nodeRole": "master"}).Phase(v1.PodPending).Obj(),
+				util.MakePod("c1", "p2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Labels(map[string]string{"volcano.sh/task-spec": "worker"}).NodeSelector(map[string]string{"nodeRole": "worker"}).Phase(v1.PodPending).Obj(),
+				util.MakePod("c1", "p3").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Labels(map[string]string{"volcano.sh/task-spec": "worker"}).NodeSelector(map[string]string{"nodeRole": "worker"}).Phase(v1.PodPending).Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "master"}),
-				util.BuildNode("n2", api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "worker"}),
+				util.MakeNode("n1").
+					Allocatable(api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Labels(map[string]string{"nodeRole": "master"}).
+					Obj(),
+				util.MakeNode("n2").
+					Allocatable(api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Labels(map[string]string{"nodeRole": "worker"}).
+					Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
+				util.MakeQueue("c1").Weight(1).Obj(),
 			},
 			ExpectBindMap: map[string]string{
 				"c1/p0": "n1",
@@ -115,21 +139,37 @@ func TestAllocate(t *testing.T) {
 		{
 			Name: "master's min member can not be allocated, break from allocating",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 2, map[string]int32{"master": 2, "worker": 0}, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(2).TaskMinMember(map[string]int32{"master": 2, "worker": 0}).Phase(schedulingv1.PodGroupInqueue).Obj(),
 			},
 			Pods: []*v1.Pod{
 				// should use different role, because allocate actions default to enable the role caches when predicate
-				util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeRole": "worker"}),
-				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeRole": "worker"}),
+				util.MakePod("c1", "p0").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Labels(map[string]string{"volcano.sh/task-spec": "master"}).NodeSelector(map[string]string{"nodeRole": "master"}).Phase(v1.PodPending).Obj(),
+				util.MakePod("c1", "p1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Labels(map[string]string{"volcano.sh/task-spec": "master"}).NodeSelector(map[string]string{"nodeRole": "master"}).Phase(v1.PodPending).Obj(),
+				util.MakePod("c1", "p2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Labels(map[string]string{"volcano.sh/task-spec": "worker"}).NodeSelector(map[string]string{"nodeRole": "worker"}).Phase(v1.PodPending).Obj(),
+				util.MakePod("c1", "p3").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Labels(map[string]string{"volcano.sh/task-spec": "worker"}).NodeSelector(map[string]string{"nodeRole": "worker"}).Phase(v1.PodPending).Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "master"}),
-				util.BuildNode("n2", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "worker"}),
+				util.MakeNode("n1").
+					Allocatable(api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Labels(map[string]string{"nodeRole": "master"}).
+					Obj(),
+				util.MakeNode("n2").
+					Allocatable(api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Labels(map[string]string{"nodeRole": "worker"}).
+					Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
+				util.MakeQueue("c1").Weight(1).Obj(),
 			},
 			ExpectBindMap:  map[string]string{},
 			ExpectBindsNum: 0,
@@ -137,17 +177,24 @@ func TestAllocate(t *testing.T) {
 		{
 			Name: "one Job with two Pods on one node",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.MakePod("c1", "p1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Phase(v1.PodPending).Obj(),
+				util.MakePod("c1", "p2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Phase(v1.PodPending).Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode("n1").
+					Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
+				util.MakeQueue("c1").Weight(1).Obj(),
 			},
 			ExpectBindMap: map[string]string{
 				"c1/p1": "n1",
@@ -158,28 +205,39 @@ func TestAllocate(t *testing.T) {
 		{
 			Name: "two Jobs on one node",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupInqueue),
-				util.BuildPodGroup("pg2", "c2", "c2", 0, nil, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
+				util.MakePodGroup("pg2", "c2").Queue("c2").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
 			},
 
 			// pod name should be like "*-*-{index}",
 			// due to change of TaskOrderFn
 			Pods: []*v1.Pod{
 				// pending pod with owner1, under c1
-				util.BuildPod("c1", "pg1-p-1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.MakePod("c1", "pg1-p-1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Phase(v1.PodPending).Obj(),
 				// pending pod with owner1, under c1
-				util.BuildPod("c1", "pg1-p-2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.MakePod("c1", "pg1-p-2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Phase(v1.PodPending).Obj(),
 				// pending pod with owner2, under c2
-				util.BuildPod("c2", "pg2-p-1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.MakePod("c2", "pg2-p-1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg2").Phase(v1.PodPending).Obj(),
 				// pending pod with owner2, under c2
-				util.BuildPod("c2", "pg2-p-2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.MakePod("c2", "pg2-p-2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg2").Phase(v1.PodPending).Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode("n1").
+					Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
-				util.BuildQueue("c2", 1, nil),
+				util.MakeQueue("c1").Weight(1).Obj(),
+				util.MakeQueue("c2").Weight(1).Obj(),
 			},
 			ExpectBindMap: map[string]string{
 				"c2/pg2-p-1": "n1",
@@ -190,22 +248,29 @@ func TestAllocate(t *testing.T) {
 		{
 			Name: "high priority queue should not block others",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupInqueue),
-				util.BuildPodGroup("pg2", "c1", "c2", 0, nil, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
+				util.MakePodGroup("pg2", "c1").Queue("c2").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
 			},
 
 			Pods: []*v1.Pod{
 				// pending pod with owner1, under ns:c1/q:c1
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("3", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.MakePod("c1", "p1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("3", "1G")).Obj()},
+				).GroupName("pg1").Phase(v1.PodPending).Obj(),
 				// pending pod with owner2, under ns:c1/q:c2
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.MakePod("c1", "p2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg2").Phase(v1.PodPending).Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode("n1").
+					Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
-				util.BuildQueue("c2", 1, nil),
+				util.MakeQueue("c1").Weight(1).Obj(),
+				util.MakeQueue("c2").Weight(1).Obj(),
 			},
 			ExpectBindMap: map[string]string{
 				"c1/p2": "n1",
@@ -273,7 +338,7 @@ func BenchmarkAllocate(b *testing.B) {
 
 	// Create 1 pod group
 	podGroups := []*schedulingv1.PodGroup{
-		util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupInqueue),
+		util.MakePodGroup("pg1", "c1").Queue("c1").Phase(schedulingv1.PodGroupInqueue).Obj(),
 	}
 
 	// Create 1000 pods
@@ -281,14 +346,21 @@ func BenchmarkAllocate(b *testing.B) {
 	pods := make([]*v1.Pod, 0, numPods)
 	for i := 0; i < numPods; i++ {
 		podName := fmt.Sprintf("p%d", i+1)
-		pods = append(pods, util.BuildPod("c1", podName, "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)))
+		pods = append(pods,
+			util.MakePod("c1", podName).Containers(
+				[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+			).GroupName("pg1").Phase(v1.PodPending).Obj(),
+		)
 	}
 
 	nodes := []*v1.Node{
-		util.BuildNode("n1", api.BuildResourceList("2000", "4000Gi", []api.ScalarResource{{Name: "pods", Value: "2000"}}...), make(map[string]string)),
+		util.MakeNode("n1").
+			Allocatable(api.BuildResourceList("2000", "4000Gi", []api.ScalarResource{{Name: "pods", Value: "2000"}}...)).
+			Capacity(api.BuildResourceList("2000", "4000Gi", []api.ScalarResource{{Name: "pods", Value: "2000"}}...)).
+			Obj(),
 	}
 	queues := []*schedulingv1.Queue{
-		util.BuildQueue("c1", 1, nil),
+		util.MakeQueue("c1").Weight(1).Obj(),
 	}
 
 	trueValue := true
@@ -354,9 +426,9 @@ func TestFareShareAllocate(t *testing.T) {
 		{
 			Name: "queue with low DRF share value has high priority, should allocate first",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg-small-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupRunning),
-				util.BuildPodGroup("pg-large-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupInqueue),
-				util.BuildPodGroup("pg-large-2", "ns-1", "q-2", 0, nil, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg-small-1", "ns-1").Queue("q-1").MinMember(0).Phase(schedulingv1.PodGroupRunning).Obj(),
+				util.MakePodGroup("pg-large-1", "ns-1").Queue("q-1").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
+				util.MakePodGroup("pg-large-2", "ns-1").Queue("q-2").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
 			},
 			Pods: []*v1.Pod{ // allocate order: q-2/pg-large-2, q-1/pg-large-1
 				util.BuildPod("ns-1", "pod-small-1", "node-1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-small-1", make(map[string]string), make(map[string]string)),
@@ -364,11 +436,14 @@ func TestFareShareAllocate(t *testing.T) {
 				util.BuildPod("ns-1", "pod-large-2", "", v1.PodPending, api.BuildResourceList("3", "2G"), "pg-large-2", make(map[string]string), make(map[string]string)),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("node-1", api.BuildResourceList("5", "5G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode("node-1").
+					Allocatable(api.BuildResourceList("5", "5Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("5", "5Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("q-1", 1, nil),
-				util.BuildQueue("q-2", 1, nil),
+				util.MakeQueue("q-1").Weight(1).Obj(),
+				util.MakeQueue("q-2").Weight(1).Obj(),
 			},
 			ExpectBindMap: map[string]string{
 				"ns-1/pod-large-2": "node-1",
@@ -378,10 +453,10 @@ func TestFareShareAllocate(t *testing.T) {
 		{
 			Name: "queue’s DRF share value will be updated and its priority will change before it is put back into the priority queue",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg-small-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupRunning),
-				util.BuildPodGroup("pg-large-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupInqueue),
-				util.BuildPodGroup("pg-small-2", "ns-1", "q-2", 0, nil, schedulingv1.PodGroupInqueue),
-				util.BuildPodGroup("pg-large-2", "ns-1", "q-2", 0, nil, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg-small-1", "ns-1").Queue("q-1").MinMember(0).Phase(schedulingv1.PodGroupRunning).Obj(),
+				util.MakePodGroup("pg-large-1", "ns-1").Queue("q-1").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
+				util.MakePodGroup("pg-small-2", "ns-1").Queue("q-2").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
+				util.MakePodGroup("pg-large-2", "ns-1").Queue("q-2").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
 			},
 			Pods: []*v1.Pod{ // allocate order: q-2/pg-large-2, q-1/pg-large-1, q-2/pg-small-2
 				util.BuildPod("ns-1", "pod-small-1", "node-1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-small-1", make(map[string]string), make(map[string]string)),
@@ -390,11 +465,14 @@ func TestFareShareAllocate(t *testing.T) {
 				util.BuildPod("ns-1", "pod-small-2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-small-2", make(map[string]string), make(map[string]string)),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("node-1", api.BuildResourceList("5", "5G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode("node-1").
+					Allocatable(api.BuildResourceList("5", "5Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("5", "5Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("q-1", 1, nil),
-				util.BuildQueue("q-2", 1, nil),
+				util.MakeQueue("q-1").Weight(1).Obj(),
+				util.MakeQueue("q-2").Weight(1).Obj(),
 			},
 			ExpectBindMap: map[string]string{
 				"ns-1/pod-large-1": "node-1",
@@ -405,15 +483,22 @@ func TestFareShareAllocate(t *testing.T) {
 		{
 			Name: "queue’s one jobs has no pending tasks, should be put back to queues for next job",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupRunning),
-				util.BuildPodGroup("pg-2", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg-1", "ns-1").Queue("q-1").MinMember(0).Phase(schedulingv1.PodGroupRunning).Obj(),
+				util.MakePodGroup("pg-2", "ns-1").Queue("q-1").MinMember(0).Phase(schedulingv1.PodGroupInqueue).Obj(),
 			},
 			Pods: []*v1.Pod{
 				util.BuildPod("ns-1", "pod-1", "node-1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-1", nil, nil),
 				util.BuildPod("ns-1", "pod-2", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-2", nil, nil),
 			},
-			Nodes:  []*v1.Node{util.BuildNode("node-1", api.BuildResourceList("5", "5G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))},
-			Queues: []*schedulingv1.Queue{util.BuildQueue("q-1", 1, nil)},
+			Nodes: []*v1.Node{
+				util.MakeNode("node-1").
+					Allocatable(api.BuildResourceList("5", "5Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("5", "5Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Obj(),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.MakeQueue("q-1").Weight(1).Obj(),
+			},
 			ExpectBindMap: map[string]string{
 				"ns-1/pod-2": "node-1",
 			},
@@ -502,17 +587,24 @@ func TestAllocateWithPVC(t *testing.T) {
 		{
 			Name: "static pv matched but node without enough resource",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 2, map[string]int32{"": 2}, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(2).TaskMinMember(map[string]int32{"": 2}).Phase(schedulingv1.PodGroupInqueue).Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc2, "pg1", make(map[string]string), make(map[string]string)),
+				util.MakePod("c1", "p1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").PVC(pvc1).Phase(v1.PodPending).Obj(),
+				util.MakePod("c1", "p2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg2").PVC(pvc2).Phase(v1.PodPending).Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
+				util.MakeQueue("c1").Weight(1).Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("1", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode("n1").
+					Allocatable(api.BuildResourceList("1", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("1", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Obj(),
 			},
 			SCs:  []*storagev1.StorageClass{sc},
 			PVs:  []*v1.PersistentVolume{pv1},
@@ -528,17 +620,24 @@ func TestAllocateWithPVC(t *testing.T) {
 		{
 			Name: "static pv matched and node with enough resources",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 2, map[string]int32{"": 2}, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(2).TaskMinMember(map[string]int32{"": 2}).Phase(schedulingv1.PodGroupRunning).Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc2, "pg1", make(map[string]string), make(map[string]string)),
+				util.MakePod("c1", "p1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").PVC(pvc1).Phase(v1.PodPending).Obj(),
+				util.MakePod("c1", "p2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg2").PVC(pvc2).Phase(v1.PodPending).Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
+				util.MakeQueue("c1").Weight(1).Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode("n2").
+					Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Obj(),
 			},
 			SCs:                []*storagev1.StorageClass{sc},
 			PVs:                []*v1.PersistentVolume{pv1, pv2},
