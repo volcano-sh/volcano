@@ -208,6 +208,9 @@ spec:
             {{- if .Values.custom.scheduler_plugins_dir }}
             - --plugins-dir={{ .Values.custom.scheduler_plugins_dir }}
             {{- end }}
+            {{- if .Values.custom.scheduler_feature_gates }}
+            - --feature-gates={{ .Values.custom.scheduler_feature_gates }}
+            {{- end }}
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1
           env:

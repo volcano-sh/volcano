@@ -17,33 +17,25 @@ limitations under the License.
 package allocate
 
 import (
-	"context"
-	"fmt"
 	"os"
-	"reflect"
 	"testing"
 
-	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/tools/record"
-	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"k8s.io/apimachinery/pkg/util/sets"
 
+	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
-	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -386,160 +378,107 @@ func TestFareShareAllocate(t *testing.T) {
 	}
 }
 
-func TestAllocateWithDynamicPVC(t *testing.T) {
-	var tmp *cache.SchedulerCache
-	patches := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "AddBindTask", func(scCache *cache.SchedulerCache, task *api.TaskInfo) error {
-		scCache.VolumeBinder.BindVolumes(task, task.PodVolumes)
-		scCache.Binder.Bind(nil, []*api.TaskInfo{task})
-		return nil
-	})
-	defer patches.Reset()
-
-	patchUpdateQueueStatus := gomonkey.ApplyMethod(reflect.TypeOf(tmp), "UpdateQueueStatus", func(scCache *cache.SchedulerCache, queue *api.QueueInfo) error {
-		return nil
-	})
-	defer patchUpdateQueueStatus.Reset()
-
-	framework.RegisterPluginBuilder("gang", gang.New)
-	framework.RegisterPluginBuilder("priority", priority.New)
-
+func TestAllocateWithPVC(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		gang.PluginName:       gang.New,
+		predicates.PluginName: predicates.New,
+	}
 	options.ServerOpts = &options.ServerOption{
 		MinNodesToFind:             100,
 		MinPercentageOfNodesToFind: 5,
 		PercentageOfNodesToFind:    100,
 	}
 
-	defer framework.CleanupPluginBuilders()
+	sc := util.BuildStorageClass("sc", "ignore-provisioner", storagev1.VolumeBindingWaitForFirstConsumer)
+	pvc1 := util.BuildPVC("c1", "pvc1", v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Gi")}, "sc")
+	pvc2 := util.BuildPVC("c1", "pvc2", v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Gi")}, "sc")
+	pv1 := util.BuildPV("pv1", "sc", v1.ResourceList{v1.ResourceStorage: resource.MustParse("2Gi")})
+	pv2 := util.BuildPV("pv2", "sc", v1.ResourceList{v1.ResourceStorage: resource.MustParse("2Gi")})
 
-	queue := util.BuildQueue("c1", 1, nil)
-	pg := util.BuildPodGroup("pg1", "c1", "c1", 2, map[string]int32{"": 2}, schedulingv1.PodGroupInqueue)
-
-	pvc, _, sc := util.BuildDynamicPVC("c1", "pvc", v1.ResourceList{
-		v1.ResourceStorage: resource.MustParse("1Gi"),
-	})
-	pvc1 := pvc.DeepCopy()
-	pvc1.Name = fmt.Sprintf("pvc%d", 1)
-
-	allocate := New()
-
-	tests := []struct {
-		name            string
-		pods            []*v1.Pod
-		nodes           []*v1.Node
-		pvs             []*v1.PersistentVolume
-		pvcs            []*v1.PersistentVolumeClaim
-		sc              *storagev1.StorageClass
-		expectedBind    map[string]string
-		expectedActions map[string][]string
-	}{
+	trueValue := true
+	tiers := []conf.Tier{
 		{
-			name: "resource not match",
-			pods: []*v1.Pod{
-				util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
-			},
-			nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("1", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			sc:           sc,
-			pvcs:         []*v1.PersistentVolumeClaim{pvc, pvc1},
-			expectedBind: map[string]string{},
-			expectedActions: map[string][]string{
-				"c1/p1": {"GetPodVolumes", "AllocateVolumes", "RevertVolumes"},
-			},
-		},
-		{
-			name: "node changed with enough resource",
-			pods: []*v1.Pod{
-				util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc, "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
-			},
-			nodes: []*v1.Node{
-				util.BuildNode("n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-			},
-			sc:   sc,
-			pvcs: []*v1.PersistentVolumeClaim{pvc, pvc1},
-			expectedBind: map[string]string{
-				"c1/p1": "n2",
-				"c1/p2": "n2",
-			},
-			expectedActions: map[string][]string{
-				"c1/p1": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
-				"c1/p2": {"GetPodVolumes", "AllocateVolumes", "DynamicProvisions"},
+			Plugins: []conf.PluginOption{
+				{
+					Name:                gang.PluginName,
+					EnabledJobReady:     &trueValue,
+					EnabledPredicate:    &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledTaskOrder:    &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
 			},
 		},
 	}
 
-	for _, test := range tests {
-		if test.name == "resource not match" {
-			// TODO(wangyang0616): First make sure that ut can run, and then fix the failed ut later
-			// See issue for details: https://github.com/volcano-sh/volcano/issues/2812
-			t.Skip("Test cases are not as expected, fixed later. see issue: #2812")
-		}
-		t.Run(test.name, func(t *testing.T) {
-			kubeClient := fake.NewSimpleClientset()
-			kubeClient.StorageV1().StorageClasses().Create(context.TODO(), test.sc, metav1.CreateOptions{})
-			for _, pv := range test.pvs {
-				kubeClient.CoreV1().PersistentVolumes().Create(context.TODO(), pv, metav1.CreateOptions{})
-			}
-			for _, pvc := range test.pvcs {
-				kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
-			}
+	ignoreProvisioners := sets.New[string]("ignore-provisioner")
 
-			fakeVolumeBinder := util.NewFakeVolumeBinder(kubeClient)
-			binder := util.NewFakeBinder(10)
-			schedulerCache := &cache.SchedulerCache{
-				Nodes:         make(map[string]*api.NodeInfo),
-				Jobs:          make(map[api.JobID]*api.JobInfo),
-				Queues:        make(map[api.QueueID]*api.QueueInfo),
-				Binder:        binder,
-				StatusUpdater: &util.FakeStatusUpdater{},
-				VolumeBinder:  fakeVolumeBinder,
-				Recorder:      record.NewFakeRecorder(100),
-			}
-			schedulerCache.AddQueueV1beta1(queue)
-			schedulerCache.AddPodGroupV1beta1(pg)
-			for i, pod := range test.pods {
-				priority := int32(-i)
-				pod.Spec.Priority = &priority
-				schedulerCache.AddPod(pod)
-			}
-			for _, node := range test.nodes {
-				schedulerCache.AddOrUpdateNode(node)
-			}
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name: "static pv matched but node without enough resource",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "c1", 2, map[string]int32{"": 2}, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc2, "pg1", make(map[string]string), make(map[string]string)),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("c1", 1, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("1", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			SCs:  []*storagev1.StorageClass{sc},
+			PVs:  []*v1.PersistentVolume{pv1},
+			PVCs: []*v1.PersistentVolumeClaim{pvc1, pvc2},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"c1/pg1": scheduling.PodGroupInqueue,
+			},
+			IgnoreProvisioners: ignoreProvisioners,
+		},
+		// This test case may have error logs, mainly because of the binding PV and PVC depends on pv-controller.
+		// The mock pv-controller in the UT is too complex and requires accurate timing to trigger the binding of PV and PVC,
+		// so here the UT only verifies the status of podgroup
+		{
+			Name: "static pv matched and node with enough resources",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "c1", 2, map[string]int32{"": 2}, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPodWithPVC("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc1, "pg1", make(map[string]string), make(map[string]string)),
+				util.BuildPodWithPVC("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), pvc2, "pg1", make(map[string]string), make(map[string]string)),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("c1", 1, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			SCs:                []*storagev1.StorageClass{sc},
+			PVs:                []*v1.PersistentVolume{pv1, pv2},
+			PVCs:               []*v1.PersistentVolumeClaim{pvc1, pvc2},
+			IgnoreProvisioners: ignoreProvisioners,
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"c1/pg1": scheduling.PodGroupRunning,
+			},
+		},
+	}
 
-			trueValue := true
-			ssn := framework.OpenSession(schedulerCache, []conf.Tier{
-				{
-					Plugins: []conf.PluginOption{
-						{
-							Name:                "priority",
-							EnabledJobReady:     &trueValue,
-							EnabledPredicate:    &trueValue,
-							EnabledJobPipelined: &trueValue,
-							EnabledTaskOrder:    &trueValue,
-						},
-						{
-							Name:                "gang",
-							EnabledJobReady:     &trueValue,
-							EnabledPredicate:    &trueValue,
-							EnabledJobPipelined: &trueValue,
-							EnabledTaskOrder:    &trueValue,
-						},
-					},
-				},
-			}, nil)
-			defer framework.CloseSession(ssn)
-
-			allocate.Execute(ssn)
-			bindResults := binder.Binds()
-			if !equality.Semantic.DeepEqual(test.expectedBind, bindResults) {
-				t.Errorf("expected: %v, got %v ", test.expectedBind, bindResults)
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			predicates.ResetVolumeBindingPluginForTest()
+			test.Plugins = plugins
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			action := New()
+			test.Run([]framework.Action{action})
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
 			}
-			if !equality.Semantic.DeepEqual(test.expectedActions, fakeVolumeBinder.Actions) {
-				t.Errorf("expected: %v, got %v ", test.expectedActions, fakeVolumeBinder.Actions)
-			}
-			fakeVolumeBinder.Actions = make(map[string][]string)
 		})
 	}
 }

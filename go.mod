@@ -5,7 +5,7 @@ go 1.23.0
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6
 	github.com/agiledragon/gomonkey/v2 v2.11.0
-	github.com/cilium/ebpf v0.9.3
+	github.com/cilium/ebpf v0.16.0
 	github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins v1.1.1
 	github.com/elastic/go-elasticsearch/v7 v7.17.7
@@ -41,8 +41,10 @@ require (
 	k8s.io/component-helpers v0.32.2
 	k8s.io/csi-translation-lib v0.32.2
 	k8s.io/klog/v2 v2.130.1
+	k8s.io/kubectl v0.0.0
 	k8s.io/kubernetes v1.32.2
-	k8s.io/metrics v0.0.0
+	k8s.io/metrics v0.32.2
+	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.4.0
@@ -52,14 +54,25 @@ require (
 
 require (
 	cel.dev/expr v0.18.0 // indirect
+	github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
-	github.com/bits-and-blooms/bitset v1.2.0 // indirect
+	github.com/containerd/containerd/api v1.7.19 // indirect
+	github.com/containerd/errdefs v0.1.0 // indirect
+	github.com/containerd/log v0.1.0 // indirect
+	github.com/containerd/ttrpc v1.2.5 // indirect
 	github.com/cyphar/filepath-securejoin v0.3.4 // indirect
+	github.com/docker/go-units v0.5.0 // indirect
+	github.com/euank/go-kmsg-parser v2.0.0+incompatible // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/btree v1.0.1 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/karrick/godirwalk v1.17.0 // indirect
+	github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible // indirect
+	github.com/moby/spdystream v0.5.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
+	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/opencontainers/runtime-spec v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
@@ -160,7 +173,6 @@ require (
 
 replace (
 	cloud.google.com/go => cloud.google.com/go v0.100.2
-	github.com/opencontainers/runc => github.com/opencontainers/runc v1.0.3
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc => go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.19.0
 	google.golang.org/grpc => google.golang.org/grpc v1.57.0
 	k8s.io/api => k8s.io/api v0.32.2

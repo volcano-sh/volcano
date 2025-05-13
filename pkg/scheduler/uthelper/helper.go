@@ -17,12 +17,16 @@ limitations under the License.
 package uthelper
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -54,6 +58,11 @@ type TestCommonStruct struct {
 	Queues         []*vcapisv1.Queue
 	PriClass       []*schedulingv1.PriorityClass
 	ResourceQuotas []*v1.ResourceQuota
+	// IgnoreProvisioners is the provisioners that need to be ignored
+	IgnoreProvisioners sets.Set[string]
+	PVs                []*v1.PersistentVolume
+	PVCs               []*v1.PersistentVolumeClaim
+	SCs                []*storagev1.StorageClass
 
 	// ExpectBindMap the expected bind results.
 	// bind results: ns/podName -> nodeName
@@ -76,7 +85,6 @@ type TestCommonStruct struct {
 	binder     cache.Binder
 	evictor    cache.Evictor
 	stsUpdator cache.StatusUpdater
-	volBinder  cache.VolumeBinder
 	ssn        *framework.Session // store opened session
 }
 
@@ -87,7 +95,6 @@ func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.C
 	schedulerCache := test.createSchedulerCache()
 	RegisterPlugins(test.Plugins)
 	test.ssn = framework.OpenSession(schedulerCache, tiers, config)
-	schedulerCache.Run(test.stop)
 	return test.ssn
 }
 
@@ -95,18 +102,31 @@ func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.C
 func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	binder := util.NewFakeBinder(0)
 	evictor := util.NewFakeEvictor(0)
-	stsUpdator := &util.FakeStatusUpdater{}
+	test.stsUpdator = &util.FakeStatusUpdater{}
 	test.binder = binder
 	test.evictor = evictor
 	test.stop = make(chan struct{})
 	// Create scheduler cache with self-defined binder and evictor
-	schedulerCache := cache.NewCustomMockSchedulerCache("utmock-scheduler", binder, evictor, stsUpdator, nil, nil, nil)
-	test.stsUpdator = schedulerCache.StatusUpdater
-	test.volBinder = schedulerCache.VolumeBinder
+	schedulerCache := cache.NewCustomMockSchedulerCache("utmock-scheduler", binder, evictor, test.stsUpdator, nil, nil)
+
+	// Initial provisioning resources
+	kubeClient := schedulerCache.Client()
+	for _, sc := range test.SCs {
+		kubeClient.StorageV1().StorageClasses().Create(context.Background(), sc, metav1.CreateOptions{})
+	}
+	for _, pv := range test.PVs {
+		kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), pv, metav1.CreateOptions{})
+	}
+	for _, pvc := range test.PVCs {
+		kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
+	}
+	// need to immediately run the cache to make sure the resources are added
+	schedulerCache.Run(test.stop)
 
 	for _, node := range test.Nodes {
 		schedulerCache.AddOrUpdateNode(node)
 	}
+	schedulerCache.IgnoredCSIProvisioners = test.IgnoreProvisioners
 	for _, pod := range test.Pods {
 		schedulerCache.AddPod(pod)
 	}
@@ -154,6 +174,10 @@ func (test *TestCommonStruct) Close() {
 
 // CheckAll checks all the need status
 func (test *TestCommonStruct) CheckAll(caseIndex int) (err error) {
+	// update all jobs' status
+	ju := framework.NewJobUpdater(test.ssn)
+	ju.UpdateAll()
+
 	if err = test.CheckBind(caseIndex); err != nil {
 		return
 	}
