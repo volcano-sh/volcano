@@ -61,8 +61,8 @@ func GetConfig() *Config {
 	return configs
 }
 
-func loadConfigFromCM(kubeClient kubernetes.Interface, cmName string) (*Config, error) {
-	cm, err := kubeClient.CoreV1().ConfigMaps("kube-system").Get(context.Background(), cmName, metav1.GetOptions{})
+func loadConfigFromCM(kubeClient kubernetes.Interface, cmName, cmNamespace string) (*Config, error) {
+	cm, err := kubeClient.CoreV1().ConfigMaps(cmNamespace).Get(context.Background(), cmName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -70,19 +70,20 @@ func loadConfigFromCM(kubeClient kubernetes.Interface, cmName string) (*Config, 
 	if !ok {
 		return nil, fmt.Errorf("%s not found", DeviceConfigFileName)
 	}
-	var yamlData Config
-	err = yaml.Unmarshal([]byte(data), &yamlData)
+	var config Config
+	err = yaml.Unmarshal([]byte(data), &config)
 	if err != nil {
 		return nil, err
 	}
-	return &yamlData, nil
+
+	return &config, nil
 }
 
 // InitDevicesConfig is called from devices, to load configs from a CM or construct a default one
-func InitDevicesConfig(cmName string) {
+func InitDevicesConfig(cmName, cmNamespace string) {
 	once.Do(func() {
 		var err error
-		configs, err = loadConfigFromCM(devices.GetClient(), cmName)
+		configs, err = loadConfigFromCM(devices.GetClient(), cmName, cmNamespace)
 		if err != nil {
 			klog.V(3).InfoS("Volcano device config not found in namespace kube-system, using default config",
 				"name", cmName)
