@@ -19,6 +19,7 @@ package options
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/pflag"
 
@@ -26,31 +27,33 @@ import (
 )
 
 const (
-	defaultSchedulerName    = "volcano"
-	defaultQPS              = 50.0
-	defaultBurst            = 100
-	defaultEnabledAdmission = "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
-	defaultHealthzAddress   = ":11251"
+	defaultSchedulerName        = "volcano"
+	defaultQPS                  = 50.0
+	defaultBurst                = 100
+	defaultEnabledAdmission     = "/jobs/mutate,/jobs/validate,/podgroups/mutate,/pods/validate,/pods/mutate,/queues/mutate,/queues/validate"
+	defaultHealthzAddress       = ":11251"
+	defaultGracefulShutdownTime = time.Second * 30
 )
 
 // Config admission-controller server config.
 type Config struct {
-	KubeClientOptions kube.ClientOptions
-	CertFile          string
-	KeyFile           string
-	CaCertFile        string
-	CertData          []byte
-	KeyData           []byte
-	CaCertData        []byte
-	ListenAddress     string
-	Port              int
-	PrintVersion      bool
-	WebhookName       string
-	WebhookNamespace  string
-	SchedulerNames    []string
-	WebhookURL        string
-	ConfigPath        string
-	EnabledAdmission  string
+	KubeClientOptions    kube.ClientOptions
+	CertFile             string
+	KeyFile              string
+	CaCertFile           string
+	CertData             []byte
+	KeyData              []byte
+	CaCertData           []byte
+	ListenAddress        string
+	Port                 int
+	PrintVersion         bool
+	WebhookName          string
+	WebhookNamespace     string
+	SchedulerNames       []string
+	WebhookURL           string
+	ConfigPath           string
+	EnabledAdmission     string
+	GracefulShutdownTime time.Duration
 
 	EnableHealthz bool
 	// HealthzBindAddress is the IP address and port for the health check server to serve on
@@ -88,6 +91,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&c.ConfigPath, "admission-conf", "", "The configmap file of this webhook")
 	fs.BoolVar(&c.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.StringVar(&c.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
+	fs.DurationVar(&c.GracefulShutdownTime, "graceful-shutdown-time", defaultGracefulShutdownTime, "The duration to wait during graceful shutdown before forcing termination.")
 }
 
 // CheckPortOrDie check valid port range.
