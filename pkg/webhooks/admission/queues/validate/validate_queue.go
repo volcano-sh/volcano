@@ -30,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
 	"volcano.sh/volcano/pkg/webhooks/util"
@@ -116,6 +117,7 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 
 	errs = append(errs, validateStateOfQueue(queue.Status.State, resourcePath.Child("spec").Child("state"))...)
 	errs = append(errs, validateWeightOfQueue(queue.Spec.Weight, resourcePath.Child("spec").Child("weight"))...)
+	errs = append(errs, validateResourceOfQueue(queue.Spec, resourcePath.Child("spec"))...)
 	errs = append(errs, validateHierarchicalAttributes(queue, resourcePath.Child("metadata").Child("annotations"))...)
 
 	if len(errs) > 0 {
@@ -209,6 +211,33 @@ func validateWeightOfQueue(value int32, fldPath *field.Path) field.ErrorList {
 		return errs
 	}
 	return append(errs, field.Invalid(fldPath, value, "queue weight must be a positive integer"))
+}
+
+func validateResourceOfQueue(resource schedulingv1beta1.QueueSpec, fldPath *field.Path) field.ErrorList {
+	errs := field.ErrorList{}
+	capabilityResource := api.NewResource(resource.Capability)
+	deservedResource := api.NewResource(resource.Deserved)
+	guaranteeResource := api.NewResource(resource.Guarantee.Resource)
+
+	if len(resource.Capability) != 0 &&
+		capabilityResource.LessPartly(deservedResource, api.Zero) {
+		return append(errs, field.Invalid(fldPath.Child("deserved"),
+			deservedResource.String(), "deserved should less equal than capability"))
+	}
+
+	if len(resource.Capability) != 0 &&
+		capabilityResource.LessPartly(guaranteeResource, api.Zero) {
+		return append(errs, field.Invalid(fldPath.Child("guarantee"),
+			guaranteeResource.String(), "guarantee should less equal than capability"))
+	}
+
+	if len(resource.Deserved) != 0 &&
+		deservedResource.LessPartly(guaranteeResource, api.Zero) {
+		return append(errs, field.Invalid(fldPath.Child("guarantee"),
+			guaranteeResource.String(), "guarantee should less equal than deserved"))
+	}
+
+	return errs
 }
 
 func validateQueueDeleting(queueName string) error {
