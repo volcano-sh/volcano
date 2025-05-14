@@ -17,12 +17,11 @@ limitations under the License.
 package app
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"os/signal"
 	"strconv"
-	"syscall"
 
 	v1 "k8s.io/api/core/v1"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -34,6 +33,7 @@ import (
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/cmd/webhook-manager/app/options"
 	"volcano.sh/volcano/pkg/kube"
+	"volcano.sh/volcano/pkg/signals"
 	commonutil "volcano.sh/volcano/pkg/util"
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -97,8 +97,7 @@ func Run(config *options.Config) error {
 	klog.V(3).Infof("Successfully added caCert for all webhooks")
 
 	webhookServeError := make(chan struct{})
-	stopChannel := make(chan os.Signal, 1)
-	signal.Notify(stopChannel, syscall.SIGTERM, syscall.SIGINT)
+	ctx := signals.SetupSignalContext()
 
 	factory.Start(webhookServeError)
 	for informerType, ok := range factory.WaitForCacheSync(webhookServeError) {
@@ -116,21 +115,23 @@ func Run(config *options.Config) error {
 	}
 	go func() {
 		err = server.ListenAndServeTLS("", "")
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			klog.Fatalf("ListenAndServeTLS for admission webhook failed: %v", err)
 			close(webhookServeError)
 		}
 
-		klog.Info("Volcano Webhook manager started.")
+		klog.Info("Volcano Webhook manager stopped.")
 	}()
 
 	if config.ConfigPath != "" {
-		go wkconfig.WatchAdmissionConf(config.ConfigPath, stopChannel)
+		go wkconfig.WatchAdmissionConf(config.ConfigPath, ctx.Done())
 	}
 
 	select {
-	case <-stopChannel:
-		if err := server.Close(); err != nil {
+	case <-ctx.Done():
+		timeoutCtx, cancel := context.WithTimeout(context.Background(), config.GracefulShutdownTime)
+		defer cancel()
+		if err := server.Shutdown(timeoutCtx); err != nil {
 			return fmt.Errorf("close admission server failed: %v", err)
 		}
 		return nil
