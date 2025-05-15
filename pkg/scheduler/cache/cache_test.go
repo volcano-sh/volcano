@@ -138,7 +138,7 @@ func TestSchedulerCache_Bind_NodeWithSufficientResources(t *testing.T) {
 		Jobs:            make(map[api.JobID]*api.JobInfo),
 		Nodes:           make(map[string]*api.NodeInfo),
 		Binder:          util.NewFakeBinder(0),
-		BindFlowChannel: make(chan *api.TaskInfo, 5000),
+		BindFlowChannel: make(chan *BindContext, 5000),
 	}
 
 	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1000m", "1G"),
@@ -154,7 +154,8 @@ func TestSchedulerCache_Bind_NodeWithSufficientResources(t *testing.T) {
 		t.Errorf("failed to add task %v", err)
 	}
 	task.NodeName = "n1"
-	err := cache.AddBindTask(task)
+	bindContext := &BindContext{TaskInfo: task}
+	err := cache.AddBindTask(bindContext)
 	if err != nil {
 		t.Errorf("failed to bind pod to node: %v", err)
 	}
@@ -167,7 +168,7 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 		Jobs:            make(map[api.JobID]*api.JobInfo),
 		Nodes:           make(map[string]*api.NodeInfo),
 		Binder:          util.NewFakeBinder(0),
-		BindFlowChannel: make(chan *api.TaskInfo, 5000),
+		BindFlowChannel: make(chan *BindContext, 5000),
 	}
 
 	pod := buildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("5000m", "50G"),
@@ -188,7 +189,8 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 	taskBeforeBind := task.Clone()
 	nodeBeforeBind := cache.Nodes["n1"].Clone()
 
-	err := cache.AddBindTask(task)
+	bindContext := &BindContext{TaskInfo: task}
+	err := cache.AddBindTask(bindContext)
 	if err == nil {
 		t.Errorf("expected bind to fail for node with insufficient resources")
 	}
@@ -329,7 +331,8 @@ func TestBindTasks(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	task := api.NewTaskInfo(pod)
 	task.NodeName = "n1"
-	err := sc.AddBindTask(task)
+	bindContext := &BindContext{TaskInfo: task}
+	err := sc.AddBindTask(bindContext)
 	if err != nil {
 		t.Errorf("failed to bind pod to node: %v", err)
 	}
@@ -338,4 +341,83 @@ func TestBindTasks(t *testing.T) {
 	if len(r.Events) != 1 {
 		t.Fatalf("successfully binding task should have 1 event")
 	}
+}
+
+func TestExecutePreBinds(t *testing.T) {
+	pod := buildPod("test-ns", "test-pod", "expect-node", v1.PodPending, nil, nil, nil)
+	task := api.NewTaskInfo(pod)
+	bindContext := &BindContext{
+		TaskInfo: task,
+	}
+	successfulPreBinder := &mockPreBinder{
+		preBindFn: func(ctx context.Context, bc *BindContext) error {
+			return nil
+		},
+	}
+	failedPreBinder := &mockPreBinder{
+		preBindFn: func(ctx context.Context, bc *BindContext) error {
+			return fmt.Errorf("prebind failed")
+		},
+	}
+
+	tests := []struct {
+		name               string
+		preBinders         []PreBinder
+		bindContexts       []*BindContext
+		expectBindContexts []*BindContext
+	}{
+		{
+			name:               "no pre-binders",
+			preBinders:         []PreBinder{},
+			bindContexts:       []*BindContext{bindContext},
+			expectBindContexts: []*BindContext{bindContext},
+		},
+		{
+			name:               "single successful pre-binder",
+			preBinders:         []PreBinder{successfulPreBinder},
+			bindContexts:       []*BindContext{bindContext},
+			expectBindContexts: []*BindContext{bindContext},
+		},
+		{
+			name:               "multiple pre-binders with one failure",
+			preBinders:         []PreBinder{successfulPreBinder, failedPreBinder},
+			bindContexts:       []*BindContext{bindContext},
+			expectBindContexts: []*BindContext{},
+		},
+		{
+			name:               "multiple successful pre-binders",
+			preBinders:         []PreBinder{successfulPreBinder, successfulPreBinder},
+			bindContexts:       []*BindContext{bindContext},
+			expectBindContexts: []*BindContext{bindContext},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sc := NewCustomMockSchedulerCache("mock-scheduler", nil, nil, nil, nil, nil)
+
+			for index, pb := range tt.preBinders {
+				sc.RegisterBinder(fmt.Sprintf("prebinder-%d", index), pb)
+			}
+
+			result := sc.executePreBinds(context.Background(), tt.bindContexts)
+
+			if !reflect.DeepEqual(result, tt.expectBindContexts) {
+				t.Errorf("case %s: expected bind contexts %v, but got %v",
+					tt.name, tt.expectBindContexts, result)
+			}
+		})
+	}
+}
+
+type mockPreBinder struct {
+	preBindFn func(context.Context, *BindContext) error
+}
+
+func (m *mockPreBinder) PreBind(ctx context.Context, bindCtx *BindContext) error {
+	return m.preBindFn(ctx, bindCtx)
+}
+
+func (m *mockPreBinder) PreBindRollBack(ctx context.Context, bindCtx *BindContext) {
+	// do nothing
 }

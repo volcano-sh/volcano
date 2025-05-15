@@ -42,25 +42,25 @@ func TimeJitterAfter(new, old time.Time, duration, maxJitter time.Duration) bool
 	return new.After(old.Add(duration + time.Duration(jitter)))
 }
 
-type jobUpdater struct {
+type JobUpdater struct {
 	ssn      *Session
 	jobQueue []*api.JobInfo
 }
 
-func newJobUpdater(ssn *Session) *jobUpdater {
+func NewJobUpdater(ssn *Session) *JobUpdater {
 	queue := make([]*api.JobInfo, 0, len(ssn.Jobs))
 	for _, job := range ssn.Jobs {
 		queue = append(queue, job)
 	}
 
-	ju := &jobUpdater{
+	ju := &JobUpdater{
 		ssn:      ssn,
 		jobQueue: queue,
 	}
 	return ju
 }
 
-func (ju *jobUpdater) UpdateAll() {
+func (ju *JobUpdater) UpdateAll() {
 	workqueue.ParallelizeUntil(context.TODO(), jobUpdaterWorker, len(ju.jobQueue), ju.updateJob)
 }
 
@@ -104,7 +104,7 @@ func isPodGroupStatusUpdated(newStatus, oldStatus scheduling.PodGroupStatus) boo
 }
 
 // updateJob update specified job
-func (ju *jobUpdater) updateJob(index int) {
+func (ju *JobUpdater) updateJob(index int) {
 	job := ju.jobQueue[index]
 	ssn := ju.ssn
 

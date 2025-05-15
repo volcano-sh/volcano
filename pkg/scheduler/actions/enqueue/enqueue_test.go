@@ -31,7 +31,7 @@ func TestEnqueue(t *testing.T) {
 		{
 			Name: "when podgroup status is inqueue",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupInqueue),
+				util.BuildPodGroup("pg1", "c1", "c1", 2, nil, schedulingv1.PodGroupInqueue),
 			},
 			Pods: []*v1.Pod{
 				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
@@ -48,8 +48,8 @@ func TestEnqueue(t *testing.T) {
 		{
 			Name: "when podgroup status is pending",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupPending),
-				util.BuildPodGroup("pg2", "c1", "c2", 0, nil, schedulingv1.PodGroupPending),
+				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupPending),
+				util.BuildPodGroup("pg2", "c1", "c2", 1, nil, schedulingv1.PodGroupPending),
 			},
 			Pods: []*v1.Pod{
 				// pending pod with owner1, under ns:c1/q:c1
@@ -69,7 +69,7 @@ func TestEnqueue(t *testing.T) {
 		{
 			Name: "when podgroup status is running",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupRunning),
+				util.BuildPodGroup("pg1", "c1", "c1", 2, nil, schedulingv1.PodGroupRunning),
 			},
 			Pods: []*v1.Pod{
 				util.BuildPod("c1", "p1", "", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
@@ -95,7 +95,7 @@ func TestEnqueue(t *testing.T) {
 		{
 			Name: "pggroup cannot enqueue because queue resources are less than podgroup MinResources",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroupWithMinResources("pg1", "c1", "c1", 0,
+				util.BuildPodGroupWithMinResources("pg1", "c1", "c1", 1,
 					nil, api.BuildResourceList("8", "8G"), schedulingv1.PodGroupPending),
 			},
 			Queues: []*schedulingv1.Queue{

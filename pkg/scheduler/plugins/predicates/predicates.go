@@ -19,7 +19,10 @@ package predicates
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
+	"sync"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -40,8 +43,11 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/metrics"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
+	vbcap "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
 )
 
 const (
@@ -69,6 +75,9 @@ const (
 	// PodTopologySpreadEnable is the key for enabling Pod Topology Spread Predicates in scheduler configmap
 	PodTopologySpreadEnable = "predicate.PodTopologySpreadEnable"
 
+	// VolumeBindingEnable is the key for enabling Volume Binding Predicates in scheduler configmap
+	VolumeBindingEnable = "predicate.VolumeBindingEnable"
+
 	// CachePredicate control cache predicate feature
 	CachePredicate = "predicate.CacheEnable"
 
@@ -80,9 +89,16 @@ const (
 	ProportionalResourcesPrefix = ProportionalResource + "."
 )
 
+var (
+	volumeBindingPluginInstance *vbcap.VolumeBinding
+	volumeBindingPluginOnce     sync.Once
+)
+
 type predicatesPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
+	// The VolumeBindingPlugin needs to store to execute in PreBind and PreBindRollBack
+	volumeBindingPlugin *vbcap.VolumeBinding
 }
 
 // New return predicate plugin
@@ -109,7 +125,13 @@ type predicateEnable struct {
 	podTopologySpreadEnable bool
 	cacheEnable             bool
 	proportionalEnable      bool
+	volumeBindingEnable     bool
 	proportional            map[v1.ResourceName]baseResource
+}
+
+// bind context extension information of predicates
+type bindContextExtension struct {
+	State *k8sframework.CycleState
 }
 
 func enablePredicate(args framework.Arguments) predicateEnable {
@@ -155,6 +177,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		podTopologySpreadEnable: true,
 		cacheEnable:             false,
 		proportionalEnable:      false,
+		volumeBindingEnable:     true,
 	}
 
 	// Checks whether predicate enable args is provided or not.
@@ -166,6 +189,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	args.GetBool(&predicate.nodeVolumeLimitsEnable, NodeVolumeLimitsEnable)
 	args.GetBool(&predicate.volumeZoneEnable, VolumeZoneEnable)
 	args.GetBool(&predicate.podTopologySpreadEnable, PodTopologySpreadEnable)
+	args.GetBool(&predicate.volumeBindingEnable, VolumeBindingEnable)
 
 	args.GetBool(&predicate.cacheEnable, CachePredicate)
 	// Checks whether predicate.ProportionalEnable is provided or not, if given, modifies the value in predicateEnable struct.
@@ -228,6 +252,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				klog.Errorf("Failed to get node %s info from cache", nodeName)
 				return
 			}
+			// run reserve plugins
+			pp.runReservePlugins(ssn, event)
 			//predicate gpu sharing
 			for _, val := range api.RegisteredDevices {
 				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
@@ -262,6 +288,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				klog.Errorf("Failed to get node %s info from cache", nodeName)
 				return
 			}
+
+			// run unReserve plugins
+			pp.runUnReservePlugins(ssn, event)
 
 			for _, val := range api.RegisteredDevices {
 				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
@@ -328,16 +357,36 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	ptsArgs := &config.PodTopologySpreadArgs{DefaultingType: config.SystemDefaulting}
 	plugin, _ = podtopologyspread.New(context.TODO(), ptsArgs, handle, features)
 	podTopologySpreadFilter := plugin.(*podtopologyspread.PodTopologySpread)
+	// 9. VolumeBinding
+	vbArgs := defaultVolumeBindingArgs()
+	if predicate.volumeBindingEnable {
+		// Currently, we support initializing the VolumeBinding plugin once, but do not support hot loading the plugin after modifying the VolumeBinding parameters.
+		// This is because VolumeBinding involves AssumeCache, which contains eventHandler. If VolumeBinding is initialized multiple times,
+		// eventHandler will be added continuously, causing memory leaks. For details, see: https://github.com/volcano-sh/volcano/issues/2554.
+		// Therefore, if users need to modify the VolumeBinding parameters, users need to restart the scheduler.
+		volumeBindingPluginOnce.Do(func() {
+			setUpVolumeBindingArgs(vbArgs, pp.pluginArguments)
 
-	state := k8sframework.NewCycleState()
-	skipPlugins := make(map[api.TaskID]sets.Set[string])
+			var err error
+			plugin, err = vbcap.New(context.TODO(), vbArgs.VolumeBindingArgs, handle, features)
+			if err != nil {
+				klog.Fatalf("failed to create volume binding plugin with args %+v: %v", vbArgs, err)
+			}
+			volumeBindingPluginInstance = plugin.(*vbcap.VolumeBinding)
+		})
+
+		pp.volumeBindingPlugin = volumeBindingPluginInstance
+	}
 
 	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {
+		// It is safe here to directly use the state to run plugins because we have already initialized the cycle state
+		// for each pending pod when open session and will not meet nil state
+		state := ssn.GetCycleState(task.UID)
 		metrics.Register()
 		// Check NodePorts
 		if predicate.nodePortEnable {
 			_, status := nodePortFilter.PreFilter(context.TODO(), state, task.Pod)
-			if err := handleSkipPrePredicatePlugin(status, task, skipPlugins, nodeports.Name); err != nil {
+			if err := handleSkipPrePredicatePlugin(status, state, task, nodeports.Name); err != nil {
 				return err
 			}
 		}
@@ -363,7 +412,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// the processing logic needs to be added to the return value result.
 		if predicate.podAffinityEnable {
 			_, status := podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
-			if err := handleSkipPrePredicatePlugin(status, task, skipPlugins, interpodaffinity.Name); err != nil {
+			if err := handleSkipPrePredicatePlugin(status, state, task, interpodaffinity.Name); err != nil {
 				return err
 			}
 		}
@@ -380,14 +429,24 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// the processing logic needs to be added to the return value result.
 		if predicate.podTopologySpreadEnable {
 			_, status := podTopologySpreadFilter.PreFilter(context.TODO(), state, task.Pod)
-			if err := handleSkipPrePredicatePlugin(status, task, skipPlugins, podTopologySpreadFilter.Name()); err != nil {
+			if err := handleSkipPrePredicatePlugin(status, state, task, podTopologySpreadFilter.Name()); err != nil {
 				return err
 			}
 		}
+
+		// VolumeBinding Predicate
+		if predicate.volumeBindingEnable {
+			_, status := pp.volumeBindingPlugin.PreFilter(context.TODO(), state, task.Pod)
+			if err := handleSkipPrePredicatePlugin(status, state, task, pp.volumeBindingPlugin.Name()); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 
 	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		state := ssn.GetCycleState(task.UID)
 		predicateStatus := make([]*api.Status, 0)
 		nodeInfo, found := nodeMap[node.Name]
 		if !found {
@@ -480,7 +539,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// Check NodePort
 		if predicate.nodePortEnable {
-			isSkipNodePorts := handleSkipPredicatePlugin(task, skipPlugins, nodePortFilter.Name(), node)
+			isSkipNodePorts := handleSkipPredicatePlugin(state, nodePortFilter.Name())
 			if !isSkipNodePorts {
 				status := nodePortFilter.Filter(context.TODO(), state, nil, nodeInfo)
 				nodePortStatus := api.ConvertPredicateStatus(status)
@@ -495,7 +554,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// Check PodAffinity
 		if predicate.podAffinityEnable {
-			isSkipInterPodAffinity := handleSkipPredicatePlugin(task, skipPlugins, podAffinityFilter.Name(), node)
+			isSkipInterPodAffinity := handleSkipPredicatePlugin(state, podAffinityFilter.Name())
 			if !isSkipInterPodAffinity {
 				status := podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 				podAffinityStatus := api.ConvertPredicateStatus(status)
@@ -536,7 +595,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// Check PodTopologySpread
 		if predicate.podTopologySpreadEnable {
-			isSkipPodTopologySpreadFilter := handleSkipPredicatePlugin(task, skipPlugins, podTopologySpreadFilter.Name(), node)
+			isSkipPodTopologySpreadFilter := handleSkipPredicatePlugin(state, podTopologySpreadFilter.Name())
 			if !isSkipPodTopologySpreadFilter {
 				status := podTopologySpreadFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 				podTopologyStatus := api.ConvertPredicateStatus(status)
@@ -562,12 +621,134 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				task.Namespace, task.Name, node.Name, fit)
 		}
 
+		// Check VolumeBinding
+		if predicate.volumeBindingEnable {
+			isSkipVolumeBinding := handleSkipPredicatePlugin(state, pp.volumeBindingPlugin.Name())
+			if !isSkipVolumeBinding {
+				status := pp.volumeBindingPlugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
+				volumeBindingStatus := api.ConvertPredicateStatus(status)
+				if volumeBindingStatus.Code != api.Success {
+					predicateStatus = append(predicateStatus, volumeBindingStatus)
+					if ShouldAbort(volumeBindingStatus) {
+						return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					}
+				}
+			}
+		}
+
 		if len(predicateStatus) > 0 {
 			return api.NewFitErrWithStatus(task, node, predicateStatus...)
 		}
 
 		return nil
 	})
+
+	// TODO: Need to unify the plugins in nodeorder to predicates.
+	// Currently, if the volumebinding plugin crosses predicates plugins and nodeorder plugins, it involves two initializations, which increases memory overhead.
+	// Therefore, a BatchNodeOrder extension point needs to be added in here, as volumebinding involves PreScore and Score extension points
+	ssn.AddBatchNodeOrderFn(pp.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+		state := ssn.GetCycleState(task.UID)
+		nodeList := slices.Collect(maps.Values(ssn.NodeMap))
+		nodeScores := make(map[string]float64, len(nodeList))
+
+		volumeBindingScores, err := volumeBindingScore(predicate.volumeBindingEnable, pp.volumeBindingPlugin, state, task.Pod, nodeList, vbArgs.Weight)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, node := range nodes {
+			nodeScores[node.Name] += volumeBindingScores[node.Name]
+		}
+
+		klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
+		return nodeScores, nil
+	})
+
+	ssn.RegisterBinder(pp.Name(), pp)
+}
+
+func (pp *predicatesPlugin) runReservePlugins(ssn *framework.Session, event *framework.Event) {
+	state := ssn.GetCycleState(event.Task.UID)
+
+	// Volume Binding Reserve
+	if pp.volumeBindingPlugin != nil {
+		status := pp.volumeBindingPlugin.Reserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
+		if !status.IsSuccess() {
+			event.Err = status.AsError()
+			return
+		}
+	}
+}
+
+func (pp *predicatesPlugin) runUnReservePlugins(ssn *framework.Session, event *framework.Event) {
+	state := ssn.GetCycleState(event.Task.UID)
+
+	// Volume Binding UnReserve
+	if pp.volumeBindingPlugin != nil {
+		pp.volumeBindingPlugin.Unreserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
+	}
+}
+
+// needsPreBind judges whether the pod needs set up extension information in bind context
+// to execute extra extension points like PreBind.
+// Currently, if a pod has any of the following resources, we assume that the pod needs to pass extension information:
+// 1. With volumes
+// 2. With resourceClaims
+// ...
+// If a pod doesn't contain any of the above resources, the pod doesn't need to set up extension information in bind context.
+// If necessary, more refined filtering can be added in this func.
+func (pp *predicatesPlugin) needsPreBind(task *api.TaskInfo) bool {
+	// 1. With volumes
+	if pp.volumeBindingPlugin != nil {
+		for _, vol := range task.Pod.Spec.Volumes {
+			if vol.PersistentVolumeClaim != nil || vol.Ephemeral != nil {
+				return true
+			}
+		}
+	}
+
+	// 2. TODO: With resourceClaims
+
+	return false
+}
+
+func (pp *predicatesPlugin) PreBind(ctx context.Context, bindCtx *cache.BindContext) error {
+	if !pp.needsPreBind(bindCtx.TaskInfo) {
+		return nil
+	}
+
+	state := bindCtx.Extensions[pp.Name()].(*bindContextExtension).State
+
+	// VolumeBinding PreBind
+	if pp.volumeBindingPlugin != nil {
+		status := pp.volumeBindingPlugin.PreBind(ctx, state, bindCtx.TaskInfo.Pod, bindCtx.TaskInfo.Pod.Spec.NodeName)
+		if !status.IsSuccess() {
+			return status.AsError()
+		}
+	}
+
+	return nil
+}
+
+func (pp *predicatesPlugin) PreBindRollBack(ctx context.Context, bindCtx *cache.BindContext) {
+	if !pp.needsPreBind(bindCtx.TaskInfo) {
+		return
+	}
+
+	state := bindCtx.Extensions[pp.Name()].(*bindContextExtension).State
+
+	// VolumeBinding UnReserve
+	if pp.volumeBindingPlugin != nil {
+		pp.volumeBindingPlugin.Unreserve(ctx, state, bindCtx.TaskInfo.Pod, bindCtx.TaskInfo.Pod.Spec.NodeName)
+	}
+}
+
+func (pp *predicatesPlugin) SetupBindContextExtension(ssn *framework.Session, bindCtx *cache.BindContext) {
+	if !pp.needsPreBind(bindCtx.TaskInfo) {
+		return
+	}
+
+	bindCtx.Extensions[pp.Name()] = &bindContextExtension{State: ssn.GetCycleState(bindCtx.TaskInfo.UID)}
 }
 
 // ShouldAbort determines if the given status indicates that execution should be aborted.
@@ -589,33 +770,52 @@ func ShouldAbort(status *api.Status) bool {
 		status.Code == api.Skip
 }
 
-func handleSkipPredicatePlugin(task *api.TaskInfo, skipPlugins map[api.TaskID]sets.Set[string], pluginName string, node *api.NodeInfo) bool {
-	isSkipPluginFilter := false
-	taskKey := api.PodKey(task.Pod)
-	if plugins, ok := skipPlugins[taskKey]; ok {
-		if plugins.Has(pluginName) {
-			isSkipPluginFilter = true
-			klog.V(5).Infof("pod(%s/%s) affinity require information is nil, plugin %s is skip for node %s",
-				task.Namespace, task.Name, pluginName, node.Name)
-		}
-	}
-	return isSkipPluginFilter
+func handleSkipPredicatePlugin(state *k8sframework.CycleState, pluginName string) bool {
+	return state.SkipFilterPlugins.Has(pluginName)
 }
 
-func handleSkipPrePredicatePlugin(status *k8sframework.Status, task *api.TaskInfo, skipPlugins map[api.TaskID]sets.Set[string], pluginName string) error {
+func handleSkipPrePredicatePlugin(status *k8sframework.Status, state *k8sframework.CycleState, task *api.TaskInfo, pluginName string) error {
+	if state.SkipFilterPlugins == nil {
+		state.SkipFilterPlugins = sets.New[string]()
+	}
+
 	if status.IsSkip() {
-		taskKey := api.PodKey(task.Pod)
-		if _, ok := skipPlugins[taskKey]; !ok {
-			plugins := sets.New[string]()
-			skipPlugins[taskKey] = plugins
-		}
-		skipPlugins[taskKey].Insert(pluginName)
-		klog.V(5).Infof("pod(%s/%s) affinity require information is nil, plugin %s is skipped",
-			task.Namespace, task.Name, pluginName)
+		state.SkipFilterPlugins.Insert(pluginName)
+		klog.V(5).Infof("The predicate of plugin %s will skip execution for pod <%s/%s>, because the status returned by pre-predicate is skip",
+			pluginName, task.Namespace, task.Name)
 	} else if !status.IsSuccess() {
 		return fmt.Errorf("plugin %s pre-predicates failed %s", pluginName, status.Message())
 	}
+
 	return nil
 }
 
+func volumeBindingScore(
+	volumeBindingEnable bool,
+	volumeBinding *vbcap.VolumeBinding,
+	cycleState *k8sframework.CycleState,
+	pod *v1.Pod,
+	nodeInfos []*k8sframework.NodeInfo,
+	volumeBindingWeight int,
+) (map[string]float64, error) {
+	if !volumeBindingEnable {
+		return map[string]float64{}, nil
+	}
+	return nodescore.CalculatePluginScore(volumeBinding.Name(), volumeBinding, &nodescore.EmptyNormalizer{},
+		cycleState, pod, nodeInfos, volumeBindingWeight)
+}
+
 func (pp *predicatesPlugin) OnSessionClose(ssn *framework.Session) {}
+
+// ResetVolumeBindingPluginForTest resets the volumeBindingPluginInstance and volumeBindingPluginOnce for testing purposes only.
+// This function is necessary because volumeBindingPluginInstance is a global variable initialized with sync.Once,
+// which ensures it's only initialized once. However, in test environments, especially when running multiple tests that use the predicates plugin,
+// we need to reset this instance to ensure each test has a clean state with its own PVC/PV configurations.
+// Without this reset, tests that run later would use the volumeBindingPlugin instance initialized by earlier tests,
+// which may not have the correct PVC/PV information for the current test, leading to failures.
+//
+// WARNING: This function should NEVER be used in production code, only in tests.
+func ResetVolumeBindingPluginForTest() {
+	volumeBindingPluginInstance = nil
+	volumeBindingPluginOnce = sync.Once{}
+}
