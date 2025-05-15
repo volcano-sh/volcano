@@ -17,11 +17,13 @@ limitations under the License.
 package capacity
 
 import (
+	"context"
 	"fmt"
 	"math"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 
@@ -33,8 +35,12 @@ import (
 )
 
 const (
-	PluginName  = "capacity"
-	rootQueueID = "root"
+	PluginName = "capacity"
+
+	// preFilterStateKey is the key in CycleState to InterPodAffinity pre-computed data for Filtering.
+	// Using the name of the plugin will likely help us avoid collisions with other plugins.
+	capacityStateKey = PluginName
+	rootQueueID      = "root"
 )
 
 type capacityPlugin struct {
@@ -125,13 +131,13 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			allocated := allocations[job.Queue]
 
-			exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
+			exceptReclaimee := allocated.Clone().Sub(reclaimer.Resreq)
 			// When scalar resource not specified in deserved such as "pods", we should skip it and consider it as infinity,
 			// so the following first condition will be true and the current queue will not be reclaimed.
 			if allocated.LessEqual(attr.deserved, api.Infinity) || !attr.guarantee.LessEqual(exceptReclaimee, api.Zero) {
 				continue
 			}
-			allocated.Sub(reclaimee.Resreq)
+			allocated.Sub(reclaimer.Resreq)
 			victims = append(victims, reclaimee)
 		}
 		klog.V(4).Infof("Victims from capacity plugin, victims=%+v reclaimer=%s", victims, reclaimer)
@@ -160,6 +166,28 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		// resource whose deserved is greater than allocated, current task can reclaim by preempt others.
 		return !overused
 	})
+
+	// queueAllocatable := func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+	// 	attr := cp.queueOpts[queue.UID]
+	// 	futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
+	// 	allocatable := futureUsed.LessEqualWithDimension(attr.realCapability, candidate.Resreq)
+	// 	if !allocatable {
+	// 		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
+	// 			queue.Name, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq)
+	// 	}
+	// 	return allocatable
+	// }
+
+	queueConcurrentAllocatable := func(state *capacityState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		attr := state.queueAttrs[queue.UID]
+		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
+		allocatable := futureUsed.LessEqualWithDimension(attr.realCapability, candidate.Resreq)
+		if !allocatable {
+			klog.V(3).Infof("ConcurrentAllocatable: Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
+				queue.Name, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq)
+		}
+		return allocatable
+	}
 
 	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
@@ -225,6 +253,90 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		klog.V(5).Infof("job <%s/%s> enqueued", job.Namespace, job.Name)
 		return util.Permit
+	})
+
+	ssn.AddInitCycleStateFn(cp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState) error {
+		state := &capacityState{
+			queueAttrs: make(map[api.QueueID]*queueAttr),
+		}
+
+		for _, queue := range cp.queueOpts {
+			state.queueAttrs[queue.queueID] = queue.Clone()
+		}
+
+		cycleState.Write(capacityStateKey, state)
+		return nil
+	})
+
+	ssn.AddSimulateAddTaskFn(cp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+		state, err := getCapacityState(cycleState)
+		if err != nil {
+			return fmt.Errorf("failed to get capacity state: %w", err)
+		}
+
+		job := ssn.Jobs[taskToAdd.Job]
+		attr := state.queueAttrs[job.Queue]
+		if attr == nil {
+			return fmt.Errorf("queue %s not found", job.Queue)
+		}
+		attr.allocated.Add(taskToAdd.Resreq)
+		updateQueueAttrShare(attr)
+		if hierarchyEnabled {
+			for _, ancestorID := range attr.ancestors {
+				ancestorAttr := state.queueAttrs[ancestorID]
+				ancestorAttr.allocated.Add(taskToAdd.Resreq)
+			}
+		}
+		return nil
+	})
+
+	ssn.AddSimulateRemoveTaskFn(cp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+		state, err := getCapacityState(cycleState)
+		if err != nil {
+			return fmt.Errorf("failed to get capacity state: %w", err)
+		}
+		job := ssn.Jobs[taskToRemove.Job]
+		attr := state.queueAttrs[job.Queue]
+		if attr == nil {
+			return fmt.Errorf("queue %s not found", job.Queue)
+		}
+		attr.allocated.Sub(taskToRemove.Resreq)
+		updateQueueAttrShare(attr)
+		if hierarchyEnabled {
+			for _, ancestorID := range attr.ancestors {
+				ancestorAttr := state.queueAttrs[ancestorID]
+				ancestorAttr.allocated.Sub(taskToRemove.Resreq)
+			}
+		}
+		return nil
+	})
+
+	ssn.AddParallelAllocatableFn(cp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		state, err := getCapacityState(cycleState)
+		if err != nil {
+			return false
+		}
+
+		if !readyToSchedule {
+			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
+			return false
+		}
+		if hierarchyEnabled && !cp.isLeafQueue(queue.UID) {
+			klog.V(3).Infof("Queue <%s> is not a leaf queue, can not allocate task <%s>.", queue.Name, candidate.Name)
+			return false
+		}
+		list := append(state.queueAttrs[queue.UID].ancestors, queue.UID)
+		for i := len(list) - 1; i >= 0; i-- {
+			if !queueConcurrentAllocatable(state, ssn.Queues[list[i]], candidate) {
+				if klog.V(5).Enabled() {
+					for i--; i >= 0; i-- {
+						queueConcurrentAllocatable(state, ssn.Queues[list[i]], candidate)
+					}
+				}
+				return false
+			}
+		}
+		return true
 	})
 
 	// Register event handlers.
@@ -800,4 +912,86 @@ func getQueueLevel(l *queueAttr, r *queueAttr) int {
 	}
 
 	return level
+}
+
+func getCapacityState(cycleState *k8sframework.CycleState) (*capacityState, error) {
+	c, err := cycleState.Read(capacityStateKey)
+	if err != nil {
+		// preFilterState doesn't exist, likely PreFilter wasn't invoked.
+		return nil, fmt.Errorf("error reading %q from cycleState: %w", capacityStateKey, err)
+	}
+
+	s, ok := c.(*capacityState)
+	if !ok {
+		return nil, fmt.Errorf("%+v  convert to capacity.state error", c)
+	}
+	return s, nil
+}
+
+type capacityState struct {
+	queueAttrs map[api.QueueID]*queueAttr
+}
+
+// Clone 深拷贝 queueAttr 对象，包括其所有子节点
+func (qa *queueAttr) Clone() *queueAttr {
+	if qa == nil {
+		return nil
+	}
+
+	// 克隆基本属性
+	cloned := &queueAttr{
+		queueID:        qa.queueID,
+		name:           qa.name,
+		share:          qa.share,
+		deserved:       qa.deserved.Clone(),
+		allocated:      qa.allocated.Clone(),
+		request:        qa.request.Clone(),
+		elastic:        qa.elastic.Clone(),
+		inqueue:        qa.inqueue.Clone(),
+		capability:     qa.capability.Clone(),
+		realCapability: qa.realCapability.Clone(),
+		guarantee:      qa.guarantee.Clone(),
+		children:       make(map[api.QueueID]*queueAttr),
+	}
+
+	// 复制 ancestors 切片
+	if len(qa.ancestors) > 0 {
+		cloned.ancestors = make([]api.QueueID, len(qa.ancestors))
+		copy(cloned.ancestors, qa.ancestors)
+	}
+
+	// 递归克隆所有子节点
+	for childID, childNode := range qa.children {
+		cloned.children[childID] = childNode.Clone()
+	}
+
+	return cloned
+}
+
+// Clone 实现 StateData 接口
+func (s *capacityState) Clone() k8sframework.StateData {
+	if s == nil {
+		return nil
+	}
+
+	newState := &capacityState{
+		queueAttrs: make(map[api.QueueID]*queueAttr, len(s.queueAttrs)),
+	}
+
+	// 克隆所有队列属性
+	for qID, qa := range s.queueAttrs {
+		newState.queueAttrs[qID] = qa.Clone()
+	}
+
+	return newState
+}
+
+func updateQueueAttrShare(attr *queueAttr) {
+	res := float64(0)
+
+	for _, rn := range attr.deserved.ResourceNames() {
+		res = max(res, helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn)))
+	}
+
+	attr.share = res
 }

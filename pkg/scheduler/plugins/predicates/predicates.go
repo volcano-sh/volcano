@@ -78,6 +78,9 @@ const (
 	ProportionalResource = "predicate.resources"
 	// ProportionalResourcesPrefix is the key prefix for additional resource key name
 	ProportionalResourcesPrefix = ProportionalResource + "."
+
+	// Key for storing predicateState in CycleState
+	predicateStateKey = "predicateState"
 )
 
 type predicatesPlugin struct {
@@ -203,6 +206,38 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	predicate.proportional = resourcesProportional
 
 	return predicate
+}
+
+// PredicateState stores the state of predicate plugin during scheduling cycle
+type predicateState struct {
+	internalState *k8sframework.CycleState
+}
+
+// Clone implements StateData interface
+func (s *predicateState) Clone() k8sframework.StateData {
+	if s == nil {
+		return nil
+	}
+
+	newState := &predicateState{
+		internalState: s.internalState.Clone(),
+	}
+
+	return newState
+}
+
+// getPredicateState retrieves predicateState from CycleState
+func getPredicateState(cycleState *k8sframework.CycleState) (*predicateState, error) {
+	c, err := cycleState.Read(predicateStateKey)
+	if err != nil {
+		return nil, fmt.Errorf("error reading %q from cycleState: %w", predicateStateKey, err)
+	}
+
+	s, ok := c.(*predicateState)
+	if !ok {
+		return nil, fmt.Errorf("%+v convert to predicate.state error", c)
+	}
+	return s, nil
 }
 
 func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
@@ -362,6 +397,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
 		// the processing logic needs to be added to the return value result.
 		if predicate.podAffinityEnable {
+			klog.Infof("Executing podAffinityFilter PreFilter for task %s/%s", task.Namespace, task.Name)
 			_, status := podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
 			if err := handleSkipPrePredicatePlugin(status, task, skipPlugins, interpodaffinity.Name); err != nil {
 				return err
@@ -500,12 +536,10 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				status := podAffinityFilter.Filter(context.TODO(), state, task.Pod, nodeInfo)
 				podAffinityStatus := api.ConvertPredicateStatus(status)
 				if podAffinityStatus.Code != api.Success {
-					// TODO: Currently, preemption is not supported when Pod affinity filtering fails.
-					// Once supported, the logic here should be removed.
-					// See https://github.com/volcano-sh/volcano/issues/3845
-					podAffinityStatus.Code = api.UnschedulableAndUnresolvable
 					predicateStatus = append(predicateStatus, podAffinityStatus)
-					return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					if ShouldAbort(podAffinityStatus) {
+						return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					}
 				}
 			}
 		}
@@ -566,6 +600,106 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			return api.NewFitErrWithStatus(task, node, predicateStatus...)
 		}
 
+		return nil
+	})
+
+	// Add InitCycleState function
+	ssn.AddInitCycleStateFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState) error {
+		pState := &predicateState{
+			internalState: state.Clone(),
+		}
+
+		// Print each field of internalState
+		klog.V(4).Infof("Initializing predicateState, printing internalState fields")
+
+		key := k8sframework.StateKey("PreFilterInterPodAffinity")
+		data, err := state.Read(key)
+		if err != nil {
+			klog.Errorf("Failed to read key %s from internalState: %v", key, err)
+		}
+		klog.V(4).Infof("internalState field: key=%s, value=%+v", key, data)
+
+		cycleState.Write(predicateStateKey, pState)
+		return nil
+	})
+
+	// Add SimulateAddTask function
+	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+		pState, err := getPredicateState(cycleState)
+		if err != nil {
+			return fmt.Errorf("failed to get predicate state: %w", err)
+		}
+
+		podInfoToAdd, err := k8sframework.NewPodInfo(taskToAdd.Pod)
+		if err != nil {
+			return fmt.Errorf("failed to create pod info: %w", err)
+		}
+
+		k8sNodeInfo := k8sframework.NewNodeInfo(nodeInfo.Pods()...)
+		k8sNodeInfo.SetNode(nodeInfo.Node)
+
+		if predicate.podAffinityEnable {
+			isSkipInterPodAffinity := handleSkipPredicatePlugin(taskToSchedule, skipPlugins, podAffinityFilter.Name(), nodeInfo)
+			if !isSkipInterPodAffinity {
+				status := podAffinityFilter.AddPod(ctx, pState.internalState, taskToSchedule.Pod, podInfoToAdd, k8sNodeInfo)
+				if !status.IsSuccess() {
+					return fmt.Errorf("failed to remove pod from node %s: %w", nodeInfo.Name, status.AsError())
+				}
+			}
+		}
+
+		return nil
+	})
+
+	// Add SimulateRemoveTask function
+	ssn.AddSimulateRemoveTaskFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+		pState, err := getPredicateState(cycleState)
+		if err != nil {
+			return fmt.Errorf("failed to get predicate state: %w", err)
+		}
+
+		podInfoToRemove, err := k8sframework.NewPodInfo(taskToRemove.Pod)
+		if err != nil {
+			return fmt.Errorf("failed to create pod info: %w", err)
+		}
+
+		k8sNodeInfo := k8sframework.NewNodeInfo(nodeInfo.Pods()...)
+		k8sNodeInfo.SetNode(nodeInfo.Node)
+
+		if predicate.podAffinityEnable {
+			isSkipInterPodAffinity := handleSkipPredicatePlugin(taskToSchedule, skipPlugins, podAffinityFilter.Name(), nodeInfo)
+			if !isSkipInterPodAffinity {
+				status := podAffinityFilter.RemovePod(ctx, pState.internalState, taskToSchedule.Pod, podInfoToRemove, k8sNodeInfo)
+				if !status.IsSuccess() {
+					return fmt.Errorf("failed to remove pod from node %s: %w", nodeInfo.Name, status.AsError())
+				}
+			}
+		}
+		return nil
+	})
+
+	// Add ParallelPredicate function
+	ssn.AddParallelPredicateFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, task *api.TaskInfo, node *api.NodeInfo) error {
+		pState, err := getPredicateState(cycleState)
+		if err != nil {
+			return fmt.Errorf("failed to get predicate state: %w", err)
+		}
+
+		k8sNodeInfo := k8sframework.NewNodeInfo(node.Pods()...)
+		k8sNodeInfo.SetNode(node.Node)
+
+		if predicate.podAffinityEnable {
+			isSkipInterPodAffinity := handleSkipPredicatePlugin(task, skipPlugins, podAffinityFilter.Name(), node)
+			if !isSkipInterPodAffinity {
+				status := podAffinityFilter.Filter(ctx, pState.internalState, task.Pod, k8sNodeInfo)
+
+				if !status.IsSuccess() {
+					return fmt.Errorf("failed to filter pod on node %s: %w", node.Name, status.AsError())
+				} else {
+					klog.Infof("pod affinity for task %s/%s filter success on node %s", task.Namespace, task.Name, node.Name)
+				}
+			}
+		}
 		return nil
 	})
 }

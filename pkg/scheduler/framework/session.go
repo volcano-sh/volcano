@@ -107,6 +107,12 @@ type Session struct {
 	reservedNodesFns  map[string]api.ReservedNodesFn
 	victimTasksFns    map[string][]api.VictimTasksFn
 	jobStarvingFns    map[string]api.ValidateFn
+
+	initCycleStateFns      map[string]api.InitCycleStateFn
+	simulateRemoveTaskFns  map[string]api.SimulateRemoveTaskFn
+	simulateAddTaskFns     map[string]api.SimulateAddTaskFn
+	parallelPredicateFns   map[string]api.ParallelPredicateFn
+	parallelAllocatableFns map[string]api.ParallelAllocatableFn
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -156,6 +162,12 @@ func openSession(cache cache.Cache) *Session {
 		reservedNodesFns:    map[string]api.ReservedNodesFn{},
 		victimTasksFns:      map[string][]api.VictimTasksFn{},
 		jobStarvingFns:      map[string]api.ValidateFn{},
+
+		initCycleStateFns:      map[string]api.InitCycleStateFn{},
+		simulateRemoveTaskFns:  map[string]api.SimulateRemoveTaskFn{},
+		simulateAddTaskFns:     map[string]api.SimulateAddTaskFn{},
+		parallelPredicateFns:   map[string]api.ParallelPredicateFn{},
+		parallelAllocatableFns: map[string]api.ParallelAllocatableFn{},
 	}
 
 	snapshot := cache.Snapshot()
@@ -344,8 +356,8 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 	return status
 }
 
-// GetUnschedulableAndUnresolvableNodesForTask filter out those node that has UnschedulableAndUnresolvable
-func (ssn *Session) GetUnschedulableAndUnresolvableNodesForTask(task *api.TaskInfo) []*api.NodeInfo {
+// FilterOutUnschedulableAndUnresolvableNodesForTask filter out those node that has UnschedulableAndUnresolvable
+func (ssn *Session) FilterOutUnschedulableAndUnresolvableNodesForTask(task *api.TaskInfo) []*api.NodeInfo {
 	fitErrors, ok1 := ssn.Jobs[task.Job]
 	if !ok1 {
 		return ssn.NodeList
