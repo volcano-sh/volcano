@@ -4408,6 +4408,15 @@ metadata:
   namespace: volcano-system
 ---
 # Source: volcano/templates/controllers.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-controller-configmap
+  namespace: volcano-system
+data:
+  volcano-controller.conf: |
+---
+# Source: volcano/templates/controllers.yaml
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -4473,6 +4482,9 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "create", "update", "watch"]
+  - apiGroups: ["topology.volcano.sh"]
+    resources: ["hypernodes", "hypernodes/status"]
+    verbs: ["list", "watch", "get", "create", "delete", "update", "patch"]
 ---
 # Source: volcano/templates/controllers.yaml
 kind: ClusterRoleBinding
@@ -4560,6 +4572,11 @@ spec:
                 - ALL
               runAsNonRoot: true
               runAsUser: 1000
+          env:
+          - name: KUBE_POD_NAMESPACE
+            value: volcano-system
+          - name: HELM_RELEASE_NAME
+            value: volcano
 ---
 # Source: volcano/templates/scheduler.yaml
 apiVersion: v1
