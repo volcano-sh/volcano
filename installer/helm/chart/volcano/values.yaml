@@ -210,6 +210,9 @@ custom:
   # Specify agent cni config path.
   agent_cni_config_path: /etc/cni/net.d/cni.conflist
 
+  # Specify feature gates for components
+  scheduler_feature_gates: ~
+
 service:
   # @param service.ipFamilyPolicy [string], support SingleStack, PreferDualStack and RequireDualStack
   #
