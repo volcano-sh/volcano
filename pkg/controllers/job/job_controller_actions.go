@@ -287,6 +287,7 @@ func (cc *jobcontroller) GetQueueInfo(queue string) (*scheduling.Queue, error) {
 	return queueInfo, err
 }
 
+// notice
 func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.UpdateStatusFn) error {
 	job := jobInfo.Job
 	klog.V(3).Infof("Starting to sync up Job <%s/%s>, current version %d", job.Namespace, job.Name, job.Status.Version)
