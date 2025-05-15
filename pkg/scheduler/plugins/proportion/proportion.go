@@ -312,6 +312,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(4).Infof("Queue <%s> is not in open state, can not allocate task <%s>.", queue.Name, candidate.Name)
+			return false
+		}
 		return queueAllocatable(queue, candidate)
 	})
 	ssn.AddPreemptiveFn(pp.Name(), func(obj interface{}, candidate interface{}) bool {
@@ -327,6 +331,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		queue := ssn.Queues[queueID]
 		// If the queue is not open, do not enqueue
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(4).Infof("Queue <%s> is not open state, reject job <%s/%s>.", queue.Name, job.Namespace, job.Name)
 			return util.Reject
 		}
 		// If no capability is set, always enqueue the job.
