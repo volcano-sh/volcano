@@ -18,11 +18,13 @@ package mpi
 
 import (
 	"flag"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
 )
@@ -108,22 +110,38 @@ func (mp *Plugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 }
 
 func (mp *Plugin) generateTaskHosts(task batch.TaskSpec, jobName string) string {
-	hosts := ""
+	if task.Replicas == 0 {
+		return ""
+	}
+
+	var builder strings.Builder
 	for i := 0; i < int(task.Replicas); i++ {
 		hostName := task.Template.Spec.Hostname
 		subdomain := task.Template.Spec.Subdomain
-		if len(hostName) == 0 {
+
+		if hostName == "" {
 			hostName = helpers.MakePodName(jobName, task.Name, i)
 		}
-		if len(subdomain) == 0 {
+		if subdomain == "" {
 			subdomain = jobName
 		}
-		hosts = hosts + hostName + "." + subdomain + ","
-		if len(task.Template.Spec.Hostname) != 0 {
+
+		builder.WriteString(hostName)
+		builder.WriteString(".")
+		builder.WriteString(subdomain)
+
+		if task.Template.Spec.Hostname == "" && i < int(task.Replicas)-1 {
+			builder.WriteString(",")
+		}
+
+		// If a hostname is explicitly specified, assume only one host is needed.
+		// Break the loop early to avoid generating additional hosts.
+		if task.Template.Spec.Hostname != "" {
 			break
 		}
 	}
-	return hosts[:len(hosts)-1]
+
+	return builder.String()
 }
 
 func (mp *Plugin) openContainerPort(c *v1.Container, index int, pod *v1.Pod, isInitContainer bool) {
