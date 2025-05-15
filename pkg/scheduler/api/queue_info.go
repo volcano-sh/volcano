@@ -42,6 +42,8 @@ type QueueInfo struct {
 	Hierarchy string
 
 	Queue *scheduling.Queue
+
+	SchedulerPolicy string
 }
 
 // NewQueueInfo creates new queueInfo object
@@ -54,19 +56,21 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 		Hierarchy: queue.Annotations[v1beta1.KubeHierarchyAnnotationKey],
 		Weights:   queue.Annotations[v1beta1.KubeHierarchyWeightAnnotationKey],
 
-		Queue: queue,
+		Queue:           queue,
+		SchedulerPolicy: queue.Annotations["volcano.sh/scheduler-policy"],
 	}
 }
 
 // Clone is used to clone queueInfo object
 func (q *QueueInfo) Clone() *QueueInfo {
 	return &QueueInfo{
-		UID:       q.UID,
-		Name:      q.Name,
-		Weight:    q.Weight,
-		Hierarchy: q.Hierarchy,
-		Weights:   q.Weights,
-		Queue:     q.Queue,
+		UID:             q.UID,
+		Name:            q.Name,
+		Weight:          q.Weight,
+		Hierarchy:       q.Hierarchy,
+		Weights:         q.Weights,
+		Queue:           q.Queue,
+		SchedulerPolicy: q.SchedulerPolicy,
 	}
 }
 

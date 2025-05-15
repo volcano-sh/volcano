@@ -19,7 +19,6 @@ package framework
 import (
 	"context"
 	"fmt"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,7 +30,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -73,12 +71,32 @@ type Session struct {
 	NodeMap   map[string]*k8sframework.NodeInfo
 	PodLister *PodLister
 
-	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
 
-	plugins             map[string]Plugin
-	eventHandlers       []*EventHandler
+	eventHandlers []*EventHandler
+
+	Actions []Action
+	PluginRegistry
+	schedulerPolicies map[string]*SchedulerPolicy
+}
+
+type SchedulerPolicy struct {
+	Actions []Action
+	PluginRegistry
+}
+
+func NewSchedulerPolicy() *SchedulerPolicy {
+	return &SchedulerPolicy{
+		Actions:        nil,
+		PluginRegistry: PluginRegistry{},
+	}
+}
+
+type PluginRegistry struct {
+	Tiers   []conf.Tier
+	plugins map[string]Plugin
+
 	jobOrderFns         map[string]api.CompareFn
 	queueOrderFns       map[string]api.CompareFn
 	victimQueueOrderFns map[string]api.VictimCompareFn
@@ -94,8 +112,7 @@ type Session struct {
 	preemptableFns      map[string]api.EvictableFn
 	reclaimableFns      map[string]api.EvictableFn
 	overusedFns         map[string]api.ValidateFn
-	// preemptiveFns means whether current queue can reclaim from other queue,
-	// while reclaimableFns means whether current queue's resources can be reclaimed.
+
 	preemptiveFns     map[string]api.ValidateWithCandidateFn
 	allocatableFns    map[string]api.AllocatableFn
 	jobReadyFns       map[string]api.ValidateFn
@@ -129,33 +146,37 @@ func openSession(cache cache.Cache) *Session {
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
 
-		plugins:             map[string]Plugin{},
-		jobOrderFns:         map[string]api.CompareFn{},
-		queueOrderFns:       map[string]api.CompareFn{},
-		victimQueueOrderFns: map[string]api.VictimCompareFn{},
-		taskOrderFns:        map[string]api.CompareFn{},
-		clusterOrderFns:     map[string]api.CompareFn{},
-		predicateFns:        map[string]api.PredicateFn{},
-		prePredicateFns:     map[string]api.PrePredicateFn{},
-		bestNodeFns:         map[string]api.BestNodeFn{},
-		nodeOrderFns:        map[string]api.NodeOrderFn{},
-		batchNodeOrderFns:   map[string]api.BatchNodeOrderFn{},
-		nodeMapFns:          map[string]api.NodeMapFn{},
-		nodeReduceFns:       map[string]api.NodeReduceFn{},
-		preemptableFns:      map[string]api.EvictableFn{},
-		reclaimableFns:      map[string]api.EvictableFn{},
-		overusedFns:         map[string]api.ValidateFn{},
-		preemptiveFns:       map[string]api.ValidateWithCandidateFn{},
-		allocatableFns:      map[string]api.AllocatableFn{},
-		jobReadyFns:         map[string]api.ValidateFn{},
-		jobPipelinedFns:     map[string]api.VoteFn{},
-		jobValidFns:         map[string]api.ValidateExFn{},
-		jobEnqueueableFns:   map[string]api.VoteFn{},
-		jobEnqueuedFns:      map[string]api.JobEnqueuedFn{},
-		targetJobFns:        map[string]api.TargetJobFn{},
-		reservedNodesFns:    map[string]api.ReservedNodesFn{},
-		victimTasksFns:      map[string][]api.VictimTasksFn{},
-		jobStarvingFns:      map[string]api.ValidateFn{},
+		PluginRegistry: PluginRegistry{
+			plugins:             map[string]Plugin{},
+			jobOrderFns:         map[string]api.CompareFn{},
+			queueOrderFns:       map[string]api.CompareFn{},
+			victimQueueOrderFns: map[string]api.VictimCompareFn{},
+			taskOrderFns:        map[string]api.CompareFn{},
+			clusterOrderFns:     map[string]api.CompareFn{},
+			predicateFns:        map[string]api.PredicateFn{},
+			prePredicateFns:     map[string]api.PrePredicateFn{},
+			bestNodeFns:         map[string]api.BestNodeFn{},
+			nodeOrderFns:        map[string]api.NodeOrderFn{},
+			batchNodeOrderFns:   map[string]api.BatchNodeOrderFn{},
+			nodeMapFns:          map[string]api.NodeMapFn{},
+			nodeReduceFns:       map[string]api.NodeReduceFn{},
+			preemptableFns:      map[string]api.EvictableFn{},
+			reclaimableFns:      map[string]api.EvictableFn{},
+			overusedFns:         map[string]api.ValidateFn{},
+			preemptiveFns:       map[string]api.ValidateWithCandidateFn{},
+			allocatableFns:      map[string]api.AllocatableFn{},
+			jobReadyFns:         map[string]api.ValidateFn{},
+			jobPipelinedFns:     map[string]api.VoteFn{},
+			jobValidFns:         map[string]api.ValidateExFn{},
+			jobEnqueueableFns:   map[string]api.VoteFn{},
+			jobEnqueuedFns:      map[string]api.JobEnqueuedFn{},
+			targetJobFns:        map[string]api.TargetJobFn{},
+			reservedNodesFns:    map[string]api.ReservedNodesFn{},
+			victimTasksFns:      map[string][]api.VictimTasksFn{},
+			jobStarvingFns:      map[string]api.ValidateFn{},
+		},
+
+		schedulerPolicies: map[string]*SchedulerPolicy{},
 	}
 
 	snapshot := cache.Snapshot()
@@ -164,6 +185,11 @@ func openSession(cache cache.Cache) *Session {
 	for _, job := range ssn.Jobs {
 		if job.PodGroup != nil {
 			ssn.podGroupStatus[job.UID] = *job.PodGroup.Status.DeepCopy()
+		}
+		if job.SchedulerPolicy == "" {
+			job.SchedulerPolicy = snapshot.Queues[job.Queue].SchedulerPolicy
+			klog.Infof("Job属于的queue是%v", snapshot.Queues[job.Queue])
+			klog.Infof("Job的调度策略是%v", job.SchedulerPolicy)
 		}
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
@@ -642,6 +668,15 @@ func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNuma
 	ssn.cache.UpdateSchedulerNumaInfo(AllocatedSets)
 }
 
+func (ssn *Session) HasAction(action string) bool {
+	for _, Action := range ssn.Actions {
+		if Action.Name() == action {
+			return true
+		}
+	}
+	return false
+}
+
 // KubeClient returns the kubernetes client
 func (ssn Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
@@ -689,4 +724,29 @@ func (ssn Session) String() string {
 	}
 
 	return msg
+}
+
+func (ssn *Session) GetSchedulerPolicyFromJob(job *api.JobInfo) *SchedulerPolicy {
+	klog.Infof("GetSchedulerPolicyFromJob：%v-%v", job.Name, job.SchedulerPolicy)
+	return ssn.schedulerPolicies[job.SchedulerPolicy]
+}
+
+func (ssn *Session) GetSchedulerPolicyFromQueue(queue *api.QueueInfo) *SchedulerPolicy {
+	klog.Infof("GetSchedulerPolicyFromQueue：%v-%v", queue.Name, queue.SchedulerPolicy)
+	return ssn.schedulerPolicies[queue.SchedulerPolicy]
+}
+
+func (ssn *Session) GetSchedulerPolicyFromTask(task *api.TaskInfo) *SchedulerPolicy {
+	schedulerPolicy := ssn.Jobs[task.Job].SchedulerPolicy
+	klog.Infof("GetSchedulerPolicyFromTask：%v-%v", task.Name, schedulerPolicy)
+	return ssn.schedulerPolicies[schedulerPolicy]
+}
+
+func (s *SchedulerPolicy) HasAction(action string) bool {
+	for _, Action := range s.Actions {
+		if Action.Name() == action {
+			return true
+		}
+	}
+	return false
 }

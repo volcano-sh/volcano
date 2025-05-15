@@ -111,6 +111,17 @@ func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskIn
 	tasks := map[api.JobID]*util.PriorityQueue{}
 	var pendingTasks []*api.TaskInfo
 	for _, job := range ssn.Jobs {
+		schedulerPolicy := ssn.GetSchedulerPolicyFromJob(job)
+		if schedulerPolicy != nil && !schedulerPolicy.HasAction(backfill.Name()) {
+			klog.Infof("job %v 属于的调度策略没有这个action %v，因此跳过", job.Name, backfill.Name())
+			continue
+		}
+
+		if schedulerPolicy == nil && !ssn.HasAction(backfill.Name()) {
+			klog.Infof("ssn 中没有action %v，因此跳过", backfill.Name())
+			continue
+		}
+
 		if job.IsPending() {
 			continue
 		}

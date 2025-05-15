@@ -368,8 +368,9 @@ type JobInfo struct {
 	// we only support empty value or * value for this version and we will support specify revocable zone name for future release
 	// empty value means workload can not use revocable node
 	// * value means workload can use all the revocable node for during node active revocable time.
-	RevocableZone string
-	Budget        *DisruptionBudget
+	RevocableZone   string
+	Budget          *DisruptionBudget
+	SchedulerPolicy string
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks

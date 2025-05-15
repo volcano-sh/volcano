@@ -262,3 +262,70 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 	}
 	return nodes, nil
 }
+
+func copyAndClearSessionFunctions(schedulerPolicy *SchedulerPolicy, ssn *Session) {
+	// 复制函数到调度策略
+	copyFunctionsToPolicy(schedulerPolicy, ssn)
+	// 清空session中的函数映射
+	clearSessionFunctions(ssn)
+}
+
+// copyFunctionsToPolicy 将session中的函数复制到调度策略中
+func copyFunctionsToPolicy(policy *SchedulerPolicy, ssn *Session) {
+	policy.jobOrderFns = ssn.jobOrderFns
+	policy.queueOrderFns = ssn.queueOrderFns
+	policy.taskOrderFns = ssn.taskOrderFns
+	policy.predicateFns = ssn.predicateFns
+	policy.prePredicateFns = ssn.prePredicateFns
+	policy.nodeOrderFns = ssn.nodeOrderFns
+	policy.batchNodeOrderFns = ssn.batchNodeOrderFns
+	policy.nodeMapFns = ssn.nodeMapFns
+	policy.nodeReduceFns = ssn.nodeReduceFns
+	policy.preemptableFns = ssn.preemptableFns
+	policy.reclaimableFns = ssn.reclaimableFns
+	policy.overusedFns = ssn.overusedFns
+	policy.allocatableFns = ssn.allocatableFns
+	policy.jobReadyFns = ssn.jobReadyFns
+	policy.jobPipelinedFns = ssn.jobPipelinedFns
+	policy.jobValidFns = ssn.jobValidFns
+	policy.jobEnqueueableFns = ssn.jobEnqueueableFns
+	policy.jobEnqueuedFns = ssn.jobEnqueuedFns
+	policy.targetJobFns = ssn.targetJobFns
+	policy.reservedNodesFns = ssn.reservedNodesFns
+	policy.victimTasksFns = ssn.victimTasksFns
+	policy.jobStarvingFns = ssn.jobStarvingFns
+	policy.victimQueueOrderFns = ssn.victimQueueOrderFns
+	policy.clusterOrderFns = ssn.clusterOrderFns
+	policy.bestNodeFns = ssn.bestNodeFns
+	policy.preemptiveFns = ssn.preemptiveFns
+}
+
+// clearSessionFunctions 清空session中的所有函数映射
+func clearSessionFunctions(ssn *Session) {
+	ssn.jobOrderFns = make(map[string]api.CompareFn)
+	ssn.queueOrderFns = make(map[string]api.CompareFn)
+	ssn.taskOrderFns = make(map[string]api.CompareFn)
+	ssn.predicateFns = make(map[string]api.PredicateFn)
+	ssn.prePredicateFns = make(map[string]api.PrePredicateFn)
+	ssn.nodeOrderFns = make(map[string]api.NodeOrderFn)
+	ssn.batchNodeOrderFns = make(map[string]api.BatchNodeOrderFn)
+	ssn.nodeMapFns = make(map[string]api.NodeMapFn)
+	ssn.nodeReduceFns = make(map[string]api.NodeReduceFn)
+	ssn.preemptableFns = make(map[string]api.EvictableFn)
+	ssn.reclaimableFns = make(map[string]api.EvictableFn)
+	ssn.overusedFns = make(map[string]api.ValidateFn)
+	ssn.allocatableFns = make(map[string]api.AllocatableFn)
+	ssn.jobReadyFns = make(map[string]api.ValidateFn)
+	ssn.jobPipelinedFns = make(map[string]api.VoteFn)
+	ssn.jobValidFns = make(map[string]api.ValidateExFn)
+	ssn.jobEnqueueableFns = make(map[string]api.VoteFn)
+	ssn.jobEnqueuedFns = make(map[string]api.JobEnqueuedFn)
+	ssn.targetJobFns = make(map[string]api.TargetJobFn)
+	ssn.reservedNodesFns = make(map[string]api.ReservedNodesFn)
+	ssn.victimTasksFns = make(map[string][]api.VictimTasksFn)
+	ssn.jobStarvingFns = make(map[string]api.ValidateFn)
+	ssn.victimQueueOrderFns = make(map[string]api.VictimCompareFn)
+	ssn.clusterOrderFns = make(map[string]api.CompareFn)
+	ssn.bestNodeFns = make(map[string]api.BestNodeFn)
+	ssn.preemptiveFns = make(map[string]api.ValidateWithCandidateFn)
+}

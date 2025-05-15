@@ -63,6 +63,17 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 	queues := map[api.QueueID]*api.QueueInfo{}
 
 	for _, job := range ssn.Jobs {
+		schedulerPolicy := ssn.GetSchedulerPolicyFromJob(job)
+		if schedulerPolicy != nil && !schedulerPolicy.HasAction(pmpt.Name()) {
+			klog.Infof("job %v 属于的调度策略没有这个action %v，因此跳过", job.Name, pmpt.Name())
+			continue
+		}
+
+		if schedulerPolicy == nil && !ssn.HasAction(pmpt.Name()) {
+			klog.Infof("ssn 中没有action %v，因此跳过", pmpt.Name())
+			continue
+		}
+
 		if job.IsPending() {
 			continue
 		}
