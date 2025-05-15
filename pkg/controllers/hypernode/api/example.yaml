@@ -1,0 +1,19 @@
+# This is an example configuration file of configMap for the Hypernode auto discovery.
+networkTopologyDiscovery:
+  - source: ufm
+    enabled: true
+    interval: 10m
+    config:
+      endpoint: https://ufm-server:8080
+      username: admin
+      password: password
+      insecureSkipVerify: true
+  - source: roce
+    enabled: false
+    interval: 15m
+    config:
+      endpoint: https://roce-server:9090
+      token: token
+  - source: label
+    enabled: false
+    config:
