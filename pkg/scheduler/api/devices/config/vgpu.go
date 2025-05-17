@@ -36,9 +36,9 @@ type MigTemplate struct {
 	// Name is the name for mig-instance, like '1g.10gb'
 	Name string `yaml:"name"`
 	// Memory is the device memory this mig-instance provides
-	Memory int32 `yaml:"memory"`
+	Memory uint `yaml:"memory"`
 	// Count is the number of corresponding mig-instances in this template
-	Count int32 `yaml:"count"`
+	Count int `yaml:"count"`
 }
 
 // MigTemplateUsage is the usage mask about certain mig instance is using or not
@@ -46,9 +46,11 @@ type MigTemplateUsage struct {
 	// Name is the name for mig-instance, like '1g.10gb'
 	Name string `json:"name,omitempty"`
 	// Memory is the device memory this mig-instance provides
-	Memory int32 `json:"memory,omitempty"`
+	Memory uint `json:"memory,omitempty"`
 	// InUse represents whether this mig-instance is being used
 	InUse bool `json:"inuse,omitempty"`
+	// UsedIndex
+	UsedIndex []int `yaml:"usedIndex"`
 }
 
 // Geometry a group of mig instance, it represents a kind of mig pattern
@@ -65,7 +67,7 @@ type MIGS []MigTemplateUsage
 // MigInUse is about maintaining the status about certain GPU and its related mig-instances
 type MigInUse struct {
 	// Index is the index in geometry group
-	Index int32
+	Index int
 	// UsageList is the corresponding usage list
 	UsageList MIGS
 }
@@ -93,11 +95,11 @@ type NvidiaConfig struct {
 	// OverwriteEnv is whether we overwrite 'NVIDIA_VISIBLE_DEVICES' to 'none' for non-gpu tasks
 	OverwriteEnv bool `yaml:"overwriteEnv"`
 	// DefaultMemory is the number of device memory if not specified
-	DefaultMemory int32 `yaml:"defaultMemory"`
+	DefaultMemory uint `yaml:"defaultMemory"`
 	// DefaultCores is the number of device cores if not specified
-	DefaultCores int32 `yaml:"defaultCores"`
+	DefaultCores uint `yaml:"defaultCores"`
 	// DefaultGPUNum is the number of device number if not specified
-	DefaultGPUNum int32 `yaml:"defaultGPUNum"`
+	DefaultGPUNum uint `yaml:"defaultGPUNum"`
 	// DeviceSplitCount is the number of fake-devices reported by vgpu-device-plugin per GPU
 	DeviceSplitCount uint `yaml:"deviceSplitCount"`
 	// DeviceMemoryScaling is the device memory oversubscription factor

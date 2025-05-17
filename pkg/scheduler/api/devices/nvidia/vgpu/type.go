@@ -17,60 +17,64 @@ limitations under the License.
 package vgpu
 
 const (
-	// DeviceName used to indicate this device
-	DeviceName = "hamivgpu"
+    // DeviceName used to indicate this device
+    DeviceName = "hamivgpu"
 
-	GPUInUse                         = "nvidia.com/use-gputype"
-	GPUNoUse                         = "nvidia.com/nouse-gputype"
-	AssignedTimeAnnotations          = "volcano.sh/vgpu-time"
-	AssignedIDsAnnotations           = "volcano.sh/vgpu-ids-new"
-	AssignedIDsToAllocateAnnotations = "volcano.sh/devices-to-allocate"
-	AssignedNodeAnnotations          = "volcano.sh/vgpu-node"
-	BindTimeAnnotations              = "volcano.sh/bind-time"
-	DeviceBindPhase                  = "volcano.sh/bind-phase"
+    GPUInUse                         = "nvidia.com/use-gputype"
+    GPUNoUse                         = "nvidia.com/nouse-gputype"
+    AssignedTimeAnnotations          = "volcano.sh/vgpu-time"
+    AssignedIDsAnnotations           = "volcano.sh/vgpu-ids-new"
+    AssignedIDsToAllocateAnnotations = "volcano.sh/devices-to-allocate"
+    AssignedNodeAnnotations          = "volcano.sh/vgpu-node"
+    BindTimeAnnotations              = "volcano.sh/bind-time"
+    DeviceBindPhase                  = "volcano.sh/bind-phase"
 
-	NvidiaGPUDevice = "NVIDIA"
+    NvidiaGPUDevice = "NVIDIA"
 
-	// PredicateTime is the key of predicate time
-	PredicateTime = "volcano.sh/predicate-time"
-	// GPUIndex is the key of gpu index
-	GPUIndex = "volcano.sh/gpu-index"
+    // PredicateTime is the key of predicate time
+    PredicateTime = "volcano.sh/predicate-time"
+    // GPUIndex is the key of gpu index
+    GPUIndex = "volcano.sh/gpu-index"
 
-	// UnhealthyGPUIDs list of unhealthy gpu ids
-	UnhealthyGPUIDs = "volcano.sh/gpu-unhealthy-ids"
+    // UnhealthyGPUIDs list of unhealthy gpu ids
+    UnhealthyGPUIDs = "volcano.sh/gpu-unhealthy-ids"
 
-	// binpack means the lower device memory remained after this allocation, the better
-	binpackPolicy = "binpack"
-	// spread means better put this task into an idle GPU card than a shared GPU card
-	spreadPolicy = "spread"
-	// 101 means wo don't assign defaultMemPercentage value
+    // binpack means the lower device memory remained after this allocation, the better
+    binpackPolicy = "binpack"
+    // spread means better put this task into an idle GPU card than a shared GPU card
+    spreadPolicy = "spread"
+    // 101 means wo don't assign defaultMemPercentage value
 
-	DefaultMemPercentage = 101
-	binpackMultiplier    = 100
-	spreadMultiplier     = 100
+    DefaultMemPercentage = 101
+    binpackMultiplier    = 100
+    spreadMultiplier     = 100
 
-	vGPUControllerHAMICore = "hami-core"
-	vGPUControllerMIG      = "mig"
+    GPUModeAnnotation      = "volcano.sh/vgpu-mode"
+    vGPUControllerHAMICore = "hami-core"
+    vGPUControllerMIG      = "mig"
+    vGPUControllerMPS      = "mps"
 )
 
 var (
-	VGPUEnable     bool
-	NodeLockEnable bool
+    VGPUEnable     bool
+    NodeLockEnable bool
 )
 
 type ContainerDeviceRequest struct {
-	Nums             int32
-	Type             string
-	Memreq           int32
-	MemPercentagereq int32
-	Coresreq         int32
+    Nums int32
+    // device type, like NVIDIA, MLU
+    Type             string
+    Memreq           uint
+    MemPercentagereq int32
+    Coresreq         uint
 }
 
 type ContainerDevice struct {
-	UUID      string
-	Type      string
-	Usedmem   int32
-	Usedcores int32
+    UUID string
+    // device type, like NVIDIA, MLU
+    Type      string
+    Usedmem   uint
+    Usedcores uint
 }
 
 type ContainerDevices []ContainerDevice

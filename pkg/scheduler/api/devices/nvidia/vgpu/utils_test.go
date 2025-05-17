@@ -19,95 +19,95 @@ package vgpu
 import "testing"
 
 func TestCheckGPUtype(t *testing.T) {
-	tests := []struct {
-		name     string
-		annos    map[string]string
-		cardtype string
-		want     bool
-	}{
-		{
-			name: "Single GPUInUse value matches",
-			annos: map[string]string{
-				GPUInUse: "NVIDIA",
-			},
-			cardtype: "NVIDIA",
-			want:     true,
-		},
-		{
-			name: "GPUInUse mixed case matches",
-			annos: map[string]string{
-				GPUInUse: "nvidia",
-			},
-			cardtype: "NVIDIA",
-			want:     true,
-		},
-		{
-			name: "Multiple GPUInUse values, one matches",
-			annos: map[string]string{
-				GPUInUse: "AMD,NVIDIA,INTEL",
-			},
-			cardtype: "NVIDIA",
-			want:     true,
-		},
-		{
-			name: "Multiple GPUInUse values, none matches",
-			annos: map[string]string{
-				GPUInUse: "AMD,INTEL,MLU",
-			},
-			cardtype: "NVIDIA",
-			want:     false,
-		},
-		{
-			name: "Single GPUNoUse value matches",
-			annos: map[string]string{
-				GPUNoUse: "NVIDIA",
-			},
-			cardtype: "NVIDIA",
-			want:     false,
-		},
-		{
-			name: "GPUNoUse mixed case matches",
-			annos: map[string]string{
-				GPUNoUse: "nvidia",
-			},
-			cardtype: "NVIDIA",
-			want:     false,
-		},
-		{
-			name: "Multiple GPUNoUse values, one matches",
-			annos: map[string]string{
-				GPUNoUse: "AMD,NVIDIA,INTEL",
-			},
-			cardtype: "NVIDIA",
-			want:     false,
-		},
-		{
-			name: "Multiple GPUNoUse values, none matches",
-			annos: map[string]string{
-				GPUNoUse: "AMD,INTEL,MLU",
-			},
-			cardtype: "NVIDIA",
-			want:     true,
-		},
-		{
-			name:     "Empty annotations map",
-			annos:    map[string]string{},
-			cardtype: "NVIDIA",
-			want:     true,
-		},
-		{
-			name:     "Nil annotations map",
-			annos:    nil,
-			cardtype: "NVIDIA",
-			want:     true,
-		},
-	}
+    tests := []struct {
+        name     string
+        annos    map[string]string
+        cardtype string
+        want     bool
+    }{
+        {
+            name: "Single GPUInUse value matches",
+            annos: map[string]string{
+                GPUInUse: "NVIDIA",
+            },
+            cardtype: "NVIDIA",
+            want:     true,
+        },
+        {
+            name: "GPUInUse mixed case matches",
+            annos: map[string]string{
+                GPUInUse: "nvidia",
+            },
+            cardtype: "NVIDIA",
+            want:     true,
+        },
+        {
+            name: "Multiple GPUInUse values, one matches",
+            annos: map[string]string{
+                GPUInUse: "AMD,NVIDIA,INTEL",
+            },
+            cardtype: "NVIDIA",
+            want:     true,
+        },
+        {
+            name: "Multiple GPUInUse values, none matches",
+            annos: map[string]string{
+                GPUInUse: "AMD,INTEL,MLU",
+            },
+            cardtype: "NVIDIA",
+            want:     false,
+        },
+        {
+            name: "Single GPUNoUse value matches",
+            annos: map[string]string{
+                GPUNoUse: "NVIDIA",
+            },
+            cardtype: "NVIDIA",
+            want:     false,
+        },
+        {
+            name: "GPUNoUse mixed case matches",
+            annos: map[string]string{
+                GPUNoUse: "nvidia",
+            },
+            cardtype: "NVIDIA",
+            want:     false,
+        },
+        {
+            name: "Multiple GPUNoUse values, one matches",
+            annos: map[string]string{
+                GPUNoUse: "AMD,NVIDIA,INTEL",
+            },
+            cardtype: "NVIDIA",
+            want:     false,
+        },
+        {
+            name: "Multiple GPUNoUse values, none matches",
+            annos: map[string]string{
+                GPUNoUse: "AMD,INTEL,MLU",
+            },
+            cardtype: "NVIDIA",
+            want:     true,
+        },
+        {
+            name:     "Empty annotations map",
+            annos:    map[string]string{},
+            cardtype: "NVIDIA",
+            want:     true,
+        },
+        {
+            name:     "Nil annotations map",
+            annos:    nil,
+            cardtype: "NVIDIA",
+            want:     true,
+        },
+    }
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := checkGPUtype(tt.annos, tt.cardtype); got != tt.want {
-				t.Errorf("checkGPUtype() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if got := checkGPUtype(tt.annos, tt.cardtype); got != tt.want {
+                t.Errorf("checkGPUtype() = %v, want %v", got, tt.want)
+            }
+        })
+    }
 }
