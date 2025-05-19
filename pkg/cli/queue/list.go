@@ -29,10 +29,11 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/podgroup"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 type listFlags struct {
-	commonFlags
+	util.CommonFlags
 }
 
 const (
@@ -68,12 +69,12 @@ var listQueueFlags = &listFlags{}
 
 // InitListFlags inits all flags.
 func InitListFlags(cmd *cobra.Command) {
-	initFlags(cmd, &listQueueFlags.commonFlags)
+	util.InitFlags(cmd, &listQueueFlags.CommonFlags)
 }
 
 // ListQueue lists all the queue.
 func ListQueue(ctx context.Context) error {
-	config, err := buildConfig(listQueueFlags.Master, listQueueFlags.Kubeconfig)
+	config, err := util.BuildConfig(listQueueFlags.Master, listQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}

@@ -29,10 +29,11 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/podgroup"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 type getFlags struct {
-	commonFlags
+	util.CommonFlags
 
 	Name string
 }
@@ -41,14 +42,14 @@ var getQueueFlags = &getFlags{}
 
 // InitGetFlags is used to init all flags.
 func InitGetFlags(cmd *cobra.Command) {
-	initFlags(cmd, &getQueueFlags.commonFlags)
+	util.InitFlags(cmd, &getQueueFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&getQueueFlags.Name, "name", "n", "", "the name of queue")
 }
 
 // GetQueue gets a queue.
 func GetQueue(ctx context.Context) error {
-	config, err := buildConfig(getQueueFlags.Master, getQueueFlags.Kubeconfig)
+	config, err := util.BuildConfig(getQueueFlags.Master, getQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}

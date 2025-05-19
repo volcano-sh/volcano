@@ -27,6 +27,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 const (
@@ -39,7 +40,7 @@ const (
 )
 
 type operateFlags struct {
-	commonFlags
+	util.CommonFlags
 
 	// Name is name of queue
 	Name string
@@ -53,7 +54,7 @@ var operateQueueFlags = &operateFlags{}
 
 // InitOperateFlags is used to init all flags during queue operating
 func InitOperateFlags(cmd *cobra.Command) {
-	initFlags(cmd, &operateQueueFlags.commonFlags)
+	util.InitFlags(cmd, &operateQueueFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&operateQueueFlags.Name, "name", "n", "", "the name of queue")
 	cmd.Flags().Int32VarP(&operateQueueFlags.Weight, "weight", "w", 0, "the weight of the queue")
@@ -63,7 +64,7 @@ func InitOperateFlags(cmd *cobra.Command) {
 
 // OperateQueue operates queue
 func OperateQueue(ctx context.Context) error {
-	config, err := buildConfig(operateQueueFlags.Master, operateQueueFlags.Kubeconfig)
+	config, err := util.BuildConfig(operateQueueFlags.Master, operateQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}

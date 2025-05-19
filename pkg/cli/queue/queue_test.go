@@ -31,6 +31,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/cli/podgroup"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 func getTestQueueHTTPServer(t *testing.T) *httptest.Server {
@@ -75,8 +76,8 @@ func getTestQueueListHTTPServer(t *testing.T) *httptest.Server {
 	return httptest.NewServer(handler)
 }
 
-func getCommonFlags(master string) commonFlags {
-	return commonFlags{
+func getCommonFlags(master string) util.CommonFlags {
+	return util.CommonFlags{
 		Master: master,
 	}
 }
@@ -86,7 +87,7 @@ func TestCreateQueue(t *testing.T) {
 	server := getTestQueueHTTPServer(t)
 	defer server.Close()
 
-	createQueueFlags.commonFlags = getCommonFlags(server.URL)
+	createQueueFlags.CommonFlags = getCommonFlags(server.URL)
 	createQueueFlags.Name = "testQueue"
 	createQueueFlags.Weight = int32(2)
 
@@ -112,7 +113,7 @@ func TestGetQueue(t *testing.T) {
 	server := getTestQueueHTTPServer(t)
 	defer server.Close()
 
-	getQueueFlags.commonFlags = getCommonFlags(server.URL)
+	getQueueFlags.CommonFlags = getCommonFlags(server.URL)
 
 	testCases := []struct {
 		Name        string
@@ -144,7 +145,7 @@ func TestGetQueue_empty(t *testing.T) {
 	server := getTestQueueHTTPServer(t)
 	defer server.Close()
 
-	listQueueFlags.commonFlags = getCommonFlags(server.URL)
+	listQueueFlags.CommonFlags = getCommonFlags(server.URL)
 
 	testCases := []struct {
 		Name        string
@@ -169,7 +170,7 @@ func TestGetQueue_nonempty(t *testing.T) {
 	server := getTestQueueListHTTPServer(t)
 	defer server.Close()
 
-	listQueueFlags.commonFlags = getCommonFlags(server.URL)
+	listQueueFlags.CommonFlags = getCommonFlags(server.URL)
 
 	testCases := []struct {
 		Name        string
