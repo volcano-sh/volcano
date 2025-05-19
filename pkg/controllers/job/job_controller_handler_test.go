@@ -113,7 +113,6 @@ func addPodAnnotation(pod *v1.Pod, annotations map[string]string) *v1.Pod {
 }
 
 func TestAddCommandFunc(t *testing.T) {
-
 	namespace := "test"
 
 	testCases := []struct {
@@ -336,7 +335,6 @@ func TestAddPodFunc(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			controller := newController()
 			controller.addJob(testcase.Job)
@@ -519,7 +517,6 @@ func TestDeletePodFunc(t *testing.T) {
 }
 
 func TestUpdatePodGroupFunc(t *testing.T) {
-
 	namespace := "test"
 
 	testCases := []struct {
@@ -559,7 +556,6 @@ func TestUpdatePodGroupFunc(t *testing.T) {
 	}
 
 	for i, testcase := range testCases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			controller := newController()
 			controller.updatePodGroup(testcase.oldPodGroup, testcase.newPodGroup)

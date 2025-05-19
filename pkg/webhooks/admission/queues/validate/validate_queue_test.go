@@ -37,7 +37,6 @@ import (
 )
 
 func TestAdmitQueues(t *testing.T) {
-
 	stateNotSet := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "normal-case-not-set",
@@ -188,7 +187,6 @@ func TestAdmitQueues(t *testing.T) {
 	negativeWeightForUpdateJSON, err := json.Marshal(negativeWeightForUpdate)
 	if err != nil {
 		t.Errorf("Marshal queue with negative weight failed for %v.", err)
-
 	}
 
 	hierarchyWeightsDontMatch := schedulingv1beta1.Queue{

@@ -87,7 +87,6 @@ func TestAddPod(t *testing.T) {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectErr, nil)
 		}
 	}
-
 }
 
 func TestDeletePod(t *testing.T) {
@@ -132,7 +131,6 @@ func TestDeletePod(t *testing.T) {
 	}
 
 	for i, testcase := range testCases {
-
 		testcase.jobinfo.Pods["task1"] = make(map[string]*v1.Pod)
 		testcase.jobinfo.Pods["task1"][testcase.pod.Name] = testcase.pod
 
@@ -211,7 +209,6 @@ func TestUpdatePod(t *testing.T) {
 	}
 
 	for i, testcase := range testCases {
-
 		testcase.jobinfo.Pods["task1"] = make(map[string]*v1.Pod)
 		testcase.jobinfo.Pods["task1"][testcase.oldpod.Name] = testcase.oldpod
 
@@ -228,11 +225,9 @@ func TestUpdatePod(t *testing.T) {
 }
 
 func TestClone(t *testing.T) {
-
 	testCases := []struct {
-		Name    string
-		jobinfo JobInfo
-
+		Name        string
+		jobinfo     JobInfo
 		ExpectValue v1.PodPhase
 	}{
 		{
@@ -254,7 +249,6 @@ func TestClone(t *testing.T) {
 }
 
 func TestSetJob(t *testing.T) {
-
 	testCases := []struct {
 		Name    string
 		job     vcbatchv1.Job
@@ -310,10 +304,8 @@ func TestRequest_String(t *testing.T) {
 
 	for i, testcase := range testCases {
 		reqString := testcase.req.String()
-
 		if reqString != testcase.ExpectedValue {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectedValue, reqString)
 		}
 	}
-
 }
