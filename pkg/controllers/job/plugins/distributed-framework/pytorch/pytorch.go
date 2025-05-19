@@ -120,7 +120,9 @@ func (pp *pytorchPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 func (pp *pytorchPlugin) getTotalReplicas(job *batch.Job) int32 {
 	jobReplicas := int32(0)
 	for _, task := range job.Spec.Tasks {
-		jobReplicas += task.Replicas
+		if task.Name == pp.masterName || task.Name == pp.workerName {
+			jobReplicas += task.Replicas
+		}
 	}
 
 	return jobReplicas
