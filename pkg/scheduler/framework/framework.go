@@ -17,22 +17,37 @@ limitations under the License.
 package framework
 
 import (
-	"time"
-
 	"k8s.io/klog/v2"
-
+	"time"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 // OpenSession start the session
-func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration) *Session {
+func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration, schedulerPolicies map[string]*SchedulerPolicy) *Session {
 	ssn := openSession(cache)
 	ssn.Tiers = tiers
 	ssn.Configurations = configurations
 	ssn.NodeMap = GenerateNodeMapAndSlice(ssn.Nodes)
 	ssn.PodLister = NewPodLister(ssn)
+	ssn.schedulerPolicies = schedulerPolicies
+
+	for name, schedulerPolicy := range schedulerPolicies {
+		schedulerPolicy.plugins = make(map[string]Plugin)
+		for _, tier := range schedulerPolicy.Tiers {
+			for _, plugin := range tier.Plugins {
+				if pb, found := GetPluginBuilder(plugin.Name); !found {
+					klog.Errorf("SchedulerPolicy: %v Failed to get plugin %s.", name, plugin.Name)
+				} else {
+					plugin := pb(plugin.Arguments)
+					schedulerPolicy.plugins[plugin.Name()] = plugin
+					plugin.OnSessionOpen(ssn)
+				}
+			}
+		}
+		copyAndClearSessionFunctions(schedulerPolicy, ssn)
+	}
 
 	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
@@ -57,6 +72,10 @@ func CloseSession(ssn *Session) {
 		plugin.OnSessionClose(ssn)
 		metrics.UpdatePluginDuration(plugin.Name(), metrics.OnSessionClose, metrics.Duration(onSessionCloseStart))
 	}
-
+	for _, schedulerPolicy := range ssn.schedulerPolicies {
+		for _, plugin := range schedulerPolicy.plugins {
+			plugin.OnSessionClose(ssn)
+		}
+	}
 	closeSession(ssn)
 }

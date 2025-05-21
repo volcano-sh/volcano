@@ -117,7 +117,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.MarkDeprecated("lock-object-namespace", "This flag is deprecated and will be removed in a future release. Please use --leader-elect-resource-namespace instead.")
 	// volcano scheduler will ignore pods with scheduler names other than specified with the option
 	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "vc-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
-	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
+	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration directory")
 	fs.DurationVar(&s.SchedulePeriod, "schedule-period", defaultSchedulerPeriod, "The period between each scheduling cycle")
 	fs.StringVar(&s.DefaultQueue, "default-queue", defaultQueue, "The default queue name of the job")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")

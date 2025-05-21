@@ -17,11 +17,12 @@ limitations under the License.
 package enqueue
 
 import (
-	"time"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+	"time"
+	"volcano.sh/volcano/pkg/features"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -50,6 +51,19 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulerPolicy) {
+			schedulerPolicy := ssn.GetSchedulerPolicyFromJob(job)
+			if schedulerPolicy != nil && !schedulerPolicy.HasAction(enqueue.Name()) {
+				klog.Infof("%v's schedulerPolicy does not include the action %v.", job.Name, enqueue.Name())
+				continue
+			}
+
+			if schedulerPolicy == nil && !ssn.HasAction(enqueue.Name()) {
+				klog.Infof("Action %v is not defined in the global schedulingPolicy.", enqueue.Name())
+				continue
+			}
+		}
+
 		if job.ScheduleStartTimestamp.IsZero() {
 			ssn.Jobs[job.UID].ScheduleStartTimestamp = metav1.Time{
 				Time: time.Now(),
