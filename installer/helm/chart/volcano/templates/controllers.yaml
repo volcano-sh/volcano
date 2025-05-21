@@ -85,6 +85,9 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "create", "update", "watch"]
+  - apiGroups: ["topology.volcano.sh"]
+    resources: ["hypernodes", "hypernodes/status"]
+    verbs: ["list", "watch", "get", "create", "delete", "update", "patch"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -189,6 +192,11 @@ spec:
           securityContext:
               {{- toYaml $controller_main_csc | nindent 14 }}
             {{- end }}
+          env:
+          - name: KUBE_POD_NAMESPACE
+            value: {{ .Release.Namespace }}
+          - name: HELM_RELEASE_NAME
+            value: {{ .Release.Name }}
 ---
 apiVersion: v1
 kind: Service
@@ -213,4 +221,20 @@ spec:
   selector:
     app: volcano-controller
   type: ClusterIP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-controller-configmap
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+data:
+  volcano-controller.conf: |
+  {{- if .Values.custom.controller_config_override }}
+  {{ toYaml .Values.custom.controller_config_override | nindent 4 }}
+  {{- end }}
 {{- end }}
