@@ -28,6 +28,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/util/workqueue"
+
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -132,6 +134,7 @@ func TestHyperNodeController_Run(t *testing.T) {
 		discoveryManager:   mockManager,
 		configMapNamespace: "test-namespace",
 		configMapName:      "test-release-controller-configmap",
+		hyperNodeQueue:     workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
 	}
 
 	go controller.Run(stopCh)
