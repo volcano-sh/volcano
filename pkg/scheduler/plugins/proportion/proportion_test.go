@@ -187,7 +187,7 @@ func TestProportion(t *testing.T) {
 				t.Logf("%s: [Event] %s", test.name, event)
 			}
 		}()
-		schedulerCache := cache.NewCustomMockSchedulerCache("mock-test", binder, nil, &util.FakeStatusUpdater{}, nil, &util.FakeVolumeBinder{}, recorder)
+		schedulerCache := cache.NewCustomMockSchedulerCache("mock-test", binder, nil, &util.FakeStatusUpdater{}, nil, recorder)
 
 		for _, node := range test.nodes {
 			schedulerCache.AddOrUpdateNode(node)

@@ -118,7 +118,6 @@ func TestPickUpPendingTasks(t *testing.T) {
 			Queues:          make(map[api.QueueID]*api.QueueInfo),
 			Binder:          nil,
 			StatusUpdater:   &util.FakeStatusUpdater{},
-			VolumeBinder:    &util.FakeVolumeBinder{},
 			Recorder:        record.NewFakeRecorder(100),
 			PriorityClasses: tc.PriorityClasses,
 		}

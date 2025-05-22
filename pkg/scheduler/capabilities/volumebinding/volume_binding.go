@@ -582,7 +582,9 @@ func New(ctx context.Context, plArgs runtime.Object, fh framework.Handle, fts fe
 	var capacityCheck *CapacityCheck
 	if options.ServerOpts.EnableCSIStorage {
 		capacityCheck = &CapacityCheck{
-			CSIDriverInformer:          fh.SharedInformerFactory().Storage().V1().CSIDrivers(),
+			CSIDriverInformer: fh.SharedInformerFactory().Storage().V1().CSIDrivers(),
+			// The API version of CSIStorageCapacity before k8s 1.27 is v1beta1, so volcano has to change the client version
+			// to v1beta1 here to be compatible with the old version
 			CSIStorageCapacityInformer: fh.SharedInformerFactory().Storage().V1beta1().CSIStorageCapacities(),
 		}
 	}

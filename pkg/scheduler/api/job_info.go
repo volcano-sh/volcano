@@ -36,7 +36,6 @@ import (
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
 // DisruptionBudget define job min pod available and max pod unavailable value
@@ -134,9 +133,8 @@ type TaskInfo struct {
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
 
-	NumaInfo   *TopologyInfo
-	PodVolumes *volumescheduling.PodVolumes
-	Pod        *v1.Pod
+	NumaInfo *TopologyInfo
+	Pod      *v1.Pod
 
 	// CustomBindErrHandler is a custom callback func called when task bind err.
 	CustomBindErrHandler func() error `json:"-"`
@@ -278,7 +276,6 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		Namespace:                   ti.Namespace,
 		TaskRole:                    ti.TaskRole,
 		Priority:                    ti.Priority,
-		PodVolumes:                  ti.PodVolumes,
 		Pod:                         ti.Pod,
 		Resreq:                      ti.Resreq.Clone(),
 		InitResreq:                  ti.InitResreq.Clone(),

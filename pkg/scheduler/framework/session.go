@@ -19,6 +19,7 @@ package framework
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -107,6 +108,13 @@ type Session struct {
 	reservedNodesFns  map[string]api.ReservedNodesFn
 	victimTasksFns    map[string][]api.VictimTasksFn
 	jobStarvingFns    map[string]api.ValidateFn
+
+	// cycleStatesMap is used to temporarily store the scheduling status of each pod, its life cycle is same as Session.
+	// Because state needs to be passed between different extension points (not only used in PreFilter and Filter),
+	// in order to avoid different Pod scheduling states from being overwritten,
+	// the state needs to be temporarily stored in cycleStatesMap when an extension point is executed.
+	// The key is task's UID, value is the CycleState.
+	cycleStatesMap sync.Map
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -176,6 +184,8 @@ func openSession(cache cache.Cache) *Session {
 	for _, n := range ssn.Nodes {
 		ssn.TotalResource.Add(n.Allocatable)
 	}
+
+	ssn.InitCycleState()
 
 	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
@@ -282,7 +292,7 @@ func updateRootQueueResources(ssn *Session, allocated v1.ResourceList) {
 }
 
 func closeSession(ssn *Session) {
-	ju := newJobUpdater(ssn)
+	ju := NewJobUpdater(ssn)
 	ju.UpdateAll()
 
 	updateQueueStatus(ssn)
@@ -468,23 +478,8 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 
 // Allocate the task to the node in the session
 func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
-	podVolumes, err := ssn.cache.GetPodVolumes(task, nodeInfo.Node)
-	if err != nil {
-		return err
-	}
-
 	hostname := nodeInfo.Name
-	if err := ssn.cache.AllocateVolumes(task, hostname, podVolumes); err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			ssn.cache.RevertVolumes(task, podVolumes)
-		}
-	}()
-
 	task.Pod.Spec.NodeName = hostname
-	task.PodVolumes = podVolumes
 
 	// Only update status in session
 	job, found := ssn.Jobs[task.Job]
@@ -533,15 +528,14 @@ func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 				return err
 			}
 		}
-	} else {
-		ssn.cache.RevertVolumes(task, podVolumes)
 	}
 
 	return nil
 }
 
 func (ssn *Session) dispatch(task *api.TaskInfo) error {
-	if err := ssn.cache.AddBindTask(task); err != nil {
+	bindContext := ssn.CreateBindContext(task)
+	if err := ssn.cache.AddBindTask(bindContext); err != nil {
 		return err
 	}
 
@@ -560,6 +554,57 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 
 	metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
 	return nil
+}
+
+func (ssn *Session) CreateBindContext(task *api.TaskInfo) *cache.BindContext {
+	bindContext := &cache.BindContext{
+		TaskInfo:   task,
+		Extensions: make(map[string]cache.BindContextExtension),
+	}
+
+	for _, plugin := range ssn.plugins {
+		// If the plugin implements the BindContextHandler interface, call the SetupBindContextExtension method.
+		if handler, ok := plugin.(BindContextHandler); ok {
+			handler.SetupBindContextExtension(ssn, bindContext)
+		}
+	}
+
+	return bindContext
+}
+
+func (ssn *Session) InitCycleState() {
+	// init cycleStatesMap for each pending pod
+	for _, job := range ssn.Jobs {
+		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
+			klog.V(4).Infof("Job <%s/%s> is not valid, reason: %s, message %s, skip initing cycle state for tasks in it",
+				job.Namespace, job.Name, vr.Reason, vr.Message)
+			continue
+		}
+
+		for _, task := range job.TaskStatusIndex[api.Pending] {
+			// Skip tasks whose pod are scheduling gated
+			if task.SchGated {
+				continue
+			}
+
+			// Init cycle state for the pod to share it with other extension points
+			state := k8sframework.NewCycleState()
+			ssn.cycleStatesMap.Store(task.UID, state)
+		}
+	}
+}
+
+func (ssn *Session) GetCycleState(taskID api.TaskID) *k8sframework.CycleState {
+	obj, exist := ssn.cycleStatesMap.Load(taskID)
+	if !exist {
+		// There may be existing pods that are already running, and their cycleState was not initialized during OpenSession,
+		// because initialization was only done for pending pods during OpenSession
+		state := k8sframework.NewCycleState()
+		ssn.cycleStatesMap.Store(taskID, state)
+		return state
+	}
+
+	return obj.(*k8sframework.CycleState)
 }
 
 // Evict the task in the session
@@ -643,27 +688,27 @@ func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNuma
 }
 
 // KubeClient returns the kubernetes client
-func (ssn Session) KubeClient() kubernetes.Interface {
+func (ssn *Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
 }
 
 // VCClient returns the volcano client
-func (ssn Session) VCClient() vcclient.Interface {
+func (ssn *Session) VCClient() vcclient.Interface {
 	return ssn.vcClient
 }
 
 // ClientConfig returns the rest client
-func (ssn Session) ClientConfig() *rest.Config {
+func (ssn *Session) ClientConfig() *rest.Config {
 	return ssn.restConfig
 }
 
 // InformerFactory returns the scheduler ShareInformerFactory
-func (ssn Session) InformerFactory() informers.SharedInformerFactory {
+func (ssn *Session) InformerFactory() informers.SharedInformerFactory {
 	return ssn.informerFactory
 }
 
 // RecordPodGroupEvent records podGroup events
-func (ssn Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason, msg string) {
+func (ssn *Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason, msg string) {
 	if podGroup == nil {
 		return
 	}
@@ -677,7 +722,7 @@ func (ssn Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason
 }
 
 // String return nodes and jobs information in the session
-func (ssn Session) String() string {
+func (ssn *Session) String() string {
 	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
 
 	for _, job := range ssn.Jobs {
