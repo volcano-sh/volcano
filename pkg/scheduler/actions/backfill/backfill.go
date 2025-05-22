@@ -17,9 +17,10 @@ limitations under the License.
 package backfill
 
 import (
-	"time"
-
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+	"time"
+	"volcano.sh/volcano/pkg/features"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -111,6 +112,19 @@ func (backfill *Action) pickUpPendingTasks(ssn *framework.Session) []*api.TaskIn
 	tasks := map[api.JobID]*util.PriorityQueue{}
 	var pendingTasks []*api.TaskInfo
 	for _, job := range ssn.Jobs {
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulerPolicy) {
+			schedulerPolicy := ssn.GetSchedulerPolicyFromJob(job)
+			if schedulerPolicy != nil && !schedulerPolicy.HasAction(backfill.Name()) {
+				klog.Infof("%v's schedulerPolicy does not include the action %v.", job.Name, backfill.Name())
+				continue
+			}
+
+			if schedulerPolicy == nil && !ssn.HasAction(backfill.Name()) {
+				klog.Infof("Action %v is not defined in the global schedulingPolicy.", backfill.Name())
+				continue
+			}
+		}
+
 		if job.IsPending() {
 			continue
 		}

@@ -42,6 +42,8 @@ type QueueInfo struct {
 	Hierarchy string
 
 	Queue *scheduling.Queue
+
+	SchedulerPolicy SchedulerPolicy
 }
 
 // NewQueueInfo creates new queueInfo object
@@ -61,12 +63,13 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 // Clone is used to clone queueInfo object
 func (q *QueueInfo) Clone() *QueueInfo {
 	return &QueueInfo{
-		UID:       q.UID,
-		Name:      q.Name,
-		Weight:    q.Weight,
-		Hierarchy: q.Hierarchy,
-		Weights:   q.Weights,
-		Queue:     q.Queue,
+		UID:             q.UID,
+		Name:            q.Name,
+		Weight:          q.Weight,
+		Hierarchy:       q.Hierarchy,
+		Weights:         q.Weights,
+		Queue:           q.Queue,
+		SchedulerPolicy: q.SchedulerPolicy,
 	}
 }
 

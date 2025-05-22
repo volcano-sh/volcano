@@ -18,11 +18,13 @@ package scheduler
 
 import (
 	"fmt"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+	"volcano.sh/volcano/pkg/features"
 
 	"github.com/fsnotify/fsnotify"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -47,12 +49,14 @@ type Scheduler struct {
 	schedulePeriod time.Duration
 	once           sync.Once
 
-	mutex          sync.Mutex
-	actions        []framework.Action
-	plugins        []conf.Tier
-	configurations []conf.Configuration
-	metricsConf    map[string]string
-	dumper         schedcache.Dumper
+	mutex             sync.Mutex
+	PolicyMutex       sync.Mutex
+	actions           []framework.Action
+	plugins           []conf.Tier
+	configurations    []conf.Configuration
+	metricsConf       map[string]string
+	dumper            schedcache.Dumper
+	schedulerPolicies map[string]*framework.SchedulerPolicy
 }
 
 // NewScheduler returns a Scheduler
@@ -114,13 +118,15 @@ func (pc *Scheduler) runOnce() {
 		conf.EnabledActionMap[action.Name()] = true
 	}
 
-	ssn := framework.OpenSession(pc.cache, plugins, configurations)
+	ssn := framework.OpenSession(pc.cache, plugins, configurations, pc.schedulerPolicies)
+	ssn.Actions = actions
+
 	defer func() {
 		framework.CloseSession(ssn)
 		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 	}()
 
-	for _, action := range actions {
+	for _, action := range pc.UnionActions() {
 		actionStartTime := time.Now()
 		action.Execute(ssn)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
@@ -128,13 +134,26 @@ func (pc *Scheduler) runOnce() {
 }
 
 func (pc *Scheduler) loadSchedulerConf() {
-	klog.V(4).Infof("Start loadSchedulerConf ...")
+	klog.V(4).Infof("Start loading configurations from directory...")
 	defer func() {
 		actions, plugins := pc.getSchedulerConf()
 		klog.V(2).Infof("Successfully loaded Scheduler conf, actions: %v, plugins: %v", actions, plugins)
+
+		policyActions, policyPlugins := pc.getSchedulerPolicyConf()
+		for policyName := range pc.schedulerPolicies {
+			klog.V(2).Infof("Successfully loaded policy %s - actions: %v, plugins: %v",
+				policyName, policyActions[policyName], policyPlugins[policyName])
+		}
 	}()
 
-	var err error
+	// Read all files in the directory.
+	files, err := os.ReadDir(filepath.Dir(pc.schedulerConf))
+	if err != nil {
+		klog.Errorf("Failed to read configuration directory: %v", err)
+		return
+	}
+
+	// Default configuration is loaded first.
 	pc.once.Do(func() {
 		pc.actions, pc.plugins, pc.configurations, pc.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
 		if err != nil {
@@ -143,29 +162,49 @@ func (pc *Scheduler) loadSchedulerConf() {
 		}
 	})
 
-	var config string
-	if len(pc.schedulerConf) != 0 {
-		confData, err := os.ReadFile(pc.schedulerConf)
+	policies := make(map[string]*framework.SchedulerPolicy)
+
+	for _, file := range files {
+		if file.IsDir() || strings.HasPrefix(file.Name(), ".") {
+			continue
+		}
+
+		fileName := file.Name()
+		filePath := filepath.Join(filepath.Dir(pc.schedulerConf), fileName)
+
+		confData, err := os.ReadFile(filePath)
 		if err != nil {
-			klog.Errorf("Failed to read the Scheduler config in '%s', using previous configuration: %v",
-				pc.schedulerConf, err)
+			klog.Errorf("Failed to read file %s: %v", filePath, err)
+			continue
+		}
+		config := strings.TrimSpace(string(confData))
+
+		actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
+		if err != nil {
+			klog.Errorf("Scheduler config %s is invalid: %v", config, err)
 			return
 		}
-		config = strings.TrimSpace(string(confData))
+
+		if fileName == "volcano-scheduler.conf" {
+			// Update the global configuration.
+			pc.mutex.Lock()
+			pc.actions = actions
+			pc.plugins = plugins
+			pc.configurations = configurations
+			pc.metricsConf = metricsConf
+			pc.mutex.Unlock()
+		} else {
+			// Create SchedulerPolicy
+			policy := framework.NewSchedulerPolicy()
+			policy.Actions = actions
+			policy.Tiers = plugins
+			policies[fileName] = policy
+		}
 	}
 
-	actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
-	if err != nil {
-		klog.Errorf("Scheduler config %s is invalid: %v", config, err)
-		return
-	}
-
-	pc.mutex.Lock()
-	pc.actions = actions
-	pc.plugins = plugins
-	pc.configurations = configurations
-	pc.metricsConf = metricsConf
-	pc.mutex.Unlock()
+	pc.PolicyMutex.Lock()
+	pc.schedulerPolicies = policies
+	pc.PolicyMutex.Unlock()
 }
 
 func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
@@ -180,30 +219,91 @@ func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
 	return
 }
 
+func (pc *Scheduler) getSchedulerPolicyConf() (map[string][]string, map[string][]string) {
+	policyActions := make(map[string][]string)
+	policyPlugins := make(map[string][]string)
+
+	for policyName, policy := range pc.schedulerPolicies {
+		var actions []string
+		for _, action := range policy.Actions {
+			actions = append(actions, action.Name())
+		}
+		policyActions[policyName] = actions
+
+		var plugins []string
+		for _, tier := range policy.Tiers {
+			for _, plugin := range tier.Plugins {
+				plugins = append(plugins, plugin.Name)
+			}
+		}
+		policyPlugins[policyName] = plugins
+	}
+
+	return policyActions, policyPlugins
+}
+
 func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 	if pc.fileWatcher == nil {
 		return
 	}
 	eventCh := pc.fileWatcher.Events()
 	errCh := pc.fileWatcher.Errors()
+	var debounceTimer *time.Timer
 	for {
 		select {
 		case event, ok := <-eventCh:
 			if !ok {
 				return
 			}
-			klog.V(4).Infof("watch %s event: %v", pc.schedulerConf, event)
-			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
-				pc.loadSchedulerConf()
-				pc.cache.SetMetricsConf(pc.metricsConf)
+			klog.V(4).Infof("watch directory event: %v", event)
+
+			// Reload all configurations on any file change.
+			if event.Op&fsnotify.Write == fsnotify.Write ||
+				event.Op&fsnotify.Create == fsnotify.Create ||
+				event.Op&fsnotify.Remove == fsnotify.Remove {
+				// Apply debouncing to avoid frequent reloads on file change events.
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+				debounceTimer = time.AfterFunc(1*time.Second, func() {
+					pc.loadSchedulerConf()
+					pc.cache.SetMetricsConf(pc.metricsConf)
+					klog.V(4).Infof("Reloaded configurations after file change: %s", event.Name)
+				})
 			}
+
 		case err, ok := <-errCh:
 			if !ok {
 				return
 			}
-			klog.Infof("watch %s error: %v", pc.schedulerConf, err)
+			klog.Errorf("watch directory error: %v", err)
 		case <-stopCh:
 			return
 		}
 	}
+}
+
+// UnionActions obtains the union of global actions and schedulerPolicy actions.
+func (pc *Scheduler) UnionActions() []framework.Action {
+	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulerPolicy) {
+		var actions []framework.Action
+		actionMap := make(map[string]framework.Action)
+
+		for _, schedulerPolicy := range pc.schedulerPolicies {
+			for _, action := range schedulerPolicy.Actions {
+				actionMap[action.Name()] = action
+			}
+		}
+
+		for _, action := range pc.actions {
+			actionMap[action.Name()] = action
+		}
+
+		for _, action := range actionMap {
+			actions = append(actions, action)
+		}
+
+		return actions
+	}
+	return pc.actions
 }

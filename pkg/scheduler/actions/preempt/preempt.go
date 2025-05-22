@@ -18,9 +18,10 @@ package preempt
 
 import (
 	"fmt"
-
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+	"volcano.sh/volcano/pkg/features"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -63,6 +64,19 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 	queues := map[api.QueueID]*api.QueueInfo{}
 
 	for _, job := range ssn.Jobs {
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulerPolicy) {
+			schedulerPolicy := ssn.GetSchedulerPolicyFromJob(job)
+			if schedulerPolicy != nil && !schedulerPolicy.HasAction(pmpt.Name()) {
+				klog.Infof("%v's schedulerPolicy does not include the action %v.", job.Name, pmpt.Name())
+				continue
+			}
+
+			if schedulerPolicy == nil && !ssn.HasAction(pmpt.Name()) {
+				klog.Infof("Action %v is not defined in the global schedulingPolicy.", pmpt.Name())
+				continue
+			}
+		}
+
 		if job.IsPending() {
 			continue
 		}

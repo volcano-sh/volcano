@@ -43,6 +43,9 @@ const (
 
 	// ResourceTopology supports resources like cpu/memory topology aware.
 	ResourceTopology featuregate.Feature = "ResourceTopology"
+
+	// SchedulerPolicy supports queue-level scheduling policies.
+	SchedulerPolicy featuregate.Feature = "SchedulerPolicy"
 )
 
 func init() {
@@ -58,4 +61,5 @@ var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec
 	// CSIStorage is explicitly set to false by default.
 	CSIStorage:       {Default: false, PreRelease: featuregate.Alpha},
 	ResourceTopology: {Default: true, PreRelease: featuregate.Alpha},
+	SchedulerPolicy:  {Default: false, PreRelease: featuregate.Alpha},
 }
