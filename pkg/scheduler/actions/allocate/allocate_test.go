@@ -17,6 +17,7 @@ limitations under the License.
 package allocate
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -257,6 +258,87 @@ func TestAllocate(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// BenchmarkAllocate can help analyze the performance differences before and after changes to the scheduling framework. Currently, it is hardcoded to schedule 1000 pods
+func BenchmarkAllocate(b *testing.B) {
+	plugins := map[string]framework.PluginBuilder{
+		drf.PluginName:        drf.New,
+		proportion.PluginName: proportion.New,
+		predicates.PluginName: predicates.New,
+		nodeorder.PluginName:  nodeorder.New,
+		gang.PluginName:       gang.New,
+	}
+
+	// Create 1 pod group
+	podGroups := []*schedulingv1.PodGroup{
+		util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupInqueue),
+	}
+
+	// Create 1000 pods
+	numPods := 1000
+	pods := make([]*v1.Pod, 0, numPods)
+	for i := 0; i < numPods; i++ {
+		podName := fmt.Sprintf("p%d", i+1)
+		pods = append(pods, util.BuildPod("c1", podName, "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)))
+	}
+
+	nodes := []*v1.Node{
+		util.BuildNode("n1", api.BuildResourceList("2000", "4000Gi", []api.ScalarResource{{Name: "pods", Value: "2000"}}...), make(map[string]string)),
+	}
+	queues := []*schedulingv1.Queue{
+		util.BuildQueue("c1", 1, nil),
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:                gang.PluginName,
+					EnabledJobOrder:     &trueValue,
+					EnabledJobReady:     &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+				},
+				{
+					Name:               drf.PluginName,
+					EnabledPreemptable: &trueValue,
+					EnabledJobOrder:    &trueValue,
+				},
+				{
+					Name:               proportion.PluginName,
+					EnabledQueueOrder:  &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledAllocatable: &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:             nodeorder.PluginName,
+					EnabledNodeOrder: &trueValue,
+				},
+			},
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		testStruct := uthelper.TestCommonStruct{
+			Name:      "benchmark-allocate",
+			Plugins:   plugins,
+			PodGroups: podGroups,
+			Pods:      pods,
+			Nodes:     nodes,
+			Queues:    queues,
+		}
+		testStruct.RegisterSession(tiers, nil)
+		action := New()
+		testStruct.Run([]framework.Action{action})
+		testStruct.Close()
 	}
 }
 
