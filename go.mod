@@ -11,7 +11,7 @@ require (
 	github.com/elastic/go-elasticsearch/v7 v7.17.7
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/golang/mock v1.6.0
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/imdario/mergo v0.3.16
@@ -20,12 +20,12 @@ require (
 	github.com/onsi/gomega v1.35.1
 	github.com/opencontainers/runc v1.2.1
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.19.1
-	github.com/prometheus/common v0.55.0
+	github.com/prometheus/client_golang v1.22.0
+	github.com/prometheus/common v0.62.0
 	github.com/prometheus/prometheus v0.39.1
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/pflag v1.0.5
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/vishvananda/netlink v1.3.1-0.20240905180732-b1ce50cfa9be
 	go.uber.org/automaxprocs v1.5.1
 	golang.org/x/crypto v0.37.0
@@ -69,6 +69,7 @@ require (
 	github.com/google/btree v1.0.1 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/karrick/godirwalk v1.17.0 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible // indirect
 	github.com/moby/spdystream v0.5.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
@@ -145,7 +146,7 @@ require (
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/mod v0.21.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
-	golang.org/x/oauth2 v0.23.0 // indirect
+	golang.org/x/oauth2 v0.24.0 // indirect
 	golang.org/x/sync v0.13.0 // indirect
 	golang.org/x/term v0.31.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
@@ -153,7 +154,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20240826202546-f6391c0de4c7 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240826202546-f6391c0de4c7 // indirect
 	google.golang.org/grpc v1.65.0 // indirect
-	google.golang.org/protobuf v1.35.1 // indirect
+	google.golang.org/protobuf v1.36.5 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
