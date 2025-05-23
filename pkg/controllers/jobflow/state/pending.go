@@ -31,6 +31,7 @@ func (p *pendingState) Execute(action jobflowv1alpha1.Action) error {
 			if (len(status.RunningJobs) > 0 || len(status.CompletedJobs) > 0) && len(status.FailedJobs) <= 0 {
 				status.State.Phase = jobflowv1alpha1.Running
 			} else if len(status.FailedJobs) > 0 {
+				UpdateJobFlowFailed(p.jobFlow.Namespace)
 				status.State.Phase = jobflowv1alpha1.Failed
 			} else {
 				status.State.Phase = jobflowv1alpha1.Pending
