@@ -19,8 +19,10 @@ package priority
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -148,6 +150,176 @@ func TestPreempt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+		})
+	}
+}
+
+// Helper function to create api.TaskInfo with specific parameters
+func createTask(name, namespace, rankValue string, suffixes ...string) *api.TaskInfo {
+	podName := name
+	if len(suffixes) > 0 {
+		name = name + suffixes[0]
+		podName = name
+	}
+
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: namespace,
+		},
+	}
+
+	if rankValue != "" {
+		pod.Spec.Containers = []v1.Container{
+			{
+				Env: []v1.EnvVar{
+					{
+						Name:  "RANK",
+						Value: rankValue,
+					},
+				},
+			},
+		}
+	}
+
+	return &api.TaskInfo{
+		Name:      name,
+		Namespace: namespace,
+		Pod:       pod,
+	}
+}
+
+// TestTaskOrderByRank tests ranking comparison logic
+func TestTaskOrderByRank(t *testing.T) {
+	// Test cases for rank comparison
+	testCases := []struct {
+		name     string
+		a        *api.TaskInfo
+		b        *api.TaskInfo
+		expected int
+	}{
+		{
+			name:     "Both have valid numeric ranks - a < b",
+			a:        createTask("task1", "ns", "5"),
+			b:        createTask("task2", "ns", "10"),
+			expected: api.OrderingLess,
+		},
+		{
+			name:     "Valid vs invalid rank",
+			a:        createTask("task1", "ns", "5"),
+			b:        createTask("task2", "ns", "invalid"),
+			expected: api.OrderingGreater,
+		},
+		{
+			name:     "No ranks specified",
+			a:        createTask("task1", "ns", ""),
+			b:        createTask("task2", "ns", ""),
+			expected: api.OrderingEqual,
+		},
+		{
+			name:     "Mixed valid and empty ranks",
+			a:        createTask("task1", "ns", "3"),
+			b:        createTask("task2", "ns", ""),
+			expected: api.OrderingGreater,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := compareTaskByRank(tc.a, tc.b)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestTaskOrderByNameSuffix tests name suffix comparison logic
+func TestTaskOrderByNameSuffix(t *testing.T) {
+	testCases := []struct {
+		name     string
+		a        *api.TaskInfo
+		b        *api.TaskInfo
+		expected int
+	}{
+		{
+			name:     "A has launcher suffix",
+			a:        createTask("task", "ns", "", "-launcher"),
+			b:        createTask("task", "ns", "", "-worker-0"),
+			expected: api.OrderingLess,
+		},
+		{
+			name:     "B has master-0 suffix",
+			a:        createTask("task", "ns", "", "-worker-1"),
+			b:        createTask("task", "ns", "", "-master-0"),
+			expected: api.OrderingGreater,
+		},
+		{
+			name:     "Both have numeric suffixes",
+			a:        createTask("task", "ns", "", "-worker-0"),
+			b:        createTask("task", "ns", "", "-worker-1"),
+			expected: api.OrderingLess,
+		},
+		{
+			name:     "Complex numeric comparison",
+			a:        createTask("task", "ns", "", "-worker-10"),
+			b:        createTask("task", "ns", "", "-worker-2"),
+			expected: api.OrderingGreater,
+		},
+		{
+			name:     "No numeric suffixes",
+			a:        createTask("task", "ns", "", "-worker"),
+			b:        createTask("task", "ns", "", "-worker"),
+			expected: api.OrderingEqual,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := compareTaskByNameSuffix(tc.a, tc.b)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestCompareNumberStr tests numeric string comparison
+func TestCompareNumberStr(t *testing.T) {
+	testCases := []struct {
+		name     string
+		a        string
+		b        string
+		expected int
+	}{
+		{"Valid numbers", "5", "10", api.OrderingLess},
+		{"Invalid vs valid", "abc", "5", api.OrderingLess},
+		{"Valid vs invalid", "5", "abc", api.OrderingGreater},
+		{"Both invalid", "foo", "bar", api.OrderingEqual},
+		{"Empty strings", "", "", api.OrderingEqual},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := compareNumberStr(tc.a, tc.b)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestExtractTrailingNumber tests number extraction from names
+func TestExtractTrailingNumber(t *testing.T) {
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{"worker-23", "23"},
+		{"master-0", "0"},
+		{"launcher", ""},
+		{"worker-1-2", "2"},
+		{"invalid-format", ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.input, func(t *testing.T) {
+			result := extractTrailingNumber(tc.input)
+			assert.Equal(t, tc.expected, result)
 		})
 	}
 }

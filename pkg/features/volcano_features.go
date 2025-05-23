@@ -46,6 +46,8 @@ const (
 
 	// CronVolcanoJobSupport can identify and schedule volcano cronjob.
 	CronVolcanoJobSupport featuregate.Feature = "CronVolcanoJobSupport"
+	// NodeIPAware supports node ip aware scheduling.
+	NodeIPAware featuregate.Feature = "NodeIPAware"
 )
 
 func init() {
@@ -61,5 +63,6 @@ var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec
 	// CSIStorage is explicitly set to false by default.
 	CSIStorage:            {Default: false, PreRelease: featuregate.Alpha},
 	ResourceTopology:      {Default: true, PreRelease: featuregate.Alpha},
+	NodeIPAware:           {Default: false, PreRelease: featuregate.Alpha},
 	CronVolcanoJobSupport: {Default: true, PreRelease: featuregate.Alpha},
 }
