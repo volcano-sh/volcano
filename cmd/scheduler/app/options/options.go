@@ -32,6 +32,7 @@ import (
 const (
 	defaultSchedulerName   = "volcano"
 	defaultSchedulerPeriod = time.Second
+	defaultResyncPeriod    = 0
 	defaultQueue           = "default"
 	defaultListenAddress   = ":8080"
 	defaultHealthzAddress  = ":11251"
@@ -60,6 +61,7 @@ type ServerOption struct {
 	SchedulerNames    []string
 	SchedulerConf     string
 	SchedulePeriod    time.Duration
+	ResyncPeriod      time.Duration
 	// leaderElection defines the configuration of leader election.
 	LeaderElection config.LeaderElectionConfiguration
 	// Deprecated: use ResourceNamespace instead.
@@ -119,6 +121,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "vc-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
 	fs.DurationVar(&s.SchedulePeriod, "schedule-period", defaultSchedulerPeriod, "The period between each scheduling cycle")
+	fs.DurationVar(&s.ResyncPeriod, "resync-period", defaultResyncPeriod, "The default resync period for k8s native informer factory")
 	fs.StringVar(&s.DefaultQueue, "default-queue", defaultQueue, "The default queue name of the job")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 	fs.StringVar(&s.ListenAddress, "listen-address", defaultListenAddress, "The address to listen on for HTTP requests.")
