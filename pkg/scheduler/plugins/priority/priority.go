@@ -17,8 +17,14 @@ limitations under the License.
 package priority
 
 import (
+	"regexp"
+	"strconv"
+	"strings"
+
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
@@ -46,10 +52,21 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
 
+		// if NodeIPAware feature is enabled, sort tasks by rank first
+		if utilfeature.DefaultFeatureGate.Enabled(features.NodeIPAware) {
+			if ret := taskOrderByRank(lv, rv); ret != 0 {
+				return ret
+			}
+		}
+
 		klog.V(4).Infof("Priority TaskOrder: <%v/%v> priority is %v, <%v/%v> priority is %v",
 			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
 
 		if lv.Priority == rv.Priority {
+			// if NodeIPAware feature is enabled, sort tasks by name suffix
+			if utilfeature.DefaultFeatureGate.Enabled(features.NodeIPAware) {
+				return taskOrderByNameSuffix(lv, rv)
+			}
 			return 0
 		}
 
@@ -118,6 +135,73 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return ji.ReadyTaskNum()+ji.WaitingTaskNum() < int32(len(ji.Tasks))
 	}
 	ssn.AddJobStarvingFns(pp.Name(), jobStarvingFn)
+}
+
+func taskOrderByRank(a, b *api.TaskInfo) int {
+	rankA := a.GetRank()
+	randB := b.GetRank()
+
+	// If RANK is specified
+	if rankA != "" || randB != "" {
+		return compareNumberStr(rankA, randB)
+	}
+	return 0
+}
+
+func taskOrderByNameSuffix(a, b *api.TaskInfo) int {
+	// If RANK is not specified (primarily for MPI tasks, as ranktable parsing
+	// can be complex), sort by pod name index for graceful handling.
+	// FOR PyTorchJob, the pods that created are named as
+	// xxx-master-0
+	// xxx-worker-0
+	// xxx-worker-1
+	//
+	// FOR MPIJob, the pods that created are named as
+	// xxx-launcher
+	// xxx-worker-0
+	// xxx-worker-1
+	if strings.HasSuffix(a.Name, "-launcher") || strings.HasSuffix(a.Name, "-master-0") {
+		return -1
+	}
+
+	if strings.HasSuffix(b.Name, "-launcher") || strings.HasSuffix(b.Name, "-master-0") {
+		return 1
+	}
+
+	aNum := extractTrailingNumber(a.Name)
+	bNum := extractTrailingNumber(b.Name)
+	return compareNumberStr(aNum, bNum)
+}
+
+func compareNumberStr(rankA, rankB string) int {
+	rankAId, aErr := strconv.Atoi(rankA)
+	rankBId, bErr := strconv.Atoi(rankB)
+	if aErr == nil && bErr == nil {
+		switch {
+		case rankAId < rankBId:
+			return -1
+		case rankAId > rankBId:
+			return 1
+		default:
+			return 0
+		}
+	}
+	if aErr == nil && bErr != nil {
+		return 1
+	}
+
+	if aErr != nil && bErr == nil {
+		return -1
+	}
+	return 0
+}
+func extractTrailingNumber(str string) string {
+	re := regexp.MustCompile(`-(\d+)$`)
+	matches := re.FindStringSubmatch(str)
+	if len(matches) < 2 {
+		return ""
+	}
+	return matches[1]
 }
 
 func (pp *priorityPlugin) OnSessionClose(ssn *framework.Session) {}
