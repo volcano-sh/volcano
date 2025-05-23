@@ -107,7 +107,7 @@ func TestPreemptableAndReclaimableFn(t *testing.T) {
 		}
 
 		// (b. set the SchedulerCache
-		schedulerCache := &cache.SchedulerCache{}
+		schedulerCache := cache.NewDefaultMockSchedulerCache("volcano")
 		schedulerCache.SetSharedInformerFactory(informerFactory)
 
 		// (c. set the Session with preempt, reclaim and shuffle action

@@ -207,4 +207,5 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.32.2
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.32.2
 	k8s.io/sample-controller => k8s.io/sample-controller v0.32.2
+	volcano.sh/apis => github.com/Monokaix/apis v0.0.0-20250522082507-462f06aaa392
 )

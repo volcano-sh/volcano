@@ -758,6 +758,15 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 				PriorityClassName: job.Spec.PriorityClassName,
 			},
 		}
+		if job.Spec.NetworkTopology != nil {
+			nt := &scheduling.NetworkTopologySpec{
+				Mode: scheduling.NetworkTopologyMode(job.Spec.NetworkTopology.Mode),
+			}
+			if job.Spec.NetworkTopology.HighestTierAllowed != nil {
+				nt.HighestTierAllowed = job.Spec.NetworkTopology.HighestTierAllowed
+			}
+			pg.Spec.NetworkTopology = nt
+		}
 
 		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
 			if !apierrors.IsAlreadyExists(err) {

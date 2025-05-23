@@ -57,6 +57,18 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              networkTopology:
+                properties:
+                  highestTierAllowed:
+                    default: 1
+                    type: integer
+                  mode:
+                    default: hard
+                    enum:
+                    - hard
+                    - soft
+                    type: string
+                type: object
               plugins:
                 additionalProperties:
                   items:

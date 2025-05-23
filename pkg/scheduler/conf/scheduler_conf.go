@@ -87,6 +87,8 @@ type PluginOption struct {
 	EnabledOverused *bool `yaml:"enabledOverused"`
 	// EnabledAllocatable defines whether allocatable is enabled
 	EnabledAllocatable *bool `yaml:"enabledAllocatable"`
+	// EnabledHyperNodeOrder defines whether hyperNode is enabled
+	EnabledHyperNodeOrder *bool `yaml:"enabledHyperNodeOrder"`
 	// Arguments defines the different arguments that can be given to different plugins
 	Arguments map[string]interface{} `yaml:"arguments"`
 }

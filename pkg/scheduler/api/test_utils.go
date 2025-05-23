@@ -25,12 +25,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 )
 
-func buildNode(name string, alloc v1.ResourceList) *v1.Node {
+func buildNode(name string, labels map[string]string, alloc v1.ResourceList) *v1.Node {
 	return &v1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: labels,
 		},
 		Status: v1.NodeStatus{
 			Capacity:    alloc,
@@ -133,4 +135,43 @@ func BuildPodgroup(name, ns string, minMember int32, minResource v1.ResourceList
 			MinResources: &minResource,
 		},
 	}
+}
+
+type MemberConfig struct {
+	Name          string
+	Type          topologyv1alpha1.MemberType
+	Selector      string
+	LabelSelector *metav1.LabelSelector
+}
+
+func BuildHyperNode(name string, tier int, members []MemberConfig) *topologyv1alpha1.HyperNode {
+	hn := &topologyv1alpha1.HyperNode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: topologyv1alpha1.HyperNodeSpec{
+			Tier:    tier,
+			Members: make([]topologyv1alpha1.MemberSpec, len(members)),
+		},
+	}
+
+	for i, member := range members {
+		memberSpec := topologyv1alpha1.MemberSpec{
+			Type: member.Type,
+		}
+		switch member.Selector {
+		case "exact":
+			memberSpec.Selector.ExactMatch = &topologyv1alpha1.ExactMatch{Name: member.Name}
+		case "regex":
+			memberSpec.Selector.RegexMatch = &topologyv1alpha1.RegexMatch{Pattern: member.Name}
+		case "label":
+			memberSpec.Selector.LabelMatch = member.LabelSelector
+		default:
+			return nil
+		}
+
+		hn.Spec.Members[i] = memberSpec
+	}
+
+	return hn
 }

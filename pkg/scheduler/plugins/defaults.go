@@ -40,6 +40,7 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	setDefaultIfNil(&option.EnabledJobStarving)
 	setDefaultIfNil(&option.EnabledOverused)
 	setDefaultIfNil(&option.EnabledAllocatable)
+	setDefaultIfNil(&option.EnabledHyperNodeOrder)
 }
 
 func setDefaultIfNil(field **bool) {
