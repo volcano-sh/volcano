@@ -18,11 +18,9 @@ package nodeorder
 
 import (
 	"context"
-	"fmt"
 
 	v1 "k8s.io/api/core/v1"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
@@ -38,6 +36,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
 )
 
 const (
@@ -343,62 +342,8 @@ func interPodAffinityScore(
 	nodeInfos []*k8sframework.NodeInfo,
 	podAffinityWeight int,
 ) (map[string]float64, error) {
-	preScoreStatus := interPodAffinity.PreScore(context.TODO(), state, pod, nodeInfos)
-	if !preScoreStatus.IsSuccess() {
-		return nil, preScoreStatus.AsError()
-	}
-
-	nodeScoreList := make(k8sframework.NodeScoreList, len(nodeInfos))
-	// the default parallelization worker number is 16.
-	// the whole scoring will fail if one of the processes failed.
-	// so just create a parallelizeContext to control the whole ParallelizeUntil process.
-	// if the parallelizeCancel is invoked, the whole "ParallelizeUntil" goes to the end.
-	// this could avoid extra computation, especially in huge cluster.
-	// and the ParallelizeUntil guarantees only "workerNum" goroutines will be working simultaneously.
-	// so it's enough to allocate workerNum size for errCh.
-	// note that, in such case, size of errCh should be no less than parallelization number
-	workerNum := 16
-	errCh := make(chan error, workerNum)
-	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
-	defer parallelizeCancel()
-
-	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodeInfos), func(index int) {
-		nodeName := nodeInfos[index].Node().Name
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		s, status := interPodAffinity.Score(ctx, state, pod, nodeName)
-		if !status.IsSuccess() {
-			parallelizeCancel()
-			errCh <- fmt.Errorf("calculate inter pod affinity priority failed %v", status.Message())
-			return
-		}
-		nodeScoreList[index] = k8sframework.NodeScore{
-			Name:  nodeName,
-			Score: s,
-		}
-	})
-
-	select {
-	case err := <-errCh:
-		return nil, err
-	default:
-	}
-
-	interPodAffinity.NormalizeScore(context.TODO(), state, pod, nodeScoreList)
-
-	nodeScores := make(map[string]float64, len(nodeInfos))
-	for i, nodeScore := range nodeScoreList {
-		// return error if score plugin returns invalid score.
-		if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
-			return nil, fmt.Errorf("inter pod affinity returns an invalid score %v for node %s", nodeScore.Score, nodeScore.Name)
-		}
-		nodeScore.Score *= int64(podAffinityWeight)
-		nodeScoreList[i] = nodeScore
-		nodeScores[nodeScore.Name] = float64(nodeScore.Score)
-	}
-
-	klog.V(4).Infof("inter pod affinity Score for task %s/%s is: %v", pod.Namespace, pod.Name, nodeScores)
-	return nodeScores, nil
+	return nodescore.CalculatePluginScore(interPodAffinity.Name(), interPodAffinity, interPodAffinity,
+		state, pod, nodeInfos, podAffinityWeight)
 }
 
 func taintTolerationScore(
@@ -408,55 +353,8 @@ func taintTolerationScore(
 	nodeInfos []*k8sframework.NodeInfo,
 	taintTolerationWeight int,
 ) (map[string]float64, error) {
-	preScoreStatus := taintToleration.PreScore(context.TODO(), cycleState, pod, nodeInfos)
-	if !preScoreStatus.IsSuccess() {
-		return nil, preScoreStatus.AsError()
-	}
-
-	nodeScoreList := make(k8sframework.NodeScoreList, len(nodeInfos))
-	// size of errCh should be no less than parallelization number, see interPodAffinityScore.
-	workerNum := 16
-	errCh := make(chan error, workerNum)
-	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
-	defer parallelizeCancel()
-
-	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodeInfos), func(index int) {
-		nodeName := nodeInfos[index].Node().Name
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		s, status := taintToleration.Score(ctx, cycleState, pod, nodeName)
-		if !status.IsSuccess() {
-			parallelizeCancel()
-			errCh <- fmt.Errorf("calculate taint toleration priority failed %v", status.Message())
-			return
-		}
-		nodeScoreList[index] = k8sframework.NodeScore{
-			Name:  nodeName,
-			Score: s,
-		}
-	})
-
-	select {
-	case err := <-errCh:
-		return nil, err
-	default:
-	}
-
-	taintToleration.NormalizeScore(context.TODO(), cycleState, pod, nodeScoreList)
-
-	nodeScores := make(map[string]float64, len(nodeInfos))
-	for i, nodeScore := range nodeScoreList {
-		// return error if score plugin returns invalid score.
-		if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
-			return nil, fmt.Errorf("taint toleration returns an invalid score %v for node %s", nodeScore.Score, nodeScore.Name)
-		}
-		nodeScore.Score *= int64(taintTolerationWeight)
-		nodeScoreList[i] = nodeScore
-		nodeScores[nodeScore.Name] = float64(nodeScore.Score)
-	}
-
-	klog.V(4).Infof("taint toleration Score for task %s/%s is: %v", pod.Namespace, pod.Name, nodeScores)
-	return nodeScores, nil
+	return nodescore.CalculatePluginScore(taintToleration.Name(), taintToleration, taintToleration,
+		cycleState, pod, nodeInfos, taintTolerationWeight)
 }
 
 func podTopologySpreadScore(
@@ -466,53 +364,8 @@ func podTopologySpreadScore(
 	nodeInfos []*k8sframework.NodeInfo,
 	podTopologySpreadWeight int,
 ) (map[string]float64, error) {
-	preScoreStatus := podTopologySpread.PreScore(context.TODO(), cycleState, pod, nodeInfos)
-	if !preScoreStatus.IsSuccess() {
-		return nil, preScoreStatus.AsError()
-	}
-
-	nodeScoreList := make(k8sframework.NodeScoreList, len(nodeInfos))
-	// size of errCh should be no less than parallelization number, see interPodAffinityScore.
-	workerNum := 16
-	errCh := make(chan error, workerNum)
-	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
-	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodeInfos), func(index int) {
-		nodeName := nodeInfos[index].Node().Name
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		s, status := podTopologySpread.Score(ctx, cycleState, pod, nodeName)
-		if !status.IsSuccess() {
-			parallelizeCancel()
-			errCh <- fmt.Errorf("calculate pod topology spread priority failed %v", status.Message())
-			return
-		}
-		nodeScoreList[index] = k8sframework.NodeScore{
-			Name:  nodeName,
-			Score: s,
-		}
-	})
-
-	select {
-	case err := <-errCh:
-		return nil, err
-	default:
-	}
-
-	podTopologySpread.NormalizeScore(context.TODO(), cycleState, pod, nodeScoreList)
-
-	nodeScores := make(map[string]float64, len(nodeInfos))
-	for i, nodeScore := range nodeScoreList {
-		// return error if score plugin returns invalid score.
-		if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
-			return nil, fmt.Errorf("pod topology spread returns an invalid score %v for node %s", nodeScore.Score, nodeScore.Name)
-		}
-		nodeScore.Score *= int64(podTopologySpreadWeight)
-		nodeScoreList[i] = nodeScore
-		nodeScores[nodeScore.Name] = float64(nodeScore.Score)
-	}
-
-	klog.V(4).Infof("pod topology spread Score for task %s/%s is: %v", pod.Namespace, pod.Name, nodeScores)
-	return nodeScores, nil
+	return nodescore.CalculatePluginScore(podTopologySpread.Name(), podTopologySpread, podTopologySpread,
+		cycleState, pod, nodeInfos, podTopologySpreadWeight)
 }
 
 func (pp *nodeOrderPlugin) OnSessionClose(ssn *framework.Session) {

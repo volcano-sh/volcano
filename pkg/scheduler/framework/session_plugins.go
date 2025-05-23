@@ -833,3 +833,8 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor
 	}
 	return victimsQueue
 }
+
+// RegisterBinder registers the passed binder to the cache, the binder type can be such as pre-binder, post-binder
+func (ssn *Session) RegisterBinder(name string, binder interface{}) {
+	ssn.cache.RegisterBinder(name, binder)
+}

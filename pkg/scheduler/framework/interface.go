@@ -16,6 +16,10 @@ limitations under the License.
 
 package framework
 
+import (
+	"volcano.sh/volcano/pkg/scheduler/cache"
+)
+
 // Action is the interface of scheduler action.
 type Action interface {
 	// The unique name of Action.
@@ -38,4 +42,9 @@ type Plugin interface {
 
 	OnSessionOpen(ssn *Session)
 	OnSessionClose(ssn *Session)
+}
+
+type BindContextHandler interface {
+	// SetupBindContextExtension allows the plugin to set up extension information in the bind context
+	SetupBindContextExtension(ssn *Session, bindCtx *cache.BindContext)
 }

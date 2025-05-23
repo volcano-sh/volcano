@@ -17,25 +17,18 @@ limitations under the License.
 package util
 
 import (
-	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog/v2"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
-	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
 // BuildNode builts node object
@@ -49,6 +42,18 @@ func BuildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1
 		Status: v1.NodeStatus{
 			Capacity:    alloc,
 			Allocatable: alloc,
+		},
+	}
+}
+
+func BuildCSINode(name string, annotations map[string]string, drivers []storagev1.CSINodeDriver) *storagev1.CSINode {
+	return &storagev1.CSINode{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Annotations: annotations,
+		},
+		Spec: storagev1.CSINodeSpec{
+			Drivers: drivers,
 		},
 	}
 }
@@ -127,55 +132,50 @@ func BuildPodWithPVC(namespace, name, nodename string, p v1.PodPhase, req v1.Res
 	}
 }
 
-// BuildDynamicPVC create pv pvc and storage class
-func BuildDynamicPVC(namespace, name string, req v1.ResourceList) (*v1.PersistentVolumeClaim, *v1.PersistentVolume, *storagev1.StorageClass) {
-	tmp := v1.PersistentVolumeReclaimDelete
-	tmp2 := storagev1.VolumeBindingWaitForFirstConsumer
-	sc := &storagev1.StorageClass{
+// BuildPVC builds a PVC with specified storageclass and required resources
+func BuildPVC(namespace, name string, req v1.ResourceList, scName string) *v1.PersistentVolumeClaim {
+	return &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			UID:             types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			ResourceVersion: "1",
-			Name:            name,
-		},
-		Provisioner:       name,
-		ReclaimPolicy:     &tmp,
-		VolumeBindingMode: &tmp2,
-	}
-	tmp3 := v1.PersistentVolumeFilesystem
-	pvc := &v1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			UID:             types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			ResourceVersion: "1",
 			Namespace:       namespace,
 			Name:            name,
+			ResourceVersion: "1",
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
 			Resources: v1.VolumeResourceRequirements{
 				Requests: req,
 			},
-			StorageClassName: &sc.Name,
-			VolumeMode:       &tmp3,
+			StorageClassName: &scName,
 		},
 	}
-	pv := &v1.PersistentVolume{
+}
+
+// BuildPV builds a PV with specified storageclass and capacity
+func BuildPV(name, scName string, capacity v1.ResourceList) *v1.PersistentVolume {
+	return &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			UID:             types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			ResourceVersion: "1",
 			Name:            name,
+			ResourceVersion: "1",
 		},
 		Spec: v1.PersistentVolumeSpec{
-			StorageClassName: sc.Name,
-			Capacity:         req,
-			VolumeMode:       &tmp3,
-			AccessModes: []v1.PersistentVolumeAccessMode{
-				v1.ReadWriteOnce,
-			},
+			StorageClassName: scName,
+			Capacity:         capacity,
 		},
 		Status: v1.PersistentVolumeStatus{
 			Phase: v1.VolumeAvailable,
 		},
 	}
-	return pvc, pv, sc
+}
+
+// BuildStorageClass build a storageclass object with specified provisioner and volumeBindingMode
+func BuildStorageClass(name, provisioner string, volumeBindingMode storagev1.VolumeBindingMode) *storagev1.StorageClass {
+	return &storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            name,
+			ResourceVersion: "1",
+		},
+		Provisioner:       provisioner,
+		VolumeBindingMode: &volumeBindingMode,
+	}
 }
 
 // BuildBestEffortPod builds a BestEffort pod object
@@ -431,141 +431,18 @@ type FakeStatusUpdater struct {
 
 // UpdatePodStatus is an empty function
 func (ftsu *FakeStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
-	// do nothing here
-	return nil, nil
+	// Directly return the pod and do nothing here
+	return pod, nil
 }
 
 // UpdatePodGroup is an empty function
 func (ftsu *FakeStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error) {
-	// do nothing here
-	return nil, nil
+	// Directly return the pg and do nothing here
+	return pg, nil
 }
 
 // UpdateQueueStatus do fake empty update
 func (ftsu *FakeStatusUpdater) UpdateQueueStatus(queue *api.QueueInfo) error {
+	// do nothing here
 	return nil
-}
-
-// FakeVolumeBinder is used as fake volume binder
-type FakeVolumeBinder struct {
-	volumeBinder volumescheduling.SchedulerVolumeBinder
-	Actions      map[string][]string
-}
-
-// NewFakeVolumeBinder create fake volume binder with kubeclient
-func NewFakeVolumeBinder(kubeClient kubernetes.Interface) *FakeVolumeBinder {
-	logger := klog.FromContext(context.TODO())
-	informerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
-	podInformer := informerFactory.Core().V1().Pods()
-	pvcInformer := informerFactory.Core().V1().PersistentVolumeClaims()
-	pvInformer := informerFactory.Core().V1().PersistentVolumes()
-	scInformer := informerFactory.Storage().V1().StorageClasses()
-	nodeInformer := informerFactory.Core().V1().Nodes()
-	csiNodeInformer := informerFactory.Storage().V1().CSINodes()
-	csiDriverInformer := informerFactory.Storage().V1().CSIDrivers()
-	csiStorageCapacityInformer := informerFactory.Storage().V1beta1().CSIStorageCapacities()
-
-	go podInformer.Informer().Run(context.TODO().Done())
-	go pvcInformer.Informer().Run(context.TODO().Done())
-	go pvInformer.Informer().Run(context.TODO().Done())
-	go scInformer.Informer().Run(context.TODO().Done())
-	go nodeInformer.Informer().Run(context.TODO().Done())
-	go csiNodeInformer.Informer().Run(context.TODO().Done())
-	go csiDriverInformer.Informer().Run(context.TODO().Done())
-	go csiStorageCapacityInformer.Informer().Run(context.TODO().Done())
-
-	cache.WaitForCacheSync(context.TODO().Done(), podInformer.Informer().HasSynced,
-		pvcInformer.Informer().HasSynced,
-		pvInformer.Informer().HasSynced,
-		scInformer.Informer().HasSynced,
-		nodeInformer.Informer().HasSynced,
-		csiNodeInformer.Informer().HasSynced,
-		csiDriverInformer.Informer().HasSynced,
-		csiStorageCapacityInformer.Informer().HasSynced)
-
-	capacityCheck := &volumescheduling.CapacityCheck{
-		CSIDriverInformer:          csiDriverInformer,
-		CSIStorageCapacityInformer: csiStorageCapacityInformer,
-	}
-	return &FakeVolumeBinder{
-		volumeBinder: volumescheduling.NewVolumeBinder(
-			logger,
-			kubeClient,
-			podInformer,
-			nodeInformer,
-			csiNodeInformer,
-			pvcInformer,
-			pvInformer,
-			scInformer,
-			capacityCheck,
-			30*time.Second,
-		),
-		Actions: make(map[string][]string),
-	}
-}
-
-// AllocateVolumes is a empty function
-func (fvb *FakeVolumeBinder) AllocateVolumes(task *api.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
-	if fvb.volumeBinder == nil {
-		return nil
-	}
-	logger := klog.FromContext(context.TODO())
-	_, err := fvb.volumeBinder.AssumePodVolumes(logger, task.Pod, hostname, podVolumes)
-
-	key := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
-	fvb.Actions[key] = append(fvb.Actions[key], "AllocateVolumes")
-	return err
-}
-
-// BindVolumes is a empty function
-func (fvb *FakeVolumeBinder) BindVolumes(task *api.TaskInfo, podVolumes *volumescheduling.PodVolumes) error {
-	if fvb.volumeBinder == nil {
-		return nil
-	}
-
-	key := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
-	if len(podVolumes.DynamicProvisions) > 0 {
-		fvb.Actions[key] = append(fvb.Actions[key], "DynamicProvisions")
-	}
-	if len(podVolumes.StaticBindings) > 0 {
-		fvb.Actions[key] = append(fvb.Actions[key], "StaticBindings")
-	}
-	return nil
-}
-
-// GetPodVolumes is a empty function
-func (fvb *FakeVolumeBinder) GetPodVolumes(task *api.TaskInfo, node *v1.Node) (*volumescheduling.PodVolumes, error) {
-	if fvb.volumeBinder == nil {
-		return nil, nil
-	}
-	key := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
-	fvb.Actions[key] = []string{"GetPodVolumes"}
-	logger := klog.FromContext(context.TODO())
-	podVolumeClaims, err := fvb.volumeBinder.GetPodVolumeClaims(logger, task.Pod)
-	if err != nil {
-		return nil, err
-	}
-	// if len(unboundClaimsImmediate) > 0 {
-	// 	return nil, fmt.Errorf("pod has unbound immediate PersistentVolumeClaims")
-	// }
-
-	podVolumes, reasons, err := fvb.volumeBinder.FindPodVolumes(logger, task.Pod, podVolumeClaims, node)
-	if err != nil {
-		return nil, err
-	} else if len(reasons) > 0 {
-		return nil, fmt.Errorf("%v", reasons[0])
-	}
-	return podVolumes, err
-}
-
-// RevertVolumes is a empty function
-func (fvb *FakeVolumeBinder) RevertVolumes(task *api.TaskInfo, podVolumes *volumescheduling.PodVolumes) {
-	if fvb.volumeBinder == nil {
-		return
-	}
-	key := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
-	fvb.Actions[key] = append(fvb.Actions[key], "RevertVolumes")
-	if podVolumes != nil {
-		fvb.volumeBinder.RevertAssumedPodVolumes(podVolumes)
-	}
 }

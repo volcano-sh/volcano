@@ -17,6 +17,7 @@ limitations under the License.
 package framework
 
 import (
+	"github.com/mitchellh/mapstructure"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -87,6 +88,25 @@ func (a Arguments) GetBool(ptr *bool, key string) {
 	}
 
 	*ptr = value
+}
+
+// Get can automatically convert parameters according to the passed generic T type.
+// If the parameter conversion is successful, it returns the converted parameter.
+// If the parameter does not exist, it returns false.
+// If the conversion fails, it will terminate the program with a fatal error.
+func Get[T any](a Arguments, key string) (T, bool) {
+	var result T
+	argv, ok := a[key]
+	if !ok {
+		return result, false
+	}
+
+	err := mapstructure.Decode(argv, &result)
+	if err != nil {
+		klog.Fatalf("Could not parse argument for key %s to type %T: %v", key, result, err)
+	}
+
+	return result, true
 }
 
 // GetArgOfActionFromConf return argument of action reading from configuration of schedule
