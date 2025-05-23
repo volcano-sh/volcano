@@ -243,7 +243,7 @@ func (ti *TaskInfo) GetRank() string {
 	}
 	for _, c := range ti.Pod.Spec.Containers {
 		for _, env := range c.Env {
-			if env.Name == "RANK" { // NOTE: lepton-core-scheduler 根据 lepton 当前分布式任务中的配置获取
+			if env.Name == "RANK" {
 				klog.V(4).Infof(" pod %v/%v get rand %v", ti.Namespace, ti.Name, env.Value)
 				return env.Value
 			}

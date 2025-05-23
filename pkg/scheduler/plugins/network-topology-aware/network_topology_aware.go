@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -219,7 +219,6 @@ func scoreHyperNodeWithTaskNum(taskNum int, allTaskNum int) float64 {
 }
 
 func (nta *networkTopologyAwarePlugin) NPUTaskOrderFn(l interface{}, r interface{}) int {
-
 	a, ok := l.(*api.TaskInfo)
 	if !ok {
 		klog.Errorf("Object is not a taskinfo")
@@ -233,7 +232,8 @@ func (nta *networkTopologyAwarePlugin) NPUTaskOrderFn(l interface{}, r interface
 
 	rankA := a.GetRank()
 	randB := b.GetRank()
-	// 如果没有指定RANK，这里主要是针对MPI任务，因为MPI任务通过ranktable方式指定的，无法优雅获取，可以根据pod名称的序号排序
+	// If RANK is not specified (primarily for MPI tasks, as ranktable parsing
+	// can be complex), sort by pod name index for graceful handling.
 	if rankA == "" && randB == "" && a.Pod != nil && b.Pod != nil {
 		if strings.HasSuffix(a.Pod.Name, "-launcher") || strings.HasSuffix(b.Pod.Name, "-master-0") {
 			return -1
@@ -275,12 +275,11 @@ func (nta *networkTopologyAwarePlugin) NPUTaskOrderFn(l interface{}, r interface
 	}
 
 	return 0
-
 }
 
-func GetInternalIP(node *corev1.Node) string {
+func GetInternalIP(node *v1.Node) string {
 	for _, address := range node.Status.Addresses {
-		if address.Type == corev1.NodeInternalIP {
+		if address.Type == v1.NodeInternalIP {
 			return address.Address
 		}
 	}
@@ -293,19 +292,15 @@ func IPToUint32(ipStr string) (uint32, error) {
 		return 0, fmt.Errorf("invalid IP address: %s", ipStr)
 	}
 
-	// 转换为 IPv4 格式
 	ipv4 := ip.To4()
 	if ipv4 == nil {
 		return 0, fmt.Errorf("%s is not an IPv4 address", ipStr)
 	}
-
-	// 将 4 个字节转换为 uint32 (big-endian)
 	return uint32(ipv4[0])<<24 | uint32(ipv4[1])<<16 |
 		uint32(ipv4[2])<<8 | uint32(ipv4[3]), nil
 }
 
 func (nta *networkTopologyAwarePlugin) scoreNodeByIP(nodes []*api.NodeInfo) (map[string]float64, error) {
-	// 找到最小的IP
 	var minIP uint32
 	minName := ""
 	for _, node := range nodes {
@@ -328,7 +323,7 @@ func (nta *networkTopologyAwarePlugin) scoreNodeByIP(nodes []*api.NodeInfo) (map
 	}
 
 	score := make(map[string]float64)
-	// just set minName with score and others with zero score
+	// just set minName with BaseScore and others with zero score
 	score[minName] = float64(BaseScore * nta.weight)
 	return score, nil
 }
