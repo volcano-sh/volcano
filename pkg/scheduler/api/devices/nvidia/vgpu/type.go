@@ -49,8 +49,10 @@ const (
 	binpackMultiplier    = 100
 	spreadMultiplier     = 100
 
+	GPUModeAnnotation      = "volcano.sh/vgpu-mode"
 	vGPUControllerHAMICore = "hami-core"
 	vGPUControllerMIG      = "mig"
+	vGPUControllerMPS      = "mps"
 )
 
 var (
@@ -59,18 +61,20 @@ var (
 )
 
 type ContainerDeviceRequest struct {
-	Nums             int32
+	Nums int32
+	// device type, like NVIDIA, MLU
 	Type             string
-	Memreq           int32
+	Memreq           uint
 	MemPercentagereq int32
-	Coresreq         int32
+	Coresreq         uint
 }
 
 type ContainerDevice struct {
-	UUID      string
+	UUID string
+	// device type, like NVIDIA, MLU
 	Type      string
-	Usedmem   int32
-	Usedcores int32
+	Usedmem   uint
+	Usedcores uint
 }
 
 type ContainerDevices []ContainerDevice

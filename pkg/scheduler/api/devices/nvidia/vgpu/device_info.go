@@ -17,7 +17,6 @@ limitations under the License.
 package vgpu
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -28,7 +27,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
-	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	deviceconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
@@ -62,8 +60,6 @@ type GPUDevice struct {
 	UsedMem uint
 	// number of core used
 	UsedCore uint
-	// working node of this GPU
-	Mode string
 	// MigTemplate for this GPU
 	MigTemplate []deviceconfig.Geometry
 	/// MigUsage for this GPU
@@ -72,11 +68,14 @@ type GPUDevice struct {
 
 type GPUDevices struct {
 	Name string
-
+	// Mode GPU sharing mode
+	Mode string
 	// We cache score in filter step according to schedulePolicy, to avoid recalculating in score
 	Score float64
 
 	Device map[int]*GPUDevice
+	// Sharing sharing handler
+	Sharing SharingFactory
 }
 
 // NewGPUDevice creates a device
@@ -103,11 +102,12 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	if !ok {
 		return nil
 	}
-	deviceconfig.InitDevicesConfig(config.ConfigMapName)
-	nodedevices := decodeNodeDevices(name, annos)
+	nodedevices, sharingMode := decodeNodeDevices(name, annos)
 	if (nodedevices == nil) || len(nodedevices.Device) == 0 {
 		return nil
 	}
+	sharingHandler, _ := GetSharingHandler(sharingMode)
+	klog.V(3).Infoln("GPU sharing mode: ", sharingMode)
 	for _, val := range nodedevices.Device {
 		klog.V(3).InfoS("Nvidia Device registered name", "name", nodedevices.Name, "val", *val)
 		ResetDeviceMetrics(val.UUID, node.Name, float64(val.Memory))
@@ -131,12 +131,13 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 		tmppat[deviceconfig.VolcanoVGPUHandshake] = "Requesting_" + time.Now().Format("2006.01.02 15:04:05")
 		patchNodeAnnotations(node, tmppat)
 	}
+	nodedevices.Sharing = sharingHandler
 	return nodedevices
 }
 
 func (gs *GPUDevices) ScoreNode(pod *v1.Pod, schedulePolicy string) float64 {
 	/* TODO: we need a base score to be campatable with preemption, it means a node without evicting a task has
-	a higher score than those needs to evict a task */
+	   a higher score than those needs to evict a task */
 
 	// Use cached stored in filter state in order to avoid recalculating.
 	return gs.Score
@@ -151,29 +152,27 @@ func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 	if gs == nil {
 		return
 	}
-	ids, ok := pod.Annotations[AssignedIDsAnnotations]
+
+	gs.addResource(pod.Annotations, pod)
+}
+
+func (gs *GPUDevices) addResource(annotations map[string]string, pod *v1.Pod) {
+	ids, ok := annotations[AssignedIDsAnnotations]
 	if !ok {
+		klog.Errorf("pod %s has no annotation volcano.sh/devices-to-allocate", pod.Name)
 		return
 	}
 	podDev := decodePodDevices(ids)
 	for _, val := range podDev {
 		for _, deviceused := range val {
 			for index, gsdevice := range gs.Device {
-				if gsdevice.UUID == deviceused.UUID {
-					klog.V(4).Infoln("VGPU recording pod", pod.Name, "device", deviceused)
-					gs.Device[index].UsedMem += uint(deviceused.Usedmem)
-					gs.Device[index].UsedNum++
-					gs.Device[index].UsedCore += uint(deviceused.Usedcores)
-					_, ok := gs.Device[index].PodMap[pod.Name]
-					if !ok {
-						gs.Device[index].PodMap[pod.Name] = &GPUUsage{
-							UsedMem:  0,
-							UsedCore: 0,
-						}
+				if strings.Contains(deviceused.UUID, gsdevice.UUID) {
+					err := gs.Sharing.AddPod(gsdevice, deviceused.Usedmem, deviceused.Usedcores, string(pod.UID), deviceused.UUID)
+					if err == nil {
+						gs.AddPodMetrics(index, string(pod.UID), pod.Name)
+					} else {
+						klog.ErrorS(err, "add resource failed")
 					}
-					gs.Device[index].PodMap[pod.Name].UsedCore += uint(deviceused.Usedcores)
-					gs.Device[index].PodMap[pod.Name].UsedMem += uint(deviceused.Usedmem)
-					gs.AddPodMetrics(index, pod.Name)
 				}
 			}
 		}
@@ -193,14 +192,12 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 	for _, val := range podDev {
 		for _, deviceused := range val {
 			for index, gsdevice := range gs.Device {
-				if gsdevice.UUID == deviceused.UUID {
-					klog.V(4).Infoln("VGPU subsctracting pod", pod.Name, "device", deviceused)
-					gs.Device[index].UsedMem -= uint(deviceused.Usedmem)
-					gs.Device[index].UsedNum--
-					gs.Device[index].UsedCore -= uint(deviceused.Usedcores)
-					gs.Device[index].PodMap[pod.Name].UsedCore -= uint(deviceused.Usedcores)
-					gs.Device[index].PodMap[pod.Name].UsedMem -= uint(deviceused.Usedmem)
-					gs.SubPodMetrics(index, pod.Name)
+				if strings.Contains(deviceused.UUID, gsdevice.UUID) {
+					err := gs.Sharing.SubPod(gsdevice, uint(deviceused.Usedmem), uint(deviceused.Usedcores), string(pod.UID), deviceused.UUID)
+					if err != nil {
+						klog.ErrorS(err, "sub resource failed")
+					}
+					gs.SubPodMetrics(index, string(pod.UID), pod.Name)
 				}
 			}
 		}
@@ -215,7 +212,6 @@ func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
 }
 
 func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	// Nothing needs to be done here
 	return nil
 }
 
@@ -224,8 +220,8 @@ func (gs *GPUDevices) FilterNode(pod *v1.Pod, schedulePolicy string) (int, strin
 		klog.V(4).Infoln("hami-vgpu DeviceSharing starts filtering pods", pod.Name)
 		fit, _, score, err := checkNodeGPUSharingPredicateAndScore(pod, gs, true, schedulePolicy)
 		if err != nil || !fit {
-			klog.ErrorS(err, "Failed to allocate vgpu task")
-			return devices.Unschedulable, fmt.Sprintf("hami-vgpuDeviceSharing %s", err.Error()), err
+			klog.ErrorS(err, "Failed to fitler node to vgpu task", "pod", pod.Name)
+			return devices.Unschedulable, "hami-vgpuDeviceSharing error", err
 		}
 		gs.Score = score
 		klog.V(4).Infoln("hami-vgpu DeviceSharing successfully filters pods")
@@ -238,7 +234,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 		klog.V(4).Infoln("hami-vgpu DeviceSharing:Into AllocateToPod", pod.Name)
 		fit, device, _, err := checkNodeGPUSharingPredicateAndScore(pod, gs, false, "")
 		if err != nil || !fit {
-			klog.ErrorS(err, "Failed to allocate vgpu task")
+			klog.ErrorS(err, "Failed to allocate vgpu task", "pod", pod.Name)
 			return err
 		}
 		if NodeLockEnable {
@@ -257,10 +253,13 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 
 		annotations[DeviceBindPhase] = "allocating"
 		annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
+		// To avoid that the pod allocated info updating latency, add it first
+		gs.addResource(annotations, pod)
 		err = patchPodAnnotations(kubeClient, pod, annotations)
 		if err != nil {
 			return err
 		}
+
 		klog.V(3).Infoln("DeviceSharing:Allocate Success")
 	}
 	return nil

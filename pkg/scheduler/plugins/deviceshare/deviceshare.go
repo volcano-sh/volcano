@@ -27,6 +27,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -44,6 +45,9 @@ const (
 
 	SchedulePolicyArgument = "deviceshare.SchedulePolicy"
 	ScheduleWeight         = "deviceshare.ScheduleWeight"
+
+	KnownGeometriesCMName      = "deviceshare.KnownGeometriesCMName"
+	KnownGeometriesCMNamespace = "deviceshare.KnownGeometriesCMNamespace"
 )
 
 type deviceSharePlugin struct {
@@ -88,6 +92,19 @@ func enablePredicate(dsp *deviceSharePlugin) {
 	if (gpushare.GpuSharingEnable || gpushare.GpuNumberEnable) && vgpu.VGPUEnable {
 		klog.Fatal("gpu-share and vgpu can't be used together")
 	}
+
+	if !vgpu.VGPUEnable {
+		return
+	}
+	knownGeometriesCMName, ok := args[KnownGeometriesCMName].(string)
+	if !ok {
+		knownGeometriesCMName = "volcano-vgpu-device-config"
+	}
+	knownGeometriesCMNamespace, ok := args[KnownGeometriesCMNamespace].(string)
+	if !ok {
+		knownGeometriesCMNamespace = "kube-system"
+	}
+	config.InitDevicesConfig(knownGeometriesCMName, knownGeometriesCMNamespace)
 }
 
 func createStatus(code int, reason string) *api.Status {

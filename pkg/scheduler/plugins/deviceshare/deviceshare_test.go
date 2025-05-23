@@ -77,6 +77,11 @@ func TestVgpuScore(t *testing.T) {
 	gpuNode1.Device[0].Number = 10
 	gpuNode1.Device[0].UsedNum = 1
 	gpuNode1.Device[0].UsedMem = 3000
+	var ok bool
+	gpuNode1.Sharing, ok = vgpu.GetSharingHandler("hami-core")
+	if !ok {
+		t.Errorf("get shring handler failed")
+	}
 
 	gpunumber := v1.ResourceName("volcano.sh/vgpu-number")
 	gpumemory := v1.ResourceName("volcano.sh/vgpu-memory")
@@ -110,6 +115,8 @@ func TestVgpuScore(t *testing.T) {
 	gpuNode2.Device[0].Number = 10
 	gpuNode2.Device[0].UsedNum = 0
 	gpuNode2.Device[0].UsedMem = 0
+	gpuNode2.Sharing, _ = vgpu.GetSharingHandler("hami-core")
+
 	p2 := util.BuildPod("c2", "p4", "", v1.PodPending, api.BuildResourceList("2", "10Gi"), "pg1", make(map[string]string), make(map[string]string))
 	addResource(p2.Spec.Containers[0].Resources.Requests, gpunumber, "1")
 	addResource(p2.Spec.Containers[0].Resources.Requests, gpumemory, "1000")
@@ -126,5 +133,4 @@ func TestVgpuScore(t *testing.T) {
 	if score-float64(100) > 0.05 {
 		t.Errorf("score failed expected %f, get %f", float64(4000*100)/float64(30000), score)
 	}
-
 }
