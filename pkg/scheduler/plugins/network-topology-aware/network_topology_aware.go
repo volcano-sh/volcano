@@ -17,8 +17,13 @@ limitations under the License.
 package networktopologyaware
 
 import (
-	"k8s.io/klog/v2"
+	"fmt"
+	"net"
+	"strconv"
+	"strings"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -124,12 +129,12 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		taskJob := ssn.Jobs[task.Job]
 		hardMode, _ := taskJob.IsHardTopologyMode()
 		if hardMode {
-			return nodeScores, nil
+			return nta.scoreNodeByIP(nodes)
 		}
 
 		jobAllocatedHyperNode := task.JobAllocatedHyperNode
 		if jobAllocatedHyperNode == "" {
-			return nodeScores, nil
+			return nta.scoreNodeByIP(nodes)
 		}
 		// Calculate score based on LCAHyperNode tier.
 		var maxScore float64 = -1
@@ -161,6 +166,7 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddHyperNodeOrderFn(nta.Name(), hyperNodeFn)
 	ssn.AddBatchNodeOrderFn(nta.Name(), nodeFn)
+	ssn.AddTaskOrderFn(nta.Name(), nta.NPUTaskOrderFn)
 }
 
 func (bp *networkTopologyAwarePlugin) OnSessionClose(ssn *framework.Session) {
@@ -210,4 +216,119 @@ func scoreHyperNodeWithTaskNum(taskNum int, allTaskNum int) float64 {
 		return ZeroScore
 	}
 	return float64(taskNum) / float64(allTaskNum)
+}
+
+func (nta *networkTopologyAwarePlugin) NPUTaskOrderFn(l interface{}, r interface{}) int {
+
+	a, ok := l.(*api.TaskInfo)
+	if !ok {
+		klog.Errorf("Object is not a taskinfo")
+		return 0
+	}
+	b, ok := r.(*api.TaskInfo)
+	if !ok {
+		klog.Errorf("Object is not a taskinfo")
+		return 0
+	}
+
+	rankA := a.GetRank()
+	randB := b.GetRank()
+	// 如果没有指定RANK，这里主要是针对MPI任务，因为MPI任务通过ranktable方式指定的，无法优雅获取，可以根据pod名称的序号排序
+	if rankA == "" && randB == "" && a.Pod != nil && b.Pod != nil {
+		if strings.HasSuffix(a.Pod.Name, "-launcher") || strings.HasSuffix(b.Pod.Name, "-master-0") {
+			return -1
+		}
+
+		if strings.HasSuffix(b.Pod.Name, "-launcher") || strings.HasSuffix(b.Pod.Name, "-master-0") {
+			return 1
+		}
+		if len(a.Pod.Name) < len(b.Pod.Name) {
+			return -1
+		}
+
+		if a.Pod.Name < b.Pod.Name {
+			return -1
+		}
+		return 1
+	}
+
+	rankAId, Aerr := strconv.Atoi(rankA)
+	rankBId, Berr := strconv.Atoi(randB)
+
+	if Aerr == nil && Berr == nil {
+		switch {
+		case rankAId < rankBId:
+			return -1
+		case rankAId > rankBId:
+			return 1
+		default:
+			return 0
+		}
+	}
+
+	if Aerr == nil && Berr != nil {
+		return 1
+	}
+
+	if Aerr != nil && Berr == nil {
+		return -1
+	}
+
+	return 0
+
+}
+
+func GetInternalIP(node *corev1.Node) string {
+	for _, address := range node.Status.Addresses {
+		if address.Type == corev1.NodeInternalIP {
+			return address.Address
+		}
+	}
+	return ""
+}
+
+func IPToUint32(ipStr string) (uint32, error) {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return 0, fmt.Errorf("invalid IP address: %s", ipStr)
+	}
+
+	// 转换为 IPv4 格式
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		return 0, fmt.Errorf("%s is not an IPv4 address", ipStr)
+	}
+
+	// 将 4 个字节转换为 uint32 (big-endian)
+	return uint32(ipv4[0])<<24 | uint32(ipv4[1])<<16 |
+		uint32(ipv4[2])<<8 | uint32(ipv4[3]), nil
+}
+
+func (nta *networkTopologyAwarePlugin) scoreNodeByIP(nodes []*api.NodeInfo) (map[string]float64, error) {
+	// 找到最小的IP
+	var minIP uint32
+	minName := ""
+	for _, node := range nodes {
+		ipStr := GetInternalIP(node.Node)
+		if ipStr == "" {
+			klog.V(4).Infof("node %s has no internal IP", node.Name)
+			continue
+		}
+
+		ip, err := IPToUint32(ipStr)
+		if err != nil {
+			klog.Error(err)
+			continue
+		}
+
+		if ip < minIP {
+			minIP = ip
+			minName = node.Name
+		}
+	}
+
+	score := make(map[string]float64)
+	// just set minName with score and others with zero score
+	score[minName] = float64(BaseScore * nta.weight)
+	return score, nil
 }
