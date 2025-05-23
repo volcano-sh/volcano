@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -83,6 +84,9 @@ type Cache interface {
 
 	// RegisterBinder registers the passed binder to the cache's binderRegistry
 	RegisterBinder(name string, binder interface{})
+
+	// SharedDRAManager returns the shared DRAManager
+	SharedDRAManager() framework.SharedDRAManager
 }
 
 // Binder interface for binding task and hostname
