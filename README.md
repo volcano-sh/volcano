@@ -197,6 +197,19 @@ Key:
 * `-` The Kubernetes version has features or API objects that Volcano can't use.
 
 
+## Citing Volcano
+
+If Volcano helps your research, we appreciate your citations. Here is the BibTeX entry:
+
+```bibtex
+@misc{volcano2025,
+  title={Volcano: A Cloud Native Batch System},
+  author={Klaus Ma and Kevin Wang and others},
+  year={2025},
+  howpublished={\url{https://github.com/volcano-sh/volcano}},
+}
+```
+
 ## Meeting
 
 Community weekly meeting for Asia: 15:00 - 16:00 (UTC+8) Friday. ([Convert to your timezone.](https://www.thetimezoneconverter.com/?t=10%3A00&tz=GMT%2B8&))
