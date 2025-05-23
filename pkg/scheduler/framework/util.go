@@ -24,6 +24,7 @@ import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 // PodFilter is a function to filter a pod. If pod passed return true else return false.
@@ -261,4 +262,29 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 		nodes = append(nodes, node.Node)
 	}
 	return nodes, nil
+}
+
+// PredicateNodes returns the nodes that can run the task.
+// It first tries to schedule the task on the nominated node if it exists,
+// otherwise it tries to schedule the task on all nodes.
+func PredicateNodes(ssn *Session, task *api.TaskInfo, allNodes []*api.NodeInfo, ph util.PredicateHelper, predicateFn api.PredicateFn, enablePredicateErrorCache, checkNominatedNodeResources bool) ([]*api.NodeInfo, *api.FitErrors) {
+	var predicateNodes []*api.NodeInfo
+	var fitErrors *api.FitErrors
+
+	// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
+	// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
+	if len(task.Pod.Status.NominatedNodeName) > 0 {
+		if nominatedNodeInfo, ok := ssn.Nodes[task.Pod.Status.NominatedNodeName]; ok {
+			if !checkNominatedNodeResources || task.InitResreq.LessEqual(nominatedNodeInfo.Idle, api.Zero) {
+				predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, predicateFn, enablePredicateErrorCache)
+			}
+		}
+	}
+
+	// If the nominated node is not found or the nominated node is not suitable for the task, we need to find a suitable node for the task from all nodes.
+	if len(predicateNodes) == 0 {
+		predicateNodes, fitErrors = ph.PredicateNodes(task, allNodes, predicateFn, enablePredicateErrorCache)
+	}
+
+	return predicateNodes, fitErrors
 }
