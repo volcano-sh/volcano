@@ -645,7 +645,7 @@ func TestSchedulerCache_DeleteQueueV1beta1(t *testing.T) {
 }
 
 func TestSchedulerCache_SyncNode(t *testing.T) {
-	n1 := util.BuildNode("n1", nil, map[string]string{"label-key": "label-value"})
+	n1 := util.MakeNode("n1").Labels(map[string]string{"label-key": "label-value"}).Obj()
 	expectedNodeInfo := schedulingapi.NewNodeInfo(n1)
 	expectedNodeInfo.State.Phase = schedulingapi.Ready
 
@@ -667,8 +667,9 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 		{
 			name: "Node added to cache",
 			nodes: []*v1.Node{
-				util.BuildNode("n1", nil, map[string]string{"label-key": "label-value"}),
-				util.BuildNode("n2", nil, map[string]string{"label-key": "label-value"})},
+				util.MakeNode("n1").Labels(map[string]string{"label-key": "label-value"}).Obj(),
+				util.MakeNode("n2").Labels(map[string]string{"label-key": "label-value"}).Obj(),
+			},
 			nodeName: "n1",
 			nodeSelector: map[string]sets.Empty{
 				"label-key:label-value": {},
@@ -679,8 +680,9 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 		{
 			name: "Node not added to cache",
 			nodes: []*v1.Node{
-				util.BuildNode("n1", nil, map[string]string{}),
-				util.BuildNode("n2", nil, map[string]string{})},
+				util.MakeNode("n1").Obj(),
+				util.MakeNode("n2").Obj(),
+			},
 			nodeName: "n1",
 			nodeSelector: map[string]sets.Empty{
 				"label-key:label-value": {},

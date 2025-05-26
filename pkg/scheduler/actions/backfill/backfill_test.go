@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	schedulingapi "k8s.io/api/scheduling/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -55,33 +54,67 @@ func TestPickUpPendingTasks(t *testing.T) {
 		{
 			name: "test",
 			pendingPods: []*v1.Pod{
-				util.BuildPodWithPriority("default", "pg1-besteffort-task-1", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority1),
-				util.BuildPodWithPriority("default", "pg1-unbesteffort-task-1", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority1),
-				util.BuildPodWithPriority("default", "pg1-besteffort-task-3", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority3),
-				util.BuildPodWithPriority("default", "pg1-unbesteffort-task-3", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority3),
+				util.MakePod("default", "pg1-besteffort-task-1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Obj()},
+				).GroupName("pg1").Priority(&priority1).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg1-unbesteffort-task-1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("500m", "")).Obj()},
+				).GroupName("pg1").Priority(&priority1).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg1-besteffort-task-3").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Obj()},
+				).GroupName("pg1").Priority(&priority3).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg1-unbesteffort-task-3").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("500m", "")).Obj()},
+				).GroupName("pg1").Priority(&priority3).Phase(v1.PodPending).Obj(),
 
-				util.BuildPodWithPriority("default", "pg2-besteffort-task-1", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority1),
-				util.BuildPodWithPriority("default", "pg2-unbesteffort-task-1", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority1),
-				util.BuildPodWithPriority("default", "pg2-besteffort-task-3", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority3),
-				util.BuildPodWithPriority("default", "pg2-unbesteffort-task-3", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority3),
+				util.MakePod("default", "pg2-besteffort-task-1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Obj()},
+				).GroupName("pg2").Priority(&priority1).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg2-unbesteffort-task-1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("500m", "")).Obj()},
+				).GroupName("pg2").Priority(&priority1).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg2-besteffort-task-3").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Obj()},
+				).GroupName("pg2").Priority(&priority3).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg2-unbesteffort-task-3").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("500m", "")).Obj()},
+				).GroupName("pg2").Priority(&priority3).Phase(v1.PodPending).Obj(),
 			},
 			pipelinedPods: []*v1.Pod{
-				util.BuildPodWithPriority("default", "pg1-besteffort-task-2", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority2),
-				util.BuildPodWithPriority("default", "pg1-unbesteffort-task-2", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority2),
-				util.BuildPodWithPriority("default", "pg1-besteffort-task-4", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority4),
-				util.BuildPodWithPriority("default", "pg1-unbesteffort-task-4", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority4),
+				util.MakePod("default", "pg1-besteffort-task-2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Obj()},
+				).GroupName("pg1").Priority(&priority2).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg1-unbesteffort-task-2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("500m", "")).Obj()},
+				).GroupName("pg1").Priority(&priority2).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg1-besteffort-task-4").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Obj()},
+				).GroupName("pg1").Priority(&priority4).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg1-unbesteffort-task-4").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("500m", "")).Obj()},
+				).GroupName("pg1").Priority(&priority4).Phase(v1.PodPending).Obj(),
 
-				util.BuildPodWithPriority("default", "pg2-besteffort-task-2", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority2),
-				util.BuildPodWithPriority("default", "pg2-unbesteffort-task-2", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority2),
-				util.BuildPodWithPriority("default", "pg2-besteffort-task-4", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority4),
-				util.BuildPodWithPriority("default", "pg2-unbesteffort-task-4", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority4),
+				util.MakePod("default", "pg2-besteffort-task-2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Obj()},
+				).GroupName("pg2").Priority(&priority2).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg2-unbesteffort-task-2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("500m", "")).Obj()},
+				).GroupName("pg2").Priority(&priority2).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg2-besteffort-task-4").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Obj()},
+				).GroupName("pg2").Priority(&priority4).Phase(v1.PodPending).Obj(),
+				util.MakePod("default", "pg2-unbesteffort-task-4").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("500m", "")).Obj()},
+				).GroupName("pg2").Priority(&priority4).Phase(v1.PodPending).Obj(),
 			},
 			queues: []*schedulingv1beta1.Queue{
-				util.BuildQueue("q1", 1, nil),
+				util.MakeQueue("q1").Weight(1).Obj(),
 			},
 			podGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "default", "q1", 1, map[string]int32{"": 3}, schedulingv1beta1.PodGroupInqueue, "job-priority-1"),
-				util.BuildPodGroupWithPrio("pg2", "default", "q1", 1, map[string]int32{"": 3}, schedulingv1beta1.PodGroupInqueue, "job-priority-2"),
+				util.MakePodGroup("pg1", "default").Queue("q1").MinMember(1).TaskMinMember(map[string]int32{"": 3}).
+					PriorityClassName("job-priority-1").Phase(schedulingv1beta1.PodGroupInqueue).Obj(),
+				util.MakePodGroup("pg2", "default").Queue("q1").MinMember(1).TaskMinMember(map[string]int32{"": 3}).
+					PriorityClassName("job-priority-2").Phase(schedulingv1beta1.PodGroupInqueue).Obj(),
 			},
 			PriorityClasses: map[string]*schedulingapi.PriorityClass{
 				"job-priority-1": {

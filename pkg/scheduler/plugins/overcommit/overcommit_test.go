@@ -6,7 +6,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 
-	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -16,23 +15,29 @@ import (
 )
 
 func TestOvercommitPlugin(t *testing.T) {
-	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi"), make(map[string]string))
-	n2 := util.BuildNode("n2", api.BuildResourceList("4", "16Gi"), make(map[string]string))
+	n1 := util.MakeNode("n1").
+		Allocatable(api.BuildResourceList("2", "4Gi")).
+		Capacity(api.BuildResourceList("2", "4Gi")).
+		Obj()
+	n2 := util.MakeNode("n2").
+		Allocatable(api.BuildResourceList("4", "16Gi")).
+		Capacity(api.BuildResourceList("4", "16Gi")).
+		Obj()
 	hugeResource := api.BuildResourceList("20000m", "20G")
 	normalResource := api.BuildResourceList("2000m", "2G")
 	smallResource := api.BuildResourceList("200m", "0.5G")
 
 	// pg that requires normal resources
-	pg1 := util.BuildPodGroup("pg1", "test-namespace", "c1", 2, nil, schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue))
+	pg1 := util.MakePodGroup("pg1", "test-namespace").Queue("c1").MinMember(2).Phase(schedulingv1.PodGroupInqueue).Obj()
 	pg1.Spec.MinResources = &normalResource
 	// pg that requires small resources
-	pg2 := util.BuildPodGroup("pg2", "test-namespace", "c1", 2, nil, schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue))
+	pg2 := util.MakePodGroup("pg2", "test-namespace").Queue("c1").MinMember(2).Phase(schedulingv1.PodGroupInqueue).Obj()
 	pg2.Spec.MinResources = &hugeResource
 	// pg that no requires resources
-	pg3 := util.BuildPodGroup("pg2", "test-namespace", "c1", 2, nil, schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue))
+	pg3 := util.MakePodGroup("pg3", "test-namespace").Queue("c1").MinMember(2).Phase(schedulingv1.PodGroupInqueue).Obj()
 
-	queue1 := util.BuildQueue("c1", 1, nil)
-	queue2 := util.BuildQueue("c1", 1, smallResource)
+	queue1 := util.MakeQueue("c1").Weight(1).Obj()
+	queue2 := util.MakeQueue("c2").Weight(1).Capability(smallResource).Obj()
 
 	tests := []struct {
 		uthelper.TestCommonStruct

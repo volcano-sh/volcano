@@ -53,25 +53,45 @@ func TestShuffle(t *testing.T) {
 			Name:    "select pods with low priority and evict them",
 			Plugins: plugins,
 			Nodes: []*v1.Node{
-				util.BuildNode("node1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-				util.BuildNode("node2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode("node1").
+					Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Obj(),
+				util.MakeNode("node2").
+					Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Obj(),
 			},
 			Queues: []*schedulingv1beta1.Queue{
-				util.BuildQueue("default", 1, nil),
+				util.MakeQueue("default").Weight(1).Obj(),
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroup("pg1", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
-				util.BuildPodGroup("pg2", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
-				util.BuildPodGroup("pg3", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
+				util.MakePodGroup("pg1", "test").Queue("default").MinMember(0).Phase(schedulingv1beta1.PodGroupRunning).Obj(),
+				util.MakePodGroup("pg2", "test").Queue("default").MinMember(0).Phase(schedulingv1beta1.PodGroupRunning).Obj(),
+				util.MakePodGroup("pg3", "test").Queue("default").MinMember(0).Phase(schedulingv1beta1.PodGroupRunning).Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPodWithPriority("test", "pod1-1", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod1-2", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod1-3", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod2-1", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg2", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod2-2", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg2", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod3-1", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod3-2", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &highPriority),
+				util.MakePod("test", "pod1-1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "2G")).Obj()},
+				).NodeName("node1").GroupName("pg1").Priority(&lowPriority).Phase(v1.PodRunning).Obj(),
+				util.MakePod("test", "pod1-2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "2G")).Obj()},
+				).NodeName("node1").GroupName("pg1").Priority(&highPriority).Phase(v1.PodRunning).Obj(),
+				util.MakePod("test", "pod1-3").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "2G")).Obj()},
+				).NodeName("node1").GroupName("pg1").Priority(&highPriority).Phase(v1.PodRunning).Obj(),
+				util.MakePod("test", "pod2-1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "2G")).Obj()},
+				).NodeName("node1").GroupName("pg1").Priority(&lowPriority).Phase(v1.PodRunning).Obj(),
+				util.MakePod("test", "pod2-2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "2G")).Obj()},
+				).NodeName("node2").GroupName("pg1").Priority(&highPriority).Phase(v1.PodRunning).Obj(),
+				util.MakePod("test", "pod3-1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "2G")).Obj()},
+				).NodeName("node2").GroupName("pg1").Priority(&lowPriority).Phase(v1.PodRunning).Obj(),
+				util.MakePod("test", "pod3-2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "2G")).Obj()},
+				).NodeName("node2").GroupName("pg1").Priority(&highPriority).Phase(v1.PodRunning).Obj(),
 			},
 			ExpectEvictNum: 3,
 			ExpectEvicted:  []string{"test/pod1-1", "test/pod2-1", "test/pod3-1"},

@@ -43,22 +43,32 @@ func TestNodeGroup(t *testing.T) {
 		batch.QueueNameKey: "q2",
 	}, make(map[string]string))
 
-	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi"), map[string]string{
-		NodeGroupNameKey: "group1",
-	})
-	n2 := util.BuildNode("n2", api.BuildResourceList("4", "16Gi"), map[string]string{
-		NodeGroupNameKey: "group2",
-	})
-	n3 := util.BuildNode("n3", api.BuildResourceList("4", "16Gi"), map[string]string{
-		NodeGroupNameKey: "group3",
-	})
-	n4 := util.BuildNode("n4", api.BuildResourceList("4", "16Gi"), map[string]string{
-		NodeGroupNameKey: "group4",
-	})
-	n5 := util.BuildNode("n5", api.BuildResourceList("4", "16Gi"), make(map[string]string))
-
-	pg1 := util.BuildPodGroup("pg1", "c1", "q1", 0, nil, "")
-	pg2 := util.BuildPodGroup("pg2", "c1", "q2", 0, nil, "")
+	n1 := util.MakeNode("n1").
+		Allocatable(api.BuildResourceList("2", "4Gi")).
+		Capacity(api.BuildResourceList("2", "4Gi")).
+		Labels(map[string]string{NodeGroupNameKey: "group1"}).
+		Obj()
+	n2 := util.MakeNode("n2").
+		Allocatable(api.BuildResourceList("4", "16Gi")).
+		Capacity(api.BuildResourceList("4", "16Gi")).
+		Labels(map[string]string{NodeGroupNameKey: "group2"}).
+		Obj()
+	n3 := util.MakeNode("n3").
+		Allocatable(api.BuildResourceList("4", "16Gi")).
+		Capacity(api.BuildResourceList("4", "16Gi")).
+		Labels(map[string]string{NodeGroupNameKey: "group3"}).
+		Obj()
+	n4 := util.MakeNode("n4").
+		Allocatable(api.BuildResourceList("4", "16Gi")).
+		Capacity(api.BuildResourceList("4", "16Gi")).
+		Labels(map[string]string{NodeGroupNameKey: "group4"}).
+		Obj()
+	n5 := util.MakeNode("n5").
+		Allocatable(api.BuildResourceList("4", "16Gi")).
+		Capacity(api.BuildResourceList("4", "16Gi")).
+		Obj()
+	pg1 := util.MakePodGroup("pg1", "c1").Queue("q1").Obj()
+	pg2 := util.MakePodGroup("pg2", "c1").Queue("q2").Obj()
 
 	queue1 := &schedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{

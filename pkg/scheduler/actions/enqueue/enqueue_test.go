@@ -31,15 +31,19 @@ func TestEnqueue(t *testing.T) {
 		{
 			Name: "when podgroup status is inqueue",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 2, nil, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(2).Phase(schedulingv1.PodGroupInqueue).Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.MakePod("c1", "p1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Phase(v1.PodPending).Obj(),
+				util.MakePod("c1", "p2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Phase(v1.PodPending).Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, api.BuildResourceList("4", "4G")),
-				util.BuildQueue("c2", 1, api.BuildResourceList("4", "4G")),
+				util.MakeQueue("c1").Weight(1).Capability(api.BuildResourceList("4", "4Gi")).Obj(),
+				util.MakeQueue("c2").Weight(1).Capability(api.BuildResourceList("4", "4Gi")).Obj(),
 			},
 			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
 				"c1/pg1": scheduling.PodGroupInqueue,
@@ -48,18 +52,22 @@ func TestEnqueue(t *testing.T) {
 		{
 			Name: "when podgroup status is pending",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupPending),
-				util.BuildPodGroup("pg2", "c1", "c2", 1, nil, schedulingv1.PodGroupPending),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(1).Phase(schedulingv1.PodGroupPending).Obj(),
+				util.MakePodGroup("pg2", "c1").Queue("c2").MinMember(1).Phase(schedulingv1.PodGroupPending).Obj(),
 			},
 			Pods: []*v1.Pod{
 				// pending pod with owner1, under ns:c1/q:c1
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("3", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.MakePod("c1", "p1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("3", "1G")).Obj()},
+				).GroupName("pg1").Phase(v1.PodPending).Obj(),
 				// pending pod with owner2, under ns:c1/q:c2
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.MakePod("c1", "p2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg2").Phase(v1.PodPending).Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, api.BuildResourceList("4", "4G")),
-				util.BuildQueue("c2", 1, api.BuildResourceList("4", "4G")),
+				util.MakeQueue("c1").Weight(1).Capability(api.BuildResourceList("4", "4Gi")).Obj(),
+				util.MakeQueue("c2").Weight(1).Capability(api.BuildResourceList("4", "4Gi")).Obj(),
 			},
 			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
 				"c1/pg1": scheduling.PodGroupInqueue,
@@ -69,14 +77,18 @@ func TestEnqueue(t *testing.T) {
 		{
 			Name: "when podgroup status is running",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 2, nil, schedulingv1.PodGroupRunning),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(2).Phase(schedulingv1.PodGroupRunning).Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "p1", "", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
-				util.BuildPod("c1", "p2", "", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+				util.MakePod("c1", "p1").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Phase(v1.PodRunning).Obj(),
+				util.MakePod("c1", "p2").Containers(
+					[]v1.Container{*util.NewContainer("test", "test").Requests(api.BuildResourceList("1", "1G")).Obj()},
+				).GroupName("pg1").Phase(v1.PodRunning).Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, api.BuildResourceList("4", "4G")),
+				util.MakeQueue("c1").Weight(1).Capability(api.BuildResourceList("4", "4Gi")).Obj(),
 			},
 			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
 				"c1/pg1": scheduling.PodGroupRunning,
@@ -85,21 +97,21 @@ func TestEnqueue(t *testing.T) {
 		{
 			Name: "pggroup cannot enqueue because the specified queue is c1, but there is only c2",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupPending),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(0).Phase(schedulingv1.PodGroupPending).Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c2", 1, api.BuildResourceList("4", "4G")),
+				util.MakeQueue("c2").Weight(1).Capability(api.BuildResourceList("4", "4Gi")).Obj(),
 			},
 			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{},
 		},
 		{
 			Name: "pggroup cannot enqueue because queue resources are less than podgroup MinResources",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroupWithMinResources("pg1", "c1", "c1", 1,
-					nil, api.BuildResourceList("8", "8G"), schedulingv1.PodGroupPending),
+				util.MakePodGroup("pg1", "c1").Queue("c1").MinMember(1).
+					MinResources(api.BuildResourceList("8", "8G")).Phase(schedulingv1.PodGroupPending).Obj(),
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, api.BuildResourceList("1", "1G")),
+				util.MakeQueue("c1").Weight(1).Capability(api.BuildResourceList("1", "1Gi")).Obj(),
 			},
 			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
 				"c1/pg1": scheduling.PodGroupPending,
