@@ -31,12 +31,27 @@ In the LLM training scenario, the model parallels have extremely high requiremen
 5. Prefer to schedule the pod group to one HCCS topology zone, if not enough nodes, try to schedule to the RoCE topology zone and then the VPC topology zone.  
 6. Gang scheduling is required in this case, to make sure all pods are able to proceed with their work.
 
+## Use Case 3 
+1. Training scenario: Large-scale model training using Pipeline Parallelism (PP) and Data Parallelism (DP)
+2. Data Parallel (DP) tasks need to be distributed within the same topology domain to ensure efficient gradient synchronization, while Pipeline Parallel (PP) doesn't need to be in one
+3. The scheduling system needs to ensure Pods in the same DP group are scheduled to the same network topology domain to maximize network bandwidth utilization
+4. If resources in a single topology domain are insufficient, the system should try to schedule the DP group to the closest topology domain
+5. Gang Scheduling is also needed to ensure all Pods can start working simultaneously
+
+## Use Case 4
+1. Inference scenario: Large-scale model inference services using frameworks like vLLM
+2. Each inference service consists of one leader Pod and multiple worker Pods
+3. Worker Pods require high-bandwidth, low-latency network communication between them, while the leader Pod has no special network topology requirements
+4. The scheduling system needs to ensure all worker Pods are scheduled within the same network topology domain to guarantee inference performance
+5. The leader Pod can be scheduled to any available node, without network topology constraints
+6. Gang Scheduling is still needed in this scenario to ensure all Pods can start the service simultaneously
+
 # Scope:
 
 In Scope:
 
 * support clos network topology define and management  
-* support network topology aware scheduling for Volcano job  
+* support network topology aware scheduling for Volcano job and task 
 * support spine-leaf network
 
 # Function Detail
@@ -55,7 +70,7 @@ Option 2: Describe network topology by CRD, NetworkTopology in Volcano → plugi
 
 Pros: 
   * easier for debugging:  
-  * engineers don’t need to construct the tree of topology info by themselves.   
+  * engineers don't need to construct the tree of topology info by themselves.   
   * the scheduler uses the same as engineers can see.
 
 * Components besides scheduler are able to use the CR as well
@@ -68,11 +83,11 @@ Pros:
 
 ```go
 type HyperNode struct {
-  metav1.TypeMeta `json:”,inline”`
-  metav1.ObjectMeta `json:”metadata, omitempty”`
+  metav1.TypeMeta `json:","inline"`
+  metav1.ObjectMeta `json:"metadata, omitempty"`
 
-  Spec HyperNodeSpec `json:”spec”`
-  Status HyperNodeStatus `json:”status”`
+  Spec HyperNodeSpec `json:"spec"`
+  Status HyperNodeStatus `json:"status"`
 }
 
 type HyperNodeSpec struct {
@@ -237,7 +252,7 @@ spec:
 #### network topology generation and update
 
 * **Network topology discovery/detection tool**: a tool to generate network topology CR by analyzing labels, system file or API of HW vendor. The community will offer a tool to generate CR by label.  
-![network topology generation](images/network-topology-aware/nework-topology-generation.png)    
+![nework topology generation](images/network-topology-aware/nework-topology-generation.png)    
 
 ### Job management
 
@@ -245,31 +260,31 @@ HyperJob is an API for managing a group of replicated volcano jobs, which aligns
 
 ```go
 type HyperJob struct {  
-	metav1.TypeMeta `json:",inline"\`
+	metav1.TypeMeta `json:",inline"`
 
 	// +optional  
-	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"\`
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	// Specification of the desired behavior of the volcano Hyperjob, including the minAvailable  
 	// +optional  
-	Spec HyperJobSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"\`
+	Spec HyperJobSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
 
 	// Current status of the volcano HyperJob  
 	// +optional  
-	Status HyperJobStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"\`  
+	Status HyperJobStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`  
 }
 
 type HyperJobSpec struct {  
 	// The minimal available Job to run for this HyperJob  
 	// Defaults to the summary of jobs' replicas  
 	// +optional  
-	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"\`
+	MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
 
-    // NetworkTopology defines the NetworkTopology config, this field works in conjunction with network topology feature and hyperNode CRD.
-    // +optional
-    NetworkTopology *NetworkTopologySpec `json:"networkTopology,omitempty"
+  // NetworkTopology defines the NetworkTopology config, this field works in conjunction with network topology feature and hyperNode CRD.
+  // +optional
+  NetworkTopology *NetworkTopologySpec `json:"networkTopology,omitempty"`
 
-    Jobs []JobSepc `json:"jobs,omitempty" protobuf:"bytes,4,opt,name=jobs"\`
+  Jobs []JobSepc `json:"jobs,omitempty" protobuf:"bytes,4,opt,name=jobs"`
   
     ...  
 }
@@ -326,7 +341,7 @@ metadata:
     name: multi-volcano-job  
 spec:  
     networkTopology: 
-    - mode: hard** // we don’t really need to explicitly indicate the soft requirements, we can make it as a default algorithm behavior. And we need to describe the default behavior in the field comment  
+    - mode: hard** // we don't really need to explicitly indicate the soft requirements, we can make it as a default algorithm behavior. And we need to describe the default behavior in the field comment  
       highestTierAllowed: 2**  
     replicatedJobs:  
     - replicas: 40  
@@ -340,13 +355,13 @@ spec:
          schedulerName: volcano  
          tasks:  
          - replicas: 32  
-           name: “worker”  
+           name: "worker"  
            template:  
               spec:  
                   containers:  
                   - name: worker  
                     image: alpine  
-                    command: [“/bin/sh”, “-c”, “sleep 3600”]  
+                    command: ["/bin/sh", "-c", "sleep 3600"]  
                     imagePullPolicy: IfNotPresent  
                     resources:  
                        requests:  
@@ -364,7 +379,7 @@ Phase 1 without hyperJob supported
 
 Phase 2 with hyperJob supported  
 ![network topology implementation 02](images/network-topology-aware/network-topology-implementation-02.png)  
-A naive way to build nodes by tier as an input of volcano scheduler, scheduler traverses sequentially from low to high tier, the selected nodeGroups of a hyperJob should be in one same tier because we start from the lowest tier, and will stop to search the upper tier when current tier can meet hyperJob/Job’s resources.  
+A naive way to build nodes by tier as an input of volcano scheduler, scheduler traverses sequentially from low to high tier, the selected nodeGroups of a hyperJob should be in one same tier because we start from the lowest tier, and will stop to search the upper tier when current tier can meet hyperJob/Job's resources.  
 For prioritization phase of hard limit topology, the nodeOrder and hyperNodeOrder scores would be summed as the final score of a hyperNode and select the highest score hyperNode, the fewer layers a candidate hyperNode spans, and the more pods of the same job are deployed on the hyperNode, the higher the score of the hyperNode.
 .
 eg:  
@@ -545,25 +560,72 @@ type NetworkTopologySpec struct {
     HighestTierAllowed *int `json:"highestTierAllowed,omitempty" protobuf:"bytes,2,opt,name=highestTierAllowed"`
 }
 ```
+Based on the above scenario, a single task within the volcano job also requires network topology-aware scheduling.To implement this requirement, modifications to the definitions of the volcano job and podgroup are necessary.
+
+vcjob.spec.task:
+
+```go
+type TaskSpec struct {
+    ...
+    // NetworkTopology defines the NetworkTopology config, this field works in conjunction with network topology feature and hyperNode CRD.
+    // +optional
+    NetworkTopology *NetworkTopologySpec `json:"networkTopology,omitempty" protobuf:"bytes,9,opt,name=networkTopology"`
+}
+```
+
+podgroup
+
+```go
+// PodGroupSpec represents the template of a pod group.
+type PodGroupSpec struct {
+    ...
+    // PodsNetworkTopology defines the NetworkTopology config for Some set of pods,
+    // such as task of vcjob, this field works in conjunction with network topology feature and hyperNode CRD.
+    // +optional
+    PodsNetworkTopology []PodsNetworkTopologySpec `json:"podsNetworkTopology,omitempty" protobuf:"bytes,6,opt,name=podsNetworkTopology"`
+}
+
+// PodsetNetworkTopologySpec represents the correspondence between a set of pods and networktopology
+type PodsNetworkTopologySpec struct {
+	// NetworkTopology defines network topology.
+	// +optional
+	NetworkTopology *NetworkTopologySpec `json:"networkTopology,omitempty" protobuf:"bytes,1,opt,name=networkTopology"`
+
+	// Selector defines the selection rules for a set of pods. For non-vcjob task level network topology, this field is required.
+	// +optional
+	LabelMatch *metav1.LabelSelector `json:"labelMatch,omitempty" protobuf:"bytes,2,opt,name=labelMatch"`
+
+	// TaskName defines the name of task in vcjob, only for vcjob task level network topology.
+	// +optional
+	TaskName *string `json:"taskName,omitempty" protobuf:"bytes,3,opt,name=taskName"`
+}
+
+```
 
 auto generate code for job, hyperJob, hyperNode,  
 refer the API repo [volcano-sh/apis: The API (CRD) of Volcano (github.com)](https://github.com/volcano-sh/apis) and add CRDs, generate codes and submit to the repo.
+
+
+**Best practice for task level network topology and priority:**
+
+If a user sets a hard-mode network topology for a task, they should also assign that task a higher priority relative to other tasks under the same VCJob. If two tasks have the same priority, the one with the network topology set will be allocated first.
+
 
 ### Scheduler
 
 **configuration:**
 
-- allow users to configure the network topology policy in job  
+- allow users to configure the network topology policy in job or task
 
 - allow users to enable/disable the network-topology-aware plugin in scheduler configmap
 
 **action:** allocate
 
 Phase1:
-Allocate resources for queue-\> Job \-\> Task.
+Allocate resources for queue-> Job -> Task.
 
 Phase2:
-Allocate resources for queue-\> hyperJob \-\> Job \-\> Task.
+Allocate resources for queue-> hyperJob -> Job -> Task.
 
 **plugin:** NetworkTopology
 
