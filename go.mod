@@ -49,7 +49,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.4.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.11.1-0.20250423093821-61bafe877200
+	volcano.sh/apis v1.11.1-0.20250526091449-59e96f6abe4f
 )
 
 require (
@@ -207,5 +207,4 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.32.2
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.32.2
 	k8s.io/sample-controller => k8s.io/sample-controller v0.32.2
-	volcano.sh/apis => github.com/Monokaix/apis v0.0.0-20250522082507-462f06aaa392
 )

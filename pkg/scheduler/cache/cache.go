@@ -569,7 +569,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 }
 
 func (sc *SchedulerCache) addEventHandler() {
-	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
+	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, sc.resyncPeriod)
 	sc.informerFactory = informerFactory
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
@@ -591,7 +591,7 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
-	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
+	sc.nodeInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
@@ -615,7 +615,6 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeleteNode,
 			},
 		},
-		0,
 	)
 
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
@@ -690,7 +689,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		DeleteFunc: sc.DeleteResourceQuota,
 	})
 
-	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, 0)
+	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, sc.resyncPeriod)
 	sc.vcInformerFactory = vcinformers
 
 	// create informer for PodGroup(v1beta1) information
