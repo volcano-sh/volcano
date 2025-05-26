@@ -136,6 +136,8 @@ custom:
 # Specify labels for all Volcano helm chart objects except for CRDs
   common_labels: ~
 
+# Specify labels for aggregationRule
+  aggregationRule_labels: ~
 
 # Specify resources for Volcano main component deployments and pods
 # For example:
