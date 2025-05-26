@@ -6,8 +6,6 @@ github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab h1:UKkYhof1njT1
 github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab/go.mod h1:3VYc5hodBMJ5+l/7J4xAyMeuM2PNuepvHlGs8yilUCA=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/Monokaix/apis v0.0.0-20250522082507-462f06aaa392 h1:7TxwAnPPnUTOlUWrvQiFnNx2AZ8M8WQKynVNfs2pXkw=
-github.com/Monokaix/apis v0.0.0-20250522082507-462f06aaa392/go.mod h1:0XNNnIOevJSYNiXRmwhXUrYCcCcWcBeTY0nxrlkk03A=
 github.com/NYTimes/gziphandler v1.1.1 h1:ZUDjpQae29j0ryrS0u/B8HZfJBtBQHjqw2rQ2cqUQ3I=
 github.com/NYTimes/gziphandler v1.1.1/go.mod h1:n/CVRwUEOgIxrgPvAQhUUr9oeUtvrhMomdKFjzJNB0c=
 github.com/agiledragon/gomonkey/v2 v2.11.0 h1:5oxSgA+tC1xuGsrIorR+sYiziYltmJyEZ9qA25b6l5U=
@@ -521,3 +519,5 @@ sigs.k8s.io/yaml v1.4.0 h1:Mk1wCc2gy/F0THH0TAp1QYyJNzRm2KCLy3o5ASXVI5E=
 sigs.k8s.io/yaml v1.4.0/go.mod h1:Ejl7/uTz7PSA4eKMyQCUTnhZYNmLIl+5c2lQPGR2BPY=
 stathat.com/c/consistent v1.0.0 h1:ezyc51EGcRPJUxfHGSgJjWzJdj3NiMU9pNfLNGiXV0c=
 stathat.com/c/consistent v1.0.0/go.mod h1:QkzMWzcbB+yQBL2AttO6sgsQS/JSTapcDISJalmCDS0=
+volcano.sh/apis v1.11.1-0.20250526091449-59e96f6abe4f h1:3CLus5h9cv42O6VgbJxA2bFskauMQJKMxJhKTKSdGNc=
+volcano.sh/apis v1.11.1-0.20250526091449-59e96f6abe4f/go.mod h1:0XNNnIOevJSYNiXRmwhXUrYCcCcWcBeTY0nxrlkk03A=
