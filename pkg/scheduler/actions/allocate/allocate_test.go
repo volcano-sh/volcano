@@ -23,9 +23,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	resourcev1beta1 "k8s.io/api/resource/v1beta1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	"k8s.io/kubernetes/pkg/features"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -1742,6 +1747,137 @@ func TestAllocateWithPVC(t *testing.T) {
 	for i, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			predicates.ResetVolumeBindingPluginForTest()
+			test.Plugins = plugins
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			action := New()
+			test.Run([]framework.Action{action})
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestAllocateWithDRA(t *testing.T) {
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DynamicResourceAllocation, true)
+
+	plugins := map[string]framework.PluginBuilder{
+		gang.PluginName:       gang.New,
+		predicates.PluginName: predicates.New,
+	}
+
+	options.ServerOpts = &options.ServerOption{
+		MinNodesToFind:             100,
+		MinPercentageOfNodesToFind: 5,
+		PercentageOfNodesToFind:    100,
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:                gang.PluginName,
+					EnabledJobReady:     &trueValue,
+					EnabledPredicate:    &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledTaskOrder:    &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+					Arguments: framework.Arguments{
+						predicates.DynamicResourceAllocationEnable: trueValue,
+					},
+				},
+			},
+		},
+	}
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name: "Allocate normal resourceClaim successfully",
+			ResourceClaims: []*resourcev1beta1.ResourceClaim{
+				util.BuildResourceClaim("c1", "claim1",
+					[]resourcev1beta1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
+					nil, nil),
+			},
+			ResourceSlices: []*resourcev1beta1.ResourceSlice{
+				util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1beta1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+					[]resourcev1beta1.Device{
+						util.BuildDevice("gpu-1", nil, nil),
+					}),
+			},
+			DeviceClasses: []*resourcev1beta1.DeviceClass{
+				util.BuildDeviceClass("gpu.example.com", []resourcev1beta1.DeviceSelector{
+					{CEL: &resourcev1beta1.CELDeviceSelector{
+						Expression: fmt.Sprintf(`device.driver == 'gpu.example.com'`),
+					}},
+				}, nil),
+			},
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
+					[]v1.ResourceClaim{{Name: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("c1", 1, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"c1/pg1": scheduling.PodGroupRunning,
+			},
+			ExpectBindMap: map[string]string{
+				"c1/p1": "n1",
+			},
+			ExpectBindsNum: 1,
+		},
+		{
+			Name: "claim cel runtime errors",
+			ResourceClaims: []*resourcev1beta1.ResourceClaim{
+				util.BuildResourceClaim("c1", "claim1",
+					[]resourcev1beta1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
+					nil, nil),
+			},
+			ResourceSlices: []*resourcev1beta1.ResourceSlice{
+				util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1beta1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+					[]resourcev1beta1.Device{
+						util.BuildDevice("gpu-1", nil, nil),
+					}),
+			},
+			DeviceClasses: []*resourcev1beta1.DeviceClass{
+				util.BuildDeviceClass("gpu.example.com", []resourcev1beta1.DeviceSelector{
+					{CEL: &resourcev1beta1.CELDeviceSelector{
+						Expression: fmt.Sprintf(`device.attributes["%s"].%s`, "some-driver", resourcev1beta1.QualifiedName("healthy")),
+					}},
+				}, nil),
+			},
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
+					[]v1.ResourceClaim{{Name: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("c1", 1, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"c1/pg1": scheduling.PodGroupInqueue,
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
 			test.Plugins = plugins
 			test.RegisterSession(tiers, nil)
 			defer test.Close()

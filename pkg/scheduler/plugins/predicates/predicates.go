@@ -31,6 +31,7 @@ import (
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/feature"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/interpodaffinity"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/nodeaffinity"
@@ -78,6 +79,9 @@ const (
 	// VolumeBindingEnable is the key for enabling Volume Binding Predicates in scheduler configmap
 	VolumeBindingEnable = "predicate.VolumeBindingEnable"
 
+	// DynamicResourceAllocationEnable is the key for enabling Dynamic Resource Allocation Predicates in scheduler configmap
+	DynamicResourceAllocationEnable = "predicate.DynamicResourceAllocationEnable"
+
 	// CachePredicate control cache predicate feature
 	CachePredicate = "predicate.CacheEnable"
 
@@ -99,6 +103,8 @@ type predicatesPlugin struct {
 	pluginArguments framework.Arguments
 	// The VolumeBindingPlugin needs to store to execute in PreBind and PreBindRollBack
 	volumeBindingPlugin *vbcap.VolumeBinding
+	// The DynamicResourceAllocationPlugin needs to store to execute in PreBind and PreBindRollBack
+	dynamicResourceAllocationPlugin *dynamicresources.DynamicResources
 }
 
 // New return predicate plugin
@@ -116,17 +122,18 @@ type baseResource struct {
 }
 
 type predicateEnable struct {
-	nodeAffinityEnable      bool
-	nodePortEnable          bool
-	taintTolerationEnable   bool
-	podAffinityEnable       bool
-	nodeVolumeLimitsEnable  bool
-	volumeZoneEnable        bool
-	podTopologySpreadEnable bool
-	cacheEnable             bool
-	proportionalEnable      bool
-	volumeBindingEnable     bool
-	proportional            map[v1.ResourceName]baseResource
+	nodeAffinityEnable              bool
+	nodePortEnable                  bool
+	taintTolerationEnable           bool
+	podAffinityEnable               bool
+	nodeVolumeLimitsEnable          bool
+	volumeZoneEnable                bool
+	podTopologySpreadEnable         bool
+	cacheEnable                     bool
+	proportionalEnable              bool
+	volumeBindingEnable             bool
+	dynamicResourceAllocationEnable bool
+	proportional                    map[v1.ResourceName]baseResource
 }
 
 // bind context extension information of predicates
@@ -168,16 +175,17 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	*/
 
 	predicate := predicateEnable{
-		nodeAffinityEnable:      true,
-		nodePortEnable:          true,
-		taintTolerationEnable:   true,
-		podAffinityEnable:       true,
-		nodeVolumeLimitsEnable:  true,
-		volumeZoneEnable:        true,
-		podTopologySpreadEnable: true,
-		cacheEnable:             false,
-		proportionalEnable:      false,
-		volumeBindingEnable:     true,
+		nodeAffinityEnable:              true,
+		nodePortEnable:                  true,
+		taintTolerationEnable:           true,
+		podAffinityEnable:               true,
+		nodeVolumeLimitsEnable:          true,
+		volumeZoneEnable:                true,
+		podTopologySpreadEnable:         true,
+		cacheEnable:                     false,
+		proportionalEnable:              false,
+		volumeBindingEnable:             true,
+		dynamicResourceAllocationEnable: false,
 	}
 
 	// Checks whether predicate enable args is provided or not.
@@ -190,6 +198,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	args.GetBool(&predicate.volumeZoneEnable, VolumeZoneEnable)
 	args.GetBool(&predicate.podTopologySpreadEnable, PodTopologySpreadEnable)
 	args.GetBool(&predicate.volumeBindingEnable, VolumeBindingEnable)
+	args.GetBool(&predicate.dynamicResourceAllocationEnable, DynamicResourceAllocationEnable)
 
 	args.GetBool(&predicate.cacheEnable, CachePredicate)
 	// Checks whether predicate.ProportionalEnable is provided or not, if given, modifies the value in predicateEnable struct.
@@ -323,10 +332,13 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
 		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
 		EnableSidecarContainers:                      utilFeature.DefaultFeatureGate.Enabled(features.SidecarContainers),
+		EnableDRAAdminAccess:                         utilFeature.DefaultFeatureGate.Enabled(features.DRAAdminAccess),
+		EnableDynamicResourceAllocation:              utilFeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation),
 	}
 	// Initialize k8s plugins
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
-	handle := k8s.NewFrameworkHandle(nodeMap, ssn.KubeClient(), ssn.InformerFactory())
+	handle := k8s.NewFrameworkHandle(nodeMap, ssn.KubeClient(), ssn.InformerFactory(),
+		k8s.WithSharedDRAManager(ssn.SharedDRAManager()))
 	// 1. NodeUnschedulable
 	plugin, _ := nodeunschedulable.New(context.TODO(), nil, handle, features)
 	nodeUnscheduleFilter := plugin.(*nodeunschedulable.NodeUnschedulable)
@@ -376,6 +388,17 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		})
 
 		pp.volumeBindingPlugin = volumeBindingPluginInstance
+	}
+	// 10. DRA
+	var dynamicResourceAllocationPlugin *dynamicresources.DynamicResources
+	if predicate.dynamicResourceAllocationEnable {
+		var err error
+		plugin, err = dynamicresources.New(context.TODO(), nil, handle, features)
+		if err != nil {
+			klog.Fatalf("failed to create dra plugin with err: %v", err)
+		}
+		dynamicResourceAllocationPlugin = plugin.(*dynamicresources.DynamicResources)
+		pp.dynamicResourceAllocationPlugin = dynamicResourceAllocationPlugin
 	}
 
 	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {
@@ -438,6 +461,14 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		if predicate.volumeBindingEnable {
 			_, status := pp.volumeBindingPlugin.PreFilter(context.TODO(), state, task.Pod)
 			if err := handleSkipPrePredicatePlugin(status, state, task, pp.volumeBindingPlugin.Name()); err != nil {
+				return err
+			}
+		}
+
+		// DRA Predicate
+		if predicate.dynamicResourceAllocationEnable {
+			_, status := pp.dynamicResourceAllocationPlugin.PreFilter(context.TODO(), state, task.Pod)
+			if err := handleSkipPrePredicatePlugin(status, state, task, pp.dynamicResourceAllocationPlugin.Name()); err != nil {
 				return err
 			}
 		}
@@ -636,6 +667,21 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		// Check DRA
+		if predicate.dynamicResourceAllocationEnable {
+			isSkipDRA := handleSkipPredicatePlugin(state, pp.dynamicResourceAllocationPlugin.Name())
+			if !isSkipDRA {
+				status := pp.dynamicResourceAllocationPlugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
+				dynamicResourceAllocationStatus := api.ConvertPredicateStatus(status)
+				if dynamicResourceAllocationStatus.Code != api.Success {
+					predicateStatus = append(predicateStatus, dynamicResourceAllocationStatus)
+					if ShouldAbort(dynamicResourceAllocationStatus) {
+						return api.NewFitErrWithStatus(task, node, predicateStatus...)
+					}
+				}
+			}
+		}
+
 		if len(predicateStatus) > 0 {
 			return api.NewFitErrWithStatus(task, node, predicateStatus...)
 		}
@@ -678,6 +724,15 @@ func (pp *predicatesPlugin) runReservePlugins(ssn *framework.Session, event *fra
 			return
 		}
 	}
+
+	// DRA Reserve
+	if pp.dynamicResourceAllocationPlugin != nil {
+		status := pp.dynamicResourceAllocationPlugin.Reserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
+		if !status.IsSuccess() {
+			event.Err = status.AsError()
+			return
+		}
+	}
 }
 
 func (pp *predicatesPlugin) runUnReservePlugins(ssn *framework.Session, event *framework.Event) {
@@ -686,6 +741,11 @@ func (pp *predicatesPlugin) runUnReservePlugins(ssn *framework.Session, event *f
 	// Volume Binding UnReserve
 	if pp.volumeBindingPlugin != nil {
 		pp.volumeBindingPlugin.Unreserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
+	}
+
+	// DRA UnReserve
+	if pp.dynamicResourceAllocationPlugin != nil {
+		pp.dynamicResourceAllocationPlugin.Unreserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
 	}
 }
 
@@ -707,7 +767,12 @@ func (pp *predicatesPlugin) needsPreBind(task *api.TaskInfo) bool {
 		}
 	}
 
-	// 2. TODO: With resourceClaims
+	// 2. With resourceClaims
+	if pp.dynamicResourceAllocationPlugin != nil {
+		if len(task.Pod.Spec.ResourceClaims) > 0 {
+			return true
+		}
+	}
 
 	return false
 }
@@ -727,6 +792,14 @@ func (pp *predicatesPlugin) PreBind(ctx context.Context, bindCtx *cache.BindCont
 		}
 	}
 
+	// DRA PreBind
+	if pp.dynamicResourceAllocationPlugin != nil {
+		status := pp.dynamicResourceAllocationPlugin.PreBind(ctx, state, bindCtx.TaskInfo.Pod, bindCtx.TaskInfo.Pod.Spec.NodeName)
+		if !status.IsSuccess() {
+			return status.AsError()
+		}
+	}
+
 	return nil
 }
 
@@ -740,6 +813,11 @@ func (pp *predicatesPlugin) PreBindRollBack(ctx context.Context, bindCtx *cache.
 	// VolumeBinding UnReserve
 	if pp.volumeBindingPlugin != nil {
 		pp.volumeBindingPlugin.Unreserve(ctx, state, bindCtx.TaskInfo.Pod, bindCtx.TaskInfo.Pod.Spec.NodeName)
+	}
+
+	// DRA UnReserve
+	if pp.dynamicResourceAllocationPlugin != nil {
+		pp.dynamicResourceAllocationPlugin.Unreserve(ctx, state, bindCtx.TaskInfo.Pod, bindCtx.TaskInfo.Pod.Spec.NodeName)
 	}
 }
 

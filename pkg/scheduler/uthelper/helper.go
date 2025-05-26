@@ -23,6 +23,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	resourcev1beta1 "k8s.io/api/resource/v1beta1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -70,7 +71,10 @@ type TestCommonStruct struct {
 	PVs                []*v1.PersistentVolume
 	PVCs               []*v1.PersistentVolumeClaim
 	SCs                []*storagev1.StorageClass
-
+	// DRA related resources
+	ResourceSlices []*resourcev1beta1.ResourceSlice
+	DeviceClasses  []*resourcev1beta1.DeviceClass
+	ResourceClaims []*resourcev1beta1.ResourceClaim
 	// ExpectBindMap the expected bind results.
 	// bind results: ns/podName -> nodeName
 	ExpectBindMap map[string]string
@@ -129,6 +133,15 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	}
 	for _, pvc := range test.PVCs {
 		kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
+	}
+	for _, dc := range test.DeviceClasses {
+		kubeClient.ResourceV1beta1().DeviceClasses().Create(context.Background(), dc, metav1.CreateOptions{})
+	}
+	for _, rc := range test.ResourceClaims {
+		kubeClient.ResourceV1beta1().ResourceClaims(rc.Namespace).Create(context.Background(), rc, metav1.CreateOptions{})
+	}
+	for _, rs := range test.ResourceSlices {
+		kubeClient.ResourceV1beta1().ResourceSlices().Create(context.Background(), rs, metav1.CreateOptions{})
 	}
 	// need to immediately run the cache to make sure the resources are added
 	schedulerCache.Run(test.stop)

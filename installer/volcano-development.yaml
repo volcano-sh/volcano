@@ -4667,6 +4667,15 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "create", "update", "watch"]
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["resourceclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["resourceclaims/status"]
+    verbs: ["update"]
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["deviceclasses","resourceslices"]
+    verbs: ["get", "list", "watch", "create"]
 ---
 # Source: volcano/templates/scheduler.yaml
 kind: ClusterRoleBinding
