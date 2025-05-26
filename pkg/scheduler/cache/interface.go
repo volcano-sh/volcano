@@ -56,7 +56,7 @@ type Cache interface {
 	RecordJobStatusEvent(job *api.JobInfo, updatePG bool)
 
 	// UpdateJobStatus puts job in backlog for a while.
-	UpdateJobStatus(job *api.JobInfo, updatePG bool) (*api.JobInfo, error)
+	UpdateJobStatus(job *api.JobInfo, updatePGStatus, updatePGAnnotations bool) (*api.JobInfo, error)
 
 	// UpdateQueueStatus update queue status.
 	UpdateQueueStatus(queue *api.QueueInfo) error

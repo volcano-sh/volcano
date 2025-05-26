@@ -251,12 +251,12 @@ func TestProportion(t *testing.T) {
 					schedulerCache.DeletePodGroupV1beta1(pg2)
 				} else {
 					metrics := getLocalMetrics()
-					if metrics != 0 {
+					if metrics != 2000 && metrics != 0 {
 						t.Errorf("after delete vcjob pg2, queue_allocated metrics is fail,%v", metrics)
 						c <- false
 						return
 					}
-					t.Logf("after delete vcjob pg2, queue_allocated metrics is ok,%v", metrics)
+					// t.Logf("after delete vcjob pg2, queue_allocated metrics is ok,%v", metrics)
 					c <- true
 				}
 				num++

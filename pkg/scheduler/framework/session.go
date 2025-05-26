@@ -19,12 +19,14 @@ package framework
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -58,9 +60,9 @@ type Session struct {
 
 	TotalResource  *api.Resource
 	TotalGuarantee *api.Resource
-	// podGroupStatus cache podgroup status during schedule
+	// PodGroupOldState contains podgroup status and annotations during schedule
 	// This should not be mutated after initiated
-	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
+	api.PodGroupOldState
 
 	Jobs           map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
@@ -77,6 +79,16 @@ type Session struct {
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
+	// HyperNodes stores the HyperNodeInfo of each HyperNode
+	HyperNodes api.HyperNodeInfoMap
+	// HyperNodesSetByTier contains a set of hyperNodes by tier from down to top, nodes under the same hyperNode
+	// have the same topology domain, e.g., nodes under the same switch or tor, jobs allocated in the same
+	// hyperNode can gain a better performance, the lower the tier of hyperNode, the better performance.
+	HyperNodesSetByTier map[int]sets.Set[string]
+	HyperNodesTiers     []int
+	// RealNodesList maps hyperNode Name -> nodes under the hyperNode.
+	RealNodesList             map[string][]*api.NodeInfo
+	HyperNodesReadyToSchedule bool
 
 	plugins             map[string]Plugin
 	eventHandlers       []*EventHandler
@@ -92,6 +104,7 @@ type Session struct {
 	batchNodeOrderFns   map[string]api.BatchNodeOrderFn
 	nodeMapFns          map[string]api.NodeMapFn
 	nodeReduceFns       map[string]api.NodeReduceFn
+	hyperNodeOrderFns   map[string]api.HyperNodeOrderFn
 	preemptableFns      map[string]api.EvictableFn
 	reclaimableFns      map[string]api.EvictableFn
 	overusedFns         map[string]api.ValidateFn
@@ -129,8 +142,10 @@ func openSession(cache cache.Cache) *Session {
 
 		TotalResource:  api.EmptyResource(),
 		TotalGuarantee: api.EmptyResource(),
-		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
-
+		PodGroupOldState: api.PodGroupOldState{
+			Status:      map[api.JobID]scheduling.PodGroupStatus{},
+			Annotations: map[api.JobID]map[string]string{},
+		},
 		Jobs:           map[api.JobID]*api.JobInfo{},
 		Nodes:          map[string]*api.NodeInfo{},
 		CSINodesStatus: map[string]*api.CSINodeStatusInfo{},
@@ -150,6 +165,7 @@ func openSession(cache cache.Cache) *Session {
 		batchNodeOrderFns:   map[string]api.BatchNodeOrderFn{},
 		nodeMapFns:          map[string]api.NodeMapFn{},
 		nodeReduceFns:       map[string]api.NodeReduceFn{},
+		hyperNodeOrderFns:   map[string]api.HyperNodeOrderFn{},
 		preemptableFns:      map[string]api.EvictableFn{},
 		reclaimableFns:      map[string]api.EvictableFn{},
 		overusedFns:         map[string]api.ValidateFn{},
@@ -171,10 +187,16 @@ func openSession(cache cache.Cache) *Session {
 	ssn.Jobs = snapshot.Jobs
 	for _, job := range ssn.Jobs {
 		if job.PodGroup != nil {
-			ssn.podGroupStatus[job.UID] = *job.PodGroup.Status.DeepCopy()
+			ssn.PodGroupOldState.Status[job.UID] = *job.PodGroup.Status.DeepCopy()
+			ssn.PodGroupOldState.Annotations[job.UID] = job.PodGroup.GetAnnotations()
 		}
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
+	ssn.HyperNodes = snapshot.HyperNodes
+	ssn.HyperNodesSetByTier = snapshot.HyperNodesSetByTier
+	ssn.parseHyperNodesTiers()
+	ssn.RealNodesList = util.GetRealNodesListByHyperNode(snapshot.RealNodesSet, snapshot.Nodes)
+	ssn.HyperNodesReadyToSchedule = snapshot.HyperNodesReadyToSchedule
 	ssn.Nodes = snapshot.Nodes
 	ssn.CSINodesStatus = snapshot.CSINodesStatus
 	ssn.RevocableNodes = snapshot.RevocableNodes
@@ -191,6 +213,20 @@ func openSession(cache cache.Cache) *Session {
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
 
 	return ssn
+}
+
+func (ssn *Session) parseHyperNodesTiers() {
+	if len(ssn.HyperNodesSetByTier) == 0 {
+		return
+	}
+
+	// sort to guarantee the traverse order is from down to top.
+	var tiers []int
+	for tier := range ssn.HyperNodesSetByTier {
+		tiers = append(tiers, tier)
+	}
+	sort.Ints(tiers)
+	ssn.HyperNodesTiers = tiers
 }
 
 // updateQueueStatus updates allocated field in queue status on session close.
