@@ -45,6 +45,7 @@ func TestAddFlags(t *testing.T) {
 
 	args := []string{
 		"--schedule-period=5m",
+		"--resync-period=0",
 		"--priority-class=false",
 		"--cache-dumper=false",
 		"--leader-elect-lease-duration=60s",
@@ -58,6 +59,7 @@ func TestAddFlags(t *testing.T) {
 	expected := &ServerOption{
 		SchedulerNames: []string{defaultSchedulerName},
 		SchedulePeriod: 5 * time.Minute,
+		ResyncPeriod:   0,
 		LeaderElection: config.LeaderElectionConfiguration{
 			LeaderElect:       true,
 			LeaseDuration:     metav1.Duration{Duration: 60 * time.Second},
