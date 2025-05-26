@@ -19,7 +19,10 @@ package util
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -29,6 +32,7 @@ func TestSelectBestNode(t *testing.T) {
 		NodeScores map[float64][]*api.NodeInfo
 		// Expected node is one of ExpectedNodes
 		ExpectedNodes []*api.NodeInfo
+		ExpectedScore float64
 	}{
 		{
 			NodeScores: map[float64][]*api.NodeInfo{
@@ -36,6 +40,7 @@ func TestSelectBestNode(t *testing.T) {
 				2.0: {&api.NodeInfo{Name: "node3"}, &api.NodeInfo{Name: "node4"}},
 			},
 			ExpectedNodes: []*api.NodeInfo{{Name: "node3"}, {Name: "node4"}},
+			ExpectedScore: 2.0,
 		},
 		{
 			NodeScores: map[float64][]*api.NodeInfo{
@@ -44,6 +49,7 @@ func TestSelectBestNode(t *testing.T) {
 				2.0: {&api.NodeInfo{Name: "node4"}, &api.NodeInfo{Name: "node5"}},
 			},
 			ExpectedNodes: []*api.NodeInfo{{Name: "node3"}},
+			ExpectedScore: 3.0,
 		},
 		{
 			NodeScores:    map[float64][]*api.NodeInfo{},
@@ -60,9 +66,12 @@ func TestSelectBestNode(t *testing.T) {
 		return false
 	}
 	for i, test := range cases {
-		result := SelectBestNode(test.NodeScores)
+		result, score := SelectBestNodeAndScore(test.NodeScores)
 		if !oneOf(result, test.ExpectedNodes) {
 			t.Errorf("Failed test case #%d, expected: %#v, got %#v", i, test.ExpectedNodes, result)
+		}
+		if score != test.ExpectedScore {
+			t.Errorf("Failed test case #%d, expected: %#v, got %#v", i, test.ExpectedScore, score)
 		}
 	}
 }
@@ -151,6 +160,299 @@ func TestNumFeasibleNodesToFind(t *testing.T) {
 			}
 			if gotNumNodes := CalculateNumOfFeasibleNodesToFind(tt.numAllNodes); gotNumNodes != tt.wantNumNodes {
 				t.Errorf("Scheduler.numFeasibleNodesToFind() = %v, want %v", gotNumNodes, tt.wantNumNodes)
+			}
+		})
+	}
+}
+
+func TestGetHyperNodeList(t *testing.T) {
+	testCases := []struct {
+		name       string
+		hyperNodes map[string]sets.Set[string]
+		allNodes   map[string]*api.NodeInfo
+		expected   map[string]sets.Set[string]
+	}{
+		{
+			name: "Normal case",
+			hyperNodes: map[string]sets.Set[string]{
+				"hyperNode1": sets.New[string]("node1", "node2"),
+				"hyperNode2": sets.New[string]("node3"),
+			},
+			allNodes: map[string]*api.NodeInfo{
+				"node1": {Name: "node1"},
+				"node2": {Name: "node2"},
+				"node3": {Name: "node3"},
+			},
+			expected: map[string]sets.Set[string]{
+				"hyperNode1": sets.New[string]("node1", "node2"),
+				"hyperNode2": sets.New[string]("node3"),
+			},
+		},
+		{
+			name: "Missing nodes",
+			hyperNodes: map[string]sets.Set[string]{
+				"hyperNode1": sets.New[string]("node1", "node4"),
+				"hyperNode2": sets.New[string]("node3"),
+			},
+			allNodes: map[string]*api.NodeInfo{
+				"node1": {Name: "node1"},
+				"node3": {Name: "node3"},
+			},
+			expected: map[string]sets.Set[string]{
+				"hyperNode1": sets.New[string]("node1"),
+				"hyperNode2": sets.New[string]("node3"),
+			},
+		},
+		{
+			name:       "Empty hyperNodes",
+			hyperNodes: map[string]sets.Set[string]{},
+			allNodes: map[string]*api.NodeInfo{
+				"node1": {Name: "node1"},
+				"node2": {Name: "node2"},
+			},
+			expected: map[string]sets.Set[string]{},
+		},
+		{
+			name: "Empty allNodes",
+			hyperNodes: map[string]sets.Set[string]{
+				"hyperNode1": sets.New[string]("node1", "node2"),
+			},
+			allNodes: map[string]*api.NodeInfo{},
+			expected: map[string]sets.Set[string]{
+				"hyperNode1": {},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := GetRealNodesListByHyperNode(tc.hyperNodes, tc.allNodes)
+			nodesSet := make(map[string]sets.Set[string])
+			for name, nodes := range result {
+				s := sets.New[string]()
+				for _, node := range nodes {
+					s.Insert(node.Name)
+				}
+				nodesSet[name] = s
+			}
+			assert.Equal(t, tc.expected, nodesSet)
+		})
+	}
+}
+
+func TestFindJobTaskNumOfHyperNode(t *testing.T) {
+	testCases := []struct {
+		name          string
+		hyperNodeName string
+		tasks         map[string]string
+		hyperNodes    map[string][]*api.NodeInfo
+		expectedRes   int
+	}{
+		{
+			name:          "Normal case with matching tasks",
+			hyperNodeName: "hyperNode1",
+			tasks: map[string]string{
+				"task1": "node1",
+				"task2": "node2",
+			},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+					{Name: "node3"},
+				},
+			},
+			expectedRes: 1,
+		},
+		{
+			name:          "No matching tasks case",
+			hyperNodeName: "hyperNode1",
+			tasks: map[string]string{
+				"task1": "node4",
+				"task2": "node5",
+			},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+					{Name: "node3"},
+				},
+			},
+			expectedRes: 0,
+		},
+		{
+			name:          "Empty job tasks map case",
+			hyperNodeName: "hyperNode1",
+			tasks:         map[string]string{},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+					{Name: "node3"},
+				},
+			},
+			expectedRes: 0,
+		},
+		{
+			name:          "Empty nodes list for hyperNode case",
+			hyperNodeName: "hyperNode2",
+			tasks: map[string]string{
+				"task1": "node1",
+				"task2": "node2",
+			},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode2": {},
+			},
+			expectedRes: 0,
+		},
+		{
+			name:          "Tasks with duplicate match in multiple hyperNodes",
+			hyperNodeName: "hyperNode1",
+			tasks: map[string]string{
+				"task1": "node1",
+			},
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+				},
+				"hyperNode2": {
+					{Name: "node1"},
+				},
+			},
+			expectedRes: 1,
+		},
+	}
+
+	job := &api.JobInfo{
+		Name:     "test-job",
+		PodGroup: &api.PodGroup{},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			job.Tasks = make(map[api.TaskID]*api.TaskInfo)
+			for name, node := range tc.tasks {
+				taskInfo := &api.TaskInfo{
+					UID:  api.TaskID(name),
+					Name: name,
+					Job:  job.UID,
+				}
+				taskInfo.NodeName = node
+				job.Tasks[taskInfo.UID] = taskInfo
+			}
+			result := FindJobTaskNumOfHyperNode(tc.hyperNodeName, job, tc.hyperNodes)
+			if result != tc.expectedRes {
+				t.Errorf("Test case '%s' failed. Expected result: %d, but got: %d",
+					tc.name, tc.expectedRes, result)
+			}
+		})
+	}
+}
+
+func TestFindHyperNodeForNode(t *testing.T) {
+	testCases := []struct {
+		name                string
+		nodeName            string
+		hyperNodes          map[string][]*api.NodeInfo
+		hyperNodesTiers     []int
+		hyperNodesSetByTier map[int]sets.Set[string]
+		expectedRes         string
+	}{
+		{
+			name:     "Normal case with matching node",
+			nodeName: "node1",
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+					{Name: "node2"},
+				},
+				"hyperNode2": {
+					{Name: "node3"},
+					{Name: "node4"},
+				},
+			},
+			hyperNodesTiers: []int{1, 2},
+			hyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("hyperNode1", "hyperNode2"),
+				2: sets.New[string]("hyperNode3", "hyperNode4"),
+			},
+			expectedRes: "hyperNode1",
+		},
+		{
+			name:     "No matching node case",
+			nodeName: "node5",
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+					{Name: "node2"},
+				},
+				"hyperNode2": {
+					{Name: "node3"},
+					{Name: "node4"},
+				},
+			},
+			hyperNodesTiers: []int{1, 2},
+			hyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("hyperNode1", "hyperNode2"),
+				2: sets.New[string]("hyperNode3", "hyperNode4"),
+			},
+			expectedRes: "",
+		},
+		{
+			name:            "Empty hyperNodes map case",
+			nodeName:        "node1",
+			hyperNodes:      map[string][]*api.NodeInfo{},
+			hyperNodesTiers: []int{1, 2},
+			hyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("hyperNode1", "hyperNode2"),
+				2: sets.New[string]("hyperNode3", "hyperNode4"),
+			},
+			expectedRes: "",
+		},
+		{
+			name:     "Empty hyperNodesTiers case",
+			nodeName: "node1",
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+					{Name: "node2"},
+				},
+				"hyperNode2": {
+					{Name: "node3"},
+					{Name: "node4"},
+				},
+			},
+			hyperNodesTiers: []int{},
+			hyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("hyperNode1", "hyperNode2"),
+				2: sets.New[string]("hyperNode3", "hyperNode4"),
+			},
+			expectedRes: "",
+		},
+		{
+			name:     "hyperNodesSetByTier does not contain the tier",
+			nodeName: "node1",
+			hyperNodes: map[string][]*api.NodeInfo{
+				"hyperNode1": {
+					{Name: "node1"},
+					{Name: "node2"},
+				},
+				"hyperNode2": {
+					{Name: "node3"},
+					{Name: "node4"},
+				},
+			},
+			hyperNodesTiers: []int{3, 4},
+			hyperNodesSetByTier: map[int]sets.Set[string]{
+				1: sets.New[string]("hyperNode1", "hyperNode2"),
+				2: sets.New[string]("hyperNode3", "hyperNode4"),
+			},
+			expectedRes: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := FindHyperNodeForNode(tc.nodeName, tc.hyperNodes, tc.hyperNodesTiers, tc.hyperNodesSetByTier)
+			if result != tc.expectedRes {
+				t.Errorf("Test case '%s' failed. Expected result: %s, but got: %s",
+					tc.name, tc.expectedRes, result)
 			}
 		})
 	}

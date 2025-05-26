@@ -70,9 +70,10 @@ type TaskID types.UID
 
 // TransactionContext holds all the fields that needed by scheduling transaction
 type TransactionContext struct {
-	NodeName         string
-	EvictionOccurred bool
-	Status           TaskStatus
+	NodeName              string
+	EvictionOccurred      bool
+	JobAllocatedHyperNode string
+	Status                TaskStatus
 }
 
 // Clone returns a clone of TransactionContext
@@ -1048,4 +1049,27 @@ func (ji *JobInfo) IsPending() bool {
 // HasPendingTasks return whether job has pending tasks
 func (ji *JobInfo) HasPendingTasks() bool {
 	return len(ji.TaskStatusIndex[Pending]) != 0
+}
+
+// IsHardTopologyMode return whether the job's network topology mode is hard and also return the highest allowed tier
+func (ji *JobInfo) IsHardTopologyMode() (bool, int) {
+	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopology == nil || ji.PodGroup.Spec.NetworkTopology.HighestTierAllowed == nil {
+		return false, 0
+	}
+
+	return ji.PodGroup.Spec.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode, *ji.PodGroup.Spec.NetworkTopology.HighestTierAllowed
+}
+
+// IsSoftTopologyMode returns whether the job has configured network topologies with soft mode.
+func (ji *JobInfo) IsSoftTopologyMode() bool {
+	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopology == nil {
+		return false
+	}
+	return ji.PodGroup.Spec.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode
+}
+
+// ResetFitErr will set job and node fit err to nil.
+func (ji *JobInfo) ResetFitErr() {
+	ji.JobFitErrors = ""
+	ji.NodesFitErrors = make(map[TaskID]*FitErrors)
 }
