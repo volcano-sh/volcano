@@ -19,12 +19,15 @@ package framework
 import (
 	"context"
 	"fmt"
+	"sort"
+	"sync"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -61,9 +64,9 @@ type Session struct {
 
 	TotalResource  *api.Resource
 	TotalGuarantee *api.Resource
-	// podGroupStatus cache podgroup status during schedule
+	// PodGroupOldState contains podgroup status and annotations during schedule
 	// This should not be mutated after initiated
-	podGroupStatus map[api.JobID]scheduling.PodGroupStatus
+	api.PodGroupOldState
 
 	Jobs           map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
@@ -80,6 +83,16 @@ type Session struct {
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
+	// HyperNodes stores the HyperNodeInfo of each HyperNode
+	HyperNodes api.HyperNodeInfoMap
+	// HyperNodesSetByTier contains a set of hyperNodes by tier from down to top, nodes under the same hyperNode
+	// have the same topology domain, e.g., nodes under the same switch or tor, jobs allocated in the same
+	// hyperNode can gain a better performance, the lower the tier of hyperNode, the better performance.
+	HyperNodesSetByTier map[int]sets.Set[string]
+	HyperNodesTiers     []int
+	// RealNodesList maps hyperNode Name -> nodes under the hyperNode.
+	RealNodesList             map[string][]*api.NodeInfo
+	HyperNodesReadyToSchedule bool
 
 	plugins             map[string]Plugin
 	eventHandlers       []*EventHandler
@@ -95,6 +108,7 @@ type Session struct {
 	batchNodeOrderFns   map[string]api.BatchNodeOrderFn
 	nodeMapFns          map[string]api.NodeMapFn
 	nodeReduceFns       map[string]api.NodeReduceFn
+	hyperNodeOrderFns   map[string]api.HyperNodeOrderFn
 	preemptableFns      map[string]api.EvictableFn
 	reclaimableFns      map[string]api.EvictableFn
 	overusedFns         map[string]api.ValidateFn
@@ -111,6 +125,13 @@ type Session struct {
 	reservedNodesFns  map[string]api.ReservedNodesFn
 	victimTasksFns    map[string][]api.VictimTasksFn
 	jobStarvingFns    map[string]api.ValidateFn
+
+	// cycleStatesMap is used to temporarily store the scheduling status of each pod, its life cycle is same as Session.
+	// Because state needs to be passed between different extension points (not only used in PreFilter and Filter),
+	// in order to avoid different Pod scheduling states from being overwritten,
+	// the state needs to be temporarily stored in cycleStatesMap when an extension point is executed.
+	// The key is task's UID, value is the CycleState.
+	cycleStatesMap sync.Map
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -125,8 +146,10 @@ func openSession(cache cache.Cache) *Session {
 
 		TotalResource:  api.EmptyResource(),
 		TotalGuarantee: api.EmptyResource(),
-		podGroupStatus: map[api.JobID]scheduling.PodGroupStatus{},
-
+		PodGroupOldState: api.PodGroupOldState{
+			Status:      map[api.JobID]scheduling.PodGroupStatus{},
+			Annotations: map[api.JobID]map[string]string{},
+		},
 		Jobs:           map[api.JobID]*api.JobInfo{},
 		Nodes:          map[string]*api.NodeInfo{},
 		CSINodesStatus: map[string]*api.CSINodeStatusInfo{},
@@ -146,6 +169,7 @@ func openSession(cache cache.Cache) *Session {
 		batchNodeOrderFns:   map[string]api.BatchNodeOrderFn{},
 		nodeMapFns:          map[string]api.NodeMapFn{},
 		nodeReduceFns:       map[string]api.NodeReduceFn{},
+		hyperNodeOrderFns:   map[string]api.HyperNodeOrderFn{},
 		preemptableFns:      map[string]api.EvictableFn{},
 		reclaimableFns:      map[string]api.EvictableFn{},
 		overusedFns:         map[string]api.ValidateFn{},
@@ -167,10 +191,16 @@ func openSession(cache cache.Cache) *Session {
 	ssn.Jobs = snapshot.Jobs
 	for _, job := range ssn.Jobs {
 		if job.PodGroup != nil {
-			ssn.podGroupStatus[job.UID] = *job.PodGroup.Status.DeepCopy()
+			ssn.PodGroupOldState.Status[job.UID] = *job.PodGroup.Status.DeepCopy()
+			ssn.PodGroupOldState.Annotations[job.UID] = job.PodGroup.GetAnnotations()
 		}
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
+	ssn.HyperNodes = snapshot.HyperNodes
+	ssn.HyperNodesSetByTier = snapshot.HyperNodesSetByTier
+	ssn.parseHyperNodesTiers()
+	ssn.RealNodesList = util.GetRealNodesListByHyperNode(snapshot.RealNodesSet, snapshot.Nodes)
+	ssn.HyperNodesReadyToSchedule = snapshot.HyperNodesReadyToSchedule
 	ssn.Nodes = snapshot.Nodes
 	ssn.CSINodesStatus = snapshot.CSINodesStatus
 	ssn.RevocableNodes = snapshot.RevocableNodes
@@ -181,10 +211,26 @@ func openSession(cache cache.Cache) *Session {
 		ssn.TotalResource.Add(n.Allocatable)
 	}
 
+	ssn.InitCycleState()
+
 	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
 
 	return ssn
+}
+
+func (ssn *Session) parseHyperNodesTiers() {
+	if len(ssn.HyperNodesSetByTier) == 0 {
+		return
+	}
+
+	// sort to guarantee the traverse order is from down to top.
+	var tiers []int
+	for tier := range ssn.HyperNodesSetByTier {
+		tiers = append(tiers, tier)
+	}
+	sort.Ints(tiers)
+	ssn.HyperNodesTiers = tiers
 }
 
 // updateQueueStatus updates allocated field in queue status on session close.
@@ -286,7 +332,7 @@ func updateRootQueueResources(ssn *Session, allocated v1.ResourceList) {
 }
 
 func closeSession(ssn *Session) {
-	ju := newJobUpdater(ssn)
+	ju := NewJobUpdater(ssn)
 	ju.UpdateAll()
 
 	updateQueueStatus(ssn)
@@ -472,23 +518,8 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 
 // Allocate the task to the node in the session
 func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
-	podVolumes, err := ssn.cache.GetPodVolumes(task, nodeInfo.Node)
-	if err != nil {
-		return err
-	}
-
 	hostname := nodeInfo.Name
-	if err := ssn.cache.AllocateVolumes(task, hostname, podVolumes); err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			ssn.cache.RevertVolumes(task, podVolumes)
-		}
-	}()
-
 	task.Pod.Spec.NodeName = hostname
-	task.PodVolumes = podVolumes
 
 	// Only update status in session
 	job, found := ssn.Jobs[task.Job]
@@ -537,15 +568,14 @@ func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 				return err
 			}
 		}
-	} else {
-		ssn.cache.RevertVolumes(task, podVolumes)
 	}
 
 	return nil
 }
 
 func (ssn *Session) dispatch(task *api.TaskInfo) error {
-	if err := ssn.cache.AddBindTask(task); err != nil {
+	bindContext := ssn.CreateBindContext(task)
+	if err := ssn.cache.AddBindTask(bindContext); err != nil {
 		return err
 	}
 
@@ -564,6 +594,57 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 
 	metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
 	return nil
+}
+
+func (ssn *Session) CreateBindContext(task *api.TaskInfo) *cache.BindContext {
+	bindContext := &cache.BindContext{
+		TaskInfo:   task,
+		Extensions: make(map[string]cache.BindContextExtension),
+	}
+
+	for _, plugin := range ssn.plugins {
+		// If the plugin implements the BindContextHandler interface, call the SetupBindContextExtension method.
+		if handler, ok := plugin.(BindContextHandler); ok {
+			handler.SetupBindContextExtension(ssn, bindContext)
+		}
+	}
+
+	return bindContext
+}
+
+func (ssn *Session) InitCycleState() {
+	// init cycleStatesMap for each pending pod
+	for _, job := range ssn.Jobs {
+		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
+			klog.V(4).Infof("Job <%s/%s> is not valid, reason: %s, message %s, skip initing cycle state for tasks in it",
+				job.Namespace, job.Name, vr.Reason, vr.Message)
+			continue
+		}
+
+		for _, task := range job.TaskStatusIndex[api.Pending] {
+			// Skip tasks whose pod are scheduling gated
+			if task.SchGated {
+				continue
+			}
+
+			// Init cycle state for the pod to share it with other extension points
+			state := k8sframework.NewCycleState()
+			ssn.cycleStatesMap.Store(task.UID, state)
+		}
+	}
+}
+
+func (ssn *Session) GetCycleState(taskID api.TaskID) *k8sframework.CycleState {
+	obj, exist := ssn.cycleStatesMap.Load(taskID)
+	if !exist {
+		// There may be existing pods that are already running, and their cycleState was not initialized during OpenSession,
+		// because initialization was only done for pending pods during OpenSession
+		state := k8sframework.NewCycleState()
+		ssn.cycleStatesMap.Store(taskID, state)
+		return state
+	}
+
+	return obj.(*k8sframework.CycleState)
 }
 
 // Evict the task in the session
@@ -647,27 +728,27 @@ func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNuma
 }
 
 // KubeClient returns the kubernetes client
-func (ssn Session) KubeClient() kubernetes.Interface {
+func (ssn *Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
 }
 
 // VCClient returns the volcano client
-func (ssn Session) VCClient() vcclient.Interface {
+func (ssn *Session) VCClient() vcclient.Interface {
 	return ssn.vcClient
 }
 
 // ClientConfig returns the rest client
-func (ssn Session) ClientConfig() *rest.Config {
+func (ssn *Session) ClientConfig() *rest.Config {
 	return ssn.restConfig
 }
 
 // InformerFactory returns the scheduler ShareInformerFactory
-func (ssn Session) InformerFactory() informers.SharedInformerFactory {
+func (ssn *Session) InformerFactory() informers.SharedInformerFactory {
 	return ssn.informerFactory
 }
 
 // RecordPodGroupEvent records podGroup events
-func (ssn Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason, msg string) {
+func (ssn *Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason, msg string) {
 	if podGroup == nil {
 		return
 	}
@@ -680,8 +761,13 @@ func (ssn Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reason
 	ssn.recorder.Eventf(pg, eventType, reason, msg)
 }
 
+// SharedDRAManager returns the shared DRAManager from cache
+func (ssn *Session) SharedDRAManager() k8sframework.SharedDRAManager {
+	return ssn.cache.SharedDRAManager()
+}
+
 // String return nodes and jobs information in the session
-func (ssn Session) String() string {
+func (ssn *Session) String() string {
 	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
 
 	for _, job := range ssn.Jobs {

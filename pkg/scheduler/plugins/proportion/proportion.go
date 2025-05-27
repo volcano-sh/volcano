@@ -234,7 +234,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
 		}
 
-		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
+		remaining = api.ExceededPart(remaining.Clone().Add(decreasedDeserved), increasedDeserved)
 		klog.V(4).Infof("Remaining resource is  <%s>", remaining)
 		if remaining.IsEmpty() || equality.Semantic.DeepEqual(remaining, oldRemaining) {
 			klog.V(4).Infof("Exiting when remaining is empty or no queue has more resource request:  <%v>", remaining)
@@ -299,8 +299,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	queueAllocatable := func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
-		attr := pp.queueOpts[queue.UID]
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not in open state, can not allocate task <%s>.", queue.Name, queue.Queue.Status.State, candidate.Name)
+			return false
+		}
 
+		attr := pp.queueOpts[queue.UID]
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
 		allocatable := futureUsed.LessEqualWithDimension(attr.deserved, candidate.Resreq)
 		if !allocatable {
@@ -325,6 +329,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		queueID := job.Queue
 		attr := pp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
+		// If the queue is not open, do not enqueue
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+			return util.Reject
+		}
 		// If no capability is set, always enqueue the job.
 		if attr.realCapability == nil {
 			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",

@@ -25,16 +25,11 @@ import (
 	// Initialize client auth plugin.
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 )
-
-func buildConfig(master, kubeconfig string) (*rest.Config, error) {
-	return clientcmd.BuildConfigFromFlags(master, kubeconfig)
-}
 
 func createQueueCommand(ctx context.Context, config *rest.Config, action busv1alpha1.Action) error {
 	queueClient := versioned.NewForConfigOrDie(config)

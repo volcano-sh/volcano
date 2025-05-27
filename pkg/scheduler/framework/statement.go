@@ -17,6 +17,7 @@ limitations under the License.
 package framework
 
 import (
+	"errors"
 	"fmt"
 
 	"k8s.io/klog/v2"
@@ -54,6 +55,11 @@ func NewStatement(ssn *Session) *Statement {
 	return &Statement{
 		ssn: ssn,
 	}
+}
+
+// AddOperation adds operation to statement
+func (s *Statement) Operations() []operation {
+	return s.operations
 }
 
 // Evict the pod
@@ -242,6 +248,7 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 		}
 	}
 	task.NodeName = ""
+	task.JobAllocatedHyperNode = ""
 
 	return nil
 }
@@ -250,22 +257,7 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
 	errInfos := make([]error, 0)
 	hostname := nodeInfo.Name
-
-	podVolumes, err := s.ssn.cache.GetPodVolumes(task, nodeInfo.Node)
-	if err != nil {
-		klog.Errorf("Failed to get pod volume for task %v/%v on node %v when allocating in Session <%v>: %v",
-			task.Namespace, task.Name, hostname, s.ssn.UID, err)
-		errInfos = append(errInfos, err)
-	}
-
-	if err := s.ssn.cache.AllocateVolumes(task, hostname, podVolumes); err != nil {
-		klog.Errorf("Failed to allocate volume for task %v/%v on node %v when allocating in Session <%v>: %v",
-			task.Namespace, task.Name, hostname, s.ssn.UID, err)
-		errInfos = append(errInfos, err)
-	}
-
 	task.Pod.Spec.NodeName = hostname
-	task.PodVolumes = podVolumes
 
 	// Only update status in session
 	job, found := s.ssn.Jobs[task.Job]
@@ -335,7 +327,8 @@ func (s *Statement) UnAllocate(task *api.TaskInfo) error {
 }
 
 func (s *Statement) allocate(task *api.TaskInfo) error {
-	if err := s.ssn.cache.AddBindTask(task); err != nil {
+	bindContext := s.ssn.CreateBindContext(task)
+	if err := s.ssn.cache.AddBindTask(bindContext); err != nil {
 		return err
 	}
 
@@ -357,8 +350,6 @@ func (s *Statement) allocate(task *api.TaskInfo) error {
 
 // unallocate the pod for task
 func (s *Statement) unallocate(task *api.TaskInfo) error {
-	s.ssn.cache.RevertVolumes(task, task.PodVolumes)
-
 	// Update status in session
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
@@ -387,6 +378,7 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 		}
 	}
 	task.NodeName = ""
+	task.JobAllocatedHyperNode = ""
 
 	return nil
 }
@@ -440,4 +432,71 @@ func (s *Statement) Commit() {
 			}
 		}
 	}
+}
+
+func (s *Statement) SaveOperations() *Statement {
+	s.outputOperations("Save operations: ", 4)
+
+	stmtTmp := &Statement{}
+	for _, op := range s.operations {
+		stmtTmp.operations = append(stmtTmp.operations, operation{
+			name:   op.name,
+			task:   op.task.Clone(),
+			reason: op.reason,
+		})
+	}
+	return stmtTmp
+}
+
+func (s *Statement) RecoverOperations(stmt *Statement) error {
+	if stmt == nil {
+		return errors.New("statement is nil")
+	}
+	s.outputOperations("Recover operations: ", 4)
+	for _, op := range stmt.operations {
+		switch op.name {
+		case Evict:
+			err := s.Evict(op.task, op.reason)
+			if err != nil {
+				klog.Errorf("Failed to evict task: %s", err.Error())
+				return err
+			}
+		case Pipeline:
+			err := s.Pipeline(op.task, op.task.NodeName, false)
+			if err != nil {
+				klog.Errorf("Failed to pipeline task: %s", err.Error())
+				return err
+			}
+		case Allocate:
+			node := s.ssn.Nodes[op.task.NodeName]
+			err := s.Allocate(op.task, node)
+			if err != nil {
+				if e := s.unallocate(op.task); e != nil {
+					klog.Errorf("Failed to unallocate task <%v/%v>: %v", op.task.Namespace, op.task.Name, e)
+				}
+				klog.Errorf("Failed to allocate task <%v/%v>: %v", op.task.Namespace, op.task.Name, err)
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Statement) outputOperations(msg string, level klog.Level) {
+	if !klog.V(level).Enabled() {
+		return
+	}
+
+	var buffer string
+	for _, op := range s.operations {
+		switch op.name {
+		case Evict:
+			buffer += fmt.Sprintf("task %s evict from node %s ", op.task.Name, op.task.NodeName)
+		case Pipeline:
+			buffer += fmt.Sprintf("task %s pipeline from node %s ", op.task.Name, op.task.NodeName)
+		case Allocate:
+			buffer += fmt.Sprintf("task %s allocate from node %s ", op.task.Name, op.task.NodeName)
+		}
+	}
+	klog.V(level).Info(msg, buffer)
 }

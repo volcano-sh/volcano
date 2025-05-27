@@ -37,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
+	clientset "k8s.io/client-go/kubernetes"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 
@@ -363,4 +364,12 @@ func deletePlaceHolder(ctx *TestContext) {
 		err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to delete pod %s", pod.Name)
 	}
+}
+
+func GetPodList(ctx context.Context, c clientset.Interface, namespace string, ls *metav1.LabelSelector) *v1.PodList {
+	selector, err := metav1.LabelSelectorAsSelector(ls)
+	Expect(err).NotTo(HaveOccurred())
+	podList, err := c.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
+	Expect(err).NotTo(HaveOccurred())
+	return podList
 }

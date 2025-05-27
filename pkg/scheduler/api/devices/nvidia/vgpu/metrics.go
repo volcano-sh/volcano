@@ -96,27 +96,27 @@ func ResetDeviceMetrics(UUID string, nodeName string, memory float64) {
 	VGPUPodMemoryAllocated.DeletePartialMatch(prometheus.Labels{"devID": UUID})
 	VGPUPodCoreAllocated.DeletePartialMatch(prometheus.Labels{"devID": UUID})
 }
-func (gs *GPUDevices) AddPodMetrics(index int, PodName string) {
+func (gs *GPUDevices) AddPodMetrics(index int, podUID, podName string) {
 	UUID := gs.Device[index].UUID
 	NodeName := gs.Device[index].Node
-	usage := gs.Device[index].PodMap[PodName]
-	VGPUPodMemoryAllocated.WithLabelValues(UUID, NodeName, PodName).Set(float64(usage.UsedMem))
-	VGPUPodCoreAllocated.WithLabelValues(UUID, NodeName, PodName).Set(float64(usage.UsedCore))
+	usage := gs.Device[index].PodMap[podUID]
+	VGPUPodMemoryAllocated.WithLabelValues(UUID, NodeName, podName).Set(float64(usage.UsedMem))
+	VGPUPodCoreAllocated.WithLabelValues(UUID, NodeName, podName).Set(float64(usage.UsedCore))
 	VGPUDevicesSharedNumber.WithLabelValues(UUID, NodeName).Inc()
 	VGPUDevicesAllocatedCores.WithLabelValues(UUID, NodeName).Set(float64(gs.Device[index].UsedCore))
 	VGPUDevicesAllocatedMemory.WithLabelValues(UUID, NodeName).Add(float64(gs.Device[index].UsedMem))
 }
 
-func (gs *GPUDevices) SubPodMetrics(index int, PodName string) {
+func (gs *GPUDevices) SubPodMetrics(index int, podUID, podName string) {
 	UUID := gs.Device[index].UUID
 	NodeName := gs.Device[index].Node
-	usage := gs.Device[index].PodMap[PodName]
-	VGPUPodMemoryAllocated.WithLabelValues(UUID, NodeName, PodName).Set(float64(usage.UsedMem))
-	VGPUPodCoreAllocated.WithLabelValues(UUID, NodeName, PodName).Set(float64(usage.UsedCore))
+	usage := gs.Device[index].PodMap[podUID]
+	VGPUPodMemoryAllocated.WithLabelValues(UUID, NodeName, podName).Set(float64(usage.UsedMem))
+	VGPUPodCoreAllocated.WithLabelValues(UUID, NodeName, podName).Set(float64(usage.UsedCore))
 	if usage.UsedMem == 0 {
-		delete(gs.Device[index].PodMap, PodName)
-		VGPUPodMemoryAllocated.DeleteLabelValues(UUID, NodeName, PodName)
-		VGPUPodCoreAllocated.DeleteLabelValues(UUID, NodeName, PodName)
+		delete(gs.Device[index].PodMap, podUID)
+		VGPUPodMemoryAllocated.DeleteLabelValues(UUID, NodeName, podName)
+		VGPUPodCoreAllocated.DeleteLabelValues(UUID, NodeName, podName)
 	}
 	VGPUDevicesSharedNumber.WithLabelValues(UUID, NodeName).Dec()
 	VGPUDevicesAllocatedCores.WithLabelValues(UUID, NodeName).Sub(float64(gs.Device[index].UsedCore))

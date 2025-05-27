@@ -42,25 +42,25 @@ func TimeJitterAfter(new, old time.Time, duration, maxJitter time.Duration) bool
 	return new.After(old.Add(duration + time.Duration(jitter)))
 }
 
-type jobUpdater struct {
+type JobUpdater struct {
 	ssn      *Session
 	jobQueue []*api.JobInfo
 }
 
-func newJobUpdater(ssn *Session) *jobUpdater {
+func NewJobUpdater(ssn *Session) *JobUpdater {
 	queue := make([]*api.JobInfo, 0, len(ssn.Jobs))
 	for _, job := range ssn.Jobs {
 		queue = append(queue, job)
 	}
 
-	ju := &jobUpdater{
+	ju := &JobUpdater{
 		ssn:      ssn,
 		jobQueue: queue,
 	}
 	return ju
 }
 
-func (ju *jobUpdater) UpdateAll() {
+func (ju *JobUpdater) UpdateAll() {
 	workqueue.ParallelizeUntil(context.TODO(), jobUpdaterWorker, len(ju.jobQueue), ju.updateJob)
 }
 
@@ -103,15 +103,21 @@ func isPodGroupStatusUpdated(newStatus, oldStatus scheduling.PodGroupStatus) boo
 	return !equality.Semantic.DeepEqual(newStatus, oldStatus) || isPodGroupConditionsUpdated(newCondition, oldCondition)
 }
 
+func (ju *JobUpdater) isJobAllocatedHyperNodeChanged(job *api.JobInfo) bool {
+	oldHyperNode := ju.ssn.PodGroupOldState.Annotations[job.UID][api.JobAllocatedHyperNode]
+	return oldHyperNode != job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode]
+}
+
 // updateJob update specified job
-func (ju *jobUpdater) updateJob(index int) {
+func (ju *JobUpdater) updateJob(index int) {
 	job := ju.jobQueue[index]
 	ssn := ju.ssn
 
 	job.PodGroup.Status = jobStatus(ssn, job)
-	oldStatus, found := ssn.podGroupStatus[job.UID]
-	updatePG := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
-	if _, err := ssn.cache.UpdateJobStatus(job, updatePG); err != nil {
+	oldStatus, found := ssn.PodGroupOldState.Status[job.UID]
+	updatePGStatus := !found || isPodGroupStatusUpdated(job.PodGroup.Status, oldStatus)
+	updatePGAnnotations := ju.isJobAllocatedHyperNodeChanged(job)
+	if _, err := ssn.cache.UpdateJobStatus(job, updatePGStatus, updatePGAnnotations); err != nil {
 		klog.Errorf("Failed to update job <%s/%s>: %v",
 			job.Namespace, job.Name, err)
 	}

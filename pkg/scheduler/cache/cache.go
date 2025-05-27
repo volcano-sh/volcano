@@ -18,7 +18,6 @@ package cache
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -50,7 +49,10 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
+	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 	"stathat.com/c/consistent"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -65,10 +67,10 @@ import (
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 
+	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
-	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -94,8 +96,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners)
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod)
 }
 
 // SchedulerCache cache for the kube batch
@@ -111,8 +113,10 @@ type SchedulerCache struct {
 	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
+	resyncPeriod               time.Duration
 	podInformer                infov1.PodInformer
 	nodeInformer               infov1.NodeInformer
+	hyperNodeInformer          topologyinformerv1alpha1.HyperNodeInformer
 	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
 	queueInformerV1beta1       vcinformerv1.QueueInformer
 	reservationInformerV1beta1 batchinformerv1.ReservationInformer
@@ -130,7 +134,6 @@ type SchedulerCache struct {
 	Evictor        Evictor
 	StatusUpdater  StatusUpdater
 	PodGroupBinder BatchBinder
-	VolumeBinder   VolumeBinder
 
 	Recorder record.EventRecorder
 
@@ -142,18 +145,20 @@ type SchedulerCache struct {
 	defaultPriorityClass *schedulingv1.PriorityClass
 	defaultPriority      int32
 	CSINodesStatus       map[string]*schedulingapi.CSINodeStatusInfo
+	HyperNodesInfo       *schedulingapi.HyperNodesInfo
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
-	errTasks    workqueue.TypedRateLimitingInterface[string]
-	nodeQueue   workqueue.TypedRateLimitingInterface[string]
-	DeletedJobs workqueue.TypedRateLimitingInterface[*schedulingapi.JobInfo]
+	errTasks        workqueue.TypedRateLimitingInterface[string]
+	nodeQueue       workqueue.TypedRateLimitingInterface[string]
+	DeletedJobs     workqueue.TypedRateLimitingInterface[*schedulingapi.JobInfo]
+	hyperNodesQueue workqueue.TypedRateLimitingInterface[string]
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
 
-	BindFlowChannel chan *schedulingapi.TaskInfo
-	bindCache       []*schedulingapi.TaskInfo
+	BindFlowChannel chan *BindContext
+	bindCache       []*BindContext
 	batchNum        int
 
 	// A map from image name to its imageState.
@@ -169,6 +174,11 @@ type SchedulerCache struct {
 	// multiSchedulerInfo holds multi schedulers info without using node selector, please see the following link for more details.
 	// https://github.com/volcano-sh/volcano/blob/master/docs/design/deploy-multi-volcano-schedulers-without-using-selector.md
 	multiSchedulerInfo
+
+	binderRegistry *BinderRegistry
+
+	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
+	sharedDRAManager k8sframework.SharedDRAManager
 
 	ReservationCache *ReservationCache
 }
@@ -187,6 +197,14 @@ type imageState struct {
 	size int64
 	// A set of node names for nodes having this image present
 	nodes sets.Set[string]
+}
+
+type BindContextExtension interface{}
+
+type BindContext struct {
+	TaskInfo *schedulingapi.TaskInfo
+	// Extensions stores extra bind context information of each plugin
+	Extensions map[string]BindContextExtension
 }
 
 // DefaultBinder with kube client and event recorder
@@ -346,65 +364,6 @@ func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo
 	return nil
 }
 
-type defaultVolumeBinder struct {
-	volumeBinder volumescheduling.SchedulerVolumeBinder
-}
-
-// AllocateVolumes allocates volume on the host to the task
-func (dvb *defaultVolumeBinder) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
-	logger := klog.FromContext(context.TODO())
-	allBound, err := dvb.volumeBinder.AssumePodVolumes(logger, task.Pod, hostname, podVolumes)
-	task.VolumeReady = allBound
-
-	return err
-}
-
-// RevertVolumes clean cache generated by AllocateVolumes
-func (dvb *defaultVolumeBinder) RevertVolumes(task *schedulingapi.TaskInfo, podVolumes *volumescheduling.PodVolumes) {
-	if podVolumes != nil {
-		klog.Infof("Revert assumed volumes for task %v/%v on node %s", task.Namespace, task.Name, task.NodeName)
-		dvb.volumeBinder.RevertAssumedPodVolumes(podVolumes)
-		task.VolumeReady = false
-		task.PodVolumes = nil
-	}
-}
-
-// GetPodVolumes get pod volume on the host
-func (dvb *defaultVolumeBinder) GetPodVolumes(task *schedulingapi.TaskInfo,
-	node *v1.Node) (podVolumes *volumescheduling.PodVolumes, err error) {
-	logger := klog.FromContext(context.TODO())
-	podVolumeClaims, err := dvb.volumeBinder.GetPodVolumeClaims(logger, task.Pod)
-	if err != nil {
-		return nil, err
-	}
-	// if len(unboundClaimsImmediate) > 0 {
-	// 	return nil, fmt.Errorf("pod has unbound immediate PersistentVolumeClaims")
-	// }
-
-	podVolumes, reasons, err := dvb.volumeBinder.FindPodVolumes(logger, task.Pod, podVolumeClaims, node)
-	if err != nil {
-		return nil, err
-	} else if len(reasons) > 0 {
-		var errorslice []string
-		for _, reason := range reasons {
-			errorslice = append(errorslice, string(reason))
-		}
-		return nil, errors.New(strings.Join(errorslice, ","))
-	}
-
-	return podVolumes, err
-}
-
-// BindVolumes binds volumes to the task
-func (dvb *defaultVolumeBinder) BindVolumes(task *schedulingapi.TaskInfo, podVolumes *volumescheduling.PodVolumes) error {
-	// If task's volumes are ready, did not bind them again.
-	if task.VolumeReady {
-		return nil
-	}
-
-	return dvb.volumeBinder.BindPodVolumes(context.TODO(), task.Pod, podVolumes)
-}
-
 type podgroupBinder struct {
 	kubeclient kubernetes.Interface
 	vcclient   vcclient.Interface
@@ -465,38 +424,13 @@ func (sc *SchedulerCache) updateNodeSelectors(nodeSelectors []string) {
 
 // setBatchBindParallel configure the parallel when binding tasks to apiserver
 func (sc *SchedulerCache) setBatchBindParallel() {
-	sc.BindFlowChannel = make(chan *schedulingapi.TaskInfo, 5000)
+	sc.BindFlowChannel = make(chan *BindContext, 5000)
 	var batchNum int
 	batchNum, err := strconv.Atoi(os.Getenv("BATCH_BIND_NUM"))
 	if err == nil && batchNum > 0 {
 		sc.batchNum = batchNum
 	} else {
 		sc.batchNum = 1
-	}
-}
-
-func (sc *SchedulerCache) setDefaultVolumeBinder() {
-	logger := klog.FromContext(context.TODO())
-	var capacityCheck *volumescheduling.CapacityCheck
-	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
-		capacityCheck = &volumescheduling.CapacityCheck{
-			CSIDriverInformer:          sc.csiDriverInformer,
-			CSIStorageCapacityInformer: sc.csiStorageCapacityInformer,
-		}
-	}
-	sc.VolumeBinder = &defaultVolumeBinder{
-		volumeBinder: volumescheduling.NewVolumeBinder(
-			logger,
-			sc.kubeClient,
-			sc.podInformer,
-			sc.nodeInformer,
-			sc.csiNodeInformer,
-			sc.pvcInformer,
-			sc.pvInformer,
-			sc.scInformer,
-			capacityCheck,
-			30*time.Second,
-		),
 	}
 }
 
@@ -555,7 +489,7 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -586,6 +520,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		errTasks:            workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[*schedulingapi.JobInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.JobInfo]()),
+		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
 		restConfig:          config,
@@ -600,6 +535,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		nodeWorkers: nodeWorkers,
 	}
 
+	sc.resyncPeriod = resyncPeriod
 	sc.schedulerPodName, sc.c = getMultiSchedulerInfo()
 	ignoredProvisionersSet := sets.New[string]()
 	for _, provisioner := range append(ignoredProvisioners, defaultIgnoredProvisioners...) {
@@ -640,15 +576,16 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 
 	sc.ReservationCache = newReservationCache(sc.vcClient)
 
+	sc.binderRegistry = NewBinderRegistry()
+
 	// add all events handlers
 	sc.addEventHandler()
-	// finally, init default volume binder which has dependencies on other informers
-	sc.setDefaultVolumeBinder()
+	sc.HyperNodesInfo = schedulingapi.NewHyperNodesInfo(sc.nodeInformer.Lister())
 	return sc
 }
 
 func (sc *SchedulerCache) addEventHandler() {
-	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
+	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, sc.resyncPeriod)
 	sc.informerFactory = informerFactory
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
@@ -670,7 +607,7 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
-	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
+	sc.nodeInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
@@ -694,13 +631,14 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeleteNode,
 			},
 		},
-		0,
 	)
 
-	sc.podInformer = informerFactory.Core().V1().Pods()
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
+	sc.pvcInformer.Informer()
 	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
+	sc.pvInformer.Informer()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
+	sc.scInformer.Informer()
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
 	sc.csiNodeInformer.Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
@@ -712,9 +650,12 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
 		sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
+		sc.csiDriverInformer.Informer()
 		sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
+		sc.csiStorageCapacityInformer.Informer()
 	}
 
+	sc.podInformer = informerFactory.Core().V1().Pods()
 	// create informer for pod information
 	sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
@@ -764,7 +705,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		DeleteFunc: sc.DeleteResourceQuota,
 	})
 
-	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, 0)
+	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, sc.resyncPeriod)
 	sc.vcInformerFactory = vcinformers
 
 	// create informer for PodGroup(v1beta1) information
@@ -820,6 +761,21 @@ func (sc *SchedulerCache) addEventHandler() {
 			DeleteFunc: sc.DeleteNumaInfoV1alpha1,
 		})
 	}
+
+	sc.hyperNodeInformer = sc.vcInformerFactory.Topology().V1alpha1().HyperNodes()
+	sc.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddHyperNode,
+		UpdateFunc: sc.UpdateHyperNode,
+		DeleteFunc: sc.DeleteHyperNode,
+	})
+
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
+		ctx := context.TODO()
+		logger := klog.FromContext(ctx)
+		resourceClaimInformer := informerFactory.Resource().V1beta1().ResourceClaims().Informer()
+		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, informerFactory)
+	}
 }
 
 // Run  starts the schedulerCache
@@ -830,6 +786,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	for i := 0; i < int(sc.nodeWorkers); i++ {
 		go wait.Until(sc.runNodeWorker, 0, stopCh)
 	}
+
+	// Sync hyperNode.
+	go wait.Until(sc.processSyncHyperNode, 0, stopCh)
 
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
@@ -934,31 +893,44 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 }
 
 // Bind binds task to the target host.
-func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) {
+func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext) {
+	readyToBindTasks := make([]*schedulingapi.TaskInfo, len(bindContexts))
+	for index := range readyToBindTasks {
+		readyToBindTasks[index] = bindContexts[index].TaskInfo
+	}
 	tmp := time.Now()
-	errMsg := sc.Binder.Bind(sc.kubeClient, tasks)
+	errMsg := sc.Binder.Bind(sc.kubeClient, readyToBindTasks)
 	if len(errMsg) == 0 {
 		klog.V(3).Infof("bind ok, latency %v", time.Since(tmp))
 	} else {
-		klog.V(3).Infof("There are %d tasks in total and %d binds failed, latency %v", len(tasks), len(errMsg), time.Since(tmp))
+		klog.V(3).Infof("There are %d tasks in total and %d binds failed, latency %v", len(readyToBindTasks), len(errMsg), time.Since(tmp))
 	}
 
-	for _, task := range tasks {
-		if reason, ok := errMsg[task.UID]; !ok {
+	for _, bindContext := range bindContexts {
+		if reason, ok := errMsg[bindContext.TaskInfo.UID]; !ok {
+			task := bindContext.TaskInfo
 			if task.IsUseReservationTask() {
 				if err := sc.syncBindToReservationTask(task); err != nil {
 					klog.Errorf("Failed to sync task %s to reservation task, err: %v", task.Name, err)
 				}
 			}
-			sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", task.Namespace, task.Name, task.NodeName)
+			sc.Recorder.Eventf(bindContext.TaskInfo.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name, bindContext.TaskInfo.NodeName)
 		} else {
-			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", task.NodeName, reason)
-			if err := sc.taskUnschedulable(task, schedulingapi.PodReasonSchedulerError, unschedulableMsg, ""); err != nil {
-				klog.ErrorS(err, "Failed to update pod status when bind task error", "task", task.Name)
+			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", bindContext.TaskInfo.NodeName, reason)
+			if err := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, unschedulableMsg, ""); err != nil {
+				klog.ErrorS(err, "Failed to update pod status when bind task error", "task", bindContext.TaskInfo.Name)
 			}
-			klog.V(2).Infof("resyncTask task %s", task.Name)
-			sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
-			sc.resyncTask(task)
+
+			sc.binderRegistry.mu.RLock()
+			for _, preBinder := range sc.binderRegistry.preBinders {
+				if preBinder != nil {
+					preBinder.PreBindRollBack(ctx, bindContext)
+				}
+			}
+			sc.binderRegistry.mu.RUnlock()
+
+			klog.V(2).Infof("resyncTask task %s", bindContext.TaskInfo.Name)
+			sc.resyncTask(bindContext.TaskInfo)
 		}
 	}
 }
@@ -970,26 +942,6 @@ func (sc *SchedulerCache) BindPodGroup(job *schedulingapi.JobInfo, cluster strin
 		return err
 	}
 	return nil
-}
-
-// GetPodVolumes get pod volume on the host
-func (sc *SchedulerCache) GetPodVolumes(task *schedulingapi.TaskInfo, node *v1.Node) (*volumescheduling.PodVolumes, error) {
-	return sc.VolumeBinder.GetPodVolumes(task, node)
-}
-
-// AllocateVolumes allocates volume on the host to the task
-func (sc *SchedulerCache) AllocateVolumes(task *schedulingapi.TaskInfo, hostname string, podVolumes *volumescheduling.PodVolumes) error {
-	return sc.VolumeBinder.AllocateVolumes(task, hostname, podVolumes)
-}
-
-// BindVolumes binds volumes to the task
-func (sc *SchedulerCache) BindVolumes(task *schedulingapi.TaskInfo, podVolumes *volumescheduling.PodVolumes) error {
-	return sc.VolumeBinder.BindVolumes(task, podVolumes)
-}
-
-// RevertVolumes clean cache generated by AllocateVolumes
-func (sc *SchedulerCache) RevertVolumes(task *schedulingapi.TaskInfo, podVolumes *volumescheduling.PodVolumes) {
-	sc.VolumeBinder.RevertVolumes(task, podVolumes)
 }
 
 // Client returns the kubernetes clientSet
@@ -1237,24 +1189,47 @@ func (sc *SchedulerCache) processSyncNode() bool {
 	return true
 }
 
+func (sc *SchedulerCache) processSyncHyperNode() {
+	worker := func() bool {
+		name, shutdown := sc.hyperNodesQueue.Get()
+		if shutdown {
+			return false
+		}
+		defer sc.hyperNodesQueue.Done(name)
+
+		klog.V(5).Infof("started sync hyperNode %s", name)
+		err := sc.SyncHyperNode(name)
+		if err == nil {
+			sc.hyperNodesQueue.Forget(name)
+			return true
+		}
+
+		klog.ErrorS(err, "Failed to sync hyperNode, retry it.", "name", name)
+		sc.hyperNodesQueue.AddRateLimited(name)
+		return true
+	}
+	for worker() {
+	}
+}
+
 // AddBindTask add task to be bind to a cache which consumes by go runtime
-func (sc *SchedulerCache) AddBindTask(taskInfo *schedulingapi.TaskInfo) error {
-	klog.V(5).Infof("add bind task %v/%v", taskInfo.Namespace, taskInfo.Name)
-	if taskInfo.IsReservationTask() {
-		return sc.processReservationTask(taskInfo)
+func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
+	klog.V(5).Infof("add bind task %v/%v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name)
+	if bindContext.TaskInfo.IsReservationTask() {
+		return sc.processReservationTask(bindContext.TaskInfo)
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-	job, task, err := sc.findJobAndTask(taskInfo)
+	job, task, err := sc.findJobAndTask(bindContext.TaskInfo)
 	if err != nil {
 		return err
 	}
 
-	node, found := sc.Nodes[taskInfo.NodeName]
+	node, found := sc.Nodes[bindContext.TaskInfo.NodeName]
 	if !found {
 		return fmt.Errorf("failed to bind Task %v to host %v, host does not exist",
-			task.UID, taskInfo.NodeName)
+			task.UID, bindContext.TaskInfo.NodeName)
 	}
 
 	originalStatus := task.Status
@@ -1262,14 +1237,14 @@ func (sc *SchedulerCache) AddBindTask(taskInfo *schedulingapi.TaskInfo) error {
 		return err
 	}
 
-	err = taskInfo.SetPodResourceDecision()
+	err = bindContext.TaskInfo.SetPodResourceDecision()
 	if err != nil {
 		return fmt.Errorf("set task %v/%v resource decision failed, err %v", task.Namespace, task.Name, err)
 	}
-	task.NumaInfo = taskInfo.NumaInfo.Clone()
+	task.NumaInfo = bindContext.TaskInfo.NumaInfo.Clone()
 
-	if taskInfo.IsUseReservationTask() {
-		reservationTask := taskInfo.ReservationTaskInfo
+	if bindContext.TaskInfo.IsUseReservationTask() {
+		reservationTask := bindContext.TaskInfo.ReservationTaskInfo
 		// Remove reservation task from the node if it exists to release the reserved resources on node.
 		if err := node.RemoveTask(reservationTask); err != nil {
 			// After failing to update task to a node we need to revert task status from Releasing,
@@ -1314,7 +1289,7 @@ func (sc *SchedulerCache) AddBindTask(taskInfo *schedulingapi.TaskInfo) error {
 		}
 	}
 
-	sc.BindFlowChannel <- taskInfo
+	sc.BindFlowChannel <- bindContext
 
 	return nil
 }
@@ -1322,12 +1297,12 @@ func (sc *SchedulerCache) AddBindTask(taskInfo *schedulingapi.TaskInfo) error {
 func (sc *SchedulerCache) processBindTask() {
 	for {
 		select {
-		case taskInfo, ok := <-sc.BindFlowChannel:
+		case bindContext, ok := <-sc.BindFlowChannel:
 			if !ok {
 				return
 			}
 
-			sc.bindCache = append(sc.bindCache, taskInfo)
+			sc.bindCache = append(sc.bindCache, bindContext)
 			if len(sc.bindCache) == sc.batchNum {
 				sc.BindTask()
 			}
@@ -1418,29 +1393,74 @@ func (sc *SchedulerCache) syncBindToReservationTask(taskInfo *schedulingapi.Task
 	return nil
 }
 
-// BindTask do k8s binding with a goroutine
-func (sc *SchedulerCache) BindTask() {
-	klog.V(5).Infof("batch bind task count %d", len(sc.bindCache))
-	var tmpBindCache []*schedulingapi.TaskInfo = make([]*schedulingapi.TaskInfo, len(sc.bindCache))
-	copy(tmpBindCache, sc.bindCache)
-	go func(tasks []*schedulingapi.TaskInfo) {
-		successfulTasks := make([]*schedulingapi.TaskInfo, 0)
-		for _, task := range tasks {
-			if err := sc.VolumeBinder.BindVolumes(task, task.PodVolumes); err != nil {
-				klog.Errorf("task %s/%s bind Volumes failed: %#v", task.Namespace, task.Name, err)
-				sc.VolumeBinder.RevertVolumes(task, task.PodVolumes)
-				sc.resyncTask(task)
-			} else {
-				successfulTasks = append(successfulTasks, task)
-				klog.V(5).Infof("task %s/%s bind Volumes done", task.Namespace, task.Name)
-			}
+// executePreBind executes PreBind for one bindContext
+func (sc *SchedulerCache) executePreBind(ctx context.Context, bindContext *BindContext) error {
+	executedPreBinders := make([]PreBinder, 0, len(sc.binderRegistry.preBinders))
+
+	sc.binderRegistry.mu.RLock()
+	defer sc.binderRegistry.mu.RUnlock()
+
+	for _, preBinder := range sc.binderRegistry.preBinders {
+		if preBinder == nil {
+			continue
 		}
 
-		bindTasks := make([]*schedulingapi.TaskInfo, len(successfulTasks))
-		copy(bindTasks, successfulTasks)
-		sc.Bind(bindTasks)
+		if err := preBinder.PreBind(ctx, bindContext); err != nil {
+			// If PreBind fails, rollback the executed PreBinders
+			for i := len(executedPreBinders) - 1; i >= 0; i-- {
+				if executedPreBinders[i] != nil {
+					executedPreBinders[i].PreBindRollBack(ctx, bindContext)
+				}
+			}
+			return err
+		}
+		executedPreBinders = append(executedPreBinders, preBinder)
+	}
+
+	return nil
+}
+
+// executePreBinds executes PreBind for a list of bindContexts
+func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*BindContext) []*BindContext {
+	logger := klog.FromContext(ctx)
+	successfulBindContexts := make([]*BindContext, 0, len(bindContexts))
+
+	for _, bindContext := range bindContexts {
+		if err := sc.executePreBind(ctx, bindContext); err != nil {
+			reason := fmt.Sprintf("execute preBind failed: %v, resync the task", err)
+			klog.Error(reason)
+			sc.resyncTask(bindContext.TaskInfo)
+			if updateErr := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, reason, ""); updateErr != nil {
+				logger.Error(updateErr, "Failed to update pod status", "pod", klog.KObj(bindContext.TaskInfo.Pod))
+			}
+			continue
+		}
+		successfulBindContexts = append(successfulBindContexts, bindContext)
+	}
+
+	return successfulBindContexts
+}
+
+// BindTask do k8s binding with a goroutine
+func (sc *SchedulerCache) BindTask() {
+	klog.V(5).Infof("batch bind task count %d", sc.batchNum)
+	tmpBindCache := make([]*BindContext, len(sc.bindCache))
+	copy(tmpBindCache, sc.bindCache)
+
+	// Currently, bindContexts only contain 1 element.
+	go func(bindContexts []*BindContext) {
+		logger := klog.Background()
+		ctx := klog.NewContext(context.Background(), logger)
+		cancelCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		successfulPreBindContexts := sc.executePreBinds(cancelCtx, bindContexts)
+		sc.Bind(ctx, successfulPreBindContexts)
 	}(tmpBindCache)
-	sc.bindCache = sc.bindCache[0:0]
+
+	// The slice here needs to point to a new underlying array, otherwise bindCache may not be able to trigger garbage collection immediately
+	// if it is not expanded, causing memory leaks.
+	sc.bindCache = make([]*BindContext, 0)
 }
 
 // Snapshot returns the complete snapshot of the cluster from cache
@@ -1449,13 +1469,16 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
-		Nodes:          make(map[string]*schedulingapi.NodeInfo),
-		Jobs:           make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Queues:         make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
-		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
-		NodeList:       make([]string, len(sc.NodeList)),
-		CSINodesStatus: make(map[string]*schedulingapi.CSINodeStatusInfo),
+		Nodes:               make(map[string]*schedulingapi.NodeInfo),
+		HyperNodes:          make(map[string]*schedulingapi.HyperNodeInfo),
+		HyperNodesSetByTier: make(map[int]sets.Set[string]),
+		RealNodesSet:        make(map[string]sets.Set[string]),
+		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		NamespaceInfo:       make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
+		RevocableNodes:      make(map[string]*schedulingapi.NodeInfo),
+		NodeList:            make([]string, len(sc.NodeList)),
+		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)
@@ -1478,6 +1501,14 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
 		}
 	}
+
+	// Snapshot hyperNodes.
+	sc.HyperNodesInfo.Lock()
+	snapshot.HyperNodes = sc.HyperNodesInfo.HyperNodes()
+	snapshot.HyperNodesSetByTier = sc.HyperNodesInfo.HyperNodesSetByTier()
+	snapshot.RealNodesSet = sc.HyperNodesInfo.RealNodesSet()
+	snapshot.HyperNodesReadyToSchedule = sc.HyperNodesInfo.Ready()
+	sc.HyperNodesInfo.Unlock()
 
 	for _, value := range sc.Queues {
 		snapshot.Queues[value.UID] = value.Clone()
@@ -1532,10 +1563,16 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	}
 	wg.Wait()
 
-	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
-		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
-
+	klog.V(3).InfoS("SnapShot for scheduling", "jobNum", len(snapshot.Jobs), "QueueNum",
+		len(snapshot.Queues), "NodeNum", len(snapshot.Nodes))
+	if klog.V(4).Enabled() {
+		klog.InfoS("HyperNode snapShot for scheduling", "tiers", snapshot.HyperNodesSetByTier, "realNodesSet", snapshot.RealNodesSet, "hyperNodesReadyToSchedule", snapshot.HyperNodesReadyToSchedule)
+	}
 	return snapshot
+}
+
+func (sc *SchedulerCache) SharedDRAManager() k8sframework.SharedDRAManager {
+	return sc.sharedDRAManager
 }
 
 // String returns information about the cache in a string format
@@ -1636,18 +1673,26 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 }
 
 // UpdateJobStatus update the status of job and its tasks.
-func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG bool) (*schedulingapi.JobInfo, error) {
-	if updatePG {
+func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePGStatus, updatePGAnnotations bool) (*schedulingapi.JobInfo, error) {
+	if updatePGStatus || updatePGAnnotations {
+		if updatePGAnnotations {
+			sc.updateJobAnnotations(job)
+		}
 		pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
 		if err != nil {
 			return nil, err
 		}
 		job.PodGroup = pg
 	}
-
-	sc.RecordJobStatusEvent(job, updatePG)
+	sc.RecordJobStatusEvent(job, updatePGStatus)
 
 	return job, nil
+}
+
+func (sc *SchedulerCache) updateJobAnnotations(job *schedulingapi.JobInfo) {
+	sc.Mutex.Lock()
+	sc.Jobs[job.UID].PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode] = job.PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode]
+	sc.Mutex.Unlock()
 }
 
 // UpdateQueueStatus update the status of queue.
@@ -1728,9 +1773,16 @@ func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*source.NodeMetric
 }
 
 // createImageStateSummary returns a summarizing snapshot of the given image's state.
-func (sc *SchedulerCache) createImageStateSummary(state *imageState) *framework.ImageStateSummary {
-	return &framework.ImageStateSummary{
+func (sc *SchedulerCache) createImageStateSummary(state *imageState) *k8sframework.ImageStateSummary {
+	return &k8sframework.ImageStateSummary{
 		Size:     state.size,
 		NumNodes: len(state.nodes),
 	}
+}
+
+func (sc *SchedulerCache) RegisterBinder(name string, binder interface{}) {
+	if sc.binderRegistry == nil {
+		sc.binderRegistry = NewBinderRegistry()
+	}
+	sc.binderRegistry.Register(name, binder)
 }

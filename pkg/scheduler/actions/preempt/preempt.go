@@ -314,7 +314,7 @@ func (pmpt *Action) preempt(
 		klog.V(3).Infof("Preempted <%v> for Task <%s/%s> requested <%v>.",
 			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
 
-		// If preemptor's queue is overused, it means preemptor can not be allocated. So no need care about the node idle resource
+		// If preemptor's queue is not allocatable, it means preemptor cannot be allocated. So no need care about the node idle resource
 		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 			if err := stmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",

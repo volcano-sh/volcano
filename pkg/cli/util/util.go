@@ -24,7 +24,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -50,27 +49,21 @@ type CommonFlags struct {
 // InitFlags initializes the common flags for most command lines.
 func InitFlags(cmd *cobra.Command, cf *CommonFlags) {
 	cmd.Flags().StringVarP(&cf.Master, "master", "s", "", "the address of apiserver")
-
-	kubeConfFile := os.Getenv("KUBECONFIG")
-	if kubeConfFile == "" {
-		if home := HomeDir(); home != "" {
-			kubeConfFile = filepath.Join(home, ".kube", "config")
-		}
-	}
-	cmd.Flags().StringVarP(&cf.Kubeconfig, "kubeconfig", "k", kubeConfFile, "(optional) absolute path to the kubeconfig file")
-}
-
-// HomeDir gets the env $HOME.
-func HomeDir() string {
-	if h := os.Getenv("HOME"); h != "" {
-		return h
-	}
-	return os.Getenv("USERPROFILE") // windows
+	cmd.Flags().StringVarP(&cf.Kubeconfig, "kubeconfig", "k", "", "(optional) absolute path to the kubeconfig file")
 }
 
 // BuildConfig builds the configuration file for command lines.
 func BuildConfig(master, kubeconfig string) (*rest.Config, error) {
-	return clientcmd.BuildConfigFromFlags(master, kubeconfig)
+	// This will automatically load KUBECONFIG environment variable.
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfig != "" {
+		loadingRules.ExplicitPath = kubeconfig
+	}
+	overrides := &clientcmd.ConfigOverrides{ClusterDefaults: clientcmd.ClusterDefaults}
+	if master != "" {
+		overrides.ClusterInfo.Server = master
+	}
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides).ClientConfig()
 }
 
 // PopulateResourceListV1 takes strings of form <resourceName1>=<value1>,<resourceName2>=<value2> and returns ResourceList.

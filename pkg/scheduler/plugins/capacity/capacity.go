@@ -146,6 +146,10 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		queue := obj.(*api.QueueInfo)
 		task := candidate.(*api.TaskInfo)
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, can not reclaim for <%s>.", queue.Name, queue.Queue.Status.State, task.Name)
+			return false
+		}
 		attr := cp.queueOpts[queue.UID]
 
 		futureUsed := attr.allocated.Clone().Add(task.Resreq)
@@ -162,6 +166,10 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, cannot allocate task <%s>.", queue.Name, queue.Queue.Status.State, candidate.Name)
+			return false
+		}
 		if !readyToSchedule {
 			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
 			return false
@@ -188,6 +196,11 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		attr := cp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
+		// If the queue is not open, do not enqueue
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+			return util.Reject
+		}
 		// If no capability is set, always enqueue the job.
 		if attr.realCapability == nil {
 			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
@@ -349,8 +362,6 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		if attr.realCapability != nil {
 			attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
 		}
-		// When scalar resource not specified in deserved such as "pods", we should skip it and consider deserved resource as infinity.
-		attr.deserved.MinDimensionResource(attr.request, api.Infinity)
 
 		attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
 		cp.updateShare(attr)
@@ -679,7 +690,6 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 		}
 		oldDeserved := childAttr.deserved.Clone()
 		childAttr.deserved.MinDimensionResource(childAttr.realCapability, api.Infinity)
-		childAttr.deserved.MinDimensionResource(childAttr.request, api.Zero)
 
 		childAttr.deserved = helpers.Max(childAttr.deserved, childAttr.guarantee)
 		totalDeserved.Sub(oldDeserved).Add(childAttr.deserved)

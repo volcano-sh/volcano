@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"strconv"
 
@@ -48,6 +49,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
 
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
@@ -556,11 +558,12 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 		return
 	}
 	sc.nodeQueue.Add(node.Name)
+	sc.hyperNodesQueue.Add(string(hyperNodeEventSourceNode) + "/" + node.Name)
 }
 
 // UpdateNode update node to scheduler cache
 func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
-	_, ok := oldObj.(*v1.Node)
+	oldNode, ok := oldObj.(*v1.Node)
 	if !ok {
 		klog.Errorf("Cannot convert oldObj to *v1.Node: %v", oldObj)
 		return
@@ -571,6 +574,9 @@ func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
 		return
 	}
 	sc.nodeQueue.Add(newNode.Name)
+	if !reflect.DeepEqual(oldNode.GetLabels(), newNode.GetLabels()) {
+		sc.hyperNodesQueue.Add(string(hyperNodeEventSourceNode) + "/" + newNode.Name)
+	}
 }
 
 // DeleteNode delete node from scheduler cache
@@ -591,6 +597,7 @@ func (sc *SchedulerCache) DeleteNode(obj interface{}) {
 		return
 	}
 	sc.nodeQueue.Add(node.Name)
+	sc.hyperNodesQueue.Add(string(hyperNodeEventSourceNode) + "/" + node.Name)
 }
 
 func (sc *SchedulerCache) SyncNode(nodeName string) error {
@@ -699,6 +706,72 @@ func (sc *SchedulerCache) DeleteCSINode(obj interface{}) {
 	sc.nodeQueue.Add(csiNode.Name)
 }
 
+func (sc *SchedulerCache) SyncHyperNode(name string) error {
+	eventSource := getHyperNodeEventSource(name)
+	if eventSource == nil {
+		klog.ErrorS(nil, "Failed to get event source for node <%s>", "eventSource", name)
+		// just return nil and not process again as it's an invalid event.
+		return nil
+	}
+	switch eventSource[0] {
+	case string(hyperNodeEventSourceNode):
+		return sc.triggerUpdateHyperNode(eventSource[1])
+	case string(hyperNodeEventSourceHyperNode):
+		return sc.processHyperNode(eventSource[1])
+	default:
+		// should never happen.
+		klog.ErrorS(nil, "Unknown event source", "name", eventSource)
+	}
+	return nil
+}
+
+func (sc *SchedulerCache) triggerUpdateHyperNode(name string) error {
+	sc.HyperNodesInfo.Lock()
+	defer sc.HyperNodesInfo.Unlock()
+
+	leafNodes := sc.HyperNodesInfo.GetRegexOrLabelMatchLeafHyperNodes()
+	if len(leafNodes) == 0 {
+		klog.V(3).InfoS("No need to update hyperNode cache when node added or deleted")
+		return nil
+	}
+
+	for leafNode := range leafNodes {
+		hn := sc.HyperNodesInfo.HyperNode(leafNode)
+		if hn == nil {
+			klog.ErrorS(nil, "Get empty hyperNode", "hyperNodeName", leafNode)
+			continue
+		}
+		match, err := sc.HyperNodesInfo.NodeRegexOrLabelMatchLeafHyperNode(name, hn.Name)
+		if err != nil {
+			klog.ErrorS(err, "Failed to get node regex match leaf hyperNode", "nodeName", name, "hyperNodeName", hn.Name)
+			continue
+		}
+		if !match {
+			continue
+		}
+
+		klog.V(3).InfoS("Update leaf hyperNode and its ancestors when node added or deleted", "nodeName", name, "hyperNodeName", hn.Name)
+		if err := sc.updateHyperNode(hn); err != nil {
+			return fmt.Errorf("faield to update hyperNode: %v", err)
+		}
+	}
+	return nil
+}
+
+func (sc *SchedulerCache) processHyperNode(name string) error {
+	sc.HyperNodesInfo.Lock()
+	defer sc.HyperNodesInfo.Unlock()
+
+	hn, err := sc.hyperNodeInformer.Lister().Get(name)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to get hyperNode <%s>: %v", name, err)
+		}
+		return sc.deleteHyperNode(name)
+	}
+	return sc.updateHyperNode(hn)
+}
+
 func getJobID(pg *schedulingapi.PodGroup) schedulingapi.JobID {
 	return schedulingapi.JobID(fmt.Sprintf("%s/%s", pg.Namespace, pg.Name))
 }
@@ -764,7 +837,9 @@ func (sc *SchedulerCache) AddPodGroupV1beta1(obj interface{}) {
 		klog.Errorf("Failed to convert podgroup from %T to %T", ss, podgroup)
 		return
 	}
-
+	if podgroup.GetAnnotations() == nil {
+		podgroup.SetAnnotations(map[string]string{})
+	}
 	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
 	klog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
 
@@ -799,7 +874,9 @@ func (sc *SchedulerCache) UpdatePodGroupV1beta1(oldObj, newObj interface{}) {
 		klog.Errorf("Failed to convert podgroup from %T to %T", newSS, podgroup)
 		return
 	}
-
+	if podgroup.GetAnnotations() == nil {
+		podgroup.SetAnnotations(map[string]string{})
+	}
 	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
 
 	sc.Mutex.Lock()
@@ -1464,4 +1541,57 @@ func createReservationPod(reservation *batch.Reservation, template *v1.PodTempla
 	pod.Labels[batch.QueueNameKey] = reservation.Spec.Queue
 
 	return pod
+}
+
+// AddHyperNode adds hyperNode name to the hyperNodesQueue.
+func (sc *SchedulerCache) AddHyperNode(obj interface{}) {
+	hn, ok := obj.(*topologyv1alpha1.HyperNode)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert to *topologyv1alpha1.HyperNode", "type", reflect.TypeOf(obj))
+		return
+	}
+	sc.hyperNodesQueue.Add(string(hyperNodeEventSourceHyperNode) + "/" + hn.Name)
+}
+
+// UpdateHyperNode adds hyperNode name to the hyperNodesQueue.
+func (sc *SchedulerCache) UpdateHyperNode(oldObj, newObj interface{}) {
+	newHyperNode, ok := newObj.(*topologyv1alpha1.HyperNode)
+	if !ok {
+		klog.ErrorS(nil, "Cannot convert newObj to *topologyv1alpha1.HyperNode: %v", reflect.TypeOf(newObj))
+		return
+	}
+	sc.hyperNodesQueue.Add(string(hyperNodeEventSourceHyperNode) + "/" + newHyperNode.Name)
+}
+
+// DeleteHyperNode adds hyperNode name to the hyperNodesQueue.
+func (sc *SchedulerCache) DeleteHyperNode(obj interface{}) {
+	var hn *topologyv1alpha1.HyperNode
+	switch t := obj.(type) {
+	case *topologyv1alpha1.HyperNode:
+		hn = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		hn, ok = t.Obj.(*topologyv1alpha1.HyperNode)
+		if !ok {
+			klog.ErrorS(nil, "Cannot convert to HyperNode", "type", reflect.TypeOf(t.Obj))
+			return
+		}
+	default:
+		klog.ErrorS(nil, "Cannot convert to HyperNode", "type", reflect.TypeOf(t))
+		return
+	}
+	sc.hyperNodesQueue.Add(string(hyperNodeEventSourceHyperNode) + "/" + hn.Name)
+}
+
+// UpdateHyperNode updates HyperNode and rebuild HyperNodesInfo cache, it does three things in order:
+// 1.update parent map if members reduced.
+// 2.reset current hyperNode and its ancestors' cache.
+func (sc *SchedulerCache) updateHyperNode(hn *topologyv1alpha1.HyperNode) error {
+	return sc.HyperNodesInfo.UpdateHyperNode(hn)
+}
+
+// deleteHyperNode deletes HyperNode and rebuild HyperNodesInfo cache.
+// It clears current hyperNode and update ancestors' cache.
+func (sc *SchedulerCache) deleteHyperNode(name string) error {
+	return sc.HyperNodesInfo.DeleteHyperNode(name)
 }

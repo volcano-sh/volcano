@@ -78,7 +78,7 @@ func LoadAdmissionConf(confPath string) *AdmissionConfiguration {
 }
 
 // WatchAdmissionConf listen the changes of the configuration file
-func WatchAdmissionConf(path string, stopCh chan os.Signal) {
+func WatchAdmissionConf(path string, stopCh <-chan struct{}) {
 	dirPath := filepath.Dir(path)
 	fileWatcher, err := filewatcher.NewFileWatcher(dirPath)
 	if err != nil {

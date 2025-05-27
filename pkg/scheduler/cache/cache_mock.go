@@ -22,7 +22,6 @@ func NewCustomMockSchedulerCache(schedulerName string,
 	evictor Evictor,
 	statusUpdater StatusUpdater,
 	PodGroupBinder BatchBinder,
-	volumeBinder VolumeBinder,
 	recorder record.EventRecorder,
 ) *SchedulerCache {
 	msc := newMockSchedulerCache(schedulerName)
@@ -33,9 +32,8 @@ func NewCustomMockSchedulerCache(schedulerName string,
 	msc.Evictor = evictor
 	msc.StatusUpdater = statusUpdater
 	msc.PodGroupBinder = PodGroupBinder
-	// use custom volume binder
-	msc.VolumeBinder = volumeBinder
 	checkAndSetDefaultInterface(msc)
+	msc.HyperNodesInfo = schedulingapi.NewHyperNodesInfo(msc.nodeInformer.Lister())
 	return msc
 }
 
@@ -47,6 +45,7 @@ func NewDefaultMockSchedulerCache(schedulerName string) *SchedulerCache {
 	// add all events handlers
 	msc.addEventHandler()
 	checkAndSetDefaultInterface(msc)
+	msc.HyperNodesInfo = schedulingapi.NewHyperNodesInfo(msc.nodeInformer.Lister())
 	return msc
 }
 
@@ -78,10 +77,6 @@ func checkAndSetDefaultInterface(sc *SchedulerCache) {
 			vcclient:   sc.vcClient,
 		}
 	}
-	// finally, init default fake volume binder which has dependencies on other informers
-	if sc.VolumeBinder == nil {
-		sc.setDefaultVolumeBinder()
-	}
 }
 
 func getNodeWorkers() uint32 {
@@ -105,6 +100,7 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		errTasks:            workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[*schedulingapi.JobInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.JobInfo]()),
+		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		kubeClient:          fake.NewSimpleClientset(),
 		vcClient:            fakevcClient.NewSimpleClientset(),
 		restConfig:          nil,
@@ -115,7 +111,8 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 		imageStates:         make(map[string]*imageState),
 
-		NodeList: []string{},
+		NodeList:       []string{},
+		binderRegistry: NewBinderRegistry(),
 	}
 	if options.ServerOpts != nil && len(options.ServerOpts.NodeSelector) > 0 {
 		msc.updateNodeSelectors(options.ServerOpts.NodeSelector)
