@@ -49,7 +49,6 @@ func (pp *priorityPlugin) Name() string {
 
 func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	taskOrderFn := func(l interface{}, r interface{}) int {
-
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
 

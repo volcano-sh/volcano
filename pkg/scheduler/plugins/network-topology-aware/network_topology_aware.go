@@ -185,7 +185,6 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddHyperNodeOrderFn(nta.Name(), hyperNodeFn)
 	ssn.AddBatchNodeOrderFn(nta.Name(), nodeFn)
-	ssn.AddTaskOrderFn(nta.Name(), nta.NPUTaskOrderFn)
 }
 
 func (bp *networkTopologyAwarePlugin) OnSessionClose(ssn *framework.Session) {
