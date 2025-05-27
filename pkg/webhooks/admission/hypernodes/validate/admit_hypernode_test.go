@@ -159,6 +159,53 @@ func TestValidateHyperNode(t *testing.T) {
 			},
 			ExpectErr: true,
 		},
+		{
+			Name: "validate valid hypernode with labelMatch",
+			HyperNode: hypernodev1alpha1.HyperNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "hypernode-label",
+				},
+				Spec: hypernodev1alpha1.HyperNodeSpec{
+					Members: []hypernodev1alpha1.MemberSpec{
+						{
+							Type: hypernodev1alpha1.MemberTypeNode,
+							Selector: hypernodev1alpha1.MemberSelector{
+								LabelMatch: &metav1.LabelSelector{
+									MatchLabels: map[string]string{
+										"topology-rack": "rack1",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ExpectErr: false,
+		},
+		{
+			Name: "validate invalid hypernode with labelMatch and exactMatch",
+			HyperNode: hypernodev1alpha1.HyperNode{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "hypernode-multiple-selectors",
+				},
+				Spec: hypernodev1alpha1.HyperNodeSpec{
+					Members: []hypernodev1alpha1.MemberSpec{
+						{
+							Type: hypernodev1alpha1.MemberTypeNode,
+							Selector: hypernodev1alpha1.MemberSelector{
+								LabelMatch: &metav1.LabelSelector{
+									MatchLabels: map[string]string{
+										"topology-rack": "rack1",
+									},
+								},
+								ExactMatch: &hypernodev1alpha1.ExactMatch{Name: "node-1"},
+							},
+						},
+					},
+				},
+			},
+			ExpectErr: true,
+		},
 	}
 
 	for _, testCase := range testCases {
