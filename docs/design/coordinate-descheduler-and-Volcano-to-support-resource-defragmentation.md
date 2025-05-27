@@ -196,206 +196,451 @@ The resource reorganization strategy needs to closely collaborate with the Volca
 #### 2.4.1 Resource Reservation
 The `Reservation` structure is integrated into the `PodGroup` to support Volcano's upcoming resource reservation capabilities based on `PodGroup`. Resource reservations will follow the standard scheduling logic through `OpenSession`.
 
-`pkg/scheduler/api`
+1. **Reservation CRD & apis**
 
 ```go
-type PodGroupSpec struct {
-    MinMember         int32
-    MinTaskMember     map[string]int32
-    Queue             string
-    PriorityClassName string
-    MinResources      *v1.ResourceList
-    
-    // The Spec for reservation
-    ReservationTemplate *ReservationSpec
+type Reservation struct {
+    metav1.TypeMeta `json:",inline"`
+
+    // +optional
+    metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+    // Specification of the desired behavior of the reservation.
+    // +optional
+    Spec ReservationSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+
+    // Current status of the reservation.
+    // +optional
+    Status ReservationStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
 }
 
+// ReservationSpec describes the desired behavior of the reservation.
 type ReservationSpec struct {
-    // Templates defines the scheduling requirements (resources, affinities, images, ...) processed by the scheduler just like normal pods.
-    // If the `template.spec.nodeName` is specified, the scheduler will not choose another node but reserve resources on the specified node.
-    Templates []*corev1.PodTemplateSpec   `json:"template,omitempty"`
-    // Specify the owners who can allocate the reserved resources.
-    Owners    []ReservationOwner `json:"owners"`
+    // SchedulerName is the default value of `tasks.template.spec.schedulerName`.
+    // +optional
+    SchedulerName string `json:"schedulerName,omitempty" protobuf:"bytes,1,opt,name=schedulerName"`
+
+    // The minimal available pods to run for this Reservation
+    // Defaults to the summary of tasks' replicas
+    // +optional
+    MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
+
+    // Tasks specifies the task specification of Reservation
+    // +optional
+    Tasks []TaskSpec `json:"tasks,omitempty" protobuf:"bytes,3,opt,name=tasks"`
+
+    //Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
+    // +optional
+    Queue string `json:"queue,omitempty" protobuf:"bytes,4,opt,name=queue"`
+
+    // Owners specify the entities that can allocate the reserved resources.
+    // Multiple owner selectors are ORed.
+    Owners []ReservationOwner `json:"owners,omitempty" protobuf:"bytes,5,rep,name=owners"`
+
     // Time-to-Live period for the reservation.
-    TTL *metav1.Duration `json:"ttl,omitempty"`
+    // `expires` and `ttl` are mutually exclusive.
+    // +optional
+    TTL *metav1.Duration `json:"ttl,omitempty" protobuf:"bytes,6,opt,name=ttl"`
+
+    // Expired timestamp when the reservation is expected to expire.
+    // If both `expires` and `ttl` are set, `expires` is checked first.
+    // `expires` and `ttl` are mutually exclusive. Defaults to being set dynamically at runtime based on the `ttl`.
+    // +optional
+    Expires *metav1.Time `json:"expires,omitempty" protobuf:"bytes,7,opt,name=expires"`
 }
-
-type ReservationOwner struct {
-    // Multiple field selectors are ANDed.
-    Object        *corev1.ObjectReference         `json:"object,omitempty"`
-    LabelSelector *metav1.LabelSelector           `json:"labelSelector,omitempty"`
-}
-
-type PodGroupStatus struct {
-    Phase       PodGroupPhase
-    Conditions  []PodGroupCondition
-    Running     int32
-    Succeeded   int32
-    Failed      int32
-    
-    // Record the reservation status for every pod in pod group
-    Reservations map[string]ReservationStatus
-}
-
-
 type ReservationStatus struct {
-    // The `phase` indicates whether is reservation is waiting for process (`Pending`), available to allocate
-    // (`Available`) or timeout/expired to get cleanup (Failed).
-    Phase ReservationPhase `json:"phase,omitempty"`
-    // The `conditions` indicate the messages of reason why the reservation is still pending.
-    Conditions []ReservationCondition `json:"conditions,omitempty"`
-    // // Current resource owners which allocated the reservation resources.
-    CurrentOwners []corev1.ObjectReference `json:"currentOwners,omitempty"`
-    // Name of node the reservation is scheduled on.
-    NodeName NodeName string `json:"nodeName,omitempty"`
-    // Resource reserved and allocatable for owners.
-    Allocatable corev1.ResourceList `json:"allocatable,omitempty"`
-    // Resource allocated by current owners.
-    Allocated corev1.ResourceList `json:"allocated,omitempty"`
+    // Current state of Reservation.
+    // +optional
+    State ReservationState `json:"state,omitempty" protobuf:"bytes,1,opt,name=state"`
+
+    // The minimal available pods to run for this Reservation
+    // +optional
+    MinAvailable int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
+
+    // The status of pods for each task
+    // +optional
+    TaskStatusCount map[string]TaskState `json:"taskStatusCount,omitempty" protobuf:"bytes,3,opt,name=taskStatusCount"`
+
+    // The number of pending reservation pods.
+    // +optional
+    Pending int32 `json:"pending,omitempty" protobuf:"bytes,4,opt,name=pending"`
+
+    // The number of available reservation pods.
+    // +optional
+    Available int32 `json:"available,omitempty" protobuf:"bytes,5,opt,name=available"`
+
+    // The number of reservation pods which reached phase Succeeded.
+    // +optional
+    Succeeded int32 `json:"succeeded,omitempty" protobuf:"bytes,6,opt,name=succeeded"`
+
+    // The number of reservation pods which reached phase Failed.
+    // +optional
+    Failed int32 `json:"failed,omitempty" protobuf:"bytes,7,opt,name=failed"`
+
+    // Which conditions caused the current Reservation state.
+    // +optional
+    // +patchMergeKey=status
+    // +patchStrategy=merge
+    Conditions []ReservationCondition `json:"conditions,omitempty" protobuf:"bytes,8,rep,name=conditions"`
+
+    // Owner who is currently using this reservation.
+    // +optional
+    CurrentOwner v1.ObjectReference `json:"currentOwner,omitempty" protobuf:"bytes,9,opt,name=currentOwner"`
+
+    // Total allocatable resources for this reservation.
+    // +optional
+    Allocatable v1.ResourceList `json:"allocatable,omitempty" protobuf:"bytes,10,rep,name=allocatable"`
+
+    // Total resources currently allocated to the owner.
+    // +optional
+    Allocated v1.ResourceList `json:"allocated,omitempty" protobuf:"bytes,11,rep,name=allocated"`
+}
+
+type ReservationState struct {
+    // The phase of Reservation.
+    // +optional
+    Phase ReservationPhase `json:"phase,omitempty" protobuf:"bytes,1,opt,name=phase"`
+
+    // Unique, one-word, CamelCase reason for the phase's last transition.
+    // +optional
+    Reason string `json:"reason,omitempty" protobuf:"bytes,2,opt,name=reason"`
+
+    // Human-readable message indicating details about last transition.
+    // +optional
+    Message string `json:"message,omitempty" protobuf:"bytes,3,opt,name=message"`
+
+    // Last time the condition transit from one phase to another.
+    // +optional
+    LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,4,opt,name=lastTransitionTime"`
+}
+
+type ReservationCondition struct {
+    // Status is the new phase of reservation after performing the state's action.
+    Status ReservationPhase `json:"status" protobuf:"bytes,1,opt,name=status,casttype=ReservationPhase"`
+    // Last time the condition transitioned from one phase to another.
+    // +optional
+    LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty" protobuf:"bytes,2,opt,name=lastTransitionTime"`
+}
+
+// ReservationPhase defines the phase of the reservation.
+type ReservationPhase string
+
+const (
+    // ReservationPending is the phase that reservation is pending in the queue, waiting for scheduling decision
+    ReservationPending ReservationPhase = "Pending"
+    // ReservationAvailable indicates the Reservation is both scheduled and available for allocation.
+    ReservationAvailable ReservationPhase = "Available"
+    // ReservationSucceeded indicates the Reservation is scheduled and allocated for a owner, but not allocatable anymore.
+    ReservationSucceeded ReservationPhase = "Succeeded"
+    // ReservationWaiting indicates the Reservation is scheduled, but the resources to reserve are not ready for
+    // allocation (e.g. in pre-allocation for running pods).
+    ReservationWaiting ReservationPhase = "Waiting"
+    // ReservationFailed indicates the Reservation is failed to reserve resources, due to expiration or marked as
+    // unavailable, which the object is not available to allocate and will get cleaned in the future.
+    ReservationFailed ReservationPhase = "Failed"
+)
+
+// ReservationOwner indicates the owner specification which can allocate reserved resources.
+type ReservationOwner struct {
+    // Multiple field selectors are ORed.
+    // +optional
+    Object *v1.ObjectReference `json:"object,omitempty" protobuf:"bytes,1,opt,name=object"`
+    // +optional
+    LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty" protobuf:"bytes,2,opt,name=labelSelector"`
+}
+
+// ReservationList defines the list of reservations.
+type ReservationList struct {
+    metav1.TypeMeta `json:",inline"`
+    metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+    Items []Reservation `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
 ```
 
-A resource reservation example: reserving two Pods.
+**Reservation Status Flow**
+![reservation-status.png](..%2Fimages%2Freservation-status.png)
+
+A resource reservation example: reserving two tasks.
 ```yaml
-apiVersion: scheduling.volcano.sh/v1beta1
-kind: PodGroup
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Reservation
 metadata:
-  name: reserved-pg-demo
+  name: complex-reservation
   namespace: default
-spec:
-  minMember: 0
-  queue: default
-  reservationTemplate:
-    templates:
-      - metadata:
-          labels:
-            app: reserved
-            pod: pod-a
-        spec:
-          containers:
-            - name: reserved-container-a
-              image: busybox
-              imagePullPolicy: Always
-              command: ["sleep", "3600"]
-              resources:
-                requests:
-                  cpu: "4"
-                  memory: "4Gi"
-
-      - metadata:
-          labels:
-            app: reserved
-            pod: pod-b
-        spec:
-          containers:
-            - name: reserved-container-b
-              image: polinux/stress
-              imagePullPolicy: Always
-              command: ["sleep", "3600"]
-              resources:
-                requests:
-                  cpu: "1"
-                  memory: "256Mi"
-
-    owners:
-      - labelSelector:
-          matchLabels:
-            app: reserved
-      - object: # owner pods whose name is `default/pod-demo-1`
-          name: pod-demo-1
-          namespace: default
-    ttl: 10m
-```
-
-A Pod using reservations example:
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: reserved-user-pod-a 
-  namespace: default
-  annotations:
-    scheduling.volcano.sh/use-reservation: "true" # need to use reservation resource
-    scheduling.valcano.sh/target-reservation: "reserved-pg-demo" # Specify the name of the resource reservation to be used. If not specified, check all available reservations.
-  labels:
-    app: reserved # match the owner spec of `reserved-pg-demo`
 spec:
   schedulerName: volcano
-  containers:
-    - name: user-container-a
-      image: busybox
-      command: ["sleep", "3600"]
-      resources:
-        requests:
-          cpu: "500m"
-          memory: "128Mi"
-        limits:
-          cpu: "500m"
-          memory: "128Mi"
-
+  queue: default
+  minAvailable: 3  # 2 nginx + 1 busybox
+  ttl: 600s
+  owners:
+    - labelSelector:
+        matchLabels:
+          volcano.sh/reservation-job: job-multi
+  tasks:
+    - name: nginx
+      replicas: 2
+      template:
+        spec:
+          containers:
+            - name: nginx
+              image: nginx:latest
+              command: ["sleep", "300"]
+              resources:
+                requests:
+                  cpu: "500m"
+                  memory: "500Mi"
+          restartPolicy: Never
+    - name: busybox
+      replicas: 1
+      template:
+        spec:
+          containers:
+            - name: busybox
+              image: busybox:latest
+              command: ["sleep", "300"]
+              resources:
+                requests:
+                  cpu: "250m"
+                  memory: "256Mi"
+          restartPolicy: Never
 ```
 
-Reservation Store：to store the reservation information in the cluster and the reservation info of each node.(`cache.go`)
+**Reservation Controller**
+
+Reservation Controller is responsible for managing the lifecycle of reservations. It watches for new reservations.
+* AddReservation: Create a PodGroup for the reservation. (TODO: which can be created only in the Cache.
+* UpdateReservation: Not implemented for now.
+* DeleteReservation: Delete the PodGroup related to the reservation. (TODO: which can be removed only from the Cache.)
+
 ```go
-type ReservationStore interface {
-    DeleteReservation(r *schedulingv1alpha1.Reservation) *frameworkext.ReservationInfo
-    GetReservationInfoByObject(object *corev1.ObjectReference, nodeName string) *frameworkext.ReservationInfo
+// Create Podgroup
+func (rc *reservationcontroller) createOrUpdatePodGroup(reservation *batch.Reservation) error {
+    // If PodGroup does not exist, create one for Reservation.
+    pg, err := rc.getPodGroupByReservation(reservation)
+    if err != nil {
+       if !apierrors.IsNotFound(err) {
+          klog.Errorf("Failed to get PodGroup for Reservation <%s/%s>: %v",
+             reservation.Namespace, reservation.Name, err)
+          return err
+       }
+       minTaskMember := map[string]int32{}
+       for _, task := range reservation.Spec.Tasks {
+          minTaskMember[task.Name] = task.Replicas
+       }
+       minReq := calculateAllocatable(reservation)
+
+       annotations := make(map[string]string)
+       for k, v := range reservation.Annotations {
+          annotations[k] = v
+       }
+       annotations[scheduling.VolcanoGroupReservationOnlyAnnotationKey] = "true"
+
+       pg := &scheduling.PodGroup{
+          ObjectMeta: metav1.ObjectMeta{
+             Namespace: reservation.Namespace,
+             // add reservation.UID into its name when create new PodGroup
+             Name:        rc.generateRelatedPodGroupName(reservation),
+             Annotations: annotations,
+             Labels:      reservation.Labels,
+             OwnerReferences: []metav1.OwnerReference{
+                *metav1.NewControllerRef(reservation, helpers.ReservationKind),
+             },
+          },
+          Spec: scheduling.PodGroupSpec{
+             MinMember:     reservation.Spec.MinAvailable,
+             MinTaskMember: minTaskMember,
+             Queue:         reservation.Spec.Queue,
+             MinResources:  &minReq,
+          },
+       }
+
+       if _, err = rc.vcClient.SchedulingV1beta1().PodGroups(reservation.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
+          if !apierrors.IsAlreadyExists(err) {
+             klog.Errorf("Failed to create PodGroup for Reservation <%s/%s>: %v",
+                reservation.Namespace, reservation.Name, err)
+             return err
+          }
+       }
+       return nil
+    }
+
+    pgShouldUpdate := false
+
+    minResources := calculateAllocatable(reservation)
+    if pg.Spec.MinMember != reservation.Spec.MinAvailable || !equality.Semantic.DeepEqual(pg.Spec.MinResources, minResources) {
+       pg.Spec.MinMember = reservation.Spec.MinAvailable
+       pg.Spec.MinResources = &minResources
+       pgShouldUpdate = true
+    }
+
+    if pg.Spec.MinTaskMember == nil {
+       pgShouldUpdate = true
+       pg.Spec.MinTaskMember = make(map[string]int32)
+    }
+
+    for _, task := range reservation.Spec.Tasks {
+       cnt := task.Replicas
+
+       if taskMember, ok := pg.Spec.MinTaskMember[task.Name]; !ok {
+          pgShouldUpdate = true
+          pg.Spec.MinTaskMember[task.Name] = cnt
+       } else {
+          if taskMember == cnt {
+             continue
+          }
+
+          pgShouldUpdate = true
+          pg.Spec.MinTaskMember[task.Name] = cnt
+       }
+    }
+
+    if !pgShouldUpdate {
+       return nil
+    }
+
+    _, err = rc.vcClient.SchedulingV1beta1().PodGroups(reservation.Namespace).Update(context.TODO(), pg, metav1.UpdateOptions{})
+    if err != nil {
+       klog.V(3).Infof("Failed to update PodGroup for Reservation <%s/%s>: %v",
+          reservation.Namespace, reservation.Name, err)
+    }
+    return err
+}
+```
+
+Reservation Cache：to store the reservation information in the cluster and manage the reservation status.(`cache.go`)
+```go
+type ReservationCache struct {
+    sync.RWMutex
+    vcClient        vcclientset.Interface
+    reservations    map[types.UID]*schedulerapi.ReservationInfo
+    nameToUID       map[string]types.UID
+    nodesToTaskInfo map[string]*schedulerapi.TaskInfo
 }
 
-type reservationStore struct {
-    reservationLister  schedulinglister.ReservationLister
-    lock               sync.RWMutex
-    reservationInfos   map[types.UID]*frameworkext.ReservationInfo
-    reservationsOnNode map[string]map[types.UID]struct{}
+type ReservationInfo struct {
+    JobID       JobID
+    JobInfo     *JobInfo
+    Reservation *batch.Reservation
 }
+
 ```
 
 
 **Overall Workflow**
-1. Submit a PodGroup (pseudo Job) for resource reservation
-2. In `event_handlers.go`, within func `AddPodGroupV1beta1`, create corresponding TaskInfos based on the PodGroup’s ReservationTemplate, and add it to the cache:
+![reservation-overall.png](images%2Freservation-overall.png)
+
+1. Submit a Reservation CR
+2. `Reservation Controller` watches for new reservations and create a related PodGroup.
+3. `Schedule Cache` create a JobInfo and the corresponding TaskInfos in the Cache based on the ReservationSpec information from the Reservation CR.
 ```go
-func (sc *SchedulerCache) AddPodGroupV1beta1(obj interface{}) {
-    ss, ok := obj.(*schedulingv1beta1.PodGroup)
-
-    // Previous logic remains unchanged
-    ...
-
-    // Check if this is a resource reservation PodGroup
-    if ss.Spec.ReservationTemplate != nil {
-        for i, template := range ss.Spec.ReservationTemplate.Templates {
-            // Create a virtual Pod object
-            pod := &corev1.Pod{
-                ObjectMeta: metav1.ObjectMeta{
-                    Name:      fmt.Sprintf("%s-reserve-template-%d", ss.Name, i),
-                    Namespace: ss.Namespace,
-                    Labels:    template.ObjectMeta.Labels,
-                    Annotations: map[string]string{
-                        "volcano.sh/only-for-reservation": "true",
-                        "scheduling.k8s.io/group-name": podgroup.Name,
-                    },
-                },
-                Spec: template.Spec,
-            }
-
-            // Create TaskInfo
-            ti := schedulingapi.NewTaskInfo(pod)
-            ti.PodGroup = pg
-            ti.InitResreq()
-
-            // Add Task to cache (bind to pseudo job)
-            jobID := schedulingapi.JobID(fmt.Sprintf("%s/%s", ss.Namespace, ss.Name))
-            if _, found := sc.Jobs[jobID]; !found {
-                sc.Jobs[jobID] = schedulingapi.NewJobInfo(jobID)
-            }
-
-            sc.Jobs[jobID].AddTaskInfo(ti)
-            klog.V(4).Infof("Added reservation task template as TaskInfo: %s", ti.Name)
-        }
+// AddReservationV1beta1 add reservation to scheduler cache
+func (sc *SchedulerCache) AddReservationV1beta1(obj interface{}) {
+    ss, ok := obj.(*batch.Reservation)
+    if !ok {
+       klog.Errorf("Cannot convert to *batch.Reservation: %v", obj)
+       return
     }
+
+    reservation := ss
+
+    sc.Mutex.Lock()
+    defer sc.Mutex.Unlock()
+
+    // 创建JobInfo(必要的话)、创建TaskInfos(将JobInfo和Reservation关联)
+    jobId := getJobIDByReservation(reservation)
+    if _, found := sc.Jobs[jobId]; !found {
+       sc.Jobs[jobId] = schedulingapi.NewJobInfo(jobId)
+    }
+    job := sc.Jobs[jobId]
+    for _, ts := range reservation.Spec.Tasks {
+       ts.Template.Name = ts.Name
+       tc := ts.Template.DeepCopy()
+
+       for i := 0; i < int(ts.Replicas); i++ {
+          newPod := createReservationPod(reservation, tc, i)
+
+          pi, err := sc.NewTaskInfo(newPod)
+          pi.ReservationNodeName = ts.ReservationNodeName
+          pi.Status = schedulingapi.Pending
+          klog.V(5).Infof("Created TaskInfo: %+v", pi)
+          if err != nil {
+             klog.Errorf("Failed to create task in cache for reservation pod<%s/%s>: %v",
+                newPod.Namespace, newPod.Name, err)
+             return
+          }
+          err = sc.addTask(pi)
+          if err != nil {
+             klog.Errorf("Failed to add taskInfo for pod <%s/%s> into cache: %v",
+                newPod.Namespace, newPod.Name, err)
+             return
+          }
+          klog.V(4).Infof("Added TaskInfo:%v for pod %s/%s to scheduler cache", pi, newPod.Namespace, newPod.Name)
+       }
+    }
+    klog.V(5).Infof("Job Tasks: %v", job.Tasks)
+    // Create ReservationInfo
+    reservationInfo := schedulingapi.NewReservationInfo(jobId, job, reservation)
+    // Add ReservationInfo into Reservation Cache
+    sc.ReservationCache.AddReservation(reservationInfo)
+    klog.V(4).Infof("Added ReservationInfo %s/%s to ReservationCache, UID: %s", reservation.Namespace, reservation.Name, reservationInfo.Reservation.UID)
+}
+
+// UpdateReservationV1beta1 update reservation to scheduler cache
+func (sc *SchedulerCache) UpdateReservationV1beta1(oldObj, newObj interface{}) {
+    // TODO
+    klog.V(3).Infof("Update Reservation, ignore. Not support now.")
+    return
+}
+
+// DeleteReservationV1beta1 delete reservation from the scheduler cache
+func (sc *SchedulerCache) DeleteReservationV1beta1(obj interface{}) {
+    var ss *batch.Reservation
+    switch t := obj.(type) {
+    case *batch.Reservation:
+       ss = t
+    case cache.DeletedFinalStateUnknown:
+       var ok bool
+       ss, ok = t.Obj.(*batch.Reservation)
+       if !ok {
+          klog.Errorf("Cannot convert to *batch.Reservation: %v", t.Obj)
+          return
+       }
+    default:
+       klog.Errorf("Cannot convert to Numatopo: %v", t)
+       return
+    }
+    sc.Mutex.Lock()
+    defer sc.Mutex.Unlock()
+
+    sc.deleteReservation(ss)
+    klog.V(3).Infof("Delete Reservation <%s/%s> from cache", ss.Namespace, ss.Name)
+}
+
+
+func (sc *SchedulerCache) deleteReservation(ss *batch.Reservation) {
+    reservationInfo, ok := sc.ReservationCache.GetReservationById(ss.UID)
+    if !ok {
+       return
+    }
+
+    job := reservationInfo.JobInfo
+
+    // clean related tasks from reservation
+    tasks := job.Tasks
+    for _, task := range tasks {
+       if err := sc.deleteTask(task); err != nil {
+          klog.Errorf("Failed to delete task <%s/%s> for reservation <%s/%s> from cache: %v",
+             task.Namespace, task.Name, reservationInfo.Reservation.Namespace, reservationInfo.Reservation.Name, err)
+       } else {
+          klog.V(4).Infof("Delete task <%s/%s> for reservation <%s/%s> from cache",
+             task.Namespace, task.Name, reservationInfo.Reservation.Namespace, reservationInfo.Reservation.Name)
+       }
+    }
+    sc.ReservationCache.DeleteReservation(ss.UID)
 }
 ```
-3. Execute Volcano's regular scheduling cycle:
+4. Execute Volcano's regular scheduling cycle:
 ```
 Scheduler.Schedule()
  └── OpenSession()
@@ -406,41 +651,105 @@ Scheduler.Schedule()
  └── CloseSession()
 
 ```
-4. For reservation-only pods, modify the **bind** logic to only record the reservation in the reservation cache and update the PodGroup’s status without actual bind:
+5. For pods reserved by a reservation, modify the bind logic to only record the reservation info in the reservation cache and update the status of the Reservation CR, without performing an actual bind.
 ```go
 // cache.go
-func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) {
-    tmp := time.Now()
-
-    // Filter out normal tasks; skip binding for reservation-only pods
-    var bindTasks []*schedulingapi.TaskInfo
-    for _, task := range tasks {
-        if task.Pod.Annotations["volcano.sh/only-for-reservation"] == "true" {
-            // This is a reservation pod: only record reservation, don't bind
-            klog.V(3).Infof("Skip actual bind for reservation-only pod %s/%s", task.Namespace, task.Name)
-
-            // Record reservation
-            if err := sc.ReservationCache.RecordReservation(task); err != nil {
-                klog.Errorf("Failed to record reservation for pod %s/%s: %v", task.Namespace, task.Name, err)
-                continue
-            }
-
-            // Update PodGroup status
-            if task.PodGroup != nil {
-                task.PodGroup.Status.Reserved++
-            }
-
-            // Record event
-            sc.Recorder.Eventf(task.Pod, v1.EventTypeNormal, "Reserved", "Successfully reserved resources on node %v", task.NodeName)
-        } else {
-            bindTasks = append(bindTasks, task)
-        }
+// AddBindTask add task to be bind to a cache which consumes by go runtime
+func (sc *SchedulerCache) AddBindTask(taskInfo *schedulingapi.TaskInfo) error {
+    klog.V(5).Infof("add bind task %v/%v", taskInfo.Namespace, taskInfo.Name)
+    if taskInfo.IsReservationTask() {
+       return sc.processReservationTask(taskInfo)
     }
-
-    // Execute the original logic for non-reservation-only tasks
-    ...
+    ...original logic...
 }
 
+
+func (sc *SchedulerCache) processReservationTask(taskInfo *schedulingapi.TaskInfo) error {
+    klog.V(5).Infof("reserve task %v/%v", taskInfo.Namespace, taskInfo.Name)
+    job, task, err := sc.findJobAndTask(taskInfo)
+    if err != nil {
+       return err
+    }
+
+    node, found := sc.Nodes[taskInfo.NodeName]
+    if !found {
+       return fmt.Errorf("failed to reserve Task %v to host %v, host does not exist",
+          task.UID, taskInfo.NodeName)
+    }
+
+    originalStatus := task.Status
+    if err := job.UpdateTaskStatus(task, schedulingapi.Bound); err != nil {
+       return err
+    }
+
+    err = taskInfo.SetPodResourceDecision()
+    if err != nil {
+       return fmt.Errorf("set reserve task %v/%v resource decision failed, err %v", task.Namespace, task.Name, err)
+    }
+    task.NumaInfo = taskInfo.NumaInfo.Clone()
+
+    // Add task to the node.
+    if err := node.AddTask(task); err != nil {
+       // After failing to update task to a node we need to revert task status from Releasing,
+       // otherwise task might be stuck in the Releasing state indefinitely.
+       if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+          klog.Errorf("Reserve task <%s/%s> will be resynchronized after failing to revert status "+
+             "from %s to %s after failing to update Task on Node <%s>: %v",
+             task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+          sc.resyncTask(task)
+       }
+       return err
+    }
+
+    // Sync to reservation cache
+    if err := sc.ReservationCache.SyncTaskStatus(task, job); err != nil {
+       return err
+    }
+    return nil
+}
+```
+
+6. The `Reservation Cache` directly uses the API client to update the status of the ```Reservation CR.
+```go
+
+// Sync the status of Reservation CR according to the status of the tasks in job.
+func (rc *ReservationCache) syncReservation(reservation *schedulerapi.ReservationInfo, job *schedulerapi.JobInfo) error {
+    rsve, err := rc.vcClient.BatchV1alpha1().Reservations(reservation.Reservation.Namespace).Get(context.TODO(), reservation.Reservation.Name, metav1.GetOptions{})
+    if err != nil {
+       klog.Errorf("Failed to get Reservation %s/%s: %v", reservation.Reservation.Namespace, reservation.Reservation.Name, err)
+       return err
+    }
+    oldStatus := reservation.Reservation.Status.DeepCopy()
+    taskStatusCount := make(map[string]v1alpha1.TaskState)
+    var pending, available, succeeded, failed int32
+    calculateTasksStatus(job, &taskStatusCount, &pending, &available, &succeeded, &failed)
+    newStatus := v1alpha1.ReservationStatus{
+       State:           oldStatus.State,
+       MinAvailable:    oldStatus.MinAvailable,
+       TaskStatusCount: taskStatusCount,
+       Pending:         pending,
+       Available:       available,
+       Succeeded:       succeeded,
+       Failed:          failed,
+       CurrentOwner:    oldStatus.CurrentOwner,
+       Allocatable:     oldStatus.Allocatable,
+       Allocated:       job.Allocated.ConvertResourceToResourceList(),
+    }
+    rsve.Status = newStatus
+    rsve.Status.State = calculateReservationState(pending, available, succeeded, failed)
+    reservationCondition := newCondition(rsve.Status.State.Phase, &rsve.Status.State.LastTransitionTime)
+    rsve.Status.Conditions = append(rsve.Status.Conditions, reservationCondition)
+    // 调用api更新
+    newReservation, err := rc.vcClient.BatchV1alpha1().Reservations(rsve.Namespace).UpdateStatus(context.TODO(), rsve, metav1.UpdateOptions{})
+    if err != nil {
+       klog.Errorf("Failed to update status of Reservation %v/%v: %v",
+          rsve.Namespace, rsve.Name, err)
+       return err
+    }
+    // sync cache
+    reservation.Reservation = newReservation
+    return nil
+}
 ```
 
 **Expiration and Recycling**
@@ -448,19 +757,58 @@ func (sc *SchedulerCache) Bind(tasks []*schedulingapi.TaskInfo) {
 When a reservation exceeds its TTL, the Volcano scheduler updates its status to Expired. For expired resource reservations, the scheduler will clean them up and release the remaining resources according to a custom garbage collection cycle. However, resources that have been allocated to the associated pods will not be reclaimed.
 
 ```go
-// garbagecollector.go
+// garbagecollector.go/reservation contoller
 func (c *Controller) recycleReservations() {
     reservations, err := c.reservationLister.List()
-    
+
     for _, reservation := range reservations {
-        if isReservationNeedCleanup(reservation) {
-            // Update Reservation Cache
-            sc.reservationCache.delete(reservation)
-            }
-        }
+       if isReservationNeedCleanup(reservation) {
+          // 更新Reservation Cache
+          sc.reservationCache.delete(reservation)
+       }
+    }
 }
 ```
 #### 2.4.2 Reservation Scheduling
+**Resource Reservation Matching Mechanism**
+
+1. Owners Matching
+* By `ObjectReference`
+* By `LabelSelector`
+
+
+2. Task Template Matching
+
+Requires matching the reserved Pod’s template with the Pod template defined in the corresponding Reservation.
+```go
+
+func IsPodSpecMatch(taskPodSpec, resvPodSpec *v1.PodSpec) bool {
+    if taskPodSpec.SchedulerName != resvPodSpec.SchedulerName {
+       return false
+    }
+    if !apiequality.Semantic.DeepEqual(taskPodSpec.NodeSelector, resvPodSpec.NodeSelector) {
+       return false
+    }
+    if !apiequality.Semantic.DeepEqual(taskPodSpec.Affinity, resvPodSpec.Affinity) {
+       return false
+    }
+    if !apiequality.Semantic.DeepEqual(taskPodSpec.Tolerations, resvPodSpec.Tolerations) {
+       return false
+    }
+    if taskPodSpec.PriorityClassName != resvPodSpec.PriorityClassName {
+       return false
+    }
+    if !isContainerListEqual(taskPodSpec.Containers, resvPodSpec.Containers) {
+       return false
+    }
+    if !isContainerListEqual(taskPodSpec.InitContainers, resvPodSpec.InitContainers) {
+       return false
+    }
+
+    return true
+}
+```
+
 By introducing a new **Reservation plugin**, support is added for scheduling Pods onto reserved resources.
 
 **Reservation Plugin**:
@@ -472,67 +820,119 @@ A scheduling plugin used to handle both resource reservation and reservation-bas
 
 * Handle Pods scheduled with reservations: It checks for available Reservation instances and modifies the NodeOrder accordingly.
 
-Map the extension points to Volcano's `Actions` and `Functions`.
-
-| Native Scheduler Extension Point | Volcano Plugin(Action & Fn)                                                                                                 | Description                                                                |
-|----------------------------------|-----------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
-| Filter                           | predicateFn, prePredicateFn                                                                                                 | Deducting reserved resources when calculating the resources available to a node |
-| Score                            | nodeOrderFn、batchNodeOrderFn、bestNodeFn                                                                                     | Processing Node Priority                    |
+| Volcano Actions | Volcano Fn                     | Description                          |
+|-----------------|--------------------------------|--------------------------------------|
+| Enqueue         | validJobFn                     | Validate reservation availability.   |
+| Allocate        | bestNodeFn                     | Reserve resources on specific nodes. |
 
 ```go
-const PluginName = "reservation"
+const (
+  // PluginName indicates name of volcano scheduler plugin.
+  PluginName = "reservation"
+)
 
 type reservationPlugin struct {
-    // Arguments given for the plugin
-    pluginArguments framework.Arguments
+  // Arguments given for the plugin
+}
+
+// New function returns prioritizePlugin object
+func New(aruguments framework.Arguments) framework.Plugin {
+  return &reservationPlugin{}
+}
+
+func (rp *reservationPlugin) Name() string {
+  return PluginName
 }
 
 func (rp *reservationPlugin) OnSessionOpen(ssn *framework.Session) {
+  klog.V(5).Infof("Enter reservation plugin ...")
+  defer func() {
+    klog.V(5).Infof("Leaving reservation plugin...")
+  }()
+  validJobFn := func(obj interface{}) *api.ValidateResult {
+    job, ok := obj.(*api.JobInfo)
+    if !ok {
+      return &api.ValidateResult{
+        Pass:    false,
+        Message: fmt.Sprintf("Failed to convert <%v> to *JobInfo", obj),
+      }
+    }
+    ssn.MatchReservationForPod(job)
 
-    ssn.AddPredicateFn(PluginName, func(task *api.TaskInfo, node *api.NodeInfo) error {
+    // 1. Check the reservation if available
+    if valid := ssn.CheckReservationAvailable(job); !valid {
+      return &api.ValidateResult{
+        Pass:    false,
+        Reason:  v1beta1.InvalidReservationReason,
+        Message: fmt.Sprintf("Reservation specified by job <%s/%s> is not Available", job.Namespace, job.Name),
+      }
+    }
 
-        reservedOnNode := ssn.ReservationCache.getReservationInfoByNode(node.Name)
-        // Node.Available = Node.Allocatable - Node.Allocated - (Node.Reserved.Allocatable - Node.Reserved.Allocated = Node.Reserved.Unused)
-        idle := node.Allocatable.Clone()
-        idle.Sub(node.Used)
-        idle.Sub(reservedOnNode.Allocatable)
-        idle.Add(reservedOnNode.Allocated)
+    // 2. Check reservation owner whether matched.
+    if ownerMatched := ssn.CheckReservationOwners(job); !ownerMatched {
+      return &api.ValidateResult{
+        Pass:   false,
+        Reason: v1beta1.ReservationOwnerNotMatchReason,
+        Message: fmt.Sprintf(
+          "Reservation specified by job <%s/%s> is not owned by the job (ownership mismatch by ownerObject  or label selectors)",
+          job.Namespace, job.Name,
+        ),
+      }
+    }
 
+    // 3. Check tasks whether matched
+    if specMatched := ssn.CheckReservationMatch(job); !specMatched {
+      return &api.ValidateResult{
+        Pass:   false,
+        Reason: v1beta1.ReservationSpecNotMatchReason,
+        Message: fmt.Sprintf(
+          "Reservation specified by job <%s/%s> does not match job task spec: task count or PodSpec does not match",
+          job.Namespace, job.Name,
+        ),
+      }
+    }
+    return nil
+  }
 
-        // if there is no enough resources in this node, return err
-        if !idle.LessEqual(task.Resreq) {
-            return fmt.Errorf("node %s does not have enough resources for task %s/%s after reserving: %v left vs %v needed",
-                node.Name, task.Namespace, task.Name, idle, task.Resreq)
+  ssn.AddJobValidFn(rp.Name(), validJobFn)
+
+  bestNodeFn := func(task *api.TaskInfo, scores map[float64][]*api.NodeInfo) *api.NodeInfo {
+    klog.V(5).Infof("[debug]: enter reservation best node function for task %s/%s", task.Namespace, task.Name)
+    if !task.IsReservationTask() {
+      return nil
+    }
+
+    reservationNodeName := task.ReservationNodeName
+    if reservationNodeName == "" {
+      return nil
+    }
+    for _, nodeList := range scores {
+      for _, node := range nodeList {
+        if node.Name == reservationNodeName {
+          klog.V(5).Infof("[debug]: Found reservation node %s", node.Name)
+          return node
         }
-
-        return nil
-    })
-    
-    ssn.AddNodeOrderFn(PluginName, func(task *api.TaskInfo, node *api.NodeInfo) int {
-        
-    })
-    
-    ssn.AddBestNodeFn(gp.Name(), func(task *api.TaskInfo, nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
-    })
-    
-    
-    ssn.AddBatchNodeOrderFn(gp.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
-    
-    })
+      }
+    }
+    return nil
+  }
+  ssn.AddBestNodeFn(rp.Name(), bestNodeFn)
 }
+
+func (rp *reservationPlugin) OnSessionClose(ssn *framework.Session) {}
 ```
 
 **Reserve Resource Mechanism**
+![reservation-machanism.png](images%2Freservation-machanism.png)
+(1) **Constructing the Reservation CR**
 
-(1) **Treat Reservation as a Pseudo PodGroup**
+  * In the scheduler, a Reservation is similar to a vcjob; it creates a JobInfo and corresponding TaskInfos in the cache, effectively behaving like a real vcjob for scheduling purposes.
 
-  * In the scheduler, each Reservation is treated as a "Reserve PodGroup," effectively acting like a real PodGroup for scheduling purposes.
+  * The scheduler performs scheduling for each fake Pod (i.e., TaskInfo in Volcano) defined in the Reservation.
 
-  * The scheduler schedules each pod within the Reserve PodGroup just like regular pods.
+(2) **Occupying Resources Internally in the Scheduler**
 
-(2) **Occupy Resources Internally in the Scheduler**
-
-* After participating in scheduling, the Reserve PodGroup uses the Reservation Plugin to modify the Bind behavior. It does not actually create pods, but instead locks the specified resources on the node within the scheduler's internal cache (Reservation Store in `cache.go`).
+* After participating in scheduling through the scheduler, the Reservation modifies the bind behavior via the Reservation Plugin. It does not actually create Pods, but instead locks specified resources on the node in the scheduler’s internal cache (`Reservation Cache` in `cache.go`).
 
 * This is similar to a pod being successfully scheduled but not yet running.
 
@@ -542,152 +942,135 @@ func (rp *reservationPlugin) OnSessionOpen(ssn *framework.Session) {
 
 * If a matching Reservation is found:
 
-  * The pod is directly bound to the node reserved by the Reservation, skipping the Filter and Score phases.
+  * The Pod/Task is directly bound to the node reserved by the Reservation, skipping the Filter and Score phases.
 
-  * The Reserve PodGroup's resource allocation information is updated.
+  * The Reservation and the Reservation Cache are updated accordingly.
 
 * If no matching Reservation is found:
 
-  * The pod follows the regular scheduling process.
+  * The Pod/Task follows the normal scheduling logic.
 
 
 **Rescheduling Scenario**
 
-Before a Pod is rescheduled, the volcano-descheduler creates a reservation PodGroup for the candidate, which contains only one Pod. It sets the corresponding template and owners. Once the reservation becomes **available**, the descheduler evicts the old Pod. The new Pod can then be successfully scheduled onto the reserved resources. This addresses the issue where a rescheduled Pod is stopped on the old node but cannot be guaranteed to be scheduled onto a new node.
+Before a Pod is rescheduled, the descheduler creates a `Reservation` for the candidate.
+This Reservation contains only one Pod (i.e., a Task with replica = 1), and sets the corresponding template and owners.
+Once the Reservation.Status becomes Available, the descheduler evicts the old Pod.
+The new Pod can then be successfully scheduled onto the reserved resources via the Reservation.
+This solves the problem where a rescheduled Pod is evicted from the old node but cannot be guaranteed to land on a new node.
 
 
-#### 2.4.3 Migration Plan
-Once resource reservation is successfully completed, Volcano Descheduler writes the generated migration plan `<SourceNode, TargetNode, PodName>` into the `PodGroupSpec` of the `PodGroup` to which the migrating pod belongs. It then updates the `PodGroupStatus` to `migrating`.
-
-When the `PodGroupController` detects the change in `PodGroupStatus`, it triggers the scheduling logic to attempt scheduling the pod onto the corresponding reserved resource instance. Once scheduling is successful, `PodGroupStatus` is updated to indicate that the migration is complete.
-
+#### 2.4.3 Migration
+After the resource reservation is successfully established, the `Volcano Descheduler` evicts the Pod from the node. The Pod is then recreated by its controller. Upon detecting the corresponding reservation, the `Volcano Scheduler` will bind the Pod to the reserved node.
+![deschedule-pod.png](images%2Fdeschedule-pod.png)
 ```go
-// PodGroupSpec
-type PodGroupSpec struct {
-    MinMember         int32
-    MinTaskMember     map[string]int32
-    Queue             string
-    PriorityClassName string
-    MinResources      *v1.ResourceList
-}
-
-type PodGroupStatus struct {
-    Phase       PodGroupPhase
-    Conditions  []PodGroupCondition
-    Running     int32
-    Succeeded   int32
-    Failed      int32
+for _, sourceNode := range sourceNodes {
     
-    // the number of pods in migrating
-    Migrating   int32
-    // the status of pods in migrating
-    Migrations     []*MigrationStatus `json:"migrationInfo,omitempty"`
-}
+    nonRemovablePods, removablePods := classifyPods(sourceNode.allPods, d.podFilter)    
+    pods := sorted(removablePods, d.args.ResourceType)
 
-// Migration status
-type MigrationStatus struct {
-    // Phase represents the Phase of Migration
-    // e.g. Pending/Running/Failed
-    Phase      MigrationPhase `json:"phase,omitempty"`
-    // Conditions records the stats of migration
-    Conditions []PodMigrationCondition `json:"conditions,omitempty"`
-    // Pod to be migrated
-    PodRef *corev1.ObjectReference  `json:"pod,omitempty"`
-    // Source node
-    SourceNode string `json:"sourceNode,omitempty"`
-    // Target node
-    TargetNode string `json:"targetNode,omitempty"`
-    // Reservation instance
-    ReservationRef *corev1.ObjectReference  `json:"reservation,omitempty"`
-}
-
-type MigrationPhase string
-
-const (
-        MigrationPending   MigrationPhase = "Pending"
-        MigrationRunning   MigrationPhase = "Running"
-        MigrationSucceeded MigrationPhase = "Succeeded"
-        MigrationFailed    MigrationPhase = "Failed"
-)
-```
-
-**PodGroupController**：It is necessary to add a listener for PodGroupStatus to trigger pod migration.
-```go
-func (pg *pgcontroller) updatePodGroup(oldObj, newObj interface{}) {
-    oldPG, ok := oldObj.(*scheduling.PodGroup)
-    if !ok {
-        klog.Errorf("Failed to convert oldObj to PodGroup")
-        return
-    }
-
-    newPG, ok := newObj.(*scheduling.PodGroup)
-    if !ok {
-        klog.Errorf("Failed to convert newObj to PodGroup")
-        return
-    }
-
-    // Check if the PodGroup status has changed to migrating
-    if oldPG.Status.Phase != newPG.Status.Phase {
-        klog.Infof("PodGroup %s/%s status changed: %s -> %s",
-            newPG.Namespace, newPG.Name, oldPG.Status.Phase, newPG.Status.Phase)
-
-        // Trigger the scheduling logic for the pod migration
-        pg.handlePodGroupStatusChange(newPG)
-    }
-}
-```
-
-**Pod Migration**
-```go
-for sourceNode := range sourceNodes {
-    // Filter migratable pods
-    nonRemovablePods, removablePods := classifyPods(sourceNode.allPods, podFilter)
-    
-    // Sort pods in descending order based on resource requests
-    pods := sorted(removablePods)
-    
-    for pod := range pods {
-        migratePod(pod, sourceNode, targetNodes...)
+    for _, pod := range pods {
+       d.migratePod(pod, sourceNode, targetNodes, migrateTimeout)
     }
 }
 
-func migratePod(pod, sourceNode, targetNodes) {
+func (d *Defragmentation) migratePod(pod *v1.Pod, sourceNode *NodeInfo, targetNodes []*NodeInfo, migrateTimeout time.Duration) {
     var targetNode *NodeInfo
-    for _, _targetNode := range targetNodes {
-        // 1. Check taints
-        if !checkTaints(pod, _targetNode) {
-            continue
-        }
-        
-        // 2. Check resource availability
-        if !checkResourceAvailability(_targetNode, pod) {
-            continue
-        }
-        
-        // Found a suitable target node, exit loop
-        targetNode = _targetNode
-        break
+    for _, node := range targetNodes {
+       klog.V(4).Infof("Considering target node %s for Pod %s/%s", node.node.Name, pod.Namespace, pod.Name)
+       // 1. check taints
+       if !checkTaints(pod, *node) {
+          klog.V(3).Infof("Pod %s/%s is not tolerating taints on node %s", pod.Namespace, pod.Name, node.node.Name)
+          continue
+       }
+
+       // 2. check resource availability
+       if !checkResourceAvailability(pod, *node) {
+          klog.V(3).Infof("Insufficient resources on node %s for Pod %s/%s", node.node.Name, pod.Namespace, pod.Name)
+          continue
+       }
+
+       targetNode = node
+       break
     }
-    
-    if targetNode != nil {
-        go doMigratePod(pod, sourceNode, targetNode)
-    } else {
-        // No available target node found (log this)
+
+    if targetNode == nil {
+       klog.Warningf("No suitable target node found for migrating Pod %s/%s from soruce node %s", pod.Namespace, pod.Name, sourceNode.node.Name)
+       return
     }
+
+    go d.doMigratePod(pod, sourceNode, targetNode, migrateTimeout)
 }
 
-func doMigratePod(pod, sourceNode, targetNode) {
-    // 0. Double-check & deduct resources in targetNode's cache
+func (d *Defragmentation) doMigratePod(pod *v1.Pod, sourceNode, targetNode *NodeInfo, migrateTimeout time.Duration) {
+    podKey := generateKeyFromPod(pod)
+    if _, exists := d.migratingPods.LoadOrStore(podKey, struct{}{}); exists {
+       klog.Infof("Pod %s is already migrating, skip", podKey)
+       return
+    }
+    defer d.migratingPods.Delete(podKey)
+
+    klog.Infof("Starting migration of Pod %s/%s from %s to %s",
+       pod.Namespace, pod.Name, sourceNode.node.Name, targetNode.node.Name)
+
+    if !checkResourceAvailability(pod, *targetNode) {
+       klog.Warningf("Insufficient resources on target node %s for Pod %s/%s", targetNode.node.Name, pod.Namespace, pod.Name)
+       return
+    }
+    podRequests := getPodAllResourceRequest(pod)
+    allocateResourceToNode(targetNode, podRequests)
+
+    reservation := generateReservation(pod, targetNode)
+    createdReservation, err := d.vcClient.BatchV1alpha1().Reservations(pod.Namespace).Create(context.TODO(), reservation, metav1.CreateOptions{})
+    if err != nil {
+       klog.Warningf("Failed to create reservation for Pod %s/%s: %v", pod.Namespace, pod.Name, err)
+       releaseResourceFromNode(targetNode, podRequests)
+       return
+    }
+
+    klog.V(4).Infof("Reservation %s created for Pod %s/%s and wait for available...", createdReservation.Name, pod.Namespace, pod.Name)
+
+    if !d.waitForReservationAvailable(createdReservation, migrateTimeout) {
+       klog.Warningf("Reservation %s for Pod %s/%s timed out", createdReservation.Name, pod.Namespace, pod.Name)
+       _ = d.vcClient.BatchV1alpha1().Reservations(pod.Namespace).Delete(context.TODO(), createdReservation.Name, metav1.DeleteOptions{})
+       releaseResourceFromNode(targetNode, podRequests)
+       return
+    }
     
-    // 1. Resource reservation
-        // 1.1 Failure — return resources in the cache — exit
-        // 1.2 Success — proceed with the next steps
-    
-    // 2. Rescheduling — create migrationPlan
-        // 2.1 Evict from source node
-        // 2.2 Bind to the reserved target node
-    
-    // 3. Callback to update resource info & migration status, etc.
+    evictOptions := evictions.EvictOptions{
+       Reason: fmt.Sprintf("Migrating Pod %s/%s from node %s to node %s", pod.Namespace, pod.Name, sourceNode.node.Name, targetNode.node.Name),
+    }
+
+    if !d.handle.Evictor().Evict(context.TODO(), pod, evictOptions) {
+       klog.Errorf("Failed to evict Pod %s/%s from source node", pod.Namespace, pod.Name)
+       _ = d.vcClient.BatchV1alpha1().Reservations(pod.Namespace).Delete(context.TODO(), createdReservation.Name, metav1.DeleteOptions{})
+       releaseResourceFromNode(targetNode, podRequests)
+       return
+    }
+
+    klog.Infof("Successfully evicted Pod %s/%s", pod.Namespace, pod.Name)
 }
 
+func (d *Defragmentation) waitForReservationAvailable(reservation *batch.Reservation, timeout time.Duration) bool {
+    deadline := time.After(timeout)
+    ticker := time.NewTicker(2 * time.Second)
+    defer ticker.Stop()
+
+    for {
+       select {
+       case <-deadline:
+          return false
+       case <-ticker.C:
+          updated, err := d.vcClient.BatchV1alpha1().Reservations(reservation.Namespace).Get(context.TODO(), reservation.Name, metav1.GetOptions{})
+          if err != nil {
+             klog.Errorf("Error fetching reservation %s: %v", reservation.Name, err)
+             continue
+          }
+          if updated.Status.State.Phase == batch.ReservationAvailable {
+             klog.Infof("Reservation %s is now available", reservation.Name)
+             return true
+          }
+       }
+    }
+}
 ```
