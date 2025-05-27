@@ -17,8 +17,13 @@ limitations under the License.
 package priority
 
 import (
+	"strconv"
+	"strings"
+
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
@@ -43,6 +48,13 @@ func (pp *priorityPlugin) Name() string {
 
 func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	taskOrderFn := func(l interface{}, r interface{}) int {
+
+		if utilfeature.DefaultFeatureGate.Enabled(features.NodeIPAware) {
+			if ret := TaskOrderByRank(l, r); ret != 0 {
+				return ret
+			}
+		}
+
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
 
@@ -119,5 +131,62 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddJobStarvingFns(pp.Name(), jobStarvingFn)
 }
+func TaskOrderByRank(l interface{}, r interface{}) int {
+	a, ok := l.(*api.TaskInfo)
+	if !ok {
+		klog.Errorf("Object is not a taskinfo")
+		return 0
+	}
+	b, ok := r.(*api.TaskInfo)
+	if !ok {
+		klog.Errorf("Object is not a taskinfo")
+		return 0
+	}
 
+	rankA := a.GetRank()
+	randB := b.GetRank()
+	// If RANK is not specified (primarily for MPI tasks, as ranktable parsing
+	// can be complex), sort by pod name index for graceful handling.
+	if rankA == "" && randB == "" && a.Pod != nil && b.Pod != nil {
+		if strings.HasSuffix(a.Pod.Name, "-launcher") || strings.HasSuffix(b.Pod.Name, "-master-0") {
+			return -1
+		}
+
+		if strings.HasSuffix(b.Pod.Name, "-launcher") || strings.HasSuffix(b.Pod.Name, "-master-0") {
+			return 1
+		}
+		if len(a.Pod.Name) < len(b.Pod.Name) {
+			return -1
+		}
+
+		if a.Pod.Name < b.Pod.Name {
+			return -1
+		}
+		return 1
+	}
+
+	rankAId, Aerr := strconv.Atoi(rankA)
+	rankBId, Berr := strconv.Atoi(randB)
+
+	if Aerr == nil && Berr == nil {
+		switch {
+		case rankAId < rankBId:
+			return -1
+		case rankAId > rankBId:
+			return 1
+		default:
+			return 0
+		}
+	}
+
+	if Aerr == nil && Berr != nil {
+		return 1
+	}
+
+	if Aerr != nil && Berr == nil {
+		return -1
+	}
+
+	return 0
+}
 func (pp *priorityPlugin) OnSessionClose(ssn *framework.Session) {}
