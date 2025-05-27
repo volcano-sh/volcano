@@ -23,8 +23,10 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -36,12 +38,14 @@ const (
 	BaseScore             = 100.0
 	ZeroScore             = 0.0
 	NetworkTopologyWeight = "weight"
+	HighPriorityIPScore   = "highPriorityIPScore"
 )
 
 type networkTopologyAwarePlugin struct {
 	// Arguments given for the plugin
-	pluginArguments framework.Arguments
-	weight          int
+	pluginArguments     framework.Arguments
+	weight              int
+	highPriorityIPScore float64
 	*hyperNodesTier
 }
 
@@ -61,9 +65,10 @@ func (h *hyperNodesTier) init(hyperNodesSetByTier []int) {
 // New function returns prioritizePlugin object
 func New(arguments framework.Arguments) framework.Plugin {
 	return &networkTopologyAwarePlugin{
-		pluginArguments: arguments,
-		hyperNodesTier:  &hyperNodesTier{},
-		weight:          calculateWeight(arguments),
+		pluginArguments:     arguments,
+		hyperNodesTier:      &hyperNodesTier{},
+		weight:              calculateWeight(arguments),
+		highPriorityIPScore: calculateHighPriorityIPScore(arguments),
 	}
 }
 
@@ -82,6 +87,21 @@ func calculateWeight(args framework.Arguments) int {
 	*/
 	weight := 1
 	args.GetInt(&weight, NetworkTopologyWeight)
+	return weight
+}
+
+func calculateHighPriorityIPScore(args framework.Arguments) float64 {
+	/*
+		   The arguments of the networktopologyaware plugin can refer to the following configuration:
+		   tiers:
+		   - plugins:
+		     - name: network-topology-aware
+		       arguments:
+		         weight: 10
+				 high
+	*/
+	weight := 0.0
+	args.GetFloat64(&weight, NetworkTopologyWeight)
 	return weight
 }
 
@@ -302,6 +322,11 @@ func IPToUint32(ipStr string) (uint32, error) {
 }
 
 func (nta *networkTopologyAwarePlugin) scoreNodeByIP(nodes []*api.NodeInfo) (map[string]float64, error) {
+	if !utilfeature.DefaultFeatureGate.Enabled(features.NodeIPAware) {
+		klog.V(4).Info("NodeIPAware feature is not enabled, skip scoring by IP")
+		return nil, nil
+	}
+	klog.V(4).Info("Scoring nodes by IP")
 	var minIP uint32
 	minName := ""
 	for _, node := range nodes {
@@ -324,7 +349,7 @@ func (nta *networkTopologyAwarePlugin) scoreNodeByIP(nodes []*api.NodeInfo) (map
 	}
 
 	score := make(map[string]float64)
-	// just set minName with BaseScore and others with zero score
-	score[minName] = float64(BaseScore * nta.weight)
+	// just set minName with highPriorityIPScore and others with zero score
+	score[minName] = nta.highPriorityIPScore
 	return score, nil
 }
