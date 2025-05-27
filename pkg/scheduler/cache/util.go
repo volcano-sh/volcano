@@ -117,3 +117,35 @@ func getMultiSchedulerInfo() (schedulerPodName string, c *consistent.Consistent)
 	}
 	return mySchedulerPodName, c
 }
+
+// mergeTolerations merges the original tolerations with the default tolerations.
+func mergeTolerations(orig, defaults []v1.Toleration) []v1.Toleration {
+	exists := map[string]bool{}
+	for _, t := range orig {
+		key := tolerationKey(t)
+		exists[key] = true
+	}
+	for _, t := range defaults {
+		key := tolerationKey(t)
+		if !exists[key] {
+			orig = append(orig, t)
+			exists[key] = true
+		}
+	}
+	return orig
+}
+
+// generateTolerationKey generates a unique key for a toleration.
+func tolerationKey(t v1.Toleration) string {
+	seconds := int64(0)
+	if t.TolerationSeconds != nil {
+		seconds = *t.TolerationSeconds
+	}
+	return fmt.Sprintf("%s/%s/%s/%d", t.Key, t.Operator, t.Effect, seconds)
+}
+
+// intPtr converts an int to a pointer to an int64.
+func intPtr(i int) *int64 {
+	v := int64(i)
+	return &v
+}

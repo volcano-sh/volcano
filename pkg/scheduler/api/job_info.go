@@ -36,6 +36,7 @@ import (
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
@@ -71,9 +72,11 @@ type TaskID types.UID
 
 // TransactionContext holds all the fields that needed by scheduling transaction
 type TransactionContext struct {
-	NodeName         string
-	EvictionOccurred bool
-	Status           TaskStatus
+	NodeName            string
+	EvictionOccurred    bool
+	Status              TaskStatus
+	ReservationTaskInfo *TaskInfo
+	ReservationNodeName string
 }
 
 // Clone returns a clone of TransactionContext
@@ -236,6 +239,23 @@ func (ti *TaskInfo) ClearLastTxContext() {
 	ti.LastTransaction = nil
 }
 
+// IsReservationTask returns true if the task is only for reservation
+func (ti *TaskInfo) IsReservationTask() bool {
+	if ti.Pod == nil || ti.Pod.Annotations == nil {
+		return false
+	}
+
+	annotationValue, ok := ti.Pod.Annotations[v1beta1.VolcanoGroupReservationOnlyAnnotationKey]
+	if !ok {
+		return false
+	}
+	return annotationValue == "true"
+}
+
+func (ti *TaskInfo) IsUseReservationTask() bool {
+	return ti.ReservationTaskInfo != nil
+}
+
 // Return if the pod of a task is scheduling gated by checking if length of sch gates is zero
 // When the Pod is not yet created or sch gates field not set, return false
 func calSchedulingGated(pod *v1.Pod) bool {
@@ -290,8 +310,10 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		NumaInfo:                    ti.NumaInfo.Clone(),
 		SchGated:                    ti.SchGated,
 		TransactionContext: TransactionContext{
-			NodeName: ti.NodeName,
-			Status:   ti.Status,
+			NodeName:            ti.NodeName,
+			Status:              ti.Status,
+			ReservationTaskInfo: ti.ReservationTaskInfo,
+			ReservationNodeName: ti.ReservationNodeName,
 		},
 		LastTransaction: ti.LastTransaction.Clone(),
 	}
@@ -1051,4 +1073,29 @@ func (ji *JobInfo) IsPending() bool {
 // HasPendingTasks return whether job has pending tasks
 func (ji *JobInfo) HasPendingTasks() bool {
 	return len(ji.TaskStatusIndex[Pending]) != 0
+}
+
+func (ji *JobInfo) GetReservationName() string {
+	if ji.PodGroup == nil || ji.PodGroup.Annotations == nil {
+		return ""
+	}
+	annotationValue, ok := ji.PodGroup.Annotations[v1beta1.VolcanoGroupTargetReservationAnnotationKey]
+	if !ok {
+		return ""
+	}
+	return annotationValue
+}
+
+func (ji *JobInfo) SetReservation(reservation *ReservationInfo) {
+	if ji.PodGroup == nil {
+		return
+	}
+	if ji.PodGroup.Annotations == nil {
+		ji.PodGroup.Annotations = make(map[string]string)
+	}
+	ji.PodGroup.Annotations[v1beta1.VolcanoGroupTargetReservationAnnotationKey] = reservation.Reservation.Name
+}
+
+func (ji *JobInfo) IsUseReservation() bool {
+	return ji.GetReservationName() != ""
 }

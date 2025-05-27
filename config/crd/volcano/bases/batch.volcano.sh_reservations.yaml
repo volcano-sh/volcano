@@ -1,31 +1,23 @@
+---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.0
-  name: jobs.batch.volcano.sh
+  name: reservations.batch.volcano.sh
 spec:
   group: batch.volcano.sh
   names:
-    kind: Job
-    listKind: JobList
-    plural: jobs
-    shortNames:
-    - vcjob
-    - vj
-    singular: job
+    kind: Reservation
+    listKind: ReservationList
+    plural: reservations
+    singular: reservation
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.state.phase
       name: STATUS
       type: string
-    - jsonPath: .status.minAvailable
-      name: minAvailable
-      type: integer
-    - jsonPath: .status.running
-      name: RUNNINGS
-      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date
@@ -45,70 +37,63 @@ spec:
             type: object
           spec:
             properties:
-              maxRetry:
-                default: 3
-                format: int32
-                type: integer
+              expires:
+                format: date-time
+                type: string
               minAvailable:
                 format: int32
                 type: integer
-              minSuccess:
-                format: int32
-                minimum: 1
-                type: integer
-              plugins:
-                additionalProperties:
-                  items:
-                    type: string
-                  type: array
-                type: object
-              policies:
+              owners:
                 items:
+                  minProperties: 1
                   properties:
-                    action:
-                      type: string
-                    event:
-                      enum:
-                      - '*'
-                      - PodPending
-                      - PodRunning
-                      - PodFailed
-                      - PodEvicted
-                      - Unknown
-                      - TaskCompleted
-                      - OutOfSync
-                      - CommandIssued
-                      - JobUpdated
-                      - TaskFailed
-                      type: string
-                    events:
-                      items:
-                        enum:
-                        - '*'
-                        - PodPending
-                        - PodRunning
-                        - PodFailed
-                        - PodEvicted
-                        - Unknown
-                        - TaskCompleted
-                        - OutOfSync
-                        - CommandIssued
-                        - JobUpdated
-                        - TaskFailed
-                        type: string
-                      type: array
-                    exitCode:
-                      format: int32
-                      type: integer
-                    timeout:
-                      type: string
+                    labelSelector:
+                      properties:
+                        matchExpressions:
+                          items:
+                            properties:
+                              key:
+                                type: string
+                              operator:
+                                type: string
+                              values:
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - key
+                            - operator
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    object:
+                      properties:
+                        apiVersion:
+                          type: string
+                        fieldPath:
+                          type: string
+                        kind:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                        resourceVersion:
+                          type: string
+                        uid:
+                          type: string
+                      type: object
+                      x-kubernetes-map-type: atomic
                   type: object
                 type: array
-              priorityClassName:
-                type: string
               queue:
-                type: string
-              runningEstimate:
                 type: string
               schedulerName:
                 type: string
@@ -3850,111 +3835,30 @@ spec:
                       type: string
                   type: object
                 type: array
-              ttlSecondsAfterFinished:
-                format: int32
-                type: integer
-              volumes:
-                items:
-                  properties:
-                    mountPath:
-                      type: string
-                    volumeClaim:
-                      properties:
-                        accessModes:
-                          items:
-                            type: string
-                          type: array
-                          x-kubernetes-list-type: atomic
-                        dataSource:
-                          properties:
-                            apiGroup:
-                              type: string
-                            kind:
-                              type: string
-                            name:
-                              type: string
-                          required:
-                          - kind
-                          - name
-                          type: object
-                          x-kubernetes-map-type: atomic
-                        dataSourceRef:
-                          properties:
-                            apiGroup:
-                              type: string
-                            kind:
-                              type: string
-                            name:
-                              type: string
-                            namespace:
-                              type: string
-                          required:
-                          - kind
-                          - name
-                          type: object
-                        resources:
-                          properties:
-                            limits:
-                              additionalProperties:
-                                anyOf:
-                                - type: integer
-                                - type: string
-                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                                x-kubernetes-int-or-string: true
-                              type: object
-                            requests:
-                              additionalProperties:
-                                anyOf:
-                                - type: integer
-                                - type: string
-                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                                x-kubernetes-int-or-string: true
-                              type: object
-                          type: object
-                        selector:
-                          properties:
-                            matchExpressions:
-                              items:
-                                properties:
-                                  key:
-                                    type: string
-                                  operator:
-                                    type: string
-                                  values:
-                                    items:
-                                      type: string
-                                    type: array
-                                    x-kubernetes-list-type: atomic
-                                required:
-                                - key
-                                - operator
-                                type: object
-                              type: array
-                              x-kubernetes-list-type: atomic
-                            matchLabels:
-                              additionalProperties:
-                                type: string
-                              type: object
-                          type: object
-                          x-kubernetes-map-type: atomic
-                        storageClassName:
-                          type: string
-                        volumeAttributesClassName:
-                          type: string
-                        volumeMode:
-                          type: string
-                        volumeName:
-                          type: string
-                      type: object
-                    volumeClaimName:
-                      type: string
-                  required:
-                  - mountPath
-                  type: object
-                type: array
+              ttl:
+                type: string
             type: object
           status:
             properties:
+              allocatable:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                type: object
+              allocated:
+                additionalProperties:
+                  anyOf:
+                  - type: integer
+                  - type: string
+                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                  x-kubernetes-int-or-string: true
+                type: object
+              available:
+                format: int32
+                type: integer
               conditions:
                 items:
                   properties:
@@ -3967,10 +3871,24 @@ spec:
                   - status
                   type: object
                 type: array
-              controlledResources:
-                additionalProperties:
-                  type: string
+              currentOwner:
+                properties:
+                  apiVersion:
+                    type: string
+                  fieldPath:
+                    type: string
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                  resourceVersion:
+                    type: string
+                  uid:
+                    type: string
                 type: object
+                x-kubernetes-map-type: atomic
               failed:
                 format: int32
                 type: integer
@@ -3980,14 +3898,6 @@ spec:
               pending:
                 format: int32
                 type: integer
-              retryCount:
-                format: int32
-                type: integer
-              running:
-                format: int32
-                type: integer
-              runningDuration:
-                type: string
               state:
                 properties:
                   lastTransitionTime:
@@ -4013,15 +3923,6 @@ spec:
                       type: object
                   type: object
                 type: object
-              terminating:
-                format: int32
-                type: integer
-              unknown:
-                format: int32
-                type: integer
-              version:
-                format: int32
-                type: integer
             type: object
         type: object
     served: true

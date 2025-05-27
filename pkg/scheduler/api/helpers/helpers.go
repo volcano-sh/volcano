@@ -20,6 +20,7 @@ import (
 	"math"
 
 	v1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -86,4 +87,59 @@ func Share(l, r float64) float64 {
 	}
 
 	return share
+}
+
+func IsPodSpecMatch(taskPodSpec, resvPodSpec *v1.PodSpec) bool {
+	if taskPodSpec.SchedulerName != resvPodSpec.SchedulerName {
+		return false
+	}
+	if !apiequality.Semantic.DeepEqual(taskPodSpec.NodeSelector, resvPodSpec.NodeSelector) {
+		return false
+	}
+	if !apiequality.Semantic.DeepEqual(taskPodSpec.Affinity, resvPodSpec.Affinity) {
+		return false
+	}
+	if !apiequality.Semantic.DeepEqual(taskPodSpec.Tolerations, resvPodSpec.Tolerations) {
+		return false
+	}
+	if taskPodSpec.PriorityClassName != resvPodSpec.PriorityClassName {
+		return false
+	}
+	if !isContainerListEqual(taskPodSpec.Containers, resvPodSpec.Containers) {
+		return false
+	}
+	if !isContainerListEqual(taskPodSpec.InitContainers, resvPodSpec.InitContainers) {
+		return false
+	}
+
+	return true
+}
+
+func isContainerListEqual(a, b []v1.Container) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	containerMap := make(map[string]v1.Container, len(a))
+	for _, c := range a {
+		containerMap[c.Name] = c
+	}
+
+	for _, c := range b {
+		ref, ok := containerMap[c.Name]
+		if !ok {
+			return false
+		}
+		if c.Image != ref.Image {
+			return false
+		}
+		if !apiequality.Semantic.DeepEqual(c.Resources.Requests, ref.Resources.Requests) {
+			return false
+		}
+		if !apiequality.Semantic.DeepEqual(c.Resources.Limits, ref.Resources.Limits) {
+			return false
+		}
+	}
+
+	return true
 }

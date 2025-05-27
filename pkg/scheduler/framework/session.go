@@ -23,6 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
@@ -31,13 +32,16 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	v1beta1apply "volcano.sh/apis/pkg/client/applyconfiguration/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -689,4 +693,185 @@ func (ssn Session) String() string {
 	}
 
 	return msg
+}
+
+func (ssn *Session) MatchReservationForPod(job *api.JobInfo) {
+	klog.V(3).Infof("MatchReservationForPod job <%v/%v>", job.Namespace, job.Name)
+	klog.V(5).Infof("[Debug]: %+v, tasks: %+v", job, job.Tasks)
+	reservationName := job.GetReservationName()
+	if reservationName != "" {
+		return
+	}
+
+	// try match a reservation for the job
+	if len(job.Tasks) != 1 {
+		return
+	}
+
+	var task *api.TaskInfo
+	for _, t := range job.Tasks {
+		task = t
+		break
+	}
+	if task == nil || task.Pod == nil {
+		return
+	}
+
+	pod := task.Pod
+	klog.V(3).Infof("MatchReservationForPod pod <%s/%s>", pod.Namespace, pod.Name)
+	// check if the pod has a reservation
+	reservation, ok := ssn.cache.GetReservationCache().MatchReservationForPod(pod)
+	if ok {
+		job.SetReservation(reservation)
+		klog.V(3).Infof("Job <%s/%s> has matched reservation <%s> for pod <%s/%s>", job.Namespace, job.Name, reservation.Reservation.Name, pod.Namespace, pod.Name)
+	}
+}
+
+func (ssn *Session) CheckReservationAvailable(job *api.JobInfo) bool {
+	reservationName := job.GetReservationName()
+	// not using reservation, return true
+	if reservationName == "" {
+		return true
+	}
+	reservationInfo, ok := ssn.cache.GetReservationCache().GetReservationByName(reservationName)
+
+	reservation := reservationInfo.Reservation
+	if !ok {
+		klog.V(4).Infof("Reservation %s is not available for job <%s/%s>", reservationName, job.Namespace, job.Name)
+		return false
+	}
+
+	owner := reservation.Status.CurrentOwner
+	if owner.Name == job.Name && owner.Namespace == job.Namespace {
+		return true
+	}
+
+	if reservation.Status.State.Phase != v1alpha1.ReservationAvailable {
+		klog.V(4).Infof("Reservation %s is not in available phase for job <%s/%s>", reservationName, job.Namespace, job.Name)
+		return false
+	}
+
+	return true
+}
+
+func (ssn *Session) CheckReservationOwners(job *api.JobInfo) bool {
+	reservationName := job.GetReservationName()
+	if reservationName == "" {
+		return true
+	}
+	reservationInfo, ok := ssn.cache.GetReservationCache().GetReservationByName(reservationName)
+
+	if !ok {
+		return false
+	}
+
+	owners := reservationInfo.Reservation.Spec.Owners
+	pg := job.PodGroup
+
+	for _, owner := range owners {
+		// 1. Match by object reference
+		if owner.Object != nil {
+			// convert to actual name in cache
+			actualName := fmt.Sprintf("%s-%s", owner.Object.Name, pg.UID)
+			if (actualName == pg.Name) && owner.Object.Namespace == pg.Namespace {
+				return true
+			}
+
+			if pg.OwnerReferences != nil {
+				for _, ownerRef := range pg.OwnerReferences {
+					if owner.Object.Name == ownerRef.Name {
+						return true
+					}
+				}
+			}
+
+			if owner.Object.Kind == "Pod" {
+				for _, task := range job.Tasks {
+					if task.Pod == nil {
+						continue
+					}
+					pod := task.Pod
+					if pod.Name == owner.Object.Name && pod.Namespace == owner.Object.Namespace {
+						return true
+					}
+				}
+			}
+		}
+
+		// 2. Match by label selector
+		if owner.LabelSelector != nil {
+			selector, err := metav1.LabelSelectorAsSelector(owner.LabelSelector)
+			if err != nil {
+				continue
+			}
+			if selector.Matches(labels.Set(pg.Labels)) {
+				return true
+			}
+		}
+	}
+	klog.V(1).Infof("The owner of Reservation %s is not matched with job <%s/%s> owners", reservationName, job.Namespace, job.Name)
+	return false
+}
+
+func (ssn *Session) CheckReservationMatch(job *api.JobInfo) bool {
+	reservationName := job.GetReservationName()
+	if reservationName == "" {
+		return true
+	}
+	reservationInfo, ok := ssn.cache.GetReservationCache().GetReservationByName(reservationName)
+
+	if !ok {
+		return false
+	}
+	resvTasks := reservationInfo.JobInfo.Tasks
+	jobTasks := job.Tasks
+
+	if len(resvTasks) != len(jobTasks) {
+		klog.V(5).Infof("Reservation %s tasks count %d is not equal to job %s tasks count %d", reservationName, len(resvTasks), job.Name, len(jobTasks))
+		return false
+	}
+
+	// jobTask -> resvTask
+	matched := make(map[*api.TaskInfo]*api.TaskInfo)
+	// resvTask -> bool
+	used := make(map[*api.TaskInfo]bool)
+	for _, task := range jobTasks {
+		// skip tasks that are not in pending or has reservation task info
+		if task.Status != api.Pending || task.ReservationTaskInfo != nil {
+			continue
+		}
+
+		// find a matching reservation task for every job task
+		found := false
+		for _, resvTask := range resvTasks {
+			if used[resvTask] {
+				continue
+			}
+			if resvTask.Status != api.Bound {
+				continue
+			}
+			if resvTask.Pod == nil || task.Pod == nil {
+				continue
+			}
+			klog.Infof("[debug] task pod: %+v", task.Pod.Spec)
+			klog.Infof("[debug] resv pod: %+v", resvTask.Pod.Spec)
+			if helpers.IsPodSpecMatch(&task.Pod.Spec, &resvTask.Pod.Spec) {
+				matched[task] = resvTask
+				used[resvTask] = true
+				found = true
+				break
+			}
+		}
+		if !found {
+
+			return false
+		}
+	}
+
+	for jobTask, resvTask := range matched {
+		jobTask.ReservationTaskInfo = resvTask
+	}
+	klog.V(1).Infof("[debug]: matched: %v", matched)
+	klog.V(1).Infof("[debug]: used: %v", used)
+	return true
 }

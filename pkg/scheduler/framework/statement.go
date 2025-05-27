@@ -284,6 +284,7 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 
 	task.NodeName = hostname
 	if node, found := s.ssn.Nodes[hostname]; found {
+		// fixme: if task is using reservation, we should remove the resource reservation task uses first.
 		if err := node.AddTask(task); err != nil {
 			klog.Errorf("Failed to add task <%v/%v> to node <%v> when allocating in Session <%v>: %v",
 				task.Namespace, task.Name, hostname, s.ssn.UID, err)

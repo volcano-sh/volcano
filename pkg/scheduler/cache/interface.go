@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
@@ -91,6 +92,9 @@ type Cache interface {
 
 	// EventRecorder returns the event recorder
 	EventRecorder() record.EventRecorder
+
+	// ReservationCache returns the reservation cache
+	GetReservationCache() *ReservationCache
 }
 
 // VolumeBinder interface for allocate and bind volumes

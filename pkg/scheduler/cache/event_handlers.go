@@ -23,6 +23,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/google/uuid"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	sv1 "k8s.io/api/storage/v1"
@@ -30,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/component-helpers/storage/ephemeral"
@@ -39,6 +41,8 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/utils/cpuset"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
 
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -46,6 +50,7 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/apis/utils"
 
+	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
@@ -698,6 +703,15 @@ func getJobID(pg *schedulingapi.PodGroup) schedulingapi.JobID {
 	return schedulingapi.JobID(fmt.Sprintf("%s/%s", pg.Namespace, pg.Name))
 }
 
+func getPodGroupName(rs *batch.Reservation) string {
+	return fmt.Sprintf("%s-%s", rs.Name, string(rs.UID))
+}
+
+func getJobIDByReservation(rs *batch.Reservation) schedulingapi.JobID {
+	pgName := getPodGroupName(rs)
+	return schedulingapi.JobID(fmt.Sprintf("%s/%s", rs.Namespace, pgName))
+}
+
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) setPodGroup(ss *schedulingapi.PodGroup) error {
 	job := getJobID(ss)
@@ -1260,4 +1274,194 @@ func (sc *SchedulerCache) setCSIResourceOnNode(csiNode *sv1.CSINode, node *v1.No
 		node.Status.Allocatable[resourceName] = quantity
 		node.Status.Capacity[resourceName] = quantity
 	}
+}
+
+// AddReservationV1beta1 add reservation to scheduler cache
+func (sc *SchedulerCache) AddReservationV1beta1(obj interface{}) {
+	ss, ok := obj.(*batch.Reservation)
+	if !ok {
+		klog.Errorf("Cannot convert to *batch.Reservation: %v", obj)
+		return
+	}
+
+	reservation := ss
+
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	// 创建JobInfo(必要的话)、创建TaskInfos(将JobInfo和Reservation关联)
+	jobId := getJobIDByReservation(reservation)
+	if _, found := sc.Jobs[jobId]; !found {
+		sc.Jobs[jobId] = schedulingapi.NewJobInfo(jobId)
+	}
+	job := sc.Jobs[jobId]
+	for _, ts := range reservation.Spec.Tasks {
+		ts.Template.Name = ts.Name
+		tc := ts.Template.DeepCopy()
+
+		for i := 0; i < int(ts.Replicas); i++ {
+			newPod := createReservationPod(reservation, tc, i)
+			klog.V(5).Infof("[debug]: Create fake pod<%s/%s>: %v for reservation<%s/%s> ", newPod.Namespace, newPod.Name, newPod, reservation.Namespace, reservation.Name)
+			klog.V(5).Infof("[debug]: fake pod: %v ", newPod.OwnerReferences)
+
+			pi, err := sc.NewTaskInfo(newPod)
+			pi.ReservationNodeName = ts.ReservationNodeName
+			pi.Status = schedulingapi.Pending
+			klog.V(5).Infof("Created TaskInfo: %+v", pi)
+			if err != nil {
+				klog.Errorf("Failed to create task in cache for reservation pod<%s/%s>: %v",
+					newPod.Namespace, newPod.Name, err)
+				return
+			}
+			err = sc.addTask(pi)
+			if err != nil {
+				klog.Errorf("Failed to add taskInfo for pod <%s/%s> into cache: %v",
+					newPod.Namespace, newPod.Name, err)
+				return
+			}
+			klog.V(4).Infof("Added TaskInfo:%v for pod %s/%s to scheduler cache", pi, newPod.Namespace, newPod.Name)
+		}
+	}
+	klog.V(5).Infof("Job Tasks: %v", job.Tasks)
+	// Create ReservationInfo
+	reservationInfo := schedulingapi.NewReservationInfo(jobId, job, reservation)
+	// Add ReservationInfo into Reservation Cache
+	sc.ReservationCache.AddReservation(reservationInfo)
+	klog.V(4).Infof("Added ReservationInfo %s/%s to ReservationCache, UID: %s", reservation.Namespace, reservation.Name, reservationInfo.Reservation.UID)
+}
+
+// UpdateReservationV1beta1 update reservation to scheduler cache
+func (sc *SchedulerCache) UpdateReservationV1beta1(oldObj, newObj interface{}) {
+	// TODO
+	klog.V(3).Infof("Update Reservation, ignore. Not support now.")
+	return
+}
+
+// DeleteReservationV1beta1 delete reservation from the scheduler cache
+func (sc *SchedulerCache) DeleteReservationV1beta1(obj interface{}) {
+	var ss *batch.Reservation
+	switch t := obj.(type) {
+	case *batch.Reservation:
+		ss = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		ss, ok = t.Obj.(*batch.Reservation)
+		if !ok {
+			klog.Errorf("Cannot convert to *batch.Reservation: %v", t.Obj)
+			return
+		}
+	default:
+		klog.Errorf("Cannot convert to Numatopo: %v", t)
+		return
+	}
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	sc.deleteReservation(ss)
+	klog.V(3).Infof("Delete Reservation <%s/%s> from cache", ss.Namespace, ss.Name)
+}
+
+func (sc *SchedulerCache) deleteReservation(ss *batch.Reservation) {
+	reservationInfo, ok := sc.ReservationCache.GetReservationById(ss.UID)
+	if !ok {
+		return
+	}
+
+	job := reservationInfo.JobInfo
+
+	// clean related tasks from reservation
+	tasks := job.Tasks
+	for _, task := range tasks {
+		if err := sc.deleteTask(task); err != nil {
+			klog.Errorf("Failed to delete task <%s/%s> for reservation <%s/%s> from cache: %v",
+				task.Namespace, task.Name, reservationInfo.Reservation.Namespace, reservationInfo.Reservation.Name, err)
+		} else {
+			klog.V(4).Infof("Delete task <%s/%s> for reservation <%s/%s> from cache",
+				task.Namespace, task.Name, reservationInfo.Reservation.Namespace, reservationInfo.Reservation.Name)
+		}
+	}
+	sc.ReservationCache.DeleteReservation(ss.UID)
+}
+
+func createReservationPod(reservation *batch.Reservation, template *v1.PodTemplateSpec, ix int) *v1.Pod {
+	templateCopy := template.DeepCopy()
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobhelpers.MakePodName(reservation.Name, template.Name, ix),
+			Namespace: reservation.Namespace,
+			UID:       types.UID(uuid.New().String()),
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(reservation, helpers.ReservationKind),
+			},
+			Labels:      templateCopy.Labels,
+			Annotations: templateCopy.Annotations,
+		},
+		Spec: templateCopy.Spec,
+		Status: v1.PodStatus{
+			Phase: v1.PodPending,
+		},
+	}
+
+	// If no scheduler name in Pod, use scheduler name from Reservation.
+	if len(pod.Spec.SchedulerName) == 0 {
+		pod.Spec.SchedulerName = reservation.Spec.SchedulerName
+	}
+
+	// Set some default value for matching the pod using reservation
+	if pod.Spec.ServiceAccountName == "" {
+		pod.Spec.ServiceAccountName = "default"
+	}
+
+	if pod.Spec.AutomountServiceAccountToken == nil {
+		trueVal := true
+		pod.Spec.AutomountServiceAccountToken = &trueVal
+	}
+
+	defaultTolerations := []v1.Toleration{
+		{
+			Key:               "node.kubernetes.io/not-ready",
+			Operator:          v1.TolerationOpExists,
+			Effect:            v1.TaintEffectNoExecute,
+			TolerationSeconds: intPtr(300),
+		},
+		{
+			Key:               "node.kubernetes.io/unreachable",
+			Operator:          v1.TolerationOpExists,
+			Effect:            v1.TaintEffectNoExecute,
+			TolerationSeconds: intPtr(300),
+		},
+	}
+	pod.Spec.Tolerations = mergeTolerations(pod.Spec.Tolerations, defaultTolerations)
+
+	tsKey := templateCopy.Name
+	if len(tsKey) == 0 {
+		tsKey = batch.DefaultTaskSpec
+	}
+
+	if len(pod.Annotations) == 0 {
+		pod.Annotations = make(map[string]string)
+	}
+
+	index := strconv.Itoa(ix)
+	pod.Annotations[batch.TaskIndex] = index
+	pod.Annotations[batch.TaskSpecKey] = tsKey
+	pod.Annotations[schedulingv1beta1.KubeGroupNameAnnotationKey] = getPodGroupName(reservation)
+	pod.Annotations[batch.ReservationNameKey] = reservation.Name
+	pod.Annotations[batch.QueueNameKey] = reservation.Spec.Queue
+	pod.Annotations[batch.PodTemplateKey] = fmt.Sprintf("%s-%s", reservation.Name, template.Name)
+	// important
+	pod.Annotations[schedulingv1beta1.VolcanoGroupReservationOnlyAnnotationKey] = "true"
+
+	if len(pod.Labels) == 0 {
+		pod.Labels = make(map[string]string)
+	}
+
+	// Set pod labels for Service.
+	pod.Labels[batch.TaskIndex] = index
+	pod.Labels[batch.ReservationNameKey] = reservation.Name
+	pod.Labels[batch.TaskSpecKey] = tsKey
+	pod.Labels[batch.JobNamespaceKey] = reservation.Namespace
+	pod.Labels[batch.QueueNameKey] = reservation.Spec.Queue
+
+	return pod
 }
