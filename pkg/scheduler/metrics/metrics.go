@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	// VolcanoNamespace - namespace in prometheus used by volcano
-	VolcanoNamespace = "volcano"
+	// VolcanoSubSystemName - subsystem name in prometheus used by volcano
+	VolcanoSubSystemName = "volcano"
 
 	// OnSessionOpen label
 	OnSessionOpen = "OnSessionOpen"
@@ -37,7 +37,7 @@ const (
 var (
 	e2eSchedulingLatency = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "e2e_scheduling_latency_milliseconds",
 			Help:      "E2e scheduling latency in milliseconds (scheduling algorithm + binding)",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
@@ -46,7 +46,7 @@ var (
 
 	e2eJobSchedulingLatency = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "e2e_job_scheduling_latency_milliseconds",
 			Help:      "E2e job scheduling latency in milliseconds",
 			Buckets:   prometheus.ExponentialBuckets(32, 2, 10),
@@ -55,7 +55,7 @@ var (
 
 	e2eJobSchedulingDuration = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "e2e_job_scheduling_duration",
 			Help:      "E2E job scheduling duration",
 		},
@@ -64,7 +64,7 @@ var (
 
 	e2eJobSchedulingStartTime = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "e2e_job_scheduling_start_time",
 			Help:      "E2E job scheduling start time",
 		},
@@ -73,7 +73,7 @@ var (
 
 	e2eJobSchedulingLastTime = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "e2e_job_scheduling_last_time",
 			Help:      "E2E job scheduling last time",
 		},
@@ -82,7 +82,7 @@ var (
 
 	pluginSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "plugin_scheduling_latency_milliseconds",
 			Help:      "Plugin scheduling latency in milliseconds",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
@@ -91,7 +91,7 @@ var (
 
 	actionSchedulingLatency = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "action_scheduling_latency_milliseconds",
 			Help:      "Action scheduling latency in milliseconds",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
@@ -100,7 +100,7 @@ var (
 
 	taskSchedulingLatency = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "task_scheduling_latency_milliseconds",
 			Help:      "Task scheduling latency in milliseconds",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
@@ -109,7 +109,7 @@ var (
 
 	scheduleAttempts = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "schedule_attempts_total",
 			Help:      "Number of attempts to schedule pods, by the result. 'unschedulable' means a pod could not be scheduled, while 'error' means an internal scheduler problem.",
 		}, []string{"result"},
@@ -117,7 +117,7 @@ var (
 
 	preemptionVictims = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "pod_preemption_victims",
 			Help:      "Number of selected preemption victims",
 		},
@@ -125,7 +125,7 @@ var (
 
 	preemptionAttempts = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "total_preemption_attempts",
 			Help:      "Total preemption attempts in the cluster till now",
 		},
@@ -133,7 +133,7 @@ var (
 
 	unscheduleTaskCount = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "unschedule_task_count",
 			Help:      "Number of tasks could not be scheduled",
 		}, []string{"job_id"},
@@ -141,7 +141,7 @@ var (
 
 	unscheduleJobCount = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "unschedule_job_count",
 			Help:      "Number of jobs could not be scheduled",
 		},

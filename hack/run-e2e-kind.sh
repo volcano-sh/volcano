@@ -62,6 +62,7 @@ basic:
   crd_version: ${crd_version}
 
 custom:
+  scheduler_log_level: 5
   admission_tolerations:
     - key: "node-role.kubernetes.io/control-plane"
       operator: "Exists"
@@ -85,6 +86,7 @@ custom:
       effect: "NoSchedule"
   default_ns:
     node-role.kubernetes.io/control-plane: ""
+  scheduler_feature_gates: ${FEATURE_GATES}
 EOF
 }
 
@@ -150,6 +152,7 @@ case ${E2E_TYPE} in
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingbase/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingaction/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/vcctl/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress --focus="DRA E2E Test" ./test/e2e/dra/
     ;;
 "JOBP")
     echo "Running parallel job e2e suite..."
@@ -174,6 +177,10 @@ case ${E2E_TYPE} in
 "STRESS")
     echo "Running stress e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/stress/
+    ;;
+"DRA")
+    echo "Running dra e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress --focus="DRA E2E Test" ./test/e2e/dra/
     ;;
 esac
 

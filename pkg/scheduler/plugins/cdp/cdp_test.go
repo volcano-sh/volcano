@@ -119,7 +119,7 @@ func TestPreemptableFn(t *testing.T) {
 		Name:               PluginName,
 		EnabledPreemptable: &enabledPreemptable,
 	}
-	schedulerCache := &cache.SchedulerCache{}
+	schedulerCache := cache.NewDefaultMockSchedulerCache("volcano")
 	ssn := framework.OpenSession(schedulerCache, []conf.Tier{
 		{
 			Plugins: []conf.PluginOption{pluginOption},

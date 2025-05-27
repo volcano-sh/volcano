@@ -32,6 +32,7 @@ import (
 const (
 	defaultSchedulerName   = "volcano"
 	defaultSchedulerPeriod = time.Second
+	defaultResyncPeriod    = 0
 	defaultQueue           = "default"
 	defaultListenAddress   = ":8080"
 	defaultHealthzAddress  = ":11251"
@@ -60,6 +61,7 @@ type ServerOption struct {
 	SchedulerNames    []string
 	SchedulerConf     string
 	SchedulePeriod    time.Duration
+	ResyncPeriod      time.Duration
 	// leaderElection defines the configuration of leader election.
 	LeaderElection config.LeaderElectionConfiguration
 	// Deprecated: use ResourceNamespace instead.
@@ -67,6 +69,7 @@ type ServerOption struct {
 	DefaultQueue        string
 	PrintVersion        bool
 	EnableMetrics       bool
+	EnablePprof         bool
 	ListenAddress       string
 	EnablePriorityClass bool
 	EnableCSIStorage    bool
@@ -112,12 +115,13 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
 	fs.StringVar(&s.KeyFile, "tls-private-key-file", s.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
-	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", defaultLockObjectNamespace, "Define the namespace of the lock object; it is volcano-system by default.")
+	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", "", "Define the namespace of the lock object; it is volcano-system by default.")
 	fs.MarkDeprecated("lock-object-namespace", "This flag is deprecated and will be removed in a future release. Please use --leader-elect-resource-namespace instead.")
 	// volcano scheduler will ignore pods with scheduler names other than specified with the option
 	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "vc-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
 	fs.DurationVar(&s.SchedulePeriod, "schedule-period", defaultSchedulerPeriod, "The period between each scheduling cycle")
+	fs.DurationVar(&s.ResyncPeriod, "resync-period", defaultResyncPeriod, "The default resync period for k8s native informer factory")
 	fs.StringVar(&s.DefaultQueue, "default-queue", defaultQueue, "The default queue name of the job")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 	fs.StringVar(&s.ListenAddress, "listen-address", defaultListenAddress, "The address to listen on for HTTP requests.")
@@ -141,6 +145,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 		"Enable tracking of available storage capacity that CSI drivers provide; it is false by default")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
+	fs.BoolVar(&s.EnablePprof, "enable-pprof", false, "Enable the pprof endpoint; it is false by default")
 	fs.StringSliceVar(&s.NodeSelector, "node-selector", nil, "volcano only work with the labeled node, like: --node-selector=volcano.sh/role:train --node-selector=volcano.sh/role:serving")
 	fs.BoolVar(&s.EnableCacheDumper, "cache-dumper", true, "Enable the cache dumper, it's true by default")
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")

@@ -7,6 +7,10 @@ on:
     tags:
   pull_request:
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   e2e_parallel_jobs:
     runs-on: ubuntu-24.04

@@ -153,7 +153,10 @@ spec:
                 description: Type define the type of queue
                 type: string
               weight:
+                default: 1
                 format: int32
+                maximum: 65535
+                minimum: 1
                 type: integer
             type: object
           status:
@@ -211,8 +214,6 @@ spec:
                 description: The number of 'Unknown' PodGroup in this queue.
                 format: int32
                 type: integer
-            required:
-            - allocated
             type: object
         type: object
     served: true

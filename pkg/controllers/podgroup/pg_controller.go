@@ -51,20 +51,16 @@ type pgcontroller struct {
 	podInformer coreinformers.PodInformer
 	pgInformer  schedulinginformer.PodGroupInformer
 	rsInformer  appinformers.ReplicaSetInformer
+	stsInformer appinformers.StatefulSetInformer
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
 
 	// A store of pods
 	podLister corelisters.PodLister
-	podSynced func() bool
 
 	// A store of podgroups
 	pgLister schedulinglister.PodGroupLister
-	pgSynced func() bool
-
-	// A store of replicaset
-	rsSynced func() bool
 
 	queue workqueue.TypedRateLimitingInterface[podRequest]
 
@@ -94,7 +90,6 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.informerFactory = opt.SharedInformerFactory
 	pg.podInformer = opt.SharedInformerFactory.Core().V1().Pods()
 	pg.podLister = pg.podInformer.Lister()
-	pg.podSynced = pg.podInformer.Informer().HasSynced
 	pg.podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: pg.addPod,
 	})
@@ -103,14 +98,18 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.vcInformerFactory = factory
 	pg.pgInformer = factory.Scheduling().V1beta1().PodGroups()
 	pg.pgLister = pg.pgInformer.Lister()
-	pg.pgSynced = pg.pgInformer.Informer().HasSynced
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
 		pg.rsInformer = pg.informerFactory.Apps().V1().ReplicaSets()
-		pg.rsSynced = pg.rsInformer.Informer().HasSynced
 		pg.rsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    pg.addReplicaSet,
 			UpdateFunc: pg.updateReplicaSet,
+		})
+
+		pg.stsInformer = pg.informerFactory.Apps().V1().StatefulSets()
+		pg.stsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    pg.addStatefulSet,
+			UpdateFunc: pg.updateStatefulSet,
 		})
 	}
 	return nil

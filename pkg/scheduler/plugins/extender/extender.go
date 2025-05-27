@@ -60,6 +60,9 @@ const (
 	ExtenderJobReadyVerb = "extender.jobReadyVerb"
 	// ExtenderIgnorable indicates whether the extender can ignore unexpected errors
 	ExtenderIgnorable = "extender.ignorable"
+
+	// 10MB
+	maxBodySize = 10 << 20
 )
 
 type extenderConfig struct {
@@ -322,6 +325,7 @@ func (ep *extenderPlugin) send(action string, args interface{}, result interface
 	}
 
 	if result != nil {
+		resp.Body = http.MaxBytesReader(nil, resp.Body, maxBodySize)
 		return json.NewDecoder(resp.Body).Decode(result)
 	}
 	return nil

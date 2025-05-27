@@ -237,9 +237,9 @@ func TestTaskSchedulingReason(t *testing.T) {
 				"pg":   "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable" + originReason1,
 				t1.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable" + originReason1,
 				t2.UID: "pod group is not ready, 6 Pending, 6 minAvailable; Pending: 3 Schedulable, 3 Unschedulable" + originReason1,
-				t3.UID: "Pod ns1/task-3 can possibly be assigned to node1",
-				t4.UID: "Pod ns1/task-4 can possibly be assigned to node2",
-				t5.UID: "Pod ns1/task-5 can possibly be assigned to node3",
+				t3.UID: "Pod ns1/task-3 can possibly be assigned to node1, once minAvailable is satisfied",
+				t4.UID: "Pod ns1/task-4 can possibly be assigned to node2, once minAvailable is satisfied",
+				t5.UID: "Pod ns1/task-5 can possibly be assigned to node3, once minAvailable is satisfied",
 				t6.UID: "0/3 nodes are unavailable: 1 node(s) pod number exceeded, 2 node(s) resource fit failed.",
 			},
 		},
@@ -375,7 +375,7 @@ func TestJobInfo(t *testing.T) {
 			t.Errorf("unexpected PendingBestEffortTaskNum; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedPendingBestEffortTaskNum, actualPendingBestEffortTaskNum)
 		}
 		if !assert.Equal(t, actualIsReady, tc.expectedIsReady) {
-			t.Errorf("unexpected IsReady; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsReady, actualIsReady)
+			t.Errorf("unexpected Ready; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsReady, actualIsReady)
 		}
 		if !assert.Equal(t, actualIsPipelined, tc.expectedIsPipelined) {
 			t.Errorf("unexpected IsPipelined; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsPipelined, actualIsPipelined)
@@ -438,5 +438,81 @@ func TestGetElasticResources(t *testing.T) {
 		if elastic := job.GetElasticResources(); !elastic.Equal(test.want, Zero) {
 			t.Fatalf("case %d:expected %+v, got %+v", i, test.want, elastic)
 		}
+	}
+}
+
+func TestHasTopologyHardConstrain(t *testing.T) {
+	HighestTierAllowedTwo := 2
+	HighestTierAllowedThree := 3
+	tests := []struct {
+		name            string
+		jobInfo         *JobInfo
+		expectedHasHard bool
+		expectedTier    int
+	}{
+		{
+			name: "Nil PodGroup",
+			jobInfo: &JobInfo{
+				PodGroup: nil,
+			},
+			expectedHasHard: false,
+			expectedTier:    0,
+		},
+		{
+			name: "Nil NetworkTopologies",
+			jobInfo: &JobInfo{
+				PodGroup: &PodGroup{
+					PodGroup: scheduling.PodGroup{
+						Spec: scheduling.PodGroupSpec{
+							NetworkTopology: nil,
+						},
+					},
+				},
+			},
+			expectedHasHard: false,
+			expectedTier:    0,
+		},
+		{
+			name: "Hard Mode",
+			jobInfo: &JobInfo{
+				PodGroup: &PodGroup{
+					PodGroup: scheduling.PodGroup{
+						Spec: scheduling.PodGroupSpec{
+							NetworkTopology: &scheduling.NetworkTopologySpec{
+								Mode:               scheduling.HardNetworkTopologyMode,
+								HighestTierAllowed: &HighestTierAllowedTwo,
+							},
+						},
+					},
+				},
+			},
+			expectedHasHard: true,
+			expectedTier:    2,
+		},
+		{
+			name: "Soft Mode",
+			jobInfo: &JobInfo{
+				PodGroup: &PodGroup{
+					PodGroup: scheduling.PodGroup{
+						Spec: scheduling.PodGroupSpec{
+							NetworkTopology: &scheduling.NetworkTopologySpec{
+								Mode:               scheduling.SoftNetworkTopologyMode,
+								HighestTierAllowed: &HighestTierAllowedThree,
+							},
+						},
+					},
+				},
+			},
+			expectedHasHard: false,
+			expectedTier:    3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hasHard, tier := tt.jobInfo.IsHardTopologyMode()
+			assert.Equal(t, tt.expectedHasHard, hasHard)
+			assert.Equal(t, tt.expectedTier, tier)
+		})
 	}
 }

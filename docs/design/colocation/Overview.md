@@ -49,7 +49,7 @@ volcano-controllers-7655bb499f-gpg9l   1/1     Running     0          3d
 volcano-scheduler-6bf4759c45-c666z     1/1     Running     0          3d
 ```
 
-Enable node level colocation by setting lable volcano.sh/oversubscription=true and volcano.sh/colocation=true.
+Enable node level colocation by setting label volcano.sh/oversubscription=true and volcano.sh/colocation=true.
 
 ```
 $ kubectl label node $node volcano.sh/oversubscription=true # replace $node with real node name in your kubernetes cluster.
@@ -150,11 +150,11 @@ CPU burst relies on capabilities provided by the linux kernel, this feature only
 
 ### Dynamic resource oversubscription tutorial
 
-This example will demonstrate the resource overoversubscription capability on node, and shows the suppression and eviction mechanism when node is suffering from pressure. The node flavor is 8 core cpu and 16GB memory.
+This example will demonstrate the resource oversubscription capability on node, and shows the suppression and eviction mechanism when node is suffering from pressure. The node flavor is 8 core cpu and 16GB memory.
 
-#### Check node oversubscription resoures
+#### Check node oversubscription resources
 
-Node oversubscription resources are calculated by node allocatable resources sub actual resource usage, oversubscription resources include cpu and memory and is represented by `kubernetes.io/batch-cpu` and `kubernetes.io/batch-memory` respectively, and reported as extended resources to node.Allocatable filed. Online workloads use noraml resources and offline workloads use oversubscription resources so we can improve pod deployment density and resource utilization. 
+Node oversubscription resources are calculated by node allocatable resources sub actual resource usage, oversubscription resources include cpu and memory and is represented by `kubernetes.io/batch-cpu` and `kubernetes.io/batch-memory` respectively, and reported as extended resources to node.Allocatable filed. Online workloads use normal resources and offline workloads use oversubscription resources so we can improve pod deployment density and resource utilization. 
 
 ```shell
 $ kubectl describe node $node # replace $node with real node name in your kubernetes cluster.

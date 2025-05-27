@@ -10,7 +10,7 @@ on:
 jobs:
   k8s-integration-tests:
     name: "E2E about Spark Integration test"
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
     - name: Free Disk Space (Ubuntu)
       uses: jlumbroso/free-disk-space@main

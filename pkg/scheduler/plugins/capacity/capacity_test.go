@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -262,6 +263,7 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 	p3 := util.BuildPod("ns1", "pod3", "", corev1.PodPending, res1c0g, "pg3", nil, nil)
 	p4 := util.BuildPod("ns1", "pod4", "", corev1.PodPending, res0c1g, "pg4", nil, nil)
 	p5 := util.BuildPod("ns1", "pod5", "", corev1.PodPending, res1c1g, "pg5", nil, nil)
+	p6 := util.BuildPod("ns1", "pod6", "", corev1.PodPending, res1c1g, "pg6", nil, nil)
 
 	// podgroup
 	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning)
@@ -269,14 +271,17 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 	pg3 := util.BuildPodGroup("pg3", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
 	pg4 := util.BuildPodGroup("pg4", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupPending)
 	pg5 := util.BuildPodGroup("pg5", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pg6WithClosedQueue := util.BuildPodGroup("pg6", "ns1", "q3", 1, nil, schedulingv1beta1.PodGroupPending)
 	pg1.Spec.MinResources = &res1c3g
 	pg2.Spec.MinResources = &res3c1g
 	pg3.Spec.MinResources = &res1c0g
 	pg4.Spec.MinResources = &res0c1g
 	pg5.Spec.MinResources = &res1c1g
+	pg6WithClosedQueue.Spec.MinResources = &res1c1g
 
 	queue1 := util.BuildQueueWithResourcesQuantity("q1", api.BuildResourceList("2", "2G"), api.BuildResourceList("2", "2G"))
 	queue2 := util.BuildQueueWithResourcesQuantity("q2", api.BuildResourceList("2", "2G"), api.BuildResourceList("3", "3G"))
+	closedQueue3 := util.BuildQueueWithState("q3", 1, api.BuildResourceList("3", "3G"), schedulingv1beta1.QueueStateClosed)
 
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 	trueValue := true
@@ -324,6 +329,16 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 			ExpectBindsNum: 0,
 			ExpectBindMap:  map[string]string{},
 		},
+		{
+			Name:           "case4: queue with non-open state, can not enqueue",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p6},
+			Nodes:          []*corev1.Node{n1, n2},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg6WithClosedQueue},
+			Queues:         []*schedulingv1beta1.Queue{closedQueue3},
+			ExpectBindsNum: 0,
+			ExpectBindMap:  map[string]string{},
+		},
 	}
 	actions := []framework.Action{enqueue.New(), allocate.New()}
 
@@ -346,7 +361,7 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	actions := []framework.Action{enqueue.New(), reclaim.New(), allocate.New()}
 
 	// nodes
-	n1 := util.BuildNode("n1", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	n1 := util.BuildNode("n1", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "11"}}...), map[string]string{})
 
 	// resources for test case 0
 	// pod
@@ -413,6 +428,25 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	// podgroup
 	pg10 := util.BuildPodGroupWithMinResources("pg10", "ns1", "q61", 1, nil, api.BuildResourceList("2", "4Gi"), schedulingv1beta1.PodGroupPending)
 	pg11 := util.BuildPodGroupWithMinResources("pg11", "ns1", "q62", 1, nil, api.BuildResourceList("2", "4Gi"), schedulingv1beta1.PodGroupPending)
+
+	// resources for test case 7
+	// queue
+	queue7 := buildQueueWithParents("q7", "root", nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
+	// the sum of sub queue 71 and 72's guarantee exceeds the capacity of queue7, but should not panic
+	queue71 := buildQueueWithParents("q71", "q7", nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
+	queue72 := buildQueueWithParents("q72", "q7", nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
+	queue71.Spec.Guarantee = schedulingv1beta1.Guarantee{
+		Resource: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("4"),
+			corev1.ResourceMemory: resource.MustParse("3Gi"),
+		},
+	}
+	queue72.Spec.Guarantee = schedulingv1beta1.Guarantee{
+		Resource: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("4"),
+			corev1.ResourceMemory: resource.MustParse("3Gi"),
+		},
+	}
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -495,6 +529,12 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 				"ns1/pg10": scheduling.PodGroupInqueue,
 				"ns1/pg11": scheduling.PodGroupPending,
 			},
+		},
+		{
+			Name:    "case7: the sum of sub queue 71 and 72's guarantee exceeds the capacity of queue7, but should not panic",
+			Plugins: plugins,
+			Nodes:   []*corev1.Node{n1},
+			Queues:  []*schedulingv1beta1.Queue{root, queue7, queue71, queue72},
 		},
 	}
 

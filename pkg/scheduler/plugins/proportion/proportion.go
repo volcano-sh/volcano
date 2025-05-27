@@ -164,13 +164,13 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Record metrics
 	for queueID, queueInfo := range ssn.Queues {
 		if attr, ok := pp.queueOpts[queueID]; ok {
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
-			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
+			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
 			metrics.UpdateQueueWeight(attr.name, attr.weight)
 			continue
 		}
-		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
-		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0)
+		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
 	}
 
 	remaining := pp.totalResource.Clone()
@@ -231,10 +231,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			decreasedDeserved.Add(decreased)
 
 			// Record metrics
-			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
+			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
 		}
 
-		remaining.Sub(increasedDeserved).Add(decreasedDeserved)
+		remaining = api.ExceededPart(remaining.Clone().Add(decreasedDeserved), increasedDeserved)
 		klog.V(4).Infof("Remaining resource is  <%s>", remaining)
 		if remaining.IsEmpty() || equality.Semantic.DeepEqual(remaining, oldRemaining) {
 			klog.V(4).Infof("Exiting when remaining is empty or no queue has more resource request:  <%v>", remaining)
@@ -274,11 +274,6 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				allocations[job.Queue] = attr.allocated.Clone()
 			}
 			allocated := allocations[job.Queue]
-			if allocated.LessPartly(reclaimer.Resreq, api.Zero) {
-				klog.V(3).Infof("Failed to allocate resource for Task <%s/%s> in Queue <%s>, not enough resource.",
-					reclaimee.Namespace, reclaimee.Name, job.Queue)
-				continue
-			}
 
 			if !allocated.LessEqual(attr.deserved, api.Zero) {
 				allocated.Sub(reclaimee.Resreq)
@@ -304,8 +299,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	queueAllocatable := func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
-		attr := pp.queueOpts[queue.UID]
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not in open state, can not allocate task <%s>.", queue.Name, queue.Queue.Status.State, candidate.Name)
+			return false
+		}
 
+		attr := pp.queueOpts[queue.UID]
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
 		allocatable := futureUsed.LessEqualWithDimension(attr.deserved, candidate.Resreq)
 		if !allocatable {
@@ -330,6 +329,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		queueID := job.Queue
 		attr := pp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
+		// If the queue is not open, do not enqueue
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+			return util.Reject
+		}
 		// If no capability is set, always enqueue the job.
 		if attr.realCapability == nil {
 			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
@@ -366,7 +370,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			pp.updateShare(attr)
 
@@ -377,7 +381,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := pp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			pp.updateShare(attr)
 

@@ -25,10 +25,11 @@ import (
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 type createFlags struct {
-	commonFlags
+	util.CommonFlags
 
 	Name   string
 	Weight int32
@@ -40,7 +41,7 @@ var createQueueFlags = &createFlags{}
 
 // InitCreateFlags is used to init all flags during queue creating.
 func InitCreateFlags(cmd *cobra.Command) {
-	initFlags(cmd, &createQueueFlags.commonFlags)
+	util.InitFlags(cmd, &createQueueFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&createQueueFlags.Name, "name", "n", "test", "the name of queue")
 	cmd.Flags().Int32VarP(&createQueueFlags.Weight, "weight", "w", 1, "the weight of the queue")
@@ -50,7 +51,7 @@ func InitCreateFlags(cmd *cobra.Command) {
 
 // CreateQueue create queue.
 func CreateQueue(ctx context.Context) error {
-	config, err := buildConfig(createQueueFlags.Master, createQueueFlags.Kubeconfig)
+	config, err := util.BuildConfig(createQueueFlags.Master, createQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}

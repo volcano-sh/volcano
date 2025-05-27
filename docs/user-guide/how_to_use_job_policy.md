@@ -11,7 +11,7 @@ event(events) happens, the target action will be triggered. If timeout is config
 under `task.spec` only, it will only work for the task. If the policy is configured in both job and task level, it will obey
 the task policy.
 * Users can set multiple policy for a job or a task.
-* Currently, Volcano provides **6 build-in events** for users. The details are as follows.
+* Currently, Volcano provides **6 built-in events** for users. The details are as follows.
 
 | ID  | Event           | Description                                                                                                       |
 |-----|----------------|-------------------------------------------------------------------------------------------------------------------|
@@ -22,7 +22,7 @@ the task policy.
 | 4   | `Unknown`      | Check whether the status of a volcano job is `Unknown`. The most possible factor is task unschedulable. It is triggered when part pods can't be scheduled while some are already running in gang-scheduling case. |
 | 5   | `*`           | It means all the events, which is not so common used.                                                             |
 
-* Currently, Volcano provides **5 build-in actions** for users. The details are as follows.
+* Currently, Volcano provides **5 built-in actions** for users. The details are as follows.
 
 | ID  | Action            | Description                                                                                                      |
 |-----|-------------------|------------------------------------------------------------------------------------------------------------------|

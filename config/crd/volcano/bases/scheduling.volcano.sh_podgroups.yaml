@@ -89,6 +89,24 @@ spec:
                   if there's not enough resources to start each task, the scheduler
                   will not start anyone.
                 type: object
+              networkTopology:
+                description: NetworkTopology defines the NetworkTopology config, this
+                  field works in conjunction with network topology feature and hyperNode
+                  CRD.
+                properties:
+                  highestTierAllowed:
+                    default: 1
+                    description: HighestTierAllowed specifies the highest tier that
+                      a job allowed to cross when scheduling.
+                    type: integer
+                  mode:
+                    default: hard
+                    description: Mode specifies the mode of the network topology constrain.
+                    enum:
+                    - hard
+                    - soft
+                    type: string
+                type: object
               priorityClassName:
                 description: |-
                   If specified, indicates the PodGroup's priority. "system-node-critical" and

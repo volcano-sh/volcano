@@ -34,11 +34,11 @@ func nodeInfoEqual(l, r *NodeInfo) bool {
 
 func TestNodeInfo_AddPod(t *testing.T) {
 	// case1
-	case01Node := buildNode("n1", BuildResourceList("8000m", "10G", []ScalarResource{{Name: "pods", Value: "20"}}...))
+	case01Node := buildNode("n1", nil, BuildResourceList("8000m", "10G", []ScalarResource{{Name: "pods", Value: "20"}}...))
 	case01Pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	case01Pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, BuildResourceList("2000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
 	// case2
-	case02Node := buildNode("n2", BuildResourceList("2000m", "1G", []ScalarResource{{Name: "pods", Value: "20"}}...))
+	case02Node := buildNode("n2", nil, BuildResourceList("2000m", "1G", []ScalarResource{{Name: "pods", Value: "20"}}...))
 	case02Pod1 := buildPod("c2", "p1", "n2", v1.PodUnknown, BuildResourceList("1000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
 
 	tests := []struct {
@@ -126,7 +126,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 
 func TestNodeInfo_RemovePod(t *testing.T) {
 	// case1
-	case01Node := buildNode("n1", BuildResourceList("8000m", "10G", []ScalarResource{{Name: "pods", Value: "10"}}...))
+	case01Node := buildNode("n1", nil, BuildResourceList("8000m", "10G", []ScalarResource{{Name: "pods", Value: "10"}}...))
 	case01Pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	case01Pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, BuildResourceList("2000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
 	case01Pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, BuildResourceList("3000m", "3G"), []metav1.OwnerReference{}, make(map[string]string))
@@ -190,8 +190,8 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 
 func TestNodeInfo_SetNode(t *testing.T) {
 	// case1
-	case01Node1 := buildNode("n1", BuildResourceList("10", "10G", []ScalarResource{{Name: "pods", Value: "15"}}...))
-	case01Node2 := buildNode("n1", BuildResourceList("8", "8G", []ScalarResource{{Name: "pods", Value: "10"}}...))
+	case01Node1 := buildNode("n1", nil, BuildResourceList("10", "10G", []ScalarResource{{Name: "pods", Value: "15"}}...))
+	case01Node2 := buildNode("n1", nil, BuildResourceList("8", "8G", []ScalarResource{{Name: "pods", Value: "10"}}...))
 	case01Pod1 := buildPod("c1", "p1", "n1", v1.PodRunning, BuildResourceList("1", "1G"), []metav1.OwnerReference{}, make(map[string]string))
 	case01Pod2 := buildPod("c1", "p2", "n1", v1.PodRunning, BuildResourceList("2", "2G"), []metav1.OwnerReference{}, make(map[string]string))
 	case01Pod3 := buildPod("c1", "p3", "n1", v1.PodRunning, BuildResourceList("6", "6G"), []metav1.OwnerReference{}, make(map[string]string))

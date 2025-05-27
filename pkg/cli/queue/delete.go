@@ -20,15 +20,16 @@ import (
 	"context"
 	"fmt"
 
-	"volcano.sh/apis/pkg/client/clientset/versioned"
-
 	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 type deleteFlags struct {
-	commonFlags
+	util.CommonFlags
 
 	// Name is name of queue
 	Name string
@@ -38,14 +39,14 @@ var deleteQueueFlags = &deleteFlags{}
 
 // InitDeleteFlags is used to init all flags during queue deleting.
 func InitDeleteFlags(cmd *cobra.Command) {
-	initFlags(cmd, &deleteQueueFlags.commonFlags)
+	util.InitFlags(cmd, &deleteQueueFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&deleteQueueFlags.Name, "name", "n", "", "the name of queue")
 }
 
 // DeleteQueue delete queue.
 func DeleteQueue(ctx context.Context) error {
-	config, err := buildConfig(deleteQueueFlags.Master, deleteQueueFlags.Kubeconfig)
+	config, err := util.BuildConfig(deleteQueueFlags.Master, deleteQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}

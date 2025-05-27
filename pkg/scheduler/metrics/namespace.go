@@ -24,7 +24,7 @@ import (
 var (
 	namespaceShare = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "namespace_share",
 			Help:      "Share for one namespace",
 		}, []string{"namespace_name"},
@@ -32,7 +32,7 @@ var (
 
 	namespaceWeight = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "namespace_weight",
 			Help:      "Weight for one namespace",
 		}, []string{"namespace_name"},
@@ -40,7 +40,7 @@ var (
 
 	namespaceWeightedShare = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Subsystem: VolcanoNamespace,
+			Subsystem: VolcanoSubSystemName,
 			Name:      "namespace_weighted_share",
 			Help:      "Weighted share for one namespace",
 		}, []string{"namespace_name"},

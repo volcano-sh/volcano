@@ -124,11 +124,6 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				allocations[job.Queue] = attr.allocated.Clone()
 			}
 			allocated := allocations[job.Queue]
-			if allocated.LessPartly(reclaimer.Resreq, api.Zero) {
-				klog.V(3).Infof("Failed to allocate resource for Task <%s/%s> in Queue <%s>, not enough resource.",
-					reclaimee.Namespace, reclaimee.Name, job.Queue)
-				continue
-			}
 
 			exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
 			// When scalar resource not specified in deserved such as "pods", we should skip it and consider it as infinity,
@@ -151,6 +146,10 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		queue := obj.(*api.QueueInfo)
 		task := candidate.(*api.TaskInfo)
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, can not reclaim for <%s>.", queue.Name, queue.Queue.Status.State, task.Name)
+			return false
+		}
 		attr := cp.queueOpts[queue.UID]
 
 		futureUsed := attr.allocated.Clone().Add(task.Resreq)
@@ -167,6 +166,10 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, cannot allocate task <%s>.", queue.Name, queue.Queue.Status.State, candidate.Name)
+			return false
+		}
 		if !readyToSchedule {
 			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
 			return false
@@ -193,6 +196,11 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		attr := cp.queueOpts[queueID]
 		queue := ssn.Queues[queueID]
+		// If the queue is not open, do not enqueue
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+			return util.Reject
+		}
 		// If no capability is set, always enqueue the job.
 		if attr.realCapability == nil {
 			klog.V(4).Infof("Capability of queue <%s> was not set, allow job <%s/%s> to Inqueue.",
@@ -229,7 +237,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := cp.queueOpts[job.Queue]
 			attr.allocated.Add(event.Task.Resreq)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			cp.updateShare(attr)
 			if hierarchyEnabled {
@@ -246,7 +254,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			job := ssn.Jobs[event.Task.Job]
 			attr := cp.queueOpts[job.Queue]
 			attr.allocated.Sub(event.Task.Resreq)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			cp.updateShare(attr)
 			if hierarchyEnabled {
@@ -354,8 +362,6 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		if attr.realCapability != nil {
 			attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
 		}
-		// When scalar resource not specified in deserved such as "pods", we should skip it and consider deserved resource as infinity.
-		attr.deserved.MinDimensionResource(attr.request, api.Infinity)
 
 		attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
 		cp.updateShare(attr)
@@ -367,19 +373,36 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 	for queueID, queueInfo := range ssn.Queues {
 		queue := ssn.Queues[queueID]
 		if attr, ok := cp.queueOpts[queueID]; ok {
-			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
-			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
+			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
+			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
+			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
+			if attr.capability != nil {
+				metrics.UpdateQueueCapacity(attr.name, attr.capability.MilliCPU, attr.capability.Memory, attr.capability.ScalarResources)
+			}
+			metrics.UpdateQueueRealCapacity(attr.name, attr.realCapability.MilliCPU, attr.realCapability.Memory, attr.realCapability.ScalarResources)
 			continue
 		}
-		deservedCPU, deservedMem := 0.0, 0.0
+		deservedCPU, deservedMem, scalarResources := 0.0, 0.0, map[v1.ResourceName]float64{}
 		if queue.Queue.Spec.Deserved != nil {
-			deservedCPU = float64(queue.Queue.Spec.Deserved.Cpu().MilliValue())
-			deservedMem = float64(queue.Queue.Spec.Deserved.Memory().Value())
+			attr := api.NewResource(queue.Queue.Spec.Deserved)
+			deservedCPU = attr.MilliCPU
+			deservedMem = attr.Memory
+			scalarResources = attr.ScalarResources
 		}
-		metrics.UpdateQueueDeserved(queueInfo.Name, deservedCPU, deservedMem)
-		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0)
-		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0)
+		metrics.UpdateQueueDeserved(queueInfo.Name, deservedCPU, deservedMem, scalarResources)
+		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
+		guarantee := api.EmptyResource()
+		if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
+			guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+		}
+		realCapacity := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(guarantee)
+		if len(queue.Queue.Spec.Capability) > 0 {
+			capacity := api.NewResource(queue.Queue.Spec.Capability)
+			realCapacity.MinDimensionResource(capacity, api.Infinity)
+			metrics.UpdateQueueCapacity(queueInfo.Name, capacity.MilliCPU, capacity.Memory, capacity.ScalarResources)
+		}
+		metrics.UpdateQueueRealCapacity(queueInfo.Name, realCapacity.MilliCPU, realCapacity.Memory, realCapacity.ScalarResources)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
@@ -502,9 +525,9 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	// Record metrics
 	for queueID := range ssn.Queues {
 		attr := cp.queueOpts[queueID]
-		metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory)
-		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory)
-		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory)
+		metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
+		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
+		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
@@ -658,7 +681,7 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 	}
 
 	for _, childAttr := range attr.children {
-		realCapability := attr.realCapability.Clone().Sub(totalGuarantee).Add(childAttr.guarantee)
+		realCapability := api.ExceededPart(attr.realCapability, totalGuarantee).Add(childAttr.guarantee)
 		if childAttr.capability == nil {
 			childAttr.realCapability = realCapability
 		} else {
@@ -667,7 +690,6 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 		}
 		oldDeserved := childAttr.deserved.Clone()
 		childAttr.deserved.MinDimensionResource(childAttr.realCapability, api.Infinity)
-		childAttr.deserved.MinDimensionResource(childAttr.request, api.Zero)
 
 		childAttr.deserved = helpers.Max(childAttr.deserved, childAttr.guarantee)
 		totalDeserved.Sub(oldDeserved).Add(childAttr.deserved)

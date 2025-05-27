@@ -29,10 +29,11 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/podgroup"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 type listFlags struct {
-	commonFlags
+	util.CommonFlags
 }
 
 const (
@@ -59,18 +60,21 @@ const (
 
 	// State is state of queue
 	State string = "State"
+
+	// Parent of the queue
+	Parent string = "Parent"
 )
 
 var listQueueFlags = &listFlags{}
 
 // InitListFlags inits all flags.
 func InitListFlags(cmd *cobra.Command) {
-	initFlags(cmd, &listQueueFlags.commonFlags)
+	util.InitFlags(cmd, &listQueueFlags.CommonFlags)
 }
 
 // ListQueue lists all the queue.
 func ListQueue(ctx context.Context) error {
-	config, err := buildConfig(listQueueFlags.Master, listQueueFlags.Kubeconfig)
+	config, err := util.BuildConfig(listQueueFlags.Master, listQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}
@@ -110,16 +114,18 @@ func ListQueue(ctx context.Context) error {
 
 // PrintQueues prints queue information.
 func PrintQueues(queues *v1beta1.QueueList, queueStats map[string]*podgroup.PodGroupStatistics, writer io.Writer) {
-	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s%-8s\n",
-		Name, Weight, State, Inqueue, Pending, Running, Unknown, Completed)
+	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s%-8s%-8s\n",
+		Name, Weight, State, Parent, Inqueue, Pending, Running, Unknown, Completed)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)
 	}
 
 	for _, queue := range queues.Items {
-		_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8d%-8d%-8d%-8d%-8d\n",
-			queue.Name, queue.Spec.Weight, queue.Status.State, queueStats[queue.Name].Inqueue, queueStats[queue.Name].Pending,
-			queueStats[queue.Name].Running, queueStats[queue.Name].Unknown, queueStats[queue.Name].Completed)
+		_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8s%-8d%-8d%-8d%-8d%-8d\n",
+			queue.Name, queue.Spec.Weight, queue.Status.State, queue.Spec.Parent,
+			queueStats[queue.Name].Inqueue, queueStats[queue.Name].Pending,
+			queueStats[queue.Name].Running, queueStats[queue.Name].Unknown,
+			queueStats[queue.Name].Completed)
 		if err != nil {
 			fmt.Printf("Failed to print queue command result: %s.\n", err)
 		}

@@ -1,0 +1,21 @@
+# permissions for end users to edit vcjobs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vcjob-editor-role
+  {{- if or .Values.custom.aggregationRule_labels .Values.custom.common_labels }}
+  labels:
+    {{- if .Values.custom.aggregationRule_labels }}
+      {{- toYaml .Values.custom.aggregationRule_labels | nindent 4 }}
+    {{- end }}
+    {{- if .Values.custom.common_labels }}
+      {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
+  {{- end }}
+rules:
+  - apiGroups: ["batch.volcano.sh"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "update", "delete"]
+  - apiGroups: ["bus.volcano.sh"]
+    resources: ["commands"]
+    verbs: ["create", "get", "list"]

@@ -106,7 +106,7 @@ generate-code:
 manifests: controller-gen
 	go mod vendor
 	# volcano crd base
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./vendor/volcano.sh/apis/pkg/apis/scheduling/v1beta1;./vendor/volcano.sh/apis/pkg/apis/batch/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/bus/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1" output:crd:artifacts:config=config/crd/volcano/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./vendor/volcano.sh/apis/pkg/apis/scheduling/v1beta1;./vendor/volcano.sh/apis/pkg/apis/batch/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/bus/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/topology/v1alpha1" output:crd:artifacts:config=config/crd/volcano/bases
 	# generate volcano job crd yaml without description to avoid yaml size limit when using `kubectl apply`
 	$(CONTROLLER_GEN) $(CRD_OPTIONS_EXCLUDE_DESCRIPTION) paths="./vendor/volcano.sh/apis/pkg/apis/batch/v1alpha1" output:crd:artifacts:config=config/crd/volcano/bases
 	# jobflow crd base
@@ -142,6 +142,9 @@ e2e-test-vcctl: vcctl images
 
 e2e-test-stress: images
 	E2E_TYPE=STRESS ./hack/run-e2e-kind.sh
+
+e2e-test-dra: images
+	E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true" ./hack/run-e2e-kind.sh
 
 generate-yaml: init manifests
 	./hack/generate-yaml.sh TAG=${RELEASE_VER} CRD_VERSION=${CRD_VERSION}

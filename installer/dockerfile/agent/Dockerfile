@@ -29,10 +29,14 @@ RUN yum install -y cpio && \
     rpm2cpio $(ls | grep oncn-bwm) | cpio -div
 
 FROM alpine:latest
-RUN apk add sudo
+RUN apk add sudo libcap
 COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-agent /vc-agent
 COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/network-qos \
                     /go/src/volcano.sh/volcano/installer/build/volcano-agent/install.sh /usr/local/bin/
 COPY --from=repo /usr/share/bwmcli/bwm_tc.o /usr/local/bin/
-RUN chmod +x /usr/local/bin/install.sh
+RUN adduser -u 1000 -D appuser
+RUN chmod +x /usr/local/bin/install.sh \
+    && setcap "cap_dac_override=eip" /vc-agent \
+    && setcap "cap_dac_override=eip" /usr/local/bin/network-qos \
+    && echo -e '%appuser ALL=(root) NOPASSWD: /bin/cp -f /usr/local/bin/network-qos /opt/cni/bin\n%appuser ALL=(root) NOPASSWD: /bin/cp -f /usr/local/bin/bwm_tc.o /usr/share/bwmcli' >> /etc/sudoers
 

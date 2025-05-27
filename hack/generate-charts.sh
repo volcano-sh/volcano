@@ -27,6 +27,10 @@ export RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 export HELM_VER=${HELM_VER:-v3.6.3}
 export VOLCANO_CHART_VERSION=${TAG:-"latest"}
 export VOLCANO_IMAGE_TAG=${VOLCANO_CHART_VERSION}
+# Add a v prefix to VOLCANO_IMAGE_TAG if it doesn't have one because v is removed in .github/workflows/release.yaml.
+if [[ ! ${VOLCANO_IMAGE_TAG} =~ ^v ]]; then
+    VOLCANO_IMAGE_TAG="v${VOLCANO_IMAGE_TAG}"
+fi
 
 LOCAL_OS=${OSTYPE}
 case $LOCAL_OS in

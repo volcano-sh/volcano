@@ -14,6 +14,12 @@ limitations under the License.
 
 package devices
 
+import (
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/klog/v2"
+)
+
 // These are predefined codes used in a Status.
 const (
 	// Success means that plugin ran correctly and found pod schedulable.
@@ -36,3 +42,26 @@ const (
 	// Skip is used when a Bind plugin chooses to skip binding.
 	Skip
 )
+
+var kubeClient *kubernetes.Clientset
+
+func GetClient() kubernetes.Interface {
+	var err error
+	if kubeClient == nil {
+		kubeClient, err = NewClient()
+		if err != nil {
+			klog.ErrorS(err, "deviceshare initClient failed")
+		}
+	}
+	return kubeClient
+}
+
+// NewClient connects to an API server
+func NewClient() (*kubernetes.Clientset, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+	client, err := kubernetes.NewForConfig(config)
+	return client, err
+}

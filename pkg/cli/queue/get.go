@@ -29,10 +29,11 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/cli/podgroup"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 type getFlags struct {
-	commonFlags
+	util.CommonFlags
 
 	Name string
 }
@@ -41,14 +42,14 @@ var getQueueFlags = &getFlags{}
 
 // InitGetFlags is used to init all flags.
 func InitGetFlags(cmd *cobra.Command) {
-	initFlags(cmd, &getQueueFlags.commonFlags)
+	util.InitFlags(cmd, &getQueueFlags.CommonFlags)
 
 	cmd.Flags().StringVarP(&getQueueFlags.Name, "name", "n", "", "the name of queue")
 }
 
 // GetQueue gets a queue.
 func GetQueue(ctx context.Context) error {
-	config, err := buildConfig(getQueueFlags.Master, getQueueFlags.Kubeconfig)
+	config, err := util.BuildConfig(getQueueFlags.Master, getQueueFlags.Kubeconfig)
 	if err != nil {
 		return err
 	}
@@ -86,14 +87,14 @@ func GetQueue(ctx context.Context) error {
 
 // PrintQueue prints queue information.
 func PrintQueue(queue *v1beta1.Queue, pgStats *podgroup.PodGroupStatistics, writer io.Writer) {
-	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s%-8s\n",
-		Name, Weight, State, Inqueue, Pending, Running, Unknown, Completed)
+	_, err := fmt.Fprintf(writer, "%-25s%-8s%-8s%-8s%-8s%-8s%-8s%-8s%-8s\n",
+		Name, Weight, State, Parent, Inqueue, Pending, Running, Unknown, Completed)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)
 	}
 
-	_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8d%-8d%-8d%-8d%-8d\n",
-		queue.Name, queue.Spec.Weight, queue.Status.State, pgStats.Inqueue,
+	_, err = fmt.Fprintf(writer, "%-25s%-8d%-8s%-8s%-8d%-8d%-8d%-8d%-8d\n",
+		queue.Name, queue.Spec.Weight, queue.Status.State, queue.Spec.Parent, pgStats.Inqueue,
 		pgStats.Pending, pgStats.Running, pgStats.Unknown, pgStats.Completed)
 	if err != nil {
 		fmt.Printf("Failed to print queue command result: %s.\n", err)

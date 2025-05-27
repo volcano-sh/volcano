@@ -1,0 +1,47 @@
+name: Mark and Close Stale Issues and PRs
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # runs every day at midnight UTC
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Mark and close stale issues and PRs
+        uses: actions/stale@5bef64f19d7facfb25b37b414482c7164d639639 #v9.1.0
+        with:
+          remove-stale-when-updated: true
+          stale-issue-label: 'lifecycle/stale'
+          exempt-issue-labels: 'kind/feature, kind/bug, help wanted, good first issue'
+          exempt-pr-labels: ''
+          days-before-stale: 180
+          days-before-close: 90
+
+          stale-issue-message: >
+            Hello 👋 Looks like there was no activity on this issue for last 180 days.
+
+            **Do you mind updating us on the status?** Is this still reproducible or needed? If yes, just comment on this PR or push a commit. Thanks! 🤗
+
+            If there will be no activity for 90 days, this issue will be closed (we can always reopen an issue if we need!).
+
+          close-issue-message: >
+            Closing for now as there was no activity for last 90 days after marked as stale, let us know if you need this to be reopened! 🤗
+
+          stale-pr-message: >
+            Hello 👋 Looks like there was no activity on this amazing PR for last 180 days.
+
+            **Do you mind updating us on the status?** Is there anything we can help with? If you plan to still work on it, just comment on this PR or push a commit. Thanks! 🤗
+
+            If there will be no activity for 90 days, this issue will be closed (we can always reopen a PR if you get back to this!).
+
+          close-pr-message: >
+            Closing for now as there was no activity for last 90 days after marked as stale, let us know if you need this to be reopened! 🤗
+
+          exempt-all-milestones: false
+          exempt-all-assignees: false
+
+          operations-per-run: 30

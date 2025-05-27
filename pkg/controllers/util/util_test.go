@@ -43,7 +43,7 @@ func TestGetPodQuotaUsage(t *testing.T) {
 		"requests.cpu":            2,
 	}
 
-	res := *GetPodQuotaUsage(pod)
+	res := GetPodQuotaUsage(pod)
 	for name, quantity := range expected {
 		value, ok := res[corev1.ResourceName(name)]
 		if !ok {

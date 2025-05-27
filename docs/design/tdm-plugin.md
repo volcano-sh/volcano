@@ -14,7 +14,7 @@ TDM plugin enhance the volcano time-sharing multiplexing resource ability. It wi
 
 ![tdmsolution](./images/tdmsolution.png)
 
-1. Add `volcano.sh/preemptable` annotaion for Pod/PodGroup. For volcano job when add this annotaion in job level, Pod/PodGroup will inherit this annotation. The pod with `volcano.sh/preemptable: "true"` annotation can be dispatched to `revocable node`.
+1. Add `volcano.sh/preemptable` annotation for Pod/PodGroup. For volcano job when add this annotation in job level, Pod/PodGroup will inherit this annotation. The pod with `volcano.sh/preemptable: "true"` annotation can be dispatched to `revocable node`.
 Otherwise, the pod can not be dispatched to `revocable node`.
 2. Add `tdm` plugin and config for volcano scheduler. `tdm.revocable-zone` is a const prefix(), `rz1` is the revocable zone name and the value is a time frame. 
 

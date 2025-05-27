@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use Volcano in your work, please cite it using the information below. This helps us demonstrate the project's impact."
+title: "Volcano: A Cloud Native Batch System"
+authors:
+  - given-names: "Klaus"
+    family-names: "Ma"
+  - given-names: "Kevin"
+    family-names: "Wang"
+  - name: "The Volcano Community & Contributors"
+    type: entity
+
+repository-code: "https://github.com/volcano-sh/volcano"
+url: "https://volcano.sh/"
+keywords:
+  - "batch system"
+  - "kubernetes"
+  - "scheduling"
+  - "cncf"
+  - "high-performance computing"
+  - "big data"
+  - "artificial intelligence"
+  - "machine learning"
+license: "Apache-2.0"
+notes: "For a specific version, please find the release tag or use the general project information. A comprehensive list of releases can be found at: https://github.com/volcano-sh/volcano/releases"

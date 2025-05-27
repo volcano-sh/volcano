@@ -2,6 +2,7 @@
 {{ $admission_affinity := or .Values.custom.admission_affinity .Values.custom.default_affinity }}
 {{ $admission_tolerations := or .Values.custom.admission_tolerations .Values.custom.default_tolerations }}
 {{ $admission_sc := or .Values.custom.admission_sc .Values.custom.default_sc }}
+{{ $admission_init_csc := or .Values.custom.admission_init_csc .Values.custom.default_csc }}
 {{ $admission_ns := or .Values.custom.admission_ns .Values.custom.default_ns }}
 
 apiVersion: v1
@@ -110,8 +111,8 @@ spec:
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           command: ["./gen-admission-secret.sh", "--service", "{{ .Release.Name }}-admission-service", "--namespace",
                     "{{ .Release.Namespace }}", "--secret", "{{.Values.basic.admission_secret_name}}"]
-          {{- if .Values.custom.admission_default_csc }}
+          {{- if $admission_init_csc }}
           securityContext:
-            {{- toYaml .Values.custom.admission_default_csc | nindent 12 }}
+            {{- toYaml $admission_init_csc | nindent 12 }}
           {{- end }}
 {{- end }}

@@ -58,8 +58,17 @@ func Run(opt *options.ServerOption) error {
 
 	if opt.EnableMetrics {
 		go func() {
-			http.Handle("/metrics", commonutil.PromHandler())
-			klog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
+			mux := http.NewServeMux()
+			mux.Handle("/metrics", commonutil.PromHandler())
+
+			server := &http.Server{
+				Addr:              opt.ListenAddress,
+				Handler:           mux,
+				ReadHeaderTimeout: helpers.DefaultReadHeaderTimeout,
+				ReadTimeout:       helpers.DefaultReadTimeout,
+				WriteTimeout:      helpers.DefaultWriteTimeout,
+			}
+			klog.Fatalf("Prometheus Http Server failed: %s", server.ListenAndServe())
 		}()
 	}
 

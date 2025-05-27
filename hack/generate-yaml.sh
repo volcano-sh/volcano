@@ -93,6 +93,7 @@ tail -n +2 ${VOLCANO_CRD_DIR}/bases/bus.volcano.sh_commands.yaml > ${HELM_VOLCAN
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_podgroups.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_podgroups.yaml
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_queues.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_queues.yaml
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/nodeinfo.volcano.sh_numatopologies.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/nodeinfo.volcano.sh_numatopologies.yaml
+tail -n +2 ${VOLCANO_CRD_DIR}/bases/topology.volcano.sh_hypernodes.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/topology.volcano.sh_hypernodes.yaml
 
 # sync jobflow bases
 tail -n +2 ${JOBFLOW_CRD_DIR}/bases/flow.volcano.sh_jobflows.yaml > ${HELM_JOBFLOW_CRD_DIR}/bases/flow.volcano.sh_jobflows.yaml
@@ -136,6 +137,7 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       -s templates/scheduling_v1beta1_podgroup.yaml \
       -s templates/scheduling_v1beta1_queue.yaml \
       -s templates/nodeinfo_v1alpha1_numatopologies.yaml \
+      -s templates/topology_v1alpha1_hypernodes.yaml \
       -s templates/webhooks.yaml \
       >> ${DEPLOYMENT_FILE}
 

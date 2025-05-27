@@ -20,10 +20,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/pprof"
 	"os"
 
 	"volcano.sh/apis/pkg/apis/helpers"
-
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
@@ -69,11 +69,8 @@ func Run(opt *options.ServerOption) error {
 		panic(err)
 	}
 
-	if opt.EnableMetrics {
-		go func() {
-			http.Handle("/metrics", commonutil.PromHandler())
-			klog.Fatalf("Prometheus Http Server failed %s", http.ListenAndServe(opt.ListenAddress, nil))
-		}()
+	if opt.EnableMetrics || opt.EnablePprof {
+		go startMetricsServer(opt)
 	}
 
 	if opt.EnableHealthz {
@@ -141,4 +138,32 @@ func Run(opt *options.ServerOption) error {
 		},
 	})
 	return fmt.Errorf("lost lease")
+}
+
+func startMetricsServer(opt *options.ServerOption) {
+	mux := http.NewServeMux()
+
+	if opt.EnableMetrics {
+		mux.Handle("/metrics", commonutil.PromHandler())
+	}
+
+	if opt.EnablePprof {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	}
+
+	server := &http.Server{
+		Addr:              opt.ListenAddress,
+		Handler:           mux,
+		ReadHeaderTimeout: helpers.DefaultReadHeaderTimeout,
+		ReadTimeout:       helpers.DefaultReadTimeout,
+		WriteTimeout:      helpers.DefaultWriteTimeout,
+	}
+
+	if err := server.ListenAndServe(); err != nil {
+		klog.Errorf("start metrics/pprof http server failed: %v", err)
+	}
 }

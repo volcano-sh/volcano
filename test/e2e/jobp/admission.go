@@ -1445,7 +1445,7 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).To(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("job validate check: create job with priviledged container", func() {
+	ginkgo.It("job validate check: create job with privileged container", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
 

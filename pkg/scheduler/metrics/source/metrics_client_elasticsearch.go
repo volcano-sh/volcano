@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v7"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -35,6 +36,9 @@ const (
 	esCPUUsageField = "host.cpu.usage"
 	// esMemUsageField is the field name of mem usage in the document
 	esMemUsageField = "system.memory.actual.used.pct"
+
+	// 1MB
+	maxBodySize = 1 << 20
 )
 
 type ElasticsearchMetricsClient struct {
@@ -65,6 +69,10 @@ func NewElasticsearchMetricsClient(conf map[string]string) (*ElasticsearchMetric
 	}
 	var err error
 	insecureSkipVerify := conf["tls.insecureSkipVerify"] == "true"
+	if insecureSkipVerify {
+		klog.Warningf("WARNING: TLS certificate verification is disabled which is insecure. This should not be used in production environments")
+	}
+
 	e.es, err = elasticsearch.NewClient(elasticsearch.Config{
 		Addresses: []string{address},
 		Username:  conf["elasticsearch.username"],
@@ -151,6 +159,7 @@ func (e *ElasticsearchMetricsClient) NodeMetricsAvg(ctx context.Context, nodeNam
 			}
 		} `json:"aggregations"`
 	}
+	res.Body = http.MaxBytesReader(nil, res.Body, maxBodySize)
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
 		return nil, err
 	}

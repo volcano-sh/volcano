@@ -1,0 +1,18 @@
+# permissions for end users to view vcjobs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vcjob-viewer-role
+  {{- if or .Values.custom.aggregationRule_labels .Values.custom.common_labels }}
+  labels:
+    {{- if .Values.custom.aggregationRule_labels }}
+      {{- toYaml .Values.custom.aggregationRule_labels | nindent 4 }}
+    {{- end }}
+    {{- if .Values.custom.common_labels }}
+      {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
+  {{- end }}
+rules:
+  - apiGroups: ["batch.volcano.sh"]
+    resources: ["jobs"]
+    verbs: ["get", "list"]

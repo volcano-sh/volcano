@@ -17,7 +17,6 @@ limitations under the License.
 package vcctl
 
 import (
-	"os"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -88,7 +87,6 @@ Use "vcctl job [command] --help" for more information about a command.
 	})
 
 	It("Command: vcctl job list --help", func() {
-		kubeConfig := os.Getenv("KUBECONFIG")
 		var output = `
 list job information
 
@@ -98,7 +96,7 @@ Usage:
 Flags:
       --all-namespaces      list jobs in all namespaces
   -h, --help                help for list
-  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
+  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file
   -s, --master string       the address of apiserver
   -n, --namespace string    the namespace of job (default "default")
   -q, --queue string        list job with specified queue name
@@ -118,7 +116,6 @@ Global Flags:
 	})
 
 	It("Command: vcctl job suspend -n {$JobName} --help", func() {
-		kubeConfig := os.Getenv("KUBECONFIG")
 		var output = `
 abort a job
 
@@ -127,7 +124,7 @@ Usage:
 
 Flags:
   -h, --help                help for suspend
-  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
+  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file
   -s, --master string       the address of apiserver
   -N, --name string         the name of job
   -n, --namespace string    the namespace of job (default "default")
@@ -145,7 +142,6 @@ Global Flags:
 	})
 
 	It("vcctl job resume -n {$JobName} --help", func() {
-		kubeConfig := os.Getenv("KUBECONFIG")
 		var output = `
 resume a job
 
@@ -154,7 +150,7 @@ Usage:
 
 Flags:
   -h, --help                help for resume
-  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
+  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file
   -s, --master string       the address of apiserver
   -N, --name string         the name of job
   -n, --namespace string    the namespace of job (default "default")
@@ -172,7 +168,6 @@ Global Flags:
 	})
 
 	It("vcctl job run --help", func() {
-		kubeConfig := os.Getenv("KUBECONFIG")
 		var output = `
 run job by parameters from the command line
 
@@ -183,7 +178,7 @@ Flags:
   -f, --filename string     the yaml file of job
   -h, --help                help for run
   -i, --image string        the container image of job (default "busybox")
-  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file (default "` + kubeConfig + `")
+  -k, --kubeconfig string   (optional) absolute path to the kubeconfig file
   -L, --limits string       the resource limit of the task (default "cpu=1000m,memory=100Mi")
   -s, --master string       the address of apiserver
   -m, --min int             the minimal available tasks of job (default 1)
