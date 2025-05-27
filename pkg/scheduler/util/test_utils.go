@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
+	resourcev1beta1 "k8s.io/api/resource/v1beta1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -85,6 +86,16 @@ func BuildPod(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceLi
 			},
 		},
 	}
+}
+
+// BuildPodWithResourceClaim builds a pod object with resource claim, currently the pod only contains one container
+func BuildPodWithResourceClaim(ns, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string,
+	claimReq []v1.ResourceClaim, resourceClaims []v1.PodResourceClaim) *v1.Pod {
+	pod := BuildPod(ns, name, nodeName, p, req, groupName, labels, selector)
+	pod.Spec.ResourceClaims = resourceClaims
+	pod.Spec.Containers[0].Resources.Claims = claimReq
+
+	return pod
 }
 
 // BuildPodWithPVC builts Pod object with pvc volume
@@ -162,6 +173,98 @@ func BuildPV(name, scName string, capacity v1.ResourceList) *v1.PersistentVolume
 		},
 		Status: v1.PersistentVolumeStatus{
 			Phase: v1.VolumeAvailable,
+		},
+	}
+}
+
+func BuildDeviceRequest(name, deviceClassName string, selectors []resourcev1beta1.DeviceSelector,
+	allocationMode *resourcev1beta1.DeviceAllocationMode, count *int64) resourcev1beta1.DeviceRequest {
+	deviceRequest := resourcev1beta1.DeviceRequest{
+		Name:            name,
+		DeviceClassName: deviceClassName,
+		AllocationMode:  resourcev1beta1.DeviceAllocationModeExactCount,
+		Count:           1,
+	}
+
+	if selectors != nil {
+		deviceRequest.Selectors = selectors
+	}
+
+	if allocationMode != nil {
+		deviceRequest.AllocationMode = *allocationMode
+	}
+
+	if allocationMode != nil && *allocationMode == resourcev1beta1.DeviceAllocationModeExactCount && count != nil {
+		deviceRequest.Count = *count
+	}
+
+	return deviceRequest
+}
+
+func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1beta1.DeviceRequest,
+	constraints []resourcev1beta1.DeviceConstraint, config []resourcev1beta1.DeviceClaimConfiguration) *resourcev1beta1.ResourceClaim {
+	rc := &resourcev1beta1.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:       namespace,
+			Name:            name,
+			ResourceVersion: "1",
+		},
+		Spec: resourcev1beta1.ResourceClaimSpec{
+			Devices: resourcev1beta1.DeviceClaim{
+				Requests: deviceRequests,
+			},
+		},
+	}
+
+	if constraints != nil {
+		rc.Spec.Devices.Constraints = constraints
+	}
+
+	if config != nil {
+		rc.Spec.Devices.Config = config
+	}
+
+	return rc
+}
+
+func BuildDeviceClass(name string, selectors []resourcev1beta1.DeviceSelector, config []resourcev1beta1.DeviceClassConfiguration) *resourcev1beta1.DeviceClass {
+	dc := &resourcev1beta1.DeviceClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: resourcev1beta1.DeviceClassSpec{
+			Selectors: selectors,
+		},
+	}
+
+	if config != nil {
+		dc.Spec.Config = config
+	}
+
+	return dc
+}
+
+func BuildDevice(name string, attributes map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceAttribute,
+	capacity map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceCapacity) resourcev1beta1.Device {
+	return resourcev1beta1.Device{
+		Name: name,
+		Basic: &resourcev1beta1.BasicDevice{
+			Attributes: attributes,
+			Capacity:   capacity,
+		},
+	}
+}
+
+func BuildResourceSlice(name, driver, nodeName string, pool resourcev1beta1.ResourcePool, devices []resourcev1beta1.Device) *resourcev1beta1.ResourceSlice {
+	return &resourcev1beta1.ResourceSlice{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: resourcev1beta1.ResourceSliceSpec{
+			NodeName: nodeName,
+			Driver:   driver,
+			Pool:     pool,
+			Devices:  devices,
 		},
 	}
 }

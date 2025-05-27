@@ -1,15 +1,29 @@
 # this config file contains all config fields with comments
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+featureGates:
+  DynamicResourceAllocation: true
+  DRAResourceClaimDeviceStatus: true
+containerdConfigPatches:
+  # Enable CDI as described in
+  # https://tags.cncf.io/container-device-interface#containerd-configuration
+  - |-
+    [plugins."io.containerd.grpc.v1.cri"]
+      enable_cdi = true
 # 1 control plane node and 4 workers
 nodes:
   # the control plane node config
   - role: control-plane
     kubeadmConfigPatches:
-    - |
-      apiVersion: kubelet.config.k8s.io/v1beta1
-      kind: KubeletConfiguration
-      containerLogMaxSize: "50Mi"
+      - |
+        apiVersion: kubelet.config.k8s.io/v1beta1
+        kind: KubeletConfiguration
+        containerLogMaxSize: "50Mi"
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            runtime-config: "resource.k8s.io/v1beta1=true"
   # the four workers
   - role: worker
   - role: worker

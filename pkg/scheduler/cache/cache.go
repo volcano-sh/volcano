@@ -49,7 +49,10 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
+	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 	"stathat.com/c/consistent"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -65,7 +68,6 @@ import (
 	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
-	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
@@ -171,6 +173,9 @@ type SchedulerCache struct {
 	multiSchedulerInfo
 
 	binderRegistry *BinderRegistry
+
+	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
+	sharedDRAManager k8sframework.SharedDRAManager
 }
 
 type multiSchedulerInfo struct {
@@ -744,6 +749,14 @@ func (sc *SchedulerCache) addEventHandler() {
 		UpdateFunc: sc.UpdateHyperNode,
 		DeleteFunc: sc.DeleteHyperNode,
 	})
+
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
+		ctx := context.TODO()
+		logger := klog.FromContext(ctx)
+		resourceClaimInformer := informerFactory.Resource().V1beta1().ResourceClaims().Informer()
+		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, informerFactory)
+	}
 }
 
 // Run  starts the schedulerCache
@@ -1423,6 +1436,10 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	return snapshot
 }
 
+func (sc *SchedulerCache) SharedDRAManager() k8sframework.SharedDRAManager {
+	return sc.sharedDRAManager
+}
+
 // String returns information about the cache in a string format
 func (sc *SchedulerCache) String() string {
 	sc.Mutex.Lock()
@@ -1539,7 +1556,7 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePGSt
 
 func (sc *SchedulerCache) updateJobAnnotations(job *schedulingapi.JobInfo) {
 	sc.Mutex.Lock()
-	sc.Jobs[job.UID].PodGroup.GetAnnotations()[api.JobAllocatedHyperNode] = job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode]
+	sc.Jobs[job.UID].PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode] = job.PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode]
 	sc.Mutex.Unlock()
 }
 

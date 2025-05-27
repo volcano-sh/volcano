@@ -757,6 +757,11 @@ func (ssn *Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reaso
 	ssn.recorder.Eventf(pg, eventType, reason, msg)
 }
 
+// SharedDRAManager returns the shared DRAManager from cache
+func (ssn *Session) SharedDRAManager() k8sframework.SharedDRAManager {
+	return ssn.cache.SharedDRAManager()
+}
+
 // String return nodes and jobs information in the session
 func (ssn *Session) String() string {
 	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
