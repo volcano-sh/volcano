@@ -87,18 +87,30 @@ func AdmitHyperNode(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespon
 func validateHyperNodeMemberSelector(selector hypernodev1alpha1.MemberSelector, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
 
-	if selector.RegexMatch == nil && selector.ExactMatch == nil {
-		err := field.Invalid(fldPath, selector,
-			"member selector must have one of regexMatch or exactMatch")
-		errs = append(errs, err)
+	// Count active selectors for mutual exclusivity check
+	selectorCount := 0
+	if selector.ExactMatch != nil {
+		selectorCount++
+	}
+	if selector.RegexMatch != nil {
+		selectorCount++
+	}
+	if selector.LabelMatch != nil {
+		selectorCount++
+	}
+
+	// Validate selector presence and mutual exclusivity
+	switch {
+	case selectorCount == 0:
+		errs = append(errs, field.Invalid(fldPath, selector,
+			"member selector must have one of exactMatch, regexMatch, or labelMatch"))
+		return errs
+	case selectorCount > 1:
+		errs = append(errs, field.Invalid(fldPath, selector,
+			"cannot specify more than one selector type (exactMatch, regexMatch, labelMatch)"))
 		return errs
 	}
-	if selector.RegexMatch != nil && selector.ExactMatch != nil {
-		err := field.Invalid(fldPath, selector,
-			"member selector cannot have both regexMatch and exactMatch")
-		errs = append(errs, err)
-		return errs
-	}
+
 	if selector.ExactMatch != nil {
 		if selector.ExactMatch.Name == "" {
 			err := field.Invalid(fldPath.Child("exactMatch").Child("name"),
