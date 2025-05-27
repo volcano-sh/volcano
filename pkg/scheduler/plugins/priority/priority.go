@@ -17,6 +17,7 @@ limitations under the License.
 package priority
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -49,19 +50,24 @@ func (pp *priorityPlugin) Name() string {
 func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	taskOrderFn := func(l interface{}, r interface{}) int {
 
+		lv := l.(*api.TaskInfo)
+		rv := r.(*api.TaskInfo)
+
+		// if NodeIPAware feature is enabled, sort tasks by rank first
 		if utilfeature.DefaultFeatureGate.Enabled(features.NodeIPAware) {
-			if ret := TaskOrderByRank(l, r); ret != 0 {
+			if ret := taskOrderByRank(lv, rv); ret != 0 {
 				return ret
 			}
 		}
-
-		lv := l.(*api.TaskInfo)
-		rv := r.(*api.TaskInfo)
 
 		klog.V(4).Infof("Priority TaskOrder: <%v/%v> priority is %v, <%v/%v> priority is %v",
 			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
 
 		if lv.Priority == rv.Priority {
+			// if NodeIPAware feature is enabled, sort tasks by name suffix
+			if utilfeature.DefaultFeatureGate.Enabled(features.NodeIPAware) {
+				return taskOrderByNameSuffix(lv, rv)
+			}
 			return 0
 		}
 
@@ -131,44 +137,47 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddJobStarvingFns(pp.Name(), jobStarvingFn)
 }
-func TaskOrderByRank(l interface{}, r interface{}) int {
-	a, ok := l.(*api.TaskInfo)
-	if !ok {
-		klog.Errorf("Object is not a taskinfo")
-		return 0
-	}
-	b, ok := r.(*api.TaskInfo)
-	if !ok {
-		klog.Errorf("Object is not a taskinfo")
-		return 0
-	}
 
+func taskOrderByRank(a, b *api.TaskInfo) int {
 	rankA := a.GetRank()
 	randB := b.GetRank()
+
+	// If RANK is specified
+	if rankA != "" || randB != "" {
+		return compareNumberStr(rankA, randB)
+	}
+	return 0
+}
+
+func taskOrderByNameSuffix(a, b *api.TaskInfo) int {
 	// If RANK is not specified (primarily for MPI tasks, as ranktable parsing
 	// can be complex), sort by pod name index for graceful handling.
-	if rankA == "" && randB == "" && a.Pod != nil && b.Pod != nil {
-		if strings.HasSuffix(a.Pod.Name, "-launcher") || strings.HasSuffix(b.Pod.Name, "-master-0") {
-			return -1
-		}
+	// FOR PyTorchJob, the pods that created are named as
+	// xxx-master-0
+	// xxx-worker-0
+	// xxx-worker-1
+	//
+	// FOR MPIJob, the pods that created are named as
+	// xxx-launcher
+	// xxx-worker-0
+	// xxx-worker-1
+	if strings.HasSuffix(a.Name, "-launcher") || strings.HasSuffix(a.Name, "-master-0") {
+		return -1
+	}
 
-		if strings.HasSuffix(b.Pod.Name, "-launcher") || strings.HasSuffix(b.Pod.Name, "-master-0") {
-			return 1
-		}
-		if len(a.Pod.Name) < len(b.Pod.Name) {
-			return -1
-		}
-
-		if a.Pod.Name < b.Pod.Name {
-			return -1
-		}
+	if strings.HasSuffix(b.Name, "-launcher") || strings.HasSuffix(b.Name, "-master-0") {
 		return 1
 	}
 
-	rankAId, Aerr := strconv.Atoi(rankA)
-	rankBId, Berr := strconv.Atoi(randB)
+	aNum := extractTrailingNumber(a.Name)
+	bNum := extractTrailingNumber(b.Name)
+	return compareNumberStr(aNum, bNum)
+}
 
-	if Aerr == nil && Berr == nil {
+func compareNumberStr(rankA, rankB string) int {
+	rankAId, aErr := strconv.Atoi(rankA)
+	rankBId, bErr := strconv.Atoi(rankB)
+	if aErr == nil && bErr == nil {
 		switch {
 		case rankAId < rankBId:
 			return -1
@@ -178,15 +187,22 @@ func TaskOrderByRank(l interface{}, r interface{}) int {
 			return 0
 		}
 	}
-
-	if Aerr == nil && Berr != nil {
+	if aErr == nil && bErr != nil {
 		return 1
 	}
 
-	if Aerr != nil && Berr == nil {
+	if aErr != nil && bErr == nil {
 		return -1
 	}
-
 	return 0
 }
+func extractTrailingNumber(str string) string {
+	re := regexp.MustCompile(`-(\d+)$`)
+	matches := re.FindStringSubmatch(str)
+	if len(matches) < 2 {
+		return ""
+	}
+	return matches[1]
+}
+
 func (pp *priorityPlugin) OnSessionClose(ssn *framework.Session) {}

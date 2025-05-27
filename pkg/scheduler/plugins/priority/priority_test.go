@@ -21,6 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -149,5 +150,38 @@ func TestPreempt(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// Helper function to create test TaskInfo with specific parameters
+func createTask(namespace, name, rankValue string, specialSuffix string) *api.TaskInfo {
+	podName := name
+	if specialSuffix != "" {
+		podName = name + specialSuffix
+	}
+
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: namespace,
+		},
+	}
+
+	// Add RANK environment variable if specified
+	if rankValue != "" {
+		pod.Spec.Containers = []v1.Container{
+			{
+				Env: []v1.EnvVar{
+					{
+						Name:  "RANK",
+						Value: rankValue,
+					},
+				},
+			},
+		}
+	}
+
+	return &api.TaskInfo{
+		Pod: pod,
 	}
 }
