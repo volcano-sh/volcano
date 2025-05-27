@@ -19,6 +19,7 @@ package priority
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -153,11 +154,12 @@ func TestPreempt(t *testing.T) {
 	}
 }
 
-// Helper function to create test TaskInfo with specific parameters
-func createTask(namespace, name, rankValue string, specialSuffix string) *api.TaskInfo {
+// Helper function to create TaskInfo with specific parameters
+func createTask(name, namespace, rankValue string, suffixes ...string) *api.TaskInfo {
 	podName := name
-	if specialSuffix != "" {
-		podName = name + specialSuffix
+	if len(suffixes) > 0 {
+		name = name + suffixes[0]
+		podName = name
 	}
 
 	pod := &v1.Pod{
@@ -167,7 +169,6 @@ func createTask(namespace, name, rankValue string, specialSuffix string) *api.Ta
 		},
 	}
 
-	// Add RANK environment variable if specified
 	if rankValue != "" {
 		pod.Spec.Containers = []v1.Container{
 			{
@@ -182,6 +183,143 @@ func createTask(namespace, name, rankValue string, specialSuffix string) *api.Ta
 	}
 
 	return &api.TaskInfo{
-		Pod: pod,
+		Name:      name,
+		Namespace: namespace,
+		Pod:       pod,
+	}
+}
+
+// TestTaskOrderByRank tests ranking comparison logic
+func TestTaskOrderByRank(t *testing.T) {
+	// Test cases for rank comparison
+	testCases := []struct {
+		name     string
+		a        *api.TaskInfo
+		b        *api.TaskInfo
+		expected int
+	}{
+		{
+			name:     "Both have valid numeric ranks - a < b",
+			a:        createTask("task1", "ns", "5"),
+			b:        createTask("task2", "ns", "10"),
+			expected: -1,
+		},
+		{
+			name:     "Valid vs invalid rank",
+			a:        createTask("task1", "ns", "5"),
+			b:        createTask("task2", "ns", "invalid"),
+			expected: 1,
+		},
+		{
+			name:     "No ranks specified",
+			a:        createTask("task1", "ns", ""),
+			b:        createTask("task2", "ns", ""),
+			expected: 0,
+		},
+		{
+			name:     "Mixed valid and empty ranks",
+			a:        createTask("task1", "ns", "3"),
+			b:        createTask("task2", "ns", ""),
+			expected: 1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := taskOrderByRank(tc.a, tc.b)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestTaskOrderByNameSuffix tests name suffix comparison logic
+func TestTaskOrderByNameSuffix(t *testing.T) {
+	testCases := []struct {
+		name     string
+		a        *api.TaskInfo
+		b        *api.TaskInfo
+		expected int
+	}{
+		{
+			name:     "A has launcher suffix",
+			a:        createTask("task", "ns", "", "-launcher"),
+			b:        createTask("task", "ns", "", "-worker-0"),
+			expected: -1,
+		},
+		{
+			name:     "B has master-0 suffix",
+			a:        createTask("task", "ns", "", "-worker-1"),
+			b:        createTask("task", "ns", "", "-master-0"),
+			expected: 1,
+		},
+		{
+			name:     "Both have numeric suffixes",
+			a:        createTask("task", "ns", "", "-worker-0"),
+			b:        createTask("task", "ns", "", "-worker-1"),
+			expected: -1,
+		},
+		{
+			name:     "Complex numeric comparison",
+			a:        createTask("task", "ns", "", "-worker-10"),
+			b:        createTask("task", "ns", "", "-worker-2"),
+			expected: 1,
+		},
+		{
+			name:     "No numeric suffixes",
+			a:        createTask("task", "ns", "", "-worker"),
+			b:        createTask("task", "ns", "", "-worker"),
+			expected: 0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := taskOrderByNameSuffix(tc.a, tc.b)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestCompareNumberStr tests numeric string comparison
+func TestCompareNumberStr(t *testing.T) {
+	testCases := []struct {
+		name     string
+		a        string
+		b        string
+		expected int
+	}{
+		{"Valid numbers", "5", "10", -1},
+		{"Invalid vs valid", "abc", "5", -1},
+		{"Valid vs invalid", "5", "abc", 1},
+		{"Both invalid", "foo", "bar", 0},
+		{"Empty strings", "", "", 0},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := compareNumberStr(tc.a, tc.b)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestExtractTrailingNumber tests number extraction from names
+func TestExtractTrailingNumber(t *testing.T) {
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{"worker-23", "23"},
+		{"master-0", "0"},
+		{"launcher", ""},
+		{"worker-1-2", "2"},
+		{"invalid-format", ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.input, func(t *testing.T) {
+			result := extractTrailingNumber(tc.input)
+			assert.Equal(t, tc.expected, result)
+		})
 	}
 }
