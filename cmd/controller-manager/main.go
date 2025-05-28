@@ -34,6 +34,7 @@ import (
 	"volcano.sh/volcano/cmd/controller-manager/app/options"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	_ "volcano.sh/volcano/pkg/controllers/garbagecollector"
+	_ "volcano.sh/volcano/pkg/controllers/hypernode"
 	_ "volcano.sh/volcano/pkg/controllers/job"
 	_ "volcano.sh/volcano/pkg/controllers/jobflow"
 	_ "volcano.sh/volcano/pkg/controllers/jobtemplate"
