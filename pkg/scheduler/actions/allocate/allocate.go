@@ -183,7 +183,6 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		klog.V(3).Infof("Try to allocate resource to %d tasks of Job <%v/%v>",
 			tasks.Len(), job.Namespace, job.Name)
 
-
 		hardMode, highestAllowedTier := job.IsHardTopologyMode()
 		var stmt *framework.Statement
 		var tasksQueue *util.PriorityQueue
@@ -200,9 +199,9 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 			}
 		} else {
 			if job.IsUseReservation() {
-				alloc.allocateResourcesForReservationTasks(tasks, job, jobs)
+				stmt = alloc.allocateResourcesForReservationTasks(tasks, job, jobs, allNodes)
 			} else {
-				alloc.allocateResourcesForTasks(tasks, job, queue, allNodes, "")
+				stmt = alloc.allocateResourcesForTasks(tasks, job, queue, allNodes, "")
 			}
 			// There are still left tasks that need to be allocated when min available < replicas, put the job back
 			if tasks.Len() > 0 {
@@ -597,13 +596,28 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	return alloc.session.PredicateForAllocateAction(task, node)
 }
 
-func (alloc *Action) allocateResourcesForReservationTasks(tasks *util.PriorityQueue, job *api.JobInfo, jobs *util.PriorityQueue) {
+func (alloc *Action) allocateResourcesForReservationTasks(tasks *util.PriorityQueue, job *api.JobInfo, jobs *util.PriorityQueue, allNodes []*api.NodeInfo) *framework.Statement {
 	klog.V(3).Infof("Allocating resources for reservation tasks in job <%s/%s> with <%d> tasks", job.Namespace, job.Name, tasks.Len())
 	ssn := alloc.session
 	stmt := framework.NewStatement(ssn)
 
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
+
+		if job.TaskHasFitErrors(task) {
+			klog.V(5).Infof("Task %s with role spec %s has already predicated failed, skip", task.Name, task.TaskRole)
+			continue
+		}
+
+		if err := ssn.PrePredicateFn(task); err != nil {
+			klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+			fitErrors := api.NewFitErrors()
+			for _, ni := range allNodes {
+				fitErrors.SetNodeError(ni.Name, err)
+			}
+			job.NodesFitErrors[task.UID] = fitErrors
+			break
+		}
 
 		reservationTask := task.ReservationTaskInfo
 
@@ -642,11 +656,12 @@ func (alloc *Action) allocateResourcesForReservationTasks(tasks *util.PriorityQu
 	}
 
 	if ssn.JobReady(job) {
-		stmt.Commit()
+		return stmt
 	} else {
 		if !ssn.JobPipelined(job) {
 			stmt.Discard()
 		}
+		return nil
 	}
 }
 

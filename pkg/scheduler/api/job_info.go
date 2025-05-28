@@ -36,8 +36,6 @@ import (
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
-	volumescheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
 // DisruptionBudget define job min pod available and max pod unavailable value
@@ -76,8 +74,8 @@ type TransactionContext struct {
 	EvictionOccurred      bool
 	JobAllocatedHyperNode string
 	Status                TaskStatus
-	ReservationTaskInfo *TaskInfo
-	ReservationNodeName string
+	ReservationTaskInfo   *TaskInfo
+	ReservationNodeName   string
 }
 
 // Clone returns a clone of TransactionContext
