@@ -37,7 +37,7 @@ custom:
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate"
   colocation_enable: false
 
-# Override the configuration for admission or scheduler.
+# Override the configuration for admission, scheduler or scheduler.
 # For example:
 #
 #  scheduler_config_override: |
@@ -56,8 +56,22 @@ custom:
 #      - name: proportion
 #      - name: nodeorder
 #      - name: binpack
+
+#  controller_config_override: |
+#    networkTopologyDiscovery:
+#     - source: ufm
+#       enabled: true
+#       interval: 10m
+#       credentials:
+#         secretRef:
+#           name: ufm-credentials
+#           namespace: volcano-system
+#       config:
+#         endpoint: https://ufm-server:8080
+#         insecureSkipVerify: true
   admission_config_override: ~
   scheduler_config_override: ~
+  controller_config_override: ~
 
 # Specify affinity for all main Volcano components or per component.
 # For example:
