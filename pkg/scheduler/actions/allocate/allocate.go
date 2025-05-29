@@ -22,6 +22,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -197,7 +198,11 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 				pendingTasks[job.UID] = tasksQueue
 			}
 		} else {
-			stmt = alloc.allocateResourcesForTasks(tasks, job, queue, allNodes, "")
+			if job.IsUseReservation() {
+				stmt = alloc.allocateResourcesForReservationTasks(tasks, job, jobs, allNodes)
+			} else {
+				stmt = alloc.allocateResourcesForTasks(tasks, job, queue, allNodes, "")
+			}
 			// There are still left tasks that need to be allocated when min available < replicas, put the job back
 			if tasks.Len() > 0 {
 				jobs.Push(job)
@@ -589,6 +594,75 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
 	return alloc.session.PredicateForAllocateAction(task, node)
+}
+
+func (alloc *Action) allocateResourcesForReservationTasks(tasks *util.PriorityQueue, job *api.JobInfo, jobs *util.PriorityQueue, allNodes []*api.NodeInfo) *framework.Statement {
+	klog.V(3).Infof("Allocating resources for reservation tasks in job <%s/%s> with <%d> tasks", job.Namespace, job.Name, tasks.Len())
+	ssn := alloc.session
+	stmt := framework.NewStatement(ssn)
+
+	for !tasks.Empty() {
+		task := tasks.Pop().(*api.TaskInfo)
+
+		if job.TaskHasFitErrors(task) {
+			klog.V(5).Infof("Task %s with role spec %s has already predicated failed, skip", task.Name, task.TaskRole)
+			continue
+		}
+
+		if err := ssn.PrePredicateFn(task); err != nil {
+			klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
+			fitErrors := api.NewFitErrors()
+			for _, ni := range allNodes {
+				fitErrors.SetNodeError(ni.Name, err)
+			}
+			job.NodesFitErrors[task.UID] = fitErrors
+			break
+		}
+
+		reservationTask := task.ReservationTaskInfo
+
+		if reservationTask == nil {
+			klog.Warningf("Task <%s/%s> does not have a corresponding reservation task", task.Namespace, task.Name)
+			continue
+		}
+		reservationNodeName := reservationTask.NodeName
+		if reservationNodeName == "" {
+			klog.Warningf("Node for reservation Task <%s/%s> not found", task.Namespace, task.Name)
+			continue
+		}
+
+		reservationNode, found := ssn.Nodes[reservationNodeName]
+		if !found {
+			klog.Warningf("Node %s for reservation Task <%s/%s> not found", reservationNodeName, task.Namespace, task.Name)
+			continue
+		}
+
+		klog.V(3).Infof("Binding Reservation Task <%s/%s> to node <%v>", task.Namespace, task.Name, reservationNodeName)
+
+		if err := stmt.Allocate(task, reservationNode); err != nil {
+			klog.Errorf("Failed to bind reservation Task %v on %v in Session %v, err: %v", task.UID, reservationNode.Name, ssn.UID, err)
+			if rollbackErr := stmt.UnAllocate(task); rollbackErr != nil {
+				klog.Errorf("Failed to unallocate Task %v on %v in Session %v for %v.", task.UID, reservationNode.Name, ssn.UID, rollbackErr)
+			}
+		} else {
+			metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
+			metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
+		}
+
+		if ssn.JobReady(job) && !tasks.Empty() {
+			jobs.Push(job)
+			break
+		}
+	}
+
+	if ssn.JobReady(job) {
+		return stmt
+	} else {
+		if !ssn.JobPipelined(job) {
+			stmt.Discard()
+		}
+		return nil
+	}
 }
 
 func (alloc *Action) UnInitialize() {}
