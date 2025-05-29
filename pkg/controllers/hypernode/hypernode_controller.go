@@ -19,9 +19,10 @@ package hypernode
 import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
-	corev1 "k8s.io/client-go/informers/core/v1"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	listersv1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
@@ -53,8 +54,9 @@ type hyperNodeController struct {
 
 	hyperNodeInformer topologyinformerv1alpha1.HyperNodeInformer
 	hyperNodeLister   topologylisterv1alpha1.HyperNodeLister
+	hyperNodeQueue    workqueue.TypedRateLimitingInterface[string]
 
-	configMapInformer corev1.ConfigMapInformer
+	configMapInformer coreinformers.ConfigMapInformer
 	configMapLister   listersv1.ConfigMapLister
 	configMapQueue    workqueue.TypedRateLimitingInterface[string]
 
@@ -86,9 +88,13 @@ func (hn *hyperNodeController) Run(stopCh <-chan struct{}) {
 	}
 	go hn.watchDiscoveryResults()
 
+	// Start HyperNode queue processor
+	go hn.processHyperNodeQueue()
+
 	klog.InfoS("HyperNode controller started")
 	<-stopCh
 	hn.discoveryManager.Stop()
+	hn.hyperNodeQueue.ShutDown()
 	klog.InfoS("HyperNode controller stopped")
 }
 
@@ -106,6 +112,7 @@ func (hn *hyperNodeController) Initialize(opt *framework.ControllerOption) error
 
 	hn.hyperNodeInformer = hn.vcInformerFactory.Topology().V1alpha1().HyperNodes()
 	hn.hyperNodeLister = hn.hyperNodeInformer.Lister()
+	hn.hyperNodeQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
 
 	hn.setConfigMapNamespaceAndName()
 	hn.setupConfigMapInformer()
@@ -119,6 +126,12 @@ func (hn *hyperNodeController) Initialize(opt *framework.ControllerOption) error
 	)
 
 	hn.discoveryManager = discovery.NewManager(configLoader, hn.configMapQueue, hn.kubeClient)
+
+	// Add event handlers for HyperNode
+	hn.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    hn.addHyperNode,
+		UpdateFunc: hn.updateHyperNode,
+	})
 
 	return nil
 }
