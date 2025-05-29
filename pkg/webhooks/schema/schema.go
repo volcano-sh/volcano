@@ -29,6 +29,7 @@ import (
 	corev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	hypernodev1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 )
@@ -148,4 +149,24 @@ func DecodeHyperNode(object runtime.RawExtension, resource metav1.GroupVersionRe
 	}
 
 	return &hypernode, nil
+}
+
+// DecodeJobFlow decodes the job using deserializer from the raw object.
+func DecodeJobFlow(object runtime.RawExtension, resource metav1.GroupVersionResource) (*flowv1alpha1.JobFlow, error) {
+	jobFlowResource := metav1.GroupVersionResource{Group: flowv1alpha1.SchemeGroupVersion.Group, Version: flowv1alpha1.SchemeGroupVersion.Version, Resource: "jobflows"}
+	raw := object.Raw
+	jobFlow := flowv1alpha1.JobFlow{}
+
+	if resource != jobFlowResource {
+		klog.Errorf("expect resource to be %s", jobFlowResource)
+		return &jobFlow, fmt.Errorf("expect resource to be %s", jobFlowResource)
+	}
+
+	deserializer := Codecs.UniversalDeserializer()
+	if _, _, err := deserializer.Decode(raw, nil, &jobFlow); err != nil {
+		return &jobFlow, err
+	}
+	klog.V(3).Infof("the jobflow struct is %+v", jobFlow)
+
+	return &jobFlow, nil
 }
