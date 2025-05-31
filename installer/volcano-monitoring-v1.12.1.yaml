@@ -1,0 +1,590 @@
+---
+# Source: volcano/templates/prometheus.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-server-conf
+  labels:
+    name: prometheus-server-conf
+  namespace: volcano-monitoring
+data:
+  prometheus.rules: |-
+    groups:
+    - name: devopscube demo alert
+      rules:
+      - alert: High Pod Memory
+        expr: sum(container_memory_usage_bytes) > 1
+        for: 1m
+        labels:
+          severity: slack
+        annotations:
+          summary: High Memory Usage
+  prometheus.yml: |-
+    global:
+      scrape_interval: 5s
+      evaluation_interval: 5s
+    rule_files:
+      - /etc/prometheus/prometheus.rules
+    alerting:
+      alertmanagers:
+      - scheme: http
+        static_configs:
+        - targets:
+          - "alertmanager.monitoring.svc:9093"
+
+    scrape_configs:
+      - job_name: 'kubernetes-apiservers'
+
+        kubernetes_sd_configs:
+        - role: endpoints
+        scheme: https
+
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: default;kubernetes;https
+
+      - job_name: 'kubernetes-nodes'
+
+        scheme: https
+
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+        kubernetes_sd_configs:
+        - role: node
+
+        relabel_configs:
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+        - target_label: __address__
+          replacement: kubernetes.default.svc:443
+        - source_labels: [__meta_kubernetes_node_name]
+          regex: (.+)
+          target_label: __metrics_path__
+          replacement: /api/v1/nodes/${1}/proxy/metrics
+
+      
+      - job_name: 'kubernetes-pods'
+
+        kubernetes_sd_configs:
+        - role: pod
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          target_label: __address__
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(.+)
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: kubernetes_namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: kubernetes_pod_name
+      
+      - job_name: 'kube-state-metrics'
+        static_configs:
+          - targets: ['kube-state-metrics.volcano-monitoring.svc.cluster.local:8080']
+
+      - job_name: 'kubernetes-cadvisor'
+
+        scheme: https
+
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+        kubernetes_sd_configs:
+        - role: node
+
+        relabel_configs:
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+        - target_label: __address__
+          replacement: kubernetes.default.svc:443
+        - source_labels: [__meta_kubernetes_node_name]
+          regex: (.+)
+          target_label: __metrics_path__
+          replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+      
+      - job_name: 'kubernetes-service-endpoints'
+
+        kubernetes_sd_configs:
+        - role: endpoints
+
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+          action: replace
+          target_label: __scheme__
+          regex: (https?)
+        - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+          action: replace
+          target_label: __address__
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+        - action: labelmap
+          regex: __meta_kubernetes_service_label_(.+)
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: kubernetes_namespace
+        - source_labels: [__meta_kubernetes_service_name]
+          action: replace
+          target_label: kubernetes_name
+---
+# Source: volcano/templates/prometheus.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-volcano
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - extensions
+  resources:
+  - ingresses
+  verbs: ["get", "list", "watch"]
+- nonResourceURLs: ["/metrics"]
+  verbs: ["get"]
+---
+# Source: volcano/templates/prometheus.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-volcano
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-volcano
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: volcano-monitoring
+---
+# Source: volcano/templates/prometheus.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+  namespace: volcano-monitoring
+  annotations:
+      prometheus.io/scrape: 'true'
+      prometheus.io/port:   '9090'
+  
+spec:
+  selector: 
+    app: prometheus-server
+  type: NodePort  
+  ports:
+    - port: 8080
+      targetPort: 9090 
+      nodePort: 30003
+---
+# Source: volcano/templates/prometheus.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-deployment
+  namespace: volcano-monitoring
+  labels:
+    app: prometheus-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-server
+  template:
+    metadata:
+      labels:
+        app: prometheus-server
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus/"
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: prometheus-config-volume
+              mountPath: /etc/prometheus/
+            - name: prometheus-storage-volume
+              mountPath: /prometheus/
+      volumes:
+        - name: prometheus-config-volume
+          configMap:
+            defaultMode: 420
+            name: prometheus-server-conf
+  
+        - name: prometheus-storage-volume
+          emptyDir: {}
+---
+# Source: volcano/templates/kubestatemetrics.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: kube-state-metrics
+  name: kube-state-metrics
+  namespace: volcano-monitoring
+---
+# Source: volcano/templates/kubestatemetrics.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: kube-state-metrics
+  name: kube-state-metrics
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - secrets
+  - nodes
+  - pods
+  - services
+  - resourcequotas
+  - replicationcontrollers
+  - limitranges
+  - persistentvolumeclaims
+  - persistentvolumes
+  - namespaces
+  - endpoints
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - extensions
+  resources:
+  - daemonsets
+  - deployments
+  - replicasets
+  - ingresses
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  - daemonsets
+  - deployments
+  - replicasets
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  - jobs
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+- apiGroups:
+  - policy
+  resources:
+  - poddisruptionbudgets
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - storageclasses
+  - volumeattachments
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  verbs:
+  - list
+  - watch
+---
+# Source: volcano/templates/kubestatemetrics.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: kube-state-metrics
+  name: kube-state-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-state-metrics
+subjects:
+- kind: ServiceAccount
+  name: kube-state-metrics
+  namespace: volcano-monitoring
+---
+# Source: volcano/templates/kubestatemetrics.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/name: kube-state-metrics
+  name: kube-state-metrics
+  namespace: volcano-monitoring
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8080"
+    prometheus.io/scrape: "true"
+spec:
+  ports:
+  - name: http-metrics
+    port: 8080
+    targetPort: http-metrics
+  - name: telemetry
+    port: 8081
+    targetPort: telemetry
+  selector:
+    k8s-app: kube-state-metrics
+---
+# Source: volcano/templates/kubestatemetrics.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: volcano-monitoring
+  labels:
+    k8s-app: kube-state-metrics
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: kube-state-metrics
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        k8s-app: kube-state-metrics
+    spec:
+      containers:
+        - image: docker.io/volcanosh/kube-state-metrics:v2.0.0-beta
+          imagePullPolicy: Always
+          name: kube-state-metrics
+          ports:
+            - name: http-metrics
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+      dnsPolicy: ClusterFirst
+      
+      serviceAccountName: kube-state-metrics
+---
+# Source: volcano/templates/grafana.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: volcano-monitoring
+data:
+  prometheus.yaml: |-
+    {
+        "apiVersion": 1,
+        "datasources": [
+            {
+               "access":"proxy",
+               "editable": true,
+               "isDefault": true,
+               "name": "prometheus",
+               "orgId": 1,
+               "type": "prometheus",
+               "url": "http://prometheus-service.volcano-monitoring.svc:8080",
+               "version": 1
+            }
+        ]
+    }
+---
+# Source: volcano/templates/grafana.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-volcano-dashboard-config
+  namespace: volcano-monitoring
+data:
+  dashboard.yaml: |-
+    apiVersion: 1
+    providers:
+    - name: dashboards
+      type: file
+      updateIntervalSeconds: 30
+      options:
+        path: /var/lib/grafana/dashboards 
+        foldersFromFilesStructure: true
+---
+# Source: volcano/templates/grafana.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-volcano-dashboard
+  namespace: volcano-monitoring
+data:
+  volcano-global-overview-dashboard.json: |-
+    {"annotations":{"list":[{"builtIn":1,"datasource":"prometheus","enable":true,"hide":true,"iconColor":"rgba(0, 211, 255, 1)","name":"Annotations & Alerts","type":"dashboard"}]},"editable":true,"gnetId":null,"graphTooltip":0,"id":2,"links":[],"panels":[{"datasource":null,"fieldConfig":{"defaults":{"color":{"mode":"palette-classic"},"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[]},"gridPos":{"h":5,"w":3,"x":0,"y":0},"id":20,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["lastNotNull"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"count(max_over_time(kube_pod_container_status_running{job=\"kube-state-metrics\"}[1h]) != 0)","interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"TPH –Schedule Task In 1 Hour","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[]},"gridPos":{"h":5,"w":3,"x":3,"y":0},"id":21,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["lastNotNull"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"sum(kube_node_info{job=\"kube-state-metrics\"})","interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Volcano Node","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[]},"gridPos":{"h":5,"w":3,"x":6,"y":0},"id":23,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["lastNotNull"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"kube_node_status_capacity{resource=\"nvidia_com_gpu\",job=\"kube-state-metrics\"}","interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Volcano GPU","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"percentage","steps":[{"color":"green","value":null},{"color":"red","value":80}]},"unit":"bytes"},"overrides":[]},"gridPos":{"h":5,"w":3,"x":9,"y":0},"id":24,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["lastNotNull"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"sum(kube_node_status_capacity{job=\"kube-state-metrics\", resource=\"memory\"})","interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Volcano Memory","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[]},"gridPos":{"h":5,"w":3,"x":12,"y":0},"id":22,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["lastNotNull"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"sum(kube_node_status_capacity{job=\"kube-state-metrics\", resource=\"cpu\"})","interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Volcano CPU","type":"stat"},{"cards":{"cardPadding":null,"cardRound":null},"color":{"cardColor":"#b4ff00","colorScale":"sqrt","colorScheme":"interpolateOranges","exponent":0.5,"mode":"spectrum"},"dataFormat":"timeseries","datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"percentage","steps":[{"color":"green","value":null},{"color":"red","value":50}]},"unit":"none"},"overrides":[]},"gridPos":{"h":8,"w":16,"x":0,"y":5},"heatmap":{},"hideZeroBuckets":false,"highlightCards":true,"id":18,"legend":{"show":false},"pluginVersion":"7.3.4","reverseYBuckets":false,"targets":[{"expr":"increase(volcano_e2e_job_scheduling_latency_milliseconds_bucket[1h])","format":"heatmap","instant":false,"interval":"","legendFormat":"{{le}} ms","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Volcano Legency Heatmap","tooltip":{"show":true,"showHistogram":false},"transformations":[],"type":"heatmap","xAxis":{"show":true},"xBucketNumber":null,"xBucketSize":null,"yAxis":{"decimals":null,"format":"ms","logBase":2,"max":"500000","min":null,"show":true,"splitFactor":null},"yBucketBound":"auto","yBucketNumber":null,"yBucketSize":null},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"percentage","steps":[{"color":"green","value":null},{"color":"red","value":50}]},"unit":"ms"},"overrides":[]},"gridPos":{"h":7,"w":16,"x":0,"y":13},"id":26,"options":{"displayMode":"lcd","orientation":"horizontal","reduceOptions":{"calcs":["mean"],"fields":"","values":false},"showUnfilled":true},"pluginVersion":"7.3.4","targets":[{"expr":"avg(volcano_e2e_job_scheduling_duration{}) by (queue)","interval":"","legendFormat":"{{queue}}","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Volcano Job Scheduling Avg Duration By Queue In 24H","type":"bargauge"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{"align":null,"filterable":false},"mappings":[],"thresholds":{"mode":"percentage","steps":[{"color":"green","value":null},{"color":"red","value":80}]},"unit":"ms"},"overrides":[{"matcher":{"id":"byName","options":"Value"},"properties":[{"id":"custom.displayMode","value":"lcd-gauge"},{"id":"unit","value":"ms"}]},{"matcher":{"id":"byName","options":"job_namespace"},"properties":[{"id":"custom.width","value":279}]}]},"gridPos":{"h":7,"w":16,"x":0,"y":20},"id":27,"options":{"showHeader":true,"sortBy":[{"desc":true,"displayName":"Value"}]},"pluginVersion":"7.3.4","targets":[{"expr":"avg(volcano_e2e_job_scheduling_duration{}) by (job_namespace)","format":"table","instant":true,"interval":"","legendFormat":"Namespace: {{job_namespace}}","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Volcano Job Avg Scheduling Duration By Namespace In 24H","transformations":[{"id":"organize","options":{"excludeByName":{"Time":true},"indexByName":{},"renameByName":{}}}],"type":"table"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{"align":null,"filterable":false},"mappings":[],"thresholds":{"mode":"percentage","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[{"matcher":{"id":"byName","options":"Value"},"properties":[{"id":"custom.displayMode","value":"lcd-gauge"},{"id":"unit","value":"bytes"}]}]},"gridPos":{"h":8,"w":16,"x":0,"y":27},"id":29,"options":{"showHeader":true},"pluginVersion":"7.3.4","targets":[{"expr":"sum(kube_pod_volcano_container_resource_requests{resource=\"memory\", unit=\"byte\",job=\"kube-state-metrics\",queue!=\"\"}) by (queue)","format":"table","instant":true,"interval":"","legendFormat":"{{queue}}","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Volcano Resource Usage Sort By Queue In 24H","transformations":[{"id":"organize","options":{"excludeByName":{"Time":true},"indexByName":{},"renameByName":{}}}],"type":"table"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{"align":null,"filterable":false},"mappings":[],"thresholds":{"mode":"percentage","steps":[{"color":"green","value":null},{"color":"red","value":80}]},"unit":"bytes"},"overrides":[{"matcher":{"id":"byName","options":"Value"},"properties":[{"id":"custom.displayMode","value":"lcd-gauge"}]}]},"gridPos":{"h":8,"w":16,"x":0,"y":35},"id":30,"options":{"showHeader":true,"sortBy":[{"desc":true,"displayName":"Value"}]},"pluginVersion":"7.3.4","targets":[{"expr":"sum(kube_pod_volcano_container_resource_requests{resource=\"memory\", unit=\"byte\",job=\"kube-state-metrics\"}) by (volcano_namespace)","format":"table","instant":true,"interval":"","legendFormat":"Namespace : {{volcano_namespace}}","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Volcano Resource Usage Sort By Namespace In 24H","transformations":[{"id":"organize","options":{"excludeByName":{"Time":true},"indexByName":{},"renameByName":{}}}],"type":"table"},{"datasource":null,"fieldConfig":{"defaults":{"color":{"mode":"thresholds"},"custom":{"align":null,"filterable":false},"mappings":[],"thresholds":{"mode":"percentage","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[{"matcher":{"id":"byName","options":"Value"},"properties":[{"id":"custom.width","value":651},{"id":"custom.displayMode","value":"lcd-gauge"},{"id":"unit","value":"ms"},{"id":"thresholds","value":{"mode":"percentage","steps":[{"color":"green","value":null},{"color":"red","value":80}]}}]},{"matcher":{"id":"byName","options":"job_name"},"properties":[{"id":"custom.width","value":361}]},{"matcher":{"id":"byName","options":"Volcano Job"},"properties":[{"id":"custom.width","value":228}]}]},"gridPos":{"h":13,"w":16,"x":0,"y":43},"id":16,"options":{"frameIndex":1,"showHeader":true,"sortBy":[{"desc":true,"displayName":"Value"}]},"pluginVersion":"7.3.4","targets":[{"expr":"increase(volcano_e2e_job_scheduling_duration{}[24h]) != 0","format":"table","instant":true,"interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Volcano Job Running Legency","transformations":[{"id":"organize","options":{"excludeByName":{"Time":true,"__name__":true,"instance":true,"job":true,"kubernetes_name":true,"kubernetes_namespace":true},"indexByName":{},"renameByName":{"Time":"","job_name":"Volcano Job"}}}],"type":"table"},{"collapsed":false,"datasource":null,"gridPos":{"h":1,"w":24,"x":0,"y":56},"id":13,"panels":[],"title":"Volcano Fairness","type":"row"},{"aliasColors":{},"bars":false,"dashLength":10,"dashes":false,"datasource":null,"fieldConfig":{"defaults":{"custom":{}},"overrides":[]},"fill":1,"fillGradient":0,"gridPos":{"h":7,"w":16,"x":0,"y":57},"hiddenSeries":false,"id":14,"legend":{"avg":false,"current":false,"max":false,"min":false,"show":true,"total":false,"values":false},"lines":true,"linewidth":1,"links":[],"nullPointMode":"null","options":{"alertThreshold":true},"paceLength":10,"percentage":false,"pluginVersion":"7.3.4","pointradius":2,"points":false,"renderer":"flot","seriesOverrides":[],"spaceLength":10,"stack":false,"steppedLine":false,"targets":[{"expr":"stddev(volcano_e2e_job_scheduling_duration)/avg(volcano_e2e_job_scheduling_duration)","format":"time_series","intervalFactor":1,"legendFormat":"CV (Job Duration)","refId":"A"}],"thresholds":[],"timeFrom":null,"timeRegions":[],"timeShift":null,"title":"Job Duration Coefficient Of Variation","tooltip":{"shared":true,"sort":0,"value_type":"individual"},"transparent":true,"type":"graph","xaxis":{"buckets":null,"mode":"time","name":null,"show":true,"values":[]},"yaxes":[{"format":"percentunit","label":null,"logBase":1,"max":null,"min":null,"show":true},{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true}],"yaxis":{"align":false,"alignLevel":null}},{"collapsed":false,"datasource":null,"gridPos":{"h":1,"w":24,"x":0,"y":64},"id":11,"panels":[],"title":"Volcano Effectiveness","type":"row"},{"cacheTimeout":null,"colorBackground":false,"colorValue":false,"colors":["#299c46","rgba(237, 129, 40, 0.89)","#d44a3a"],"datasource":null,"fieldConfig":{"defaults":{"custom":{}},"overrides":[]},"format":"percentunit","gauge":{"maxValue":1,"minValue":0,"show":true,"thresholdLabels":false,"thresholdMarkers":true},"gridPos":{"h":8,"w":5,"x":0,"y":65},"id":2,"interval":null,"links":[],"mappingType":1,"mappingTypes":[{"name":"value to text","value":1},{"name":"range to text","value":2}],"maxDataPoints":100,"nullPointMode":"connected","nullText":null,"postfix":"","postfixFontSize":"50%","prefix":"","prefixFontSize":"50%","rangeMaps":[{"from":"null","text":"N/A","to":"null"}],"sparkline":{"fillColor":"rgba(31, 118, 189, 0.18)","full":false,"lineColor":"rgb(31, 120, 193)","show":false},"tableColumn":"","targets":[{"expr":"sum(\n(sum(kube_pod_container_resource_requests{resource=\"cpu\"}) by (pod,namespace)) * on(pod) (max(kube_pod_container_status_running{}) \nby (pod,namespace)))/\nsum(kube_node_status_allocatable{resource=\"cpu\", unit=\"core\"})","format":"time_series","instant":false,"interval":"","intervalFactor":1,"legendFormat":"","refId":"A"}],"thresholds":"0.7,0.9","timeFrom":null,"timeShift":null,"title":"Volcano Cluster Average CPU Usage","transparent":true,"type":"singlestat","valueFontSize":"80%","valueMaps":[{"op":"=","text":"N/A","value":"null"}],"valueName":"current"},{"cacheTimeout":null,"colorBackground":false,"colorValue":false,"colors":["#299c46","rgba(237, 129, 40, 0.89)","#d44a3a"],"datasource":null,"fieldConfig":{"defaults":{"custom":{}},"overrides":[]},"format":"percentunit","gauge":{"maxValue":1,"minValue":0,"show":true,"thresholdLabels":false,"thresholdMarkers":true},"gridPos":{"h":8,"w":5,"x":5,"y":65},"id":3,"interval":null,"links":[],"mappingType":1,"mappingTypes":[{"name":"value to text","value":1},{"name":"range to text","value":2}],"maxDataPoints":100,"nullPointMode":"connected","nullText":null,"postfix":"","postfixFontSize":"50%","prefix":"","prefixFontSize":"50%","rangeMaps":[{"from":"null","text":"N/A","to":"null"}],"sparkline":{"fillColor":"rgba(31, 118, 189, 0.18)","full":false,"lineColor":"rgb(31, 120, 193)","show":false},"tableColumn":"","targets":[{"expr":"sum((sum(kube_pod_container_resource_requests{resource=\"memory\"}) by (pod,namespace)) * on(pod) (max(kube_pod_container_status_running{}) by (pod,namespace)))/sum(kube_node_status_allocatable{resource=\"memory\", unit=\"byte\"})","format":"time_series","instant":false,"interval":"","intervalFactor":1,"legendFormat":"","refId":"A"}],"thresholds":"0.7,0.9","timeFrom":null,"timeShift":null,"title":"Volcano Cluster Average Memory Usage","transparent":true,"type":"singlestat","valueFontSize":"80%","valueMaps":[{"op":"=","text":"N/A","value":"null"}],"valueName":"current"},{"cacheTimeout":null,"colorBackground":false,"colorValue":false,"colors":["#299c46","rgba(237, 129, 40, 0.89)","#d44a3a"],"datasource":null,"fieldConfig":{"defaults":{"custom":{}},"overrides":[]},"format":"percentunit","gauge":{"maxValue":1,"minValue":0,"show":true,"thresholdLabels":false,"thresholdMarkers":true},"gridPos":{"h":8,"w":5,"x":10,"y":65},"id":4,"interval":null,"links":[],"mappingType":1,"mappingTypes":[{"name":"value to text","value":1},{"name":"range to text","value":2}],"maxDataPoints":100,"nullPointMode":"connected","nullText":null,"postfix":"","postfixFontSize":"50%","prefix":"","prefixFontSize":"50%","rangeMaps":[{"from":"null","text":"N/A","to":"null"}],"sparkline":{"fillColor":"rgba(31, 118, 189, 0.18)","full":false,"lineColor":"rgb(31, 120, 193)","show":false},"tableColumn":"","targets":[{"expr":"sum((sum(kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"}) by (pod,namespace)) * on(pod) (max(kube_pod_container_status_running{}) by (pod,namespace)))/sum(kube_node_status_capacity{resource=\"nvidia_com_gpu\"})","format":"time_series","instant":false,"interval":"","intervalFactor":1,"legendFormat":"","refId":"A"}],"thresholds":"0.7,0.9","timeFrom":null,"timeShift":null,"title":"Volcano Cluster Average GPU Usage","transparent":true,"type":"singlestat","valueFontSize":"80%","valueMaps":[{"op":"=","text":"N/A","value":"null"}],"valueName":"current"},{"aliasColors":{},"bars":false,"dashLength":10,"dashes":false,"datasource":null,"fieldConfig":{"defaults":{"custom":{}},"overrides":[]},"fill":1,"fillGradient":0,"gridPos":{"h":7,"w":16,"x":0,"y":73},"hiddenSeries":false,"id":6,"legend":{"avg":false,"current":false,"max":false,"min":false,"show":true,"total":false,"values":false},"lines":true,"linewidth":1,"links":[],"nullPointMode":"null","options":{"alertThreshold":true},"paceLength":10,"percentage":false,"pluginVersion":"7.3.4","pointradius":2,"points":false,"renderer":"flot","seriesOverrides":[],"spaceLength":10,"stack":false,"steppedLine":false,"targets":[{"expr":"stddev(sum by (node) (kube_pod_container_resource_requests{resource=\"cpu\"}))/avg(sum by (node) (kube_pod_container_resource_requests{resource=\"cpu\"}))","format":"time_series","intervalFactor":1,"legendFormat":"CV (CPU)","refId":"A"},{"expr":"stddev(sum by (node) (kube_pod_container_resource_requests{resource=\"memory\"}))/avg(sum by (node) (kube_pod_container_resource_requests{resource=\"memory\"}))","format":"time_series","intervalFactor":1,"legendFormat":"CV (Memory)","refId":"B"},{"expr":"stddev(sum by (node) (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"}))/avg(sum by (node) (kube_pod_container_resource_requests{resource=\"nvidia_com_gpu\"}))","format":"time_series","intervalFactor":1,"legendFormat":"CV (Nvidia GPU)","refId":"C"}],"thresholds":[],"timeFrom":null,"timeRegions":[],"timeShift":null,"title":"Node Resource Coefficient Of Variation","tooltip":{"shared":true,"sort":0,"value_type":"individual"},"transparent":true,"type":"graph","xaxis":{"buckets":null,"mode":"time","name":null,"show":true,"values":[]},"yaxes":[{"format":"percentunit","label":null,"logBase":1,"max":null,"min":null,"show":true},{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true}],"yaxis":{"align":false,"alignLevel":null}}],"refresh":false,"schemaVersion":26,"style":"dark","tags":[],"templating":{"list":[]},"time":{"from":"now-12h","to":"now"},"timepicker":{"refresh_intervals":["5s","10s","30s","1m","5m","15m","30m","1h","2h","1d"],"time_options":["5m","15m","1h","6h","12h","24h","2d","7d","30d"]},"timezone":"","title":"Volcano Global Overview Dashboard","uid":"nYn30KvMzf","version":19}
+  volcano-queue-overview-dashboard.json: |-
+    {"annotations":{"list":[{"builtIn":1,"datasource":"prometheus","enable":true,"hide":true,"iconColor":"rgba(0, 211, 255, 1)","name":"Annotations & Alerts","type":"dashboard"}]},"editable":true,"gnetId":null,"graphTooltip":0,"id":4,"iteration":1607928216980,"links":[],"panels":[{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[]},"gridPos":{"h":5,"w":3,"x":0,"y":0},"id":6,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["mean"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"sum(kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",queue=\"$queue\"}==1)","instant":true,"interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Running Job","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[]},"gridPos":{"h":5,"w":3,"x":3,"y":0},"id":16,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["lastNotNull"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"count(kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",queue=\"$queue\"}==0)","instant":false,"interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Finished Job","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[]},"gridPos":{"h":5,"w":3,"x":6,"y":0},"id":17,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["mean"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"count((max_over_time(kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",queue=\"$queue\"}[10m]) != 0) and kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",queue=\"$queue\"} == 0)","instant":true,"interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Last 10m Finished Job","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]},"unit":"short"},"overrides":[]},"gridPos":{"h":5,"w":3,"x":9,"y":0},"id":7,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["mean"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"cpu\",job=\"kube-state-metrics\",queue=\"$queue\"}) by (pod,namespace)) * on(pod) (max(kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",queue=\"$queue\"}) \nby (pod,namespace))) ","instant":true,"interval":"","legendFormat":"volcano_job","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Running CPU","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]},"unit":"short"},"overrides":[]},"gridPos":{"h":5,"w":3,"x":12,"y":0},"id":8,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["mean"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"gpu\",job=\"kube-state-metrics\",queue=\"$queue\"}) by (pod,namespace)) * on(pod) (max(kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",queue=\"$queue\"}) \nby (pod,namespace))) ","instant":true,"interval":"","legendFormat":"volcano_job","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Running GPU","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]},"unit":"bytes"},"overrides":[]},"gridPos":{"h":5,"w":3,"x":15,"y":0},"id":2,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["mean"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"memory\",job=\"kube-state-metrics\",queue=\"$queue\"}) by (pod,namespace)) * on(pod) (max(kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",queue=\"$queue\"}) \nby (pod,namespace))) ","instant":true,"interval":"","legendFormat":"volcano_job","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Running Memory","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{"align":null,"filterable":false},"mappings":[],"thresholds":{"mode":"percentage","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[{"matcher":{"id":"byName","options":"Time"},"properties":[{"id":"custom.width","value":195}]},{"matcher":{"id":"byName","options":"__name__"},"properties":[{"id":"custom.width","value":267}]},{"matcher":{"id":"byName","options":"Value"},"properties":[{"id":"custom.displayMode","value":"lcd-gauge"},{"id":"unit","value":"ms"}]}]},"gridPos":{"h":24,"w":12,"x":0,"y":5},"id":14,"options":{"showHeader":true,"sortBy":[{"desc":true,"displayName":"Value"}]},"pluginVersion":"7.3.4","targets":[{"expr":"increase(volcano_e2e_job_scheduling_duration{queue=\"$queue\"}[24h]) != 0  ","format":"table","instant":true,"interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Queue Running Job Legency","transformations":[{"id":"organize","options":{"excludeByName":{"Time":true,"__name__":true,"instance":true,"job":true,"kubernetes_name":true,"kubernetes_namespace":true},"indexByName":{},"renameByName":{}}}],"type":"table"},{"aliasColors":{},"bars":false,"dashLength":10,"dashes":false,"datasource":null,"fieldConfig":{"defaults":{"custom":{}},"overrides":[]},"fill":1,"fillGradient":0,"gridPos":{"h":8,"w":12,"x":12,"y":5},"hiddenSeries":false,"id":12,"legend":{"avg":false,"current":false,"max":false,"min":false,"show":true,"total":false,"values":false},"lines":true,"linewidth":1,"nullPointMode":"null","options":{"alertThreshold":true},"percentage":false,"pluginVersion":"7.3.4","pointradius":2,"points":false,"renderer":"flot","seriesOverrides":[],"spaceLength":10,"stack":false,"steppedLine":false,"targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"cpu\",job=\"kube-state-metrics\",queue=\"$queue\"}) by (pod,namespace)) * on(pod) (max(kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",queue=\"$queue\"}) \nby (pod,namespace))) ","interval":"","legendFormat":"CPU Cores","refId":"A"}],"thresholds":[],"timeFrom":null,"timeRegions":[],"timeShift":null,"title":"Queue Running CPU","tooltip":{"shared":true,"sort":0,"value_type":"individual"},"type":"graph","xaxis":{"buckets":null,"mode":"time","name":null,"show":true,"values":[]},"yaxes":[{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true},{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true}],"yaxis":{"align":false,"alignLevel":null}},{"aliasColors":{},"bars":false,"dashLength":10,"dashes":false,"datasource":null,"fieldConfig":{"defaults":{"custom":{},"unit":"bytes"},"overrides":[]},"fill":1,"fillGradient":0,"gridPos":{"h":8,"w":12,"x":12,"y":13},"hiddenSeries":false,"id":10,"legend":{"avg":false,"current":false,"max":false,"min":false,"show":true,"total":false,"values":false},"lines":true,"linewidth":1,"nullPointMode":"null","options":{"alertThreshold":true},"percentage":false,"pluginVersion":"7.3.4","pointradius":2,"points":false,"renderer":"flot","seriesOverrides":[],"spaceLength":10,"stack":false,"steppedLine":false,"targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"memory\",job=\"kube-state-metrics\",queue=\"$queue\"}) by (pod,namespace)) * on(pod) (max(kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",queue=\"$queue\"}) \nby (pod,namespace))) ","interval":"","legendFormat":"","refId":"A"}],"thresholds":[],"timeFrom":null,"timeRegions":[],"timeShift":null,"title":"Queue Running Memory ","tooltip":{"shared":true,"sort":0,"value_type":"individual"},"type":"graph","xaxis":{"buckets":null,"mode":"time","name":null,"show":true,"values":[]},"yaxes":[{"format":"bytes","label":null,"logBase":1,"max":null,"min":null,"show":true},{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true}],"yaxis":{"align":false,"alignLevel":null}},{"aliasColors":{},"bars":false,"dashLength":10,"dashes":false,"datasource":null,"fieldConfig":{"defaults":{"custom":{}},"overrides":[]},"fill":1,"fillGradient":0,"gridPos":{"h":8,"w":12,"x":12,"y":21},"hiddenSeries":false,"id":11,"legend":{"avg":false,"current":false,"max":false,"min":false,"show":true,"total":false,"values":false},"lines":true,"linewidth":1,"nullPointMode":"null","options":{"alertThreshold":true},"percentage":false,"pluginVersion":"7.3.4","pointradius":2,"points":false,"renderer":"flot","seriesOverrides":[],"spaceLength":10,"stack":false,"steppedLine":false,"targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"gpu\",job=\"kube-state-metrics\",volcano_namespace=\"$namespace\"}) by (pod,namespace)) * on(pod) (max(kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",queue=\"$queue\"}) \nby (pod,namespace))) ","interval":"","legendFormat":"GPU Cards","refId":"A"}],"thresholds":[],"timeFrom":null,"timeRegions":[],"timeShift":null,"title":"Queue Running GPU","tooltip":{"shared":true,"sort":0,"value_type":"individual"},"type":"graph","xaxis":{"buckets":null,"mode":"time","name":null,"show":true,"values":[]},"yaxes":[{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true},{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true}],"yaxis":{"align":false,"alignLevel":null}}],"schemaVersion":26,"style":"dark","tags":[],"templating":{"list":[{"allValue":null,"current":{"selected":false,"text":"default","value":"default"},"datasource":"prometheus","definition":"label_values(volcano_queue_share,queue_name)","error":null,"hide":0,"includeAll":false,"label":null,"multi":false,"name":"queue","options":[],"query":"label_values(volcano_queue_share,queue_name)","refresh":1,"regex":"","skipUrlSync":false,"sort":0,"tagValuesQuery":"","tags":[],"tagsQuery":"","type":"query","useTags":false}]},"time":{"from":"now-6h","to":"now"},"timepicker":{},"timezone":"","title":"Volcano Queue View","uid":"sAtQfo1Mk","version":8}
+  volcano-namespace-overview-dashboard.json: |-
+    {"annotations":{"list":[{"builtIn":1,"datasource":"prometheus","enable":true,"hide":true,"iconColor":"rgba(0, 211, 255, 1)","name":"Annotations & Alerts","type":"dashboard"}]},"editable":true,"gnetId":null,"graphTooltip":0,"id":3,"iteration":1607928231899,"links":[],"panels":[{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[]},"gridPos":{"h":5,"w":3,"x":0,"y":0},"id":6,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["mean"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"sum(kube_pod_container_status_running{job=\"kube-state-metrics\",namespace=\"$namespace\"}==1)","instant":true,"interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Running Job","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[]},"gridPos":{"h":5,"w":3,"x":3,"y":0},"id":16,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["lastNotNull"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"count(kube_pod_container_status_running{job=\"kube-state-metrics\",namespace=\"$namespace\"}==0)","instant":false,"interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Finished Job Total","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[]},"gridPos":{"h":5,"w":3,"x":6,"y":0},"id":17,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["mean"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"count((max_over_time(kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",namespace=\"$namespace\"}[10m]) != 0) and kube_pod_volcano_container_status_running{job=\"kube-state-metrics\",namespace=\"$namespace\"} == 0)","instant":true,"interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Last 10m Finished Job","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]},"unit":"short"},"overrides":[]},"gridPos":{"h":5,"w":3,"x":9,"y":0},"id":7,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["mean"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"cpu\",job=\"kube-state-metrics\",volcano_namespace=\"$namespace\"}) by (pod,namespace)) * on(pod) (max(kube_pod_container_status_running{job=\"kube-state-metrics\"}) \nby (pod,namespace))) ","instant":true,"interval":"","legendFormat":"volcano_job","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Running CPU","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]},"unit":"short"},"overrides":[]},"gridPos":{"h":5,"w":3,"x":12,"y":0},"id":8,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["mean"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"gpu\",job=\"kube-state-metrics\",volcano_namespace=\"$namespace\"}) by (pod,namespace)) * on(pod) (max(kube_pod_container_status_running{job=\"kube-state-metrics\"}) \nby (pod,namespace))) ","instant":true,"interval":"","legendFormat":"volcano_job","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Running GPU","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]},"unit":"bytes"},"overrides":[]},"gridPos":{"h":5,"w":3,"x":15,"y":0},"id":2,"options":{"colorMode":"value","graphMode":"area","justifyMode":"auto","orientation":"auto","reduceOptions":{"calcs":["mean"],"fields":"","values":false},"textMode":"auto"},"pluginVersion":"7.3.4","targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"memory\",job=\"kube-state-metrics\",volcano_namespace=\"$namespace\"}) by (pod,namespace)) * on(pod) (max(kube_pod_container_status_running{job=\"kube-state-metrics\"}) \nby (pod,namespace))) ","instant":true,"interval":"","legendFormat":"volcano_job","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Running Memory","type":"stat"},{"datasource":null,"fieldConfig":{"defaults":{"custom":{"align":null,"filterable":false},"mappings":[],"thresholds":{"mode":"absolute","steps":[{"color":"green","value":null},{"color":"red","value":80}]}},"overrides":[{"matcher":{"id":"byName","options":"Time"},"properties":[{"id":"custom.width","value":195}]},{"matcher":{"id":"byName","options":"__name__"},"properties":[{"id":"custom.width","value":267}]},{"matcher":{"id":"byName","options":"Value"},"properties":[{"id":"custom.displayMode","value":"lcd-gauge"},{"id":"unit","value":"ms"}]}]},"gridPos":{"h":24,"w":12,"x":0,"y":5},"id":14,"options":{"showHeader":true,"sortBy":[{"desc":true,"displayName":"Value"}]},"pluginVersion":"7.3.4","targets":[{"expr":"increase(volcano_e2e_job_scheduling_duration{job_namespace=\"$namespace\"}[24h]) != 0 ","format":"table","instant":true,"interval":"","legendFormat":"","refId":"A"}],"timeFrom":null,"timeShift":null,"title":"Namespace Running Job Legency In 24H","transformations":[{"id":"organize","options":{"excludeByName":{"Time":true,"__name__":true,"instance":true,"job":true,"kubernetes_name":true,"kubernetes_namespace":true},"indexByName":{},"renameByName":{}}}],"type":"table"},{"aliasColors":{},"bars":false,"dashLength":10,"dashes":false,"datasource":null,"fieldConfig":{"defaults":{"custom":{}},"overrides":[]},"fill":1,"fillGradient":0,"gridPos":{"h":8,"w":12,"x":12,"y":5},"hiddenSeries":false,"id":12,"legend":{"avg":false,"current":false,"max":false,"min":false,"show":true,"total":false,"values":false},"lines":true,"linewidth":1,"nullPointMode":"null","options":{"alertThreshold":true},"percentage":false,"pluginVersion":"7.3.4","pointradius":2,"points":false,"renderer":"flot","seriesOverrides":[],"spaceLength":10,"stack":false,"steppedLine":false,"targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"cpu\",job=\"kube-state-metrics\",volcano_namespace=\"$namespace\"}) by (pod,namespace)) * on(pod) (max(kube_pod_container_status_running{job=\"kube-state-metrics\"}) \nby (pod,namespace))) ","interval":"","legendFormat":"CPU Cores","refId":"A"}],"thresholds":[],"timeFrom":null,"timeRegions":[],"timeShift":null,"title":"Namespace Running CPU","tooltip":{"shared":true,"sort":0,"value_type":"individual"},"type":"graph","xaxis":{"buckets":null,"mode":"time","name":null,"show":true,"values":[]},"yaxes":[{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true},{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true}],"yaxis":{"align":false,"alignLevel":null}},{"aliasColors":{},"bars":false,"dashLength":10,"dashes":false,"datasource":null,"fieldConfig":{"defaults":{"custom":{},"unit":"bytes"},"overrides":[]},"fill":1,"fillGradient":0,"gridPos":{"h":8,"w":12,"x":12,"y":13},"hiddenSeries":false,"id":10,"legend":{"avg":false,"current":false,"max":false,"min":false,"show":true,"total":false,"values":false},"lines":true,"linewidth":1,"nullPointMode":"null","options":{"alertThreshold":true},"percentage":false,"pluginVersion":"7.3.4","pointradius":2,"points":false,"renderer":"flot","seriesOverrides":[],"spaceLength":10,"stack":false,"steppedLine":false,"targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"memory\",job=\"kube-state-metrics\",volcano_namespace=\"$namespace\"}) by (pod,namespace)) * on(pod) (max(kube_pod_container_status_running{job=\"kube-state-metrics\"}) \nby (pod,namespace))) ","interval":"","legendFormat":"Memory Bytes","refId":"A"}],"thresholds":[],"timeFrom":null,"timeRegions":[],"timeShift":null,"title":"Namespace Running Memory ","tooltip":{"shared":true,"sort":0,"value_type":"individual"},"type":"graph","xaxis":{"buckets":null,"mode":"time","name":null,"show":true,"values":[]},"yaxes":[{"format":"bytes","label":null,"logBase":1,"max":null,"min":null,"show":true},{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true}],"yaxis":{"align":false,"alignLevel":null}},{"aliasColors":{},"bars":false,"dashLength":10,"dashes":false,"datasource":null,"fieldConfig":{"defaults":{"custom":{}},"overrides":[]},"fill":1,"fillGradient":0,"gridPos":{"h":8,"w":12,"x":12,"y":21},"hiddenSeries":false,"id":11,"legend":{"avg":false,"current":false,"max":false,"min":false,"show":true,"total":false,"values":false},"lines":true,"linewidth":1,"nullPointMode":"null","options":{"alertThreshold":true},"percentage":false,"pluginVersion":"7.3.4","pointradius":2,"points":false,"renderer":"flot","seriesOverrides":[],"spaceLength":10,"stack":false,"steppedLine":false,"targets":[{"expr":"sum(\n(sum(kube_pod_volcano_container_resource_requests{resource=\"gpu\",job=\"kube-state-metrics\",volcano_namespace=\"$namespace\"}) by (pod,namespace)) * on(pod) (max(kube_pod_container_status_running{job=\"kube-state-metrics\"}) \nby (pod,namespace))) ","interval":"","legendFormat":"GPU Cards","refId":"A"}],"thresholds":[],"timeFrom":null,"timeRegions":[],"timeShift":null,"title":"Namespace Running GPU","tooltip":{"shared":true,"sort":0,"value_type":"individual"},"type":"graph","xaxis":{"buckets":null,"mode":"time","name":null,"show":true,"values":[]},"yaxes":[{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true},{"format":"short","label":null,"logBase":1,"max":null,"min":null,"show":true}],"yaxis":{"align":false,"alignLevel":null}}],"schemaVersion":26,"style":"dark","tags":[],"templating":{"list":[{"allValue":null,"current":{"selected":false,"text":"yu7gvcjd","value":"yu7gvcjd"},"datasource":"prometheus","definition":"label_values(kube_namespace_labels, namespace)","error":null,"hide":0,"includeAll":false,"label":null,"multi":false,"name":"namespace","options":[],"query":"label_values(kube_namespace_labels, namespace)","refresh":1,"regex":"","skipUrlSync":false,"sort":0,"tagValuesQuery":"","tags":[],"tagsQuery":"","type":"query","useTags":false}]},"time":{"from":"now-6h","to":"now"},"timepicker":{},"timezone":"","title":"Volcano Namespace  View","uid":"TWuLSpJMk","version":14}
+---
+# Source: volcano/templates/grafana.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: volcano-monitoring
+  annotations:
+      prometheus.io/scrape: 'true'
+      prometheus.io/port:   '3000'
+spec:
+  selector: 
+    app: grafana
+  type: NodePort  
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30004
+---
+# Source: volcano/templates/grafana.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: volcano-monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      name: grafana
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        ports:
+        - name: grafana
+          containerPort: 3000
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+          requests: 
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+          - mountPath: /var/lib/grafana
+            name: grafana-storage
+          - mountPath: /etc/grafana/provisioning/datasources
+            name: grafana-datasources
+            readOnly: false
+          - mountPath: /var/lib/grafana/dashboards
+            name: grafana-volcano-dashboard 
+            readOnly: false 
+          - mountPath: /etc/grafana/provisioning/dashboards 
+            name: grafana-volcano-dashboard-config
+            readOnly: true
+      volumes:
+        - name: grafana-storage
+          emptyDir: {}
+        - name: grafana-volcano-dashboard
+          configMap:
+              defaultMode: 420
+              name: grafana-volcano-dashboard
+        - name: grafana-datasources
+          configMap:
+              defaultMode: 420
+              name: grafana-datasources
+        - name: grafana-volcano-dashboard-config
+          configMap:
+              defaultMode: 420
+              name: grafana-volcano-dashboard-config
