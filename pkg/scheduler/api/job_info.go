@@ -74,8 +74,12 @@ type TransactionContext struct {
 	EvictionOccurred      bool
 	JobAllocatedHyperNode string
 	Status                TaskStatus
-	ReservationTaskInfo   *TaskInfo
-	ReservationNodeName   string
+}
+
+// ReservationContext holds all the fields that needed by reservation scheduling
+type ReservationContext struct {
+	ReservationTaskInfo *TaskInfo
+	ReservationNodeName string
 }
 
 // Clone returns a clone of TransactionContext
@@ -120,6 +124,7 @@ type TaskInfo struct {
 	InitResreq *Resource
 
 	TransactionContext
+	ReservationContext
 	// LastTransaction holds the context of last scheduling transaction
 	LastTransaction *TransactionContext
 
@@ -307,8 +312,10 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		NumaInfo:                    ti.NumaInfo.Clone(),
 		SchGated:                    ti.SchGated,
 		TransactionContext: TransactionContext{
-			NodeName:            ti.NodeName,
-			Status:              ti.Status,
+			NodeName: ti.NodeName,
+			Status:   ti.Status,
+		},
+		ReservationContext: ReservationContext{
 			ReservationTaskInfo: ti.ReservationTaskInfo,
 			ReservationNodeName: ti.ReservationNodeName,
 		},
