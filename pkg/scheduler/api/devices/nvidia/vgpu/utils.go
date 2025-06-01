@@ -353,16 +353,14 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 	if !checkVGPUResourcesInPod(pod) {
 		return true, []ContainerDevices{}, 0, nil
 	}
+
+	// if the pod specify the sharing mode but the device is not in the same mode, return not fitted;
+	// if the pod does not speficy the sharing mode, any device mode will be fitted
 	podSharingMode, ok := pod.Annotations[GPUModeAnnotation]
-	if !ok {
-		podSharingMode = vGPUControllerHAMICore
+	if ok && podSharingMode != gssnap.Mode {
+		return false, []ContainerDevices{}, 0, fmt.Errorf("pod required sharing mode %s is not the same as the node mode %s", podSharingMode, gssnap.Mode)
 	}
-	podSharingMode = getSharingMode(podSharingMode)
-	// if the pod requires mig but the device is not in mig mode, return not fitted;
-	// if the pod does not speficy the sharing mode, then any device mode will be fitted
-	if podSharingMode == vGPUControllerMIG && gssnap.Mode != vGPUControllerMIG {
-		return false, []ContainerDevices{}, 0, fmt.Errorf("pod required MIG but the node is not in MIG mode")
-	}
+
 	ctrReq := resourcereqs(pod)
 	if len(ctrReq) == 0 {
 		return true, []ContainerDevices{}, 0, nil
