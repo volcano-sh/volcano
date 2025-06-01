@@ -68,6 +68,7 @@ import (
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 
 	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
@@ -149,10 +150,11 @@ type SchedulerCache struct {
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
-	errTasks        workqueue.TypedRateLimitingInterface[string]
-	nodeQueue       workqueue.TypedRateLimitingInterface[string]
-	DeletedJobs     workqueue.TypedRateLimitingInterface[*schedulingapi.JobInfo]
-	hyperNodesQueue workqueue.TypedRateLimitingInterface[string]
+	errTasks            workqueue.TypedRateLimitingInterface[string]
+	nodeQueue           workqueue.TypedRateLimitingInterface[string]
+	DeletedJobs         workqueue.TypedRateLimitingInterface[*schedulingapi.JobInfo]
+	hyperNodesQueue     workqueue.TypedRateLimitingInterface[string]
+	DeletedReservations workqueue.TypedRateLimitingInterface[*schedulingapi.ReservationInfo]
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -521,6 +523,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[*schedulingapi.JobInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.JobInfo]()),
 		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		DeletedReservations: workqueue.NewTypedRateLimitingQueue[*schedulingapi.ReservationInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.ReservationInfo]()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
 		restConfig:          config,
@@ -796,6 +799,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	// Cleanup jobs.
 	go wait.Until(sc.processCleanupJob, 0, stopCh)
 
+	// Cleanup reservations.
+	go wait.Until(sc.processCleanupReservation, 0, stopCh)
+
 	go wait.Until(sc.processBindTask, time.Millisecond*20, stopCh)
 
 	// Get metrics data
@@ -806,6 +812,8 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	}
 	klog.V(3).Infof("The interval for querying metrics data is %v", interval)
 	go wait.Until(sc.GetMetricsData, interval, stopCh)
+
+	go wait.Until(sc.gcExpiredReservationsOnce, time.Millisecond*20, stopCh)
 }
 
 // WaitForCacheSync sync the cache with the api server
@@ -1785,4 +1793,49 @@ func (sc *SchedulerCache) RegisterBinder(name string, binder interface{}) {
 		sc.binderRegistry = NewBinderRegistry()
 	}
 	sc.binderRegistry.Register(name, binder)
+}
+
+func (sc *SchedulerCache) cleanReservation(reservation *schedulingapi.ReservationInfo) {
+	rs := reservation.Reservation
+	klog.V(3).Infof("Try to delete Reservation <%v:%v/%v>", rs.UID, rs.Namespace, rs.Name)
+
+	sc.DeletedReservations.Add(reservation)
+}
+
+func (sc *SchedulerCache) retryCleanReservation(reservation *schedulingapi.ReservationInfo) {
+	rs := reservation.Reservation
+	klog.V(3).Infof("Retry to delete Reservation <%v:%v/%v>", rs.UID, rs.Namespace, rs.Name)
+
+	sc.DeletedReservations.AddRateLimited(reservation)
+}
+
+func (sc *SchedulerCache) processCleanupReservation() {
+	reservation, shutdown := sc.DeletedReservations.Get()
+	if shutdown {
+		return
+	}
+
+	defer sc.DeletedReservations.Done(reservation)
+
+	if !isReservationNeedExpiration(reservation, time.Now()) {
+		klog.V(4).Infof("Reservation %s not expired or no need to clean yet, skipping", reservation.Reservation.Name)
+		sc.DeletedReservations.Forget(reservation)
+		return
+	}
+
+	err := sc.gcReservation(reservation)
+	if err != nil {
+		klog.Errorf("Failed to GC reservation %s: %v, and will retry...", reservation.Reservation.Name, err)
+		sc.retryCleanReservation(reservation)
+	} else {
+		sc.DeletedReservations.Forget(reservation)
+	}
+}
+
+func (sc *SchedulerCache) gcExpiredReservationsOnce() {
+	now := time.Now()
+	sc.ReservationCache.ScanExpiredReservations(now, func(reservation *schedulingapi.ReservationInfo) {
+		klog.V(4).Infof("Reservation %s expired, enqueuing for deletion", reservation.Reservation.Name)
+		sc.DeletedReservations.Add(reservation)
+	})
 }

@@ -20,8 +20,10 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -35,19 +37,17 @@ import (
 
 type ReservationCache struct {
 	sync.RWMutex
-	vcClient        vcclientset.Interface
-	reservations    map[types.UID]*schedulerapi.ReservationInfo
-	nameToUID       map[string]types.UID
-	nodesToTaskInfo map[string]*schedulerapi.TaskInfo
+	vcClient     vcclientset.Interface
+	reservations map[types.UID]*schedulerapi.ReservationInfo
+	nameToUID    map[string]types.UID
 }
 
 func newReservationCache(vcClient vcclientset.Interface) *ReservationCache {
 	return &ReservationCache{
-		RWMutex:         sync.RWMutex{},
-		vcClient:        vcClient,
-		reservations:    make(map[types.UID]*schedulerapi.ReservationInfo),
-		nameToUID:       make(map[string]types.UID),
-		nodesToTaskInfo: make(map[string]*schedulerapi.TaskInfo),
+		RWMutex:      sync.RWMutex{},
+		vcClient:     vcClient,
+		reservations: make(map[types.UID]*schedulerapi.ReservationInfo),
+		nameToUID:    make(map[string]types.UID),
 	}
 }
 
@@ -57,7 +57,6 @@ func (rc *ReservationCache) AddReservation(reservation *schedulerapi.Reservation
 
 	rc.reservations[reservation.Reservation.UID] = reservation
 	rc.nameToUID[reservation.Reservation.Name] = reservation.Reservation.UID
-
 }
 
 func (rc *ReservationCache) DeleteReservation(reservationId types.UID) {
@@ -225,6 +224,53 @@ func (rc *ReservationCache) getReservationByTask(task *schedulerapi.TaskInfo) (*
 	return reservation, ok
 }
 
+func (rc *ReservationCache) ScanExpiredReservations(now time.Time, onExpired func(*schedulerapi.ReservationInfo)) {
+	rc.RLock()
+	defer rc.RUnlock()
+
+	for _, reservation := range rc.reservations {
+		if isReservationNeedExpiration(reservation, now) {
+			onExpired(reservation)
+		}
+	}
+}
+
+func (rc *ReservationCache) GcExpiredReservation(reservation *schedulerapi.ReservationInfo) error {
+	rc.Lock()
+	defer rc.Unlock()
+
+	// Remove reservation from cache
+	delete(rc.reservations, reservation.Reservation.UID)
+	delete(rc.nameToUID, reservation.Reservation.Name)
+
+	// Sync status to API server
+	rsve, err := rc.vcClient.BatchV1alpha1().Reservations(reservation.Reservation.Namespace).Get(context.TODO(), reservation.Reservation.Name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.V(3).Infof("Reservation %s/%s not found in API server, maybe it's already deleted.",
+				reservation.Reservation.Namespace, reservation.Reservation.Name)
+			return nil
+		}
+		klog.Errorf("Failed to get Reservation %s/%s for GC: %v",
+			reservation.Reservation.Namespace, reservation.Reservation.Name, err)
+		return err
+	}
+	now := metav1.Now()
+	rsve.Status.State.Phase = v1alpha1.ReservationFailed
+	rsve.Status.State.Reason = "Expired"
+	rsve.Status.State.Message = "Reservation expired and was cleaned up by the scheduler"
+	rsve.Status.State.LastTransitionTime = now
+	reservationCondition := newCondition(rsve.Status.State.Phase, &rsve.Status.State.LastTransitionTime)
+	rsve.Status.Conditions = append(rsve.Status.Conditions, reservationCondition)
+	_, err = rc.vcClient.BatchV1alpha1().Reservations(rsve.Namespace).UpdateStatus(context.TODO(), rsve, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("Failed to update status of Reservation %v/%v: %v",
+			rsve.Namespace, rsve.Name, err)
+		return err
+	}
+	return nil
+}
+
 func GetReservationUIDFromTask(taskInfo *schedulerapi.TaskInfo) types.UID {
 	if taskInfo == nil || taskInfo.Pod == nil {
 		return ""
@@ -324,4 +370,36 @@ func newCondition(status v1alpha1.ReservationPhase, lastTransitionTime *metav1.T
 		Status:             status,
 		LastTransitionTime: lastTransitionTime,
 	}
+}
+
+func isReservationNeedExpiration(reservation *schedulerapi.ReservationInfo, now time.Time) bool {
+	// 1. Skip failed or succeeded reservations
+	rs := reservation.Reservation
+	if rs.Status.State.Phase == v1alpha1.ReservationFailed || rs.Status.State.Phase == v1alpha1.ReservationSucceeded {
+		return false
+	}
+
+	// 2. Skip if TTL is set to 0
+	if rs.Spec.TTL != nil && rs.Spec.TTL.Duration == 0 {
+		return false
+	}
+
+	// 3. Check expiration via Expires field (preferred)
+	if rs.Spec.Expires != nil {
+		expireAt := rs.Spec.Expires.Time.UTC()
+		if now.UTC().After(expireAt) {
+			return true
+		}
+	}
+
+	// 4. Fallback to TTL-based expiration
+	if rs.Spec.TTL != nil {
+		createAt := rs.CreationTimestamp.Time.UTC()
+		ttlExpireAt := createAt.Add(rs.Spec.TTL.Duration)
+		if now.UTC().After(ttlExpireAt) {
+			return true
+		}
+	}
+
+	return false
 }

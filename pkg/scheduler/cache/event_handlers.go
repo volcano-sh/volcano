@@ -1479,11 +1479,33 @@ func (sc *SchedulerCache) deleteReservation(ss *batch.Reservation) {
 	sc.ReservationCache.DeleteReservation(ss.UID)
 
 	// clean related podgroup from cache
-	jobID := getJobIDByReservation(ss)
-	if err := sc.deletePodGroup(jobID); err != nil {
+	if err := sc.deletePodGroup(job.UID); err != nil {
 		klog.Errorf("Failed to delete podgroup %s for reservation from cache: %v", ss.Name, err)
 		return
 	}
+}
+
+func (sc *SchedulerCache) gcReservation(reservation *schedulingapi.ReservationInfo) error {
+	job := reservation.JobInfo
+	// clean related tasks from reservation
+	tasks := job.Tasks
+	for _, task := range tasks {
+		if err := sc.deleteTask(task); err != nil {
+			klog.Errorf("Failed to delete task <%s/%s> for reservation <%s/%s> from cache: %v",
+				task.Namespace, task.Name, reservation.Reservation.Namespace, reservation.Reservation.Name, err)
+		} else {
+			klog.V(4).Infof("Delete task <%s/%s> for reservation <%s/%s> from cache",
+				task.Namespace, task.Name, reservation.Reservation.Namespace, reservation.Reservation.Name)
+		}
+	}
+	// clean related podgroup from cache
+	if err := sc.deletePodGroup(job.UID); err != nil {
+		klog.Errorf("Failed to delete podgroup %s for reservation from cache: %v", reservation.Reservation.Name, err)
+		return err
+	}
+
+	// gc reservation from cache
+	return sc.ReservationCache.GcExpiredReservation(reservation)
 }
 
 func createReservationPod(reservation *batch.Reservation, template *v1.PodTemplateSpec, ix int) *v1.Pod {
