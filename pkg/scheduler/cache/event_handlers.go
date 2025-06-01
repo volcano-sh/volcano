@@ -832,24 +832,14 @@ func (sc *SchedulerCache) AddPodGroupV1beta1(obj interface{}) {
 		return
 	}
 
-	podgroup := scheduling.PodGroup{}
-	if err := scheme.Scheme.Convert(ss, &podgroup, nil); err != nil {
+	podgroup := &scheduling.PodGroup{}
+	if err := scheme.Scheme.Convert(ss, podgroup, nil); err != nil {
 		klog.Errorf("Failed to convert podgroup from %T to %T", ss, podgroup)
 		return
 	}
-	if podgroup.GetAnnotations() == nil {
-		podgroup.SetAnnotations(map[string]string{})
-	}
-	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
-	klog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
-
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-
-	if err := sc.setPodGroup(pg); err != nil {
-		klog.Errorf("Failed to add PodGroup %s into cache: %v", ss.Name, err)
-		return
-	}
+	sc.addPodGroup(podgroup)
 }
 
 // UpdatePodGroupV1beta1 add podgroup to scheduler cache
@@ -913,6 +903,19 @@ func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
 
 	if err := sc.deletePodGroup(jobID); err != nil {
 		klog.Errorf("Failed to delete podgroup %s from cache: %v", ss.Name, err)
+		return
+	}
+}
+
+func (sc *SchedulerCache) addPodGroup(podgroup *scheduling.PodGroup) {
+	if podgroup.GetAnnotations() == nil {
+		podgroup.SetAnnotations(map[string]string{})
+	}
+	pg := &schedulingapi.PodGroup{PodGroup: *podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
+	klog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", podgroup.Name, podgroup.Spec)
+
+	if err := sc.setPodGroup(pg); err != nil {
+		klog.Errorf("Failed to add PodGroup %s into cache: %v", podgroup.Name, err)
 		return
 	}
 }
@@ -1361,50 +1364,10 @@ func (sc *SchedulerCache) AddReservationV1beta1(obj interface{}) {
 		return
 	}
 
-	reservation := ss
-
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-
-	// 创建JobInfo(必要的话)、创建TaskInfos(将JobInfo和Reservation关联)
-	jobId := getJobIDByReservation(reservation)
-	if _, found := sc.Jobs[jobId]; !found {
-		sc.Jobs[jobId] = schedulingapi.NewJobInfo(jobId)
-	}
-	job := sc.Jobs[jobId]
-	for _, ts := range reservation.Spec.Tasks {
-		ts.Template.Name = ts.Name
-		tc := ts.Template.DeepCopy()
-
-		for i := 0; i < int(ts.Replicas); i++ {
-			newPod := createReservationPod(reservation, tc, i)
-			klog.V(5).Infof("[debug]: Create fake pod<%s/%s>: %v for reservation<%s/%s> ", newPod.Namespace, newPod.Name, newPod, reservation.Namespace, reservation.Name)
-			klog.V(5).Infof("[debug]: fake pod: %v ", newPod.OwnerReferences)
-
-			pi, err := sc.NewTaskInfo(newPod)
-			pi.ReservationNodeName = ts.ReservationNodeName
-			pi.Status = schedulingapi.Pending
-			klog.V(5).Infof("Created TaskInfo: %+v", pi)
-			if err != nil {
-				klog.Errorf("Failed to create task in cache for reservation pod<%s/%s>: %v",
-					newPod.Namespace, newPod.Name, err)
-				return
-			}
-			err = sc.addTask(pi)
-			if err != nil {
-				klog.Errorf("Failed to add taskInfo for pod <%s/%s> into cache: %v",
-					newPod.Namespace, newPod.Name, err)
-				return
-			}
-			klog.V(4).Infof("Added TaskInfo:%v for pod %s/%s to scheduler cache", pi, newPod.Namespace, newPod.Name)
-		}
-	}
-	klog.V(5).Infof("Job Tasks: %v", job.Tasks)
-	// Create ReservationInfo
-	reservationInfo := schedulingapi.NewReservationInfo(jobId, job, reservation)
-	// Add ReservationInfo into Reservation Cache
-	sc.ReservationCache.AddReservation(reservationInfo)
-	klog.V(4).Infof("Added ReservationInfo %s/%s to ReservationCache, UID: %s", reservation.Namespace, reservation.Name, reservationInfo.Reservation.UID)
+	klog.V(3).Infof("Add Reservation <%s/%s> into cache", ss.Namespace, ss.Name)
+	sc.addReservation(ss)
 }
 
 // UpdateReservationV1beta1 update reservation to scheduler cache
@@ -1438,12 +1401,68 @@ func (sc *SchedulerCache) DeleteReservationV1beta1(obj interface{}) {
 	klog.V(3).Infof("Delete Reservation <%s/%s> from cache", ss.Namespace, ss.Name)
 }
 
+func (sc *SchedulerCache) addReservation(reservation *batch.Reservation) {
+	_, err := sc.getQueueByName(reservation.Spec.Queue)
+	if err != nil {
+		klog.Errorf(err.Error())
+		return
+	}
+
+	if isInitiated(reservation) {
+		klog.V(3).Infof("Reservation <%s/%s> is already initiated", reservation.Namespace, reservation.Name)
+		return
+	}
+
+	if _, err := sc.initiateReservation(reservation); err != nil {
+		klog.Errorf(err.Error())
+		return
+	}
+
+	// Create fake JobInfo and TaskInfos for Reservation
+	jobId := getJobIDByReservation(reservation)
+	if _, found := sc.Jobs[jobId]; !found {
+		sc.Jobs[jobId] = schedulingapi.NewJobInfo(jobId)
+	}
+	job := sc.Jobs[jobId]
+	for _, ts := range reservation.Spec.Tasks {
+		ts.Template.Name = ts.Name
+		tc := ts.Template.DeepCopy()
+
+		for i := 0; i < int(ts.Replicas); i++ {
+			newPod := createReservationPod(reservation, tc, i)
+			pi, err := sc.NewTaskInfo(newPod)
+			pi.ReservationNodeName = ts.ReservationNodeName
+			pi.Status = schedulingapi.Pending
+			klog.V(5).Infof("Created TaskInfo: %+v", pi)
+			if err != nil {
+				klog.Errorf("Failed to create task in cache for reservation pod<%s/%s>: %v",
+					newPod.Namespace, newPod.Name, err)
+				return
+			}
+			err = sc.addTask(pi)
+			if err != nil {
+				klog.Errorf("Failed to add taskInfo for pod <%s/%s> into cache: %v",
+					newPod.Namespace, newPod.Name, err)
+				return
+			}
+			klog.V(4).Infof("Added TaskInfo:%v for pod %s/%s to scheduler cache", pi, newPod.Namespace, newPod.Name)
+		}
+	}
+	klog.V(5).Infof("Job Tasks: %v", job.Tasks)
+
+	// Create ReservationInfo
+	reservationInfo := schedulingapi.NewReservationInfo(jobId, job, reservation)
+
+	// Add ReservationInfo into Reservation Cache
+	sc.ReservationCache.AddReservation(reservationInfo)
+	klog.V(4).Infof("Added ReservationInfo %s/%s to ReservationCache, UID: %s", reservation.Namespace, reservation.Name, reservationInfo.Reservation.UID)
+}
+
 func (sc *SchedulerCache) deleteReservation(ss *batch.Reservation) {
 	reservationInfo, ok := sc.ReservationCache.GetReservationById(ss.UID)
 	if !ok {
 		return
 	}
-
 	job := reservationInfo.JobInfo
 
 	// clean related tasks from reservation
@@ -1458,6 +1477,13 @@ func (sc *SchedulerCache) deleteReservation(ss *batch.Reservation) {
 		}
 	}
 	sc.ReservationCache.DeleteReservation(ss.UID)
+
+	// clean related podgroup from cache
+	jobID := getJobIDByReservation(ss)
+	if err := sc.deletePodGroup(jobID); err != nil {
+		klog.Errorf("Failed to delete podgroup %s for reservation from cache: %v", ss.Name, err)
+		return
+	}
 }
 
 func createReservationPod(reservation *batch.Reservation, template *v1.PodTemplateSpec, ix int) *v1.Pod {
@@ -1594,4 +1620,84 @@ func (sc *SchedulerCache) updateHyperNode(hn *topologyv1alpha1.HyperNode) error 
 // It clears current hyperNode and update ancestors' cache.
 func (sc *SchedulerCache) deleteHyperNode(name string) error {
 	return sc.HyperNodesInfo.DeleteHyperNode(name)
+}
+
+func (sc *SchedulerCache) getQueueByName(name string) (*schedulingapi.QueueInfo, error) {
+	if queue, ok := sc.Queues[schedulingapi.QueueID(name)]; ok {
+		return queue, nil
+	}
+	return nil, fmt.Errorf("queue <%s> not found", name)
+}
+
+func (sc *SchedulerCache) initiateReservation(reservation *batch.Reservation) (*batch.Reservation, error) {
+	klog.V(3).Infof("Starting to initiate Reservation <%s/%s>", reservation.Namespace, reservation.Name)
+	reservationInstance, err := sc.initReservationStatus(reservation)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := sc.createReservationPodGroup(reservationInstance); err != nil {
+		return nil, err
+	}
+
+	return reservationInstance, nil
+}
+
+func (sc *SchedulerCache) initReservationStatus(reservation *batch.Reservation) (*batch.Reservation, error) {
+	if reservation.Status.State.Phase != "" {
+		return reservation, nil
+	}
+	reservation.Status.State.Phase = batch.ReservationPending
+	reservation.Status.State.LastTransitionTime = metav1.Now()
+	reservation.Status.MinAvailable = reservation.Spec.MinAvailable
+	reservationCondition := newCondition(reservation.Status.State.Phase, &reservation.Status.State.LastTransitionTime)
+	reservation.Status.Conditions = append(reservation.Status.Conditions, reservationCondition)
+
+	// calculate the resources
+	reservation.Status.Allocatable = calculateAllocatable(reservation)
+	newReservation, err := sc.vcClient.BatchV1alpha1().Reservations(reservation.Namespace).UpdateStatus(context.TODO(), reservation, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("Failed to update status of Reservation %v/%v: %v",
+			reservation.Namespace, reservation.Name, err)
+		return nil, err
+	}
+
+	return newReservation, nil
+}
+
+func (sc *SchedulerCache) createReservationPodGroup(reservation *batch.Reservation) error {
+	minTaskMember := map[string]int32{}
+	for _, task := range reservation.Spec.Tasks {
+		minTaskMember[task.Name] = task.Replicas
+	}
+	minReq := calculateAllocatable(reservation)
+
+	annotations := make(map[string]string)
+	for k, v := range reservation.Annotations {
+		annotations[k] = v
+	}
+	annotations[schedulingv1beta1.VolcanoGroupReservationOnlyAnnotationKey] = "true"
+
+	pg := &scheduling.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: reservation.Namespace,
+			// add reservation.UID into its name when create new PodGroup
+			Name:        generateReservationPodGroupName(reservation),
+			Annotations: annotations,
+			Labels:      reservation.Labels,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(reservation, helpers.ReservationKind),
+			},
+		},
+		Spec: scheduling.PodGroupSpec{
+			MinMember:     reservation.Spec.MinAvailable,
+			MinTaskMember: minTaskMember,
+			Queue:         reservation.Spec.Queue,
+			MinResources:  &minReq,
+		},
+	}
+	sc.addPodGroup(pg)
+
+	return nil
 }

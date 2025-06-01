@@ -11,7 +11,6 @@ import (
 	_ "volcano.sh/volcano/pkg/controllers/jobtemplate"
 	_ "volcano.sh/volcano/pkg/controllers/podgroup"
 	_ "volcano.sh/volcano/pkg/controllers/queue"
-	_ "volcano.sh/volcano/pkg/controllers/reservation"
 )
 
 func TestIsControllerEnabled(t *testing.T) {

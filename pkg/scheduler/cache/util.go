@@ -24,10 +24,14 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
 	"stathat.com/c/consistent"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
+	"volcano.sh/volcano/pkg/controllers/util"
 )
 
 type hyperNodeEventSource string
@@ -163,4 +167,25 @@ func tolerationKey(t v1.Toleration) string {
 func intPtr(i int) *int64 {
 	v := int64(i)
 	return &v
+}
+
+func isInitiated(rc *batch.Reservation) bool {
+	if rc.Status.State.Phase == "" || rc.Status.State.Phase == batch.ReservationPending {
+		return false
+	}
+
+	return true
+}
+
+func calculateAllocatable(reservation *batch.Reservation) v1.ResourceList {
+	tasks := reservation.Spec.Tasks
+	total := v1.ResourceList{}
+	for _, task := range tasks {
+		total = quotav1.Add(total, util.CalTaskRequests(&v1.Pod{Spec: task.Template.Spec}, task.Replicas))
+	}
+	return total
+}
+
+func generateReservationPodGroupName(reservation *batch.Reservation) string {
+	return fmt.Sprintf("%s-%s", reservation.Name, string(reservation.UID))
 }

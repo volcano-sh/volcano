@@ -49,7 +49,8 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.4.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.12.0
+	//volcano.sh/apis v1.12.0
+	volcano.sh/apis v0.0.0
 )
 
 require (
@@ -211,3 +212,7 @@ replace (
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.32.2
 	k8s.io/sample-controller => k8s.io/sample-controller v0.32.2
 )
+
+// replace volcano.sh/apis => ../volcano-apis
+
+replace volcano.sh/apis => github.com/LegGasai/apis v0.0.0-20250601112757-f47d64d9bcc8
