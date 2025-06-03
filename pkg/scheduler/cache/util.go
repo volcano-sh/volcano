@@ -24,10 +24,14 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
 	"stathat.com/c/consistent"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
+	"volcano.sh/volcano/pkg/controllers/util"
 )
 
 type hyperNodeEventSource string
@@ -131,4 +135,57 @@ func getHyperNodeEventSource(source string) []string {
 		return nil
 	}
 	return parts
+}
+
+// mergeTolerations merges the original tolerations with the default tolerations.
+func mergeTolerations(orig, defaults []v1.Toleration) []v1.Toleration {
+	exists := map[string]bool{}
+	for _, t := range orig {
+		key := tolerationKey(t)
+		exists[key] = true
+	}
+	for _, t := range defaults {
+		key := tolerationKey(t)
+		if !exists[key] {
+			orig = append(orig, t)
+			exists[key] = true
+		}
+	}
+	return orig
+}
+
+// generateTolerationKey generates a unique key for a toleration.
+func tolerationKey(t v1.Toleration) string {
+	seconds := int64(0)
+	if t.TolerationSeconds != nil {
+		seconds = *t.TolerationSeconds
+	}
+	return fmt.Sprintf("%s/%s/%s/%d", t.Key, t.Operator, t.Effect, seconds)
+}
+
+// intPtr converts an int to a pointer to an int64.
+func intPtr(i int) *int64 {
+	v := int64(i)
+	return &v
+}
+
+func isInitiated(rc *batch.Reservation) bool {
+	if rc.Status.State.Phase == "" || rc.Status.State.Phase == batch.ReservationPending {
+		return false
+	}
+
+	return true
+}
+
+func calculateAllocatable(reservation *batch.Reservation) v1.ResourceList {
+	tasks := reservation.Spec.Tasks
+	total := v1.ResourceList{}
+	for _, task := range tasks {
+		total = quotav1.Add(total, util.CalTaskRequests(&v1.Pod{Spec: task.Template.Spec}, task.Replicas))
+	}
+	return total
+}
+
+func generateReservationPodGroupName(reservation *batch.Reservation) string {
+	return fmt.Sprintf("%s-%s", reservation.Name, string(reservation.UID))
 }
