@@ -35,7 +35,7 @@ jobs:
 
       - name: Install dependences
         run: |
-          GO111MODULE="on" go install sigs.k8s.io/kind@v0.26.0
+          GO111MODULE="on" go install sigs.k8s.io/kind@v0.29.0
           curl -LO https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
       - name: Checkout code
         uses: actions/checkout@v3
