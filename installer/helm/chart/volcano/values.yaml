@@ -8,7 +8,7 @@ basic:
   scheduler_config_file: "config/volcano-scheduler.conf"
   image_pull_secret: ""
   image_pull_policy: "Always"
-  image_tag_version: "latest"
+  image_tag_version: "v1.12.0"
   admission_port: 8443
   image_registry: "docker.io"
 custom:
@@ -34,10 +34,10 @@ custom:
   scheduler_kube_api_burst: 2000
   scheduler_schedule_period: 1s
   scheduler_node_worker_threads: 20
-  enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate"
+  enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate"
   colocation_enable: false
 
-# Override the configuration for admission or scheduler.
+# Override the configuration for admission, scheduler or scheduler.
 # For example:
 #
 #  scheduler_config_override: |
@@ -56,8 +56,22 @@ custom:
 #      - name: proportion
 #      - name: nodeorder
 #      - name: binpack
+
+#  controller_config_override: |
+#    networkTopologyDiscovery:
+#     - source: ufm
+#       enabled: true
+#       interval: 10m
+#       credentials:
+#         secretRef:
+#           name: ufm-credentials
+#           namespace: volcano-system
+#       config:
+#         endpoint: https://ufm-server:8080
+#         insecureSkipVerify: true
   admission_config_override: ~
   scheduler_config_override: ~
+  controller_config_override: ~
 
 # Specify affinity for all main Volcano components or per component.
 # For example:
@@ -136,6 +150,8 @@ custom:
 # Specify labels for all Volcano helm chart objects except for CRDs
   common_labels: ~
 
+# Specify labels for aggregationRule
+  aggregationRule_labels: ~
 
 # Specify resources for Volcano main component deployments and pods
 # For example:

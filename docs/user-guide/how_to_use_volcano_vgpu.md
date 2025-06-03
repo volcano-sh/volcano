@@ -1,25 +1,63 @@
-# Volcano vGPU User guide
+# Volcano vGPU User Guide
 
-## Prerequisites
+## Background Knowledge of GPU Sharing Modes in Volcano
 
-The list of prerequisites for running the Volcano device plugin is described below:
-* NVIDIA drivers > 440
-* nvidia-docker version > 2.0 (see how to [install](https://github.com/NVIDIA/nvidia-docker) and it's [prerequisites](https://github.com/nvidia/nvidia-docker/wiki/Installation-\(version-2.0\)#prerequisites))
-* docker configured with nvidia as the [default runtime](https://github.com/NVIDIA/nvidia-docker/wiki/Advanced-topics#default-runtime).
-* Kubernetes version >= 1.16
-* Volcano verison >= 1.9
+Volcano supports **two GPU sharing modes** for virtual GPU (vGPU) scheduling:
 
-## Environment setup
+### 1. HAMI-core (Software-based vGPU)
 
-### Install volcano
+**Description**:
+Leverages **VCUDA**, a CUDA API hijacking technique to enforce GPU core and memory usage limits, enabling **software-level virtual GPU slicing**.
 
-Refer to [Install Guide](../../installer/README.md) to install volcano.
+**Use case**:
+Ideal for environments requiring **fine-grained GPU sharing**. Compatible with all GPU types.
 
-After installed, update the scheduler configuration:
+---
 
-```shell script
-kubectl edit cm -n volcano-system volcano-scheduler-configmap
+### 2. Dynamic MIG (Hardware-level GPU Slicing)
+
+**Description**:
+Utilizes **NVIDIA's MIG (Multi-Instance GPU)** technology to partition a physical GPU into isolated instances with **hardware-level performance guarantees**.
+
+**Use case**:
+Best for **performance-sensitive** workloads. Requires **MIG-capable GPUs** (e.g., A100, H100).
+
+---
+
+GPU Sharing mode is a node configuration. Volcano supports heterogeneous cluster(i.e a part of node uses HAMi-core while another part uses dynamic MIG), See [volcano-vgpu-device-plugin](https://github.com/Project-HAMi/volcano-vgpu-device-plugin) for configuration and details.
+
+## Installation
+
+To enable vGPU scheduling, the following components must be set up based on the selected mode:
+
+### Common Requirements
+
+* **Prerequisites**:
+
+  * NVIDIA driver > 440
+  * nvidia-docker > 2.0
+  * Docker configured with `nvidia` as the default runtime
+  * Kubernetes >= 1.16
+  * Volcano >= 1.9
+
+* **Install Volcano**:
+
+  * Follow instructions in [Volcano Installer Guide](https://github.com/volcano-sh/volcano?tab=readme-ov-file#quick-start-guide)
+
+* **Install Device Plugin**:
+
+  * Deploy [`volcano-vgpu-device-plugin`](https://github.com/Project-HAMi/volcano-vgpu-device-plugin)
+
+  **Note:** the [vgpu device plugin yaml](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/volcano-vgpu-device-plugin.yml) also includes the ***Node GPU mode*** and the ***MIG geometry*** configuration. Please refer to the [vgpu device plugin config](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/doc/config.md).
+
+* **Validate Setup**:
+  Ensure node allocatable resources include:
+
+```yaml
+volcano.sh/vgpu-memory: "89424"
+volcano.sh/vgpu-number: "8"
 ```
+* **Scheduler Config Update**:
 
 ```yaml
 kind: ConfigMap
@@ -32,106 +70,121 @@ data:
     actions: "enqueue, allocate, backfill"
     tiers:
     - plugins:
-      - name: priority
-      - name: gang
-      - name: conformance
-    - plugins:
-      - name: drf
+      - name: predicates
       - name: deviceshare
         arguments:
-          deviceshare.VGPUEnable: true # enable vgpu
-      - name: predicates
-      - name: proportion
-      - name: nodeorder
-      - name: binpack
+          deviceshare.VGPUEnable: true   # enable vgpu plugin
+          deviceshare.SchedulePolicy: binpack  # scheduling policy. binpack / spread
 ```
 
-### Install Volcano device plugin
+Check with:
 
-Please refer to [volcano vgpu device plugin](https://github.com/Project-HAMi/volcano-vgpu-device-plugin?tab=readme-ov-file#enabling-gpu-support-in-kubernetes)
-
-### Verify environment is ready
-
-Check the node status, it is ok if `volcano.sh/vgpu-memory` and `volcano.sh/vgpu-number` are included in the allocatable resources.
-
-```shell script
-$ kubectl get node {node name} -oyaml
-...
-status:
-  addresses:
-  - address: 172.17.0.3
-    type: InternalIP
-  - address: volcano-control-plane
-    type: Hostname
-  allocatable:
-    cpu: "4"
-    ephemeral-storage: 123722704Ki
-    hugepages-1Gi: "0"
-    hugepages-2Mi: "0"
-    memory: 8174332Ki
-    pods: "110"
-    volcano.sh/vgpu-memory: "89424"
-    volcano.sh/vgpu-number: "8"    # GPU resource
-  capacity:
-    cpu: "4"
-    ephemeral-storage: 123722704Ki
-    hugepages-1Gi: "0"
-    hugepages-2Mi: "0"
-    memory: 8174332Ki
-    pods: "110"
-    volcano.sh/vgpu-memory: "89424"
-    volcano.sh/vgpu-number: "8"   # GPU resource
+```bash
+kubectl get node {node-name} -o yaml
 ```
 
-### Running GPU Sharing Jobs
+---
 
-VGPU can be requested by both set "volcano.sh/vgpu-number" , "volcano.sh/vgpu-cores" and "volcano.sh/vgpu-memory" in resource.limit
+### HAMI-core Usage
 
-```shell script
-$ cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
+* **Pod Spec**:
+
+```yaml
 metadata:
-  name: gpu-pod1
+  name: hami-pod
+  annotations:
+    volcano.sh/vgpu-mode: "hami-core"
 spec:
   schedulerName: volcano
   containers:
-    - name: cuda-container
-      image: nvidia/cuda:9.0-devel
-      command: ["sleep"]
-      args: ["100000"]
-      resources:
-        limits:
-          volcano.sh/vgpu-number: 2 # requesting 2 gpu cards
-          volcano.sh/vgpu-memory: 3000 # (optinal)each vGPU uses 3G device memory
-          volcano.sh/vgpu-cores: 50 # (optional)each vGPU uses 50% core  
-EOF
+  - name: cuda-container
+    image: nvidia/cuda:9.0-devel
+    resources:
+      limits:
+        volcano.sh/vgpu-number: 1    # requesting 1 gpu cards
+        volcano.sh/vgpu-cores: 50    # (optional)each vGPU uses 50%
+        volcano.sh/vgpu-memory: 3000 # (optional)each vGPU uses 3G GPU memory
 ```
 
-You can validate device memory using nvidia-smi inside container:
+---
 
-![img](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/doc/hard_limit.jpg)
+### Dynamic MIG Usage
 
-> **WARNING:** *if you don't request GPUs when using the device plugin with NVIDIA images all
-> the GPUs on the machine will be exposed inside your container.
-> The number of vgpu used by a container can not exceed the number of gpus on that node.*
+* **Enable MIG Mode**:
 
-### Monitor
+If you need to use MIG (Multi-Instance GPU), you must run the following command on the GPU node.
 
-volcano-scheduler-metrics records every GPU usage and limitation, visit the following address to get these metrics.
-
-```
-curl {volcano scheduler cluster ip}:8080/metrics
+```bash
+sudo nvidia-smi -mig 1
 ```
 
-You can also collect the **GPU utilization**, **GPU memory usage**, **pods' GPU memory limitations** and **pods' GPU memory usage** metrics on nodes by visiting the following addresses:
+* **Geometry Config (Optional)**:
+  The volcano-vgpu-device-plugin automatically generates an initial MIG configuration, which is stored in the `volcano-vgpu-device-config` ConfigMap under the `kube-system` namespace. You can customize this configuration as needed. For more details, refer to the [vgpu device plugin yaml](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/volcano-vgpu-device-plugin.yml).
 
+* **Pod Spec with MIG Annotation**:
+
+```yaml
+metadata:
+  name: mig-pod
+  annotations:
+    volcano.sh/vgpu-mode: "mig"
+spec:
+  schedulerName: volcano
+  containers:
+  - name: cuda-container
+    image: nvidia/cuda:9.0-devel
+    resources:
+      limits:
+        volcano.sh/vgpu-number: 1
+        volcano.sh/vgpu-memory: 3000
 ```
-curl {volcano device plugin pod ip}:9394/metrics
+
+Note: Actual memory allocated depends on best-fit MIG slice (e.g., request 3GB → 5GB slice used).
+
+---
+
+## Scheduler Mode Selection
+
+* **Explicit Mode**:
+
+  * Use annotation `volcano.sh/vgpu-mode` to force hami-core or MIG mode.
+  * If annotation is absent, scheduler selects mode based on resource fit and policy.
+
+* **Scheduling Policy**:
+
+  * Modes like `binpack` or `spread` influence node selection.
+
+---
+
+## Summary Table
+
+| Mode        | Isolation        | MIG GPU Required | Annotation | Core/Memory Control | Recommended For            |
+| ----------- | ---------------- | ---------------- | ---------- | ------------------- | -------------------------- |
+| HAMI-core   | Software (VCUDA) | No               | No         | Yes                 | General workloads          |
+| Dynamic MIG | Hardware         | Yes              | Yes        | MIG-controlled      | Performance-sensitive jobs |
+
+---
+
+## Monitoring
+
+* **Scheduler Metrics**:
+
+```bash
+curl http://<volcano-scheduler-ip>:8080/metrics
 ```
-![img](https://github.com/Project-HAMi/volcano-vgpu-device-plugin/blob/main/doc/vgpu_device_plugin_metrics.png)
 
-# Issues and Contributing
+* **Device Plugin Metrics**:
 
-* You can report a bug by [filing a new issue](https://github.com/volcano-sh/volcano/issues)
-* You can contribute by opening a [pull request](https://help.github.com/articles/using-pull-requests/)
+```bash
+curl http://<plugin-pod-ip>:9394/metrics
+```
+
+Metrics include GPU utilization, pod memory usage, and limits.
+
+---
+
+## Issues and Contributions
+
+* File bugs: [Volcano Issues](https://github.com/volcano-sh/volcano/issues)
+* Contribute: [Pull Requests Guide](https://help.github.com/articles/using-pull-requests/)
+

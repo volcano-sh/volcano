@@ -565,13 +565,19 @@ Allocate resources for queue-\> Job \-\> Task.
 Phase2:
 Allocate resources for queue-\> hyperJob \-\> Job \-\> Task.
 
-**plugin:** NetworkTopology
+**plugin:** network-topology-aware
 
 - AddJobGroupReadyFn: check whether hyperJob minAvailable is met.(phase 2)  
 
 - AddHyperNodeOrderFn: score for hyperNodes.(take effect in hard limit, closest tiers have higher score)
+1. If a Job is being scheduled for the very first time, candidate hypernodes that need to be scored will get a score of 0 and then return right away. The name of the HyperNode where the Job eventually gets scheduled successfully will be recorded in the Job's annotations under the key JobAllocatedHyperNode.
+2. If it is not the first scheduling of a job, calculate the LCAHyperNode (Lowest Common Ancestor HyperNode) between candidate hypernodes(In the Allocate process, the system will calculate whether the LCAHyperNode tier of the hyperNode meets the Hard limit. If it doesn't, the hyperNode will be filtered out.) that need to be scored and the `JobAllocatedHyperNode` of the job. The lower the tier of the calculated LCAHyperNode, the higher the score. If there is only one highest score, return the scoring result.
+3. If there is more than one HyperNode with the highest score in the scoring result of step 2, calculate the distribution of the tasks that have been successfully scheduled for the job among these HyperNodes. The greater the distribution quantity, the higher the score.
+4. The HyperNode that is successfully scheduled in the end in steps 2 and 3 will also be recorded as the `JobAllocatedHyperNode` attribute of the job.
 
-- AddNodeOrderFn: score for nodes.(take effect in soft limit,take effect in )
+- AddNodeOrderFn: score for nodes.(take effect in soft limit, closest tiers have higher score)
+1. To score all nodes, we need to first obtain the HyperNode to which the node belongs and the `JobAllocatedHyperNode` of the job to which the task belongs.
+2. The subsequent scoring logic is the same as that in the Hard mode. The score of the HyperNode to which it belongs is calculated as the score of the node. 
 
 ### Webhook
 

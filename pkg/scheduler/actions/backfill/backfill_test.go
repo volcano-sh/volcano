@@ -120,6 +120,7 @@ func TestPickUpPendingTasks(t *testing.T) {
 			StatusUpdater:   &util.FakeStatusUpdater{},
 			Recorder:        record.NewFakeRecorder(100),
 			PriorityClasses: tc.PriorityClasses,
+			HyperNodesInfo:  api.NewHyperNodesInfo(nil),
 		}
 
 		for _, q := range tc.queues {

@@ -171,8 +171,8 @@ Please follow the guide [Volcano Agent](https://volcano.sh/en/docs/colocation) t
 If you want to get prometheus and grafana volcano dashboard after volcano installed, try following commands:
 
 ```bash
-make TAG=latest generate-yaml
-kubectl create -f _output/release/volcano-monitoring-latest.yaml
+make TAG=v1.12.0 generate-yaml
+kubectl create -f _output/release/volcano-monitoring-v1.12.0.yaml
 ```
 
 ### Install dashboard
@@ -195,6 +195,19 @@ Key:
 * `+` Volcano has features or API objects that may not be present in the Kubernetes version.
 * `-` The Kubernetes version has features or API objects that Volcano can't use.
 
+
+## Citing Volcano
+
+If Volcano helps your research, we appreciate your citations. Here is the BibTeX entry:
+
+```bibtex
+@misc{volcano2025,
+  title={Volcano: A Cloud Native Batch System},
+  author={Klaus Ma and Kevin Wang and others},
+  year={2025},
+  howpublished={\url{https://github.com/volcano-sh/volcano}},
+}
+```
 
 ## Meeting
 

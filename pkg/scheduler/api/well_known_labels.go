@@ -42,4 +42,9 @@ const (
 
 	// topologyDecisionAnnotation is the key of topology decision about pod request resource
 	topologyDecisionAnnotation = "volcano.sh/topology-decision"
+
+	// JobAllocatedHyperNode is the annotation key used to record the name of the HyperNode
+	// to which the job is allocated. This typically represents the lowest common ancestor
+	// HyperNode in the scheduling hierarchy.
+	JobAllocatedHyperNode = "volcano.sh/job-allocated-hypernode"
 )

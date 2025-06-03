@@ -19,6 +19,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"gopkg.in/yaml.v2"
@@ -30,20 +31,19 @@ import (
 )
 
 const (
-	DeviceConfigFileName = "device-config.yaml"
-	ConfigMapName        = "volcano-vgpu-device-config"
+	deviceConfigFileName = "device-config.yaml"
 )
 
 /* Config Examples:
-    nvidia:
-      resourceCountName: "volcano.sh/vgpu"
-      ...
-    cambricon:
-      resourceCountName: "volcano.sh/vmlu"
-      ...
-    hygon:
-      resourceCountName: "volcano.sh/vdcu"
-	  ...
+   nvidia:
+     resourceCountName: "volcano.sh/vgpu"
+     ...
+   cambricon:
+     resourceCountName: "volcano.sh/vmlu"
+     ...
+   hygon:
+     resourceCountName: "volcano.sh/vdcu"
+     ...
 */
 
 type Config struct {
@@ -61,28 +61,33 @@ func GetConfig() *Config {
 	return configs
 }
 
-func loadConfigFromCM(kubeClient kubernetes.Interface, cmName string) (*Config, error) {
-	cm, err := kubeClient.CoreV1().ConfigMaps("kube-system").Get(context.Background(), cmName, metav1.GetOptions{})
+func loadConfigFromCM(kubeClient kubernetes.Interface, cmName, cmNamespace string) (*Config, error) {
+	if kubeClient == nil || reflect.ValueOf(kubeClient).IsNil() {
+		return nil, fmt.Errorf("kube client is nil")
+	}
+
+	cm, err := kubeClient.CoreV1().ConfigMaps(cmNamespace).Get(context.Background(), cmName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
-	data, ok := cm.Data[DeviceConfigFileName]
+	data, ok := cm.Data[deviceConfigFileName]
 	if !ok {
-		return nil, fmt.Errorf("%s not found", DeviceConfigFileName)
+		return nil, fmt.Errorf("%s not found", deviceConfigFileName)
 	}
-	var yamlData Config
-	err = yaml.Unmarshal([]byte(data), &yamlData)
+	var config Config
+	err = yaml.Unmarshal([]byte(data), &config)
 	if err != nil {
 		return nil, err
 	}
-	return &yamlData, nil
+
+	return &config, nil
 }
 
 // InitDevicesConfig is called from devices, to load configs from a CM or construct a default one
-func InitDevicesConfig(cmName string) {
+func InitDevicesConfig(cmName, cmNamespace string) {
 	once.Do(func() {
 		var err error
-		configs, err = loadConfigFromCM(devices.GetClient(), cmName)
+		configs, err = loadConfigFromCM(devices.GetClient(), cmName, cmNamespace)
 		if err != nil {
 			klog.V(3).InfoS("Volcano device config not found in namespace kube-system, using default config",
 				"name", cmName)

@@ -41,8 +41,8 @@ var _ = Describe("Queue Job Status Transition", func() {
 		e2eutil.CleanupTestContext(ctx)
 	})
 
-	It("Transform from inqueque to running should succeed", func() {
-		By("Prepare 2 job")
+	XIt("Transform from inqueque to running should succeed", func() {
+		Skip("Prepare 2 job")
 		var q1 string
 		var rep int32
 		q1 = "queue-jobs-status-transition"

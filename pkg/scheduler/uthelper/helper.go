@@ -19,9 +19,11 @@ package uthelper
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	resourcev1beta1 "k8s.io/api/resource/v1beta1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -31,6 +33,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -52,18 +55,26 @@ type TestCommonStruct struct {
 	// Plugins plugins for each case
 	Plugins map[string]framework.PluginBuilder
 	// Resource objects that need to be added to schedulercache
-	Pods           []*v1.Pod
-	Nodes          []*v1.Node
-	PodGroups      []*vcapisv1.PodGroup
-	Queues         []*vcapisv1.Queue
-	PriClass       []*schedulingv1.PriorityClass
-	ResourceQuotas []*v1.ResourceQuota
+	Pods                      []*v1.Pod
+	Nodes                     []*v1.Node
+	HyperNodesSetByTier       map[int]sets.Set[string]
+	HyperNodes                map[string]sets.Set[string]
+	HyperNodesMap             map[string]*api.HyperNodeInfo
+	RealNodesList             map[string][]*api.NodeInfo
+	HyperNodesReadyToSchedule bool
+	PodGroups                 []*vcapisv1.PodGroup
+	Queues                    []*vcapisv1.Queue
+	PriClass                  []*schedulingv1.PriorityClass
+	ResourceQuotas            []*v1.ResourceQuota
 	// IgnoreProvisioners is the provisioners that need to be ignored
 	IgnoreProvisioners sets.Set[string]
 	PVs                []*v1.PersistentVolume
 	PVCs               []*v1.PersistentVolumeClaim
 	SCs                []*storagev1.StorageClass
-
+	// DRA related resources
+	ResourceSlices []*resourcev1beta1.ResourceSlice
+	DeviceClasses  []*resourcev1beta1.DeviceClass
+	ResourceClaims []*resourcev1beta1.ResourceClaim
 	// ExpectBindMap the expected bind results.
 	// bind results: ns/podName -> nodeName
 	ExpectBindMap map[string]string
@@ -79,6 +90,9 @@ type TestCommonStruct struct {
 	ExpectBindsNum int
 	// ExpectEvictNum the expected evict events numbers, include preempted and reclaimed evict events
 	ExpectEvictNum int
+
+	// MinimalBindCheck true will only check both bind num, false by default.
+	MinimalBindCheck bool
 
 	// fake interface instance when check results need
 	stop       chan struct{}
@@ -120,6 +134,15 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, pvc := range test.PVCs {
 		kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
 	}
+	for _, dc := range test.DeviceClasses {
+		kubeClient.ResourceV1beta1().DeviceClasses().Create(context.Background(), dc, metav1.CreateOptions{})
+	}
+	for _, rc := range test.ResourceClaims {
+		kubeClient.ResourceV1beta1().ResourceClaims(rc.Namespace).Create(context.Background(), rc, metav1.CreateOptions{})
+	}
+	for _, rs := range test.ResourceSlices {
+		kubeClient.ResourceV1beta1().ResourceSlices().Create(context.Background(), rs, metav1.CreateOptions{})
+	}
 	// need to immediately run the cache to make sure the resources are added
 	schedulerCache.Run(test.stop)
 
@@ -142,6 +165,9 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, rq := range test.ResourceQuotas {
 		schedulerCache.AddResourceQuota(rq)
 	}
+	ready := new(atomic.Bool)
+	ready.Store(true)
+	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
 
 	return schedulerCache
 }
@@ -192,9 +218,10 @@ func (test *TestCommonStruct) CheckAll(caseIndex int) (err error) {
 
 // CheckBind check expected bind result
 func (test *TestCommonStruct) CheckBind(caseIndex int) error {
-	if test.ExpectBindsNum != len(test.ExpectBindMap) {
+	if test.ExpectBindsNum != len(test.ExpectBindMap) && !test.MinimalBindCheck {
 		return fmt.Errorf("invalid setting for binding check: want bind count %d, want bind result length %d", test.ExpectBindsNum, len(test.ExpectBindMap))
 	}
+
 	binder := test.binder.(*util.FakeBinder)
 	for i := 0; i < test.ExpectBindsNum; i++ {
 		select {
@@ -206,9 +233,13 @@ func (test *TestCommonStruct) CheckBind(caseIndex int) error {
 
 	// in case expected test.BindsNum is 0, but actually there is a binding and wait the binding goroutine to run
 	select {
-	case <-time.After(50 * time.Millisecond):
+	case <-time.After(300 * time.Millisecond):
 	case key := <-binder.Channel:
 		return fmt.Errorf("unexpect binding %s in case %d(%s)", key, caseIndex, test.Name)
+	}
+
+	if test.MinimalBindCheck {
+		return nil
 	}
 
 	binds := binder.Binds()

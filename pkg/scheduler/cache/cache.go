@@ -49,7 +49,10 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
+	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 	"stathat.com/c/consistent"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -62,6 +65,7 @@ import (
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
@@ -90,8 +94,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners)
+func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration) Cache {
+	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod)
 }
 
 // SchedulerCache cache for the kube batch
@@ -107,8 +111,10 @@ type SchedulerCache struct {
 	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
+	resyncPeriod               time.Duration
 	podInformer                infov1.PodInformer
 	nodeInformer               infov1.NodeInformer
+	hyperNodeInformer          topologyinformerv1alpha1.HyperNodeInformer
 	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
 	queueInformerV1beta1       vcinformerv1.QueueInformer
 	pvInformer                 infov1.PersistentVolumeInformer
@@ -136,12 +142,14 @@ type SchedulerCache struct {
 	defaultPriorityClass *schedulingv1.PriorityClass
 	defaultPriority      int32
 	CSINodesStatus       map[string]*schedulingapi.CSINodeStatusInfo
+	HyperNodesInfo       *schedulingapi.HyperNodesInfo
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
-	errTasks    workqueue.TypedRateLimitingInterface[string]
-	nodeQueue   workqueue.TypedRateLimitingInterface[string]
-	DeletedJobs workqueue.TypedRateLimitingInterface[*schedulingapi.JobInfo]
+	errTasks        workqueue.TypedRateLimitingInterface[string]
+	nodeQueue       workqueue.TypedRateLimitingInterface[string]
+	DeletedJobs     workqueue.TypedRateLimitingInterface[*schedulingapi.JobInfo]
+	hyperNodesQueue workqueue.TypedRateLimitingInterface[string]
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -165,6 +173,9 @@ type SchedulerCache struct {
 	multiSchedulerInfo
 
 	binderRegistry *BinderRegistry
+
+	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
+	sharedDRAManager k8sframework.SharedDRAManager
 }
 
 type multiSchedulerInfo struct {
@@ -469,7 +480,7 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -500,6 +511,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		errTasks:            workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[*schedulingapi.JobInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.JobInfo]()),
+		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
 		restConfig:          config,
@@ -514,6 +526,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		nodeWorkers: nodeWorkers,
 	}
 
+	sc.resyncPeriod = resyncPeriod
 	sc.schedulerPodName, sc.c = getMultiSchedulerInfo()
 	ignoredProvisionersSet := sets.New[string]()
 	for _, provisioner := range append(ignoredProvisioners, defaultIgnoredProvisioners...) {
@@ -556,11 +569,12 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 
 	// add all events handlers
 	sc.addEventHandler()
+	sc.HyperNodesInfo = schedulingapi.NewHyperNodesInfo(sc.nodeInformer.Lister())
 	return sc
 }
 
 func (sc *SchedulerCache) addEventHandler() {
-	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, 0)
+	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, sc.resyncPeriod)
 	sc.informerFactory = informerFactory
 
 	// explicitly register informers to the factory, otherwise resources listers cannot get anything
@@ -582,7 +596,7 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	// create informer for node information
 	sc.nodeInformer = informerFactory.Core().V1().Nodes()
-	sc.nodeInformer.Informer().AddEventHandlerWithResyncPeriod(
+	sc.nodeInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
@@ -606,7 +620,6 @@ func (sc *SchedulerCache) addEventHandler() {
 				DeleteFunc: sc.DeleteNode,
 			},
 		},
-		0,
 	)
 
 	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
@@ -681,7 +694,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		DeleteFunc: sc.DeleteResourceQuota,
 	})
 
-	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, 0)
+	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, sc.resyncPeriod)
 	sc.vcInformerFactory = vcinformers
 
 	// create informer for PodGroup(v1beta1) information
@@ -729,6 +742,21 @@ func (sc *SchedulerCache) addEventHandler() {
 			DeleteFunc: sc.DeleteNumaInfoV1alpha1,
 		})
 	}
+
+	sc.hyperNodeInformer = sc.vcInformerFactory.Topology().V1alpha1().HyperNodes()
+	sc.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddHyperNode,
+		UpdateFunc: sc.UpdateHyperNode,
+		DeleteFunc: sc.DeleteHyperNode,
+	})
+
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
+		ctx := context.TODO()
+		logger := klog.FromContext(ctx)
+		resourceClaimInformer := informerFactory.Resource().V1beta1().ResourceClaims().Informer()
+		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, informerFactory)
+	}
 }
 
 // Run  starts the schedulerCache
@@ -739,6 +767,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	for i := 0; i < int(sc.nodeWorkers); i++ {
 		go wait.Until(sc.runNodeWorker, 0, stopCh)
 	}
+
+	// Sync hyperNode.
+	go wait.Until(sc.processSyncHyperNode, 0, stopCh)
 
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
@@ -1133,6 +1164,29 @@ func (sc *SchedulerCache) processSyncNode() bool {
 	return true
 }
 
+func (sc *SchedulerCache) processSyncHyperNode() {
+	worker := func() bool {
+		name, shutdown := sc.hyperNodesQueue.Get()
+		if shutdown {
+			return false
+		}
+		defer sc.hyperNodesQueue.Done(name)
+
+		klog.V(5).Infof("started sync hyperNode %s", name)
+		err := sc.SyncHyperNode(name)
+		if err == nil {
+			sc.hyperNodesQueue.Forget(name)
+			return true
+		}
+
+		klog.ErrorS(err, "Failed to sync hyperNode, retry it.", "name", name)
+		sc.hyperNodesQueue.AddRateLimited(name)
+		return true
+	}
+	for worker() {
+	}
+}
+
 // AddBindTask add task to be bind to a cache which consumes by go runtime
 func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	klog.V(5).Infof("add bind task %v/%v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name)
@@ -1280,13 +1334,16 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
-		Nodes:          make(map[string]*schedulingapi.NodeInfo),
-		Jobs:           make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Queues:         make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
-		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
-		NodeList:       make([]string, len(sc.NodeList)),
-		CSINodesStatus: make(map[string]*schedulingapi.CSINodeStatusInfo),
+		Nodes:               make(map[string]*schedulingapi.NodeInfo),
+		HyperNodes:          make(map[string]*schedulingapi.HyperNodeInfo),
+		HyperNodesSetByTier: make(map[int]sets.Set[string]),
+		RealNodesSet:        make(map[string]sets.Set[string]),
+		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		NamespaceInfo:       make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
+		RevocableNodes:      make(map[string]*schedulingapi.NodeInfo),
+		NodeList:            make([]string, len(sc.NodeList)),
+		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)
@@ -1309,6 +1366,14 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
 		}
 	}
+
+	// Snapshot hyperNodes.
+	sc.HyperNodesInfo.Lock()
+	snapshot.HyperNodes = sc.HyperNodesInfo.HyperNodes()
+	snapshot.HyperNodesSetByTier = sc.HyperNodesInfo.HyperNodesSetByTier()
+	snapshot.RealNodesSet = sc.HyperNodesInfo.RealNodesSet()
+	snapshot.HyperNodesReadyToSchedule = sc.HyperNodesInfo.Ready()
+	sc.HyperNodesInfo.Unlock()
 
 	for _, value := range sc.Queues {
 		snapshot.Queues[value.UID] = value.Clone()
@@ -1363,10 +1428,16 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	}
 	wg.Wait()
 
-	klog.V(3).Infof("There are <%d> Jobs, <%d> Queues and <%d> Nodes in total for scheduling.",
-		len(snapshot.Jobs), len(snapshot.Queues), len(snapshot.Nodes))
-
+	klog.V(3).InfoS("SnapShot for scheduling", "jobNum", len(snapshot.Jobs), "QueueNum",
+		len(snapshot.Queues), "NodeNum", len(snapshot.Nodes))
+	if klog.V(4).Enabled() {
+		klog.InfoS("HyperNode snapShot for scheduling", "tiers", snapshot.HyperNodesSetByTier, "realNodesSet", snapshot.RealNodesSet, "hyperNodesReadyToSchedule", snapshot.HyperNodesReadyToSchedule)
+	}
 	return snapshot
+}
+
+func (sc *SchedulerCache) SharedDRAManager() k8sframework.SharedDRAManager {
+	return sc.sharedDRAManager
 }
 
 // String returns information about the cache in a string format
@@ -1467,18 +1538,26 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 }
 
 // UpdateJobStatus update the status of job and its tasks.
-func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePG bool) (*schedulingapi.JobInfo, error) {
-	if updatePG {
+func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePGStatus, updatePGAnnotations bool) (*schedulingapi.JobInfo, error) {
+	if updatePGStatus || updatePGAnnotations {
+		if updatePGAnnotations {
+			sc.updateJobAnnotations(job)
+		}
 		pg, err := sc.StatusUpdater.UpdatePodGroup(job.PodGroup)
 		if err != nil {
 			return nil, err
 		}
 		job.PodGroup = pg
 	}
-
-	sc.RecordJobStatusEvent(job, updatePG)
+	sc.RecordJobStatusEvent(job, updatePGStatus)
 
 	return job, nil
+}
+
+func (sc *SchedulerCache) updateJobAnnotations(job *schedulingapi.JobInfo) {
+	sc.Mutex.Lock()
+	sc.Jobs[job.UID].PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode] = job.PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode]
+	sc.Mutex.Unlock()
 }
 
 // UpdateQueueStatus update the status of queue.
