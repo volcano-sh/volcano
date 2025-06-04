@@ -156,11 +156,11 @@ case ${E2E_TYPE} in
     ;;
 "JOBP")
     echo "Running parallel job e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --nodes=4 --compilers=4 --randomize-all --randomize-suites --fail-on-pending --cover --trace --race --slow-spec-threshold='30s' --progress ./test/e2e/jobp/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --nodes=4 --compilers=4 --randomize-all --randomize-suites --fail-on-pending --cover --trace --race --slow-spec-threshold='30s' --progress ./test/e2e/jobp/
     ;;
 "JOBSEQ")
     echo "Running sequence job e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/jobseq/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/jobseq/
     ;;
 "SCHEDULINGBASE")
     echo "Running scheduling base e2e suite..."
@@ -176,11 +176,11 @@ case ${E2E_TYPE} in
     ;;
 "STRESS")
     echo "Running stress e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/stress/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/stress/
     ;;
 "DRA")
     echo "Running dra e2e suite..."
-    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress --focus="DRA E2E Test" ./test/e2e/dra/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress --focus="DRA E2E Test" ./test/e2e/dra/
     ;;
 esac
 
