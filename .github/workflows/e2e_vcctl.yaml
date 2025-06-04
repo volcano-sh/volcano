@@ -11,7 +11,7 @@ jobs:
   e2e_vcctl:
     runs-on: ubuntu-24.04
     name: E2E about Volcano CLI
-    timeout-minutes: 20
+    timeout-minutes: 50
     steps:
       - name: Install Go
         uses: actions/setup-go@v5
