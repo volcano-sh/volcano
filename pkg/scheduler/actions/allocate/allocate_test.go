@@ -43,6 +43,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/binpack"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	networktopologyaware "volcano.sh/volcano/pkg/scheduler/plugins/network-topology-aware"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
@@ -274,8 +275,9 @@ func TestAllocate(t *testing.T) {
 
 func TestAllocateWithNetWorkTopologies(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
-		predicates.PluginName: predicates.New,
-		gang.PluginName:       gang.New,
+		predicates.PluginName:           predicates.New,
+		gang.PluginName:                 gang.New,
+		networktopologyaware.PluginName: networktopologyaware.New,
 	}
 
 	tests := []uthelper.TestCommonStruct{
@@ -1361,6 +1363,11 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 					Name:             predicates.PluginName,
 					EnabledPredicate: &trueValue,
 				},
+				{
+					Name:                  networktopologyaware.PluginName,
+					EnabledNodeOrder:      &trueValue,
+					EnabledHyperNodeOrder: &trueValue,
+				},
 			},
 		},
 	}
@@ -1379,9 +1386,10 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 
 func TestNodeLevelScoreWithNetWorkTopologies(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
-		predicates.PluginName: predicates.New,
-		gang.PluginName:       gang.New,
-		binpack.PluginName:    binpack.New,
+		predicates.PluginName:           predicates.New,
+		gang.PluginName:                 gang.New,
+		binpack.PluginName:              binpack.New,
+		networktopologyaware.PluginName: networktopologyaware.New,
 	}
 
 	tests := []uthelper.TestCommonStruct{
@@ -1441,6 +1449,11 @@ func TestNodeLevelScoreWithNetWorkTopologies(t *testing.T) {
 				{
 					Name:             binpack.PluginName,
 					EnabledNodeOrder: &trueValue,
+				},
+				{
+					Name:                  networktopologyaware.PluginName,
+					EnabledNodeOrder:      &trueValue,
+					EnabledHyperNodeOrder: &trueValue,
 				},
 			},
 		},

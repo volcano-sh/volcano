@@ -146,14 +146,14 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		nodeScores := make(map[string]float64)
 
 		taskJob := ssn.Jobs[task.Job]
-		hardMode, _ := taskJob.IsHardTopologyMode()
-		if hardMode {
-			return nta.scoreNodeByIP(nodes)
-		}
+		// hardMode, _ := taskJob.IsHardTopologyMode()
+		// if hardMode {
+		// 	return nodeScores,nil
+		// }
 
 		jobAllocatedHyperNode := task.JobAllocatedHyperNode
 		if jobAllocatedHyperNode == "" {
-			return nta.scoreNodeByIP(nodes)
+			return nodeScores, nil
 		}
 		// Calculate score based on LCAHyperNode tier.
 		var maxScore float64 = -1
