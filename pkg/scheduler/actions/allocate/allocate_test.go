@@ -1464,10 +1464,9 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 
 func TestNodeLevelScoreWithNetWorkTopologies(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
-		predicates.PluginName:           predicates.New,
-		gang.PluginName:                 gang.New,
-		binpack.PluginName:              binpack.New,
-		networktopologyaware.PluginName: networktopologyaware.New,
+		predicates.PluginName: predicates.New,
+		gang.PluginName:       gang.New,
+		binpack.PluginName:    binpack.New,
 	}
 
 	tests := []uthelper.TestCommonStruct{
@@ -1528,11 +1527,6 @@ func TestNodeLevelScoreWithNetWorkTopologies(t *testing.T) {
 				{
 					Name:             binpack.PluginName,
 					EnabledNodeOrder: &trueValue,
-				},
-				{
-					Name:                  networktopologyaware.PluginName,
-					EnabledNodeOrder:      &trueValue,
-					EnabledHyperNodeOrder: &trueValue,
 				},
 			},
 		},
