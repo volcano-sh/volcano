@@ -171,8 +171,8 @@ Please follow the guide [Volcano Agent](https://volcano.sh/en/docs/colocation) t
 If you want to get prometheus and grafana volcano dashboard after volcano installed, try following commands:
 
 ```bash
-make TAG=v1.12.0 generate-yaml
-kubectl create -f _output/release/volcano-monitoring-v1.12.0.yaml
+make TAG=latest generate-yaml
+kubectl create -f _output/release/volcano-monitoring-latest.yaml
 ```
 
 ### Install dashboard
@@ -188,6 +188,7 @@ Please follow the guide [Volcano Dashboard](https://github.com/volcano-sh/dashbo
 | Volcano v1.9          | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | -                | -                | -                | -                |
 | Volcano v1.10         | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓                | -                | -                | -                |
 | Volcano v1.11         | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓                | ✓                | -                | -                |
+| Volcano v1.12         | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓                | ✓                | ✓                | -                |
 | Volcano HEAD (master) | -               | -               | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓                | ✓                | ✓                | ✓                |
 
 Key:
