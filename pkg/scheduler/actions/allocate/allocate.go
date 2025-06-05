@@ -19,6 +19,7 @@ package allocate
 import (
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -232,7 +233,8 @@ func (alloc *Action) allocateResourceForTasksWithTopology(tasks *util.PriorityQu
 			klog.V(4).InfoS("Skip search for higher tier cause has found a suitable one", "tier", tier)
 			break
 		}
-		for hyperNodeName := range ssn.HyperNodesSetByTier[tier] {
+		// Converted to a SortedList to eliminate the randomness of Set iteration, making scheduling results more predictable.
+		for _, hyperNodeName := range sets.List[string](ssn.HyperNodesSetByTier[tier]) {
 			nodes, ok := ssn.RealNodesList[hyperNodeName]
 			if !ok {
 				klog.ErrorS(nil, "HyperNode not exists.", "jobName", job.UID, "name", hyperNodeName, "tier", tier)
@@ -419,10 +421,9 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			}
 		}
 
-		if job.IsSoftTopologyMode() {
+		if job.IsTopologyMode() {
 			task.JobAllocatedHyperNode = jobNewAllocatedHyperNode
 		}
-
 		bestNode, highestScore := alloc.prioritizeNodes(ssn, task, predicateNodes)
 		if bestNode == nil {
 			continue
@@ -453,7 +454,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 
 // getJobNewAllocatedHyperNode Obtain the newly allocated hyperNode for the job in soft topology mode
 func getJobNewAllocatedHyperNode(ssn *framework.Session, bestNode string, job *api.JobInfo, jobAllocatedHyperNode string) string {
-	if !job.IsSoftTopologyMode() {
+	if !job.IsTopologyMode() {
 		return ""
 	}
 
@@ -461,17 +462,16 @@ func getJobNewAllocatedHyperNode(ssn *framework.Session, bestNode string, job *a
 	hyperNode := util.FindHyperNodeForNode(bestNode, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
 	if hyperNode != "" {
 		if jobNewAllocatedHyperNode == "" {
-			jobNewAllocatedHyperNode = hyperNode
-		} else {
-			jobNewAllocatedHyperNode = ssn.HyperNodes.GetLCAHyperNode(hyperNode, jobNewAllocatedHyperNode)
+			return hyperNode
 		}
+		return ssn.HyperNodes.GetLCAHyperNode(hyperNode, jobNewAllocatedHyperNode)
 	}
 	return jobNewAllocatedHyperNode
 }
 
 // updateJobAllocatedHyperNode update job allocated hyperNode in soft topology mode
 func updateJobAllocatedHyperNode(job *api.JobInfo, jobNewAllocatedHyperNode string) {
-	if !job.IsSoftTopologyMode() {
+	if !job.IsTopologyMode() {
 		return
 	}
 
