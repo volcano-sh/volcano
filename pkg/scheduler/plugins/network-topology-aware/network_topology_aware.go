@@ -122,8 +122,7 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		nodeScores := make(map[string]float64)
 
 		taskJob := ssn.Jobs[task.Job]
-		hardMode, _ := taskJob.IsHardTopologyMode()
-		if hardMode {
+		if !taskJob.IsTopologyMode() {
 			return nodeScores, nil
 		}
 
