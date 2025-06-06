@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
@@ -453,6 +454,105 @@ var _ = Describe("Job E2E Test", func() {
 		err = e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 		err = e2eutil.WaitTasksReady(ctx, preemptorJob, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should preempt low priority pod with anti-affinity constraint", func() {
+		// Remove enqueue action first because it conflicts with preempt.
+		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
+		modifier := func(sc *e2eutil.SchedulerConfiguration) bool {
+			newActions := strings.TrimPrefix(sc.Actions, "enqueue, ")
+			if newActions == sc.Actions {
+				klog.Warning("There is already no enqueue action")
+				return false
+			}
+
+			sc.Configurations = append(sc.Configurations, e2eutil.Configuration{
+				Name: "preempt",
+				Arguments: map[string]string{
+					"enableTopologyAwarePreemption": "true",
+				},
+			})
+			sc.Actions = newActions
+			return true
+		}
+		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+			return e2eutil.ModifySchedulerConfig(data, modifier)
+		})
+		defer cmc.UndoChanged()
+
+		ctx = e2eutil.InitTestContext(e2eutil.Options{
+			PriorityClasses: map[string]int32{
+				highPriority: highPriorityValue,
+				lowPriority:  lowPriorityValue,
+			},
+		})
+
+		slot := e2eutil.OneCPU
+		rep := e2eutil.ClusterSize(ctx, slot)
+
+		// Create low priority pod with specific label
+		lowPriorityLabels := map[string]string{
+			"app": "test-app",
+		}
+		job := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: 1,
+					Rep: rep,
+					Labels: map[string]string{
+						schedulingv1beta1.PodPreemptable: "true",
+						"app":                            "test-app",
+					},
+				},
+			},
+		}
+
+		job.Name = "low-priority-job"
+		job.Pri = lowPriority
+		lowPriorityJob := e2eutil.CreateJob(ctx, job)
+		err := e2eutil.WaitTasksReady(ctx, lowPriorityJob, int(rep))
+		Expect(err).NotTo(HaveOccurred())
+
+		// Create high priority pod with anti-affinity rule
+		highPriorityJob := &e2eutil.JobSpec{
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: rep / 2,
+					Rep: rep,
+					Labels: map[string]string{
+						schedulingv1beta1.PodPreemptable: "true",
+					},
+					Affinity: &corev1.Affinity{
+						PodAntiAffinity: &corev1.PodAntiAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{
+								{
+									LabelSelector: &metav1.LabelSelector{
+										MatchLabels: lowPriorityLabels,
+									},
+									TopologyKey: "kubernetes.io/hostname",
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		highPriorityJob.Name = "high-priority-job"
+		highPriorityJob.Pri = highPriority
+		highPriorityJobCreated := e2eutil.CreateJob(ctx, highPriorityJob)
+
+		// Verify high priority pod is successfully scheduled
+		err = e2eutil.WaitTasksReady(ctx, highPriorityJobCreated, int(rep)/2)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Verify low priority pod is preempted
+		err = e2eutil.WaitTasksReady(ctx, lowPriorityJob, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

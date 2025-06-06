@@ -260,6 +260,19 @@ func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
 		klog.V(1).Infof("%+v", pod.Status.Conditions)
 		return nil
 	}
+
+	condition = &v1.PodCondition{
+		Type:    v1.DisruptionTarget,
+		Status:  v1.ConditionTrue,
+		Reason:  v1.PodReasonPreemptionByScheduler,
+		Message: fmt.Sprintf("%s: preempting to accommodate a higher priority pod", pod.Spec.SchedulerName),
+	}
+	if !podutil.UpdatePodCondition(&pod.Status, condition) {
+		klog.V(1).Infof("UpdatePodCondition: existed condition, not update")
+		klog.V(1).Infof("%+v", pod.Status.Conditions)
+		return nil
+	}
+
 	if _, err := de.kubeclient.CoreV1().Pods(p.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
 		klog.Errorf("Failed to update pod <%v/%v> status: %v", pod.Namespace, pod.Name, err)
 		return err
