@@ -60,6 +60,7 @@ func isTerminated(status schedulingapi.TaskStatus) bool {
 }
 func createShadowPodGroup(pod *v1.Pod) *schedulingapi.PodGroup {
 	pgName := helpers.GeneratePodgroupName(pod)
+	res := util.GetPodQuotaUsage(pod)
 	podgroup := scheduling.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:   pod.Namespace,
@@ -70,7 +71,7 @@ func createShadowPodGroup(pod *v1.Pod) *schedulingapi.PodGroup {
 		Spec: scheduling.PodGroupSpec{
 			MinMember:         1,
 			PriorityClassName: pod.Spec.PriorityClassName,
-			MinResources:      util.GetPodQuotaUsage(pod),
+			MinResources:      &res,
 		},
 		Status: scheduling.PodGroupStatus{
 			Phase: scheduling.PodGroupPending,
