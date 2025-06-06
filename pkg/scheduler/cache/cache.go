@@ -94,8 +94,8 @@ func init() {
 }
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners)
+func New(config *rest.Config, opt *options.ServerOption) Cache {
+	return newSchedulerCache(config, opt)
 }
 
 // SchedulerCache cache for the kube batch
@@ -162,6 +162,8 @@ type SchedulerCache struct {
 	imageStates map[string]*imageState
 
 	nodeWorkers uint32
+
+	enableShadowPodGroup bool
 
 	// IgnoredCSIProvisioners contains a list of provisioners, and pod request pvc with these provisioners will
 	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
@@ -551,7 +553,7 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -566,7 +568,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	}
 
 	// create default queue and root queue
-	newDefaultAndRootQueue(vcClient, defaultQueue)
+	newDefaultAndRootQueue(vcClient, opt.DefaultQueue)
 	klog.Infof("Create default queue and root queue")
 
 	errTaskRateLimiter := workqueue.NewMaxOfRateLimiter(
@@ -586,26 +588,26 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
 		restConfig:          config,
-		defaultQueue:        defaultQueue,
-		schedulerNames:      schedulerNames,
+		defaultQueue:        opt.DefaultQueue,
+		schedulerNames:      opt.SchedulerNames,
 		nodeSelectorLabels:  make(map[string]sets.Empty),
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 		imageStates:         make(map[string]*imageState),
 
 		NodeList:    []string{},
-		nodeWorkers: nodeWorkers,
+		nodeWorkers: opt.NodeWorkerThreads,
 	}
 
 	sc.schedulerPodName, sc.c = getMultiSchedulerInfo()
 	ignoredProvisionersSet := sets.New[string]()
-	for _, provisioner := range append(ignoredProvisioners, defaultIgnoredProvisioners...) {
+	for _, provisioner := range append(opt.IgnoredCSIProvisioners, defaultIgnoredProvisioners...) {
 		ignoredProvisionersSet.Insert(provisioner)
 	}
 	sc.IgnoredCSIProvisioners = ignoredProvisionersSet
 
-	if len(nodeSelectors) > 0 {
-		sc.updateNodeSelectors(nodeSelectors)
+	if len(opt.NodeSelector) > 0 {
+		sc.updateNodeSelectors(opt.NodeSelector)
 	}
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
