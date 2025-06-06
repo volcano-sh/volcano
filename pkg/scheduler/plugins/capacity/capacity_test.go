@@ -448,6 +448,27 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 		},
 	}
 
+	// resources for test case 8
+	queue8 := buildQueueWithParents("q8", "root", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}}...), nil)
+	queue81 := buildQueueWithParents("q81", "q8", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), nil)
+	queue82 := buildQueueWithParents("q81", "q8", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), nil)
+	// node
+	gpuNode := util.BuildNode("n-gpu", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}, {Name: "pods", Value: "10"}}...), map[string]string{})
+	// podgroup
+	pg12 := util.BuildPodGroup("pg12", "ns1", "q81", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	// pod
+	p12 := util.BuildPod("ns1", "p12", "", corev1.PodPending, api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg12", make(map[string]string), make(map[string]string))
+
+	// resources for test case 9
+	queue9 := buildQueueWithParents("q9", "root", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}, {Name: "hugepages-1Gi", Value: "0"}}...), nil)
+	queue91 := buildQueueWithParents("q91", "q9", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}, {Name: "hugepages-1Gi", Value: "0"}}...), nil)
+	// node
+	n2 := util.BuildNode("n2", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}, {Name: "pods", Value: "10"}, {Name: "hugepages-1Gi", Value: "0"}}...), map[string]string{})
+	// podgroup
+	pg13 := util.BuildPodGroup("pg13", "ns1", "q91", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	// pod
+	p13 := util.BuildPod("ns1", "p13", "", corev1.PodPending, api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg13", make(map[string]string), make(map[string]string))
+
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name:      "case0: Pod allocatable when queue is leaf queue",
@@ -535,6 +556,30 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			Plugins: plugins,
 			Nodes:   []*corev1.Node{n1},
 			Queues:  []*schedulingv1beta1.Queue{root, queue7, queue71, queue72},
+		},
+		{
+			Name:      "case8: When the queue's deserved value has a scalar resource set, the check can pass",
+			Plugins:   plugins,
+			Nodes:     []*corev1.Node{gpuNode},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg12},
+			Pods:      []*corev1.Pod{p12},
+			Queues:    []*schedulingv1beta1.Queue{root, queue8, queue81, queue82},
+			ExpectBindMap: map[string]string{
+				"ns1/p12": "n-gpu",
+			},
+			ExpectBindsNum: 1,
+		},
+		{
+			Name:      "case9: When some scalar resources are 0 in deserved, the check can still pass",
+			Plugins:   plugins,
+			Nodes:     []*corev1.Node{n2},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg13},
+			Pods:      []*corev1.Pod{p13},
+			Queues:    []*schedulingv1beta1.Queue{root, queue9, queue91},
+			ExpectBindMap: map[string]string{
+				"ns1/p13": "n2",
+			},
+			ExpectBindsNum: 1,
 		},
 	}
 
