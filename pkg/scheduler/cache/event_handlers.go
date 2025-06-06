@@ -60,6 +60,7 @@ func isTerminated(status schedulingapi.TaskStatus) bool {
 }
 func createShadowPodGroup(pod *v1.Pod) *schedulingapi.PodGroup {
 	pgName := helpers.GeneratePodgroupName(pod)
+	res := util.GetPodQuotaUsage(pod)
 	podgroup := scheduling.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:   pod.Namespace,
@@ -70,7 +71,7 @@ func createShadowPodGroup(pod *v1.Pod) *schedulingapi.PodGroup {
 		Spec: scheduling.PodGroupSpec{
 			MinMember:         1,
 			PriorityClassName: pod.Spec.PriorityClassName,
-			MinResources:      util.GetPodQuotaUsage(pod),
+			MinResources:      &res,
 		},
 		Status: scheduling.PodGroupStatus{
 			Phase: scheduling.PodGroupPending,
@@ -102,12 +103,13 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 				pi.Pod.Namespace, pi.Pod.Name, sc.schedulerNames)
 		}
 
-		// TOOD: feature gate: shadownodePodGroup feature
-		if pi.Job == "" {
-			pg := createShadowPodGroup(pi.Pod)
-			pi.Job = getJobID(pg)
-			sc.setPodGroup(pg)
+		if !sc.enableShadowPodGroup {
+			return nil
 		}
+
+		pg := createShadowPodGroup(pi.Pod)
+		pi.Job = getJobID(pg)
+		sc.setPodGroup(pg)
 	}
 
 	if _, found := sc.Jobs[pi.Job]; !found {
@@ -373,14 +375,17 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 		} else {
 			klog.Warningf("Failed to find Job <%v> for Task <%v/%v>", ti.Job, ti.Namespace, ti.Name)
 		}
-	} else { // should not run into here; record error so that easy to debug
-		// TOOD: feature gate: shadownodePodGroup feature
-		// jobErr = fmt.Errorf("task %s/%s has null jobID", ti.Namespace, ti.Name)
-		pg := createShadowPodGroup(ti.Pod)
-		jobID := getJobID(pg)
-		if job, ok := sc.Jobs[jobID]; ok {
-			job.PodGroup = nil
-			delete(sc.Jobs, jobID)
+	} else {
+		if sc.enableShadowPodGroup {
+			pg := createShadowPodGroup(ti.Pod)
+			jobID := getJobID(pg)
+			if job, ok := sc.Jobs[jobID]; ok {
+				job.PodGroup = nil
+				delete(sc.Jobs, jobID)
+			}
+		} else {
+			// should not run into here; record error so that easy to debug
+			jobErr = fmt.Errorf("task %s/%s has null jobID", ti.Namespace, ti.Name)
 		}
 	}
 

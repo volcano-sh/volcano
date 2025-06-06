@@ -141,7 +141,7 @@ func (pg *pgcontroller) addStatefulSet(obj interface{}) {
 			klog.Errorf("Failed to list pods for StatefulSet <%s/%s>: %v", sts.Namespace, sts.Name, err)
 			return
 		}
-		if len(pods) > 0 {
+		if !pg.enableShadowPodGroup && len(pods) > 0 {
 			pod := pods[0]
 			klog.V(4).Infof("Try to create podgroup for pod %s/%s", pod.Namespace, pod.Name)
 			if !slices.Contains(pg.schedulerNames, pod.Spec.SchedulerName) {
