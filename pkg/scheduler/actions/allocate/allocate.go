@@ -385,22 +385,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			break
 		}
 
-		var predicateNodes []*api.NodeInfo
-		var fitErrors *api.FitErrors
-
-		// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
-		// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
-		if len(task.Pod.Status.NominatedNodeName) > 0 {
-			if nominatedNodeInfo, ok := ssn.Nodes[task.Pod.Status.NominatedNodeName]; ok && task.InitResreq.LessEqual(nominatedNodeInfo.Idle, api.Zero) {
-				predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache)
-			}
-		}
-
-		// If the nominated node is not found or the nominated node is not suitable for the task, we need to find a suitable node for the task from all nodes.
-		if len(predicateNodes) == 0 {
-			predicateNodes, fitErrors = ph.PredicateNodes(task, allNodes, alloc.predicate, alloc.enablePredicateErrorCache)
-		}
-
+		predicateNodes, fitErrors := util.PredicateNodes(ssn.Nodes, task, allNodes, ph, alloc.predicate, alloc.enablePredicateErrorCache, true)
 		if len(predicateNodes) == 0 {
 			// TODO: Need to add PostFilter extension point implementation here. For example, the DRA plugin includes the PostFilter extension point,
 			// but the DRA's PostFilter only occurs in extreme error conditions: Suppose a pod uses two claims. In the first scheduling attempt,
