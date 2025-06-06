@@ -89,6 +89,8 @@ type ServerOption struct {
 	EnableCacheDumper bool
 	NodeWorkerThreads uint32
 
+	EnableShadowPodGroup bool
+
 	// IgnoredCSIProvisioners contains a list of provisioners, and pod request pvc with these provisioners will
 	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
 	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
@@ -151,6 +153,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
+	fs.BoolVar(&s.EnableShadowPodGroup, "enable-shadow-podgroup", false, "Avoid creating PodGroup for Pods that without PodGroup; it is disabled by default")
 }
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.
