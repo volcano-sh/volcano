@@ -92,7 +92,7 @@ func (pg *pgcontroller) addReplicaSet(obj interface{}) {
 			klog.Errorf("Failed to list pods for ReplicaSet %s: %v", klog.KObj(rs), err)
 			return
 		}
-		if podList != nil && len(podList.Items) > 0 {
+		if !pg.enableShadowPodGroup && podList != nil && len(podList.Items) > 0 {
 			pod := podList.Items[0]
 			klog.V(4).Infof("Try to create podgroup for pod %s", klog.KObj(&pod))
 			if !slices.Contains(pg.schedulerNames, pod.Spec.SchedulerName) {
