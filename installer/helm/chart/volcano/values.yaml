@@ -1,3 +1,8 @@
+## Overrides for generated resource names
+# See templates/_helpers.tpl
+# nameOverride:
+# fullnameOverride:
+
 basic:
   controller_image_name: "volcanosh/vc-controller-manager"
   scheduler_image_name: "volcanosh/vc-scheduler"
