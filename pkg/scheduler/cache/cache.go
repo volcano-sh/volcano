@@ -59,7 +59,6 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	v1beta1apply "volcano.sh/apis/pkg/client/applyconfiguration/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -74,7 +73,6 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
-	"volcano.sh/volcano/pkg/scheduler/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -273,6 +271,19 @@ func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
 		klog.V(1).Infof("%+v", pod.Status.Conditions)
 		return nil
 	}
+
+	condition = &v1.PodCondition{
+		Type:    v1.DisruptionTarget,
+		Status:  v1.ConditionTrue,
+		Reason:  v1.PodReasonPreemptionByScheduler,
+		Message: fmt.Sprintf("%s: preempting to accommodate a higher priority pod", pod.Spec.SchedulerName),
+	}
+	if !podutil.UpdatePodCondition(&pod.Status, condition) {
+		klog.V(1).Infof("UpdatePodCondition: existed condition, not update")
+		klog.V(1).Infof("%+v", pod.Status.Conditions)
+		return nil
+	}
+
 	if _, err := de.kubeclient.CoreV1().Pods(p.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
 		klog.Errorf("Failed to update pod <%v/%v> status: %v", pod.Namespace, pod.Name, err)
 		return err
@@ -356,9 +367,7 @@ func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo
 		return err
 	}
 
-	queueStatusApply := v1beta1apply.QueueStatus().WithAllocated(newQueue.Status.Allocated)
-	queueApply := v1beta1apply.Queue(newQueue.Name).WithStatus(queueStatusApply)
-	_, err := su.vcclient.SchedulingV1beta1().Queues().ApplyStatus(context.TODO(), queueApply, metav1.ApplyOptions{FieldManager: util.DefaultComponentName})
+	_, err := su.vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("error occurred in updating Queue <%s>: %s", newQueue.Name, err.Error())
 		return err
