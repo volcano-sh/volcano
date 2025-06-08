@@ -27,10 +27,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-	"volcano.sh/apis/pkg/apis/helpers"
-	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
-
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/apis/pkg/apis/helpers"
+	"volcano.sh/apis/pkg/apis/scheduling"
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 
 	schedulerapi "volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -117,16 +117,23 @@ func (rc *ReservationCache) SyncTaskStatus(task *schedulerapi.TaskInfo, job *sch
 }
 
 func (rc *ReservationCache) syncReservation(reservation *schedulerapi.ReservationInfo, job *schedulerapi.JobInfo) error {
-	rsve, err := rc.vcClient.BatchV1alpha1().Reservations(reservation.Reservation.Namespace).Get(context.TODO(), reservation.Reservation.Name, metav1.GetOptions{})
+	rsveV1beta1, err := rc.vcClient.SchedulingV1beta1().Reservations(reservation.Reservation.Namespace).Get(context.TODO(), reservation.Reservation.Name, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("Failed to get Reservation %s/%s: %v", reservation.Reservation.Namespace, reservation.Reservation.Name, err)
 		return err
 	}
+
+	rsve, err := ConvertToInternalReservation(rsveV1beta1)
+	if err != nil {
+		klog.Errorf("Failed to convert reservation from %T to %T", rsveV1beta1, rsve)
+		return err
+	}
+
 	oldStatus := reservation.Reservation.Status.DeepCopy()
 	taskStatusCount := make(map[string]v1alpha1.TaskState)
 	var pending, available, succeeded, failed int32
 	calculateTasksStatus(job, &taskStatusCount, &pending, &available, &succeeded, &failed)
-	newStatus := v1alpha1.ReservationStatus{
+	newStatus := scheduling.ReservationStatus{
 		State:           oldStatus.State,
 		MinAvailable:    oldStatus.MinAvailable,
 		TaskStatusCount: taskStatusCount,
@@ -142,13 +149,26 @@ func (rc *ReservationCache) syncReservation(reservation *schedulerapi.Reservatio
 	rsve.Status.State = calculateReservationState(pending, available, succeeded, failed)
 	reservationCondition := newCondition(rsve.Status.State.Phase, &rsve.Status.State.LastTransitionTime)
 	rsve.Status.Conditions = append(rsve.Status.Conditions, reservationCondition)
-	// 调用api更新
-	newReservation, err := rc.vcClient.BatchV1alpha1().Reservations(rsve.Namespace).UpdateStatus(context.TODO(), rsve, metav1.UpdateOptions{})
+
+	newReservationV1, err := ConvertToV1beta1Reservation(rsve)
+	if err != nil {
+		klog.Errorf("Failed to convert reservation from %T to %T", rsve, newReservationV1)
+		return err
+	}
+	// update reservation status in API server
+	newReservationV1beta1, err := rc.vcClient.SchedulingV1beta1().Reservations(rsve.Namespace).UpdateStatus(context.TODO(), newReservationV1, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Reservation %v/%v: %v",
 			rsve.Namespace, rsve.Name, err)
 		return err
 	}
+
+	newReservation, err := ConvertToInternalReservation(newReservationV1beta1)
+	if err != nil {
+		klog.Errorf("Failed to convert reservation from %T to %T", newReservationV1beta1, newReservation)
+		return err
+	}
+
 	// sync cache
 	reservation.Reservation = newReservation
 	return nil
@@ -244,7 +264,7 @@ func (rc *ReservationCache) GcExpiredReservation(reservation *schedulerapi.Reser
 	delete(rc.nameToUID, reservation.Reservation.Name)
 
 	// Sync status to API server
-	rsve, err := rc.vcClient.BatchV1alpha1().Reservations(reservation.Reservation.Namespace).Get(context.TODO(), reservation.Reservation.Name, metav1.GetOptions{})
+	rsveV1beta1, err := rc.vcClient.SchedulingV1beta1().Reservations(reservation.Reservation.Namespace).Get(context.TODO(), reservation.Reservation.Name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			klog.V(3).Infof("Reservation %s/%s not found in API server, maybe it's already deleted.",
@@ -255,14 +275,27 @@ func (rc *ReservationCache) GcExpiredReservation(reservation *schedulerapi.Reser
 			reservation.Reservation.Namespace, reservation.Reservation.Name, err)
 		return err
 	}
+
+	rsve, err := ConvertToInternalReservation(rsveV1beta1)
+	if err != nil {
+		klog.Errorf("Failed to convert reservation from %T to %T", rsveV1beta1, rsve)
+		return err
+	}
+
 	now := metav1.Now()
-	rsve.Status.State.Phase = v1alpha1.ReservationFailed
+	rsve.Status.State.Phase = scheduling.ReservationFailed
 	rsve.Status.State.Reason = "Expired"
 	rsve.Status.State.Message = "Reservation expired and was cleaned up by the scheduler"
 	rsve.Status.State.LastTransitionTime = now
 	reservationCondition := newCondition(rsve.Status.State.Phase, &rsve.Status.State.LastTransitionTime)
 	rsve.Status.Conditions = append(rsve.Status.Conditions, reservationCondition)
-	_, err = rc.vcClient.BatchV1alpha1().Reservations(rsve.Namespace).UpdateStatus(context.TODO(), rsve, metav1.UpdateOptions{})
+
+	newReservationV1, err := ConvertToV1beta1Reservation(rsve)
+	if err != nil {
+		klog.Errorf("Failed to convert reservation from %T to %T", rsve, newReservationV1)
+		return err
+	}
+	_, err = rc.vcClient.SchedulingV1beta1().Reservations(rsve.Namespace).UpdateStatus(context.TODO(), newReservationV1, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Reservation %v/%v: %v",
 			rsve.Namespace, rsve.Name, err)
@@ -322,42 +355,42 @@ func calculateTasksStatus(job *schedulerapi.JobInfo, taskStatusCount *map[string
 	}
 }
 
-func calculateReservationState(pending, available, succeeded, failed int32) v1alpha1.ReservationState {
+func calculateReservationState(pending, available, succeeded, failed int32) scheduling.ReservationState {
 	now := metav1.Now()
 	total := pending + available + succeeded + failed
 
-	var phase v1alpha1.ReservationPhase
+	var phase scheduling.ReservationPhase
 	var reason, message string
 
 	switch {
 	case failed > 0:
-		phase = v1alpha1.ReservationFailed
+		phase = scheduling.ReservationFailed
 		reason = "TaskFailed"
 		message = fmt.Sprintf("Reservation failed: %d/%d task(s) failed", failed, total)
 
 	case succeeded == total && total > 0:
-		phase = v1alpha1.ReservationSucceeded
+		phase = scheduling.ReservationSucceeded
 		reason = "AllSucceeded"
 		message = fmt.Sprintf("Reservation succeeded: all %d task(s) have be allocated", total)
 
 	case available == total && total > 0:
-		phase = v1alpha1.ReservationAvailable
+		phase = scheduling.ReservationAvailable
 		reason = "AllAvailable"
 		message = fmt.Sprintf("Reservation available: all %d task(s) are available", available)
 
 	case available > 0 && available < total:
-		phase = v1alpha1.ReservationWaiting
+		phase = scheduling.ReservationWaiting
 		reason = "PartiallyAvailable"
 		message = fmt.Sprintf("Reservation waiting: %d/%d task(s) are available", available, total)
 
 	default:
 		// available == 0
-		phase = v1alpha1.ReservationPending
+		phase = scheduling.ReservationPending
 		reason = "NoAvailableTasks"
 		message = fmt.Sprintf("Reservation pending: no tasks are available yet (total: %d)", total)
 	}
 
-	return v1alpha1.ReservationState{
+	return scheduling.ReservationState{
 		Phase:              phase,
 		Reason:             reason,
 		Message:            message,
@@ -365,8 +398,8 @@ func calculateReservationState(pending, available, succeeded, failed int32) v1al
 	}
 }
 
-func newCondition(status v1alpha1.ReservationPhase, lastTransitionTime *metav1.Time) v1alpha1.ReservationCondition {
-	return v1alpha1.ReservationCondition{
+func newCondition(status scheduling.ReservationPhase, lastTransitionTime *metav1.Time) scheduling.ReservationCondition {
+	return scheduling.ReservationCondition{
 		Status:             status,
 		LastTransitionTime: lastTransitionTime,
 	}
@@ -375,7 +408,7 @@ func newCondition(status v1alpha1.ReservationPhase, lastTransitionTime *metav1.T
 func isReservationNeedExpiration(reservation *schedulerapi.ReservationInfo, now time.Time) bool {
 	// 1. Skip failed or succeeded reservations
 	rs := reservation.Reservation
-	if rs.Status.State.Phase == v1alpha1.ReservationFailed || rs.Status.State.Phase == v1alpha1.ReservationSucceeded {
+	if rs.Status.State.Phase == scheduling.ReservationFailed || rs.Status.State.Phase == scheduling.ReservationSucceeded {
 		return false
 	}
 

@@ -35,8 +35,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
-	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -838,7 +836,7 @@ func (ssn *Session) CheckReservationAvailable(job *api.JobInfo) bool {
 		return true
 	}
 
-	if reservation.Status.State.Phase != v1alpha1.ReservationAvailable {
+	if reservation.Status.State.Phase != scheduling.ReservationAvailable {
 		klog.V(4).Infof("Reservation %s is not in available phase for job <%s/%s>", reservationName, job.Namespace, job.Name)
 		return false
 	}

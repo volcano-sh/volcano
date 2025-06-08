@@ -776,11 +776,11 @@ func getJobID(pg *schedulingapi.PodGroup) schedulingapi.JobID {
 	return schedulingapi.JobID(fmt.Sprintf("%s/%s", pg.Namespace, pg.Name))
 }
 
-func getPodGroupName(rs *batch.Reservation) string {
+func getPodGroupName(rs *scheduling.Reservation) string {
 	return fmt.Sprintf("%s-%s", rs.Name, string(rs.UID))
 }
 
-func getJobIDByReservation(rs *batch.Reservation) schedulingapi.JobID {
+func getJobIDByReservation(rs *scheduling.Reservation) schedulingapi.JobID {
 	pgName := getPodGroupName(rs)
 	return schedulingapi.JobID(fmt.Sprintf("%s/%s", rs.Namespace, pgName))
 }
@@ -1358,16 +1358,22 @@ func (sc *SchedulerCache) setCSIResourceOnNode(csiNode *sv1.CSINode, node *v1.No
 
 // AddReservationV1beta1 add reservation to scheduler cache
 func (sc *SchedulerCache) AddReservationV1beta1(obj interface{}) {
-	ss, ok := obj.(*batch.Reservation)
+	ss, ok := obj.(*schedulingv1beta1.Reservation)
 	if !ok {
-		klog.Errorf("Cannot convert to *batch.Reservation: %v", obj)
+		klog.Errorf("Cannot convert to *schedulingv1beta1.Reservation: %v", obj)
+		return
+	}
+
+	reservation := &scheduling.Reservation{}
+	if err := scheme.Scheme.Convert(ss, reservation, nil); err != nil {
+		klog.Errorf("Failed to convert reservation from %T to %T", ss, reservation)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 	klog.V(3).Infof("Add Reservation <%s/%s> into cache", ss.Namespace, ss.Name)
-	sc.addReservation(ss)
+	sc.addReservation(reservation)
 }
 
 // UpdateReservationV1beta1 update reservation to scheduler cache
@@ -1379,29 +1385,36 @@ func (sc *SchedulerCache) UpdateReservationV1beta1(oldObj, newObj interface{}) {
 
 // DeleteReservationV1beta1 delete reservation from the scheduler cache
 func (sc *SchedulerCache) DeleteReservationV1beta1(obj interface{}) {
-	var ss *batch.Reservation
+	var ss *schedulingv1beta1.Reservation
 	switch t := obj.(type) {
-	case *batch.Reservation:
+	case *schedulingv1beta1.Reservation:
 		ss = t
 	case cache.DeletedFinalStateUnknown:
 		var ok bool
-		ss, ok = t.Obj.(*batch.Reservation)
+		ss, ok = t.Obj.(*schedulingv1beta1.Reservation)
 		if !ok {
-			klog.Errorf("Cannot convert to *batch.Reservation: %v", t.Obj)
+			klog.Errorf("Cannot convert to *schedulingv1beta1.Reservation: %v", t.Obj)
 			return
 		}
 	default:
 		klog.Errorf("Cannot convert to Numatopo: %v", t)
 		return
 	}
+
+	reservation := &scheduling.Reservation{}
+	if err := scheme.Scheme.Convert(ss, reservation, nil); err != nil {
+		klog.Errorf("Failed to convert reservation from %T to %T", ss, reservation)
+		return
+	}
+
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	sc.deleteReservation(ss)
+	sc.deleteReservation(reservation)
 	klog.V(3).Infof("Delete Reservation <%s/%s> from cache", ss.Namespace, ss.Name)
 }
 
-func (sc *SchedulerCache) addReservation(reservation *batch.Reservation) {
+func (sc *SchedulerCache) addReservation(reservation *scheduling.Reservation) {
 	_, err := sc.getQueueByName(reservation.Spec.Queue)
 	if err != nil {
 		klog.Errorf(err.Error())
@@ -1458,7 +1471,7 @@ func (sc *SchedulerCache) addReservation(reservation *batch.Reservation) {
 	klog.V(4).Infof("Added ReservationInfo %s/%s to ReservationCache, UID: %s", reservation.Namespace, reservation.Name, reservationInfo.Reservation.UID)
 }
 
-func (sc *SchedulerCache) deleteReservation(ss *batch.Reservation) {
+func (sc *SchedulerCache) deleteReservation(ss *scheduling.Reservation) {
 	reservationInfo, ok := sc.ReservationCache.GetReservationById(ss.UID)
 	if !ok {
 		return
@@ -1508,7 +1521,7 @@ func (sc *SchedulerCache) gcReservation(reservation *schedulingapi.ReservationIn
 	return sc.ReservationCache.GcExpiredReservation(reservation)
 }
 
-func createReservationPod(reservation *batch.Reservation, template *v1.PodTemplateSpec, ix int) *v1.Pod {
+func createReservationPod(reservation *scheduling.Reservation, template *v1.PodTemplateSpec, ix int) *v1.Pod {
 	templateCopy := template.DeepCopy()
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1651,7 +1664,7 @@ func (sc *SchedulerCache) getQueueByName(name string) (*schedulingapi.QueueInfo,
 	return nil, fmt.Errorf("queue <%s> not found", name)
 }
 
-func (sc *SchedulerCache) initiateReservation(reservation *batch.Reservation) (*batch.Reservation, error) {
+func (sc *SchedulerCache) initiateReservation(reservation *scheduling.Reservation) (*scheduling.Reservation, error) {
 	klog.V(3).Infof("Starting to initiate Reservation <%s/%s>", reservation.Namespace, reservation.Name)
 	reservationInstance, err := sc.initReservationStatus(reservation)
 
@@ -1666,11 +1679,11 @@ func (sc *SchedulerCache) initiateReservation(reservation *batch.Reservation) (*
 	return reservationInstance, nil
 }
 
-func (sc *SchedulerCache) initReservationStatus(reservation *batch.Reservation) (*batch.Reservation, error) {
+func (sc *SchedulerCache) initReservationStatus(reservation *scheduling.Reservation) (*scheduling.Reservation, error) {
 	if reservation.Status.State.Phase != "" {
 		return reservation, nil
 	}
-	reservation.Status.State.Phase = batch.ReservationPending
+	reservation.Status.State.Phase = scheduling.ReservationPending
 	reservation.Status.State.LastTransitionTime = metav1.Now()
 	reservation.Status.MinAvailable = reservation.Spec.MinAvailable
 	reservationCondition := newCondition(reservation.Status.State.Phase, &reservation.Status.State.LastTransitionTime)
@@ -1678,17 +1691,29 @@ func (sc *SchedulerCache) initReservationStatus(reservation *batch.Reservation) 
 
 	// calculate the resources
 	reservation.Status.Allocatable = calculateAllocatable(reservation)
-	newReservation, err := sc.vcClient.BatchV1alpha1().Reservations(reservation.Namespace).UpdateStatus(context.TODO(), reservation, metav1.UpdateOptions{})
+
+	reservationV1beta1 := &schedulingv1beta1.Reservation{}
+	if err := scheme.Scheme.Convert(reservation, reservationV1beta1, nil); err != nil {
+		klog.Errorf("Error while converting scheduling.Reservation to v1beta1.Reservation with error: %v", err)
+		return nil, err
+	}
+
+	newReservationV1beta1, err := sc.vcClient.SchedulingV1beta1().Reservations(reservation.Namespace).UpdateStatus(context.TODO(), reservationV1beta1, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Reservation %v/%v: %v",
 			reservation.Namespace, reservation.Name, err)
 		return nil, err
 	}
 
+	newReservation := &scheduling.Reservation{}
+	if err := scheme.Scheme.Convert(newReservationV1beta1, newReservation, nil); err != nil {
+		klog.Errorf("Error while converting returned v1beta1.Reservation to scheduling.Reservation with error: %v", err)
+		return nil, err
+	}
 	return newReservation, nil
 }
 
-func (sc *SchedulerCache) createReservationPodGroup(reservation *batch.Reservation) error {
+func (sc *SchedulerCache) createReservationPodGroup(reservation *scheduling.Reservation) error {
 	minTaskMember := map[string]int32{}
 	for _, task := range reservation.Spec.Tasks {
 		minTaskMember[task.Name] = task.Replicas

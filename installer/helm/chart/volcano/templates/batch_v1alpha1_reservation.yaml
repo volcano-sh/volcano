@@ -1,1 +1,0 @@
-{{- tpl ($.Files.Get (printf "crd/%s/batch.volcano.sh_reservations.yaml" (include "crd_version" .))) . }}

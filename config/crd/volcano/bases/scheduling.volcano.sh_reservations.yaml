@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.0
-  name: reservations.batch.volcano.sh
+  name: reservations.scheduling.volcano.sh
 spec:
-  group: batch.volcano.sh
+  group: scheduling.volcano.sh
   names:
     kind: Reservation
     listKind: ReservationList
@@ -25,7 +25,7 @@ spec:
       name: QUEUE
       priority: 1
       type: string
-    name: v1alpha1
+    name: v1beta1
     schema:
       openAPIV3Schema:
         properties:

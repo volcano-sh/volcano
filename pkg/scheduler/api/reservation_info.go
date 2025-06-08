@@ -16,17 +16,17 @@ limitations under the License.
 
 package api
 
-import batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
+import "volcano.sh/apis/pkg/apis/scheduling"
 
 // ReservationInfo will have all info of a Reservation
 type ReservationInfo struct {
 	JobID       JobID
 	JobInfo     *JobInfo
-	Reservation *batch.Reservation
+	Reservation *scheduling.Reservation
 }
 
 // NewReservationInfo creates a new reservationInfo
-func NewReservationInfo(jobID JobID, jobInfo *JobInfo, reservation *batch.Reservation) *ReservationInfo {
+func NewReservationInfo(jobID JobID, jobInfo *JobInfo, reservation *scheduling.Reservation) *ReservationInfo {
 	return &ReservationInfo{
 		JobID:       jobID,
 		JobInfo:     jobInfo,

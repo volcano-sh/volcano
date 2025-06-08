@@ -215,4 +215,4 @@ replace (
 
 // replace volcano.sh/apis => ../volcano-apis
 
-replace volcano.sh/apis => github.com/LegGasai/apis v0.0.0-20250601112757-f47d64d9bcc8
+replace volcano.sh/apis => github.com/LegGasai/apis v0.0.0-20250607075624-623f97c3da19

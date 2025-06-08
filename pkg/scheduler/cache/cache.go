@@ -62,7 +62,6 @@ import (
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	batchinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/batch/v1alpha1"
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 
@@ -118,7 +117,7 @@ type SchedulerCache struct {
 	hyperNodeInformer          topologyinformerv1alpha1.HyperNodeInformer
 	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
 	queueInformerV1beta1       vcinformerv1.QueueInformer
-	reservationInformerV1beta1 batchinformerv1.ReservationInformer
+	reservationInformerV1beta1 vcinformerv1.ReservationInformer
 	pvInformer                 infov1.PersistentVolumeInformer
 	pvcInformer                infov1.PersistentVolumeClaimInformer
 	scInformer                 storagev1.StorageClassInformer
@@ -758,7 +757,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	})
 
 	// create informer(v1beta1) for Reservation information
-	sc.reservationInformerV1beta1 = vcinformers.Batch().V1alpha1().Reservations()
+	sc.reservationInformerV1beta1 = vcinformers.Scheduling().V1beta1().Reservations()
 	sc.reservationInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddReservationV1beta1,
 		UpdateFunc: sc.UpdateReservationV1beta1,

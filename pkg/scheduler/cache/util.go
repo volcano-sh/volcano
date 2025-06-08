@@ -27,10 +27,9 @@ import (
 	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
 	"stathat.com/c/consistent"
-	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
-
-	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
+	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/apis/pkg/apis/scheduling/scheme"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/util"
 )
 
@@ -85,7 +84,7 @@ func responsibleForNode(nodeName string, mySchedulerPodName string, c *consisten
 }
 
 // responsibleForPodGroup returns true if Job which PodGroup belongs is assigned to current scheduler in multi-schedulers scenario
-func responsibleForPodGroup(pg *scheduling.PodGroup, mySchedulerPodName string, c *consistent.Consistent) bool {
+func responsibleForPodGroup(pg *schedulingv1beta1.PodGroup, mySchedulerPodName string, c *consistent.Consistent) bool {
 	if c != nil {
 		var key string
 		if len(pg.OwnerReferences) != 0 {
@@ -169,15 +168,15 @@ func intPtr(i int) *int64 {
 	return &v
 }
 
-func isInitiated(rc *batch.Reservation) bool {
-	if rc.Status.State.Phase == "" || rc.Status.State.Phase == batch.ReservationPending {
+func isInitiated(rc *scheduling.Reservation) bool {
+	if rc.Status.State.Phase == "" || rc.Status.State.Phase == scheduling.ReservationPending {
 		return false
 	}
 
 	return true
 }
 
-func calculateAllocatable(reservation *batch.Reservation) v1.ResourceList {
+func calculateAllocatable(reservation *scheduling.Reservation) v1.ResourceList {
 	tasks := reservation.Spec.Tasks
 	total := v1.ResourceList{}
 	for _, task := range tasks {
@@ -186,6 +185,18 @@ func calculateAllocatable(reservation *batch.Reservation) v1.ResourceList {
 	return total
 }
 
-func generateReservationPodGroupName(reservation *batch.Reservation) string {
+func generateReservationPodGroupName(reservation *scheduling.Reservation) string {
 	return fmt.Sprintf("%s-%s", reservation.Name, string(reservation.UID))
+}
+
+func ConvertToInternalReservation(reservationV1beta1 *schedulingv1beta1.Reservation) (*scheduling.Reservation, error) {
+	reservation := &scheduling.Reservation{}
+	err := scheme.Scheme.Convert(reservationV1beta1, reservation, nil)
+	return reservation, err
+}
+
+func ConvertToV1beta1Reservation(reservation *scheduling.Reservation) (*schedulingv1beta1.Reservation, error) {
+	reservationV1beta1 := &schedulingv1beta1.Reservation{}
+	err := scheme.Scheme.Convert(reservation, reservationV1beta1, nil)
+	return reservationV1beta1, err
 }
