@@ -1444,7 +1444,7 @@ func (sc *SchedulerCache) addReservation(reservation *scheduling.Reservation) {
 		for i := 0; i < int(ts.Replicas); i++ {
 			newPod := createReservationPod(reservation, tc, i)
 			pi, err := sc.NewTaskInfo(newPod)
-			pi.ReservationNodeName = ts.ReservationNodeName
+			pi.ReservationNodeNames = ts.ReservationNodeNames
 			pi.Status = schedulingapi.Pending
 			klog.V(5).Infof("Created TaskInfo: %+v", pi)
 			if err != nil {

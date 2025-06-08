@@ -625,24 +625,24 @@ func (alloc *Action) allocateResourcesForReservationTasks(tasks *util.PriorityQu
 			klog.Warningf("Task <%s/%s> does not have a corresponding reservation task", task.Namespace, task.Name)
 			continue
 		}
-		reservationNodeName := reservationTask.NodeName
-		if reservationNodeName == "" {
+		reservedNodeName := reservationTask.NodeName
+		if reservedNodeName == "" {
 			klog.Warningf("Node for reservation Task <%s/%s> not found", task.Namespace, task.Name)
 			continue
 		}
 
-		reservationNode, found := ssn.Nodes[reservationNodeName]
+		reservedNode, found := ssn.Nodes[reservedNodeName]
 		if !found {
-			klog.Warningf("Node %s for reservation Task <%s/%s> not found", reservationNodeName, task.Namespace, task.Name)
+			klog.Warningf("Reserved node %s for Task <%s/%s> not found", reservedNodeName, task.Namespace, task.Name)
 			continue
 		}
 
-		klog.V(3).Infof("Binding Reservation Task <%s/%s> to node <%v>", task.Namespace, task.Name, reservationNodeName)
+		klog.V(3).Infof("Binding Reservation Task <%s/%s> to reserved node <%v>", task.Namespace, task.Name, reservedNodeName)
 
-		if err := stmt.Allocate(task, reservationNode); err != nil {
-			klog.Errorf("Failed to bind reservation Task %v on %v in Session %v, err: %v", task.UID, reservationNode.Name, ssn.UID, err)
+		if err := stmt.Allocate(task, reservedNode); err != nil {
+			klog.Errorf("Failed to bind reservation Task %v on reserved node %v in Session %v, err: %v", task.UID, reservedNode.Name, ssn.UID, err)
 			if rollbackErr := stmt.UnAllocate(task); rollbackErr != nil {
-				klog.Errorf("Failed to unallocate Task %v on %v in Session %v for %v.", task.UID, reservationNode.Name, ssn.UID, rollbackErr)
+				klog.Errorf("Failed to unallocate Task %v on reserved node %v in Session %v for %v.", task.UID, reservedNode.Name, ssn.UID, rollbackErr)
 			}
 		} else {
 			metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))

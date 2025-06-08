@@ -456,8 +456,10 @@ spec:
                     replicas:
                       format: int32
                       type: integer
-                    reservationNodeName:
-                      type: string
+                    reservationNodeNames:
+                      items:
+                        type: string
+                      type: array
                     template:
                       properties:
                         metadata:
@@ -5220,8 +5222,10 @@ spec:
                     replicas:
                       format: int32
                       type: integer
-                    reservationNodeName:
-                      type: string
+                    reservationNodeNames:
+                      items:
+                        type: string
+                      type: array
                     template:
                       properties:
                         metadata:
@@ -9606,8 +9610,10 @@ spec:
                     replicas:
                       format: int32
                       type: integer
-                    reservationNodeName:
-                      type: string
+                    reservationNodeNames:
+                      items:
+                        type: string
+                      type: array
                     template:
                       properties:
                         metadata:

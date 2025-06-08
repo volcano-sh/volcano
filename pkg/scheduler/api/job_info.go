@@ -78,8 +78,8 @@ type TransactionContext struct {
 
 // ReservationContext holds all the fields that needed by reservation scheduling
 type ReservationContext struct {
-	ReservationTaskInfo *TaskInfo
-	ReservationNodeName string
+	ReservationTaskInfo  *TaskInfo
+	ReservationNodeNames []string
 }
 
 // Clone returns a clone of TransactionContext
@@ -316,8 +316,8 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 			Status:   ti.Status,
 		},
 		ReservationContext: ReservationContext{
-			ReservationTaskInfo: ti.ReservationTaskInfo,
-			ReservationNodeName: ti.ReservationNodeName,
+			ReservationTaskInfo:  ti.ReservationTaskInfo,
+			ReservationNodeNames: ti.ReservationNodeNames,
 		},
 		LastTransaction: ti.LastTransaction.Clone(),
 	}

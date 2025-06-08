@@ -99,18 +99,27 @@ func (rp *reservationPlugin) OnSessionOpen(ssn *framework.Session) {
 			return nil
 		}
 
-		reservationNodeName := task.ReservationNodeName
-		if reservationNodeName == "" {
+		reservationNodeNames := task.ReservationNodeNames
+		if len(reservationNodeNames) == 0 {
 			return nil
 		}
+
+		nodeSet := make(map[string]struct{})
 		for _, nodeList := range scores {
 			for _, node := range nodeList {
-				if node.Name == reservationNodeName {
-					klog.V(5).Infof("[debug]: Found reservation node %s", node.Name)
-					return node
-				}
+				nodeSet[node.Name] = struct{}{}
 			}
 		}
+
+		// match reservation node names specified in given order with available nodes
+		for _, reserved := range reservationNodeNames {
+			if _, ok := nodeSet[reserved]; ok {
+				klog.V(5).Infof("[debug]: Found reservation node %s for task %s/%s", reserved, task.Namespace, task.Name)
+				return ssn.Nodes[reserved]
+			}
+		}
+
+		klog.V(5).Infof("[debug]: None of the specified reserved nodes are available for task %s/%s, falling back to scheduler default decision", task.Namespace, task.Name)
 		return nil
 	}
 	ssn.AddBestNodeFn(rp.Name(), bestNodeFn)
