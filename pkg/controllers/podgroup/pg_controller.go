@@ -69,6 +69,9 @@ type pgcontroller struct {
 
 	// To determine whether inherit owner's annotations for pods when create podgroup
 	inheritOwnerAnnotations bool
+	// If enableShadowPodGroup is true, controller will not create PodGroup for
+	// pods that without PodGroup
+	enableShadowPodGroup bool
 }
 
 func (pg *pgcontroller) Name() string {
@@ -86,6 +89,7 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 	pg.schedulerNames = make([]string, len(opt.SchedulerNames))
 	copy(pg.schedulerNames, opt.SchedulerNames)
 	pg.inheritOwnerAnnotations = opt.InheritOwnerAnnotations
+	pg.enableShadowPodGroup = opt.EnableShadowPodGroup
 
 	pg.informerFactory = opt.SharedInformerFactory
 	pg.podInformer = opt.SharedInformerFactory.Core().V1().Pods()
@@ -169,12 +173,14 @@ func (pg *pgcontroller) processNextReq() bool {
 		return true
 	}
 
-	// normal pod use volcano
-	klog.V(4).Infof("Try to create podgroup for pod %s/%s", pod.Namespace, pod.Name)
-	if err := pg.createNormalPodPGIfNotExist(pod); err != nil {
-		klog.Errorf("Failed to handle Pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
-		pg.queue.AddRateLimited(req)
-		return true
+	if !pg.enableShadowPodGroup {
+		// normal pod use volcano
+		klog.V(4).Infof("Try to create podgroup for pod %s/%s", pod.Namespace, pod.Name)
+		if err := pg.createNormalPodPGIfNotExist(pod); err != nil {
+			klog.Errorf("Failed to handle Pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
+			pg.queue.AddRateLimited(req)
+			return true
+		}
 	}
 
 	// If no error, forget it.
