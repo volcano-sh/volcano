@@ -598,7 +598,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 
 	// init root queue realCapability/capability/deserved as cp.totalResource
 	rootQueueAttr := cp.queueOpts[api.QueueID(cp.rootQueue)]
-	rootQueueAttr.capability = cp.totalResource
+	//rootQueueAttr.capability = cp.totalResource
 	rootQueueAttr.realCapability = cp.totalResource
 	rootQueueAttr.deserved = cp.totalResource
 	// Check the hierarchical structure of queues
