@@ -147,7 +147,7 @@ e2e-test-dra: images
 	E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true" ./hack/run-e2e-kind.sh
 
 generate-yaml: init manifests
-	./hack/generate-yaml.sh TAG=${RELEASE_VER} CRD_VERSION=${CRD_VERSION}
+	./hack/generate-yaml.sh CRD_VERSION=${CRD_VERSION}
 
 generate-charts: init manifests
 	./hack/generate-charts.sh
@@ -203,9 +203,10 @@ CONTROLLER_GEN=$(shell which controller-gen)
 endif
 
 update-development-yaml:
-	make generate-yaml TAG=latest RELEASE_DIR=installer
-	mv installer/volcano-latest.yaml installer/volcano-development.yaml
-	mv installer/volcano-agent-latest.yaml installer/volcano-agent-development.yaml
+	make generate-yaml RELEASE_DIR=installer
+	mv installer/volcano-${TAG}.yaml installer/volcano-development.yaml
+	mv installer/volcano-agent-${TAG}.yaml installer/volcano-agent-development.yaml
+	mv installer/volcano-monitoring-${TAG}.yaml installer/volcano-monitoring.yaml
 
 mod-download-go:
 	@-GOFLAGS="-mod=readonly" find -name go.mod -execdir go mod download \;
