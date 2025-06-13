@@ -17,6 +17,8 @@ limitations under the License.
 package framework
 
 import (
+	"slices"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -261,4 +263,36 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 		nodes = append(nodes, node.Node)
 	}
 	return nodes, nil
+}
+
+func nodeIsNotReady(obj *v1.Node) bool {
+	conditionMap := make(map[v1.NodeConditionType]*v1.NodeCondition)
+	NodeAllConditions := []v1.NodeConditionType{v1.NodeReady}
+	for i := range obj.Status.Conditions {
+		cond := obj.Status.Conditions[i]
+		conditionMap[cond.Type] = &cond
+	}
+
+	var status []string
+	for _, validCondition := range NodeAllConditions {
+		if condition, ok := conditionMap[validCondition]; ok {
+			if condition.Status == v1.ConditionTrue {
+				status = append(status, string(condition.Type))
+			} else {
+				status = append(status, "Not"+string(condition.Type))
+			}
+		}
+	}
+	if len(status) == 0 {
+		status = append(status, "Unknown")
+	}
+	if obj.Spec.Unschedulable {
+		status = append(status, "SchedulingDisabled")
+	}
+
+	if len(status) != 1 || (len(status) == 1 && !slices.Contains(status, string(v1.NodeReady))) {
+		return false
+	}
+
+	return true
 }

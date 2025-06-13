@@ -211,6 +211,11 @@ func openSession(cache cache.Cache) *Session {
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
 	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
 	for _, n := range ssn.Nodes {
+		if !nodeIsNotReady(n.Node) {
+			klog.V(3).Infof("node %s is not ready,need continue", n.Name)
+			continue
+		}
+
 		ssn.TotalResource.Add(n.Allocatable)
 	}
 
