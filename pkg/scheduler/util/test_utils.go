@@ -43,6 +43,9 @@ func BuildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1
 		Status: v1.NodeStatus{
 			Capacity:    alloc,
 			Allocatable: alloc,
+			Conditions: []v1.NodeCondition{
+				{Type: v1.NodeReady, Status: v1.ConditionTrue},
+			},
 		},
 	}
 }
