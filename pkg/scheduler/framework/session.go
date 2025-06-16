@@ -214,8 +214,6 @@ func openSession(cache cache.Cache) *Session {
 		ssn.TotalResource.Add(n.Allocatable)
 	}
 
-	ssn.InitCycleState()
-
 	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
 
