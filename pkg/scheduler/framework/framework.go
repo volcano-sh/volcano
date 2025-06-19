@@ -47,6 +47,9 @@ func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Con
 			}
 		}
 	}
+
+	ssn.InitCycleState()
+
 	return ssn
 }
 
