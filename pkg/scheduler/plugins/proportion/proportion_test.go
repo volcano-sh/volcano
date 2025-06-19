@@ -300,6 +300,7 @@ func TestEnqueueAndAllocable(t *testing.T) {
 	p4 := util.BuildPod("ns1", "pod4", "", apiv1.PodPending, res0c1g, "pg4", nil, nil)
 	p5 := util.BuildPod("ns1", "pod5", "", apiv1.PodPending, res1c1g, "pg5", nil, nil)
 	p6 := util.BuildPod("ns1", "pod6", "", apiv1.PodPending, res1c1g, "pg6", nil, nil)
+	p7 := util.BuildPod("ns1", "pod7", "", apiv1.PodPending, res1c1g, "pg7", nil, nil)
 
 	// podgroup
 	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning)
@@ -308,6 +309,7 @@ func TestEnqueueAndAllocable(t *testing.T) {
 	pg4 := util.BuildPodGroup("pg4", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupPending)
 	pg5 := util.BuildPodGroup("pg5", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
 	pg6WithClosedQueue := util.BuildPodGroup("pg6", "ns1", "q3", 1, nil, schedulingv1beta1.PodGroupPending)
+	pg7WithInvalidQueue := util.BuildPodGroup("pg7", "ns1", "q4", 1, nil, schedulingv1beta1.PodGroupPending)
 
 	pg1.Spec.MinResources = &res1c2g
 	pg2.Spec.MinResources = &res2c1g
@@ -315,10 +317,12 @@ func TestEnqueueAndAllocable(t *testing.T) {
 	pg4.Spec.MinResources = &res0c1g
 	pg5.Spec.MinResources = &res1c1g
 	pg6WithClosedQueue.Spec.MinResources = &res1c1g
+	pg7WithInvalidQueue.Spec.MinResources = &res1c1g
 
 	queue1 := util.BuildQueue("q1", 1, api.BuildResourceList("2", "2G"))
 	queue2 := util.BuildQueue("q2", 1, api.BuildResourceList("3", "3G"))
 	closedQueue3 := util.BuildQueueWithState("q3", 1, api.BuildResourceList("3", "3G"), schedulingv1beta1.QueueStateClosed)
+	invalidQueue4 := util.BuildQueueWithResourcesQuantity("q4", api.BuildResourceList("4", "4G"), api.BuildResourceList("3", "3G"), nil)
 
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 	trueValue, falseValue := true, false
@@ -422,6 +426,19 @@ func TestEnqueueAndAllocable(t *testing.T) {
 				Nodes:          []*apiv1.Node{n1, n2},
 				PodGroups:      []*schedulingv1beta1.PodGroup{pg6WithClosedQueue},
 				Queues:         []*schedulingv1beta1.Queue{closedQueue3},
+				ExpectBindsNum: 0,
+				ExpectBindMap:  map[string]string{},
+			},
+			tiers: enqueueable,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:           "case4: invalid queue can not enqueue",
+				Plugins:        plugins,
+				Pods:           []*apiv1.Pod{p7},
+				Nodes:          []*apiv1.Node{n1, n2},
+				PodGroups:      []*schedulingv1beta1.PodGroup{pg7WithInvalidQueue},
+				Queues:         []*schedulingv1beta1.Queue{invalidQueue4},
 				ExpectBindsNum: 0,
 				ExpectBindMap:  map[string]string{},
 			},
