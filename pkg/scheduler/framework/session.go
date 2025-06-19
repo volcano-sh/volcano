@@ -106,6 +106,7 @@ type Session struct {
 	hyperNodeOrderFns   map[string]api.HyperNodeOrderFn
 	preemptableFns      map[string]api.EvictableFn
 	reclaimableFns      map[string]api.EvictableFn
+	queueValidFns       map[string]api.ValidateFn
 	overusedFns         map[string]api.ValidateFn
 	// preemptiveFns means whether current queue can reclaim from other queue,
 	// while reclaimableFns means whether current queue's resources can be reclaimed.
@@ -167,6 +168,7 @@ func openSession(cache cache.Cache) *Session {
 		hyperNodeOrderFns:   map[string]api.HyperNodeOrderFn{},
 		preemptableFns:      map[string]api.EvictableFn{},
 		reclaimableFns:      map[string]api.EvictableFn{},
+		queueValidFns:       map[string]api.ValidateFn{},
 		overusedFns:         map[string]api.ValidateFn{},
 		preemptiveFns:       map[string]api.ValidateWithCandidateFn{},
 		allocatableFns:      map[string]api.AllocatableFn{},

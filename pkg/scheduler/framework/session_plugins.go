@@ -110,6 +110,11 @@ func (ssn *Session) AddNodeReduceFn(name string, pf api.NodeReduceFn) {
 	ssn.nodeReduceFns[name] = pf
 }
 
+// AddQueueValidFn add overused function
+func (ssn *Session) AddQueueValidFn(name string, fn api.ValidateFn) {
+	ssn.queueValidFns[name] = fn
+}
+
 // AddOverusedFn add overused function
 func (ssn *Session) AddOverusedFn(name string, fn api.ValidateFn) {
 	ssn.overusedFns[name] = fn
@@ -257,6 +262,24 @@ func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskI
 	}
 
 	return victims
+}
+
+// QueueValid invoke queueValid function of the plugins
+func (ssn *Session) QueueValid(queue *api.QueueInfo) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			qvf, found := ssn.queueValidFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			if !qvf(queue) {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // Overused invoke overused function of the plugins

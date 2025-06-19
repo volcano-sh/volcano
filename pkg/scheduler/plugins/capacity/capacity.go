@@ -182,6 +182,38 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
 	})
 
+	ssn.AddQueueValidFn(cp.Name(), func(obj interface{}) bool {
+		queue := obj.(*api.QueueInfo).Queue
+
+		capability := queue.Spec.Capability
+		deserved := queue.Spec.Deserved
+		guarantee := queue.Spec.Guarantee.Resource
+
+		capabilityResource := api.NewResource(capability)
+		deservedResource := api.NewResource(deserved)
+		guaranteeResource := api.NewResource(guarantee)
+
+		if capability != nil && capabilityResource.LessPartly(deservedResource, api.Zero) {
+			klog.V(3).Infof("capability shouldn't less than deserved: capability <%v>, deserved <%v>",
+				capabilityResource.String(), deservedResource.String())
+			return false
+		}
+
+		if capability != nil && capabilityResource.LessPartly(guaranteeResource, api.Zero) {
+			klog.V(3).Infof("capability shouldn't less than guarantee: capability <%v>, guarantee <%v>",
+				capabilityResource.String(), guaranteeResource.String())
+			return false
+		}
+
+		if deserved != nil && deservedResource.LessPartly(guaranteeResource, api.Zero) {
+			klog.V(3).Infof("deserved shouldn't less than guarantee: deserved <%v>, guarantee <%v>",
+				deservedResource.String(), guaranteeResource.String())
+			return false
+		}
+
+		return true
+	})
+
 	ssn.AddJobEnqueueableFn(cp.Name(), func(obj interface{}) int {
 		if !readyToSchedule {
 			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")

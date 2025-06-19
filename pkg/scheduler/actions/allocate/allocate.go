@@ -138,6 +138,11 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 
 		queue := queues.Pop().(*api.QueueInfo)
 
+		if !ssn.QueueValid(queue) {
+			klog.V(3).Infof("Queue <%s> is invaild, ignore it.", queue.Name)
+			continue
+		}
+
 		if ssn.Overused(queue) {
 			klog.V(3).Infof("Queue <%s> is overused, ignore it.", queue.Name)
 			continue

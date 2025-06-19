@@ -417,10 +417,11 @@ func BuildQueueWithAnnos(qname string, weight int32, cap v1.ResourceList, annos 
 	return queue
 }
 
-// BuildQueueWithResourcesQuantity return a queue with deserved and capability resources quantity.
-func BuildQueueWithResourcesQuantity(qname string, deserved, cap v1.ResourceList) *schedulingv1beta1.Queue {
+// BuildQueueWithResourcesQuantity return a queue with guarantee, deserved and capability resources quantity.
+func BuildQueueWithResourcesQuantity(qname string, deserved, cap v1.ResourceList, guarantee schedulingv1beta1.Guarantee) *schedulingv1beta1.Queue {
 	queue := BuildQueue(qname, 1, cap)
 	queue.Spec.Deserved = deserved
+	queue.Spec.Guarantee = guarantee
 	return queue
 }
 
