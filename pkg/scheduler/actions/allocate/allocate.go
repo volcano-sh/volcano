@@ -363,7 +363,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
 		if !ssn.Allocatable(queue, task) {
-			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
+			klog.V(3).Infof("Queue <%s> is not ready when considering task <%s>, ignore it.", queue.Name, task.Name)
 			continue
 		}
 
