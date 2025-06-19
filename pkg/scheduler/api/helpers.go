@@ -90,6 +90,16 @@ func CompletedStatus(status TaskStatus) bool {
 	}
 }
 
+// ScheduledStatus checks whether the tasks are running, bound, failed or succeeded
+func ScheduledStatus(status TaskStatus) bool {
+	switch status {
+	case Running, Bound, Failed, Succeeded:
+		return true
+	default:
+		return false
+	}
+}
+
 // MergeErrors is used to merge multiple errors into single error
 func MergeErrors(errs ...error) error {
 	msg := "errors: "
