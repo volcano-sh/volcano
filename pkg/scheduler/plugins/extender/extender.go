@@ -58,6 +58,10 @@ const (
 	ExtenderJobEnqueueableVerb = "extender.jobEnqueueableVerb"
 	// ExtenderJobReadyVerb is the verb of JobReady method
 	ExtenderJobReadyVerb = "extender.jobReadyVerb"
+	// ExtenderAllocateFuncVerb is the verb of AllocateFunc method
+	ExtenderAllocateFuncVerb = "extender.allocateFuncVerb"
+	// ExtenderDeallocateFuncVerb is the verb of DeallocateFunc method
+	ExtenderDeallocateFuncVerb = "extender.deallocateFuncVerb"
 	// ExtenderIgnorable indicates whether the extender can ignore unexpected errors
 	ExtenderIgnorable = "extender.ignorable"
 
@@ -77,6 +81,8 @@ type extenderConfig struct {
 	queueOverusedVerb  string
 	jobEnqueueableVerb string
 	jobReadyVerb       string
+	allocateFuncVerb   string
+	deallocateFuncVerb string
 	ignorable          bool
 }
 
@@ -123,6 +129,8 @@ func parseExtenderConfig(arguments framework.Arguments) *extenderConfig {
 	ec.queueOverusedVerb, _ = arguments[ExtenderQueueOverusedVerb].(string)
 	ec.jobEnqueueableVerb, _ = arguments[ExtenderJobEnqueueableVerb].(string)
 	ec.jobReadyVerb, _ = arguments[ExtenderJobReadyVerb].(string)
+	ec.allocateFuncVerb, _ = arguments[ExtenderAllocateFuncVerb].(string)
+	ec.deallocateFuncVerb, _ = arguments[ExtenderDeallocateFuncVerb].(string)
 
 	arguments.GetBool(&ec.ignorable, ExtenderIgnorable)
 
@@ -289,6 +297,8 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 			return resp.Status
 		})
 	}
+
+	addEventHandler(ssn, ep)
 }
 
 func (ep *extenderPlugin) OnSessionClose(ssn *framework.Session) {
@@ -329,4 +339,49 @@ func (ep *extenderPlugin) send(action string, args interface{}, result interface
 		return json.NewDecoder(resp.Body).Decode(result)
 	}
 	return nil
+}
+
+func addEventHandler(ssn *framework.Session, ep *extenderPlugin) {
+	const (
+		AllocateFunc   = "AllocateFunc"
+		DeallocateFunc = "DeallocateFunc"
+	)
+	eventHandlerFunc := func(funcName string) func(event *framework.Event) {
+		return func(event *framework.Event) {
+			if event == nil {
+				klog.Errorf("%s event nil.", funcName)
+				return
+			}
+			resp := &EventHandlerResponse{}
+			var verb string
+			switch funcName {
+			case AllocateFunc:
+				verb = ep.config.allocateFuncVerb
+			case DeallocateFunc:
+				verb = ep.config.deallocateFuncVerb
+			}
+			err := ep.send(verb, &EventHandlerRequest{Task: event.Task}, resp)
+			if err != nil {
+				klog.Warningf("%s failed with error %v", funcName, err)
+
+				if !ep.config.ignorable {
+					event.Err = err
+				}
+			}
+			if resp.ErrorMessage != "" {
+				event.Err = errors.New(resp.ErrorMessage)
+			}
+		}
+	}
+
+	var eventHandler framework.EventHandler
+	if ep.config.allocateFuncVerb != "" {
+		eventHandler.AllocateFunc = eventHandlerFunc(AllocateFunc)
+	}
+
+	if ep.config.deallocateFuncVerb != "" {
+		eventHandler.DeallocateFunc = eventHandlerFunc(DeallocateFunc)
+	}
+
+	ssn.AddEventHandler(&eventHandler)
 }
