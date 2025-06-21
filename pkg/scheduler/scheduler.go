@@ -139,10 +139,12 @@ func (pc *Scheduler) loadSchedulerConf() {
 		actions, plugins := pc.getSchedulerConf()
 		klog.V(2).Infof("Successfully loaded Scheduler conf, actions: %v, plugins: %v", actions, plugins)
 
-		policyActions, policyPlugins := pc.getSchedulingPolicyConf()
-		for policyName := range pc.schedulingPolicies {
-			klog.V(2).Infof("Successfully loaded SchedulingPolicy %s - actions: %v, plugins: %v",
-				policyName, policyActions[policyName], policyPlugins[policyName])
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingPolicy) {
+			policyActions, policyPlugins := pc.getSchedulingPolicyConf()
+			for policyName := range pc.schedulingPolicies {
+				klog.V(2).Infof("Successfully loaded SchedulingPolicy %s - actions: %v, plugins: %v",
+					policyName, policyActions[policyName], policyPlugins[policyName])
+			}
 		}
 	}()
 
@@ -181,8 +183,12 @@ func (pc *Scheduler) loadSchedulerConf() {
 
 		actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
 		if err != nil {
-			klog.Errorf("Scheduler config %s is invalid: %v", config, err)
-			return
+			if fileName == "volcano-scheduler.conf" {
+				klog.Errorf("Scheduler config %s is invalid: %v", config, err)
+				return
+			} else {
+				klog.V(2).Infof("SchedulingPolicy %v is invalid, return default scheduler config", fileName)
+			}
 		}
 
 		if fileName == "volcano-scheduler.conf" {
