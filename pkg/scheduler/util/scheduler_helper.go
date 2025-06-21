@@ -185,6 +185,14 @@ func SortNodes(nodeScores map[float64][]*api.NodeInfo) []*api.NodeInfo {
 	sort.Sort(sort.Reverse(sort.Float64Slice(keys)))
 	for _, key := range keys {
 		nodes := nodeScores[key]
+		// if the scores are the same, sort the nodes in predictable order using their names
+		// this is to avoid randomness in scheduling when scores are the same
+		if len(nodes) > 1 {
+			sort.Slice(nodes, func(i, j int) bool {
+				return nodes[i].Name < nodes[j].Name
+			})
+			klog.V(3).Infof("nodes with same score %v found. ordered nodes by name: %v", key, nodes)
+		}
 		nodesInorder = append(nodesInorder, nodes...)
 	}
 	return nodesInorder
