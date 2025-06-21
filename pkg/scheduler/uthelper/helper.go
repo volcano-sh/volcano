@@ -86,6 +86,8 @@ type TestCommonStruct struct {
 	ExpectEvicted []string
 	// ExpectStatus the expected final podgroup status.
 	ExpectStatus map[api.JobID]scheduling.PodGroupPhase
+	// ExpectTaskStatusNums represents the expected number map of various TaskStatuses in podgroup
+	ExpectTaskStatusNums map[api.JobID]map[schedulingapi.TaskStatus]int
 	// ExpectBindsNum the expected bind events numbers.
 	ExpectBindsNum int
 	// ExpectEvictNum the expected evict events numbers, include preempted and reclaimed evict events
@@ -213,6 +215,9 @@ func (test *TestCommonStruct) CheckAll(caseIndex int) (err error) {
 	if err = test.CheckPipelined(caseIndex); err != nil {
 		return
 	}
+	if err = test.CheckTaskStatusNums(caseIndex); err != nil {
+		return
+	}
 	return test.CheckPGStatus(caseIndex)
 }
 
@@ -292,6 +297,22 @@ func (test *TestCommonStruct) CheckEvict(caseIndex int) error {
 
 	if !equality.Semantic.DeepEqual(expect, got) {
 		return fmt.Errorf("case %d(%s) check evict: \nwant: %v\n got: %v ", caseIndex, test.Name, expect, got)
+	}
+	return nil
+}
+
+func (test *TestCommonStruct) CheckTaskStatusNums(caseIndex int) error {
+	ssn := test.ssn
+	for jobID, taskStatusMap := range test.ExpectTaskStatusNums {
+		job := ssn.Jobs[jobID]
+		if job == nil {
+			return fmt.Errorf("case %d(%s) check podgroup status, job <%v> doesn't exist in session", caseIndex, test.Name, jobID)
+		}
+		for status, expectNum := range taskStatusMap {
+			if expectNum != len(job.TaskStatusIndex[status]) {
+				return fmt.Errorf("case %d(%s) check podgroup <%v> task status %v: want %d, got %d", caseIndex, test.Name, jobID, status, expectNum, len(job.TaskStatusIndex[status]))
+			}
+		}
 	}
 	return nil
 }
