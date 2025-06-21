@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Usage Instructions: https://github.com/volcano-sh/volcano/tree/master/docs/development/cherry-picks.md
+
 # Checkout a PR from GitHub. (Yes, this is sitting in a Git tree. How
 # meta.) Assumes you care about pulls from remote "upstream" and
 # checks thems out to a branch named:
@@ -23,23 +25,25 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-declare -r KUBE_ROOT="$(dirname "${BASH_SOURCE}")/.."
-cd "${KUBE_ROOT}"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+declare -r REPO_ROOT
+cd "${REPO_ROOT}"
 
 declare -r STARTINGBRANCH=$(git symbolic-ref --short HEAD)
-declare -r REBASEMAGIC="${KUBE_ROOT}/.git/rebase-apply"
+declare -r REBASEMAGIC="${REPO_ROOT}/.git/rebase-apply"
 DRY_RUN=${DRY_RUN:-""}
-REGENERATE_DOCS=${REGENERATE_DOCS:-""}
 UPSTREAM_REMOTE=${UPSTREAM_REMOTE:-upstream}
 FORK_REMOTE=${FORK_REMOTE:-origin}
+MAIN_REPO_ORG=${MAIN_REPO_ORG:-$(git remote get-url "$UPSTREAM_REMOTE" | awk '{gsub(/http[s]:\/\/|git@/,"")}1' | awk -F'[@:./]' 'NR==1{print $3}')}
+MAIN_REPO_NAME=${MAIN_REPO_NAME:-$(git remote get-url "$UPSTREAM_REMOTE" | awk '{gsub(/http[s]:\/\/|git@/,"")}1' | awk -F'[@:./]' 'NR==1{print $4}')}
 
 if [[ -z ${GITHUB_USER:-} ]]; then
   echo "Please export GITHUB_USER=<your-user> (or GH organization, if that's where your fork lives)"
   exit 1
 fi
 
-if ! which hub > /dev/null; then
-  echo "Can't find 'hub' tool in PATH, please install from https://github.com/github/hub"
+if ! command -v gh >/dev/null; then
+  echo "Can't find 'gh' tool in PATH, please install from https://github.com/cli/cli"
   exit 1
 fi
 
@@ -55,13 +59,15 @@ if [[ "$#" -lt 2 ]]; then
   echo "  This is useful for creating patches to a release branch without making a PR."
   echo "  When DRY_RUN is set the script will leave you in a branch containing the commits you cherry-picked."
   echo
-  echo "  Set the REGENERATE_DOCS environment var to regenerate documentation for the target branch after picking the specified commits."
-  echo "  This is useful when picking commits containing changes to API documentation."
-  echo
   echo " Set UPSTREAM_REMOTE (default: upstream) and FORK_REMOTE (default: origin)"
   echo " To override the default remote names to what you have locally."
+  echo
+  echo "  For merge process info, see https://github.com/volcano-sh/volcano/tree/master/docs/development/cherry-picks.md"
   exit 2
 fi
+
+# Checks if you are logged in. Will error/bail if you are not.
+gh auth status
 
 if git_status=$(git status --porcelain --untracked=no 2>/dev/null) && [[ -n "${git_status}" ]]; then
   echo "!!! Dirty tree. Clean up and try again."
@@ -75,7 +81,7 @@ fi
 
 declare -r BRANCH="$1"
 shift 1
-declare -r PULLS=( "$@" )
+declare -r PULLS=("$@")
 
 function join { local IFS="$1"; shift; echo "$*"; }
 declare -r PULLDASH=$(join - "${PULLS[@]/#/#}") # Generates something like "#12345-#56789"
@@ -85,7 +91,7 @@ echo "+++ Updating remotes..."
 git remote update "${UPSTREAM_REMOTE}" "${FORK_REMOTE}"
 
 if ! git log -n1 --format=%H "${BRANCH}" >/dev/null 2>&1; then
-  echo "!!! '${BRANCH}' not found. The second argument should be something like ${UPSTREAM_REMOTE}/release-0.21."
+  echo "!!! '${BRANCH}' not found. The second argument should be something like ${UPSTREAM_REMOTE}/release-1.11."
   echo "    (In particular, it needs to be a valid, existing remote branch that I can 'git checkout'.)"
   exit 1
 fi
@@ -96,7 +102,6 @@ declare -r NEWBRANCHUNIQ="${NEWBRANCH}-$(date +%s)"
 echo "+++ Creating local branch ${NEWBRANCHUNIQ}"
 
 cleanbranch=""
-prtext=""
 gitamcleanup=false
 function return_to_kansas {
   if [[ "${gitamcleanup}" == "true" ]]; then
@@ -113,34 +118,32 @@ function return_to_kansas {
     if [[ -n "${cleanbranch}" ]]; then
       git branch -D "${cleanbranch}" >/dev/null 2>&1 || true
     fi
-    if [[ -n "${prtext}" ]]; then
-      rm "${prtext}"
-    fi
   fi
 }
 trap return_to_kansas EXIT
 
 SUBJECTS=()
+RELEASE_NOTES=()
 function make-a-pr() {
   local rel="$(basename "${BRANCH}")"
   echo
   echo "+++ Creating a pull request on GitHub at ${GITHUB_USER}:${NEWBRANCH}"
 
-  # This looks like an unnecessary use of a tmpfile, but it avoids
-  # https://github.com/github/hub/issues/976 Otherwise stdin is stolen
-  # when we shove the heredoc at hub directly, tickling the ioctl
-  # crash.
-  prtext="$(mktemp -t prtext.XXXX)" # cleaned in return_to_kansas
-  local numandtitle=$(printf '%s\n' "${SUBJECTS[@]}")
-  cat >"${prtext}" <<EOF
-Automated cherry pick of ${numandtitle}
-
+  local numandtitle
+  numandtitle=$(printf '%s\n' "${SUBJECTS[@]}")
+  prtext=$(
+    cat <<EOF
 Cherry pick of ${PULLSUBJ} on ${rel}.
 
 ${numandtitle}
+For details on the cherry pick process, see the [cherry picks](https://github.com/volcano-sh/volcano/tree/master/docs/development/cherry-picks.md) page.
+\`\`\`release-note
+$(printf '%s\n' "${RELEASE_NOTES[@]}")
+\`\`\`
 EOF
+  )
 
-  hub pull-request -F "${prtext}" -h "${GITHUB_USER}:${NEWBRANCH}" -b "volcano-sh/volcano:${rel}"
+  gh pr create --title="Automated cherry pick of ${numandtitle}" --body="${prtext}" --head "${GITHUB_USER}:${NEWBRANCH}" --base "${rel}" --repo="${MAIN_REPO_ORG}/${MAIN_REPO_NAME}"
 }
 
 git checkout -b "${NEWBRANCHUNIQ}" "${BRANCH}"
@@ -149,7 +152,8 @@ cleanbranch="${NEWBRANCHUNIQ}"
 gitamcleanup=true
 for pull in "${PULLS[@]}"; do
   echo "+++ Downloading patch to /tmp/${pull}.patch (in case you need to do this again)"
-  curl -o "/tmp/${pull}.patch" -sSL "https://github.com/volcano-sh/volcano/pull/${pull}.patch"
+
+  curl -o "/tmp/${pull}.patch" -sSL "https://github.com/${MAIN_REPO_ORG}/${MAIN_REPO_NAME}/pull/${pull}.patch"
   echo
   echo "+++ About to attempt cherry pick of PR. To reattempt:"
   echo "  $ git am -3 /tmp/${pull}.patch"
@@ -180,24 +184,17 @@ for pull in "${PULLS[@]}"; do
   }
 
   # set the subject
-  subject=$(grep -m 1 "^Subject" "/tmp/${pull}.patch" | sed -e 's/Subject: \[PATCH//g' | sed 's/.*] //')
+  subject=$(gh pr view "$pull" --json title --jq '.["title"]')
   SUBJECTS+=("#${pull}: ${subject}")
+
+  # set the release note
+  release_note=$(gh pr view "$pull" --json body --jq '.["body"]' | awk '/```release-note/{f=1;next} /```/{f=0} f')
+  RELEASE_NOTES+=("${release_note}")
 
   # remove the patch file from /tmp
   rm -f "/tmp/${pull}.patch"
 done
 gitamcleanup=false
-
-# Re-generate docs (if needed)
-if [[ -n "${REGENERATE_DOCS}" ]]; then
-  echo
-  echo "Regenerating docs..."
-  if ! hack/generate-docs.sh; then
-    echo
-    echo "hack/generate-docs.sh FAILED to complete."
-    exit 1
-  fi
-fi
 
 if [[ -n "${DRY_RUN}" ]]; then
   echo "!!! Skipping git push and PR creation because you set DRY_RUN."
@@ -211,8 +208,8 @@ if [[ -n "${DRY_RUN}" ]]; then
   exit 0
 fi
 
-if git remote -v | grep ^${FORK_REMOTE} | grep volcano-sh/volcano.git; then
-  echo "!!! You have ${FORK_REMOTE} configured as your volcano-sh/volcano.git"
+if git remote -v | grep ^"${FORK_REMOTE}" | grep "${MAIN_REPO_ORG}/${MAIN_REPO_NAME}.git"; then
+  echo "!!! You have ${FORK_REMOTE} configured as your ${MAIN_REPO_ORG}/${MAIN_REPO_NAME}.git"
   echo "This isn't normal. Leaving you with push instructions:"
   echo
   echo "+++ First manually push the branch this script created:"
