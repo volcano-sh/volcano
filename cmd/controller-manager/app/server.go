@@ -144,6 +144,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 	controllerOpt.SharedInformerFactory = informers.NewSharedInformerFactory(controllerOpt.KubeClient, 0)
 	controllerOpt.VCSharedInformerFactory = informerfactory.NewSharedInformerFactory(controllerOpt.VolcanoClient, 0)
 	controllerOpt.InheritOwnerAnnotations = opt.InheritOwnerAnnotations
+	controllerOpt.EnableShadowPodGroup = opt.EnableShadowPodGroup
 	controllerOpt.WorkerThreadsForPG = opt.WorkerThreadsForPG
 	controllerOpt.WorkerThreadsForQueue = opt.WorkerThreadsForQueue
 	controllerOpt.WorkerThreadsForGC = opt.WorkerThreadsForGC
