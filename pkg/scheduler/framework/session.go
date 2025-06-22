@@ -965,3 +965,7 @@ func (ssn *Session) CheckReservationMatch(job *api.JobInfo) bool {
 	klog.V(1).Infof("[debug]: used: %v", used)
 	return true
 }
+
+func (ssn *Session) Cache() cache.Cache {
+	return ssn.cache
+}

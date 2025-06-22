@@ -116,6 +116,7 @@ func (rc *ReservationCache) SyncTaskStatus(task *schedulerapi.TaskInfo, job *sch
 	return nil
 }
 
+// todo: Async use Queue
 func (rc *ReservationCache) syncReservation(reservation *schedulerapi.ReservationInfo, job *schedulerapi.JobInfo) error {
 	rsveV1beta1, err := rc.vcClient.SchedulingV1beta1().Reservations(reservation.Reservation.Namespace).Get(context.TODO(), reservation.Reservation.Name, metav1.GetOptions{})
 	if err != nil {

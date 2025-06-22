@@ -17,12 +17,14 @@ limitations under the License.
 package reservation
 
 import (
+	"context"
 	"fmt"
 
 	"k8s.io/klog/v2"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
@@ -33,6 +35,7 @@ const (
 
 type reservationPlugin struct {
 	// Arguments given for the plugin
+	session *framework.Session
 }
 
 // New function returns prioritizePlugin object
@@ -46,6 +49,8 @@ func (rp *reservationPlugin) Name() string {
 
 func (rp *reservationPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(5).Infof("Enter reservation plugin ...")
+
+	rp.session = ssn
 	defer func() {
 		klog.V(5).Infof("Leaving reservation plugin...")
 	}()
@@ -123,6 +128,22 @@ func (rp *reservationPlugin) OnSessionOpen(ssn *framework.Session) {
 		return nil
 	}
 	ssn.AddBestNodeFn(rp.Name(), bestNodeFn)
+
+	ssn.RegisterBinder(rp.Name(), rp)
+}
+
+func (rp *reservationPlugin) PostBind(ctx context.Context, bindCtx *cache.BindContext) error {
+	task := bindCtx.TaskInfo
+
+	if !task.IsUseReservationTask() {
+		return nil
+	}
+
+	if err := rp.session.Cache().SyncBindToReservationTask(task); err != nil {
+		klog.Errorf("Failed to sync task %s to reservation task, err: %v", task.Name, err)
+	}
+
+	return nil
 }
 
 func (rp *reservationPlugin) OnSessionClose(ssn *framework.Session) {}

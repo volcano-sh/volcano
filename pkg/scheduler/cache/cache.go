@@ -924,11 +924,8 @@ func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext)
 
 	for _, bindContext := range bindContexts {
 		if reason, ok := errMsg[bindContext.TaskInfo.UID]; !ok {
-			task := bindContext.TaskInfo
-			if task.IsUseReservationTask() {
-				if err := sc.syncBindToReservationTask(task); err != nil {
-					klog.Errorf("Failed to sync task %s to reservation task, err: %v", task.Name, err)
-				}
+			if err := sc.executePostBind(ctx, bindContext); err != nil {
+				klog.Errorf("Failed to execute postBind for task %s/%s, err: %v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name, err)
 			}
 			sc.Recorder.Eventf(bindContext.TaskInfo.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name, bindContext.TaskInfo.NodeName)
 		} else {
@@ -1231,6 +1228,8 @@ func (sc *SchedulerCache) processSyncHyperNode() {
 // AddBindTask add task to be bind to a cache which consumes by go runtime
 func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	klog.V(5).Infof("add bind task %v/%v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name)
+
+	// todo: 需要解耦
 	if bindContext.TaskInfo.IsReservationTask() {
 		return sc.processReservationTask(bindContext.TaskInfo)
 	}
@@ -1259,6 +1258,7 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	}
 	task.NumaInfo = bindContext.TaskInfo.NumaInfo.Clone()
 
+	// todo: 需要解耦
 	if bindContext.TaskInfo.IsUseReservationTask() {
 		reservationTask := bindContext.TaskInfo.ReservationTaskInfo
 		// Remove reservation task from the node if it exists to release the reserved resources on node.
@@ -1380,6 +1380,10 @@ func (sc *SchedulerCache) processReservationTask(taskInfo *schedulingapi.TaskInf
 	return nil
 }
 
+func (sc *SchedulerCache) SyncBindToReservationTask(task *schedulingapi.TaskInfo) error {
+	return sc.syncBindToReservationTask(task)
+}
+
 func (sc *SchedulerCache) syncBindToReservationTask(taskInfo *schedulingapi.TaskInfo) error {
 	klog.V(1).Infof("sync bind to reservation task %v/%v", taskInfo.Namespace, taskInfo.Name)
 	reservationTask := taskInfo.ReservationTaskInfo
@@ -1455,6 +1459,24 @@ func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*B
 	}
 
 	return successfulBindContexts
+}
+
+// executePostBinds executes PostBind for one bindContext
+func (sc *SchedulerCache) executePostBind(ctx context.Context, bindContext *BindContext) error {
+	sc.binderRegistry.mu.RLock()
+	defer sc.binderRegistry.mu.RUnlock()
+
+	for _, postBinder := range sc.binderRegistry.postBinders {
+		if postBinder != nil {
+			if err := postBinder.PostBind(ctx, bindContext); err != nil {
+				klog.Errorf("PostBind failed for task %s/%s: %v",
+					bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name, err)
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // BindTask do k8s binding with a goroutine

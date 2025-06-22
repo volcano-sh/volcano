@@ -198,6 +198,7 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 				pendingTasks[job.UID] = tasksQueue
 			}
 		} else {
+			// todo: 需要解耦
 			if job.IsUseReservation() {
 				stmt = alloc.allocateResourcesForReservationTasks(tasks, job, jobs, allNodes)
 			} else {
