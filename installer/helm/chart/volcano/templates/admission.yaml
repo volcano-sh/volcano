@@ -101,7 +101,7 @@ spec:
   template:
     metadata:
       annotations:
-        rollme/helm-revision: {{ .Release.Revision }}
+        rollme/helm-revision: "{{ .Release.Revision }}"
       labels:
         app: volcano-admission
         {{- if or (.Values.custom.admission_podLabels) (.Values.custom.common_labels) }}
