@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Volcano Authors.
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -63,7 +63,6 @@ func New(aruguments framework.Arguments) framework.Plugin {
 }
 
 func calculateWeight(args framework.Arguments) nodeResourcesFitPlus {
-
 	/*
 	   actions: "enqueue, reclaim, allocate, backfill, preempt"
 	   tiers:
@@ -83,7 +82,7 @@ func calculateWeight(args framework.Arguments) nodeResourcesFitPlus {
 	var weight nodeResourcesFitPlus
 
 	nodeResourcesFitPlusWeight, b := framework.Get[int](args, "nodeResourcesFitPlusWeight")
-	if !b || nodeResourcesFitPlusWeight == 0 {
+	if !b || nodeResourcesFitPlusWeight <= 0 {
 		nodeResourcesFitPlusWeight = 10
 	}
 	weight.NodeResourcesFitPlusWeight = nodeResourcesFitPlusWeight
@@ -99,6 +98,16 @@ func calculateWeight(args framework.Arguments) nodeResourcesFitPlus {
 				Type:   config.LeastAllocated,
 				Weight: 1,
 			},
+		}
+	}
+	for _, v := range resources {
+		strategyType := v.Type
+		w := v.Weight
+		if w <= 0 {
+			v.Weight = 1
+		}
+		if strategyType != config.LeastAllocated && strategyType != config.MostAllocated {
+			v.Type = config.LeastAllocated
 		}
 	}
 	weight.Resources = resources

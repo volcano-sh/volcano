@@ -27,6 +27,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	networktopologyaware "volcano.sh/volcano/pkg/scheduler/plugins/network-topology-aware"
+	noderesourcefitplus "volcano.sh/volcano/pkg/scheduler/plugins/node-resource-fit-plus"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodegroup"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware"
@@ -53,6 +54,7 @@ func init() {
 	framework.RegisterPluginBuilder(nodeorder.PluginName, nodeorder.New)
 	framework.RegisterPluginBuilder(conformance.PluginName, conformance.New)
 	framework.RegisterPluginBuilder(binpack.PluginName, binpack.New)
+	framework.RegisterPluginBuilder(noderesourcefitplus.PluginName, noderesourcefitplus.New)
 	framework.RegisterPluginBuilder(tdm.PluginName, tdm.New)
 	framework.RegisterPluginBuilder(overcommit.PluginName, overcommit.New)
 	framework.RegisterPluginBuilder(sla.PluginName, sla.New)
