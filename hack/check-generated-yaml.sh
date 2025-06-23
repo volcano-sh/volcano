@@ -25,7 +25,26 @@ export RELEASE_TAG=${TAG:-"latest"}
 # Extract image tag from development yaml file
 get_development_image_tag() {
 	local dev_file="$1"
-	grep -o 'volcanosh/[^:]*:[^[:space:]]*' "$dev_file" | head -1 | cut -d':' -f2
+	# Get all volcanosh image:tag pairs
+	local image_tags=($(grep -o 'volcanosh/[^:]*:[^[:space:]]*' "$dev_file"))
+	
+	if [[ ${#image_tags[@]} -eq 0 ]]; then
+		echo "ERROR: No volcanosh images found in $dev_file" >&2
+		return 1
+	fi
+	
+	# Extract unique tags
+	local tags=($(printf '%s\n' "${image_tags[@]}" | cut -d':' -f2 | sort -u))
+	
+	if [[ ${#tags[@]} -gt 1 ]]; then
+		echo "ERROR: Inconsistent image tags found in $dev_file:" >&2
+		for img_tag in "${image_tags[@]}"; do
+			echo "  $img_tag" >&2
+		done
+		return 1
+	fi
+	
+	echo "${tags[0]}"
 }
 
 # Check if tag is a prerelease version (alpha/beta/rc)
@@ -40,7 +59,11 @@ compare_yaml_files() {
 	local generated_file="$2"
 	local file_type="$3"
 	
-	local dev_tag=$(get_development_image_tag "$dev_file")
+	# Get development file tag, exit if there's an error
+	local dev_tag
+	if ! dev_tag=$(get_development_image_tag "$dev_file"); then
+		return 1
+	fi
 	
 	if [[ "$dev_tag" == "latest" ]] && is_prerelease_tag "$RELEASE_TAG"; then
 		# Master branch prerelease scenario: development file uses 'latest', release tag is prerelease
