@@ -2,10 +2,11 @@ package noderesourcefitplus
 
 import (
 	"fmt"
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"reflect"
 	"testing"
+
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
