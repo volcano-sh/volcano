@@ -26,6 +26,18 @@ jobs:
           fetch-depth: 0
           path: ./src/github.com/${{ github.repository }}
 
+      - name: Set TAG from release config
+        run: |
+          cd ./src/github.com/${{ github.repository }}
+          if [[ -f .release-version ]]; then
+            TAG=$(cat .release-version | tr -d '\n\r')
+            echo "TAG=${TAG}" >> $GITHUB_ENV
+            echo "Using TAG from .release-version: ${TAG}"
+          else
+            echo "TAG=latest" >> $GITHUB_ENV
+            echo "Using default TAG=latest (.release-version file not found)"
+          fi
+
       - uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
@@ -35,7 +47,7 @@ jobs:
         run: |
           make lint
           make verify
-          make TAG=latest generate-yaml
-          make verify-generated-yaml
+          make TAG=${{ env.TAG }} generate-yaml
+          make TAG=${{ env.TAG }} verify-generated-yaml
           sudo make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
