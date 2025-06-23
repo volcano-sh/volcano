@@ -107,6 +107,15 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 			return nil
 		}
 
+		// User want gang scheduling for these pods, scheduler need to wait
+		// pg_controller create the real PodGroup and bind the pods to it.
+		_, minMemberAnnoExist := pi.Pod.Annotations[schedulingv1beta1.VolcanoGroupMinMemberAnnotationKey]
+		if minMemberAnnoExist {
+			klog.V(4).Infof("Pod %s/%s has minMember annotation, skip creating shadow PodGroup for it",
+				pi.Pod.Namespace, pi.Pod.Name)
+			return nil
+		}
+
 		pg := createShadowPodGroup(pi.Pod)
 		pi.Job = getJobID(pg)
 		sc.setPodGroup(pg)
@@ -377,11 +386,14 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 		}
 	} else {
 		if sc.enableShadowPodGroup {
-			pg := createShadowPodGroup(ti.Pod)
-			jobID := getJobID(pg)
-			if job, ok := sc.Jobs[jobID]; ok {
-				job.PodGroup = nil
-				delete(sc.Jobs, jobID)
+			_, minMemberAnnoExist := ti.Pod.Annotations[schedulingv1beta1.VolcanoGroupMinMemberAnnotationKey]
+			if !minMemberAnnoExist {
+				pg := createShadowPodGroup(ti.Pod)
+				jobID := getJobID(pg)
+				if job, ok := sc.Jobs[jobID]; ok {
+					job.PodGroup = nil
+					delete(sc.Jobs, jobID)
+				}
 			}
 		} else {
 			// should not run into here; record error so that easy to debug

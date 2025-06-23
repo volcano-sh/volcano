@@ -172,8 +172,11 @@ func (pg *pgcontroller) processNextReq() bool {
 		klog.V(5).Infof("pod %v/%v has created podgroup", pod.Namespace, pod.Name)
 		return true
 	}
-
-	if !pg.enableShadowPodGroup {
+	// if pg.enableShadowPodGroup is true, but user want gang scheduling some pods,
+	// they could add annotation "scheduling.volcano.sh/group-min-member" to their pods,
+	// pg_controller will create podgroup for them.
+	_, minMemberAnnoExist := pod.Annotations[scheduling.VolcanoGroupMinMemberAnnotationKey]
+	if !pg.enableShadowPodGroup || minMemberAnnoExist {
 		// normal pod use volcano
 		klog.V(4).Infof("Try to create podgroup for pod %s/%s", pod.Namespace, pod.Name)
 		if err := pg.createNormalPodPGIfNotExist(pod); err != nil {
