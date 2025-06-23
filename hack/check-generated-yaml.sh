@@ -20,26 +20,74 @@ set -o pipefail
 
 VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
-export RELEASE_TAG=${RELEASE_TAG:-"latest"}
+export RELEASE_TAG=${TAG:-"latest"}
 
-if ! diff ${VK_ROOT}/installer/volcano-development.yaml ${RELEASE_FOLDER}/volcano-${RELEASE_TAG}.yaml ; then
-	{
-		echo
-		echo "The Generated yaml is different from the one in installer/volcano-development.yaml"
-		echo "please run 'make generate-yaml RELEASE_TAG=${RELEASE_TAG} RELEASE_DIR=installer \
-		&& mv ${VK_ROOT}/installer/volcano-${RELEASE_TAG}.yaml ${VK_ROOT}/installer/volcano-development.yaml' to update"
-		echo
-	} >&2
-	false
+# Extract image tag from development yaml file
+get_development_image_tag() {
+	local dev_file="$1"
+	grep -o 'volcanosh/[^:]*:[^[:space:]]*' "$dev_file" | head -1 | cut -d':' -f2
+}
+
+# Check if tag is a prerelease version (alpha/beta/rc)
+is_prerelease_tag() {
+	local tag="$1"
+	[[ "$tag" =~ (alpha|beta|rc) ]]
+}
+
+# Compare yaml files with appropriate tag replacement
+compare_yaml_files() {
+	local dev_file="$1"
+	local generated_file="$2"
+	local file_type="$3"
+	
+	local dev_tag=$(get_development_image_tag "$dev_file")
+	
+	if [[ "$dev_tag" == "latest" ]] && is_prerelease_tag "$RELEASE_TAG"; then
+		# Master branch prerelease scenario: development file uses 'latest', release tag is prerelease
+		# Replace 'latest' with release tag in development file for comparison
+		echo "Comparing $file_type ($RELEASE_TAG)"
+		local temp_file=$(mktemp)
+		sed "s|docker\.io/volcanosh/\([^:]*\):latest|docker.io/volcanosh/\1:$RELEASE_TAG|g" "$dev_file" > "$temp_file"
+		
+		if ! diff "$temp_file" "$generated_file"; then
+			echo "ERROR: Generated $file_type differs from development file"
+			echo "Please update templates and regenerate development file"
+			rm -f "$temp_file"
+			return 1
+		fi
+		rm -f "$temp_file"
+		
+	elif [[ "$dev_tag" == "$RELEASE_TAG" ]]; then
+		# Release branch scenario: development file version matches release tag
+		# Used for official releases and patch versions from release-x.xx branches
+		echo "Comparing $file_type ($RELEASE_TAG)"
+		
+		if ! diff "$dev_file" "$generated_file"; then
+			echo "ERROR: Generated $file_type differs from development file"
+			echo "Run: make generate-yaml TAG=$RELEASE_TAG RELEASE_DIR=installer && mv installer/volcano-$RELEASE_TAG.yaml installer/volcano-development.yaml"
+			return 1
+		fi
+	else
+		echo "ERROR: Version mismatch in $file_type"
+		echo "Development file: $dev_tag, Release tag: $RELEASE_TAG"
+		return 1
+	fi
+}
+
+# Check volcano main components
+if ! compare_yaml_files \
+	"${VK_ROOT}/installer/volcano-development.yaml" \
+	"${RELEASE_FOLDER}/volcano-${RELEASE_TAG}.yaml" \
+	"volcano yaml"; then
+	exit 1
 fi
 
-if ! diff ${VK_ROOT}/installer/volcano-agent-development.yaml ${RELEASE_FOLDER}/volcano-agent-${RELEASE_TAG}.yaml ; then
-	{
-		echo
-		echo "The Generated yaml is different from the one in installer/volcano-agent-development.yaml"
-		echo "please run 'make generate-yaml RELEASE_TAG=${RELEASE_TAG} RELEASE_DIR=installer \
-		&& mv ${VK_ROOT}/installer/volcano-agent-${RELEASE_TAG}.yaml ${VK_ROOT}/installer/volcano-agent-development.yaml' to update"
-		echo
-	} >&2
-	false
+# Check volcano agent
+if ! compare_yaml_files \
+	"${VK_ROOT}/installer/volcano-agent-development.yaml" \
+	"${RELEASE_FOLDER}/volcano-agent-${RELEASE_TAG}.yaml" \
+	"volcano-agent yaml"; then
+	exit 1
 fi
+
+echo "All yaml files are consistent"
