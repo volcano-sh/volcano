@@ -371,14 +371,14 @@ func (test *TestCommonStruct) CheckBindInHyperNode(caseIndex int) error {
 		realHyperNode[hyperNode] += 1
 	}
 
-	expectBindNums := make([]int, 0, len(realHyperNode))
+	actualBindNums := make([]int, 0, len(realHyperNode))
 	for _, value := range realHyperNode {
-		expectBindNums = append(expectBindNums, value)
+		actualBindNums = append(actualBindNums, value)
 	}
-	sort.Ints(expectBindNums)
+	sort.Ints(actualBindNums)
 
-	if !slices.Equal(expectBindNums, test.ExpectBindNumsInHyperNode) {
-		return fmt.Errorf("case %d(%s) check bind: \nwant: %v\n got: %v ", caseIndex, test.Name, expectBindNums, test.ExpectBindNumsInHyperNode)
+	if !slices.Equal(actualBindNums, test.ExpectBindNumsInHyperNode) {
+		return fmt.Errorf("case %d(%s) check bind: \nwant: %v\n got: %v ", caseIndex, test.Name, test.ExpectBindNumsInHyperNode, actualBindNums)
 	}
 
 	return nil
