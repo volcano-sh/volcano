@@ -56,14 +56,14 @@ func Max(l, r *api.Resource) *api.Resource {
 	res.ScalarResources = map[v1.ResourceName]float64{}
 	if l.ScalarResources != nil {
 		for lName, lQuant := range l.ScalarResources {
-			if lQuant > 0 {
+			if lQuant >= 0 {
 				res.ScalarResources[lName] = lQuant
 			}
 		}
 	}
 	if r.ScalarResources != nil {
 		for rName, rQuant := range r.ScalarResources {
-			if rQuant > 0 {
+			if rQuant >= 0 {
 				maxQuant := math.Max(rQuant, res.ScalarResources[rName])
 				res.ScalarResources[rName] = maxQuant
 			}
