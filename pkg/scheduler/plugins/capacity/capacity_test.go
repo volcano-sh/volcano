@@ -370,6 +370,7 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	pg1 := util.BuildPodGroup("pg1", "ns1", "q11", 1, nil, schedulingv1beta1.PodGroupInqueue)
 	// queue
 	root := buildQueueWithParents("root", "", nil, nil)
+	root1 := buildQueueWithParents("root", "", nil, api.BuildResourceList("16", "16Gi"))
 	queue1 := buildQueueWithParents("q1", "root", nil, api.BuildResourceList("4", "4Gi"))
 	queue2 := buildQueueWithParents("q2", "root", nil, api.BuildResourceList("4", "4Gi"))
 	queue11 := buildQueueWithParents("q11", "q1", nil, api.BuildResourceList("1", "1Gi"))
@@ -447,6 +448,10 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			corev1.ResourceMemory: resource.MustParse("3Gi"),
 		},
 	}
+
+	// resources for test case 8
+	// queue
+	queue8 := buildQueueWithParents("q8", "root", nil, api.BuildResourceList("10", "4Gi", []api.ScalarResource{}...))
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -535,6 +540,12 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			Plugins: plugins,
 			Nodes:   []*corev1.Node{n1},
 			Queues:  []*schedulingv1beta1.Queue{root, queue7, queue71, queue72},
+		},
+		{
+			Name:    "case8: root queue's capability > cluster total resource, but should not panic",
+			Plugins: plugins,
+			Nodes:   []*corev1.Node{n1},
+			Queues:  []*schedulingv1beta1.Queue{root1, queue8},
 		},
 	}
 
