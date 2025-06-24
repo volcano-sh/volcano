@@ -27,6 +27,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -87,6 +88,11 @@ type Cache interface {
 
 	// SharedDRAManager returns the shared DRAManager
 	SharedDRAManager() framework.SharedDRAManager
+
+	// GetReservationCache returns the reservation cache
+	GetReservationCache() *ReservationCache
+
+	SyncBindToReservationTask(task *api.TaskInfo) error
 }
 
 // Binder interface for binding task and hostname
@@ -116,4 +122,8 @@ type PreBinder interface {
 
 	// PreBindRollBack is called when the pre-bind or bind fails.
 	PreBindRollBack(ctx context.Context, bindCtx *BindContext)
+}
+
+type PostBinder interface {
+	PostBind(ctx context.Context, bindCtx *BindContext) error
 }

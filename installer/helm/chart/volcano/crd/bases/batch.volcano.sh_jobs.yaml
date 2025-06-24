@@ -189,6 +189,10 @@ spec:
                     replicas:
                       format: int32
                       type: integer
+                    reservationNodeNames:
+                      items:
+                        type: string
+                      type: array
                     template:
                       properties:
                         metadata:
