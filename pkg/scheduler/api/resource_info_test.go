@@ -147,6 +147,60 @@ func TestSetMaxResource(t *testing.T) {
 	}
 }
 
+func TestScaleResourcesWithRatios(t *testing.T) {
+	tests := []struct {
+		name         string
+		inputRatio   map[string]float64
+		defaultRatio float64
+		resource     *Resource
+		expected     *Resource
+	}{
+		{
+			name: "scale with ratio",
+			inputRatio: map[string]float64{
+				"overcommit-factor": 1.2,
+				"cpu":               1.5,
+				"memory":            1.5,
+				"ephemeral-storage": 1.2,
+				"nvidia.com/gpu":    1.0,
+			},
+			resource: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"ephemeral-storage": 1000, "nvidia.com/gpu": 8},
+			},
+			defaultRatio: 1.2,
+			expected: &Resource{
+				MilliCPU:        6000,
+				Memory:          3000,
+				ScalarResources: map[v1.ResourceName]float64{"ephemeral-storage": 1200, "nvidia.com/gpu": 8},
+			},
+		},
+		{
+			name:       "scale with default ratio",
+			inputRatio: map[string]float64{},
+			resource: &Resource{
+				MilliCPU:        4000,
+				Memory:          2000,
+				ScalarResources: map[v1.ResourceName]float64{"ephemeral-storage": 1000, "nvidia.com/gpu": 8},
+			},
+			defaultRatio: 1.5,
+			expected: &Resource{
+				MilliCPU:        6000,
+				Memory:          3000,
+				ScalarResources: map[v1.ResourceName]float64{"ephemeral-storage": 1500, "nvidia.com/gpu": 12},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		outputResource := test.resource.ScaleResourcesWithRatios(test.inputRatio, test.defaultRatio)
+		if !equality.Semantic.DeepEqual(test.expected, outputResource) {
+			t.Errorf("expected: %#v, got: %#v", test.expected, outputResource)
+		}
+	}
+}
+
 func TestIsZero(t *testing.T) {
 	tests := []struct {
 		resource     *Resource
