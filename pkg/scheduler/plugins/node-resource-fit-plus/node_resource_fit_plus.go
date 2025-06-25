@@ -31,12 +31,12 @@ import (
 
 const (
 	// PluginName indicates name of volcano scheduler plugin.
-	PluginName = "node-resource-fit-plus"
+	PluginName = "resource-strategy-fit"
 )
 
-type nodeResourcesFitPlus struct {
-	NodeResourcesFitPlusWeight int                               `json:"nodeResourcesFitPlusWeight"`
-	Resources                  map[v1.ResourceName]ResourcesType `json:"resources"`
+type ResourceStrategyFit struct {
+	ResourceStrategyFitWeight int                               `json:"resourceStrategyFitWeight"`
+	Resources                 map[v1.ResourceName]ResourcesType `json:"resources"`
 }
 
 type ResourcesType struct {
@@ -44,7 +44,7 @@ type ResourcesType struct {
 	Weight int                        `json:"weight"`
 }
 
-func (w *nodeResourcesFitPlus) String() string {
+func (w *ResourceStrategyFit) String() string {
 	marshal, err := json.Marshal(w)
 	if err != nil {
 		return ""
@@ -52,25 +52,25 @@ func (w *nodeResourcesFitPlus) String() string {
 	return string(marshal)
 }
 
-type nodeResourcesFitPlusPlugin struct {
+type resourceStrategyFitPlugin struct {
 	// Arguments given for the plugin
-	weight nodeResourcesFitPlus
+	weight ResourceStrategyFit
 }
 
 // New function returns prioritizePlugin object
 func New(aruguments framework.Arguments) framework.Plugin {
 	weight := calculateWeight(aruguments)
-	return &nodeResourcesFitPlusPlugin{weight: weight}
+	return &resourceStrategyFitPlugin{weight: weight}
 }
 
-func calculateWeight(args framework.Arguments) nodeResourcesFitPlus {
+func calculateWeight(args framework.Arguments) ResourceStrategyFit {
 	/*
 	   actions: "enqueue, reclaim, allocate, backfill, preempt"
 	   tiers:
 	   - plugins:
-	     - name: node-resource-fit-plus
+	     - name: resource-strategy-fit
 	        arguments:
-	          nodeResourcesFitPlusWeight: 10
+	          resourceStrategyFitWeight: 10
 	          resources:
 	            cpu:
 	              type: MostAllocated
@@ -80,13 +80,13 @@ func calculateWeight(args framework.Arguments) nodeResourcesFitPlus {
 	              weight: 2
 	*/
 
-	var weight nodeResourcesFitPlus
+	var weight ResourceStrategyFit
 
-	nodeResourcesFitPlusWeight, b := framework.Get[int](args, "nodeResourcesFitPlusWeight")
-	if !b || nodeResourcesFitPlusWeight <= 0 {
-		nodeResourcesFitPlusWeight = 10
+	resourceStrategyFitPluginWeight, b := framework.Get[int](args, "resourceStrategyFitWeight")
+	if !b || resourceStrategyFitPluginWeight <= 0 {
+		resourceStrategyFitPluginWeight = 10
 	}
-	weight.NodeResourcesFitPlusWeight = nodeResourcesFitPlusWeight
+	weight.ResourceStrategyFitWeight = resourceStrategyFitPluginWeight
 
 	resources, b := framework.Get[map[v1.ResourceName]ResourcesType](args, "resources")
 	if !b || len(resources) == 0 {
@@ -115,29 +115,29 @@ func calculateWeight(args framework.Arguments) nodeResourcesFitPlus {
 	return weight
 }
 
-func (bp *nodeResourcesFitPlusPlugin) Name() string {
+func (bp *resourceStrategyFitPlugin) Name() string {
 	return PluginName
 }
 
-func (bp *nodeResourcesFitPlusPlugin) OnSessionOpen(ssn *framework.Session) {
-	klog.V(5).Infof("Enter nodeResourcesFitPlus plugin ...")
+func (bp *resourceStrategyFitPlugin) OnSessionOpen(ssn *framework.Session) {
+	klog.V(5).Infof("Enter resourceStrategyFit plugin ...")
 	defer func() {
-		klog.V(5).Infof("Leaving nodeResourcesFitPlus plugin. %s ...", bp.weight.String())
+		klog.V(5).Infof("Leaving resourceStrategyFit plugin. %s ...", bp.weight.String())
 	}()
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		binPackingScore := PlusScore(task, node, bp.weight)
-		klog.V(4).Infof("Binpack score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, binPackingScore)
-		return binPackingScore, nil
+		score := PlusScore(task, node, bp.weight)
+		klog.V(4).Infof("resourceStrategyFit score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, score)
+		return score, nil
 	}
-	if bp.weight.NodeResourcesFitPlusWeight != 0 {
+	if bp.weight.ResourceStrategyFitWeight != 0 {
 		ssn.AddNodeOrderFn(bp.Name(), nodeOrderFn)
 	} else {
-		klog.Infof("binpack weight is zero, skip node order function")
+		klog.Infof("resourceStrategyFit weight is zero, skip node order function")
 	}
 }
 
-func PlusScore(task *api.TaskInfo, node *api.NodeInfo, weight nodeResourcesFitPlus) float64 {
+func PlusScore(task *api.TaskInfo, node *api.NodeInfo, weight ResourceStrategyFit) float64 {
 	score := 0.0
 	weightSum := 0
 	requested := task.Resreq
@@ -155,12 +155,12 @@ func PlusScore(task *api.TaskInfo, node *api.NodeInfo, weight nodeResourcesFitPl
 			continue
 		}
 
-		resourcePloy := weight.Resources[resource].Type
+		scoringType := weight.Resources[resource].Type
 		resourceWeight := weight.Resources[resource].Weight
 
 		var resourceScore float64
 		var err error
-		switch resourcePloy {
+		switch scoringType {
 		case config.MostAllocated:
 			resourceScore, err = mostRequestedScore(request, nodeUsed, allocate, resourceWeight)
 		case config.LeastAllocated:
@@ -168,7 +168,7 @@ func PlusScore(task *api.TaskInfo, node *api.NodeInfo, weight nodeResourcesFitPl
 		}
 
 		if err != nil {
-			klog.V(4).Infof("task %s/%s cannot binpack node %s: resource: %s is %s, need %f, used %f, allocatable %f",
+			klog.V(4).Infof("task %s/%s cannot resourceStrategyFit node %s: resource: %s is %s, need %f, used %f, allocatable %f",
 				task.Namespace, task.Name, node.Name, resource, err.Error(), request, nodeUsed, allocate)
 			return 0
 		}
@@ -184,18 +184,18 @@ func PlusScore(task *api.TaskInfo, node *api.NodeInfo, weight nodeResourcesFitPl
 	if weightSum > 0 {
 		score /= float64(weightSum)
 	}
-	score *= float64(k8sFramework.MaxNodeScore * int64(weight.NodeResourcesFitPlusWeight))
+	score *= float64(k8sFramework.MaxNodeScore * int64(weight.ResourceStrategyFitWeight))
 	return score
 }
 
 func mostRequestedScore(requested float64, used float64, capacity float64, weight int) (float64, error) {
 	if capacity == 0 || weight == 0 {
-		return 0, fmt.Errorf("node capacity is zero")
+		return 0, nil
 	}
 
 	usedFinally := requested + used
 	if usedFinally > capacity {
-		return 0, fmt.Errorf("not enough")
+		return 0, fmt.Errorf("node resources are not enough")
 	}
 
 	score := usedFinally * float64(weight) / capacity
@@ -204,17 +204,17 @@ func mostRequestedScore(requested float64, used float64, capacity float64, weigh
 
 func leastRequestedScore(requested float64, used float64, capacity float64, weight int) (float64, error) {
 	if capacity == 0 || weight == 0 {
-		return 0, fmt.Errorf("node capacity is zero")
+		return 0, nil
 	}
 
 	usedFinally := requested + used
 	if usedFinally > capacity {
-		return 0, fmt.Errorf("not enough")
+		return 0, fmt.Errorf("node resources are not enough")
 	}
 
 	score := (capacity - usedFinally) * float64(weight) / capacity
 	return score, nil
 }
 
-func (bp *nodeResourcesFitPlusPlugin) OnSessionClose(ssn *framework.Session) {
+func (bp *resourceStrategyFitPlugin) OnSessionClose(ssn *framework.Session) {
 }

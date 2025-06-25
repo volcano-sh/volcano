@@ -35,10 +35,10 @@ func Test_nodeResourcesFitPlus_String(t *testing.T) {
 					Weight: 2,
 				},
 			},
-		}, "{\"nodeResourcesFitPlusWeight\":10,\"resources\":{\"cpu\":{\"type\":\"LeastAllocated\",\"weight\":1},\"memory\":{\"type\":\"MostAllocated\",\"weight\":2}}}"},
+		}, "{\"resourceStrategyFitWeight\":10,\"resources\":{\"cpu\":{\"type\":\"LeastAllocated\",\"weight\":1},\"memory\":{\"type\":\"MostAllocated\",\"weight\":2}}}"},
 		{"test2", fields{
 			NodeResourcesFitPlusWeight: 10,
-		}, "{\"nodeResourcesFitPlusWeight\":10,\"resources\":null}"},
+		}, "{\"resourceStrategyFitWeight\":10,\"resources\":null}"},
 		{"test3", fields{
 			Resources: map[v1.ResourceName]ResourcesType{
 				"cpu": {
@@ -50,13 +50,13 @@ func Test_nodeResourcesFitPlus_String(t *testing.T) {
 					Weight: 2,
 				},
 			},
-		}, "{\"nodeResourcesFitPlusWeight\":0,\"resources\":{\"cpu\":{\"type\":\"LeastAllocated\",\"weight\":1},\"memory\":{\"type\":\"MostAllocated\",\"weight\":2}}}"},
+		}, "{\"resourceStrategyFitWeight\":0,\"resources\":{\"cpu\":{\"type\":\"LeastAllocated\",\"weight\":1},\"memory\":{\"type\":\"MostAllocated\",\"weight\":2}}}"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			w := &nodeResourcesFitPlus{
-				NodeResourcesFitPlusWeight: tt.fields.NodeResourcesFitPlusWeight,
-				Resources:                  tt.fields.Resources,
+			w := &ResourceStrategyFit{
+				ResourceStrategyFitWeight: tt.fields.NodeResourcesFitPlusWeight,
+				Resources:                 tt.fields.Resources,
 			}
 			if got := w.String(); got != tt.want {
 				t.Errorf("String() = %v, want %v", got, tt.want)
@@ -74,7 +74,7 @@ func Test_calculateWeight(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want nodeResourcesFitPlus
+		want ResourceStrategyFit
 	}{
 		// TODO: Add test cases.
 		{"test1", args{framework.Arguments{
@@ -89,8 +89,8 @@ func Test_calculateWeight(t *testing.T) {
 					"weight": 2,
 				},
 			},
-		}}, nodeResourcesFitPlus{
-			NodeResourcesFitPlusWeight: 10,
+		}}, ResourceStrategyFit{
+			ResourceStrategyFitWeight: 10,
 			Resources: map[v1.ResourceName]ResourcesType{
 				"cpu": {
 					Type:   config.MostAllocated,
@@ -113,8 +113,8 @@ func Test_calculateWeight(t *testing.T) {
 					"weight": 2,
 				},
 			},
-		}}, nodeResourcesFitPlus{
-			NodeResourcesFitPlusWeight: 10,
+		}}, ResourceStrategyFit{
+			ResourceStrategyFitWeight: 10,
 			Resources: map[v1.ResourceName]ResourcesType{
 				"cpu": {
 					Type:   config.MostAllocated,
@@ -128,8 +128,8 @@ func Test_calculateWeight(t *testing.T) {
 		}},
 		{"test3", args{framework.Arguments{
 			"nodeResourcesFitPlusWeight": 10,
-		}}, nodeResourcesFitPlus{
-			NodeResourcesFitPlusWeight: 10,
+		}}, ResourceStrategyFit{
+			ResourceStrategyFitWeight: 10,
 			Resources: map[v1.ResourceName]ResourcesType{
 				"cpu": {
 					Type:   config.LeastAllocated,
@@ -155,7 +155,7 @@ func TestPlusScore(t *testing.T) {
 	type args struct {
 		task   *api.TaskInfo
 		node   *api.NodeInfo
-		weight nodeResourcesFitPlus
+		weight ResourceStrategyFit
 	}
 	tests := []struct {
 		name string
@@ -180,8 +180,8 @@ func TestPlusScore(t *testing.T) {
 					Memory:   500,
 				},
 			},
-			weight: nodeResourcesFitPlus{
-				NodeResourcesFitPlusWeight: 10,
+			weight: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.LeastAllocated,
@@ -211,8 +211,8 @@ func TestPlusScore(t *testing.T) {
 					Memory:   400,
 				},
 			},
-			weight: nodeResourcesFitPlus{
-				NodeResourcesFitPlusWeight: 10,
+			weight: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.LeastAllocated,
@@ -242,8 +242,8 @@ func TestPlusScore(t *testing.T) {
 					Memory:   500,
 				},
 			},
-			weight: nodeResourcesFitPlus{
-				NodeResourcesFitPlusWeight: 10,
+			weight: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.MostAllocated,
@@ -273,8 +273,8 @@ func TestPlusScore(t *testing.T) {
 					Memory:   400,
 				},
 			},
-			weight: nodeResourcesFitPlus{
-				NodeResourcesFitPlusWeight: 10,
+			weight: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.MostAllocated,
@@ -304,8 +304,8 @@ func TestPlusScore(t *testing.T) {
 					Memory:   500,
 				},
 			},
-			weight: nodeResourcesFitPlus{
-				NodeResourcesFitPlusWeight: 10,
+			weight: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.LeastAllocated,
@@ -335,8 +335,8 @@ func TestPlusScore(t *testing.T) {
 					Memory:   500,
 				},
 			},
-			weight: nodeResourcesFitPlus{
-				NodeResourcesFitPlusWeight: 10,
+			weight: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.LeastAllocated,
@@ -366,8 +366,8 @@ func TestPlusScore(t *testing.T) {
 					Memory:   500,
 				},
 			},
-			weight: nodeResourcesFitPlus{
-				NodeResourcesFitPlusWeight: 10,
+			weight: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.LeastAllocated,
@@ -393,11 +393,11 @@ func TestPlusScore(t *testing.T) {
 					Memory:   200,
 				},
 				Allocatable: &api.Resource{
-					Memory: 500,
+					Memory: 400,
 				},
 			},
-			weight: nodeResourcesFitPlus{
-				NodeResourcesFitPlusWeight: 10,
+			weight: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.LeastAllocated,
@@ -409,7 +409,7 @@ func TestPlusScore(t *testing.T) {
 					},
 				},
 			},
-		}, want: 0},
+		}, want: 500},
 		{name: "test9", args: args{
 			task: &api.TaskInfo{
 				Resreq: &api.Resource{
@@ -427,8 +427,8 @@ func TestPlusScore(t *testing.T) {
 					Memory:   500,
 				},
 			},
-			weight: nodeResourcesFitPlus{
-				NodeResourcesFitPlusWeight: 10,
+			weight: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"memory": {
 						Type:   config.MostAllocated,
@@ -474,7 +474,7 @@ func Test_mostRequestedScore(t *testing.T) {
 			used:      0,
 			capacity:  0,
 			weight:    0,
-		}, want: 0, wantErr: true},
+		}, want: 0, wantErr: false},
 		{name: "test2", args: args{
 			requested: 1,
 			used:      2,
@@ -515,7 +515,7 @@ func Test_leastRequestedScore(t *testing.T) {
 			used:      0,
 			capacity:  0,
 			weight:    0,
-		}, want: 0, wantErr: true},
+		}, want: 0, wantErr: false},
 		{name: "test2", args: args{
 			requested: 1,
 			used:      2,
@@ -539,7 +539,7 @@ func Test_leastRequestedScore(t *testing.T) {
 
 func Test_nodeResourcesFitPlusPlugin_OnSessionOpen(t *testing.T) {
 	type fields struct {
-		weight nodeResourcesFitPlus
+		weight ResourceStrategyFit
 	}
 	type args struct {
 		ssn *framework.Session
@@ -554,7 +554,7 @@ func Test_nodeResourcesFitPlusPlugin_OnSessionOpen(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bp := &nodeResourcesFitPlusPlugin{
+			bp := &resourceStrategyFitPlugin{
 				weight: tt.fields.weight,
 			}
 			bp.OnSessionOpen(tt.args.ssn)
