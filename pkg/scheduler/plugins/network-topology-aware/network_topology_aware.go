@@ -85,38 +85,6 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(5).Infof("Leaving networkTopologyAware plugin ...")
 	}()
 	nta.hyperNodesTier.init(ssn.HyperNodesTiers)
-	hyperNodeFn := func(job *api.JobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
-		hyperNodeScores := make(map[string]float64)
-
-		jobAllocatedHyperNode := job.PodGroup.GetAnnotations()[api.JobAllocatedHyperNode]
-		if jobAllocatedHyperNode == "" {
-			return hyperNodeScores, nil
-		}
-		// The job still has remaining tasks to be scheduled, calculate score based on the tier of LCAHyperNode between the hyperNode and jobAllocatedHyperNode.
-		var maxScore float64 = -1
-		scoreToHyperNodes := map[float64][]string{}
-		for hyperNode := range hyperNodes {
-			score := nta.networkTopologyAwareScore(hyperNode, jobAllocatedHyperNode, ssn.HyperNodes)
-			score *= float64(nta.weight)
-			hyperNodeScores[hyperNode] = score
-			if score >= maxScore {
-				maxScore = score
-				scoreToHyperNodes[maxScore] = append(scoreToHyperNodes[maxScore], hyperNode)
-			}
-		}
-		// Calculate score based on the number of tasks scheduled for the job when max score of hyperNode has more than one.
-		if len(scoreToHyperNodes[maxScore]) > 1 {
-			candidateHyperNodes := scoreToHyperNodes[maxScore]
-			for _, hyperNode := range candidateHyperNodes {
-				taskNumScore := nta.scoreWithTaskNum(hyperNode, job, ssn.RealNodesList)
-				taskNumScore *= float64(nta.weight)
-				hyperNodeScores[hyperNode] += taskNumScore
-			}
-		}
-
-		klog.V(4).Infof("networkTopologyAware hyperNode score is: %v", hyperNodeScores)
-		return hyperNodeScores, nil
-	}
 
 	nodeFn := func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
 		nodeScores := make(map[string]float64)
@@ -157,8 +125,9 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		klog.V(4).Infof("networkTopologyAware node score is: %v", nodeScores)
 		return nodeScores, nil
 	}
-
-	ssn.AddHyperNodeOrderFn(nta.Name(), hyperNodeFn)
+	// Both hypernode and node have the same scoring logic in hard mode (for the number of tasks in tier and hypernode),
+	// so there's no need to score the same logic twice.
+	// ssn.AddHyperNodeOrderFn(nta.Name(), hyperNodeFn)
 	ssn.AddBatchNodeOrderFn(nta.Name(), nodeFn)
 }
 
