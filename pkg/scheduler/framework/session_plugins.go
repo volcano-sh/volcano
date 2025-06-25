@@ -18,6 +18,7 @@ package framework
 
 import (
 	"context"
+	"time"
 
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
@@ -933,30 +934,70 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 }
 
 // BuildVictimsPriorityQueue returns a priority queue with victims sorted by:
-// if victims has same job id, sorted by !ssn.TaskOrderFn
-// if victims has different job id, sorted by !ssn.JobOrderFn
-func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor *api.TaskInfo) *util.PriorityQueue {
-	victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
+// 1) same‑job tasks ➔ TaskOrderFn
+// 2) cross‑queue ➔ VictimQueueOrderFn
+// 3) same‑queue, different‑job ➔ JobOrderFn (priority)
+// 4) tie on priority ➔ shorter actual run‑time
+// 5) final tie‑breaker ➔ UID
+func (ssn *Session) BuildVictimsPriorityQueue(
+	victims []*api.TaskInfo,
+	preemptor *api.TaskInfo,
+) *util.PriorityQueue {
+	now := time.Now()
+
+	pq := util.NewPriorityQueue(func(l, r interface{}) bool {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
+
+		// 1) Same-job tasks
 		if lv.Job == rv.Job {
 			return !ssn.TaskOrderFn(l, r)
 		}
 
-		lvJob, lvJobFound := ssn.Jobs[lv.Job]
-		rvJob, rvJobFound := ssn.Jobs[rv.Job]
-		preemptorJob, preemptorJobFound := ssn.Jobs[preemptor.Job]
+		// look up jobs
+		jL, okL := ssn.Jobs[lv.Job]
+		jR, okR := ssn.Jobs[rv.Job]
+		jP, okP := ssn.Jobs[preemptor.Job]
 
-		if lvJobFound && rvJobFound && preemptorJobFound && lvJob.Queue != rvJob.Queue {
-			return ssn.VictimQueueOrderFn(ssn.Queues[lvJob.Queue], ssn.Queues[rvJob.Queue], ssn.Queues[preemptorJob.Queue])
+		// 2) Cross-queue eviction
+		if okL && okR && okP && jL.Queue != jR.Queue {
+			return ssn.VictimQueueOrderFn(
+				ssn.Queues[jL.Queue],
+				ssn.Queues[jR.Queue],
+				ssn.Queues[jP.Queue],
+			)
 		}
 
-		return !ssn.JobOrderFn(lvJob, rvJob)
+		// 3) Same-queue, different-job → compare priority
+		higher := ssn.JobOrderFn(jL, jR)
+		lower := ssn.JobOrderFn(jR, jL)
+		if higher != lower {
+			return !higher // evict lower-priority job first
+		}
+
+		// 4) Tie on priority → compare actual run-time
+		startL := jL.ScheduleStartTimestamp.Time
+		if startL.IsZero() {
+			startL = now
+		}
+		startR := jR.ScheduleStartTimestamp.Time
+		if startR.IsZero() {
+			startR = now
+		}
+		elapsedL := now.Sub(startL)
+		elapsedR := now.Sub(startR)
+		if elapsedL != elapsedR {
+			return elapsedL < elapsedR // shorter-running → better victim
+		}
+
+		// 5) Final stable tie-break: UID
+		return jL.UID < jR.UID
 	})
-	for _, victim := range victims {
-		victimsQueue.Push(victim)
+
+	for _, t := range victims {
+		pq.Push(t)
 	}
-	return victimsQueue
+	return pq
 }
 
 // RegisterBinder registers the passed binder to the cache, the binder type can be such as pre-binder, post-binder
