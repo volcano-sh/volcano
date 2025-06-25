@@ -36,8 +36,6 @@ import (
 )
 
 func TestReclaim(t *testing.T) {
-	preemptNeverPolicy := v1.PreemptNever
-
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name: "Two Queue with one Queue overusing resource, should reclaim",
@@ -235,29 +233,8 @@ func TestReclaim(t *testing.T) {
 			},
 			Pods: []*v1.Pod{
 				util.BuildPod("c1", "victim-pod", "n1", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				&v1.Pod{
-					ObjectMeta: util.BuildPodObjectMeta("c1", "preemptor-task1-non-preemptable"),
-					Spec: v1.PodSpec{
-						Containers:       []v1.Container{util.BuildContainer("c", util.BuildResourceList("2", "2G"))},
-						NodeName:         "",
-						Priority:         util.GetInt32Pointer(1000),
-						PreemptionPolicy: &preemptNeverPolicy,
-						SchedulerName:    "volcano",
-						GroupID:          "pg-preemptor",
-					},
-					Status: v1.PodStatus{Phase: v1.PodPending},
-				},
-				&v1.Pod{
-					ObjectMeta: util.BuildPodObjectMeta("c1", "preemptor-task2-preemptable"),
-					Spec: v1.PodSpec{
-						Containers:    []v1.Container{util.BuildContainer("c", util.BuildResourceList("2", "2G"))},
-						NodeName:      "",
-						Priority:      util.GetInt32Pointer(900),
-						SchedulerName: "volcano",
-						GroupID:       "pg-preemptor",
-					},
-					Status: v1.PodStatus{Phase: v1.PodPending},
-				},
+				util.BuildPodWithPrio("c1", "preemptor-task1-non-preemptable", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-preemptor", "high-priority-no-preempt", make(map[string]string)),
+				util.BuildPodWithPrio("c1", "preemptor-task2-preemptable", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-preemptor", "high-priority-can-preempt", make(map[string]string)),
 			},
 			Nodes: []*v1.Node{
 				util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
