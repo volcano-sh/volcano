@@ -48,6 +48,9 @@ type sshPlugin struct {
 
 	// public key string
 	sshPublicKey string
+
+	// custom SSH port (default 22)
+	sshPort int
 }
 
 // New creates ssh plugin
@@ -56,6 +59,7 @@ func New(client pluginsinterface.PluginClientset, arguments []string) pluginsint
 		pluginArguments: arguments,
 		client:          client,
 		sshKeyFilePath:  SSHAbsolutePath,
+		sshPort:         22,
 	}
 
 	p.addFlags()
@@ -88,7 +92,8 @@ func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 	if err != nil {
 		return err
 	}
-
+	// Inject updated SSH config (with correct port)
+	data[SSHConfig] = []byte(sp.generateSSHConfig(job))
 	if err := helpers.CreateOrUpdateSecret(job, sp.client.KubeClients, data, sp.secretName(job)); err != nil {
 		return fmt.Errorf("create secret for job <%s/%s> with ssh plugin failed for %v",
 			job.Namespace, job.Name, err)
@@ -214,7 +219,6 @@ func generateRsaKey(job *batch.Job) (map[string][]byte, error) {
 	data[SSHPrivateKey] = privateKeyBytes
 	data[SSHPublicKey] = publicKeyBytes
 	data[SSHAuthorizedKeys] = publicKeyBytes
-	data[SSHConfig] = []byte(generateSSHConfig(job))
 
 	return data, nil
 }
@@ -224,7 +228,6 @@ func withUserProvidedRsaKey(job *batch.Job, sshPrivateKey string, sshPublicKey s
 	data[SSHPrivateKey] = []byte(sshPrivateKey)
 	data[SSHPublicKey] = []byte(sshPublicKey)
 	data[SSHAuthorizedKeys] = []byte(sshPublicKey)
-	data[SSHConfig] = []byte(generateSSHConfig(job))
 
 	return data, nil
 }
@@ -239,33 +242,33 @@ func (sp *sshPlugin) addFlags() {
 		"ssh private and public keys, it is `/root/.ssh` by default.")
 	flagSet.StringVar(&sp.sshPrivateKey, "ssh-private-key", sp.sshPrivateKey, "The input string of the private key")
 	flagSet.StringVar(&sp.sshPublicKey, "ssh-public-key", sp.sshPublicKey, "The input string of the public key")
+	flagSet.IntVar(&sp.sshPort, "ssh-port", sp.sshPort, "The SSH port to use in generated config (default 22)")
 
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
 	}
 }
 
-func generateSSHConfig(job *batch.Job) string {
-	config := "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null\n"
-
+func (sp *sshPlugin) generateSSHConfig(job *batch.Job) string {
+	cfg := "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null\n"
 	for _, ts := range job.Spec.Tasks {
 		for i := 0; i < int(ts.Replicas); i++ {
-			hostName := ts.Template.Spec.Hostname
-			subdomain := ts.Template.Spec.Subdomain
-			if len(hostName) == 0 {
-				hostName = jobhelpers.MakePodName(job.Name, ts.Name, i)
+			host := ts.Template.Spec.Hostname
+			sub := ts.Template.Spec.Subdomain
+			if host == "" {
+				host = jobhelpers.MakePodName(job.Name, ts.Name, i)
 			}
-			if len(subdomain) == 0 {
-				subdomain = job.Name
+			if sub == "" {
+				sub = job.Name
 			}
 
-			config += "Host " + hostName + "\n"
-			config += "  HostName " + hostName + "." + subdomain + "\n"
-			if len(ts.Template.Spec.Hostname) != 0 {
+			cfg += fmt.Sprintf("Host %s\n", host)
+			cfg += fmt.Sprintf("  HostName %s.%s\n", host, sub)
+			cfg += fmt.Sprintf("  Port %d\n", sp.sshPort)
+			if ts.Template.Spec.Hostname != "" {
 				break
 			}
 		}
 	}
-
-	return config
+	return cfg
 }
