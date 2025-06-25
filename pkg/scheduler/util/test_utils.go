@@ -563,3 +563,17 @@ func (ftsu *FakeStatusUpdater) UpdateQueueStatus(queue *api.QueueInfo) error {
 	// do nothing here
 	return nil
 }
+
+// BuildPodWithPrio builds a fake Pod for testing (like BuildPod), but also sets the Pod’s PriorityClassName.
+func BuildPodWithPrio(
+	namespace, name, nodeName string,
+	phase v1.PodPhase,
+	req v1.ResourceList,
+	podGroupName string,
+	labels, annotations map[string]string,
+	priorityClassName string,
+) *v1.Pod {
+	pod := BuildPod(namespace, name, nodeName, phase, req, podGroupName, labels, annotations)
+	pod.Spec.PriorityClassName = priorityClassName
+	return pod
+}

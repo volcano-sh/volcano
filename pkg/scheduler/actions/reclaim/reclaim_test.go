@@ -233,8 +233,8 @@ func TestReclaim(t *testing.T) {
 			},
 			Pods: []*v1.Pod{
 				util.BuildPod("c1", "victim-pod", "n1", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPodWithPrio("c1", "preemptor-task1-non-preemptable", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-preemptor", "high-priority-no-preempt", make(map[string]string)),
-				util.BuildPodWithPrio("c1", "preemptor-task2-preemptable", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-preemptor", "high-priority-can-preempt", make(map[string]string)),
+				util.BuildPodWithPrio("c1", "preemptor-task1-non-preemptable", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-preemptor", make(map[string]string), make(map[string]string), "high-priority-no-preempt"),
+				util.BuildPodWithPrio("c1", "preemptor-task2-preemptable", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-preemptor", make(map[string]string), make(map[string]string), "high-priority-can-preempt"),
 			},
 			Nodes: []*v1.Node{
 				util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
