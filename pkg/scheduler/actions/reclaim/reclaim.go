@@ -99,7 +99,6 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		jobsQ, found := preemptorsMap[queue.UID]
 		if !found || jobsQ.Empty() {
 			// This queue has no starving jobs now, push it back for later consideration.
-			queues.Push(queue)
 			continue
 		}
 		job := jobsQ.Pop().(*api.JobInfo)
@@ -107,7 +106,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		// Pick up all its candidate tasks.
 		tasksQ, ok := preemptorTasks[job.UID]
 		if !ok || tasksQ.Empty() || !ssn.JobStarving(job) {
-			jobsQ.Push(job)
+			// Drop this job for now and push the queue back so other jobs can run
 			queues.Push(queue)
 			continue
 		}
