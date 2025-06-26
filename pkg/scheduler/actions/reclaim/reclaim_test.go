@@ -275,9 +275,10 @@ func TestReclaim(t *testing.T) {
 					EnablePreemptive:   &trueValue,
 				},
 				{
-					Name:             priority.PluginName,
-					EnabledJobOrder:  &trueValue,
-					EnabledTaskOrder: &trueValue,
+					Name:               priority.PluginName,
+					EnabledReclaimable: &trueValue,
+					EnabledJobOrder:    &trueValue,
+					EnabledTaskOrder:   &trueValue,
 				},
 			},
 		},
