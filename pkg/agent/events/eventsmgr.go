@@ -71,7 +71,7 @@ func NewEventManager(config *config.Configuration, metricCollectManager *metricc
 		for _, newHandleFunc := range newHandleFuncs {
 			handle := newHandleFunc(config, metricCollectManager, cgroupMgr)
 			if config.IsFeatureSupported(handle.HandleName()) {
-				klog.InfoS("Register event handler", "eventName", eventName, "handlerName", handle.HandleName())
+				klog.InfoS("Registering event handler", "eventName", eventName, "handlerName", handle.HandleName())
 				mgr.eventQueueFactory.RegistryEventHandler(eventName, handle)
 			} else {
 				klog.InfoS("Skip registering event handler", "eventName", eventName, "handlerName", handle.HandleName(), "reason", "feature not supported")
