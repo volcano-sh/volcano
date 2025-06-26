@@ -106,7 +106,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		// Pick up all its candidate tasks.
 		tasksQ, ok := preemptorTasks[job.UID]
 		if !ok || tasksQ.Empty() || !ssn.JobStarving(job) {
-			// Drop this job for now and push the queue back so other jobs can run
+			jobsQ.Push(job)
 			queues.Push(queue)
 			continue
 		}
