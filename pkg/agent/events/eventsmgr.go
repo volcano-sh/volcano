@@ -62,6 +62,7 @@ func NewEventManager(config *config.Configuration, metricCollectManager *metricc
 		eventQueue := mgr.eventQueueFactory.EventQueue(eventName)
 		for _, newProbeFunc := range newProbeFuncs {
 			prob := newProbeFunc(config, metricCollectManager, eventQueue.GetQueue())
+			klog.InfoS("Registering event probe", "eventName", eventName, "probeName", prob.ProbeName())
 			mgr.eventQueueFactory.RegistryEventProbe(eventName, prob)
 		}
 	}
@@ -69,7 +70,12 @@ func NewEventManager(config *config.Configuration, metricCollectManager *metricc
 	for eventName, newHandleFuncs := range handlers.GetEventHandlerFuncs() {
 		for _, newHandleFunc := range newHandleFuncs {
 			handle := newHandleFunc(config, metricCollectManager, cgroupMgr)
-			mgr.eventQueueFactory.RegistryEventHandler(eventName, handle)
+			if config.IsFeatureSupported(handle.HandleName()) {
+				klog.InfoS("Registering event handler", "eventName", eventName, "handlerName", handle.HandleName())
+				mgr.eventQueueFactory.RegistryEventHandler(eventName, handle)
+			} else {
+				klog.InfoS("Skip registering event handler", "eventName", eventName, "handlerName", handle.HandleName(), "reason", "feature not supported")
+			}
 		}
 	}
 	return mgr
