@@ -87,8 +87,8 @@ func (options *VolcanoAgentOptions) AddFlags(c *cobra.Command) {
 	// TODO: put in configMap.
 	c.Flags().IntVar(&options.OverSubscriptionRatio, "oversubscription-ratio", defaultOverSubscriptionRatio, "The oversubscription ratio determines how many idle resources can be oversold")
 	c.Flags().BoolVar(&options.IncludeSystemUsage, "include-system-usage", false, "It determines whether considering system usage when calculate overSubscription resource and evict.")
-	c.Flags().StringVar(&options.ExtendResourceCPU, "extend-resource-cpu", "", "The extended cpu resource name, which is used to calculate oversubscription resources, default to kubernetes.io/cpu")
-	c.Flags().StringVar(&options.ExtendResourceMemory, "extend-resource-memory", "", "The extended memory resource name, which is used to calculate oversubscription resources, default to kubernetes.io/memory")
+	c.Flags().StringVar(&options.ExtendResourceCPU, "extend-resource-cpu", "", "The extended cpu resource name, which is used to calculate oversubscription resources, default to kubernetes.io/batch-cpu")
+	c.Flags().StringVar(&options.ExtendResourceMemory, "extend-resource-memory", "", "The extended memory resource name, which is used to calculate oversubscription resources, default to kubernetes.io/batch-memory")
 }
 
 func (options *VolcanoAgentOptions) Validate() error {
