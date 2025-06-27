@@ -208,7 +208,12 @@ func TestMergerCfg(t *testing.T) {
 					Labels: map[string]string{},
 				},
 			},
-			wantCfg: enableNodeOverSubscription(enableNodeColocation(DefaultColocationConfig())),
+			wantCfg: withNewOverSubscription(enableNodeOverSubscription(enableNodeColocation(DefaultColocationConfig())),
+				&api.OverSubscription{
+					Enable:                utilpointer.Bool(true),
+					SkipNodeSupportCheck:  utilpointer.Bool(true),
+					OverSubscriptionTypes: utilpointer.String("cpu,memory"),
+				}),
 			wantErr: false,
 		},
 	}
