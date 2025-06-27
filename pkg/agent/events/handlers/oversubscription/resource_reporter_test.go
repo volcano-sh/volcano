@@ -216,10 +216,10 @@ func Test_reporter_Handle(t *testing.T) {
 				node, err := makeNode()
 				assert.NoError(t, err)
 				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{}
-				node.Status.Capacity[apis.ExtendResourceCPU] = *resource.NewQuantity(1000, resource.DecimalSI)
-				node.Status.Capacity[apis.ExtendResourceMemory] = *resource.NewQuantity(2000, resource.BinarySI)
-				node.Status.Allocatable[apis.ExtendResourceCPU] = *resource.NewQuantity(1000, resource.DecimalSI)
-				node.Status.Allocatable[apis.ExtendResourceMemory] = *resource.NewQuantity(2000, resource.BinarySI)
+				node.Status.Capacity[apis.GetExtendResourceCPU()] = *resource.NewQuantity(1000, resource.DecimalSI)
+				node.Status.Capacity[apis.GetExtendResourceMemory()] = *resource.NewQuantity(2000, resource.BinarySI)
+				node.Status.Allocatable[apis.GetExtendResourceCPU()] = *resource.NewQuantity(1000, resource.DecimalSI)
+				node.Status.Allocatable[apis.GetExtendResourceMemory()] = *resource.NewQuantity(2000, resource.BinarySI)
 				return node
 			},
 		},

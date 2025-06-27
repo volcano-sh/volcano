@@ -61,11 +61,11 @@ func Test_updater_Update(t *testing.T) {
 			expectedNode: &v1.Node{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-node"},
 				Status: v1.NodeStatus{Allocatable: map[v1.ResourceName]resource.Quantity{
-					apis.ExtendResourceCPU:    *resource.NewQuantity(100, resource.DecimalSI),
-					apis.ExtendResourceMemory: *resource.NewQuantity(100, resource.BinarySI),
+					apis.GetExtendResourceCPU():    *resource.NewQuantity(100, resource.DecimalSI),
+					apis.GetExtendResourceMemory(): *resource.NewQuantity(100, resource.BinarySI),
 				}, Capacity: map[v1.ResourceName]resource.Quantity{
-					apis.ExtendResourceCPU:    *resource.NewQuantity(100, resource.DecimalSI),
-					apis.ExtendResourceMemory: *resource.NewQuantity(100, resource.BinarySI),
+					apis.GetExtendResourceCPU():    *resource.NewQuantity(100, resource.DecimalSI),
+					apis.GetExtendResourceMemory(): *resource.NewQuantity(100, resource.BinarySI),
 				}}},
 			nodeModifiers: []Modifier{updateNodeOverSoldStatus(apis.Resource{
 				v1.ResourceCPU:    100,
