@@ -48,6 +48,16 @@ type extendResource struct {
 }
 
 func NewExtendResource(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, evictor eviction.Eviction, queue *queue.SqQueue, collectorName string) policy.Interface {
+	if config.GenericConfiguration.ExtendResourceCPU != "" {
+		apis.SetExtendResourceCPU(config.GenericConfiguration.ExtendResourceCPU)
+	}
+
+	if config.GenericConfiguration.ExtendResourceMemory != "" {
+		apis.SetExtendResourceMemory(config.GenericConfiguration.ExtendResourceMemory)
+	}
+
+	klog.InfoS("Using extend resource policy with default values", "cpu", apis.ExtendResourceCPU, "memory", apis.ExtendResourceMemory)
+
 	return &extendResource{
 		config:      config,
 		getPodsFunc: config.GetActivePods,

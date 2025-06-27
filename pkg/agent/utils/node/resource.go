@@ -42,11 +42,11 @@ func IsOverused(resName v1.ResourceName, resList *ResourceList) bool {
 
 func UseExtendResource(resName v1.ResourceName, resList *ResourceList) bool {
 	if resName == v1.ResourceCPU {
-		cpuReq, cpuExists := (*resList).TotalPodsRequest[apis.ExtendResourceCPU]
+		cpuReq, cpuExists := (*resList).TotalPodsRequest[apis.GetExtendResourceCPU()]
 		return cpuExists && !cpuReq.IsZero()
 	}
 	if resName == v1.ResourceMemory {
-		memReq, memoryExists := (*resList).TotalPodsRequest[apis.ExtendResourceMemory]
+		memReq, memoryExists := (*resList).TotalPodsRequest[apis.GetExtendResourceMemory()]
 		return memoryExists && !memReq.IsZero()
 	}
 	return false
@@ -90,11 +90,11 @@ func GetNodeStatusOverSubscription(node *v1.Node) apis.Resource {
 		return resources
 	}
 
-	if value, found := node.Status.Capacity[apis.ExtendResourceCPU]; found {
+	if value, found := node.Status.Capacity[apis.GetExtendResourceCPU()]; found {
 		resources[v1.ResourceCPU] = value.Value()
 	}
 
-	if value, found := node.Status.Capacity[apis.ExtendResourceMemory]; found {
+	if value, found := node.Status.Capacity[apis.GetExtendResourceMemory()]; found {
 		resources[v1.ResourceMemory] = value.Value()
 	}
 	return resources
@@ -148,7 +148,7 @@ func GetLatestPodsAndResList(node *v1.Node, getPodFunc utilpod.ActivePods, resTy
 func getResourceList(node *v1.Node, pods []*v1.Pod) *ResourceList {
 	resList := new(ResourceList)
 	fns := []utilpod.FilterPodsFunc{utilpod.IncludeOversoldPodFn(true), utilpod.IncludeGuaranteedPodsFn(true)}
-	resList.TotalPodsRequest = utilpod.GetTotalRequest(pods, fns, apis.OverSubscriptionResourceTypesIncludeExtendResources)
+	resList.TotalPodsRequest = utilpod.GetTotalRequest(pods, fns, apis.GetOverSubscriptionResourceTypesIncludeExtendResources())
 	resList.TotalNodeRes = GetTotalNodeResource(node, false)
 	return resList
 }

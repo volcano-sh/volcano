@@ -74,4 +74,10 @@ type VolcanoAgentConfiguration struct {
 
 	// IncludeSystemUsage determines whether considering system usage when calculate overSubscription resource and evict.
 	IncludeSystemUsage bool
+
+	// ExtendResourceCPU is the extend resource cpu, which is used to calculate overSubscription resources.
+	ExtendResourceCPU string
+
+	// ExtendResourceMemory is the extend resource memory, which is used to calculate overSubscription resources.
+	ExtendResourceMemory string
 }
