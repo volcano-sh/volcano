@@ -27,7 +27,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	networktopologyaware "volcano.sh/volcano/pkg/scheduler/plugins/network-topology-aware"
-	noderesourcefitplus "volcano.sh/volcano/pkg/scheduler/plugins/node-resource-fit-plus"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodegroup"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware"
@@ -37,6 +36,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/plugins/rescheduling"
+	resourcestrategyfit "volcano.sh/volcano/pkg/scheduler/plugins/resource-strategy-fit"
 	"volcano.sh/volcano/pkg/scheduler/plugins/resourcequota"
 	"volcano.sh/volcano/pkg/scheduler/plugins/sla"
 	tasktopology "volcano.sh/volcano/pkg/scheduler/plugins/task-topology"
@@ -54,7 +54,7 @@ func init() {
 	framework.RegisterPluginBuilder(nodeorder.PluginName, nodeorder.New)
 	framework.RegisterPluginBuilder(conformance.PluginName, conformance.New)
 	framework.RegisterPluginBuilder(binpack.PluginName, binpack.New)
-	framework.RegisterPluginBuilder(noderesourcefitplus.PluginName, noderesourcefitplus.New)
+	framework.RegisterPluginBuilder(resourcestrategyfit.PluginName, resourcestrategyfit.New)
 	framework.RegisterPluginBuilder(tdm.PluginName, tdm.New)
 	framework.RegisterPluginBuilder(overcommit.PluginName, overcommit.New)
 	framework.RegisterPluginBuilder(sla.PluginName, sla.New)
