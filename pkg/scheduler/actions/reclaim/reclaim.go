@@ -197,6 +197,18 @@ func (ra *Action) Execute(ssn *framework.Session) {
 						reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name, err)
 					continue
 				}
+				// Record the fine-grained reclaim event
+				if victimJob, ok := ssn.Jobs[reclaimee.Job]; ok {
+					if victimQ, found := ssn.Queues[victimJob.Queue]; found {
+						metrics.RecordReclaimEvent(
+							task,
+							reclaimee,
+							n.Name,
+							queue.Name,
+							victimQ.Name,
+						)
+					}
+				}
 				reclaimed.Add(reclaimee.Resreq)
 				// If reclaimed enough resources, break loop to avoid Sub panic.
 				if resreq.LessEqual(reclaimed, api.Zero) {
