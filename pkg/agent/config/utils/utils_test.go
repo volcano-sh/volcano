@@ -193,6 +193,24 @@ func TestMergerCfg(t *testing.T) {
 			wantCfg: withLabelSelector(DefaultColocationConfig()),
 			wantErr: true,
 		},
+		{
+			name: "set SkipNodeSupportCheck to true",
+			volcanoCfg: &api.VolcanoAgentConfig{
+				GlobalConfig: &api.ColocationConfig{
+					OverSubscriptionConfig: &api.OverSubscription{
+						Enable:               utilpointer.Bool(true),
+						SkipNodeSupportCheck: utilpointer.Bool(true),
+					},
+				},
+			},
+			node: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{},
+				},
+			},
+			wantCfg: enableNodeOverSubscription(enableNodeColocation(DefaultColocationConfig())),
+			wantErr: false,
+		},
 	}
 
 	for _, tc := range tests {
