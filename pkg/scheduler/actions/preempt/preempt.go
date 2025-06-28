@@ -358,6 +358,8 @@ func (pmpt *Action) normalPreempt(
 					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
 				continue
 			}
+			// Record the fine-grained preemption event
+			metrics.RecordPreemptionEvent(preemptor, preemptee, node.Name, currentQueue.Name)
 			preempted.Add(preemptee.Resreq)
 		}
 
