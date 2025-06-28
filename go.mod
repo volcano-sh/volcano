@@ -41,6 +41,7 @@ require (
 	k8s.io/component-base v0.33.1
 	k8s.io/component-helpers v0.33.1
 	k8s.io/csi-translation-lib v0.33.1
+	k8s.io/dynamic-resource-allocation v0.0.0
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubectl v0.33.1
 	k8s.io/kubernetes v1.33.1
@@ -104,7 +105,6 @@ require (
 	k8s.io/cli-runtime v0.33.1 // indirect
 	k8s.io/cri-api v0.33.1 // indirect
 	k8s.io/cri-client v0.0.0 // indirect
-	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
 	k8s.io/gengo/v2 v2.0.0-20250531010418-b22feca77200 // indirect
 	sigs.k8s.io/kustomize/api v0.19.0 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.19.0 // indirect

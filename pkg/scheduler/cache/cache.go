@@ -52,6 +52,7 @@ import (
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
+	tracker "k8s.io/dynamic-resource-allocation/resourceslice/tracker"
 	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 	"stathat.com/c/consistent"
 
@@ -751,7 +752,18 @@ func (sc *SchedulerCache) addEventHandler() {
 		logger := klog.FromContext(ctx)
 		resourceClaimInformer := informerFactory.Resource().V1beta1().ResourceClaims().Informer()
 		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
-		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, informerFactory)
+		opts := tracker.Options{
+			EnableDeviceTaints:    false,
+			SliceInformer:         informerFactory.Resource().V1beta1().ResourceSlices(),
+			TaintInformer:         informerFactory.Resource().V1alpha3().DeviceTaintRules(),
+			ClassInformer:         informerFactory.Resource().V1beta1().DeviceClasses(),
+			KubeClient:            kubeClient,
+		}
+		claimTracker, err := tracker.StartTracker(ctx, opts)
+		if err != nil {
+			// handle error
+		}
+		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, claimTracker, informerFactory)
 	}
 }
 
