@@ -757,7 +757,7 @@ func (sc *SchedulerCache) addEventHandler() {
 			SliceInformer:         informerFactory.Resource().V1beta1().ResourceSlices(),
 			TaintInformer:         informerFactory.Resource().V1alpha3().DeviceTaintRules(),
 			ClassInformer:         informerFactory.Resource().V1beta1().DeviceClasses(),
-			KubeClient:            kubeClient,
+			KubeClient:            sc.kubeClient,
 		}
 		claimTracker, err := tracker.StartTracker(ctx, opts)
 		if err != nil {
