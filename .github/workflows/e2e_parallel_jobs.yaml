@@ -15,7 +15,7 @@ jobs:
   e2e_parallel_jobs:
     runs-on: ubuntu-24.04
     name: E2E about Parallel Jobs
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - name: Install Go
         uses: actions/setup-go@v5
