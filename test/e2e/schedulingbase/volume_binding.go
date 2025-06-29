@@ -701,7 +701,16 @@ func testReadFileContent(f *framework.Framework, testFileDir string, testFile st
 // Execute a read or write command in a pod.
 // Fail on error
 func podRWCmdExec(f *framework.Framework, pod *v1.Pod, cmd string) string {
-	stdout, stderr, err := e2evolume.PodExec(f, pod, cmd)
+	execOptions := e2epod.ExecOptions{
+		Command:   []string{"sh", "-c", cmd},
+		PodName:   pod.Name,
+		Namespace: pod.Namespace,
+		Client:    f.ClientSet,
+		Config:    f.RestConfig(),
+		CaptureStdout: true,
+		CaptureStderr: true,
+	}
+	stdout, stderr, err := e2epod.ExecWithOptions(context.TODO(), execOptions)
 	framework.Logf("podRWCmdExec cmd: %q, out: %q, stderr: %q, err: %v", cmd, stdout, stderr, err)
 	framework.ExpectNoError(err)
 	return stdout
