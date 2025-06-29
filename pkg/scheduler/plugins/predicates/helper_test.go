@@ -29,7 +29,7 @@ import (
 )
 
 func TestSetUpVolumeBindingArgs(t *testing.T) {
-	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeCapacityPriority, true)
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.StorageCapacityScoring, true)
 
 	tests := []struct {
 		name     string
