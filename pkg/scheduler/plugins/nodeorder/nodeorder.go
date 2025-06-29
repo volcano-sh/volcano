@@ -160,8 +160,9 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeMap := ssn.NodeMap
 
 	fts := feature.Features{
-		// removed in k8s v1.33.1
+		// removed in k8s v1.33.1 and replaced with StorageCapacityScoring
 		// EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
+		EnableStorageCapacityScoring:                 utilFeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring),
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
 		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
 	}

@@ -44,16 +44,17 @@ func defaultVolumeBindingArgs() *wrapVolumeBindingArgs {
 		},
 	}
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority) {
-		// default shape setting if VolumeCapacityPriority is enabled
+	if utilfeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring) {
+		// default shape setting if StorageCapacityScoring is enabled
+		// its inverted in StorageCapacityScoring
 		args.Shape = []kubeschedulerconfig.UtilizationShapePoint{
 			{
 				Utilization: 0,
-				Score:       0,
+				Score:       int32(kubeschedulerconfig.MaxCustomPriorityScore),
 			},
 			{
 				Utilization: 100,
-				Score:       int32(kubeschedulerconfig.MaxCustomPriorityScore),
+				Score:       0,
 			},
 		}
 	}
@@ -91,7 +92,7 @@ func setUpVolumeBindingArgs(vbArgs *wrapVolumeBindingArgs, rawArgs framework.Arg
 		vbArgs.BindTimeoutSeconds = timeout
 	}
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority) {
+	if utilfeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring) {
 		shape, _ := framework.Get[[]kubeschedulerconfig.UtilizationShapePoint](rawArgs, volumeBindingShapeKey)
 		if len(shape) != 0 {
 			vbArgs.Shape = shape
