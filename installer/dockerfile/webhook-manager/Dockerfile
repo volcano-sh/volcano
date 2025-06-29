@@ -32,6 +32,6 @@ RUN if [[ -n "$APK_MIRROR" ]]; then sed -i "s@https://dl-cdn.alpinelinux.org@${A
     apk del --purge deps && \
     rm /var/cache/apk/*
 
-COPY --from=builder /go/src/v olcano.sh/volcano/_output/bin/vc-webhook-manager /vc-webhook-manager
+COPY --from=builder /go/src/volcano.sh/volcano/_output/bin/vc-webhook-manager /vc-webhook-manager
 ADD ./installer/dockerfile/webhook-manager/gen-admission-secret.sh /gen-admission-secret.sh
 ENTRYPOINT ["/vc-webhook-manager"]
