@@ -115,7 +115,7 @@ func calculateWeight(args framework.Arguments) ResourceStrategyFit {
 	return weight
 }
 
-func (bp *resourceStrategyFitPlugin) Name() string {
+func (rsf *resourceStrategyFitPlugin) Name() string {
 	return PluginName
 }
 

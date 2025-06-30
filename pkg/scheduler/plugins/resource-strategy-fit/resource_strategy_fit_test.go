@@ -501,10 +501,10 @@ func Test_resourceStrategyFitPlusWeightPlusPlugin_OnSessionOpen(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bp := &resourceStrategyFitPlugin{
+			rsf := &resourceStrategyFitPlugin{
 				weight: tt.fields.weight,
 			}
-			bp.OnSessionOpen(tt.args.ssn)
+			rsf.OnSessionOpen(tt.args.ssn)
 		})
 	}
 }
