@@ -135,7 +135,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 		})
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
 
-		clusterPods, err := ctx.Kubeclient.CoreV1().Pods(podNamespace).List(context.TODO(), metav1.ListOptions{})
+		clusterPods, _ := ctx.Kubeclient.CoreV1().Pods(podNamespace).List(context.TODO(), metav1.ListOptions{})
 		for _, pod := range clusterPods.Items {
 			if pod.Labels["volcano.sh/job-name"] == firstJobName {
 				err = ctx.Kubeclient.CoreV1().Pods(podNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
@@ -200,7 +200,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 		err = e2eutil.WaitPodPhaseRunningMoreThanNum(ctx, podNamespace, 2)
 		Expect(err).NotTo(HaveOccurred(), "Failed waiting for pods")
 
-		clusterPods, err := ctx.Kubeclient.CoreV1().Pods(podNamespace).List(context.TODO(), metav1.ListOptions{})
+		clusterPods, _ := ctx.Kubeclient.CoreV1().Pods(podNamespace).List(context.TODO(), metav1.ListOptions{})
 		for _, pod := range clusterPods.Items {
 			if pod.Status.Phase == corev1.PodRunning {
 				err = ctx.Kubeclient.CoreV1().Pods(podNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
