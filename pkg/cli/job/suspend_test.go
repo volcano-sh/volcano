@@ -47,7 +47,6 @@ func TestSuspendJobJob(t *testing.T) {
 			if err == nil {
 				w.Write(val)
 			}
-
 		}
 	})
 

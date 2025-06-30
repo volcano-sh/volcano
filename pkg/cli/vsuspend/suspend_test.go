@@ -49,7 +49,6 @@ func TestSuspendJobJob(t *testing.T) {
 			}
 		}
 	})
-
 	server := httptest.NewServer(handler)
 	defer server.Close()
 

@@ -1225,6 +1225,5 @@ func TestCalcPGMinResources(t *testing.T) {
 		if !reflect.DeepEqual(gotMin, &tt.ExpectValue) {
 			t.Fatalf("case %d: expected %v got %v", i, tt.ExpectValue, gotMin)
 		}
-
 	}
 }
