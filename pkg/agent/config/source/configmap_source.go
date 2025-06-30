@@ -23,7 +23,6 @@ import (
 
 	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/informers"
@@ -54,7 +53,7 @@ func NewConfigMapSource(client clientset.Interface, nodeName, namespace string) 
 		options.FieldSelector = fields.OneTermEqualSelector(utils.ObjectNameField, utils.ConfigMapName).String()
 	}
 	informerFactory := informers.NewSharedInformerFactory(client, 0)
-	configMapInformer := informerFactory.InformerFor(&v1.ConfigMap{},
+	configMapInformer := informerFactory.InformerFor(&corev1.ConfigMap{},
 		func(client clientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
 			return coreinformers.NewFilteredConfigMapInformer(client, namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, tweakListOptions)
 		})
