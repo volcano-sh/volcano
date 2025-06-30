@@ -601,8 +601,10 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	if rootQueueAttr.capability.IsEmpty() {
 		rootQueueAttr.capability = cp.totalResource
 	}
+	if rootQueueAttr.deserved.IsEmpty() {
+		rootQueueAttr.deserved = cp.totalResource
+	}
 	rootQueueAttr.realCapability = cp.totalResource
-	rootQueueAttr.deserved = cp.totalResource
 	// Check the hierarchical structure of queues
 	err := cp.checkHierarchicalQueue(rootQueueAttr)
 	if err != nil {
@@ -775,8 +777,10 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 	}
 
 	if attr.name == cp.rootQueue {
-		attr.guarantee = totalGuarantee
-		cp.totalGuarantee = totalGuarantee
+		if attr.guarantee.IsEmpty() {
+			attr.guarantee = totalGuarantee
+		}
+		cp.totalGuarantee = attr.guarantee
 	}
 
 	for _, childAttr := range attr.children {
@@ -788,11 +792,6 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 			realCapability.MinDimensionResource(childAttr.capability, api.Infinity)
 			childAttr.realCapability = realCapability
 		}
-		oldDeserved := childAttr.deserved.Clone()
-		childAttr.deserved.MinDimensionResource(childAttr.realCapability, api.Infinity)
-
-		childAttr.deserved = helpers.Max(childAttr.deserved, childAttr.guarantee)
-		totalDeserved.Sub(oldDeserved).Add(childAttr.deserved)
 	}
 
 	// Check if the parent queue's deserved resources are less than the total deserved resources of child queues
