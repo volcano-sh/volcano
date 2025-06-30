@@ -84,12 +84,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		}
 	}
 
-	for {
-		// If no queues, break
-		if queues.Empty() {
-			break
-		}
-
+	for !queues.Empty() {
 		var job *api.JobInfo
 		var task *api.TaskInfo
 

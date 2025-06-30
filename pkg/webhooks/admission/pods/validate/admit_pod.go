@@ -148,7 +148,7 @@ func validateIntPercentageStr(key, value string) error {
 		return nil
 	case intstr.String:
 		// nolint: QF1004
-		s := strings.Replace(tmp.StrVal, "%", "", -1)
+		s := strings.ReplaceAll(tmp.StrVal, "%", "")
 		v, err := strconv.Atoi(s)
 		if err != nil {
 			return fmt.Errorf("invalid value %v for %v", err, key)

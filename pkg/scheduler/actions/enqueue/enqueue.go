@@ -78,12 +78,7 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 
 	klog.V(3).Infof("Try to enqueue PodGroup to %d Queues", len(jobsMap))
 
-	for {
-		// nolint: QF1006
-		if queues.Empty() {
-			break
-		}
-
+	for !queues.Empty() {
 		queue := queues.Pop().(*api.QueueInfo)
 
 		// skip the Queue that has no pending job

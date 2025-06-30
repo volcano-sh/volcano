@@ -95,7 +95,7 @@ func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 
 	for _, ts := range job.Spec.Tasks {
 		// TODO(k82cn): The splitter and the prefix of env should be configurable.
-		formateENVKey := strings.Replace(ts.Name, "-", "_", -1)
+		formateENVKey := strings.ReplaceAll(ts.Name, "-", "_")
 		envNames = append(envNames, fmt.Sprintf(EnvTaskHostFmt, strings.ToUpper(formateENVKey)), fmt.Sprintf(EnvHostNumFmt, strings.ToUpper(formateENVKey)))
 	}
 
@@ -323,7 +323,7 @@ func GenerateHosts(job *batch.Job) map[string]string {
 			}
 		}
 
-		formateENVKey := strings.Replace(ts.Name, "-", "_", -1)
+		formateENVKey := strings.ReplaceAll(ts.Name, "-", "_")
 		key := fmt.Sprintf(ConfigMapTaskHostFmt, formateENVKey)
 		hostFile[key] = strings.Join(hosts, "\n")
 

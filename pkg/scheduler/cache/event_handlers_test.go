@@ -695,7 +695,8 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for i := range tests {
+		tt := &tests[i] // take pointer to avoid copying
 		t.Run(tt.name, func(t *testing.T) {
 			sc := NewDefaultMockSchedulerCache("volcano")
 			for _, node := range tt.nodes {
@@ -719,46 +720,135 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 func TestSchedulerCache_AddHyperNode(t *testing.T) {
 	exactSelector := "exact"
 	s5 := schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
-		{"s2", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{
+			Name:          "s2",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s3",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s4 := schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
-		{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{
+			Name:          "s0",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s1",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s3 := schedulingapi.BuildHyperNode("s3", 1, []schedulingapi.MemberConfig{
-		{"node-6", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-7", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-6",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-7",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s1 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
-		{"node-2", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-3", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-2",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-3",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s2 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
-		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-5", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-4",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-5",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s0 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-0",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-1",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	initialHyperNodes0 := []*topologyv1alpha1.HyperNode{s5, s0, s4, s3, s1, s2}
-
 	regexSelector := "regex"
 	s00 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-0",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-1",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s10 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
-		{"node-[2-3]", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
+		{
+			Name:          "node-[2-3]",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      regexSelector,
+			LabelSelector: nil,
+		},
 	})
 	s20 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
-		{"^prefix", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
+		{
+			Name:          "^prefix",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      regexSelector,
+			LabelSelector: nil,
+		},
 	})
 	initialHyperNodes1 := []*topologyv1alpha1.HyperNode{s5, s00, s4, s3, s10, s20}
 	s6 := schedulingapi.BuildHyperNode("s6", 3, []schedulingapi.MemberConfig{
-		{"s4", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		{"s5", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{
+			Name:          "s4",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s5",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	tests := []struct {
 		name                        string
@@ -890,32 +980,102 @@ func TestSchedulerCache_Delete_Then_AddBack(t *testing.T) {
 	exactSelector := "exact"
 
 	s5 := schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
-		{"s2", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{
+			Name:          "s2",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s3",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s4 := schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
-		{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{
+			Name:          "s0",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s1",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s3 := schedulingapi.BuildHyperNode("s3", 1, []schedulingapi.MemberConfig{
-		{"node-6", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-7", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-6",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-7",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s1 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
-		{"node-2", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-3", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-2",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-3",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s2 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
-		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-5", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-4",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-5",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s0 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-0",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-1",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s6 := schedulingapi.BuildHyperNode("s6", 3, []schedulingapi.MemberConfig{
-		{"s4", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		{"s5", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{
+			Name:          "s4",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s5",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	initialHyperNodes := []*topologyv1alpha1.HyperNode{s6, s5, s0, s4, s3, s1, s2}
 
@@ -1001,35 +1161,103 @@ func TestSchedulerCache_UpdateHyperNode(t *testing.T) {
 	regexSelector := "regex"
 
 	s0 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-0",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-1",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s1 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
-		{"node-2", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-3", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-2",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-3",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s2 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
-		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-5", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-4",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-5",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s3 := schedulingapi.BuildHyperNode("s3", 1, []schedulingapi.MemberConfig{
-		{"node-6", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-7", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-6",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-7",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s4 := schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
-		{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{
+			Name:          "s0",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s1",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
-
 	s5 := schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
-		{"s2", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{
+			Name:          "s2",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s3",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
-	s6 := schedulingapi.BuildHyperNode("s6", 3,
-		[]schedulingapi.MemberConfig{
-			{"s4", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-			{"s5", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		})
+	s6 := schedulingapi.BuildHyperNode("s6", 3, []schedulingapi.MemberConfig{
+		{
+			Name:          "s4",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s5",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+	})
 	initialHyperNodes := []*topologyv1alpha1.HyperNode{s0, s1, s2, s3, s4, s5, s6}
 
 	tests := []struct {
@@ -1046,15 +1274,35 @@ func TestSchedulerCache_UpdateHyperNode(t *testing.T) {
 			name:              "Update non-leaf hyperNode's members",
 			initialHyperNodes: initialHyperNodes,
 			hyperNodesToUpdated: []*topologyv1alpha1.HyperNode{
-				// first remove s2 from s5.
+				// First remove s2 from s5.
 				schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
-					{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+					{
+						Name:          "s3",
+						Type:          topologyv1alpha1.MemberTypeHyperNode,
+						Selector:      exactSelector,
+						LabelSelector: nil,
+					},
 				}),
-				// second add s2 to s4.
+				// Second add s2 to s4.
 				schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
-					{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-					{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-					{"s2", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+					{
+						Name:          "s0",
+						Type:          topologyv1alpha1.MemberTypeHyperNode,
+						Selector:      exactSelector,
+						LabelSelector: nil,
+					},
+					{
+						Name:          "s1",
+						Type:          topologyv1alpha1.MemberTypeHyperNode,
+						Selector:      exactSelector,
+						LabelSelector: nil,
+					},
+					{
+						Name:          "s2",
+						Type:          topologyv1alpha1.MemberTypeHyperNode,
+						Selector:      exactSelector,
+						LabelSelector: nil,
+					},
 				}),
 			},
 			expectedHyperNodesSetByTier: []map[int]sets.Set[string]{
@@ -1157,7 +1405,12 @@ func TestSchedulerCache_UpdateHyperNode(t *testing.T) {
 			initialHyperNodes: initialHyperNodes,
 			hyperNodesToUpdated: []*topologyv1alpha1.HyperNode{
 				schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
-					{"-suffix", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
+					{
+						Name:          "-suffix",
+						Type:          topologyv1alpha1.MemberTypeNode,
+						Selector:      regexSelector,
+						LabelSelector: nil,
+					},
 				}),
 			},
 			expectedHyperNodesSetByTier: []map[int]sets.Set[string]{
@@ -1221,32 +1474,32 @@ func TestSchedulerCache_UpdateHyperNode(t *testing.T) {
 func TestSchedulerCache_DeleteHyperNode(t *testing.T) {
 	selector := "exact"
 	s0 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil},
-		{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{Name: "node-0", Type: topologyv1alpha1.MemberTypeNode, Selector: selector, LabelSelector: nil},
+		{Name: "node-1", Type: topologyv1alpha1.MemberTypeNode, Selector: selector, LabelSelector: nil},
 	})
 	s1 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
-		{"node-2", topologyv1alpha1.MemberTypeNode, selector, nil},
-		{"node-3", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{Name: "node-2", Type: topologyv1alpha1.MemberTypeNode, Selector: selector, LabelSelector: nil},
+		{Name: "node-3", Type: topologyv1alpha1.MemberTypeNode, Selector: selector, LabelSelector: nil},
 	})
 	s2 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
-		{"node-4", topologyv1alpha1.MemberTypeNode, selector, nil},
-		{"node-5", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{Name: "node-4", Type: topologyv1alpha1.MemberTypeNode, Selector: selector, LabelSelector: nil},
+		{Name: "node-5", Type: topologyv1alpha1.MemberTypeNode, Selector: selector, LabelSelector: nil},
 	})
 	s3 := schedulingapi.BuildHyperNode("s3", 1, []schedulingapi.MemberConfig{
-		{"node-6", topologyv1alpha1.MemberTypeNode, selector, nil},
-		{"node-7", topologyv1alpha1.MemberTypeNode, selector, nil},
+		{Name: "node-6", Type: topologyv1alpha1.MemberTypeNode, Selector: selector, LabelSelector: nil},
+		{Name: "node-7", Type: topologyv1alpha1.MemberTypeNode, Selector: selector, LabelSelector: nil},
 	})
 	s4 := schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
-		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
-		{"s1", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
+		{Name: "s0", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: selector, LabelSelector: nil},
+		{Name: "s1", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: selector, LabelSelector: nil},
 	})
 	s5 := schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
-		{"s2", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
-		{"s3", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
+		{Name: "s2", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: selector, LabelSelector: nil},
+		{Name: "s3", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: selector, LabelSelector: nil},
 	})
 	s6 := schedulingapi.BuildHyperNode("s6", 3, []schedulingapi.MemberConfig{
-		{"s4", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
-		{"s5", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
+		{Name: "s4", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: selector, LabelSelector: nil},
+		{Name: "s5", Type: topologyv1alpha1.MemberTypeHyperNode, Selector: selector, LabelSelector: nil},
 	})
 	initialHyperNodes := []*topologyv1alpha1.HyperNode{s0, s1, s2, s3, s4, s5, s6}
 
@@ -1363,49 +1616,164 @@ func TestSchedulerCache_SyncHyperNode(t *testing.T) {
 	exactSelector := "exact"
 	regexSelector := "regex"
 	s6 := schedulingapi.BuildHyperNode("s6", 3, []schedulingapi.MemberConfig{
-		{"s4", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		{"s5", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{
+			Name:          "s4",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s5",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s5 := schedulingapi.BuildHyperNode("s5", 2, []schedulingapi.MemberConfig{
-		{"s2", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		{"s3", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{
+			Name:          "s2",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s3",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s4 := schedulingapi.BuildHyperNode("s4", 2, []schedulingapi.MemberConfig{
-		{"s0", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
-		{"s1", topologyv1alpha1.MemberTypeHyperNode, exactSelector, nil},
+		{
+			Name:          "s0",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "s1",
+			Type:          topologyv1alpha1.MemberTypeHyperNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s3 := schedulingapi.BuildHyperNode("s3", 1, []schedulingapi.MemberConfig{
-		{"node-6", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-7", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-6",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-7",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s2 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
-		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-5", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-4",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-5",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s20 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
-		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-5", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-9", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
+		{
+			Name:          "node-4",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-5",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-9",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      regexSelector,
+			LabelSelector: nil,
+		},
 	})
 	s21 := schedulingapi.BuildHyperNode("s2", 1, []schedulingapi.MemberConfig{
-		{"node-4", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-5", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
+		{
+			Name:          "node-4",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-5",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      regexSelector,
+			LabelSelector: nil,
+		},
 	})
 	s1 := schedulingapi.BuildHyperNode("s1", 1, []schedulingapi.MemberConfig{
-		{"node-2", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-3", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-2",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-3",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s0 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
+		{
+			Name:          "node-0",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-1",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
 	})
 	s00 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
-		{"node-0", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"node-1", topologyv1alpha1.MemberTypeNode, exactSelector, nil},
-		{"^prefix", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
+		{
+			Name:          "node-0",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "node-1",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      exactSelector,
+			LabelSelector: nil,
+		},
+		{
+			Name:          "^prefix",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      regexSelector,
+			LabelSelector: nil,
+		},
 	})
 	s01 := schedulingapi.BuildHyperNode("s0", 1, []schedulingapi.MemberConfig{
-		{"node-[01]", topologyv1alpha1.MemberTypeNode, regexSelector, nil},
+		{
+			Name:          "node-[01]",
+			Type:          topologyv1alpha1.MemberTypeNode,
+			Selector:      regexSelector,
+			LabelSelector: nil,
+		},
 	})
 	initialHyperNodes0 := []*topologyv1alpha1.HyperNode{s5, s0, s4, s3, s1, s2, s6}
 	initialHyperNodes1 := []*topologyv1alpha1.HyperNode{s5, s00, s4, s3, s1, s20, s6}

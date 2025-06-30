@@ -157,13 +157,8 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			stmt := framework.NewStatement(ssn)
 			var assigned bool
 			var err error
-			for {
-				// If job is not request more resource, then stop preempting.
-				// nolint: QF1006
-				if !ssn.JobStarving(preemptorJob) {
-					break
-				}
-
+			// If job is not request more resource, then stop preempting.
+			for !ssn.JobStarving(preemptorJob) {
 				// If not preemptor tasks, next job.
 				if preemptorTasks[preemptorJob.UID].Empty() {
 					klog.V(3).Infof("No preemptor task in job <%s/%s>.",

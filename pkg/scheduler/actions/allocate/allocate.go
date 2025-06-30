@@ -131,11 +131,7 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 	// To pick <namespace, queue> tuple for job, we choose to pick namespace firstly.
 	// Because we believe that number of queues would less than namespaces in most case.
 	// And, this action would make the resource usage among namespace balanced.
-	for {
-		if queues.Empty() {
-			break
-		}
-
+	for !queues.Empty() {
 		queue := queues.Pop().(*api.QueueInfo)
 
 		if ssn.Overused(queue) {

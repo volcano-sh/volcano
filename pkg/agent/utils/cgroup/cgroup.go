@@ -167,7 +167,7 @@ func (cgroupName CgroupName) ToCgroupfs() (string, error) {
 }
 
 func escapeSystemdCgroupName(part string) string {
-	return strings.Replace(part, "-", "_", -1)
+	return strings.ReplaceAll(part, "-", "_")
 }
 
 // getPodCgroupNameSuffix returns the last element of the pod CgroupName identifier

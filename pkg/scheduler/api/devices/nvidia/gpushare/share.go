@@ -175,17 +175,15 @@ func predicateGPUbyNumber(pod *v1.Pod, gs *GPUDevices) []int {
 
 func escapeJSONPointer(p string) string {
 	// Escaping reference name using https://tools.ietf.org/html/rfc6901
-	// nolint: QF1004
-	p = strings.Replace(p, "~", "~0", -1)
-	// nolint: QF1004
-	p = strings.Replace(p, "/", "~1", -1)
+	p = strings.ReplaceAll(p, "~", "~0")
+	p = strings.ReplaceAll(p, "/", "~1")
 	return p
 }
 
 // AddGPUIndexPatch returns the patch adding GPU index
 func AddGPUIndexPatch(ids []int) string {
 	// nolint: QF1004
-	idsstring := strings.Trim(strings.Replace(fmt.Sprint(ids), " ", ",", -1), "[]")
+	idsstring := strings.Trim(strings.ReplaceAll(fmt.Sprint(ids), " ", ","), "[]")
 	return fmt.Sprintf(`[{"op": "add", "path": "/metadata/annotations/%s", "value":"%d"},`+
 		`{"op": "add", "path": "/metadata/annotations/%s", "value": "%s"}]`,
 		escapeJSONPointer(PredicateTime), time.Now().UnixNano(),
