@@ -67,6 +67,7 @@ func (c *ConfigMapCase) UndoChanged() error {
 		c.ocm.Data[filename] = old
 	}
 	atLeast := time.Second // at least 1s wait between 2 configmap-change
+	//lint:ignore SA1003 intentional use of Sub for clarity
 	if dur := time.Now().Sub(c.startTs); dur < atLeast {
 		time.Sleep(atLeast - dur)
 	}
