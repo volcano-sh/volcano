@@ -41,7 +41,6 @@ func TestSuspendJobJob(t *testing.T) {
 			if err == nil {
 				w.Write(val)
 			}
-
 		} else {
 			w.Header().Set("Content-Type", "application/json")
 			val, err := json.Marshal(responsejob)

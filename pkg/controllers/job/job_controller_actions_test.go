@@ -209,7 +209,6 @@ func TestKillJobFunc(t *testing.T) {
 			}
 
 			for _, plugin := range testcase.Plugins {
-
 				if plugin == "svc" {
 					_, err = fakeController.kubeClient.CoreV1().Services(namespace).Get(context.TODO(), testcase.Job.Name, metav1.GetOptions{})
 					if err == nil {
