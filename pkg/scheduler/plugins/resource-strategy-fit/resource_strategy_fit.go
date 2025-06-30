@@ -119,19 +119,18 @@ func (bp *resourceStrategyFitPlugin) Name() string {
 	return PluginName
 }
 
-func (bp *resourceStrategyFitPlugin) OnSessionOpen(ssn *framework.Session) {
+func (rsf *resourceStrategyFitPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(5).Infof("Enter resourceStrategyFit plugin ...")
 	defer func() {
-		klog.V(5).Infof("Leaving resourceStrategyFit plugin. %s ...", bp.weight.String())
+		klog.V(5).Infof("Leaving resourceStrategyFit plugin. %s ...", rsf.weight.String())
 	}()
-
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		score := PlusScore(task, node, bp.weight)
+		score := PlusScore(task, node, rsf.weight)
 		klog.V(4).Infof("resourceStrategyFit score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, score)
 		return score, nil
 	}
-	if bp.weight.ResourceStrategyFitWeight != 0 {
-		ssn.AddNodeOrderFn(bp.Name(), nodeOrderFn)
+	if rsf.weight.ResourceStrategyFitWeight != 0 {
+		ssn.AddNodeOrderFn(rsf.Name(), nodeOrderFn)
 	} else {
 		klog.Infof("resourceStrategyFit weight is zero, skip node order function")
 	}
@@ -216,5 +215,5 @@ func leastRequestedScore(requested float64, used float64, capacity float64, weig
 	return score, nil
 }
 
-func (bp *resourceStrategyFitPlugin) OnSessionClose(ssn *framework.Session) {
+func (rsf *resourceStrategyFitPlugin) OnSessionClose(ssn *framework.Session) {
 }
