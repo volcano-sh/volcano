@@ -69,6 +69,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 			outBuffer.String())
 	})
 
+	// TODO(mahdi): fixme
 	It("Suspend running job&Resume aborted job", func() {
 		jobName := "test-suspend-running-job"
 		taskName := "long-live-task"

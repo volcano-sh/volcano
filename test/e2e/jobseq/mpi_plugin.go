@@ -25,6 +25,7 @@ import (
 )
 
 var _ = Describe("MPI Plugin E2E Test", func() {
+	// TODO(mahdi): fixme
 	It("will run and complete finally", func() {
 		context := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(context)

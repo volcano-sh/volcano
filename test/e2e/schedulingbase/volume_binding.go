@@ -230,6 +230,7 @@ var _ = ginkgo.Describe("Volume Binding Test", func() {
 	}
 
 	f.Context("Local volume that cannot be mounted", f.WithSlow(), func() {
+		// TODO(mahdi): this test is slow, how to improve it to prevent timeout failure?
 		ginkgo.It("should fail due to non-existent path", func(ctx context.Context) {
 			testVol := &localTestVolume{
 				ltr: &utils.LocalTestResource{
@@ -356,7 +357,8 @@ var _ = ginkgo.Describe("Volume Binding Test", func() {
 			ss := createStatefulSet(ctx, config, ssReplicas, 1, true, true)
 			validateStatefulSet(ctx, config, ss, true)
 		})
-
+		
+		// TODO(mahdi): this test seems to be slow, timeout can happen.
 		ginkgo.It("should use volumes on one node when pod management is parallel and pod has affinity", func(ctx context.Context) {
 			ginkgo.By("Creating a StatefulSet with pod affinity on nodes")
 			ss := createStatefulSet(ctx, config, ssReplicas, 1, false, true)

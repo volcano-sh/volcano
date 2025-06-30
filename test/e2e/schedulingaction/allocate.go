@@ -37,6 +37,7 @@ import (
 )
 
 var _ = ginkgo.Describe("Job E2E Test", func() {
+	// TODO(mahdi): fixme
 	ginkgo.It("allocate work when resource is enough", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			NodesNumLimit: 2,

@@ -363,6 +363,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			b.testPod(ctx, f.ClientSet, pod, expectedEnv...)
 		})
 
+		// TODO(mahdi): fixme
 		ginkgo.It("runs a pod without a generated resource claim", func(ctx context.Context) {
 			pod, _ /* template */ := b.podInline()
 			created := b.create(ctx, pod)
@@ -392,7 +393,8 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 		ginkgo.Context("with node-local resources", func() {
 			driver := e2edra.NewDriver(f, nodes, perNode(1, nodes))
 			b := newBuilder(f, driver)
-
+			
+			// TODO(mahdi): fixme
 			ginkgo.It("uses all resources", func(ctx context.Context) {
 				var objs []klog.KMetadata
 				var pods []*v1.Pod

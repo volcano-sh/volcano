@@ -36,6 +36,7 @@ import (
 )
 
 var _ = Describe("Job Error Handling", func() {
+	// TODO(mahdi): fixme, it stucks at pending state
 	It("job level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
 		By("init test context")
 		context := e2eutil.InitTestContext(e2eutil.Options{})

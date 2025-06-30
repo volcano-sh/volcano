@@ -60,6 +60,7 @@ var _ = Describe("SLA Test", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	// TODO(mahdi): fixme, expects 12 pods but 0 is available
 	It("sla adjusts job order", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
@@ -111,6 +112,7 @@ var _ = Describe("SLA Test", func() {
 		err = e2eutil.WaitTaskPhase(ctx, slowSLAJob, []v1.PodPhase{v1.PodPending}, 0)
 		Expect(err).NotTo(HaveOccurred())
 
+		// TODO(mahdi): at this line it fails
 		err = e2eutil.WaitTasksReady(ctx, fastSLAJob, int(rep))
 		Expect(err).NotTo(HaveOccurred())
 	})
