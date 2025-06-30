@@ -226,7 +226,7 @@ var _ = Describe("Job E2E Test", func() {
 			}
 			return true
 		}
-		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+		_ = cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
 			return e2eutil.ModifySchedulerConfig(data, modifier)
 		})
 		defer cmc.UndoChanged()

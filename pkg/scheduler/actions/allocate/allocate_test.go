@@ -1817,7 +1817,7 @@ func TestAllocateWithDRA(t *testing.T) {
 			DeviceClasses: []*resourcev1beta1.DeviceClass{
 				util.BuildDeviceClass("gpu.example.com", []resourcev1beta1.DeviceSelector{
 					{CEL: &resourcev1beta1.CELDeviceSelector{
-						Expression: fmt.Sprintf(`device.driver == 'gpu.example.com'`),
+						Expression: `device.driver == 'gpu.example.com'`,
 					}},
 				}, nil),
 			},

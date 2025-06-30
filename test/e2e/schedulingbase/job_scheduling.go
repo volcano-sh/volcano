@@ -499,6 +499,8 @@ var _ = Describe("Job E2E Test", func() {
 		q1ScheduledPod := 0
 		q2ScheduledPod := 0
 		expectPod := int(rep)
+		// TODO(mahdi): fixme
+		// SA4028: x % 1 is always zero (staticcheck)
 		if expectPod%1 == 1 {
 			expectPod--
 		}

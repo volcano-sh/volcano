@@ -159,6 +159,7 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			var err error
 			for {
 				// If job is not request more resource, then stop preempting.
+				// nolint: QF1006
 				if !ssn.JobStarving(preemptorJob) {
 					break
 				}

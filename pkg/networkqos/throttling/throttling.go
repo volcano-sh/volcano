@@ -215,7 +215,7 @@ func (w *NetworkThrottlingConfig) GetThrottlingConfig() (*api.EbpfNetThrottlingC
 		return nil, err
 	}
 
-	var config *api.EbpfNetThrottlingConfig = *(**api.EbpfNetThrottlingConfig)(unsafe.Pointer(&throttlingConfig))
+	var config = *(**api.EbpfNetThrottlingConfig)(unsafe.Pointer(&throttlingConfig))
 	return config, nil
 }
 
@@ -226,6 +226,6 @@ func (w *NetworkThrottlingConfig) GetThrottlingStatus() (*api.EbpfNetThrottling,
 		return nil, err
 	}
 
-	var edtThrottling *api.EbpfNetThrottling = *(**api.EbpfNetThrottling)(unsafe.Pointer(&throttling))
+	var edtThrottling = *(**api.EbpfNetThrottling)(unsafe.Pointer(&throttling))
 	return edtThrottling, nil
 }
