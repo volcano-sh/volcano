@@ -75,3 +75,11 @@ type JobReadyRequest struct {
 type JobReadyResponse struct {
 	Status bool `json:"status"`
 }
+
+type EventHandlerRequest struct {
+	Task *api.TaskInfo `json:"task"`
+}
+
+type EventHandlerResponse struct {
+	ErrorMessage string `json:"errorMessage"`
+}

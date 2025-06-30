@@ -137,7 +137,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 
 		assigned := false
 		// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
-		totalNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(task)
+		totalNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
 		for _, n := range totalNodes {
 			// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
 			// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422

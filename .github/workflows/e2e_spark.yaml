@@ -32,6 +32,17 @@ jobs:
       if: github.event.inputs.volcano-branch==''
       uses: actions/checkout@v3
 
+    - name: Set TAG from release config
+      run: |
+        if [[ -f .release-version ]]; then
+          TAG=$(cat .release-version | tr -d '\n\r')
+          echo "TAG=${TAG}" >> $GITHUB_ENV
+          echo "Using TAG from .release-version: ${TAG}"
+        else
+          echo "TAG=latest" >> $GITHUB_ENV
+          echo "Using default TAG=latest (.release-version file not found)"
+        fi
+
     - name: Checkout Spark repository
       uses: actions/checkout@v3
       with:
@@ -76,9 +87,9 @@ jobs:
     - name: Build lastest volcano images
       run: |
         eval $(minikube docker-env)
-        make TAG=latest update-development-yaml
+        make TAG=${{ env.TAG }} update-development-yaml
         sed -i 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/g' installer/volcano-development.yaml
-        make TAG=latest images
+        make TAG=${{ env.TAG }} images
         docker images | grep volcano
         cat ./installer/volcano-development.yaml  | grep image:
         minikube kubectl -- replace --force -f ./installer/volcano-development.yaml
