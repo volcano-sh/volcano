@@ -287,7 +287,7 @@ func GetMinInt(vals ...int) int {
 
 // ConvertRes2ResList convert resource type from api.Resource in scheduler to v1.ResourceList in yaml
 func ConvertRes2ResList(res *api.Resource) v1.ResourceList {
-	var rl = v1.ResourceList{}
+	rl := v1.ResourceList{}
 	rl[v1.ResourceCPU] = *resource.NewMilliQuantity(int64(res.MilliCPU), resource.DecimalSI)
 	rl[v1.ResourceMemory] = *resource.NewQuantity(int64(res.Memory), resource.BinarySI)
 	for resourceName, f := range res.ScalarResources {

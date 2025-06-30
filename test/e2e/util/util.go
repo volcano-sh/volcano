@@ -138,8 +138,10 @@ type Options struct {
 	NodesResourceLimit v1.ResourceList
 }
 
-var VcClient *vcclient.Clientset
-var KubeClient *kubernetes.Clientset
+var (
+	VcClient   *vcclient.Clientset
+	KubeClient *kubernetes.Clientset
+)
 
 func InitTestContext(o Options) *TestContext {
 	By("Initializing test context")

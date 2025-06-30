@@ -103,7 +103,6 @@ func validateJobFlowDAG(jobflow *flowv1alpha1.JobFlow, reviewResponse *admission
 	}
 
 	vetexs, err := LoadVertexs(graphMap)
-
 	if err != nil {
 		msg = FlowNotDAGError.Error() + ": " + err.Error()
 		if msg != "" {

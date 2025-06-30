@@ -284,7 +284,8 @@ func TestPreempt(t *testing.T) {
 					EnabledQueueOrder:  &trueValue,
 				},
 			},
-		}}
+		},
+	}
 
 	actions := []framework.Action{New()}
 	for i, test := range tests {

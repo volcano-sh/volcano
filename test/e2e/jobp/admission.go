@@ -35,7 +35,6 @@ import (
 )
 
 var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
-
 	ginkgo.It("Default queue would be added", func() {
 		jobName := "job-default-queue"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
@@ -106,7 +105,6 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-
 	})
 
 	ginkgo.It("Invalid memory unit", func() {
@@ -154,7 +152,6 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		_, err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), &job, v1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-
 	})
 
 	ginkgo.It("Create default-scheduler pod", func() {
@@ -1394,7 +1391,6 @@ var _ = ginkgo.Describe("Job E2E Test: Test Admission service", func() {
 	})
 
 	ginkgo.It("job validate check: create job with non-leaf queue", func() {
-
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{"q1", "q11"},
 			QueueParent: map[string]string{

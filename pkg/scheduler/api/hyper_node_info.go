@@ -102,7 +102,8 @@ func (hni *HyperNodeInfo) String() string {
 	return strings.Join([]string{
 		fmt.Sprintf("Name: %s", hni.Name),
 		fmt.Sprintf(" Tier: %d", hni.tier),
-		fmt.Sprintf(" Parent: %s", hni.parent)},
+		fmt.Sprintf(" Parent: %s", hni.parent),
+	},
 		",")
 }
 
@@ -645,7 +646,6 @@ func (hni *HyperNodesInfo) nodeMatchSelector(nodeName string, selector topologyv
 			return false
 		}
 		node, err := hni.nodeLister.Get(nodeName)
-
 		if err != nil {
 			klog.ErrorS(err, "Failed to get node", "nodeName", nodeName)
 			return false

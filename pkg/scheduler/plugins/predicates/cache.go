@@ -28,7 +28,7 @@ import (
 
 type predicateCache struct {
 	sync.RWMutex
-	cache map[string]map[string]bool //key_1: nodename key_2:pod uid
+	cache map[string]map[string]bool // key_1: nodename key_2:pod uid
 }
 
 // predicateCacheNew return cache map

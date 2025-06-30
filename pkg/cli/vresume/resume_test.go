@@ -75,7 +75,6 @@ func TestResumeJob(t *testing.T) {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}
 	}
-
 }
 
 func TestInitResumeFlags(t *testing.T) {
@@ -88,5 +87,4 @@ func TestInitResumeFlags(t *testing.T) {
 	if cmd.Flag("name") == nil {
 		t.Errorf("Could not find the flag scheduler")
 	}
-
 }

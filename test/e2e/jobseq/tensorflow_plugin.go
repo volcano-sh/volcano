@@ -123,5 +123,4 @@ var _ = Describe("TensorFlow Plugin E2E Test", func() {
 		err = e2eutil.WaitJobStates(ctx, created, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed}, e2eutil.FiveMinute)
 		Expect(err).NotTo(HaveOccurred())
 	})
-
 })

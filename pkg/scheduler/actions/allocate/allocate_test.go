@@ -59,8 +59,10 @@ func TestParseArgs(t *testing.T) {
 	test := uthelper.TestCommonStruct{Name: "set cache false"}
 
 	action := New()
-	test.RegisterSession(nil, []conf.Configuration{{Name: action.Name(),
-		Arguments: map[string]interface{}{conf.EnablePredicateErrCacheKey: false}}})
+	test.RegisterSession(nil, []conf.Configuration{{
+		Name:      action.Name(),
+		Arguments: map[string]interface{}{conf.EnablePredicateErrCacheKey: false},
+	}})
 	test.Run([]framework.Action{action})
 	assert.False(t, action.enablePredicateErrorCache)
 }
@@ -635,7 +637,8 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			HyperNodesSetByTier: map[int]sets.Set[string]{
 				1: sets.New[string]("s3", "s4", "s5", "s6"),
 				2: sets.New[string]("s1", "s2"),
-				3: sets.New[string]("s0")},
+				3: sets.New[string]("s0"),
+			},
 			HyperNodesMap: map[string]*api.HyperNodeInfo{
 				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 					{
@@ -1073,7 +1076,8 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			HyperNodesSetByTier: map[int]sets.Set[string]{
 				1: sets.New[string]("s3", "s4", "s5", "s6"),
 				2: sets.New[string]("s1", "s2"),
-				3: sets.New[string]("s0")},
+				3: sets.New[string]("s0"),
+			},
 			HyperNodesMap: map[string]*api.HyperNodeInfo{
 				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 					{
@@ -1266,7 +1270,8 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			HyperNodesSetByTier: map[int]sets.Set[string]{
 				1: sets.New[string]("s3", "s4", "s5", "s6"),
 				2: sets.New[string]("s1", "s2"),
-				3: sets.New[string]("s0")},
+				3: sets.New[string]("s0"),
+			},
 			HyperNodesMap: map[string]*api.HyperNodeInfo{
 				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 					{

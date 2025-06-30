@@ -185,7 +185,6 @@ func TestCmdDel(t *testing.T) {
 		apiCall       []*gomock.Call
 		expectedError bool
 	}{
-
 		{
 			name: "delete dev successful",
 			args: &skel.CmdArgs{

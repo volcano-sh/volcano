@@ -13,9 +13,7 @@ const (
 	EnvPanicOnError = "PANIC_ON_ERROR"
 )
 
-var (
-	panicOnError = true
-)
+var panicOnError = true
 
 func init() {
 	env := os.Getenv(EnvPanicOnError)

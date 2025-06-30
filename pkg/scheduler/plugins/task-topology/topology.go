@@ -245,8 +245,8 @@ func affinityCheck(job *api.JobInfo, affinity [][]string) error {
 		return fmt.Errorf("empty input, job: %v, affinity: %v", job, affinity)
 	}
 
-	var taskNumber = len(job.Tasks)
-	var taskRef = make(map[string]bool, taskNumber)
+	taskNumber := len(job.Tasks)
+	taskRef := make(map[string]bool, taskNumber)
 	for _, task := range job.Tasks {
 		if _, exist := taskRef[task.TaskRole]; !exist {
 			taskRef[task.TaskRole] = true
@@ -277,7 +277,7 @@ func splitAnnotations(job *api.JobInfo, annotation string) ([][]string, error) {
 	if len(affinityStr) == 0 {
 		return nil, nil
 	}
-	var affinity = make([][]string, len(affinityStr))
+	affinity := make([][]string, len(affinityStr))
 	for i, str := range affinityStr {
 		affinity[i] = strings.Split(str, ",")
 	}
@@ -298,7 +298,7 @@ func readTopologyFromPgAnnotations(job *api.JobInfo) (*TaskTopology, error) {
 		return nil, nil
 	}
 
-	var jobTopology = TaskTopology{
+	jobTopology := TaskTopology{
 		Affinity:     nil,
 		AntiAffinity: nil,
 		TaskOrder:    nil,

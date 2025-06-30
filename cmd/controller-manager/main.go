@@ -53,7 +53,7 @@ func main() {
 	fs := pflag.CommandLine
 	s := options.NewServerOption()
 	// knownControllers is a list of all known controllers.
-	var knownControllers = func() []string {
+	knownControllers := func() []string {
 		controllerNames := []string{}
 		fn := func(controller framework.Controller) {
 			controllerNames = append(controllerNames, controller.Name())

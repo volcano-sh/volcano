@@ -35,7 +35,6 @@ import (
 )
 
 var _ = Describe("Queue Job Status Transition", func() {
-
 	var ctx *e2eutil.TestContext
 	AfterEach(func() {
 		e2eutil.CleanupTestContext(ctx)

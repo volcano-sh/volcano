@@ -12,7 +12,8 @@ var _ = ginkgo.Describe("Guarantee reserved resource E2E Test", func() {
 	ginkgo.It("one queue reserve all cluster resource", func() {
 		slot := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("2000m"),
-			corev1.ResourceMemory: resource.MustParse("2048Mi")}
+			corev1.ResourceMemory: resource.MustParse("2048Mi"),
+		}
 
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			NodesNumLimit:      1,
@@ -40,7 +41,8 @@ var _ = ginkgo.Describe("Guarantee reserved resource E2E Test", func() {
 					Img: e2eutil.DefaultNginxImage,
 					Req: corev1.ResourceList{
 						corev1.ResourceCPU:    resource.MustParse("500m"),
-						corev1.ResourceMemory: resource.MustParse("512Mi")},
+						corev1.ResourceMemory: resource.MustParse("512Mi"),
+					},
 					Min: 1,
 					Rep: 1,
 				},
@@ -56,7 +58,8 @@ var _ = ginkgo.Describe("Guarantee reserved resource E2E Test", func() {
 	ginkgo.It("one queue reserve some cluster resource, so it  is NOT enough to create job", func() {
 		slot := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("2000m"),
-			corev1.ResourceMemory: resource.MustParse("2048Mi")}
+			corev1.ResourceMemory: resource.MustParse("2048Mi"),
+		}
 
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			NodesNumLimit:      1,
@@ -69,7 +72,8 @@ var _ = ginkgo.Describe("Guarantee reserved resource E2E Test", func() {
 			Weight: 1,
 			GuaranteeResource: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("1000m"),
-				corev1.ResourceMemory: resource.MustParse("1024Mi")},
+				corev1.ResourceMemory: resource.MustParse("1024Mi"),
+			},
 		}
 		e2eutil.CreateQueueWithQueueSpec(ctx, queue1)
 
@@ -86,7 +90,8 @@ var _ = ginkgo.Describe("Guarantee reserved resource E2E Test", func() {
 					Img: e2eutil.DefaultNginxImage,
 					Req: corev1.ResourceList{
 						corev1.ResourceCPU:    resource.MustParse("1500m"),
-						corev1.ResourceMemory: resource.MustParse("512Mi")},
+						corev1.ResourceMemory: resource.MustParse("512Mi"),
+					},
 					Min: 1,
 					Rep: 1,
 				},

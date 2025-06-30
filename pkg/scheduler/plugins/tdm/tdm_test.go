@@ -99,7 +99,6 @@ func Test_parseRevocableZone(t *testing.T) {
 			if end.Unix()-start.Unix() != c.delta {
 				t.Errorf("want %v, got %v", c.delta, end.Unix()-start.Unix())
 			}
-
 		})
 	}
 }
@@ -269,6 +268,7 @@ func Test_TDM(t *testing.T) {
 		})
 	}
 }
+
 func Test_TDM_victimsFn(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 

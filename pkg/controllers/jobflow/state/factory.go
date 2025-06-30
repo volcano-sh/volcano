@@ -30,10 +30,8 @@ type UpdateJobFlowStatusFn func(status *v1alpha1.JobFlowStatus, allJobList int)
 
 type JobFlowActionFn func(jobflow *v1alpha1.JobFlow, fn UpdateJobFlowStatusFn) error
 
-var (
-	// SyncJobFlow will sync queue status.
-	SyncJobFlow JobFlowActionFn
-)
+// SyncJobFlow will sync queue status.
+var SyncJobFlow JobFlowActionFn
 
 // NewState gets the state from queue status.
 func NewState(jobFlow *v1alpha1.JobFlow) State {

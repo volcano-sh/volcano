@@ -119,7 +119,7 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Permit
 		}
 
-		//TODO: if allow 1 more job to be inqueue beyond overcommit-factor, large job may be inqueue and create pods
+		// TODO: if allow 1 more job to be inqueue beyond overcommit-factor, large job may be inqueue and create pods
 		jobMinReq := job.GetMinResources()
 		if inqueue.Add(jobMinReq).LessEqualWithDimension(idle, jobMinReq) { // only compare the requested resource
 			klog.V(4).Infof("Sufficient resources, permit job <%s/%s> to be inqueue", job.Namespace, job.Name)

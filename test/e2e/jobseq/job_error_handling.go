@@ -411,7 +411,8 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("Job is restarting")
 		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
-			vcbatch.Restarting, vcbatch.Pending})
+			vcbatch.Restarting, vcbatch.Pending,
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Untaint all nodes")
@@ -469,7 +470,8 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("Job is aborted")
 		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
-			vcbatch.Aborting, vcbatch.Aborted})
+			vcbatch.Aborting, vcbatch.Aborted,
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		err = e2eutil.RemoveTaintsFromAllNodes(ctx, taints)
@@ -497,7 +499,7 @@ var _ = Describe("Job Error Handling", func() {
 					Img:  e2eutil.DefaultBusyBoxImage,
 					Min:  2,
 					Rep:  2,
-					//Sleep 5 seconds ensure job in running state
+					// Sleep 5 seconds ensure job in running state
 					Command: "sleep 5",
 				},
 				{
@@ -513,9 +515,9 @@ var _ = Describe("Job Error Handling", func() {
 		// job phase: pending -> running -> completing -> completed
 		// TODO: skip running -> completing for the github CI pool performance
 		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
-			vcbatch.Pending, vcbatch.Completed})
+			vcbatch.Pending, vcbatch.Completed,
+		})
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("job level LifecyclePolicy, Event: TaskFailed; Action: TerminateJob", func() {
@@ -539,7 +541,7 @@ var _ = Describe("Job Error Handling", func() {
 					Img:  e2eutil.DefaultBusyBoxImage,
 					Min:  2,
 					Rep:  2,
-					//Sleep 5 seconds ensure job in running state
+					// Sleep 5 seconds ensure job in running state
 					Command: "sleep 5",
 				},
 				{
@@ -570,7 +572,6 @@ var _ = Describe("Job Error Handling", func() {
 		// job phase: Terminating -> Terminated
 		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("job level LifecyclePolicy, error code: 3; Action: RestartJob", func() {
@@ -622,7 +623,8 @@ var _ = Describe("Job Error Handling", func() {
 			Policies: []vcbatch.LifecyclePolicy{
 				{
 					Action: vcbus.TerminateJobAction,
-					Events: []vcbus.Event{vcbus.PodEvictedEvent,
+					Events: []vcbus.Event{
+						vcbus.PodEvictedEvent,
 						vcbus.PodFailedEvent,
 						vcbus.PodEvictedEvent,
 					},
@@ -812,9 +814,9 @@ var _ = Describe("Job Error Handling", func() {
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
 		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
-			vcbatch.Pending, vcbatch.Completed})
+			vcbatch.Pending, vcbatch.Completed,
+		})
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob and Task level lifecyclePolicy, Event : PodFailed; Action: RestartJob", func() {
@@ -905,5 +907,4 @@ var _ = Describe("Job Error Handling", func() {
 		err = e2eutil.WaitTasksReadyEx(context, job, expteced)
 		Expect(err).NotTo(HaveOccurred())
 	})
-
 })

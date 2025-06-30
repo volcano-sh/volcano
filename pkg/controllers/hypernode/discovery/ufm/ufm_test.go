@@ -350,6 +350,7 @@ func expectedHyperNodes() map[string]*topologyv1alpha1.HyperNode {
 				{
 					Type:     topologyv1alpha1.MemberTypeHyperNode,
 					Selector: topologyv1alpha1.MemberSelector{ExactMatch: &topologyv1alpha1.ExactMatch{Name: "leaf-hn-1"}},
-				}}, map[string]string{api.NetworkTopologySourceLabelKey: "ufm"}),
+				},
+			}, map[string]string{api.NetworkTopologySourceLabelKey: "ufm"}),
 	}
 }

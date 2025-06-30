@@ -23,8 +23,10 @@ import (
 	"volcano.sh/volcano/pkg/config"
 )
 
-var metricCollectorFuncs = []NewMetricCollectFunc{}
-var mutex sync.Mutex
+var (
+	metricCollectorFuncs = []NewMetricCollectFunc{}
+	mutex                sync.Mutex
+)
 
 type NewMetricCollectFunc = func(config *config.Configuration, cgroupManager cgroup.CgroupManager) MetricCollect
 

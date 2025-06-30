@@ -169,14 +169,14 @@ func prepare(t *testing.T, tmpDir, podUID, containerID1, containerID2 string) {
 		for _, ss := range subSystems {
 			podDir := path.Join(tmpDir, ss, "kubepods", "burstable", "pod"+podUID)
 			containerDir := path.Join(podDir, c)
-			err := os.MkdirAll(containerDir, 0644)
+			err := os.MkdirAll(containerDir, 0o644)
 			assert.NoError(t, err)
 			for _, cgrouPath := range cgroupPaths {
 				// create pod level cgroup.
-				_, err := os.OpenFile(path.Join(podDir, cgrouPath), os.O_RDWR|os.O_CREATE, 0644)
+				_, err := os.OpenFile(path.Join(podDir, cgrouPath), os.O_RDWR|os.O_CREATE, 0o644)
 				assert.NoError(t, err)
 				// create container level cgroup.
-				_, err = os.OpenFile(path.Join(containerDir, cgrouPath), os.O_RDWR|os.O_CREATE, 0644)
+				_, err = os.OpenFile(path.Join(containerDir, cgrouPath), os.O_RDWR|os.O_CREATE, 0o644)
 				assert.NoError(t, err)
 			}
 		}

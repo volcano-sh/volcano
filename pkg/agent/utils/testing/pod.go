@@ -68,18 +68,21 @@ func MakePod(name string, cpuRequest, memoryRequest int64, qosLevel string) *v1.
 			Name:        name,
 		},
 		Spec: v1.PodSpec{
-			Containers: []v1.Container{{
-				Resources: v1.ResourceRequirements{
-					Limits: v1.ResourceList{
-						v1.ResourceCPU:    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
-						v1.ResourceMemory: *resource.NewQuantity(memoryRequest, resource.DecimalSI),
+			Containers: []v1.Container{
+				{
+					Resources: v1.ResourceRequirements{
+						Limits: v1.ResourceList{
+							v1.ResourceCPU:    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
+							v1.ResourceMemory: *resource.NewQuantity(memoryRequest, resource.DecimalSI),
+						},
+						Requests: v1.ResourceList{
+							v1.ResourceCPU:    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
+							v1.ResourceMemory: *resource.NewQuantity(memoryRequest, resource.DecimalSI),
+						},
 					},
-					Requests: v1.ResourceList{
-						v1.ResourceCPU:    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
-						v1.ResourceMemory: *resource.NewQuantity(memoryRequest, resource.DecimalSI),
-					},
-				}},
-			}},
+				},
+			},
+		},
 	}
 }
 
@@ -90,17 +93,20 @@ func MakePodWithExtendResources(name string, cpuRequest, memoryRequest int64, qo
 			Name:        name,
 		},
 		Spec: v1.PodSpec{
-			Containers: []v1.Container{{
-				Resources: v1.ResourceRequirements{
-					Limits: v1.ResourceList{
-						apis.ExtendResourceCPU:    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
-						apis.ExtendResourceMemory: *resource.NewQuantity(memoryRequest, resource.DecimalSI),
+			Containers: []v1.Container{
+				{
+					Resources: v1.ResourceRequirements{
+						Limits: v1.ResourceList{
+							apis.ExtendResourceCPU:    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
+							apis.ExtendResourceMemory: *resource.NewQuantity(memoryRequest, resource.DecimalSI),
+						},
+						Requests: v1.ResourceList{
+							apis.ExtendResourceCPU:    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
+							apis.ExtendResourceMemory: *resource.NewQuantity(memoryRequest, resource.DecimalSI),
+						},
 					},
-					Requests: v1.ResourceList{
-						apis.ExtendResourceCPU:    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
-						apis.ExtendResourceMemory: *resource.NewQuantity(memoryRequest, resource.DecimalSI),
-					},
-				}},
-			}},
+				},
+			},
+		},
 	}
 }

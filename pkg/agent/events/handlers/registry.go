@@ -25,8 +25,10 @@ import (
 	"volcano.sh/volcano/pkg/metriccollect"
 )
 
-var handlerFuncs = map[string][]NewEventHandleFunc{}
-var mutex sync.Mutex
+var (
+	handlerFuncs = map[string][]NewEventHandleFunc{}
+	mutex        sync.Mutex
+)
 
 type NewEventHandleFunc = func(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, cgroupMgr cgroup.CgroupManager) framework.Handle
 

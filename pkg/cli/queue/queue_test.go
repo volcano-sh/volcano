@@ -35,7 +35,6 @@ import (
 )
 
 func getTestQueueHTTPServer(t *testing.T) *httptest.Server {
-
 	response := v1beta1.Queue{}
 
 	response.Name = "testQueue"
@@ -52,7 +51,6 @@ func getTestQueueHTTPServer(t *testing.T) *httptest.Server {
 }
 
 func getTestQueueListHTTPServer(t *testing.T) *httptest.Server {
-
 	response := v1beta1.QueueList{}
 
 	response.Items = []v1beta1.Queue{

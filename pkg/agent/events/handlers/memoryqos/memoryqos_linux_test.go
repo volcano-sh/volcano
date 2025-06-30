@@ -112,11 +112,11 @@ func TestMemroyQoSHandle_Handle(t *testing.T) {
 
 	for _, tc := range testCases {
 		fakeCgroupPath := path.Join(dir, tc.cgroupSubpath, "pod"+string(tc.event.UID))
-		err = os.MkdirAll(fakeCgroupPath, 0750)
+		err = os.MkdirAll(fakeCgroupPath, 0o750)
 		assert.Equal(t, err == nil, true, tc.name)
 
 		tmpFile := path.Join(fakeCgroupPath, "memory.qos_level")
-		if err = os.WriteFile(tmpFile, []byte("0"), 0660); err != nil {
+		if err = os.WriteFile(tmpFile, []byte("0"), 0o660); err != nil {
 			assert.Equal(t, nil, err, tc.name)
 		}
 

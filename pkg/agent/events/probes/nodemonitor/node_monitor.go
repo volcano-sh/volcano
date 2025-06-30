@@ -168,7 +168,7 @@ func (m *monitor) detect() {
 func (m *monitor) isHighResourceUsageOnce(node *v1.Node, usage apis.Resource, resName v1.ResourceName) bool {
 	m.cfgLock.RLock()
 	defer m.cfgLock.RUnlock()
-	//TODO: set in node config
+	// TODO: set in node config
 	_, highWatermark, exists, err := utilnode.WatermarkAnnotationSetting(node)
 	if !exists {
 		return usage[resName] >= int64(m.highWatermark[resName])

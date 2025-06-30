@@ -18,8 +18,9 @@ package jobtemplate
 
 import (
 	"context"
-	"k8s.io/apimachinery/pkg/api/equality"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/api/equality"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"

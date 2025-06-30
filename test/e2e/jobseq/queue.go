@@ -64,7 +64,6 @@ var _ = Describe("Queue E2E Test", func() {
 			return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
 		})
 		Expect(err).NotTo(HaveOccurred(), "Wait for reopen queue %s failed", q1)
-
 	})
 
 	It("Queue Command Close And Open With Hierarchical Queues", func() {

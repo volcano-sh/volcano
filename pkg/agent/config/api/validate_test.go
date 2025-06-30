@@ -72,8 +72,10 @@ func TestColocationConfigValidate(t *testing.T) {
 					QoSCheckInterval:                utilpointer.Int(-100),
 				},
 			},
-			expectedErr: []error{errors.New(IllegalQoSCheckIntervalMsg), errors.New(IllegalOnlineBandwidthWatermarkPercentMsg),
-				errors.New(IllegalOfflineHighBandwidthPercentMsg), errors.New(IllegalOfflineLowBandwidthPercentMsg)},
+			expectedErr: []error{
+				errors.New(IllegalQoSCheckIntervalMsg), errors.New(IllegalOnlineBandwidthWatermarkPercentMsg),
+				errors.New(IllegalOfflineHighBandwidthPercentMsg), errors.New(IllegalOfflineLowBandwidthPercentMsg),
+			},
 		},
 
 		{
@@ -114,8 +116,10 @@ func TestColocationConfigValidate(t *testing.T) {
 					EvictingMemoryLowWatermark:  utilpointer.Int(-20),
 				},
 			},
-			expectedErr: []error{errors.New(IllegalEvictingCPUHighWatermark), errors.New(IllegalEvictingMemoryHighWatermark),
-				errors.New(IllegalEvictingCPULowWatermark), errors.New(IllegalEvictingMemoryLowWatermark)},
+			expectedErr: []error{
+				errors.New(IllegalEvictingCPUHighWatermark), errors.New(IllegalEvictingMemoryHighWatermark),
+				errors.New(IllegalEvictingCPULowWatermark), errors.New(IllegalEvictingMemoryLowWatermark),
+			},
 		},
 
 		{

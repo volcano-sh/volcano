@@ -131,7 +131,6 @@ func (w *NetworkThrottlingConfig) CreateThrottlingConfig(onlineBandwidthWatermar
 			Value: &data,
 		},
 	})
-
 	if err != nil {
 		return nil, err
 	}

@@ -207,12 +207,10 @@ func TestNodeGroup(t *testing.T) {
 						if expectStatus := test.expectedStatus[taskID][node.Name]; expectStatus != code {
 							t.Errorf("case%d: task %s on node %s expect have status code %v, but get %v", i, taskID, node.Name, expectStatus, code)
 						}
-
 					}
 				}
 			}
 			t.Logf("nodegroup unit test finished ")
 		})
 	}
-
 }

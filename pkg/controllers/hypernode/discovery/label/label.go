@@ -32,12 +32,12 @@ type labelDiscoverer struct {
 }
 
 func (l labelDiscoverer) Start() (chan []*topologyv1alpha1.HyperNode, error) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (l labelDiscoverer) Stop() error {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 

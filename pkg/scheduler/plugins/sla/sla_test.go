@@ -128,5 +128,4 @@ func TestSlaPlugin(t *testing.T) {
 			}
 		})
 	}
-
 }

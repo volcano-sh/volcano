@@ -220,5 +220,4 @@ func TestValidateHyperNode(t *testing.T) {
 			}
 		})
 	}
-
 }

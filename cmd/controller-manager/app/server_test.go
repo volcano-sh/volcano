@@ -14,7 +14,7 @@ import (
 )
 
 func TestIsControllerEnabled(t *testing.T) {
-	var knownControllers = func() []string {
+	knownControllers := func() []string {
 		controllerNames := []string{}
 		fn := func(controller framework.Controller) {
 			controllerNames = append(controllerNames, controller.Name())

@@ -232,7 +232,7 @@ func (ssn *Session) parseHyperNodesTiers() {
 func updateQueueStatus(ssn *Session) {
 	rootQueue := api.QueueID("root")
 	// calculate allocated resources on each queue
-	var allocatedResources = make(map[api.QueueID]*api.Resource, len(ssn.Queues))
+	allocatedResources := make(map[api.QueueID]*api.Resource, len(ssn.Queues))
 	for queueID := range ssn.Queues {
 		allocatedResources[queueID] = &api.Resource{}
 	}
@@ -264,7 +264,7 @@ func updateQueueStatus(ssn *Session) {
 	// update queue status
 	for queueID := range ssn.Queues {
 		// convert api.Resource to v1.ResourceList
-		var queueStatus = util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
+		queueStatus := util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
 		if queueID == rootQueue {
 			updateRootQueueResources(ssn, queueStatus)
 			continue

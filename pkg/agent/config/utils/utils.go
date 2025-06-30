@@ -120,8 +120,7 @@ func DefaultVolcanoAgentConfig() *api.VolcanoAgentConfig {
 	}
 }
 
-type nullTransformer struct {
-}
+type nullTransformer struct{}
 
 // Transformer temporary solution, waiting https://github.com/imdario/mergo/issues/131 to be fixed.
 func (t *nullTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {

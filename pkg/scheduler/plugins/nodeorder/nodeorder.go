@@ -213,7 +213,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	imageLocality := p.(*imagelocality.ImageLocality)
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		var nodeScore = 0.0
+		nodeScore := 0.0
 
 		state := k8sframework.NewCycleState()
 		nodeInfo := &k8sframework.NodeInfo{}

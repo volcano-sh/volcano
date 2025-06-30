@@ -62,7 +62,7 @@ func SetEbpfMap(m EbpfMap) {
 }
 
 func (m *Map) CreateAndPinArrayMap(dir, name string, defaultKV []ebpf.MapKV) (err error) {
-	err = os.MkdirAll(dir, 0755)
+	err = os.MkdirAll(dir, 0o755)
 	if err != nil {
 		return err
 	}

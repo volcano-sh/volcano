@@ -47,43 +47,44 @@ func TestPreemptableAndReclaimableFn(t *testing.T) {
 		preemptees       []*api.TaskInfo
 		expectVictims    []*api.TaskInfo
 		expectVictimsMap map[*api.TaskInfo]bool
-	}{{
-		name:             "test without pdbs",
-		pdbs:             nil,
-		preemptees:       []*api.TaskInfo{task1, task2},
-		expectVictims:    []*api.TaskInfo{task1, task2},
-		expectVictimsMap: map[*api.TaskInfo]bool{task1: true, task2: true},
-	}, {
-		name: "test with pdbs(can evict 0 pod)",
-		pdbs: []*pdbPolicy.PodDisruptionBudget{
-			{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pdb",
-					Namespace: "default",
+	}{
+		{
+			name:             "test without pdbs",
+			pdbs:             nil,
+			preemptees:       []*api.TaskInfo{task1, task2},
+			expectVictims:    []*api.TaskInfo{task1, task2},
+			expectVictimsMap: map[*api.TaskInfo]bool{task1: true, task2: true},
+		}, {
+			name: "test with pdbs(can evict 0 pod)",
+			pdbs: []*pdbPolicy.PodDisruptionBudget{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-pdb",
+						Namespace: "default",
+					},
+					Spec:   pdbPolicy.PodDisruptionBudgetSpec{Selector: &metav1.LabelSelector{MatchLabels: map[string]string{LabelName: "job-1"}}},
+					Status: pdbPolicy.PodDisruptionBudgetStatus{DisruptionsAllowed: 0},
 				},
-				Spec:   pdbPolicy.PodDisruptionBudgetSpec{Selector: &metav1.LabelSelector{MatchLabels: map[string]string{LabelName: "job-1"}}},
-				Status: pdbPolicy.PodDisruptionBudgetStatus{DisruptionsAllowed: 0},
 			},
-		},
-		preemptees:       []*api.TaskInfo{task1, task2},
-		expectVictims:    nil,
-		expectVictimsMap: make(map[*api.TaskInfo]bool),
-	}, {
-		name: "test with pdbs(can evict 1 pod)",
-		pdbs: []*pdbPolicy.PodDisruptionBudget{
-			{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pdb",
-					Namespace: "default",
+			preemptees:       []*api.TaskInfo{task1, task2},
+			expectVictims:    nil,
+			expectVictimsMap: make(map[*api.TaskInfo]bool),
+		}, {
+			name: "test with pdbs(can evict 1 pod)",
+			pdbs: []*pdbPolicy.PodDisruptionBudget{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-pdb",
+						Namespace: "default",
+					},
+					Spec:   pdbPolicy.PodDisruptionBudgetSpec{Selector: &metav1.LabelSelector{MatchLabels: map[string]string{LabelName: "job-1"}}},
+					Status: pdbPolicy.PodDisruptionBudgetStatus{DisruptionsAllowed: 1},
 				},
-				Spec:   pdbPolicy.PodDisruptionBudgetSpec{Selector: &metav1.LabelSelector{MatchLabels: map[string]string{LabelName: "job-1"}}},
-				Status: pdbPolicy.PodDisruptionBudgetStatus{DisruptionsAllowed: 1},
 			},
+			preemptees:       []*api.TaskInfo{task1, task2},
+			expectVictims:    []*api.TaskInfo{task1},
+			expectVictimsMap: map[*api.TaskInfo]bool{task1: true},
 		},
-		preemptees:       []*api.TaskInfo{task1, task2},
-		expectVictims:    []*api.TaskInfo{task1},
-		expectVictimsMap: map[*api.TaskInfo]bool{task1: true},
-	},
 	}
 
 	// 3. set the test plugin name and fns
@@ -97,7 +98,6 @@ func TestPreemptableAndReclaimableFn(t *testing.T) {
 
 	// 4. range every test
 	for _, test := range tests {
-
 		// (a. set the fake informerFactory and add pdbs to pdb informer
 		client := fake.NewSimpleClientset()
 		informerFactory := informers.NewSharedInformerFactory(client, 0)

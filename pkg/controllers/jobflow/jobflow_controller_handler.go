@@ -65,7 +65,7 @@ func (jf *jobflowcontroller) updateJobFlow(oldObj, newObj interface{}) {
 		return
 	}
 
-	//Todo The update operation of JobFlow is reserved for possible future use. The current update operation on JobFlow will not affect the JobFlow process
+	// Todo The update operation of JobFlow is reserved for possible future use. The current update operation on JobFlow will not affect the JobFlow process
 	if newJobFlow.Status.State.Phase != jobflowv1alpha1.Succeed || newJobFlow.Spec.JobRetainPolicy != jobflowv1alpha1.Delete {
 		return
 	}

@@ -124,6 +124,7 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 
 	return nil
 }
+
 func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
 	hierarchy := queue.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey]

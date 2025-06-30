@@ -67,7 +67,7 @@ type usagePlugin struct {
 
 // New function returns usagePlugin object
 func New(args framework.Arguments) framework.Plugin {
-	var plugin = &usagePlugin{
+	plugin := &usagePlugin{
 		pluginArguments: args,
 		usageWeight:     5,
 		cpuWeight:       1,

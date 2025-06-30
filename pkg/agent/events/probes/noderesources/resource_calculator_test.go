@@ -94,7 +94,7 @@ func Test_historicalUsageCalculator_utilizationMonitoring(t *testing.T) {
 				err = os.Setenv("KUBELET_ROOT_DIR", dir)
 				assert.NoError(t, err)
 				b := []byte(`{"policyName":"none","defaultCpuSet":"0-1","checksum":1636926438}`)
-				err = os.WriteFile(path.Join(dir, "cpu_manager_state"), b, 0600)
+				err = os.WriteFile(path.Join(dir, "cpu_manager_state"), b, 0o600)
 				assert.NoError(t, err)
 			},
 			getPodsFunc: func() ([]*v1.Pod, error) {
@@ -114,7 +114,7 @@ func Test_historicalUsageCalculator_utilizationMonitoring(t *testing.T) {
 				err = os.Setenv("KUBELET_ROOT_DIR", dir)
 				assert.NoError(t, err)
 				b := []byte(`{"policyName":"static","defaultCpuSet":"0-1","checksum":1636926438}`)
-				err = os.WriteFile(path.Join(dir, "cpu_manager_state"), b, 0600)
+				err = os.WriteFile(path.Join(dir, "cpu_manager_state"), b, 0o600)
 				assert.NoError(t, err)
 			},
 			getPodsFunc: func() ([]*v1.Pod, error) {

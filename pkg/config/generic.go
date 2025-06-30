@@ -27,7 +27,7 @@ type VolcanoAgentConfiguration struct {
 	// HealthzAddress is the health check server address
 	HealthzAddress string
 
-	//HealthzPort is the health check server port
+	// HealthzPort is the health check server port
 	HealthzPort int
 
 	// KubeCgroupRoot is the root cgroup to use for pods.

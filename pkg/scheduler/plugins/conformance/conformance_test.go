@@ -60,6 +60,5 @@ func TestConformancePlugin(t *testing.T) {
 				t.Errorf("case: %s error,  expect %v, but get %v", test.Name, test.expectVictims, victims)
 			}
 		})
-
 	}
 }

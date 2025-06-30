@@ -47,7 +47,7 @@ func main() {
 var versionExample = `vcctl version`
 
 func versionCommand() *cobra.Command {
-	var command = &cobra.Command{
+	command := &cobra.Command{
 		Use:     "version",
 		Short:   "Print the version information",
 		Long:    "Print the version information",

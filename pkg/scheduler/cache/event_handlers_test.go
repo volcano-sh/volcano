@@ -496,7 +496,8 @@ func TestSchedulerCache_AddQueueV1beta1(t *testing.T) {
 		cache := &SchedulerCache{
 			Jobs:   make(map[api.JobID]*api.JobInfo),
 			Nodes:  make(map[string]*api.NodeInfo),
-			Queues: make(map[api.QueueID]*api.QueueInfo)}
+			Queues: make(map[api.QueueID]*api.QueueInfo),
+		}
 
 		cache.AddQueueV1beta1(test.Queue)
 
@@ -670,7 +671,8 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 			name: "Node added to cache",
 			nodes: []*v1.Node{
 				util.BuildNode("n1", nil, map[string]string{"label-key": "label-value"}),
-				util.BuildNode("n2", nil, map[string]string{"label-key": "label-value"})},
+				util.BuildNode("n2", nil, map[string]string{"label-key": "label-value"}),
+			},
 			nodeName: "n1",
 			nodeSelector: map[string]sets.Empty{
 				"label-key:label-value": {},
@@ -682,7 +684,8 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 			name: "Node not added to cache",
 			nodes: []*v1.Node{
 				util.BuildNode("n1", nil, map[string]string{}),
-				util.BuildNode("n2", nil, map[string]string{})},
+				util.BuildNode("n2", nil, map[string]string{}),
+			},
 			nodeName: "n1",
 			nodeSelector: map[string]sets.Empty{
 				"label-key:label-value": {},

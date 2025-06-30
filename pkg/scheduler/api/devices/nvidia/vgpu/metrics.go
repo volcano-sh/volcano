@@ -96,6 +96,7 @@ func ResetDeviceMetrics(UUID string, nodeName string, memory float64) {
 	VGPUPodMemoryAllocated.DeletePartialMatch(prometheus.Labels{"devID": UUID})
 	VGPUPodCoreAllocated.DeletePartialMatch(prometheus.Labels{"devID": UUID})
 }
+
 func (gs *GPUDevices) AddPodMetrics(index int, podUID, podName string) {
 	UUID := gs.Device[index].UUID
 	NodeName := gs.Device[index].Node

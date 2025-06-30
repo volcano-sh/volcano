@@ -91,7 +91,6 @@ func TestPluginOnPodCreate(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 			jobPlugins := make(map[string][]string)
@@ -189,7 +188,6 @@ func TestPluginOnJobAdd(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 			jobPlugins := make(map[string][]string)
@@ -272,7 +270,6 @@ func TestPluginOnJobDelete(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 			jobPlugins := make(map[string][]string)

@@ -59,7 +59,8 @@ var _ = Describe("Job E2E Test: Test Job PVCs", func() {
 					HostPath: &v12.HostPathVolumeSource{
 						Path: "/tmp/pvtest",
 						Type: &tt,
-					}},
+					},
+				},
 				AccessModes: []v12.PersistentVolumeAccessMode{
 					v12.ReadWriteOnce,
 				},

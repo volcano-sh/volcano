@@ -27,7 +27,6 @@ import (
 )
 
 var _ = Describe("Predicates E2E Test", func() {
-
 	It("Hostport", func() {
 		context := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(context)

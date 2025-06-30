@@ -293,7 +293,7 @@ func TestValidateJobFlowCreate(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			ret := validateJobFlowDAG(&testCase.JobFlow, &testCase.reviewResponse)
-			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
+			// fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
 			if testCase.ExpectErr == true && ret == "" {
 				t.Errorf("Expect error msg :%s, but got nil.", testCase.ret)
 			}

@@ -30,7 +30,6 @@ import (
 )
 
 func TestValidatePod(t *testing.T) {
-
 	namespace := "test"
 
 	testCases := []struct {
@@ -105,7 +104,7 @@ func TestValidatePod(t *testing.T) {
 		}
 
 		if testCase.queueName != "" && testCase.queueState != "" {
-			//create default queue
+			// create default queue
 			_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queue, metav1.CreateOptions{})
 			if err != nil {
 				t.Error("Queue Creation Failed")

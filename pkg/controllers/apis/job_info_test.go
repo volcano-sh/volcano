@@ -47,9 +47,11 @@ func TestAddPod(t *testing.T) {
 					Name:      name,
 					Namespace: namespace,
 					Labels:    nil,
-					Annotations: map[string]string{vcbatchv1.JobNameKey: "job1",
+					Annotations: map[string]string{
+						vcbatchv1.JobNameKey:  "job1",
 						vcbatchv1.JobVersion:  "0",
-						vcbatchv1.TaskSpecKey: "task1"},
+						vcbatchv1.TaskSpecKey: "task1",
+					},
 				},
 				Status: v1.PodStatus{
 					Phase: v1.PodRunning,
@@ -87,7 +89,6 @@ func TestAddPod(t *testing.T) {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectErr, nil)
 		}
 	}
-
 }
 
 func TestDeletePod(t *testing.T) {
@@ -108,9 +109,11 @@ func TestDeletePod(t *testing.T) {
 					Name:      name,
 					Namespace: namespace,
 					Labels:    nil,
-					Annotations: map[string]string{vcbatchv1.JobNameKey: "job1",
+					Annotations: map[string]string{
+						vcbatchv1.JobNameKey:  "job1",
 						vcbatchv1.JobVersion:  "0",
-						vcbatchv1.TaskSpecKey: "task1"},
+						vcbatchv1.TaskSpecKey: "task1",
+					},
 				},
 				Status: v1.PodStatus{
 					Phase: v1.PodRunning,
@@ -132,7 +135,6 @@ func TestDeletePod(t *testing.T) {
 	}
 
 	for i, testcase := range testCases {
-
 		testcase.jobinfo.Pods["task1"] = make(map[string]*v1.Pod)
 		testcase.jobinfo.Pods["task1"][testcase.pod.Name] = testcase.pod
 
@@ -165,9 +167,11 @@ func TestUpdatePod(t *testing.T) {
 					Name:      name,
 					Namespace: namespace,
 					Labels:    nil,
-					Annotations: map[string]string{vcbatchv1.JobNameKey: "job1",
+					Annotations: map[string]string{
+						vcbatchv1.JobNameKey:  "job1",
 						vcbatchv1.JobVersion:  "0",
-						vcbatchv1.TaskSpecKey: "task1"},
+						vcbatchv1.TaskSpecKey: "task1",
+					},
 				},
 				Status: v1.PodStatus{
 					Phase: v1.PodRunning,
@@ -187,9 +191,11 @@ func TestUpdatePod(t *testing.T) {
 					Name:      name,
 					Namespace: namespace,
 					Labels:    nil,
-					Annotations: map[string]string{vcbatchv1.JobNameKey: "job1",
+					Annotations: map[string]string{
+						vcbatchv1.JobNameKey:  "job1",
 						vcbatchv1.JobVersion:  "0",
-						vcbatchv1.TaskSpecKey: "task1"},
+						vcbatchv1.TaskSpecKey: "task1",
+					},
 				},
 				Status: v1.PodStatus{
 					Phase: v1.PodSucceeded,
@@ -211,7 +217,6 @@ func TestUpdatePod(t *testing.T) {
 	}
 
 	for i, testcase := range testCases {
-
 		testcase.jobinfo.Pods["task1"] = make(map[string]*v1.Pod)
 		testcase.jobinfo.Pods["task1"][testcase.oldpod.Name] = testcase.oldpod
 
@@ -228,7 +233,6 @@ func TestUpdatePod(t *testing.T) {
 }
 
 func TestClone(t *testing.T) {
-
 	testCases := []struct {
 		Name    string
 		jobinfo JobInfo
@@ -254,7 +258,6 @@ func TestClone(t *testing.T) {
 }
 
 func TestSetJob(t *testing.T) {
-
 	testCases := []struct {
 		Name    string
 		job     vcbatchv1.Job
@@ -315,5 +318,4 @@ func TestRequest_String(t *testing.T) {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectedValue, reqString)
 		}
 	}
-
 }

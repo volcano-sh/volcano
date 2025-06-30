@@ -94,7 +94,8 @@ func Test_reporter_RefreshCfg(t *testing.T) {
 				OverSubscriptionConfig: &api.OverSubscription{
 					Enable:                utilpointer.Bool(true),
 					OverSubscriptionTypes: utilpointer.String("cpu,memory"),
-				}},
+				},
+			},
 			enable:      true,
 			expectTypes: sets.NewString("cpu", "memory"),
 			expectNode: func() *v1.Node {
@@ -124,7 +125,8 @@ func Test_reporter_RefreshCfg(t *testing.T) {
 				OverSubscriptionConfig: &api.OverSubscription{
 					Enable:                utilpointer.Bool(true),
 					OverSubscriptionTypes: utilpointer.String("cpu,memory"),
-				}},
+				},
+			},
 			expectTypes: sets.NewString("cpu", "memory"),
 			expectNode: func() *v1.Node {
 				node, err := makeNode()
@@ -237,7 +239,8 @@ func Test_reporter_Handle(t *testing.T) {
 			}}
 			r := &reporter{
 				BaseHandle: &base.BaseHandle{
-					Config: cfg},
+					Config: cfg,
+				},
 				Interface:   tt.policy(cfg, tt.getPodsFunc, nil),
 				getNodeFunc: tt.getNodeFunc,
 				getPodsFunc: tt.getPodsFunc,

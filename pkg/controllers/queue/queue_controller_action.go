@@ -289,7 +289,7 @@ func (c *queuecontroller) updateQueueParent(queue *schedulingv1beta1.Queue) (*sc
 		return queue, nil
 	}
 
-	var patch = []patchOperation{
+	patch := []patchOperation{
 		{
 			Op:    "add",
 			Path:  "/spec/parent",

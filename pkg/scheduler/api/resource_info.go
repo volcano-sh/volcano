@@ -85,7 +85,7 @@ func NewResource(rl v1.ResourceList) *Resource {
 			if IsCountQuota(rName) {
 				continue
 			}
-			//NOTE: When converting this back to k8s resource, we need record the format as well as / 1000
+			// NOTE: When converting this back to k8s resource, we need record the format as well as / 1000
 			if v1helper.IsScalarResourceName(rName) {
 				ignore := false
 				IgnoredDevicesList.Range(func(_ int, val string) bool {

@@ -79,7 +79,8 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
 					2: sets.New[string]("s1", "s2"),
-					3: sets.New[string]("s0")},
+					3: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 						{
@@ -203,7 +204,8 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
 					2: sets.New[string]("s1", "s2"),
-					3: sets.New[string]("s0")},
+					3: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 						{
@@ -320,7 +322,8 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
 					2: sets.New[string]("s1", "s2"),
-					3: sets.New[string]("s0")},
+					3: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 						{
@@ -443,7 +446,8 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s1", "s2"),
-					2: sets.New[string]("s0")},
+					2: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 2, []api.MemberConfig{
 						{
@@ -569,7 +573,8 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
 					2: sets.New[string]("s1", "s2"),
-					3: sets.New[string]("s0")},
+					3: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 						{
@@ -699,7 +704,8 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
 					2: sets.New[string]("s1", "s2"),
-					3: sets.New[string]("s0")},
+					3: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 						{
@@ -905,7 +911,8 @@ func TestNetworkTopologyAwareNodeScore(t *testing.T) {
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
 					2: sets.New[string]("s1", "s2"),
-					3: sets.New[string]("s0")},
+					3: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 						{
@@ -1050,7 +1057,8 @@ func TestNetworkTopologyAwareNodeScore(t *testing.T) {
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
 					2: sets.New[string]("s1", "s2"),
-					3: sets.New[string]("s0")},
+					3: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 						{
@@ -1186,7 +1194,8 @@ func TestNetworkTopologyAwareNodeScore(t *testing.T) {
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
 					2: sets.New[string]("s1", "s2"),
-					3: sets.New[string]("s0")},
+					3: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 						{
@@ -1325,7 +1334,8 @@ func TestNetworkTopologyAwareNodeScore(t *testing.T) {
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s1", "s2"),
-					2: sets.New[string]("s0")},
+					2: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 2, []api.MemberConfig{
 						{
@@ -1484,7 +1494,8 @@ func TestNetworkTopologyAwareNodeScore(t *testing.T) {
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
 					2: sets.New[string]("s1", "s2"),
-					3: sets.New[string]("s0")},
+					3: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 						{
@@ -1630,7 +1641,8 @@ func TestNetworkTopologyAwareNodeScore(t *testing.T) {
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
 					2: sets.New[string]("s1", "s2"),
-					3: sets.New[string]("s0")},
+					3: sets.New[string]("s0"),
+				},
 				HyperNodesMap: map[string]*api.HyperNodeInfo{
 					"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 3, []api.MemberConfig{
 						{

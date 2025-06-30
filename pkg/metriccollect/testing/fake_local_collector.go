@@ -49,6 +49,7 @@ func NewFakeLocalCollector(config *config.Configuration, cgroupManager cgroup.Cg
 		},
 	}
 }
+
 func (f *FakeLocalCollector) Run() error {
 	return nil
 }

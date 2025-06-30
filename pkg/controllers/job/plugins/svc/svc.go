@@ -106,7 +106,9 @@ func (sp *servicePlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 				ConfigMapKeyRef: &v1.ConfigMapKeySelector{
 					LocalObjectReference: v1.LocalObjectReference{Name: sp.cmName(job)},
 					Key:                  name,
-				}}},
+				},
+			},
+		},
 		)
 	}
 

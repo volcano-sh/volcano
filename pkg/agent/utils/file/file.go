@@ -55,5 +55,5 @@ func ReadBatchFromFile(files []string) map[string]string {
 }
 
 func WriteByteToFile(file string, content []byte) error {
-	return os.WriteFile(file, content, 0644)
+	return os.WriteFile(file, content, 0o644)
 }

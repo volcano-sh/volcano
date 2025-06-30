@@ -13,8 +13,10 @@ type OnSessionOpenRequest struct {
 
 type OnSessionOpenResponse struct{}
 
-type OnSessionCloseRequest struct{}
-type OnSessionCloseResponse struct{}
+type (
+	OnSessionCloseRequest  struct{}
+	OnSessionCloseResponse struct{}
+)
 
 type PredicateRequest struct {
 	Task *api.TaskInfo `json:"task"`
@@ -46,8 +48,10 @@ type PreemptableResponse struct {
 	Victims []*api.TaskInfo `json:"victims"`
 }
 
-type ReclaimableRequest PreemptableRequest
-type ReclaimableResponse PreemptableResponse
+type (
+	ReclaimableRequest  PreemptableRequest
+	ReclaimableResponse PreemptableResponse
+)
 
 type JobEnqueueableRequest struct {
 	Job *api.JobInfo `json:"job"`

@@ -172,7 +172,7 @@ func listenUnix(componentName string, socketDir string) (net.Listener, error) {
 
 	// Check whether KlogLogLevelSocketDir exists
 	if _, err := os.Stat(socketDir); os.IsNotExist(err) {
-		if err = os.MkdirAll(socketDir, 0750); err != nil {
+		if err = os.MkdirAll(socketDir, 0o750); err != nil {
 			return nil, fmt.Errorf("error creating klog log level socket dir: %v", err)
 		}
 	}
@@ -193,7 +193,7 @@ func listenUnix(componentName string, socketDir string) (net.Listener, error) {
 
 	// Default to only user accessible socket, caller can open up later if desired
 	// Result perm: 777 - 077 = 700
-	oldmask := unix.Umask(0077)
+	oldmask := unix.Umask(0o077)
 	l, err := net.Listen("unix", socketFileFullPath)
 	unix.Umask(oldmask)
 

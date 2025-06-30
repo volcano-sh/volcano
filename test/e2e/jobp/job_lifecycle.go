@@ -60,7 +60,6 @@ var _ = Describe("Job Life Cycle", func() {
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("Delete job that is Running state", func() {
@@ -90,7 +89,6 @@ var _ = Describe("Job Life Cycle", func() {
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("Delete job that is Completed state", func() {
@@ -122,7 +120,6 @@ var _ = Describe("Job Life Cycle", func() {
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("Delete job that is Failed job", func() {
@@ -160,7 +157,6 @@ var _ = Describe("Job Life Cycle", func() {
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("Delete job that is terminated job", func() {
@@ -198,7 +194,6 @@ var _ = Describe("Job Life Cycle", func() {
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("Create and Delete job with CPU requirement", func() {
@@ -237,7 +232,6 @@ var _ = Describe("Job Life Cycle", func() {
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("Checking Event Generation for job", func() {
@@ -316,5 +310,4 @@ var _ = Describe("Job Life Cycle", func() {
 		err := e2eutil.WaitJobUnschedulable(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
 	})
-
 })

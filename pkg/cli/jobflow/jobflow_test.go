@@ -19,7 +19,6 @@ package jobflow
 import (
 	"context"
 	"encoding/json"
-	"github.com/spf13/cobra"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -28,6 +27,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 

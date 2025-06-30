@@ -133,7 +133,7 @@ func checkNodeGPUSharingPredicate(pod *v1.Pod, gs *GPUDevices) (bool, error) {
 }
 
 func checkNodeGPUNumberPredicate(pod *v1.Pod, gs *GPUDevices) (bool, error) {
-	//no gpu number request
+	// no gpu number request
 	if getGPUNumberOfPod(pod) <= 0 {
 		return true, nil
 	}

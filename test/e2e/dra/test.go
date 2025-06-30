@@ -393,7 +393,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 		ginkgo.Context("with node-local resources", func() {
 			driver := e2edra.NewDriver(f, nodes, perNode(1, nodes))
 			b := newBuilder(f, driver)
-			
+
 			// TODO(mahdi): fixme
 			ginkgo.It("uses all resources", func(ctx context.Context) {
 				var objs []klog.KMetadata

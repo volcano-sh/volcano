@@ -111,7 +111,8 @@ var (
 
 	// Common selinux labels
 	selinuxLabel = &v1.SELinuxOptions{
-		Level: "s0:c0,c1"}
+		Level: "s0:c0,c1",
+	}
 )
 
 var _ = ginkgo.Describe("Volume Binding Test", func() {
@@ -357,7 +358,7 @@ var _ = ginkgo.Describe("Volume Binding Test", func() {
 			ss := createStatefulSet(ctx, config, ssReplicas, 1, true, true)
 			validateStatefulSet(ctx, config, ss, true)
 		})
-		
+
 		// TODO(mahdi): this test seems to be slow, timeout can happen.
 		ginkgo.It("should use volumes on one node when pod management is parallel and pod has affinity", func(ctx context.Context) {
 			ginkgo.By("Creating a StatefulSet with pod affinity on nodes")
@@ -717,8 +718,8 @@ func setupLocalVolumesPVCsPVs(
 	localVolumeType localVolumeType,
 	node *v1.Node,
 	count int,
-	mode storagev1.VolumeBindingMode) []*localTestVolume {
-
+	mode storagev1.VolumeBindingMode,
+) []*localTestVolume {
 	ginkgo.By("Initializing test volumes")
 	testVols := setupLocalVolumes(ctx, config, localVolumeType, node, count)
 

@@ -263,7 +263,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			// run reserve plugins
 			pp.runReservePlugins(ssn, event)
-			//predicate gpu sharing
+			// predicate gpu sharing
 			for _, val := range api.RegisteredDevices {
 				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
 					if !devices.HasDeviceRequest(pod) {

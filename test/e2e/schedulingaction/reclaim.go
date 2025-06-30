@@ -35,7 +35,6 @@ import (
 )
 
 var _ = Describe("Reclaim E2E Test", func() {
-
 	CreateReclaimJob := func(ctx *e2eutil.TestContext, req v1.ResourceList, name string, queue string, pri string, nodeName string, waitTaskReady bool) (*batchv1alpha1.Job, error) {
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
@@ -135,7 +134,6 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		err = CheckPodGroupStatistics(ctx, "Running", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
 	})
 
 	It("Reclaim Case 3: New queue with job created no reclaim when job.PodGroup.Status.Phase pending", func() {
@@ -371,7 +369,6 @@ var _ = Describe("Reclaim E2E Test", func() {
 		// TODO: it is a bug : the job status is pending but podgroup status is running
 		err = CheckPodGroupStatistics(ctx, "Running", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue Running")
-
 	})
 
 	It("Reclaim Case 8: New queue with job created no reclaim when task resources less than reclaimable resource", func() {
@@ -475,7 +472,6 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		err = CheckPodGroupStatistics(ctx, "Running", 1, q3)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue running")
-
 	})
 
 	// Reclaim rely on priority is a bug here.
@@ -545,7 +541,6 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		err = CheckPodGroupStatistics(ctx, "Running", 1, q4)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue4 running")
-
 	})
 
 	// Reclaim for capacity plugin.
@@ -647,7 +642,6 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		err = CheckPodGroupStatistics(ctx, "Running", 3, q4)
 		Expect(err).NotTo(HaveOccurred(), "Error waiting for queue4 running")
-
 	})
 
 	// Reclaim for hierarchical capacity plugin.

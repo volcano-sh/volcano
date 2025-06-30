@@ -124,7 +124,6 @@ func TestGetOfflineHighBandwidthPercent(t *testing.T) {
 		expectedResult  string
 		expectedErr     bool
 	}{
-
 		{
 			name: "get value from conf",
 			qosConf: &coloConf.NetworkQos{
@@ -226,15 +225,6 @@ ANSI_COLOR="0;31"
 
 `
 
-var ubuntuOS = `
-NAME="Ubuntu"
-VERSION="16.04.5 LTS (Xenial Xerus)"
-ID=ubuntu
-ID_LIKE=debian
-PRETTY_NAME="Ubuntu 16.04.5 LTS"
-VERSION_ID="16.04"
-`
-
 func TestInstallNetworkQoS(t *testing.T) {
 	dir, err := os.MkdirTemp("/tmp", "MkdirTemp")
 	defer func() {
@@ -246,7 +236,7 @@ func TestInstallNetworkQoS(t *testing.T) {
 	}()
 	assert.Equal(t, err == nil, true)
 	tmpFile := path.Join(dir, "os-release")
-	if err = os.WriteFile(tmpFile, []byte(openEulerOS), 0660); err != nil {
+	if err = os.WriteFile(tmpFile, []byte(openEulerOS), 0o660); err != nil {
 		assert.Equal(t, nil, err)
 	}
 	if err = os.Setenv(utils.HostOSReleasePathEnv, tmpFile); err != nil {

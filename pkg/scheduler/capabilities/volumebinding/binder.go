@@ -257,7 +257,8 @@ func NewVolumeBinder(
 	pvInformer coreinformers.PersistentVolumeInformer,
 	storageClassInformer storageinformers.StorageClassInformer,
 	capacityCheck *CapacityCheck,
-	bindTimeout time.Duration) SchedulerVolumeBinder {
+	bindTimeout time.Duration,
+) SchedulerVolumeBinder {
 	b := &volumeBinder{
 		kubeClient:                  kubeClient,
 		enableVolumeAttributesClass: fts.EnableVolumeAttributesClass,
@@ -584,9 +585,7 @@ func (b *volumeBinder) bindAPIUpdate(ctx context.Context, pod *v1.Pod, bindings 
 	return nil
 }
 
-var (
-	versioner = storage.APIObjectVersioner{}
-)
+var versioner = storage.APIObjectVersioner{}
 
 // checkBindings runs through all the PVCs in the Pod and checks:
 // * if the PVC is fully bound

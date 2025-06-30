@@ -58,7 +58,8 @@ func TestConfiguration_GetActivePods(t *testing.T) {
 			GenericConfiguration: &Configuration{
 				GenericConfiguration: &VolcanoAgentConfiguration{
 					KubeClient:    fakeClient,
-					PodsHasSynced: func() bool { return false }},
+					PodsHasSynced: func() bool { return false },
+				},
 			},
 			want:    map[string]struct{}{"test-1": {}, "test-2": {}},
 			wantErr: false,
@@ -67,7 +68,8 @@ func TestConfiguration_GetActivePods(t *testing.T) {
 			name: "pod informer synced",
 			GenericConfiguration: &Configuration{
 				GenericConfiguration: &VolcanoAgentConfiguration{
-					PodsHasSynced: func() bool { return true }},
+					PodsHasSynced: func() bool { return true },
+				},
 				InformerFactory: &InformerFactory{K8SInformerFactory: informerFactory},
 			},
 			want:    map[string]struct{}{"test-1": {}, "test-2": {}},

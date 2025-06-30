@@ -44,7 +44,6 @@ func newFakeController() *gccontroller {
 }
 
 func TestGarbageCollector_ProcessJob(t *testing.T) {
-
 }
 
 func TestGarbageCollector_ProcessTTL(t *testing.T) {

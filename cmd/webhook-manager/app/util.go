@@ -43,7 +43,7 @@ const volcanoAdmissionPrefix = "volcano-admission-service"
 func addCaCertForWebhook(kubeClient *kubernetes.Clientset, service *router.AdmissionService, caBundle []byte) error {
 	if service.MutatingConfig != nil {
 		// update MutatingWebhookConfigurations
-		var mutatingWebhookName = volcanoAdmissionPrefix + strings.ReplaceAll(service.Path, "/", "-")
+		mutatingWebhookName := volcanoAdmissionPrefix + strings.ReplaceAll(service.Path, "/", "-")
 		var mutatingWebhook *v1.MutatingWebhookConfiguration
 		webhookChanged := false
 		if err := wait.PollUntilContextTimeout(context.Background(), time.Second, 5*time.Minute, true, func(_ context.Context) (done bool, err error) {
@@ -76,7 +76,7 @@ func addCaCertForWebhook(kubeClient *kubernetes.Clientset, service *router.Admis
 
 	if service.ValidatingConfig != nil {
 		// update ValidatingWebhookConfigurations
-		var validatingWebhookName = volcanoAdmissionPrefix + strings.ReplaceAll(service.Path, "/", "-")
+		validatingWebhookName := volcanoAdmissionPrefix + strings.ReplaceAll(service.Path, "/", "-")
 		var validatingWebhook *v1.ValidatingWebhookConfiguration
 		webhookChanged := false
 		if err := wait.PollUntilContextTimeout(context.Background(), time.Second, 5*time.Minute, true, func(_ context.Context) (done bool, err error) {

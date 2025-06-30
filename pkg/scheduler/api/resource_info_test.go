@@ -49,7 +49,8 @@ func TestNewResource(t *testing.T) {
 				ScalarResources: map[v1.ResourceName]float64{
 					"scalar.test/scalar1":       1000,
 					"hugepages-test":            2000,
-					v1.ResourceEphemeralStorage: 3000},
+					v1.ResourceEphemeralStorage: 3000,
+				},
 			},
 		},
 	}

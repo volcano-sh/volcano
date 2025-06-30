@@ -90,7 +90,8 @@ func BuildPod(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceLi
 
 // BuildPodWithResourceClaim builds a pod object with resource claim, currently the pod only contains one container
 func BuildPodWithResourceClaim(ns, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string,
-	claimReq []v1.ResourceClaim, resourceClaims []v1.PodResourceClaim) *v1.Pod {
+	claimReq []v1.ResourceClaim, resourceClaims []v1.PodResourceClaim,
+) *v1.Pod {
 	pod := BuildPod(ns, name, nodeName, p, req, groupName, labels, selector)
 	pod.Spec.ResourceClaims = resourceClaims
 	pod.Spec.Containers[0].Resources.Claims = claimReq
@@ -178,7 +179,8 @@ func BuildPV(name, scName string, capacity v1.ResourceList) *v1.PersistentVolume
 }
 
 func BuildDeviceRequest(name, deviceClassName string, selectors []resourcev1beta1.DeviceSelector,
-	allocationMode *resourcev1beta1.DeviceAllocationMode, count *int64) resourcev1beta1.DeviceRequest {
+	allocationMode *resourcev1beta1.DeviceAllocationMode, count *int64,
+) resourcev1beta1.DeviceRequest {
 	deviceRequest := resourcev1beta1.DeviceRequest{
 		Name:            name,
 		DeviceClassName: deviceClassName,
@@ -202,7 +204,8 @@ func BuildDeviceRequest(name, deviceClassName string, selectors []resourcev1beta
 }
 
 func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1beta1.DeviceRequest,
-	constraints []resourcev1beta1.DeviceConstraint, config []resourcev1beta1.DeviceClaimConfiguration) *resourcev1beta1.ResourceClaim {
+	constraints []resourcev1beta1.DeviceConstraint, config []resourcev1beta1.DeviceClaimConfiguration,
+) *resourcev1beta1.ResourceClaim {
 	rc := &resourcev1beta1.ResourceClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:       namespace,
@@ -245,7 +248,8 @@ func BuildDeviceClass(name string, selectors []resourcev1beta1.DeviceSelector, c
 }
 
 func BuildDevice(name string, attributes map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceAttribute,
-	capacity map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceCapacity) resourcev1beta1.Device {
+	capacity map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceCapacity,
+) resourcev1beta1.Device {
 	return resourcev1beta1.Device{
 		Name: name,
 		Basic: &resourcev1beta1.BasicDevice{
@@ -540,8 +544,7 @@ func (fe *FakeEvictor) Evict(p *v1.Pod, reason string) error {
 }
 
 // FakeStatusUpdater is used for fake status update
-type FakeStatusUpdater struct {
-}
+type FakeStatusUpdater struct{}
 
 // UpdatePodStatus is an empty function
 func (ftsu *FakeStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {

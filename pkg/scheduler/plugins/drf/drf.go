@@ -76,7 +76,8 @@ func (node *hierarchicalNode) Clone(parent *hierarchicalNode) *hierarchicalNode 
 
 // resourceSaturated returns true if any resource of the job is saturated or the job demands fully allocated resource
 func resourceSaturated(allocated *api.Resource,
-	jobRequest *api.Resource, demandingResources map[v1.ResourceName]bool) bool {
+	jobRequest *api.Resource, demandingResources map[v1.ResourceName]bool,
+) bool {
 	for _, rn := range allocated.ResourceNames() {
 		if allocated.Get(rn) != 0 && jobRequest.Get(rn) != 0 &&
 			allocated.Get(rn) >= jobRequest.Get(rn) {
@@ -381,7 +382,8 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 // build hierarchy if the node does not exist
 func (drf *drfPlugin) buildHierarchy(root *hierarchicalNode, job *api.JobInfo, attr *drfAttr,
-	hierarchy, hierarchicalWeights string) {
+	hierarchy, hierarchicalWeights string,
+) {
 	inode := root
 	paths := strings.Split(hierarchy, "/")
 	weights := strings.Split(hierarchicalWeights, "/")
@@ -426,7 +428,8 @@ func (drf *drfPlugin) buildHierarchy(root *hierarchicalNode, job *api.JobInfo, a
 
 // updateHierarchicalShare updates the node attribute recursively
 func (drf *drfPlugin) updateHierarchicalShare(node *hierarchicalNode,
-	demandingResources map[v1.ResourceName]bool) {
+	demandingResources map[v1.ResourceName]bool,
+) {
 	if node.children == nil {
 		node.saturated = resourceSaturated(node.attr.allocated,
 			node.request, demandingResources)

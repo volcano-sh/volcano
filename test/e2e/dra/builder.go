@@ -314,6 +314,7 @@ func newBuilder(f *framework.Framework, driver *e2edra.Driver) *builder {
 	return b
 }
 
+//nolint:unused
 func newBuilderNow(ctx context.Context, f *framework.Framework, driver *e2edra.Driver) *builder {
 	b := &builder{f: f, driver: driver}
 	b.setUp(ctx)

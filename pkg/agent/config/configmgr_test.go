@@ -99,7 +99,8 @@ func makeConfigMap(data string) *v1.ConfigMap {
 	return &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "kube-system",
-			Name:      "volcano-agent-configuration"},
+			Name:      "volcano-agent-configuration",
+		},
 		Data: map[string]string{
 			utils.ColocationConfigKey: data,
 		},
@@ -109,7 +110,8 @@ func makeConfigMap(data string) *v1.ConfigMap {
 var agentPod = &v1.Pod{
 	ObjectMeta: metav1.ObjectMeta{
 		Namespace: "kube-system",
-		Name:      "volcano-agent-pod"},
+		Name:      "volcano-agent-pod",
+	},
 }
 
 func defaultCfg() *api.VolcanoAgentConfig {
@@ -152,26 +154,27 @@ func TestPrepareConfigmap(t *testing.T) {
 			name:             "configmap-existed and no update",
 			initialObjects:   []runtime.Object{makeConfigMap(oldCfgWithSelector)},
 			expectedErrIsNil: true,
-			expectedConfig: &api.VolcanoAgentConfig{GlobalConfig: &api.ColocationConfig{
-				CPUBurstConfig: &api.CPUBurst{Enable: utilpointer.Bool(true)},
-				NetworkQosConfig: &api.NetworkQos{
-					Enable:                          utilpointer.Bool(true),
-					OnlineBandwidthWatermarkPercent: utilpointer.Int(utils.DefaultOnlineBandwidthWatermarkPercent),
-					OfflineLowBandwidthPercent:      utilpointer.Int(utils.DefaultOfflineLowBandwidthPercent),
-					OfflineHighBandwidthPercent:     utilpointer.Int(utils.DefaultOfflineHighBandwidthPercent),
-					QoSCheckInterval:                utilpointer.Int(utils.DefaultNetworkQoSInterval),
+			expectedConfig: &api.VolcanoAgentConfig{
+				GlobalConfig: &api.ColocationConfig{
+					CPUBurstConfig: &api.CPUBurst{Enable: utilpointer.Bool(true)},
+					NetworkQosConfig: &api.NetworkQos{
+						Enable:                          utilpointer.Bool(true),
+						OnlineBandwidthWatermarkPercent: utilpointer.Int(utils.DefaultOnlineBandwidthWatermarkPercent),
+						OfflineLowBandwidthPercent:      utilpointer.Int(utils.DefaultOfflineLowBandwidthPercent),
+						OfflineHighBandwidthPercent:     utilpointer.Int(utils.DefaultOfflineHighBandwidthPercent),
+						QoSCheckInterval:                utilpointer.Int(utils.DefaultNetworkQoSInterval),
+					},
+					OverSubscriptionConfig: &api.OverSubscription{
+						Enable:                utilpointer.Bool(true),
+						OverSubscriptionTypes: utilpointer.String(utils.DefaultOverSubscriptionTypes),
+					},
+					EvictingConfig: &api.Evicting{
+						EvictingCPUHighWatermark:    utilpointer.Int(utils.DefaultEvictingCPUHighWatermark),
+						EvictingMemoryHighWatermark: utilpointer.Int(utils.DefaultEvictingMemoryHighWatermark),
+						EvictingCPULowWatermark:     utilpointer.Int(utils.DefaultEvictingCPULowWatermark),
+						EvictingMemoryLowWatermark:  utilpointer.Int(utils.DefaultEvictingMemoryLowWatermark),
+					},
 				},
-				OverSubscriptionConfig: &api.OverSubscription{
-					Enable:                utilpointer.Bool(true),
-					OverSubscriptionTypes: utilpointer.String(utils.DefaultOverSubscriptionTypes),
-				},
-				EvictingConfig: &api.Evicting{
-					EvictingCPUHighWatermark:    utilpointer.Int(utils.DefaultEvictingCPUHighWatermark),
-					EvictingMemoryHighWatermark: utilpointer.Int(utils.DefaultEvictingMemoryHighWatermark),
-					EvictingCPULowWatermark:     utilpointer.Int(utils.DefaultEvictingCPULowWatermark),
-					EvictingMemoryLowWatermark:  utilpointer.Int(utils.DefaultEvictingMemoryLowWatermark),
-				},
-			},
 				NodesConfig: []api.NodesConfig{
 					{
 						Selector: &metav1.LabelSelector{
@@ -183,7 +186,8 @@ func TestPrepareConfigmap(t *testing.T) {
 							EvictingCPUHighWatermark: utilpointer.Int(60),
 						}},
 					},
-				}},
+				},
+			},
 		},
 		{
 			name:             "configmap-not-existed",
@@ -210,7 +214,6 @@ func TestPrepareConfigmap(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedConfig, c)
 		})
-
 	}
 }
 

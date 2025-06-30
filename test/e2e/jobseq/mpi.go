@@ -74,8 +74,8 @@ mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hel
 		job := e2eutil.CreateJob(context, spec)
 
 		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{
-			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
+			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed,
+		})
 		Expect(err).NotTo(HaveOccurred())
 	})
-
 })

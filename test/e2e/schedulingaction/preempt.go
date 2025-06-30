@@ -42,7 +42,6 @@ const (
 )
 
 var _ = Describe("Job E2E Test", func() {
-
 	var ctx *e2eutil.TestContext
 	AfterEach(func() {
 		e2eutil.CleanupTestContext(ctx)
@@ -455,5 +454,4 @@ var _ = Describe("Job E2E Test", func() {
 		err = e2eutil.WaitTasksReady(ctx, preemptorJob, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 	})
-
 })

@@ -374,7 +374,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		//create job
+		// create job
 		job, err := ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -430,11 +430,11 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		//create error job
+		// create error job
 		_, err := ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).Create(context.TODO(), errorJob, metav1.CreateOptions{})
 		Expect(err).To(HaveOccurred())
 
-		//create job
+		// create job
 		job, err = ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
