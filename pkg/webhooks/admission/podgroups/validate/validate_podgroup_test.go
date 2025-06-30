@@ -89,7 +89,7 @@ func TestValidatePodGroup(t *testing.T) {
 			err := queueInformer.Informer().GetIndexer().Add(tt.queue)
 			assert.Nil(t, err)
 
-			pgJson, _ := json.Marshal(tt.podGroup)
+			pgJSON, _ := json.Marshal(tt.podGroup)
 			// Create an AdmissionReview object
 			ar := admissionv1.AdmissionReview{
 				TypeMeta: metav1.TypeMeta{
@@ -104,7 +104,7 @@ func TestValidatePodGroup(t *testing.T) {
 					},
 					Operation: admissionv1.Create,
 					Name:      tt.podGroup.Name,
-					Object:    runtime.RawExtension{Raw: pgJson},
+					Object:    runtime.RawExtension{Raw: pgJSON},
 					Resource: metav1.GroupVersionResource{
 						Group:    schedulingv1beta1.SchemeGroupVersion.Group,
 						Version:  schedulingv1beta1.SchemeGroupVersion.Version,
