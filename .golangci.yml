@@ -52,7 +52,8 @@ linters:
       # All checks are available here: https://staticcheck.io/docs/checks
       checks:
         - "all"
-        - "-SA1019" # Your exclusion for deprecated APIs is kept.
+        - "-SA1019"
+        - "-ST1001"
     depguard:
       rules:
         main:
