@@ -204,7 +204,6 @@ func TestPluginOnJobAdd(t *testing.T) {
 			}
 
 			for _, plugin := range testcase.Plugins {
-
 				if plugin == "svc" {
 					_, err := fakeController.kubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), fmt.Sprint(testcase.Job.Name, "-svc"), metav1.GetOptions{})
 					if err != nil {
