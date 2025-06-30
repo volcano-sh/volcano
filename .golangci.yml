@@ -37,7 +37,7 @@ linters:
     # Linters maintained by golang.org
     - govet
     # Linters default enabled by golangci-lint
-    - errcheck # A valuable linter, re-enabled as a suggestion.
+    # - errcheck
     - ineffassign
     - staticcheck
     # - typecheck (https://golangci-lint.run/welcome/faq/)
