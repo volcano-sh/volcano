@@ -228,6 +228,22 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 	return victims
 }
 
+// getJobStartTime returns the earliest start time of any task in the job
+func getJobStartTime(job *api.JobInfo) time.Time {
+	var minStart time.Time
+	for _, task := range job.Tasks {
+		// Skip tasks that haven't started
+		if task.StartTimestamp.IsZero() {
+			continue
+		}
+		// Find the earliest start time
+		if minStart.IsZero() || task.StartTimestamp.Before(minStart) {
+			minStart = task.StartTimestamp
+		}
+	}
+	return minStart
+}
+
 // Preemptable invoke preemptable function of the plugins
 func (ssn *Session) Preemptable(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
@@ -562,9 +578,28 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 		}
 	}
 
-	// If no job order funcs, order job by CreationTimestamp first, then by UID.
+	// Fallback logic when plugins don't decide
 	lv := l.(*api.JobInfo)
 	rv := r.(*api.JobInfo)
+
+	// Get actual job start times
+	startL := getJobStartTime(lv)
+	startR := getJobStartTime(rv)
+
+	// Fallback to creation time if no tasks have started yet
+	if startL.IsZero() {
+		startL = lv.CreationTimestamp.Time
+	}
+	if startR.IsZero() {
+		startR = rv.CreationTimestamp.Time
+	}
+
+	// Compare execution times - A job that started earlier is more important
+	if !startL.Equal(startR) {
+		return startL.Before(startR)
+	}
+
+	// Final tie-breaker
 	if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
 		return lv.UID < rv.UID
 	}
@@ -934,70 +969,31 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 }
 
 // BuildVictimsPriorityQueue returns a priority queue with victims sorted by:
-// 1) same‑job tasks ➔ TaskOrderFn
-// 2) cross‑queue ➔ VictimQueueOrderFn
-// 3) same‑queue, different‑job ➔ JobOrderFn (priority)
-// 4) tie on priority ➔ shorter actual run‑time
-// 5) final tie‑breaker ➔ UID
-func (ssn *Session) BuildVictimsPriorityQueue(
-	victims []*api.TaskInfo,
-	preemptor *api.TaskInfo,
-) *util.PriorityQueue {
-	now := time.Now()
+// if victims has same job id, sorted by !ssn.TaskOrderFn
+// if victims has different job id, sorted by !ssn.JobOrderFn
 
-	pq := util.NewPriorityQueue(func(l, r interface{}) bool {
+func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor *api.TaskInfo) *util.PriorityQueue {
+	victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
-
-		// 1) Same-job tasks
 		if lv.Job == rv.Job {
 			return !ssn.TaskOrderFn(l, r)
 		}
 
-		// look up jobs
-		jL, okL := ssn.Jobs[lv.Job]
-		jR, okR := ssn.Jobs[rv.Job]
-		jP, okP := ssn.Jobs[preemptor.Job]
+		lvJob, lvJobFound := ssn.Jobs[lv.Job]
+		rvJob, rvJobFound := ssn.Jobs[rv.Job]
+		preemptorJob, preemptorJobFound := ssn.Jobs[preemptor.Job]
 
-		// 2) Cross-queue eviction
-		if okL && okR && okP && jL.Queue != jR.Queue {
-			return ssn.VictimQueueOrderFn(
-				ssn.Queues[jL.Queue],
-				ssn.Queues[jR.Queue],
-				ssn.Queues[jP.Queue],
-			)
+		if lvJobFound && rvJobFound && preemptorJobFound && lvJob.Queue != rvJob.Queue {
+			return ssn.VictimQueueOrderFn(ssn.Queues[lvJob.Queue], ssn.Queues[rvJob.Queue], ssn.Queues[preemptorJob.Queue])
 		}
 
-		// 3) Same-queue, different-job → compare priority
-		higher := ssn.JobOrderFn(jL, jR)
-		lower := ssn.JobOrderFn(jR, jL)
-		if higher != lower {
-			return !higher // evict lower-priority job first
-		}
-
-		// 4) Tie on priority → compare actual run-time
-		startL := jL.ScheduleStartTimestamp.Time
-		if startL.IsZero() {
-			startL = now
-		}
-		startR := jR.ScheduleStartTimestamp.Time
-		if startR.IsZero() {
-			startR = now
-		}
-		elapsedL := now.Sub(startL)
-		elapsedR := now.Sub(startR)
-		if elapsedL != elapsedR {
-			return elapsedL < elapsedR // shorter-running → better victim
-		}
-
-		// 5) Final stable tie-break: UID
-		return jL.UID < jR.UID
+		return !ssn.JobOrderFn(lvJob, rvJob)
 	})
-
-	for _, t := range victims {
-		pq.Push(t)
+	for _, victim := range victims {
+		victimsQueue.Push(victim)
 	}
-	return pq
+	return victimsQueue
 }
 
 // RegisterBinder registers the passed binder to the cache, the binder type can be such as pre-binder, post-binder
