@@ -232,13 +232,17 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 func getJobStartTime(job *api.JobInfo) time.Time {
 	var minStart time.Time
 	for _, task := range job.Tasks {
-		// Skip tasks that haven't started
-		if task.StartTimestamp.IsZero() {
+		// Safely handle nil pointers
+		if task.Pod == nil || task.Pod.Status.StartTime == nil {
 			continue
 		}
+
+		// Get the actual start time
+		startTime := task.Pod.Status.StartTime.Time
+
 		// Find the earliest start time
-		if minStart.IsZero() || task.StartTimestamp.Before(minStart) {
-			minStart = task.StartTimestamp
+		if minStart.IsZero() || startTime.Before(minStart) {
+			minStart = startTime
 		}
 	}
 	return minStart
