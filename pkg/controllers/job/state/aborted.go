@@ -31,6 +31,7 @@ func (as *abortedState) Execute(action Action) error {
 	case v1alpha1.ResumeJobAction:
 		return KillJob(as.job, PodRetainPhaseSoft, func(status *vcbatch.JobStatus) bool {
 			status.State.Phase = vcbatch.Restarting
+			status.RetryCount = 0
 			return true
 		})
 	default:
