@@ -101,15 +101,15 @@ func calculateWeight(args framework.Arguments) ResourceStrategyFit {
 			},
 		}
 	}
-	for _, v := range resources {
-		strategyType := v.Type
-		w := v.Weight
-		if w <= 0 {
+
+	for k, v := range resources {
+		if v.Weight <= 0 {
 			v.Weight = 1
 		}
-		if strategyType != config.LeastAllocated && strategyType != config.MostAllocated {
+		if v.Type != config.LeastAllocated && v.Type != config.MostAllocated {
 			v.Type = config.LeastAllocated
 		}
+		resources[k] = v
 	}
 	weight.Resources = resources
 	return weight

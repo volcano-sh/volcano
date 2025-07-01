@@ -1,4 +1,4 @@
-# Enhanced ResourceStrategyFit Plugin
+# ResourceStrategyFit Plugin
 
 ## Summary
 
@@ -8,7 +8,7 @@ The native k8s ResourceStrategyFit plug-in can only adopt one type of strategy f
 
 - Different resource types can be configured with different aggregation or dispersion strategies, and weights can be used to distinguish priorities
 
-## Design Consideration
+## Design Considerationsui
 
 - The solution is more versatile, not limited to AI clusters or CPU clusters, and not limited to common CPU resources or extended GPU resources.
 
@@ -26,7 +26,7 @@ The native k8s ResourceStrategyFit plug-in can only adopt one type of strategy f
 
 ## Proposal
 
-Extend two plug-ins to meet the above needs
+Extend one plug-ins to meet the above needs
 
 - ResourceStrategyFit
 
@@ -57,7 +57,7 @@ tiers:
 ```
 config description：
 
-![image](images/aggregated-or-dispersed-scheduler.png)
+![image](images/resourcestrategyfit.png)
 
 node score:
 ```

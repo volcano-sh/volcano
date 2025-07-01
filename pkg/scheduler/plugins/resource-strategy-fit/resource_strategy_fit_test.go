@@ -2,12 +2,21 @@ package resourcestrategyfit
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/api/resource"
 	"math"
+	"os"
 	"reflect"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/api/resource"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/conf"
+	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
+	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
+	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
+	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 
@@ -21,6 +30,11 @@ import (
 const (
 	eps = 1e-8
 )
+
+func TestMain(m *testing.M) {
+	options.Default()
+	os.Exit(m.Run())
+}
 
 func Test_calculateWeight(t *testing.T) {
 	type args struct {
@@ -391,12 +405,12 @@ func TestPlusScore(t *testing.T) {
 			},
 		}, want: 600},
 	}
-	socre := map[string]float64{}
+	score := map[string]float64{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := PlusScore(tt.args.task, tt.args.node, tt.args.weight); got != tt.want {
 				if tt.name == "test5" || tt.name == "test6" {
-					socre[tt.name] = got
+					score[tt.name] = got
 					return
 				}
 				t.Errorf("PlusScore() = %v, want %v", got, tt.want)
@@ -653,13 +667,153 @@ func TestResourceStrategyFitPlugin(t *testing.T) {
 			for _, task := range job.Tasks {
 				taskID := fmt.Sprintf("%s/%s", task.Namespace, task.Name)
 				for _, node := range ssn.Nodes {
-					score, err := ssn.NodeOrderFn(task, node)
-					fmt.Println(i, score, node.Name, err, taskID)
+					score, _ := ssn.NodeOrderFn(task, node)
 					if expectScore := test.expected[taskID][node.Name]; math.Abs(expectScore-score) > eps {
 						t.Errorf("case%d: task %s on node %s expect have score %v, but get %v", i, taskID, node.Name, expectScore, score)
 					}
 				}
 			}
 		}
+	}
+}
+
+func TestAllocate(t *testing.T) {
+
+	arguments := framework.Arguments{
+		"ResourceStrategyFitPlusWeight": 10,
+		"resources": map[string]interface{}{
+			"nvidia.com/gpu": map[string]interface{}{
+				"type":   "MostAllocated",
+				"weight": 2,
+			},
+			"cpu": map[string]interface{}{
+				"type":   "LeastAllocated",
+				"weight": 1,
+			},
+		},
+	}
+
+	GPU := v1.ResourceName("nvidia.com/gpu")
+	//FOO := v1.ResourceName("example.com/foo")
+
+	GpuPod1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeResourceType": "gpu"})
+	addResource(GpuPod1.Spec.Containers[0].Resources.Requests, GPU, "2")
+	GpuPod2 := util.BuildPod("c1", "p2", "n2", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeResourceType": "gpu"})
+	addResource(GpuPod2.Spec.Containers[0].Resources.Requests, GPU, "2")
+	CpuPod1 := util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeResourceType": "cpu"})
+	CpuPod2 := util.BuildPod("c1", "p4", "n3", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeResourceType": "cpu"})
+	GpuNode1 := util.BuildNode("n1", api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeResourceType": "gpu"})
+	addResource(GpuNode1.Status.Allocatable, GPU, "10")
+	GpuNode2 := util.BuildNode("n2", api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeResourceType": "gpu"})
+	addResource(GpuNode2.Status.Allocatable, GPU, "10")
+	CpuNode1 := util.BuildNode("n3", api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeResourceType": "cpu"})
+	CpuNode2 := util.BuildNode("n4", api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeResourceType": "cpu"})
+
+	plugins := map[string]framework.PluginBuilder{
+		PluginName:            New,
+		drf.PluginName:        drf.New,
+		proportion.PluginName: proportion.New,
+		predicates.PluginName: predicates.New,
+		nodeorder.PluginName:  nodeorder.New,
+		gang.PluginName:       gang.New,
+	}
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name: "GPU MostAllocated",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				GpuPod1,
+				GpuPod2,
+			},
+			Nodes: []*v1.Node{
+				GpuNode1,
+				GpuNode2,
+				CpuNode1,
+				CpuNode2,
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("c1", 1, nil),
+			},
+			ExpectBindMap: map[string]string{
+				"c1/p1": "n2",
+			},
+			ExpectBindsNum: 1,
+		},
+		{
+			Name: "GPU MostAllocated",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+			},
+			Pods: []*v1.Pod{
+				CpuPod1,
+				CpuPod2,
+			},
+			Nodes: []*v1.Node{
+				GpuNode1,
+				GpuNode2,
+				CpuNode1,
+				CpuNode2,
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("c1", 1, nil),
+			},
+			ExpectBindMap: map[string]string{
+				"c1/p3": "n4",
+			},
+			ExpectBindsNum: 1,
+		},
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             PluginName,
+					EnabledNodeOrder: &trueValue,
+					Arguments:        arguments,
+				},
+				{
+					Name:                gang.PluginName,
+					EnabledJobOrder:     &trueValue,
+					EnabledJobReady:     &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+				},
+				{
+					Name:               drf.PluginName,
+					EnabledPreemptable: &trueValue,
+					EnabledJobOrder:    &trueValue,
+				},
+				{
+					Name:               proportion.PluginName,
+					EnabledQueueOrder:  &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledAllocatable: &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:             nodeorder.PluginName,
+					EnabledNodeOrder: &trueValue,
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.Plugins = plugins
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run([]framework.Action{allocate.New()})
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
