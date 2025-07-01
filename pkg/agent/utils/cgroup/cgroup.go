@@ -1,6 +1,3 @@
-//go:build linux
-// +build linux
-
 /*
 Copyright 2024 The Volcano Authors.
 
@@ -25,7 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	cgroupsystemd "github.com/opencontainers/cgroups/systemd"
+	cgroupsystemd "github.com/opencontainers/runc/libcontainer/cgroups/systemd"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
