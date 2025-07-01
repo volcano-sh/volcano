@@ -1,6 +1,6 @@
 module volcano.sh/volcano
 
-go 1.24.3
+go 1.24.0
 
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6
@@ -223,5 +223,3 @@ replace (
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.33.1
 	k8s.io/sample-controller => k8s.io/sample-controller v0.33.1
 )
-
-replace volcano.sh/apis => github.com/mahdikhashan/apis v0.0.0-20250605092325-b8fefae930c7

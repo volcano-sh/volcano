@@ -152,7 +152,7 @@ spec:
             - --port=8443
             - -v=4
             - 2>&1
-          image: docker.io/volcanosh/vc-webhook-manager:latest
+          image: docker.io/volcanosh/vc-webhook-manager:756e00c64a0a5cb4d490cc718386df1683a4a1d4
           imagePullPolicy: Always
           name: admission
           volumeMounts:
@@ -250,7 +250,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
-          image: docker.io/volcanosh/vc-webhook-manager:latest
+          image: docker.io/volcanosh/vc-webhook-manager:756e00c64a0a5cb4d490cc718386df1683a4a1d4
           imagePullPolicy: Always
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
@@ -1157,6 +1157,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -1867,6 +1869,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -2591,6 +2595,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -4549,7 +4555,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-controllers
-          image: docker.io/volcanosh/vc-controller-manager:latest
+          image: docker.io/volcanosh/vc-controller-manager:756e00c64a0a5cb4d490cc718386df1683a4a1d4
           args:
             - --logtostderr
             - --enable-healthz=true
@@ -4757,7 +4763,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-scheduler
-          image: docker.io/volcanosh/vc-scheduler:latest
+          image: docker.io/volcanosh/vc-scheduler:756e00c64a0a5cb4d490cc718386df1683a4a1d4
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
@@ -5296,7 +5302,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: hypernodes.topology.volcano.sh
 spec:
   group: topology.volcano.sh
@@ -6617,6 +6623,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -7327,6 +7335,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -8051,6 +8061,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
