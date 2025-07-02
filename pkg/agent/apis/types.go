@@ -65,16 +65,39 @@ const (
 	// ResourceDefaultPrefix is the extended resource prefix.
 	ResourceDefaultPrefix = "kubernetes.io/"
 
-	ExtendResourceCPU    = ResourceDefaultPrefix + "batch-cpu"
-	ExtendResourceMemory = ResourceDefaultPrefix + "batch-memory"
-
 	// ColocationPolicyKey is the label key of node custom colocation policy.
 	ColocationPolicyKey = "colocation-policy"
 )
 
+var (
+	ExtendResourceCPU    = ResourceDefaultPrefix + "batch-cpu"
+	ExtendResourceMemory = ResourceDefaultPrefix + "batch-memory"
+)
+
+func SetExtendResourceCPU(val string) {
+	ExtendResourceCPU = val
+}
+func GetExtendResourceCPU() corev1.ResourceName {
+	return corev1.ResourceName(ExtendResourceCPU)
+}
+func SetExtendResourceMemory(val string) {
+	ExtendResourceMemory = val
+}
+func GetExtendResourceMemory() corev1.ResourceName {
+	return corev1.ResourceName(ExtendResourceMemory)
+}
+
 var OverSubscriptionResourceTypes = []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory}
 
-var OverSubscriptionResourceTypesIncludeExtendResources = []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory, ExtendResourceCPU, ExtendResourceMemory}
+// GetOverSubscriptionResourceTypesIncludeExtendResources returns oversubscription resource types including extend resources.
+func GetOverSubscriptionResourceTypesIncludeExtendResources() []corev1.ResourceName {
+	return []corev1.ResourceName{
+		corev1.ResourceCPU,
+		corev1.ResourceMemory,
+		GetExtendResourceCPU(),
+		GetExtendResourceMemory(),
+	}
+}
 
 // Resource mapping resource type and usage.
 type Resource map[corev1.ResourceName]int64
