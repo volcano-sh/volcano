@@ -331,3 +331,28 @@ func FindJobTaskNumOfHyperNode(hyperNodeName string, job *api.JobInfo, hyperNode
 	}
 	return taskCount
 }
+
+// PredicateNodes returns the nodes that can run the task.
+// It first tries to schedule the task on the nominated node if it exists,
+// otherwise it tries to schedule the task on all nodes.
+func PredicateNodes(nodeInfo map[string]*api.NodeInfo, task *api.TaskInfo, allNodes []*api.NodeInfo, ph PredicateHelper, predicateFn api.PredicateFn, enablePredicateErrorCache, checkNominatedNodeResources bool) ([]*api.NodeInfo, *api.FitErrors) {
+	var predicateNodes []*api.NodeInfo
+	var fitErrors *api.FitErrors
+
+	// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
+	// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
+	if len(task.Pod.Status.NominatedNodeName) > 0 {
+		if nominatedNodeInfo, ok := nodeInfo[task.Pod.Status.NominatedNodeName]; ok {
+			if !checkNominatedNodeResources || task.InitResreq.LessEqual(nominatedNodeInfo.Idle, api.Zero) {
+				predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, predicateFn, enablePredicateErrorCache)
+			}
+		}
+	}
+
+	// If the nominated node is not found or the nominated node is not suitable for the task, we need to find a suitable node for the task from all nodes.
+	if len(predicateNodes) == 0 {
+		predicateNodes, fitErrors = ph.PredicateNodes(task, allNodes, predicateFn, enablePredicateErrorCache)
+	}
+
+	return predicateNodes, fitErrors
+}
