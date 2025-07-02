@@ -742,7 +742,7 @@ func TestAllocate(t *testing.T) {
 			ExpectBindsNum: 1,
 		},
 		{
-			Name: "GPU MostAllocated",
+			Name: "cpu LeastAllocated",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
 			},
