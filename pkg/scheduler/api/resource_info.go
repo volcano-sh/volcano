@@ -785,3 +785,22 @@ func ExceededPart(left, right *Resource) *Resource {
 	diff, _ := left.Diff(right, Zero)
 	return diff
 }
+
+func (r *Resource) ConvertResourceToResourceList() v1.ResourceList {
+	rl := v1.ResourceList{}
+	if r == nil {
+		return rl
+	}
+	if r.MilliCPU > 0 {
+		rl[v1.ResourceCPU] = *resource.NewMilliQuantity(int64(r.MilliCPU), resource.DecimalSI)
+	}
+	if r.Memory > 0 {
+		rl[v1.ResourceMemory] = *resource.NewQuantity(int64(r.Memory), resource.BinarySI)
+	}
+	for name, val := range r.ScalarResources {
+		if val > 0 {
+			rl[name] = *resource.NewQuantity(int64(val), resource.DecimalSI)
+		}
+	}
+	return rl
+}
