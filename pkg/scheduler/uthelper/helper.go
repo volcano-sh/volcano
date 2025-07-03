@@ -37,8 +37,13 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func init() {
+	metrics.InitKubeSchedulerRelatedMetrics()
+}
 
 // RegisterPlugins plugins
 func RegisterPlugins(plugins map[string]framework.PluginBuilder) {
