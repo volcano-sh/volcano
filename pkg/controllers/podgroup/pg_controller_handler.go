@@ -264,7 +264,7 @@ func (pg *pgcontroller) getMinMemberFromUpperRes(upperAnnotations map[string]str
 func (pg *pgcontroller) inheritUpperAnnotations(upperAnnotations map[string]string, obj *scheduling.PodGroup) {
 	if pg.inheritOwnerAnnotations {
 		for k, v := range upperAnnotations {
-			if strings.HasPrefix(k, scheduling.AnnotationPrefix) {
+			if strings.HasPrefix(k, scheduling.GroupName) {
 				obj.Annotations[k] = v
 			}
 		}
