@@ -3,11 +3,11 @@ name: Close Issues
 on:
   pull_request:
     types: [closed]
-    branches: [master]
+    branches: [master]  
   workflow_dispatch:
     inputs:
       issue_numbers:
-        description: 'Comma-separated list of issue numbers to close (e.g., 123,456,789)'
+        description: 'Comma-separated list of issue numbers (e.g., 123,456,789)'
         required: true
         type: string
       reason:
@@ -19,7 +19,7 @@ on:
 jobs:
   close-issues-auto:
     if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     name: Close linked issues automatically
     timeout-minutes: 10
     permissions:
@@ -31,33 +31,41 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const prBody = context.payload.pull_request.body || '';
-            const prTitle = context.payload.pull_request.title || '';
+            const { pull_request } = context.payload;
+            const textToSearch = [pull_request.title, pull_request.body].join('\n');
             
-            // Extract issue numbers from PR body and title
-            // Matches patterns like: fixes #123, closes #456, resolves #789
-            const issueRegex = /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*#(\d+)/gi;
+            // CRITICAL FIX: Added word boundaries to prevent partial matches
+            const issueRegex = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*#(\d+)\b/gi;
             const issueNumbers = [];
             
             let match;
-            while ((match = issueRegex.exec(prBody + ' ' + prTitle)) !== null) {
+            while ((match = issueRegex.exec(textToSearch)) !== null) {
                 issueNumbers.push(parseInt(match[1]));
             }
             
-            // Remove duplicates
-            const uniqueIssues = [...new Set(issueNumbers)];
+            const uniqueIssues = [...new Set(issueNumbers)].filter(num => num > 0);
+            
+            if (uniqueIssues.length === 0) {
+                console.log('No linked issues found in PR body or title');
+                return;
+            }
             
             for (const issueNumber of uniqueIssues) {
                 try {
-                    // Check if issue exists and is open
+                    // SECURITY: Verify issue belongs to current repo
                     const { data: issue } = await github.rest.issues.get({
                         owner: context.repo.owner,
                         repo: context.repo.repo,
                         issue_number: issueNumber
                     });
                     
+                    // Skip if issue is external
+                    if (!issue.html_url.includes(`/${context.repo.owner}/${context.repo.repo}/`)) {
+                        console.log(`Skipping external issue #${issueNumber}`);
+                        continue;
+                    }
+                    
                     if (issue.state === 'open') {
-                        // Close the issue
                         await github.rest.issues.update({
                             owner: context.repo.owner,
                             repo: context.repo.repo,
@@ -65,24 +73,26 @@ jobs:
                             state: 'closed'
                         });
                         
-                        // Add a comment explaining the closure
                         await github.rest.issues.createComment({
                             owner: context.repo.owner,
                             repo: context.repo.repo,
                             issue_number: issueNumber,
-                            body: `Automatically closed by PR #${context.payload.pull_request.number}`
+                            body: `Automatically closed by PR #${pull_request.number}`
                         });
                         
                         console.log(`Closed issue #${issueNumber}`);
+                    } else {
+                        console.log(`Issue #${issueNumber} is already closed`);
                     }
                 } catch (error) {
-                    console.log(`Could not process issue #${issueNumber}: ${error.message}`);
+                    // CRITICAL: Use proper error logging
+                    core.warning(`Skipping issue #${issueNumber}: ${error.message}`);
                 }
             }
 
   close-issues-manual:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     name: Close specified issues manually
     timeout-minutes: 10
     permissions:
@@ -93,16 +103,21 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const issueNumbers = '${{ github.event.inputs.issue_numbers }}'
+            // CRITICAL FIX: Use context to avoid injection vulnerabilities
+            const issueNumbers = context.payload.inputs.issue_numbers
                 .split(',')
-                .map(num => parseInt(num.trim()))
-                .filter(num => !isNaN(num));
+                .map(num => parseInt(num.trim().replace(/\D/g, '')))  // Sanitize input
+                .filter(num => !isNaN(num) && num > 0);
             
-            const reason = '${{ github.event.inputs.reason }}';
+            const reason = context.payload.inputs.reason || 'Closed manually';
+            
+            if (issueNumbers.length === 0) {
+                core.setFailed('No valid issue numbers provided');
+                return;
+            }
             
             for (const issueNumber of issueNumbers) {
                 try {
-                    // Check if issue exists and is open
                     const { data: issue } = await github.rest.issues.get({
                         owner: context.repo.owner,
                         repo: context.repo.repo,
@@ -110,7 +125,6 @@ jobs:
                     });
                     
                     if (issue.state === 'open') {
-                        // Close the issue
                         await github.rest.issues.update({
                             owner: context.repo.owner,
                             repo: context.repo.repo,
@@ -118,7 +132,6 @@ jobs:
                             state: 'closed'
                         });
                         
-                        // Add a comment explaining the closure
                         await github.rest.issues.createComment({
                             owner: context.repo.owner,
                             repo: context.repo.repo,
@@ -131,6 +144,6 @@ jobs:
                         console.log(`Issue #${issueNumber} is already closed`);
                     }
                 } catch (error) {
-                    console.log(`Could not process issue #${issueNumber}: ${error.message}`);
+                    core.warning(`Skipping issue #${issueNumber}: ${error.message}`);
                 }
             }
