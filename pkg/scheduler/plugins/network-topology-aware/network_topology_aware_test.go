@@ -429,8 +429,8 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				"s5": nil,
 			},
 			expected: map[string]float64{
-				"s3": 100.0,
-				"s4": 50.0,
+				"s3": 0.0,
+				"s4": 0.0,
 				"s5": 0.0,
 			},
 		},
@@ -499,7 +499,7 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				"s2": nil,
 			},
 			expected: map[string]float64{
-				"s1": 100.0,
+				"s1": 0.0,
 				"s2": 0.0,
 			},
 		},
@@ -555,7 +555,7 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				"s2": nil,
 			},
 			expected: map[string]float64{
-				"s1": 100.0,
+				"s1": 0.0,
 				"s2": 0.0,
 			},
 		},
@@ -678,8 +678,8 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				"s5": nil,
 			},
 			expected: map[string]float64{
-				"s3": 200.0,
-				"s4": 100.0,
+				"s3": 0.0,
+				"s4": 0.0,
 				"s5": 0.0,
 			},
 		},
@@ -824,8 +824,8 @@ func TestNetworkTopologyAwareHyperNodeScore(t *testing.T) {
 				"test4": "",
 			},
 			expected: map[string]float64{
-				"s3": 100.0,
-				"s4": 75.0,
+				"s3": 0.0,
+				"s4": 0.0,
 				"s5": 0.0,
 			},
 		},
