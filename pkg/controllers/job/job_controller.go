@@ -385,7 +385,7 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 
 	if delayAct.action != busv1alpha1.SyncJobAction {
 		cc.recordJobEvent(jobInfo.Job.Namespace, jobInfo.Job.Name, batchv1alpha1.ExecuteAction, fmt.Sprintf(
-			"Start to execute action %s ", delayAct.action))
+			"Start to execute action %s due to pod %s", delayAct.action, req.PodName))
 	}
 
 	action := GetStateAction(delayAct)

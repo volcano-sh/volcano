@@ -439,7 +439,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
 		// the processing logic needs to be added to the return value result.
 		if predicate.podAffinityEnable {
-			klog.Infof("Executing podAffinityFilter PreFilter for task %s/%s", task.Namespace, task.Name)
+			klog.V(4).Infof("Executing podAffinityFilter PreFilter for task %s/%s", task.Namespace, task.Name)
 			_, status := podAffinityFilter.PreFilter(context.TODO(), state, task.Pod)
 			if err := handleSkipPrePredicatePlugin(status, state, task, interpodaffinity.Name); err != nil {
 				return err

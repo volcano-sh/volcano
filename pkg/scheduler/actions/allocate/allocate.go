@@ -143,7 +143,7 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 			continue
 		}
 
-		klog.V(3).Infof("Try to allocate resource to Jobs in Queue <%s>", queue.Name)
+		klog.V(4).Infof("Try to allocate resource to Jobs in Queue <%s>", queue.Name)
 
 		jobs, found := jobsMap[queue.UID]
 		if !found || jobs.Empty() {
