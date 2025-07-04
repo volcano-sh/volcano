@@ -1,5 +1,10 @@
 /*
 Copyright 2017 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added dynamic configuration management with file watching and hot-reload capabilities
+- Improved metrics collection and cache dumping functionality for better observability
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

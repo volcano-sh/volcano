@@ -1,5 +1,10 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added support for hierarchical DRF (HDRF) scheduling with tree-based resource allocation
+- Enhanced DRF plugin with namespace-aware resource sharing and metrics integration
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

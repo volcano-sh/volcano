@@ -1,5 +1,11 @@
 /*
 Copyright 2017 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Migrated to v1beta1 API versions for PodGroup and Queue resources
+- Added support for ResourceQuota/PriorityClass/NUMA topology management
+- Enhanced caching with HyperNode support and CSI resource handling
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

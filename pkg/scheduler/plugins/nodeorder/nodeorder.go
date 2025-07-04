@@ -1,5 +1,9 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Refactored to use Kubernetes native scheduling plugins for improved compatibility
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

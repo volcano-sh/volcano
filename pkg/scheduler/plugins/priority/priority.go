@@ -1,5 +1,10 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2023 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Enhanced preemption logic with support for both inter-job and intra-job priority-based preemption
+- Added job starving detection functionality to improve resource allocation efficiency
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

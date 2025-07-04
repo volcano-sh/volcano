@@ -1,5 +1,11 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added comprehensive operation management with save/recover capabilities
+- Enhanced with Allocate/UnAllocate and UnPipeline operations
+- Added improved error handling and rollback support
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
