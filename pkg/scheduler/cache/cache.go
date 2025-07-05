@@ -772,7 +772,10 @@ func (sc *SchedulerCache) addEventHandler() {
 			ClassInformer:      informerFactory.Resource().V1beta1().DeviceClasses(),
 			KubeClient:         sc.kubeClient,
 		}
-		claimTracker, _ := tracker.StartTracker(ctx, opts)
+		claimTracker, err := tracker.StartTracker(ctx, opts)
+		if err != nil {
+			klog.V(3).Infof("Failed to start DRA tracker: %v", err)
+		}
 		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, claimTracker, informerFactory)
 	}
 }
