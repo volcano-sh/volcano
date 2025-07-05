@@ -163,7 +163,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	fts := feature.Features{
 		// removed in k8s v1.33.1 and replaced with StorageCapacityScoring
 		// EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
-		EnableStorageCapacityScoring:                 utilFeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring),
+		//EnableStorageCapacityScoring:                 utilFeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring),
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
 		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
 	}
@@ -216,14 +216,21 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		nodeScore := 0.0
 
+		state := k8sframework.NewCycleState()
+		nodeInfo := &k8sframework.NodeInfo{}
+		nodeInfo.SetNode(node.Node)
+
 		if node == nil || node.Node == nil {
 			klog.Errorf("Critical: nil node encountered during scoring for task %s/%s", task.Namespace, task.Name)
 			return 0, fmt.Errorf("node not available")
 		}
 
-		state := k8sframework.NewCycleState()
-		nodeInfo := &k8sframework.NodeInfo{}
-		nodeInfo.SetNode(node.Node)
+		allocatable := nodeInfo.Allocatable
+		if allocatable == nil {
+			klog.Warningf("Allocatable resources nil for node %s", nodeInfo.Node().Name)
+			return 0, fmt.Errorf("node not allocatable")
+		}
+
 		if weight.imageLocalityWeight != 0 {
 			score, status := imageLocality.Score(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
