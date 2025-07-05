@@ -10,7 +10,7 @@ func TestInfo(t *testing.T) {
 	// Override the globals so we can predictably assert them
 	Version = "vX.Y.Z"
 	GitSHA = "deadbeef"
-	Built   = "2025-07-05T12:00:00Z"
+	Built = "2025-07-05T12:00:00Z"
 
 	got := Info("v1beta1")
 	if len(got) != 6 {
