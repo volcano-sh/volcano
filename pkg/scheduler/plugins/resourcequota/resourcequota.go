@@ -54,7 +54,7 @@ func (rq *resourceQuotaPlugin) OnSessionOpen(ssn *framework.Session) {
 			hardResources := quotav1.ResourceNames(resourceQuota.Hard)
 			requestedUsage := quotav1.Mask(*resourcesRequests, hardResources)
 
-			var resourcesUsed = resourceQuota.Used
+			resourcesUsed := resourceQuota.Used
 			if pendingUse, found := pendingResources[job.Namespace]; found {
 				resourcesUsed = quotav1.Add(pendingUse, resourcesUsed)
 			}

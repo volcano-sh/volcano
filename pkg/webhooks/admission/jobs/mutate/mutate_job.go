@@ -142,7 +142,7 @@ func createPatch(job *v1alpha1.Job) ([]byte, error) {
 }
 
 func patchDefaultQueue(job *v1alpha1.Job) *patchOperation {
-	//Add default queue if not specified.
+	// Add default queue if not specified.
 	if job.Spec.Queue == "" {
 		return &patchOperation{Op: "add", Path: "/spec/queue", Value: DefaultQueue}
 	}

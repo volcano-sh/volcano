@@ -109,8 +109,8 @@ func (sp *slaPlugin) OnSessionOpen(ssn *framework.Session) {
 		lv := l.(*api.JobInfo)
 		rv := r.(*api.JobInfo)
 
-		var lJobWaitingTime = sp.readJobWaitingTime(lv.WaitingTime)
-		var rJobWaitingTime = sp.readJobWaitingTime(rv.WaitingTime)
+		lJobWaitingTime := sp.readJobWaitingTime(lv.WaitingTime)
+		rJobWaitingTime := sp.readJobWaitingTime(rv.WaitingTime)
 
 		if lJobWaitingTime == nil {
 			if rJobWaitingTime == nil {
@@ -135,7 +135,7 @@ func (sp *slaPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	permitableFn := func(obj interface{}) int {
 		jobInfo := obj.(*api.JobInfo)
-		var jwt = sp.readJobWaitingTime(jobInfo.WaitingTime)
+		jwt := sp.readJobWaitingTime(jobInfo.WaitingTime)
 
 		if jwt == nil {
 			return util.Abstain

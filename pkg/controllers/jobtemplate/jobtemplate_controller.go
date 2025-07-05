@@ -50,18 +50,18 @@ type jobtemplatecontroller struct {
 	kubeClient kubernetes.Interface
 	vcClient   vcclientset.Interface
 
-	//informer
+	// informer
 	jobTemplateInformer flowinformer.JobTemplateInformer
 	jobInformer         batchinformer.JobInformer
 
-	//InformerFactory
+	// InformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
 
-	//jobTemplateLister
+	// jobTemplateLister
 	jobTemplateLister flowlister.JobTemplateLister
 	jobTemplateSynced cache.InformerSynced
 
-	//jobLister
+	// jobLister
 	jobLister batchlister.JobLister
 	jobSynced cache.InformerSynced
 

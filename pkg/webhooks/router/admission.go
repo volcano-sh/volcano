@@ -29,8 +29,10 @@ import (
 
 type AdmissionHandler func(w http.ResponseWriter, r *http.Request)
 
-var admissionMap = make(map[string]*AdmissionService)
-var admissionMutex sync.Mutex
+var (
+	admissionMap   = make(map[string]*AdmissionService)
+	admissionMutex sync.Mutex
+)
 
 func RegisterAdmission(service *AdmissionService) error {
 	admissionMutex.Lock()

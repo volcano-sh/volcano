@@ -26,11 +26,9 @@ import (
 	"volcano.sh/volcano/pkg/metriccollect/local"
 )
 
-type FakeSubCollectorCPU struct {
-}
+type FakeSubCollectorCPU struct{}
 
 func (s *FakeSubCollectorCPU) Run() {
-
 }
 
 func (s *FakeSubCollectorCPU) CollectLocalMetrics(metricInfo *local.LocalMetricInfo, start time.Time, window metav1.Duration) ([]*prompb.TimeSeries, error) {

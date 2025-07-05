@@ -16,9 +16,11 @@ limitations under the License.
 
 package gpushare
 
-var GpuSharingEnable bool
-var NodeLockEnable bool
-var GpuNumberEnable bool
+var (
+	GpuSharingEnable bool
+	NodeLockEnable   bool
+	GpuNumberEnable  bool
+)
 
 const (
 	// DeviceName used to indicate this device

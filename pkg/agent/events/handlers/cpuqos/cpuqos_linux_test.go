@@ -32,10 +32,10 @@ func TestCPUQoSHandle_Handle(t *testing.T) {
 	// make a fake pod cgroup path first.
 	tmpDir := t.TempDir()
 	dir := path.Join(tmpDir, "cpu", "kubepods", "podfake-id2")
-	err := os.MkdirAll(dir, 0644)
+	err := os.MkdirAll(dir, 0o644)
 	assert.NoError(t, err)
 	filePath := path.Join(dir, "cpu.qos_level")
-	_, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
+	_, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 	assert.NoError(t, err)
 
 	tests := []struct {

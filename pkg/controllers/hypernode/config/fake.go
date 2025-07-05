@@ -24,6 +24,7 @@ func (m *FakeLoader) SetConfig(cfg *api.NetworkTopologyConfig) {
 
 	m.Config = cfg
 }
+
 func NewFakeLoader(cfg *api.NetworkTopologyConfig) *FakeLoader {
 	return &FakeLoader{
 		Config: cfg,

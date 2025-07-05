@@ -135,7 +135,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 		Name: secretName,
 	}
 
-	var mode int32 = 0600
+	var mode int32 = 0o600
 	sshVolume.Secret = &v1.SecretVolumeSource{
 		SecretName: secretName,
 		Items: []v1.KeyToPath{
@@ -160,7 +160,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 	}
 
 	if sp.sshKeyFilePath != SSHAbsolutePath {
-		var noRootMode int32 = 0644
+		var noRootMode int32 = 0o644
 		sshVolume.Secret.DefaultMode = &noRootMode
 	}
 

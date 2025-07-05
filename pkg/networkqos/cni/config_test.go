@@ -177,7 +177,6 @@ func TestAddOrUpdateCniPluginToConfList(t *testing.T) {
 		expectedFileContent  string
 		expectedError        bool
 	}{
-
 		{
 			name: "cni-plugin-add",
 			plugin: map[string]interface{}{
@@ -310,7 +309,7 @@ func TestAddOrUpdateCniPluginToConfList(t *testing.T) {
 	defer os.Remove(conflistFile)
 
 	for _, tc := range testCases {
-		if err = os.WriteFile(conflistFile, []byte(tc.fileContent), os.FileMode(0644)); err != nil {
+		if err = os.WriteFile(conflistFile, []byte(tc.fileContent), os.FileMode(0o644)); err != nil {
 			t.Fatal(err)
 		}
 
@@ -420,7 +419,7 @@ func TestDeleteCniPluginFromConfList(t *testing.T) {
 	defer os.Remove(conflistFile)
 
 	for _, tc := range testCases {
-		if err = os.WriteFile(conflistFile, []byte(tc.fileContent), os.FileMode(0644)); err != nil {
+		if err = os.WriteFile(conflistFile, []byte(tc.fileContent), os.FileMode(0o644)); err != nil {
 			t.Fatal(err)
 		}
 

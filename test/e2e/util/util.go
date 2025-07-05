@@ -36,7 +36,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
 	clientset "k8s.io/client-go/kubernetes"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
@@ -117,7 +116,7 @@ func VolcanoCliBinary() string {
 }
 
 type TestContext struct {
-	Kubeclient *kubernetes.Clientset
+	Kubeclient *clientset.Clientset
 	Vcclient   *vcclient.Clientset
 
 	Namespace        string
@@ -138,8 +137,10 @@ type Options struct {
 	NodesResourceLimit v1.ResourceList
 }
 
-var VcClient *vcclient.Clientset
-var KubeClient *kubernetes.Clientset
+var (
+	VcClient   *vcclient.Clientset
+	KubeClient *clientset.Clientset
+)
 
 func InitTestContext(o Options) *TestContext {
 	By("Initializing test context")

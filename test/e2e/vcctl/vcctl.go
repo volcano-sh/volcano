@@ -24,9 +24,8 @@ import (
 )
 
 var _ = Describe("Test Help option of vcctl cli", func() {
-
 	It("Command: vcctl --help", func() {
-		var output = `
+		output := `
 Usage:
   vcctl [command]
 
@@ -55,7 +54,7 @@ Use "vcctl [command] --help" for more information about a command.
 	})
 
 	It("Command: vcctl job --help", func() {
-		var output = `
+		output := `
 vcctl command line operation job
 
 Usage:
@@ -87,7 +86,7 @@ Use "vcctl job [command] --help" for more information about a command.
 	})
 
 	It("Command: vcctl job list --help", func() {
-		var output = `
+		output := `
 list job information
 
 Usage:
@@ -116,7 +115,7 @@ Global Flags:
 	})
 
 	It("Command: vcctl job suspend -n {$JobName} --help", func() {
-		var output = `
+		output := `
 abort a job
 
 Usage:
@@ -142,7 +141,7 @@ Global Flags:
 	})
 
 	It("vcctl job resume -n {$JobName} --help", func() {
-		var output = `
+		output := `
 resume a job
 
 Usage:
@@ -168,7 +167,7 @@ Global Flags:
 	})
 
 	It("vcctl job run --help", func() {
-		var output = `
+		output := `
 run job by parameters from the command line
 
 Usage:
@@ -199,5 +198,4 @@ Global Flags:
 		exist := strings.Contains(output, cmdOutput)
 		Expect(exist).Should(Equal(true))
 	})
-
 })

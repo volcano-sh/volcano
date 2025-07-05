@@ -46,7 +46,7 @@ func (d *Dumper) dumpToJSONFile() {
 	snapshot := d.Cache.Snapshot()
 	name := fmt.Sprintf("snapshot-%d.json", time.Now().Unix())
 	fName := path.Join(d.RootDir, name)
-	file, err := os.OpenFile(fName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	file, err := os.OpenFile(fName, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		klog.Errorf("error creating snapshot because of error creating file: %v", err)
 		return

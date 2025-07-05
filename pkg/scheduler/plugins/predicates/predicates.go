@@ -263,7 +263,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			// run reserve plugins
 			pp.runReservePlugins(ssn, event)
-			//predicate gpu sharing
+			// predicate gpu sharing
 			for _, val := range api.RegisteredDevices {
 				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
 					if !devices.HasDeviceRequest(pod) {
@@ -328,7 +328,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	features := feature.Features{
-		EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
+		// removed in k8s v1.33.1 and replaced with StorageCapacityScoring
+		// EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
+		EnableStorageCapacityScoring:                 utilFeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring),
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
 		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
 		EnableSidecarContainers:                      utilFeature.DefaultFeatureGate.Enabled(features.SidecarContainers),

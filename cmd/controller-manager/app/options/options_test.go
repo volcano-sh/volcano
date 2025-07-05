@@ -52,7 +52,7 @@ func TestAddFlags(t *testing.T) {
 	s.LeaderElection.ResourceName = "vc-controller-manager"
 	componentbaseoptions.BindLeaderElectionFlags(&s.LeaderElection, fs)
 	// knownControllers is a list of all known controllers.
-	var knownControllers = func() []string {
+	knownControllers := func() []string {
 		controllerNames := []string{}
 		fn := func(controller framework.Controller) {
 			controllerNames = append(controllerNames, controller.Name())

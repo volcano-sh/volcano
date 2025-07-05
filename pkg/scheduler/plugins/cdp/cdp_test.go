@@ -60,7 +60,6 @@ func makePod(labels map[string]string, annotations map[string]string, podSchedul
 			},
 		},
 	}
-
 }
 
 func Test_CooldownTimePlugin_podPreemptStableTime(t *testing.T) {

@@ -30,8 +30,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware/policy"
 )
 
-type cpuMng struct {
-}
+type cpuMng struct{}
 
 // NewProvider return a new provider
 func NewProvider() policy.HintProvider {
@@ -116,7 +115,8 @@ func getPhysicalCoresNum(CPUDetails topology.CPUDetails) int {
 }
 
 func (mng *cpuMng) GetTopologyHints(container *v1.Container,
-	topoInfo *api.NumatopoInfo, resNumaSets api.ResNumaSets) map[string][]policy.TopologyHint {
+	topoInfo *api.NumatopoInfo, resNumaSets api.ResNumaSets,
+) map[string][]policy.TopologyHint {
 	if _, ok := container.Resources.Requests[v1.ResourceCPU]; !ok {
 		klog.Warningf("container %s has no cpu request", container.Name)
 		return nil
@@ -160,7 +160,8 @@ func (mng *cpuMng) GetTopologyHints(container *v1.Container,
 }
 
 func (mng *cpuMng) Allocate(container *v1.Container, bestHit *policy.TopologyHint,
-	topoInfo *api.NumatopoInfo, resNumaSets api.ResNumaSets) map[string]cpuset.CPUSet {
+	topoInfo *api.NumatopoInfo, resNumaSets api.ResNumaSets,
+) map[string]cpuset.CPUSet {
 	cputopo := &topology.CPUTopology{
 		NumCPUs:    topoInfo.CPUDetail.CPUs().Size(),
 		NumCores:   getPhysicalCoresNum(topoInfo.CPUDetail),

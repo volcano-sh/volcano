@@ -43,7 +43,6 @@ const (
 )
 
 var _ = Describe("Job E2E Test", func() {
-
 	var ctx *e2eutil.TestContext
 	AfterEach(func() {
 		e2eutil.CleanupTestContext(ctx)
@@ -227,7 +226,7 @@ var _ = Describe("Job E2E Test", func() {
 			}
 			return true
 		}
-		cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+		_ = cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
 			return e2eutil.ModifySchedulerConfig(data, modifier)
 		})
 		defer cmc.UndoChanged()
@@ -555,5 +554,4 @@ var _ = Describe("Job E2E Test", func() {
 		err = e2eutil.WaitTasksReady(ctx, lowPriorityJob, int(rep)/2)
 		Expect(err).NotTo(HaveOccurred())
 	})
-
 })

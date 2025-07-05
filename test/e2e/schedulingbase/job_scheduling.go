@@ -374,7 +374,7 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		//create job
+		// create job
 		job, err := ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -430,11 +430,11 @@ var _ = Describe("Job E2E Test", func() {
 			},
 		}
 
-		//create error job
+		// create error job
 		_, err := ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).Create(context.TODO(), errorJob, metav1.CreateOptions{})
 		Expect(err).To(HaveOccurred())
 
-		//create job
+		// create job
 		job, err = ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -499,6 +499,8 @@ var _ = Describe("Job E2E Test", func() {
 		q1ScheduledPod := 0
 		q2ScheduledPod := 0
 		expectPod := int(rep)
+		// TODO(mahdi): fixme
+		// SA4028: x % 1 is always zero (staticcheck)
 		if expectPod%1 == 1 {
 			expectPod--
 		}

@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+
 	"volcano.sh/volcano/pkg/agent/events/framework"
 	"volcano.sh/volcano/pkg/agent/utils/cgroup"
 	"volcano.sh/volcano/pkg/agent/utils/file"
@@ -71,7 +72,8 @@ func TestCPUBurstHandle_Handle(t *testing.T) {
 			prepare: func() {
 				prepare(t, tmpDir, "fake-id2", []info{
 					{path: cgroup.CPUQuotaBurstFile, value: "0"},
-					{path: cgroup.CPUQuotaTotalFile, value: "-1"}})
+					{path: cgroup.CPUQuotaTotalFile, value: "-1"},
+				})
 			},
 			wantErr: false,
 		},
@@ -249,12 +251,12 @@ type info struct {
 func prepare(t *testing.T, tmpDir, podUID string, infos []info) {
 	for _, info := range infos {
 		dir := path.Join(tmpDir, "cpu", "kubepods", "pod"+podUID, info.dir)
-		err := os.MkdirAll(dir, 0644)
+		err := os.MkdirAll(dir, 0o644)
 		assert.NoError(t, err)
 		filePath := path.Join(dir, info.path)
-		f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0644)
+		f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
 		assert.NoError(t, err)
-		err = f.Chmod(0600)
+		err = f.Chmod(0o600)
 		assert.NoError(t, err)
 		_, err = f.WriteString(info.value)
 		assert.NoError(t, err)

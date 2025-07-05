@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+
 	fakevcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/hypernode/config"

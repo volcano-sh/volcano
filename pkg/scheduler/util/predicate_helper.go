@@ -38,7 +38,7 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 	}
 	numNodesToFind := CalculateNumOfFeasibleNodesToFind(int32(allNodes))
 
-	//allocate enough space to avoid growing it
+	// allocate enough space to avoid growing it
 	predicateNodes := make([]*api.NodeInfo, numNodesToFind)
 
 	numFoundNodes := int32(0)
@@ -50,7 +50,7 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 		nodeErrorCache = map[string]error{}
 	}
 
-	//create a context with cancellation
+	// create a context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 
 	checkNode := func(index int) {
@@ -87,7 +87,7 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 			return
 		}
 
-		//check if the number of found nodes is more than the numNodesTofind
+		// check if the number of found nodes is more than the numNodesTofind
 		length := atomic.AddInt32(&numFoundNodes, 1)
 		if length > numNodesToFind {
 			cancel()
@@ -97,10 +97,10 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 		}
 	}
 
-	//workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
+	// workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), checkNode)
 	workqueue.ParallelizeUntil(ctx, 16, allNodes, checkNode)
 
-	//processedNodes := int(numFoundNodes) + len(filteredNodesStatuses) + len(failedPredicateMap)
+	// processedNodes := int(numFoundNodes) + len(filteredNodesStatuses) + len(failedPredicateMap)
 	lastProcessedNodeIndex = (lastProcessedNodeIndex + int(processedNodes)) % allNodes
 	predicateNodes = predicateNodes[:numFoundNodes]
 	return predicateNodes, fe

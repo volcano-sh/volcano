@@ -310,7 +310,7 @@ func TestFeatureSupport(t *testing.T) {
 	}
 
 	tmpFile := path.Join(dir, "os-release")
-	if err = os.WriteFile(tmpFile, []byte(openEulerOS), 0660); err != nil {
+	if err = os.WriteFile(tmpFile, []byte(openEulerOS), 0o660); err != nil {
 		assert.Equal(t, nil, err)
 	}
 	if err = os.Setenv(utils.HostOSReleasePathEnv, tmpFile); err != nil {
@@ -372,7 +372,7 @@ func TestCheckNodeSupportNetworkQoS(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		tmpFile := path.Join(dir, "os-release")
-		if err = os.WriteFile(tmpFile, []byte(tc.releaseContent), 0660); err != nil {
+		if err = os.WriteFile(tmpFile, []byte(tc.releaseContent), 0o660); err != nil {
 			assert.Equal(t, nil, err)
 		}
 		if err = os.Setenv(utils.HostOSReleasePathEnv, tmpFile); err != nil {

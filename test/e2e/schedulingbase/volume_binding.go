@@ -42,7 +42,6 @@ import (
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2epv "k8s.io/kubernetes/test/e2e/framework/pv"
 	e2eskipper "k8s.io/kubernetes/test/e2e/framework/skipper"
-	e2evolume "k8s.io/kubernetes/test/e2e/framework/volume"
 	"k8s.io/kubernetes/test/e2e/storage/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	admissionapi "k8s.io/pod-security-admission/api"
@@ -112,7 +111,8 @@ var (
 
 	// Common selinux labels
 	selinuxLabel = &v1.SELinuxOptions{
-		Level: "s0:c0,c1"}
+		Level: "s0:c0,c1",
+	}
 )
 
 var _ = ginkgo.Describe("Volume Binding Test", func() {
@@ -231,6 +231,7 @@ var _ = ginkgo.Describe("Volume Binding Test", func() {
 	}
 
 	f.Context("Local volume that cannot be mounted", f.WithSlow(), func() {
+		// TODO(mahdi): this test is slow, how to improve it to prevent timeout failure?
 		ginkgo.It("should fail due to non-existent path", func(ctx context.Context) {
 			testVol := &localTestVolume{
 				ltr: &utils.LocalTestResource{
@@ -358,6 +359,7 @@ var _ = ginkgo.Describe("Volume Binding Test", func() {
 			validateStatefulSet(ctx, config, ss, true)
 		})
 
+		// TODO(mahdi): this test seems to be slow, timeout can happen.
 		ginkgo.It("should use volumes on one node when pod management is parallel and pod has affinity", func(ctx context.Context) {
 			ginkgo.By("Creating a StatefulSet with pod affinity on nodes")
 			ss := createStatefulSet(ctx, config, ssReplicas, 1, false, true)
@@ -701,7 +703,8 @@ func testReadFileContent(f *framework.Framework, testFileDir string, testFile st
 // Execute a read or write command in a pod.
 // Fail on error
 func podRWCmdExec(f *framework.Framework, pod *v1.Pod, cmd string) string {
-	stdout, stderr, err := e2evolume.PodExec(f, pod, cmd)
+	ctx := context.TODO()
+	stdout, stderr, err := e2epod.ExecShellInPodWithFullOutput(ctx, f, pod.Name, cmd)
 	framework.Logf("podRWCmdExec cmd: %q, out: %q, stderr: %q, err: %v", cmd, stdout, stderr, err)
 	framework.ExpectNoError(err)
 	return stdout
@@ -715,8 +718,8 @@ func setupLocalVolumesPVCsPVs(
 	localVolumeType localVolumeType,
 	node *v1.Node,
 	count int,
-	mode storagev1.VolumeBindingMode) []*localTestVolume {
-
+	mode storagev1.VolumeBindingMode,
+) []*localTestVolume {
 	ginkgo.By("Initializing test volumes")
 	testVols := setupLocalVolumes(ctx, config, localVolumeType, node, count)
 

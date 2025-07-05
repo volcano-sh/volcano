@@ -103,7 +103,7 @@ func (p *ConfHandler) AddOrUpdateCniPluginToConfList(configPath, name string, pl
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(configPath, newCniConf, 0750)
+	err = os.WriteFile(configPath, newCniConf, 0o750)
 	klog.InfoS("Add/Update cni plugin successfully", "cni-conf", string(newCniConf))
 	return err
 }
@@ -152,7 +152,7 @@ func (p *ConfHandler) DeleteCniPluginFromConfList(configPath, name string) (err 
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(configPath, newCniConf, 0750)
+	err = os.WriteFile(configPath, newCniConf, 0o750)
 	klog.InfoS("Delete cni plugin successfully", "cni-conf", string(newCniConf))
 	return err
 }

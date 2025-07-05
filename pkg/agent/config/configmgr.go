@@ -91,10 +91,12 @@ func (m *ConfigManager) PrepareConfigmap() error {
 		_, createErr := m.kubeClient.CoreV1().ConfigMaps(m.configmapNamespace).Create(context.TODO(), &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      m.configmapName,
-				Namespace: m.configmapNamespace},
+				Namespace: m.configmapNamespace,
+			},
 			Data: map[string]string{
 				utils.ColocationConfigKey: utils.DefaultCfg,
-			}}, metav1.CreateOptions{})
+			},
+		}, metav1.CreateOptions{})
 		if errors.IsAlreadyExists(createErr) {
 			return true, nil
 		}

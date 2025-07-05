@@ -82,11 +82,11 @@ func TestUpdatePodCgroup(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		for _, f := range tc.files {
-			mkErr := os.MkdirAll(path.Join(tmp, path.Dir(f)), 0750)
+			mkErr := os.MkdirAll(path.Join(tmp, path.Dir(f)), 0o750)
 			if mkErr != nil {
 				assert.Equal(t, nil, mkErr, tc.name)
 			}
-			writeErr := os.WriteFile(path.Join(tmp, f), []byte("0"), 0660)
+			writeErr := os.WriteFile(path.Join(tmp, f), []byte("0"), 0o660)
 			if writeErr != nil {
 				assert.Equal(t, nil, writeErr, tc.name)
 			}
@@ -142,14 +142,13 @@ ANSI_COLOR="0;31"
 
 	for _, tc := range testCases {
 		tmpFile := path.Join(dir, "os-release")
-		if err = os.WriteFile(tmpFile, []byte(tc.content), 0660); err != nil {
+		if err = os.WriteFile(tmpFile, []byte(tc.content), 0o660); err != nil {
 			assert.Equal(t, nil, err)
 		}
 		actualOSRelease, actualErr := GetOSReleaseFromFile(tmpFile)
 		assert.Equal(t, tc.expectedErr, actualErr != nil, tc.name)
 		assert.Equal(t, tc.expectedOSRelease, actualOSRelease, tc.name)
 	}
-
 }
 
 func TestGetCPUManagerPolicy(t *testing.T) {
@@ -180,7 +179,7 @@ func TestGetCPUManagerPolicy(t *testing.T) {
 				err = os.Setenv(kubeletRootDirEnv, dir)
 				assert.NoError(t, err)
 				b := []byte(`{"policyName":"static","defaultCpuSet":"0-1","checksum":1636926438}`)
-				err = os.WriteFile(path.Join(dir, cpuManagerState), b, 0600)
+				err = os.WriteFile(path.Join(dir, cpuManagerState), b, 0o600)
 				assert.NoError(t, err)
 			},
 		},

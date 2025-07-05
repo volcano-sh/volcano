@@ -99,10 +99,12 @@ func TestHyperNodesInfo_UpdateHyperNode_WithCycle(t *testing.T) {
 	selector := "exact"
 	s0 := BuildHyperNode("s0", 1, []MemberConfig{
 		{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil},
-		{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil}})
+		{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil},
+	})
 	s1 := BuildHyperNode("s1", 2, []MemberConfig{
 		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
-		{"s3", topologyv1alpha1.MemberTypeHyperNode, selector, nil}})
+		{"s3", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
+	})
 	s11 := BuildHyperNode("s1", 2, []MemberConfig{
 		{"s0", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 	})

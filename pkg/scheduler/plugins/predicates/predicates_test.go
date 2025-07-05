@@ -253,8 +253,10 @@ func TestPodAntiAffinity(t *testing.T) {
 		}
 		test.PriClass = []*schedulingv1.PriorityClass{highPrio, lowPrio}
 		t.Run(test.Name, func(t *testing.T) {
-			test.RegisterSession(tiers, []conf.Configuration{{Name: actions[1].Name(),
-				Arguments: map[string]interface{}{preempt.EnableTopologyAwarePreemptionKey: true}}})
+			test.RegisterSession(tiers, []conf.Configuration{{
+				Name:      actions[1].Name(),
+				Arguments: map[string]interface{}{preempt.EnableTopologyAwarePreemptionKey: true},
+			}})
 			defer test.Close()
 			test.Run(actions)
 			if err := test.CheckAll(i); err != nil {

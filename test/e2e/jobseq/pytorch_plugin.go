@@ -3,6 +3,7 @@ package jobseq
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	e2eutil "volcano.sh/volcano/test/e2e/util"
@@ -54,7 +55,8 @@ var _ = Describe("Pytorch Plugin E2E Test", func() {
 
 		job := e2eutil.CreateJob(context, spec)
 		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{
-			vcbatch.Pending, vcbatch.Running, vcbatch.Completed})
+			vcbatch.Pending, vcbatch.Running, vcbatch.Completed,
+		})
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

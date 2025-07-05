@@ -84,7 +84,6 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("Scale down", func() {
@@ -142,7 +141,6 @@ var _ = Describe("Dynamic Job scale up and down", func() {
 
 		err = e2eutil.WaitJobCleanedUp(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("Scale down to zero and scale up", func() {

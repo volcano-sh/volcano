@@ -30,10 +30,8 @@ import (
 	"volcano.sh/volcano/pkg/networkqos/utils"
 )
 
-var (
-	// DefaultFeatureGate is a shared global FeatureGate.
-	DefaultFeatureGate FeatureGate = &featureGate{}
-)
+// DefaultFeatureGate is a shared global FeatureGate.
+var DefaultFeatureGate FeatureGate = &featureGate{}
 
 // FeatureGate indicates whether a given feature is enabled or not
 type FeatureGate interface {

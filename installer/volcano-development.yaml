@@ -269,7 +269,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: jobs.batch.volcano.sh
 spec:
   group: batch.volcano.sh
@@ -1157,6 +1157,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -1867,6 +1869,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -2591,6 +2595,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -4311,7 +4317,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: commands.bus.volcano.sh
 spec:
   group: bus.volcano.sh
@@ -4800,7 +4806,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: podgroups.scheduling.volcano.sh
 spec:
   group: scheduling.volcano.sh
@@ -4981,7 +4987,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: queues.scheduling.volcano.sh
 spec:
   group: scheduling.volcano.sh
@@ -5204,7 +5210,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: numatopologies.nodeinfo.volcano.sh
 spec:
   group: nodeinfo.volcano.sh
@@ -5296,7 +5302,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: hypernodes.topology.volcano.sh
 spec:
   group: topology.volcano.sh
@@ -5747,7 +5753,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: jobtemplates.flow.volcano.sh
 spec:
   group: flow.volcano.sh
@@ -6617,6 +6623,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -7327,6 +7335,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -8051,6 +8061,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -9708,7 +9720,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: jobflows.flow.volcano.sh
 spec:
   group: flow.volcano.sh

@@ -125,7 +125,6 @@ func TestNode(t *testing.T) {
 	}{
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
-
 				Name:      "single job",
 				Plugins:   map[string]framework.PluginBuilder{PluginName: New},
 				PodGroups: []*schedulingv1.PodGroup{pg1},

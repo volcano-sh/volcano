@@ -46,7 +46,6 @@ func TestLoadConfig(t *testing.T) {
 			namespace:     "test-ns",
 			configMapName: "test-cm",
 			configMaps: &corev1.ConfigMap{
-
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-cm",
 					Namespace: "test-ns",
@@ -85,7 +84,6 @@ networkTopologyDiscovery:
 			namespace:     "test-ns",
 			configMapName: "test-cm",
 			configMaps: &corev1.ConfigMap{
-
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-cm",
 					Namespace: "test-ns",

@@ -75,7 +75,7 @@ type NodeInfo struct {
 
 	// Used to store custom information
 	Others map[string]interface{}
-	//SharedDevices map[string]SharedDevicePool
+	// SharedDevices map[string]SharedDevicePool
 
 	// enable node resource oversubscription
 	OversubscriptionNode bool

@@ -1250,7 +1250,7 @@ func TestValidateJobCreate(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			ret := validateJobCreate(&testCase.Job, &testCase.reviewResponse)
-			//fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
+			// fmt.Printf("test-case name:%s, ret:%v  testCase.reviewResponse:%v \n", testCase.Name, ret,testCase.reviewResponse)
 			if testCase.ExpectErr == true && ret == "" {
 				t.Errorf("Expect error msg :%s, but got nil.", testCase.ret)
 			}
@@ -1441,7 +1441,6 @@ func TestValidateHierarchyCreate(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-
 			ret := validateJobCreate(&testCase.Job, &testCase.reviewResponse)
 
 			if testCase.ExpectErr == true && ret == "" {
@@ -1584,7 +1583,6 @@ func TestValidateJobUpdate(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func newJob() *v1alpha1.Job {

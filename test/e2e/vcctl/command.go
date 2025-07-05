@@ -69,6 +69,7 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 			outBuffer.String())
 	})
 
+	// TODO(mahdi): fixme
 	It("Suspend running job&Resume aborted job", func() {
 		jobName := "test-suspend-running-job"
 		taskName := "long-live-task"
@@ -111,7 +112,6 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 		Expect(err).NotTo(HaveOccurred())
 		err = e2eutil.WaitJobStateReady(ctx, job)
 		Expect(err).NotTo(HaveOccurred())
-
 	})
 
 	It("Suspend pending job", func() {
@@ -155,7 +155,6 @@ var _ = Describe("Job E2E Test: Test Job Command", func() {
 	})
 
 	It("delete a job with all nodes taints", func() {
-
 		jobName := "test-del-job"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)

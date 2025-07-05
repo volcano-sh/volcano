@@ -40,8 +40,7 @@ const (
 	PluginName = "cdp"
 )
 
-type CooldownProtectionPlugin struct {
-}
+type CooldownProtectionPlugin struct{}
 
 // New return CooldownProtectionPlugin
 func New(arguments framework.Arguments) framework.Plugin {

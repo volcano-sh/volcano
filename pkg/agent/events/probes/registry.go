@@ -26,8 +26,10 @@ import (
 	"volcano.sh/volcano/pkg/metriccollect"
 )
 
-var probeFuncs = map[string][]NewEventProbeFunc{}
-var mutex sync.Mutex
+var (
+	probeFuncs = map[string][]NewEventProbeFunc{}
+	mutex      sync.Mutex
+)
 
 type NewEventProbeFunc = func(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, queue workqueue.RateLimitingInterface) framework.Probe
 

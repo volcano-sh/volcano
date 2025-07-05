@@ -87,7 +87,7 @@ func getNodeWorkers() uint32 {
 	if err == nil && threads > 0 && threads <= math.MaxUint32 {
 		return uint32(threads)
 	}
-	return 2 //default 2
+	return 2 // default 2
 }
 
 // newMockSchedulerCache init the mock scheduler cache structure

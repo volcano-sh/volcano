@@ -306,7 +306,7 @@ func (sc *SchedulerCache) allocatedPodInCache(pod *v1.Pod) bool {
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
-	//ignore the update event if pod is allocated in cache but not present in NodeName
+	// ignore the update event if pod is allocated in cache but not present in NodeName
 	if sc.allocatedPodInCache(newPod) && newPod.Spec.NodeName == "" {
 		klog.V(4).Infof("Pod <%s/%v> already in cache with allocated status, ignore the update event", newPod.Namespace, newPod.Name)
 		return nil
@@ -315,7 +315,7 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	if err := sc.deletePod(oldPod); err != nil {
 		return err
 	}
-	//when delete pod, the ownerreference of pod will be set nil,just as orphan pod
+	// when delete pod, the ownerreference of pod will be set nil,just as orphan pod
 	if len(utils.GetController(newPod)) == 0 {
 		newPod.OwnerReferences = oldPod.OwnerReferences
 	}

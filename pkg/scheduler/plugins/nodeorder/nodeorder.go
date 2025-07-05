@@ -18,6 +18,7 @@ package nodeorder
 
 import (
 	"context"
+	"fmt"
 
 	v1 "k8s.io/api/core/v1"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
@@ -160,7 +161,9 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeMap := ssn.NodeMap
 
 	fts := feature.Features{
-		EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
+		// removed in k8s v1.33.1 and replaced with StorageCapacityScoring
+		// EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
+		// EnableStorageCapacityScoring:                 utilFeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring),
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
 		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
 	}
@@ -211,11 +214,26 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	imageLocality := p.(*imagelocality.ImageLocality)
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		var nodeScore = 0.0
+		nodeScore := 0.0
 
 		state := k8sframework.NewCycleState()
+
+		if node == nil || node.Node == nil {
+			klog.Errorf("Critical: nil node encountered during scoring for task %s/%s", task.Namespace, task.Name)
+			return 0, fmt.Errorf("node not available")
+		}
+
+		nodeInfo := &k8sframework.NodeInfo{}
+		nodeInfo.SetNode(node.Node)
+
+		allocatable := nodeInfo.Allocatable
+		if allocatable == nil {
+			klog.Warningf("Allocatable resources nil for node %s", nodeInfo.Node().Name)
+			return 0, fmt.Errorf("node not allocatable")
+		}
+
 		if weight.imageLocalityWeight != 0 {
-			score, status := imageLocality.Score(context.TODO(), state, task.Pod, node.Name)
+			score, status := imageLocality.Score(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Image Locality Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
@@ -228,7 +246,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeResourcesLeastAllocated
 		if weight.leastReqWeight != 0 {
-			score, status := leastAllocated.Score(context.TODO(), state, task.Pod, node.Name)
+			score, status := leastAllocated.Score(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Least Allocated Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
@@ -241,7 +259,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeResourcesMostAllocated
 		if weight.mostReqWeight != 0 {
-			score, status := mostAllocation.Score(context.TODO(), state, task.Pod, node.Name)
+			score, status := mostAllocation.Score(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Most Allocated Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
@@ -254,7 +272,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeResourcesBalancedAllocation
 		if weight.balancedResourceWeight != 0 {
-			score, status := balancedAllocation.Score(context.TODO(), state, task.Pod, node.Name)
+			score, status := balancedAllocation.Score(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Balanced Resource Allocation Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
@@ -267,7 +285,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeAffinity
 		if weight.nodeAffinityWeight != 0 {
-			score, status := nodeAffinity.Score(context.TODO(), state, task.Pod, node.Name)
+			score, status := nodeAffinity.Score(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Calculate Node Affinity Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()

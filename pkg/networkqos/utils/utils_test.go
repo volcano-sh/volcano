@@ -30,7 +30,6 @@ func TestSizeStrConvertToByteSize(t *testing.T) {
 		expectedSize  uint64
 		expectedError bool
 	}{
-
 		{
 			name:          "Kbps",
 			sizeStr:       "10Kbps",

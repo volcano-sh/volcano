@@ -90,7 +90,8 @@ func CreateJob(context *TestContext, jobSpec *JobSpec) *batchv1alpha1.Job {
 }
 
 func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
-	pgName string, annotations map[string]string) *batchv1alpha1.Job {
+	pgName string, annotations map[string]string,
+) *batchv1alpha1.Job {
 	ns := Namespace(ctx, jobSpec)
 
 	job := &batchv1alpha1.Job{
@@ -342,7 +343,6 @@ func logEventsOfPods(ctx *TestContext, pods map[string]*v1.Pod) {
 
 func taskPhaseEx(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase, taskNum map[string]int) error {
 	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
-
 		pods, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).List(context.TODO(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to list pods in namespace %s", job.Namespace)
 
@@ -372,7 +372,6 @@ func taskPhaseEx(ctx *TestContext, job *batchv1alpha1.Job, phase []v1.PodPhase, 
 		return fmt.Errorf("[Wait time out]")
 	}
 	return err
-
 }
 
 func jobUnschedulable(ctx *TestContext, job *batchv1alpha1.Job, now time.Time) error {
@@ -838,7 +837,6 @@ func WaitTasksCompleted(ctx *TestContext, job *batchv1alpha1.Job, successNum int
 
 // Remove the scheduling gates (if any) of the tasks of a job at Pod level
 func RemovePodSchGates(ctx *TestContext, targetJob *batchv1alpha1.Job) error {
-
 	patchData := []byte(`[
 		{
 			"op": "replace",

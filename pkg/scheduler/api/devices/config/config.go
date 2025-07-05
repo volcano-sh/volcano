@@ -47,7 +47,7 @@ const (
 */
 
 type Config struct {
-	//NvidiaConfig is used for vGPU feature for nvidia, gpushare is not using this config
+	// NvidiaConfig is used for vGPU feature for nvidia, gpushare is not using this config
 	NvidiaConfig NvidiaConfig `yaml:"nvidia"`
 }
 

@@ -37,21 +37,25 @@ import (
 )
 
 var _ = ginkgo.Describe("Job E2E Test", func() {
+	// TODO(mahdi): fixme
 	ginkgo.It("allocate work when resource is enough", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			NodesNumLimit: 2,
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
-				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+				corev1.ResourceMemory: resource.MustParse("2048Mi"),
+			},
 		})
 		defer e2eutil.CleanupTestContext(ctx)
 
 		slot1 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("500m"),
-			corev1.ResourceMemory: resource.MustParse("512Mi")}
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		}
 		slot2 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("1000m"),
-			corev1.ResourceMemory: resource.MustParse("1024Mi")}
+			corev1.ResourceMemory: resource.MustParse("1024Mi"),
+		}
 
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
@@ -81,19 +85,23 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			NodesNumLimit: 1,
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
-				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+				corev1.ResourceMemory: resource.MustParse("2048Mi"),
+			},
 		})
 		defer e2eutil.CleanupTestContext(ctx)
 
 		slot1 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("500m"),
-			corev1.ResourceMemory: resource.MustParse("512Mi")}
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		}
 		slot2 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("1000m"),
-			corev1.ResourceMemory: resource.MustParse("1024Mi")}
+			corev1.ResourceMemory: resource.MustParse("1024Mi"),
+		}
 		slot3 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("3000m"),
-			corev1.ResourceMemory: resource.MustParse("3072Mi")}
+			corev1.ResourceMemory: resource.MustParse("3072Mi"),
+		}
 
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
@@ -130,7 +138,8 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			NodesNumLimit: 2,
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
-				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+				corev1.ResourceMemory: resource.MustParse("2048Mi"),
+			},
 		})
 		defer e2eutil.CleanupTestContext(ctx)
 
@@ -151,7 +160,8 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 
 		slot1 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("500m"),
-			corev1.ResourceMemory: resource.MustParse("512Mi")}
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		}
 
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
@@ -180,13 +190,15 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			NodesNumLimit: 1,
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
-				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+				corev1.ResourceMemory: resource.MustParse("2048Mi"),
+			},
 		})
 		defer e2eutil.CleanupTestContext(ctx)
 
 		slot1 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("500m"),
-			corev1.ResourceMemory: resource.MustParse("512Mi")}
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		}
 
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
@@ -241,23 +253,28 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			NodesNumLimit: 2,
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
-				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+				corev1.ResourceMemory: resource.MustParse("2048Mi"),
+			},
 		})
 
 		defer e2eutil.CleanupTestContext(ctx)
 
 		slot1 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("1000m"),
-			corev1.ResourceMemory: resource.MustParse("1024Mi")}
+			corev1.ResourceMemory: resource.MustParse("1024Mi"),
+		}
 		slot2 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("1000m"),
-			corev1.ResourceMemory: resource.MustParse("1024Mi")}
+			corev1.ResourceMemory: resource.MustParse("1024Mi"),
+		}
 		slot3 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("500m"),
-			corev1.ResourceMemory: resource.MustParse("512Mi")}
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		}
 		slot4 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("500m"),
-			corev1.ResourceMemory: resource.MustParse("512Mi")}
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		}
 
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
@@ -306,14 +323,16 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			NodesNumLimit: 4,
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
-				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+				corev1.ResourceMemory: resource.MustParse("2048Mi"),
+			},
 		})
 
 		defer e2eutil.CleanupTestContext(ctx)
 
 		slot1 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("2000m"),
-			corev1.ResourceMemory: resource.MustParse("2048Mi")}
+			corev1.ResourceMemory: resource.MustParse("2048Mi"),
+		}
 
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
@@ -334,7 +353,7 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		err := e2eutil.WaitJobUnschedulable(ctx, queue1Job1)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		//Remove the scheduling gates
+		// Remove the scheduling gates
 		err = e2eutil.RemovePodSchGates(ctx, queue1Job1)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
@@ -348,13 +367,15 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			NodesNumLimit: 4,
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
-				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+				corev1.ResourceMemory: resource.MustParse("2048Mi"),
+			},
 		})
 		defer e2eutil.CleanupTestContext(ctx)
 
 		slot1 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("2000m"),
-			corev1.ResourceMemory: resource.MustParse("2048Mi")}
+			corev1.ResourceMemory: resource.MustParse("2048Mi"),
+		}
 
 		dep := e2eutil.CreateDeploymentGated(ctx, "dep-gated", 4, e2eutil.DefaultNginxImage, slot1, []v1.PodSchedulingGate{{Name: "g1"}})
 
@@ -382,7 +403,7 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		for _, pod := range podList.Items {
 			// a naive way to tell if the pod belongs to the deployment
 			if strings.HasPrefix(pod.Name, dep.Name) {
-				//remove scheduling gates
+				// remove scheduling gates
 				_, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType, patchData, metav1.PatchOptions{})
 				gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			}

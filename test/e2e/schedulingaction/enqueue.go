@@ -23,7 +23,7 @@ import (
 	"github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	//v1 "k8s.io/api/core/v1"
+	// v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	e2eutil "volcano.sh/volcano/test/e2e/util"
@@ -58,16 +58,19 @@ var _ = ginkgo.Describe("Enqueue E2E Test", func() {
 			NodesNumLimit: 2,
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
-				corev1.ResourceMemory: resource.MustParse("2048Mi")},
+				corev1.ResourceMemory: resource.MustParse("2048Mi"),
+			},
 		})
 		defer e2eutil.CleanupTestContext(ctx)
 
 		slot1 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("500m"),
-			corev1.ResourceMemory: resource.MustParse("512Mi")}
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		}
 		slot2 := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("1000m"),
-			corev1.ResourceMemory: resource.MustParse("1024Mi")}
+			corev1.ResourceMemory: resource.MustParse("1024Mi"),
+		}
 
 		job := &e2eutil.JobSpec{
 			Tasks: []e2eutil.TaskSpec{
@@ -93,7 +96,6 @@ var _ = ginkgo.Describe("Enqueue E2E Test", func() {
 	})
 
 	ginkgo.It("Scheduling gated task will not consume inqueue resources", func() {
-
 		ns := "test-namespace"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			Namespace:     ns,
@@ -146,7 +148,5 @@ var _ = ginkgo.Describe("Enqueue E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		err = e2eutil.WaitJobReady(ctx, j2)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
 	})
-
 })

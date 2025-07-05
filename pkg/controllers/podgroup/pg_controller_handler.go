@@ -193,7 +193,7 @@ func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 }
 
 func (pg *pgcontroller) getAnnotationsFromUpperRes(pod *v1.Pod) map[string]string {
-	var annotations = make(map[string]string)
+	annotations := make(map[string]string)
 
 	for _, reference := range pod.OwnerReferences {
 		if reference.Kind != "" && reference.Name != "" {
@@ -281,8 +281,8 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			return err
 		}
 
-		var minMember = int32(1)
-		var ownerAnnotations = make(map[string]string)
+		minMember := int32(1)
+		ownerAnnotations := make(map[string]string)
 		if pg.inheritOwnerAnnotations {
 			ownerAnnotations = pg.getAnnotationsFromUpperRes(pod)
 			minMember = pg.getMinMemberFromUpperRes(ownerAnnotations, pod.Namespace, pod.Name)

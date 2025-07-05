@@ -71,7 +71,8 @@ func GetPolicy(node *api.NodeInfo, numaNodes []int) Policy {
 // AccumulateProvidersHints return all TopologyHint collection from different providers
 func AccumulateProvidersHints(container *v1.Container,
 	topoInfo *api.NumatopoInfo, resNumaSets api.ResNumaSets,
-	hintProviders []HintProvider) (providersHints []map[string][]TopologyHint) {
+	hintProviders []HintProvider,
+) (providersHints []map[string][]TopologyHint) {
 	for _, provider := range hintProviders {
 		hints := provider.GetTopologyHints(container, topoInfo, resNumaSets)
 		providersHints = append(providersHints, hints)
@@ -82,7 +83,8 @@ func AccumulateProvidersHints(container *v1.Container,
 
 // Allocate return all resource assignment collection from different providers
 func Allocate(container *v1.Container, bestHit *TopologyHint,
-	topoInfo *api.NumatopoInfo, resNumaSets api.ResNumaSets, hintProviders []HintProvider) map[string]cpuset.CPUSet {
+	topoInfo *api.NumatopoInfo, resNumaSets api.ResNumaSets, hintProviders []HintProvider,
+) map[string]cpuset.CPUSet {
 	allResAlloc := make(map[string]cpuset.CPUSet)
 	for _, provider := range hintProviders {
 		resAlloc := provider.Allocate(container, bestHit, topoInfo, resNumaSets)
