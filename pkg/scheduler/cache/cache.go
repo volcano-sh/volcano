@@ -761,22 +761,24 @@ func (sc *SchedulerCache) addEventHandler() {
 	})
 
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
-		ctx := context.TODO()
-		logger := klog.FromContext(ctx)
-		resourceClaimInformer := informerFactory.Resource().V1beta1().ResourceClaims().Informer()
-		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
-		opts := tracker.Options{
-			EnableDeviceTaints: false,
-			SliceInformer:      informerFactory.Resource().V1beta1().ResourceSlices(),
-			TaintInformer:      informerFactory.Resource().V1alpha3().DeviceTaintRules(),
-			ClassInformer:      informerFactory.Resource().V1beta1().DeviceClasses(),
-			KubeClient:         sc.kubeClient,
-		}
-		claimTracker, err := tracker.StartTracker(ctx, opts)
-		if err != nil {
-			klog.V(3).Infof("Failed to start DRA tracker: %v", err)
-		}
-		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, claimTracker, informerFactory)
+		go func() {
+			ctx := context.TODO()
+			logger := klog.FromContext(ctx)
+			resourceClaimInformer := informerFactory.Resource().V1beta1().ResourceClaims().Informer()
+			resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+			opts := tracker.Options{
+				EnableDeviceTaints: false,
+				SliceInformer:      informerFactory.Resource().V1beta1().ResourceSlices(),
+				TaintInformer:      informerFactory.Resource().V1alpha3().DeviceTaintRules(),
+				ClassInformer:      informerFactory.Resource().V1beta1().DeviceClasses(),
+				KubeClient:         sc.kubeClient,
+			}
+			claimTracker, err := tracker.StartTracker(ctx, opts)
+			if err != nil {
+				klog.V(3).Infof("Failed to start DRA tracker: %v", err)
+			}
+			sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, claimTracker, informerFactory)
+		}()
 	}
 }
 
