@@ -17,8 +17,6 @@ limitations under the License.
 package predicates
 
 import (
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/kubernetes/pkg/features"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -44,19 +42,19 @@ func defaultVolumeBindingArgs() *wrapVolumeBindingArgs {
 		},
 	}
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority) {
-		// default shape setting if VolumeCapacityPriority is enabled
-		args.Shape = []kubeschedulerconfig.UtilizationShapePoint{
-			{
-				Utilization: 0,
-				Score:       0,
-			},
-			{
-				Utilization: 100,
-				Score:       int32(kubeschedulerconfig.MaxCustomPriorityScore),
-			},
-		}
-	}
+	//if utilfeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority) {
+	//	// default shape setting if VolumeCapacityPriority is enabled
+	//	args.Shape = []kubeschedulerconfig.UtilizationShapePoint{
+	//		{
+	//			Utilization: 0,
+	//			Score:       0,
+	//		},
+	//		{
+	//			Utilization: 100,
+	//			Score:       int32(kubeschedulerconfig.MaxCustomPriorityScore),
+	//		},
+	//	}
+	//}
 
 	return args
 }
@@ -91,10 +89,10 @@ func setUpVolumeBindingArgs(vbArgs *wrapVolumeBindingArgs, rawArgs framework.Arg
 		vbArgs.BindTimeoutSeconds = timeout
 	}
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority) {
-		shape, _ := framework.Get[[]kubeschedulerconfig.UtilizationShapePoint](rawArgs, volumeBindingShapeKey)
-		if len(shape) != 0 {
-			vbArgs.Shape = shape
-		}
-	}
+	//if utilfeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority) {
+	//	shape, _ := framework.Get[[]kubeschedulerconfig.UtilizationShapePoint](rawArgs, volumeBindingShapeKey)
+	//	if len(shape) != 0 {
+	//		vbArgs.Shape = shape
+	//	}
+	//}
 }

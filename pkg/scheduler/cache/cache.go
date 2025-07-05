@@ -47,6 +47,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
+	tracker "k8s.io/dynamic-resource-allocation/resourceslice/tracker"
 	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
@@ -350,7 +351,7 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 
 // UpdateQueueStatus will update the status of queue
 func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
-	var newQueue = &vcv1beta1.Queue{}
+	newQueue := &vcv1beta1.Queue{}
 	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
 		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
 		return err
@@ -764,7 +765,18 @@ func (sc *SchedulerCache) addEventHandler() {
 		logger := klog.FromContext(ctx)
 		resourceClaimInformer := informerFactory.Resource().V1beta1().ResourceClaims().Informer()
 		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
-		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, informerFactory)
+		opts := tracker.Options{
+			EnableDeviceTaints: false,
+			SliceInformer:      informerFactory.Resource().V1beta1().ResourceSlices(),
+			TaintInformer:      informerFactory.Resource().V1alpha3().DeviceTaintRules(),
+			ClassInformer:      informerFactory.Resource().V1beta1().DeviceClasses(),
+			KubeClient:         sc.kubeClient,
+		}
+		claimTracker, err := tracker.StartTracker(ctx, opts)
+		if err != nil {
+			klog.V(3).Infof("Failed to start DRA tracker: %v", err)
+		}
+		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, claimTracker, informerFactory)
 	}
 }
 
@@ -829,7 +841,6 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	defer sc.Mutex.Unlock()
 
 	job, task, err := sc.findJobAndTask(taskInfo)
-
 	if err != nil {
 		return err
 	}
