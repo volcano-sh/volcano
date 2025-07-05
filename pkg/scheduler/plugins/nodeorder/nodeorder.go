@@ -18,6 +18,7 @@ package nodeorder
 
 import (
 	"context"
+	"fmt"
 
 	v1 "k8s.io/api/core/v1"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
@@ -214,6 +215,11 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		nodeScore := 0.0
+
+		if node == nil || node.Node == nil {
+			klog.Errorf("Critical: nil node encountered during scoring for task %s/%s", task.Namespace, task.Name)
+			return 0, fmt.Errorf("node not available")
+		}
 
 		state := k8sframework.NewCycleState()
 		nodeInfo := &k8sframework.NodeInfo{}
