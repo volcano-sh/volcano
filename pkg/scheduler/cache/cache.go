@@ -794,6 +794,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
 	sc.WaitForCacheSync(stopCh)
+	sc.ReservationCache.Run(stopCh)
 	for i := 0; i < int(sc.nodeWorkers); i++ {
 		go wait.Until(sc.runNodeWorker, 0, stopCh)
 	}
@@ -1374,9 +1375,7 @@ func (sc *SchedulerCache) processReservationTask(taskInfo *schedulingapi.TaskInf
 	}
 
 	// Sync to reservation cache
-	if err := sc.ReservationCache.SyncTaskStatus(task, job); err != nil {
-		return err
-	}
+	sc.ReservationCache.SyncReservation(task, job)
 	return nil
 }
 
@@ -1407,9 +1406,7 @@ func (sc *SchedulerCache) syncBindToReservationTask(taskInfo *schedulingapi.Task
 		return err
 	}
 
-	if err := sc.ReservationCache.SyncTaskStatus(reservationTask, reservationJob); err != nil {
-		return err
-	}
+	sc.ReservationCache.SyncReservation(reservationTask, reservationJob)
 	return nil
 }
 

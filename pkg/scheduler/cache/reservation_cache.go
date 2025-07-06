@@ -26,6 +26,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
@@ -37,18 +39,30 @@ import (
 
 type ReservationCache struct {
 	sync.RWMutex
-	vcClient     vcclientset.Interface
-	reservations map[types.UID]*schedulerapi.ReservationInfo
-	nameToUID    map[string]types.UID
+	vcClient             vcclientset.Interface
+	reservations         map[types.UID]*schedulerapi.ReservationInfo
+	nameToUID            map[string]types.UID
+	reservationSyncQueue workqueue.TypedRateLimitingInterface[*ReservationSyncRequest]
+}
+
+type ReservationSyncRequest struct {
+	Reservation *schedulerapi.ReservationInfo
+	Job         *schedulerapi.JobInfo
 }
 
 func newReservationCache(vcClient vcclientset.Interface) *ReservationCache {
 	return &ReservationCache{
-		RWMutex:      sync.RWMutex{},
-		vcClient:     vcClient,
-		reservations: make(map[types.UID]*schedulerapi.ReservationInfo),
-		nameToUID:    make(map[string]types.UID),
+		RWMutex:              sync.RWMutex{},
+		vcClient:             vcClient,
+		reservations:         make(map[types.UID]*schedulerapi.ReservationInfo),
+		nameToUID:            make(map[string]types.UID),
+		reservationSyncQueue: workqueue.NewTypedRateLimitingQueue[*ReservationSyncRequest](workqueue.DefaultTypedControllerRateLimiter[*ReservationSyncRequest]()),
 	}
+}
+
+// Run  starts the reservation cache
+func (rc *ReservationCache) Run(stopCh <-chan struct{}) {
+	go wait.Until(rc.processSyncReservation, 0, stopCh)
 }
 
 func (rc *ReservationCache) AddReservation(reservation *schedulerapi.ReservationInfo) {
@@ -98,25 +112,40 @@ func (rc *ReservationCache) GetReservationByName(name string) (*schedulerapi.Res
 	return res, ok
 }
 
-func (rc *ReservationCache) SyncTaskStatus(task *schedulerapi.TaskInfo, job *schedulerapi.JobInfo) error {
+func (rc *ReservationCache) SyncReservation(task *schedulerapi.TaskInfo, job *schedulerapi.JobInfo) {
 	rc.Lock()
 	defer rc.Unlock()
 
 	reservation, ok := rc.getReservationByTask(task)
 	if !ok {
-		return fmt.Errorf("cannot find reservation from task <%s/%s>", task.Namespace, task.Name)
+		klog.Warningf("cannot find reservation from task <%s/%s>, skip sync", task.Namespace, task.Name)
+		return
 	}
 
-	// re-calculate task status and update reservation status
-	if err := rc.syncReservation(reservation, job); err != nil {
-		klog.Errorf("Failed to update status of Reservation %v: %v",
-			reservation.Reservation.UID, err)
-		return err
-	}
-	return nil
+	rc.reservationSyncQueue.Add(&ReservationSyncRequest{
+		Reservation: reservation,
+		Job:         job,
+	})
+	klog.V(4).Infof("Enqueued reservation <%s> for sync", reservation.Reservation.Name)
 }
 
-// todo: Async use Queue
+func (rc *ReservationCache) processSyncReservation() {
+	request, shutdown := rc.reservationSyncQueue.Get()
+	if shutdown {
+		return
+	}
+	defer rc.reservationSyncQueue.Done(request)
+
+	reservation := request.Reservation
+	job := request.Job
+	if err := rc.syncReservation(reservation, job); err != nil {
+		klog.Errorf("Failed to update status of Reservation %v: %v", reservation.Reservation.UID, err)
+		rc.reservationSyncQueue.AddRateLimited(request)
+	} else {
+		rc.reservationSyncQueue.Forget(request)
+	}
+}
+
 func (rc *ReservationCache) syncReservation(reservation *schedulerapi.ReservationInfo, job *schedulerapi.JobInfo) error {
 	rsveV1beta1, err := rc.vcClient.SchedulingV1beta1().Reservations(reservation.Reservation.Namespace).Get(context.TODO(), reservation.Reservation.Name, metav1.GetOptions{})
 	if err != nil {
