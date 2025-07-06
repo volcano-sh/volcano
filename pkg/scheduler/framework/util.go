@@ -262,3 +262,22 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 	}
 	return nodes, nil
 }
+
+func isNodeUnschedulable(node *v1.Node) bool {
+	if node == nil {
+		return true
+	}
+	return node.Spec.Unschedulable
+}
+
+func isNodeNotReady(node *v1.Node) bool {
+	if node == nil {
+		return true
+	}
+	for _, cond := range node.Status.Conditions {
+		if cond.Type == v1.NodeReady {
+			return cond.Status != v1.ConditionTrue
+		}
+	}
+	return true
+}
