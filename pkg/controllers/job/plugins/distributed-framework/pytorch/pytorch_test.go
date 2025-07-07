@@ -182,6 +182,11 @@ func TestPytorch(t *testing.T) {
 							Replicas: 2,
 							Template: v1.PodTemplateSpec{},
 						},
+						{
+							Name:     "extra",
+							Replicas: 2,
+							Template: v1.PodTemplateSpec{},
+						},
 					},
 				},
 			},
@@ -242,6 +247,11 @@ func TestPytorch(t *testing.T) {
 							Replicas: 2,
 							Template: v1.PodTemplateSpec{},
 						},
+						{
+							Name:     "extra",
+							Replicas: 2,
+							Template: v1.PodTemplateSpec{},
+						},
 					},
 				},
 			},
@@ -299,6 +309,11 @@ func TestPytorch(t *testing.T) {
 						},
 						{
 							Name:     "worker",
+							Replicas: 2,
+							Template: v1.PodTemplateSpec{},
+						},
+						{
+							Name:     "extra",
 							Replicas: 2,
 							Template: v1.PodTemplateSpec{},
 						},
