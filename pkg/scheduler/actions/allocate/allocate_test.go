@@ -1738,8 +1738,8 @@ func TestAllocateWithPVC(t *testing.T) {
 			PVs:                []*v1.PersistentVolume{pv1, pv2},
 			PVCs:               []*v1.PersistentVolumeClaim{pvc1, pvc2},
 			IgnoreProvisioners: ignoreProvisioners,
-			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
-				"c1/pg1": scheduling.PodGroupRunning,
+			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
+				"c1/pg1": {api.Binding: 2},
 			},
 		},
 	}
@@ -1829,8 +1829,8 @@ func TestAllocateWithDRA(t *testing.T) {
 			Nodes: []*v1.Node{
 				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
 			},
-			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
-				"c1/pg1": scheduling.PodGroupRunning,
+			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
+				"c1/pg1": {api.Binding: 1},
 			},
 			ExpectBindMap: map[string]string{
 				"c1/p1": "n1",
