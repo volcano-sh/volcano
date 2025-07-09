@@ -1159,6 +1159,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -1869,6 +1871,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -2593,6 +2597,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -4695,6 +4701,9 @@ rules:
   - apiGroups: ["resource.k8s.io"]
     resources: ["deviceclasses","resourceslices"]
     verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [ "resource.k8s.io" ]
+    resources: [ "devicetaintrules" ]
+    verbs: [ "get", "list", "watch" ]
 ---
 # Source: volcano/templates/scheduler.yaml
 kind: ClusterRoleBinding
@@ -6619,6 +6628,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -7329,6 +7340,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
@@ -8053,6 +8066,8 @@ spec:
                                             - port
                                             type: object
                                         type: object
+                                      stopSignal:
+                                        type: string
                                     type: object
                                   livenessProbe:
                                     properties:
