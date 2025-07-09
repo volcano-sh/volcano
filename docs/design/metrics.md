@@ -32,8 +32,10 @@ This metrics describe internal state of volcano.
 | `schedule_attempts_total`              | Counter         | `result`=&lt;result&gt;                                           | The number of attempts to schedule pods       |
 | `pod_preemption_victims`               | Gauge           | None                                                              | The number of selected preemption victims     |
 | `total_preemption_attempts`            | Counter         | None                                                              | Total preemption attempts in the cluster      |
+| `preemption_events_total`              | Counter         | `preemptor_namespace`, `preemptor_name`, `victim_namespace`, `victim_name`, `node_name`, `queue` | Total number of preemption events, labeled by preemptor pod, victim pod, node, and queue |
 | `unschedule_task_count`                | Gauge           | `job_id`=&lt;job_id&gt;                                           | The number of tasks failed to schedule        |
 | `unschedule_job_counts`                | Gauge           | None                                                              | The number of jobs could not be scheduled     |
+| `reclaim_events_total`                 | Counter         | `reclaimer_namespace`, `reclaimer_name`, `victim_namespace`, `victim_name`, `node_name`, `reclaimer_queue`, `victim_queue` | Total number of reclaim events, labeled by reclaimer pod, victim pod, node, and queues |
 | `queue_allocated_milli_cpu`            | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Allocated CPU count for one queue             |
 | `queue_allocated_memory_bytes`         | Gauge           | `queue_name`=&lt;queue_name&gt;                                   | Allocated memory for one queue                |
 | `queue_allocated_scalar_resources`     | Gauge           | `queue_name`=&lt;queue_name&gt;, `resource`=&lt;resource_name&gt; | Allocated scalar resource for one queue       |

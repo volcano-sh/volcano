@@ -22,6 +22,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -196,6 +197,18 @@ func (ra *Action) Execute(ssn *framework.Session) {
 					klog.Errorf("Failed to reclaim Task <%s/%s> for Tasks <%s/%s>: %v",
 						reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name, err)
 					continue
+				}
+				// Record the fine-grained reclaim event
+				if victimJob, ok := ssn.Jobs[reclaimee.Job]; ok {
+					if victimQ, found := ssn.Queues[victimJob.Queue]; found {
+						metrics.RecordReclaimEvent(
+							task,
+							reclaimee,
+							n.Name,
+							queue.Name,
+							victimQ.Name,
+						)
+					}
 				}
 				reclaimed.Add(reclaimee.Resreq)
 				// If reclaimed enough resources, break loop to avoid Sub panic.

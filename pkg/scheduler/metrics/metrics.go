@@ -21,6 +21,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto" // auto-registry collectors in default registry
+	
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 const (
@@ -131,6 +133,26 @@ var (
 		},
 	)
 
+	// Preemption events: one for each successful eviction, labeled by preemptor pod, victim pod, node, and queue
+	preemptionEvents = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "preemption_events_total",
+			Help:      "Total number of preemption events, labeled by preemptor pod, victim pod, node, and queue",
+		},
+		[]string{"preemptor_namespace", "preemptor_name", "victim_namespace", "victim_name", "node_name", "queue"},
+	)
+
+	// Reclaim events: one for each successful eviction, labeled by reclaimer pod, victim pod, node, and queues
+	reclaimEvents = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "reclaim_events_total",
+			Help:      "Total number of reclaim events, labeled by reclaimer pod, victim pod, node, and queues",
+		},
+		[]string{"reclaimer_namespace", "reclaimer_name", "victim_namespace", "victim_name", "node_name", "reclaimer_queue", "victim_queue"},
+	)
+
 	unscheduleTaskCount = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -207,6 +229,31 @@ func UpdateUnscheduleTaskCount(jobID string, taskCount int) {
 // UpdateUnscheduleJobCount records total number of unscheduleable jobs
 func UpdateUnscheduleJobCount(jobCount int) {
 	unscheduleJobCount.Set(float64(jobCount))
+}
+
+// RecordPreemptionEvent records a successful preemption eviction.
+func RecordPreemptionEvent(preemptor, victim *api.TaskInfo, nodeName, queueName string) {
+	preemptionEvents.WithLabelValues(
+		preemptor.Pod.Namespace,
+		preemptor.Pod.Name,
+		victim.Pod.Namespace,
+		victim.Pod.Name,
+		nodeName,
+		queueName,
+	).Inc()
+}
+
+// RecordReclaimEvent records a successful reclaim eviction.
+func RecordReclaimEvent(reclaimer, victim *api.TaskInfo, nodeName, reclaimerQueue, victimQueue string) {
+	reclaimEvents.WithLabelValues(
+		reclaimer.Pod.Namespace,
+		reclaimer.Pod.Name,
+		victim.Pod.Namespace,
+		victim.Pod.Name,
+		nodeName,
+		reclaimerQueue,
+		victimQueue,
+	).Inc()
 }
 
 // DurationInMicroseconds gets the time in microseconds.
