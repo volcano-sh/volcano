@@ -289,41 +289,53 @@ func (pmpt *Action) preempt(
 		return pmpt.topologyAwarePreempt(ssn, stmt, preemptor, filter, predicateNodes)
 	}
 
-	return pmpt.normalPreempt(ssn, stmt, preemptor, filter, predicateNodes)
+	targetNodes := predicateNodes
+	needPredicateCheck := false
+	if len(predicateNodes) == 0 {
+		klog.Infof("No predicateNodes, using all nodes for preemption. Task <%s/%s>",
+			preemptor.Namespace, preemptor.Name)
+		targetNodes = allNodes
+		needPredicateCheck = true
+	}
+
+	return pmpt.executePreemption(
+		ssn,
+		stmt,
+		preemptor,
+		filter,
+		targetNodes,
+		needPredicateCheck,
+	)
 }
 
-func (pmpt *Action) normalPreempt(
+func (pmpt *Action) executePreemption(
 	ssn *framework.Session,
 	stmt *framework.Statement,
 	preemptor *api.TaskInfo,
 	filter func(*api.TaskInfo) bool,
-	predicateNodes []*api.NodeInfo,
+	targetNodes []*api.NodeInfo,
+	needPredicateCheck bool,
 ) (bool, error) {
-	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
-
-	selectedNodes := util.SortNodes(nodeScores)
-
 	job, found := ssn.Jobs[preemptor.Job]
 	if !found {
 		return false, fmt.Errorf("not found Job %s in Session", preemptor.Job)
 	}
-
 	currentQueue := ssn.Queues[job.Queue]
 
-	assigned := false
+	// Prioritize nodes if we have predicate results
+	if !needPredicateCheck {
+		nodeScores := util.PrioritizeNodes(preemptor, targetNodes,
+			ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+		targetNodes = util.SortNodes(nodeScores)
+	}
 
-	for _, node := range selectedNodes {
-		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
+	for _, node := range targetNodes {
+		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>",
 			preemptor.Namespace, preemptor.Name, node.Name)
 
-		var preemptees []*api.TaskInfo
-		for _, task := range node.Tasks {
-			if filter == nil {
-				preemptees = append(preemptees, task.Clone())
-			} else if filter(task) {
-				preemptees = append(preemptees, task.Clone())
-			}
-		}
+		// Identify potential victim tasks on this node
+		preemptees := pmpt.collectPreemptees(node, filter)
+		stmtNode := framework.NewStatement(ssn)
 		victims := ssn.Preemptable(preemptor, preemptees)
 		metrics.UpdatePreemptionVictimsCount(len(victims))
 
@@ -332,63 +344,107 @@ func (pmpt *Action) normalPreempt(
 			continue
 		}
 
-		victimsQueue := ssn.BuildVictimsPriorityQueue(victims, preemptor)
-		// Preempt victims for tasks, pick lowest priority task first.
-		preempted := api.EmptyResource()
+		// Execute victim eviction process
+		evictionOccurred := pmpt.executeVictimEviction(
+			ssn,
+			stmtNode,
+			ssn.BuildVictimsPriorityQueue(victims, preemptor),
+			preemptor,
+			node,
+			currentQueue,
+		)
 
-		for !victimsQueue.Empty() {
-			// If reclaimed enough resources, break loop to avoid Sub panic.
-			// Preempt action is about preempt in same queue, which job is not allocatable in allocate action, due to:
-			// 1. cluster has free resource, but queue not allocatable
-			// 2. cluster has no free resource, but queue not allocatable
-			// 3. cluster has no free resource, but queue allocatable
-			// for case 1 and 2, high priority job/task can preempt low priority job/task in same queue;
-			// for case 3, it need to do reclaim resource from other queue, in reclaim action;
-			// so if current queue is not allocatable(the queue will be overused when consider current preemptor's requests)
-			// or current idle resource is not enough for preemptor, it need to continue preempting
-			// otherwise, break out
-			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
-				break
-			}
-			preemptee := victimsQueue.Pop().(*api.TaskInfo)
-			klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
-				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
-			if err := stmt.Evict(preemptee, "preempt"); err != nil {
-				klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
-					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
+		// Check resource and queue conditions
+		conditionMet := ssn.Allocatable(currentQueue, preemptor) &&
+			preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero)
+
+		// Special handling for nodes requiring predicate check
+		if needPredicateCheck && conditionMet {
+			if err := ssn.PredicateForPreemptAction(preemptor, node); err != nil {
+				klog.V(3).Infof("Predicate failed: %v, node idle: %s", err, node.FutureIdle())
+				stmtNode.Discard()
 				continue
 			}
-			preempted.Add(preemptee.Resreq)
+			klog.V(3).Infof("Predicate success on node <%s>", node.Name)
 		}
 
-		evictionOccurred := false
-		if !preempted.IsEmpty() {
-			evictionOccurred = true
-		}
-
-		metrics.RegisterPreemptionAttempts()
-		klog.V(3).Infof("Preempted <%v> for Task <%s/%s> requested <%v>.",
-			preempted, preemptor.Namespace, preemptor.Name, preemptor.InitResreq)
-
-		// If preemptor's queue is not allocatable, it means preemptor cannot be allocated. So no need care about the node idle resource
-		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
-			if err := stmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
-				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
-					preemptor.Namespace, preemptor.Name, node.Name)
-				if rollbackErr := stmt.UnPipeline(preemptor); rollbackErr != nil {
-					klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
-						preemptor.UID, node.Name, ssn.UID, rollbackErr)
-				}
+		// Finalize assignment if conditions are met
+		if conditionMet {
+			if pmpt.finalizeAssignment(stmtNode, preemptor, node, evictionOccurred) {
+				stmt.Merge(stmtNode)
 			}
-
-			// Ignore pipeline error, will be corrected in next scheduling loop.
-			assigned = true
-
-			break
+			return true, nil
+		} else {
+			stmtNode.Discard()
+			klog.Errorf("Discarded stmt on node <%s>", node.Name)
 		}
 	}
+	return false, nil
+}
 
-	return assigned, nil
+// collectPreemptees identifies potential victim tasks on a node
+func (pmpt *Action) collectPreemptees(
+	node *api.NodeInfo,
+	filter func(*api.TaskInfo) bool,
+) []*api.TaskInfo {
+	var preemptees []*api.TaskInfo
+	for _, task := range node.Tasks {
+		if filter == nil || filter(task) {
+			preemptees = append(preemptees, task.Clone())
+		}
+	}
+	return preemptees
+}
+
+// executeVictimEviction handles the actual eviction of victim tasks
+func (pmpt *Action) executeVictimEviction(
+	ssn *framework.Session,
+	stmtNode *framework.Statement,
+	victimsQueue *util.PriorityQueue,
+	preemptor *api.TaskInfo,
+	node *api.NodeInfo,
+	currentQueue *api.QueueInfo,
+) bool {
+	preempted := api.EmptyResource()
+	for !victimsQueue.Empty() {
+		if ssn.Allocatable(currentQueue, preemptor) &&
+			preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+			break
+		}
+
+		preemptee := victimsQueue.Pop().(*api.TaskInfo)
+		klog.V(3).Infof("Preempting Task <%s/%s> for <%s/%s>",
+			preemptee.Namespace, preemptee.Name,
+			preemptor.Namespace, preemptor.Name)
+
+		if err := stmtNode.Evict(preemptee, "preempt"); err != nil {
+			klog.Errorf("Preemption failed: %v", err)
+			continue
+		}
+		preempted.Add(preemptee.Resreq)
+	}
+
+	metrics.RegisterPreemptionAttempts()
+	klog.V(3).Infof("Preempted resources: %v for Task <%s/%s>",
+		preempted, preemptor.Namespace, preemptor.Name)
+
+	return !preempted.IsEmpty()
+}
+
+func (pmpt *Action) finalizeAssignment(
+	stmtNode *framework.Statement,
+	preemptor *api.TaskInfo,
+	node *api.NodeInfo,
+	evictionOccurred bool,
+) bool {
+	if err := stmtNode.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
+		klog.Errorf("Pipeline failed: %v", err)
+		if rollbackErr := stmtNode.UnPipeline(preemptor); rollbackErr != nil {
+			klog.Errorf("Unpipeline failed: %v", rollbackErr)
+		}
+		return false
+	}
+	return true
 }
 
 func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {
