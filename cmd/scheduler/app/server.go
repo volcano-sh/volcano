@@ -28,6 +28,7 @@ import (
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/signals"
 	commonutil "volcano.sh/volcano/pkg/util"
 
@@ -70,6 +71,7 @@ func Run(opt *options.ServerOption) error {
 	}
 
 	if opt.EnableMetrics || opt.EnablePprof {
+		metrics.InitKubeSchedulerRelatedMetrics()
 		go startMetricsServer(opt)
 	}
 
