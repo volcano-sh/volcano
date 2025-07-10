@@ -28,17 +28,23 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 const (
 	// PluginName indicates name of volcano scheduler plugin.
-	PluginName                             = "resource-strategy-fit"
+	PluginName = "resource-strategy-fit"
+	// DefaultResourceStrategyFitPluginWeight is the default weight of resourceStrategyFit plugin
 	DefaultResourceStrategyFitPluginWeight = 10
+	// SraWeight is the key for providing sra weight in YAML
+	SraWeight = "sra.weight"
+	// resourceFmt is the format for resource key
+	resourceFmt = "%s[%d]"
 )
 
 type ResourceStrategyFit struct {
-	ResourceStrategyFitWeight int                               `json:"resourceStrategyFitWeight"`
-	Resources                 map[v1.ResourceName]ResourcesType `json:"resources"`
+	Weight    int                               `json:"resourceStrategyFitWeight"`
+	Resources map[v1.ResourceName]ResourcesType `json:"resources"`
 }
 
 type ResourcesType struct {
@@ -55,41 +61,72 @@ func (w *ResourceStrategyFit) String() string {
 	return string(marshal)
 }
 
+type sraConfig struct {
+	Enable         bool           `json:"enable"`
+	Resources      string         `json:"resources"`
+	Weight         int            `json:"weight"`
+	ResourceWeight map[string]int `json:"resourceWeight"`
+}
+
+type proportionalConfig struct {
+	Enable             bool               `json:"enable"`
+	Resources          string             `json:"resources"`
+	ResourceProportion map[string]float64 `json:"resourceProportion"`
+}
+
 type resourceStrategyFitPlugin struct {
 	// Arguments given for the plugin
-	weight ResourceStrategyFit
+	ResourceStrategyFit ResourceStrategyFit
+	Sra                 sraWeight
+	Proportional        map[v1.ResourceName]baseResource
 }
 
 // New function returns prioritizePlugin object
 func New(arguments framework.Arguments) framework.Plugin {
 	weight := calculateWeight(arguments)
-	return &resourceStrategyFitPlugin{weight: weight}
+	rsf := resourceStrategyFitPlugin{ResourceStrategyFit: weight}
+	applySraPolicy(&rsf, arguments)
+	applyProportionalPolicy(&rsf, arguments)
+
+	return &rsf
 }
 
 func calculateWeight(args framework.Arguments) ResourceStrategyFit {
 	/*
-	   actions: "enqueue, allocate, backfill, reclaim, preempt"
-	   tiers:
-	   - plugins:
-	     - name: resource-strategy-fit
-	        arguments:
-	          resourceStrategyFitWeight: 10
-	          resources:
-	            nvidia.com/gpu:
-	              type: MostAllocated
-	              weight: 2
-	            cpu:
-	              type: LeastAllocated
-	              weight: 1
+		actions: "enqueue, allocate, backfill, reclaim, preempt"
+		tiers:
+		- plugins:
+		  - name: resource-strategy-fit
+		    arguments:
+		       resourceStrategyFitWeight: 10
+		       resources:
+		         nvidia.com/gpu:
+		           type: MostAllocated
+		           weight: 2
+		         cpu:
+		           type: LeastAllocated
+		           weight: 1
+		       sra:
+		         enable: true
+		         resources: nvidia.com/gpu
+		         weight: 10
+		         resourceWeight:
+		           nvidia.com/gpu: 1
+		       proportional:
+		         enable: false
+		         resources: nvidia.com/gpu
+		         resourceProportion:
+		           nvidia.com/gpu.cpu: 4
+		           nvidia.com/gpu.memory: 8
 	*/
 
 	var weight ResourceStrategyFit
 
 	resourceStrategyFitPluginWeight, b := framework.Get[int](args, "resourceStrategyFitWeight")
-	if !b || resourceStrategyFitPluginWeight <= 0 {
+	if !b || resourceStrategyFitPluginWeight < 0 {
 		resourceStrategyFitPluginWeight = DefaultResourceStrategyFitPluginWeight
 	}
-	weight.ResourceStrategyFitWeight = resourceStrategyFitPluginWeight
+	weight.Weight = resourceStrategyFitPluginWeight
 
 	resources, b := framework.Get[map[v1.ResourceName]ResourcesType](args, "resources")
 	if !b || len(resources) == 0 {
@@ -129,6 +166,30 @@ func calculateWeight(args framework.Arguments) ResourceStrategyFit {
 	return weight
 }
 
+func applyProportionalPolicy(rsf *resourceStrategyFitPlugin, args framework.Arguments) {
+	cfg, _ := framework.Get[proportionalConfig](args, "proportional")
+	if !cfg.Enable {
+		return
+	}
+
+	klog.V(4).Infof("proportional resources: %v is provided", cfg.Resources)
+	// Obtain proportional resource key name
+	resources := strings.Split(cfg.Resources, ",")
+	rsf.Proportional = calculateProportionalResources(resources, cfg)
+}
+
+func applySraPolicy(rsf *resourceStrategyFitPlugin, args framework.Arguments) {
+	cfg, _ := framework.Get[sraConfig](args, "sra")
+	if !cfg.Enable {
+		return
+	}
+
+	klog.V(4).Infof("sra resources: %v is provided", cfg.Resources)
+	// Obtain sra resource key name
+	resources := strings.Split(cfg.Resources, ",")
+	rsf.Sra = calculateSraWeight(resources, cfg)
+}
+
 func (rsf *resourceStrategyFitPlugin) Name() string {
 	return PluginName
 }
@@ -136,17 +197,75 @@ func (rsf *resourceStrategyFitPlugin) Name() string {
 func (rsf *resourceStrategyFitPlugin) OnSessionOpen(ssn *framework.Session) {
 	klog.V(5).Infof("Enter resourceStrategyFit plugin ...")
 	defer func() {
-		klog.V(5).Infof("Leaving resourceStrategyFit plugin. %s ...", rsf.weight.String())
+		klog.V(5).Infof("Leaving resourceStrategyFit plugin. %s ...", rsf.ResourceStrategyFit.String())
 	}()
+
+	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
+		predicateStatus := make([]*api.Status, 0)
+
+		// Check ProportionalPredicate
+		proportionalStatus, _ := checkNodeResourceIsProportional(task, node, rsf.Proportional)
+		if proportionalStatus.Code != api.Success {
+			predicateStatus = append(predicateStatus, proportionalStatus)
+			if util.ShouldAbort(proportionalStatus) {
+				return api.NewFitErrWithStatus(task, node, predicateStatus...)
+			}
+		}
+		klog.V(5).Infof("proportional policy filter for task <%s/%s> on node <%s> pass.",
+			task.Namespace, task.Name, node.Name)
+		return nil
+	}
+
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		score := Score(task, node, rsf.weight)
-		klog.V(4).Infof("resourceStrategyFit score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, score)
+		score := 0.0
+
+		if rsf.ResourceStrategyFit.Weight > 0 {
+			score += Score(task, node, rsf.ResourceStrategyFit)
+			klog.V(4).Infof("resourceStrategyFit policy score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, score)
+		}
+
+		if rsf.Sra.Weight > 0 {
+			klog.V(5).Infof("sra weight is %d", rsf.Sra.Weight)
+			if klog.V(4).Enabled() {
+				var notFoundResource []string
+				for resource := range rsf.Sra.Resources {
+					found := false
+					for _, nodeInfo := range ssn.Nodes {
+						if nodeInfo.Capacity.Get(resource) > 0 {
+							found = true
+							break
+						}
+					}
+					if !found {
+						notFoundResource = append(notFoundResource, string(resource))
+					}
+				}
+
+				if len(notFoundResource) > 0 {
+					klog.V(4).Infof("resources [%s] record in sra.resources but not found on any node",
+						strings.Join(notFoundResource, ", "))
+				}
+			}
+
+			rs := sraScore(task, node, rsf.Sra)
+			klog.V(4).Infof("sra score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, rs)
+			score += rs
+		}
+
+		klog.V(4).Infof("resource-strategy-fit plugin total score (sra + resourceStrategyFit) for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, score)
 		return score, nil
 	}
-	if rsf.weight.ResourceStrategyFitWeight != 0 {
-		ssn.AddNodeOrderFn(rsf.Name(), nodeOrderFn)
+
+	if rsf.Proportional != nil {
+		ssn.AddPredicateFn(rsf.Name(), predicateFn)
 	} else {
-		klog.Infof("resourceStrategyFit weight is zero, skip node order function")
+		klog.V(4).Infof("proportional policy is not enabled, skip predicate function")
+	}
+
+	if rsf.ResourceStrategyFit.Weight <= 0 && rsf.Sra.Weight <= 0 {
+		klog.V(4).Infof("The weights of both resourceStrategyFit and sra are zero, skip node order function")
+	} else {
+		ssn.AddNodeOrderFn(rsf.Name(), nodeOrderFn)
 	}
 }
 
@@ -243,18 +362,27 @@ func Score(task *api.TaskInfo, node *api.NodeInfo, weight ResourceStrategyFit) f
 	if weightSum > 0 {
 		score /= float64(weightSum)
 	}
-	score *= float64(k8sFramework.MaxNodeScore) * float64(weight.ResourceStrategyFitWeight)
+	score *= float64(k8sFramework.MaxNodeScore) * float64(weight.Weight)
 	return score
 }
 
-func mostRequestedScore(requested float64, used float64, capacity float64, weight int) (float64, error) {
-	if capacity == 0 || weight == 0 {
-		return 0, nil
-	}
-
+// validateAndCalcUsedFinally returns the used finally, if usedFinally > capacity, return error
+func validateAndCalcUsedFinally(requested float64, used float64, capacity float64, weight int) (float64, error) {
 	usedFinally := requested + used
 	if usedFinally > capacity {
 		return 0, fmt.Errorf("node resources are not enough")
+	}
+	return usedFinally, nil
+}
+
+func mostRequestedScore(requested float64, used float64, capacity float64, weight int) (float64, error) {
+	if weight == 0 || capacity == 0 {
+		return 0, nil
+	}
+
+	usedFinally, err := validateAndCalcUsedFinally(requested, used, capacity, weight)
+	if err != nil {
+		return 0, err
 	}
 
 	score := usedFinally * float64(weight) / capacity
@@ -262,13 +390,13 @@ func mostRequestedScore(requested float64, used float64, capacity float64, weigh
 }
 
 func leastRequestedScore(requested float64, used float64, capacity float64, weight int) (float64, error) {
-	if capacity == 0 || weight == 0 {
+	if weight == 0 || capacity == 0 {
 		return 0, nil
 	}
 
-	usedFinally := requested + used
-	if usedFinally > capacity {
-		return 0, fmt.Errorf("node resources are not enough")
+	usedFinally, err := validateAndCalcUsedFinally(requested, used, capacity, weight)
+	if err != nil {
+		return 0, err
 	}
 
 	score := (capacity - usedFinally) * float64(weight) / capacity
