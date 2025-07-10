@@ -104,6 +104,10 @@ func ListQueue(ctx context.Context) error {
 	}
 
 	for _, pg := range pgList.Items {
+		_, ok := queueStats[pg.Spec.Queue]
+		if !ok {
+			continue
+		}
 		queueStats[pg.Spec.Queue].StatPodGroupCountsForQueue(&pg)
 	}
 
