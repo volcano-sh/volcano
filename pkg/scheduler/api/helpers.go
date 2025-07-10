@@ -48,6 +48,19 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 		if len(pod.Spec.NodeName) == 0 {
 			return Pending
 		}
+
+		// If task has already preempted other tasks and entered the pipeline state,
+		// the NominatedNodeName field of the Pod will be set to the name of the scheduled node
+		// (this NominatedNodeName has already been filled in closeSession).
+		// When creating the ssn in each scheduling round,
+		// it's important to set the task status as Pipelined based on the Pod's NominatedNodeName.
+		// This is crucial because if this step is skipped, during the current ssn scheduling,
+		// a task might complete preemption and enter the Pipelined state,
+		// but in the next scheduling round, the task may not have actually been scheduled onto a node yet,
+		// leaving its status in the ssn as Pending, which could lead to repeated preemption.
+		if len(pod.Status.NominatedNodeName) > 0 {
+			return Pipelined
+		}
 		return Bound
 	case v1.PodUnknown:
 		return Unknown
