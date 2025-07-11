@@ -57,6 +57,7 @@ type queueAttr struct {
 	queueID   api.QueueID
 	name      string
 	share     float64
+	valid     bool
 	ancestors []api.QueueID
 	children  map[api.QueueID]*queueAttr
 
@@ -122,6 +123,12 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return victims, util.Reject
 		}
 
+		attr := cp.queueOpts[ssn.Jobs[reclaimer.Job].Queue]
+		if !attr.valid {
+			klog.V(3).Infof("Queue <%s> is not valid, can not reclaim for <%s>.", attr.name, reclaimer.Name)
+			return victims, util.Reject
+		}
+
 		for _, reclaimee := range reclaimees {
 			job := ssn.Jobs[reclaimee.Job]
 			attr := cp.queueOpts[job.Queue]
@@ -156,7 +163,12 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, can not reclaim for <%s>.", queue.Name, queue.Queue.Status.State, task.Name)
 			return false
 		}
+
 		attr := cp.queueOpts[queue.UID]
+		if !attr.valid {
+			klog.V(3).Infof("Queue <%s> is not valid, can not reclaim for <%s>.", queue.Name, task.Name)
+			return false
+		}
 
 		futureUsed := attr.allocated.Clone().Add(task.Resreq)
 		overused := !futureUsed.LessEqualWithDimension(attr.deserved, task.Resreq)
@@ -174,6 +186,10 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
 			klog.V(3).Infof("Queue <%s> current state: %s, cannot allocate task <%s>.", queue.Name, queue.Queue.Status.State, candidate.Name)
+			return false
+		}
+		if !cp.queueOpts[queue.UID].valid {
+			klog.V(3).Infof("Queue <%s> is invalid, can not allocate task <%s>.", queue.Name, candidate.Name)
 			return false
 		}
 		if !readyToSchedule {
@@ -201,6 +217,11 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		attr := cp.queueOpts[queueID]
+		if !attr.valid {
+			klog.V(3).Infof("Queue <%s> is not valid, can not enqueue job <%s/%s>.", queueID, job.Namespace, job.Name)
+			return util.Reject
+		}
+
 		queue := ssn.Queues[queueID]
 		// If the queue is not open, do not enqueue
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
@@ -308,6 +329,12 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return false
 		}
 
+		attr := cp.queueOpts[queue.UID]
+		if !attr.valid {
+			klog.V(3).Infof("Queue <%s> is not valid queue, can not allocate task <%s>", queue.Name, candidate.Name)
+			return false
+		}
+
 		simulateQueueAllocatable := func(state *capacityState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 			attr := state.queueAttrs[queue.UID]
 			return queueAllocatable(attr, candidate, queue)
@@ -389,6 +416,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			attr := &queueAttr{
 				queueID: queue.UID,
 				name:    queue.Name,
+				valid:   true,
 
 				deserved:  api.NewResource(queue.Queue.Spec.Deserved),
 				allocated: api.EmptyResource(),
@@ -397,6 +425,20 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 				inqueue:   api.EmptyResource(),
 				guarantee: api.EmptyResource(),
 			}
+
+			err := cp.checkQueue(queue.Queue)
+			if err != nil {
+				klog.Errorf("check queue %s failed: %v", queue.Name, err)
+				attr.valid = false
+				cp.queueOpts[job.Queue] = attr
+
+				if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
+					guarantee := api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+					cp.totalGuarantee.Sub(guarantee)
+				}
+				continue
+			}
+
 			if len(queue.Queue.Spec.Capability) != 0 {
 				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
 				if attr.capability.MilliCPU <= 0 {
@@ -422,6 +464,11 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		}
 
 		attr := cp.queueOpts[job.Queue]
+		if !attr.valid {
+			klog.V(4).Infof("Queue <%s> is not valid, skip considering Job <%s/%s>.",
+				job.Queue, job.Namespace, job.Name)
+			continue
+		}
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
@@ -456,6 +503,10 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 	}
 
 	for _, attr := range cp.queueOpts {
+		if !attr.valid {
+			continue
+		}
+
 		if attr.realCapability != nil {
 			attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
 		}
@@ -470,6 +521,10 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 	for queueID, queueInfo := range ssn.Queues {
 		queue := ssn.Queues[queueID]
 		if attr, ok := cp.queueOpts[queueID]; ok {
+			if !attr.valid {
+				continue
+			}
+
 			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
@@ -536,6 +591,10 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 
 		attr := cp.newQueueAttr(queue)
 		cp.queueOpts[queue.UID] = attr
+		if !attr.valid {
+			klog.Errorf("Failed to initialize Queue <%s> attributes", queue.Name)
+			return false
+		}
 		err := cp.updateAncestors(queue, ssn)
 		if err != nil {
 			klog.Errorf("Failed to update Queue <%s> attributes, error: %v", queue.Name, err)
@@ -703,6 +762,7 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 	attr := &queueAttr{
 		queueID:   queue.UID,
 		name:      queue.Name,
+		valid:     true,
 		ancestors: make([]api.QueueID, 0),
 		children:  make(map[api.QueueID]*queueAttr),
 
@@ -714,6 +774,14 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 		guarantee:  api.EmptyResource(),
 		capability: api.EmptyResource(),
 	}
+
+	err := cp.checkQueue(queue.Queue)
+	if err != nil {
+		klog.Errorf("check queue %s failed: %v", queue.Queue.Name, err)
+		attr.valid = false
+		return attr
+	}
+
 	if len(queue.Queue.Spec.Capability) != 0 {
 		attr.capability = api.NewResource(queue.Queue.Spec.Capability)
 	}
@@ -735,15 +803,20 @@ func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.S
 		parent = queue.Queue.Spec.Parent
 	}
 	if _, exist := ssn.Queues[api.QueueID(parent)]; !exist {
-		return fmt.Errorf("the queue %s has invalid parent queue %s", queue.Name, parent)
+		return fmt.Errorf("parent queue %s of queue %s does not exist", parent, queue.Name)
 	}
 
 	parentInfo := ssn.Queues[api.QueueID(parent)]
 	if _, found := cp.queueOpts[parentInfo.UID]; !found {
 		parentAttr := cp.newQueueAttr(parentInfo)
 		cp.queueOpts[parentAttr.queueID] = parentAttr
+
+		if !parentAttr.valid {
+			return fmt.Errorf("the queue %s has invalid parent queue %s", queue.Name, parent)
+		}
 		err := cp.updateAncestors(parentInfo, ssn)
 		if err != nil {
+			cp.queueOpts[queue.UID].valid = false
 			return err
 		}
 	}
@@ -753,7 +826,39 @@ func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.S
 	return nil
 }
 
+func (cp *capacityPlugin) checkQueue(queue *scheduling.Queue) error {
+	// check queue's capability/deserved/guarantee resource
+	capability := queue.Spec.Capability
+	deserved := queue.Spec.Deserved
+	guarantee := queue.Spec.Guarantee.Resource
+
+	capabilityResource := api.NewResource(capability)
+	deservedResource := api.NewResource(deserved)
+	guaranteeResource := api.NewResource(guarantee)
+
+	if capability != nil && capabilityResource.LessPartly(deservedResource, api.Zero) {
+		return fmt.Errorf("queue <%s> capability shouldn't less than deserved: capability <%v>, deserved <%v>",
+			queue.Name, capabilityResource.String(), deservedResource.String())
+	}
+
+	if capability != nil && capabilityResource.LessPartly(guaranteeResource, api.Zero) {
+		return fmt.Errorf("queue <%s> capability shouldn't less than guarantee: capability <%v>, guarantee <%v>",
+			queue.Name, capabilityResource.String(), guaranteeResource.String())
+	}
+
+	if deserved != nil && deservedResource.LessPartly(guaranteeResource, api.Zero) {
+		return fmt.Errorf("queue <%s> deserved shouldn't less than guarantee: deserved <%v>, guarantee <%v>",
+			queue.Name, deservedResource.String(), guaranteeResource.String())
+	}
+
+	return nil
+}
+
 func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
+	if !attr.valid {
+		return fmt.Errorf("queue <%s> is not valid", attr.name)
+	}
+
 	totalGuarantee := api.EmptyResource()
 	totalDeserved := api.EmptyResource()
 	for _, childAttr := range attr.children {
@@ -932,6 +1037,7 @@ func (qa *queueAttr) Clone() *queueAttr {
 		queueID:        qa.queueID,
 		name:           qa.name,
 		share:          qa.share,
+		valid:          qa.valid,
 		deserved:       qa.deserved.Clone(),
 		allocated:      qa.allocated.Clone(),
 		request:        qa.request.Clone(),
