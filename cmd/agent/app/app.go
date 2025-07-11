@@ -34,6 +34,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/volcano/cmd/agent/app/options"
+	"volcano.sh/volcano/pkg/agent/apis"
 	"volcano.sh/volcano/pkg/agent/healthcheck"
 	"volcano.sh/volcano/pkg/agent/utils"
 	"volcano.sh/volcano/pkg/config"
@@ -47,6 +48,16 @@ func NewConfiguration(opts *options.VolcanoAgentOptions) (*config.Configuration,
 	if err := opts.ApplyTo(conf); err != nil {
 		return conf, err
 	}
+
+	if conf.GenericConfiguration.ExtendResourceCPUName != "" {
+		apis.SetExtendResourceCPU(conf.GenericConfiguration.ExtendResourceCPUName)
+	}
+
+	if conf.GenericConfiguration.ExtendResourceMemoryName != "" {
+		apis.SetExtendResourceMemory(conf.GenericConfiguration.ExtendResourceMemoryName)
+	}
+
+	klog.InfoS("Set extend resource", "cpu", apis.ExtendResourceCPU, "memory", apis.ExtendResourceMemory)
 
 	kubeConfig, err := restclient.InClusterConfig()
 	if err != nil {
