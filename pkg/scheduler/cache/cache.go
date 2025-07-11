@@ -47,6 +47,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
+	resourceslicetracker "k8s.io/dynamic-resource-allocation/resourceslice/tracker"
 	"k8s.io/klog/v2"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
@@ -350,7 +351,7 @@ func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*sch
 
 // UpdateQueueStatus will update the status of queue
 func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
-	var newQueue = &vcv1beta1.Queue{}
+	newQueue := &vcv1beta1.Queue{}
 	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
 		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
 		return err
@@ -764,7 +765,22 @@ func (sc *SchedulerCache) addEventHandler() {
 		logger := klog.FromContext(ctx)
 		resourceClaimInformer := informerFactory.Resource().V1beta1().ResourceClaims().Informer()
 		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
-		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, informerFactory)
+		resourceSliceTrackerOpts := resourceslicetracker.Options{
+			EnableDeviceTaints: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
+			SliceInformer:      informerFactory.Resource().V1beta1().ResourceSlices(),
+			KubeClient:         sc.kubeClient,
+		}
+		// If device taints are disabled, the additional informers are not needed and
+		// the tracker turns into a simple wrapper around the slice informer.
+		if resourceSliceTrackerOpts.EnableDeviceTaints {
+			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
+			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1beta1().DeviceClasses()
+		}
+		resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)
+		if err != nil {
+			klog.V(3).Infof("couldn't start resource slice tracker: %v", err)
+		}
+		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, resourceSliceTracker, informerFactory)
 	}
 }
 
@@ -829,7 +845,6 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	defer sc.Mutex.Unlock()
 
 	job, task, err := sc.findJobAndTask(taskInfo)
-
 	if err != nil {
 		return err
 	}
