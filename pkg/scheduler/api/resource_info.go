@@ -1,5 +1,10 @@
 /*
 Copyright 2017 The Kubernetes Authors.
+Copyright 2017-2024 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Enhanced resource operations with comprehensive comparison and calculation functions
+- Added resource dimension defaults and improved scalar resource handling
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

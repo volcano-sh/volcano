@@ -1,5 +1,10 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added HyperNode support for network topology-aware scheduling
+- Added adaptive node selection optimization based on cluster size for improved performance
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

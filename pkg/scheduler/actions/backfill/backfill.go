@@ -1,5 +1,11 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Enhanced task selection with queue-based prioritization and systematic task ordering
+- Added predicate error caching support for filtering out failed nodes in preempt/reclaim
+- Added PrePredicate validation step and improved node selection with comprehensive predicate validation and scoring
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
