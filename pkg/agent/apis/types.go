@@ -16,7 +16,11 @@ limitations under the License.
 
 package apis
 
-import corev1 "k8s.io/api/core/v1"
+import (
+	"sync"
+
+	corev1 "k8s.io/api/core/v1"
+)
 
 const (
 	// OverSubscriptionTypesKey define the overSubscription resource types
@@ -65,16 +69,49 @@ const (
 	// ResourceDefaultPrefix is the extended resource prefix.
 	ResourceDefaultPrefix = "kubernetes.io/"
 
-	ExtendResourceCPU    = ResourceDefaultPrefix + "batch-cpu"
-	ExtendResourceMemory = ResourceDefaultPrefix + "batch-memory"
-
 	// ColocationPolicyKey is the label key of node custom colocation policy.
 	ColocationPolicyKey = "colocation-policy"
 )
 
+var (
+	ExtendResourceCPU        = ResourceDefaultPrefix + "batch-cpu"
+	extendResourceCPULock    sync.RWMutex
+	ExtendResourceMemory     = ResourceDefaultPrefix + "batch-memory"
+	extendResourceMemoryLock sync.RWMutex
+)
+
+func SetExtendResourceCPU(val string) {
+	extendResourceCPULock.Lock()
+	defer extendResourceCPULock.Unlock()
+	ExtendResourceCPU = val
+}
+func GetExtendResourceCPU() corev1.ResourceName {
+	extendResourceCPULock.RLock()
+	defer extendResourceCPULock.RUnlock()
+	return corev1.ResourceName(ExtendResourceCPU)
+}
+func SetExtendResourceMemory(val string) {
+	extendResourceMemoryLock.Lock()
+	defer extendResourceMemoryLock.Unlock()
+	ExtendResourceMemory = val
+}
+func GetExtendResourceMemory() corev1.ResourceName {
+	extendResourceMemoryLock.RLock()
+	defer extendResourceMemoryLock.RUnlock()
+	return corev1.ResourceName(ExtendResourceMemory)
+}
+
 var OverSubscriptionResourceTypes = []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory}
 
-var OverSubscriptionResourceTypesIncludeExtendResources = []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory, ExtendResourceCPU, ExtendResourceMemory}
+// GetOverSubscriptionResourceTypesIncludeExtendResources returns oversubscription resource types including extend resources.
+func GetOverSubscriptionResourceTypesIncludeExtendResources() []corev1.ResourceName {
+	return []corev1.ResourceName{
+		corev1.ResourceCPU,
+		corev1.ResourceMemory,
+		GetExtendResourceCPU(),
+		GetExtendResourceMemory(),
+	}
+}
 
 // Resource mapping resource type and usage.
 type Resource map[corev1.ResourceName]int64

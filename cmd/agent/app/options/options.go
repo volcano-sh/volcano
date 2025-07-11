@@ -62,6 +62,12 @@ type VolcanoAgentOptions struct {
 
 	// IncludeSystemUsage determines whether considering system usage when calculate overSubscription resource and evict.
 	IncludeSystemUsage bool
+
+	// ExtendResourceCPUName is the extend resource cpu, which is used to calculate overSubscription resources.
+	ExtendResourceCPUName string
+
+	// ExtendResourceMemoryName is the extend resource memory, which is used to calculate overSubscription resources.
+	ExtendResourceMemoryName string
 }
 
 func NewVolcanoAgentOptions() *VolcanoAgentOptions {
@@ -81,6 +87,8 @@ func (options *VolcanoAgentOptions) AddFlags(c *cobra.Command) {
 	// TODO: put in configMap.
 	c.Flags().IntVar(&options.OverSubscriptionRatio, "oversubscription-ratio", defaultOverSubscriptionRatio, "The oversubscription ratio determines how many idle resources can be oversold")
 	c.Flags().BoolVar(&options.IncludeSystemUsage, "include-system-usage", false, "It determines whether considering system usage when calculate overSubscription resource and evict.")
+	c.Flags().StringVar(&options.ExtendResourceCPUName, "extend-resource-cpu-name", "", "The extended cpu resource name, which is used to calculate oversubscription resources, default to kubernetes.io/batch-cpu")
+	c.Flags().StringVar(&options.ExtendResourceMemoryName, "extend-resource-memory-name", "", "The extended memory resource name, which is used to calculate oversubscription resources, default to kubernetes.io/batch-memory")
 }
 
 func (options *VolcanoAgentOptions) Validate() error {
@@ -101,5 +109,7 @@ func (options *VolcanoAgentOptions) ApplyTo(cfg *config.Configuration) error {
 	cfg.GenericConfiguration.OverSubscriptionPolicy = options.OverSubscriptionPolicy
 	cfg.GenericConfiguration.OverSubscriptionRatio = options.OverSubscriptionRatio
 	cfg.GenericConfiguration.IncludeSystemUsage = options.IncludeSystemUsage
+	cfg.GenericConfiguration.ExtendResourceCPUName = options.ExtendResourceCPUName
+	cfg.GenericConfiguration.ExtendResourceMemoryName = options.ExtendResourceMemoryName
 	return nil
 }
