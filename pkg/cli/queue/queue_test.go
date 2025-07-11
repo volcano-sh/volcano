@@ -21,8 +21,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -247,5 +250,103 @@ test-queue               1       Open    root    1       2       3       4      
 				t.Errorf("expected %q, got %q", tc.expected, got)
 			}
 		})
+	}
+}
+
+// Test ListQueue can output results normally when there are residual podgroups with their bound queues not exist.
+func TestListQueue_residualPg(t *testing.T) {
+	mockServer := func() *httptest.Server {
+		queues := v1beta1.QueueList{}
+		queues.Items = []v1beta1.Queue{
+			{
+				ObjectMeta: v1.ObjectMeta{
+					Name: "testQueue1",
+				},
+			},
+			{
+				ObjectMeta: v1.ObjectMeta{
+					Name: "testQueue2",
+				},
+			},
+		}
+		podGroups := v1beta1.PodGroupList{}
+		podGroups.Items = []v1beta1.PodGroup{
+			{
+				ObjectMeta: v1.ObjectMeta{
+					Name: "testPodGroup1",
+				},
+				Spec: v1beta1.PodGroupSpec{
+					Queue: "testQueue1",
+				},
+			},
+			{
+				ObjectMeta: v1.ObjectMeta{
+					Name: "testPodGroup2",
+				},
+				Spec: v1beta1.PodGroupSpec{
+					Queue: "testQueue2",
+				},
+			},
+			{
+				ObjectMeta: v1.ObjectMeta{
+					Name: "testPodGroup3",
+				},
+				Spec: v1beta1.PodGroupSpec{
+					Queue: "testQueue3",
+				},
+			},
+		}
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if strings.HasSuffix(r.URL.Path, "queues") {
+				val, err := json.Marshal(queues)
+				if err == nil {
+					w.Write(val)
+				}
+			} else if strings.HasSuffix(r.URL.Path, "podgroups") {
+				val, err := json.Marshal(podGroups)
+				if err == nil {
+					w.Write(val)
+				}
+			}
+		})
+		return httptest.NewServer(handler)
+	}
+
+	InitListFlags(&cobra.Command{})
+	server := mockServer()
+	defer server.Close()
+
+	// Capture stdout
+	originStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Create pipe failed: %v", err)
+	}
+	os.Stdout = w
+	defer func() {
+		os.Stdout = originStdout
+		w.Close()
+	}()
+
+	listQueueFlags.CommonFlags = getCommonFlags(server.URL)
+
+	expectOutput := `Name                     Weight  State   Parent  Inqueue Pending Running Unknown Completed
+testQueue1               0                       0       0       0       0       0       
+testQueue2               0                       0       0       0       0       0`
+	err = ListQueue(context.TODO())
+	if err != nil {
+		t.Errorf("List queue failed: %v", err)
+		return
+	}
+	w.Close()
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("Read list queue output failed: %v", err)
+	}
+	result := strings.TrimSpace(string(out))
+
+	if expectOutput != result {
+		t.Errorf("(Test list queues with residual podgroups failed): \nExpect:\n%vGot:\n%v", expectOutput, result)
 	}
 }

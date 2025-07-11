@@ -30,6 +30,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	storagelisters "k8s.io/client-go/listers/storage/v1"
 	"k8s.io/component-helpers/storage/ephemeral"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
@@ -60,7 +61,7 @@ type stateData struct {
 	podVolumesByNode map[string]*PodVolumes
 	podVolumeClaims  *PodVolumeClaims
 	// hasStaticBindings declares whether the pod contains one or more StaticBinding.
-	// If not, vloumeBinding will skip score extension point.
+	// If not, volumeBinding will skip score extension point.
 	hasStaticBindings bool
 	sync.Mutex
 }
@@ -73,10 +74,11 @@ func (d *stateData) Clone() framework.StateData {
 // In the Filter phase, pod binding cache is created for the pod and used in
 // Reserve and PreBind phases.
 type VolumeBinding struct {
-	Binder    SchedulerVolumeBinder
-	PVCLister corelisters.PersistentVolumeClaimLister
-	scorer    volumeCapacityScorer
-	fts       feature.Features
+	Binder      SchedulerVolumeBinder
+	PVCLister   corelisters.PersistentVolumeClaimLister
+	classLister storagelisters.StorageClassLister
+	scorer      volumeCapacityScorer
+	fts         feature.Features
 }
 
 var _ framework.PreFilterPlugin = &VolumeBinding{}
@@ -124,7 +126,7 @@ func (pl *VolumeBinding) EventsToRegister(_ context.Context) ([]framework.Cluste
 		{Event: framework.ClusterEvent{Resource: framework.Node, ActionType: nodeActionType}},
 
 		// We rely on CSI node to translate in-tree PV to CSI.
-		// TODO: kube-schduler will unregister the CSINode events once all the volume plugins has completed their CSI migration.
+		// TODO: kube-scheduler will unregister the CSINode events once all the volume plugins has completed their CSI migration.
 		{Event: framework.ClusterEvent{Resource: framework.CSINode, ActionType: framework.Add | framework.Update}, QueueingHintFn: pl.isSchedulableAfterCSINodeChange},
 
 		// When CSIStorageCapacity is enabled, pods may become schedulable
@@ -371,7 +373,6 @@ func (pl *VolumeBinding) PreFilter(ctx context.Context, state *framework.CycleSt
 		status.AppendReason("pod has unbound immediate PersistentVolumeClaims")
 		return nil, status
 	}
-
 	state.Write(stateKey, &stateData{
 		podVolumesByNode: make(map[string]*PodVolumes),
 		podVolumeClaims: &PodVolumeClaims{
@@ -425,7 +426,6 @@ func (pl *VolumeBinding) Filter(ctx context.Context, cs *framework.CycleState, p
 	}
 
 	podVolumes, reasons, err := pl.Binder.FindPodVolumes(logger, pod, state.podVolumeClaims, node)
-
 	if err != nil {
 		return framework.AsStatus(err)
 	}
@@ -455,14 +455,14 @@ func (pl *VolumeBinding) PreScore(ctx context.Context, cs *framework.CycleState,
 	if err != nil {
 		return framework.AsStatus(err)
 	}
-	if state.hasStaticBindings {
+	if state.hasStaticBindings || pl.fts.EnableStorageCapacityScoring {
 		return nil
 	}
 	return framework.NewStatus(framework.Skip)
 }
 
 // Score invoked at the score extension point.
-func (pl *VolumeBinding) Score(ctx context.Context, cs *framework.CycleState, pod *v1.Pod, nodeName string) (int64, *framework.Status) {
+func (pl *VolumeBinding) Score(ctx context.Context, cs *framework.CycleState, pod *v1.Pod, nodeInfo *framework.NodeInfo) (int64, *framework.Status) {
 	if pl.scorer == nil {
 		return 0, nil
 	}
@@ -470,24 +470,49 @@ func (pl *VolumeBinding) Score(ctx context.Context, cs *framework.CycleState, po
 	if err != nil {
 		return 0, framework.AsStatus(err)
 	}
+	nodeName := nodeInfo.Node().Name
 	podVolumes, ok := state.podVolumesByNode[nodeName]
 	if !ok {
 		return 0, nil
 	}
-	// group by storage class
+
 	classResources := make(classResourceMap)
-	for _, staticBinding := range podVolumes.StaticBindings {
-		class := staticBinding.StorageClassName()
-		storageResource := staticBinding.StorageResource()
-		if _, ok := classResources[class]; !ok {
-			classResources[class] = &StorageResource{
-				Requested: 0,
-				Capacity:  0,
+	if len(podVolumes.StaticBindings) != 0 || !pl.fts.EnableStorageCapacityScoring {
+		// group static binding volumes by storage class
+		for _, staticBinding := range podVolumes.StaticBindings {
+			class := staticBinding.StorageClassName()
+			storageResource := staticBinding.StorageResource()
+			if _, ok := classResources[class]; !ok {
+				classResources[class] = &StorageResource{
+					Requested: 0,
+					Capacity:  0,
+				}
 			}
+			classResources[class].Requested += storageResource.Requested
+			classResources[class].Capacity += storageResource.Capacity
 		}
-		classResources[class].Requested += storageResource.Requested
-		classResources[class].Capacity += storageResource.Capacity
+	} else {
+		// group dynamic binding volumes by storage class
+		for _, provision := range podVolumes.DynamicProvisions {
+			if provision.NodeCapacity == nil {
+				continue
+			}
+			class := *provision.PVC.Spec.StorageClassName
+			if _, ok := classResources[class]; !ok {
+				classResources[class] = &StorageResource{
+					Requested: 0,
+					Capacity:  0,
+				}
+			}
+			// The following line cannot be +=. For example, if a Pod requests two 50GB volumes from
+			// a StorageClass with 100GB of capacity on a node, this part of the code will be executed twice.
+			// In that case, using += would incorrectly set classResources[class].Capacity to 200GB.
+			classResources[class].Capacity = provision.NodeCapacity.Capacity.Value()
+			requestedQty := provision.PVC.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+			classResources[class].Requested += requestedQty.Value()
+		}
 	}
+
 	return pl.scorer(classResources), nil
 }
 
@@ -569,7 +594,7 @@ func New(ctx context.Context, plArgs runtime.Object, fh framework.Handle, fts fe
 		return nil, fmt.Errorf("want args to be of type VolumeBindingArgs, got %T", plArgs)
 	}
 	if err := validation.ValidateVolumeBindingArgsWithOptions(nil, args, validation.VolumeBindingArgsValidationOptions{
-		AllowVolumeCapacityPriority: fts.EnableVolumeCapacityPriority,
+		AllowStorageCapacityScoring: fts.EnableStorageCapacityScoring,
 	}); err != nil {
 		return nil, err
 	}
@@ -588,11 +613,11 @@ func New(ctx context.Context, plArgs runtime.Object, fh framework.Handle, fts fe
 			CSIStorageCapacityInformer: fh.SharedInformerFactory().Storage().V1beta1().CSIStorageCapacities(),
 		}
 	}
-	binder := NewVolumeBinder(klog.FromContext(ctx), fh.ClientSet(), podInformer, nodeInformer, csiNodeInformer, pvcInformer, pvInformer, storageClassInformer, capacityCheck, time.Duration(args.BindTimeoutSeconds)*time.Second)
+	binder := NewVolumeBinder(klog.FromContext(ctx), fh.ClientSet(), fts, podInformer, nodeInformer, csiNodeInformer, pvcInformer, pvInformer, storageClassInformer, capacityCheck, time.Duration(args.BindTimeoutSeconds)*time.Second)
 
 	// build score function
 	var scorer volumeCapacityScorer
-	if fts.EnableVolumeCapacityPriority {
+	if fts.EnableStorageCapacityScoring {
 		shape := make(helper.FunctionShape, 0, len(args.Shape))
 		for _, point := range args.Shape {
 			shape = append(shape, helper.FunctionShapePoint{
@@ -603,9 +628,10 @@ func New(ctx context.Context, plArgs runtime.Object, fh framework.Handle, fts fe
 		scorer = buildScorerFunction(shape)
 	}
 	return &VolumeBinding{
-		Binder:    binder,
-		PVCLister: pvcInformer.Lister(),
-		scorer:    scorer,
-		fts:       fts,
+		Binder:      binder,
+		PVCLister:   pvcInformer.Lister(),
+		classLister: storageClassInformer.Lister(),
+		scorer:      scorer,
+		fts:         fts,
 	}, nil
 }

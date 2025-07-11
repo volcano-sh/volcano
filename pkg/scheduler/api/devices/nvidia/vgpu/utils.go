@@ -66,7 +66,7 @@ func decodeNodeDevices(name, str string) (*GPUDevices, string) {
 		if strings.Contains(val, ",") {
 			items := strings.Split(val, ",")
 			if len(items) < 6 {
-				klog.Error("wrong Pod GPU info: ", val)
+				klog.Error("wrong Node GPU info: ", val)
 				return nil, ""
 			}
 			count, _ := strconv.Atoi(items[1])

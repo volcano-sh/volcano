@@ -42,7 +42,6 @@ import (
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2epv "k8s.io/kubernetes/test/e2e/framework/pv"
 	e2eskipper "k8s.io/kubernetes/test/e2e/framework/skipper"
-	e2evolume "k8s.io/kubernetes/test/e2e/framework/volume"
 	"k8s.io/kubernetes/test/e2e/storage/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	admissionapi "k8s.io/pod-security-admission/api"
@@ -191,7 +190,7 @@ var _ = ginkgo.Describe("Volume Binding Test", func() {
 					writeCmd := createWriteCmd(volumeDir, testFile, testFileContent, testVol.localVolumeType)
 
 					ginkgo.By("Writing in pod1")
-					podRWCmdExec(f, pod1, writeCmd)
+					podRWCmdExec(ctx, f, pod1, writeCmd)
 				})
 
 				ginkgo.AfterEach(func(ctx context.Context) {
@@ -202,16 +201,16 @@ var _ = ginkgo.Describe("Volume Binding Test", func() {
 				ginkgo.It("should be able to mount volume and read from pod1", func(ctx context.Context) {
 					ginkgo.By("Reading in pod1")
 					// testFileContent was written in BeforeEach
-					testReadFileContent(f, volumeDir, testFile, testFileContent, pod1, testVolType)
+					testReadFileContent(ctx, f, volumeDir, testFile, testFileContent, pod1, testVolType)
 				})
 
 				ginkgo.It("should be able to mount volume and write from pod1", func(ctx context.Context) {
 					// testFileContent was written in BeforeEach
-					testReadFileContent(f, volumeDir, testFile, testFileContent, pod1, testVolType)
+					testReadFileContent(ctx, f, volumeDir, testFile, testFileContent, pod1, testVolType)
 
 					ginkgo.By("Writing in pod1")
 					writeCmd := createWriteCmd(volumeDir, testFile, testVol.ltr.Path /*writeTestFileContent*/, testVolType)
-					podRWCmdExec(f, pod1, writeCmd)
+					podRWCmdExec(ctx, f, pod1, writeCmd)
 				})
 			})
 
@@ -391,10 +390,10 @@ func twoPodsReadWriteTest(ctx context.Context, f *framework.Framework, config *l
 	writeCmd := createWriteCmd(volumeDir, testFile, testFileContent, testVol.localVolumeType)
 
 	ginkgo.By("Writing in pod1")
-	podRWCmdExec(f, pod1, writeCmd)
+	podRWCmdExec(ctx, f, pod1, writeCmd)
 
 	// testFileContent was written after creating pod1
-	testReadFileContent(f, volumeDir, testFile, testFileContent, pod1, testVol.localVolumeType)
+	testReadFileContent(ctx, f, volumeDir, testFile, testFileContent, pod1, testVol.localVolumeType)
 
 	ginkgo.By("Creating pod2 to read from the PV")
 	pod2, pod2Err := createLocalPod(ctx, config, testVol, nil)
@@ -402,15 +401,15 @@ func twoPodsReadWriteTest(ctx context.Context, f *framework.Framework, config *l
 	verifyLocalPod(ctx, config, testVol, pod2, config.randomNode.Name)
 
 	// testFileContent was written after creating pod1
-	testReadFileContent(f, volumeDir, testFile, testFileContent, pod2, testVol.localVolumeType)
+	testReadFileContent(ctx, f, volumeDir, testFile, testFileContent, pod2, testVol.localVolumeType)
 
 	writeCmd = createWriteCmd(volumeDir, testFile, testVol.ltr.Path /*writeTestFileContent*/, testVol.localVolumeType)
 
 	ginkgo.By("Writing in pod2")
-	podRWCmdExec(f, pod2, writeCmd)
+	podRWCmdExec(ctx, f, pod2, writeCmd)
 
 	ginkgo.By("Reading in pod1")
-	testReadFileContent(f, volumeDir, testFile, testVol.ltr.Path, pod1, testVol.localVolumeType)
+	testReadFileContent(ctx, f, volumeDir, testFile, testVol.ltr.Path, pod1, testVol.localVolumeType)
 
 	ginkgo.By("Deleting pod1")
 	e2epod.DeletePodOrFail(ctx, config.client, config.ns, pod1.Name)
@@ -428,10 +427,10 @@ func twoPodsReadWriteSerialTest(ctx context.Context, f *framework.Framework, con
 	writeCmd := createWriteCmd(volumeDir, testFile, testFileContent, testVol.localVolumeType)
 
 	ginkgo.By("Writing in pod1")
-	podRWCmdExec(f, pod1, writeCmd)
+	podRWCmdExec(ctx, f, pod1, writeCmd)
 
 	// testFileContent was written after creating pod1
-	testReadFileContent(f, volumeDir, testFile, testFileContent, pod1, testVol.localVolumeType)
+	testReadFileContent(ctx, f, volumeDir, testFile, testFileContent, pod1, testVol.localVolumeType)
 
 	ginkgo.By("Deleting pod1")
 	e2epod.DeletePodOrFail(ctx, config.client, config.ns, pod1.Name)
@@ -442,7 +441,7 @@ func twoPodsReadWriteSerialTest(ctx context.Context, f *framework.Framework, con
 	verifyLocalPod(ctx, config, testVol, pod2, config.randomNode.Name)
 
 	ginkgo.By("Reading in pod2")
-	testReadFileContent(f, volumeDir, testFile, testFileContent, pod2, testVol.localVolumeType)
+	testReadFileContent(ctx, f, volumeDir, testFile, testFileContent, pod2, testVol.localVolumeType)
 
 	ginkgo.By("Deleting pod2")
 	e2epod.DeletePodOrFail(ctx, config.client, config.ns, pod2.Name)
@@ -692,16 +691,16 @@ func createReadCmd(testFileDir string, testFile string, volumeType localVolumeTy
 }
 
 // Read testFile and evaluate whether it contains the testFileContent
-func testReadFileContent(f *framework.Framework, testFileDir string, testFile string, testFileContent string, pod *v1.Pod, volumeType localVolumeType) {
+func testReadFileContent(ctx context.Context, f *framework.Framework, testFileDir string, testFile string, testFileContent string, pod *v1.Pod, volumeType localVolumeType) {
 	readCmd := createReadCmd(testFileDir, testFile, volumeType)
-	readOut := podRWCmdExec(f, pod, readCmd)
+	readOut := podRWCmdExec(ctx, f, pod, readCmd)
 	gomega.Expect(readOut).To(gomega.ContainSubstring(testFileContent))
 }
 
 // Execute a read or write command in a pod.
 // Fail on error
-func podRWCmdExec(f *framework.Framework, pod *v1.Pod, cmd string) string {
-	stdout, stderr, err := e2evolume.PodExec(f, pod, cmd)
+func podRWCmdExec(ctx context.Context, f *framework.Framework, pod *v1.Pod, cmd string) string {
+	stdout, stderr, err := e2epod.ExecShellInPodWithFullOutput(ctx, f, pod.Name, cmd)
 	framework.Logf("podRWCmdExec cmd: %q, out: %q, stderr: %q, err: %v", cmd, stdout, stderr, err)
 	framework.ExpectNoError(err)
 	return stdout

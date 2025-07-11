@@ -70,17 +70,17 @@ func CalculatePluginScore(
 	errCh := make(chan error, workerNum)
 	parallelizeContext, parallelizeCancel := context.WithCancel(context.TODO())
 	workqueue.ParallelizeUntil(parallelizeContext, workerNum, len(nodeInfos), func(index int) {
-		nodeName := nodeInfos[index].Node().Name
+		nodeInfo := nodeInfos[index]
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		s, status := plugin.Score(ctx, cycleState, pod, nodeName)
+		s, status := plugin.Score(ctx, cycleState, pod, nodeInfo)
 		if !status.IsSuccess() {
 			parallelizeCancel()
 			errCh <- fmt.Errorf("calculate %s priority failed %v", pluginName, status.Message())
 			return
 		}
 		nodeScoreList[index] = k8sframework.NodeScore{
-			Name:  nodeName,
+			Name:  nodeInfo.Node().Name,
 			Score: s,
 		}
 	})
