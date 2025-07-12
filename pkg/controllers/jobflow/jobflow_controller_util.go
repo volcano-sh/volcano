@@ -17,7 +17,12 @@ limitations under the License.
 package jobflow
 
 import (
+	"fmt"
 	"strings"
+
+	"k8s.io/klog/v2"
+
+	v1alpha1flow "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -52,4 +57,77 @@ func getJobFlowNameByJob(job *batch.Job) string {
 		}
 	}
 	return ""
+}
+
+func getFlowByName(jobFlow *v1alpha1flow.JobFlow, flowName string) (*v1alpha1flow.Flow, error) {
+	var flow *v1alpha1flow.Flow
+	for i := range jobFlow.Spec.Flows {
+		if jobFlow.Spec.Flows[i].Name == flowName {
+			flow = &jobFlow.Spec.Flows[i]
+			break
+		}
+	}
+	if flow == nil {
+		klog.Infof("Flow '%s' not found in JobFlow '%s'", flowName, jobFlow.Name)
+		return nil, fmt.Errorf("flow '%s' not found in JobFlow '%s'", flowName, jobFlow.Name)
+	}
+	return flow, nil
+}
+
+func mergeJobLevelVolumes(base, patch *[]batch.VolumeSpec) []batch.VolumeSpec {
+	if patch == nil {
+		return *base
+	}
+
+	volumeMap := make(map[string]bool)
+	merged := make([]batch.VolumeSpec, 0)
+
+	for _, v := range *base {
+		volumeMap[v.MountPath] = true
+		merged = append(merged, v)
+	}
+
+	for _, v := range *patch {
+		if volumeMap[v.MountPath] {
+			for i, existing := range merged {
+				if existing.MountPath == v.MountPath {
+					merged[i] = v
+					break
+				}
+			}
+		} else {
+			merged = append(merged, v)
+		}
+	}
+
+	return merged
+}
+
+func mergeJobLevelTasks(base, patch *[]batch.TaskSpec) []batch.TaskSpec {
+	if patch == nil {
+		return *base
+	}
+
+	taskMap := make(map[string]bool)
+	merged := make([]batch.TaskSpec, 0)
+
+	for _, t := range *base {
+		taskMap[t.Name] = true
+		merged = append(merged, t)
+	}
+
+	for _, t := range *patch {
+		if taskMap[t.Name] {
+			for i, existing := range merged {
+				if existing.Name == t.Name {
+					merged[i] = t
+					break
+				}
+			}
+		} else {
+			merged = append(merged, t)
+		}
+	}
+
+	return merged
 }
