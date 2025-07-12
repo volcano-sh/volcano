@@ -66,8 +66,7 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 			return nil, fmt.Errorf("failed creating filewatcher for %s: %v", opt.SchedulerConf, err)
 		}
 	}
-
-	cache := schedcache.New(config, opt.SchedulerNames, opt.DefaultQueue, opt.NodeSelector, opt.NodeWorkerThreads, opt.IgnoredCSIProvisioners, opt.ResyncPeriod)
+	cache := schedcache.New(config, opt)
 	scheduler := &Scheduler{
 		schedulerConf:  opt.SchedulerConf,
 		fileWatcher:    watcher,
