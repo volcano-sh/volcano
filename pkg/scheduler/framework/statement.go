@@ -433,6 +433,15 @@ func (s *Statement) Commit() {
 	}
 }
 
+// Merge operations
+func (s *Statement) Merge(ss *Statement) {
+	if ss == nil {
+		return
+	}
+	klog.V(3).Info("Merging operations ...")
+	s.operations = append(s.operations, ss.operations...)
+}
+
 func (s *Statement) SaveOperations() *Statement {
 	s.outputOperations("Save operations: ", 4)
 
