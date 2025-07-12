@@ -27,12 +27,28 @@ import (
 )
 
 // OpenSession start the session
-func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration) *Session {
-	ssn := openSession(cache)
+func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration, schedulingPolicies map[string]*SchedulingPolicy) *Session {
+	ssn := openSession(cache, schedulingPolicies)
 	ssn.Tiers = tiers
 	ssn.Configurations = configurations
 	ssn.NodeMap = GenerateNodeMapAndSlice(ssn.Nodes)
 	ssn.PodLister = NewPodLister(ssn)
+
+	for name, schedulingPolicy := range schedulingPolicies {
+		schedulingPolicy.plugins = make(map[string]Plugin)
+		for _, tier := range schedulingPolicy.Tiers {
+			for _, plugin := range tier.Plugins {
+				if pb, found := GetPluginBuilder(plugin.Name); !found {
+					klog.Errorf("SchedulingPolicy: %v Failed to get plugin %s.", name, plugin.Name)
+				} else {
+					plugin := pb(plugin.Arguments)
+					schedulingPolicy.plugins[plugin.Name()] = plugin
+					plugin.OnSessionOpen(ssn)
+				}
+			}
+		}
+		copyAndClearSessionFunctions(schedulingPolicy, ssn)
+	}
 
 	for _, tier := range tiers {
 		for _, plugin := range tier.Plugins {
@@ -61,5 +77,10 @@ func CloseSession(ssn *Session) {
 		metrics.UpdatePluginDuration(plugin.Name(), metrics.OnSessionClose, metrics.Duration(onSessionCloseStart))
 	}
 
+	for _, SchedulingPolicy := range ssn.SchedulingPolicies {
+		for _, plugin := range SchedulingPolicy.plugins {
+			plugin.OnSessionClose(ssn)
+		}
+	}
 	closeSession(ssn)
 }
