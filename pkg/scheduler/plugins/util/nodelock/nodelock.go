@@ -19,15 +19,12 @@ package nodelock
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 )
 
@@ -41,16 +38,9 @@ func GetClient() kubernetes.Interface {
 
 // NewClient connects to an API server
 func NewClient() (kubernetes.Interface, error) {
-	kubeConfig := os.Getenv("KUBECONFIG")
-	if kubeConfig == "" {
-		kubeConfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	}
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		config, err = clientcmd.BuildConfigFromFlags("", kubeConfig)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 	client, err := kubernetes.NewForConfig(config)
 	kubeClient = client
