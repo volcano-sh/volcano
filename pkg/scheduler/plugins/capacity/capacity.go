@@ -597,7 +597,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			attr.name, attr.allocated.String(), attr.request.String(), attr.inqueue.String(), attr.elastic.String())
 	}
 
-	// init root queue realCapability/capability/deserved as cp.totalResource
+	// init root queue: realCapability is set to total resource, and capability/deserved are also set if empty.
 	rootQueueAttr := cp.queueOpts[api.QueueID(cp.rootQueue)]
 	if rootQueueAttr.capability.IsEmpty() {
 		rootQueueAttr.capability = cp.totalResource
