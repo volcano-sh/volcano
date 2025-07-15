@@ -48,6 +48,7 @@ type ResourcesType struct {
 func (w *ResourceStrategyFit) String() string {
 	marshal, err := json.Marshal(w)
 	if err != nil {
+		klog.Errorf("Failed to marshal ResourceStrategyFit: %v", err)
 		return ""
 	}
 	return string(marshal)
@@ -184,7 +185,7 @@ func Score(task *api.TaskInfo, node *api.NodeInfo, weight ResourceStrategyFit) f
 	if weightSum > 0 {
 		score /= float64(weightSum)
 	}
-	score *= float64(k8sFramework.MaxNodeScore * int64(weight.ResourceStrategyFitWeight))
+	score *= float64(k8sFramework.MaxNodeScore) * float64(weight.ResourceStrategyFitWeight)
 	return score
 }
 
