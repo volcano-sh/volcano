@@ -7,6 +7,10 @@ on:
     tags:
   pull_request:
 
+concurrency:
+    group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+    cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-24.04
