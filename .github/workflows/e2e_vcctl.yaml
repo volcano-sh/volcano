@@ -24,6 +24,8 @@ jobs:
           tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
           ./configure
           make && sudo make install
+      - name: Checkout code
+        uses: actions/checkout@v3
       - uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
@@ -33,8 +35,6 @@ jobs:
         run: |
           GO111MODULE="on" go install sigs.k8s.io/kind@v0.29.0
           curl -LO https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
-      - name: Checkout code
-        uses: actions/checkout@v3
 
       - name: Run E2E Tests
         run: |
