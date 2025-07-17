@@ -41,7 +41,6 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/podtopologyspread"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/tainttoleration"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/volumezone"
-	"k8s.io/kubernetes/pkg/scheduler/metrics"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -405,7 +404,6 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		// It is safe here to directly use the state to run plugins because we have already initialized the cycle state
 		// for each pending pod when open session and will not meet nil state
 		state := ssn.GetCycleState(task.UID)
-		metrics.Register()
 		// Check NodePorts
 		if predicate.nodePortEnable {
 			_, status := nodePortFilter.PreFilter(context.TODO(), state, task.Pod)
