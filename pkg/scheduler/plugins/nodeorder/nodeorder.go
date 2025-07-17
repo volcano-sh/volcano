@@ -1,5 +1,9 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Refactored to use Kubernetes native scheduling plugins for improved compatibility
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -160,7 +164,6 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeMap := ssn.NodeMap
 
 	fts := feature.Features{
-		EnableVolumeCapacityPriority:                 utilFeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority),
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
 		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
 	}
@@ -215,7 +218,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		state := k8sframework.NewCycleState()
 		if weight.imageLocalityWeight != 0 {
-			score, status := imageLocality.Score(context.TODO(), state, task.Pod, node.Name)
+			nodeInfo := ssn.NodeMap[node.Name]
+			score, status := imageLocality.Score(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Image Locality Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
@@ -228,7 +232,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeResourcesLeastAllocated
 		if weight.leastReqWeight != 0 {
-			score, status := leastAllocated.Score(context.TODO(), state, task.Pod, node.Name)
+			nodeInfo := ssn.NodeMap[node.Name]
+			score, status := leastAllocated.Score(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Least Allocated Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
@@ -241,7 +246,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeResourcesMostAllocated
 		if weight.mostReqWeight != 0 {
-			score, status := mostAllocation.Score(context.TODO(), state, task.Pod, node.Name)
+			nodeInfo := ssn.NodeMap[node.Name]
+			score, status := mostAllocation.Score(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Most Allocated Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
@@ -254,7 +260,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeResourcesBalancedAllocation
 		if weight.balancedResourceWeight != 0 {
-			score, status := balancedAllocation.Score(context.TODO(), state, task.Pod, node.Name)
+			nodeInfo := ssn.NodeMap[node.Name]
+			score, status := balancedAllocation.Score(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Balanced Resource Allocation Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()
@@ -267,7 +274,8 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		// NodeAffinity
 		if weight.nodeAffinityWeight != 0 {
-			score, status := nodeAffinity.Score(context.TODO(), state, task.Pod, node.Name)
+			nodeInfo := ssn.NodeMap[node.Name]
+			score, status := nodeAffinity.Score(context.TODO(), state, task.Pod, nodeInfo)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Calculate Node Affinity Priority Failed because of Error: %v", node.Name, status.AsError())
 				return 0, status.AsError()

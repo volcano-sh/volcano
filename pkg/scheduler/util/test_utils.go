@@ -1,5 +1,9 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added additional test builder functions for enhanced testing support
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,6 +47,9 @@ func BuildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1
 		Status: v1.NodeStatus{
 			Capacity:    alloc,
 			Allocatable: alloc,
+			Conditions: []v1.NodeCondition{
+				{Type: v1.NodeReady, Status: v1.ConditionTrue},
+			},
 		},
 	}
 }

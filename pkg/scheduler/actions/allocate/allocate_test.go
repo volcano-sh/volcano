@@ -1,5 +1,10 @@
 /*
 Copyright 2017 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Rewritten tests using TestCommonStruct framework with comprehensive allocation scenarios
+- Added TestAllocateWithNetWorkTopologies, BenchmarkAllocate, and other advanced test cases
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1570,7 +1575,7 @@ func TestFareShareAllocate(t *testing.T) {
 			ExpectBindsNum: 1,
 		},
 		{
-			Name: "queue’s DRF share value will be updated and its priority will change before it is put back into the priority queue",
+			Name: "queue's DRF share value will be updated and its priority will change before it is put back into the priority queue",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroup("pg-small-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupRunning),
 				util.BuildPodGroup("pg-large-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupInqueue),
@@ -1597,7 +1602,7 @@ func TestFareShareAllocate(t *testing.T) {
 			ExpectBindsNum: 2,
 		},
 		{
-			Name: "queue’s one jobs has no pending tasks, should be put back to queues for next job",
+			Name: "queue's one jobs has no pending tasks, should be put back to queues for next job",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroup("pg-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupRunning),
 				util.BuildPodGroup("pg-2", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupInqueue),
@@ -1738,8 +1743,8 @@ func TestAllocateWithPVC(t *testing.T) {
 			PVs:                []*v1.PersistentVolume{pv1, pv2},
 			PVCs:               []*v1.PersistentVolumeClaim{pvc1, pvc2},
 			IgnoreProvisioners: ignoreProvisioners,
-			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
-				"c1/pg1": scheduling.PodGroupRunning,
+			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
+				"c1/pg1": {api.Binding: 2},
 			},
 		},
 	}
@@ -1829,8 +1834,8 @@ func TestAllocateWithDRA(t *testing.T) {
 			Nodes: []*v1.Node{
 				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
 			},
-			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
-				"c1/pg1": scheduling.PodGroupRunning,
+			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
+				"c1/pg1": {api.Binding: 1},
 			},
 			ExpectBindMap: map[string]string{
 				"c1/p1": "n1",

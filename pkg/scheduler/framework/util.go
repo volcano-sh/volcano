@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2022 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -261,4 +261,23 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 		nodes = append(nodes, node.Node)
 	}
 	return nodes, nil
+}
+
+func isNodeUnschedulable(node *v1.Node) bool {
+	if node == nil {
+		return true
+	}
+	return node.Spec.Unschedulable
+}
+
+func isNodeNotReady(node *v1.Node) bool {
+	if node == nil {
+		return true
+	}
+	for _, cond := range node.Status.Conditions {
+		if cond.Type == v1.NodeReady {
+			return cond.Status != v1.ConditionTrue
+		}
+	}
+	return true
 }

@@ -8,7 +8,7 @@ basic:
   scheduler_config_file: "config/volcano-scheduler.conf"
   image_pull_secret: ""
   image_pull_policy: "Always"
-  image_tag_version: "v1.12.0"
+  image_tag_version: "latest"
   admission_port: 8443
   image_registry: "docker.io"
 custom:

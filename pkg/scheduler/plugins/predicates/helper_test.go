@@ -19,17 +19,18 @@ package predicates
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/kubernetes/pkg/features"
+
+	"github.com/stretchr/testify/assert"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 func TestSetUpVolumeBindingArgs(t *testing.T) {
-	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolumeCapacityPriority, true)
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.StorageCapacityScoring, true)
 
 	tests := []struct {
 		name     string

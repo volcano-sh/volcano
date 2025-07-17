@@ -1,5 +1,11 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added generic argument parsing support with automatic type conversion
+- Enhanced argument handling to support multiple data types
+- Added utility functions for reading action arguments from scheduler configuration
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

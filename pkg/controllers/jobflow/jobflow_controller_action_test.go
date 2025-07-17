@@ -209,6 +209,74 @@ func TestSyncJobFlowFunc(t *testing.T) {
 				err: nil,
 			},
 		},
+		{
+			name: "SyncJobFlow success case with vcjob Status Terminated",
+			args: args{
+				jobFlow: &jobflowv1alpha1.JobFlow{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "jobflow",
+						Namespace: "default",
+					},
+					Spec: jobflowv1alpha1.JobFlowSpec{
+						Flows: []jobflowv1alpha1.Flow{
+							{
+								Name:      "jobtemplate",
+								DependsOn: nil,
+							},
+						},
+						JobRetainPolicy: jobflowv1alpha1.Retain,
+					},
+				},
+				jobTemplateList: []*jobflowv1alpha1.JobTemplate{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "jobtemplate",
+							Namespace: "default",
+						},
+						Spec: v1alpha1.JobSpec{},
+					},
+				},
+				vcjobStatus: v1alpha1.Terminated,
+			},
+			want: wantRes{
+				jobFlowStatus: &jobflowv1alpha1.JobFlowStatus{
+					PendingJobs:    make([]string, 0),
+					RunningJobs:    make([]string, 0),
+					FailedJobs:     make([]string, 0),
+					CompletedJobs:  make([]string, 0),
+					TerminatedJobs: []string{getJobName("jobflow", "jobtemplate")},
+					UnKnowJobs:     make([]string, 0),
+					JobStatusList: []jobflowv1alpha1.JobStatus{
+						{
+							Name:           getJobName("jobflow", "jobtemplate"),
+							State:          v1alpha1.Terminated,
+							StartTimestamp: metav1.Time{},
+							EndTimestamp:   metav1.Time{},
+							RestartCount:   0,
+							RunningHistories: []jobflowv1alpha1.JobRunningHistory{
+								{
+									StartTimestamp: metav1.Time{},
+									EndTimestamp:   metav1.Time{},
+									State:          v1alpha1.Terminated,
+								},
+							},
+						},
+					},
+					Conditions: map[string]jobflowv1alpha1.Condition{
+						getJobName("jobflow", "jobtemplate"): {
+							Phase:           v1alpha1.Terminated,
+							CreateTimestamp: metav1.Time{},
+							RunningDuration: nil,
+							TaskStatusCount: nil,
+						},
+					},
+					State: jobflowv1alpha1.State{
+						Phase: jobflowv1alpha1.Failed,
+					},
+				},
+				err: nil,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -253,7 +321,7 @@ func TestSyncJobFlowFunc(t *testing.T) {
 					status.State.Phase = jobflowv1alpha1.Succeed
 				} else if (len(status.RunningJobs) > 0 || len(status.CompletedJobs) > 0) && len(status.FailedJobs) == 0 {
 					status.State.Phase = jobflowv1alpha1.Running
-				} else if len(status.FailedJobs) > 0 {
+				} else if len(status.FailedJobs) > 0 || len(status.TerminatedJobs) > 0 {
 					status.State.Phase = jobflowv1alpha1.Failed
 				} else {
 					status.State.Phase = jobflowv1alpha1.Pending

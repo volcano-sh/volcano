@@ -99,6 +99,9 @@ images:
 		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
 	done
 
+vc-agent-image:
+	docker buildx build -t "${IMAGE_PREFIX}/vc-agent:$(TAG)" . -f ./installer/dockerfile/agent/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}
+
 generate-code:
 	./hack/update-gencode.sh
 
@@ -147,7 +150,7 @@ e2e-test-dra: images
 	E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true" ./hack/run-e2e-kind.sh
 
 generate-yaml: init manifests
-	./hack/generate-yaml.sh TAG=${RELEASE_VER} CRD_VERSION=${CRD_VERSION}
+	./hack/generate-yaml.sh CRD_VERSION=${CRD_VERSION}
 
 generate-charts: init manifests
 	./hack/generate-charts.sh
@@ -194,7 +197,7 @@ ifeq (, $(shell which controller-gen))
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	GOOS=${OS} go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.17.0 ;\
+	GOOS=${OS} go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.18.0 ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 CONTROLLER_GEN=$(GOBIN)/controller-gen
@@ -203,9 +206,10 @@ CONTROLLER_GEN=$(shell which controller-gen)
 endif
 
 update-development-yaml:
-	make generate-yaml TAG=v1.12.0 RELEASE_DIR=installer
-	mv installer/volcano-v1.12.0.yaml installer/volcano-development.yaml
-	mv installer/volcano-agent-v1.12.0.yaml installer/volcano-agent-development.yaml
+	make generate-yaml RELEASE_DIR=installer
+	mv installer/volcano-${TAG}.yaml installer/volcano-development.yaml
+	mv installer/volcano-agent-${TAG}.yaml installer/volcano-agent-development.yaml
+	mv installer/volcano-monitoring-${TAG}.yaml installer/volcano-monitoring.yaml
 
 mod-download-go:
 	@-GOFLAGS="-mod=readonly" find -name go.mod -execdir go mod download \;
