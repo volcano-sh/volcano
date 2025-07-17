@@ -96,6 +96,26 @@ func (a Arguments) GetBool(ptr *bool, key string) {
 	*ptr = value
 }
 
+// GetString get the string value from string
+func (a Arguments) GetString(ptr *string, key string) {
+	if ptr == nil {
+		return
+	}
+
+	argv, ok := a[key]
+	if !ok {
+		return
+	}
+
+	value, ok := argv.(string)
+	if !ok {
+		klog.Warningf("Could not parse argument: %v for key %s to string", argv, key)
+		return
+	}
+
+	*ptr = value
+}
+
 // Get can automatically convert parameters according to the passed generic T type.
 // If the parameter conversion is successful, it returns the converted parameter.
 // If the parameter does not exist, it returns false.
