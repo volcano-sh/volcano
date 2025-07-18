@@ -148,7 +148,7 @@ func SortNodes(nodeScores map[float64][]*api.NodeInfo) []*api.NodeInfo {
 // SelectBestNode returns best node whose score is highest, pick one randomly if there are many nodes with same score.
 func SelectBestNode(nodeScores map[float64][]*api.NodeInfo) *api.NodeInfo {
 	var bestNodes []*api.NodeInfo
-	maxScore := -1.0
+	var maxScore = math.Inf(-1)
 	for score, nodes := range nodeScores {
 		if score > maxScore {
 			maxScore = score
