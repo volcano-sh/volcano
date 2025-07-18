@@ -226,7 +226,7 @@ func (hni *HyperNodesInfo) BuildHyperNodeCache(hn *HyperNodeInfo, processed sets
 			if _, ok := hni.realNodesSet[hn.Name]; !ok {
 				hni.realNodesSet[hn.Name] = sets.New[string]()
 			}
-			members := hni.getMembers(member.Selector, nodes)
+			members := GetMembers(member.Selector, nodes)
 			klog.V(5).InfoS("Get members of hyperNode", "name", hn.Name, "members", members)
 			hni.realNodesSet[hn.Name] = hni.realNodesSet[hn.Name].Union(members)
 
@@ -424,16 +424,16 @@ func (hni *HyperNodesInfo) setParent(member, parent string) error {
 	return nil
 }
 
-// getMembers retrieves the members of a HyperNode based on the selector.
-func (hni *HyperNodesInfo) getMembers(selector topologyv1alpha1.MemberSelector, nodes []*corev1.Node) sets.Set[string] {
+// GetMembers retrieves the members of a HyperNode based on the selector.
+func GetMembers(selector topologyv1alpha1.MemberSelector, nodes []*corev1.Node) sets.Set[string] {
+	members := sets.New[string]()
 	if selector.ExactMatch != nil {
 		if selector.ExactMatch.Name == "" {
-			return sets.New[string]()
+			return members
 		}
-		return sets.New[string](selector.ExactMatch.Name)
+		members.Insert(selector.ExactMatch.Name)
 	}
 
-	members := sets.New[string]()
 	if selector.RegexMatch != nil {
 		pattern := selector.RegexMatch.Pattern
 		reg, err := regexp.Compile(pattern)
