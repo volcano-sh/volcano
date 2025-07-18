@@ -21,10 +21,13 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 func (hn *hyperNodeController) addHyperNode(obj interface{}) {
@@ -98,7 +101,7 @@ func (hn *hyperNodeController) syncHyperNodeStatus(key string) error {
 		return err
 	}
 
-	nodeCount := len(hyperNode.Spec.Members)
+	nodeCount := hn.actualNodeCnt(hyperNode)
 	if hyperNode.Status.NodeCount != int64(nodeCount) {
 		// Create a deep copy to avoid modifying cache objects
 		hyperNodeCopy := hyperNode.DeepCopy()
@@ -113,4 +116,17 @@ func (hn *hyperNodeController) syncHyperNodeStatus(key string) error {
 	}
 
 	return nil
+}
+
+func (hn *hyperNodeController) actualNodeCnt(hyperNode *topologyv1alpha1.HyperNode) int {
+	nodes, err := hn.nodeLister.List(labels.Everything())
+	if err != nil {
+		klog.ErrorS(err, "Failed to list nodes", "name", hyperNode.Name)
+		return 0
+	}
+	members := sets.New[string]()
+	for _, member := range hyperNode.Spec.Members {
+		members.Insert(api.GetMembers(member.Selector, nodes).UnsortedList()...)
+	}
+	return len(members)
 }
