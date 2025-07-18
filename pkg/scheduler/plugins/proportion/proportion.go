@@ -59,6 +59,7 @@ type queueAttr struct {
 	name    string
 	weight  int32
 	share   float64
+	valid   bool
 
 	deserved  *api.Resource
 	allocated *api.Resource
@@ -109,6 +110,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				queueID: queue.UID,
 				name:    queue.Name,
 				weight:  queue.Weight,
+				valid:   true,
 
 				deserved:  api.EmptyResource(),
 				allocated: api.EmptyResource(),
@@ -117,6 +119,20 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				inqueue:   api.EmptyResource(),
 				guarantee: api.EmptyResource(),
 			}
+
+			err := pp.checkQueue(queue.Queue)
+			if err != nil {
+				klog.Errorf("Failed to check queue <%s>, error: %v", queue.Name, err)
+				attr.valid = false
+				pp.queueOpts[job.Queue] = attr
+
+				if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
+					guarantee := api.NewResource(queue.Queue.Spec.Guarantee.Resource)
+					pp.totalGuarantee.Sub(guarantee)
+				}
+				continue
+			}
+
 			if len(queue.Queue.Spec.Capability) != 0 {
 				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
 				if attr.capability.MilliCPU <= 0 {
@@ -142,6 +158,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		attr := pp.queueOpts[job.Queue]
+		if !attr.valid {
+			klog.V(4).Infof("Queue <%s> is not valid, skip considering Job <%s/%s>.",
+				job.Queue, job.Namespace, job.Name)
+			continue
+		}
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
@@ -177,6 +198,9 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Record metrics
 	for queueID, queueInfo := range ssn.Queues {
 		if attr, ok := pp.queueOpts[queueID]; ok {
+			if !attr.valid {
+				continue
+			}
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
 			metrics.UpdateQueueWeight(attr.name, attr.weight)
@@ -194,7 +218,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			if _, found := meet[attr.queueID]; found {
 				continue
 			}
-			totalWeight += attr.weight
+
+			if attr.valid {
+				totalWeight += attr.weight
+			}
 		}
 
 		// If no queues, break
@@ -213,6 +240,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infof("Considering Queue <%s>: weight <%d>, total weight <%d>.",
 				attr.name, attr.weight, totalWeight)
 			if _, found := meet[attr.queueID]; found {
+				continue
+			}
+			if !attr.valid {
+				klog.V(4).Infof("Queue <%s> is not valid, skip considering it", attr.name)
 				continue
 			}
 
@@ -279,6 +310,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		var victims []*api.TaskInfo
 		allocations := map[api.QueueID]*api.Resource{}
 
+		attr := pp.queueOpts[ssn.Jobs[reclaimer.Job].Queue]
+		if !attr.valid {
+			klog.V(3).Infof("Queue <%s> is not valid, can not reclaim for <%s>.", attr.name, reclaimer.Name)
+			return victims, util.Reject
+		}
+
 		for _, reclaimee := range reclaimees {
 			job := ssn.Jobs[reclaimee.Job]
 			attr := pp.queueOpts[job.Queue]
@@ -318,6 +355,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		attr := pp.queueOpts[queue.UID]
+		if !attr.valid {
+			klog.V(3).Infof("Queue <%s> is invalid, can not allocate task <%s>.", queue.Name, candidate.Name)
+			return false
+		}
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
 		allocatable := futureUsed.LessEqualWithDimension(attr.deserved, candidate.Resreq)
 		if !allocatable {
@@ -341,6 +382,10 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := state.queueAttrs[queue.UID]
 		if attr == nil {
 			klog.Errorf("queue %v not found", queue.Name)
+			return false
+		}
+		if !attr.valid {
+			klog.Errorf("queue <%s> is not valid queue, can not allocate task <%s>", queue.Name, candidate.Name)
 			return false
 		}
 
@@ -382,6 +427,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		// If the queue is not open, do not enqueue
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
 			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+			return util.Reject
+		}
+
+		if !attr.valid {
+			klog.V(3).Infof("Queue <%s> is not valid, can not enqueue job <%s/%s>.", queueID, job.Namespace, job.Name)
 			return util.Reject
 		}
 		// If no capability is set, always enqueue the job.
@@ -484,6 +534,34 @@ func (pp *proportionPlugin) updateShare(attr *queueAttr) {
 	metrics.UpdateQueueShare(attr.name, attr.share)
 }
 
+func (pp *proportionPlugin) checkQueue(queue *scheduling.Queue) error {
+	// check queue's capability/deserved/guarantee resource
+	capability := queue.Spec.Capability
+	deserved := queue.Spec.Deserved
+	guarantee := queue.Spec.Guarantee.Resource
+
+	capabilityResource := api.NewResource(capability)
+	deservedResource := api.NewResource(deserved)
+	guaranteeResource := api.NewResource(guarantee)
+
+	if capability != nil && capabilityResource.LessPartly(deservedResource, api.Zero) {
+		return fmt.Errorf("queue <%s> capability shouldn't less than deserved: capability <%v>, deserved <%v>",
+			queue.Name, capabilityResource.String(), deservedResource.String())
+	}
+
+	if capability != nil && capabilityResource.LessPartly(guaranteeResource, api.Zero) {
+		return fmt.Errorf("queue <%s> capability shouldn't less than guarantee: capability <%v>, guarantee <%v>",
+			queue.Name, capabilityResource.String(), guaranteeResource.String())
+	}
+
+	if deserved != nil && deservedResource.LessPartly(guaranteeResource, api.Zero) {
+		return fmt.Errorf("queue <%s> deserved shouldn't less than guarantee: deserved <%v>, guarantee <%v>",
+			queue.Name, deservedResource.String(), guaranteeResource.String())
+	}
+
+	return nil
+}
+
 type proportionState struct {
 	queueAttrs map[api.QueueID]*queueAttr
 }
@@ -499,6 +577,7 @@ func (qa *queueAttr) Clone() *queueAttr {
 		name:    qa.name,
 		weight:  qa.weight,
 		share:   qa.share,
+		valid:   qa.valid,
 
 		deserved:       qa.deserved.Clone(),
 		allocated:      qa.allocated.Clone(),
