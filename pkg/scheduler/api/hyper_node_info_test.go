@@ -920,10 +920,9 @@ func TestGetMembers(t *testing.T) {
 		},
 	}
 
-	hyperNodesInfor := HyperNodesInfo{}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := hyperNodesInfor.getMembers(tc.selector, tc.nodes)
+			result := GetMembers(tc.selector, tc.nodes)
 			if !result.Equal(tc.expected) {
 				t.Errorf("Test %s failed: Expected %v, but got %v", tc.name, tc.expected, result)
 			}
