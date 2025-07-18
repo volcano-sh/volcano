@@ -93,12 +93,12 @@ func MakePodWithExtendResources(name string, cpuRequest, memoryRequest int64, qo
 			Containers: []v1.Container{{
 				Resources: v1.ResourceRequirements{
 					Limits: v1.ResourceList{
-						apis.ExtendResourceCPU:    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
-						apis.ExtendResourceMemory: *resource.NewQuantity(memoryRequest, resource.DecimalSI),
+						apis.GetExtendResourceCPU():    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
+						apis.GetExtendResourceMemory(): *resource.NewQuantity(memoryRequest, resource.DecimalSI),
 					},
 					Requests: v1.ResourceList{
-						apis.ExtendResourceCPU:    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
-						apis.ExtendResourceMemory: *resource.NewQuantity(memoryRequest, resource.DecimalSI),
+						apis.GetExtendResourceCPU():    *resource.NewQuantity(cpuRequest, resource.DecimalSI),
+						apis.GetExtendResourceMemory(): *resource.NewQuantity(memoryRequest, resource.DecimalSI),
 					},
 				}},
 			}},
