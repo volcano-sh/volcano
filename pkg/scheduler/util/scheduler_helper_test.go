@@ -59,6 +59,15 @@ func TestSelectBestNode(t *testing.T) {
 			NodeScores:    map[float64][]*api.NodeInfo{},
 			ExpectedNodes: []*api.NodeInfo{nil},
 		},
+		{
+			NodeScores: map[float64][]*api.NodeInfo{
+				-5.0:  {&api.NodeInfo{Name: "node1"}, &api.NodeInfo{Name: "node2"}},
+				-10.0: {&api.NodeInfo{Name: "node3"}},
+				-8.0:  {&api.NodeInfo{Name: "node4"}, &api.NodeInfo{Name: "node5"}},
+			},
+			ExpectedNodes: []*api.NodeInfo{{Name: "node1"}, {Name: "node2"}},
+			ExpectedScore: -5.0,
+		},
 	}
 
 	oneOf := func(node *api.NodeInfo, nodes []*api.NodeInfo) bool {

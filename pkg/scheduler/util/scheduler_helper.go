@@ -198,7 +198,7 @@ func SortNodes(nodeScores map[float64][]*api.NodeInfo) []*api.NodeInfo {
 // SelectBestNodeAndScore returns the best node whose score is highest and the highest score, pick one randomly if there are many nodes with same score.
 func SelectBestNodeAndScore(nodeScores map[float64][]*api.NodeInfo) (*api.NodeInfo, float64) {
 	var bestNodes []*api.NodeInfo
-	maxScore := -1.0
+	var maxScore = math.Inf(-1)
 	for score, nodes := range nodeScores {
 		if score > maxScore {
 			maxScore = score
@@ -216,7 +216,7 @@ func SelectBestNodeAndScore(nodeScores map[float64][]*api.NodeInfo) (*api.NodeIn
 // SelectBestHyperNode return the best hyperNode name whose score is highest, pick one randomly if there are many hyperNodes with same score.
 func SelectBestHyperNode(hyperNodeScores map[float64][]string) string {
 	var bestHyperNodes []string
-	maxScore := -1.0
+	var maxScore = math.Inf(-1)
 	for score, hyperNodes := range hyperNodeScores {
 		if score > maxScore {
 			maxScore = score
