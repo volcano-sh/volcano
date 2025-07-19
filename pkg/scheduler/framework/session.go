@@ -65,6 +65,7 @@ type Session struct {
 
 	TotalResource  *api.Resource
 	TotalGuarantee *api.Resource
+	TotalDeserved  *api.Resource
 	// PodGroupOldState contains podgroup status and annotations during schedule
 	// This should not be mutated after initiated
 	api.PodGroupOldState
@@ -151,6 +152,7 @@ func openSession(cache cache.Cache) *Session {
 
 		TotalResource:  api.EmptyResource(),
 		TotalGuarantee: api.EmptyResource(),
+		TotalDeserved:  api.EmptyResource(),
 		PodGroupOldState: api.PodGroupOldState{
 			Status:      map[api.JobID]scheduling.PodGroupStatus{},
 			Annotations: map[api.JobID]map[string]string{},
@@ -304,10 +306,10 @@ func updateQueueStatus(ssn *Session) {
 // updateRootQueueResources updates the deserved/guaranteed resource and allocated resource of the root queue
 func updateRootQueueResources(ssn *Session, allocated v1.ResourceList) {
 	rootQueue := api.QueueID("root")
-	totalResource := util.ConvertRes2ResList(ssn.TotalResource).DeepCopy()
+	totalDeserved := util.ConvertRes2ResList(ssn.TotalDeserved).DeepCopy()
 	totalGuarantee := util.ConvertRes2ResList(ssn.TotalGuarantee).DeepCopy()
 
-	if equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Spec.Deserved, totalResource) &&
+	if equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Spec.Deserved, totalDeserved) &&
 		equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Spec.Guarantee.Resource, totalGuarantee) &&
 		equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Status.Allocated, allocated) {
 		klog.V(5).Infof("Root queue deserved/guaranteed resource and allocated resource remains the same, no need to update the queue.")
@@ -321,9 +323,9 @@ func updateRootQueueResources(ssn *Session, allocated v1.ResourceList) {
 		return
 	}
 
-	if !equality.Semantic.DeepEqual(queue.Spec.Deserved, totalResource) ||
+	if !equality.Semantic.DeepEqual(queue.Spec.Deserved, totalDeserved) ||
 		!equality.Semantic.DeepEqual(queue.Spec.Guarantee.Resource, totalGuarantee) {
-		queue.Spec.Deserved = totalResource
+		queue.Spec.Deserved = totalDeserved
 		queue.Spec.Guarantee.Resource = totalGuarantee
 		queue, err = ssn.VCClient().SchedulingV1beta1().Queues().Update(context.TODO(), queue, metav1.UpdateOptions{})
 		if err != nil {
