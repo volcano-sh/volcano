@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingapi "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
@@ -858,6 +859,129 @@ func TestRecordPodGroupEvent(t *testing.T) {
 				if tt.ExpectEvent != event {
 					t.Errorf("Testcase %s failed, expect event: %s, but got %s", tt.Name, tt.ExpectEvent, event)
 				}
+			}
+		})
+	}
+
+}
+
+func TestWaitDependsOnTaskMeetCondition(t *testing.T) {
+	namespace := "test"
+
+	testcases := []struct {
+		Name           string
+		Job            *v1alpha1.Job
+		PodGroup       *schedulingapi.PodGroup
+		PodRetainPhase state.PhaseMap
+		UpdateStatus   state.UpdateStatusFn
+		JobInfo        *apis.JobInfo
+		Pods           map[string]*v1.Pod
+		Plugins        []string
+		TotalNumPods   int
+		ExpectVal      bool
+	}{
+		{
+			Name: "WaitDependsOnTaskMeetCondition with dependsOn job can't find the dependent pod",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "100",
+					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "master",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+							DependsOn: &v1alpha1.DependsOn{
+								Name:      []string{"work"},
+								Iteration: batch.IterationAny,
+							},
+						},
+						{
+							Name:     "work",
+							Replicas: 3,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				Status: v1alpha1.JobStatus{
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Pending,
+					},
+				},
+			},
+			PodGroup: &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1-e7f18111-1cec-11ea-b688-fa163ec79500",
+					Namespace: namespace,
+				},
+				Spec: schedulingapi.PodGroupSpec{
+					MinResources:  &v1.ResourceList{},
+					MinTaskMember: map[string]int32{},
+				},
+				Status: schedulingapi.PodGroupStatus{
+					Phase: schedulingapi.PodGroupInqueue,
+				},
+			},
+			PodRetainPhase: state.PodRetainPhaseNone,
+			UpdateStatus:   nil,
+			JobInfo: &apis.JobInfo{
+				Namespace: namespace,
+				Name:      "jobinfo1",
+				Pods: map[string]map[string]*v1.Pod{
+					"work": {
+						"job1-master-0": buildPod(namespace, "job1-master-0", v1.PodPending, nil),
+						"job1-work-0":   buildPod(namespace, "job1-work-0", v1.PodRunning, nil),
+						"job1-work-1":   buildPod(namespace, "job1-work-1", v1.PodPending, nil),
+						"job1-work-2":   buildPod(namespace, "job1-work-2", v1.PodPending, nil),
+					},
+				},
+			},
+			Pods: map[string]*v1.Pod{
+				"job1-master-0": buildPod(namespace, "job1-master-0", v1.PodPending, nil),
+				"job1-work-0":   buildPod(namespace, "job1-work-0", v1.PodRunning, nil),
+				"job1-work-1":   buildPod(namespace, "job1-work-1", v1.PodPending, nil),
+				"job1-work-2":   buildPod(namespace, "job1-work-2", v1.PodPending, nil),
+			},
+			TotalNumPods: 4,
+			ExpectVal:    true,
+		},
+	}
+
+	for i, testcase := range testcases {
+		t.Run(testcase.Name, func(t *testing.T) {
+			fakeController := newFakeController()
+			condition := fakeController.waitDependsOnTaskMeetCondition(i, testcase.Job)
+
+			if condition != testcase.ExpectVal {
+				t.Error("Expected condition not to pod")
 			}
 		})
 	}
