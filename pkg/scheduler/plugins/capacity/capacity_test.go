@@ -370,6 +370,7 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	pg1 := util.BuildPodGroup("pg1", "ns1", "q11", 1, nil, schedulingv1beta1.PodGroupInqueue)
 	// queue
 	root := buildQueueWithParents("root", "", nil, nil)
+	root1 := buildQueueWithParents("root", "", nil, api.BuildResourceList("16", "16Gi"))
 	queue1 := buildQueueWithParents("q1", "root", nil, api.BuildResourceList("4", "4Gi"))
 	queue2 := buildQueueWithParents("q2", "root", nil, api.BuildResourceList("4", "4Gi"))
 	queue11 := buildQueueWithParents("q11", "q1", nil, api.BuildResourceList("1", "1Gi"))
@@ -468,6 +469,8 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	pg13 := util.BuildPodGroup("pg13", "ns1", "q91", 1, nil, schedulingv1beta1.PodGroupInqueue)
 	// pod
 	p13 := util.BuildPod("ns1", "p13", "", corev1.PodPending, api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg13", make(map[string]string), make(map[string]string))
+	// queue
+	queue10 := buildQueueWithParents("q10", "root", nil, api.BuildResourceList("10", "4Gi", []api.ScalarResource{}...))
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -580,6 +583,12 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 				"ns1/p13": "n2",
 			},
 			ExpectBindsNum: 1,
+		},
+		{
+			Name:    "case10: root queue's capability > cluster total resource, but should not panic",
+			Plugins: plugins,
+			Nodes:   []*corev1.Node{n1},
+			Queues:  []*schedulingv1beta1.Queue{root1, queue10},
 		},
 	}
 
