@@ -1,5 +1,9 @@
 /*
 Copyright 2017 The Kubernetes Authors.
+Copyright 2017-2024 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added task status utility functions for preemption and completion checks
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -84,6 +88,16 @@ func AllocatedStatus(status TaskStatus) bool {
 func CompletedStatus(status TaskStatus) bool {
 	switch status {
 	case Failed, Succeeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// ScheduledStatus checks whether the tasks are running, bound, failed or succeeded
+func ScheduledStatus(status TaskStatus) bool {
+	switch status {
+	case Running, Bound, Failed, Succeeded:
 		return true
 	default:
 		return false

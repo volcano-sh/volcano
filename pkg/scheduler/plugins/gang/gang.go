@@ -1,5 +1,11 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Enhanced gang scheduling validation with task-level validity checks
+- Improved preemption logic to respect gang scheduling constraints
+- Added support for job starving detection and enhanced pipeline state management
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

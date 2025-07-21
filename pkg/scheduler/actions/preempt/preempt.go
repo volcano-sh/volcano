@@ -1,5 +1,11 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added topology-aware preemption
+- Enhanced with predicate error caching and BestEffort constraints
+- Added victim selection algorithms with scoring and ordering
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

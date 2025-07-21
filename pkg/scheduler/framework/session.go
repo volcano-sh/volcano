@@ -1,5 +1,11 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added k8s client integration and event recording capabilities
+- Enhanced with HyperNode support for network topology aware scheduling
+- Extended plugin system with additional extension points
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -358,6 +364,38 @@ func closeSession(ssn *Session) {
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }
 
+func getPodGroupPhase(jobInfo *api.JobInfo, unschedulable bool) scheduling.PodGroupPhase {
+	// If running tasks && unschedulable, unknown phase
+	if len(jobInfo.TaskStatusIndex[api.Running]) != 0 && unschedulable {
+		return scheduling.PodGroupUnknown
+	}
+
+	scheduled := 0
+	completed := 0
+	for s, tasks := range jobInfo.TaskStatusIndex {
+		if api.ScheduledStatus(s) {
+			scheduled += len(tasks)
+		}
+		if api.CompletedStatus(s) {
+			completed += len(tasks)
+		}
+	}
+
+	if int32(scheduled) >= jobInfo.PodGroup.Spec.MinMember {
+		// If all scheduled tasks are completed, then the podgroup is completed
+		if scheduled == completed {
+			return scheduling.PodGroupCompleted
+		}
+		return scheduling.PodGroupRunning
+	}
+
+	if jobInfo.PodGroup.Status.Phase != scheduling.PodGroupInqueue {
+		return scheduling.PodGroupPending
+	}
+
+	return jobInfo.PodGroup.Status.Phase
+}
+
 func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 	status := jobInfo.PodGroup.Status
 
@@ -371,29 +409,7 @@ func jobStatus(ssn *Session, jobInfo *api.JobInfo) scheduling.PodGroupStatus {
 		}
 	}
 
-	// If running tasks && unschedulable, unknown phase
-	if len(jobInfo.TaskStatusIndex[api.Running]) != 0 && unschedulable {
-		status.Phase = scheduling.PodGroupUnknown
-	} else {
-		allocated := 0
-		for status, tasks := range jobInfo.TaskStatusIndex {
-			if api.AllocatedStatus(status) || api.CompletedStatus(status) {
-				allocated += len(tasks)
-			}
-		}
-
-		// If there're enough allocated resource, it's running
-		if int32(allocated) >= jobInfo.PodGroup.Spec.MinMember {
-			status.Phase = scheduling.PodGroupRunning
-			// If all allocated tasks is succeeded or failed, it's completed
-			if len(jobInfo.TaskStatusIndex[api.Succeeded])+len(jobInfo.TaskStatusIndex[api.Failed]) == allocated {
-				status.Phase = scheduling.PodGroupCompleted
-			}
-		} else if jobInfo.PodGroup.Status.Phase != scheduling.PodGroupInqueue {
-			status.Phase = scheduling.PodGroupPending
-		}
-	}
-
+	status.Phase = getPodGroupPhase(jobInfo, unschedulable)
 	status.Running = int32(len(jobInfo.TaskStatusIndex[api.Running]))
 	status.Failed = int32(len(jobInfo.TaskStatusIndex[api.Failed]))
 	status.Succeeded = int32(len(jobInfo.TaskStatusIndex[api.Succeeded]))

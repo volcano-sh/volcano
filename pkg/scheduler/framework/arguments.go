@@ -1,5 +1,11 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added generic argument parsing support with automatic type conversion
+- Enhanced argument handling to support multiple data types
+- Added utility functions for reading action arguments from scheduler configuration
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -84,6 +90,26 @@ func (a Arguments) GetBool(ptr *bool, key string) {
 	value, ok := argv.(bool)
 	if !ok {
 		klog.Warningf("Could not parse argument: %v for key %s to bool", argv, key)
+		return
+	}
+
+	*ptr = value
+}
+
+// GetString get the string value from string
+func (a Arguments) GetString(ptr *string, key string) {
+	if ptr == nil {
+		return
+	}
+
+	argv, ok := a[key]
+	if !ok {
+		return
+	}
+
+	value, ok := argv.(string)
+	if !ok {
+		klog.Warningf("Could not parse argument: %v for key %s to string", argv, key)
 		return
 	}
 

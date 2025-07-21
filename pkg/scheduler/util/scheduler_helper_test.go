@@ -1,5 +1,9 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Enhanced test coverage for scheduler helper functionality
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,6 +58,15 @@ func TestSelectBestNode(t *testing.T) {
 		{
 			NodeScores:    map[float64][]*api.NodeInfo{},
 			ExpectedNodes: []*api.NodeInfo{nil},
+		},
+		{
+			NodeScores: map[float64][]*api.NodeInfo{
+				-5.0:  {&api.NodeInfo{Name: "node1"}, &api.NodeInfo{Name: "node2"}},
+				-10.0: {&api.NodeInfo{Name: "node3"}},
+				-8.0:  {&api.NodeInfo{Name: "node4"}, &api.NodeInfo{Name: "node5"}},
+			},
+			ExpectedNodes: []*api.NodeInfo{{Name: "node1"}, {Name: "node2"}},
+			ExpectedScore: -5.0,
 		},
 	}
 
