@@ -92,7 +92,11 @@ type Cache interface {
 	// GetReservationCache returns the reservation cache
 	GetReservationCache() *ReservationCache
 
+	// SyncBindToReservationTask sync task status to reservation
 	SyncBindToReservationTask(task *api.TaskInfo) error
+
+	// FindJobAndTask returns the Job and Task by task
+	FindJobAndTask(task *api.TaskInfo) (*api.JobInfo, *api.TaskInfo, error)
 }
 
 // Binder interface for binding task and hostname

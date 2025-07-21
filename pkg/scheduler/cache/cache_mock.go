@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/util/workqueue"
 
 	fakevcClient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -101,6 +102,8 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[*schedulingapi.JobInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.JobInfo]()),
 		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		DeletedReservations: workqueue.NewTypedRateLimitingQueue[*schedulingapi.ReservationInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.ReservationInfo]()),
+
 		kubeClient:          fake.NewSimpleClientset(),
 		vcClient:            fakevcClient.NewSimpleClientset(),
 		restConfig:          nil,
@@ -119,6 +122,6 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 	}
 	msc.setBatchBindParallel()
 	msc.nodeWorkers = getNodeWorkers()
-
+	msc.ReservationCache = newReservationCache(msc.vcClient)
 	return msc
 }

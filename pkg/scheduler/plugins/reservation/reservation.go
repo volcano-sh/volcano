@@ -38,6 +38,11 @@ type reservationPlugin struct {
 	session *framework.Session
 }
 
+// bind context extension information of reservation
+type bindContextExtension struct {
+	SkipBind bool
+}
+
 // New function returns prioritizePlugin object
 func New(aruguments framework.Arguments) framework.Plugin {
 	return &reservationPlugin{}
@@ -144,6 +149,41 @@ func (rp *reservationPlugin) PostBind(ctx context.Context, bindCtx *cache.BindCo
 	}
 
 	return nil
+}
+
+func (rp *reservationPlugin) PreBind(ctx context.Context, bindCtx *cache.BindContext) error {
+	taskInfo := bindCtx.TaskInfo
+
+	if !taskInfo.IsReservationTask() {
+		return nil
+	}
+
+	job, task, err := rp.session.Cache().FindJobAndTask(taskInfo)
+	if err != nil {
+		return err
+	}
+	// reservation task need skipping bind action.
+	if err := job.UpdateTaskStatus(task, api.Bound); err != nil {
+		return err
+	}
+	bindCtx.SkipBind = true
+	rp.session.Cache().GetReservationCache().SyncReservation(task, job)
+	return nil
+}
+
+func (rp *reservationPlugin) PreBindRollBack(ctx context.Context, bindCtx *cache.BindContext) {
+	taskInfo := bindCtx.TaskInfo
+
+	if !taskInfo.IsReservationTask() {
+		return
+	}
+
+	job, task, err := rp.session.Cache().FindJobAndTask(taskInfo)
+	if err != nil {
+		return
+	}
+	rp.session.Cache().GetReservationCache().SyncReservation(task, job)
+	return
 }
 
 func (rp *reservationPlugin) OnSessionClose(ssn *framework.Session) {}

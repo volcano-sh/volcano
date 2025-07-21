@@ -204,6 +204,7 @@ type BindContext struct {
 	TaskInfo *schedulingapi.TaskInfo
 	// Extensions stores extra bind context information of each plugin
 	Extensions map[string]BindContextExtension
+	SkipBind   bool
 }
 
 // DefaultBinder with kube client and event recorder
@@ -1230,11 +1231,6 @@ func (sc *SchedulerCache) processSyncHyperNode() {
 func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	klog.V(5).Infof("add bind task %v/%v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name)
 
-	// todo: 需要解耦
-	if bindContext.TaskInfo.IsReservationTask() {
-		return sc.processReservationTask(bindContext.TaskInfo)
-	}
-
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 	job, task, err := sc.findJobAndTask(bindContext.TaskInfo)
@@ -1259,51 +1255,17 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	}
 	task.NumaInfo = bindContext.TaskInfo.NumaInfo.Clone()
 
-	// todo: 需要解耦
-	if bindContext.TaskInfo.IsUseReservationTask() {
-		reservationTask := bindContext.TaskInfo.ReservationTaskInfo
-		// Remove reservation task from the node if it exists to release the reserved resources on node.
-		if err := node.RemoveTask(reservationTask); err != nil {
-			// After failing to update task to a node we need to revert task status from Releasing,
-			// otherwise task might be stuck in the Releasing state indefinitely.
-			if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
-				klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
-					"from %s to %s after failing to update Task on Node <%s>: %v",
-					task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
-				sc.resyncTask(task)
-			}
-			return err
+	// Add task to the node.
+	if err := node.AddTask(task); err != nil {
+		// After failing to update task to a node we need to revert task status from Releasing,
+		// otherwise task might be stuck in the Releasing state indefinitely.
+		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+				"from %s to %s after failing to update Task on Node <%s>: %v",
+				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+			sc.resyncTask(task)
 		}
-		// Add task to the node.
-		if err := node.AddTask(task); err != nil {
-			// After failing to update task to a node we need to revert task status from Releasing,
-			// otherwise task might be stuck in the Releasing state indefinitely.
-			if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
-				klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
-					"from %s to %s after failing to update Task on Node <%s>: %v",
-					task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
-				sc.resyncTask(task)
-			}
-
-			if rollbackErr := node.AddTask(reservationTask); rollbackErr != nil {
-				klog.Errorf("Rollback reservation task failed: unable to add reservation task <%s/%s> back to node <%s>: %v",
-					reservationTask.Namespace, reservationTask.Name, node.Name, rollbackErr)
-			}
-			return err
-		}
-	} else {
-		// Add task to the node.
-		if err := node.AddTask(task); err != nil {
-			// After failing to update task to a node we need to revert task status from Releasing,
-			// otherwise task might be stuck in the Releasing state indefinitely.
-			if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
-				klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
-					"from %s to %s after failing to update Task on Node <%s>: %v",
-					task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
-				sc.resyncTask(task)
-			}
-			return err
-		}
+		return err
 	}
 
 	sc.BindFlowChannel <- bindContext
@@ -1335,48 +1297,6 @@ func (sc *SchedulerCache) processBindTask() {
 		return
 	}
 	sc.BindTask()
-}
-
-func (sc *SchedulerCache) processReservationTask(taskInfo *schedulingapi.TaskInfo) error {
-	klog.V(5).Infof("reserve task %v/%v", taskInfo.Namespace, taskInfo.Name)
-	job, task, err := sc.findJobAndTask(taskInfo)
-	if err != nil {
-		return err
-	}
-
-	node, found := sc.Nodes[taskInfo.NodeName]
-	if !found {
-		return fmt.Errorf("failed to reserve Task %v to host %v, host does not exist",
-			task.UID, taskInfo.NodeName)
-	}
-
-	originalStatus := task.Status
-	if err := job.UpdateTaskStatus(task, schedulingapi.Bound); err != nil {
-		return err
-	}
-
-	err = taskInfo.SetPodResourceDecision()
-	if err != nil {
-		return fmt.Errorf("set reserve task %v/%v resource decision failed, err %v", task.Namespace, task.Name, err)
-	}
-	task.NumaInfo = taskInfo.NumaInfo.Clone()
-
-	// Add task to the node.
-	if err := node.AddTask(task); err != nil {
-		// After failing to update task to a node we need to revert task status from Releasing,
-		// otherwise task might be stuck in the Releasing state indefinitely.
-		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
-			klog.Errorf("Reserve task <%s/%s> will be resynchronized after failing to revert status "+
-				"from %s to %s after failing to update Task on Node <%s>: %v",
-				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
-			sc.resyncTask(task)
-		}
-		return err
-	}
-
-	// Sync to reservation cache
-	sc.ReservationCache.SyncReservation(task, job)
-	return nil
 }
 
 func (sc *SchedulerCache) SyncBindToReservationTask(task *schedulingapi.TaskInfo) error {
@@ -1490,7 +1410,8 @@ func (sc *SchedulerCache) BindTask() {
 		defer cancel()
 
 		successfulPreBindContexts := sc.executePreBinds(cancelCtx, bindContexts)
-		sc.Bind(ctx, successfulPreBindContexts)
+		needBindContexts := sc.filterNeedSkipBindContexts(successfulPreBindContexts)
+		sc.Bind(ctx, needBindContexts)
 	}(tmpBindCache)
 
 	// The slice here needs to point to a new underlying array, otherwise bindCache may not be able to trigger garbage collection immediately
@@ -1865,4 +1786,22 @@ func (sc *SchedulerCache) gcExpiredReservationsOnce() {
 		klog.V(4).Infof("Reservation %s expired, enqueuing for deletion", reservation.Reservation.Name)
 		sc.DeletedReservations.Add(reservation)
 	})
+}
+
+func (sc *SchedulerCache) FindJobAndTask(task *schedulingapi.TaskInfo) (*schedulingapi.JobInfo, *schedulingapi.TaskInfo, error) {
+	return sc.findJobAndTask(task)
+}
+
+func (sc *SchedulerCache) filterNeedSkipBindContexts(contexts []*BindContext) []*BindContext {
+	contextsToBind := make([]*BindContext, 0, len(contexts))
+
+	for _, bindCtx := range contexts {
+		if !bindCtx.SkipBind {
+			contextsToBind = append(contextsToBind, bindCtx)
+		} else {
+			klog.V(4).Infof("Task %s: %s skip bind", bindCtx.TaskInfo.Namespace, bindCtx.TaskInfo.Name)
+		}
+	}
+
+	return contextsToBind
 }
