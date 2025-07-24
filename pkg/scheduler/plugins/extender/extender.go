@@ -25,6 +25,8 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -67,6 +69,8 @@ const (
 
 	// 10MB
 	maxBodySize = 10 << 20
+	// ExtenderManagedResources is the managed resources list split by ","
+	ExtenderManagedResources = "extender.managedResources"
 )
 
 type extenderConfig struct {
@@ -84,6 +88,7 @@ type extenderConfig struct {
 	allocateFuncVerb   string
 	deallocateFuncVerb string
 	ignorable          bool
+	managedResources   sets.Set[string]
 }
 
 type extenderPlugin struct {
@@ -115,6 +120,9 @@ func parseExtenderConfig(arguments framework.Arguments) *extenderConfig {
 				   extender.queueOverusedVerb: queueOverused
 				   extender.jobEnqueueableVerb: jobEnqueueable
 				   extender.ignorable: true
+				   extender.managedResources:
+				   - nvidia.com/gpu
+				   - nvidia.com/gpumem
 		     - name: proportion
 		     - name: nodeorder
 	*/
@@ -139,6 +147,10 @@ func parseExtenderConfig(arguments framework.Arguments) *extenderConfig {
 		if timeoutDuration, err := time.ParseDuration(httpTimeout); err == nil {
 			ec.httpTimeout = timeoutDuration
 		}
+	}
+	managedResources, ok := framework.Get[[]string](arguments, ExtenderManagedResources)
+	if ok {
+		ec.managedResources = sets.New[string](managedResources...)
 	}
 
 	return ec
@@ -173,6 +185,10 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	if ep.config.predicateVerb != "" {
 		ssn.AddPredicateFn(ep.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+			if !ep.IsInterested(task) {
+				return nil
+			}
+
 			resp := &PredicateResponse{}
 			err := ep.send(ep.config.predicateVerb, &PredicateRequest{Task: task, Node: node}, resp)
 			if err != nil {
@@ -198,6 +214,10 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	if ep.config.prioritizeVerb != "" {
 		ssn.AddBatchNodeOrderFn(ep.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+			if !ep.IsInterested(task) {
+				return map[string]float64{}, nil
+			}
+
 			resp := &PrioritizeResponse{}
 			err := ep.send(ep.config.prioritizeVerb, &PrioritizeRequest{Task: task, Nodes: nodes}, resp)
 			if err != nil {
@@ -218,6 +238,10 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	if ep.config.preemptableVerb != "" {
 		ssn.AddPreemptableFn(ep.Name(), func(evictor *api.TaskInfo, evictees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+			if !ep.IsInterested(evictor) {
+				return []*api.TaskInfo{}, util.Abstain
+			}
+
 			resp := &PreemptableResponse{}
 			err := ep.send(ep.config.preemptableVerb, &PreemptableRequest{Evictor: evictor, Evictees: evictees}, resp)
 			if err != nil {
@@ -235,6 +259,10 @@ func (ep *extenderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	if ep.config.reclaimableVerb != "" {
 		ssn.AddReclaimableFn(ep.Name(), func(evictor *api.TaskInfo, evictees []*api.TaskInfo) ([]*api.TaskInfo, int) {
+			if !ep.IsInterested(evictor) {
+				return []*api.TaskInfo{}, util.Abstain
+			}
+
 			resp := &ReclaimableResponse{}
 			err := ep.send(ep.config.reclaimableVerb, &ReclaimableRequest{Evictor: evictor, Evictees: evictees}, resp)
 			if err != nil {
@@ -341,6 +369,44 @@ func (ep *extenderPlugin) send(action string, args interface{}, result interface
 	return nil
 }
 
+// IsInterested returns true if at least one extended resource requested by
+// this pod is managed by this extender.
+//
+// This code is adapted from the Kubernetes project:
+// https://github.com/kubernetes/kubernetes/blob/master/pkg/scheduler/extender.go
+func (ep *extenderPlugin) IsInterested(task *api.TaskInfo) bool {
+	if ep.config.managedResources.Len() == 0 {
+		return true
+	}
+	if ep.hasManagedResources(task.Pod.Spec.Containers) {
+		return true
+	}
+	if ep.hasManagedResources(task.Pod.Spec.InitContainers) {
+		return true
+	}
+	return false
+}
+
+func (ep *extenderPlugin) hasManagedResources(containers []corev1.Container) bool {
+	for _, container := range containers {
+		if ep.hasResourcesInList(container.Resources.Requests) ||
+			ep.hasResourcesInList(container.Resources.Limits) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasResourcesInList checks if any resource in the given ResourceList is managed by this extender
+func (ep *extenderPlugin) hasResourcesInList(resources corev1.ResourceList) bool {
+	for resourceName := range resources {
+		if ep.config.managedResources.Has(string(resourceName)) {
+			return true
+		}
+	}
+	return false
+}
+
 func addEventHandler(ssn *framework.Session, ep *extenderPlugin) {
 	const (
 		AllocateFunc   = "AllocateFunc"
@@ -350,6 +416,9 @@ func addEventHandler(ssn *framework.Session, ep *extenderPlugin) {
 		return func(event *framework.Event) {
 			if event == nil {
 				klog.Errorf("%s event nil.", funcName)
+				return
+			}
+			if !ep.IsInterested(event.Task) {
 				return
 			}
 			resp := &EventHandlerResponse{}
