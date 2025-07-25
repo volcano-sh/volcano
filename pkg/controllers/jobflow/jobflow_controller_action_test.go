@@ -19,6 +19,7 @@ package jobflow
 import (
 	"context"
 	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
 	"sort"
 	"testing"
 	"time"
@@ -1029,12 +1030,23 @@ func TestPatchJobTemplate(t *testing.T) {
 			},
 		},
 		{
+
 			name: "patch tasks",
 			baseSpec: &v1alpha1.JobSpec{
 				Tasks: []v1alpha1.TaskSpec{
 					{
 						Name:     "task-1",
 						Replicas: 1,
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name:  "task-1",
+										Image: "test",
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -1043,6 +1055,16 @@ func TestPatchJobTemplate(t *testing.T) {
 					{
 						Name:     "task-1",
 						Replicas: 2,
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name:  "task-1",
+										Image: "test 2",
+									},
+								},
+							},
+						},
 					},
 					{
 						Name:     "task-2",
@@ -1055,6 +1077,16 @@ func TestPatchJobTemplate(t *testing.T) {
 					{
 						Name:     "task-1",
 						Replicas: 2,
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name:  "task-1",
+										Image: "test 2",
+									},
+								},
+							},
+						},
 					},
 					{
 						Name:     "task-2",
@@ -1080,6 +1112,85 @@ func TestPatchJobTemplate(t *testing.T) {
 				Plugins: map[string][]string{
 					"plugin1": {"arg2"},
 					"plugin2": {"arg1"},
+				},
+			},
+		},
+		{
+			name: "patch container volume mounts",
+			baseSpec: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name: "task-1",
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name: "container-1",
+										VolumeMounts: []v1.VolumeMount{
+											{
+												Name:      "vol-1",
+												MountPath: "/data",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			patchSpec: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name: "task-1",
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name: "container-1",
+										VolumeMounts: []v1.VolumeMount{
+											{
+												Name:      "vol-1",
+												MountPath: "/data",
+												ReadOnly:  true,
+											},
+											{
+												Name:      "vol-2",
+												MountPath: "/config",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name: "task-1",
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name: "container-1",
+										VolumeMounts: []v1.VolumeMount{
+											{
+												Name:      "vol-1",
+												MountPath: "/data",
+												ReadOnly:  true,
+											},
+											{
+												Name:      "vol-2",
+												MountPath: "/config",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 		},
