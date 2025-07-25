@@ -102,6 +102,17 @@ func validatePod(pod *v1.Pod, reviewResponse *admissionv1.AdmissionResponse) str
 	}
 	msg := ""
 
+	// Enforce PodGroup preemptable policy
+	if podGroupName, ok := pod.Labels[vcv1beta1.PodGroupNameKey]; ok {
+		pg, err := config.PodGroupLister.PodGroups(pod.Namespace).Get(podGroupName)
+		if err == nil && pg.Spec.Preemptable != nil && !*pg.Spec.Preemptable {
+			if value, found := pod.Annotations[vcv1beta1.PodPreemptable]; found && value == "true" {
+				reviewResponse.Allowed = false
+				return "PodGroup is un-preemptable, so its Pods cannot be preemptable."
+			}
+		}
+	}
+
 	// check pod annotatations
 	if err := validateAnnotation(pod); err != nil {
 		msg = err.Error()

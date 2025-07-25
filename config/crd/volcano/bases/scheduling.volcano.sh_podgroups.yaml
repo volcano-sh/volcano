@@ -122,6 +122,10 @@ spec:
                   Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
                   the PodGroup will not be scheduled. Defaults to `default` Queue with the lowest weight.
                 type: string
+              preemptable:
+                description: |
+                  Preemptable indicates whether the PodGroup is preemptable. If false, none of its Pods can be preemptable.
+                type: boolean
             type: object
           status:
             description: |-
