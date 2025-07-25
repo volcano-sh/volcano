@@ -17,9 +17,11 @@ limitations under the License.
 package jobflow
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/klog/v2"
 
 	v1alpha1flow "volcano.sh/apis/pkg/apis/flow/v1alpha1"
@@ -27,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	v1 "k8s.io/api/core/v1"
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
@@ -104,6 +107,7 @@ func mergeJobLevelVolumes(base, patch *[]batch.VolumeSpec) []batch.VolumeSpec {
 }
 
 func mergeJobLevelTasks(base, patch *[]batch.TaskSpec) []batch.TaskSpec {
+
 	if patch == nil {
 		return *base
 	}
@@ -120,6 +124,23 @@ func mergeJobLevelTasks(base, patch *[]batch.TaskSpec) []batch.TaskSpec {
 		if taskMap[t.Name] {
 			for i, existing := range merged {
 				if existing.Name == t.Name {
+
+					originalJSON, _ := json.Marshal(existing.Template)
+					modifiedJSON, _ := json.Marshal(t.Template)
+
+					patchResult, err := strategicpatch.StrategicMergePatch(originalJSON, modifiedJSON, v1.PodTemplateSpec{})
+					if err != nil {
+						klog.Errorf("Failed to create strategic merge patch: %v", err)
+						continue
+					}
+
+					var mergedTemplate v1.PodTemplateSpec
+					if err := json.Unmarshal(patchResult, &mergedTemplate); err != nil {
+						klog.Errorf("Failed to unmarshal merged template: %v", err)
+						continue
+					}
+
+					t.Template = mergedTemplate
 					merged[i] = t
 					break
 				}
