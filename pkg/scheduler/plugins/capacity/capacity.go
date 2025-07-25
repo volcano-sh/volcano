@@ -625,6 +625,8 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
 		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
+		metrics.UpdateQueueCapacity(attr.name, attr.capability.MilliCPU, attr.capability.Memory, attr.capability.ScalarResources)
+		metrics.UpdateQueueRealCapacity(attr.name, attr.realCapability.MilliCPU, attr.realCapability.Memory, attr.realCapability.ScalarResources)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
