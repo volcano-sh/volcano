@@ -977,6 +977,12 @@ func (b *volumeBinder) revertAssumedPVCs(claims []*v1.PersistentVolumeClaim) {
 // hasEnoughCapacity checks whether the provisioner has enough capacity left for a new volume of the given size
 // that is available from the node. This function returns the node capacity based on the PVC's storage class.
 func (b *volumeBinder) hasEnoughCapacity(logger klog.Logger, provisioner string, claim *v1.PersistentVolumeClaim, storageClass *storagev1.StorageClass, node *v1.Node) (bool, *storagev1beta1.CSIStorageCapacity, error) {
+	// This is an optional feature. If disabled, we assume that
+	// there is enough storage.
+	if !b.capacityCheckEnabled {
+		return true, nil, nil
+	}
+
 	quantity, ok := claim.Spec.Resources.Requests[v1.ResourceStorage]
 	if !ok {
 		// No capacity to check for.

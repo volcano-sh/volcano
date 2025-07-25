@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-
 	v1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	storagev1beta1 "k8s.io/api/storage/v1beta1"
@@ -2356,5 +2355,22 @@ func TestCapacity(t *testing.T) {
 				t.Run(name, func(t *testing.T) { run(t, scenario, optIn) })
 			}
 		})
+	}
+}
+
+func TestBinderWithCapacityCheckDisabled(t *testing.T) {
+	logger, ctx := ktesting.NewTestContext(t)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	binder := &volumeBinder{
+		capacityCheckEnabled: false,
+	}
+	sufficient, _, err := binder.hasEnoughCapacity(logger, "", nil, nil, nil)
+	if err != nil {
+		t.Errorf("returned error: %v", err)
+	}
+	if !sufficient {
+		t.Error("expected sufficient, got insufficient")
 	}
 }
