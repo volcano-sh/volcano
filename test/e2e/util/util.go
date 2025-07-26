@@ -71,6 +71,7 @@ const (
 	ExecuteAction                = "ExecuteAction"
 	DefaultQueue                 = "default"
 	NumStress                    = 10
+	DefaultStorageClass          = "standard"
 )
 
 const (
