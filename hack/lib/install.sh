@@ -99,3 +99,12 @@ function install-ginkgo-if-not-exist {
     echo -n "Found ginkgo, version: " && ginkgo version
   fi
 }
+
+function install-kwok-with-helm {
+  helm repo add kwok https://kwok.sigs.k8s.io/charts/
+  helm repo update
+  helm upgrade --namespace kube-system --install kwok kwok/kwok
+  helm upgrade --install kwok kwok/stage-fast
+  # delete pod-complete stage to avoid volcano-job-pod change status to complete.
+  kubectl delete stage pod-complete
+}
