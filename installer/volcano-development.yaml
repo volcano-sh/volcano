@@ -4616,7 +4616,7 @@ data:
       - name: drf
         enablePreemptable: false
       - name: predicates
-      - name: proportion
+      - name: capacity
       - name: nodeorder
       - name: binpack
 ---
