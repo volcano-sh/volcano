@@ -252,10 +252,23 @@ func getRunningHistories(jobStatusList []v1alpha1flow.JobStatus, job *v1alpha1.J
 }
 
 func (jf *jobflowcontroller) loadJobTemplateAndSetJob(jobFlow *v1alpha1flow.JobFlow, flowName string, jobName string, job *v1alpha1.Job) error {
+	flow, err := getFlowByName(jobFlow, flowName)
+	if err != nil {
+		return err
+	}
 	// load jobTemplate
 	jobTemplate, err := jf.jobTemplateLister.JobTemplates(jobFlow.Namespace).Get(flowName)
 	if err != nil {
 		return err
+	}
+	if flow.Patch != nil {
+		baseSpec := jobTemplate.Spec.DeepCopy()
+		patchSpec := flow.Patch.JobSpec.DeepCopy()
+		patchedJobSpec, err := jf.patchJobTemplate(baseSpec, patchSpec)
+		if err != nil {
+			return err
+		}
+		jobTemplate.Spec = *patchedJobSpec
 	}
 
 	*job = v1alpha1.Job{
@@ -276,6 +289,66 @@ func (jf *jobflowcontroller) loadJobTemplateAndSetJob(jobFlow *v1alpha1flow.JobF
 	}
 
 	return controllerutil.SetControllerReference(jobFlow, job, scheme.Scheme)
+}
+
+func (jf *jobflowcontroller) patchJobTemplate(baseSpec *v1alpha1.JobSpec, patchSpec *v1alpha1.JobSpec) (*v1alpha1.JobSpec, error) {
+	merged := baseSpec.DeepCopy()
+
+	if patchSpec == nil {
+		return merged, nil
+	}
+	if patchSpec.SchedulerName != "" {
+		merged.SchedulerName = patchSpec.SchedulerName
+	}
+	if patchSpec.MinAvailable >= 0 {
+		merged.MinAvailable = patchSpec.MinAvailable
+	}
+	// it should update matching volumes and add new volumes by MountPath
+	if patchSpec.Volumes != nil {
+		merged.Volumes = mergeJobLevelVolumes(&baseSpec.Volumes, &patchSpec.Volumes)
+	}
+	// merge by task name, it should merge TaskSpec recursively and add new tasks
+	if patchSpec.Tasks != nil {
+		merged.Tasks = mergeJobLevelTasks(&baseSpec.Tasks, &patchSpec.Tasks)
+	}
+	// it should override the existing list or add the new list if not
+	if patchSpec.Policies != nil {
+		merged.Policies = patchSpec.Policies
+	}
+	// merge plugins by updating existing arguments or adding new entries
+	if patchSpec.Plugins != nil {
+		if merged.Plugins == nil {
+			merged.Plugins = make(map[string][]string)
+		}
+		for pluginName, args := range patchSpec.Plugins {
+			merged.Plugins[pluginName] = args
+		}
+	}
+	if patchSpec.RunningEstimate != nil {
+		merged.RunningEstimate = patchSpec.RunningEstimate
+	}
+	if patchSpec.Queue != "" {
+		merged.Queue = patchSpec.Queue
+	}
+	// MaxRetry can be zero to disable retries
+	if patchSpec.MaxRetry > 0 {
+		merged.MaxRetry = patchSpec.MaxRetry
+	}
+	// TTLSecondsAfterFinished type is *int32
+	if patchSpec.TTLSecondsAfterFinished != nil {
+		merged.TTLSecondsAfterFinished = patchSpec.TTLSecondsAfterFinished
+	}
+	if patchSpec.PriorityClassName != "" {
+		merged.PriorityClassName = patchSpec.PriorityClassName
+	}
+	if patchSpec.MinSuccess != nil {
+		merged.MinSuccess = patchSpec.MinSuccess
+	}
+	if patchSpec.NetworkTopology != nil {
+		merged.NetworkTopology = patchSpec.NetworkTopology
+	}
+
+	return merged, nil
 }
 
 func (jf *jobflowcontroller) deleteAllJobsCreatedByJobFlow(jobFlow *v1alpha1flow.JobFlow) error {
