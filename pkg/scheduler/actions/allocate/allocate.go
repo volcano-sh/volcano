@@ -419,10 +419,9 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			}
 		}
 
-		if job.IsSoftTopologyMode() {
+		if job.HasTopologyConstrain() {
 			task.JobAllocatedHyperNode = jobNewAllocatedHyperNode
 		}
-
 		bestNode, highestScore := alloc.prioritizeNodes(ssn, task, predicateNodes)
 		if bestNode == nil {
 			continue
@@ -453,7 +452,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 
 // getJobNewAllocatedHyperNode Obtain the newly allocated hyperNode for the job in soft topology mode
 func getJobNewAllocatedHyperNode(ssn *framework.Session, bestNode string, job *api.JobInfo, jobAllocatedHyperNode string) string {
-	if !job.IsSoftTopologyMode() {
+	if !job.HasTopologyConstrain() {
 		return ""
 	}
 
@@ -461,10 +460,9 @@ func getJobNewAllocatedHyperNode(ssn *framework.Session, bestNode string, job *a
 	hyperNode := util.FindHyperNodeForNode(bestNode, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
 	if hyperNode != "" {
 		if jobNewAllocatedHyperNode == "" {
-			jobNewAllocatedHyperNode = hyperNode
-		} else {
-			jobNewAllocatedHyperNode = ssn.HyperNodes.GetLCAHyperNode(hyperNode, jobNewAllocatedHyperNode)
+			return hyperNode
 		}
+		return ssn.HyperNodes.GetLCAHyperNode(hyperNode, jobNewAllocatedHyperNode)
 	}
 	return jobNewAllocatedHyperNode
 }
