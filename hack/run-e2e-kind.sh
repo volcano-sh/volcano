@@ -87,6 +87,7 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
 }
 

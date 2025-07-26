@@ -129,7 +129,8 @@ e2e: images
 	./hack/run-e2e-kind.sh
 
 e2e-test-schedulingbase: images
-	E2E_TYPE=SCHEDULINGBASE ./hack/run-e2e-kind.sh
+	# volume binding e2e testing has some cases using "kubernetes.io/no-provisioner" as the storage provisioner, so we need to specify an ignored provisioner here.
+	E2E_TYPE=SCHEDULINGBASE IGNORED_PROVISIONERS="kubernetes.io/no-provisioner" ./hack/run-e2e-kind.sh
 
 e2e-test-schedulingaction: images
 	E2E_TYPE=SCHEDULINGACTION ./hack/run-e2e-kind.sh
