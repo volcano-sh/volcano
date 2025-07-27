@@ -33,6 +33,7 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
@@ -189,6 +190,130 @@ func TestAdmitQueues(t *testing.T) {
 	if err != nil {
 		t.Errorf("Marshal queue with negative weight failed for %v.", err)
 
+	}
+
+	resourceNotSet := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "resource-not-set",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+		},
+	}
+
+	resourceNotSetJSON, err := json.Marshal(resourceNotSet)
+	if err != nil {
+		t.Errorf("Marshal resourceNotSet failed for %v.", err)
+
+	}
+
+	onlyDeservedSet := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "only-deserved-set",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+			Deserved: map[v1.ResourceName]resource.Quantity{
+				v1.ResourceCPU:    resource.MustParse("1"),
+				v1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+		},
+	}
+
+	onlyDeservedSetJSON, err := json.Marshal(onlyDeservedSet)
+	if err != nil {
+		t.Errorf("Marshal onlyDeservedSet failed for %v.", err)
+
+	}
+
+	onlyGuaranteeSet := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "only-guarantee-set",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: map[v1.ResourceName]resource.Quantity{
+					v1.ResourceCPU:    resource.MustParse("1"),
+					v1.ResourceMemory: resource.MustParse("1Gi"),
+				},
+			},
+		},
+	}
+
+	onlyGuaranteeSetJSON, err := json.Marshal(onlyGuaranteeSet)
+	if err != nil {
+		t.Errorf("Marshal onlyGuaranteeSet failed for %v.", err)
+	}
+
+	capabilityLessDeserved := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "capability-less-deserved",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+			Capability: map[v1.ResourceName]resource.Quantity{
+				v1.ResourceCPU:    resource.MustParse("1"),
+				v1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+			Deserved: map[v1.ResourceName]resource.Quantity{
+				v1.ResourceCPU:    resource.MustParse("2"),
+				v1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+		},
+	}
+
+	capabilityLessDeservedJSON, err := json.Marshal(capabilityLessDeserved)
+	if err != nil {
+		t.Errorf("Marshal capabilityLessDeserved failed for %v.", err)
+	}
+
+	deservedLessGuarantee := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "deserved-less-guarantee",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+			Deserved: map[v1.ResourceName]resource.Quantity{
+				v1.ResourceCPU:    resource.MustParse("2"),
+				v1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: map[v1.ResourceName]resource.Quantity{
+					v1.ResourceCPU:    resource.MustParse("2"),
+					v1.ResourceMemory: resource.MustParse("3Gi"),
+				},
+			},
+		},
+	}
+
+	deservedLessGuaranteeJSON, err := json.Marshal(deservedLessGuarantee)
+	if err != nil {
+		t.Errorf("Marshal deservedLessGuarantee failed for %v.", err)
+	}
+
+	capabilityLessGuarantee := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "capability-less-guarantee",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Weight: 1,
+			Capability: map[v1.ResourceName]resource.Quantity{
+				v1.ResourceCPU:    resource.MustParse("1"),
+				v1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: map[v1.ResourceName]resource.Quantity{
+					v1.ResourceCPU:    resource.MustParse("2"),
+					v1.ResourceMemory: resource.MustParse("3Gi"),
+				},
+			},
+		},
+	}
+
+	capabilityLessGuaranteeJSON, err := json.Marshal(capabilityLessGuarantee)
+	if err != nil {
+		t.Errorf("Marshal capabilityLessGuarantee failed for %v.", err)
 	}
 
 	hierarchyWeightsDontMatch := schedulingv1beta1.Queue{
@@ -815,7 +940,207 @@ func TestAdmitQueues(t *testing.T) {
 				},
 			},
 		},
-
+		{
+			Name: "Create queue without resource",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: resourceNotSetJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: true,
+			},
+		},
+		{
+			Name: "Create queue with deserved resource",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: onlyDeservedSetJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: true,
+			},
+		},
+		{
+			Name: "Create queue with guarantee resource",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: onlyGuaranteeSetJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: true,
+			},
+		},
+		{
+			Name: "Create queue with capability less deserved",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: capabilityLessDeservedJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("deserved"),
+						api.NewResource(
+							v1.ResourceList{
+								v1.ResourceCPU:    resource.MustParse("2"),
+								v1.ResourceMemory: resource.MustParse("1Gi"),
+							}).String(),
+						"deserved should less equal than capability").Error(),
+				},
+			},
+		},
+		{
+			Name: "Create queue with capability less guarantee",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: capabilityLessGuaranteeJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("guarantee"),
+						api.NewResource(
+							v1.ResourceList{
+								v1.ResourceCPU:    resource.MustParse("2"),
+								v1.ResourceMemory: resource.MustParse("3Gi"),
+							}).String(),
+						"guarantee should less equal than capability").Error(),
+				},
+			},
+		},
+		{
+			Name: "Create queue with deserved less guarantee",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "default",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: deservedLessGuaranteeJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("guarantee"),
+						api.NewResource(
+							v1.ResourceList{
+								v1.ResourceCPU:    resource.MustParse("2"),
+								v1.ResourceMemory: resource.MustParse("3Gi"),
+							}).String(),
+						"guarantee should less equal than deserved").Error(),
+				},
+			},
+		},
 		{
 			Name: "Abnormal Case Hierarchy And Weights Do Not Match",
 			AR: admissionv1.AdmissionReview{
