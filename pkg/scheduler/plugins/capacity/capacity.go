@@ -47,6 +47,7 @@ type capacityPlugin struct {
 	rootQueue      string
 	totalResource  *api.Resource
 	totalGuarantee *api.Resource
+	totalDeserved  *api.Resource
 
 	queueOpts map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
@@ -596,11 +597,15 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			attr.name, attr.allocated.String(), attr.request.String(), attr.inqueue.String(), attr.elastic.String())
 	}
 
-	// init root queue realCapability/capability/deserved as cp.totalResource
+	// init root queue: realCapability is set to total resource, and capability/deserved are also set if empty.
 	rootQueueAttr := cp.queueOpts[api.QueueID(cp.rootQueue)]
-	rootQueueAttr.capability = cp.totalResource
+	if rootQueueAttr.capability.IsEmpty() {
+		rootQueueAttr.capability = cp.totalResource
+	}
+	if rootQueueAttr.deserved.IsEmpty() {
+		rootQueueAttr.deserved = cp.totalResource
+	}
 	rootQueueAttr.realCapability = cp.totalResource
-	rootQueueAttr.deserved = cp.totalResource
 	// Check the hierarchical structure of queues
 	err := cp.checkHierarchicalQueue(rootQueueAttr)
 	if err != nil {
@@ -611,6 +616,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 
 	// update session attributes
 	ssn.TotalGuarantee = cp.totalGuarantee
+	ssn.TotalDeserved = cp.totalDeserved
 
 	// Update share
 	for _, attr := range cp.queueOpts {
@@ -776,8 +782,14 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 	}
 
 	if attr.name == cp.rootQueue {
-		attr.guarantee = totalGuarantee
-		cp.totalGuarantee = totalGuarantee
+		if attr.guarantee.IsEmpty() {
+			attr.guarantee = totalGuarantee
+		}
+		if attr.deserved.IsEmpty() {
+			attr.deserved = totalDeserved
+		}
+		cp.totalGuarantee = attr.guarantee
+		cp.totalDeserved = attr.deserved
 	}
 
 	for _, childAttr := range attr.children {
@@ -789,11 +801,6 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 			realCapability.MinDimensionResource(childAttr.capability, api.Infinity)
 			childAttr.realCapability = realCapability
 		}
-		oldDeserved := childAttr.deserved.Clone()
-		childAttr.deserved.MinDimensionResource(childAttr.realCapability, api.Infinity)
-
-		childAttr.deserved = helpers.Max(childAttr.deserved, childAttr.guarantee)
-		totalDeserved.Sub(oldDeserved).Add(childAttr.deserved)
 	}
 
 	// Check if the parent queue's deserved resources are less than the total deserved resources of child queues
