@@ -64,6 +64,7 @@ func UpdateHyperNode(vcClient vcclientset.Interface, lister v1alpha1.HyperNodeLi
 		}
 
 		_, err = vcClient.TopologyV1alpha1().HyperNodes().Update(context.Background(), current, metav1.UpdateOptions{})
+		_, err = vcClient.TopologyV1alpha1().HyperNodes().UpdateStatus(context.Background(), current, metav1.UpdateOptions{})
 		return err
 	})
 }
