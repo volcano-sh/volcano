@@ -774,6 +774,19 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 		if childAttr.capability.Memory <= 0 {
 			childAttr.capability.Memory = attr.capability.Memory
 		}
+
+		// Inherit scalar resources from parent if child's scalar resources is nil or some fields are not set
+		if attr.capability.ScalarResources != nil {
+			if childAttr.capability.ScalarResources == nil {
+				childAttr.capability.ScalarResources = make(map[v1.ResourceName]float64)
+			}
+			for k, v := range attr.capability.ScalarResources {
+				if _, exists := childAttr.capability.ScalarResources[k]; !exists {
+					childAttr.capability.ScalarResources[k] = v
+				}
+			}
+		}
+
 		// Check if the parent queue's capability is less than the child queue's capability
 		if attr.capability.LessPartly(childAttr.capability, api.Zero) {
 			return fmt.Errorf("queue <%s> capability <%s> is less than its child queue <%s> capability <%s>",
