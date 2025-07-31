@@ -18,6 +18,8 @@ package jobflow
 
 import (
 	"context"
+	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
 	"sort"
 	"testing"
 	"time"
@@ -954,6 +956,253 @@ func TestDeleteAllJobsCreateByJobFlowFunc(t *testing.T) {
 			if got := fakeController.deleteAllJobsCreatedByJobFlow(tt.args.jobFlow); got != tt.want {
 				t.Error("Expected deleteAllJobsCreatedByJobFlow() return nil, but not nil")
 			}
+		})
+	}
+}
+
+func TestPatchJobTemplate(t *testing.T) {
+	tests := []struct {
+		name      string
+		baseSpec  *v1alpha1.JobSpec
+		patchSpec *v1alpha1.JobSpec
+		expected  *v1alpha1.JobSpec
+	}{
+		{
+			name: "nil patch",
+			baseSpec: &v1alpha1.JobSpec{
+				MinAvailable: 1,
+				Queue:        "default",
+			},
+			patchSpec: nil,
+			expected: &v1alpha1.JobSpec{
+				MinAvailable: 1,
+				Queue:        "default",
+			},
+		},
+		{
+			name: "patch scheduler and queue",
+			baseSpec: &v1alpha1.JobSpec{
+				Queue:         "default",
+				SchedulerName: "default-scheduler",
+			},
+			patchSpec: &v1alpha1.JobSpec{
+				Queue:         "high-priority",
+				SchedulerName: "custom-scheduler",
+			},
+			expected: &v1alpha1.JobSpec{
+				Queue:         "high-priority",
+				SchedulerName: "custom-scheduler",
+			},
+		},
+		{
+			name: "patch volumes",
+			baseSpec: &v1alpha1.JobSpec{
+				Volumes: []v1alpha1.VolumeSpec{
+					{
+						MountPath:       "/data",
+						VolumeClaimName: "pvc-1",
+					},
+				},
+			},
+			patchSpec: &v1alpha1.JobSpec{
+				Volumes: []v1alpha1.VolumeSpec{
+					{
+						MountPath:       "/data",
+						VolumeClaimName: "pvc-2",
+					},
+					{
+						MountPath:       "/config",
+						VolumeClaimName: "pvc-config",
+					},
+				},
+			},
+			expected: &v1alpha1.JobSpec{
+				Volumes: []v1alpha1.VolumeSpec{
+					{
+						MountPath:       "/data",
+						VolumeClaimName: "pvc-2",
+					},
+					{
+						MountPath:       "/config",
+						VolumeClaimName: "pvc-config",
+					},
+				},
+			},
+		},
+		{
+
+			name: "patch tasks",
+			baseSpec: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name:     "task-1",
+						Replicas: 1,
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name:  "task-1",
+										Image: "test",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			patchSpec: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name:     "task-1",
+						Replicas: 2,
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name:  "task-1",
+										Image: "test 2",
+									},
+								},
+							},
+						},
+					},
+					{
+						Name:     "task-2",
+						Replicas: 1,
+					},
+				},
+			},
+			expected: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name:     "task-1",
+						Replicas: 2,
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name:  "task-1",
+										Image: "test 2",
+									},
+								},
+							},
+						},
+					},
+					{
+						Name:     "task-2",
+						Replicas: 1,
+					},
+				},
+			},
+		},
+		{
+			name: "patch plugins",
+			baseSpec: &v1alpha1.JobSpec{
+				Plugins: map[string][]string{
+					"plugin1": {"arg1"},
+				},
+			},
+			patchSpec: &v1alpha1.JobSpec{
+				Plugins: map[string][]string{
+					"plugin1": {"arg2"},
+					"plugin2": {"arg1"},
+				},
+			},
+			expected: &v1alpha1.JobSpec{
+				Plugins: map[string][]string{
+					"plugin1": {"arg2"},
+					"plugin2": {"arg1"},
+				},
+			},
+		},
+		{
+			name: "patch container volume mounts",
+			baseSpec: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name: "task-1",
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name: "container-1",
+										VolumeMounts: []v1.VolumeMount{
+											{
+												Name:      "vol-1",
+												MountPath: "/data",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			patchSpec: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name: "task-1",
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name: "container-1",
+										VolumeMounts: []v1.VolumeMount{
+											{
+												Name:      "vol-1",
+												MountPath: "/data",
+												ReadOnly:  true,
+											},
+											{
+												Name:      "vol-2",
+												MountPath: "/config",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name: "task-1",
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name: "container-1",
+										VolumeMounts: []v1.VolumeMount{
+											{
+												Name:      "vol-1",
+												MountPath: "/data",
+												ReadOnly:  true,
+											},
+											{
+												Name:      "vol-2",
+												MountPath: "/config",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	jf := &jobflowcontroller{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			result, err := jf.patchJobTemplate(tt.baseSpec, tt.patchSpec)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
