@@ -472,6 +472,20 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	// queue
 	queue10 := buildQueueWithParents("q10", "root", nil, api.BuildResourceList("10", "4Gi", []api.ScalarResource{}...))
 
+	// resources for test case 11
+	// queue
+	case11_queue1 := buildQueueWithParents("case11_queue1", "root", nil, nil)
+	case11_queue11 := buildQueueWithParents("case11_queue11", "case11_queue1", nil, api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...))
+	case11_queue12 := buildQueueWithParents("case11_queue12", "case11_queue1", nil, api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...))
+
+	// podgroup
+	pg14 := util.BuildPodGroup("pg14", "ns1", "case11_queue11", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg15 := util.BuildPodGroup("pg15", "ns1", "case11_queue12", 1, nil, schedulingv1beta1.PodGroupInqueue)
+
+	// pod
+	p14 := util.BuildPod("ns1", "p14", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), "pg14", make(map[string]string), map[string]string{})
+	p15 := util.BuildPod("ns1", "p15", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), "pg15", make(map[string]string), map[string]string{})
+
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name:      "case0: Pod allocatable when queue is leaf queue",
@@ -589,6 +603,19 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			Plugins: plugins,
 			Nodes:   []*corev1.Node{n1},
 			Queues:  []*schedulingv1beta1.Queue{root1, queue10},
+		},
+		{
+			Name:      "case11: If the capability scalar resources is not specified, the value should be inherited from parent queue",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p14, p15},
+			Nodes:     []*corev1.Node{n2},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg14, pg15},
+			Queues:    []*schedulingv1beta1.Queue{root, case11_queue1, case11_queue11, case11_queue12},
+			ExpectBindMap: map[string]string{
+				"ns1/p14": "n2",
+				"ns1/p15": "n2",
+			},
+			ExpectBindsNum: 2,
 		},
 	}
 
