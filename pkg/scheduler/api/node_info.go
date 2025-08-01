@@ -495,13 +495,22 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 
 // addResource is used to add sharable devices
 func (ni *NodeInfo) addResource(pod *v1.Pod) {
-	ni.Others[gpushare.DeviceName].(Devices).AddResource(pod)
+	// In the upgrade scenario from volcano1.7+volcano-device-plugin to volcano1.12+hami-device-plugin (with VGPUEnable),
+	// pods scheduled by volcano 1.7 and using the volcano.sh/gpu-number resource will cause the scheduler pod in volcano 1.12 to panic
+	// at dev := gs.Device[id] ,where gs.Device is nil.
+
+	// Add an if judgment condition to fix the panic.
+	if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
+		ni.Others[gpushare.DeviceName].(Devices).AddResource(pod)
+	}
 	ni.Others[vgpu.DeviceName].(Devices).AddResource(pod)
 }
 
 // subResource is used to subtract sharable devices
 func (ni *NodeInfo) subResource(pod *v1.Pod) {
-	ni.Others[gpushare.DeviceName].(Devices).SubResource(pod)
+	if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
+		ni.Others[gpushare.DeviceName].(Devices).SubResource(pod)
+	}
 	ni.Others[vgpu.DeviceName].(Devices).SubResource(pod)
 }
 
