@@ -19,6 +19,7 @@ package resourcestrategyfit
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -104,6 +105,19 @@ func calculateWeight(args framework.Arguments) ResourceStrategyFit {
 	}
 
 	for k, v := range resources {
+		configKeyStr := string(k)
+
+		if strings.Contains(configKeyStr, "*") {
+			if !isValidWildcardPattern(configKeyStr) {
+				if configKeyStr == "*" {
+					klog.Warningf("Single asterisk '*' is not supported as default strategy. Please use specific resource patterns like 'cloudml.gpu/*'. Pattern ignored.")
+				} else {
+					klog.Warningf("Invalid wildcard pattern '%s': only single trailing asterisk is supported (e.g., 'cloudml.gpu/*'). Pattern ignored.", configKeyStr)
+				}
+				delete(resources, k)
+				continue
+			}
+		}
 		if v.Weight <= 0 {
 			v.Weight = 1
 		}
@@ -137,6 +151,48 @@ func (rsf *resourceStrategyFitPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 }
 
+func isValidWildcardPattern(pattern string) bool {
+	if pattern == "*" {
+		return false
+	}
+
+	if !strings.HasSuffix(pattern, "*") {
+		return false
+	}
+
+	asteriskCount := strings.Count(pattern, "*")
+	if asteriskCount != 1 {
+		return false
+	}
+
+	lastIndex := strings.LastIndex(pattern, "*")
+	return lastIndex == len(pattern)-1
+}
+
+func findResourceConfigWithPrefix(resourceName string, resources map[v1.ResourceName]ResourcesType) (ResourcesType, bool) {
+	if config, exists := resources[v1.ResourceName(resourceName)]; exists {
+		return config, true
+	}
+	var bestMatch string
+	var bestConfig ResourcesType
+	var found bool
+
+	for configKey, config := range resources {
+		configKeyStr := string(configKey)
+		if strings.HasSuffix(configKeyStr, "*") {
+			prefix := strings.TrimSuffix(configKeyStr, "*")
+			if strings.HasPrefix(resourceName, prefix) {
+				if len(prefix) > len(bestMatch) {
+					bestMatch = prefix
+					bestConfig = config
+					found = true
+				}
+			}
+		}
+	}
+
+	return bestConfig, found
+}
 func Score(task *api.TaskInfo, node *api.NodeInfo, weight ResourceStrategyFit) float64 {
 	score := 0.0
 	weightSum := 0
@@ -149,14 +205,13 @@ func Score(task *api.TaskInfo, node *api.NodeInfo, weight ResourceStrategyFit) f
 
 		allocate := allocatable.Get(resource)
 		nodeUsed := used.Get(resource)
-
-		_, found := weight.Resources[resource]
+		resourceConfig, found := findResourceConfigWithPrefix(string(resource), weight.Resources)
 		if !found {
 			continue
 		}
 
-		scoringType := weight.Resources[resource].Type
-		resourceWeight := weight.Resources[resource].Weight
+		scoringType := resourceConfig.Type
+		resourceWeight := resourceConfig.Weight
 
 		var resourceScore float64
 		var err error
