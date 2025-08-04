@@ -42,10 +42,12 @@ import (
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2epv "k8s.io/kubernetes/test/e2e/framework/pv"
 	e2eskipper "k8s.io/kubernetes/test/e2e/framework/skipper"
+	"k8s.io/kubernetes/test/e2e/storage/testsuites"
 	"k8s.io/kubernetes/test/e2e/storage/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	admissionapi "k8s.io/pod-security-admission/api"
 
+	e2eutil "volcano.sh/volcano/test/e2e/util"
 	volcanotestutil "volcano.sh/volcano/test/e2e/util"
 )
 
@@ -124,6 +126,7 @@ var _ = ginkgo.Describe("Volume Binding Test", func() {
 	)
 
 	ginkgo.BeforeEach(func(ctx context.Context) {
+		f.ClientSet = e2eutil.NewSchedulerInjectingClientset(f.ClientSet, e2eutil.SchedulerName)
 		nodes, err := e2enode.GetBoundedReadySchedulableNodes(ctx, f.ClientSet, maxNodes)
 		framework.ExpectNoError(err)
 
@@ -361,6 +364,39 @@ var _ = ginkgo.Describe("Volume Binding Test", func() {
 			ginkgo.By("Creating a StatefulSet with pod affinity on nodes")
 			ss := createStatefulSet(ctx, config, ssReplicas, 1, false, true)
 			validateStatefulSet(ctx, config, ss, false)
+		})
+	})
+
+	f.Context("Dynamic Provisioning", f.WithSlow(), func() {
+		ginkgo.It("should provision storage using kind cluster's standard storage class", func(ctx context.Context) {
+			tests := []testsuites.StorageClassTest{
+				{
+					Name:         "normal case",
+					Timeouts:     f.Timeouts,
+					Provisioner:  "rancher.io/local-path",
+					ClaimSize:    "1Gi",
+					ExpectedSize: "1Gi",
+					PvCheck: func(ctx context.Context, claim *v1.PersistentVolumeClaim) {
+						volume := testsuites.PVWriteReadSingleNodeCheck(ctx, f.ClientSet, f.Timeouts, claim, e2epod.NodeSelection{})
+						gomega.Expect(volume).NotTo(gomega.BeNil(), "get bound pv")
+					},
+				},
+			}
+
+			for _, t := range tests {
+				test := t
+				test.Client = f.ClientSet
+
+				sc, err := f.ClientSet.StorageV1().StorageClasses().Get(ctx, e2eutil.DefaultStorageClass, metav1.GetOptions{})
+				framework.ExpectNoError(err)
+				test.Class = sc
+				test.Claim = e2epv.MakePersistentVolumeClaim(e2epv.PersistentVolumeClaimConfig{
+					ClaimSize:        test.ClaimSize,
+					StorageClassName: &test.Class.Name,
+				}, f.Namespace.Name)
+
+				test.TestDynamicProvisioning(ctx)
+			}
 		})
 	})
 })
@@ -807,7 +843,8 @@ func createStatefulSet(ctx context.Context, config *localTestConfig, ssReplicas 
 							VolumeMounts: mounts,
 						},
 					},
-					Affinity: &affinity,
+					Affinity:      &affinity,
+					SchedulerName: e2eutil.SchedulerName,
 				},
 			},
 			VolumeClaimTemplates: claims,

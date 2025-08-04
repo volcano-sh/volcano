@@ -36,6 +36,7 @@ custom:
   scheduler_node_worker_threads: 20
   enabled_admissions: "/jobs/mutate,/jobs/validate,/podgroups/validate,/queues/mutate,/queues/validate,/hypernodes/validate"
   colocation_enable: false
+  ignored_provisioners: ~
 
 # Override the configuration for admission, scheduler or scheduler.
 # For example:
