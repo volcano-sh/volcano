@@ -58,6 +58,8 @@ var (
 	CPU1Mem1   = v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")}
 	CPU2Mem2   = v1.ResourceList{"cpu": resource.MustParse("2000m"), "memory": resource.MustParse("2048Mi")}
 	CPU4Mem4   = v1.ResourceList{"cpu": resource.MustParse("4000m"), "memory": resource.MustParse("4096Mi")}
+	CPU5Mem5   = v1.ResourceList{"cpu": resource.MustParse("5000m"), "memory": resource.MustParse("5120Mi")}
+	CPU6Mem6   = v1.ResourceList{"cpu": resource.MustParse("6000m"), "memory": resource.MustParse("6144Mi")}
 )
 
 const (
@@ -206,8 +208,12 @@ func FileExist(name string) bool {
 func CleanupTestContext(ctx *TestContext) {
 	By("Cleaning up test context")
 
+	// Clean up hypernodes first
+	err := CleanupHyperNodes(ctx)
+	Expect(err).NotTo(HaveOccurred(), "failed to clean up hypernodes")
+
 	foreground := metav1.DeletePropagationForeground
-	err := ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
+	err = ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
 	Expect(err).NotTo(HaveOccurred(), "failed to delete namespace")
