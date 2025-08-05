@@ -30,7 +30,6 @@ import (
 )
 
 func TestValidatePod(t *testing.T) {
-
 	namespace := "test"
 
 	testCases := []struct {
@@ -67,7 +66,6 @@ func TestValidatePod(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-
 		pg := &vcschedulingv1.PodGroup{
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace: namespace,

@@ -653,7 +653,6 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		cache         SchedulerCache
 		nodes         []*v1.Node
 		nodeName      string
 		nodeSelector  map[string]sets.Empty

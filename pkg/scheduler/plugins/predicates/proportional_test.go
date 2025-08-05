@@ -39,7 +39,6 @@ func buildNode(name, cpu, memory, gpu string) *api.NodeInfo {
 }
 
 func Test_checkNodeResourceIsProportional(t *testing.T) {
-
 	t1 := buildTask("t1", "4", "4G", "0")
 	t2 := buildTask("t1", "10", "10G", "0")
 	t3 := buildTask("t1", "10", "10G", "1")

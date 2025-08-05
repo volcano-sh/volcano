@@ -157,7 +157,6 @@ func TestQueueResourceMetric(t *testing.T) {
 			assert.Contains(t, m, "volcano_queue_deserved_scalar_resources{queue_name=\"queue3\",resource=\"nvidia.com/gpu\"}",
 				"volcano_queue_deserved_scalar_resources for queue3 & nvidia.com/gpu should not be removed")
 			assert.Equal(t, 2., m["volcano_queue_deserved_scalar_resources{queue_name=\"queue3\",resource=\"nvidia.com/gpu\"}"])
-
 		})
 	})
 	if err != nil {
