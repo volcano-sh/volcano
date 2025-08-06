@@ -27,6 +27,9 @@ Extend one plug-ins to meet the above needs
 ### Story1
 - Users expect different resource allocation strategies to be applied based on resource types. For example, in PyTorch jobs, the master pod (which uses CPU) should be distributed to avoid node hotspots, while worker pods (which use GPU) should be aggregated to minimize resource fragmentation.
 
+### Story2
+- In multi-vendor GPU environments, users need to configure resource strategies for various GPU types (NVIDIA, AMD, Intel) without maintaining separate configurations for each specific GPU model. For example, a cluster with `nvidia.com/gpu-v100`, `nvidia.com/gpu-a100`, and `amd.com/gpu-mi100` should allow users to configure `nvidia.com/gpu/*` and `amd.com/gpu/*` patterns to apply consistent strategies across all GPU variants from each vendor.
+
 ## Design Details
 
 ### ResourceStrategyFit
@@ -71,6 +74,76 @@ node score:
 ```
 finalScoreNode = [(weight1 * resource1) + (weight2 * resource2) + … + (weightN* resourceN)] /(weight1+weight2+ … +weightN)
 ```
+
+#### Wildcard Syntax Support
+
+To address the complexity of managing multiple resource types, especially in multi-vendor GPU environments, the ResourceStrategyFit plugin supports wildcard patterns for resource configuration.
+
+**Syntax Rules:**
+- Only suffix wildcard patterns are supported (e.g., `nvidia.com/gpu/*`)
+- Invalid patterns are filtered out during configuration parsing:
+    - Single asterisk (`*`)
+    - Asterisk in the middle (`vendor.*/gpu`)
+    - Asterisk at the beginning (`*/gpu`)
+    - Multiple asterisks (`vendor.com/**`)
+
+**Matching Priority:**
+1. **Exact match** takes highest priority
+2. **Longest prefix match** for wildcard patterns
+
+**Configuration Example:**
+```yaml
+resources:
+  nvidia.com/gpu-v100:     # Exact match - highest priority
+    type: MostAllocated
+    weight: 3
+  nvidia.com/gpu/*:        # Wildcard match - covers other NVIDIA GPUs
+    type: MostAllocated
+    weight: 2
+  amd.com/gpu/*:           # Wildcard match for AMD GPUs
+    type: LeastAllocated
+    weight: 2
+  cpu:
+    type: LeastAllocated
+    weight: 1
+```
+
+**Implementation Details:**
+- **Configuration-time validation**: Invalid wildcard patterns are filtered during plugin initialization with warning logs
+- **Runtime matching**: Uses O(n) prefix matching algorithm with exact match optimization
+- **Backward compatibility**: Existing exact match configurations continue to work unchanged
+
+## Performance Considerations
+
+### Wildcard Matching Performance
+- **Configuration parsing**: O(1) validation per resource pattern during plugin initialization
+- **Runtime matching**: O(n) complexity where n is the number of configured resource patterns
+- **Memory overhead**: Minimal additional memory for storing wildcard patterns
+- **Scalability**: Suitable for typical cluster sizes with hundreds of resource types
+
+### Risk Analysis
+1. **Performance Impact**: Linear search through resource patterns may affect scheduling latency in clusters with extensive resource configurations
+2. **Configuration Complexity**: Wildcard patterns may mask configuration errors, requiring careful validation
+3. **Backward Compatibility**: Changes to matching logic must not affect existing exact match configurations
+4. **Error Handling**: Invalid patterns are silently filtered with warning logs, which may hide configuration mistakes
+
+## Best Practices
+
+### Configuration Guidelines
+1. **Use exact matches for critical resources**: `cpu`, `memory`, primary GPU types
+2. **Apply wildcards for resource families**: `vendor.com/gpu/*` patterns
+3. **Avoid overly broad patterns**: Prefer `nvidia.com/gpu/*` over `nvidia.com/*`
+4. **Test configurations**: Verify matching behavior in development environments
+
+### Migration Strategy
+1. **Phase 1**: Add wildcard patterns alongside existing exact matches
+2. **Phase 2**: Monitor scheduling behavior and resource utilization
+3. **Phase 3**: Remove redundant exact matches if desired
+
+### Troubleshooting
+- **Check logs**: Invalid patterns generate warning messages during startup
+- **Verify matching**: Use resource names from `kubectl describe nodes`
+- **Test priority**: Ensure exact matches take precedence over wildcards
 
 ## Alternatives
 
