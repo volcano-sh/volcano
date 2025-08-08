@@ -18,21 +18,29 @@ package podgroup
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/utils/ptr"
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/framework"
+	controllerutil "volcano.sh/volcano/pkg/controllers/util"
+	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func newFakeController() *pgcontroller {
@@ -351,5 +359,132 @@ func TestAddPodGroup(t *testing.T) {
 				t.Errorf("Case %s failed, expect %v, got %v", testCase.name, testCase.expectedPodGroup.Spec.MinResources.Name(gpuKey, resource.DecimalSI), pg.Spec.MinResources.Name(gpuKey, resource.DecimalSI))
 			}
 		}
+	}
+}
+
+func TestAddStatefulSet(t *testing.T) {
+	namespace := "test"
+	stsName := "sts-test"
+	podName := "sts-test-0"
+	defaultSchedulerPod := util.BuildPod(namespace, podName, "", v1.PodPending, api.BuildResourceList("1", "2Gi"), "", map[string]string{"app": stsName}, nil)
+	defaultSchedulerPod.Spec.SchedulerName = "default-scheduler"
+	volcanoSchedulerPod := util.BuildPod(namespace, podName, "", v1.PodPending, api.BuildResourceList("1", "2Gi"), "", map[string]string{"app": stsName}, nil)
+	volcanoSchedulerPod.Spec.SchedulerName = "volcano"
+	existedPodWithPG := util.BuildPod(namespace, podName, "", v1.PodPending, api.BuildResourceList("1", "2Gi"), "lws-1-revision", map[string]string{"app": stsName}, nil)
+	existedPodWithPG.Spec.SchedulerName = "volcano"
+
+	testCases := []struct {
+		name            string
+		sts             *appsv1.StatefulSet
+		existingPods    []*v1.Pod
+		expectPGCreated bool
+		expectPG        *scheduling.PodGroup
+	}{
+		{
+			name: "StatefulSet with replicas > 0 and no existing pods",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      stsName,
+					Namespace: namespace,
+				},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To[int32](1),
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": stsName},
+					},
+				},
+			},
+			existingPods:    nil,
+			expectPGCreated: false,
+		},
+		{
+			name: "StatefulSet with replicas > 0 and existing pod without scheduler name",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      stsName,
+					Namespace: namespace,
+				},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To[int32](1),
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": stsName},
+					},
+				},
+			},
+			existingPods:    []*v1.Pod{defaultSchedulerPod},
+			expectPGCreated: false,
+		},
+		{
+			name: "StatefulSet with replicas > 0 and existing pod with volcano scheduler",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      stsName,
+					Namespace: namespace,
+				},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To[int32](1),
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": stsName},
+					},
+				},
+			},
+			existingPods:    []*v1.Pod{volcanoSchedulerPod},
+			expectPGCreated: true,
+			expectPG: &scheduling.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            vcbatch.PodgroupNamePrefix + fmt.Sprintf("%s-%s", namespace, podName),
+					Namespace:       namespace,
+					OwnerReferences: newPGOwnerReferences(volcanoSchedulerPod),
+					Labels:          map[string]string{},
+					Annotations:     map[string]string{},
+				},
+				Spec: scheduling.PodGroupSpec{
+					MinMember:    1,
+					MinResources: ptr.To(controllerutil.CalTaskRequests(volcanoSchedulerPod, 1)),
+				},
+				Status: scheduling.PodGroupStatus{
+					Phase: scheduling.PodGroupPending,
+				},
+			},
+		},
+		{
+			name: "StatefulSet with existing pod already associated with podgroup",
+			sts: &appsv1.StatefulSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      stsName,
+					Namespace: namespace,
+				},
+				Spec: appsv1.StatefulSetSpec{
+					Replicas: ptr.To[int32](1),
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": stsName},
+					},
+				},
+			},
+			existingPods:    []*v1.Pod{existedPodWithPG},
+			expectPGCreated: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			c := newFakeController()
+
+			for _, pod := range testCase.existingPods {
+				_, err := c.kubeClient.CoreV1().Pods("test").Create(context.TODO(), pod, metav1.CreateOptions{})
+				assert.NoError(t, err)
+				c.podInformer.Informer().GetIndexer().Add(pod)
+			}
+
+			c.addStatefulSet(testCase.sts)
+			expectedPGName := vcbatch.PodgroupNamePrefix + fmt.Sprintf("%s-%s", namespace, podName)
+			pg, err := c.vcClient.SchedulingV1beta1().PodGroups("test").Get(context.TODO(), expectedPGName, metav1.GetOptions{})
+			if testCase.expectPGCreated {
+				assert.NoError(t, err)
+				assert.Equal(t, pg, testCase.expectPG)
+			} else {
+				assert.True(t, apierrors.IsNotFound(err))
+			}
+		})
 	}
 }
