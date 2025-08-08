@@ -47,12 +47,14 @@ import (
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/utils/cpuset"
 
+	"volcano.sh/apis/pkg/apis/helpers"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
+	"volcano.sh/volcano/pkg/controllers/util"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
@@ -61,6 +63,41 @@ var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
 
 func isTerminated(status schedulingapi.TaskStatus) bool {
 	return status == schedulingapi.Succeeded || status == schedulingapi.Failed
+}
+func createShadowPodGroup(pod *v1.Pod) *schedulingapi.PodGroup {
+	pgName := helpers.GeneratePodgroupName(pod)
+	res := util.GetPodQuotaUsage(pod)
+	podgroup := scheduling.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:   pod.Namespace,
+			Name:        pgName,
+			Annotations: map[string]string{},
+			Labels:      map[string]string{},
+		},
+		Spec: scheduling.PodGroupSpec{
+			MinMember:         1,
+			PriorityClassName: pod.Spec.PriorityClassName,
+			MinResources:      &res,
+		},
+		Status: scheduling.PodGroupStatus{
+			Phase: scheduling.PodGroupPending,
+		},
+	}
+
+	for k, v := range pod.Annotations {
+		podgroup.Annotations[k] = v
+	}
+	for k, v := range pod.Labels {
+		podgroup.Labels[k] = v
+	}
+
+	// Individual annotations on pods would overwrite annotations inherited from upper resources.
+	if queueName, ok := pod.Annotations[schedulingv1beta1.QueueNameAnnotationKey]; ok {
+		podgroup.Spec.Queue = queueName
+	}
+
+	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
+	return pg
 }
 
 // getOrCreateJob will return corresponding Job for pi if it exists, or it will create a Job and return it if
@@ -71,7 +108,23 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 			klog.V(4).Infof("Pod %s/%s will not scheduled by %#v, skip creating PodGroup and Job for it",
 				pi.Pod.Namespace, pi.Pod.Name, sc.schedulerNames)
 		}
-		return nil
+
+		if !sc.enableShadowPodGroup {
+			return nil
+		}
+
+		// User want gang scheduling for these pods, scheduler need to wait
+		// pg_controller create the real PodGroup and bind the pods to it.
+		_, minMemberAnnoExist := pi.Pod.Annotations[schedulingv1beta1.VolcanoGroupMinMemberAnnotationKey]
+		if minMemberAnnoExist {
+			klog.V(4).Infof("Pod %s/%s has minMember annotation, skip creating shadow PodGroup for it",
+				pi.Pod.Namespace, pi.Pod.Name)
+			return nil
+		}
+
+		pg := createShadowPodGroup(pi.Pod)
+		pi.Job = getJobID(pg)
+		sc.setPodGroup(pg)
 	}
 
 	if _, found := sc.Jobs[pi.Job]; !found {
@@ -337,8 +390,21 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 		} else {
 			klog.Warningf("Failed to find Job <%v> for Task <%v/%v>", ti.Job, ti.Namespace, ti.Name)
 		}
-	} else { // should not run into here; record error so that easy to debug
-		jobErr = fmt.Errorf("task %s/%s has null jobID", ti.Namespace, ti.Name)
+	} else {
+		if sc.enableShadowPodGroup {
+			_, minMemberAnnoExist := ti.Pod.Annotations[schedulingv1beta1.VolcanoGroupMinMemberAnnotationKey]
+			if !minMemberAnnoExist {
+				pg := createShadowPodGroup(ti.Pod)
+				jobID := getJobID(pg)
+				if job, ok := sc.Jobs[jobID]; ok {
+					job.PodGroup = nil
+					delete(sc.Jobs, jobID)
+				}
+			}
+		} else {
+			// should not run into here; record error so that easy to debug
+			jobErr = fmt.Errorf("task %s/%s has null jobID", ti.Namespace, ti.Name)
+		}
 	}
 
 	if len(ti.NodeName) != 0 {
