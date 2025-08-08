@@ -234,7 +234,7 @@ fi
 # Commit changes
 echo "+++ Committing changes"
 git add .
-git commit -m "chore: bump version to ${NEW_VERSION}
+git commit -s -m "chore: bump version to ${NEW_VERSION}
 
 - Update .release-version to ${NEW_VERSION}
 - Update Chart version to ${CHART_VERSION}
