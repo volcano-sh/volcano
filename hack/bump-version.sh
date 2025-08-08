@@ -193,7 +193,7 @@ echo "${NEW_VERSION}" > "${RELEASE_VERSION_FILE}"
 echo "+++ Updating ${CHART_YAML}"
 if [[ -f "${CHART_YAML}" ]]; then
     sed -i.bak "s/^version: .*/version: \"${CHART_VERSION}\"/" "${CHART_YAML}"
-    sed -i.bak "s/^appVersion: .*/appVersion: \"${NEW_VERSION}\"/" "${CHART_YAML}"
+    sed -i.bak "s/^appVersion: .*/appVersion: \"${CHART_VERSION}\"/" "${CHART_YAML}"
     rm -f "${CHART_YAML}.bak"
 fi
 
