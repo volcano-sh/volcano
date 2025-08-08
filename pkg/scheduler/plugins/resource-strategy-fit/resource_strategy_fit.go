@@ -19,6 +19,7 @@ package resourcestrategyfit
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -27,12 +28,20 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
 const (
 	// PluginName indicates name of volcano scheduler plugin.
-	PluginName                             = "resource-strategy-fit"
+	PluginName = "resource-strategy-fit"
+	// DefaultResourceStrategyFitPluginWeight is the default weight of resourceStrategyFit plugin
 	DefaultResourceStrategyFitPluginWeight = 10
+	// SraPolicy is the key for providing SRA policy
+	SraPolicy = "sra.policy"
+	// SraRetentionWeight is the key for providing retention policy Weight in YAML
+	SraRetentionWeight = "sra.retention.weight"
+	// resourceFmt is the format for resource key
+	resourceFmt = "%s[%d]"
 )
 
 type ResourceStrategyFit struct {
@@ -53,38 +62,65 @@ func (w *ResourceStrategyFit) String() string {
 	return string(marshal)
 }
 
+type Sra struct {
+	Policy       string
+	Retention    retentionWeight
+	Proportional map[v1.ResourceName]baseResource
+}
+
+type sraConfig struct {
+	Policy       string             `json:"policy"`
+	Resources    string             `json:"resources"`
+	Retention    map[string]int     `json:"retention"`
+	Proportional map[string]float64 `json:"proportional"`
+}
+
 type resourceStrategyFitPlugin struct {
 	// Arguments given for the plugin
 	weight ResourceStrategyFit
+	// Policy for sra
+	sraPolicy Sra
 }
 
 // New function returns prioritizePlugin object
 func New(arguments framework.Arguments) framework.Plugin {
 	weight := calculateWeight(arguments)
-	return &resourceStrategyFitPlugin{weight: weight}
+	rsf := resourceStrategyFitPlugin{weight: weight}
+	applySraPolicy(&rsf, arguments)
+
+	return &rsf
 }
 
 func calculateWeight(args framework.Arguments) ResourceStrategyFit {
 	/*
-	   actions: "enqueue, allocate, backfill, reclaim, preempt"
-	   tiers:
-	   - plugins:
-	     - name: resource-strategy-fit
-	        arguments:
-	          resourceStrategyFitWeight: 10
-	          resources:
-	            nvidia.com/gpu:
-	              type: MostAllocated
-	              weight: 2
-	            cpu:
-	              type: LeastAllocated
-	              weight: 1
+		actions: "enqueue, allocate, backfill, reclaim, preempt"
+		tiers:
+		- plugins:
+		  - name: resource-strategy-fit
+		    arguments:
+		       resourceStrategyFitWeight: 10
+		       resources:
+		         nvidia.com/gpu:
+		           type: MostAllocated
+		           weight: 2
+		         cpu:
+		           type: LeastAllocated
+		           weight: 1
+		       sra:
+		         policy: retention
+		         resources: nvidia.com/gpu
+		         retention:
+		           weight: 10
+		           nvidia.com/gpu: 1
+		         proportional:
+		           nvidia.com/gpu.cpu: 4
+		           nvidia.com/gpu.memory: 8
 	*/
 
 	var weight ResourceStrategyFit
 
 	resourceStrategyFitPluginWeight, b := framework.Get[int](args, "resourceStrategyFitWeight")
-	if !b || resourceStrategyFitPluginWeight <= 0 {
+	if !b || resourceStrategyFitPluginWeight < 0 {
 		resourceStrategyFitPluginWeight = DefaultResourceStrategyFitPluginWeight
 	}
 	weight.ResourceStrategyFitWeight = resourceStrategyFitPluginWeight
@@ -116,6 +152,38 @@ func calculateWeight(args framework.Arguments) ResourceStrategyFit {
 	return weight
 }
 
+func applySraPolicy(rsf *resourceStrategyFitPlugin, args framework.Arguments) {
+	sraPolicy := Sra{
+		Policy:       "",
+		Retention:    retentionWeight{},
+		Proportional: map[v1.ResourceName]baseResource{},
+	}
+
+	cfg, _ := framework.Get[sraConfig](args, "sra")
+	klog.V(4).Infof("sra resources: %v is provided", cfg.Resources)
+
+	// Obtain sra resource key name
+	resources := strings.Split(cfg.Resources, ",")
+
+	switch strings.ToLower(cfg.Policy) {
+	case "":
+		klog.V(4).Infof("%s is not provided", SraPolicy)
+	case RetentionPolicy:
+		sraPolicy.Policy = RetentionPolicy
+		sraPolicy.Retention = calculateRetentionWeight(resources, cfg)
+		klog.V(4).Infof("%s: %s is provided", SraPolicy, RetentionPolicy)
+	case ProportionalPolicy:
+		sraPolicy.Policy = ProportionalPolicy
+		sraPolicy.Proportional = calculateProportionalResources(resources, cfg)
+		klog.V(4).Infof("%s: %s is provided", SraPolicy, ProportionalPolicy)
+	default:
+		klog.V(4).Infof("%s: %s is not supported", SraPolicy, sraPolicy.Policy)
+		sraPolicy.Policy = ""
+	}
+
+	rsf.sraPolicy = sraPolicy
+}
+
 func (rsf *resourceStrategyFitPlugin) Name() string {
 	return PluginName
 }
@@ -125,15 +193,73 @@ func (rsf *resourceStrategyFitPlugin) OnSessionOpen(ssn *framework.Session) {
 	defer func() {
 		klog.V(5).Infof("Leaving resourceStrategyFit plugin. %s ...", rsf.weight.String())
 	}()
+
+	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
+		predicateStatus := make([]*api.Status, 0)
+
+		// Check ProportionalPredicate
+		proportionalStatus, _ := checkNodeResourceIsProportional(task, node, rsf.sraPolicy.Proportional)
+		if proportionalStatus.Code != api.Success {
+			predicateStatus = append(predicateStatus, proportionalStatus)
+			if util.ShouldAbort(proportionalStatus) {
+				return api.NewFitErrWithStatus(task, node, predicateStatus...)
+			}
+		}
+		klog.V(5).Infof("proportional policy filter for task <%s/%s> on node <%s> pass.",
+			task.Namespace, task.Name, node.Name)
+		return nil
+	}
+
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		score := Score(task, node, rsf.weight)
-		klog.V(4).Infof("resourceStrategyFit score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, score)
+		score := 0.0
+
+		if rsf.weight.ResourceStrategyFitWeight > 0 {
+			score += Score(task, node, rsf.weight)
+			klog.V(4).Infof("resourceStrategyFit policy score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, score)
+		}
+
+		if rsf.sraPolicy.Policy == RetentionPolicy && rsf.sraPolicy.Retention.Weight > 0 {
+			klog.V(5).Infof("sra.retention weight is %d", rsf.sraPolicy.Retention.Weight)
+			if klog.V(4).Enabled() {
+				var notFoundResource []string
+				for resource := range rsf.sraPolicy.Retention.Resources {
+					found := false
+					for _, nodeInfo := range ssn.Nodes {
+						if nodeInfo.Capacity.Get(resource) > 0 {
+							found = true
+							break
+						}
+					}
+					if !found {
+						notFoundResource = append(notFoundResource, string(resource))
+					}
+				}
+
+				if len(notFoundResource) > 0 {
+					klog.V(4).Infof("resources [%s] record in sra.resources but not found on any node",
+						strings.Join(notFoundResource, ", "))
+				}
+			}
+
+			rs := retentionScore(task, node, rsf.sraPolicy.Retention)
+			klog.V(4).Infof("sra.retention score for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, rs)
+			score += rs
+		}
+
+		klog.V(4).Infof("resource-strategy-fit plugin total score (sra + resourceStrategyFit) for Task %s/%s on node %s is: %v", task.Namespace, task.Name, node.Name, score)
 		return score, nil
 	}
-	if rsf.weight.ResourceStrategyFitWeight != 0 {
-		ssn.AddNodeOrderFn(rsf.Name(), nodeOrderFn)
+
+	if rsf.sraPolicy.Policy == ProportionalPolicy {
+		ssn.AddPredicateFn(rsf.Name(), predicateFn)
 	} else {
-		klog.Infof("resourceStrategyFit weight is zero, skip node order function")
+		klog.V(4).Infof("proportional policy is not enabled, skip predicate function")
+	}
+
+	if rsf.weight.ResourceStrategyFitWeight <= 0 && (rsf.sraPolicy.Policy != RetentionPolicy || rsf.sraPolicy.Retention.Weight <= 0) {
+		klog.V(4).Infof("The weights of both resourceStrategyFit and sra.retention are zero, skip node order function")
+	} else {
+		ssn.AddNodeOrderFn(rsf.Name(), nodeOrderFn)
 	}
 }
 
