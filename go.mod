@@ -49,7 +49,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.4.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.12.1
+	volcano.sh/apis v1.12.2
 )
 
 require (
