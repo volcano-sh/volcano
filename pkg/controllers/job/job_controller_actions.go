@@ -174,12 +174,8 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 	job.Status.Unknown = unknown
 	job.Status.TaskStatusCount = taskStatusCount
 
-	if updateStatus != nil {
-		if updateStatus(&job.Status) {
-			job.Status.State.LastTransitionTime = metav1.Now()
-			jobCondition := newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
-			job.Status.Conditions = append(job.Status.Conditions, jobCondition)
-		}
+	if updateStatus != nil && updateStatus(&job.Status) {
+		setCurrentJobCondition(job)
 	}
 
 	// Update running duration
@@ -356,7 +352,6 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		cc.recordPodGroupEvent(job, pg)
 	}
 
-	var jobCondition batch.JobCondition
 	oldStatus := job.Status
 	if !syncTask {
 		if updateStatus != nil {
@@ -367,9 +362,8 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 			klog.V(4).Infof("Job <%s/%s> has not updated for no changing", job.Namespace, job.Name)
 			return nil
 		}
-		job.Status.State.LastTransitionTime = metav1.Now()
-		jobCondition = newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
-		job.Status.Conditions = append(job.Status.Conditions, jobCondition)
+
+		setCurrentJobCondition(job)
 		newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("Failed to update status of Job %v/%v: %v",
@@ -544,9 +538,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		return nil
 	}
 	job.Status = newStatus
-	job.Status.State.LastTransitionTime = metav1.Now()
-	jobCondition = newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
-	job.Status.Conditions = append(job.Status.Conditions, jobCondition)
+	setCurrentJobCondition(job)
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",
@@ -883,10 +875,8 @@ func (cc *jobcontroller) initJobStatus(job *batch.Job) (*batch.Job, error) {
 	}
 
 	job.Status.State.Phase = batch.Pending
-	job.Status.State.LastTransitionTime = metav1.Now()
 	job.Status.MinAvailable = job.Spec.MinAvailable
-	jobCondition := newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
-	job.Status.Conditions = append(job.Status.Conditions, jobCondition)
+	setCurrentJobCondition(job)
 	newJob, err := cc.vcClient.BatchV1alpha1().Jobs(job.Namespace).UpdateStatus(context.TODO(), job, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("Failed to update status of Job %v/%v: %v",
@@ -979,4 +969,19 @@ func newCondition(status batch.JobPhase, lastTransitionTime *metav1.Time) batch.
 		Status:             status,
 		LastTransitionTime: lastTransitionTime,
 	}
+}
+
+func setCurrentJobCondition(job *batch.Job) {
+	job.Status.State.LastTransitionTime = metav1.Now()
+
+	// find the condition with the same status and update the last transition time
+	for i, condition := range job.Status.Conditions {
+		if condition.Status == job.Status.State.Phase {
+			job.Status.Conditions[i].LastTransitionTime = &job.Status.State.LastTransitionTime
+			return
+		}
+	}
+
+	jobCondition := newCondition(job.Status.State.Phase, &job.Status.State.LastTransitionTime)
+	job.Status.Conditions = append(job.Status.Conditions, jobCondition)
 }
