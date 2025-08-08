@@ -19,6 +19,7 @@ package podgroup
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -35,6 +36,10 @@ import (
 	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/controllers/util"
+)
+
+const (
+	controllerRevisionHashLabelKey = "controller-revision-hash"
 )
 
 type podRequest struct {
@@ -130,7 +135,9 @@ func (pg *pgcontroller) addStatefulSet(obj interface{}) {
 	// the updateStatefulSet(replicas=1) event, and after the addPod event for the new created pod.
 	// In this event, need to create PodGroup for the pod.
 	if *sts.Spec.Replicas > 0 {
-		selector := metav1.LabelSelector{MatchLabels: sts.Spec.Selector.MatchLabels}
+		matchLabels := sts.Spec.Selector.MatchLabels
+		matchLabels[controllerRevisionHashLabelKey] = sts.Status.UpdateRevision
+		selector := metav1.LabelSelector{MatchLabels: matchLabels}
 		labelSelector, err := metav1.LabelSelectorAsSelector(&selector)
 		if err != nil {
 			klog.Errorf("Failed to convert label selector for StatefulSet <%s/%s>: %v", sts.Namespace, sts.Name, err)
@@ -143,20 +150,22 @@ func (pg *pgcontroller) addStatefulSet(obj interface{}) {
 		}
 		if len(pods) > 0 {
 			pod := pods[0]
-			klog.V(4).Infof("Try to create podgroup for pod %s/%s", pod.Namespace, pod.Name)
+			klog.V(4).Infof("Try to create or update podgroup for pod %s/%s when statefulset add or update", pod.Namespace, pod.Name)
 			if !slices.Contains(pg.schedulerNames, pod.Spec.SchedulerName) {
 				klog.V(4).Infof("Pod %s field SchedulerName is not matched", klog.KObj(pod))
 				return
 			}
+
 			// If the pod is already associated with a podgroup, skip creating a new one. This scenario is applicable to LeaderWorkerSet,
 			// which will create podgroups by itself, and Volcano does not need to create a podgroup for statefulset.
 			if pgName := pod.Annotations[scheduling.KubeGroupNameAnnotationKey]; pgName != "" {
 				klog.V(4).Infof("Pod %s is already associated with a podgroup %s", klog.KObj(pod), pgName)
 				return
 			}
-			err := pg.createNormalPodPGIfNotExist(pod)
+
+			err := pg.createOrUpdateNormalPodPG(pod)
 			if err != nil {
-				klog.Errorf("Failed to create PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
+				klog.Errorf("Failed to create or update PodGroup for pod <%s/%s>: %v", pod.Namespace, pod.Name, err)
 			}
 		}
 	}
@@ -287,60 +296,8 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 			return err
 		}
 
-		var minMember = int32(1)
-		var ownerAnnotations = make(map[string]string)
-		if pg.inheritOwnerAnnotations {
-			ownerAnnotations = pg.getAnnotationsFromUpperRes(pod)
-			minMember = pg.getMinMemberFromUpperRes(ownerAnnotations, pod.Namespace, pod.Name)
-		}
-		minResources := util.CalTaskRequests(pod, minMember)
-		obj := &scheduling.PodGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace:       pod.Namespace,
-				Name:            pgName,
-				OwnerReferences: newPGOwnerReferences(pod),
-				Annotations:     map[string]string{},
-				Labels:          map[string]string{},
-			},
-			Spec: scheduling.PodGroupSpec{
-				MinMember:         minMember,
-				PriorityClassName: pod.Spec.PriorityClassName,
-				MinResources:      &minResources,
-			},
-			Status: scheduling.PodGroupStatus{
-				Phase: scheduling.PodGroupPending,
-			},
-		}
-
-		pg.inheritUpperAnnotations(ownerAnnotations, obj)
-		// Individual annotations on pods would overwrite annotations inherited from upper resources.
-		if queueName, ok := pod.Annotations[scheduling.QueueNameAnnotationKey]; ok {
-			obj.Spec.Queue = queueName
-		}
-
-		if value, ok := pod.Annotations[scheduling.PodPreemptable]; ok {
-			obj.Annotations[scheduling.PodPreemptable] = value
-		}
-		if value, ok := pod.Annotations[scheduling.CooldownTime]; ok {
-			obj.Annotations[scheduling.CooldownTime] = value
-		}
-		if value, ok := pod.Annotations[scheduling.RevocableZone]; ok {
-			obj.Annotations[scheduling.RevocableZone] = value
-		}
-		if value, ok := pod.Labels[scheduling.PodPreemptable]; ok {
-			obj.Labels[scheduling.PodPreemptable] = value
-		}
-		if value, ok := pod.Labels[scheduling.CooldownTime]; ok {
-			obj.Labels[scheduling.CooldownTime] = value
-		}
-
-		if value, found := pod.Annotations[scheduling.JDBMinAvailable]; found {
-			obj.Annotations[scheduling.JDBMinAvailable] = value
-		} else if value, found := pod.Annotations[scheduling.JDBMaxUnavailable]; found {
-			obj.Annotations[scheduling.JDBMaxUnavailable] = value
-		}
-
-		if _, err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(context.TODO(), obj, metav1.CreateOptions{}); err != nil {
+		podGroup := pg.buildPodGroupFromPod(pod, pgName)
+		if _, err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(context.TODO(), podGroup, metav1.CreateOptions{}); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
 					pod.Namespace, pod.Name, err)
@@ -356,6 +313,125 @@ func (pg *pgcontroller) createNormalPodPGIfNotExist(pod *v1.Pod) error {
 	}
 
 	return pg.updatePodAnnotations(pod, pgName)
+}
+
+// When statefulSet is updated, its associated pod template may change.
+// In such cases, we need to update the corresponding PodGroup simultaneously.
+func (pg *pgcontroller) createOrUpdateNormalPodPG(pod *v1.Pod) error {
+	pgName := helpers.GeneratePodgroupName(pod)
+
+	if podGroup, err := pg.pgLister.PodGroups(pod.Namespace).Get(pgName); err != nil {
+		if !apierrors.IsNotFound(err) {
+			klog.Errorf("Failed to get normal PodGroup for Pod <%s/%s>: %v",
+				pod.Namespace, pod.Name, err)
+			return err
+		}
+
+		newPodGroup := pg.buildPodGroupFromPod(pod, pgName)
+		if _, err := pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Create(context.TODO(), newPodGroup, metav1.CreateOptions{}); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				klog.Errorf("Failed to create normal PodGroup for Pod <%s/%s>: %v",
+					pod.Namespace, pod.Name, err)
+				return err
+			} else {
+				klog.V(4).Infof("PodGroup <%s/%s> already exists for Pod <%s/%s>",
+					pod.Namespace, pgName, pod.Namespace, pod.Name)
+			}
+		} else {
+			klog.V(4).Infof("PodGroup <%s/%s> created for Pod <%s/%s>",
+				pod.Namespace, pgName, pod.Namespace, pod.Name)
+		}
+	} else {
+		needUpdate := pg.shouldUpdateExistingPodGroup(podGroup, pod)
+		if needUpdate {
+			_, err = pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Update(context.TODO(), podGroup, metav1.UpdateOptions{})
+			if err != nil {
+				klog.Errorf("Failed to update PodGroup <%s/%s>: %v", pod.Namespace, pgName, err)
+				return err
+			}
+		}
+	}
+
+	return pg.updatePodAnnotations(pod, pgName)
+}
+
+func (pg *pgcontroller) buildPodGroupFromPod(pod *v1.Pod, pgName string) *scheduling.PodGroup {
+	var minMember = int32(1)
+	var ownerAnnotations = make(map[string]string)
+	if pg.inheritOwnerAnnotations {
+		ownerAnnotations = pg.getAnnotationsFromUpperRes(pod)
+		minMember = pg.getMinMemberFromUpperRes(ownerAnnotations, pod.Namespace, pod.Name)
+	}
+	minResources := util.CalTaskRequests(pod, minMember)
+	obj := &scheduling.PodGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:       pod.Namespace,
+			Name:            pgName,
+			OwnerReferences: newPGOwnerReferences(pod),
+			Annotations:     map[string]string{},
+			Labels:          map[string]string{},
+		},
+		Spec: scheduling.PodGroupSpec{
+			MinMember:         minMember,
+			PriorityClassName: pod.Spec.PriorityClassName,
+			MinResources:      &minResources,
+		},
+		Status: scheduling.PodGroupStatus{
+			Phase: scheduling.PodGroupPending,
+		},
+	}
+
+	pg.inheritUpperAnnotations(ownerAnnotations, obj)
+	// Individual annotations on pods would overwrite annotations inherited from upper resources.
+	if queueName, ok := pod.Annotations[scheduling.QueueNameAnnotationKey]; ok {
+		obj.Spec.Queue = queueName
+	}
+
+	if value, ok := pod.Annotations[scheduling.PodPreemptable]; ok {
+		obj.Annotations[scheduling.PodPreemptable] = value
+	}
+	if value, ok := pod.Annotations[scheduling.CooldownTime]; ok {
+		obj.Annotations[scheduling.CooldownTime] = value
+	}
+	if value, ok := pod.Annotations[scheduling.RevocableZone]; ok {
+		obj.Annotations[scheduling.RevocableZone] = value
+	}
+	if value, ok := pod.Labels[scheduling.PodPreemptable]; ok {
+		obj.Labels[scheduling.PodPreemptable] = value
+	}
+	if value, ok := pod.Labels[scheduling.CooldownTime]; ok {
+		obj.Labels[scheduling.CooldownTime] = value
+	}
+
+	if value, found := pod.Annotations[scheduling.JDBMinAvailable]; found {
+		obj.Annotations[scheduling.JDBMinAvailable] = value
+	} else if value, found := pod.Annotations[scheduling.JDBMaxUnavailable]; found {
+		obj.Annotations[scheduling.JDBMaxUnavailable] = value
+	}
+
+	return obj
+}
+
+func (pg *pgcontroller) shouldUpdateExistingPodGroup(podGroup *scheduling.PodGroup, pod *v1.Pod) bool {
+	isUpdated := false
+
+	newPodGroup := pg.buildPodGroupFromPod(pod, podGroup.Name)
+	if !reflect.DeepEqual(newPodGroup.Spec, podGroup.Spec) {
+		podGroup.Spec = newPodGroup.Spec
+		isUpdated = true
+	}
+
+	if !reflect.DeepEqual(newPodGroup.Labels, podGroup.Labels) {
+		podGroup.Labels = newPodGroup.Labels
+		isUpdated = true
+	}
+
+	if !reflect.DeepEqual(newPodGroup.Annotations, podGroup.Annotations) {
+		podGroup.Annotations = newPodGroup.Annotations
+		isUpdated = true
+	}
+
+	return isUpdated
 }
 
 func newPGOwnerReferences(pod *v1.Pod) []metav1.OwnerReference {
