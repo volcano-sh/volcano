@@ -144,7 +144,33 @@ func (gs *GPUDevices) ScoreNode(pod *v1.Pod, schedulePolicy string) float64 {
 }
 
 func (gs *GPUDevices) GetIgnoredDevices() []string {
-	return []string{deviceconfig.VolcanoVGPUMemory, deviceconfig.VolcanoVGPUMemoryPercentage, deviceconfig.VolcanoVGPUCores}
+	return []string{}
+}
+
+func (gs *GPUDevices) AddQueueResource(pod *v1.Pod) map[string]float64 {
+	if gs == nil {
+		return map[string]float64{}
+	}
+	klog.V(5).InfoS("AddQueueResource", "Name", pod.Name)
+	res := map[string]float64{}
+	ids, ok := pod.Annotations[AssignedIDsAnnotations]
+	if !ok {
+		klog.Errorf("pod %s has no annotation volcano.sh/devices-to-allocate", pod.Name)
+		return res
+	}
+	podDev := decodePodDevices(ids)
+	for _, val := range podDev {
+		for _, deviceused := range val {
+			for _, gsdevice := range gs.Device {
+				if strings.Contains(deviceused.UUID, gsdevice.UUID) {
+					res[getConfig().ResourceMemoryName] += float64(deviceused.Usedmem * 1000)
+					res[getConfig().ResourceCoreName] += float64(deviceused.Usedcores * 1000)
+				}
+			}
+		}
+	}
+	klog.Infoln("AddQueueResource:Name=", pod.Name, "res=", res)
+	return res
 }
 
 // AddResource adds the pod to GPU pool if it is assigned
