@@ -35,6 +35,9 @@ var (
 	EvictingCPULowWatermarkHigherThanHighWatermark               = "cpu evicting low watermark is higher than high watermark"
 	EvictingMemoryLowWatermarkHigherThanHighWatermark            = "memory evicting low watermark is higher than high watermark"
 	IllegalOverSubscriptionTypes                                 = "overSubscriptionType(%s) is not supported, only supports cpu/memory"
+	IllegalCPUThrottlingThreshold                                = "cpuThrottlingThreshold must be a positive number between 1 and 100"
+	IllegalCPUProtectionWatermark                                = "cpuProtectionWatermark must be a positive number between 1 and 100"
+	CPUProtectionWatermarkHigherThanThrottlingThreshold          = "cpu protection watermark is higher than throttling threshold"
 )
 
 type Validate interface {
@@ -142,5 +145,25 @@ func (c *ColocationConfig) Validate() []error {
 	errs = append(errs, c.NetworkQosConfig.Validate()...)
 	errs = append(errs, c.OverSubscriptionConfig.Validate()...)
 	errs = append(errs, c.EvictingConfig.Validate()...)
+	errs = append(errs, c.CPUThrottlingConfig.Validate()...)
+	return errs
+}
+
+func (c *CPUThrottling) Validate() []error {
+	if c == nil {
+		return nil
+	}
+
+	var errs []error
+	if c.CPUThrottlingThreshold != nil && *c.CPUThrottlingThreshold <= 0 {
+		errs = append(errs, errors.New(IllegalCPUThrottlingThreshold))
+	}
+	if c.CPUProtectionWatermark != nil && *c.CPUProtectionWatermark <= 0 {
+		errs = append(errs, errors.New(IllegalCPUProtectionWatermark))
+	}
+	if *c.CPUProtectionWatermark > *c.CPUThrottlingThreshold {
+		errs = append(errs, errors.New(CPUProtectionWatermarkHigherThanThrottlingThreshold))
+	}
+
 	return errs
 }

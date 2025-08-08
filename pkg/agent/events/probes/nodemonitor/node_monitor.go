@@ -43,6 +43,7 @@ import (
 
 func init() {
 	probes.RegisterEventProbeFunc(string(framework.NodeMonitorEventName), NewMonitor)
+	probes.RegisterEventProbeFunc(string(framework.NodeCPUThrottleEventName), NewMonitor)
 }
 
 const (
@@ -62,6 +63,9 @@ type monitor struct {
 	getNodeFunc             utilnode.ActiveNode
 	getPodsFunc             utilpod.ActivePods
 	usageGetter             resourceusage.Getter
+	cpuThrottlingThreshold  int
+	cpuProtectionWatermark  int
+	cpuThrottlingActive     bool
 }
 
 func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, workQueue workqueue.RateLimitingInterface) framework.Probe {
@@ -75,6 +79,7 @@ func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollector
 		highWatermark:           make(apis.Watermark),
 		highUsageCountByResName: make(map[v1.ResourceName]int),
 		usageGetter:             resourceusage.NewUsageGetter(mgr, local.CollectorName),
+		cpuThrottlingActive:     false,
 	}
 }
 
@@ -91,6 +96,9 @@ func (m *monitor) Run(stop <-chan struct{}) {
 func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 	m.cfgLock.Lock()
 	utils.SetEvictionWatermark(cfg, m.lowWatermark, m.highWatermark)
+	if cfg.CPUThrottlingConfig != nil && cfg.CPUThrottlingConfig.Enable != nil && *cfg.CPUThrottlingConfig.Enable {
+		m.cpuThrottlingThreshold, m.cpuProtectionWatermark = utils.SetCPUThrottlingConfig(cfg)
+	}
 	m.cfgLock.Unlock()
 
 	m.Lock()
@@ -98,6 +106,8 @@ func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 	// reset historical statistics
 	// TODO: make this more fine-grained, only when new setting is a higher watermark should we reset.
 	m.highUsageCountByResName = map[v1.ResourceName]int{}
+
+	m.cpuThrottlingActive = false
 	return nil
 }
 
@@ -156,6 +166,8 @@ func (m *monitor) detect() {
 		}
 	}
 
+	m.detectCPUThrottling(nodeCopy)
+
 	// Only remove eviction annotation when all resources are low usage.
 	if !allResourcesAreLowUsage {
 		return
@@ -199,4 +211,82 @@ func (m *monitor) nodeHasPressure(resName v1.ResourceName) bool {
 	defer m.Unlock()
 
 	return m.highUsageCountByResName[resName] >= highUsageCountLimit
+}
+
+func (m *monitor) detectCPUThrottling(node *v1.Node) {
+	m.cfgLock.RLock()
+	throttlingThreshold := m.cpuThrottlingThreshold
+	protectionWatermark := m.cpuProtectionWatermark
+	m.cfgLock.RUnlock()
+
+	if throttlingThreshold == 0 || protectionWatermark == 0 {
+		return
+	}
+
+	usage := m.usageGetter.UsagesByPercentage(node)
+	cpuUsage := usage[v1.ResourceCPU]
+
+	klog.V(4).InfoS("CPU throttling detection",
+		"usage", cpuUsage,
+		"throttlingThreshold", throttlingThreshold,
+		"protectionWatermark", protectionWatermark,
+		"active", m.cpuThrottlingActive)
+
+	if !m.cpuThrottlingActive && cpuUsage >= int64(throttlingThreshold) {
+		m.cpuThrottlingActive = true
+		event := framework.NodeCPUThrottleEvent{
+			TimeStamp: time.Now(),
+			Resource:  v1.ResourceCPU,
+			Action:    "start",
+			Usage:     cpuUsage,
+		}
+		m.queue.Add(event)
+		klog.InfoS("CPU throttling started",
+			"usage", cpuUsage,
+			"throttlingThreshold", throttlingThreshold)
+
+		return
+	}
+
+	if m.cpuThrottlingActive && cpuUsage >= int64(throttlingThreshold) {
+		event := framework.NodeCPUThrottleEvent{
+			TimeStamp: time.Now(),
+			Resource:  v1.ResourceCPU,
+			Action:    "continue",
+			Usage:     cpuUsage,
+		}
+		m.queue.Add(event)
+		klog.V(2).InfoS("CPU throttling continued", "usage",
+			cpuUsage, "throttlingThreshold", throttlingThreshold)
+		return
+	}
+
+	if m.cpuThrottlingActive && cpuUsage <= int64(protectionWatermark) {
+		m.cpuThrottlingActive = false
+		event := framework.NodeCPUThrottleEvent{
+			TimeStamp: time.Now(),
+			Resource:  v1.ResourceCPU,
+			Action:    "stop",
+			Usage:     cpuUsage,
+		}
+		m.queue.Add(event)
+		klog.InfoS("CPU throttling stopped",
+			"usage", cpuUsage,
+			"protectionWatermark", protectionWatermark)
+		return
+	}
+
+	return
+}
+
+func (m *monitor) IsCPUThrottlingActive() bool {
+	m.cfgLock.RLock()
+	defer m.cfgLock.RUnlock()
+	return m.cpuThrottlingActive
+}
+
+func (m *monitor) GetCPUThrottlingConfig() (threshold, watermark int) {
+	m.cfgLock.RLock()
+	defer m.cfgLock.RUnlock()
+	return m.cpuThrottlingThreshold, m.cpuProtectionWatermark
 }

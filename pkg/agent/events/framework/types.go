@@ -31,6 +31,8 @@ const (
 	NodeResourcesEventName EventName = "NodeResourcesSync"
 
 	NodeMonitorEventName EventName = "NodeUtilizationSync"
+
+	NodeCPUThrottleEventName EventName = "NodeCPUThrottleSync"
 )
 
 type PodEvent struct {
@@ -52,4 +54,11 @@ type NodeMonitorEvent struct {
 	TimeStamp time.Time
 	// Resource represents which resource is under pressure.
 	Resource corev1.ResourceName
+}
+
+type NodeCPUThrottleEvent struct {
+	TimeStamp time.Time
+	Resource  corev1.ResourceName
+	Action    string
+	Usage     int64
 }

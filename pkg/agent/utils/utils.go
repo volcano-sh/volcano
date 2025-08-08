@@ -138,6 +138,26 @@ func SetEvictionWatermark(cfg *api.ColocationConfig, lowWatermark apis.Watermark
 		"memoryHighWatermark", *cfg.EvictingConfig.EvictingMemoryHighWatermark)
 }
 
+// SetCPUThrottlingConfig set CPU QoS configuration from colocation config.
+func SetCPUThrottlingConfig(cfg *api.ColocationConfig) (throttlingThreshold, protectionWatermark int) {
+	if cfg.CPUThrottlingConfig.CPUThrottlingThreshold != nil {
+		throttlingThreshold = *cfg.CPUThrottlingConfig.CPUThrottlingThreshold
+	} else {
+		throttlingThreshold = 80 // DefaultCPUThrottlingThreshold
+	}
+
+	if cfg.CPUThrottlingConfig.CPUProtectionWatermark != nil {
+		protectionWatermark = *cfg.CPUThrottlingConfig.CPUProtectionWatermark
+	} else {
+		protectionWatermark = 60 // DefaultCPUProtectionWatermark
+	}
+
+	klog.InfoS("Successfully set CPU QoS config",
+		"throttlingThreshold", throttlingThreshold,
+		"protectionWatermark", protectionWatermark)
+	return throttlingThreshold, protectionWatermark
+}
+
 func GetCPUManagerPolicy() string {
 	kubeletDir := strings.TrimSpace(os.Getenv(kubeletRootDirEnv))
 	if kubeletDir == "" {

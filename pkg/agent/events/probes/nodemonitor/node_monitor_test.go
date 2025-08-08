@@ -19,6 +19,7 @@ package nodemonitor
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -146,6 +147,123 @@ func Test_monitor_detect(t *testing.T) {
 				}
 				assert.Equalf(t, tt.expectedNode(), node, "detect()")
 			}
+		})
+	}
+}
+
+func Test_monitor_detectCPUThrottling(t *testing.T) {
+	tests := []struct {
+		name                     string
+		cpuThrottlingThreshold   int
+		cpuProtectionWatermark   int
+		cpuThrottlingActive      bool
+		cpuUsage                 int64
+		expectedEventCount       int
+		expectedEventAction      string
+		expectedThrottlingActive bool
+	}{
+		{
+			name:                     "start throttling when usage exceeds threshold",
+			cpuThrottlingThreshold:   80,
+			cpuProtectionWatermark:   60,
+			cpuThrottlingActive:      false,
+			cpuUsage:                 85,
+			expectedEventCount:       1,
+			expectedEventAction:      "start",
+			expectedThrottlingActive: true,
+		},
+		{
+			name:                     "continue throttling when usage still above threshold",
+			cpuThrottlingThreshold:   80,
+			cpuProtectionWatermark:   60,
+			cpuThrottlingActive:      true,
+			cpuUsage:                 85,
+			expectedEventCount:       1,
+			expectedEventAction:      "continue",
+			expectedThrottlingActive: true,
+		},
+		{
+			name:                     "stop throttling when usage drops below protection watermark",
+			cpuThrottlingThreshold:   80,
+			cpuProtectionWatermark:   60,
+			cpuThrottlingActive:      true,
+			cpuUsage:                 55,
+			expectedEventCount:       1,
+			expectedEventAction:      "stop",
+			expectedThrottlingActive: false,
+		},
+		{
+			name:                     "no action when usage below threshold and throttling inactive",
+			cpuThrottlingThreshold:   80,
+			cpuProtectionWatermark:   60,
+			cpuThrottlingActive:      false,
+			cpuUsage:                 75,
+			expectedEventCount:       0,
+			expectedEventAction:      "",
+			expectedThrottlingActive: false,
+		},
+		{
+			name:                     "no action when usage above watermark and throttling active",
+			cpuThrottlingThreshold:   80,
+			cpuProtectionWatermark:   60,
+			cpuThrottlingActive:      true,
+			cpuUsage:                 70,
+			expectedEventCount:       0,
+			expectedEventAction:      "",
+			expectedThrottlingActive: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeNode, err := makeNode()
+			assert.NoError(t, err)
+			fakeClient := fakeclientset.NewSimpleClientset(fakeNode)
+			cfg := &config.Configuration{GenericConfiguration: &config.VolcanoAgentConfiguration{
+				KubeClient:   fakeClient,
+				KubeNodeName: "test-node",
+				NodeHasSynced: func() bool {
+					return false
+				},
+			}}
+			queue := workqueue.NewNamedRateLimitingQueue(nil, "test")
+
+			m := &monitor{
+				queue:                  queue,
+				Configuration:          cfg,
+				Interface:              extend.NewExtendResource(cfg, nil, nil, nil, ""),
+				cpuThrottlingThreshold: tt.cpuThrottlingThreshold,
+				cpuProtectionWatermark: tt.cpuProtectionWatermark,
+				cpuThrottlingActive:    tt.cpuThrottlingActive,
+				getNodeFunc:            makeNode,
+				getPodsFunc: func() ([]*v1.Pod, error) {
+					return []*v1.Pod{}, nil
+				},
+				usageGetter:             resourceusage.NewFakeResourceGetter(0, 0, tt.cpuUsage, tt.cpuUsage),
+				highUsageCountByResName: make(map[v1.ResourceName]int),
+				lowWatermark:            map[v1.ResourceName]int{v1.ResourceCPU: 30, v1.ResourceMemory: 30},
+			}
+
+			m.detect()
+
+			// Check event count
+			assert.Equal(t, tt.expectedEventCount, queue.Len(), "unexpected event count")
+
+			// Check event details if expected
+			if tt.expectedEventCount > 0 {
+				key, shutdown := queue.Get()
+				assert.False(t, shutdown, "queue should not be shutdown")
+
+				event, ok := key.(framework.NodeCPUThrottleEvent)
+				assert.True(t, ok, "event should be NodeCPUThrottleEvent")
+				assert.Equal(t, tt.expectedEventAction, event.Action, "unexpected event action")
+				assert.Equal(t, v1.ResourceCPU, event.Resource, "unexpected event resource")
+				assert.Equal(t, tt.cpuUsage, event.Usage, "unexpected event usage")
+				assert.True(t, time.Since(event.TimeStamp) < time.Second, "event timestamp should be recent")
+			}
+
+			// Check throttling state
+			assert.Equal(t, tt.expectedThrottlingActive, m.cpuThrottlingActive, "unexpected throttling state")
 		})
 	}
 }
