@@ -32,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -52,7 +53,6 @@ func buildNode(name string, alloc v1.ResourceList) *v1.Node {
 func buildPod(ns, n, nn string,
 	p v1.PodPhase, req v1.ResourceList,
 	owner []metav1.OwnerReference, labels map[string]string) *v1.Pod {
-
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			UID:             types.UID(fmt.Sprintf("%v-%v", ns, n)),

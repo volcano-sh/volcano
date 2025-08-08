@@ -31,7 +31,6 @@ import (
 )
 
 func TestListJob(t *testing.T) {
-
 	var (
 		namespaceFilter = "default"
 		schedulerFilter = "volcano"
@@ -224,7 +223,6 @@ test-job   0001-01-01                 Batch       0           0     0         0 
 
 	for _, testcase := range testCases {
 		t.Run(testcase.Name, func(t *testing.T) {
-
 			server := util.CreateTestServer(testcase.Response)
 			defer server.Close()
 

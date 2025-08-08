@@ -157,7 +157,6 @@ func TestKillJobFunc(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 			jobPlugins := make(map[string][]string)
@@ -210,7 +209,6 @@ func TestKillJobFunc(t *testing.T) {
 			}
 
 			for _, plugin := range testcase.Plugins {
-
 				if plugin == "svc" {
 					_, err = fakeController.kubeClient.CoreV1().Services(namespace).Get(context.TODO(), testcase.Job.Name, metav1.GetOptions{})
 					if err == nil {
@@ -419,7 +417,6 @@ func TestSyncJobFunc(t *testing.T) {
 		},
 	}
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 
@@ -502,7 +499,6 @@ func TestCreateJobIOIfNotExistFunc(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			fakeController := newFakeController()
 
@@ -602,7 +598,6 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 				t.Error("Expected PodGroup to get created, but not created")
 			}
 		})
-
 	}
 }
 
@@ -685,11 +680,8 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 			if pg.Spec.PriorityClassName != testcase.Job.Spec.PriorityClassName {
 				t.Errorf("Expected PodGroup.Spec.PriorityClassName to be updated to: %s, but got: %s", testcase.Job.Spec.PriorityClassName, pg.Spec.PriorityClassName)
 			}
-
 		})
-
 	}
-
 }
 
 func TestDeleteJobPod(t *testing.T) {

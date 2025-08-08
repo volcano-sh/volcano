@@ -41,14 +41,12 @@ func TestResumeJob(t *testing.T) {
 			if err == nil {
 				w.Write(val)
 			}
-
 		} else {
 			w.Header().Set("Content-Type", "application/json")
 			val, err := json.Marshal(responsejob)
 			if err == nil {
 				w.Write(val)
 			}
-
 		}
 	})
 
@@ -75,7 +73,6 @@ func TestResumeJob(t *testing.T) {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}
 	}
-
 }
 
 func TestInitResumeFlags(t *testing.T) {
@@ -88,5 +85,4 @@ func TestInitResumeFlags(t *testing.T) {
 	if cmd.Flag("name") == nil {
 		t.Errorf("Could not find the flag scheduler")
 	}
-
 }
