@@ -171,8 +171,7 @@ Please follow the guide [Volcano Agent](https://volcano.sh/en/docs/colocation) t
 If you want to get prometheus and grafana volcano dashboard after volcano installed, try following commands:
 
 ```bash
-make TAG=v1.12.1 generate-yaml
-kubectl create -f _output/release/volcano-monitoring-v1.12.1.yaml
+kubectl create -f installer/volcano-monitoring.yaml
 ```
 
 ### Install dashboard
