@@ -35,34 +35,12 @@ func ClusterSize(ctx *TestContext, req v1.ResourceList) int32 {
 	nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
 
-	pods, err := ctx.Kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred(), "failed to list pods")
-
-	used := map[string]*schedulerapi.Resource{}
-
-	for _, pod := range pods.Items {
-		nodeName := pod.Spec.NodeName
-		if len(nodeName) == 0 || pod.DeletionTimestamp != nil {
-			continue
-		}
-
-		if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
-			continue
-		}
-
-		if _, found := used[nodeName]; !found {
-			used[nodeName] = schedulerapi.EmptyResource()
-		}
-
-		for _, c := range pod.Spec.Containers {
-			req := schedulerapi.NewResource(c.Resources.Requests)
-			used[nodeName].Add(req)
-		}
-	}
+	usedResource, usedPodNumber := NodeUsed(ctx)
 
 	res := int32(0)
 
 	for _, node := range nodes.Items {
+		nodeRes := int32(0)
 		// skip node with taints
 		if len(node.Spec.Taints) != 0 {
 			continue
@@ -72,14 +50,25 @@ func ClusterSize(ctx *TestContext, req v1.ResourceList) int32 {
 		slot := schedulerapi.NewResource(req)
 
 		// remove used resources
-		if res, found := used[node.Name]; found {
+		if res, found := usedResource[node.Name]; found {
 			alloc.Sub(res)
 		}
 
 		for slot.LessEqual(alloc, schedulerapi.Zero) {
 			alloc.Sub(slot)
-			res++
+			nodeRes++
 		}
+		nodePods := usedPodNumber[node.Name]
+		allocatablePods, _ := node.Status.Allocatable.Pods().AsInt64()
+		leftPods := int32(allocatablePods - int64(nodePods))
+		if leftPods <= 0 {
+			continue
+		}
+		if leftPods < nodeRes {
+			nodeRes = leftPods
+		}
+
+		res = res + nodeRes
 	}
 	Expect(res).Should(BeNumerically(">=", 1),
 		"Current cluster does not have enough resource for request")
@@ -102,14 +91,12 @@ func ClusterNodeNumber(ctx *TestContext) int {
 	return nn
 }
 
-func ComputeNode(ctx *TestContext, req v1.ResourceList) (string, int32) {
-	nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
-
+func NodeUsed(ctx *TestContext) (map[string]*schedulerapi.Resource, map[string]int32) {
 	pods, err := ctx.Kubeclient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to list pods")
 
-	used := map[string]*schedulerapi.Resource{}
+	usedResources := map[string]*schedulerapi.Resource{}
+	usedPodNumber := make(map[string]int32, 0)
 
 	for _, pod := range pods.Items {
 		nodeName := pod.Spec.NodeName
@@ -121,15 +108,30 @@ func ComputeNode(ctx *TestContext, req v1.ResourceList) (string, int32) {
 			continue
 		}
 
-		if _, found := used[nodeName]; !found {
-			used[nodeName] = schedulerapi.EmptyResource()
+		if _, found := usedResources[nodeName]; !found {
+			usedResources[nodeName] = schedulerapi.EmptyResource()
 		}
 
 		for _, c := range pod.Spec.Containers {
 			req := schedulerapi.NewResource(c.Resources.Requests)
-			used[nodeName].Add(req)
+			usedResources[nodeName].Add(req)
 		}
+		nodePods, ok := usedPodNumber[nodeName]
+		if !ok {
+			nodePods = 0
+		}
+		nodePods = nodePods + 1
+		usedPodNumber[nodeName] = nodePods
 	}
+
+	return usedResources, usedPodNumber
+}
+
+func ComputeNode(ctx *TestContext, req v1.ResourceList) (string, int32) {
+	nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to list nodes")
+
+	usedResource, usedPodNumber := NodeUsed(ctx)
 
 	for _, node := range nodes.Items {
 		if len(node.Spec.Taints) != 0 {
@@ -142,7 +144,7 @@ func ComputeNode(ctx *TestContext, req v1.ResourceList) (string, int32) {
 		slot := schedulerapi.NewResource(req)
 
 		// remove used resources
-		if res, found := used[node.Name]; found {
+		if res, found := usedResource[node.Name]; found {
 			alloc.Sub(res)
 		}
 
@@ -152,6 +154,15 @@ func ComputeNode(ctx *TestContext, req v1.ResourceList) (string, int32) {
 		}
 
 		if res > 0 {
+			nodePods := usedPodNumber[node.Name]
+			allocatablePods, _ := node.Status.Allocatable.Pods().AsInt64()
+			leftPods := int32(allocatablePods - int64(nodePods))
+			if leftPods <= 0 {
+				continue
+			}
+			if leftPods < res {
+				res = leftPods
+			}
 			return node.Name, res
 		}
 	}
