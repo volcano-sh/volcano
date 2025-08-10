@@ -1483,6 +1483,11 @@ func (sc *SchedulerCache) deleteReservation(ss *scheduling.Reservation) {
 		return
 	}
 	job := reservationInfo.JobInfo
+	if reservationInfo.Reservation.Status.State.Phase == scheduling.ReservationFailed {
+		klog.V(4).Infof("Reservation %s/%s already gc'ed, skip clean", ss.Namespace, ss.Name)
+		sc.ReservationCache.DeleteReservation(ss.UID)
+		return
+	}
 
 	// clean related tasks from reservation
 	tasks := job.Tasks
