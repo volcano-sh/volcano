@@ -4571,7 +4571,7 @@ metadata:
   namespace: volcano-system
 data:
   volcano-scheduler.conf: |
-    actions: "enqueue, allocate, reverse, backfill"
+    actions: "enqueue, reverse, allocate, backfill"
     tiers:
     - plugins:
       - name: priority
