@@ -339,6 +339,11 @@ func (su *defaultStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
 
 // UpdatePodGroup will Update PodGroup
 func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*schedulingapi.PodGroup, error) {
+	if pg.Annotations != nil && pg.Annotations[vcv1beta1.VolcanoGroupReservationOnlyAnnotationKey] == "true" {
+		klog.V(4).Infof("Skip updating reservation-only PodGroup %s/%s", pg.Namespace, pg.Name)
+		return pg, nil
+	}
+
 	podgroup := &vcv1beta1.PodGroup{}
 	if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
 		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
