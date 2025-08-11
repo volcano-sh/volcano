@@ -19,6 +19,7 @@ package plugins
 import (
 	"sync"
 
+	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/hcclrank"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/pytorch"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/tensorflow"
@@ -35,6 +36,7 @@ func init() {
 	RegisterPluginBuilder("tensorflow", tensorflow.New)
 	RegisterPluginBuilder("mpi", mpi.New)
 	RegisterPluginBuilder("pytorch", pytorch.New)
+	RegisterPluginBuilder("hcclrank", hcclrank.New)
 }
 
 var pluginMutex sync.Mutex
