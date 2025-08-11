@@ -778,6 +778,22 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 		return nil
 	}
 
+	podGroupToUpdate := pg.DeepCopy()
+
+	pgShouldUpdate := cc.shouldUpdateExistingPodGroup(podGroupToUpdate, job)
+	if !pgShouldUpdate {
+		return nil
+	}
+
+	_, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Update(context.TODO(), podGroupToUpdate, metav1.UpdateOptions{})
+	if err != nil {
+		klog.V(3).Infof("Failed to update PodGroup for Job <%s/%s>: %v",
+			job.Namespace, job.Name, err)
+	}
+	return err
+}
+
+func (cc *jobcontroller) shouldUpdateExistingPodGroup(pg *scheduling.PodGroup, job *batch.Job) bool {
 	pgShouldUpdate := false
 	if pg.Spec.PriorityClassName != job.Spec.PriorityClassName {
 		pg.Spec.PriorityClassName = job.Spec.PriorityClassName
@@ -815,16 +831,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 		}
 	}
 
-	if !pgShouldUpdate {
-		return nil
-	}
-
-	_, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Update(context.TODO(), pg, metav1.UpdateOptions{})
-	if err != nil {
-		klog.V(3).Infof("Failed to update PodGroup for Job <%s/%s>: %v",
-			job.Namespace, job.Name, err)
-	}
-	return err
+	return pgShouldUpdate
 }
 
 func (cc *jobcontroller) deleteJobPod(jobName string, pod *v1.Pod) error {
