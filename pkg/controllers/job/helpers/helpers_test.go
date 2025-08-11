@@ -333,3 +333,82 @@ func contains(s []string, e string) bool {
 	}
 	return false
 }
+
+func TestGetTaskIndexOfPod(t *testing.T) {
+	testCases := []struct {
+		name      string
+		pod       *v1.Pod
+		expected  int
+		expectErr bool
+	}{
+		{
+			name: "valid task index should return correct value",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Labels: map[string]string{
+						"volcano.sh/task-index": "0",
+					},
+				},
+			},
+			expected:  0,
+			expectErr: false,
+		},
+		{
+			name: "missing task index label should return error",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "test-pod",
+					Labels: map[string]string{},
+				},
+			},
+			expected:  -1,
+			expectErr: true,
+		},
+		{
+			name: "invalid task index format should return error",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Labels: map[string]string{
+						"volcano.sh/task-index": "invalid",
+					},
+				},
+			},
+			expected:  -1,
+			expectErr: true,
+		},
+		{
+			name: "negative task index should be valid",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Labels: map[string]string{
+						"volcano.sh/task-index": "-1",
+					},
+				},
+			},
+			expected:  -1,
+			expectErr: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			taskIndex, err := GetTaskIndexOfPod(tc.pod)
+
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("expected error but got none")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if taskIndex != tc.expected {
+					t.Errorf("expected task index %d, got %d", tc.expected, taskIndex)
+				}
+			}
+		})
+	}
+}
