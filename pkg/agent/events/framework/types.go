@@ -18,6 +18,7 @@ package framework
 
 import (
 	"time"
+	"volcano.sh/volcano/pkg/agent/config/api"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -31,6 +32,8 @@ const (
 	NodeResourcesEventName EventName = "NodeResourcesSync"
 
 	NodeMonitorEventName EventName = "NodeUtilizationSync"
+
+	TimeBaseQosEventName EventName = "TimeBasedQoSPolicySync"
 )
 
 type PodEvent struct {
@@ -52,4 +55,23 @@ type NodeMonitorEvent struct {
 	TimeStamp time.Time
 	// Resource represents which resource is under pressure.
 	Resource corev1.ResourceName
+}
+
+type TimeBasedQoSPolicyAction string
+
+const (
+	TimeBasedQoSPolicyActive  TimeBasedQoSPolicyAction = "Active"
+	TimeBasedQoSPolicyExpired TimeBasedQoSPolicyAction = "Expired"
+
+	// events and event reasons
+	ReasonPolicyActivated = "PolicyActivated"
+	ReasonPolicyExpired   = "PolicyExpired"
+	MsgPolicyActivated    = "Time-based QoS policy %s activated: QoS level set to %s"
+	MsgPolicyExpired      = "Time-based QoS policy %s expired: QoS level reverted to %s"
+)
+
+// TimeBasedQoSPolicyEvent defines time based QoS policy event.
+type TimeBasedQoSPolicyEvent struct {
+	Policy *api.TimeBasedQoSPolicy
+	Action TimeBasedQoSPolicyAction
 }

@@ -18,15 +18,17 @@ package utils
 
 import (
 	"reflect"
+	"time"
 
 	"github.com/imdario/mergo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/validation"
 	"k8s.io/apimachinery/pkg/labels"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
-
 	"volcano.sh/volcano/pkg/agent/config/api"
 	utilnode "volcano.sh/volcano/pkg/agent/utils/node"
 )
@@ -111,6 +113,71 @@ func DefaultColocationConfig() *api.ColocationConfig {
 			EvictingMemoryLowWatermark:  utilpointer.Int(DefaultEvictingMemoryLowWatermark),
 		},
 	}
+}
+
+func SetDefaultVolcanoAgentConfig(cfg *api.VolcanoAgentConfig) {
+	if cfg.GlobalConfig != nil {
+		// TODO: is TimeBasedQoSPolicies only used in global config?
+		for _, policy := range cfg.GlobalConfig.TimeBasedQoSPolicies {
+			if policy.Enable == nil {
+				policy.Enable = utilpointer.Bool(true)
+			}
+			if policy.CheckInterval == nil {
+				policy.CheckInterval = utilpointer.Duration(15 * time.Second)
+			}
+		}
+	}
+}
+
+func ValidateVolcanoAgentConfig(cfg *api.VolcanoAgentConfig) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if cfg.GlobalConfig != nil {
+		path := field.NewPath("globalConfig")
+		for i, policy := range cfg.GlobalConfig.TimeBasedQoSPolicies {
+			policyPath := path.Child("timeBasedQoSPolicies").Index(i)
+			allErrs = append(allErrs, validateTimeBasedQoSPolicy(policy, policyPath)...)
+		}
+	}
+
+	return allErrs
+}
+
+func validateTimeBasedQoSPolicy(policy *api.TimeBasedQoSPolicy, basePath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	if policy.StartTime == nil {
+		allErrs = append(allErrs, field.Required(basePath.Child("startTime"), "startTime is required"))
+	} else if _, err := time.Parse("15:04", *policy.StartTime); err != nil {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("startTime"), *policy.StartTime, "invalid time format, expected HH:MM"))
+	}
+
+	if policy.EndTime == nil {
+		allErrs = append(allErrs, field.Required(basePath.Child("endTime"), "endTime is required"))
+	} else if _, err := time.Parse("15:04", *policy.EndTime); err != nil {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("endTime"), *policy.EndTime, "invalid time format, expected HH:MM"))
+	}
+
+	if policy.TimeZone != nil {
+		if _, err := time.LoadLocation(*policy.TimeZone); err != nil {
+			allErrs = append(allErrs, field.Invalid(basePath.Child("timeZone"), *policy.TimeZone, "invalid timeZone"))
+		}
+	}
+
+	if policy.Selector == nil {
+		allErrs = append(allErrs, field.Required(basePath.Child("selector"), "selector is required"))
+	} else {
+		allErrs = append(allErrs, validation.ValidateLabelSelector(policy.Selector, validation.LabelSelectorValidationOptions{}, basePath.Child("selector"))...)
+	}
+
+	if policy.TargetQoSLevel == nil {
+		allErrs = append(allErrs, field.Required(basePath.Child("targetQoSLevel"), "targetQoSLevel is required"))
+	}
+
+	if policy.CheckInterval != nil && *policy.CheckInterval <= 0 {
+		allErrs = append(allErrs, field.Invalid(basePath.Child("checkInterval"), *policy.CheckInterval, "checkInterval must be greater than 0"))
+	}
+
+	return allErrs
 }
 
 // DefaultVolcanoAgentConfig returns default volcano agent config.

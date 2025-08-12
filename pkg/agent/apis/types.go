@@ -33,6 +33,8 @@ const (
 
 	// PodQosLevelKey define pod qos level, see pkg/agent/apis/extension/qos.go for specific values.
 	PodQosLevelKey = "volcano.sh/qos-level"
+	// PodOriginalQosLevelKey define pod original qos level, which is used to record the original qos level of the pod before it is changed.
+	PodOriginalQosLevelKey = "volcano.sh/original-qos-level"
 	// PodEvictingKey define if the offline job is evicting
 	PodEvictingKey = "volcano.sh/offline-job-evicting"
 	// ColocationEnableNodeLabelKey is the label name for colocation,
