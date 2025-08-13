@@ -32,7 +32,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	e2edra "k8s.io/kubernetes/test/e2e/dra"
 	"k8s.io/kubernetes/test/e2e/framework"
@@ -138,7 +137,7 @@ func (b *builder) parametersEnv() (string, []string) {
 // makePod returns a simple pod with no resource claims.
 // The pod prints its env and waits.
 func (b *builder) pod() *v1.Pod {
-	pod := e2epod.MakePod(b.f.Namespace.Name, nil, nil, b.f.NamespacePodSecurityLevel, "env && sleep 100000")
+	pod := e2epod.MakePod(b.f.Namespace.Name, nil, nil, b.f.NamespacePodSecurityLevel, "" /* no command = pause */)
 	pod.Labels = make(map[string]string)
 	pod.Spec.RestartPolicy = v1.RestartPolicyNever
 	// Let kubelet kill the pods quickly. Setting
@@ -266,30 +265,39 @@ func (b *builder) create(ctx context.Context, objs ...klog.KMetadata) []klog.KMe
 }
 
 // testPod runs pod and checks if container logs contain expected environment variables
-func (b *builder) testPod(ctx context.Context, clientSet kubernetes.Interface, pod *v1.Pod, env ...string) {
+func (b *builder) testPod(ctx context.Context, f *framework.Framework, pod *v1.Pod, env ...string) {
 	ginkgo.GinkgoHelper()
-	err := e2epod.WaitForPodRunningInNamespace(ctx, clientSet, pod)
+	err := e2epod.WaitForPodRunningInNamespace(ctx, f.ClientSet, pod)
 	framework.ExpectNoError(err, "start pod")
 
 	if len(env) == 0 {
 		_, env = b.parametersEnv()
 	}
 	for _, container := range pod.Spec.Containers {
-		testContainerEnv(ctx, clientSet, pod, container.Name, false, env...)
+		testContainerEnv(ctx, f, pod, container.Name, false, env...)
 	}
 }
 
 // envLineRE matches env output with variables set by test/e2e/dra/test-driver.
 var envLineRE = regexp.MustCompile(`^(?:admin|user|claim)_[a-zA-Z0-9_]*=.*$`)
 
-func testContainerEnv(ctx context.Context, clientSet kubernetes.Interface, pod *v1.Pod, containerName string, fullMatch bool, env ...string) {
+func testContainerEnv(ctx context.Context, f *framework.Framework, pod *v1.Pod, containerName string, fullMatch bool, env ...string) {
 	ginkgo.GinkgoHelper()
-	log, err := e2epod.GetPodLogs(ctx, clientSet, pod.Namespace, pod.Name, containerName)
-	framework.ExpectNoError(err, fmt.Sprintf("get logs for container %s", containerName))
+	stdout, stderr, err := e2epod.ExecWithOptionsContext(ctx, f, e2epod.ExecOptions{
+		Command:       []string{"env"},
+		Namespace:     pod.Namespace,
+		PodName:       pod.Name,
+		ContainerName: containerName,
+		CaptureStdout: true,
+		CaptureStderr: true,
+		Quiet:         true,
+	})
+	framework.ExpectNoError(err, fmt.Sprintf("get env output for container %s", containerName))
+	gomega.Expect(stderr).To(gomega.BeEmpty(), fmt.Sprintf("env stderr for container %s", containerName))
 	if fullMatch {
 		// Find all env variables set by the test driver.
 		var actualEnv, expectEnv []string
-		for _, line := range strings.Split(log, "\n") {
+		for _, line := range strings.Split(stdout, "\n") {
 			if envLineRE.MatchString(line) {
 				actualEnv = append(actualEnv, line)
 			}
@@ -299,11 +307,11 @@ func testContainerEnv(ctx context.Context, clientSet kubernetes.Interface, pod *
 		}
 		sort.Strings(actualEnv)
 		sort.Strings(expectEnv)
-		gomega.Expect(actualEnv).To(gomega.Equal(expectEnv), fmt.Sprintf("container %s log output:\n%s", containerName, log))
+		gomega.Expect(actualEnv).To(gomega.Equal(expectEnv), fmt.Sprintf("container %s env output:\n%s", containerName, stdout))
 	} else {
 		for i := 0; i < len(env); i += 2 {
 			envStr := fmt.Sprintf("\n%s=%s\n", env[i], env[i+1])
-			gomega.Expect(log).To(gomega.ContainSubstring(envStr), fmt.Sprintf("container %s env variables", containerName))
+			gomega.Expect(stdout).To(gomega.ContainSubstring(envStr), fmt.Sprintf("container %s env variables", containerName))
 		}
 	}
 }
