@@ -259,6 +259,18 @@ func updateQueueStatus(ssn *Session) {
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, task := range tasks {
+					node, ok1 := ssn.Nodes[task.NodeName]
+					taskReq := task.Resreq
+					if ok1 {
+						for _, sharedDevices := range node.Others {
+							if sharedDevices.(api.Devices).HasDeviceRequest(task.Pod) {
+								sResources := sharedDevices.(api.Devices).AddQueueResource(task.Pod)
+								for k, v := range sResources {
+									taskReq.ScalarResources[v1.ResourceName(k)] = v
+								}
+							}
+						}
+					}
 					allocatedResources[job.Queue].Add(task.Resreq)
 					// recursively updates the allocated resources of parent queues
 					queue := ssn.Queues[job.Queue].Queue
