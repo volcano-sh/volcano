@@ -149,8 +149,7 @@ This way is only available for x86_64 temporarily.
 If you want to get prometheus and grafana volcano dashboard after volcano installed, try following commands:
 
 ```bash
-make TAG=v1.11.2 generate-yaml
-kubectl create -f _output/release/volcano-monitoring-v1.11.2.yaml
+kubectl create -f installer/volcano-monitoring.yaml
 ```
 
 ### Install dashboard
