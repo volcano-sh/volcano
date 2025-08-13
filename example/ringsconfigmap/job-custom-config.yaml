@@ -1,0 +1,28 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: test-custom-config-job
+  namespace: default
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  plugins:
+    ringsconfigmap:
+      - "-configmap-name-template"
+      - "my-config-{{.Name}}-{{.Namespace}}"
+      - "-volume-name"
+      - "my-custom-volume"
+      - "-mount-path"
+      - "/custom/config/path"
+  tasks:
+  - name: "task-1"
+    replicas: 1
+    template:
+      spec:
+        containers:
+        - name: test-container
+          image: nginx:latest
+          command:
+          - sleep
+          - "3600"
+        restartPolicy: Never
