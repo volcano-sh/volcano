@@ -38,7 +38,6 @@ func TestCancelJobJob(t *testing.T) {
 		if err == nil {
 			w.Write(val)
 		}
-
 	})
 
 	server := httptest.NewServer(handler)
@@ -64,7 +63,6 @@ func TestCancelJobJob(t *testing.T) {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}
 	}
-
 }
 
 func TestInitDeleteFlags(t *testing.T) {
@@ -77,5 +75,4 @@ func TestInitDeleteFlags(t *testing.T) {
 	if cmd.Flag("name") == nil {
 		t.Errorf("Could not find the flag name")
 	}
-
 }
