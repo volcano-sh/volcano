@@ -111,6 +111,11 @@ func (hni *HyperNodeInfo) Tier() int {
 	return hni.tier
 }
 
+func (hni *HyperNodeInfo) SetParent(p string) *HyperNodeInfo {
+	hni.parent = p
+	return hni
+}
+
 func (hni *HyperNodeInfo) DeepCopy() *HyperNodeInfo {
 	if hni == nil {
 		return nil
