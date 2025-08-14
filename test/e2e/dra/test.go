@@ -50,20 +50,20 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 		ginkgo.It("supports simple pod referencing inline resource claim", func(ctx context.Context) {
 			pod, template := b.podInline()
 			b.create(ctx, pod, template)
-			b.testPod(ctx, f.ClientSet, pod)
+			b.testPod(ctx, f, pod)
 		})
 
 		ginkgo.It("supports inline claim referenced by multiple containers", func(ctx context.Context) {
 			pod, template := b.podInlineMultiple()
 			b.create(ctx, pod, template)
-			b.testPod(ctx, f.ClientSet, pod)
+			b.testPod(ctx, f, pod)
 		})
 
 		ginkgo.It("supports simple pod referencing external resource claim", func(ctx context.Context) {
 			pod := b.podExternal()
 			claim := b.externalClaim()
 			b.create(ctx, claim, pod)
-			b.testPod(ctx, f.ClientSet, pod)
+			b.testPod(ctx, f, pod)
 		})
 
 		ginkgo.It("supports external claim referenced by multiple pods", func(ctx context.Context) {
@@ -74,7 +74,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			b.create(ctx, claim, pod1, pod2, pod3)
 
 			for _, pod := range []*v1.Pod{pod1, pod2, pod3} {
-				b.testPod(ctx, f.ClientSet, pod)
+				b.testPod(ctx, f, pod)
 			}
 		})
 
@@ -86,7 +86,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			b.create(ctx, claim, pod1, pod2, pod3)
 
 			for _, pod := range []*v1.Pod{pod1, pod2, pod3} {
-				b.testPod(ctx, f.ClientSet, pod)
+				b.testPod(ctx, f, pod)
 			}
 		})
 
@@ -98,7 +98,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			pod.Spec.InitContainers[0].Command = []string{"sh", "-c", "env | grep user_a=b"}
 			b.create(ctx, pod, template)
 
-			b.testPod(ctx, f.ClientSet, pod)
+			b.testPod(ctx, f, pod)
 		})
 
 		ginkgo.It("removes reservation from claim when pod is done", func(ctx context.Context) {
@@ -153,7 +153,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 				return b.f.ClientSet.ResourceV1beta1().ResourceClaims(b.f.Namespace.Name).Get(ctx, claim.Name, metav1.GetOptions{})
 			}).WithTimeout(f.Timeouts.PodDelete).ShouldNot(gomega.HaveField("Status.Allocation", (*resourceapi.AllocationResult)(nil)))
 
-			b.testPod(ctx, f.ClientSet, pod)
+			b.testPod(ctx, f, pod)
 
 			ginkgo.By(fmt.Sprintf("deleting pod %s", klog.KObj(pod)))
 			framework.ExpectNoError(b.f.ClientSet.CoreV1().Pods(b.f.Namespace.Name).Delete(ctx, pod.Name, metav1.DeleteOptions{}))
@@ -169,7 +169,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			claim := b.externalClaim()
 			b.create(ctx, claim, pod)
 
-			b.testPod(ctx, f.ClientSet, pod)
+			b.testPod(ctx, f, pod)
 
 			allocatedResourceClaim, err := b.f.ClientSet.ResourceV1beta1().ResourceClaims(b.f.Namespace.Name).Get(ctx, claim.Name, metav1.GetOptions{})
 			framework.ExpectNoError(err)
@@ -253,7 +253,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 		ginkgo.It("supports claim and class parameters", func(ctx context.Context) {
 			pod, template := b.podInline()
 			b.create(ctx, pod, template)
-			b.testPod(ctx, f.ClientSet, pod, expectedEnv...)
+			b.testPod(ctx, f, pod, expectedEnv...)
 		})
 
 		ginkgo.It("supports reusing resources", func(ctx context.Context) {
@@ -275,7 +275,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 				go func() {
 					defer ginkgo.GinkgoRecover()
 					defer wg.Done()
-					b.testPod(ctx, f.ClientSet, pod, expectedEnv...)
+					b.testPod(ctx, f, pod, expectedEnv...)
 					err := f.ClientSet.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 					framework.ExpectNoError(err, "delete pod")
 					framework.ExpectNoError(e2epod.WaitForPodNotFoundInNamespace(ctx, f.ClientSet, pod.Name, pod.Namespace, time.Duration(numPods)*f.Timeouts.PodStartSlow))
@@ -305,7 +305,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 				go func() {
 					defer ginkgo.GinkgoRecover()
 					defer wg.Done()
-					b.testPod(ctx, f.ClientSet, pod, expectedEnv...)
+					b.testPod(ctx, f, pod, expectedEnv...)
 				}()
 			}
 			wg.Wait()
@@ -329,7 +329,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			class.Name = deviceClassName
 			b.create(ctx, class)
 
-			b.testPod(ctx, f.ClientSet, pod, expectedEnv...)
+			b.testPod(ctx, f, pod, expectedEnv...)
 		})
 
 		ginkgo.It("retries pod scheduling after updating device class", func(ctx context.Context) {
@@ -360,7 +360,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			_, err = f.ClientSet.ResourceV1beta1().DeviceClasses().Update(ctx, class, metav1.UpdateOptions{})
 			framework.ExpectNoError(err)
 
-			b.testPod(ctx, f.ClientSet, pod, expectedEnv...)
+			b.testPod(ctx, f, pod, expectedEnv...)
 		})
 
 		ginkgo.It("runs a pod without a generated resource claim", func(ctx context.Context) {
