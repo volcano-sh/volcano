@@ -456,6 +456,10 @@ func (ji *JobInfo) extractWaitingTime(pg *PodGroup, waitingTimeKey string) (*tim
 
 // extractPreemptable return volcano.sh/preemptable value for job
 func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
+	// Use the new Preemptable field if set
+	if pg.Spec.Preemptable != nil {
+		return *pg.Spec.Preemptable
+	}
 	// check annotation first
 	if len(pg.Annotations) > 0 {
 		if value, found := pg.Annotations[v1beta1.PodPreemptable]; found {
@@ -467,7 +471,6 @@ func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
 			return b
 		}
 	}
-
 	// it annotation does not exit, check label
 	if len(pg.Labels) > 0 {
 		if value, found := pg.Labels[v1beta1.PodPreemptable]; found {
@@ -479,7 +482,6 @@ func (ji *JobInfo) extractPreemptable(pg *PodGroup) bool {
 			return b
 		}
 	}
-
 	return false
 }
 
