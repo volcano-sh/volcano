@@ -116,6 +116,10 @@ func TestAbortedState_Execute(t *testing.T) {
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Restarting {
 					t.Error("Expected Phase to be equal to restarting phase")
 				}
+
+				if jobInfo.Job.Status.RetryCount != 0 {
+					t.Errorf("Retry Count should be zero after resume, but got %d", jobInfo.Job.Status.RetryCount)
+				}
 			}
 		})
 	}
@@ -228,8 +232,9 @@ func TestAbortingState_Execute(t *testing.T) {
 					t.Error("Error while retrieving value from Cache")
 				}
 
-				if jobInfo.Job.Status.RetryCount == 0 {
-					t.Error("Retry Count should not be zero")
+				// The RetryCount should now be 0 after a resume action
+				if jobInfo.Job.Status.RetryCount != 0 {
+					t.Errorf("Retry Count should be zero after resume, but got %d", jobInfo.Job.Status.RetryCount)
 				}
 			}
 
