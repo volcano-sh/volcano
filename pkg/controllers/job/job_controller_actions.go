@@ -567,24 +567,26 @@ func (cc *jobcontroller) waitDependsOnTaskMeetCondition(taskIndex int, job *batc
 		return true
 	}
 	dependsOn := *job.Spec.Tasks[taskIndex].DependsOn
-	if len(dependsOn.Name) > 1 && dependsOn.Iteration == batch.IterationAny {
+	switch dependsOn.Iteration {
+	case batch.IterationAny:
 		// any ready to create task, return true
-		for _, task := range dependsOn.Name {
-			if cc.isDependsOnPodsReady(task, job) {
+		for _, taskName := range dependsOn.Name {
+			if cc.isDependsOnPodsReady(taskName, job) {
 				return true
 			}
 		}
 		// all not ready to skip create task, return false
 		return false
-	}
-	for _, dependsOnTask := range dependsOn.Name {
-		// any not ready to skip create task, return false
-		if !cc.isDependsOnPodsReady(dependsOnTask, job) {
-			return false
+	default:
+		for _, taskName := range dependsOn.Name {
+			// any not ready to skip create task, return false
+			if !cc.isDependsOnPodsReady(taskName, job) {
+				return false
+			}
 		}
+		// all dependencies are ready
+		return true
 	}
-	// all ready to create task, return true
-	return true
 }
 
 func (cc *jobcontroller) isDependsOnPodsReady(task string, job *batch.Job) bool {
