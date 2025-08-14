@@ -28,7 +28,7 @@ import (
 const (
 	NODE_METRICS_PERIOD             = "10m"
 	Metrics_Type_Prometheus_Adaptor = "prometheus_adaptor"
-	Metrics_Tpye_Prometheus         = "prometheus"
+	Metrics_Type_Prometheus         = "prometheus"
 	Metrics_Type_Elasticsearch      = "elasticsearch"
 )
 
@@ -47,13 +47,13 @@ func NewMetricsClient(restConfig *rest.Config, metricsConf map[string]string) (M
 	metricsType := metricsConf["type"]
 	if metricsType == Metrics_Type_Elasticsearch {
 		return NewElasticsearchMetricsClient(metricsConf)
-	} else if metricsType == Metrics_Tpye_Prometheus {
+	} else if metricsType == Metrics_Type_Prometheus {
 		return NewPrometheusMetricsClient(metricsConf)
 	} else if metricsType == Metrics_Type_Prometheus_Adaptor {
 		return NewCustomMetricsClient(restConfig)
 	} else {
 		return nil, fmt.Errorf("data cannot be collected from the %s monitoring system. "+
 			"The supported monitoring systems are %s, %s, and %s",
-			metricsType, Metrics_Type_Elasticsearch, Metrics_Tpye_Prometheus, Metrics_Type_Prometheus_Adaptor)
+			metricsType, Metrics_Type_Elasticsearch, Metrics_Type_Prometheus, Metrics_Type_Prometheus_Adaptor)
 	}
 }
