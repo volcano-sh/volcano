@@ -232,6 +232,7 @@ func (m *monitor) detectCPUThrottling(node *v1.Node) {
 		"protectionWatermark", protectionWatermark,
 		"active", m.cpuThrottlingActive)
 
+	// 启动限流：CPU使用率超过阈值且当前未激活限流
 	if !m.cpuThrottlingActive && cpuUsage >= int64(throttlingThreshold) {
 		m.cpuThrottlingActive = true
 		event := framework.NodeCPUThrottleEvent{
@@ -244,20 +245,21 @@ func (m *monitor) detectCPUThrottling(node *v1.Node) {
 		klog.InfoS("CPU throttling started",
 			"usage", cpuUsage,
 			"throttlingThreshold", throttlingThreshold)
-
 		return
 	}
 
+	// 持续限流：已激活限流且CPU使用率仍然超过阈值
 	if m.cpuThrottlingActive && cpuUsage >= int64(throttlingThreshold) {
 		event := framework.NodeCPUThrottleEvent{
 			TimeStamp: time.Now(),
 			Resource:  v1.ResourceCPU,
-			Action:    "continue",
+			Action:    "continue", // 新增continue动作
 			Usage:     cpuUsage,
 		}
 		m.queue.Add(event)
-		klog.V(2).InfoS("CPU throttling continued", "usage",
-			cpuUsage, "throttlingThreshold", throttlingThreshold)
+		klog.V(2).InfoS("CPU throttling continued",
+			"usage", cpuUsage,
+			"throttlingThreshold", throttlingThreshold)
 		return
 	}
 

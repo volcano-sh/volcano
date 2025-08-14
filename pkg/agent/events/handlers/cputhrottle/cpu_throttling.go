@@ -175,7 +175,9 @@ func (h *CPUThrottleHandler) RefreshCfg(cfg *api.ColocationConfig) error {
 	}
 
 	if cfg.CPUThrottlingConfig != nil {
-		if *cfg.CPUThrottlingConfig.CPUThrottlingStepPercent > 0 && *cfg.CPUThrottlingConfig.CPUThrottlingStepPercent <= 100 {
+		if cfg.CPUThrottlingConfig.CPUThrottlingStepPercent != nil &&
+			*cfg.CPUThrottlingConfig.CPUThrottlingStepPercent > 0 &&
+			*cfg.CPUThrottlingConfig.CPUThrottlingStepPercent <= 100 {
 			oldStep := h.throttleStepPercent
 			h.throttleStepPercent = *cfg.CPUThrottlingConfig.CPUThrottlingStepPercent
 			klog.InfoS("Updated throttle step percentage",
@@ -183,7 +185,9 @@ func (h *CPUThrottleHandler) RefreshCfg(cfg *api.ColocationConfig) error {
 				"newValue", h.throttleStepPercent)
 		}
 
-		if *cfg.CPUThrottlingConfig.CPUMinQuotaPercent > 0 && *cfg.CPUThrottlingConfig.CPUMinQuotaPercent <= 100 {
+		if cfg.CPUThrottlingConfig.CPUMinQuotaPercent != nil &&
+			*cfg.CPUThrottlingConfig.CPUMinQuotaPercent > 0 &&
+			*cfg.CPUThrottlingConfig.CPUMinQuotaPercent <= 100 {
 			oldQuota := h.minCPUQuotaPercent
 			h.minCPUQuotaPercent = *cfg.CPUThrottlingConfig.CPUMinQuotaPercent
 			klog.InfoS("Updated minCPU quota percentage",

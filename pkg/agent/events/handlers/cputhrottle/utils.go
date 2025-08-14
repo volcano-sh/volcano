@@ -1,10 +1,8 @@
 package cputhrottle
 
 import (
-	"errors"
 	"fmt"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
 	"os"
 	"path"
 	"strconv"
@@ -129,7 +127,7 @@ func (h *CPUThrottleHandler) calculateMinCPUQuota(pod *v1.Pod) int64 {
 func (h *CPUThrottleHandler) applyCPUQuota(pod *v1.Pod, quota int64) (string, error) {
 	cgroupPath, err := h.cgroupMgr.GetPodCgroupPath(pod.Status.QOSClass, cgroup.CgroupCpuSubsystem, pod.UID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get pod cgroup path: %v", err)
+		return "", err
 	}
 
 	quotaFile := path.Join(cgroupPath, cgroup.CPUQuotaTotalFile)
@@ -137,11 +135,7 @@ func (h *CPUThrottleHandler) applyCPUQuota(pod *v1.Pod, quota int64) (string, er
 
 	err = utils.UpdatePodCgroup(quotaFile, quotaByte)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			klog.InfoS("Cgroup file not existed", "cgroupFile", quotaFile)
-			return quotaFile, err
-		}
-		return "", fmt.Errorf("failed to update CPU quota: %v", err)
+		return quotaFile, err
 	}
 
 	return "", nil
