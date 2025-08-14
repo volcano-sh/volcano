@@ -19,6 +19,7 @@ package podgroup
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,9 +32,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	kubeclient "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/ptr"
-	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
+	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -368,7 +370,7 @@ func TestAddStatefulSet(t *testing.T) {
 	podName := "sts-test-0"
 	defaultSchedulerPod := util.BuildPod(namespace, podName, "", v1.PodPending, api.BuildResourceList("1", "2Gi"), "", map[string]string{"app": stsName}, nil)
 	defaultSchedulerPod.Spec.SchedulerName = "default-scheduler"
-	volcanoSchedulerPod := util.BuildPod(namespace, podName, "", v1.PodPending, api.BuildResourceList("1", "2Gi"), "", map[string]string{"app": stsName}, nil)
+	volcanoSchedulerPod := util.BuildPod(namespace, podName, "", v1.PodPending, api.BuildResourceList("1", "2Gi"), "", map[string]string{"app": stsName, controllerRevisionHashLabelKey: "test"}, nil)
 	volcanoSchedulerPod.Spec.SchedulerName = "volcano"
 	existedPodWithPG := util.BuildPod(namespace, podName, "", v1.PodPending, api.BuildResourceList("1", "2Gi"), "lws-1-revision", map[string]string{"app": stsName}, nil)
 	existedPodWithPG.Spec.SchedulerName = "volcano"
@@ -426,6 +428,9 @@ func TestAddStatefulSet(t *testing.T) {
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": stsName},
 					},
+				},
+				Status: appsv1.StatefulSetStatus{
+					UpdateRevision: "test",
 				},
 			},
 			existingPods:    []*v1.Pod{volcanoSchedulerPod},
@@ -487,4 +492,630 @@ func TestAddStatefulSet(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_createOrUpdateNormalPodPG(t *testing.T) {
+	namespace := "test"
+	replicas := int32(2)
+	isController := true
+	gpuKey := v1.ResourceName("nvidia.com/gpu")
+
+	t.Run("Scenario 1: Create normal pod group", func(t *testing.T) {
+		c := newFakeController()
+
+		pod := &v1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Pod",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod1",
+				Namespace: namespace,
+				Labels: map[string]string{
+					"app": "sts1",
+				},
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "app/v1",
+						Kind:       "StatefulSet",
+						Name:       "sts1",
+						UID:        "7a09885b-b753-4924-9fba-77c0836bac20",
+						Controller: &isController,
+					},
+				},
+			},
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{
+						Name: "container1",
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								gpuKey: resource.MustParse("1"),
+							},
+						},
+					},
+				},
+			},
+		}
+
+		pod, err := c.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		if err != nil {
+			t.Errorf("Case 1 failed when creating pod for %v", err)
+		}
+
+		sts := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sts1",
+				Namespace: namespace,
+				UID:       "7a09885b-b753-4924-9fba-77c0836bac20",
+				Annotations: map[string]string{
+					scheduling.VolcanoGroupMinMemberAnnotationKey: "2",
+				},
+			},
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "StatefulSet",
+			},
+			Spec: appsv1.StatefulSetSpec{
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"app": "sts1",
+					},
+				},
+				Replicas: &replicas,
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						Containers: []v1.Container{
+							{
+								Name: "container1",
+								Resources: v1.ResourceRequirements{
+									Requests: v1.ResourceList{
+										gpuKey: resource.MustParse("1"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		sts, err = c.kubeClient.AppsV1().StatefulSets(namespace).Create(context.TODO(), sts, metav1.CreateOptions{})
+		if err != nil {
+			t.Errorf("Case 1 failed when creating sts for %v", err)
+		}
+
+		expectedPodGroup := &scheduling.PodGroup{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "scheduling.volcano.sh/v1beta1",
+				Kind:       "PodGroup",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "podgroup-7a09885b-b753-4924-9fba-77c0836bac20",
+				Namespace: namespace,
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "app/v1",
+						Kind:       "StatefulSet",
+						Name:       "sts1",
+						UID:        "7a09885b-b753-4924-9fba-77c0836bac20",
+						Controller: &isController,
+					},
+				},
+			},
+			Spec: scheduling.PodGroupSpec{
+				MinMember: 2,
+				MinResources: &v1.ResourceList{
+					gpuKey: resource.MustParse("2"),
+				},
+			},
+		}
+
+		c.vcInformerFactory.Scheduling().V1beta1().PodGroups().Informer()
+		c.vcInformerFactory.Start(context.TODO().Done())
+		cache.WaitForNamedCacheSync("", context.TODO().Done(), c.vcInformerFactory.Scheduling().V1beta1().PodGroups().Informer().HasSynced)
+
+		c.createOrUpdateNormalPodPG(pod)
+		pg, err := c.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), "podgroup-7a09885b-b753-4924-9fba-77c0836bac20", metav1.GetOptions{})
+		if err != nil {
+			t.Errorf("Case 1 failed when getting podGroup for %v", err)
+		}
+
+		if false == equality.Semantic.DeepEqual(pg.OwnerReferences, expectedPodGroup.OwnerReferences) {
+			t.Errorf("Case 1 failed, expect %v, got %v", expectedPodGroup, pg)
+		}
+
+		if expectedPodGroup.Spec.PriorityClassName != pod.Spec.PriorityClassName {
+			t.Errorf("Case 1 failed, expect %v, got %v",
+				expectedPodGroup.Spec.PriorityClassName, pod.Spec.PriorityClassName)
+		}
+
+		if pg.Spec.MinMember != expectedPodGroup.Spec.MinMember {
+			t.Errorf("Case 1 failed, expect %v, got %v", expectedPodGroup.Spec.MinMember, pg.Spec.MinMember)
+		}
+
+		if expectedPodGroup.Spec.MinResources != nil && false == equality.Semantic.DeepEqual(pg.Spec.MinResources.Name(gpuKey, resource.DecimalSI), expectedPodGroup.Spec.MinResources.Name(gpuKey, resource.DecimalSI)) {
+			t.Errorf("Case 1 failed, expect %v, got %v", expectedPodGroup.Spec.MinResources.Name(gpuKey, resource.DecimalSI), pg.Spec.MinResources.Name(gpuKey, resource.DecimalSI))
+		}
+	})
+
+	t.Run("Scenario 2: Update normal pod group", func(t *testing.T) {
+		c := newFakeController()
+
+		pod := &v1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Pod",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod1",
+				Namespace: namespace,
+				Labels: map[string]string{
+					"app": "sts1",
+				},
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "app/v1",
+						Kind:       "StatefulSet",
+						Name:       "sts1",
+						UID:        "7a09885b-b753-4924-9fba-77c0836bac20",
+						Controller: &isController,
+					},
+				},
+			},
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{
+						Name: "container1",
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{
+								gpuKey: resource.MustParse("1"),
+							},
+						},
+					},
+				},
+			},
+		}
+
+		pod, err := c.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		if err != nil {
+			t.Errorf("Case 2 failed when creating pod for %v", err)
+		}
+
+		sts := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sts1",
+				Namespace: namespace,
+				UID:       "7a09885b-b753-4924-9fba-77c0836bac20",
+				Annotations: map[string]string{
+					scheduling.VolcanoGroupMinMemberAnnotationKey: "2",
+				},
+			},
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "StatefulSet",
+			},
+			Spec: appsv1.StatefulSetSpec{
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"app": "sts1",
+					},
+				},
+				Replicas: &replicas,
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						Containers: []v1.Container{
+							{
+								Name: "container1",
+								Resources: v1.ResourceRequirements{
+									Requests: v1.ResourceList{
+										gpuKey: resource.MustParse("1"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		sts, err = c.kubeClient.AppsV1().StatefulSets(namespace).Create(context.TODO(), sts, metav1.CreateOptions{})
+		if err != nil {
+			t.Errorf("Case 2 failed when creating sts for %v", err)
+		}
+
+		existingPodGroup := &scheduling.PodGroup{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "scheduling.volcano.sh/v1beta1",
+				Kind:       "PodGroup",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "podgroup-7a09885b-b753-4924-9fba-77c0836bac20",
+				Namespace: namespace,
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "app/v1",
+						Kind:       "StatefulSet",
+						Name:       "sts1",
+						UID:        "7a09885b-b753-4924-9fba-77c0836bac20",
+						Controller: &isController,
+					},
+				},
+			},
+			Spec: scheduling.PodGroupSpec{
+				MinMember: 3,
+				MinResources: &v1.ResourceList{
+					gpuKey: resource.MustParse("10"),
+				},
+			},
+		}
+
+		existingPodGroup, err = c.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), existingPodGroup, metav1.CreateOptions{})
+		if err != nil {
+			t.Errorf("Case 2 failed when creating podGroup for %v", err)
+		}
+
+		expectedPodGroup := &scheduling.PodGroup{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "scheduling.volcano.sh/v1beta1",
+				Kind:       "PodGroup",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "podgroup-7a09885b-b753-4924-9fba-77c0836bac20",
+				Namespace: namespace,
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "app/v1",
+						Kind:       "StatefulSet",
+						Name:       "sts1",
+						UID:        "7a09885b-b753-4924-9fba-77c0836bac20",
+						Controller: &isController,
+					},
+				},
+			},
+			Spec: scheduling.PodGroupSpec{
+				MinMember: 2,
+				MinResources: &v1.ResourceList{
+					gpuKey: resource.MustParse("2"),
+				},
+			},
+		}
+
+		c.vcInformerFactory.Scheduling().V1beta1().PodGroups().Informer()
+		c.vcInformerFactory.Start(context.TODO().Done())
+		cache.WaitForNamedCacheSync("", context.TODO().Done(), c.vcInformerFactory.Scheduling().V1beta1().PodGroups().Informer().HasSynced)
+
+		c.createOrUpdateNormalPodPG(pod)
+		pg, err := c.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Get(context.TODO(), "podgroup-7a09885b-b753-4924-9fba-77c0836bac20", metav1.GetOptions{})
+		if err != nil {
+			t.Errorf("Case 2 failed when getting podGroup for %v", err)
+		}
+
+		if false == equality.Semantic.DeepEqual(pg.OwnerReferences, expectedPodGroup.OwnerReferences) {
+			t.Errorf("Case 2 failed, expect %v, got %v", expectedPodGroup, pg)
+		}
+
+		if expectedPodGroup.Spec.PriorityClassName != pod.Spec.PriorityClassName {
+			t.Errorf("Case 2 failed, expect %v, got %v",
+				expectedPodGroup.Spec.PriorityClassName, pod.Spec.PriorityClassName)
+		}
+
+		if pg.Spec.MinMember != expectedPodGroup.Spec.MinMember {
+			t.Errorf("Case 2 failed, expect %v, got %v", expectedPodGroup.Spec.MinMember, pg.Spec.MinMember)
+		}
+
+		if expectedPodGroup.Spec.MinResources != nil && false == equality.Semantic.DeepEqual(pg.Spec.MinResources.Name(gpuKey, resource.DecimalSI), expectedPodGroup.Spec.MinResources.Name(gpuKey, resource.DecimalSI)) {
+			t.Errorf("Case 2 failed, expect %v, got %v", expectedPodGroup.Spec.MinResources.Name(gpuKey, resource.DecimalSI), pg.Spec.MinResources.Name(gpuKey, resource.DecimalSI))
+		}
+	})
+}
+
+func Test_pgcontroller_buildPodGroupFromPod(t *testing.T) {
+	// Common test data
+	podName := "test-pod"
+	podNamespace := "test-ns"
+	pgName := "test-pg"
+	podUID := types.UID("test-pod-uid")
+	isController := true
+	replicas := int32(3) // For scenario 2
+
+	// Scenario 1: Do not inherit upper resource annotations
+	t.Run("Scenario 1: Do not inherit upper resource annotations", func(t *testing.T) {
+		c := newFakeController()
+		c.inheritOwnerAnnotations = false
+
+		// Create test pod with annotations and labels
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName,
+				Namespace: podNamespace,
+				UID:       podUID,
+				Annotations: map[string]string{
+					scheduling.QueueNameAnnotationKey: "test-queue",
+					scheduling.PodPreemptable:         "true",
+				},
+				Labels: map[string]string{
+					scheduling.CooldownTime: "60s",
+				},
+			},
+			Spec: v1.PodSpec{
+				PriorityClassName: "high-priority",
+				Containers: []v1.Container{{
+					Name: "test-container",
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							v1.ResourceCPU: resource.MustParse("1"),
+						},
+					},
+				}},
+			},
+		}
+
+		// Execute test function
+		resultPG := c.buildPodGroupFromPod(pod, pgName)
+
+		// Verify basic fields
+		if resultPG == nil {
+			t.Fatal("resultPG should not be nil")
+		}
+		if resultPG.Name != pgName {
+			t.Errorf("expected PG name %s, got %s", pgName, resultPG.Name)
+		}
+		if resultPG.Namespace != podNamespace {
+			t.Errorf("expected PG namespace %s, got %s", podNamespace, resultPG.Namespace)
+		}
+
+		// Verify Spec fields
+		if resultPG.Spec.MinMember != 1 {
+			t.Errorf("expected MinMember 1, got %d", resultPG.Spec.MinMember)
+		}
+		if resultPG.Spec.PriorityClassName != "high-priority" {
+			t.Errorf("expected PriorityClassName 'high-priority', got %s", resultPG.Spec.PriorityClassName)
+		}
+		if resultPG.Spec.Queue != "test-queue" {
+			t.Errorf("expected Queue 'test-queue', got %s", resultPG.Spec.Queue)
+		}
+
+		// Verify MinResources (use reflect.DeepEqual for complex comparison)
+		expectedResources := v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")}
+		if !reflect.DeepEqual(resultPG.Spec.MinResources.Cpu().AsApproximateFloat64(), expectedResources.Cpu().AsApproximateFloat64()) {
+			t.Errorf("expected MinResources %v, got %v", expectedResources, *resultPG.Spec.MinResources)
+		}
+
+		// Verify annotations and labels
+		if resultPG.Annotations[scheduling.PodPreemptable] != "true" {
+			t.Errorf("expected annotation %s: 'true', got %s", scheduling.PodPreemptable, resultPG.Annotations[scheduling.PodPreemptable])
+		}
+		if resultPG.Labels[scheduling.CooldownTime] != "60s" {
+			t.Errorf("expected label %s: '60s', got %s", scheduling.CooldownTime, resultPG.Labels[scheduling.CooldownTime])
+		}
+
+		// Verify OwnerReferences
+		if len(resultPG.OwnerReferences) != 1 {
+			t.Fatalf("expected 1 OwnerReference, got %d", len(resultPG.OwnerReferences))
+		}
+		ownerRef := resultPG.OwnerReferences[0]
+		if ownerRef.UID != podUID || ownerRef.Controller == nil || !*ownerRef.Controller {
+			t.Errorf("invalid OwnerReference: expected controller %s, got %+v", podUID, ownerRef)
+		}
+	})
+
+	// Scenario 2: Inherit upper resource annotations
+	t.Run("Scenario 2: Inherit upper resource annotations", func(t *testing.T) {
+		c := newFakeController()
+		c.inheritOwnerAnnotations = true
+		ownerUID := types.UID("owner-uid")
+
+		// Create upper ReplicaSet with annotations
+		rs := &appsv1.ReplicaSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rs-owner",
+				Namespace: podNamespace,
+				UID:       ownerUID,
+				Annotations: map[string]string{
+					scheduling.VolcanoGroupMinMemberAnnotationKey: "3",
+					scheduling.AnnotationPrefix + "custom-key":    "custom-value",
+					scheduling.JDBMinAvailable:                    "2",
+				},
+			},
+			Spec: appsv1.ReplicaSetSpec{
+				Replicas: &replicas,
+				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{Containers: []v1.Container{{
+						Name: "test-container",
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")},
+						},
+					}}},
+				},
+			},
+		}
+		// Add ReplicaSet to fake client
+		if _, err := c.kubeClient.AppsV1().ReplicaSets(podNamespace).Create(context.TODO(), rs, metav1.CreateOptions{}); err != nil {
+			t.Fatalf("failed to create ReplicaSet: %v", err)
+		}
+
+		// Create pod with OwnerReference to ReplicaSet
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName,
+				Namespace: podNamespace,
+				UID:       podUID,
+				OwnerReferences: []metav1.OwnerReference{{
+					APIVersion: "apps/v1",
+					Kind:       "ReplicaSet",
+					Name:       "rs-owner",
+					UID:        ownerUID,
+					Controller: &isController,
+				}},
+				Annotations: map[string]string{scheduling.JDBMinAvailable: "1"}, // Should overwrite upper annotation
+			},
+			Spec: v1.PodSpec{
+				PriorityClassName: "low-priority",
+				Containers: []v1.Container{{
+					Name: "test-container",
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")},
+					},
+				}},
+			},
+		}
+
+		// Execute test function
+		resultPG := c.buildPodGroupFromPod(pod, pgName)
+
+		// Verify inherited annotations and MinMember
+		if resultPG.Spec.MinMember != 3 {
+			t.Errorf("expected MinMember 3, got %d", resultPG.Spec.MinMember)
+		}
+		if resultPG.Annotations[scheduling.AnnotationPrefix+"custom-key"] != "custom-value" {
+			t.Errorf("expected annotation %s: 'custom-value', got %s", scheduling.AnnotationPrefix+"custom-key", resultPG.Annotations[scheduling.AnnotationPrefix+"custom-key"])
+		}
+		if resultPG.Annotations[scheduling.JDBMinAvailable] != "1" {
+			t.Errorf("expected annotation %s: '1', got %s", scheduling.JDBMinAvailable, resultPG.Annotations[scheduling.JDBMinAvailable])
+		}
+		if _, ok := resultPG.Annotations[scheduling.JDBMaxUnavailable]; ok {
+			t.Error("unexpected JDBMaxUnavailable annotation (should be overwritten by JDBMinAvailable)")
+		}
+
+		// Verify MinResources (3 replicas * 1 CPU = 3 CPU)
+		expectedResources := v1.ResourceList{v1.ResourceCPU: resource.MustParse("3")}
+		if !reflect.DeepEqual(resultPG.Spec.MinResources.Cpu().AsApproximateFloat64(), expectedResources.Cpu().AsApproximateFloat64()) {
+			t.Errorf("expected MinResources %v, got %v", expectedResources, *resultPG.Spec.MinResources)
+		}
+	})
+
+	// Scenario 3: Inherit upper annotations with JDBMaxUnavailable
+	t.Run("Scenario 3: Inherit upper annotations with JDBMaxUnavailable", func(t *testing.T) {
+		c := newFakeController()
+		c.inheritOwnerAnnotations = true
+		ownerUID := types.UID("owner-uid-3")
+
+		// Create upper ReplicaSet with JDBMaxUnavailable annotation
+		rs := &appsv1.ReplicaSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rs-owner-3",
+				Namespace: podNamespace,
+				UID:       ownerUID,
+				Annotations: map[string]string{
+					scheduling.VolcanoGroupMinMemberAnnotationKey: "3",
+					scheduling.JDBMaxUnavailable:                  "20%",
+				},
+			},
+			Spec: appsv1.ReplicaSetSpec{
+				Replicas: &replicas,
+				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test3"}},
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{Containers: []v1.Container{{
+						Name: "test-container",
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")},
+						},
+					}}},
+				},
+			},
+		}
+		if _, err := c.kubeClient.AppsV1().ReplicaSets(podNamespace).Create(context.TODO(), rs, metav1.CreateOptions{}); err != nil {
+			t.Fatalf("failed to create ReplicaSet: %v", err)
+		}
+
+		// Create pod with OwnerReference to ReplicaSet
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName + "-3",
+				Namespace: podNamespace,
+				UID:       types.UID("pod-uid-3"),
+				OwnerReferences: []metav1.OwnerReference{{
+					APIVersion: "apps/v1",
+					Kind:       "ReplicaSet",
+					Name:       "rs-owner-3",
+					UID:        ownerUID,
+					Controller: &isController,
+				}},
+			},
+			Spec: v1.PodSpec{Containers: []v1.Container{{
+				Name: "test-container",
+				Resources: v1.ResourceRequirements{
+					Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")},
+				},
+			}}},
+		}
+
+		// Execute test function
+		resultPG := c.buildPodGroupFromPod(pod, pgName)
+
+		// Verify JDBMaxUnavailable is inherited
+		if resultPG.Annotations[scheduling.JDBMaxUnavailable] != "20%" {
+			t.Errorf("expected JDBMaxUnavailable '20%%', got %s", resultPG.Annotations[scheduling.JDBMaxUnavailable])
+		}
+		// Verify no JDBMinAvailable annotation
+		if _, ok := resultPG.Annotations[scheduling.JDBMinAvailable]; ok {
+			t.Error("unexpected JDBMinAvailable annotation")
+		}
+	})
+}
+
+func Test_pgcontroller_updateExistingPodGroup(t *testing.T) {
+	// Common test data
+	podName := "test-pod"
+	podNamespace := "test-ns"
+	pgName := "test-pg"
+	podUID := types.UID("test-pod-uid")
+
+	t.Run("Sts spec/annotations/labels updated", func(t *testing.T) {
+		c := newFakeController()
+		c.inheritOwnerAnnotations = false
+
+		// Create test pod with annotations and labels
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName,
+				Namespace: podNamespace,
+				UID:       podUID,
+				Annotations: map[string]string{
+					scheduling.QueueNameAnnotationKey: "test-queue",
+					scheduling.PodPreemptable:         "true",
+				},
+				Labels: map[string]string{
+					scheduling.CooldownTime: "60s",
+				},
+			},
+			Spec: v1.PodSpec{
+				PriorityClassName: "high-priority",
+				Containers: []v1.Container{{
+					Name: "test-container",
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							v1.ResourceCPU: resource.MustParse("1"),
+						},
+					},
+				}},
+			},
+		}
+
+		// Execute test function
+		currentPG := c.buildPodGroupFromPod(pod, pgName)
+
+		// Spec changed
+		currentPG.Spec.MinMember = 2
+		isUpdated := c.shouldUpdateExistingPodGroup(currentPG, pod)
+		if !isUpdated {
+			t.Error("expected isUpdated true, got false")
+		}
+
+		// Labels changed
+		currentPG.Labels[scheduling.CooldownTime] = "120s"
+		isUpdated = c.shouldUpdateExistingPodGroup(currentPG, pod)
+		if !isUpdated {
+			t.Error("expected isUpdated true, got false")
+		}
+
+		// Annotations changed
+		currentPG.Annotations[scheduling.PodPreemptable] = "false"
+		isUpdated = c.shouldUpdateExistingPodGroup(currentPG, pod)
+		if !isUpdated {
+			t.Error("expected isUpdated true, got false")
+		}
+	})
 }
