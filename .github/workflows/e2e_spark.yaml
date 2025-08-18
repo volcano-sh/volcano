@@ -30,7 +30,7 @@ jobs:
 
     - name: Checkout current Volcano repository
       if: github.event.inputs.volcano-branch==''
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
 
     - name: Set TAG from release config
       run: |
@@ -44,7 +44,7 @@ jobs:
         fi
 
     - name: Checkout Spark repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
         repository: apache/spark
