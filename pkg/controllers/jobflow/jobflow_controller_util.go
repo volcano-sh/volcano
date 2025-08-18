@@ -61,6 +61,12 @@ func getJobFlowNameByJob(job *batch.Job) string {
 }
 
 func getFlowByName(jobFlow *v1alpha1flow.JobFlow, flowName string) (*v1alpha1flow.Flow, error) {
+	if jobFlow == nil {
+		return nil, fmt.Errorf("jobFlow is nil")
+	}
+	if jobFlow.Spec.Flows == nil {
+		return nil, fmt.Errorf("no flows defined in JobFlow %q", jobFlow.Name)
+	}
 	var flow *v1alpha1flow.Flow
 	for i := range jobFlow.Spec.Flows {
 		if jobFlow.Spec.Flows[i].Name == flowName {
@@ -69,26 +75,26 @@ func getFlowByName(jobFlow *v1alpha1flow.JobFlow, flowName string) (*v1alpha1flo
 		}
 	}
 	if flow == nil {
-		klog.Infof("Flow '%s' not found in JobFlow '%s'", flowName, jobFlow.Name)
-		return nil, fmt.Errorf("flow '%s' not found in JobFlow '%s'", flowName, jobFlow.Name)
+		klog.Infof("Flow %q not found in JobFlow %q", flowName, jobFlow.Name)
+		return nil, fmt.Errorf("flow %q not found in JobFlow %q", flowName, jobFlow.Name)
 	}
 	return flow, nil
 }
 
-func mergeJobLevelVolumes(base, patch *[]batch.VolumeSpec) []batch.VolumeSpec {
+func mergeJobLevelVolumes(base, patch []batch.VolumeSpec) []batch.VolumeSpec {
 	if patch == nil {
-		return *base
+		return base
 	}
 
 	volumeMap := make(map[string]bool)
 	merged := make([]batch.VolumeSpec, 0)
 
-	for _, v := range *base {
+	for _, v := range base {
 		volumeMap[v.MountPath] = true
 		merged = append(merged, v)
 	}
 
-	for _, v := range *patch {
+	for _, v := range patch {
 		if volumeMap[v.MountPath] {
 			for i, existing := range merged {
 				if existing.MountPath == v.MountPath {
@@ -104,20 +110,23 @@ func mergeJobLevelVolumes(base, patch *[]batch.VolumeSpec) []batch.VolumeSpec {
 	return merged
 }
 
-func mergeJobLevelTasks(base, patch *[]batch.TaskSpec) []batch.TaskSpec {
+func mergeJobLevelTasks(base, patch []batch.TaskSpec) ([]batch.TaskSpec, error) {
+	if base == nil {
+		return patch, nil
+	}
 	if patch == nil {
-		return *base
+		return base, nil
 	}
 
 	taskMap := make(map[string]bool)
 	merged := make([]batch.TaskSpec, 0)
 
-	for _, t := range *base {
+	for _, t := range base {
 		taskMap[t.Name] = true
 		merged = append(merged, t)
 	}
 
-	for _, t := range *patch {
+	for _, t := range patch {
 		if taskMap[t.Name] {
 			for i, existing := range merged {
 				if existing.Name == t.Name {
@@ -146,5 +155,5 @@ func mergeJobLevelTasks(base, patch *[]batch.TaskSpec) []batch.TaskSpec {
 		}
 	}
 
-	return merged
+	return merged, nil
 }
