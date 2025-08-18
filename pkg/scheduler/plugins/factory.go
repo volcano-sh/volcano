@@ -22,7 +22,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/capacity"
 	"volcano.sh/volcano/pkg/scheduler/plugins/cdp"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
-	"volcano.sh/volcano/pkg/scheduler/plugins/cpuquota"
+	"volcano.sh/volcano/pkg/scheduler/plugins/crossquota"
 	"volcano.sh/volcano/pkg/scheduler/plugins/deviceshare"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/extender"
@@ -36,7 +36,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/plugins/rescheduling"
-	"volcano.sh/volcano/pkg/scheduler/plugins/resourcequota"
 	"volcano.sh/volcano/pkg/scheduler/plugins/sla"
 	tasktopology "volcano.sh/volcano/pkg/scheduler/plugins/task-topology"
 	"volcano.sh/volcano/pkg/scheduler/plugins/tdm"
@@ -63,7 +62,6 @@ func init() {
 	framework.RegisterPluginBuilder(usage.PluginName, usage.New)
 	framework.RegisterPluginBuilder(pdb.PluginName, pdb.New)
 	framework.RegisterPluginBuilder(nodegroup.PluginName, nodegroup.New)
-	framework.RegisterPluginBuilder(cpuquota.PluginName, cpuquota.New)
 
 	// Plugins for Queues
 	framework.RegisterPluginBuilder(proportion.PluginName, proportion.New)
@@ -73,5 +71,5 @@ func init() {
 	framework.RegisterPluginBuilder(extender.PluginName, extender.New)
 
 	// Plugins for ResourceQuota
-	framework.RegisterPluginBuilder(resourcequota.PluginName, resourcequota.New)
+	framework.RegisterPluginBuilder(crossquota.PluginName, crossquota.New)
 }
