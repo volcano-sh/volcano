@@ -783,6 +783,11 @@ func TestLoadJobTemplateAndSetJobFunc(t *testing.T) {
 						Name:      "jobflow",
 						Namespace: "default",
 					},
+					Spec: jobflowv1alpha1.JobFlowSpec{
+						Flows: []jobflowv1alpha1.Flow{
+							{Name: "jobtemplate"},
+						},
+					},
 				},
 				flowName: "jobtemplate",
 				jobName:  getJobName("jobflow", "jobtemplate"),
@@ -966,6 +971,7 @@ func TestPatchJobTemplate(t *testing.T) {
 		baseSpec  *v1alpha1.JobSpec
 		patchSpec *v1alpha1.JobSpec
 		expected  *v1alpha1.JobSpec
+		wantErr   bool
 	}{
 		{
 			name: "nil patch",
@@ -978,6 +984,13 @@ func TestPatchJobTemplate(t *testing.T) {
 				MinAvailable: 1,
 				Queue:        "default",
 			},
+			wantErr: false,
+		},
+		{
+			name:      "nil base spec",
+			baseSpec:  nil,
+			patchSpec: &v1alpha1.JobSpec{},
+			wantErr:   true,
 		},
 		{
 			name: "patch scheduler and queue",
@@ -993,6 +1006,7 @@ func TestPatchJobTemplate(t *testing.T) {
 				Queue:         "high-priority",
 				SchedulerName: "custom-scheduler",
 			},
+			wantErr: false,
 		},
 		{
 			name: "patch volumes",
@@ -1028,9 +1042,9 @@ func TestPatchJobTemplate(t *testing.T) {
 					},
 				},
 			},
+			wantErr: false,
 		},
 		{
-
 			name: "patch tasks",
 			baseSpec: &v1alpha1.JobSpec{
 				Tasks: []v1alpha1.TaskSpec{
@@ -1094,6 +1108,7 @@ func TestPatchJobTemplate(t *testing.T) {
 					},
 				},
 			},
+			wantErr: false,
 		},
 		{
 			name: "patch plugins",
@@ -1110,10 +1125,11 @@ func TestPatchJobTemplate(t *testing.T) {
 			},
 			expected: &v1alpha1.JobSpec{
 				Plugins: map[string][]string{
-					"plugin1": {"arg2"},
+					"plugin1": {"arg1", "arg2"},
 					"plugin2": {"arg1"},
 				},
 			},
+			wantErr: false,
 		},
 		{
 			name: "patch container volume mounts",
@@ -1193,14 +1209,96 @@ func TestPatchJobTemplate(t *testing.T) {
 					},
 				},
 			},
+			wantErr: false,
+		},
+		{
+			name: "patch invalid task template",
+			baseSpec: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name: "task-1",
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name: "container-1",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			patchSpec: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name: "task-1",
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name: "container-2",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: &v1alpha1.JobSpec{
+				Tasks: []v1alpha1.TaskSpec{
+					{
+						Name: "task-1",
+						Template: v1.PodTemplateSpec{
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name: "container-2",
+									},
+									{
+										Name: "container-1",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty base volume list with patch",
+			baseSpec: &v1alpha1.JobSpec{
+				Volumes: nil,
+			},
+			patchSpec: &v1alpha1.JobSpec{
+				Volumes: []v1alpha1.VolumeSpec{
+					{
+						MountPath:       "/data",
+						VolumeClaimName: "pvc-1",
+					},
+				},
+			},
+			expected: &v1alpha1.JobSpec{
+				Volumes: []v1alpha1.VolumeSpec{
+					{
+						MountPath:       "/data",
+						VolumeClaimName: "pvc-1",
+					},
+				},
+			},
+			wantErr: false,
 		},
 	}
 
 	jf := &jobflowcontroller{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			result, err := jf.patchJobTemplate(tt.baseSpec, tt.patchSpec)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
