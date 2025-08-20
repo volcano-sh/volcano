@@ -75,11 +75,8 @@ node score:
 finalScoreNode = [(weight1 * resource1) + (weight2 * resource2) + … + (weightN* resourceN)] /(weight1+weight2+ … +weightN)
 ```
 
-#### Wildcard Syntax Support
-
-To address the complexity of managing multiple resource types, especially in multi-vendor GPU environments, the ResourceStrategyFit plugin supports wildcard patterns for resource configuration.
-
-**Syntax Rules:**
+## Syntax Rules
+### Wildcard Syntax Support
 - Only suffix wildcard patterns are supported (e.g., `nvidia.com/gpu/*`)
 - Invalid patterns are filtered out during configuration parsing:
     - Single asterisk (`*`)
@@ -87,7 +84,7 @@ To address the complexity of managing multiple resource types, especially in mul
     - Asterisk at the beginning (`*/gpu`)
     - Multiple asterisks (`vendor.com/**`)
 
-**Matching Priority:**
+### Matching Priority
 1. **Exact match** takes highest priority
 2. **Longest prefix match** for wildcard patterns
 
@@ -127,23 +124,11 @@ resources:
 3. **Backward Compatibility**: Changes to matching logic must not affect existing exact match configurations
 4. **Error Handling**: Invalid patterns are silently filtered with warning logs, which may hide configuration mistakes
 
-## Best Practices
-
 ### Configuration Guidelines
 1. **Use exact matches for critical resources**: `cpu`, `memory`, primary GPU types
 2. **Apply wildcards for resource families**: `vendor.com/gpu/*` patterns
 3. **Avoid overly broad patterns**: Prefer `nvidia.com/gpu/*` over `nvidia.com/*`
 4. **Test configurations**: Verify matching behavior in development environments
-
-### Migration Strategy
-1. **Phase 1**: Add wildcard patterns alongside existing exact matches
-2. **Phase 2**: Monitor scheduling behavior and resource utilization
-3. **Phase 3**: Remove redundant exact matches if desired
-
-### Troubleshooting
-- **Check logs**: Invalid patterns generate warning messages during startup
-- **Verify matching**: Use resource names from `kubectl describe nodes`
-- **Test priority**: Ensure exact matches take precedence over wildcards
 
 ## Alternatives
 
