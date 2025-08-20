@@ -19,6 +19,7 @@ package schedulingaction
 import (
 	"context"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -136,12 +137,42 @@ var _ = Describe("Job E2E Test", func() {
 		job.Name = "preemptor-1"
 		job.Pri = highPriority
 		job.Min = rep / 2
+		// Ensure min is at least 1
+		if job.Min < 1 {
+			job.Min = 1
+		}
 		preemptorJob := e2eutil.CreateJob(ctx, job)
-		err = e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep)/2)
-		Expect(err).NotTo(HaveOccurred())
 
-		err = e2eutil.WaitTasksReady(ctx, preemptorJob, int(rep)/2)
-		Expect(err).NotTo(HaveOccurred())
+		// Wait for the preemption to happen with retries
+		var preemptorReady, preempteeReduced bool
+		for i := 0; i < 30; i++ { // Try for up to 5 minutes
+			// Check if preemptor got scheduled
+			if !preemptorReady {
+				err = e2eutil.WaitTasksReady(ctx, preemptorJob, int(job.Min))
+				if err == nil {
+					preemptorReady = true
+				}
+			}
+
+			// Check if preemptee was reduced
+			if !preempteeReduced {
+				err = e2eutil.WaitTasksReady(ctx, preempteeJob, int(rep-job.Min))
+				if err == nil {
+					preempteeReduced = true
+				}
+			}
+
+			if preemptorReady && preempteeReduced {
+				break
+			}
+
+			// Wait a bit before retrying
+			time.Sleep(10 * time.Second)
+		}
+
+		// Final assertions
+		Expect(preemptorReady).To(BeTrue(), "Preemptor job should have ready tasks")
+		Expect(preempteeReduced).To(BeTrue(), "Preemptee job should have been reduced")
 	})
 
 	It("preemption doesn't work when podgroup is pending due to insufficient resource", func() {

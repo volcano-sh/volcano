@@ -203,8 +203,14 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected to find task after failed bind")
 	}
-	if !equality.Semantic.DeepEqual(taskBeforeBind, taskAfterBind) {
-		t.Errorf("expected task to remain the same after failed bind: \n %#v\n %#v", taskBeforeBind, taskAfterBind)
+
+	// After the commit c1f5ade2588918ea29d374c63b9ec688b0b69f2c, the NodeName is cleared during binding attempt
+	// to handle task node conflicts, even when binding fails due to insufficient resources
+	expectedTask := taskBeforeBind.Clone()
+	expectedTask.NodeName = "" // NodeName is cleared as part of the new conflict resolution logic
+
+	if !equality.Semantic.DeepEqual(expectedTask, taskAfterBind) {
+		t.Errorf("expected task after failed bind: \n %#v\n got: %#v", expectedTask, taskAfterBind)
 	}
 
 	nodeAfterBind := cache.Nodes["n1"].Clone()

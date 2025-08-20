@@ -283,15 +283,40 @@ var envLineRE = regexp.MustCompile(`^(?:admin|user|claim)_[a-zA-Z0-9_]*=.*$`)
 
 func testContainerEnv(ctx context.Context, f *framework.Framework, pod *v1.Pod, containerName string, fullMatch bool, env ...string) {
 	ginkgo.GinkgoHelper()
-	stdout, stderr, err := e2epod.ExecWithOptionsContext(ctx, f, e2epod.ExecOptions{
-		Command:       []string{"env"},
-		Namespace:     pod.Namespace,
-		PodName:       pod.Name,
-		ContainerName: containerName,
-		CaptureStdout: true,
-		CaptureStderr: true,
-		Quiet:         true,
-	})
+
+	// Retry logic for exec operation to handle transient connection issues
+	var stdout, stderr string
+	var err error
+	retries := 3
+	for i := 0; i < retries; i++ {
+		stdout, stderr, err = e2epod.ExecWithOptionsContext(ctx, f, e2epod.ExecOptions{
+			Command:       []string{"env"},
+			Namespace:     pod.Namespace,
+			PodName:       pod.Name,
+			ContainerName: containerName,
+			CaptureStdout: true,
+			CaptureStderr: true,
+			Quiet:         true,
+		})
+
+		// If successful or context canceled, don't retry
+		if err == nil || ctx.Err() != nil {
+			break
+		}
+
+		// Check if error is related to connection issues
+		if strings.Contains(err.Error(), "connection reset by peer") ||
+			strings.Contains(err.Error(), "unable to upgrade connection") {
+			if i < retries-1 {
+				// Wait a bit before retrying
+				time.Sleep(time.Second * time.Duration(i+1))
+				continue
+			}
+		}
+		// For other errors, don't retry
+		break
+	}
+
 	framework.ExpectNoError(err, fmt.Sprintf("get env output for container %s", containerName))
 	gomega.Expect(stderr).To(gomega.BeEmpty(), fmt.Sprintf("env stderr for container %s", containerName))
 	if fullMatch {

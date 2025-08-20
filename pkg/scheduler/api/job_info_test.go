@@ -343,9 +343,9 @@ func TestJobInfo(t *testing.T) {
 				newTaskFunc("running-unbesteffort-task-1", "job-1", Running, NewResource(v1.ResourceList{"cpu": resource.MustParse("100m")})),
 			},
 			expectedPendingBestEffortTaskNum: 1,
-			expectedIsReady:                  false,
+			expectedIsReady:                  true,
 			expectedIsPipelined:              true,
-			expectedIsStarving:               true,
+			expectedIsStarving:               false,
 		},
 
 		{

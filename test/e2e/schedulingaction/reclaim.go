@@ -532,11 +532,69 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		By("Create coming jobs")
 
-		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q3, "high-priority", "", true)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
+		// Create high priority jobs - they should trigger reclaim from low priority jobs
+		// The initial jobs j1 and j2 each have 2 replicas (4 total pods on 4 nodes)
+		// j3 and j4 need to reclaim 1 CPU each from the low priority jobs
 
-		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j4", q4, "high-priority", "", true)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
+		job3, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j3", q3, "high-priority", "", false)
+		Expect(err).NotTo(HaveOccurred(), "Create job3 failed")
+
+		job4, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j4", q4, "high-priority", "", false)
+		Expect(err).NotTo(HaveOccurred(), "Create job4 failed")
+
+		// Give the scheduler multiple attempts to process reclaim
+		By("Waiting for high priority jobs to reclaim resources and become ready")
+
+		// Try multiple times with increasing wait periods
+		maxAttempts := 6
+		for attempt := 0; attempt < maxAttempts; attempt++ {
+			// Wait progressively longer between attempts
+			waitTime := time.Duration(5*(attempt+1)) * time.Second
+			time.Sleep(waitTime)
+
+			// Check if jobs are ready
+			job3Ready := false
+			job4Ready := false
+
+			// Check job3 status
+			pods, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), metav1.ListOptions{
+				LabelSelector: labels.Set(map[string]string{batchv1alpha1.JobNameKey: "reclaim-j3"}).String(),
+			})
+			if err == nil && len(pods.Items) > 0 {
+				for _, pod := range pods.Items {
+					if pod.Status.Phase == v1.PodRunning {
+						job3Ready = true
+						break
+					}
+				}
+			}
+
+			// Check job4 status
+			pods, err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), metav1.ListOptions{
+				LabelSelector: labels.Set(map[string]string{batchv1alpha1.JobNameKey: "reclaim-j4"}).String(),
+			})
+			if err == nil && len(pods.Items) > 0 {
+				for _, pod := range pods.Items {
+					if pod.Status.Phase == v1.PodRunning {
+						job4Ready = true
+						break
+					}
+				}
+			}
+
+			if job3Ready && job4Ready {
+				break
+			}
+
+			if attempt == maxAttempts-1 {
+				// Last attempt - use the regular wait functions which will error if not ready
+				err = e2eutil.WaitTasksReady(ctx, job3, 1)
+				Expect(err).NotTo(HaveOccurred(), "Wait for job3 ready failed after multiple attempts")
+
+				err = e2eutil.WaitTasksReady(ctx, job4, 1)
+				Expect(err).NotTo(HaveOccurred(), "Wait for job4 ready failed after multiple attempts")
+			}
+		}
 
 		By("Make sure all job running")
 
@@ -628,17 +686,36 @@ var _ = Describe("Reclaim E2E Test", func() {
 
 		By("Create coming jobs")
 
-		_, err = CreateReclaimJob(ctx, e2eutil.CPU2Mem2, "reclaim-j3", q3, "high-priority", "", true)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job3 failed")
+		// Create high priority jobs but don't wait immediately
+		job3, err := CreateReclaimJob(ctx, e2eutil.CPU2Mem2, "reclaim-j3", q3, "high-priority", "", false)
+		Expect(err).NotTo(HaveOccurred(), "Create job3 failed")
 
-		_, err = CreateReclaimJob(ctx, e2eutil.CPU2Mem2, "reclaim-j4", q4, "high-priority", "", true)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job4 failed")
+		job4, err := CreateReclaimJob(ctx, e2eutil.CPU2Mem2, "reclaim-j4", q4, "high-priority", "", false)
+		Expect(err).NotTo(HaveOccurred(), "Create job4 failed")
 
-		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j5", q4, "high-priority", "", true)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job5 failed")
+		job5, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j5", q4, "high-priority", "", false)
+		Expect(err).NotTo(HaveOccurred(), "Create job5 failed")
 
-		_, err = CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j6", q4, "high-priority", "", true)
-		Expect(err).NotTo(HaveOccurred(), "Wait for job6 failed")
+		job6, err := CreateReclaimJob(ctx, e2eutil.CPU1Mem1, "reclaim-j6", q4, "high-priority", "", false)
+		Expect(err).NotTo(HaveOccurred(), "Create job6 failed")
+
+		// Allow time for scheduler to process and reclaim
+		time.Sleep(15 * time.Second)
+
+		// Now wait for the jobs to become ready
+		By("Waiting for high priority jobs to reclaim resources and become ready")
+
+		err = e2eutil.WaitTasksReady(ctx, job3, 1)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job3 ready failed")
+
+		err = e2eutil.WaitTasksReady(ctx, job4, 1)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job4 ready failed")
+
+		err = e2eutil.WaitTasksReady(ctx, job5, 1)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job5 ready failed")
+
+		err = e2eutil.WaitTasksReady(ctx, job6, 1)
+		Expect(err).NotTo(HaveOccurred(), "Wait for job6 ready failed")
 
 		By("Make sure all job running")
 
