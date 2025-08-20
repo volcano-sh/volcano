@@ -146,3 +146,28 @@ func GetPodsNameUnderTask(taskName string, job *batch.Job) []string {
 	}
 	return res
 }
+
+// GetTaskIndexOfPod reads the task index from pod.Labels[batch.TaskIndex].
+// This function is used by plugins to determine the task index of a pod within a job.
+func GetTaskIndexOfPod(pod *v1.Pod) (int, error) {
+	// Read task index from pod.Labels[batch.TaskIndex]
+	taskIndexStr, exists := pod.Labels[batch.TaskIndex]
+	if !exists {
+		return -1, fmt.Errorf("pod %v doesn't have %v label", pod.Name, batch.TaskIndex)
+	}
+	taskIndex, err := strconv.Atoi(taskIndexStr)
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse task index for pod %v: %v", pod.Name, err)
+	}
+	return taskIndex, nil
+}
+
+// GetTaskReplicasUnderJob return replicas of the task in the job.
+func GetTaskReplicasUnderJob(taskName string, job *batch.Job) int32 {
+	for _, task := range job.Spec.Tasks {
+		if task.Name == taskName {
+			return task.Replicas
+		}
+	}
+	return 0
+}
