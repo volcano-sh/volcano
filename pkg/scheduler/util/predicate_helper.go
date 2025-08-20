@@ -56,6 +56,19 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 
 	//allocate enough space to avoid growing it
 	predicateNodes := make([]*api.NodeInfo, numNodesToFind)
+	var pipelinedNode *api.NodeInfo
+	// Fast-path: if the same task is already present on a node in Pipelined status, short-circuit
+	for _, n := range nodes {
+		for _, t := range n.Tasks {
+			if t.Name == task.Name && t.Namespace == task.Namespace {
+				if t.Status == api.Pipelined && t.NodeName == n.Name {
+					klog.V(4).Infof("Found pipelined task %s/%s on node %s, returning it for allocation", task.Namespace, task.Name, n.Name)
+					pipelinedNode = n
+					break
+				}
+			}
+		}
+	}
 
 	numFoundNodes := int32(0)
 	processedNodes := int32(0)
@@ -91,18 +104,18 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 				return
 			}
 		}
-
-		// TODO (k82cn): Enable eCache for performance improvement.
-		if err := fn(task, node); err != nil {
-			klog.V(3).Infof("Predicates failed: %v", err)
-			errorLock.Lock()
-			nodeErrorCache[node.Name] = err
-			ph.taskPredicateErrorCache[taskGroupid] = nodeErrorCache
-			fe.SetNodeError(node.Name, err)
-			errorLock.Unlock()
-			return
+		if pipelinedNode == nil || pipelinedNode.Name != node.Name {
+			// TODO (k82cn): Enable eCache for performance improvement.
+			if err := fn(task, node); err != nil {
+				klog.V(3).Infof("Predicates failed: %v", err)
+				errorLock.Lock()
+				nodeErrorCache[node.Name] = err
+				ph.taskPredicateErrorCache[taskGroupid] = nodeErrorCache
+				fe.SetNodeError(node.Name, err)
+				errorLock.Unlock()
+				return
+			}
 		}
-
 		//check if the number of found nodes is more than the numNodesTofind
 		length := atomic.AddInt32(&numFoundNodes, 1)
 		if length > numNodesToFind {

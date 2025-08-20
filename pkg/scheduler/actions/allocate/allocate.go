@@ -169,6 +169,29 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 
 				tasks.Push(task)
 			}
+			// Handle Pipelined tasks - try to bind them if resources are available
+			for _, task := range job.TaskStatusIndex[api.Pipelined] {
+				// Skip tasks whose pod are scheduling gated
+				if task.SchGated {
+					continue
+				}
+
+				// Skip BestEffort task in 'allocate' action.
+				if task.Resreq.IsEmpty() {
+					klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
+						task.Namespace, task.Name)
+					continue
+				}
+
+				// Check if the pipelined node has enough idle resources now
+				if len(task.NodeName) > 0 {
+					if pipelinedNode, ok := ssn.Nodes[task.NodeName]; ok {
+						if task.InitResreq.LessEqual(pipelinedNode.Idle, api.Zero) {
+							tasks.Push(task)
+						}
+					}
+				}
+			}
 			pendingTasks[job.UID] = tasks
 		}
 		tasks := pendingTasks[job.UID]
@@ -566,8 +589,8 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 	klog.V(3).Infof("Predicates failed in allocate for task <%s/%s> on node <%s> with limited resources",
 		task.Namespace, task.Name, node.Name)
 
-	// Allocate releasing resource to the task if any.
-	if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+	// Only pipeline tasks that are not already pipelined
+	if task.Status != api.Pipelined && task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 		klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 			task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
 		if err = stmt.Pipeline(task, node.Name, false); err != nil {
@@ -582,6 +605,28 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 }
 
 func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
+	// If task is already pipelined to this node, skip resource check
+	if task.Status == api.Pipelined && task.NodeName == node.Name {
+		klog.V(4).Infof("Found pipelined task %s/%s on node %s", task.Namespace, task.Name, node.Name)
+
+		// Check if task is actually bound to a different node
+		if len(task.Pod.Spec.NodeName) > 0 && task.Pod.Spec.NodeName != node.Name {
+			klog.V(4).Infof("Task %s/%s is pipelined to node %s but bound to node %s, releasing pipelined resources immediately",
+				task.Namespace, task.Name, node.Name, task.Pod.Spec.NodeName)
+
+			// Immediately release pipelined resources by removing task from node
+			if err := node.RemoveTask(task); err != nil {
+				klog.Errorf("Failed to remove pipelined task %s/%s from node %s: %v", task.Namespace, task.Name, node.Name, err)
+			}
+			// Continue with normal resource check for other tasks
+		} else if len(task.Pod.Spec.NodeName) == 0 {
+			klog.V(3).Infof("Task %s/%s is pipelined to node %s but not yet bound, skipping resource check", task.Namespace, task.Name, node.Name)
+			return alloc.session.PredicateForAllocateAction(task, node)
+		} else {
+			klog.V(3).Infof("Task %s/%s is pipelined and bound to same node %s, skipping resource check", task.Namespace, task.Name, node.Name)
+			return alloc.session.PredicateForAllocateAction(task, node)
+		}
+	}
 	// Check for Resource Predicate
 	var statusSets api.StatusSets
 	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {

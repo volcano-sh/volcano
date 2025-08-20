@@ -189,6 +189,18 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	// initialize pod scheduling gates info here since it will not change in a scheduling cycle
 	schGated := calSchedulingGated(pod)
 	jobID := getJobID(pod)
+	status := getTaskStatus(pod)
+	nodeName := pod.Spec.NodeName
+	evictionOccurred := false
+
+	// If task is in Pipelined state, restore context from annotations
+	if status == Pipelined {
+		pipelinedNode, pipelinedEviction := getPipelinedContext(pod)
+		if pipelinedNode != "" {
+			nodeName = pipelinedNode
+		}
+		evictionOccurred = pipelinedEviction
+	}
 
 	ti := &TaskInfo{
 		UID:                         TaskID(pod.UID),
@@ -207,8 +219,9 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		NumaInfo:                    topologyInfo,
 		SchGated:                    schGated,
 		TransactionContext: TransactionContext{
-			NodeName: pod.Spec.NodeName,
-			Status:   getTaskStatus(pod),
+			NodeName:         nodeName,
+			Status:           status,
+			EvictionOccurred: evictionOccurred,
 		},
 	}
 
@@ -797,6 +810,8 @@ func (ji *JobInfo) ReadyTaskNum() int32 {
 	occupied += len(ji.TaskStatusIndex[Running])
 	occupied += len(ji.TaskStatusIndex[Allocated])
 	occupied += len(ji.TaskStatusIndex[Succeeded])
+	// Include Pipelined tasks as they are waiting for resources and should be considered ready for gang scheduling
+	occupied += len(ji.TaskStatusIndex[Pipelined])
 
 	return int32(occupied)
 }
@@ -895,7 +910,8 @@ func (ji *JobInfo) getJobAllocatedRoles() map[string]int32 {
 	occupiedMap := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
 		if AllocatedStatus(status) ||
-			status == Succeeded {
+			status == Succeeded ||
+			status == Pipelined { // Include Pipelined tasks in allocated count
 			for _, task := range tasks {
 				occupiedMap[task.TaskRole]++
 			}

@@ -23,9 +23,12 @@ limitations under the License.
 package framework
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -216,6 +219,16 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 }
 
 func (s *Statement) pipeline(task *api.TaskInfo) {
+	// Set pipelined annotations on pod for cross-session state transfer
+	if task.Pod != nil {
+		api.SetPipelinedAnnotations(task.Pod, task.NodeName, task.EvictionOccurred)
+
+		// Update pod annotations to Kubernetes cluster safely
+		if err := s.updatePodAnnotationsSafely(task.Pod); err != nil {
+			klog.Errorf("Failed to update pod annotations for <%v/%v>: %v", task.Namespace, task.Name, err)
+			// Don't return error here to avoid breaking the pipeline flow, but log the error
+		}
+	}
 }
 
 func (s *Statement) UnPipeline(task *api.TaskInfo) error {
@@ -264,6 +277,8 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 	errInfos := make([]error, 0)
 	hostname := nodeInfo.Name
 	task.Pod.Spec.NodeName = hostname
+	// Special handling for pipelined tasks - they are already validated and on the node
+	isPipelinedTask := task.Status == api.Pipelined
 
 	// Only update status in session
 	job, found := s.ssn.Jobs[task.Job]
@@ -282,10 +297,13 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 
 	task.NodeName = hostname
 	if node, found := s.ssn.Nodes[hostname]; found {
-		if err := node.AddTask(task); err != nil {
-			klog.Errorf("Failed to add task <%v/%v> to node <%v> when allocating in Session <%v>: %v",
-				task.Namespace, task.Name, hostname, s.ssn.UID, err)
-			errInfos = append(errInfos, err)
+		// For pipelined tasks, the task is already on the node, so we skip AddTask
+		if !isPipelinedTask {
+			if err := node.AddTask(task); err != nil {
+				klog.Errorf("Failed to add task <%v/%v> to node <%v> when allocating in Session <%v>: %v",
+					task.Namespace, task.Name, hostname, s.ssn.UID, err)
+				errInfos = append(errInfos, err)
+			}
 		}
 		klog.V(3).Infof("After allocated Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
@@ -295,18 +313,20 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 		klog.Errorf("%v", err)
 		errInfos = append(errInfos, err)
 	}
-
-	// Callbacks
-	for _, eh := range s.ssn.eventHandlers {
-		if eh.AllocateFunc != nil {
-			eventInfo := &Event{
-				Task: task,
-			}
-			eh.AllocateFunc(eventInfo)
-			if eventInfo.Err != nil {
-				klog.Errorf("Failed to exec allocate callback functions for task <%v/%v> to node <%v> when allocating in Session <%v>: %v",
-					task.Namespace, task.Name, hostname, s.ssn.UID, eventInfo.Err)
-				errInfos = append(errInfos, eventInfo.Err)
+	// For pipelined tasks, skip event handler callbacks as they were already executed during pipelining
+	if !isPipelinedTask {
+		// Callbacks
+		for _, eh := range s.ssn.eventHandlers {
+			if eh.AllocateFunc != nil {
+				eventInfo := &Event{
+					Task: task,
+				}
+				eh.AllocateFunc(eventInfo)
+				if eventInfo.Err != nil {
+					klog.Errorf("Failed to exec allocate callback functions for task <%v/%v> to node <%v> when allocating in Session <%v>: %v",
+						task.Namespace, task.Name, hostname, s.ssn.UID, eventInfo.Err)
+					errInfos = append(errInfos, eventInfo.Err)
+				}
 			}
 		}
 	}
@@ -348,6 +368,17 @@ func (s *Statement) allocate(task *api.TaskInfo) error {
 			task.Job, s.ssn.UID)
 		return fmt.Errorf("failed to find job %s", task.Job)
 	}
+	// This handles the Pipeline → Allocated transition
+	if task.Pod != nil && task.Status == api.Pipelined {
+		klog.V(3).Infof("Clearing pipelined annotations for allocated task <%v/%v>", task.Namespace, task.Name)
+		api.ClearPipelinedAnnotations(task.Pod)
+
+		// Update pod annotations to Kubernetes cluster
+		if _, err := s.ssn.cache.GetStatusUpdater().UpdatePodAnnotations(task.Pod); err != nil {
+			klog.Errorf("Failed to clear pipelined annotations for <%v/%v>: %v", task.Namespace, task.Name, err)
+			// Don't return error here to avoid breaking the allocation flow, but log the error
+		}
+	}
 
 	metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
 	return nil
@@ -355,10 +386,31 @@ func (s *Statement) allocate(task *api.TaskInfo) error {
 
 // unallocate the pod for task
 func (s *Statement) unallocate(task *api.TaskInfo) error {
+	// Check if this allocation operation was for a pipelined task by looking at the operations
+	wasPipelined := false
+	for _, op := range s.operations {
+		if op.name == Allocate && op.task.UID == task.UID {
+			// Check if the task had pipelined annotations before allocation
+			if task.Pod != nil {
+				if _, exists := task.Pod.Annotations[api.VolcanoPipelinedNodeAnnotation]; exists {
+					wasPipelined = true
+					klog.V(3).Infof("Detected task <%v/%v> was pipelined based on annotations", task.Namespace, task.Name)
+				}
+			}
+			break
+		}
+	}
 	// Update status in session
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
-		if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
+		// If it was pipelined, restore to Pipelined status, otherwise to Pending
+		targetStatus := api.Pending
+		if wasPipelined {
+			targetStatus = api.Pipelined
+			klog.V(3).Infof("Restoring pipelined task <%v/%v> to Pipelined status during unallocation", task.Namespace, task.Name)
+		}
+
+		if err := job.UpdateTaskStatus(task, targetStatus); err != nil {
 			klog.Errorf("Failed to update task <%v/%v> status to %v when unallocating in Session <%v>: %v",
 				task.Namespace, task.Name, api.Pending, s.ssn.UID, err)
 		}
@@ -367,23 +419,35 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 			task.Job, s.ssn.UID)
 	}
 
-	if node, found := s.ssn.Nodes[task.NodeName]; found {
-		klog.V(3).Infof("Remove Task <%v> on node <%v>", task.Name, task.NodeName)
-		err := node.RemoveTask(task)
-		if err != nil {
-			klog.Errorf("Failed to remove Task <%v> on node <%v> when unallocating: %s", task.Name, task.NodeName, err.Error())
+	// For pipelined tasks, don't remove from node as they should remain pipelined
+	if !wasPipelined {
+		if node, found := s.ssn.Nodes[task.NodeName]; found {
+			klog.V(3).Infof("Remove Task <%v> on node <%v>", task.Name, task.NodeName)
+			err := node.RemoveTask(task)
+			if err != nil {
+				klog.Errorf("Failed to remove Task <%v> on node <%v> when unallocating: %s", task.Name, task.NodeName, err.Error())
+			}
+		}
+	} else {
+		klog.V(3).Infof("Skipping RemoveTask for pipelined task <%v/%v> - should remain on node <%v>", task.Namespace, task.Name, task.NodeName)
+	}
+
+	// For pipelined tasks, skip event handler callbacks to avoid double resource deallocation
+	if !wasPipelined {
+		for _, eh := range s.ssn.eventHandlers {
+			if eh.DeallocateFunc != nil {
+				eh.DeallocateFunc(&Event{
+					Task: task,
+				})
+			}
 		}
 	}
 
-	for _, eh := range s.ssn.eventHandlers {
-		if eh.DeallocateFunc != nil {
-			eh.DeallocateFunc(&Event{
-				Task: task,
-			})
-		}
+	// For non-pipelined tasks, clear the node assignment
+	if !wasPipelined {
+		task.NodeName = ""
+		task.JobAllocatedHyperNode = ""
 	}
-	task.NodeName = ""
-	task.JobAllocatedHyperNode = ""
 
 	return nil
 }
@@ -504,4 +568,41 @@ func (s *Statement) outputOperations(msg string, level klog.Level) {
 		}
 	}
 	klog.V(level).Info(msg, buffer)
+}
+
+// updatePodAnnotationsSafely updates pod annotations without modifying other fields
+func (s *Statement) updatePodAnnotationsSafely(pod *v1.Pod) error {
+	// Get the current pod to avoid conflicts
+	currentPod, err := s.ssn.cache.Client().CoreV1().Pods(pod.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get current pod: %v", err)
+	}
+
+	// Only update annotations, preserve all other fields
+	podCopy := currentPod.DeepCopy()
+	if podCopy.Annotations == nil {
+		podCopy.Annotations = make(map[string]string)
+	}
+
+	// Only update Volcano-specific pipelined annotations to avoid overwriting annotations from other controllers
+	volcanoAnnotations := []string{
+		api.VolcanoPipelinedStatusAnnotation,
+		api.VolcanoPipelinedNodeAnnotation,
+		api.VolcanoEvictionOccurredAnnotation,
+	}
+
+	// Copy only the Volcano pipelined annotations from the pod argument
+	for _, key := range volcanoAnnotations {
+		if value, exists := pod.Annotations[key]; exists {
+			podCopy.Annotations[key] = value
+		} else {
+			// If the annotation doesn't exist in the pod argument, remove it from the copy
+			// This handles the case where ClearPipelinedAnnotations deleted the annotations
+			delete(podCopy.Annotations, key)
+		}
+	}
+
+	// Use the status updater to update only annotations
+	_, err = s.ssn.cache.GetStatusUpdater().UpdatePodAnnotations(podCopy)
+	return err
 }

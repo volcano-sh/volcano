@@ -18,6 +18,7 @@ package cache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -31,6 +32,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -208,6 +210,39 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	errMsg := make(map[schedulingapi.TaskID]string)
 	for _, task := range tasks {
 		p := task.Pod
+		// Check if pod is already bound to avoid conflicts
+		currentPod, err := db.kubeclient.CoreV1().Pods(p.Namespace).Get(context.TODO(), p.Name, metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("Failed to get current pod <%v/%v> status before binding: %v", p.Namespace, p.Name, err)
+			errMsg[task.UID] = err.Error()
+			continue
+		}
+
+		// If pod is already assigned to a node
+		if len(currentPod.Spec.NodeName) > 0 {
+			if currentPod.Spec.NodeName == task.NodeName {
+				// Pod is already bound to the correct node, consider it successful
+				klog.V(3).Infof("Pod <%v/%v> is already bound to target node <%s>, skipping bind",
+					p.Namespace, p.Name, task.NodeName)
+				metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time))
+
+				// Clear pipelined annotations even when already bound to correct node
+				db.clearPipelinedAnnotations(p)
+				continue
+			} else {
+				// Pod is bound to a different node, this is an error
+				errorMsg := fmt.Sprintf("pod is already assigned to node %s, cannot bind to %s",
+					currentPod.Spec.NodeName, task.NodeName)
+				klog.Errorf("Failed to bind pod <%v/%v>: %s", p.Namespace, p.Name, errorMsg)
+				errMsg[task.UID] = errorMsg
+
+				// Clear pipelined annotations even when binding fails due to node conflict
+				db.clearPipelinedAnnotations(p)
+				continue
+			}
+		}
+
+		// Pod is not bound, proceed with normal binding
 		if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
 			&v1.Binding{
 				ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: p.Annotations},
@@ -225,6 +260,47 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	}
 
 	return errMsg
+}
+
+// clearPipelinedAnnotations removes pipelined annotations from pod after successful binding
+func (db *DefaultBinder) clearPipelinedAnnotations(pod *v1.Pod) {
+	// Get the latest pod version to avoid conflicts
+	currentPod, err := db.kubeclient.CoreV1().Pods(pod.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+	if err != nil {
+		klog.Errorf("Failed to get pod <%v/%v> for clearing annotations: %v", pod.Namespace, pod.Name, err)
+		return
+	}
+
+	// Check if pipelined annotations exist
+	if currentPod.Annotations == nil {
+		return
+	}
+
+	// Check if any pipelined annotations exist before proceeding
+	hasAnnotations := false
+	for _, key := range []string{schedulingapi.VolcanoPipelinedStatusAnnotation, schedulingapi.VolcanoPipelinedNodeAnnotation, schedulingapi.VolcanoEvictionOccurredAnnotation} {
+		if _, exists := currentPod.Annotations[key]; exists {
+			hasAnnotations = true
+			break
+		}
+	}
+
+	if !hasAnnotations {
+		return
+	}
+
+	podCopy := currentPod.DeepCopy()
+	// Reuse existing function to clear pipelined annotations
+	schedulingapi.ClearPipelinedAnnotations(podCopy)
+
+	// Update annotations to Kubernetes API
+	if _, err := db.kubeclient.CoreV1().Pods(podCopy.Namespace).Update(context.TODO(), podCopy, metav1.UpdateOptions{}); err != nil {
+		klog.Errorf("Failed to update pod <%v/%v> annotations after clearing pipelined annotations: %v",
+			podCopy.Namespace, podCopy.Name, err)
+	} else {
+		klog.V(3).Infof("Successfully cleared pipelined annotations from pod <%v/%v>",
+			podCopy.Namespace, podCopy.Name)
+	}
 }
 
 // NewDefaultBinder create binder with kube client and event recorder, support fake binder if passed fake client and fake event recorder
@@ -324,6 +400,30 @@ func podNominatedNodeNameNeedUpdate(status *v1.PodStatus, nodeName string) bool 
 // UpdatePodStatus will Update pod status
 func (su *defaultStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
 	return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
+}
+
+// UpdatePodAnnotations will Update pod annotations
+func (su *defaultStatusUpdater) UpdatePodAnnotations(pod *v1.Pod) (*v1.Pod, error) {
+	// Use strategic merge patch to update only annotations
+	if pod == nil {
+		return nil, fmt.Errorf("nil pod passed to UpdatePodAnnotations")
+	}
+	patchObj := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"annotations": pod.Annotations,
+		},
+	}
+	patchBytes, err := json.Marshal(patchObj)
+	if err != nil {
+		return nil, err
+	}
+	return su.kubeclient.CoreV1().Pods(pod.Namespace).Patch(
+		context.TODO(),
+		pod.Name,
+		types.StrategicMergePatchType,
+		patchBytes,
+		metav1.PatchOptions{},
+	)
 }
 
 // UpdatePodGroup will Update PodGroup
@@ -1238,6 +1338,36 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	}
 	task.NumaInfo = bindContext.TaskInfo.NumaInfo.Clone()
 
+	// Handle task node conflict: if task is already assigned to any node, clean up the old assignment first
+	if len(task.NodeName) > 0 {
+		if task.NodeName != bindContext.TaskInfo.NodeName {
+			klog.V(4).Infof("Task <%s> is already assigned to node <%s>, but trying to bind to <%s>. Cleaning up old assignment.",
+				task.Name, task.NodeName, bindContext.TaskInfo.NodeName)
+
+			// Find and remove task from old node
+			if oldNode, found := sc.Nodes[task.NodeName]; found {
+				if removeErr := oldNode.RemoveTask(task); removeErr != nil {
+					klog.Warningf("Failed to remove task <%s> from old node <%s>: %v", task.Name, task.NodeName, removeErr)
+				}
+			}
+
+			// Clear the old NodeName to allow binding to new node
+			task.NodeName = ""
+		} else {
+			// Task is already assigned to the same node we're trying to bind to
+			klog.V(4).Infof("Task <%s> is already assigned to target node <%s>. Cleaning up existing assignment to allow re-binding.",
+				task.Name, task.NodeName)
+
+			// Remove task from the target node first to allow re-adding it
+			if removeErr := node.RemoveTask(task); removeErr != nil {
+				klog.Warningf("Failed to remove existing task <%s> from target node <%s>: %v", task.Name, task.NodeName, removeErr)
+			}
+
+			// Clear the NodeName to allow binding
+			task.NodeName = ""
+		}
+	}
+
 	// Add task to the node.
 	if err := node.AddTask(task); err != nil {
 		// After failing to update task to a node we need to revert task status from Releasing,
@@ -1462,6 +1592,11 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 func (sc *SchedulerCache) SharedDRAManager() k8sframework.SharedDRAManager {
 	return sc.sharedDRAManager
+}
+
+// GetStatusUpdater returns the status updater
+func (sc *SchedulerCache) GetStatusUpdater() StatusUpdater {
+	return sc.StatusUpdater
 }
 
 // String returns information about the cache in a string format

@@ -535,7 +535,16 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 			})
 		}
 	}
+	// Set pipelined annotations on pod for cross-session state transfer
+	if task.Pod != nil {
+		api.SetPipelinedAnnotations(task.Pod, hostname, task.EvictionOccurred)
 
+		// Update pod annotations to Kubernetes cluster
+		if _, err := ssn.cache.GetStatusUpdater().UpdatePodAnnotations(task.Pod); err != nil {
+			klog.Errorf("Failed to update pod annotations for <%v/%v>: %v", task.Namespace, task.Name, err)
+			// Don't return error here to avoid breaking the pipeline flow, but log the error
+		}
+	}
 	return nil
 }
 

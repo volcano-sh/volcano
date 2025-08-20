@@ -92,6 +92,9 @@ type Cache interface {
 
 	// SharedDRAManager returns the shared DRAManager
 	SharedDRAManager() framework.SharedDRAManager
+
+	// GetStatusUpdater returns the status updater
+	GetStatusUpdater() StatusUpdater
 }
 
 // Binder interface for binding task and hostname
@@ -107,6 +110,7 @@ type Evictor interface {
 // StatusUpdater updates pod with given PodCondition
 type StatusUpdater interface {
 	UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error)
+	UpdatePodAnnotations(pod *v1.Pod) (*v1.Pod, error)
 	UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error)
 	UpdateQueueStatus(queue *api.QueueInfo) error
 }
