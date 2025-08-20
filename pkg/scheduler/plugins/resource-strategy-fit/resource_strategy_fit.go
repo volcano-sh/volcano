@@ -107,16 +107,14 @@ func calculateWeight(args framework.Arguments) ResourceStrategyFit {
 	for k, v := range resources {
 		configKeyStr := string(k)
 
-		if strings.Contains(configKeyStr, "*") {
-			if !isValidWildcardPattern(configKeyStr) {
-				if configKeyStr == "*" {
-					klog.Warningf("Single asterisk '*' is not supported as default strategy. Please use specific resource patterns like 'cloudml.gpu/*'. Pattern ignored.")
-				} else {
-					klog.Warningf("Invalid wildcard pattern '%s': only single trailing asterisk is supported (e.g., 'cloudml.gpu/*'). Pattern ignored.", configKeyStr)
-				}
-				delete(resources, k)
-				continue
+		if !isValidWildcardPattern(configKeyStr) {
+			if configKeyStr == "*" {
+				klog.Warningf("Single asterisk '*' is not supported as default strategy. Please use specific resource patterns like 'cloudml.gpu/*'. Pattern ignored.")
+			} else {
+				klog.Warningf("Invalid wildcard pattern '%s': only single trailing asterisk is supported (e.g., 'cloudml.gpu/*'). Pattern ignored.", configKeyStr)
 			}
+			delete(resources, k)
+			continue
 		}
 		if v.Weight <= 0 {
 			v.Weight = 1
@@ -152,6 +150,9 @@ func (rsf *resourceStrategyFitPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func isValidWildcardPattern(pattern string) bool {
+	if !strings.Contains(pattern, "*") {
+		return true
+	}
 	if pattern == "*" {
 		return false
 	}
@@ -160,28 +161,29 @@ func isValidWildcardPattern(pattern string) bool {
 		return false
 	}
 
-	asteriskCount := strings.Count(pattern, "*")
-	if asteriskCount != 1 {
-		return false
-	}
-
-	lastIndex := strings.LastIndex(pattern, "*")
-	return lastIndex == len(pattern)-1
+	return strings.Count(pattern, "*") == 1
 }
 
 func findResourceConfigWithPrefix(resourceName string, resources map[v1.ResourceName]ResourcesType) (ResourcesType, bool) {
+	// Check for exact match first - exact match takes precedence over wildcard patterns
 	if config, exists := resources[v1.ResourceName(resourceName)]; exists {
 		return config, true
 	}
+	// If no exact match found, search for wildcard patterns
 	var bestMatch string
 	var bestConfig ResourcesType
 	var found bool
 
 	for configKey, config := range resources {
 		configKeyStr := string(configKey)
-		if strings.HasSuffix(configKeyStr, "*") {
+		// All wildcard patterns have been validated by isValidWildcardPattern
+		if strings.Contains(configKeyStr, "*") {
 			prefix := strings.TrimSuffix(configKeyStr, "*")
 			if strings.HasPrefix(resourceName, prefix) {
+				// When multiple wildcard patterns match the same resource, choose the one with the longest prefix
+				// to ensure the most specific configuration takes precedence.
+				// Example: for resource "nvidia.com/gpu", if both "nvidia.com/*" and "nvidia.*" patterns exist,
+				// "nvidia.com/*" (longer prefix) will be selected over "nvidia.*" (shorter prefix)
 				if len(prefix) > len(bestMatch) {
 					bestMatch = prefix
 					bestConfig = config
