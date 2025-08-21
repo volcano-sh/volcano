@@ -439,16 +439,17 @@ func (s *Statement) Commit() {
 	}
 }
 
-func (s *Statement) SaveOperations() *Statement {
-	s.outputOperations("Save operations: ", 4)
-
+func SaveOperations(stmts ...*Statement) *Statement {
 	stmtTmp := &Statement{}
-	for _, op := range s.operations {
-		stmtTmp.operations = append(stmtTmp.operations, operation{
-			name:   op.name,
-			task:   op.task.Clone(),
-			reason: op.reason,
-		})
+	for _, stmt := range stmts {
+		stmt.outputOperations("Save operations: ", 4)
+		for _, op := range stmt.operations {
+			stmtTmp.operations = append(stmtTmp.operations, operation{
+				name:   op.name,
+				task:   op.task.Clone(),
+				reason: op.reason,
+			})
+		}
 	}
 	return stmtTmp
 }

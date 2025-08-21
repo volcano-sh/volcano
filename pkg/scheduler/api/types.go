@@ -333,7 +333,7 @@ type EvictableFn func(*TaskInfo, []*TaskInfo) ([]*TaskInfo, int)
 type NodeOrderFn func(*TaskInfo, *NodeInfo) (float64, error)
 
 // HyperNodeOrderFn is the func declaration used to score hyperNodes for job.
-type HyperNodeOrderFn func(*JobInfo, map[string][]*NodeInfo) (map[string]float64, error)
+type HyperNodeOrderFn func(*PodBunchInfo, map[string][]*NodeInfo) (map[string]float64, error)
 
 // BatchNodeOrderFn is the func declaration used to get priority score for ALL nodes for a particular task.
 type BatchNodeOrderFn func(*TaskInfo, []*NodeInfo) (map[string]float64, error)
@@ -348,7 +348,7 @@ type NodeReduceFn func(*TaskInfo, k8sframework.NodeScoreList) error
 type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, error)
 
 // HyperNodeOrderMapFn is the func declaration used to get priority score of all plugins for a hyperNode for a particular job.
-type HyperNodeOrderMapFn func(*JobInfo, map[string][]*NodeInfo) (map[string]map[string]float64, error)
+type HyperNodeOrderMapFn func(*PodBunchInfo, map[string][]*NodeInfo) (map[string]map[string]float64, error)
 
 // NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugin for a particular task.
 type NodeOrderReduceFn func(*TaskInfo, map[string]k8sframework.NodeScoreList) (map[string]float64, error)
@@ -378,3 +378,11 @@ type SimulatePredicateFn func(ctx context.Context, state fwk.CycleState, task *T
 // Simulate the allocatable check for a node
 // Plugins implement this function to verify if the queue has enough resources to schedule the task while maintaining topology constraints
 type SimulateAllocatableFn func(ctx context.Context, state fwk.CycleState, queue *QueueInfo, task *TaskInfo) bool
+
+// HyperNodeGradientForJobFn group hyperNodes into several gradients,
+// and discard hyperNodes that unmatched the job topology requirements.
+type HyperNodeGradientForJobFn func(job *JobInfo, hyperNode *HyperNodeInfo) [][]*HyperNodeInfo
+
+// HyperNodeGradientForPodBunchFn group hyperNodes into several gradients,
+// and discard hyperNodes that unmatched the podBunch topology requirements.
+type HyperNodeGradientForPodBunchFn func(podBunch *PodBunchInfo, hyperNode *HyperNodeInfo) [][]*HyperNodeInfo

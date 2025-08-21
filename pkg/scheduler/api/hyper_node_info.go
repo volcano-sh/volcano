@@ -57,12 +57,14 @@ type HyperNodeInfoMap map[string]*HyperNodeInfo
 
 // NewHyperNodesInfo initializes a new HyperNodesInfo instance.
 func NewHyperNodesInfo(lister listerv1.NodeLister) *HyperNodesInfo {
+	ready := new(atomic.Bool)
+	ready.Store(true)
 	return &HyperNodesInfo{
 		hyperNodes:          make(map[string]*HyperNodeInfo),
 		hyperNodesSetByTier: make(map[int]sets.Set[string]),
 		realNodesSet:        make(map[string]sets.Set[string]),
 		nodeLister:          lister,
-		ready:               new(atomic.Bool),
+		ready:               ready,
 	}
 }
 
@@ -83,8 +85,10 @@ type HyperNodeInfo struct {
 	Name      string
 	HyperNode *topologyv1alpha1.HyperNode
 
+	Parent   string
+	Children sets.Set[string]
+
 	tier       int
-	parent     string
 	isDeleting bool
 }
 
@@ -101,7 +105,7 @@ func TierOpt(tier int) HyperNodeInfoOption {
 // ParentOpt returns an option that sets the parent of the HyperNodeInfo.
 func ParentOpt(parent string) HyperNodeInfoOption {
 	return func(hni *HyperNodeInfo) {
-		hni.parent = parent
+		hni.Parent = parent
 	}
 }
 
@@ -118,6 +122,7 @@ func NewHyperNodeInfo(hn *topologyv1alpha1.HyperNode, opts ...HyperNodeInfoOptio
 		Name:      hn.Name,
 		HyperNode: hn,
 		tier:      hn.Spec.Tier,
+		Children:  sets.New[string](),
 	}
 
 	// Apply all options
@@ -133,7 +138,7 @@ func (hni *HyperNodeInfo) String() string {
 	return strings.Join([]string{
 		fmt.Sprintf("Name: %s", hni.Name),
 		fmt.Sprintf(" Tier: %d", hni.tier),
-		fmt.Sprintf(" Parent: %s", hni.parent)},
+		fmt.Sprintf(" Parent: %s", hni.Parent)},
 		",")
 }
 
@@ -152,7 +157,8 @@ func (hni *HyperNodeInfo) DeepCopy() *HyperNodeInfo {
 		tier:       hni.tier,
 		HyperNode:  hni.HyperNode.DeepCopy(),
 		isDeleting: hni.isDeleting,
-		parent:     hni.parent,
+		Parent:     hni.Parent,
+		Children:   hni.Children.Clone(),
 	}
 
 	return copiedHyperNodeInfo
@@ -268,7 +274,7 @@ func (hni *HyperNodesInfo) BuildHyperNodeCache(hn *HyperNodeInfo, processed sets
 				continue
 			}
 
-			if err := hni.setParent(memberName, hn.Name); err != nil {
+			if err := hni.addChild(hn.Name, memberName); err != nil {
 				return err
 			}
 
@@ -429,28 +435,30 @@ func (hni *HyperNodesInfo) GetRegexOrLabelMatchLeafHyperNodes() sets.Set[string]
 	return leaf
 }
 
-// setParent sets the parent of a HyperNode member.
-func (hni *HyperNodesInfo) setParent(member, parent string) error {
-	hn, ok := hni.hyperNodes[member]
+// addChild adds the HyperNode member to the parent and sets the parent of a HyperNode member.
+func (hni *HyperNodesInfo) addChild(parent, member string) error {
+	parentHn, ok := hni.hyperNodes[parent]
 	if !ok {
-		klog.InfoS("HyperNode not exists in cache, maybe not created or not be watched, will set parent first", "name", member, "parent", parent)
-		hn = NewHyperNodeInfo(&topologyv1alpha1.HyperNode{ObjectMeta: metav1.ObjectMeta{
-			Name: member,
-		}})
-		hni.hyperNodes[member] = hn
-		hn.parent = parent
-		return nil
-	}
-	currentParent := hn.parent
-	if currentParent == "" {
-		hn.parent = parent
-		return nil
+		hni.builtErrHyperNode = parent
+		return fmt.Errorf("parent HyperNode %s not exists in cache", parent)
 	}
 
-	if currentParent != parent {
-		hni.builtErrHyperNode = parent
-		return fmt.Errorf("HyperNode %s already has a parent %s, and cannot set another parent %s", member, currentParent, parent)
+	childHn, ok := hni.hyperNodes[member]
+	if !ok {
+		klog.InfoS("HyperNode not exists in cache, maybe not created or not be watched, will set parent first", "name", member, "parent", parent)
+		childHn = NewHyperNodeInfo(&topologyv1alpha1.HyperNode{ObjectMeta: metav1.ObjectMeta{
+			Name: member,
+		}})
+		hni.hyperNodes[member] = childHn
 	}
+
+	if childHn.Parent != "" && childHn.Parent != parent {
+		hni.builtErrHyperNode = parent
+		return fmt.Errorf("HyperNode %s already has a parent %s, and cannot set another parent %s", member, childHn.Parent, parent)
+	}
+
+	childHn.Parent = parent
+	parentHn.Children.Insert(member)
 
 	return nil
 }
@@ -534,6 +542,7 @@ func (hni *HyperNodesInfo) rebuildCache(name string) error {
 	for _, ancestor := range ancestors {
 		delete(hni.realNodesSet, ancestor)
 		hni.resetParent(ancestor)
+		hni.resetChildren(ancestor)
 	}
 
 	processed := sets.New[string]()
@@ -592,7 +601,13 @@ func (hni *HyperNodesInfo) removeParent(name string) {
 
 func (hni *HyperNodesInfo) resetParent(name string) {
 	if hn, ok := hni.hyperNodes[name]; ok {
-		hn.parent = ""
+		hn.Parent = ""
+	}
+}
+
+func (hni *HyperNodesInfo) resetChildren(name string) {
+	if hn, ok := hni.hyperNodes[name]; ok {
+		hn.Children.Clear()
 	}
 }
 
@@ -700,8 +715,8 @@ func (hnim HyperNodeInfoMap) GetAncestors(name string) []string {
 
 		parent := ""
 		hn, ok := hnim[current]
-		if ok && hn.parent != "" {
-			parent = hn.parent
+		if ok && hn.Parent != "" {
+			parent = hn.Parent
 		} else {
 			parent = hnim.getParent(current)
 		}
@@ -741,6 +756,13 @@ func (hnim HyperNodeInfoMap) getParent(name string) string {
 
 // GetLCAHyperNode returns the least common ancestor hypernode of the hypernode to be allocated and job's already allocated hypernode
 func (hnim HyperNodeInfoMap) GetLCAHyperNode(hypernode, jobHyperNode string) string {
+	if hypernode == "" {
+		return jobHyperNode
+	}
+	if jobHyperNode == "" {
+		return hypernode
+	}
+
 	hyperNodeAncestors := hnim.GetAncestors(hypernode)
 	jobHyperNodeAncestors := hnim.GetAncestors(jobHyperNode)
 

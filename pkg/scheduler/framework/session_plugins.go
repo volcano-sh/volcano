@@ -183,6 +183,31 @@ func (ssn *Session) AddSimulatePredicateFn(name string, fn api.SimulatePredicate
 	ssn.simulatePredicateFns[name] = fn
 }
 
+// AddPodBunchReadyFn add PodBunchReady function
+func (ssn *Session) AddPodBunchReadyFn(name string, vf api.ValidateFn) {
+	ssn.podBunchReadyFns[name] = vf
+}
+
+// AddPodBunchPipelinedFn add PodBunchPipelined function
+func (ssn *Session) AddPodBunchPipelinedFn(name string, vf api.VoteFn) {
+	ssn.podBunchPipelinedFns[name] = vf
+}
+
+// AddPodBunchOrderFn add PodBunchOrderFn function
+func (ssn *Session) AddPodBunchOrderFn(name string, fn api.CompareFn) {
+	ssn.podBunchOrderFns[name] = fn
+}
+
+// AddHyperNodeGradientForJobFn add HyperNodeGradientForJobFn function
+func (ssn *Session) AddHyperNodeGradientForJobFn(name string, fn api.HyperNodeGradientForJobFn) {
+	ssn.hyperNodeGradientForJobFns[name] = fn
+}
+
+// AddHyperNodeGradientForPodBunchFn add HyperNodeGradientForPodBunchFn function
+func (ssn *Session) AddHyperNodeGradientForPodBunchFn(name string, fn api.HyperNodeGradientForPodBunchFn) {
+	ssn.hyperNodeGradientForPodBunchFns[name] = fn
+}
+
 // Reclaimable invoke reclaimable function of the plugins
 func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskInfo) []*api.TaskInfo {
 	var victims []*api.TaskInfo
@@ -336,6 +361,64 @@ func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) b
 			if !af(queue, candidate) {
 				return false
 			}
+		}
+	}
+
+	return true
+}
+
+func (ssn *Session) PodBunchReady(job *api.JobInfo, podBunch *api.PodBunchInfo) bool {
+	if !job.ContainsBunchPolicy() {
+		return ssn.JobReady(job)
+	}
+
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPodBunchReady) {
+				continue
+			}
+			fn, found := ssn.podBunchReadyFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			if !fn(podBunch) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func (ssn *Session) PodBunchPipelined(job *api.JobInfo, podBunch *api.PodBunchInfo) bool {
+	if !job.ContainsBunchPolicy() {
+		return ssn.JobPipelined(job)
+	}
+
+	var hasFound bool
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPodBunchPipelined) {
+				continue
+			}
+			fn, found := ssn.podBunchPipelinedFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			res := fn(podBunch)
+			if res < 0 {
+				return false
+			}
+			if res > 0 {
+				hasFound = true
+			}
+		}
+		// if plugin exists that votes permit, meanwhile other plugin votes abstention,
+		// permit job to be pipelined, do not check next tier
+		if hasFound {
+			return true
 		}
 	}
 
@@ -547,6 +630,31 @@ func (ssn *Session) ReservedNodes() {
 			fn()
 		}
 	}
+}
+
+func (ssn *Session) PodBunchOrderFn(l, r interface{}) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPodBunchOrder) {
+				continue
+			}
+			fn, found := ssn.podBunchOrderFns[plugin.Name]
+			if !found {
+				continue
+			}
+			if j := fn(l, r); j != 0 {
+				return j < 0
+			}
+		}
+	}
+
+	// If no podBunch order funcs, order podBunch by MatchIndex and UID.
+	lv := l.(*api.PodBunchInfo)
+	rv := r.(*api.PodBunchInfo)
+	if lv.MatchIndex != rv.MatchIndex {
+		return lv.MatchIndex < rv.MatchIndex
+	}
+	return lv.UID < rv.UID
 }
 
 // JobOrderFn invoke joborder function of the plugins
@@ -892,7 +1000,7 @@ func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[
 }
 
 // HyperNodeOrderMapFn invoke hyperNode order function of the plugins
-func (ssn *Session) HyperNodeOrderMapFn(job *api.JobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]map[string]float64, error) {
+func (ssn *Session) HyperNodeOrderMapFn(podBunch *api.PodBunchInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]map[string]float64, error) {
 	nodeGroupScore := make(map[string]map[string]float64)
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -903,7 +1011,7 @@ func (ssn *Session) HyperNodeOrderMapFn(job *api.JobInfo, hyperNodes map[string]
 			if !found {
 				continue
 			}
-			scoreTmp, err := pfn(job, hyperNodes)
+			scoreTmp, err := pfn(podBunch, hyperNodes)
 			if err != nil {
 				return nodeGroupScore, err
 			}
@@ -935,6 +1043,48 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 		}
 	}
 	return nodeScoreMap, nil
+}
+
+// HyperNodeGradientForJobFn group hyperNodes into several gradients,
+// and discard hyperNodes that unmatched the job topology requirements.
+// The result is determined by the first plugin that registered this fn.
+func (ssn *Session) HyperNodeGradientForJobFn(job *api.JobInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledHyperNodeGradient) {
+				continue
+			}
+			fn, found := ssn.hyperNodeGradientForJobFns[plugin.Name]
+			if !found {
+				continue
+			}
+			return fn(job, hyperNode)
+		}
+	}
+
+	// If there is no hyperNode gradient functions, only the input hyperNode is returned.
+	return [][]*api.HyperNodeInfo{{hyperNode}}
+}
+
+// HyperNodeGradientForPodBunchFn group hyperNodes into several gradients,
+// and discard hyperNodes that unmatched the podBunch topology requirements.
+// The result is determined by the first plugin that registered this fn.
+func (ssn *Session) HyperNodeGradientForPodBunchFn(podBunch *api.PodBunchInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledHyperNodeGradient) {
+				continue
+			}
+			fn, found := ssn.hyperNodeGradientForPodBunchFns[plugin.Name]
+			if !found {
+				continue
+			}
+			return fn(podBunch, hyperNode)
+		}
+	}
+
+	// If there is no hyperNode gradient functions, only the input hyperNode is returned.
+	return [][]*api.HyperNodeInfo{{hyperNode}}
 }
 
 // BuildVictimsPriorityQueue returns a priority queue with victims sorted by:

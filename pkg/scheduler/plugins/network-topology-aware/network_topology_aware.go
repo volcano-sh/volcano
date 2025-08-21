@@ -89,13 +89,15 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeFn := func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
 		nodeScores := make(map[string]float64)
 
-		taskJob := ssn.Jobs[task.Job]
-		if !taskJob.HasTopologyConstrain() {
+		job := ssn.Jobs[task.Job]
+		podBunch := job.PodBunches[job.TaskToPodBunch[task.UID]]
+
+		if !podBunch.WithNetworkTopology() {
 			return nodeScores, nil
 		}
 
-		jobAllocatedHyperNode := task.JobAllocatedHyperNode
-		if jobAllocatedHyperNode == "" {
+		allocatedHyperNode := task.JobAllocatedHyperNode
+		if allocatedHyperNode == "" {
 			return nodeScores, nil
 		}
 		// Calculate score based on LCAHyperNode tier.
@@ -103,7 +105,7 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		scoreToNodes := map[float64][]string{}
 		for _, node := range nodes {
 			hyperNode := util.FindHyperNodeForNode(node.Name, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
-			score := nta.networkTopologyAwareScore(hyperNode, jobAllocatedHyperNode, ssn.HyperNodes)
+			score := nta.networkTopologyAwareScore(hyperNode, allocatedHyperNode, ssn.HyperNodes)
 			score *= float64(nta.weight)
 			nodeScores[node.Name] = score
 			if score >= maxScore {
@@ -116,7 +118,7 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 			candidateNodes := scoreToNodes[maxScore]
 			for _, node := range candidateNodes {
 				hyperNode := util.FindHyperNodeForNode(node, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
-				taskNumScore := nta.scoreWithTaskNum(hyperNode, taskJob, ssn.RealNodesList)
+				taskNumScore := nta.scoreWithTaskNum(hyperNode, podBunch.Tasks, ssn.RealNodesList)
 				taskNumScore *= float64(nta.weight)
 				nodeScores[node] += taskNumScore
 			}
@@ -151,12 +153,12 @@ func (nta *networkTopologyAwarePlugin) networkTopologyAwareScore(hyperNodeName, 
 
 // Goals:
 // - Tasks under a job should be scheduled to one hyperNode as much as possible.
-func (nta *networkTopologyAwarePlugin) scoreWithTaskNum(hyperNodeName string, job *api.JobInfo, realNodesList map[string][]*api.NodeInfo) float64 {
-	taskNum := util.FindJobTaskNumOfHyperNode(hyperNodeName, job, realNodesList)
+func (nta *networkTopologyAwarePlugin) scoreWithTaskNum(hyperNodeName string, tasks api.TasksMap, realNodesList map[string][]*api.NodeInfo) float64 {
+	taskNum := util.FindJobTaskNumOfHyperNode(hyperNodeName, tasks, realNodesList)
 	taskNumScore := ZeroScore
-	if len(job.Tasks) > 0 {
+	if len(tasks) > 0 {
 		// Calculate score: taskNum/allTaskNum
-		taskNumScore = BaseScore * scoreHyperNodeWithTaskNum(taskNum, len(job.Tasks))
+		taskNumScore = BaseScore * scoreHyperNodeWithTaskNum(taskNum, len(tasks))
 	}
 	return taskNumScore
 }
