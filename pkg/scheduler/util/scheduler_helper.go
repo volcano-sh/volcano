@@ -137,12 +137,9 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 }
 
 // PrioritizeHyperNodes returns a map whose key is hyperNode's score and value are corresponding hyperNodes
-// it accumulates two parts score:
-// 1.node level scores of each hyperNode in NodeOrder extension.
-// 2.hyperNode level scores scored in HyperNodeOrder extension.
-func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeScoresInHyperNode map[string]float64, job *api.JobInfo, fn api.HyperNodeOrderMapFn) (map[float64][]string, error) {
+func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, podBunch *api.PodBunchInfo, fn api.HyperNodeOrderMapFn) (map[float64][]string, error) {
 	hyperNodesScoreMap := make(map[string]float64)
-	mapScores, err := fn(job, candidateHyperNodes)
+	mapScores, err := fn(podBunch, candidateHyperNodes)
 	if err != nil {
 		return nil, err
 	}
@@ -150,15 +147,9 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeSc
 	// plugin scores of hyperNode.
 	for pluginName, scores := range mapScores {
 		for hyperNode, score := range scores {
-			klog.V(5).InfoS("Add plugin score at hypeNode", "jobName", job.UID, "pluginName", pluginName, "hyperNodeName", hyperNode, "score", score)
+			klog.V(5).InfoS("Add plugin score at hypeNode", "podBunch", podBunch.UID, "pluginName", pluginName, "hyperNodeName", hyperNode, "score", score)
 			hyperNodesScoreMap[hyperNode] += score
 		}
-	}
-
-	// accumulate node scores in NodeOrder and hyperNode score itself as the final score of each hyperNode.
-	for hyperNodeName, score := range nodeScoresInHyperNode {
-		klog.V(5).InfoS("Add node level scores to final hyperNode score", "jobName", job.UID, "hyperNodeName", hyperNodeName, "score", score)
-		hyperNodesScoreMap[hyperNodeName] += score
 	}
 
 	hyperNodeScores := make(map[float64][]string)
@@ -176,7 +167,7 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeSc
 		}
 	}
 
-	klog.V(5).InfoS("Prioritize hyperNode score map for job", "jobName", job.UID, "scoreMap", hyperNodeScoreMap)
+	klog.V(5).InfoS("Prioritize hyperNode score map for podBunch", "podBunch", podBunch.UID, "scoreMap", hyperNodeScoreMap)
 	return hyperNodeScores, nil
 }
 
@@ -213,8 +204,8 @@ func SelectBestNodeAndScore(nodeScores map[float64][]*api.NodeInfo) (*api.NodeIn
 	return bestNodes[rand.Intn(len(bestNodes))], maxScore
 }
 
-// SelectBestHyperNode return the best hyperNode name whose score is highest, pick one randomly if there are many hyperNodes with same score.
-func SelectBestHyperNode(hyperNodeScores map[float64][]string) string {
+// SelectBestHyperNodeAndScore return the best hyperNode name whose score is highest, pick one randomly if there are many hyperNodes with same score.
+func SelectBestHyperNodeAndScore(hyperNodeScores map[float64][]string) (string, float64) {
 	var bestHyperNodes []string
 	var maxScore = math.Inf(-1)
 	for score, hyperNodes := range hyperNodeScores {
@@ -225,10 +216,10 @@ func SelectBestHyperNode(hyperNodeScores map[float64][]string) string {
 	}
 
 	if len(bestHyperNodes) == 0 {
-		return ""
+		return "", 0
 	}
 
-	return bestHyperNodes[rand.Intn(len(bestHyperNodes))]
+	return bestHyperNodes[rand.Intn(len(bestHyperNodes))], maxScore
 }
 
 // GetNodeList returns values of the map 'nodes'
@@ -322,11 +313,11 @@ func FindHyperNodeForNode(nodeName string, hyperNodes map[string][]*api.NodeInfo
 	return ""
 }
 
-// FindJobTaskNumOfHyperNode find out the number of tasks in the job that belong to the hyperNode.
-func FindJobTaskNumOfHyperNode(hyperNodeName string, job *api.JobInfo, hyperNodes map[string][]*api.NodeInfo) int {
+// FindJobTaskNumOfHyperNode find out the number of tasks that belong to the hyperNode.
+func FindJobTaskNumOfHyperNode(hyperNodeName string, tasks api.TasksMap, hyperNodes map[string][]*api.NodeInfo) int {
 	nodes := hyperNodes[hyperNodeName]
 	taskCount := 0
-	for _, task := range job.Tasks {
+	for _, task := range tasks {
 		for _, node := range nodes {
 			if node.Name == task.NodeName {
 				taskCount++

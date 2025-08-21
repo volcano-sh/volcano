@@ -349,7 +349,7 @@ func TestFindJobTaskNumOfHyperNode(t *testing.T) {
 				taskInfo.NodeName = node
 				job.Tasks[taskInfo.UID] = taskInfo
 			}
-			result := FindJobTaskNumOfHyperNode(tc.hyperNodeName, job, tc.hyperNodes)
+			result := FindJobTaskNumOfHyperNode(tc.hyperNodeName, job.Tasks, tc.hyperNodes)
 			if result != tc.expectedRes {
 				t.Errorf("Test case '%s' failed. Expected result: %d, but got: %d",
 					tc.name, tc.expectedRes, result)

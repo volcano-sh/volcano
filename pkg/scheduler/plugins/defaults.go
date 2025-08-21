@@ -46,6 +46,10 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	setDefaultIfNil(&option.EnabledOverused)
 	setDefaultIfNil(&option.EnabledAllocatable)
 	setDefaultIfNil(&option.EnabledHyperNodeOrder)
+	setDefaultIfNil(&option.EnabledPodBunchReady)
+	setDefaultIfNil(&option.EnabledPodBunchPipelined)
+	setDefaultIfNil(&option.EnabledPodBunchOrder)
+	setDefaultIfNil(&option.EnabledHyperNodeGradient)
 }
 
 func setDefaultIfNil(field **bool) {

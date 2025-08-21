@@ -67,13 +67,13 @@ func TestAddTaskInfo(t *testing.T) {
 				UID:          case01UID,
 				Allocated:    buildResource("4000m", "4G", map[string]string{"pods": "3"}, 0),
 				TotalRequest: buildResource("5000m", "5G", map[string]string{"pods": "4"}, 0),
-				Tasks: tasksMap{
+				Tasks: TasksMap{
 					case01Task1.UID: case01Task1,
 					case01Task2.UID: case01Task2,
 					case01Task3.UID: case01Task3,
 					case01Task4.UID: case01Task4,
 				},
-				TaskStatusIndex: map[TaskStatus]tasksMap{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
 					Running: {
 						case01Task2.UID: case01Task2,
 					},
@@ -144,11 +144,11 @@ func TestDeleteTaskInfo(t *testing.T) {
 				Allocated:    buildResource("3000m", "3G", map[string]string{"pods": "1"}, 0),
 				TotalRequest: buildResource("4000m", "4G", map[string]string{"pods": "2"}, 0),
 				UID:          case01UID,
-				Tasks: tasksMap{
+				Tasks: TasksMap{
 					case01Task1.UID: case01Task1,
 					case01Task3.UID: case01Task3,
 				},
-				TaskStatusIndex: map[TaskStatus]tasksMap{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
 					Pending: {case01Task1.UID: case01Task1},
 					Running: {case01Task3.UID: case01Task3},
 				},
@@ -166,11 +166,11 @@ func TestDeleteTaskInfo(t *testing.T) {
 				Allocated:    buildResource("3000m", "3G", map[string]string{"pods": "1"}, 0),
 				TotalRequest: buildResource("4000m", "4G", map[string]string{"pods": "2"}, 0),
 				UID:          case02UID,
-				Tasks: tasksMap{
+				Tasks: TasksMap{
 					case02Task1.UID: case02Task1,
 					case02Task3.UID: case02Task3,
 				},
-				TaskStatusIndex: map[TaskStatus]tasksMap{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
 					Pending: {
 						case02Task1.UID: case02Task1,
 					},
@@ -281,7 +281,7 @@ func TestTaskSchedulingReason(t *testing.T) {
 		// complete job
 		job.SetPodGroup(&PodGroup{PodGroup: pg})
 		job.NodesFitErrors = test.nodefes
-		job.TaskStatusIndex = map[TaskStatus]tasksMap{Pending: {}}
+		job.TaskStatusIndex = map[TaskStatus]TasksMap{Pending: {}}
 		for _, task := range job.Tasks {
 			task.Status = Pending
 			job.TaskStatusIndex[Pending][task.UID] = task
