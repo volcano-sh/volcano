@@ -21,9 +21,11 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -50,6 +52,19 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 	jobsMap := map[api.QueueID]*util.PriorityQueue{}
 
 	for _, job := range ssn.Jobs {
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingPolicy) {
+			schedulingPolicy := framework.GetSchedulingPolicyFromJob(job)
+			if schedulingPolicy != nil && !schedulingPolicy.HasAction(enqueue.Name()) {
+				klog.V(4).Infof("%v's schedulingPolicy does not include the action %v.", job.Name, enqueue.Name())
+				continue
+			}
+
+			if schedulingPolicy == nil && !ssn.HasAction(enqueue.Name()) {
+				klog.V(4).Infof("Action %v is not defined in the global schedulingPolicy.", enqueue.Name())
+				continue
+			}
+		}
+
 		if job.ScheduleStartTimestamp.IsZero() {
 			ssn.Jobs[job.UID].ScheduleStartTimestamp = metav1.Time{
 				Time: time.Now(),

@@ -36,11 +36,13 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	k8sutil "k8s.io/kubernetes/pkg/scheduler/util"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -112,6 +114,19 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 	queues := map[api.QueueID]*api.QueueInfo{}
 
 	for _, job := range ssn.Jobs {
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingPolicy) {
+			schedulingPolicy := framework.GetSchedulingPolicyFromJob(job)
+			if schedulingPolicy != nil && !schedulingPolicy.HasAction(pmpt.Name()) {
+				klog.V(4).Infof("%v's schedulerPolicy does not include the action %v.", job.Name, pmpt.Name())
+				continue
+			}
+
+			if schedulingPolicy == nil && !ssn.HasAction(pmpt.Name()) {
+				klog.V(4).Infof("Action %v is not defined in the global schedulingPolicy.", pmpt.Name())
+				continue
+			}
+		}
+
 		if job.IsPending() {
 			continue
 		}
