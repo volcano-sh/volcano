@@ -91,16 +91,28 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 				return
 			}
 		}
-
-		// TODO (k82cn): Enable eCache for performance improvement.
-		if err := fn(task, node); err != nil {
-			klog.V(3).Infof("Predicates failed: %v", err)
-			errorLock.Lock()
-			nodeErrorCache[node.Name] = err
-			ph.taskPredicateErrorCache[taskGroupid] = nodeErrorCache
-			fe.SetNodeError(node.Name, err)
-			errorLock.Unlock()
-			return
+		// Fix Overkill issue, if the same task is already present on a node in Pipelined status, skip check this node
+		isPipelinedNode := false
+		for _, t := range node.Tasks {
+			if t.Name == task.Name && t.Namespace == task.Namespace {
+				if t.NodeName == node.Name || t.Pod.Spec.NodeName == node.Name {
+					klog.V(4).Infof("Found pipelined task %s/%s on node %s, returning it for allocation", task.Namespace, task.Name, node.Name)
+					isPipelinedNode = true
+					break
+				}
+			}
+		}
+		if !isPipelinedNode {
+			// TODO (k82cn): Enable eCache for performance improvement.
+			if err := fn(task, node); err != nil {
+				klog.V(3).Infof("Predicates failed: %v", err)
+				errorLock.Lock()
+				nodeErrorCache[node.Name] = err
+				ph.taskPredicateErrorCache[taskGroupid] = nodeErrorCache
+				fe.SetNodeError(node.Name, err)
+				errorLock.Unlock()
+				return
+			}
 		}
 
 		//check if the number of found nodes is more than the numNodesTofind
