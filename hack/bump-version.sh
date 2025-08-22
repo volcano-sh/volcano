@@ -193,7 +193,7 @@ echo "${NEW_VERSION}" > "${RELEASE_VERSION_FILE}"
 echo "+++ Updating ${CHART_YAML}"
 if [[ -f "${CHART_YAML}" ]]; then
     sed -i.bak "s/^version: .*/version: \"${CHART_VERSION}\"/" "${CHART_YAML}"
-    sed -i.bak "s/^appVersion: .*/appVersion: \"${NEW_VERSION}\"/" "${CHART_YAML}"
+    sed -i.bak "s/^appVersion: .*/appVersion: \"${CHART_VERSION}\"/" "${CHART_YAML}"
     rm -f "${CHART_YAML}.bak"
 fi
 
@@ -234,7 +234,7 @@ fi
 # Commit changes
 echo "+++ Committing changes"
 git add .
-git commit -m "chore: bump version to ${NEW_VERSION}
+git commit -s -m "chore: bump version to ${NEW_VERSION}
 
 - Update .release-version to ${NEW_VERSION}
 - Update Chart version to ${CHART_VERSION}
