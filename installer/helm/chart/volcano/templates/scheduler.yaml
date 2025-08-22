@@ -230,6 +230,9 @@ spec:
             - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
             {{- end}}
             - -v={{.Values.custom.scheduler_log_level}}
+            {{- range .Values.custom.scheduler_extra_args }}
+            - {{ . }}
+            {{- end }}
             - 2>&1
           env:
             - name: DEBUG_SOCKET_DIR
