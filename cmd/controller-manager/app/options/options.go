@@ -34,6 +34,7 @@ const (
 	defaultQPS                 = 50.0
 	defaultBurst               = 100
 	defaultWorkers             = 3
+	defaultCronJobWorkers      = 2
 	defaultMaxRequeueNum       = 15
 	defaultSchedulerName       = "volcano"
 	defaultHealthzAddress      = ":11251"
@@ -61,7 +62,8 @@ type ServerOption struct {
 	PrintVersion        bool
 	// WorkerThreads is the number of threads syncing job operations
 	// concurrently. Larger number = faster job updating, but more CPU load.
-	WorkerThreads uint32
+	WorkerThreads           uint32
+	WorkerThreadsForCronJob uint32
 	// MaxRequeueNum is the number of times a job, queue or command will be requeued before it is dropped out of the queue.
 	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
 	// a job, queue or command is going to be requeued:
@@ -117,6 +119,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet, knownControllers []string) {
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
 	fs.Uint32Var(&s.WorkerThreads, "worker-threads", defaultWorkers, "The number of threads syncing job operations concurrently. "+
 		"Larger number = faster job updating, but more CPU load")
+	fs.Uint32Var(&s.WorkerThreadsForCronJob, "worker-threads-for-cronjob", defaultCronJobWorkers, "The number of threads syncing cronjob operations. The larger the number, the faster the cronjob processing, but requires more CPU load.")
 	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.IntVar(&s.MaxRequeueNum, "max-requeue-num", defaultMaxRequeueNum, "The number of times a job, queue or command will be requeued before it is dropped out of the queue")
 	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
