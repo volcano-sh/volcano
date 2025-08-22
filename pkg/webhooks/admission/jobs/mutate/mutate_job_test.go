@@ -26,7 +26,6 @@ import (
 )
 
 func TestCreatePatchExecution(t *testing.T) {
-
 	namespace := "test"
 
 	testCase := struct {
@@ -143,5 +142,4 @@ func TestCreatePatchExecution(t *testing.T) {
 				testCase.Name, defaultMaxRetry, aTask.MaxRetry)
 		}
 	}
-
 }

@@ -254,7 +254,6 @@ func TestAbortingState_Execute(t *testing.T) {
 }
 
 func TestCompletingState_Execute(t *testing.T) {
-
 	namespace := "test"
 
 	testcases := []struct {
@@ -1473,7 +1472,6 @@ func TestTerminatingState_Execute(t *testing.T) {
 			}
 
 			if testcase.JobInfo.Job.Status.Running == 0 && testcase.JobInfo.Job.Status.Pending == 0 && testcase.JobInfo.Job.Status.Terminating == 0 {
-
 				if jobInfo.Job.Status.State.Phase != v1alpha1.Terminated {
 					fmt.Println(jobInfo.Job.Status.State.Phase)
 					t.Errorf("Expected Phase to be Terminated State in test case: %d", i)
