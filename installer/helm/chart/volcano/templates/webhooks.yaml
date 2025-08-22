@@ -469,3 +469,51 @@ webhooks:
     timeoutSeconds: 10
 {{- end }}
 {{- end }}
+
+{{- if .Values.custom.enabled_admissions | regexMatch "/cronjobs/validate" }}  
+---  
+apiVersion: admissionregistration.k8s.io/v1  
+kind: ValidatingWebhookConfiguration  
+metadata:  
+  name: volcano-admission-service-cronjobs-validate  
+  {{- if .Values.custom.common_labels }}  
+  labels:  
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}  
+  {{- end }}  
+webhooks:  
+  - admissionReviewVersions:  
+      - v1  
+    clientConfig:  
+      service:  
+        name: {{ .Release.Name }}-admission-service  
+        namespace: {{ .Release.Namespace }}  
+        path: /cronjobs/validate  
+        port: 443  
+    failurePolicy: Fail  
+    matchPolicy: Equivalent  
+    name: validatecronjob.volcano.sh  
+    namespaceSelector:  
+      matchExpressions:  
+        - key: kubernetes.io/metadata.name  
+          operator: NotIn  
+          values:  
+            - {{ .Release.Namespace }}  
+            - kube-system  
+{{- if .Values.custom.webhooks_namespace_selector_expressions }}  
+        {{- toYaml .Values.custom.webhooks_namespace_selector_expressions | nindent 8 }}  
+{{- end }}  
+    objectSelector: {}  
+    rules:  
+      - apiGroups:  
+          - batch.volcano.sh  
+        apiVersions:  
+          - v1alpha1  
+        operations:  
+          - CREATE  
+          - UPDATE  
+        resources:  
+          - cronjobs  
+        scope: '*'  
+    sideEffects: NoneOnDryRun  
+    timeoutSeconds: 10  
+{{- end }}
