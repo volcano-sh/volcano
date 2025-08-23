@@ -5,6 +5,8 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
 func makeNode(unschedulable bool, readyCondition v1.ConditionStatus, nodeIsNil bool) *v1.Node {
@@ -59,7 +61,7 @@ func TestIsNodeUnschedulable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			node := makeNode(tt.input, v1.ConditionTrue, tt.nodeIsNil)
-			result := isNodeUnschedulable(node)
+			result := util.IsNodeUnschedulable(node)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -82,8 +84,8 @@ func TestIsNodeNotReady(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			node := makeNode(false, tt.ready, false)
-			result := isNodeNotReady(node)
+			node := makeNode(false, tt.ready, tt.nodeIsNil)
+			result := util.IsNodeNotReady(node)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -92,7 +94,7 @@ func TestIsNodeNotReady(t *testing.T) {
 
 	t.Run("No NodeReady condition", func(t *testing.T) {
 		node := makeNodeWithoutReady()
-		result := isNodeNotReady(node)
+		result := util.IsNodeNotReady(node)
 		if result != true {
 			t.Errorf("expected true when no NodeReady condition, got %v", result)
 		}
