@@ -203,6 +203,7 @@ case ${E2E_TYPE} in
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingbase/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingaction/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/vcctl/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/cronjob/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress --focus="DRA E2E Test" ./test/e2e/dra/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/hypernode/
     ;;
@@ -239,6 +240,10 @@ case ${E2E_TYPE} in
     install-kwok-nodes 8
     echo "Running hypernode e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/hypernode/
+    ;;
+"CRONJOB")  
+    echo "Running cronjob e2e suite..."  
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/cronjob/  
     ;;
 esac
 

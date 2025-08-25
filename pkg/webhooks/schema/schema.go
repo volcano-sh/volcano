@@ -69,6 +69,25 @@ func DecodeJob(object runtime.RawExtension, resource metav1.GroupVersionResource
 	return &job, nil
 }
 
+func DecodeCronJob(object runtime.RawExtension, resource metav1.GroupVersionResource) (*batchv1alpha1.CronJob, error) {
+	cronjobResource := metav1.GroupVersionResource{Group: batchv1alpha1.SchemeGroupVersion.Group, Version: batchv1alpha1.SchemeGroupVersion.Version, Resource: "cronjobs"}
+	raw := object.Raw
+	cronjob := batchv1alpha1.CronJob{}
+
+	if resource != cronjobResource {
+		klog.Errorf("expect resource to be %s", cronjobResource)
+		return &cronjob, fmt.Errorf("expect resource to be %s", cronjobResource)
+	}
+
+	deserializer := Codecs.UniversalDeserializer()
+	if _, _, err := deserializer.Decode(raw, nil, &cronjob); err != nil {
+		return &cronjob, err
+	}
+	klog.V(3).Infof("the cronjob struct is %+v", cronjob)
+
+	return &cronjob, nil
+}
+
 func DecodePod(object runtime.RawExtension, resource metav1.GroupVersionResource) (*v1.Pod, error) {
 	podResource := metav1.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
 	raw := object.Raw
