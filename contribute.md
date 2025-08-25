@@ -98,7 +98,7 @@ Refer to its [command reference documentation](https://go.k8s.io/bot-commands).
 
 To make it easier for your PR to receive reviews, consider the reviewers will need you to:
 
-* follow [good coding guidelines](https://github.com/golang/go/wiki/CodeReviewComments).
+* follow [good coding guidelines](https://go.dev/wiki/CodeReviewComments).
 * write [good commit messages](https://chris.beams.io/posts/git-commit/).
 * break large changes into a logical series of smaller patches which individually make easily understandable changes, and in aggregate solve a broader issue.
 * label PRs with appropriate reviewers: to do this read the messages the bot sends you to guide you through the PR process.

@@ -450,9 +450,9 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	}
 
 	// resources for test case 8
-	queue8 := buildQueueWithParents("q8", "root", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}}...), nil)
+	queue8 := buildQueueWithParents("q8", "root", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}}...), nil)
 	queue81 := buildQueueWithParents("q81", "q8", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), nil)
-	queue82 := buildQueueWithParents("q81", "q8", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), nil)
+	queue82 := buildQueueWithParents("q82", "q8", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), nil)
 	// node
 	gpuNode := util.BuildNode("n-gpu", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}, {Name: "pods", Value: "10"}}...), map[string]string{})
 	// podgroup

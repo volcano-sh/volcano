@@ -98,6 +98,9 @@ network_closure.sh
 /cluster/juju/charms/*
 /cluster/juju/bundles/local.yaml
 
+# ASDF version file
+.tool-versions
+
 # Downloaded Kubernetes binary release
 /kubernetes/
 
@@ -124,6 +127,7 @@ kubernetes.tar.gz
 *.pyc
 
 # e2e log files
+volcano-e2e-logs/
 *.log
 
 # test coverage file

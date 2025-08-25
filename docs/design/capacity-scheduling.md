@@ -99,4 +99,4 @@ Key function needed to add:
 
 ### Notes
 
-Capacity plugin provides the preemption/reclaim based on `deserved resource ` configured by the user. The Proportion plugin provides fair scheduling based on the weight of the queue. They are different policies for different scenarios. It is not supported to enable them both.
+Capacity plugin provides the preemption/reclaim based on `deserved resource` configured by the user. The Proportion plugin provides fair scheduling based on the weight of the queue. They are different policies for different scenarios. It is not supported to enable them both.
