@@ -143,7 +143,7 @@ make verify
 
 ## Adding Dependencies
 
-Volcano uses [Go Modules](https://blog.golang.org/migrating-to-go-modules) to manage its dependencies. If you want to add or update a dependency, run:
+Volcano uses [Go Modules](https://go.dev/blog/migrating-to-go-modules) to manage its dependencies. If you want to add or update a dependency, run:
 
 ```bash
 go get dependency-name@version
@@ -161,7 +161,7 @@ Before sending pull requests, you should at least make sure your changes have pa
   - Only access resources in the test binary.
 - All packages and any significant files require unit tests.
 - Unit tests are written using the standard Go testing package.
-- The preferred method of testing multiple scenarios or input is [table-driven testing](https://github.com/golang/go/wiki/TableDrivenTests).
+- The preferred method of testing multiple scenarios or input is [table-driven testing](https://go.dev/wiki/TableDrivenTests).
 - Concurrent unit test runs must pass.
 
 
