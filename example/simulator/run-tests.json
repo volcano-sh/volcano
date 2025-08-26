@@ -1,0 +1,38 @@
+[
+  {
+    "timestamp": "2025-08-26T09:00:00Z",
+    "type": "PodCreated",
+    "groupName": "job-a-pod",
+    "namespace": "default",
+    "replicas": 3,
+    "queue": "default",
+    "resources": {
+      "requests": { "cpu": "4", "memory": "8Gi" },
+      "limits": { "cpu": "4", "memory": "8Gi" }
+    },
+    "labels": {},
+    "annotations": {},
+    "toleration": []
+  },
+  {
+    "timestamp": "2025-08-26T09:00:03Z",
+    "type": "PodCreated",
+    "groupName": "job-b-pod",
+    "namespace": "default",
+    "replicas": 2,
+    "queue": "default",
+    "resources": {
+      "requests": { "cpu": "8", "memory": "4Gi", "nvidia.com/gpu": "8" },
+      "limits": { "cpu": "8", "memory": "4Gi", "nvidia.com/gpu": "8" }
+    },
+    "labels": {},
+    "annotations": {},
+    "toleration": []
+  },
+  {
+    "timestamp": "2025-08-26T09:00:10Z",
+    "type": "PodDeleted",
+    "groupName": "job-b-pod",
+    "namespace": "default"
+  }
+]
