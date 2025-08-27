@@ -74,6 +74,9 @@ data:
       - name: deviceshare
         arguments:
           deviceshare.VGPUEnable: true   # enable vgpu plugin
+          #The HAMI device plugin supports custom resource names via the --resource-name startup parameter (e.g., --resource-name=volcano.sh/gpu-number).
+          #Therefore, Volcano should also support specifying the resource name via the DefinedGPUNumberName configuration here.
+          deviceshare.DefinedGPUNumberName: "volcano.sh/gpu-number"
           deviceshare.SchedulePolicy: binpack  # scheduling policy. binpack / spread
 ```
 

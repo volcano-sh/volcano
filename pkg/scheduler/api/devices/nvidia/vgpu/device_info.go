@@ -28,6 +28,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	deviceconfig "volcano.sh/volcano/pkg/scheduler/api/devices/config"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
 
@@ -157,6 +158,21 @@ func (gs *GPUDevices) AddResource(pod *v1.Pod) {
 }
 
 func (gs *GPUDevices) addResource(annotations map[string]string, pod *v1.Pod) {
+	// Consider "volcano.sh/gpu-number" allocated by volcano with old version(e.g volcanov1.7+volcano-device-plugin)
+	// Avoid reallocating resources that have already been assigned.
+	gpuNumRes := gpushare.GetGPUNumberOfPod(pod)
+	if gpuNumRes > 0 {
+		ids := gpushare.GetGPUIndex(pod)
+		for _, id := range ids {
+			err := gs.Sharing.AddPod(gs.Device[id], gs.Device[id].Memory, 100, string(pod.UID), gs.Device[id].UUID)
+			if err == nil {
+				gs.AddPodMetrics(id, string(pod.UID), pod.Name)
+			} else {
+				klog.ErrorS(err, "add resource failed")
+			}
+		}
+	}
+
 	ids, ok := annotations[AssignedIDsAnnotations]
 	if !ok {
 		klog.Errorf("pod %s has no annotation volcano.sh/devices-to-allocate", pod.Name)
@@ -184,6 +200,21 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 	if gs == nil {
 		return
 	}
+
+	// Consider "volcano.sh/gpu-number" allocated by volcano with old version(e.g volcanov1.7+volcano-device-plugin)
+	// Avoid reallocating resources that have already been assigned.
+	gpuNumRes := gpushare.GetGPUNumberOfPod(pod)
+	if gpuNumRes > 0 {
+		ids := gpushare.GetGPUIndex(pod)
+		for _, id := range ids {
+			err := gs.Sharing.SubPod(gs.Device[id], gs.Device[id].Memory, 100, string(pod.UID), gs.Device[id].UUID)
+			if err != nil {
+				klog.ErrorS(err, "sub resource failed")
+			}
+			gs.SubPodMetrics(id, string(pod.UID), pod.Name)
+		}
+	}
+
 	ids, ok := pod.Annotations[AssignedIDsAnnotations]
 	if !ok {
 		return
