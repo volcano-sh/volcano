@@ -31,6 +31,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingapi "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/job/state"
 )
@@ -862,4 +863,223 @@ func TestRecordPodGroupEvent(t *testing.T) {
 		})
 	}
 
+}
+
+func TestPodsToKill(t *testing.T) {
+	namespace := "test"
+
+	testcases := []struct {
+		Name           string
+		Job            *v1alpha1.Job
+		JobInfo        *apis.JobInfo
+		Target         *state.Target
+		PodRetainPhase state.PhaseMap
+		UpdateStatus   state.UpdateStatusFn
+		Pods           map[string]*v1.Pod
+		ExpectVal      error
+		ExpectedPods   map[string]bool // pod name -> should exist
+	}{
+		{
+			Name: "KillPods with TargetTypeTask",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "100",
+				},
+			},
+			JobInfo: &apis.JobInfo{
+				Job: &v1alpha1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            "job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
+					},
+				},
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+						"pod2": buildPod(namespace, "pod2", v1.PodRunning, nil),
+					},
+					"task2": {
+						"pod3": buildPod(namespace, "pod3", v1.PodRunning, nil),
+					},
+				},
+			},
+			Target: &state.Target{
+				Type:     state.TargetTypeTask,
+				TaskName: "task1",
+			},
+			PodRetainPhase: state.PodRetainPhaseNone,
+			Pods: map[string]*v1.Pod{
+				"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+				"pod2": buildPod(namespace, "pod2", v1.PodRunning, nil),
+				"pod3": buildPod(namespace, "pod3", v1.PodRunning, nil),
+			},
+			ExpectVal: nil,
+			ExpectedPods: map[string]bool{
+				"pod1": false, // Should be deleted
+				"pod2": false, // Should be deleted
+				"pod3": true,  // Should exist
+			},
+		},
+		{
+			Name: "KillPods with TargetTypePod",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "100",
+				},
+			},
+			JobInfo: &apis.JobInfo{
+				Job: &v1alpha1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            "job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
+					},
+				},
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+						"pod2": buildPod(namespace, "pod2", v1.PodRunning, nil),
+					},
+				},
+			},
+			Target: &state.Target{
+				Type:     state.TargetTypePod,
+				TaskName: "task1",
+				PodName:  "pod1",
+			},
+			PodRetainPhase: state.PodRetainPhaseNone,
+			Pods: map[string]*v1.Pod{
+				"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+				"pod2": buildPod(namespace, "pod2", v1.PodRunning, nil),
+			},
+			ExpectVal: nil,
+			ExpectedPods: map[string]bool{
+				"pod1": false, // Should be deleted
+				"pod2": true,  // Should exist
+			},
+		},
+		{
+			Name: "KillPods with non-existent task",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "100",
+				},
+			},
+			JobInfo: &apis.JobInfo{
+				Job: &v1alpha1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            "job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
+					},
+				},
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+					},
+				},
+			},
+			Target: &state.Target{
+				Type:     state.TargetTypeTask,
+				TaskName: "nonexistent",
+			},
+			PodRetainPhase: state.PodRetainPhaseNone,
+			Pods: map[string]*v1.Pod{
+				"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+			},
+			ExpectVal: nil,
+			ExpectedPods: map[string]bool{
+				"pod1": true, // Should exist (not targeted)
+			},
+		},
+		{
+			Name: "KillPods with non-existent pod",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            "job1",
+					Namespace:       namespace,
+					ResourceVersion: "100",
+				},
+			},
+			JobInfo: &apis.JobInfo{
+				Job: &v1alpha1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            "job1",
+						Namespace:       namespace,
+						ResourceVersion: "100",
+					},
+				},
+				Pods: map[string]map[string]*v1.Pod{
+					"task1": {
+						"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+					},
+				},
+			},
+			Target: &state.Target{
+				Type:     state.TargetTypePod,
+				TaskName: "task1",
+				PodName:  "nonexistent",
+			},
+			PodRetainPhase: state.PodRetainPhaseNone,
+			Pods: map[string]*v1.Pod{
+				"pod1": buildPod(namespace, "pod1", v1.PodRunning, nil),
+			},
+			ExpectVal: nil,
+			ExpectedPods: map[string]bool{
+				"pod1": true, // Should exist (not targeted)
+			},
+		},
+	}
+
+	for i, testcase := range testcases {
+		t.Run(testcase.Name, func(t *testing.T) {
+			fakeController := newFakeController()
+
+			// Create pods
+			for _, pod := range testcase.Pods {
+				_, err := fakeController.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+				if err != nil {
+					t.Fatalf("Error while creating pod: %v", err)
+				}
+			}
+
+			// Create job
+			_, err := fakeController.vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(), testcase.Job, metav1.CreateOptions{})
+			if err != nil {
+				t.Fatalf("Error while creating job: %v", err)
+			}
+
+			err = fakeController.cache.Add(testcase.Job)
+			if err != nil {
+				t.Fatalf("Error while adding job to cache: %v", err)
+			}
+
+			// Execute killPods
+			err = fakeController.killPods(testcase.JobInfo, testcase.PodRetainPhase, testcase.Target, testcase.UpdateStatus)
+			if !errors.Is(err, testcase.ExpectVal) {
+				if testcase.ExpectVal == nil {
+					t.Errorf("Test case %d (%s): expected no error, but got error %v", i, testcase.Name, err)
+				} else if err == nil || err.Error() != testcase.ExpectVal.Error() {
+					t.Errorf("Test case %d (%s): expected error %v, but got %v", i, testcase.Name, testcase.ExpectVal, err)
+				}
+			}
+
+			// Check if pods exist as expected
+			for podName, shouldExist := range testcase.ExpectedPods {
+				_, err := fakeController.kubeClient.CoreV1().Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
+				if shouldExist && err != nil {
+					t.Errorf("Test case %d (%s): expected pod %s to exist, but got error %v", i, testcase.Name, podName, err)
+				} else if !shouldExist && err == nil {
+					t.Errorf("Test case %d (%s): expected pod %s to be deleted, but still exists", i, testcase.Name, podName)
+				}
+			}
+		})
+	}
 }
