@@ -62,10 +62,9 @@ type queueAttr struct {
 	ancestors []api.QueueID
 	children  map[api.QueueID]*queueAttr
 
-	deserved                               *api.Resource
-	allocated                              *api.Resource
-	allocatedWithoutSchedulingDisabledNode *api.Resource
-	request                                *api.Resource
+	deserved  *api.Resource
+	allocated *api.Resource
+	request   *api.Resource
 	// elastic represents the sum of job's elastic resource, job's elastic = job.allocated - job.minAvailable
 	elastic *api.Resource
 	// inqueue represents the resource request of the inqueue job
@@ -375,21 +374,6 @@ func (cp *capacityPlugin) OnSessionClose(ssn *framework.Session) {
 	cp.queueOpts = nil
 }
 
-// addAllocatedFromSchedulableNode tracks resources allocated on schedulable and ready nodes
-// This helper function is used by both buildQueueAttrs and buildHierarchicalQueueAttrs
-func (cp *capacityPlugin) addAllocatedFromSchedulableNode(attr *queueAttr, task *api.TaskInfo, ssn *framework.Session) {
-	// Check if the node is schedulable and ready
-	if node, found := ssn.Nodes[task.NodeName]; found {
-		if !schedutil.IsNodeUnschedulable(node.Node) && !schedutil.IsNodeNotReady(node.Node) {
-			// Node is schedulable and ready, count it
-			if attr.allocatedWithoutSchedulingDisabledNode == nil {
-				attr.allocatedWithoutSchedulingDisabledNode = api.EmptyResource()
-			}
-			attr.allocatedWithoutSchedulingDisabledNode.Add(task.Resreq)
-		}
-	}
-}
-
 func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 	for _, queue := range ssn.Queues {
 		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
@@ -443,9 +427,13 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
-					attr.allocated.Add(t.Resreq)
+					// Only count resources from schedulable and ready nodes for allocation check
+					if node, found := ssn.Nodes[t.NodeName]; found {
+						if !schedutil.IsNodeUnschedulable(node.Node) && !schedutil.IsNodeNotReady(node.Node) {
+							attr.allocated.Add(t.Resreq)
+						}
+					}
 					attr.request.Add(t.Resreq)
-					cp.addAllocatedFromSchedulableNode(attr, t, ssn)
 				}
 			} else if status == api.Pending {
 				for _, t := range tasks {
@@ -574,17 +562,17 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		oldRequest := attr.request.Clone()
 		oldInqueue := attr.inqueue.Clone()
 		oldElastic := attr.elastic.Clone()
-		oldAllocatedOnSchedulableNodes := api.EmptyResource()
-		if attr.allocatedWithoutSchedulingDisabledNode != nil {
-			oldAllocatedOnSchedulableNodes = attr.allocatedWithoutSchedulingDisabledNode.Clone()
-		}
 
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, t := range tasks {
-					attr.allocated.Add(t.Resreq)
+					// Only count resources from schedulable and ready nodes for allocation check
+					if node, found := ssn.Nodes[t.NodeName]; found {
+						if !schedutil.IsNodeUnschedulable(node.Node) && !schedutil.IsNodeNotReady(node.Node) {
+							attr.allocated.Add(t.Resreq)
+						}
+					}
 					attr.request.Add(t.Resreq)
-					cp.addAllocatedFromSchedulableNode(attr, t, ssn)
 				}
 			} else if status == api.Pending {
 				for _, t := range tasks {
@@ -614,17 +602,6 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			ancestorAttr.request.Add(attr.request.Clone().Sub(oldRequest))
 			ancestorAttr.inqueue.Add(attr.inqueue.Clone().Sub(oldInqueue))
 			ancestorAttr.elastic.Add(attr.elastic.Clone().Sub(oldElastic))
-
-			// Also update allocatedWithoutSchedulingDisabledNode for ancestors
-			if attr.allocatedWithoutSchedulingDisabledNode != nil {
-				newAllocatedOnSchedulableNodes := attr.allocatedWithoutSchedulingDisabledNode.Clone().Sub(oldAllocatedOnSchedulableNodes)
-				if !newAllocatedOnSchedulableNodes.IsEmpty() {
-					if ancestorAttr.allocatedWithoutSchedulingDisabledNode == nil {
-						ancestorAttr.allocatedWithoutSchedulingDisabledNode = api.EmptyResource()
-					}
-					ancestorAttr.allocatedWithoutSchedulingDisabledNode.Add(newAllocatedOnSchedulableNodes)
-				}
-			}
 		}
 
 		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
@@ -887,17 +864,11 @@ func (cp *capacityPlugin) queueAllocatable(queue *api.QueueInfo, candidate *api.
 }
 
 func queueAllocatable(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo) bool {
-	// Initialize allocatedWithoutSchedulingDisabledNode if it's nil
-	allocatedOnSchedulableNodes := attr.allocatedWithoutSchedulingDisabledNode
-	if allocatedOnSchedulableNodes == nil {
-		allocatedOnSchedulableNodes = api.EmptyResource()
-	}
-
-	futureUsed := allocatedOnSchedulableNodes.Clone().Add(candidate.Resreq)
+	futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
 	allocatable := futureUsed.LessEqualWithDimension(attr.realCapability, candidate.Resreq)
 	if !allocatable {
-		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>, allocatedOnSchedulableNodes <%v>; Candidate <%v>: resource request <%v>",
-			queue.Name, attr.realCapability, attr.allocated, allocatedOnSchedulableNodes, candidate.Name, candidate.Resreq)
+		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
+			queue.Name, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq)
 	}
 
 	return allocatable
@@ -1003,11 +974,6 @@ func (qa *queueAttr) Clone() *queueAttr {
 		realCapability: qa.realCapability.Clone(),
 		guarantee:      qa.guarantee.Clone(),
 		children:       make(map[api.QueueID]*queueAttr),
-	}
-
-	// Clone the new field for allocated resources on schedulable nodes
-	if qa.allocatedWithoutSchedulingDisabledNode != nil {
-		cloned.allocatedWithoutSchedulingDisabledNode = qa.allocatedWithoutSchedulingDisabledNode.Clone()
 	}
 
 	if len(qa.ancestors) > 0 {
