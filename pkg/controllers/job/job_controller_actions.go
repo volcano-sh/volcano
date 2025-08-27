@@ -100,9 +100,15 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 
 	if target != nil {
 		if target.Type == state.TargetTypeTask {
-			podsToKill = jobInfo.Pods[target.TaskName]
+			if targetPods, found := jobInfo.Pods[target.TaskName]; found {
+				podsToKill = targetPods
+			}
 		} else if target.Type == state.TargetTypePod {
-			podsToKill[target.PodName] = jobInfo.Pods[target.TaskName][target.PodName]
+			if targetPods, found := jobInfo.Pods[target.TaskName]; found {
+				if pod, found := targetPods[target.PodName]; found {
+					podsToKill[target.PodName] = pod
+				}
+			}
 		}
 		total += len(podsToKill)
 	} else {
