@@ -1,0 +1,13 @@
+FROM alpine:latest
+
+COPY vc-scheduler /vc-scheduler
+COPY volcano-npu_*.so plugins/
+
+RUN adduser -h /home/hwMindX -u 9000 -D -s /sbin/nologin hwMindX && \
+    sed '1c root:x:0:0:root:/root:/sbin/nologin' /etc/passwd && \
+    chown -R hwMindX:hwMindX plugins vc-scheduler && \
+    chmod 750 /home/hwMindX && \
+    chmod 500 plugins vc-scheduler && \
+    chmod 400 plugins/*.so
+
+USER hwMindX

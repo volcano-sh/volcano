@@ -1,0 +1,114 @@
+{
+  "version": "1.0",
+  "tor_count": 4,
+  "server_list": [
+    {
+      "tor_id": 0,
+      "IsSharedTor": 1,
+      "tor_ip": "1.0.0.0",
+      "server": [
+        {
+          "server_ip": "1.1.0.0",
+          "npu_count": 8,
+          "slice_id": 0
+        },
+        {
+          "server_ip": "1.1.0.1",
+          "npu_count": 8,
+          "slice_id": 1
+        },
+        {
+          "server_ip": "1.1.0.2",
+          "npu_count": 8,
+          "slice_id": 2
+        },
+        {
+          "server_ip": "1.1.0.3",
+          "npu_count": 8,
+          "slice_id": 3
+        }
+      ]
+    },
+    {
+      "tor_id": 1,
+      "tor_ip": "1.0.0.1",
+      "server": [
+        {
+          "server_ip": "1.1.0.4",
+          "npu_count": 8,
+          "slice_id": 0
+        },
+        {
+          "server_ip": "1.1.0.5",
+          "npu_count": 8,
+          "slice_id": 1
+        },
+        {
+          "server_ip": "1.1.0.6",
+          "npu_count": 8,
+          "slice_id": 2
+        },
+        {
+          "server_ip": "1.1.0.7",
+          "npu_count": 8,
+          "slice_id": 3
+        }
+      ]
+    },
+    {
+      "tor_id": 2,
+      "tor_ip": "1.0.0.2",
+      "IsSharedTor": 1,
+      "server": [
+        {
+          "server_ip": "1.1.0.8",
+          "npu_count": 8,
+          "slice_id": 0
+        },
+        {
+          "server_ip": "1.1.0.9",
+          "npu_count": 8,
+          "slice_id": 1
+        },
+        {
+          "server_ip": "1.1.0.10",
+          "npu_count": 8,
+          "slice_id": 2
+        },
+        {
+          "server_ip": "1.1.0.11",
+          "npu_count": 8,
+          "slice_id": 3
+        }
+      ]
+    },
+    {
+      "tor_id": 3,
+      "IsSharedTor": 1,
+      "IsHealthy": 1,
+      "tor_ip": "1.0.0.3",
+      "server": [
+        {
+          "server_ip": "1.1.0.12",
+          "npu_count": 8,
+          "slice_id": 0
+        },
+        {
+          "server_ip": "1.1.0.13",
+          "npu_count": 8,
+          "slice_id": 1
+        },
+        {
+          "server_ip": "1.1.0.114",
+          "npu_count": 8,
+          "slice_id": 2
+        },
+        {
+          "server_ip": "1.1.0.111",
+          "npu_count": 8,
+          "slice_id": 3
+        }
+      ]
+    }
+  ]
+}
