@@ -71,21 +71,32 @@ func decodeNodeDevices(name, str string) (*GPUDevices, string) {
 			}
 			count, _ := strconv.Atoi(items[1])
 			devmem, _ := strconv.Atoi(items[2])
-			health, _ := strconv.ParseBool(items[4])
+			// Handle cases without core settings
+			offsetAfterMem := 0
+			cores, err := strconv.Atoi(items[3])
+			if err != nil {
+				// If items[3] is not core number, set default 100
+				cores = 100
+			} else {
+				// If items[3] is core number, when items index >= 3, index will add offsetAfterMem
+				offsetAfterMem = 1
+			}
+			health, _ := strconv.ParseBool(items[4+offsetAfterMem])
 			i := GPUDevice{
 				ID:          index,
 				Node:        name,
 				UUID:        items[0],
 				Number:      uint(count),
 				Memory:      uint(devmem),
-				Type:        items[3],
+				Core:        uint(cores),
+				Type:        items[3+offsetAfterMem],
 				PodMap:      make(map[string]*GPUUsage),
 				Health:      health,
 				MigTemplate: []config.Geometry{},
 				MigUsage: config.MigInUse{
 					Index: -1},
 			}
-			sharingMode = getSharingMode(items[5])
+			sharingMode = getSharingMode(items[5+offsetAfterMem])
 			if sharingMode == vGPUControllerMIG {
 				var err error
 				i.MigTemplate, err = extractGeometryFromType(i.Type)
@@ -301,6 +312,7 @@ func getGPUDeviceSnapShot(snap *GPUDevices) *GPUDevices {
 				UUID:        val.UUID,
 				PodMap:      val.PodMap,
 				Memory:      val.Memory,
+				Core:        val.Core,
 				Number:      val.Number,
 				Type:        val.Type,
 				Health:      val.Health,
@@ -392,15 +404,15 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 			if int(gs.Device[i].Memory)-int(gs.Device[i].UsedMem) < int(val.Memreq) {
 				continue
 			}
-			if gs.Device[i].UsedCore+val.Coresreq > 100 {
+			if gs.Device[i].UsedCore+val.Coresreq > gs.Device[i].Core {
 				continue
 			}
 			// Coresreq=100 indicates it want this card exclusively
-			if val.Coresreq == 100 && gs.Device[i].UsedNum > 0 {
+			if val.Coresreq == gs.Device[i].Core && gs.Device[i].UsedNum > 0 {
 				continue
 			}
 			// You can't allocate core=0 job to an already full GPU
-			if gs.Device[i].UsedCore == 100 && val.Coresreq == 0 {
+			if gs.Device[i].UsedCore == gs.Device[i].Core && val.Coresreq == 0 {
 				continue
 			}
 			if !checkType(pod.Annotations, *gs.Device[i], val) {
