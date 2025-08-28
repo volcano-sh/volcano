@@ -22,6 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
@@ -79,6 +80,7 @@ var _ Devices = new(vgpu.GPUDevices)
 var RegisteredDevices = []string{
 	gpushare.DeviceName,
 	vgpu.DeviceName,
+	vnpu.DeviceName,
 }
 
 var IgnoredDevicesList = ignoredDevicesList{}

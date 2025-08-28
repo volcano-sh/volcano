@@ -27,6 +27,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
@@ -42,6 +43,8 @@ const (
 	GPUNumberPredicate  = "deviceshare.GPUNumberEnable"
 
 	VGPUEnable = "deviceshare.VGPUEnable"
+
+	ASCEND310PvGPU = "deviceshare.ASCEND310PVGPUEnable"
 
 	SchedulePolicyArgument = "deviceshare.SchedulePolicy"
 	ScheduleWeight         = "deviceshare.ScheduleWeight"
@@ -76,6 +79,7 @@ func enablePredicate(dsp *deviceSharePlugin) {
 	args.GetBool(&gpushare.GpuNumberEnable, GPUNumberPredicate)
 	args.GetBool(&nodeLockEnable, NodeLockEnable)
 	args.GetBool(&vgpu.VGPUEnable, VGPUEnable)
+	args.GetBool(&vnpu.Ascend310pvNPUEnable, ASCEND310PvGPU)
 
 	gpushare.NodeLockEnable = nodeLockEnable
 	vgpu.NodeLockEnable = nodeLockEnable
