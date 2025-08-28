@@ -48,6 +48,8 @@ type GPUDevice struct {
 	PodMap map[string]*GPUUsage
 	// memory per card
 	Memory uint
+	// Core per card
+	Core uint
 	// max sharing number
 	Number uint
 	// type of this number
@@ -87,6 +89,7 @@ func NewGPUDevice(id int, mem uint) *GPUDevice {
 		UsedNum:  0,
 		UsedMem:  0,
 		UsedCore: 0,
+		Core:     100,
 	}
 }
 
