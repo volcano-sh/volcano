@@ -26,7 +26,15 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
-	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+)
+
+type DequeueStrategy = scheduling.DequeueStrategy
+
+const (
+	DequeueStrategyFIFO     = scheduling.DequeueStrategyFIFO
+	DequeueStrategyTraverse = scheduling.DequeueStrategyTraverse
+	DefaultDequeueStrategy  = scheduling.DefaultDequeueStrategy
 )
 
 // QueueID is UID type, serves as unique ID for each queue
@@ -47,18 +55,29 @@ type QueueInfo struct {
 	// path from the root to the node itself.
 	Hierarchy string
 
+	// DequeueStrategy defines the strategy for dequeuing jobs from the queue
+	DequeueStrategy DequeueStrategy
+
 	Queue *scheduling.Queue
 }
 
 // NewQueueInfo creates new queueInfo object
 func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
+	// Read dequeue strategy from annotation, default to traverse
+	dequeueStrategy := DefaultDequeueStrategy
+	if queue.Spec.DequeueStrategy != "" {
+		dequeueStrategy = queue.Spec.DequeueStrategy
+	}
+
 	return &QueueInfo{
 		UID:  QueueID(queue.Name),
 		Name: queue.Name,
 
 		Weight:    queue.Spec.Weight,
-		Hierarchy: queue.Annotations[v1beta1.KubeHierarchyAnnotationKey],
-		Weights:   queue.Annotations[v1beta1.KubeHierarchyWeightAnnotationKey],
+		Hierarchy: queue.Annotations[schedulingv1beta1.KubeHierarchyAnnotationKey],
+		Weights:   queue.Annotations[schedulingv1beta1.KubeHierarchyWeightAnnotationKey],
+
+		DequeueStrategy: dequeueStrategy,
 
 		Queue: queue,
 	}
@@ -67,12 +86,13 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 // Clone is used to clone queueInfo object
 func (q *QueueInfo) Clone() *QueueInfo {
 	return &QueueInfo{
-		UID:       q.UID,
-		Name:      q.Name,
-		Weight:    q.Weight,
-		Hierarchy: q.Hierarchy,
-		Weights:   q.Weights,
-		Queue:     q.Queue,
+		UID:             q.UID,
+		Name:            q.Name,
+		Weight:          q.Weight,
+		Hierarchy:       q.Hierarchy,
+		Weights:         q.Weights,
+		DequeueStrategy: q.DequeueStrategy,
+		Queue:           q.Queue,
 	}
 }
 
