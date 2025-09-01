@@ -40,6 +40,10 @@ import (
 
 const (
 	controllerRevisionHashLabelKey = "controller-revision-hash"
+
+	// NetworkTopology annotation keys for Pod annotations
+	NetworkTopologyModeAnnotationKey        = "volcano.sh/network-topology-mode"
+	NetworkTopologyHighestTierAnnotationKey = "volcano.sh/network-topology-highest-tier"
 )
 
 type podRequest struct {
@@ -413,7 +417,60 @@ func (pg *pgcontroller) buildPodGroupFromPod(pod *v1.Pod, pgName string) *schedu
 		obj.Annotations[scheduling.JDBMaxUnavailable] = value
 	}
 
+	// Parse and set NetworkTopology from Pod annotations
+	if networkTopology := parseNetworkTopologyFromPod(pod); networkTopology != nil {
+		obj.Spec.NetworkTopology = networkTopology
+
+		highestTierStr := "nil"
+		if networkTopology.HighestTierAllowed != nil {
+			highestTierStr = strconv.Itoa(*networkTopology.HighestTierAllowed)
+		}
+		klog.V(4).Infof("Set NetworkTopology for PodGroup %s/%s: mode=%s, highestTier=%s",
+			obj.Namespace, obj.Name, networkTopology.Mode, highestTierStr)
+	}
+
 	return obj
+}
+
+// parseNetworkTopologyFromPod extracts NetworkTopology configuration from Pod annotations
+func parseNetworkTopologyFromPod(pod *v1.Pod) *scheduling.NetworkTopologySpec {
+	annotations := pod.Annotations
+	if annotations == nil {
+		return nil
+	}
+
+	// Check if any NetworkTopology annotations are present
+	modeStr, modeExists := annotations[NetworkTopologyModeAnnotationKey]
+	tierStr, tierExists := annotations[NetworkTopologyHighestTierAnnotationKey]
+
+	if !modeExists && !tierExists {
+		return nil
+	}
+
+	nt := &scheduling.NetworkTopologySpec{
+		Mode: scheduling.HardNetworkTopologyMode,
+	}
+
+	// Parse mode
+	if modeExists {
+		mode := scheduling.NetworkTopologyMode(strings.ToLower(modeStr))
+		if mode == scheduling.HardNetworkTopologyMode || mode == scheduling.SoftNetworkTopologyMode {
+			nt.Mode = mode
+		} else {
+			klog.Warningf("Invalid network topology mode %q in pod %s/%s, using default 'hard' mode", modeStr, pod.Namespace, pod.Name)
+		}
+	}
+
+	// Parse highest tier allowed
+	if tierExists {
+		if tier, err := strconv.Atoi(tierStr); err == nil {
+			nt.HighestTierAllowed = &tier
+		} else {
+			klog.Warningf("Invalid network topology highest tier %s in pod %s/%s: %v", tierStr, pod.Namespace, pod.Name, err)
+		}
+	}
+
+	return nt
 }
 
 func (pg *pgcontroller) shouldUpdateExistingPodGroup(podGroup *scheduling.PodGroup, pod *v1.Pod) bool {
