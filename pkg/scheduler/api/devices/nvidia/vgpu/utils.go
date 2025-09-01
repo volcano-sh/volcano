@@ -71,17 +71,17 @@ func decodeNodeDevices(name, str string) (*GPUDevices, string) {
 			}
 			count, _ := strconv.Atoi(items[1])
 			devmem, _ := strconv.Atoi(items[2])
-			// Handle cases without core settings
-			offsetAfterMem := 0
+			offsetForCore := 0
+			// Check if items[3] is a number for core, otherwise it is the GPU card type
 			cores, err := strconv.Atoi(items[3])
-			if err != nil {
-				// If items[3] is not core number, set default 100
+			if err != nil || len(items) < 7 {
+				// If items[3] is not core number, set default 100, offsetForCore is 0
 				cores = 100
 			} else {
-				// If items[3] is core number, when items index >= 3, index will add offsetAfterMem
-				offsetAfterMem = 1
+				// If items[3] is core number, index will add offsetForCore after items[3]
+				offsetForCore = 1
 			}
-			health, _ := strconv.ParseBool(items[4+offsetAfterMem])
+			health, _ := strconv.ParseBool(items[4+offsetForCore])
 			i := GPUDevice{
 				ID:          index,
 				Node:        name,
@@ -89,14 +89,14 @@ func decodeNodeDevices(name, str string) (*GPUDevices, string) {
 				Number:      uint(count),
 				Memory:      uint(devmem),
 				Core:        uint(cores),
-				Type:        items[3+offsetAfterMem],
+				Type:        items[3+offsetForCore],
 				PodMap:      make(map[string]*GPUUsage),
 				Health:      health,
 				MigTemplate: []config.Geometry{},
 				MigUsage: config.MigInUse{
 					Index: -1},
 			}
-			sharingMode = getSharingMode(items[5+offsetAfterMem])
+			sharingMode = getSharingMode(items[5+offsetForCore])
 			if sharingMode == vGPUControllerMIG {
 				var err error
 				i.MigTemplate, err = extractGeometryFromType(i.Type)
