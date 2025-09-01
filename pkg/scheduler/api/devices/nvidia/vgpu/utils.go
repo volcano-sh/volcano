@@ -81,7 +81,11 @@ func decodeNodeDevices(name, str string) (*GPUDevices, string) {
 				// If items[3] is core number, index will add offsetForCore after items[3]
 				offsetForCore = 1
 			}
-			health, _ := strconv.ParseBool(items[4+offsetForCore])
+			health, err := strconv.ParseBool(items[4+offsetForCore])
+			if err != nil {
+				klog.Errorf("failed to parse health for GPU %d: %v", index, err)
+				health = false
+			}
 			i := GPUDevice{
 				ID:          index,
 				Node:        name,
