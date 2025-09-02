@@ -162,7 +162,7 @@ func TestCalculateExtendResources(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := CalculateExtendResources(tt.pod); !reflect.DeepEqual(got, tt.want) {
+			if got := CalculateExtendResources(tt.pod, nil, 0); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CalculateExtendResources() = %v, want %v", got, tt.want)
 			}
 		})

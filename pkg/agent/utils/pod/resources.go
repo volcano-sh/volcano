@@ -53,7 +53,7 @@ type Resources struct {
 var defaultPageSize = int64(os.Getpagesize())
 
 // CalculateExtendResources calculates pod and container that use extend resource level cgroup resource, include cpu and memory
-func CalculateExtendResources(pod *v1.Pod) []Resources {
+func CalculateExtendResources(pod *v1.Pod, node *v1.Node, memoryThrottlingFactor float64) []Resources {
 	containerRes := []Resources{}
 	cpuSharesTotal, cpuLimitsTotal, memoryLimitsTotal := int64(0), int64(0), int64(0)
 	// track if limits were applied for each resource.
@@ -83,12 +83,6 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 		// set memory limit.
 		memoryLimit, ok := c.Resources.Limits[apis.GetExtendResourceMemory()]
 		if ok && !memoryLimit.IsZero() {
-			// CGroup v1 uses memory.limit_in_bytes, while CGroup v2 uses memory.max.
-			if cgroup.IsCgroupV2() {
-				containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.CGroupV2MemoryLimitFile, Value: memoryLimit.Value()})
-			} else {
-				containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.CGroupV1MemoryLimitFile, Value: memoryLimit.Value()})
-			}
 			memoryLimitsTotal += memoryLimit.Value()
 		} else {
 			memoryLimitsDeclared = false
@@ -108,26 +102,30 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 				// `memory.high=floor[(requests.memory + memory throttling factor * (limits.memory or node allocatable memory - requests.memory))/pageSize] * pageSize`
 				// where default value of memory throttling factor is set to 0.9
 				// More info: https://git.k8s.io/enhancements/keps/sig-node/2570-memory-qos
-				memoryHigh := int64(0)
-				// TODO: Get "memory throttling factor" from configuration.
-				// TODO: Get "node allocatable memory" from node info.
+				memoryLimitToUse := float64(0)
 				if !memoryLimit.IsZero() {
-					memoryHigh = int64(math.Floor(
-						float64(memoryReq.Value())+
-							(float64(memoryLimit.Value())-float64(memoryReq.Value()))*float64(m.memoryThrottlingFactor))/float64(defaultPageSize)) * defaultPageSize
+					memoryLimitToUse = float64(memoryLimit.Value())
 				} else {
-					nodeAlloc := make(v1.ResourceList)
+					// TODO: Get "node allocatable memory" from node info.
+					nodeAlloc := node.Status.Allocatable
 					allocatableMemory, ok := nodeAlloc[v1.ResourceMemory]
 					if ok && allocatableMemory.Value() > 0 {
-						memoryHigh = int64(math.Floor(
-							float64(memoryReq.Value())+
-								(float64(allocatableMemory.Value())-float64(memoryReq.Value()))*float64(m.memoryThrottlingFactor))/float64(defaultPageSize)) * defaultPageSize
+						memoryLimitToUse = float64(allocatableMemory.Value())
 					}
 				}
-				if memoryHigh != 0 && memoryHigh > memoryReq.Value() {
+				if memoryLimitToUse != 0 {
+					memoryHigh := int64(math.Floor(
+						float64(memoryReq.Value())+
+							(memoryLimitToUse-float64(memoryReq.Value()))*memoryThrottlingFactor)/float64(defaultPageSize)) * defaultPageSize
 					containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.CGroupV2MemoryHighFile, Value: memoryHigh})
 				}
 			}
+
+			if memoryLimitsDeclared {
+				containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.CGroupV2MemoryLimitFile, Value: memoryLimit.Value()})
+			}
+		} else if memoryLimitsDeclared {
+			containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.CGroupV1MemoryLimitFile, Value: memoryLimit.Value()})
 		}
 	}
 
