@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
@@ -51,6 +50,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	vbcap "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodescore"
 )
@@ -88,13 +88,6 @@ const (
 
 	// CachePredicate control cache predicate feature
 	CachePredicate = "predicate.CacheEnable"
-
-	// ProportionalPredicate is the key for enabling Proportional Predicate in YAML
-	ProportionalPredicate = "predicate.ProportionalEnable"
-	// ProportionalResource is the key for additional resource key name
-	ProportionalResource = "predicate.resources"
-	// ProportionalResourcesPrefix is the key prefix for additional resource key name
-	ProportionalResourcesPrefix = ProportionalResource + "."
 )
 
 var (
@@ -120,11 +113,6 @@ func (pp *predicatesPlugin) Name() string {
 	return PluginName
 }
 
-type baseResource struct {
-	CPU    float64
-	Memory float64
-}
-
 type predicateEnable struct {
 	nodeAffinityEnable              bool
 	nodePortEnable                  bool
@@ -134,10 +122,8 @@ type predicateEnable struct {
 	volumeZoneEnable                bool
 	podTopologySpreadEnable         bool
 	cacheEnable                     bool
-	proportionalEnable              bool
 	volumeBindingEnable             bool
 	dynamicResourceAllocationEnable bool
-	proportional                    map[v1.ResourceName]baseResource
 }
 
 // bind context extension information of predicates
@@ -170,10 +156,6 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	         predicate.GPUSharingEnable: true
 	         predicate.GPUNumberEnable: true
 	         predicate.CacheEnable: true
-	         predicate.ProportionalEnable: true
-	         predicate.resources: nvidia.com/gpu
-	         predicate.resources.nvidia.com/gpu.cpu: 4
-	         predicate.resources.nvidia.com/gpu.memory: 8
 	     - name: proportion
 	     - name: nodeorder
 	*/
@@ -187,7 +169,6 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 		volumeZoneEnable:                true,
 		podTopologySpreadEnable:         true,
 		cacheEnable:                     false,
-		proportionalEnable:              false,
 		volumeBindingEnable:             true,
 		dynamicResourceAllocationEnable: false,
 	}
@@ -203,41 +184,7 @@ func enablePredicate(args framework.Arguments) predicateEnable {
 	args.GetBool(&predicate.podTopologySpreadEnable, PodTopologySpreadEnable)
 	args.GetBool(&predicate.volumeBindingEnable, VolumeBindingEnable)
 	args.GetBool(&predicate.dynamicResourceAllocationEnable, DynamicResourceAllocationEnable)
-
 	args.GetBool(&predicate.cacheEnable, CachePredicate)
-	// Checks whether predicate.ProportionalEnable is provided or not, if given, modifies the value in predicateEnable struct.
-	args.GetBool(&predicate.proportionalEnable, ProportionalPredicate)
-	resourcesProportional := make(map[v1.ResourceName]baseResource)
-	resourcesStr, ok := args[ProportionalResource].(string)
-	if !ok {
-		resourcesStr = ""
-	}
-	resources := strings.Split(resourcesStr, ",")
-	for _, resource := range resources {
-		resource = strings.TrimSpace(resource)
-		if resource == "" {
-			continue
-		}
-		// proportional.resources.[ResourceName]
-		cpuResourceKey := ProportionalResourcesPrefix + resource + ".cpu"
-		cpuResourceRate := 1.0
-		args.GetFloat64(&cpuResourceRate, cpuResourceKey)
-		if cpuResourceRate < 0 {
-			cpuResourceRate = 1.0
-		}
-		memoryResourceKey := ProportionalResourcesPrefix + resource + ".memory"
-		memoryResourceRate := 1.0
-		args.GetFloat64(&memoryResourceRate, memoryResourceKey)
-		if memoryResourceRate < 0 {
-			memoryResourceRate = 1.0
-		}
-		r := baseResource{
-			CPU:    cpuResourceRate,
-			Memory: memoryResourceRate,
-		}
-		resourcesProportional[v1.ResourceName(resource)] = r
-	}
-	predicate.proportional = resourcesProportional
 
 	return predicate
 }
@@ -516,7 +463,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			nodeUnscheduleStatus := api.ConvertPredicateStatus(status)
 			if nodeUnscheduleStatus.Code != api.Success {
 				predicateStatus = append(predicateStatus, nodeUnscheduleStatus)
-				if ShouldAbort(nodeUnscheduleStatus) {
+				if util.ShouldAbort(nodeUnscheduleStatus) {
 					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeUnscheduleFilter.Name(), status.Message())
 				}
 			}
@@ -527,7 +474,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				nodeAffinityStatus := api.ConvertPredicateStatus(status)
 				if nodeAffinityStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, nodeAffinityStatus)
-					if ShouldAbort(nodeAffinityStatus) {
+					if util.ShouldAbort(nodeAffinityStatus) {
 						return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", nodeAffinityFilter.Name(), status.Message())
 					}
 				}
@@ -539,7 +486,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				tolerationStatus := api.ConvertPredicateStatus(status)
 				if tolerationStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, tolerationStatus)
-					if ShouldAbort(tolerationStatus) {
+					if util.ShouldAbort(tolerationStatus) {
 						return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", tolerationFilter.Name(), status.Message())
 					}
 				}
@@ -582,7 +529,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				nodePortStatus := api.ConvertPredicateStatus(status)
 				if nodePortStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, nodePortStatus)
-					if ShouldAbort(nodePortStatus) {
+					if util.ShouldAbort(nodePortStatus) {
 						return api.NewFitErrWithStatus(task, node, predicateStatus...)
 					}
 				}
@@ -597,7 +544,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				podAffinityStatus := api.ConvertPredicateStatus(status)
 				if podAffinityStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, podAffinityStatus)
-					if ShouldAbort(podAffinityStatus) {
+					if util.ShouldAbort(podAffinityStatus) {
 						return api.NewFitErrWithStatus(task, node, predicateStatus...)
 					}
 				}
@@ -610,7 +557,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			nodeVolumeStatus := api.ConvertPredicateStatus(status)
 			if nodeVolumeStatus.Code != api.Success {
 				predicateStatus = append(predicateStatus, nodeVolumeStatus)
-				if ShouldAbort(nodeVolumeStatus) {
+				if util.ShouldAbort(nodeVolumeStatus) {
 					return api.NewFitErrWithStatus(task, node, predicateStatus...)
 				}
 			}
@@ -622,7 +569,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			volumeZoneStatus := api.ConvertPredicateStatus(status)
 			if volumeZoneStatus.Code != api.Success {
 				predicateStatus = append(predicateStatus, volumeZoneStatus)
-				if ShouldAbort(volumeZoneStatus) {
+				if util.ShouldAbort(volumeZoneStatus) {
 					return api.NewFitErrWithStatus(task, node, predicateStatus...)
 				}
 			}
@@ -636,24 +583,11 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				podTopologyStatus := api.ConvertPredicateStatus(status)
 				if podTopologyStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, podTopologyStatus)
-					if ShouldAbort(podTopologyStatus) {
+					if util.ShouldAbort(podTopologyStatus) {
 						return api.NewFitErrWithStatus(task, node, predicateStatus...)
 					}
 				}
 			}
-		}
-
-		if predicate.proportionalEnable {
-			// Check ProportionalPredicate
-			proportionalStatus, _ := checkNodeResourceIsProportional(task, node, predicate.proportional)
-			if proportionalStatus.Code != api.Success {
-				predicateStatus = append(predicateStatus, proportionalStatus)
-				if ShouldAbort(proportionalStatus) {
-					return api.NewFitErrWithStatus(task, node, predicateStatus...)
-				}
-			}
-			klog.V(4).Infof("checkNodeResourceIsProportional predicates Task <%s/%s> on Node <%s>: fit %v",
-				task.Namespace, task.Name, node.Name, fit)
 		}
 
 		// Check VolumeBinding
@@ -664,7 +598,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				volumeBindingStatus := api.ConvertPredicateStatus(status)
 				if volumeBindingStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, volumeBindingStatus)
-					if ShouldAbort(volumeBindingStatus) {
+					if util.ShouldAbort(volumeBindingStatus) {
 						return api.NewFitErrWithStatus(task, node, predicateStatus...)
 					}
 				}
@@ -679,7 +613,7 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				dynamicResourceAllocationStatus := api.ConvertPredicateStatus(status)
 				if dynamicResourceAllocationStatus.Code != api.Success {
 					predicateStatus = append(predicateStatus, dynamicResourceAllocationStatus)
-					if ShouldAbort(dynamicResourceAllocationStatus) {
+					if util.ShouldAbort(dynamicResourceAllocationStatus) {
 						return api.NewFitErrWithStatus(task, node, predicateStatus...)
 					}
 				}
@@ -896,25 +830,6 @@ func (pp *predicatesPlugin) SetupBindContextExtension(ssn *framework.Session, bi
 	}
 
 	bindCtx.Extensions[pp.Name()] = &bindContextExtension{State: ssn.GetCycleState(bindCtx.TaskInfo.UID)}
-}
-
-// ShouldAbort determines if the given status indicates that execution should be aborted.
-// It checks if the status code corresponds to any of the following conditions:
-// - UnschedulableAndUnresolvable: Indicates the task cannot be scheduled and resolved.
-// - Error: Represents an error state that prevents further execution.
-// - Wait: Suggests that the process should pause and not proceed further.
-// - Skip: Indicates that the operation should be skipped entirely.
-//
-// Parameters:
-// - status (*api.Status): The status object to evaluate.
-//
-// Returns:
-// - bool: True if the status code matches any of the abort conditions; false otherwise.
-func ShouldAbort(status *api.Status) bool {
-	return status.Code == api.UnschedulableAndUnresolvable ||
-		status.Code == api.Error ||
-		status.Code == api.Wait ||
-		status.Code == api.Skip
 }
 
 func handleSkipPredicatePlugin(state *k8sframework.CycleState, pluginName string) bool {
