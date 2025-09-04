@@ -24,6 +24,7 @@ import (
 	"os"
 
 	"volcano.sh/apis/pkg/apis/helpers"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/scheduler"
@@ -50,6 +51,10 @@ import (
 	_ "k8s.io/component-base/metrics/prometheus/restclient"
 )
 
+type generalScheduler interface {
+	Run(stopCh <-chan struct{})
+}
+
 // Run the volcano scheduler.
 func Run(opt *options.ServerOption) error {
 	config, err := kube.BuildConfig(opt.KubeClientOptions)
@@ -65,7 +70,12 @@ func Run(opt *options.ServerOption) error {
 		}
 	}
 
-	sched, err := scheduler.NewScheduler(config, opt)
+	var sched generalScheduler
+	if opt.RunSchedulerSimulator {
+		sched, err = scheduler.NewSchedulerSimulator(config, opt)
+	} else {
+		sched, err = scheduler.NewScheduler(config, opt)
+	}
 	if err != nil {
 		panic(err)
 	}

@@ -1,0 +1,38 @@
+[
+  {
+    "name": "node",
+    "count": 3,
+    "allocatable": {
+      "cpu": "64",
+      "memory": "256Gi"
+    },
+    "capacity": {
+      "cpu": "64",
+      "memory": "256Gi"
+    },
+    "labels": {
+      "topology.kubernetes.io/zone": "zone-a",
+      "gpu": "false"
+    },
+    "taints": []
+  },
+  {
+    "name": "gpu-node",
+    "count": 3,
+    "allocatable": {
+      "cpu": "32",
+      "memory": "128Gi",
+      "nvidia.com/gpu": "8"
+    },
+    "capacity": {
+      "cpu": "32",
+      "memory": "128Gi",
+      "nvidia.com/gpu": "8"
+    },
+    "labels": {
+      "topology.kubernetes.io/zone": "zone-b",
+      "gpu": "true"
+    },
+    "taints": []
+  }
+]

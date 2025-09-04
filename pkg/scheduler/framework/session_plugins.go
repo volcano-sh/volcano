@@ -26,6 +26,7 @@ import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -673,7 +674,12 @@ func (ssn *Session) TaskOrderFn(l, r interface{}) bool {
 }
 
 // PredicateFn invoke predicate function of the plugins
-func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
+func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) (err error) {
+	defer func() {
+		if ssn.PostPredicateFn != nil {
+			ssn.PostPredicateFn(task, node, err)
+		}
+	}()
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledPredicate) {
@@ -813,8 +819,13 @@ func (ssn *Session) BestNodeFn(task *api.TaskInfo, nodeScores map[float64][]*api
 }
 
 // NodeOrderFn invoke node order function of the plugins
-func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-	priorityScore := 0.0
+func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (priorityScore float64, err error) {
+	defer func() {
+		if ssn.PostNodeOrderFn != nil {
+			ssn.PostNodeOrderFn(task, node, priorityScore, err)
+		}
+	}()
+	priorityScore = 0.0
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledNodeOrder) {

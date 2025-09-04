@@ -229,6 +229,9 @@ spec:
             {{- if .Values.custom.ignored_provisioners }}
             - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
             {{- end}}
+            {{- if .Values.custom.run_scheduler_simulator }}
+            - --run-scheduler-simulator=true
+            {{- end }}
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1
           env:
