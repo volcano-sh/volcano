@@ -1,0 +1,53 @@
+name: E2E CRONJOB
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+  pull_request:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cronjob:
+    runs-on: ubuntu-24.04
+    name: E2E about CRONJOB
+    timeout-minutes: 70
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24.x
+
+      - name: Install musl
+        run: |
+          wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
+          tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+          ./configure
+          make && sudo make install
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Install dependences
+        run: |
+          GO111MODULE="on" go install sigs.k8s.io/kind@v0.29.0
+          curl -LO https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+
+      - name: Run E2E Tests
+        run: |
+          export ARTIFACTS_PATH=${{ github.workspace }}/e2e-cronjob-logs
+          make e2e-test-cronjob CC=/usr/local/musl/bin/musl-gcc
+
+      - name: Upload e2e cronjob logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: volcano_e2e_cronjob_logs
+          path: ${{ github.workspace }}/e2e-cronjob-logs
