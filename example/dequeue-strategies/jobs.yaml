@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: List
+items:
+# Jobs for FIFO queue - large job first, then small job
+- apiVersion: batch/v1
+  kind: Job
+  metadata:
+    name: fifo-large-job
+    annotations:
+      scheduling.volcano.sh/queue-name: fifo-queue
+  spec:
+    parallelism: 1
+    completions: 1
+    template:
+      metadata:
+        annotations:
+          scheduling.volcano.sh/queue-name: fifo-queue
+      spec:
+        schedulerName: volcano
+        restartPolicy: Never
+        containers:
+        - name: large-container
+          image: busybox
+          command: ["sleep", "300"]
+          resources:
+            requests:
+              cpu: "3"
+              memory: "6Gi"
+            limits:
+              cpu: "3"
+              memory: "6Gi"
+
+- apiVersion: batch/v1
+  kind: Job
+  metadata:
+    name: fifo-small-job
+    annotations:
+      scheduling.volcano.sh/queue-name: fifo-queue
+  spec:
+    parallelism: 1
+    completions: 1
+    template:
+      metadata:
+        annotations:
+          scheduling.volcano.sh/queue-name: fifo-queue
+      spec:
+        schedulerName: volcano
+        restartPolicy: Never
+        containers:
+        - name: small-container
+          image: busybox
+          command: ["sleep", "60"]
+          resources:
+            requests:
+              cpu: "0.5"
+              memory: "1Gi"
+            limits:
+              cpu: "0.5"
+              memory: "1Gi"
+
+# Jobs for traverse queue - large job first, then small job
+- apiVersion: batch/v1
+  kind: Job
+  metadata:
+    name: traverse-large-job
+    annotations:
+      scheduling.volcano.sh/queue-name: traverse-queue
+  spec:
+    parallelism: 1
+    completions: 1
+    template:
+      metadata:
+        annotations:
+          scheduling.volcano.sh/queue-name: traverse-queue
+      spec:
+        schedulerName: volcano
+        restartPolicy: Never
+        containers:
+        - name: large-container
+          image: busybox
+          command: ["sleep", "300"]
+          resources:
+            requests:
+              cpu: "3"
+              memory: "6Gi"
+            limits:
+              cpu: "3"
+              memory: "6Gi"
+
+- apiVersion: batch/v1
+  kind: Job
+  metadata:
+    name: traverse-small-job
+    annotations:
+      scheduling.volcano.sh/queue-name: traverse-queue
+  spec:
+    parallelism: 1
+    completions: 1
+    template:
+      metadata:
+        annotations:
+          scheduling.volcano.sh/queue-name: traverse-queue
+      spec:
+        schedulerName: volcano
+        restartPolicy: Never
+        containers:
+        - name: small-container
+          image: busybox
+          command: ["sleep", "60"]
+          resources:
+            requests:
+              cpu: "0.5"
+              memory: "1Gi"
+            limits:
+              cpu: "0.5"
+              memory: "1Gi"
+
+
