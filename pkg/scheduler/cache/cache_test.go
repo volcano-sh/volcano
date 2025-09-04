@@ -26,6 +26,7 @@ import (
 	"reflect"
 	"testing"
 	"time"
+	"volcano.sh/apis/pkg/client/clientset/versioned"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -344,6 +345,45 @@ func TestBindTasks(t *testing.T) {
 	r := sc.Recorder.(*record.FakeRecorder)
 	if len(r.Events) != 1 {
 		t.Fatalf("successfully binding task should have 1 event")
+	}
+}
+
+func Test_newDefaultAndRootQueue(t *testing.T) {
+	scheduler := "fake-scheduler"
+	sc := NewDefaultMockSchedulerCache(scheduler)
+	type args struct {
+		vcClient     versioned.Interface
+		defaultQueue string
+	}
+	tests := []struct {
+		name      string
+		args      args
+		ExpectVal error
+	}{
+		{
+			name: "NewDefaultAndRootQueue success Case",
+			args: args{
+				vcClient:     sc.vcClient,
+				defaultQueue: "default",
+			},
+			ExpectVal: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			newDefaultAndRootQueue(tt.args.vcClient, tt.args.defaultQueue)
+			_, err := sc.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), "root", metav1.GetOptions{})
+			if err != nil {
+				t.Errorf("failed to get root queue: %v", err)
+			}
+			_, err = sc.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), "default", metav1.GetOptions{})
+			if err != nil {
+				t.Errorf("failed to get root queue: %v", err)
+			}
+			if err != tt.ExpectVal {
+				t.Errorf("failed to create default and root queue: %v", err)
+			}
+		})
 	}
 }
 
