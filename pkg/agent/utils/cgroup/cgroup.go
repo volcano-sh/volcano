@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	libcontainercgroups "github.com/opencontainers/cgroups"
 	cgroupsystemd "github.com/opencontainers/runc/libcontainer/cgroups/systemd"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -45,9 +46,12 @@ const (
 	CPUQuotaBurstFile string = "cpu.cfs_burst_us"
 	CPUQuotaTotalFile string = "cpu.cfs_quota_us"
 
-	MemoryUsageFile    string = "memory.stat"
-	MemoryQoSLevelFile string = "memory.qos_level"
-	MemoryLimitFile    string = "memory.limit_in_bytes"
+	MemoryUsageFile         string = "memory.stat"
+	MemoryQoSLevelFile      string = "memory.qos_level"
+	CGroupV1MemoryLimitFile string = "memory.limit_in_bytes"
+	CGroupV2MemoryLimitFile string = "memory.max"
+	CGroupV2MemoryHighFile  string = "memory.high"
+	CGroupV2MemoryMinFile   string = "memory.min"
 
 	NetCLSFileName string = "net_cls.classid"
 
@@ -173,4 +177,8 @@ func escapeSystemdCgroupName(part string) string {
 // getPodCgroupNameSuffix returns the last element of the pod CgroupName identifier
 func getPodCgroupNameSuffix(podUID types.UID) string {
 	return PodCgroupNamePrefix + string(podUID)
+}
+
+func IsCgroupV2() bool {
+	return libcontainercgroups.IsCgroup2UnifiedMode()
 }
