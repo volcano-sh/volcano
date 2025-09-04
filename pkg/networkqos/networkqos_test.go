@@ -226,15 +226,6 @@ ANSI_COLOR="0;31"
 
 `
 
-var ubuntuOS = `
-NAME="Ubuntu"
-VERSION="16.04.5 LTS (Xenial Xerus)"
-ID=ubuntu
-ID_LIKE=debian
-PRETTY_NAME="Ubuntu 16.04.5 LTS"
-VERSION_ID="16.04"
-`
-
 func TestInstallNetworkQoS(t *testing.T) {
 	dir, err := os.MkdirTemp("/tmp", "MkdirTemp")
 	defer func() {

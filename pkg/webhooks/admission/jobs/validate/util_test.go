@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/api/equality"
+
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
 
