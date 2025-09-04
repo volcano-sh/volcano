@@ -32,7 +32,8 @@ type Devices interface {
 	AddResource(pod *v1.Pod)
 	//SubResource is to subtract the corresponding device resource of this 'pod' from current scheduler cache
 	SubResource(pod *v1.Pod)
-
+	//AddQueueResource is to override the corresponding resources to queue.allocated
+	AddQueueResource(pod *v1.Pod) map[string]float64
 	//following four functions used in predicate
 	//HasDeviceRequest checks if the 'pod' request this device
 	HasDeviceRequest(pod *v1.Pod) bool
