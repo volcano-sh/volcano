@@ -166,33 +166,50 @@ var (
 			Help:      "Capacity scalar resources for one queue",
 		}, []string{"queue_name", "resource"},
 	)
+
+	// Track all known scalar resources for each queue
+	knownScalarResources = make(map[string]map[string]struct{})
 )
+
+// helper to update knownScalarResources and delete metrics for removed resources
+func updateScalarResourceMetrics(metric *prometheus.GaugeVec, queueName string, scalarResources map[v1.ResourceName]float64) {
+	if knownScalarResources[queueName] == nil {
+		knownScalarResources[queueName] = make(map[string]struct{})
+	}
+	current := make(map[string]struct{})
+	for resource := range scalarResources {
+		name := string(resource)
+		current[name] = struct{}{}
+		knownScalarResources[queueName][name] = struct{}{}
+		metric.WithLabelValues(queueName, name).Set(scalarResources[resource])
+	}
+	// For all known resources, that are not present in the current update set the value to zero
+	for name := range knownScalarResources[queueName] {
+		if _, ok := current[name]; !ok {
+			metric.WithLabelValues(queueName, name).Set(0)
+		}
+	}
+}
 
 // UpdateQueueAllocated records allocated resources for one queue
 func UpdateQueueAllocated(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
 	queueAllocatedMilliCPU.WithLabelValues(queueName).Set(milliCPU)
 	queueAllocatedMemory.WithLabelValues(queueName).Set(memory)
-	for resource, value := range scalarResources {
-		queueAllocatedScalarResource.WithLabelValues(queueName, string(resource)).Set(value)
-	}
+	updateScalarResourceMetrics(queueAllocatedScalarResource, queueName, scalarResources)
 }
 
 // UpdateQueueRequest records request resources for one queue
 func UpdateQueueRequest(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
 	queueRequestMilliCPU.WithLabelValues(queueName).Set(milliCPU)
 	queueRequestMemory.WithLabelValues(queueName).Set(memory)
-	for resource, value := range scalarResources {
-		queueRequestScalarResource.WithLabelValues(queueName, string(resource)).Set(value)
-	}
+	updateScalarResourceMetrics(queueRequestScalarResource, queueName, scalarResources)
 }
 
 // UpdateQueueDeserved records deserved resources for one queue
 func UpdateQueueDeserved(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
 	queueDeservedMilliCPU.WithLabelValues(queueName).Set(milliCPU)
 	queueDeservedMemory.WithLabelValues(queueName).Set(memory)
-	for resource, value := range scalarResources {
-		queueDeservedScalarResource.WithLabelValues(queueName, string(resource)).Set(value)
-	}
+	updateScalarResourceMetrics(queueDeservedScalarResource, queueName, scalarResources)
 }
 
 // UpdateQueueShare records share for one queue
@@ -216,20 +233,18 @@ func UpdateQueueOverused(queueName string, overused bool) {
 	queueOverused.WithLabelValues(queueName).Set(value)
 }
 
+// UpdateQueueCapacity records capacity resources for one queue
 func UpdateQueueCapacity(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
 	queueCapacityMilliCPU.WithLabelValues(queueName).Set(milliCPU)
 	queueCapacityMemory.WithLabelValues(queueName).Set(memory)
-	for resource, value := range scalarResources {
-		queueCapacityScalarResource.WithLabelValues(queueName, string(resource)).Set(value)
-	}
+	updateScalarResourceMetrics(queueCapacityScalarResource, queueName, scalarResources)
 }
 
+// UpdateQueueRealCapacity records real capacity resources for one queue
 func UpdateQueueRealCapacity(queueName string, milliCPU, memory float64, scalarResources map[v1.ResourceName]float64) {
 	queueRealCapacityMilliCPU.WithLabelValues(queueName).Set(milliCPU)
 	queueRealCapacityMemory.WithLabelValues(queueName).Set(memory)
-	for resource, value := range scalarResources {
-		queueRealCapacityScalarResource.WithLabelValues(queueName, string(resource)).Set(value)
-	}
+	updateScalarResourceMetrics(queueRealCapacityScalarResource, queueName, scalarResources)
 }
 
 // DeleteQueueMetrics delete all metrics related to the queue
@@ -253,4 +268,5 @@ func DeleteQueueMetrics(queueName string) {
 	queueDeservedScalarResource.DeletePartialMatch(partialLabelMap)
 	queueCapacityScalarResource.DeletePartialMatch(partialLabelMap)
 	queueRealCapacityScalarResource.DeletePartialMatch(partialLabelMap)
+	delete(knownScalarResources, queueName)
 }
