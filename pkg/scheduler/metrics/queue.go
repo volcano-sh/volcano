@@ -17,6 +17,8 @@ limitations under the License.
 package metrics
 
 import (
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto" // auto-registry collectors in default registry
 	v1 "k8s.io/api/core/v1"
@@ -168,11 +170,14 @@ var (
 	)
 
 	// Track all known scalar resources for each queue
-	knownScalarResources = make(map[string]map[string]struct{})
+	knownScalarResources     = make(map[string]map[string]struct{})
+	knownScalarResourcesLock sync.RWMutex
 )
 
 // helper to update knownScalarResources and delete metrics for removed resources
 func updateScalarResourceMetrics(metric *prometheus.GaugeVec, queueName string, scalarResources map[v1.ResourceName]float64) {
+	knownScalarResourcesLock.Lock()
+	defer knownScalarResourcesLock.Unlock()
 	if knownScalarResources[queueName] == nil {
 		knownScalarResources[queueName] = make(map[string]struct{})
 	}
@@ -268,5 +273,7 @@ func DeleteQueueMetrics(queueName string) {
 	queueDeservedScalarResource.DeletePartialMatch(partialLabelMap)
 	queueCapacityScalarResource.DeletePartialMatch(partialLabelMap)
 	queueRealCapacityScalarResource.DeletePartialMatch(partialLabelMap)
+	knownScalarResourcesLock.Lock()
 	delete(knownScalarResources, queueName)
+	knownScalarResourcesLock.Unlock()
 }
