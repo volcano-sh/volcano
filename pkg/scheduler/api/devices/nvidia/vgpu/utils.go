@@ -162,7 +162,7 @@ func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 		if ok {
 			return true
 		}
-		_, ok = container.Resources.Limits[config.VolcanoVGPUNumber]
+		_, ok = container.Resources.Limits[v1.ResourceName(config.VolcanoVGPUNumber)]
 		if ok {
 			return true
 		}

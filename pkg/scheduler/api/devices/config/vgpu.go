@@ -23,13 +23,13 @@ const (
 	VolcanoVGPUMemoryPercentage = "volcano.sh/vgpu-memory-percentage"
 	// VolcanoVGPUCores indicates utilization percentage of vgpu
 	VolcanoVGPUCores = "volcano.sh/vgpu-cores"
-	// VolcanoVGPUNumber virtual GPU card number
-	VolcanoVGPUNumber = "volcano.sh/vgpu-number"
 	// VolcanoVGPURegister virtual gpu information registered from device-plugin to scheduler
 	VolcanoVGPURegister = "volcano.sh/node-vgpu-register"
 	// VolcanoVGPUHandshake for vgpu
 	VolcanoVGPUHandshake = "volcano.sh/node-vgpu-handshake"
 )
+
+var VolcanoVGPUNumber = "volcano.sh/vgpu-number"
 
 // MigTemplate is the template for a certain mig instance
 type MigTemplate struct {

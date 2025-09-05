@@ -41,16 +41,16 @@ func TestGetGPUMemoryOfPod(t *testing.T) {
 						{
 							Resources: v1.ResourceRequirements{
 								Limits: v1.ResourceList{
-									config.VolcanoVGPUNumber: resource.MustParse("1"),
-									config.VolcanoVGPUMemory: resource.MustParse("3000"),
+									v1.ResourceName(config.VolcanoVGPUNumber): resource.MustParse("1"),
+									config.VolcanoVGPUMemory:                  resource.MustParse("3000"),
 								},
 							},
 						},
 						{
 							Resources: v1.ResourceRequirements{
 								Limits: v1.ResourceList{
-									config.VolcanoVGPUNumber: resource.MustParse("3"),
-									config.VolcanoVGPUMemory: resource.MustParse("5000"),
+									v1.ResourceName(config.VolcanoVGPUNumber): resource.MustParse("3"),
+									config.VolcanoVGPUMemory:                  resource.MustParse("5000"),
 								},
 							},
 						},

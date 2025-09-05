@@ -265,6 +265,10 @@ func getGPUNumberOfPod(pod *v1.Pod) int {
 	return initGPUs
 }
 
+func GetGPUNumberOfPod(pod *v1.Pod) int {
+	return getGPUNumberOfPod(pod)
+}
+
 // getGPUNumberOfContainer returns the number of GPUs required by the container.
 func getGPUNumberOfContainer(resources v1.ResourceRequirements) int {
 	var gpus int

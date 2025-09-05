@@ -41,7 +41,8 @@ const (
 	NodeLockEnable      = "deviceshare.NodeLockEnable"
 	GPUNumberPredicate  = "deviceshare.GPUNumberEnable"
 
-	VGPUEnable = "deviceshare.VGPUEnable"
+	VGPUEnable           = "deviceshare.VGPUEnable"
+	DefinedGPUNumberName = "deviceshare.DefinedGPUNumberName"
 
 	SchedulePolicyArgument = "deviceshare.SchedulePolicy"
 	ScheduleWeight         = "deviceshare.ScheduleWeight"
@@ -93,6 +94,12 @@ func enablePredicate(dsp *deviceSharePlugin) {
 	if !vgpu.VGPUEnable {
 		return
 	}
+
+	definedName, ok := args[DefinedGPUNumberName].(string)
+	if ok {
+		config.VolcanoVGPUNumber = definedName
+	}
+
 	knownGeometriesCMName := "volcano-vgpu-device-config"
 	args.GetString(&knownGeometriesCMName, KnownGeometriesCMName)
 	knownGeometriesCMNamespace := "kube-system"
