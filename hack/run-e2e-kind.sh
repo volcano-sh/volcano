@@ -31,6 +31,19 @@ export CLUSTER_CONTEXT=("--name" "${CLUSTER_NAME}")
 
 export KIND_OPT=${KIND_OPT:="--config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
 
+function install-admission-policys {
+  echo "Installing AdmissionPolicy "
+  kubectl apply -f "pkg/webhooks/admission/hypernodes/policies/validating-admission-policy.yaml"
+  kubectl apply -f "pkg/webhooks/admission/jobs/policies/validating-admission-policy.yaml"
+  kubectl apply -f "pkg/webhooks/admission/jobs/policies/mutating-admission-policy.yaml"
+  kubectl apply -f "pkg/webhooks/admission/jobflows/policies/validating-admission-policy.yaml"
+  kubectl apply -f "pkg/webhooks/admission/pods/policies/validating-admission-policy.yaml"
+  kubectl apply -f "pkg/webhooks/admission/pods/policies/mutating-admission-policy.yaml"
+  kubectl apply -f "pkg/webhooks/admission/podgroups/policies/validating-admission-policy.yaml"
+  kubectl apply -f "pkg/webhooks/admission/podgroups/policies/mutating-admission-policy.yaml"
+  kubectl apply -f "pkg/webhooks/admission/queues/policies/validating-admission-policy.yaml"
+  kubectl apply -f "pkg/webhooks/admission/queues/policies/mutating-admission-policy.yaml"
+}
 # kwok node config
 export KWOK_NODE_CPU=${KWOK_NODE_CPU:-8}      # 8 cores
 export KWOK_NODE_MEMORY=${KWOK_NODE_MEMORY:-8Gi}  # 8GB
@@ -98,6 +111,94 @@ function install-volcano {
   echo "Ensure create namespace"
   kubectl apply -f installer/namespace.yaml
 
+case ${E2E_TYPE} in
+"ADMISSION_POLICY")
+  echo "Install volcano chart with crd version $crd_version and none webhook"
+  cat <<EOF | helm install ${CLUSTER_NAME} installer/helm/chart/volcano \
+  --namespace ${NAMESPACE} \
+  --kubeconfig ${KUBECONFIG} \
+  --values - \
+  --wait
+basic:
+  image_pull_policy: IfNotPresent
+  image_tag_version: ${TAG}
+  scheduler_config_file: config/volcano-scheduler-ci.conf
+  crd_version: ${crd_version}
+
+custom:
+  scheduler_log_level: 5
+  admission_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  controller_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  scheduler_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  default_ns:
+    node-role.kubernetes.io/control-plane: ""
+  scheduler_feature_gates: ${FEATURE_GATES}
+  enabled_admissions: ""
+  ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
+EOF
+  ;;
+"ADMISSION_WEBHOOK")
+  echo "Install volcano chart with crd version $crd_version and all webhook"
+  cat <<EOF | helm install ${CLUSTER_NAME} installer/helm/chart/volcano \
+  --namespace ${NAMESPACE} \
+  --kubeconfig ${KUBECONFIG} \
+  --values - \
+  --wait
+basic:
+  image_pull_policy: IfNotPresent
+  image_tag_version: ${TAG}
+  scheduler_config_file: config/volcano-scheduler-ci.conf
+  crd_version: ${crd_version}
+
+custom:
+  scheduler_log_level: 5
+  admission_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  controller_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  scheduler_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  default_ns:
+    node-role.kubernetes.io/control-plane: ""
+  scheduler_feature_gates: ${FEATURE_GATES}
+  enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate"
+  ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
+EOF
+  ;;
+*)
   echo "Install volcano chart with crd version $crd_version"
   cat <<EOF | helm install ${CLUSTER_NAME} installer/helm/chart/volcano \
   --namespace ${NAMESPACE} \
@@ -136,8 +237,11 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate"
   ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
+  ;;
+esac
 }
 
 function uninstall-volcano {
@@ -204,6 +308,7 @@ case ${E2E_TYPE} in
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingaction/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/vcctl/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress --focus="DRA E2E Test" ./test/e2e/dra/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/admission/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/hypernode/
     ;;
 "JOBP")
@@ -233,6 +338,15 @@ case ${E2E_TYPE} in
 "DRA")
     echo "Running dra e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress --focus="DRA E2E Test" ./test/e2e/dra/
+    ;;
+"ADMISSION_POLICY")
+    install-admission-policys
+    echo "Running admission policy e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/admission/
+    ;;
+"ADMISSION_WEBHOOK")
+    echo "Running admission webhook e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/admission/
     ;;
 "HYPERNODE")
     echo "Creating 8 kwok nodes for 3-tier topology"
