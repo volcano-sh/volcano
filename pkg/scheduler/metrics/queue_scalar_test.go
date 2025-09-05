@@ -8,6 +8,12 @@ import (
 )
 
 func TestUpdateScalarResourceMetrics_ZeroAndCleanup(t *testing.T) {
+	// Reset global state for this test to ensure isolation.
+	queueAllocatedScalarResource.Reset()
+	knownScalarResourcesLock.Lock()
+	knownScalarResources = make(map[string]map[string]struct{})
+	knownScalarResourcesLock.Unlock()
+
 	queueName := "testqueue"
 	resourceA := v1.ResourceName("nvidia.com/gpu")
 	resourceB := v1.ResourceName("amd.com/gpu")
