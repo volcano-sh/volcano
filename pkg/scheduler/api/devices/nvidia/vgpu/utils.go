@@ -69,23 +69,50 @@ func decodeNodeDevices(name, str string) (*GPUDevices, string) {
 				klog.Error("wrong Node GPU info: ", val)
 				return nil, ""
 			}
-			count, _ := strconv.Atoi(items[1])
-			devmem, _ := strconv.Atoi(items[2])
-			health, _ := strconv.ParseBool(items[4])
+			count, err := strconv.Atoi(items[1])
+			if err != nil {
+				klog.Error("wrong count in Node GPU info: ", val)
+				continue
+			}
+			devmem, err := strconv.Atoi(items[2])
+			if err != nil {
+				klog.Error("wrong devmem in Node GPU info: ", val)
+				continue
+			}
+			offsetForCore := 0
+			// The annotation string can be in one of two formats:
+			// Old: uuid,count,devmem,type,health,sharingMode (6 fields)
+			// New: uuid,count,devmem,cores,type,health,sharingMode (7 fields)
+			// This logic handles both for backward compatibility.
+			cores, err := strconv.Atoi(items[3])
+			if err == nil && len(items) >= 7 {
+				// This is the new format, items[3] is the core value.
+				offsetForCore = 1
+			} else {
+				// This is the old format or a malformed new format.
+				// `cores` will be set to default, and `err` will be ignored.
+				cores = 100
+			}
+			health, err := strconv.ParseBool(items[4+offsetForCore])
+			if err != nil {
+				klog.Errorf("failed to parse health for GPU %d: %v", index, err)
+				health = false
+			}
 			i := GPUDevice{
 				ID:          index,
 				Node:        name,
 				UUID:        items[0],
 				Number:      uint(count),
 				Memory:      uint(devmem),
-				Type:        items[3],
+				Core:        uint(cores),
+				Type:        items[3+offsetForCore],
 				PodMap:      make(map[string]*GPUUsage),
 				Health:      health,
 				MigTemplate: []config.Geometry{},
 				MigUsage: config.MigInUse{
 					Index: -1},
 			}
-			sharingMode = getSharingMode(items[5])
+			sharingMode = getSharingMode(items[5+offsetForCore])
 			if sharingMode == vGPUControllerMIG {
 				var err error
 				i.MigTemplate, err = extractGeometryFromType(i.Type)
@@ -301,6 +328,7 @@ func getGPUDeviceSnapShot(snap *GPUDevices) *GPUDevices {
 				UUID:        val.UUID,
 				PodMap:      val.PodMap,
 				Memory:      val.Memory,
+				Core:        val.Core,
 				Number:      val.Number,
 				Type:        val.Type,
 				Health:      val.Health,
@@ -392,15 +420,15 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 			if int(gs.Device[i].Memory)-int(gs.Device[i].UsedMem) < int(val.Memreq) {
 				continue
 			}
-			if gs.Device[i].UsedCore+val.Coresreq > 100 {
+			if gs.Device[i].UsedCore+val.Coresreq > gs.Device[i].Core {
 				continue
 			}
 			// Coresreq=100 indicates it want this card exclusively
-			if val.Coresreq == 100 && gs.Device[i].UsedNum > 0 {
+			if val.Coresreq == gs.Device[i].Core && gs.Device[i].UsedNum > 0 {
 				continue
 			}
 			// You can't allocate core=0 job to an already full GPU
-			if gs.Device[i].UsedCore == 100 && val.Coresreq == 0 {
+			if gs.Device[i].UsedCore == gs.Device[i].Core && val.Coresreq == 0 {
 				continue
 			}
 			if !checkType(pod.Annotations, *gs.Device[i], val) {
