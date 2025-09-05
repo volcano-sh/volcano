@@ -89,15 +89,17 @@ func updateNodeAnnotations(ctx context.Context, node *v1.Node, updateFunc func(a
 	return nil
 }
 
-func setNodeLock(nodeName string, lockName string) error {
+func setNodeLock(nodeName string, lockName string, refresh bool) error {
 	ctx := context.Background()
 	node, err := kubeClient.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
-	if _, ok := node.ObjectMeta.Annotations[lockName]; ok {
-		klog.V(3).Infof("node %s is locked", nodeName)
-		return fmt.Errorf("node %s is locked", nodeName)
+	if !refresh {
+		if _, ok := node.ObjectMeta.Annotations[lockName]; ok {
+			klog.V(3).Infof("node %s is locked", nodeName)
+			return fmt.Errorf("node %s is locked", nodeName)
+		}
 	}
 	updateFunc := func(annotations map[string]string) {
 		annotations[lockName] = time.Now().Format(time.RFC3339)
@@ -118,7 +120,7 @@ func LockNode(nodeName string, lockName string) error {
 		return err
 	}
 	if _, ok := node.ObjectMeta.Annotations[lockName]; !ok {
-		return setNodeLock(nodeName, lockName)
+		return setNodeLock(nodeName, lockName, false)
 	}
 	lockTime, err := time.Parse(time.RFC3339, node.ObjectMeta.Annotations[lockName])
 	if err != nil {
@@ -126,7 +128,7 @@ func LockNode(nodeName string, lockName string) error {
 	}
 	if time.Since(lockTime) > time.Minute*5 {
 		klog.V(3).InfoS("Node lock expired", "node", nodeName, "lockTime", lockTime)
-		return setNodeLock(nodeName, lockName)
+		return setNodeLock(nodeName, lockName, true)
 	}
 	return fmt.Errorf("node %s has been locked within 5 minutes", nodeName)
 }
