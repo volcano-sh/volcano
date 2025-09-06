@@ -31,27 +31,58 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
-
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
-// BuildNode builts node object
-func BuildNode(name string, alloc v1.ResourceList, labels map[string]string) *v1.Node {
-	return &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Labels:      labels,
-			Annotations: map[string]string{},
-		},
-		Status: v1.NodeStatus{
-			Capacity:    alloc,
-			Allocatable: alloc,
-			Conditions: []v1.NodeCondition{
-				{Type: v1.NodeReady, Status: v1.ConditionTrue},
+// NodeWrapper wraps a Kubernetes Node.
+type NodeWrapper struct {
+	v1.Node
+}
+
+// MakeNode creates a new NodeWrapper
+func MakeNode() *NodeWrapper {
+	return &NodeWrapper{
+		Node: v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{},
+			},
+			Status: v1.NodeStatus{
+				Conditions: []v1.NodeCondition{
+					{Type: v1.NodeReady, Status: v1.ConditionTrue},
+				},
 			},
 		},
 	}
+}
+
+func (n *NodeWrapper) Annotations(annotations map[string]string) *NodeWrapper {
+	n.ObjectMeta.Annotations = annotations
+	return n
+}
+
+func (n *NodeWrapper) Name(name string) *NodeWrapper {
+	n.ObjectMeta.Name = name
+	return n
+}
+
+func (n *NodeWrapper) Labels(labels map[string]string) *NodeWrapper {
+	n.ObjectMeta.Labels = labels
+	return n
+}
+
+func (n *NodeWrapper) Allocatable(allocatable v1.ResourceList) *NodeWrapper {
+	n.Status.Allocatable = allocatable
+	return n
+}
+
+func (n *NodeWrapper) Capacity(capacity v1.ResourceList) *NodeWrapper {
+	n.Status.Capacity = capacity
+	return n
+}
+
+func (n *NodeWrapper) Obj() *v1.Node {
+	return &n.Node
 }
 
 func BuildCSINode(name string, annotations map[string]string, drivers []storagev1.CSINodeDriver) *storagev1.CSINode {
@@ -66,395 +97,657 @@ func BuildCSINode(name string, annotations map[string]string, drivers []storagev
 	}
 }
 
-// BuildPod builds a Burstable pod object
-func BuildPod(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
-	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-			Annotations: map[string]string{
-				schedulingv1beta1.KubeGroupNameAnnotationKey: groupName,
+// PodWrapper wraps a Kubernetes Pod.
+type PodWrapper struct {
+	v1.Pod
+}
+
+func MakePod() *PodWrapper {
+	return &PodWrapper{
+		Pod: v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{},
 			},
-		},
-		Status: v1.PodStatus{
-			Phase: p,
-		},
-		Spec: v1.PodSpec{
-			NodeName:     nodeName,
-			NodeSelector: selector,
-			Containers: []v1.Container{
-				{
-					Resources: v1.ResourceRequirements{
-						Requests: req,
-					},
+			Status: v1.PodStatus{},
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{},
 				},
 			},
 		},
 	}
 }
 
-// BuildPodWithResourceClaim builds a pod object with resource claim, currently the pod only contains one container
-func BuildPodWithResourceClaim(ns, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string,
-	claimReq []v1.ResourceClaim, resourceClaims []v1.PodResourceClaim) *v1.Pod {
-	pod := BuildPod(ns, name, nodeName, p, req, groupName, labels, selector)
-	pod.Spec.ResourceClaims = resourceClaims
-	pod.Spec.Containers[0].Resources.Claims = claimReq
-
-	return pod
+func (n *PodWrapper) Labels(labels map[string]string) *PodWrapper {
+	n.ObjectMeta.Labels = labels
+	return n
 }
 
-// BuildPodWithPVC builts Pod object with pvc volume
-func BuildPodWithPVC(namespace, name, nodename string, p v1.PodPhase, req v1.ResourceList, pvc *v1.PersistentVolumeClaim, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
-	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-			Annotations: map[string]string{
-				schedulingv1beta1.KubeGroupNameAnnotationKey: groupName,
-			},
+func (n *PodWrapper) Name(name string) *PodWrapper {
+	n.ObjectMeta.Name = name
+	if n.ObjectMeta.UID == "" {
+		if n.ObjectMeta.Name != "" && n.ObjectMeta.Namespace != "" {
+			n.ObjectMeta.UID = types.UID(fmt.Sprintf("%v-%v", n.ObjectMeta.Namespace, n.ObjectMeta.Name))
+		}
+	}
+	return n
+}
+
+func (n *PodWrapper) Annotations(annons map[string]string) *PodWrapper {
+	n.ObjectMeta.Annotations = annons
+	return n
+}
+
+func (n *PodWrapper) PodPhase(podPhase v1.PodPhase) *PodWrapper {
+	n.Status.Phase = podPhase
+	return n
+}
+
+func (n *PodWrapper) NodeName(nodeName string) *PodWrapper {
+	n.Spec.NodeName = nodeName
+	return n
+}
+
+func (n *PodWrapper) GroupName(groupName string) *PodWrapper {
+	n.ObjectMeta.Annotations[schedulingv1beta1.KubeGroupNameAnnotationKey] = groupName
+	return n
+}
+
+func (n *PodWrapper) NodeSelector(selector map[string]string) *PodWrapper {
+	n.Spec.NodeSelector = selector
+	return n
+}
+
+func (n *PodWrapper) Namespace(namespace string) *PodWrapper {
+	n.ObjectMeta.Namespace = namespace
+	if n.ObjectMeta.UID == "" {
+		if n.ObjectMeta.Name != "" && n.ObjectMeta.Namespace != "" {
+			n.ObjectMeta.UID = types.UID(fmt.Sprintf("%v-%v", n.ObjectMeta.Namespace, n.ObjectMeta.Name))
+		}
+	}
+	return n
+}
+
+func (n *PodWrapper) ResourceClaim(resourceClaims []v1.PodResourceClaim) *PodWrapper {
+	n.Spec.ResourceClaims = resourceClaims
+	return n
+}
+
+func (n *PodWrapper) ContainerClaimRequests(claimReq []v1.ResourceClaim) *PodWrapper {
+	n.Spec.Containers[0].Resources.Claims = claimReq
+	return n
+}
+
+func (n *PodWrapper) PreEmptionPolicy(preemptionPolicy v1.PreemptionPolicy) *PodWrapper {
+	n.Spec.PreemptionPolicy = &preemptionPolicy
+	return n
+}
+
+func (n *PodWrapper) Priority(priority *int32) *PodWrapper {
+	n.Spec.Priority = priority
+	return n
+}
+
+func (n *PodWrapper) Volumes(volumes []v1.Volume) *PodWrapper {
+	n.Spec.Volumes = volumes
+	return n
+}
+
+func (n *PodWrapper) ResourceList(req v1.ResourceList) *PodWrapper {
+	n.Spec.Containers[0].Resources.Requests = req
+	return n
+}
+
+func (n *PodWrapper) PersistentVolumeClaim(pvc *v1.PersistentVolumeClaim) *PodWrapper {
+	n.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
+		{
+			Name:      pvc.Name,
+			MountPath: "/data",
 		},
-		Status: v1.PodStatus{
-			Phase: p,
-		},
-		Spec: v1.PodSpec{
-			NodeName:     nodename,
-			NodeSelector: selector,
-			Containers: []v1.Container{
-				{
-					Resources: v1.ResourceRequirements{
-						Requests: req,
-					},
-					VolumeMounts: []v1.VolumeMount{
-						{
-							Name:      pvc.Name,
-							MountPath: "/data",
-						},
-					},
+	}
+	n.Spec.Volumes = []v1.Volume{
+		{
+			Name: pvc.Name,
+			VolumeSource: v1.VolumeSource{
+				PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+					ClaimName: pvc.Name,
 				},
 			},
-			Volumes: []v1.Volume{
-				{
-					Name: pvc.Name,
-					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: pvc.Name,
-						},
-					},
-				},
+		},
+	}
+	return n
+}
+
+func (n *PodWrapper) Containers(containers []v1.Container) *PodWrapper {
+	n.Spec.Containers = containers
+	return n
+}
+
+func (n *PodWrapper) Obj() *v1.Pod {
+	return &n.Pod
+}
+
+// PVCWrapper wraps a Kubernetes PersistentVolumeClaim
+type PVCWrapper struct {
+	v1.PersistentVolumeClaim
+}
+
+func MakePVC() *PVCWrapper {
+	return &PVCWrapper{
+		PersistentVolumeClaim: v1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				ResourceVersion: "1",
+			},
+			Spec: v1.PersistentVolumeClaimSpec{
+				Resources: v1.VolumeResourceRequirements{},
 			},
 		},
 	}
 }
 
-// BuildPVC builds a PVC with specified storageclass and required resources
-func BuildPVC(namespace, name string, req v1.ResourceList, scName string) *v1.PersistentVolumeClaim {
-	return &v1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:       namespace,
-			Name:            name,
-			ResourceVersion: "1",
-		},
-		Spec: v1.PersistentVolumeClaimSpec{
-			Resources: v1.VolumeResourceRequirements{
-				Requests: req,
+func (pvcWrapper *PVCWrapper) Namespace(namespace string) *PVCWrapper {
+	pvcWrapper.ObjectMeta.Namespace = namespace
+	return pvcWrapper
+}
+
+func (pvcWrapper *PVCWrapper) Name(name string) *PVCWrapper {
+	pvcWrapper.ObjectMeta.Name = name
+	return pvcWrapper
+}
+
+func (pvcWrapper *PVCWrapper) StorageClassName(storageClassName string) *PVCWrapper {
+	pvcWrapper.Spec.StorageClassName = &storageClassName
+	return pvcWrapper
+}
+
+func (pvcWrapper *PVCWrapper) Resources(req v1.ResourceList) *PVCWrapper {
+	pvcWrapper.Spec.Resources.Requests = req
+	return pvcWrapper
+}
+
+func (pvcWrapper *PVCWrapper) Obj() *v1.PersistentVolumeClaim {
+	return &pvcWrapper.PersistentVolumeClaim
+}
+
+// PVWrapper wraps a Kubernetes PersistentVolume
+type PVWrapper struct {
+	v1.PersistentVolume
+}
+
+func MakePV() *PVWrapper {
+	return &PVWrapper{
+		PersistentVolume: v1.PersistentVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				ResourceVersion: "1",
 			},
-			StorageClassName: &scName,
+			Spec: v1.PersistentVolumeSpec{},
+			Status: v1.PersistentVolumeStatus{
+				Phase: v1.VolumeAvailable,
+			},
 		},
 	}
 }
 
-// BuildPV builds a PV with specified storageclass and capacity
-func BuildPV(name, scName string, capacity v1.ResourceList) *v1.PersistentVolume {
-	return &v1.PersistentVolume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			ResourceVersion: "1",
-		},
-		Spec: v1.PersistentVolumeSpec{
-			StorageClassName: scName,
-			Capacity:         capacity,
-		},
-		Status: v1.PersistentVolumeStatus{
-			Phase: v1.VolumeAvailable,
+func (pvWrapper *PVWrapper) Name(name string) *PVWrapper {
+	pvWrapper.ObjectMeta.Name = name
+	return pvWrapper
+}
+
+func (pvWrapper *PVWrapper) StorageClassName(scName string) *PVWrapper {
+	pvWrapper.Spec.StorageClassName = scName
+	return pvWrapper
+}
+
+func (pvWrapper *PVWrapper) Capacity(capacity v1.ResourceList) *PVWrapper {
+	pvWrapper.Spec.Capacity = capacity
+	return pvWrapper
+}
+
+func (pvWrapper *PVWrapper) Obj() *v1.PersistentVolume {
+	return &pvWrapper.PersistentVolume
+}
+
+// DeviceRequestWrapper wraps a Kubernetes DeviceRequest
+type DeviceRequestWrapper struct {
+	resourcev1beta1.DeviceRequest
+}
+
+func MakeDeviceRequest() *DeviceRequestWrapper {
+	return &DeviceRequestWrapper{
+		DeviceRequest: resourcev1beta1.DeviceRequest{
+			AllocationMode: resourcev1beta1.DeviceAllocationModeExactCount,
+			Count:          1,
 		},
 	}
 }
 
-func BuildDeviceRequest(name, deviceClassName string, selectors []resourcev1beta1.DeviceSelector,
-	allocationMode *resourcev1beta1.DeviceAllocationMode, count *int64) resourcev1beta1.DeviceRequest {
-	deviceRequest := resourcev1beta1.DeviceRequest{
-		Name:            name,
-		DeviceClassName: deviceClassName,
-		AllocationMode:  resourcev1beta1.DeviceAllocationModeExactCount,
-		Count:           1,
-	}
+func (wrapper *DeviceRequestWrapper) SetName(name string) *DeviceRequestWrapper {
+	wrapper.Name = name
+	return wrapper
+}
 
+func (wrapper *DeviceRequestWrapper) SetDeviceClassName(name string) *DeviceRequestWrapper {
+	wrapper.DeviceClassName = name
+	return wrapper
+}
+
+func (wrapper *DeviceRequestWrapper) SetSelectors(selectors []resourcev1beta1.DeviceSelector) *DeviceRequestWrapper {
 	if selectors != nil {
-		deviceRequest.Selectors = selectors
+		wrapper.Selectors = selectors
 	}
+	return wrapper
+}
+
+func (wrapper *DeviceRequestWrapper) SetAllocationMode(allocationMode *resourcev1beta1.DeviceAllocationMode) *DeviceRequestWrapper {
 
 	if allocationMode != nil {
-		deviceRequest.AllocationMode = *allocationMode
+		wrapper.AllocationMode = *allocationMode
 	}
-
-	if allocationMode != nil && *allocationMode == resourcev1beta1.DeviceAllocationModeExactCount && count != nil {
-		deviceRequest.Count = *count
-	}
-
-	return deviceRequest
+	return wrapper
 }
 
-func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1beta1.DeviceRequest,
-	constraints []resourcev1beta1.DeviceConstraint, config []resourcev1beta1.DeviceClaimConfiguration) *resourcev1beta1.ResourceClaim {
-	rc := &resourcev1beta1.ResourceClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:       namespace,
-			Name:            name,
-			ResourceVersion: "1",
-		},
-		Spec: resourcev1beta1.ResourceClaimSpec{
-			Devices: resourcev1beta1.DeviceClaim{
-				Requests: deviceRequests,
+func (wrapper *DeviceRequestWrapper) SetCount(count *int64) *DeviceRequestWrapper {
+	if wrapper.AllocationMode == resourcev1beta1.DeviceAllocationModeExactCount && count != nil {
+		wrapper.Count = *count
+	}
+	return wrapper
+}
+
+func (wrapper *DeviceRequestWrapper) Obj() *resourcev1beta1.DeviceRequest {
+	return &wrapper.DeviceRequest
+}
+
+// ResourceClaimWrapper wraps a Kubernetes ResourceClaim
+type ResourceClaimWrapper struct {
+	resourcev1beta1.ResourceClaim
+}
+
+func MakeResourceClaim() *ResourceClaimWrapper {
+	return &ResourceClaimWrapper{
+		ResourceClaim: resourcev1beta1.ResourceClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				ResourceVersion: "1",
+			},
+			Spec: resourcev1beta1.ResourceClaimSpec{
+				Devices: resourcev1beta1.DeviceClaim{},
 			},
 		},
 	}
+}
 
+func (wrapper *ResourceClaimWrapper) Name(name string) *ResourceClaimWrapper {
+	wrapper.ObjectMeta.Name = name
+	return wrapper
+}
+
+func (wrapper *ResourceClaimWrapper) Namespace(namespace string) *ResourceClaimWrapper {
+	wrapper.ObjectMeta.Namespace = namespace
+	return wrapper
+}
+
+func (wrapper *ResourceClaimWrapper) Constraints(constraints []resourcev1beta1.DeviceConstraint) *ResourceClaimWrapper {
 	if constraints != nil {
-		rc.Spec.Devices.Constraints = constraints
+		wrapper.Spec.Devices.Constraints = constraints
 	}
+	return wrapper
+}
 
+func (wrapper *ResourceClaimWrapper) Config(config []resourcev1beta1.DeviceClaimConfiguration) *ResourceClaimWrapper {
 	if config != nil {
-		rc.Spec.Devices.Config = config
+		wrapper.Spec.Devices.Config = config
 	}
-
-	return rc
+	return wrapper
 }
 
-func BuildDeviceClass(name string, selectors []resourcev1beta1.DeviceSelector, config []resourcev1beta1.DeviceClassConfiguration) *resourcev1beta1.DeviceClass {
-	dc := &resourcev1beta1.DeviceClass{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-		Spec: resourcev1beta1.DeviceClassSpec{
-			Selectors: selectors,
+func (wrapper *ResourceClaimWrapper) DeviceRequests(deviceRequests []resourcev1beta1.DeviceRequest) *ResourceClaimWrapper {
+	wrapper.Spec.Devices.Requests = deviceRequests
+	return wrapper
+}
+
+func (wrapper *ResourceClaimWrapper) Obj() *resourcev1beta1.ResourceClaim {
+	return &wrapper.ResourceClaim
+}
+
+// DeviceClassWrapper wraps a Kubernetes DeviceClass for method chaining.
+type DeviceClassWrapper struct {
+	resourcev1beta1.DeviceClass
+}
+
+func MakeDeviceClass() *DeviceClassWrapper {
+	return &DeviceClassWrapper{
+		DeviceClass: resourcev1beta1.DeviceClass{
+			ObjectMeta: metav1.ObjectMeta{},
+			Spec:       resourcev1beta1.DeviceClassSpec{},
 		},
 	}
+}
 
+func (dcw *DeviceClassWrapper) Name(name string) *DeviceClassWrapper {
+	dcw.ObjectMeta.Name = name
+	return dcw
+}
+
+func (dcw *DeviceClassWrapper) Selectors(selectors []resourcev1beta1.DeviceSelector) *DeviceClassWrapper {
+	dcw.Spec.Selectors = selectors
+	return dcw
+}
+
+func (dcw *DeviceClassWrapper) Config(config []resourcev1beta1.DeviceClassConfiguration) *DeviceClassWrapper {
 	if config != nil {
-		dc.Spec.Config = config
+		dcw.Spec.Config = config
 	}
-
-	return dc
+	return dcw
 }
 
-func BuildDevice(name string, attributes map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceAttribute,
-	capacity map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceCapacity) resourcev1beta1.Device {
-	return resourcev1beta1.Device{
-		Name: name,
-		Basic: &resourcev1beta1.BasicDevice{
-			Attributes: attributes,
-			Capacity:   capacity,
-		},
-	}
+func (dcw *DeviceClassWrapper) Obj() *resourcev1beta1.DeviceClass {
+	return &dcw.DeviceClass
 }
 
-func BuildResourceSlice(name, driver, nodeName string, pool resourcev1beta1.ResourcePool, devices []resourcev1beta1.Device) *resourcev1beta1.ResourceSlice {
-	return &resourcev1beta1.ResourceSlice{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-		Spec: resourcev1beta1.ResourceSliceSpec{
-			NodeName: nodeName,
-			Driver:   driver,
-			Pool:     pool,
-			Devices:  devices,
+// DeviceWrapper wraps a Kubernetes Device for method chaining.
+type DeviceWrapper struct {
+	resourcev1beta1.Device
+}
+
+func MakeDevice() *DeviceWrapper {
+	return &DeviceWrapper{
+		Device: resourcev1beta1.Device{
+			Basic: &resourcev1beta1.BasicDevice{},
 		},
 	}
 }
 
-// BuildStorageClass build a storageclass object with specified provisioner and volumeBindingMode
-func BuildStorageClass(name, provisioner string, volumeBindingMode storagev1.VolumeBindingMode) *storagev1.StorageClass {
-	return &storagev1.StorageClass{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			ResourceVersion: "1",
-		},
-		Provisioner:       provisioner,
-		VolumeBindingMode: &volumeBindingMode,
-	}
+func (dw *DeviceWrapper) SetName(name string) *DeviceWrapper {
+	dw.Name = name
+	return dw
 }
 
-// BuildBestEffortPod builds a BestEffort pod object
-func BuildBestEffortPod(namespace, name, nodeName string, p v1.PodPhase, groupName string, labels map[string]string, selector map[string]string) *v1.Pod {
-	return BuildPod(namespace, name, nodeName, p, v1.ResourceList{}, groupName, labels, selector)
+func (dw *DeviceWrapper) Capacity(capacity map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceCapacity) *DeviceWrapper {
+	dw.Basic.Capacity = capacity
+	return dw
 }
 
-// BuildPodWithPriority builds a pod object with priority
-func BuildPodWithPriority(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, priority *int32) *v1.Pod {
-	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
-	pod.Spec.Priority = priority
-	return pod
+func (dw *DeviceWrapper) Attributes(attributes map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceAttribute) *DeviceWrapper {
+	dw.Basic.Attributes = attributes
+	return dw
 }
 
-// BuildPodWithPreemptionPolicy builds a pod with preemptionPolicy
-func BuildPodWithPreemptionPolicy(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, preemptionPolicy v1.PreemptionPolicy) *v1.Pod {
-	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
-	pod.Spec.PreemptionPolicy = &preemptionPolicy
-	return pod
+func (dw *DeviceWrapper) Obj() *resourcev1beta1.Device {
+	return &dw.Device
 }
 
-// BuildPodGroup return podgroup with base spec and phase status
-func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase) *schedulingv1beta1.PodGroup {
-	return &schedulingv1beta1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ns,
-		},
-		Spec: schedulingv1beta1.PodGroupSpec{
-			Queue:         queue,
-			MinMember:     minMember,
-			MinTaskMember: taskMinMember,
-		},
-		Status: schedulingv1beta1.PodGroupStatus{
-			Phase: status,
+// ResourceSliceWrapper wraps a Kubernetes ResourceSlice for method chaining.
+type ResourceSliceWrapper struct {
+	resourcev1beta1.ResourceSlice
+}
+
+func MakeResourceSlice() *ResourceSliceWrapper {
+	return &ResourceSliceWrapper{
+		ResourceSlice: resourcev1beta1.ResourceSlice{
+			ObjectMeta: metav1.ObjectMeta{},
+			Spec:       resourcev1beta1.ResourceSliceSpec{},
 		},
 	}
 }
 
-// BuildPodGroupWithNetWorkTopologies builds podGroup with NetWorkTopologies.
-func BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode string, highestTierAllowed int) *schedulingv1beta1.PodGroup {
-	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
-	pg.Annotations = map[string]string{api.JobAllocatedHyperNode: hyperNodeName}
-	pg.Spec.NetworkTopology = &schedulingv1beta1.NetworkTopologySpec{
-		Mode:               schedulingv1beta1.NetworkTopologyMode(mode),
-		HighestTierAllowed: &highestTierAllowed,
-	}
-	return pg
+func (wrapper *ResourceSliceWrapper) Name(name string) *ResourceSliceWrapper {
+	wrapper.ObjectMeta.Name = name
+	return wrapper
 }
 
-// BuildPodGroupWithMinResources return podgroup with base spec and phase status and minResources
-func BuildPodGroupWithMinResources(name, ns, queue string, minMember int32, taskMinMember map[string]int32, minResources v1.ResourceList, status schedulingv1beta1.PodGroupPhase) *schedulingv1beta1.PodGroup {
-	return &schedulingv1beta1.PodGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ns,
-		},
-		Spec: schedulingv1beta1.PodGroupSpec{
-			Queue:         queue,
-			MinMember:     minMember,
-			MinResources:  &minResources,
-			MinTaskMember: taskMinMember,
-		},
-		Status: schedulingv1beta1.PodGroupStatus{
-			Phase: status,
-		},
-	}
+func (wrapper *ResourceSliceWrapper) NodeName(nodeName string) *ResourceSliceWrapper {
+	wrapper.Spec.NodeName = nodeName
+	return wrapper
 }
 
-func BuildResourceQuota(name, ns string, hard v1.ResourceList) *v1.ResourceQuota {
-	return &v1.ResourceQuota{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: ns,
-		},
-		Spec: v1.ResourceQuotaSpec{
-			Hard: hard,
-		},
-		Status: v1.ResourceQuotaStatus{
-			Hard: hard,
+func (wrapper *ResourceSliceWrapper) Driver(driver string) *ResourceSliceWrapper {
+	wrapper.Spec.Driver = driver
+	return wrapper
+}
+
+func (wrapper *ResourceSliceWrapper) Pool(pool resourcev1beta1.ResourcePool) *ResourceSliceWrapper {
+	wrapper.Spec.Pool = pool
+	return wrapper
+}
+
+func (wrapper *ResourceSliceWrapper) Devices(devices []resourcev1beta1.Device) *ResourceSliceWrapper {
+	wrapper.Spec.Devices = devices
+	return wrapper
+}
+
+func (wrapper *ResourceSliceWrapper) Obj() *resourcev1beta1.ResourceSlice {
+	return &wrapper.ResourceSlice
+}
+
+type StorageClassWrapper struct {
+	storagev1.StorageClass
+}
+
+func MakeStorageClass() *StorageClassWrapper {
+	return &StorageClassWrapper{
+		StorageClass: storagev1.StorageClass{
+			ObjectMeta: metav1.ObjectMeta{},
 		},
 	}
 }
 
-// BuildPodGroupWithPrio return podgroup with podgroup PriorityClassName
-func BuildPodGroupWithPrio(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, prioName string) *schedulingv1beta1.PodGroup {
-	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
-	pg.Spec.PriorityClassName = prioName
-	return pg
+func (wrapper *StorageClassWrapper) Name(name string) *StorageClassWrapper {
+	wrapper.ObjectMeta.Name = name
+	return wrapper
 }
 
-// BuildPodGroupWithAnno returns a podgroup object with annotations
-func BuildPodGroupWithAnno(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, annos map[string]string) *schedulingv1beta1.PodGroup {
-	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
-	pg.Annotations = annos
-	return pg
+func (wrapper *StorageClassWrapper) SetProvisioner(provisioner string) *StorageClassWrapper {
+	wrapper.Provisioner = provisioner
+	return wrapper
 }
 
-///////////// function to build queue  ///////////////////
-
-// BuildQueue returns a new Queue object with the "Open" state.
-func BuildQueue(qname string, weight int32, cap v1.ResourceList) *schedulingv1beta1.Queue {
-	return &schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: qname,
-		},
-		Spec: schedulingv1beta1.QueueSpec{
-			Weight:     weight,
-			Capability: cap,
-		},
-		Status: schedulingv1beta1.QueueStatus{
-			State: schedulingv1beta1.QueueStateOpen,
-		},
-	}
+func (wrapper *StorageClassWrapper) SetVolumeBindingMode(volumeBindingMode storagev1.VolumeBindingMode) *StorageClassWrapper {
+	wrapper.VolumeBindingMode = &volumeBindingMode
+	return wrapper
 }
 
-func BuildQueueWithState(qname string, weight int32, cap v1.ResourceList, state schedulingv1beta1.QueueState) *schedulingv1beta1.Queue {
-	return &schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: qname,
-		},
-		Spec: schedulingv1beta1.QueueSpec{
-			Weight:     weight,
-			Capability: cap,
-		},
-		Status: schedulingv1beta1.QueueStatus{
-			State: state,
+func (wrapper *StorageClassWrapper) Obj() *storagev1.StorageClass {
+	return &wrapper.StorageClass
+}
+
+type PodGroupWrapper struct {
+	schedulingv1beta1.PodGroup
+}
+
+func MakePodGroup() *PodGroupWrapper {
+	return &PodGroupWrapper{
+		PodGroup: schedulingv1beta1.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{},
+			Spec: schedulingv1beta1.PodGroupSpec{
+				NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{},
+			},
+			Status: schedulingv1beta1.PodGroupStatus{},
 		},
 	}
 }
 
-// BuildQueueWithAnnos return a Queue with annotations
-func BuildQueueWithAnnos(qname string, weight int32, cap v1.ResourceList, annos map[string]string) *schedulingv1beta1.Queue {
-	queue := BuildQueue(qname, weight, cap)
-	queue.ObjectMeta.Annotations = annos
-	return queue
+func (wrapper *PodGroupWrapper) Name(name string) *PodGroupWrapper {
+	wrapper.ObjectMeta.Name = name
+	return wrapper
+}
+func (wrapper *PodGroupWrapper) SetAnnotations(annos map[string]string) *PodGroupWrapper {
+	wrapper.Annotations = annos
+	return wrapper
 }
 
-// BuildQueueWithResourcesQuantity return a queue with deserved and capability resources quantity.
-func BuildQueueWithResourcesQuantity(qname string, deserved, cap v1.ResourceList) *schedulingv1beta1.Queue {
-	queue := BuildQueue(qname, 1, cap)
-	queue.Spec.Deserved = deserved
-	return queue
+func (wrapper *PodGroupWrapper) HyperNodeName(hyperNodeName string) *PodGroupWrapper {
+	wrapper.ObjectMeta.Annotations = map[string]string{api.JobAllocatedHyperNode: hyperNodeName}
+	return wrapper
 }
 
-// BuildQueueWithPriorityAndResourcesQuantity return a queue with priority, deserved and capability resources quantity.
-func BuildQueueWithPriorityAndResourcesQuantity(qname string, priority int32, deserved, cap v1.ResourceList) *schedulingv1beta1.Queue {
-	queue := BuildQueue(qname, 1, cap)
-	queue.Spec.Deserved = deserved
-	queue.Spec.Priority = priority
-	return queue
+func (wrapper *PodGroupWrapper) Namespace(namespace string) *PodGroupWrapper {
+	wrapper.ObjectMeta.Namespace = namespace
+	return wrapper
 }
 
-// ////// build in resource //////
-// BuildPriorityClass return pc
-func BuildPriorityClass(name string, value int32) *schedulingv1.PriorityClass {
-	return &schedulingv1.PriorityClass{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+func (wrapper *PodGroupWrapper) PriorityClassName(priorityClassName string) *PodGroupWrapper {
+	wrapper.Spec.PriorityClassName = priorityClassName
+	return wrapper
+}
+
+func (wrapper *PodGroupWrapper) Queue(queue string) *PodGroupWrapper {
+	wrapper.Spec.Queue = queue
+	return wrapper
+}
+
+func (wrapper *PodGroupWrapper) Mode(mode string) *PodGroupWrapper {
+	wrapper.Spec.NetworkTopology.Mode = schedulingv1beta1.NetworkTopologyMode(mode)
+	return wrapper
+}
+
+func (wrapper *PodGroupWrapper) HighestTierAllowed(highestTierAllowed int) *PodGroupWrapper {
+	wrapper.Spec.NetworkTopology.HighestTierAllowed = &highestTierAllowed
+	return wrapper
+}
+
+func (wrapper *PodGroupWrapper) MinMember(minMember int32) *PodGroupWrapper {
+	wrapper.Spec.MinMember = minMember
+	return wrapper
+}
+
+func (wrapper *PodGroupWrapper) MinTaskMember(minTaskMember map[string]int32) *PodGroupWrapper {
+	wrapper.Spec.MinTaskMember = minTaskMember
+	return wrapper
+}
+
+func (wrapper *PodGroupWrapper) MinResources(minResources v1.ResourceList) *PodGroupWrapper {
+	wrapper.Spec.MinResources = &minResources
+	return wrapper
+}
+
+func (wrapper *PodGroupWrapper) Phase(phase schedulingv1beta1.PodGroupPhase) *PodGroupWrapper {
+	wrapper.Status.Phase = phase
+	return wrapper
+}
+
+func (wrapper *PodGroupWrapper) Obj() *schedulingv1beta1.PodGroup {
+	return &wrapper.PodGroup
+}
+
+type ResourceQuotaWrapper struct {
+	v1.ResourceQuota
+}
+
+func MakeResourceQuota() *ResourceQuotaWrapper {
+	return &ResourceQuotaWrapper{
+		ResourceQuota: v1.ResourceQuota{
+			ObjectMeta: metav1.ObjectMeta{},
+			Spec:       v1.ResourceQuotaSpec{},
+			Status:     v1.ResourceQuotaStatus{},
 		},
-		Value: value,
 	}
 }
 
-// BuildPriorityClassWithPreemptionPolicy return a priorityClass with value and preemptionPolicy
-func BuildPriorityClassWithPreemptionPolicy(name string, value int32, preemptionPolicy v1.PreemptionPolicy) *schedulingv1.PriorityClass {
-	pc := BuildPriorityClass(name, value)
-	pc.PreemptionPolicy = &preemptionPolicy
-	return pc
+func (wrapper *ResourceQuotaWrapper) Name(name string) *ResourceQuotaWrapper {
+	wrapper.ObjectMeta.Name = name
+	return wrapper
+}
+
+func (wrapper *ResourceQuotaWrapper) Namespace(namespace string) *ResourceQuotaWrapper {
+	wrapper.ObjectMeta.Namespace = namespace
+	return wrapper
+}
+
+func (wrapper *ResourceQuotaWrapper) HardResourceLimit(hard v1.ResourceList) *ResourceQuotaWrapper {
+	wrapper.Spec.Hard = hard
+	wrapper.Status.Hard = hard
+	return wrapper
+}
+
+func (wrapper *ResourceQuotaWrapper) Obj() *v1.ResourceQuota {
+	return &wrapper.ResourceQuota
+}
+
+type QueueWrapper struct {
+	schedulingv1beta1.Queue
+}
+
+func MakeQueue() *QueueWrapper {
+	return &QueueWrapper{
+		Queue: schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{},
+			Spec:       schedulingv1beta1.QueueSpec{},
+			Status:     schedulingv1beta1.QueueStatus{},
+		},
+	}
+}
+
+func (wrapper *QueueWrapper) Name(name string) *QueueWrapper {
+	wrapper.ObjectMeta.Name = name
+	return wrapper
+}
+
+func (wrapper *QueueWrapper) Annotations(annos map[string]string) *QueueWrapper {
+	wrapper.ObjectMeta.Annotations = annos
+	return wrapper
+}
+func (wrapper *QueueWrapper) Weight(weight int32) *QueueWrapper {
+	wrapper.Spec.Weight = weight
+	return wrapper
+}
+
+func (wrapper *QueueWrapper) Capability(cap v1.ResourceList) *QueueWrapper {
+	wrapper.Spec.Capability = cap
+	return wrapper
+}
+
+func (wrapper *QueueWrapper) Deserved(deserved v1.ResourceList) *QueueWrapper {
+	wrapper.Spec.Deserved = deserved
+	return wrapper
+}
+
+func (wrapper *QueueWrapper) Priority(priority int32) *QueueWrapper {
+	wrapper.Spec.Priority = priority
+	return wrapper
+}
+
+func (wrapper *QueueWrapper) Parent(parent string) *QueueWrapper {
+	wrapper.Spec.Parent = parent
+	return wrapper
+}
+
+func (wrapper *QueueWrapper) State(state schedulingv1beta1.QueueState) *QueueWrapper {
+	wrapper.Status.State = state
+	return wrapper
+}
+
+func (wrapper *QueueWrapper) Obj() *schedulingv1beta1.Queue {
+	return &wrapper.Queue
+}
+
+type PriorityClassWrapper struct {
+	schedulingv1.PriorityClass
+}
+
+func MakePriorityClass() *PriorityClassWrapper {
+	return &PriorityClassWrapper{
+		PriorityClass: schedulingv1.PriorityClass{
+			ObjectMeta: metav1.ObjectMeta{},
+		},
+	}
+}
+
+func (wrapper *PriorityClassWrapper) Name(name string) *PriorityClassWrapper {
+	wrapper.ObjectMeta.Name = name
+	return wrapper
+}
+
+func (wrapper *PriorityClassWrapper) SetValue(value int32) *PriorityClassWrapper {
+	wrapper.Value = value
+	return wrapper
+}
+
+func (wrapper *PriorityClassWrapper) PreEmptionPolicy(preemptionPolicy v1.PreemptionPolicy) *PriorityClassWrapper {
+	wrapper.PreemptionPolicy = &preemptionPolicy
+	return wrapper
+}
+
+func (wrapper *PriorityClassWrapper) Obj() *schedulingv1.PriorityClass {
+	return &wrapper.PriorityClass
 }
 
 // FakeBinder is used as fake binder

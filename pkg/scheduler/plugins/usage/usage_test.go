@@ -62,14 +62,66 @@ func updateNodeUsage(nodesInfo map[string]*api.NodeInfo, nodesUsage map[string]*
 func TestUsage_predicateFn(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 
-	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p1 := util.MakePod().
+		Namespace("c1").
+		Name("p1").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("200m", "1Ki")).
+		GroupName("pg2").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p2 := util.MakePod().
+		Namespace("c1").
+		Name("p2").
+		NodeName("nodeName").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("200m", "1Ki")).
+		GroupName("pg2").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 
-	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
-	n2 := util.BuildNode("n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
-	n3 := util.BuildNode("n3", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
-	n4 := util.BuildNode("n4", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
-	n5 := util.BuildNode("n5", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n1 := util.MakeNode().
+		Name("n1").
+		Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
+
+	n2 := util.MakeNode().
+		Name("n2").
+		Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
+
+	n3 := util.MakeNode().
+		Name("n3").
+		Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
+
+	n4 := util.MakeNode().
+		Name("n4").
+		Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
+
+	n5 := util.MakeNode().
+		Name("n5").
+		Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
 
 	nodesUsage := make(map[string]*api.NodeUsage)
 	timeNow := time.Now()
@@ -91,9 +143,16 @@ func TestUsage_predicateFn(t *testing.T) {
 	// The node can schedule pods.
 	nodesUsage[n5.Name] = buildNodeUsage(map[string]float64{source.NODE_METRICS_PERIOD: 90}, map[string]float64{source.NODE_METRICS_PERIOD: 81}, time.Time{})
 
-	pg1 := util.BuildPodGroup("pg1", "c1", "q1", 0, nil, "")
+	pg1 := util.MakePodGroup().
+		Name("pg1").
+		Namespace("c1").
+		Queue("q1").
+		MinMember(0).
+		MinTaskMember(nil).
+		Phase("").
+		Obj()
 
-	queue1 := util.BuildQueue("q1", 1, nil)
+	queue1 := util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj()
 
 	tests := []struct {
 		uthelper.TestCommonStruct
@@ -312,13 +371,56 @@ func TestUsage_predicateFn(t *testing.T) {
 func TestUsage_nodeOrderFn(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 
-	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p1 := util.MakePod().
+		Namespace("c1").
+		Name("p1").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 
-	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
-	n2 := util.BuildNode("n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
-	n3 := util.BuildNode("n3", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
-	n4 := util.BuildNode("n4", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
-	n5 := util.BuildNode("n5", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n1 := util.MakeNode().
+		Name("n1").
+		Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
+
+	n2 := util.MakeNode().
+		Name("n2").
+		Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
+
+	n3 := util.MakeNode().
+		Name("n3").
+		Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
+
+	n4 := util.MakeNode().
+		Name("n4").
+		Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
+
+	n5 := util.MakeNode().
+		Name("n5").
+		Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
 
 	nodesUsage := make(map[string]*api.NodeUsage)
 	timeNow := time.Now()
@@ -332,9 +434,16 @@ func TestUsage_nodeOrderFn(t *testing.T) {
 	// The node score is 0.
 	nodesUsage[n5.Name] = buildNodeUsage(map[string]float64{source.NODE_METRICS_PERIOD: 0}, map[string]float64{source.NODE_METRICS_PERIOD: 0}, time.Time{})
 
-	pg1 := util.BuildPodGroup("pg1", "c1", "q1", 0, nil, "")
+	pg1 := util.MakePodGroup().
+		Name("pg1").
+		Namespace("c1").
+		Queue("q1").
+		MinMember(0).
+		MinTaskMember(nil).
+		Phase("").
+		Obj()
 
-	queue1 := util.BuildQueue("q1", 1, nil)
+	queue1 := util.MakeQueue().State(schedulingv1.QueueStateOpen).Name("q1").Weight(1).Capability(nil).Obj()
 
 	tests := []struct {
 		uthelper.TestCommonStruct

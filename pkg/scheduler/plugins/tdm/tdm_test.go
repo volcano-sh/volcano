@@ -107,30 +107,95 @@ func Test_parseRevocableZone(t *testing.T) {
 func Test_TDM(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 
-	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p1 := util.MakePod().
+		Namespace("c1").
+		Name("p1").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p2 := util.MakePod().
+		Namespace("c1").
+		Name("p2").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p3 := util.MakePod().
+		Namespace("c1").
+		Name("p3").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 
 	p1.Annotations[schedulingv2.RevocableZone] = "*"
 	p3.Annotations[schedulingv2.RevocableZone] = "*"
 
-	n1 := util.BuildNode("n1", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{
-		schedulingv2.RevocableZone: "rz1",
-	})
+	n1 := util.MakeNode().
+		Name("n1").
+		Allocatable(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{
+			schedulingv2.RevocableZone: "rz1",
+		}).
+		Obj()
 
-	n2 := util.BuildNode("n2", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{
-		schedulingv2.RevocableZone: "rz1",
-	})
+	n2 := util.MakeNode().
+		Name("n2").
+		Allocatable(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{
+			schedulingv2.RevocableZone: "rz1",
+		}).
+		Obj()
 
-	n3 := util.BuildNode("n3", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
-	n4 := util.BuildNode("n4", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	n3 := util.MakeNode().
+		Name("n3").
+		Allocatable(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{}).
+		Obj()
 
-	n5 := util.BuildNode("n5", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{
-		schedulingv2.RevocableZone: "rz2",
-	})
+	n4 := util.MakeNode().
+		Name("n4").
+		Allocatable(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{}).
+		Obj()
 
-	pg1 := util.BuildPodGroup("pg1", "c1", "c1", 0, nil, "")
-	queue1 := util.BuildQueue("c1", 1, nil)
+	n5 := util.MakeNode().
+		Name("n5").
+		Allocatable(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{
+			schedulingv2.RevocableZone: "rz2",
+		}).
+		Obj()
+
+	pg1 := util.MakePodGroup().
+		Name("pg1").
+		Namespace("c1").
+		Queue("c1").
+		MinMember(0).
+		MinTaskMember(nil).
+		Phase("").
+		Obj()
+	queue1 := util.MakeQueue().Name("c1").State(schedulingv2.QueueStateOpen).Weight(1).Capability(nil).Obj()
 
 	tests := []struct {
 		uthelper.TestCommonStruct
@@ -269,20 +334,109 @@ func Test_TDM(t *testing.T) {
 		})
 	}
 }
+
 func Test_TDM_victimsFn(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
-
-	p1 := util.BuildPod("c1", "p1", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p2 := util.BuildPod("c1", "p2", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p3 := util.BuildPod("c1", "p3", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p4 := util.BuildPod("c1", "p4", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p5 := util.BuildPod("c1", "p5", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p6 := util.BuildPod("c2", "p6", "n2", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p7 := util.BuildPod("c2", "p7", "n2", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p8 := util.BuildPod("c2", "p8", "n2", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p9 := util.BuildPod("c2", "p9", "n2", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-	p10 := util.BuildPod("c2", "p10", "n2", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg2", make(map[string]string), make(map[string]string))
-
+	p1 := util.MakePod().
+		Namespace("c1").
+		Name("p1").
+		NodeName("n1").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p2 := util.MakePod().
+		Namespace("c1").
+		Name("p2").
+		NodeName("n1").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p3 := util.MakePod().
+		Namespace("c1").
+		Name("p3").
+		NodeName("n1").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p4 := util.MakePod().
+		Namespace("c1").
+		Name("p4").
+		NodeName("n1").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p5 := util.MakePod().
+		Namespace("c1").
+		Name("p5").
+		NodeName("n1").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p6 := util.MakePod().
+		Namespace("c2").
+		Name("p6").
+		NodeName("n2").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg2").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p7 := util.MakePod().
+		Namespace("c2").
+		Name("p7").
+		NodeName("n2").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg2").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p8 := util.MakePod().
+		Namespace("c2").
+		Name("p8").
+		NodeName("n2").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg2").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p9 := util.MakePod().
+		Namespace("c2").
+		Name("p9").
+		NodeName("n2").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg2").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p10 := util.MakePod().
+		Namespace("c2").
+		Name("p10").
+		NodeName("n2").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg2").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	p1.Annotations[schedulingv2.PodPreemptable] = "true"
 	p2.Annotations[schedulingv2.PodPreemptable] = "true"
 	p3.Annotations[schedulingv2.PodPreemptable] = "true"
@@ -296,16 +450,29 @@ func Test_TDM_victimsFn(t *testing.T) {
 	p9.Annotations[schedulingv2.PodPreemptable] = "true"
 	p10.Annotations[schedulingv2.PodPreemptable] = "true"
 
-	n1 := util.BuildNode("n1", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{
-		schedulingv2.RevocableZone: "rz1",
-	})
 
-	n2 := util.BuildNode("n2", api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{
-		schedulingv2.RevocableZone: "rz1",
-	})
+	n1 := util.MakeNode().
+		Name("n1").
+		Allocatable(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{
+			schedulingv2.RevocableZone: "rz1",
+		}).
+		Obj()
 
-	queue1 := util.BuildQueue("c1", 1, nil)
-	queue2 := util.BuildQueue("c2", 1, nil)
+	n2 := util.MakeNode().
+		Name("n2").
+		Allocatable(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("16", "64Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{
+			schedulingv2.RevocableZone: "rz1",
+		}).
+		Obj()
+
+	queue1 := util.MakeQueue().Name("c1").State(schedulingv2.QueueStateOpen).Weight(1).Capability(nil).Obj()
+	queue2 := util.MakeQueue().Name("c2").State(schedulingv2.QueueStateOpen).Weight(1).Capability(nil).Obj()
 
 	tests := []struct {
 		uthelper.TestCommonStruct
@@ -315,7 +482,15 @@ func Test_TDM_victimsFn(t *testing.T) {
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv2.PodGroup{
-					util.BuildPodGroupWithAnno("pg1", "c1", "c1", 0, nil, "", map[string]string{schedulingv2.JDBMaxUnavailable: "30%"}),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						Queue("c1").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase("").
+						SetAnnotations(map[string]string{schedulingv2.JDBMaxUnavailable: "30%"}).
+						Obj(),
 				},
 				Queues: []*schedulingv2.Queue{
 					queue1,
@@ -337,7 +512,15 @@ func Test_TDM_victimsFn(t *testing.T) {
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv2.PodGroup{
-					util.BuildPodGroupWithAnno("pg1", "c1", "c1", 0, nil, "", map[string]string{schedulingv2.JDBMaxUnavailable: "30%"}),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						Queue("c1").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase("").
+						SetAnnotations(map[string]string{schedulingv2.JDBMaxUnavailable: "30%"}).
+						Obj(),
 				},
 				Queues: []*schedulingv2.Queue{
 					queue1,
@@ -359,7 +542,15 @@ func Test_TDM_victimsFn(t *testing.T) {
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv2.PodGroup{
-					util.BuildPodGroupWithAnno("pg1", "c1", "c1", 0, nil, "", map[string]string{schedulingv2.JDBMaxUnavailable: "99%"}),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						Queue("c1").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase("").
+						SetAnnotations(map[string]string{schedulingv2.JDBMaxUnavailable: "99%"}).
+						Obj(),
 				},
 				Queues: []*schedulingv2.Queue{
 					queue1,
@@ -381,7 +572,15 @@ func Test_TDM_victimsFn(t *testing.T) {
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv2.PodGroup{
-					util.BuildPodGroupWithAnno("pg2", "c2", "c2", 0, nil, "", map[string]string{schedulingv2.JDBMaxUnavailable: "50%"}),
+					util.MakePodGroup().
+						Name("pg2").
+						Namespace("c2").
+						Queue("c2").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase("").
+						SetAnnotations(map[string]string{schedulingv2.JDBMaxUnavailable: "50%"}).
+						Obj(),
 				},
 				Queues: []*schedulingv2.Queue{
 					queue2,
@@ -403,8 +602,24 @@ func Test_TDM_victimsFn(t *testing.T) {
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv2.PodGroup{
-					util.BuildPodGroupWithAnno("pg2", "c2", "c2", 0, nil, "", map[string]string{schedulingv2.JDBMaxUnavailable: "50%"}),
-					util.BuildPodGroupWithAnno("pg1", "c1", "c1", 0, nil, "", map[string]string{schedulingv2.JDBMaxUnavailable: "90%"}),
+					util.MakePodGroup().
+						Name("pg2").
+						Namespace("c2").
+						Queue("c2").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase("").
+						SetAnnotations(map[string]string{schedulingv2.JDBMaxUnavailable: "50%"}).
+						Obj(),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						Queue("c1").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase("").
+						SetAnnotations(map[string]string{schedulingv2.JDBMaxUnavailable: "90%"}).
+						Obj(),
 				},
 				Queues: []*schedulingv2.Queue{
 					queue1,
@@ -427,7 +642,15 @@ func Test_TDM_victimsFn(t *testing.T) {
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv2.PodGroup{
-					util.BuildPodGroupWithAnno("pg2", "c2", "c2", 0, nil, "", map[string]string{schedulingv2.JDBMaxUnavailable: "3"}),
+					util.MakePodGroup().
+						Name("pg2").
+						Namespace("c2").
+						Queue("c2").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase("").
+						SetAnnotations(map[string]string{schedulingv2.JDBMaxUnavailable: "3"}).
+						Obj(),
 				},
 				Queues: []*schedulingv2.Queue{
 					queue2,
@@ -449,7 +672,15 @@ func Test_TDM_victimsFn(t *testing.T) {
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv2.PodGroup{
-					util.BuildPodGroupWithAnno("pg2", "c2", "c2", 0, nil, "", map[string]string{schedulingv2.JDBMinAvailable: "3"}),
+					util.MakePodGroup().
+						Name("pg2").
+						Namespace("c2").
+						Queue("c2").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase("").
+						SetAnnotations(map[string]string{schedulingv2.JDBMinAvailable: "3"}).
+						Obj(),
 				},
 				Queues: []*schedulingv2.Queue{
 					queue2,
@@ -471,7 +702,15 @@ func Test_TDM_victimsFn(t *testing.T) {
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv2.PodGroup{
-					util.BuildPodGroupWithAnno("pg2", "c2", "c2", 0, nil, "", map[string]string{schedulingv2.JDBMinAvailable: "30%"}),
+					util.MakePodGroup().
+						Name("pg2").
+						Namespace("c2").
+						Queue("c2").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase("").
+						SetAnnotations(map[string]string{schedulingv2.JDBMinAvailable: "30%"}).
+						Obj(),
 				},
 				Queues: []*schedulingv2.Queue{
 					queue2,
@@ -493,8 +732,24 @@ func Test_TDM_victimsFn(t *testing.T) {
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv2.PodGroup{
-					util.BuildPodGroupWithAnno("pg2", "c2", "c2", 0, nil, "", map[string]string{schedulingv2.JDBMinAvailable: "2"}),
-					util.BuildPodGroupWithAnno("pg1", "c1", "c1", 0, nil, "", map[string]string{schedulingv2.JDBMaxUnavailable: "3"}),
+					util.MakePodGroup().
+						Name("pg2").
+						Namespace("c2").
+						Queue("c2").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase("").
+						SetAnnotations(map[string]string{schedulingv2.JDBMinAvailable: "2"}).
+						Obj(),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						Queue("c1").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase("").
+						SetAnnotations(map[string]string{schedulingv2.JDBMaxUnavailable: "3"}).
+						Obj(),
 				},
 				Queues: []*schedulingv2.Queue{
 					queue1,

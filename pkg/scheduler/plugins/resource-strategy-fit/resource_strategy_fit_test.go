@@ -586,37 +586,125 @@ func TestResourceStrategyFitPlugin(t *testing.T) {
 	GPU := v1.ResourceName("nvidia.com/gpu")
 	FOO := v1.ResourceName("example.com/foo")
 
-	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p1 := util.MakePod().
+		Namespace("c1").
+		Name("p1").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	addResource(p1.Spec.Containers[0].Resources.Requests, FOO, "2")
-	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p2 := util.MakePod().
+		Namespace("c1").
+		Name("p2").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	addResource(p2.Spec.Containers[0].Resources.Requests, FOO, "3")
-	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "10Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p3 := util.MakePod().
+		Namespace("c1").
+		Name("p3").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "10Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	addResource(p3.Spec.Containers[0].Resources.Requests, GPU, "2")
-	p4 := util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p4 := util.MakePod().
+		Namespace("c1").
+		Name("p4").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	addResource(p4.Spec.Containers[0].Resources.Requests, GPU, "3")
 
-	p5 := util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p5 := util.MakePod().
+		Namespace("c1").
+		Name("p5").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	addResource(p5.Spec.Containers[0].Resources.Requests, GPU, "4")
 	addResource(p5.Spec.Containers[0].Resources.Requests, FOO, "4")
 
-	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n1 := util.MakeNode().
+		Name("n1").
+		Allocatable(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
 	addResource(n1.Status.Allocatable, GPU, "10")
-	n2 := util.BuildNode("n2", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n2 := util.MakeNode().
+		Name("n2").
+		Allocatable(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
 	addResource(n2.Status.Allocatable, GPU, "5")
-	n3 := util.BuildNode("n3", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n3 := util.MakeNode().
+		Name("n3").
+		Allocatable(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
 	addResource(n3.Status.Allocatable, FOO, "10")
-	n4 := util.BuildNode("n4", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
-	addResource(n4.Status.Allocatable, FOO, "5")
 
-	n5 := util.BuildNode("n5", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n4 := util.MakeNode().
+		Name("n4").
+		Allocatable(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
+	addResource(n4.Status.Allocatable, FOO, "5")
+	n5 := util.MakeNode().
+		Name("n5").
+		Allocatable(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
 	addResource(n5.Status.Allocatable, GPU, "10")
 	addResource(n5.Status.Allocatable, FOO, "5")
-	n6 := util.BuildNode("n6", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n6 := util.MakeNode().
+		Name("n6").
+		Allocatable(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
 	addResource(n6.Status.Allocatable, FOO, "5")
 	addResource(n6.Status.Allocatable, FOO, "10")
 
-	pg1 := util.BuildPodGroup("pg1", "c1", "c1", 0, nil, "")
-	queue1 := util.BuildQueue("c1", 1, nil)
+	pg1 := util.MakePodGroup().
+		Name("pg1").
+		Namespace("c1").
+		Queue("c1").
+		MinMember(0).
+		MinTaskMember(nil).
+		Phase("").
+		Obj()
+	queue1 := util.MakeQueue().State(schedulingv1.QueueStateOpen).Name("c1").Weight(1).Capability(nil).Obj()
 
 	tests := []struct {
 		uthelper.TestCommonStruct
@@ -749,19 +837,81 @@ func TestAllocate(t *testing.T) {
 
 	GPU := v1.ResourceName("nvidia.com/gpu")
 
-	GpuPod1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeResourceType": "gpu"})
+	GpuPod1 := util.MakePod().
+		Namespace("c1").
+		Name("p1").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "1G")).
+		GroupName("pg1").
+		Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+		NodeSelector(map[string]string{"nodeResourceType": "gpu"}).
+		Obj()
 	addResource(GpuPod1.Spec.Containers[0].Resources.Requests, GPU, "2")
-	GpuPod2 := util.BuildPod("c1", "p2", "n2", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeResourceType": "gpu"})
+	GpuPod2 := util.MakePod().
+		Namespace("c1").
+		Name("p2").
+		NodeName("n2").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1G")).
+		GroupName("pg1").
+		Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+		NodeSelector(map[string]string{"nodeResourceType": "gpu"}).
+		Obj()
 	addResource(GpuPod2.Spec.Containers[0].Resources.Requests, GPU, "2")
-	CpuPod1 := util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeResourceType": "cpu"})
-	CpuPod2 := util.BuildPod("c1", "p4", "n3", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeResourceType": "cpu"})
-	GpuNode1 := util.BuildNode("n1", api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeResourceType": "gpu"})
-	addResource(GpuNode1.Status.Allocatable, GPU, "10")
-	GpuNode2 := util.BuildNode("n2", api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeResourceType": "gpu"})
-	addResource(GpuNode2.Status.Allocatable, GPU, "10")
-	CpuNode1 := util.BuildNode("n3", api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeResourceType": "cpu"})
-	CpuNode2 := util.BuildNode("n4", api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeResourceType": "cpu"})
+	CpuPod1 := util.MakePod().
+		Namespace("c1").
+		Name("p3").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "1G")).
+		GroupName("pg1").
+		Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+		NodeSelector(map[string]string{"nodeResourceType": "cpu"}).
+		Obj()
+	CpuPod2 := util.MakePod().
+		Namespace("c1").
+		Name("p4").
+		NodeName("n3").
+		PodPhase(v1.PodRunning).
+		ResourceList(api.BuildResourceList("1", "1G")).
+		GroupName("pg1").
+		Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+		NodeSelector(map[string]string{"nodeResourceType": "cpu"}).
+		Obj()
 
+	GpuNode1 := util.MakeNode().
+		Name("n1").
+		Allocatable(api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{"nodeResourceType": "gpu"}).
+		Obj()
+	addResource(GpuNode1.Status.Allocatable, GPU, "10")
+	GpuNode2 := util.MakeNode().
+		Name("n2").
+		Allocatable(api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{"nodeResourceType": "gpu"}).
+		Obj()
+	addResource(GpuNode2.Status.Allocatable, GPU, "10")
+
+	CpuNode1 := util.MakeNode().
+		Name("n3").
+		Allocatable(api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{"nodeResourceType": "cpu"}).
+		Obj()
+
+	CpuNode2 := util.MakeNode().
+		Name("n4").
+		Allocatable(api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("5", "10Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{"nodeResourceType": "cpu"}).
+		Obj()
 	plugins := map[string]framework.PluginBuilder{
 		PluginName:            New,
 		drf.PluginName:        drf.New,
@@ -774,7 +924,14 @@ func TestAllocate(t *testing.T) {
 		{
 			Name: "GPU MostAllocated",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("c1").
+					Queue("c1").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1.PodGroupInqueue).
+					Obj(),
 			},
 			Pods: []*v1.Pod{
 				GpuPod1,
@@ -787,7 +944,7 @@ func TestAllocate(t *testing.T) {
 				CpuNode2,
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
+				util.MakeQueue().Name("c1").Weight(1).State(schedulingv1.QueueStateOpen).Capability(nil).Obj(),
 			},
 			ExpectBindMap: map[string]string{
 				"c1/p1": "n2",
@@ -797,7 +954,14 @@ func TestAllocate(t *testing.T) {
 		{
 			Name: "cpu LeastAllocated",
 			PodGroups: []*schedulingv1.PodGroup{
-				util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("c1").
+					Queue("c1").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1.PodGroupInqueue).
+					Obj(),
 			},
 			Pods: []*v1.Pod{
 				CpuPod1,
@@ -810,7 +974,7 @@ func TestAllocate(t *testing.T) {
 				CpuNode2,
 			},
 			Queues: []*schedulingv1.Queue{
-				util.BuildQueue("c1", 1, nil),
+				util.MakeQueue().Name("c1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 			},
 			ExpectBindMap: map[string]string{
 				"c1/p3": "n4",
