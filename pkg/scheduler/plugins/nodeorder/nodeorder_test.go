@@ -57,17 +57,47 @@ func TestNodeOrderPlugin(t *testing.T) {
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Name: "leastAllocated strategy",
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupInqueue),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						Queue("c1").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("1", "1G")).
+						GroupName("pg1").
+						Labels(make(map[string]string)).
+						NodeSelector(make(map[string]string)).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-					util.BuildNode("n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				
+					util.MakeNode().
+						Name("n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(make(map[string]string)).
+						Obj(),
+
+					util.MakeNode().
+						Name("n2").
+						Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(make(map[string]string)).
+						Obj(),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("c1", 1, nil),
+					util.MakeQueue().Name("c1").Weight(1).Capability(nil).Obj(),
 				},
 				ExpectBindsNum: 1,
 				ExpectBindMap: map[string]string{
@@ -81,17 +111,47 @@ func TestNodeOrderPlugin(t *testing.T) {
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Name: "mostAllocated strategy",
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroup("pg1", "c1", "c1", 0, nil, schedulingv1.PodGroupInqueue),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						Queue("c1").
+						MinMember(0).
+						MinTaskMember(nil).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string)),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("1", "1G")).
+						GroupName("pg1").
+						Labels(make(map[string]string)).
+						NodeSelector(make(map[string]string)).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-					util.BuildNode("n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				
+					util.MakeNode().
+						Name("n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(make(map[string]string)).
+						Obj(),
+
+					util.MakeNode().
+						Name("n2").
+						Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(make(map[string]string)).
+						Obj(),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("c1", 1, nil),
+					util.MakeQueue().Name("c1").Weight(1).Capability(nil).Obj(),
 				},
 				ExpectBindsNum: 1,
 				ExpectBindMap: map[string]string{

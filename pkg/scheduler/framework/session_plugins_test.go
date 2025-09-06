@@ -44,46 +44,185 @@ func TestFilterOutPreemptMayNotHelpNodes(t *testing.T) {
 		want      map[api.TaskID][]string // task's nodes name list which is helpful for preemption
 	}{
 		{
-			Name:      "all are helpful for preemption",
-			PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue)},
+			Name: "all are helpful for preemption",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("c1").
+					Queue("c1").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1.PodGroupInqueue).
+					Obj(),
+			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+				util.MakePod().
+					Namespace("c1").
+					Name("p1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("2", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+					NodeSelector(nil).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("p2").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("2", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "worker"}),
-				util.BuildNode("n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "worker"}),
+				util.MakeNode().
+					Name("n1").
+					Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(map[string]string{"nodeRole": "worker"}).
+					Obj(),
+
+				util.MakeNode().
+					Name("n2").
+					Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(map[string]string{"nodeRole": "worker"}).
+					Obj(),
 			},
-			Queues: []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			Queues: []*schedulingv1.Queue{
+				util.MakeQueue().Name("c1").Weight(1).Capability(nil).Obj(),
+			},
 			status: map[api.TaskID]*api.FitError{},
 			want:   map[api.TaskID][]string{"c1-p2": {"n1", "n2"}, "c1-p1": {"n1", "n2"}},
 		},
 		{
-			Name:      "master predicate failed: node selector does not match",
-			PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue)},
-			Pods: []*v1.Pod{
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeRole": "worker"}),
+			Name: "master predicate failed: node selector does not match",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("c1").
+					Queue("c1").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1.PodGroupInqueue).
+					Obj(),
 			},
-			Nodes:  []*v1.Node{util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "worker"})},
-			Queues: []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			Pods: []*v1.Pod{
+				util.MakePod().
+					Namespace("c1").
+					Name("p1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("2", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+					NodeSelector(map[string]string{"nodeRole": "master"}).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("p2").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("2", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+					NodeSelector(map[string]string{"nodeRole": "worker"}).
+					Obj(),
+			},
+			Nodes: []*v1.Node{
+				util.MakeNode().
+					Name("n1").
+					Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(map[string]string{"nodeRole": "worker"}).
+					Obj(),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.MakeQueue().Name("c1").Weight(1).Capability(nil).Obj(),
+			},
 			status: map[api.TaskID]*api.FitError{"c1-p1": newFitErr("c1-p1", "n1", &api.Status{Reason: "node(s) didn't match Pod's node selector", Code: api.UnschedulableAndUnresolvable})},
 			want:   map[api.TaskID][]string{"c1-p2": {"n1"}, "c1-p1": {}},
 		},
 		{
-			Name:      "p1,p3 has node fit error",
-			PodGroups: []*schedulingv1.PodGroup{util.BuildPodGroup("pg1", "c1", "c1", 2, map[string]int32{"master": 1, "worker": 1}, schedulingv1.PodGroupInqueue)},
+			Name: "p1,p3 has node fit error",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("c1").
+					Queue("c1").
+					MinMember(2).
+					MinTaskMember(map[string]int32{"master": 1, "worker": 1}).
+					Phase(schedulingv1.PodGroupInqueue).
+					Obj(),
+			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
-				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, map[string]string{"nodeRole": "master"}),
-				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeRole": "worker"}),
-				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, map[string]string{"nodeRole": "worker"}),
+				util.MakePod().
+					Namespace("c1").
+					Name("p0").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+					NodeSelector(map[string]string{"nodeRole": "master"}).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("p1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+					NodeSelector(map[string]string{"nodeRole": "master"}).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("p2").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+					NodeSelector(map[string]string{"nodeRole": "worker"}).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("p3").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+					NodeSelector(map[string]string{"nodeRole": "worker"}).
+					Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "master"}),
-				util.BuildNode("n2", api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"nodeRole": "worker"}),
+				util.MakeNode().
+					Name("n1").
+					Allocatable(api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(map[string]string{"nodeRole": "master"}).
+					Obj(),
+
+				util.MakeNode().
+					Name("n2").
+					Allocatable(api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("1", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(map[string]string{"nodeRole": "worker"}).
+					Obj(),
 			},
-			Queues: []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			Queues: []*schedulingv1.Queue{
+				util.MakeQueue().Name("c1").Weight(1).Capability(nil).Obj(),
+			},
 			status: map[api.TaskID]*api.FitError{
 				"c1-p1": newFitErr("c1-p1", "n2", &api.Status{Reason: "node(s) didn't match Pod's node selector", Code: api.UnschedulableAndUnresolvable}),
 				"c1-p3": newFitErr("c1-p3", "n1", &api.Status{Reason: "node(s) didn't match Pod's node selector", Code: api.UnschedulableAndUnresolvable}),

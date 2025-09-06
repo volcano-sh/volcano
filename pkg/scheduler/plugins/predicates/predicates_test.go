@@ -66,16 +66,56 @@ func TestEventHandler(t *testing.T) {
 	}
 
 	// pending pods
-	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodPending, api.BuildResourceList("3", "3k"), "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
-	w2 := util.BuildPod("ns1", "worker-2", "", apiv1.PodPending, api.BuildResourceList("5", "5k"), "pg1", map[string]string{"role": "worker"}, map[string]string{})
-	w3 := util.BuildPod("ns1", "worker-3", "", apiv1.PodPending, api.BuildResourceList("4", "4k"), "pg2", map[string]string{"role": "worker"}, map[string]string{})
+	w1 := util.MakePod().
+		Namespace("ns1").
+		Name("worker-1").
+		NodeName("").
+		PodPhase(apiv1.PodPending).
+		ResourceList(api.BuildResourceList("3", "3k")).
+		GroupName("pg1").
+		Labels(map[string]string{"role": "worker"}).
+		NodeSelector(map[string]string{"selector": "worker"}).
+		Obj()
+	w2 := util.MakePod().
+		Namespace("ns1").
+		Name("worker-2").
+		NodeName("").
+		PodPhase(apiv1.PodPending).
+		ResourceList(api.BuildResourceList("5", "5k")).
+		GroupName("pg1").
+		Labels(map[string]string{"role": "worker"}).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	w3 := util.MakePod().
+		Namespace("ns1").
+		Name("worker-3").
+		NodeName("").
+		PodPhase(apiv1.PodPending).
+		ResourceList(api.BuildResourceList("4", "4k")).
+		GroupName("pg2").
+		Labels(map[string]string{"role": "worker"}).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	w1.Spec.Affinity = getWorkerAffinity()
 	w2.Spec.Affinity = getWorkerAffinity()
 	w3.Spec.Affinity = getWorkerAffinity()
 
 	// nodes
-	n1 := util.BuildNode("node1", api.BuildResourceList("14", "14k", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{"selector": "worker"})
-	n2 := util.BuildNode("node2", api.BuildResourceList("3", "3k", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+	
+	n1 := util.MakeNode().
+		Name("node1").
+		Allocatable(api.BuildResourceList("14", "14k", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("14", "14k", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{"selector": "worker"}).
+		Obj()
+	n2 := util.MakeNode().
+		Name("node2").
+		Allocatable(api.BuildResourceList("3", "3k", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("3", "3k", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{}).
+		Obj()
 	n1.Labels["kubernetes.io/hostname"] = "node1"
 	n2.Labels["kubernetes.io/hostname"] = "node2"
 
@@ -83,11 +123,26 @@ func TestEventHandler(t *testing.T) {
 	p1 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p1"}, Value: 1}
 	p2 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p2"}, Value: 2}
 	// podgroup
-	pg1 := util.BuildPodGroupWithPrio("pg1", "ns1", "q1", 2, nil, schedulingv1beta1.PodGroupInqueue, p2.Name)
-	pg2 := util.BuildPodGroupWithPrio("pg2", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, p1.Name)
-
+	pg1 := util.MakePodGroup().
+		Name("pg1").
+		Namespace("ns1").
+		Queue("q1").
+		MinMember(2).
+		MinTaskMember(nil).
+		Phase(schedulingv1beta1.PodGroupInqueue).
+		PriorityClassName(p2.Name).
+		Obj()
+	pg2 := util.MakePodGroup().
+		Name("pg2").
+		Namespace("ns1").
+		Queue("q1").
+		MinMember(1).
+		MinTaskMember(nil).
+		Phase(schedulingv1beta1.PodGroupInqueue).
+		PriorityClassName(p1.Name).
+		Obj()
 	// queue
-	queue1 := util.BuildQueue("q1", 0, nil)
+	queue1 := util.MakeQueue().Name("q1").Weight(0).Capability(nil).Obj()
 
 	// tests
 	tests := []uthelper.TestCommonStruct{
@@ -146,23 +201,71 @@ func TestNodeNum(t *testing.T) {
 	}
 
 	// pending pods
-	w1 := util.BuildPod("ns1", "worker-1", "", apiv1.PodPending, nil, "pg1", map[string]string{"role": "worker"}, map[string]string{"selector": "worker"})
-	w2 := util.BuildPod("ns1", "worker-2", "", apiv1.PodPending, nil, "pg1", map[string]string{"role": "worker"}, map[string]string{})
-	w3 := util.BuildPod("ns1", "worker-3", "", apiv1.PodPending, nil, "pg2", map[string]string{"role": "worker"}, map[string]string{})
 
+	w1 := util.MakePod().
+		Namespace("ns1").
+		Name("worker-1").
+		NodeName("").
+		PodPhase(apiv1.PodPending).
+		ResourceList(nil).
+		GroupName("pg1").
+		Labels(map[string]string{"role": "worker"}).
+		NodeSelector(map[string]string{"selector": "worker"}).
+		Obj()
+	w2 := util.MakePod().
+		Namespace("ns1").
+		Name("worker-2").
+		NodeName("").
+		PodPhase(apiv1.PodPending).
+		ResourceList(nil).
+		GroupName("pg1").
+		Labels(map[string]string{"role": "worker"}).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	w3 := util.MakePod().
+		Namespace("ns1").
+		Name("worker-3").
+		NodeName("").
+		PodPhase(apiv1.PodPending).
+		ResourceList(nil).
+		GroupName("pg2").
+		Labels(map[string]string{"role": "worker"}).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	// nodes
-	n1 := util.BuildNode("node1", api.BuildResourceList("4", "4k", []api.ScalarResource{{Name: "pods", Value: "2"}}...), map[string]string{"selector": "worker"})
 
+	n1 := util.MakeNode().
+		Name("node1").
+		Allocatable(api.BuildResourceList("4", "4k", []api.ScalarResource{{Name: "pods", Value: "2"}}...)).
+		Capacity(api.BuildResourceList("4", "4k", []api.ScalarResource{{Name: "pods", Value: "2"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{"selector": "worker"}).
+		Obj()
 	// priority
 	p1 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p1"}, Value: 1}
 	p2 := &schedulingv1.PriorityClass{ObjectMeta: metav1.ObjectMeta{Name: "p2"}, Value: 2}
 
 	// podgroup
-	pg1 := util.BuildPodGroupWithPrio("pg1", "ns1", "q1", 2, nil, schedulingv1beta1.PodGroupInqueue, p2.Name)
-	pg2 := util.BuildPodGroupWithPrio("pg2", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, p1.Name)
-
+	pg1 := util.MakePodGroup().
+		Name("pg1").
+		Namespace("ns1").
+		Queue("q1").
+		MinMember(2).
+		MinTaskMember(nil).
+		Phase(schedulingv1beta1.PodGroupInqueue).
+		PriorityClassName(p2.Name).
+		Obj()
+	pg2 := util.MakePodGroup().
+		Name("pg2").
+		Namespace("ns1").
+		Queue("q1").
+		MinMember(1).
+		MinTaskMember(nil).
+		Phase(schedulingv1beta1.PodGroupInqueue).
+		PriorityClassName(p1.Name).
+		Obj()
 	// queue
-	queue1 := util.BuildQueue("q1", 0, nil)
+	queue1 := util.MakeQueue().Name("q1").Weight(0).Capability(nil).Obj()
 
 	// tests
 	tests := []uthelper.TestCommonStruct{
@@ -212,25 +315,77 @@ func TestPodAntiAffinity(t *testing.T) {
 		PluginName:          New,
 		priority.PluginName: priority.New,
 	}
-	highPrio := util.BuildPriorityClass("high-priority", 100000)
-	lowPrio := util.BuildPriorityClass("low-priority", 10)
+	
+	highPrio := util.MakePriorityClass().Name("high-priority").SetValue(100000).Obj()
+	lowPrio := util.MakePriorityClass().Name("low-priority").SetValue(10).Obj()
 
-	w1 := util.BuildPodWithPriority("ns1", "worker-1", "n1", apiv1.PodRunning, api.BuildResourceList("3", "3G"), "pg1", map[string]string{"role": "worker"}, map[string]string{}, &highPrio.Value)
-	w2 := util.BuildPodWithPriority("ns1", "worker-2", "n1", apiv1.PodRunning, api.BuildResourceList("3", "3G"), "pg1", map[string]string{}, map[string]string{}, &lowPrio.Value)
-	w3 := util.BuildPodWithPriority("ns1", "worker-3", "", apiv1.PodPending, api.BuildResourceList("3", "3G"), "pg2", map[string]string{"role": "worker"}, map[string]string{}, &highPrio.Value)
+	w1 := util.MakePod().
+		Namespace("ns1").
+		Name("worker-1").
+		NodeName("n1").
+		PodPhase(apiv1.PodPending).
+		ResourceList(api.BuildResourceList("3", "3G")).
+		GroupName("pg1").
+		Labels(map[string]string{"role": "worker"}).
+		NodeSelector(make(map[string]string)).
+		Priority(&highPrio.Value).
+		Obj()
+	w2 := util.MakePod().
+		Namespace("ns1").
+		Name("worker-2").
+		NodeName("n1").
+		PodPhase(apiv1.PodPending).
+		ResourceList(api.BuildResourceList("3", "3G")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Priority(&lowPrio.Value).
+		Obj()
+	w3 := util.MakePod().
+		Namespace("ns1").
+		Name("worker-3").
+		NodeName("").
+		PodPhase(apiv1.PodPending).
+		ResourceList(api.BuildResourceList("3", "3G")).
+		GroupName("pg2").
+		Labels(map[string]string{"role": "worker"}).
+		NodeSelector(make(map[string]string)).
+		Priority(&highPrio.Value).
+		Obj()
 	w1.Spec.Affinity = getWorkerAffinity()
 	w3.Spec.Affinity = getWorkerAffinity()
 
 	// nodes
-	n1 := util.BuildNode("n1", api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "2"}}...), map[string]string{})
+	n1 := util.MakeNode().
+		Name("n1").
+		Allocatable(api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "2"}}...)).
+		Capacity(api.BuildResourceList("12", "12G", []api.ScalarResource{{Name: "pods", Value: "2"}}...)).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{}).
+		Obj()
 	n1.Labels["kubernetes.io/hostname"] = "node1"
 
 	// podgroup
-	pg1 := util.BuildPodGroupWithPrio("pg1", "ns1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, lowPrio.Name)
-	pg2 := util.BuildPodGroupWithPrio("pg2", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, highPrio.Name)
-
+	pg1 := util.MakePodGroup().
+		Name("pg1").
+		Namespace("ns1").
+		Queue("q1").
+		MinMember(0).
+		MinTaskMember(nil).
+		Phase(schedulingv1beta1.PodGroupRunning).
+		PriorityClassName(lowPrio.Name).
+		Obj()
+	pg2 := util.MakePodGroup().
+		Name("pg2").
+		Namespace("ns1").
+		Queue("q1").
+		MinMember(1).
+		MinTaskMember(nil).
+		Phase(schedulingv1beta1.PodGroupInqueue).
+		PriorityClassName(highPrio.Name).
+		Obj()
 	// queue
-	queue1 := util.BuildQueue("q1", 0, api.BuildResourceList("9", "9G"))
+	queue1 := util.MakeQueue().Name("q1").Weight(0).Capability(api.BuildResourceList("9", "9G")).Obj()
 
 	// tests
 	tests := []uthelper.TestCommonStruct{
