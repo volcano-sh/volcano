@@ -154,7 +154,7 @@ func TestPreempt(t *testing.T) {
 						Obj(),
 				},
 				Queues: []*vcapisv1.Queue{
-					util.MakeQueue().Name("q1").Weight(1).Capability(api.BuildResourceList("6", "6G")).Obj(),
+					util.MakeQueue().Name("q1").Weight(1).State(vcapisv1.QueueStateOpen).Capability(api.BuildResourceList("6", "6G")).Obj(),
 				},
 				ExpectEvicted:   []string{"ns1/preemptee1"},
 				ExpectEvictNum:  1,
@@ -246,7 +246,7 @@ func TestPreempt(t *testing.T) {
 						Obj(),
 				},
 				Queues: []*vcapisv1.Queue{
-					util.MakeQueue().Name("q1").Weight(1).Capability(api.BuildResourceList("6", "6G")).Obj(),
+					util.MakeQueue().Name("q1").State(vcapisv1.QueueStateOpen).Weight(1).Capability(api.BuildResourceList("6", "6G")).Obj(),
 				},
 				ExpectEvicted:   []string{},
 				ExpectEvictNum:  0,

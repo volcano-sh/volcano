@@ -67,18 +67,18 @@ func TestUsage_predicateFn(t *testing.T) {
 		Name("p1").
 		NodeName("").
 		PodPhase(v1.PodPending).
-		ResourceList(api.BuildResourceList("200m", "1Ki")).
-		GroupName("pg2").
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
 		Labels(make(map[string]string)).
 		NodeSelector(make(map[string]string)).
 		Obj()
 	p2 := util.MakePod().
 		Namespace("c1").
 		Name("p2").
-		NodeName("nodeName").
+		NodeName("").
 		PodPhase(v1.PodPending).
-		ResourceList(api.BuildResourceList("200m", "1Ki")).
-		GroupName("pg2").
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
 		Labels(make(map[string]string)).
 		NodeSelector(make(map[string]string)).
 		Obj()

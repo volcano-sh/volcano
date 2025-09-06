@@ -88,7 +88,6 @@ func TestVgpuScore(t *testing.T) {
 
 	vgpu.VGPUEnable = true
 
-	// p1 := util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "10Gi"), "pg1", make(map[string]string), make(map[string]string))
 	p1 := util.MakePod().
 		Namespace("c1").
 		Name("p3").
@@ -127,7 +126,6 @@ func TestVgpuScore(t *testing.T) {
 	gpuNode2.Device[0].UsedMem = 0
 	gpuNode2.Sharing, _ = vgpu.GetSharingHandler("hami-core")
 
-	// p2 := util.BuildPod("c2", "p4", "", v1.PodPending, api.BuildResourceList("2", "10Gi"), "pg1", make(map[string]string), make(map[string]string))
 	p2 := util.MakePod().
 		Namespace("c2").
 		Name("p4").

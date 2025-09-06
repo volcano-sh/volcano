@@ -584,7 +584,7 @@ func TestReclaim(t *testing.T) {
 				State(schedulingv1beta1.QueueStateOpen).Capability(nil).
 				Obj(),
 				util.MakeQueue().Name("q2").Weight(1).
-				State(schedulingv1beta1.QueueStateOpen).Capability(nil).
+				Capability(nil).
 				State(schedulingv1beta1.QueueStateClosed).Obj(),
 			},
 			ExpectEvictNum: 0,

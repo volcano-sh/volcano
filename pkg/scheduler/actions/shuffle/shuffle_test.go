@@ -161,7 +161,7 @@ func TestShuffle(t *testing.T) {
 					NodeName("node2").
 					PodPhase(v1.PodRunning).
 					ResourceList(api.BuildResourceList("1", "2G")).
-					GroupName("pg1").
+					GroupName("pg3").
 					Labels(make(map[string]string)).
 					NodeSelector(make(map[string]string)).
 					Priority(&lowPriority).
@@ -172,7 +172,7 @@ func TestShuffle(t *testing.T) {
 					NodeName("node2").
 					PodPhase(v1.PodRunning).
 					ResourceList(api.BuildResourceList("1", "2G")).
-					GroupName("pg1").
+					GroupName("pg3").
 					Labels(make(map[string]string)).
 					NodeSelector(make(map[string]string)).
 					Priority(&highPriority).

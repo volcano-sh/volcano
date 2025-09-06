@@ -71,7 +71,6 @@ func TestPickUpPendingTasks(t *testing.T) {
 		{
 			name: "test",
 			pendingPods: []*v1.Pod{
-				// util.BuildPodWithPriority("default", "pg1-besteffort-task-1", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority1),
 				util.MakePod().
 					Namespace("default").
 					Name("pg1-besteffort-task-1").
@@ -83,7 +82,6 @@ func TestPickUpPendingTasks(t *testing.T) {
 					NodeSelector(make(map[string]string)).
 					Priority(&priority1).
 					Obj(),
-				// util.BuildPodWithPriority("default", "pg1-unbesteffort-task-1", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority1),
 				util.MakePod().
 					Namespace("default").
 					Name("pg1-unbesteffort-task-1").
@@ -95,7 +93,6 @@ func TestPickUpPendingTasks(t *testing.T) {
 					NodeSelector(make(map[string]string)).
 					Priority(&priority1).
 					Obj(),
-				// util.BuildPodWithPriority("default", "pg1-besteffort-task-3", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority3),
 				util.MakePod().
 					Namespace("default").
 					Name("pg1-besteffort-task-3").
@@ -107,7 +104,6 @@ func TestPickUpPendingTasks(t *testing.T) {
 					NodeSelector(make(map[string]string)).
 					Priority(&priority3).
 					Obj(),
-				// util.BuildPodWithPriority("default", "pg1-unbesteffort-task-3", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority3),
 				util.MakePod().
 					Namespace("default").
 					Name("pg1-unbesteffort-task-3").
@@ -119,7 +115,6 @@ func TestPickUpPendingTasks(t *testing.T) {
 					NodeSelector(make(map[string]string)).
 					Priority(&priority3).
 					Obj(),
-				// util.BuildPodWithPriority("default", "pg2-besteffort-task-1", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority1),
 				util.MakePod().
 					Namespace("default").
 					Name("pg2-besteffort-task-1").
@@ -131,7 +126,6 @@ func TestPickUpPendingTasks(t *testing.T) {
 					NodeSelector(make(map[string]string)).
 					Priority(&priority1).
 					Obj(),
-				// util.BuildPodWithPriority("default", "pg2-unbesteffort-task-1", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority1),
 				util.MakePod().
 					Namespace("default").
 					Name("pg2-unbesteffort-task-1").
@@ -143,7 +137,6 @@ func TestPickUpPendingTasks(t *testing.T) {
 					NodeSelector(make(map[string]string)).
 					Priority(&priority1).
 					Obj(),
-				// util.BuildPodWithPriority("default", "pg2-besteffort-task-3", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority3),
 				util.MakePod().
 					Namespace("default").
 					Name("pg2-besteffort-task-3").
@@ -155,7 +148,6 @@ func TestPickUpPendingTasks(t *testing.T) {
 					NodeSelector(make(map[string]string)).
 					Priority(&priority3).
 					Obj(),
-				// util.BuildPodWithPriority("default", "pg2-unbesteffort-task-3", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority3),
 				util.MakePod().
 					Namespace("default").
 					Name("pg2-unbesteffort-task-3").
@@ -168,16 +160,7 @@ func TestPickUpPendingTasks(t *testing.T) {
 					Priority(&priority3).
 					Obj(),
 			},
-			pipelinedPods: []*v1.Pod{
-				// util.BuildPodWithPriority("default", "pg1-besteffort-task-2", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority2),
-				// util.BuildPodWithPriority("default", "pg1-unbesteffort-task-2", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority2),
-				// util.BuildPodWithPriority("default", "pg1-besteffort-task-4", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority4),
-				// util.BuildPodWithPriority("default", "pg1-unbesteffort-task-4", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority4),
-
-				// util.BuildPodWithPriority("default", "pg2-besteffort-task-2", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority2),
-				// util.BuildPodWithPriority("default", "pg2-unbesteffort-task-2", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority2),
-				// util.BuildPodWithPriority("default", "pg2-besteffort-task-4", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority4),
-				// util.BuildPodWithPriority("default", "pg2-unbesteffort-task-4", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority4),
+			pipelinedPods: []*v1.Pod{	
 				util.MakePod().
 					Namespace("default").
 					Name("pg1-besteffort-task-2").
@@ -268,12 +251,9 @@ func TestPickUpPendingTasks(t *testing.T) {
 					Obj(),
 			},
 			queues: []*schedulingv1beta1.Queue{
-				// util.BuildQueue("q1", 1, nil),
 				util.MakeQueue().Name("q1").Weight(1).Capability(nil).State(schedulingv1beta1.QueueStateOpen).Obj(),
 			},
 			podGroups: []*schedulingv1beta1.PodGroup{
-				// util.BuildPodGroupWithPrio("pg1", "default", "q1", 1, map[string]int32{"": 3}, schedulingv1beta1.PodGroupInqueue, "job-priority-1"),
-				// util.BuildPodGroupWithPrio("pg2", "default", "q1", 1, map[string]int32{"": 3}, schedulingv1beta1.PodGroupInqueue, "job-priority-2"),
 				util.MakePodGroup().
 					Name("pg1").
 					Namespace("default").

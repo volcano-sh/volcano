@@ -389,7 +389,7 @@ func TestAddStatefulSet(t *testing.T) {
 		Labels(map[string]string{"app": stsName, controllerRevisionHashLabelKey: "test"}).
 		NodeSelector(nil).Obj()
 	volcanoSchedulerPod.Spec.SchedulerName = "volcano"
-		existedPodWithPG := util.MakePod().
+	existedPodWithPG := util.MakePod().
 		Namespace(namespace).
 		Name(podName).
 		NodeName("").

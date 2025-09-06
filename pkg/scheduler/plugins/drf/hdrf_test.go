@@ -83,7 +83,7 @@ func TestHDRF(t *testing.T) {
 						Phase(schedulingv1.PodGroupInqueue).
 						Obj(),
 					util.MakePodGroup().
-						Name("pg1").
+						Name("pg21").
 						Namespace("default").
 						Queue("root-eng-dev").
 						MinMember(0).
@@ -92,7 +92,7 @@ func TestHDRF(t *testing.T) {
 						Phase(schedulingv1.PodGroupInqueue).
 						Obj(),
 					util.MakePodGroup().
-						Name("pg1").
+						Name("pg22").
 						Namespace("default").
 						Queue("root-eng-prod").
 						MinMember(0).
@@ -115,7 +115,7 @@ func TestHDRF(t *testing.T) {
 						schedulingv1.KubeHierarchyAnnotationKey:       "root/eng/dev",
 						schedulingv1.KubeHierarchyWeightAnnotationKey: "100/50/50",
 					}).Obj(),
-					util.MakeQueue().Name("root-sci").Weight(1).Capability(nil).Annotations(map[string]string{
+					util.MakeQueue().Name("root-eng-prod").Weight(1).Capability(nil).Annotations(map[string]string{
 						schedulingv1.KubeHierarchyAnnotationKey:       "root/eng/prod",
 						schedulingv1.KubeHierarchyWeightAnnotationKey: "100/50/50",
 					}).Obj(),

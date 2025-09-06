@@ -109,7 +109,7 @@ func TestPreempt(t *testing.T) {
 			// If there are enough idle resources on the node, then there is no need to preempt anything.
 			Nodes: []*v1.Node{
 				util.MakeNode().
-					Name("n2").
+					Name("n1").
 					Allocatable(api.BuildResourceList("10", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
 					Capacity(api.BuildResourceList("10", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
 					Annotations(map[string]string{}).
@@ -1398,7 +1398,7 @@ func TestTopologyAwarePreempt(t *testing.T) {
 					Name("preemptor1").
 					NodeName("").
 					PodPhase(v1.PodPending).
-					ResourceList(api.BuildResourceList("3", "3G")).
+					ResourceList(v1.ResourceList{}).
 					GroupName("pg2").
 					Labels(make(map[string]string)).
 					NodeSelector(make(map[string]string)).
