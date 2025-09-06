@@ -586,13 +586,6 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 	res0c1g := api.BuildResourceList("0", "1G")
 	res1c1g := api.BuildResourceList("1", "1G")
 	// pod
-	// p1 := util.BuildPod("ns1", "pod1", "n1", corev1.PodRunning, res1c3g, "pg1", nil, nil)
-	// p2 := util.BuildPod("ns1", "pod2", "n2", corev1.PodRunning, res3c1g, "pg2", nil, nil)
-	// p3 := util.BuildPod("ns1", "pod3", "", corev1.PodPending, res1c0g, "pg3", nil, nil)
-	// p4 := util.BuildPod("ns1", "pod4", "", corev1.PodPending, res0c1g, "pg4", nil, nil)
-	// p5 := util.BuildPod("ns1", "pod5", "", corev1.PodPending, res1c1g, "pg5", nil, nil)
-	// p6 := util.BuildPod("ns1", "pod6", "", corev1.PodPending, res1c1g, "pg6", nil, nil)
-	
 	p1 := util.MakePod().
 		Namespace("ns1").
 		Name("pod1").
@@ -654,13 +647,7 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 		NodeSelector(nil).
 		Obj()
 		// podgroup
-		// pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning)
-		// pg2 := util.BuildPodGroup("pg2", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupRunning)
-		// pg3 := util.BuildPodGroup("pg3", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
-		// pg4 := util.BuildPodGroup("pg4", "ns1", "q2", 1, nil, schedulingv1beta1.PodGroupPending)
-		// pg5 := util.BuildPodGroup("pg5", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
-		// pg6WithClosedQueue := util.BuildPodGroup("pg6", "ns1", "q3", 1, nil, schedulingv1beta1.PodGroupPending)
-
+	
 	pg1 := util.MakePodGroup().
 		Name("pg1").
 		Namespace("ns1").
@@ -718,12 +705,9 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 	pg5.Spec.MinResources = &res1c1g
 	pg6WithClosedQueue.Spec.MinResources = &res1c1g
 
-	// queue1 := util.BuildQueueWithResourcesQuantity("q1", api.BuildResourceList("2", "2G"), api.BuildResourceList("2", "2G"))
-	// queue2 := util.BuildQueueWithResourcesQuantity("q2", api.BuildResourceList("2", "2G"), api.BuildResourceList("3", "3G"))
 	queue1 := util.MakeQueue().Name("q1").Weight(1).State(schedulingv1beta1.QueueStateOpen).Deserved(api.BuildResourceList("2", "2G")).Capability(api.BuildResourceList("2", "2G")).Obj()
 	queue2 := util.MakeQueue().Name("q2").Weight(1).State(schedulingv1beta1.QueueStateOpen).Deserved(api.BuildResourceList("2", "2G")).Capability(api.BuildResourceList("3", "3G")).Obj()
 
-	// closedQueue3 := util.BuildQueueWithState("q3", 1, api.BuildResourceList("3", "3G"), schedulingv1beta1.QueueStateClosed)
 	closedQueue3 := util.MakeQueue().Name("q3").Weight(1).State(schedulingv1beta1.QueueStateClosed).Capability(api.BuildResourceList("3", "3G")).Obj()
 
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
@@ -1368,9 +1352,3 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 		})
 	}
 }
-
-// func buildQueueWithParents(name string, parent string, deserved corev1.ResourceList, cap corev1.ResourceList) *schedulingv1beta1.Queue {
-// 	queue := util.BuildQueueWithResourcesQuantity(name, deserved, cap)
-// 	queue.Spec.Parent = parent
-// 	return queue
-// }
