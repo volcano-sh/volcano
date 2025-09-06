@@ -1355,9 +1355,3 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 		})
 	}
 }
-
-// func buildQueueWithParents(name string, parent string, deserved corev1.ResourceList, cap corev1.ResourceList) *schedulingv1beta1.Queue {
-// 	queue := util.BuildQueueWithResourcesQuantity(name, deserved, cap)
-// 	queue.Spec.Parent = parent
-// 	return queue
-// }
