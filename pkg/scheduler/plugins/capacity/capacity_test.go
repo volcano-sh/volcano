@@ -1086,12 +1086,9 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	}
 
 	// resources for test case 8
-
-	queue8 := util.MakeQueue().Name("q8").State(schedulingv1beta1.QueueStateOpen).Parent("root").Deserved(api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}}...)).Capability(nil).Weight(1).Obj()
-	queue81 := util.MakeQueue().Name("q81").State(schedulingv1beta1.QueueStateOpen).Parent("q8").Deserved(api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...)).Capability(nil).Weight(1).Obj()
-	queue82 := util.MakeQueue().Name("q81").State(schedulingv1beta1.QueueStateOpen).Parent("q8").Deserved(api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...)).Capability(nil).Weight(1).Obj()
-	// ISNT THIS A MISTAKE
-
+	queue8 := buildQueueWithParents("q8", "root", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}}...), nil)
+	queue81 := buildQueueWithParents("q81", "q8", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), nil)
+	queue82 := buildQueueWithParents("q81", "q8", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), nil)
 	// node
 	gpuNode := util.MakeNode().
 		Name("n-gpu").
