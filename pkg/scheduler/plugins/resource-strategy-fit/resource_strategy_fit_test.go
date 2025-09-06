@@ -33,7 +33,7 @@ const (
 
 func TestMain(m *testing.M) {
 	options.Default()
-	os.Exit(m.Run())
+	os.Exit(m.Run()) 
 }
 
 func Test_calculateWeight(t *testing.T) {
