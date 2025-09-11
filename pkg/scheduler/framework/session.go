@@ -242,6 +242,21 @@ func (ssn *Session) parseHyperNodesTiers() {
 	ssn.HyperNodesTiers = tiers
 }
 
+func addNodeSharableDeviceUsage(ssn *Session, task *api.TaskInfo) {
+	node, ok := ssn.Nodes[task.NodeName]
+	taskReq := task.Resreq
+	if ok {
+		for _, sharedDevices := range node.Others {
+			if devices, ok := sharedDevices.(api.Devices); ok && devices.HasDeviceRequest(task.Pod) {
+				sResources := devices.AddQueueResource(task.Pod)
+				for k, v := range sResources {
+					taskReq.ScalarResources[v1.ResourceName(k)] = v
+				}
+			}
+		}
+	}
+}
+
 // updateQueueStatus updates allocated field in queue status on session close.
 func updateQueueStatus(ssn *Session) {
 	rootQueue := api.QueueID("root")
@@ -254,6 +269,7 @@ func updateQueueStatus(ssn *Session) {
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, task := range tasks {
+					addNodeSharableDeviceUsage(ssn, task)
 					allocatedResources[job.Queue].Add(task.Resreq)
 					// recursively updates the allocated resources of parent queues
 					queue := ssn.Queues[job.Queue].Queue

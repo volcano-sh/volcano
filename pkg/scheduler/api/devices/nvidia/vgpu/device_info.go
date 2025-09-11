@@ -117,7 +117,7 @@ func NewGPUDevices(name string, node *v1.Node) *GPUDevices {
 	if strings.Contains(handshake, "Requesting") {
 		formertime, _ := time.Parse("2006.01.02 15:04:05", strings.Split(handshake, "_")[1])
 		if time.Now().After(formertime.Add(time.Second * 60)) {
-			klog.Infof("node %v device %s leave", node.Name, handshake)
+			klog.V(3).Infof("node %v device %s leave", node.Name, handshake)
 
 			tmppat := make(map[string]string)
 			tmppat[deviceconfig.VolcanoVGPUHandshake] = "Deleted_" + time.Now().Format("2006.01.02 15:04:05")
@@ -144,7 +144,33 @@ func (gs *GPUDevices) ScoreNode(pod *v1.Pod, schedulePolicy string) float64 {
 }
 
 func (gs *GPUDevices) GetIgnoredDevices() []string {
-	return []string{deviceconfig.VolcanoVGPUMemory, deviceconfig.VolcanoVGPUMemoryPercentage, deviceconfig.VolcanoVGPUCores}
+	return []string{}
+}
+
+func (gs *GPUDevices) AddQueueResource(pod *v1.Pod) map[string]float64 {
+	if gs == nil {
+		return map[string]float64{}
+	}
+	klog.V(5).InfoS("AddQueueResource", "Name", pod.Name)
+	res := map[string]float64{}
+	ids, ok := pod.Annotations[AssignedIDsAnnotations]
+	if !ok {
+		klog.Errorf("pod %s has no annotation volcano.sh/devices-to-allocate", pod.Name)
+		return res
+	}
+	podDev := decodePodDevices(ids)
+	for _, val := range podDev {
+		for _, deviceused := range val {
+			for _, gsdevice := range gs.Device {
+				if strings.Contains(deviceused.UUID, gsdevice.UUID) {
+					res[getConfig().ResourceMemoryName] += float64(deviceused.Usedmem * 1000)
+					res[getConfig().ResourceCoreName] += float64(deviceused.Usedcores * 1000)
+				}
+			}
+		}
+	}
+	klog.V(4).InfoS("AddQueueResource", "Name=", pod.Name, "res=", res)
+	return res
 }
 
 // AddResource adds the pod to GPU pool if it is assigned
