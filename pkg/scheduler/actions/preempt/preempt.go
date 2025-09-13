@@ -110,7 +110,6 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
 
 	var underRequest []*api.JobInfo
-	queues := map[api.QueueID]*api.QueueInfo{}
 
 	for _, job := range ssn.Jobs {
 		if job.IsPending() {
@@ -122,12 +121,9 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		if queue, found := ssn.Queues[job.Queue]; !found {
+		if _, found := ssn.Queues[job.Queue]; !found {
+			klog.V(3).Infof("Queue <%s> not found for Job <%s/%s>, skip preemption", job.Queue, job.Namespace, job.Name)
 			continue
-		} else if _, existed := queues[queue.UID]; !existed {
-			klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
-				queue.Name, job.Namespace, job.Name)
-			queues[queue.UID] = queue
 		}
 
 		// check job if starving for more resources.
@@ -156,9 +152,20 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 	}
 
+	// If plugin defines queue order function, use it to order queues.
+	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
+	for _, queue := range ssn.Queues {
+		queues.Push(queue)
+	}
+
 	ph := util.NewPredicateHelper()
 	// Preemption between Jobs within Queue.
-	for _, queue := range queues {
+	for {
+		if queues.Empty() {
+			break
+		}
+
+		queue := queues.Pop().(*api.QueueInfo)
 		for {
 			preemptors := preemptorsMap[queue.UID]
 
