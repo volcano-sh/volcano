@@ -138,14 +138,45 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		return 0
 	}
-
 	ssn.AddJobOrderFn(gp.Name(), jobOrderFn)
+
+	podBunchOrderFn := func(l, r interface{}) int {
+		lv := l.(*api.PodBunchInfo)
+		rv := r.(*api.PodBunchInfo)
+
+		lReady := lv.IsReady()
+		rReady := rv.IsReady()
+
+		klog.V(4).Infof("Gang PodBunchOrderFn: <%v> is ready: %t, <%v> is ready: %t",
+			lv.UID, lReady, rv.UID, rReady)
+
+		if lReady && rReady {
+			return 0
+		}
+
+		if lReady {
+			return 1
+		}
+
+		if rReady {
+			return -1
+		}
+
+		return 0
+	}
+	ssn.AddPodBunchOrderFn(gp.Name(), podBunchOrderFn)
+
 	ssn.AddJobReadyFn(gp.Name(), func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
 		if ji.CheckTaskReady() && ji.IsReady() {
 			return true
 		}
 		return false
+	})
+
+	ssn.AddPodBunchReadyFn(gp.Name(), func(obj interface{}) bool {
+		pbi := obj.(*api.PodBunchInfo)
+		return pbi.IsReady()
 	})
 
 	pipelinedFn := func(obj interface{}) int {
@@ -156,6 +187,14 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		return util.Reject
 	}
 	ssn.AddJobPipelinedFn(gp.Name(), pipelinedFn)
+
+	ssn.AddPodBunchPipelinedFn(gp.Name(), func(obj interface{}) int {
+		pbi := obj.(*api.PodBunchInfo)
+		if pbi.IsPipelined() {
+			return util.Permit
+		}
+		return util.Reject
+	})
 
 	jobStarvingFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
