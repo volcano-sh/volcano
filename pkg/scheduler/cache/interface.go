@@ -32,6 +32,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -62,7 +63,7 @@ type Cache interface {
 	RecordJobStatusEvent(job *api.JobInfo, updatePG bool)
 
 	// UpdateJobStatus puts job in backlog for a while.
-	UpdateJobStatus(job *api.JobInfo, updatePGStatus, updatePGAnnotations bool) (*api.JobInfo, error)
+	UpdateJobStatus(job *api.JobInfo, updatePGStatus, updatePGAnnotations, updateJobInfo bool) (*api.JobInfo, error)
 
 	// UpdateQueueStatus update queue status.
 	UpdateQueueStatus(queue *api.QueueInfo) error
