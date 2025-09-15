@@ -34,7 +34,8 @@ const (
 	PluginName       = "nodegroup"
 	NodeGroupNameKey = "volcano.sh/nodegroup-name"
 
-	BaseScore = 100
+	BaseScore        = 100
+	NonStrictPenalty = -2
 )
 
 type nodeGroupPlugin struct {
@@ -74,10 +75,7 @@ func (q queueGroupAffinity) predicate(queue, group string, nonstrict bool) error
 	if len(queue) == 0 {
 		return nil
 	}
-	flag := false
-	if nonstrict {
-		flag = true
-	}
+	flag := nonstrict
 	if q.queueGroupAffinityRequired != nil {
 		if groups, ok := q.queueGroupAffinityRequired[queue]; ok {
 			if groups.Has(group) {
@@ -121,7 +119,7 @@ func (q queueGroupAffinity) score(queue, group string, nonstrict bool) float64 {
 		return nodeScore
 	}
 	if nonstrict {
-		nodeScore = -2
+		nodeScore = NonStrictPenalty
 	}
 	// Affinity: hard constraints should be checked first
 	// to make sure soft constraints can cover score.
