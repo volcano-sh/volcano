@@ -78,6 +78,7 @@ finalScoreNode = [(weight1 * resource1) + (weight2 * resource2) + … + (weightN
 ## Syntax Rules
 ### Wildcard Syntax Support
 - Only suffix wildcard patterns are supported (e.g., `nvidia.com/gpu/*`)
+- **Regular expressions are NOT supported** (e.g., `gpu-[a-z]+`, `nvidia.com/gpu-[1-9]*`)
 - Invalid patterns are filtered out during configuration parsing:
     - Single asterisk (`*`)
     - Asterisk in the middle (`vendor.*/gpu`)

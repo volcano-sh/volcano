@@ -195,6 +195,7 @@ func findResourceConfigWithPrefix(resourceName string, resources map[v1.Resource
 
 	return bestConfig, found
 }
+
 func Score(task *api.TaskInfo, node *api.NodeInfo, weight ResourceStrategyFit) float64 {
 	score := 0.0
 	weightSum := 0
