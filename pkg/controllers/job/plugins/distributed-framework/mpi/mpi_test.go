@@ -157,11 +157,8 @@ func TestMpiWithEmptyWorker(t *testing.T) {
 					},
 				},
 			},
-			ExpectedEnvVar: v1.EnvVar{
-				Name:  MPIHost,
-				Value: "", // Should be empty when no worker task exists
-			},
-			IsMaster: true,
+			ExpectedEnvVar: v1.EnvVar{},
+			IsMaster:       true,
 		},
 		{
 			Name: "master pod with worker task having 0 replicas",
@@ -197,11 +194,8 @@ func TestMpiWithEmptyWorker(t *testing.T) {
 					},
 				},
 			},
-			ExpectedEnvVar: v1.EnvVar{
-				Name:  MPIHost,
-				Value: "", // Should be empty when worker replicas is 0
-			},
-			IsMaster: true,
+			ExpectedEnvVar: v1.EnvVar{},
+			IsMaster:       true,
 		},
 		{
 			Name: "master pod with valid worker task",
