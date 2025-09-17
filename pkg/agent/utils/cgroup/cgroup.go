@@ -412,8 +412,24 @@ func IsCgroupsV2(unifiedMountpoint string) bool {
 	return isUnified
 }
 
-// DetectCgroupVersion detects the cgroup version on the system，只用IsUsingCgroupsV2判断
+// DetectCgroupVersion detects the cgroup version on the system
+// For unit testing, it also supports forcing the version via environment variable
 func DetectCgroupVersion(cgroupRoot string) (string, error) {
+	// Check for test environment variable first (for unit testing)
+	if testVersion := os.Getenv("VOLCANO_TEST_CGROUP_VERSION"); testVersion != "" {
+		switch testVersion {
+		case CgroupV1, "1":
+			CgroupVersion = CgroupV1
+			return CgroupV1, nil
+		case CgroupV2, "2":
+			CgroupVersion = CgroupV2
+			return CgroupV2, nil
+		default:
+			klog.Warningf("Invalid VOLCANO_TEST_CGROUP_VERSION value: %s, falling back to system detection", testVersion)
+		}
+	}
+
+	// Production logic: detect from filesystem
 	if IsCgroupsV2(cgroupRoot) {
 		CgroupVersion = CgroupV2
 		return CgroupV2, nil
