@@ -1102,6 +1102,13 @@ func (ji *JobInfo) IsSoftTopologyMode() bool {
 	return ji.PodGroup.Spec.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode
 }
 
+func (ji *JobInfo) HasTopologyConstrain() bool {
+	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopology == nil {
+		return false
+	}
+	return true
+}
+
 // ResetFitErr will set job and node fit err to nil.
 func (ji *JobInfo) ResetFitErr() {
 	ji.JobFitErrors = ""

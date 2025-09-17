@@ -135,7 +135,10 @@ func (pg *pgcontroller) addStatefulSet(obj interface{}) {
 	// the updateStatefulSet(replicas=1) event, and after the addPod event for the new created pod.
 	// In this event, need to create PodGroup for the pod.
 	if *sts.Spec.Replicas > 0 {
-		matchLabels := sts.Spec.Selector.MatchLabels
+		matchLabels := make(map[string]string, len(sts.Spec.Selector.MatchLabels)+1)
+		for k, v := range sts.Spec.Selector.MatchLabels {
+			matchLabels[k] = v
+		}
 		matchLabels[controllerRevisionHashLabelKey] = sts.Status.UpdateRevision
 		selector := metav1.LabelSelector{MatchLabels: matchLabels}
 		labelSelector, err := metav1.LabelSelectorAsSelector(&selector)
@@ -342,9 +345,10 @@ func (pg *pgcontroller) createOrUpdateNormalPodPG(pod *v1.Pod) error {
 				pod.Namespace, pgName, pod.Namespace, pod.Name)
 		}
 	} else {
-		needUpdate := pg.shouldUpdateExistingPodGroup(podGroup, pod)
+		podGroupToUpdate := podGroup.DeepCopy()
+		needUpdate := pg.shouldUpdateExistingPodGroup(podGroupToUpdate, pod)
 		if needUpdate {
-			_, err = pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Update(context.TODO(), podGroup, metav1.UpdateOptions{})
+			_, err = pg.vcClient.SchedulingV1beta1().PodGroups(pod.Namespace).Update(context.TODO(), podGroupToUpdate, metav1.UpdateOptions{})
 			if err != nil {
 				klog.Errorf("Failed to update PodGroup <%s/%s>: %v", pod.Namespace, pgName, err)
 				return err

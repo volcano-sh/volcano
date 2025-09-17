@@ -83,6 +83,23 @@ func loadConfigFromCM(kubeClient kubernetes.Interface, cmName, cmNamespace strin
 	return &config, nil
 }
 
+func GetDefaultDevicesConfig() *Config {
+	return &Config{
+		NvidiaConfig: NvidiaConfig{
+			ResourceCountName:   VolcanoVGPUNumber,
+			ResourceCoreName:    VolcanoVGPUCores,
+			ResourceMemoryName:  VolcanoVGPUMemory,
+			DefaultMemory:       0,
+			DefaultCores:        0,
+			DefaultGPUNum:       1,
+			DeviceSplitCount:    10,
+			DeviceMemoryScaling: 1,
+			DeviceCoreScaling:   1,
+			DisableCoreLimit:    false,
+		},
+	}
+}
+
 // InitDevicesConfig is called from devices, to load configs from a CM or construct a default one
 func InitDevicesConfig(cmName, cmNamespace string) {
 	once.Do(func() {
@@ -91,20 +108,7 @@ func InitDevicesConfig(cmName, cmNamespace string) {
 		if err != nil {
 			klog.V(3).InfoS("Volcano device config not found in namespace kube-system, using default config",
 				"name", cmName)
-			configs = &Config{
-				NvidiaConfig: NvidiaConfig{
-					ResourceCountName:   VolcanoVGPUNumber,
-					ResourceCoreName:    VolcanoVGPUCores,
-					ResourceMemoryName:  VolcanoVGPUMemory,
-					DefaultMemory:       0,
-					DefaultCores:        0,
-					DefaultGPUNum:       1,
-					DeviceSplitCount:    10,
-					DeviceMemoryScaling: 1,
-					DeviceCoreScaling:   1,
-					DisableCoreLimit:    false,
-				},
-			}
+			configs = GetDefaultDevicesConfig()
 		}
 		klog.V(3).InfoS("Initializing volcano device config", "device-configs", configs)
 	})

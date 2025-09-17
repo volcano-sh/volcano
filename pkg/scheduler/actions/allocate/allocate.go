@@ -392,7 +392,7 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 		// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
 		// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
 		if len(task.Pod.Status.NominatedNodeName) > 0 {
-			if nominatedNodeInfo, ok := ssn.Nodes[task.Pod.Status.NominatedNodeName]; ok && task.InitResreq.LessEqual(nominatedNodeInfo.Idle, api.Zero) {
+			if nominatedNodeInfo, ok := ssn.Nodes[task.Pod.Status.NominatedNodeName]; ok && task.InitResreq.LessEqual(nominatedNodeInfo.FutureIdle(), api.Zero) {
 				predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache)
 			}
 		}
@@ -420,10 +420,9 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 			}
 		}
 
-		if job.IsSoftTopologyMode() {
+		if job.HasTopologyConstrain() {
 			task.JobAllocatedHyperNode = jobNewAllocatedHyperNode
 		}
-
 		bestNode, highestScore := alloc.prioritizeNodes(ssn, task, predicateNodes)
 		if bestNode == nil {
 			continue
@@ -454,20 +453,17 @@ func (alloc *Action) allocateResourcesForTasks(tasks *util.PriorityQueue, job *a
 
 // getJobNewAllocatedHyperNode Obtain the newly allocated hyperNode for the job in soft topology mode
 func getJobNewAllocatedHyperNode(ssn *framework.Session, bestNode string, job *api.JobInfo, jobAllocatedHyperNode string) string {
-	if !job.IsSoftTopologyMode() {
+	if !job.HasTopologyConstrain() {
 		return ""
 	}
-
-	jobNewAllocatedHyperNode := jobAllocatedHyperNode
 	hyperNode := util.FindHyperNodeForNode(bestNode, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
 	if hyperNode != "" {
-		if jobNewAllocatedHyperNode == "" {
-			jobNewAllocatedHyperNode = hyperNode
-		} else {
-			jobNewAllocatedHyperNode = ssn.HyperNodes.GetLCAHyperNode(hyperNode, jobNewAllocatedHyperNode)
+		if jobAllocatedHyperNode == "" {
+			return hyperNode
 		}
+		return ssn.HyperNodes.GetLCAHyperNode(hyperNode, jobAllocatedHyperNode)
 	}
-	return jobNewAllocatedHyperNode
+	return jobAllocatedHyperNode
 }
 
 // updateJobAllocatedHyperNode update job allocated hyperNode in soft topology mode
