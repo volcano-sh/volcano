@@ -32,12 +32,27 @@ import (
 func TestSnapshot(t *testing.T) {
 	var (
 		nodeName = "test-node"
-		pod1     = util.BuildPod("node_info_cache_test", "test-1", nodeName,
-			v1.PodRunning, api.BuildResourceList("200m", "1Ki"), "pg2",
-			make(map[string]string), make(map[string]string))
-		pod2 = util.BuildPod("node_info_cache_test", "test-2", nodeName,
-			v1.PodRunning, api.BuildResourceList("200m", "1Ki"), "pg2",
-			map[string]string{"test": "test"}, make(map[string]string))
+
+		pod1 = util.MakePod().
+			Namespace("node_info_cache_test").
+			Name("test-1").
+			NodeName(nodeName).
+			PodPhase(v1.PodRunning).
+			ResourceList(api.BuildResourceList("200m", "1Ki")).
+			GroupName("pg2").
+			Labels(make(map[string]string)).
+			NodeSelector(make(map[string]string)).
+			Obj()
+		pod2 = util.MakePod().
+			Namespace("node_info_cache_test").
+			Name("test-2").
+			NodeName(nodeName).
+			PodPhase(v1.PodRunning).
+			ResourceList(api.BuildResourceList("200m", "1Ki")).
+			GroupName("pg2").
+			Labels(map[string]string{"test": "test"}).
+			NodeSelector(make(map[string]string)).
+			Obj()
 	)
 
 	tests := []struct {
