@@ -226,6 +226,9 @@ spec:
             {{- if .Values.custom.scheduler_feature_gates }}
             - --feature-gates={{ .Values.custom.scheduler_feature_gates }}
             {{- end }}
+            {{- if .Values.custom.scheduler_percentage_nodes_to_find }}
+            - --percentage-nodes-to-find={{.Values.custom.scheduler_percentage_nodes_to_find}}
+            {{- end }}
             {{- if .Values.custom.ignored_provisioners }}
             - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
             {{- end}}

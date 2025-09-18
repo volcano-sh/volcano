@@ -1400,6 +1400,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	snapshot.HyperNodes = sc.HyperNodesInfo.HyperNodes()
 	snapshot.HyperNodesSetByTier = sc.HyperNodesInfo.HyperNodesSetByTier()
 	snapshot.RealNodesSet = sc.HyperNodesInfo.RealNodesSet()
+	snapshot.MinHyperNodeOfNodeMap = sc.HyperNodesInfo.MinHyperNodeOfNodeMap()
 	snapshot.HyperNodesReadyToSchedule = sc.HyperNodesInfo.Ready()
 	sc.HyperNodesInfo.Unlock()
 

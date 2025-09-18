@@ -32,6 +32,7 @@ type ClusterInfo struct {
 	Nodes                     map[string]*NodeInfo
 	HyperNodes                HyperNodeInfoMap
 	HyperNodesSetByTier       map[int]sets.Set[string]
+	MinHyperNodeOfNodeMap     map[string]string
 	RealNodesSet              map[string]sets.Set[string]
 	HyperNodesReadyToSchedule bool
 	Queues                    map[QueueID]*QueueInfo
