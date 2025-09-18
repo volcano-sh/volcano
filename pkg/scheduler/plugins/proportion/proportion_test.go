@@ -234,7 +234,7 @@ func TestProportion(t *testing.T) {
 							},
 						},
 					},
-				}, nil)
+				}, nil, nil)
 
 				allocator := allocate.New()
 				allocator.Execute(ssn)

@@ -155,7 +155,7 @@ func TestPickUpPendingTasks(t *testing.T) {
 			schedulerCache.AddPod(pod)
 		}
 
-		ssn := framework.OpenSession(schedulerCache, tilers, []conf.Configuration{})
+		ssn := framework.OpenSession(schedulerCache, tilers, []conf.Configuration{}, nil)
 		for _, pod := range tc.pipelinedPods {
 			jobID := api.NewTaskInfo(pod).Job
 			stmt := framework.NewStatement(ssn)

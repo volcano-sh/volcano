@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -45,6 +46,7 @@ import (
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -82,7 +84,6 @@ type Session struct {
 	NodeMap   map[string]*k8sframework.NodeInfo
 	PodLister *PodLister
 
-	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
 	// HyperNodes stores the HyperNodeInfo of each HyperNode
@@ -96,8 +97,38 @@ type Session struct {
 	RealNodesList             map[string][]*api.NodeInfo
 	HyperNodesReadyToSchedule bool
 
-	plugins             map[string]Plugin
-	eventHandlers       []*EventHandler
+	eventHandlers []*EventHandler
+
+	// cycleStatesMap is used to temporarily store the scheduling status of each pod, its life cycle is same as Session.
+	// Because state needs to be passed between different extension points (not only used in PreFilter and Filter),
+	// in order to avoid different Pod scheduling states from being overwritten,
+	// the state needs to be temporarily stored in cycleStatesMap when an extension point is executed.
+	// The key is task's UID, value is the CycleState.
+	cycleStatesMap sync.Map
+
+	Actions []Action
+	PluginRegistry
+	SchedulingPolicies map[string]*SchedulingPolicy
+}
+
+// SchedulingPolicy records actions and plugins at the queue level.
+type SchedulingPolicy struct {
+	Actions []Action
+	PluginRegistry
+}
+
+func NewSchedulingPolicy() *SchedulingPolicy {
+	return &SchedulingPolicy{
+		Actions:        nil,
+		PluginRegistry: PluginRegistry{},
+	}
+}
+
+// PluginRegistry records plugins and their extension points.
+type PluginRegistry struct {
+	Tiers   []conf.Tier
+	plugins map[string]Plugin
+
 	jobOrderFns         map[string]api.CompareFn
 	queueOrderFns       map[string]api.CompareFn
 	victimQueueOrderFns map[string]api.VictimCompareFn
@@ -131,16 +162,9 @@ type Session struct {
 	simulateAddTaskFns     map[string]api.SimulateAddTaskFn
 	simulatePredicateFns   map[string]api.SimulatePredicateFn
 	simulateAllocatableFns map[string]api.SimulateAllocatableFn
-
-	// cycleStatesMap is used to temporarily store the scheduling status of each pod, its life cycle is same as Session.
-	// Because state needs to be passed between different extension points (not only used in PreFilter and Filter),
-	// in order to avoid different Pod scheduling states from being overwritten,
-	// the state needs to be temporarily stored in cycleStatesMap when an extension point is executed.
-	// The key is task's UID, value is the CycleState.
-	cycleStatesMap sync.Map
 }
 
-func openSession(cache cache.Cache) *Session {
+func openSession(cache cache.Cache, schedulingPolicies map[string]*SchedulingPolicy) *Session {
 	ssn := &Session{
 		UID:             uuid.NewUUID(),
 		kubeClient:      cache.Client(),
@@ -163,41 +187,55 @@ func openSession(cache cache.Cache) *Session {
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
 
-		plugins:                map[string]Plugin{},
-		jobOrderFns:            map[string]api.CompareFn{},
-		queueOrderFns:          map[string]api.CompareFn{},
-		victimQueueOrderFns:    map[string]api.VictimCompareFn{},
-		taskOrderFns:           map[string]api.CompareFn{},
-		clusterOrderFns:        map[string]api.CompareFn{},
-		predicateFns:           map[string]api.PredicateFn{},
-		prePredicateFns:        map[string]api.PrePredicateFn{},
-		bestNodeFns:            map[string]api.BestNodeFn{},
-		nodeOrderFns:           map[string]api.NodeOrderFn{},
-		batchNodeOrderFns:      map[string]api.BatchNodeOrderFn{},
-		nodeMapFns:             map[string]api.NodeMapFn{},
-		nodeReduceFns:          map[string]api.NodeReduceFn{},
-		hyperNodeOrderFns:      map[string]api.HyperNodeOrderFn{},
-		preemptableFns:         map[string]api.EvictableFn{},
-		reclaimableFns:         map[string]api.EvictableFn{},
-		overusedFns:            map[string]api.ValidateFn{},
-		preemptiveFns:          map[string]api.ValidateWithCandidateFn{},
-		allocatableFns:         map[string]api.AllocatableFn{},
-		jobReadyFns:            map[string]api.ValidateFn{},
-		jobPipelinedFns:        map[string]api.VoteFn{},
-		jobValidFns:            map[string]api.ValidateExFn{},
-		jobEnqueueableFns:      map[string]api.VoteFn{},
-		jobEnqueuedFns:         map[string]api.JobEnqueuedFn{},
-		targetJobFns:           map[string]api.TargetJobFn{},
-		reservedNodesFns:       map[string]api.ReservedNodesFn{},
-		victimTasksFns:         map[string][]api.VictimTasksFn{},
-		jobStarvingFns:         map[string]api.ValidateFn{},
-		simulateRemoveTaskFns:  map[string]api.SimulateRemoveTaskFn{},
-		simulateAddTaskFns:     map[string]api.SimulateAddTaskFn{},
-		simulatePredicateFns:   map[string]api.SimulatePredicateFn{},
-		simulateAllocatableFns: map[string]api.SimulateAllocatableFn{},
+		PluginRegistry: PluginRegistry{
+			plugins:                map[string]Plugin{},
+			jobOrderFns:            map[string]api.CompareFn{},
+			queueOrderFns:          map[string]api.CompareFn{},
+			victimQueueOrderFns:    map[string]api.VictimCompareFn{},
+			taskOrderFns:           map[string]api.CompareFn{},
+			clusterOrderFns:        map[string]api.CompareFn{},
+			predicateFns:           map[string]api.PredicateFn{},
+			prePredicateFns:        map[string]api.PrePredicateFn{},
+			bestNodeFns:            map[string]api.BestNodeFn{},
+			nodeOrderFns:           map[string]api.NodeOrderFn{},
+			batchNodeOrderFns:      map[string]api.BatchNodeOrderFn{},
+			nodeMapFns:             map[string]api.NodeMapFn{},
+			nodeReduceFns:          map[string]api.NodeReduceFn{},
+			hyperNodeOrderFns:      map[string]api.HyperNodeOrderFn{},
+			preemptableFns:         map[string]api.EvictableFn{},
+			reclaimableFns:         map[string]api.EvictableFn{},
+			overusedFns:            map[string]api.ValidateFn{},
+			preemptiveFns:          map[string]api.ValidateWithCandidateFn{},
+			allocatableFns:         map[string]api.AllocatableFn{},
+			jobReadyFns:            map[string]api.ValidateFn{},
+			jobPipelinedFns:        map[string]api.VoteFn{},
+			jobValidFns:            map[string]api.ValidateExFn{},
+			jobEnqueueableFns:      map[string]api.VoteFn{},
+			jobEnqueuedFns:         map[string]api.JobEnqueuedFn{},
+			targetJobFns:           map[string]api.TargetJobFn{},
+			reservedNodesFns:       map[string]api.ReservedNodesFn{},
+			victimTasksFns:         map[string][]api.VictimTasksFn{},
+			jobStarvingFns:         map[string]api.ValidateFn{},
+			simulateRemoveTaskFns:  map[string]api.SimulateRemoveTaskFn{},
+			simulateAddTaskFns:     map[string]api.SimulateAddTaskFn{},
+			simulatePredicateFns:   map[string]api.SimulatePredicateFn{},
+			simulateAllocatableFns: map[string]api.SimulateAllocatableFn{},
+		},
+
+		SchedulingPolicies: schedulingPolicies,
 	}
 
 	snapshot := cache.Snapshot()
+
+	ssn.Queues = snapshot.Queues
+	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingPolicy) {
+		for _, queue := range ssn.Queues {
+			if queue.SchedulingPolicy == nil {
+				policy := queue.Queue.Annotations["volcano.sh/scheduler-policy"]
+				queue.SchedulingPolicy = ssn.SchedulingPolicies[policy]
+			}
+		}
+	}
 
 	ssn.Jobs = snapshot.Jobs
 	for _, job := range ssn.Jobs {
@@ -206,6 +244,20 @@ func openSession(cache cache.Cache) *Session {
 			ssn.PodGroupOldState.Annotations[job.UID] = job.PodGroup.GetAnnotations()
 		}
 	}
+	if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingPolicy) {
+		for _, job := range ssn.Jobs {
+			if job.SchedulingPolicy == nil {
+				queue := ssn.Queues[job.Queue]
+				job.SchedulingPolicy = queue.SchedulingPolicy
+			}
+			for _, task := range job.Tasks {
+				if task.SchedulingPolicy == nil {
+					task.SchedulingPolicy = job.SchedulingPolicy
+				}
+			}
+		}
+	}
+
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
 	ssn.HyperNodes = snapshot.HyperNodes
 	ssn.HyperNodesSetByTier = snapshot.HyperNodesSetByTier
@@ -215,7 +267,6 @@ func openSession(cache cache.Cache) *Session {
 	ssn.Nodes = snapshot.Nodes
 	ssn.CSINodesStatus = snapshot.CSINodesStatus
 	ssn.RevocableNodes = snapshot.RevocableNodes
-	ssn.Queues = snapshot.Queues
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
 	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
 	for _, n := range ssn.Nodes {
@@ -761,6 +812,16 @@ func (ssn *Session) UpdateSchedulerNumaInfo(AllocatedSets map[string]api.ResNuma
 	ssn.cache.UpdateSchedulerNumaInfo(AllocatedSets)
 }
 
+// HasAction checks whether the session has the specified action.
+func (ssn *Session) HasAction(action string) bool {
+	for _, Action := range ssn.Actions {
+		if Action.Name() == action {
+			return true
+		}
+	}
+	return false
+}
+
 // KubeClient returns the kubernetes client
 func (ssn *Session) KubeClient() kubernetes.Interface {
 	return ssn.kubeClient
@@ -826,4 +887,14 @@ func (ssn *Session) String() string {
 	}
 
 	return msg
+}
+
+// HasAction checks whether the SchedulingPolicy has the specified action.
+func (s *SchedulingPolicy) HasAction(action string) bool {
+	for _, Action := range s.Actions {
+		if Action.Name() == action {
+			return true
+		}
+	}
+	return false
 }

@@ -119,7 +119,7 @@ var _ Interface = &TestCommonStruct{}
 func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session {
 	schedulerCache := test.createSchedulerCache()
 	RegisterPlugins(test.Plugins)
-	test.ssn = framework.OpenSession(schedulerCache, tiers, config)
+	test.ssn = framework.OpenSession(schedulerCache, tiers, config, nil)
 	return test.ssn
 }
 
