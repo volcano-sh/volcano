@@ -82,7 +82,11 @@ func (mp *Plugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 	workerHosts := ""
 	env := v1.EnvVar{}
 	if helpers.GetTaskKey(pod) == mp.masterName {
-		workerHosts = mp.generateTaskHosts(job.Spec.Tasks[helpers.GetTaskIndexUnderJob(mp.workerName, job)], job.Name)
+		taskIndex := helpers.GetTaskIndexUnderJob(mp.workerName, job)
+		if taskIndex == -1 {
+			return nil
+		}
+		workerHosts = mp.generateTaskHosts(job.Spec.Tasks[taskIndex], job.Name)
 		env = v1.EnvVar{
 			Name:  MPIHost,
 			Value: workerHosts,
