@@ -17,8 +17,10 @@
 package shuffle
 
 import (
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
@@ -51,8 +53,21 @@ func (shuffle *Action) Execute(ssn *framework.Session) {
 
 	// select pods that may be evicted
 	tasks := make([]*api.TaskInfo, 0)
-	for _, jobInfo := range ssn.Jobs {
-		for _, taskInfo := range jobInfo.Tasks {
+	for _, job := range ssn.Jobs {
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingPolicy) {
+			schedulingPolicy := framework.GetSchedulingPolicyFromJob(job)
+			if schedulingPolicy != nil && !schedulingPolicy.HasAction(shuffle.Name()) {
+				klog.V(4).Infof("%v's schedulingPolicy does not include the action %v.", job.Name, shuffle.Name())
+				continue
+			}
+
+			if schedulingPolicy == nil && !ssn.HasAction(shuffle.Name()) {
+				klog.V(4).Infof("Action %v is not defined in the global schedulingPolicy.", shuffle.Name())
+				continue
+			}
+		}
+
+		for _, taskInfo := range job.Tasks {
 			if taskInfo.Status == api.Running {
 				tasks = append(tasks, taskInfo)
 			}

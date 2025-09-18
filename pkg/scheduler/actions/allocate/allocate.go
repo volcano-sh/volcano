@@ -19,9 +19,11 @@ package allocate
 import (
 	"time"
 
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -85,6 +87,19 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 func (alloc *Action) pickUpQueuesAndJobs(queues *util.PriorityQueue, jobsMap map[api.QueueID]*util.PriorityQueue) {
 	ssn := alloc.session
 	for _, job := range ssn.Jobs {
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingPolicy) {
+			schedulingPolicy := framework.GetSchedulingPolicyFromJob(job)
+			if schedulingPolicy != nil && !schedulingPolicy.HasAction(alloc.Name()) {
+				klog.V(4).Infof("%v's schedulingPolicy does not include the action %v.", job.Name, alloc.Name())
+				continue
+			}
+
+			if schedulingPolicy == nil && !ssn.HasAction(alloc.Name()) {
+				klog.V(4).Infof("Action %v is not defined in the global schedulingPolicy.", alloc.Name())
+				continue
+			}
+		}
+
 		// If not config enqueue action, change Pending pg into Inqueue state to avoid blocking job scheduling.
 		if job.IsPending() {
 			if conf.EnabledActionMap["enqueue"] {
