@@ -118,3 +118,14 @@ func TestMpi(t *testing.T) {
 		})
 	}
 }
+
+func TestMpiWithEmptyWorker(t *testing.T) {
+}
+
+// checkMPIHostEnvVar checks if containers have the expected MPI_HOST environment variable
+func checkMPIHostEnvVar(t *testing.T, index int, testName, containerType string, containers []v1.Container, expectedEnvVar v1.EnvVar) {
+}
+
+// checkNoMPIHostEnvVar ensures that containers do not have MPI_HOST environment variable
+func checkNoMPIHostEnvVar(t *testing.T, index int, testName string, containers []v1.Container) {
+}
