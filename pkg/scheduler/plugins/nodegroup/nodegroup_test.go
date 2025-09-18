@@ -106,14 +106,16 @@ func TestNodeGroup(t *testing.T) {
 	}{
 		{
 			TestCommonStruct: uthelper.TestCommonStruct{
-				Name:      "case: soft constraints is subset of hard constraints",
+				Name:      "case: soft constraints is subset of hard constraints with nonstrict=false",
 				PodGroups: []*schedulingv1.PodGroup{pg1},
 				Queues:    []*schedulingv1.Queue{queue1},
 				Pods:      []*v1.Pod{p1},
 				Nodes:     []*v1.Node{n1, n2, n3, n4, n5},
 				Plugins:   plugins,
 			},
-			arguments: framework.Arguments{},
+			arguments: framework.Arguments{
+				"nonstrict": false,
+			},
 			expected: map[string]map[string]float64{
 				"c1/p1": {
 					"n1": 100,
@@ -134,16 +136,49 @@ func TestNodeGroup(t *testing.T) {
 			},
 		},
 		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:      "case: soft constraints is subset of hard constraints with nonstrict=true",
+				PodGroups: []*schedulingv1.PodGroup{pg1},
+				Queues:    []*schedulingv1.Queue{queue1},
+				Pods:      []*v1.Pod{p1},
+				Nodes:     []*v1.Node{n1, n2, n3, n4, n5},
+				Plugins:   plugins,
+			},
+			arguments: framework.Arguments{
+				"nonstrict": true,
+			},
+			expected: map[string]map[string]float64{
+				"c1/p1": {
+					"n1": 98,
+					"n2": -2,
+					"n3": 148,
+					"n4": -1,
+					"n5": -2,
+				},
+			},
+			expectedStatus: map[string]map[string]int{
+				"c1/p1": {
+					"n1": api.Success,
+					"n2": api.UnschedulableAndUnresolvable,
+					"n3": api.Success,
+					"n4": api.Success,
+					"n5": api.Success,
+				},
+			},
+		},
+		{
 			// test unnormal case
 			TestCommonStruct: uthelper.TestCommonStruct{
-				Name:      "case: soft constraints is not subset of hard constraints",
+				Name:      "case: soft constraints is not subset of hard constraints nonstrict=false",
 				PodGroups: []*schedulingv1.PodGroup{pg2},
 				Queues:    []*schedulingv1.Queue{queue2},
 				Pods:      []*v1.Pod{p2},
 				Nodes:     []*v1.Node{n1, n2, n3, n4, n5},
 				Plugins:   plugins,
 			},
-			arguments: framework.Arguments{},
+			arguments: framework.Arguments{
+				"nonstrict": false,
+			},
 			expected: map[string]map[string]float64{
 				"c1/p2": {
 					"n1": 100,
@@ -160,6 +195,38 @@ func TestNodeGroup(t *testing.T) {
 					"n3": api.Success,
 					"n4": api.Success,
 					"n5": api.UnschedulableAndUnresolvable,
+				},
+			},
+		},
+		{
+			// test unnormal case
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:      "case: soft constraints is not subset of hard constraints nonstrict=true",
+				PodGroups: []*schedulingv1.PodGroup{pg2},
+				Queues:    []*schedulingv1.Queue{queue2},
+				Pods:      []*v1.Pod{p2},
+				Nodes:     []*v1.Node{n1, n2, n3, n4, n5},
+				Plugins:   plugins,
+			},
+			arguments: framework.Arguments{
+				"nonstrict": true,
+			},
+			expected: map[string]map[string]float64{
+				"c1/p2": {
+					"n1": 98,
+					"n2": -2,
+					"n3": 48,
+					"n4": -1,
+					"n5": -2,
+				},
+			},
+			expectedStatus: map[string]map[string]int{
+				"c1/p2": {
+					"n1": api.Success,
+					"n2": api.UnschedulableAndUnresolvable,
+					"n3": api.Success,
+					"n4": api.Success,
+					"n5": api.Success,
 				},
 			},
 		},
