@@ -60,12 +60,12 @@ config description：
 	</tr>
 	<tr>
 	    <td>MostAllocated</td>
-	    <td>requested/allocable</td>
+	    <td>(used + requested)/allocable</td>
 	    <td>Aggregated</td>
 	</tr>
 	<tr>
 	    <td>LeastAllocated</td>
-	    <td>(allocable-requested)/allocable</td>
+	    <td>(allocable - (used + requested))/allocable</td>
 	    <td>Dispersed</td>
 	</tr>
 </table>
