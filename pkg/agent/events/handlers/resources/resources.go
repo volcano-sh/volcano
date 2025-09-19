@@ -90,7 +90,7 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 		if cgroupVersion == cgroup.CgroupV2 && cr.Value == -1 {
 			if cr.SubPath == cgroup.CPUQuotaTotalFileV2 {
 				// cpu.max: "max 100000"
-				err = utils.UpdateFile(filePath, []byte(fmt.Sprint("max 100000")))
+				err = utils.UpdateFile(filePath, []byte("max 100000"))
 			} else {
 				// memory.max: "max"
 				err = utils.UpdateFile(filePath, []byte("max"))
