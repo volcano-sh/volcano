@@ -102,22 +102,82 @@ func TestNode(t *testing.T) {
 	GPU := v1.ResourceName("nvidia.com/gpu")
 	FOO := v1.ResourceName("example.com/foo")
 
-	p1 := util.BuildPod("c1", "p1", "n1", v1.PodPending, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p2 := util.BuildPod("c1", "p2", "n3", v1.PodPending, api.BuildResourceList("1.5", "0Gi"), "pg1", make(map[string]string), make(map[string]string))
-	p3 := util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "10Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p1 := util.MakePod().
+		Namespace("c1").
+		Name("p1").
+		NodeName("n1").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "1Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p2 := util.MakePod().
+		Namespace("c1").
+		Name("p2").
+		NodeName("n3").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1.5", "0Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
+	p3 := util.MakePod().
+		Namespace("c1").
+		Name("p3").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("2", "10Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	addResource(p3.Spec.Containers[0].Resources.Requests, GPU, "2")
-	p4 := util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("3", "4Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p4 := util.MakePod().
+		Namespace("c1").
+		Name("p4").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("3", "4Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	addResource(p4.Spec.Containers[0].Resources.Requests, FOO, "3")
 
-	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
-	n2 := util.BuildNode("n2", api.BuildResourceList("4", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n1 := util.MakeNode().
+		Name("n1").
+		Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
+	n2 := util.MakeNode().
+		Name("n2").
+		Allocatable(api.BuildResourceList("4", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("4", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
 	addResource(n2.Status.Allocatable, GPU, "4")
-	n3 := util.BuildNode("n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string))
+	n3 := util.MakeNode().
+		Name("n3").
+		Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+		Annotations(map[string]string{}).
+		Labels(make(map[string]string)).
+		Obj()
 	addResource(n3.Status.Allocatable, FOO, "16")
 
-	pg1 := util.BuildPodGroup("pg1", "c1", "c1", 0, nil, "")
-	queue1 := util.BuildQueue("c1", 1, nil)
-
+	pg1 := util.MakePodGroup().
+		Name("pg1").
+		Namespace("c1").
+		Queue("c1").
+		MinMember(0).
+		MinTaskMember(nil).
+		Phase("").
+		Obj()
+	queue1 := util.MakeQueue().Name("c1").Weight(1).Capability(nil).Obj()
 	tests := []struct {
 		uthelper.TestCommonStruct
 		arguments framework.Arguments

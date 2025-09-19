@@ -647,7 +647,14 @@ func TestSchedulerCache_DeleteQueueV1beta1(t *testing.T) {
 }
 
 func TestSchedulerCache_SyncNode(t *testing.T) {
-	n1 := util.BuildNode("n1", nil, map[string]string{"label-key": "label-value"})
+	// n1 := util.BuildNode("n1", nil, map[string]string{"label-key": "label-value"})
+	n1 := util.MakeNode().
+		Name("n1").
+		Allocatable(nil).
+		Capacity(nil).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{"label-key": "label-value"}).
+		Obj()
 	expectedNodeInfo := schedulingapi.NewNodeInfo(n1)
 	expectedNodeInfo.State.Phase = schedulingapi.Ready
 
@@ -669,8 +676,21 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 		{
 			name: "Node added to cache",
 			nodes: []*v1.Node{
-				util.BuildNode("n1", nil, map[string]string{"label-key": "label-value"}),
-				util.BuildNode("n2", nil, map[string]string{"label-key": "label-value"})},
+				util.MakeNode().
+					Name("n1").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(map[string]string{"label-key": "label-value"}).
+					Obj(),
+				util.MakeNode().
+					Name("n2").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(map[string]string{"label-key": "label-value"}).
+					Obj(),
+			},
 			nodeName: "n1",
 			nodeSelector: map[string]sets.Empty{
 				"label-key:label-value": {},
@@ -681,8 +701,21 @@ func TestSchedulerCache_SyncNode(t *testing.T) {
 		{
 			name: "Node not added to cache",
 			nodes: []*v1.Node{
-				util.BuildNode("n1", nil, map[string]string{}),
-				util.BuildNode("n2", nil, map[string]string{})},
+				util.MakeNode().
+					Name("n1").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(map[string]string{}).
+					Obj(),
+				util.MakeNode().
+					Name("n2").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(map[string]string{}).
+					Obj(),
+			},
 			nodeName: "n1",
 			nodeSelector: map[string]sets.Empty{
 				"label-key:label-value": {},
@@ -800,12 +833,48 @@ func TestSchedulerCache_AddHyperNode(t *testing.T) {
 		{
 			name: "Add hyperNodes with regex match",
 			nodes: []*v1.Node{
-				util.BuildNode("node-0", nil, nil),
-				util.BuildNode("node-1", nil, nil),
-				util.BuildNode("node-2", nil, nil),
-				util.BuildNode("node-3", nil, nil),
-				util.BuildNode("prefix-0", nil, nil),
-				util.BuildNode("prefix-1", nil, nil),
+				util.MakeNode().
+					Name("node-0").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(nil).
+					Obj(),
+				util.MakeNode().
+					Name("node-1").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(nil).
+					Obj(),
+				util.MakeNode().
+					Name("node-2").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(nil).
+					Obj(),
+				util.MakeNode().
+					Name("node-3").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(nil).
+					Obj(),
+				util.MakeNode().
+					Name("prefix-0").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(nil).
+					Obj(),
+				util.MakeNode().
+					Name("prefix-1").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(nil).
+					Obj(),
 			},
 			initialHyperNodes: initialHyperNodes1,
 			hypeNodesToAdd:    []*topologyv1alpha1.HyperNode{s6},
@@ -1148,8 +1217,21 @@ func TestSchedulerCache_UpdateHyperNode(t *testing.T) {
 		{
 			name: "Update hyperNode s2's members to regex match",
 			nodes: []*v1.Node{
-				util.BuildNode("4-suffix", nil, nil),
-				util.BuildNode("5-suffix", nil, nil),
+				util.MakeNode().
+					Name("4-suffix").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(nil).
+					Obj(),
+
+				util.MakeNode().
+					Name("5-suffix").
+					Allocatable(nil).
+					Capacity(nil).
+					Annotations(map[string]string{}).
+					Labels(nil).
+					Obj(),
 			},
 			initialHyperNodes: initialHyperNodes,
 			hyperNodesToUpdated: []*topologyv1alpha1.HyperNode{

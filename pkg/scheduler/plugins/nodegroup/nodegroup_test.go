@@ -35,31 +35,94 @@ import (
 func TestNodeGroup(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{PluginName: New}
 
-	p1 := util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{
-		batch.QueueNameKey: "q1",
-	}, make(map[string]string))
+	p1 := util.MakePod().
+		Namespace("c1").
+		Name("p1").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("2", "4Gi")).
+		GroupName("pg1").
+		Labels(map[string]string{batch.QueueNameKey: "q1"}).
+		NodeSelector(make(map[string]string)).
+		Obj()
 
-	p2 := util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg2", map[string]string{
-		batch.QueueNameKey: "q2",
-	}, make(map[string]string))
+	p2 := util.MakePod().
+		Namespace("c1").
+		Name("p2").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("2", "4Gi")).
+		GroupName("pg2").
+		Labels(map[string]string{batch.QueueNameKey: "q2"}).
+		NodeSelector(make(map[string]string)).
+		Obj()
 
-	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi"), map[string]string{
-		NodeGroupNameKey: "group1",
-	})
-	n2 := util.BuildNode("n2", api.BuildResourceList("4", "16Gi"), map[string]string{
-		NodeGroupNameKey: "group2",
-	})
-	n3 := util.BuildNode("n3", api.BuildResourceList("4", "16Gi"), map[string]string{
-		NodeGroupNameKey: "group3",
-	})
-	n4 := util.BuildNode("n4", api.BuildResourceList("4", "16Gi"), map[string]string{
-		NodeGroupNameKey: "group4",
-	})
-	n5 := util.BuildNode("n5", api.BuildResourceList("4", "16Gi"), make(map[string]string))
+	n1 := util.MakeNode().
+		Name("n1").
+		Allocatable(api.BuildResourceList("2", "4Gi")).
+		Capacity(api.BuildResourceList("2", "4Gi")).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{
+			NodeGroupNameKey: "group1",
+		}).
+		Obj()
 
-	pg1 := util.BuildPodGroup("pg1", "c1", "q1", 0, nil, "")
-	pg2 := util.BuildPodGroup("pg2", "c1", "q2", 0, nil, "")
+	n2 := util.MakeNode().
+		Name("n2").
+		Allocatable(api.BuildResourceList("4", "16Gi")).
+		Capacity(api.BuildResourceList("4", "16Gi")).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{
+			NodeGroupNameKey: "group2",
+		}).
+		Obj()
 
+	n3 := util.MakeNode().
+		Name("n3").
+		Allocatable(api.BuildResourceList("4", "16Gi")).
+		Capacity(api.BuildResourceList("4", "16Gi")).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{
+			NodeGroupNameKey: "group3",
+		}).
+		Obj()
+
+	n4 := util.MakeNode().
+		Name("n4").
+		Allocatable(api.BuildResourceList("4", "16Gi")).
+		Capacity(api.BuildResourceList("4", "16Gi")).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{
+			NodeGroupNameKey: "group4",
+		}).
+		Obj()
+
+	n5 := util.MakeNode().
+		Name("n5").
+		Allocatable(api.BuildResourceList("4", "16Gi")).
+		Capacity(api.BuildResourceList("4", "16Gi")).
+		Annotations(map[string]string{}).
+		Labels(map[string]string{
+			NodeGroupNameKey: "group5",
+		}).
+		Obj()
+
+	pg1 := util.MakePodGroup().
+		Name("pg1").
+		Namespace("c1").
+		Queue("q1").
+		MinMember(0).
+		MinTaskMember(nil).
+		Phase("").
+		Obj()
+	pg2 := util.MakePodGroup().
+		Name("pg2").
+		Namespace("c1").
+		Queue("q2").
+		MinMember(0).
+		MinTaskMember(nil).
+		Phase("").
+		Obj()
 	queue1 := &schedulingv1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "q1",

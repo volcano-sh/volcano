@@ -33,12 +33,28 @@ func TestConformancePlugin(t *testing.T) {
 	var (
 		// prepare preemptor and preemptees
 		task1 = api.NewTaskInfo(
-			util.BuildPod("kube-system", "test-pod",
-				"test-node", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string)),
+			util.MakePod().
+				Namespace("kube-system").
+				Name("test-pod").
+				NodeName("test-node").
+				PodPhase(v1.PodRunning).
+				ResourceList(api.BuildResourceList("1", "1Gi")).
+				GroupName("pg1").
+				Labels(make(map[string]string)).
+				NodeSelector(make(map[string]string)).
+				Obj(),
 		)
 		task2 = api.NewTaskInfo(
-			util.BuildPod("test-namespace", "test-pod",
-				"test-node", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg1", make(map[string]string), make(map[string]string)),
+			util.MakePod().
+				Namespace("test-namespace").
+				Name("test-pod").
+				NodeName("test-node").
+				PodPhase(v1.PodRunning).
+				ResourceList(api.BuildResourceList("1", "1Gi")).
+				GroupName("pg1").
+				Labels(make(map[string]string)).
+				NodeSelector(make(map[string]string)).
+				Obj(),
 		)
 	)
 	tests := []struct {

@@ -49,21 +49,79 @@ func TestReclaim(t *testing.T) {
 				proportion.PluginName:  proportion.New,
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
-				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("c1").
+					Queue("q1").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("low-priority").
+					Obj(),
+				util.MakePodGroup().
+					Name("pg2").
+					Namespace("c1").
+					Queue("q2").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("high-priority").
+					Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee1").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "false"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee2").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "true"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee3").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "false"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptor1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode().
+					Name("n1").
+					Allocatable(api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(make(map[string]string)).
+					Obj(),
 			},
 			Queues: []*schedulingv1beta1.Queue{
-				util.BuildQueue("q1", 1, nil),
-				util.BuildQueue("q2", 1, nil),
+				util.MakeQueue().Name("q1").Weight(1).State(schedulingv1beta1.QueueStateOpen).Capability(nil).Obj(),
+				util.MakeQueue().Name("q2").Weight(1).State(schedulingv1beta1.QueueStateOpen).Capability(nil).Obj(),
 			},
 			ExpectEvictNum: 1,
 			ExpectEvicted:  []string{"c1/preemptee2"}, // let pod2 in the middle when sort tasks be preemptable and will not disturb
@@ -77,29 +135,105 @@ func TestReclaim(t *testing.T) {
 				proportion.PluginName:  proportion.New,
 			},
 			PriClass: []*schedulingv1.PriorityClass{
-				util.BuildPriorityClass("low-priority", 100),
-				util.BuildPriorityClass("mid-priority", 500),
-				util.BuildPriorityClass("high-priority", 1000),
+				util.MakePriorityClass().Name("low-priority").SetValue(100).Obj(),
+				util.MakePriorityClass().Name("mid-priority").SetValue(500).Obj(),
+				util.MakePriorityClass().Name("high-priority").SetValue(1000).Obj(),
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
-				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"), // reclaimed first
-				util.BuildPodGroupWithPrio("pg3", "c1", "q3", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("c1").
+					Queue("q1").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("mid-priority").
+					Obj(),
+				util.MakePodGroup().
+					Name("pg2").
+					Namespace("c1").
+					Queue("q2").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("low-priority").
+					Obj(),
+				util.MakePodGroup().
+					Name("pg3").
+					Namespace("c1").
+					Queue("q3").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("high-priority").
+					Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "preemptee1-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee1-2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee2-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg2", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee2-2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg2", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg3", make(map[string]string), make(map[string]string)),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee1-1").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "true"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee1-2").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "true"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee2-1").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg2").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "true"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee2-2").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg2").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "false"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptor1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg3").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode().
+					Name("n1").
+					Allocatable(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(make(map[string]string)).
+					Obj(),
 			},
 			Queues: []*schedulingv1beta1.Queue{
-				util.BuildQueue("q1", 1, nil),
-				util.BuildQueue("q2", 1, nil),
-				util.BuildQueue("q3", 1, nil),
+
+				util.MakeQueue().Name("q1").State(schedulingv1beta1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
+				util.MakeQueue().Name("q2").State(schedulingv1beta1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
+				util.MakeQueue().Name("q3").State(schedulingv1beta1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 			},
 			ExpectEvictNum: 1,
 			ExpectEvicted:  []string{"c1/preemptee2-1"}, // low priority job's preemptable pod is evicted
@@ -112,24 +246,99 @@ func TestReclaim(t *testing.T) {
 				proportion.PluginName:  proportion.New,
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
-				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
-				util.BuildPodGroupWithPrio("pg3", "c1", "q3", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("c1").
+					Queue("q1").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("mid-priority").
+					Obj(),
+				util.MakePodGroup().
+					Name("pg2").
+					Namespace("c1").
+					Queue("q2").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("mid-priority").
+					Obj(),
+				util.MakePodGroup().
+					Name("pg3").
+					Namespace("c1").
+					Queue("q3").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("mid-priority").
+					Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "preemptee1-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee1-2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee2-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg2", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee2-2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg2", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg3", make(map[string]string), make(map[string]string)),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee1-1").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "true"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee1-2").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "false"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee2-1").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg2").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "true"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee2-2").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg2").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "false"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptor1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg3").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode().
+					Name("n1").
+					Allocatable(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(make(map[string]string)).
+					Obj(),
 			},
 			Queues: []*schedulingv1beta1.Queue{
-				util.BuildQueueWithPriorityAndResourcesQuantity("q1", 5, nil, nil),
-				util.BuildQueueWithPriorityAndResourcesQuantity("q2", 10, nil, nil), // highest queue priority
-				util.BuildQueueWithPriorityAndResourcesQuantity("q3", 1, nil, nil),
+				util.MakeQueue().Name("q1").Weight(1).Priority(5).State(schedulingv1beta1.QueueStateOpen).Deserved(nil).Capability(nil).Obj(),
+				util.MakeQueue().Name("q2").Weight(1).Priority(10).State(schedulingv1beta1.QueueStateOpen).Deserved(nil).Capability(nil).Obj(),
+				util.MakeQueue().Name("q3").Weight(1).Priority(1).State(schedulingv1beta1.QueueStateOpen).Deserved(nil).Capability(nil).Obj(),
 			},
 			ExpectEvictNum: 1,
 			ExpectEvicted:  []string{"c1/preemptee1-1"}, // low queue priority job's preemptable pod is evicted
@@ -143,23 +352,64 @@ func TestReclaim(t *testing.T) {
 				proportion.PluginName:  proportion.New,
 			},
 			PriClass: []*schedulingv1.PriorityClass{
-				util.BuildPriorityClass("low-priority", 100),
-				util.BuildPriorityClassWithPreemptionPolicy("high-priority", 1000, v1.PreemptNever),
+				util.MakePriorityClass().Name("low-priority").SetValue(100).Obj(),
+				util.MakePriorityClass().Name("high-priority").SetValue(1000).PreEmptionPolicy(v1.PreemptNever).Obj(),
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
-				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 0, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("c1").
+					Queue("q1").
+					MinMember(0).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("low-priority").
+					Obj(),
+				util.MakePodGroup().
+					Name("pg2").
+					Namespace("c1").
+					Queue("q2").
+					MinMember(0).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("high-priority").
+					Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPodWithPreemptionPolicy("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string), v1.PreemptNever),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee1").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "true"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptor1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg2").
+					PreEmptionPolicy(v1.PreemptNever).
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "pods", Value: "1"}}...), make(map[string]string)),
+				util.MakeNode().
+					Name("n1").
+					Allocatable(api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "pods", Value: "1"}}...)).
+					Capacity(api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "pods", Value: "1"}}...)).
+					Annotations(map[string]string{}).
+					Labels(make(map[string]string)).
+					Obj(),
 			},
 			Queues: []*schedulingv1beta1.Queue{
-				util.BuildQueue("q1", 5, nil),
-				util.BuildQueue("q2", 10, nil),
+				util.MakeQueue().Name("q1").Weight(5).State(schedulingv1beta1.QueueStateOpen).Capability(nil).Obj(),
+				util.MakeQueue().Name("q2").Weight(10).State(schedulingv1beta1.QueueStateOpen).Capability(nil).Obj(),
 			},
 			ExpectEvictNum: 0,
 			ExpectEvicted:  []string{}, // no victims should be reclaimed
@@ -172,21 +422,79 @@ func TestReclaim(t *testing.T) {
 				proportion.PluginName:  proportion.New,
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
-				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("c1").
+					Queue("q1").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupRunning).
+					PriorityClassName("low-priority").
+					Obj(),
+				util.MakePodGroup().
+					Name("pg2").
+					Namespace("c1").
+					Queue("q2").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("high-priority").
+					Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee1").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "false"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee2").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "true"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee3").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "false"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptor1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode().
+					Name("n1").
+					Allocatable(api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(make(map[string]string)).
+					Obj(),
 			},
 			Queues: []*schedulingv1beta1.Queue{
-				util.BuildQueue("q1", 1, nil),
-				util.BuildQueueWithState("q2", 1, nil, schedulingv1beta1.QueueStateClosed),
+				util.MakeQueue().Name("q1").Weight(1).Capability(nil).State(schedulingv1beta1.QueueStateOpen).Obj(),
+				util.MakeQueue().Name("q2").Weight(1).Capability(nil).State(schedulingv1beta1.QueueStateClosed).Obj(),
 			},
 			ExpectEvictNum: 0,
 			ExpectEvicted:  []string{},
@@ -199,21 +507,85 @@ func TestReclaim(t *testing.T) {
 				capacity.PluginName:    capacity.New,
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
-				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("c1").
+					Queue("q1").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupRunning).
+					PriorityClassName("low-priority").
+					Obj(),
+				util.MakePodGroup().
+					Name("pg2").
+					Namespace("c1").
+					Queue("q2").
+					MinMember(1).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("high-priority").
+					Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee1").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "false"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee2").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "true"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptee3").
+					NodeName("n1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg1").
+					Labels(map[string]string{schedulingv1beta1.PodPreemptable: "false"}).
+					NodeSelector(make(map[string]string)).
+					Obj(),
+				util.MakePod().
+					Namespace("c1").
+					Name("preemptor1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(api.BuildResourceList("1", "1G")).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Obj(),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.MakeNode().
+					Name("n1").
+					Allocatable(api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(make(map[string]string)).
+					Obj(),
 			},
 			Queues: []*schedulingv1beta1.Queue{
-				util.BuildQueue("q1", 1, nil),
-				util.BuildQueueWithState("q2", 1, nil, schedulingv1beta1.QueueStateClosed),
+				util.MakeQueue().
+					Name("q1").Weight(1).
+					State(schedulingv1beta1.QueueStateOpen).Capability(nil).
+					Obj(),
+				util.MakeQueue().Name("q2").Weight(1).
+					Capability(nil).
+					State(schedulingv1beta1.QueueStateClosed).Obj(),
 			},
 			ExpectEvictNum: 0,
 			ExpectEvicted:  []string{},

@@ -53,25 +53,130 @@ func TestShuffle(t *testing.T) {
 			Name:    "select pods with low priority and evict them",
 			Plugins: plugins,
 			Nodes: []*v1.Node{
-				util.BuildNode("node1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
-				util.BuildNode("node2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+
+				util.MakeNode().
+					Name("node1").
+					Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(make(map[string]string)).
+					Obj(),
+
+				util.MakeNode().
+					Name("node2").
+					Allocatable(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Capacity(api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+					Annotations(map[string]string{}).
+					Labels(make(map[string]string)).
+					Obj(),
 			},
 			Queues: []*schedulingv1beta1.Queue{
-				util.BuildQueue("default", 1, nil),
+				util.MakeQueue().Name("default").Weight(1).Capability(nil).Obj(),
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroup("pg1", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
-				util.BuildPodGroup("pg2", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
-				util.BuildPodGroup("pg3", "test", "default", 0, nil, schedulingv1beta1.PodGroupRunning),
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("test").
+					Queue("default").
+					MinMember(0).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupRunning).
+					Obj(),
+				util.MakePodGroup().
+					Name("pg2").
+					Namespace("test").
+					Queue("default").
+					MinMember(0).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupRunning).
+					Obj(),
+				util.MakePodGroup().
+					Name("pg3").
+					Namespace("test").
+					Queue("default").
+					MinMember(0).
+					MinTaskMember(nil).
+					Phase(schedulingv1beta1.PodGroupRunning).
+					Obj(),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPodWithPriority("test", "pod1-1", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod1-2", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod1-3", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg1", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod2-1", "node1", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg2", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod2-2", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg2", make(map[string]string), make(map[string]string), &highPriority),
-				util.BuildPodWithPriority("test", "pod3-1", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &lowPriority),
-				util.BuildPodWithPriority("test", "pod3-2", "node2", v1.PodRunning, api.BuildResourceList("1", "2G"), "pg3", make(map[string]string), make(map[string]string), &highPriority),
+				util.MakePod().
+					Namespace("test").
+					Name("pod1-1").
+					NodeName("node1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "2G")).
+					GroupName("pg1").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&lowPriority).
+					Obj(),
+				util.MakePod().
+					Namespace("test").
+					Name("pod1-2").
+					NodeName("node1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "2G")).
+					GroupName("pg1").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&highPriority).
+					Obj(),
+				util.MakePod().
+					Namespace("test").
+					Name("pod1-3").
+					NodeName("node1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "2G")).
+					GroupName("pg1").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&highPriority).
+					Obj(),
+				util.MakePod().
+					Namespace("test").
+					Name("pod2-1").
+					NodeName("node1").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "2G")).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&lowPriority).
+					Obj(),
+				util.MakePod().
+					Namespace("test").
+					Name("pod2-2").
+					NodeName("node2").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "2G")).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&highPriority).
+					Obj(),
+				util.MakePod().
+					Namespace("test").
+					Name("pod3-1").
+					NodeName("node2").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "2G")).
+					GroupName("pg3").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&lowPriority).
+					Obj(),
+				util.MakePod().
+					Namespace("test").
+					Name("pod3-2").
+					NodeName("node2").
+					PodPhase(v1.PodRunning).
+					ResourceList(api.BuildResourceList("1", "2G")).
+					GroupName("pg3").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&highPriority).
+					Obj(),
 			},
 			ExpectEvictNum: 3,
 			ExpectEvicted:  []string{"test/pod1-1", "test/pod2-1", "test/pod3-1"},
