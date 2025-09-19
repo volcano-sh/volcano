@@ -34,7 +34,7 @@ const (
 	defaultQPS                 = 50.0
 	defaultBurst               = 100
 	defaultWorkers             = 3
-	defaultCronJobWorkers      = 2
+	defaultCronJobWorkers      = 3
 	defaultMaxRequeueNum       = 15
 	defaultSchedulerName       = "volcano"
 	defaultHealthzAddress      = ":11251"

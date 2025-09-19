@@ -1,4 +1,5 @@
 /*
+Copyright 2018 The Kubernetes Authors.
 Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -106,7 +107,7 @@ func (cc *cronjobcontroller) Initialize(opt *framework.ControllerOption) error {
 		cc.jobLister = cc.jobInformer.Lister()
 		cc.jobSynced = cc.jobInformer.Informer().HasSynced
 	}
-	if utilfeature.DefaultFeatureGate.Enabled(features.VolcanoCronJobSupport) {
+	if utilfeature.DefaultFeatureGate.Enabled(features.CronVolcanoJobSupport) {
 		cc.cronJobInformer = factory.Batch().V1alpha1().CronJobs()
 		cc.cronJobList = cc.cronJobInformer.Lister()
 		cc.cronJobSync = cc.cronJobInformer.Informer().HasSynced
@@ -140,10 +141,12 @@ func (cc *cronjobcontroller) Run(stopCh <-chan struct{}) {
 	}
 	klog.Infof("CronJobController is running ...... ")
 }
+
 func (cc *cronjobcontroller) worker() {
 	for cc.processNextReq() {
 	}
 }
+
 func (cc *cronjobcontroller) processNextReq() bool {
 	key, shutdown := cc.queue.Get()
 	if shutdown {
@@ -158,14 +161,14 @@ func (cc *cronjobcontroller) processNextReq() bool {
 		klog.V(2).Infof("Failed to handle CronJob <%s>: %v",
 			key, err)
 		cc.queue.AddRateLimited(key)
-		return true
 	case requeueAfter != nil:
 		klog.V(4).Infof("Requeueing key %s after %v", key, *requeueAfter)
+		cc.queue.Forget(key)
 		cc.queue.AddAfter(key, *requeueAfter)
 	}
-	cc.queue.Forget(key)
 	return true
 }
+
 func (cc *cronjobcontroller) sync(cronJobKey string) (*time.Duration, error) {
 	klog.V(3).Infof("Starting to sync up CronJob <%s>", cronJobKey)
 	defer klog.V(3).Infof("Finished CronJob <%s> sync up", cronJobKey)
@@ -212,6 +215,7 @@ func (cc *cronjobcontroller) sync(cronJobKey string) (*time.Duration, error) {
 	}
 	return requeueAfter, nil
 }
+
 func (cc *cronjobcontroller) syncCronJob(cronJob *batchv1.CronJob, jobsByCronJob []*batchv1.Job) (*time.Duration, bool, error) {
 	updateStatus := false
 	now := cc.now()

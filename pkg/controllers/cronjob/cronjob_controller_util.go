@@ -1,5 +1,6 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
 package cronjob
 
 import (
@@ -254,7 +256,7 @@ func getJobFromTemplate(cj *batchv1.CronJob, scheduledTime time.Time) (*batchv1.
 	// We want job names for a given nominal start time to have a deterministic name to avoid the same job being created twice
 	name := getJobName(cj, scheduledTime)
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.VolcanoCronJobSupport) {
+	if utilfeature.DefaultFeatureGate.Enabled(features.CronVolcanoJobSupport) {
 		timeZoneLocation, err := time.LoadLocation(ptr.Deref(cj.Spec.TimeZone, ""))
 		if err != nil {
 			return nil, err

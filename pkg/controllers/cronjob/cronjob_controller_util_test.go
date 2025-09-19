@@ -1,5 +1,6 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -109,7 +110,7 @@ func TestGetJobFromTemplate(t *testing.T) {
 		scheduledTime   = *topOfTheHour()
 	)
 
-	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.VolcanoCronJobSupport, true)
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.CronVolcanoJobSupport, true)
 
 	cj := createVolcanoCronJob()
 
