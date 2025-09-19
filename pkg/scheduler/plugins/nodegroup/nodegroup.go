@@ -34,17 +34,21 @@ const (
 	PluginName       = "nodegroup"
 	NodeGroupNameKey = "volcano.sh/nodegroup-name"
 
-	BaseScore = 100
+	BaseScore        = 100
+	NonStrictPenalty = -2
 )
 
 type nodeGroupPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
+	nonstrict       bool
 }
 
 // New function returns prioritize plugin object.
 func New(arguments framework.Arguments) framework.Plugin {
-	return &nodeGroupPlugin{pluginArguments: arguments}
+	nodeGroupPlugin := &nodeGroupPlugin{pluginArguments: arguments, nonstrict: false}
+	arguments.GetBool(&nodeGroupPlugin.nonstrict, "nonstrict")
+	return nodeGroupPlugin
 }
 
 func (np *nodeGroupPlugin) Name() string {
@@ -67,11 +71,11 @@ func NewQueueGroupAffinity() queueGroupAffinity {
 	}
 }
 
-func (q queueGroupAffinity) predicate(queue, group string) error {
+func (q queueGroupAffinity) predicate(queue, group string, nonstrict bool) error {
 	if len(queue) == 0 {
 		return nil
 	}
-	flag := false
+	flag := nonstrict
 	if q.queueGroupAffinityRequired != nil {
 		if groups, ok := q.queueGroupAffinityRequired[queue]; ok {
 			if groups.Has(group) {
@@ -109,10 +113,13 @@ func (q queueGroupAffinity) predicate(queue, group string) error {
 	return nil
 }
 
-func (q queueGroupAffinity) score(queue string, group string) float64 {
+func (q queueGroupAffinity) score(queue, group string, nonstrict bool) float64 {
 	nodeScore := 0.0
 	if len(queue) == 0 {
 		return nodeScore
+	}
+	if nonstrict {
+		nodeScore = NonStrictPenalty
 	}
 	// Affinity: hard constraints should be checked first
 	// to make sure soft constraints can cover score.
@@ -219,7 +226,7 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		group := node.Node.Labels[NodeGroupNameKey]
 		queue := GetPodQueue(task)
-		score := queueGroupAffinity.score(queue, group)
+		score := queueGroupAffinity.score(queue, group, np.nonstrict)
 		klog.V(4).Infof("task <%s>/<%s> queue %s on node %s of nodegroup %s, score %v", task.Namespace, task.Name, queue, node.Name, group, score)
 		return score, nil
 	}
@@ -230,7 +237,7 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		group := node.Node.Labels[NodeGroupNameKey]
 		queue := GetPodQueue(task)
-		if err := queueGroupAffinity.predicate(queue, group); err != nil {
+		if err := queueGroupAffinity.predicate(queue, group, np.nonstrict); err != nil {
 			nodeStatus := &api.Status{
 				Code:   api.UnschedulableAndUnresolvable,
 				Reason: "node not satisfy",
