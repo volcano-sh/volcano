@@ -224,6 +224,12 @@ custom:
       drop: [ "ALL" ]
     allowPrivilegeEscalation: false
 
+  # Specify root Queue capability
+  root_queue:
+    capability: ~
+    reclaimable: false
+    weight: 1
+
   # Specify agent cni config path.
   agent_cni_config_path: /etc/cni/net.d/cni.conflist
 
