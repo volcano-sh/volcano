@@ -1,4 +1,5 @@
 /*
+Copyright 2018 The Kubernetes Authors.
 Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,16 +30,17 @@ import (
 )
 
 type cronjobClientInterface interface {
-	getCronJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.CronJob, error)
+	GetCronJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.CronJob, error)
 	UpdateStatus(vcClient vcclientset.Interface, cronjob *batchv1.CronJob) (*batchv1.CronJob, error)
 }
 type realCronjobClient struct{}
 
-func (r *realCronjobClient) getCronJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.CronJob, error) {
+func (r *realCronjobClient) GetCronJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.CronJob, error) {
 	return vcClient.BatchV1alpha1().CronJobs(namespace).Get(context.TODO(),
 		name,
 		metav1.GetOptions{})
 }
+
 func (r *realCronjobClient) UpdateStatus(vcClient vcclientset.Interface, cronjob *batchv1.CronJob) (*batchv1.CronJob, error) {
 	return vcClient.BatchV1alpha1().CronJobs(cronjob.Namespace).UpdateStatus(context.TODO(),
 		cronjob,
@@ -50,7 +52,7 @@ type fakeCronjobClient struct {
 	Updates []batchv1.CronJob
 }
 
-func (f *fakeCronjobClient) getCronJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.CronJob, error) {
+func (f *fakeCronjobClient) GetCronJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.CronJob, error) {
 	if name == f.CronJob.Name && namespace == f.CronJob.Namespace {
 		return f.CronJob, nil
 	}
@@ -59,31 +61,34 @@ func (f *fakeCronjobClient) getCronJobClient(vcClient vcclientset.Interface, nam
 		Resource: "cronjobs",
 	}, name)
 }
+
 func (f *fakeCronjobClient) UpdateStatus(vcClient vcclientset.Interface, cj *batchv1.CronJob) (*batchv1.CronJob, error) {
 	f.Updates = append(f.Updates, *cj)
 	return cj, nil
 }
 
 type jobClientInterface interface {
-	getJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.Job, error)
-	deleteJobClient(vcClient vcclientset.Interface, namespace string, name string) error
-	createJobClient(vcClient vcclientset.Interface, namespace string, job *batchv1.Job) (*batchv1.Job, error)
+	GetJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.Job, error)
+	DeleteJobClient(vcClient vcclientset.Interface, namespace string, name string) error
+	CreateJobClient(vcClient vcclientset.Interface, namespace string, job *batchv1.Job) (*batchv1.Job, error)
 }
 type realJobClient struct{}
 
-func (r *realJobClient) getJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.Job, error) {
+func (r *realJobClient) GetJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.Job, error) {
 	job, err := vcClient.BatchV1alpha1().Jobs(namespace).Get(context.TODO(),
 		name,
 		metav1.GetOptions{})
 	return job, err
 }
-func (r *realJobClient) deleteJobClient(vcClient vcclientset.Interface, namespace string, name string) error {
+
+func (r *realJobClient) DeleteJobClient(vcClient vcclientset.Interface, namespace string, name string) error {
 	err := vcClient.BatchV1alpha1().Jobs(namespace).Delete(context.TODO(),
 		name,
 		metav1.DeleteOptions{})
 	return err
 }
-func (r *realJobClient) createJobClient(vcClient vcclientset.Interface, namespace string, job *batchv1.Job) (*batchv1.Job, error) {
+
+func (r *realJobClient) CreateJobClient(vcClient vcclientset.Interface, namespace string, job *batchv1.Job) (*batchv1.Job, error) {
 	newJob, err := vcClient.BatchV1alpha1().Jobs(namespace).Create(context.TODO(),
 		job,
 		metav1.CreateOptions{})
@@ -99,7 +104,7 @@ type fakeJobClient struct {
 	CreateErr     error
 }
 
-func (f *fakeJobClient) createJobClient(vcClient vcclientset.Interface, namespace string, job *batchv1.Job) (*batchv1.Job, error) {
+func (f *fakeJobClient) CreateJobClient(vcClient vcclientset.Interface, namespace string, job *batchv1.Job) (*batchv1.Job, error) {
 	f.Lock()
 	defer f.Unlock()
 	if f.CreateErr != nil {
@@ -114,7 +119,7 @@ func (f *fakeJobClient) createJobClient(vcClient vcclientset.Interface, namespac
 	return job, nil
 }
 
-func (f *fakeJobClient) getJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.Job, error) {
+func (f *fakeJobClient) GetJobClient(vcClient vcclientset.Interface, namespace string, name string) (*batchv1.Job, error) {
 	f.Lock()
 	defer f.Unlock()
 	if f.Err != nil {
@@ -123,7 +128,7 @@ func (f *fakeJobClient) getJobClient(vcClient vcclientset.Interface, namespace s
 	return f.Job, nil
 }
 
-func (f *fakeJobClient) deleteJobClient(vcClient vcclientset.Interface, namespace string, name string) error {
+func (f *fakeJobClient) DeleteJobClient(vcClient vcclientset.Interface, namespace string, name string) error {
 	f.Lock()
 	defer f.Unlock()
 	if f.Err != nil {

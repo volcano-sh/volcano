@@ -1,4 +1,5 @@
 /*
+Copyright 2018 The Kubernetes Authors.
 Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -244,7 +245,7 @@ func (cc *cronjobcontroller) processCtlJobAndActiveJob(cronJob *batchv1.CronJob,
 		found := inActiveList(cronJob, job.ObjectMeta.UID)
 		isFinish, _ := isJobFinished(job)
 		if !found && !isFinish {
-			cjCopy, err := cc.cronjobClient.getCronJobClient(cc.vcClient, cronJob.Namespace, cronJob.Name)
+			cjCopy, err := cc.cronjobClient.GetCronJobClient(cc.vcClient, cronJob.Namespace, cronJob.Name)
 			if err != nil {
 				return updateStatus, err
 			}
@@ -325,7 +326,7 @@ func deleteJobByClient(vcClient vcclientset.Interface, jobClient jobClientInterf
 	}
 
 	// Execute Clinet deletion
-	err := jobClient.deleteJobClient(vcClient, job.Namespace, job.Name)
+	err := jobClient.DeleteJobClient(vcClient, job.Namespace, job.Name)
 	if err != nil {
 		klog.ErrorS(err, "Failed to delete Job",
 			"job", klog.KObj(job),
@@ -362,7 +363,7 @@ func (cc *cronjobcontroller) processConcurrencyPolicy(cj *batchv1.CronJob) (bool
 				"Replacing active job for CronJob")
 			for _, activeJob := range cj.Status.Active {
 				klog.V(4).Info("Deleting job that was still running at next scheduled start time", "job", klog.KRef(activeJob.Namespace, activeJob.Name))
-				job, err := cc.jobClient.getJobClient(cc.vcClient, activeJob.Namespace, activeJob.Name)
+				job, err := cc.jobClient.GetJobClient(cc.vcClient, activeJob.Namespace, activeJob.Name)
 				if err != nil {
 					cc.recorder.Eventf(cj, corev1.EventTypeWarning, "FailedGet", "Get job: %v", err)
 					return false, updateStatus, err
@@ -384,7 +385,7 @@ func (cc *cronjobcontroller) createJob(cronJob *batchv1.CronJob, scheduledTime t
 		cc.recorder.Eventf(cronJob, corev1.EventTypeWarning, "FailedCreate", "Failed to create job from template: %v", err)
 		return nil, err
 	}
-	job, err := cc.jobClient.createJobClient(cc.vcClient, cronJob.Namespace, jobTemplate)
+	job, err := cc.jobClient.CreateJobClient(cc.vcClient, cronJob.Namespace, jobTemplate)
 	switch {
 	case errors.HasStatusCause(err, corev1.NamespaceTerminatingCause):
 		klog.V(2).Infof("Namespace %s is terminating, skipping job creation for CronJob %s", cronJob.Namespace, klog.KObj(cronJob))
@@ -392,7 +393,7 @@ func (cc *cronjobcontroller) createJob(cronJob *batchv1.CronJob, scheduledTime t
 		return nil, err
 
 	case errors.IsAlreadyExists(err):
-		existingJob, err := cc.jobClient.getJobClient(cc.vcClient, jobTemplate.Namespace, jobTemplate.Name)
+		existingJob, err := cc.jobClient.GetJobClient(cc.vcClient, jobTemplate.Namespace, jobTemplate.Name)
 		if err != nil {
 			if errors.IsNotFound(err) {
 				klog.Warningf("Job %s disappeared after creation conflict, retrying", jobTemplate.Name)
@@ -425,7 +426,7 @@ func (cc *cronjobcontroller) createJob(cronJob *batchv1.CronJob, scheduledTime t
 	}
 
 	if !metav1.IsControlledBy(job, cronJob) {
-		cleanupErr := cc.jobClient.deleteJobClient(cc.vcClient, job.Namespace, job.Name)
+		cleanupErr := cc.jobClient.DeleteJobClient(cc.vcClient, job.Namespace, job.Name)
 		if cleanupErr != nil {
 			klog.Errorf("Failed to cleanup orphaned job %s: %v", klog.KObj(job), cleanupErr)
 		}

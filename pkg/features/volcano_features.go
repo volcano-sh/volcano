@@ -44,8 +44,8 @@ const (
 	// ResourceTopology supports resources like cpu/memory topology aware.
 	ResourceTopology featuregate.Feature = "ResourceTopology"
 
-	// VolcanoCronJobSupport can identify and schedule volcano cronjob.
-	VolcanoCronJobSupport featuregate.Feature = "VolcanoCronJobSupport"
+	// CronVolcanoJobSupport can identify and schedule volcano cronjob.
+	CronVolcanoJobSupport featuregate.Feature = "CronVolcanoJobSupport"
 )
 
 func init() {
@@ -61,5 +61,5 @@ var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec
 	// CSIStorage is explicitly set to false by default.
 	CSIStorage:            {Default: false, PreRelease: featuregate.Alpha},
 	ResourceTopology:      {Default: true, PreRelease: featuregate.Alpha},
-	VolcanoCronJobSupport: {Default: true, PreRelease: featuregate.Alpha},
+	CronVolcanoJobSupport: {Default: true, PreRelease: featuregate.Alpha},
 }
