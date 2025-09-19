@@ -45,6 +45,7 @@ import (
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -131,6 +132,10 @@ type Session struct {
 	simulateAddTaskFns     map[string]api.SimulateAddTaskFn
 	simulatePredicateFns   map[string]api.SimulatePredicateFn
 	simulateAllocatableFns map[string]api.SimulateAllocatableFn
+
+	PostPredicateFn func(*api.TaskInfo, *api.NodeInfo, error)
+	PostNodeOrderFn func(*api.TaskInfo, *api.NodeInfo, float64, error)
+	PostAllocateFn  func(*api.TaskInfo, *api.NodeInfo, error)
 
 	// cycleStatesMap is used to temporarily store the scheduling status of each pod, its life cycle is same as Session.
 	// Because state needs to be passed between different extension points (not only used in PreFilter and Filter),
@@ -552,6 +557,11 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 
 // Allocate the task to the node in the session
 func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
+	defer func() {
+		if ssn.PostAllocateFn != nil {
+			ssn.PostAllocateFn(task, nodeInfo, err)
+		}
+	}()
 	hostname := nodeInfo.Name
 	task.Pod.Spec.NodeName = hostname
 

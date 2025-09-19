@@ -25,6 +25,8 @@ TAG=${TAG:-`git rev-parse --verify HEAD`}
 RELEASE_DIR=_output/release
 RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 YAML_FILENAME=volcano-${TAG}.yaml
+INSTALL_SIMULATOR=${INSTALL_SIMULATOR:-"false"}
+SKIP_BUILD_IMAGE=${SKIP_BUILD_IMAGE:-"false"}
 
 
 # prepare deploy yaml and docker images
@@ -32,17 +34,27 @@ function prepare {
   echo "Preparing..."
   install-helm
 
-  echo "Building docker images"
-  make images
+  if [ "${SKIP_BUILD_IMAGE}" == "false" ]; then
+    echo "Building docker images"
+    make images
+  fi
+  echo $TAG
 }
 
 
 function install-volcano {
   # TODO: add a graceful way waiting for all crd ready
-  kubectl create namespace volcano-system 
+  kubectl create namespace volcano-system
+
+  runSchedulerSimulator=false
+  if [ "${INSTALL_SIMULATOR}" == "true" ]; then
+    runSchedulerSimulator=true
+  fi
+
   helm install volcano ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
   --set basic.image_tag_version=${TAG} \
-  --set basic.image_pull_policy=IfNotPresent 
+  --set basic.image_pull_policy=IfNotPresent \
+  --set custom.run_scheduler_simulator=${runSchedulerSimulator}
 }
 
 function uninstall-volcano {
@@ -100,3 +112,7 @@ if [ "${INSTALL_MODE}" == "kind" ]; then
 fi
 
 install-volcano
+
+if [ "${runSchedulerSimulator}" == "true" ]; then
+  install-kwok-with-helm
+fi
