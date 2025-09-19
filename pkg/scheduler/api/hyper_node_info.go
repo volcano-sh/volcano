@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -198,6 +199,29 @@ func (hni *HyperNodesInfo) RealNodesSet() map[string]sets.Set[string] {
 	}
 
 	return copiedRealNodesSet
+}
+
+func (hni *HyperNodesInfo) MinHyperNodeOfNodeMap() map[string]string {
+	minHyperNodeOfNodeMap := make(map[string]string)
+
+	if len(hni.hyperNodesSetByTier) == 0 {
+		return minHyperNodeOfNodeMap
+	}
+
+	tiers := make([]int, 0, len(hni.hyperNodesSetByTier))
+	for tier := range hni.hyperNodesSetByTier {
+		tiers = append(tiers, tier)
+	}
+	sort.Ints(tiers)
+
+	nodeTypeHyperNodes := hni.hyperNodesSetByTier[tiers[0]]
+	for hyperNode := range nodeTypeHyperNodes {
+		nodes := hni.realNodesSet[hyperNode]
+		for node := range nodes {
+			minHyperNodeOfNodeMap[node] = hyperNode
+		}
+	}
+	return minHyperNodeOfNodeMap
 }
 
 // DeleteHyperNode deletes a HyperNode from the cache and update hyperNode tree.

@@ -94,6 +94,7 @@ type Session struct {
 	HyperNodesTiers     []int
 	// RealNodesList maps hyperNode Name -> nodes under the hyperNode.
 	RealNodesList             map[string][]*api.NodeInfo
+	MinHyperNodeOfNodeMap     map[string]string
 	HyperNodesReadyToSchedule bool
 
 	plugins             map[string]Plugin
@@ -211,6 +212,7 @@ func openSession(cache cache.Cache) *Session {
 	ssn.HyperNodesSetByTier = snapshot.HyperNodesSetByTier
 	ssn.parseHyperNodesTiers()
 	ssn.RealNodesList = util.GetRealNodesListByHyperNode(snapshot.RealNodesSet, snapshot.Nodes)
+	ssn.MinHyperNodeOfNodeMap = snapshot.MinHyperNodeOfNodeMap
 	ssn.HyperNodesReadyToSchedule = snapshot.HyperNodesReadyToSchedule
 	ssn.Nodes = snapshot.Nodes
 	ssn.CSINodesStatus = snapshot.CSINodesStatus
