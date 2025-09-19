@@ -1,0 +1,29 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: CronJob
+metadata:
+  name: volcano-cronjob-example
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 60
+  jobTemplate:
+    spec:
+      schedulerName: volcano
+      plugins:
+        ssh: []
+        env: []
+        svc: []
+      tasks:
+        - replicas: 1
+          name: "task-1"
+          template:
+            spec:
+              containers:
+                - name: busybox-container
+                  image: busybox:latest
+                  command: ["/bin/sh", "-c", "date; echo Hello from Volcano CronJob"]
+              restartPolicy: OnFailure
+      policies:
+        - event: PodEvicted
+          action: RestartJob
+      minAvailable: 1

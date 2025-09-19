@@ -33,6 +33,7 @@ type ControllerOption struct {
 	VCSharedInformerFactory vcinformer.SharedInformerFactory
 	SchedulerNames          []string
 	WorkerNum               uint32
+	CronJobWorkerNum        uint32
 	MaxRequeueNum           int
 
 	InheritOwnerAnnotations bool
