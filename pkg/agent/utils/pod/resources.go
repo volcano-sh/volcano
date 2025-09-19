@@ -177,7 +177,9 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 		}
 
 		cpuLimits, ok := c.Resources.Limits[apis.GetExtendResourceCPU()]
-		if ok && !cpuLimits.IsZero() {
+		if ok {
+			// In cgroup v2, both zero and non-zero limits are meaningful
+			// Zero limit means unlimited, non-zero limit means specific quota
 			cpuMaxStr := milliCPUToMax(cpuLimits.Value(), quotaPeriod)
 			if cpuMaxStr == "max 100000" {
 				containerRes = append(containerRes, Resources{
@@ -187,14 +189,16 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 					Value:           -1,
 				})
 			} else {
-				var cpuQuota int64
-				_, err := fmt.Sscanf(cpuMaxStr, "%d %*d", &cpuQuota)
+				// For cgroup v2, we need to write the full "quota period" string
+				// We'll use a special Value and handle it in resources.go
+				var cpuQuota, period int64
+				_, err := fmt.Sscanf(cpuMaxStr, "%d %d", &cpuQuota, &period)
 				if err == nil {
 					containerRes = append(containerRes, Resources{
 						CgroupSubSystem: cgroup.CgroupCpuSubsystem,
 						ContainerID:     id,
 						SubPath:         cgroup.CPUQuotaTotalFileV2,
-						Value:           cpuQuota,
+						Value:           cpuQuota, // Store the quota, we'll reconstruct the string in resources.go
 					})
 					cpuMaxTotal += cpuQuota
 				}
@@ -204,7 +208,9 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 		}
 
 		memoryLimits, ok := c.Resources.Limits[apis.GetExtendResourceMemory()]
-		if ok && !memoryLimits.IsZero() {
+		if ok {
+			// In cgroup v2, both zero and non-zero limits are meaningful
+			// Zero limit means unlimited, non-zero limit means specific limit
 			memoryMaxStr := memoryLimitToMax(memoryLimits.Value())
 			if memoryMaxStr == "max" {
 				containerRes = append(containerRes, Resources{

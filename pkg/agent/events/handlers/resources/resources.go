@@ -95,6 +95,10 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 				// memory.max: "max"
 				err = utils.UpdateFile(filePath, []byte("max"))
 			}
+		} else if cgroupVersion == cgroup.CgroupV2 && cr.SubPath == cgroup.CPUQuotaTotalFileV2 && cr.Value > 0 {
+			// For cgroup v2 cpu.max, we need to write "quota period" format
+			content := fmt.Sprintf("%d 100000", cr.Value)
+			err = utils.UpdateFile(filePath, []byte(content))
 		} else {
 			err = utils.UpdateFile(filePath, []byte(strconv.FormatInt(cr.Value, 10)))
 		}
