@@ -92,13 +92,19 @@ func Jobs(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	var patchBytes []byte
 	switch ar.Request.Operation {
 	case admissionv1.Create:
-		patchBytes, _ = createPatch(job)
+		// Only patch plugins for distributed-framework cases; all other defaulting is handled by kubebuilder defaults
+		patchPlugins := patchDefaultPlugins(job)
+		if patchPlugins != nil {
+			patch, _ := json.Marshal([]patchOperation{*patchPlugins})
+			patchBytes = patch
+		} else {
+			patchBytes = nil
+		}
 	default:
 		err = fmt.Errorf("expect operation to be 'CREATE' ")
 		return util.ToAdmissionResponse(err)
 	}
 
-	klog.V(3).Infof("AdmissionResponse: patch=%v", string(patchBytes))
 	reviewResponse := admissionv1.AdmissionResponse{
 		Allowed: true,
 		Patch:   patchBytes,
