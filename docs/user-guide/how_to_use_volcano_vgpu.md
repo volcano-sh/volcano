@@ -70,7 +70,7 @@ data:
     actions: "enqueue, allocate, backfill"
     tiers:
     - plugins:
-      - name: predicates
+      - name: predicates   # This plugin is critical for deviceshare as it adds the required vgpu annotations.
       - name: deviceshare
         arguments:
           deviceshare.VGPUEnable: true   # enable vgpu plugin
