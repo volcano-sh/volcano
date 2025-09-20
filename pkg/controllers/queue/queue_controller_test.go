@@ -113,7 +113,6 @@ func TestDeleteQueue(t *testing.T) {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, ok)
 		}
 	}
-
 }
 
 func TestAddPodGroup(t *testing.T) {
@@ -151,7 +150,6 @@ func TestAddPodGroup(t *testing.T) {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len(c.podGroups[testcase.podGroup.Spec.Queue]))
 		}
 	}
-
 }
 
 func TestDeletePodGroup(t *testing.T) {

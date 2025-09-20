@@ -32,7 +32,6 @@ import (
 )
 
 func TestResourceQuotaPlugin(t *testing.T) {
-
 	hugeResource := api.BuildResourceList("20000m", "20G")
 	normalResource := api.BuildResourceList("2000m", "2G")
 

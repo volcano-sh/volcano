@@ -48,7 +48,6 @@ func TestMakePodName(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			podName := MakePodName(testcase.JobName, testcase.TaskName, testcase.Index)
 
@@ -240,7 +239,6 @@ func TestCreateJobPod(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			pod := createJobPod(testcase.Job, testcase.PodTemplate, "", testcase.Index, false)
 
@@ -734,7 +732,6 @@ func TestApplyPolicies(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			action := applyPolicies(testcase.Job, testcase.Request)
 
@@ -790,7 +787,6 @@ func TestTasksPriority_Less(t *testing.T) {
 	}
 
 	for i, testcase := range testcases {
-
 		t.Run(testcase.Name, func(t *testing.T) {
 			less := testcase.TasksPriority.Less(testcase.Task1Index, testcase.Task2Index)
 
@@ -890,7 +886,6 @@ var (
 )
 
 func TestTaskPriority_CalcPGMin(t *testing.T) {
-
 	oneMinAvailable := int32(1)
 	zeroMinAvailable := int32(0)
 

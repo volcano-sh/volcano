@@ -173,7 +173,6 @@ func TestUpdateJobFunc(t *testing.T) {
 }
 
 func TestEnqueueJobFlow(t *testing.T) {
-
 	namespace := "test"
 
 	req1 := apis.FlowRequest{
@@ -223,5 +222,4 @@ func TestEnqueueJobFlow(t *testing.T) {
 			}
 		})
 	}
-
 }

@@ -24,11 +24,11 @@ import (
 	"os"
 	"testing"
 	"time"
-	"volcano.sh/volcano/pkg/cli/util"
 
 	"github.com/spf13/cobra"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	"volcano.sh/volcano/pkg/cli/util"
 )
 
 func TestCreateJob(t *testing.T) {
@@ -40,7 +40,6 @@ func TestCreateJob(t *testing.T) {
 		if err == nil {
 			w.Write(val)
 		}
-
 	})
 
 	server := httptest.NewServer(handler)
@@ -88,7 +87,6 @@ func TestCreateJob(t *testing.T) {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, err)
 		}
 	}
-
 }
 
 func TestInitRunFlags(t *testing.T) {
@@ -116,5 +114,4 @@ func TestInitRunFlags(t *testing.T) {
 	if cmd.Flag("limits") == nil {
 		t.Errorf("Could not find the flag limits")
 	}
-
 }

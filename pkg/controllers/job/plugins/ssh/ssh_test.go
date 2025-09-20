@@ -23,7 +23,6 @@ import (
 )
 
 func TestSSHPlugin(t *testing.T) {
-
 	tests := []struct {
 		name           string
 		params         []string
