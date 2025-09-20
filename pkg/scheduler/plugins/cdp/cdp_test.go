@@ -130,6 +130,7 @@ func TestPreemptableFn(t *testing.T) {
 				Name: "preempt",
 			},
 		},
+		nil,
 	)
 
 	plugin.OnSessionOpen(ssn) // register preempt fn
