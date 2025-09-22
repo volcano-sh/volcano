@@ -368,11 +368,36 @@ func TestAddStatefulSet(t *testing.T) {
 	namespace := "test"
 	stsName := "sts-test"
 	podName := "sts-test-0"
-	defaultSchedulerPod := util.BuildPod(namespace, podName, "", v1.PodPending, api.BuildResourceList("1", "2Gi"), "", map[string]string{"app": stsName}, nil)
+	defaultSchedulerPod := util.MakePod().
+		Namespace(namespace).
+		Name(podName).
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "2Gi")).
+		GroupName("").
+		Labels(map[string]string{"app": stsName}).
+		NodeSelector(nil).
+		Obj()
 	defaultSchedulerPod.Spec.SchedulerName = "default-scheduler"
-	volcanoSchedulerPod := util.BuildPod(namespace, podName, "", v1.PodPending, api.BuildResourceList("1", "2Gi"), "", map[string]string{"app": stsName, controllerRevisionHashLabelKey: "test"}, nil)
+	volcanoSchedulerPod := util.MakePod().
+		Namespace(namespace).
+		Name(podName).
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "2Gi")).
+		GroupName("").
+		Labels(map[string]string{"app": stsName, controllerRevisionHashLabelKey: "test"}).
+		NodeSelector(nil).Obj()
 	volcanoSchedulerPod.Spec.SchedulerName = "volcano"
-	existedPodWithPG := util.BuildPod(namespace, podName, "", v1.PodPending, api.BuildResourceList("1", "2Gi"), "lws-1-revision", map[string]string{"app": stsName}, nil)
+	existedPodWithPG := util.MakePod().
+		Namespace(namespace).
+		Name(podName).
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("1", "2Gi")).
+		GroupName("lws-1-revision").
+		Labels(map[string]string{"app": stsName}).
+		NodeSelector(nil).Obj()
 	existedPodWithPG.Spec.SchedulerName = "volcano"
 
 	testCases := []struct {

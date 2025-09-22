@@ -71,33 +71,207 @@ func TestPickUpPendingTasks(t *testing.T) {
 		{
 			name: "test",
 			pendingPods: []*v1.Pod{
-				util.BuildPodWithPriority("default", "pg1-besteffort-task-1", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority1),
-				util.BuildPodWithPriority("default", "pg1-unbesteffort-task-1", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority1),
-				util.BuildPodWithPriority("default", "pg1-besteffort-task-3", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority3),
-				util.BuildPodWithPriority("default", "pg1-unbesteffort-task-3", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority3),
-
-				util.BuildPodWithPriority("default", "pg2-besteffort-task-1", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority1),
-				util.BuildPodWithPriority("default", "pg2-unbesteffort-task-1", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority1),
-				util.BuildPodWithPriority("default", "pg2-besteffort-task-3", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority3),
-				util.BuildPodWithPriority("default", "pg2-unbesteffort-task-3", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority3),
+				util.MakePod().
+					Namespace("default").
+					Name("pg1-besteffort-task-1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(nil).
+					GroupName("pg1").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority1).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg1-unbesteffort-task-1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(v1.ResourceList{"cpu": resource.MustParse("500m")}).
+					GroupName("pg1").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority1).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg1-besteffort-task-3").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(nil).
+					GroupName("pg1").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority3).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg1-unbesteffort-task-3").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(v1.ResourceList{"cpu": resource.MustParse("500m")}).
+					GroupName("pg1").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority3).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg2-besteffort-task-1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(nil).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority1).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg2-unbesteffort-task-1").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(v1.ResourceList{"cpu": resource.MustParse("500m")}).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority1).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg2-besteffort-task-3").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(nil).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority3).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg2-unbesteffort-task-3").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(v1.ResourceList{"cpu": resource.MustParse("500m")}).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority3).
+					Obj(),
 			},
 			pipelinedPods: []*v1.Pod{
-				util.BuildPodWithPriority("default", "pg1-besteffort-task-2", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority2),
-				util.BuildPodWithPriority("default", "pg1-unbesteffort-task-2", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority2),
-				util.BuildPodWithPriority("default", "pg1-besteffort-task-4", "", v1.PodPending, nil, "pg1", make(map[string]string), make(map[string]string), &priority4),
-				util.BuildPodWithPriority("default", "pg1-unbesteffort-task-4", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg1", make(map[string]string), make(map[string]string), &priority4),
-
-				util.BuildPodWithPriority("default", "pg2-besteffort-task-2", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority2),
-				util.BuildPodWithPriority("default", "pg2-unbesteffort-task-2", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority2),
-				util.BuildPodWithPriority("default", "pg2-besteffort-task-4", "", v1.PodPending, nil, "pg2", make(map[string]string), make(map[string]string), &priority4),
-				util.BuildPodWithPriority("default", "pg2-unbesteffort-task-4", "", v1.PodPending, v1.ResourceList{"cpu": resource.MustParse("500m")}, "pg2", make(map[string]string), make(map[string]string), &priority4),
+				util.MakePod().
+					Namespace("default").
+					Name("pg1-besteffort-task-2").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(nil).
+					GroupName("pg1").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority2).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg1-unbesteffort-task-2").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(v1.ResourceList{"cpu": resource.MustParse("500m")}).
+					GroupName("pg1").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority2).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg1-besteffort-task-4").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(nil).
+					GroupName("pg1").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority4).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg1-unbesteffort-task-4").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(v1.ResourceList{"cpu": resource.MustParse("500m")}).
+					GroupName("pg1").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority4).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg2-besteffort-task-2").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(nil).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority2).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg2-unbesteffort-task-2").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(v1.ResourceList{"cpu": resource.MustParse("500m")}).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority2).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg2-besteffort-task-4").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(nil).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority4).
+					Obj(),
+				util.MakePod().
+					Namespace("default").
+					Name("pg2-unbesteffort-task-4").
+					NodeName("").
+					PodPhase(v1.PodPending).
+					ResourceList(v1.ResourceList{"cpu": resource.MustParse("500m")}).
+					GroupName("pg2").
+					Labels(make(map[string]string)).
+					NodeSelector(make(map[string]string)).
+					Priority(&priority4).
+					Obj(),
 			},
 			queues: []*schedulingv1beta1.Queue{
-				util.BuildQueue("q1", 1, nil),
+				util.MakeQueue().Name("q1").Weight(1).Capability(nil).State(schedulingv1beta1.QueueStateOpen).Obj(),
 			},
 			podGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "default", "q1", 1, map[string]int32{"": 3}, schedulingv1beta1.PodGroupInqueue, "job-priority-1"),
-				util.BuildPodGroupWithPrio("pg2", "default", "q1", 1, map[string]int32{"": 3}, schedulingv1beta1.PodGroupInqueue, "job-priority-2"),
+				util.MakePodGroup().
+					Name("pg1").
+					Namespace("default").
+					Queue("q1").
+					MinMember(1).
+					MinTaskMember(map[string]int32{"": 3}).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("job-priority-1").
+					Obj(),
+				util.MakePodGroup().
+					Name("pg2").
+					Namespace("default").
+					Queue("q1").
+					MinMember(1).
+					MinTaskMember(map[string]int32{"": 3}).
+					Phase(schedulingv1beta1.PodGroupInqueue).
+					PriorityClassName("job-priority-2").
+					Obj(),
 			},
 			PriorityClasses: map[string]*schedulingapi.PriorityClass{
 				"job-priority-1": {

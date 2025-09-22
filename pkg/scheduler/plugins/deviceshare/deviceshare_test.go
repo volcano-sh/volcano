@@ -88,7 +88,16 @@ func TestVgpuScore(t *testing.T) {
 
 	vgpu.VGPUEnable = true
 
-	p1 := util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "10Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p1 := util.MakePod().
+		Namespace("c1").
+		Name("p3").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("2", "10Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	addResource(p1.Spec.Containers[0].Resources.Requests, gpunumber, "1")
 	addResource(p1.Spec.Containers[0].Resources.Requests, gpumemory, "1000")
 	p1.Spec.Containers[0].Resources.Limits = make(v1.ResourceList)
@@ -117,7 +126,16 @@ func TestVgpuScore(t *testing.T) {
 	gpuNode2.Device[0].UsedMem = 0
 	gpuNode2.Sharing, _ = vgpu.GetSharingHandler("hami-core")
 
-	p2 := util.BuildPod("c2", "p4", "", v1.PodPending, api.BuildResourceList("2", "10Gi"), "pg1", make(map[string]string), make(map[string]string))
+	p2 := util.MakePod().
+		Namespace("c2").
+		Name("p4").
+		NodeName("").
+		PodPhase(v1.PodPending).
+		ResourceList(api.BuildResourceList("2", "10Gi")).
+		GroupName("pg1").
+		Labels(make(map[string]string)).
+		NodeSelector(make(map[string]string)).
+		Obj()
 	addResource(p2.Spec.Containers[0].Resources.Requests, gpunumber, "1")
 	addResource(p2.Spec.Containers[0].Resources.Requests, gpumemory, "1000")
 	p2.Spec.Containers[0].Resources.Limits = make(v1.ResourceList)

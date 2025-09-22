@@ -37,17 +37,37 @@ func TestResourceQuotaPlugin(t *testing.T) {
 	normalResource := api.BuildResourceList("2000m", "2G")
 
 	// pg that requires normal resources
-	pg1 := util.BuildPodGroup("pg1", "default", "c1", 2, nil, schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue))
+	pg1 := util.MakePodGroup().
+		Name("pg1").
+		Namespace("default").
+		Queue("c1").
+		MinMember(2).
+		MinTaskMember(nil).
+		Phase(schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue)).
+		Obj()
 	pg1.Spec.MinResources = &normalResource
 	// pg that requires small resources
-	pg2 := util.BuildPodGroup("pg2", "default", "c1", 2, nil, schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue))
+	pg2 := util.MakePodGroup().
+		Name("pg2").
+		Namespace("default").
+		Queue("c1").
+		MinMember(2).
+		MinTaskMember(nil).
+		Phase(schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue)).
+		Obj()
 	pg2.Spec.MinResources = &hugeResource
 	// pg that no set requires
-	pg3 := util.BuildPodGroup("pg3", "default", "c1", 2, nil, schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue))
+	pg3 := util.MakePodGroup().
+		Name("pg3").
+		Namespace("default").
+		Queue("c1").
+		MinMember(2).
+		MinTaskMember(nil).
+		Phase(schedulingv1.PodGroupPhase(scheduling.PodGroupInqueue)).
+		Obj()
+	queue1 := util.MakeQueue().Name("c1").Weight(1).Capability(nil).Obj()
 
-	queue1 := util.BuildQueue("c1", 1, nil)
-	rq1 := util.BuildResourceQuota("test", "default", normalResource)
-
+	rq1 := util.MakeResourceQuota().Name("test").Namespace("default").HardResourceLimit(normalResource).Obj()
 	tests := []struct {
 		uthelper.TestCommonStruct
 		expectedEnqueueAble bool

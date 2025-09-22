@@ -73,20 +73,87 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 			name: "Tasks in job first scheduler, score all nodes zero",
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "", "q1", 1, nil, schedulingv1.PodGroupInqueue, "hard", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("hard").
+						HighestTierAllowed(3).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p4").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s3-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s3-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s3-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s3-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
@@ -189,7 +256,7 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 					"s6": sets.New[string]("s6-n1", "s6-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().State(schedulingv1.QueueStateOpen).Name("q1").Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -216,22 +283,107 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 			name: "Tasks in job rescheduled, score zero when the hyperNode of node has empty LCA hyperNode with jobAllocatedHyperNode",
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s3", "q1", 1, nil, schedulingv1.PodGroupInqueue, "hard", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s3").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("hard").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s3-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "s3-n2", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
-					util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s3-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("s3-n2").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p3").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s3-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s3-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s3-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s3-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
@@ -329,7 +481,7 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 					"s6": sets.New[string]("s6-n1", "s6-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -347,28 +499,114 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 				"s5-n1": 0.0,
 				"s6-n1": 0.0,
 			},
+			tasks: map[string]string{},
 		},
 		{
 			name: "Tasks in job rescheduled, score nodes according to node hypernode LCA hyperNode tier",
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s3", "q1", 1, nil, schedulingv1.PodGroupInqueue, "hard", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s3").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("hard").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s3-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "s3-n2", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
-					util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s3-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("s3-n2").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p3").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s3-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s3-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s3-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s3-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
@@ -470,7 +708,7 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 					"s6": sets.New[string]("s6-n1", "s6-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -498,17 +736,69 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s1", "q1", 1, nil, schedulingv1.PodGroupInqueue, "hard", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s1").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("hard").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s1-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s1-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s1-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s1-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s2-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s2-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s1-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s1-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s2-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s2-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s1", "s2"),
@@ -557,7 +847,7 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 					"s2": sets.New[string]("s2-n1", "s2-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().State(schedulingv1.QueueStateOpen).Name("q1").Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -581,17 +871,69 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s1", "q1", 1, nil, schedulingv1.PodGroupInqueue, "hard", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s1").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("hard").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s1-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s1-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s1-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s1-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s2-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s2-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s1-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s1-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s2-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s2-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s1", "s2"),
@@ -627,7 +969,7 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 					"s2": sets.New[string]("s2-n1", "s2-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -651,22 +993,107 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s3", "q1", 1, nil, schedulingv1.PodGroupInqueue, "hard", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s3").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("hard").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s3-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "s3-n2", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
-					util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s3-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("s3-n2").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p3").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s3-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s3-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s3-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s3-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
@@ -768,7 +1195,7 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 					"s6": sets.New[string]("s6-n1", "s6-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -796,23 +1223,117 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s1", "q1", 3, nil, schedulingv1.PodGroupInqueue, "hard", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s1").
+						Queue("q1").
+						MinMember(3).
+						MinTaskMember(nil).
+						Mode("hard").
+						HighestTierAllowed(3).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s3-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "s3-n2", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
-					util.BuildPod("c1", "p3", "s4-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
-					util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s3-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("s3-n2").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p3").
+						NodeName("s4-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p4").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s3-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s3-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s3-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s3-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
@@ -914,7 +1435,7 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 					"s6": sets.New[string]("s6-n1", "s6-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -1000,20 +1521,87 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 			name: "Tasks in job first scheduler, score all nodes zero",
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "", "q1", 1, nil, schedulingv1.PodGroupInqueue, "soft", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("soft").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p4").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s3-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s3-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s3-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s3-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
@@ -1116,7 +1704,7 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 					"s6": sets.New[string]("s6-n1", "s6-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -1143,22 +1731,107 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 			name: "Tasks in job rescheduled, score zero when the hyperNode of node has empty LCA hyperNode with jobAllocatedHyperNode",
 			TestCommonStruct: uthelper.TestCommonStruct{
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s3", "q1", 1, nil, schedulingv1.PodGroupInqueue, "soft", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s3").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("soft").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s3-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "s3-n2", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
-					util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s3-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("s3-n2").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p3").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s3-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s3-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s3-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s3-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
@@ -1256,7 +1929,7 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 					"s6": sets.New[string]("s6-n1", "s6-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -1280,22 +1953,107 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s3", "q1", 1, nil, schedulingv1.PodGroupInqueue, "soft", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s3").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("soft").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s3-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "s3-n2", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
-					util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s3-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("s3-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p3").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s3-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s3-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s3-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s3-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
@@ -1397,7 +2155,7 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 					"s6": sets.New[string]("s6-n1", "s6-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -1425,17 +2183,69 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s1", "q1", 1, nil, schedulingv1.PodGroupInqueue, "soft", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s1").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("soft").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s1-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s1-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s1-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s1-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s2-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s2-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s1-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s1-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s2-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s2-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s1", "s2"),
@@ -1484,7 +2294,7 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 					"s2": sets.New[string]("s2-n1", "s2-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -1508,17 +2318,70 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s1", "q1", 1, nil, schedulingv1.PodGroupInqueue, "soft", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s1").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("soft").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s1-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s1-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s1-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s1-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s2-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s2-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+
+					util.MakeNode().
+						Name("s1-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s1-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s2-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s2-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s1", "s2"),
@@ -1554,7 +2417,7 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 					"s2": sets.New[string]("s2-n1", "s2-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -1578,22 +2441,109 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s3", "q1", 1, nil, schedulingv1.PodGroupInqueue, "soft", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s3").
+						Queue("q1").
+						MinMember(1).
+						MinTaskMember(nil).
+						Mode("soft").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s3-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "s3-n2", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
-					util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s3-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("s3-n2").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p3").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s3-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s3-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+
+					util.MakeNode().
+						Name("s3-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s3-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
@@ -1695,7 +2645,7 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 					"s6": sets.New[string]("s6-n1", "s6-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
@@ -1723,23 +2673,119 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 			TestCommonStruct: uthelper.TestCommonStruct{
 				Plugins: map[string]framework.PluginBuilder{PluginName: New},
 				PodGroups: []*schedulingv1.PodGroup{
-					util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s1", "q1", 3, nil, schedulingv1.PodGroupInqueue, "soft", 0),
+					util.MakePodGroup().
+						Name("pg1").
+						Namespace("c1").
+						HyperNodeName("s1").
+						Queue("q1").
+						MinMember(3).
+						MinTaskMember(nil).
+						Mode("soft").
+						HighestTierAllowed(0).
+						Phase(schedulingv1.PodGroupInqueue).
+						Obj(),
 				},
 				Pods: []*v1.Pod{
-					util.BuildPod("c1", "p1", "s3-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
-					util.BuildPod("c1", "p2", "s3-n2", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
-					util.BuildPod("c1", "p3", "s4-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
-					util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+					util.MakePod().
+						Namespace("c1").
+						Name("p1").
+						NodeName("s3-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "master"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p2").
+						NodeName("s3-n2").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p3").
+						NodeName("s4-n1").
+						PodPhase(v1.PodRunning).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
+					util.MakePod().
+						Namespace("c1").
+						Name("p4").
+						NodeName("").
+						PodPhase(v1.PodPending).
+						ResourceList(api.BuildResourceList("2", "4G")).
+						GroupName("pg1").
+						Labels(map[string]string{"volcano.sh/task-spec": "worker"}).
+						NodeSelector(nil).
+						Obj(),
 				},
 				Nodes: []*v1.Node{
-					util.BuildNode("s3-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s3-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s4-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s5-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
-					util.BuildNode("s6-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+					util.MakeNode().
+						Name("s3-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+
+					util.MakeNode().
+						Name("s3-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+
+					util.MakeNode().
+						Name("s4-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s4-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s5-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n1").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
+					util.MakeNode().
+						Name("s6-n2").
+						Allocatable(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Capacity(api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...)).
+						Annotations(map[string]string{}).
+						Labels(nil).
+						Obj(),
 				},
 				HyperNodesSetByTier: map[int]sets.Set[string]{
 					1: sets.New[string]("s3", "s4", "s5", "s6"),
@@ -1841,7 +2887,7 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 					"s6": sets.New[string]("s6-n1", "s6-n2"),
 				},
 				Queues: []*schedulingv1.Queue{
-					util.BuildQueue("q1", 1, nil),
+					util.MakeQueue().Name("q1").State(schedulingv1.QueueStateOpen).Weight(1).Capability(nil).Obj(),
 				},
 			},
 			arguments: framework.Arguments{
