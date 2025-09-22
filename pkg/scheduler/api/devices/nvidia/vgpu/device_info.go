@@ -199,6 +199,7 @@ func (gs *GPUDevices) addResource(annotations map[string]string, pod *v1.Pod) {
 					} else {
 						klog.ErrorS(err, "add resource failed")
 					}
+					break
 				}
 			}
 		}
@@ -222,8 +223,10 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 					err := gs.Sharing.SubPod(gsdevice, uint(deviceused.Usedmem), uint(deviceused.Usedcores), string(pod.UID), deviceused.UUID)
 					if err != nil {
 						klog.ErrorS(err, "sub resource failed")
+					} else {
+						gs.SubPodMetrics(index, string(pod.UID), pod.Name)
 					}
-					gs.SubPodMetrics(index, string(pod.UID), pod.Name)
+					break
 				}
 			}
 		}
