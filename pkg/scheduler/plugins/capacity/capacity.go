@@ -160,7 +160,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := cp.queueOpts[queue.UID]
 
 		futureUsed := attr.allocated.Clone().Add(task.Resreq)
-		overused := !futureUsed.LessEqualWithDimension(attr.deserved, task.Resreq)
+		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, task.Resreq)
+		overused := !allocatable
 		metrics.UpdateQueueOverused(attr.name, overused)
 		if overused {
 			klog.V(3).Infof("Queue <%v> can not reclaim, deserved <%v>, allocated <%v>, share <%v>, requested <%v>",
@@ -854,7 +855,7 @@ func (cp *capacityPlugin) queueAllocatable(queue *api.QueueInfo, candidate *api.
 
 func queueAllocatable(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo) bool {
 	futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
-	allocatable := futureUsed.LessEqualWithDimension(attr.realCapability, candidate.Resreq)
+	allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, candidate.Resreq)
 	if !allocatable {
 		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 			queue.Name, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq)
@@ -881,7 +882,7 @@ func (cp *capacityPlugin) checkQueueAllocatableHierarchically(ssn *framework.Ses
 	return true
 }
 
-func (cp *capacityPlugin) jobEnqueueable(queue *api.QueueInfo, job *api.JobInfo) bool {
+func (cp *capacityPlugin) jobEnqueueable(queue *api.QueueInfo, job *api.JobInfo) (bool, []string) {
 	attr := cp.queueOpts[queue.UID]
 	minReq := job.GetMinResources()
 
@@ -890,7 +891,7 @@ func (cp *capacityPlugin) jobEnqueueable(queue *api.QueueInfo, job *api.JobInfo)
 	// The queue resource quota limit has not reached
 	r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 
-	return r.LessEqualWithDimension(attr.realCapability, minReq)
+	return r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
 }
 
 func (cp *capacityPlugin) checkJobEnqueueableHierarchically(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo) bool {
@@ -898,14 +899,15 @@ func (cp *capacityPlugin) checkJobEnqueueableHierarchically(ssn *framework.Sessi
 	list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
 	// Check whether the job can be enqueued to the queue and all its ancestors.
 	for i := len(list) - 1; i >= 0; i-- {
-		if !cp.jobEnqueueable(ssn.Queues[list[i]], job) {
+		if inqueue, resourceNames := cp.jobEnqueueable(ssn.Queues[list[i]], job); !inqueue {
 			// If log level is 5, print the information of all queues from leaf to ancestor.
 			if klog.V(5).Enabled() {
 				for j := i - 1; j >= 0; j-- {
 					cp.jobEnqueueable(ssn.Queues[list[j]], job)
 				}
 			}
-			ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
+
+			ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), util.FormatResourceNames("queue resource quota insufficient", "insufficient", resourceNames))
 			return false
 		}
 	}

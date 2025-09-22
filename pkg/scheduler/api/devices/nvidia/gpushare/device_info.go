@@ -132,6 +132,10 @@ func (gs *GPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
 	return false
 }
 
+func (gs *GPUDevices) AddQueueResource(pod *v1.Pod) map[string]float64 {
+	return map[string]float64{}
+}
+
 func (gs *GPUDevices) Release(kubeClient kubernetes.Interface, pod *v1.Pod) error {
 	ids := GetGPUIndex(pod)
 	patch := RemoveGPUIndexPatch()

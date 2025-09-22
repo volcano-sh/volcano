@@ -434,30 +434,38 @@ func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) b
 	return true
 }
 
-// LessEqualWithDimension only compare the resource items in req param
+// LessEqualWithDimensionAndResourcesName only compare the resource items in req param
+// Will return false and a slice of resource names ,which show what resources are insufficient
 // @param req define the resource item to be compared
-// if req is nil, equals r.LessEqual(rr, zero)
-func (r *Resource) LessEqualWithDimension(rr *Resource, req *Resource) bool {
+// if req is nil, equals r.LessEqualWithResourcesName(rr, Zero)
+func (r *Resource) LessEqualWithDimensionAndResourcesName(rr *Resource, req *Resource) (bool, []string) {
+	resources := []string{}
 	if r == nil {
-		return true
+		return true, []string{}
 	}
 	if rr == nil {
-		return false
+		for _, name := range r.ResourceNames() {
+			resources = append(resources, string(name))
+		}
+		return false, resources
 	}
 	if req == nil {
-		return r.LessEqual(rr, Zero)
+		return r.LessEqualWithResourcesName(rr, Zero)
 	}
 
 	if req.MilliCPU > 0 && r.MilliCPU > rr.MilliCPU {
-		return false
+		resources = append(resources, "cpu")
 	}
 	if req.Memory > 0 && r.Memory > rr.Memory {
-		return false
+		resources = append(resources, "memory")
 	}
 
 	// if r.scalar is nil, whatever rr.scalar is, r is less or equal to rr
 	if r.ScalarResources == nil {
-		return true
+		if len(resources) > 0 {
+			return false, resources
+		}
+		return true, resources
 	}
 
 	for name, quant := range req.ScalarResources {
@@ -467,10 +475,14 @@ func (r *Resource) LessEqualWithDimension(rr *Resource, req *Resource) bool {
 		rQuant := r.ScalarResources[name]
 		rrQuant := rr.ScalarResources[name]
 		if quant > 0 && rQuant > rrQuant {
-			return false
+			resources = append(resources, string(name))
 		}
 	}
-	return true
+
+	if len(resources) > 0 {
+		return false, resources
+	}
+	return true, resources
 }
 
 // LessEqualWithResourcesName returns true, []string{} only on condition that all dimensions of resources in r are less than or equal with that of rr,
