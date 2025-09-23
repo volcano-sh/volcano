@@ -136,6 +136,7 @@ func startControllers(config *rest.Config, opt *options.ServerOption) func(ctx c
 
 	controllerOpt.SchedulerNames = opt.SchedulerNames
 	controllerOpt.WorkerNum = opt.WorkerThreads
+	controllerOpt.CronJobWorkerNum = opt.WorkerThreadsForCronJob
 	controllerOpt.MaxRequeueNum = opt.MaxRequeueNum
 
 	// TODO: add user agent for different controllers

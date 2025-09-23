@@ -147,6 +147,9 @@ e2e-test-vcctl: vcctl images
 e2e-test-stress: images
 	E2E_TYPE=STRESS ./hack/run-e2e-kind.sh
 
+e2e-test-cronjob: images  
+	E2E_TYPE=CRONJOB ./hack/run-e2e-kind.sh
+
 e2e-test-dra: images
 	E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true" ./hack/run-e2e-kind.sh
 
