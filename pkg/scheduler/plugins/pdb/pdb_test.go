@@ -25,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -97,7 +98,6 @@ func TestPreemptableAndReclaimableFn(t *testing.T) {
 
 	// 4. range every test
 	for _, test := range tests {
-
 		// (a. set the fake informerFactory and add pdbs to pdb informer
 		client := fake.NewSimpleClientset()
 		informerFactory := informers.NewSharedInformerFactory(client, 0)

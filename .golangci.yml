@@ -19,8 +19,6 @@ run:
     - vendor
     - test
     - example
-  skip-files:
-    - .*_test.go
 
 # output configuration options
 output:

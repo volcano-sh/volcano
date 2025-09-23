@@ -149,7 +149,6 @@ ANSI_COLOR="0;31"
 		assert.Equal(t, tc.expectedErr, actualErr != nil, tc.name)
 		assert.Equal(t, tc.expectedOSRelease, actualOSRelease, tc.name)
 	}
-
 }
 
 func TestGetCPUManagerPolicy(t *testing.T) {

@@ -21,13 +21,13 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
-	"volcano.sh/volcano/pkg/webhooks/router"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/webhooks/router"
 )
 
 func Test_createPodGroupPatch(t *testing.T) {
