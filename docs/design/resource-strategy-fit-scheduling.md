@@ -67,6 +67,11 @@ config description：
 	</tr>
 </table>
 
+Formula Parameters:
+- `used`: Resources currently in use by running pods on the node
+- `requested`: Resources requested by pods that are scheduled to the node but not yet running
+- `allocable`: Total allocatable resources available on the node
+
 node score:
 ```
 finalScoreNode = [(weight1 * resource1) + (weight2 * resource2) + … + (weightN* resourceN)] /(weight1+weight2+ … +weightN)

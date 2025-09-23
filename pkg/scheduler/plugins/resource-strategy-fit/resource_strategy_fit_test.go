@@ -546,7 +546,7 @@ func Test_leastRequestedScore(t *testing.T) {
 	}
 }
 
-func Test_resourceStrategyFitWeightPlusPlugin_OnSessionOpen(t *testing.T) {
+func TestResourceStrategyFitPlugin_OnSessionOpen(t *testing.T) {
 	type fields struct {
 		weight ResourceStrategyFit
 	}
