@@ -13,6 +13,7 @@ spec:
     plural: cronjobs
     shortNames:
     - cronvcjob
+    - cronvj
     singular: cronjob
   scope: Namespaced
   versions:

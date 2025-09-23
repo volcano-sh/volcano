@@ -3,16 +3,17 @@ kind: CronJob
 metadata:
   name: volcano-cronjob-example
 spec:
+  # Run a job every 5 minutes.
   schedule: "*/5 * * * *"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 60
+  # The number of successful finished jobs to retain(default 3).
+  successfulJobsHistoryLimit: 5
+  # The number of failed finished jobs to retain(default 1).
+  failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
       schedulerName: volcano
-      plugins:
-        ssh: []
-        env: []
-        svc: []
       tasks:
         - replicas: 1
           name: "task-1"
