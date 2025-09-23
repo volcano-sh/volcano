@@ -262,3 +262,96 @@ func (nl *NodeLister) List() ([]*v1.Node, error) {
 	}
 	return nodes, nil
 }
+
+func copyAndClearSessionFunctions(schedulerPolicy *SchedulingPolicy, ssn *Session) {
+	copyFunctionsToPolicy(schedulerPolicy, ssn)
+	clearSessionFunctions(ssn)
+}
+
+// copyFunctionsToPolicy Copy functions from the session into the scheduling policy.
+func copyFunctionsToPolicy(policy *SchedulingPolicy, ssn *Session) {
+	policy.jobOrderFns = ssn.jobOrderFns
+	policy.queueOrderFns = ssn.queueOrderFns
+	policy.victimQueueOrderFns = ssn.victimQueueOrderFns
+	policy.taskOrderFns = ssn.taskOrderFns
+	policy.clusterOrderFns = ssn.clusterOrderFns
+	policy.predicateFns = ssn.predicateFns
+	policy.prePredicateFns = ssn.prePredicateFns
+	policy.bestNodeFns = ssn.bestNodeFns
+	policy.nodeOrderFns = ssn.nodeOrderFns
+	policy.batchNodeOrderFns = ssn.batchNodeOrderFns
+	policy.nodeMapFns = ssn.nodeMapFns
+	policy.nodeReduceFns = ssn.nodeReduceFns
+	policy.hyperNodeOrderFns = ssn.hyperNodeOrderFns
+	policy.preemptableFns = ssn.preemptableFns
+	policy.reclaimableFns = ssn.reclaimableFns
+	policy.overusedFns = ssn.overusedFns
+	policy.preemptiveFns = ssn.preemptiveFns
+	policy.allocatableFns = ssn.allocatableFns
+	policy.jobReadyFns = ssn.jobReadyFns
+	policy.jobPipelinedFns = ssn.jobPipelinedFns
+	policy.jobValidFns = ssn.jobValidFns
+	policy.jobEnqueueableFns = ssn.jobEnqueueableFns
+	policy.jobEnqueuedFns = ssn.jobEnqueuedFns
+	policy.targetJobFns = ssn.targetJobFns
+	policy.reservedNodesFns = ssn.reservedNodesFns
+	policy.victimTasksFns = ssn.victimTasksFns
+	policy.jobStarvingFns = ssn.jobStarvingFns
+	policy.simulateRemoveTaskFns = ssn.simulateRemoveTaskFns
+	policy.simulateAddTaskFns = ssn.simulateAddTaskFns
+	policy.simulatePredicateFns = ssn.simulatePredicateFns
+	policy.simulateAllocatableFns = ssn.simulateAllocatableFns
+}
+
+// clearSessionFunctions Clear all function mappings from the session.
+func clearSessionFunctions(ssn *Session) {
+	ssn.jobOrderFns = make(map[string]api.CompareFn)
+	ssn.queueOrderFns = make(map[string]api.CompareFn)
+	ssn.victimQueueOrderFns = make(map[string]api.VictimCompareFn)
+	ssn.taskOrderFns = make(map[string]api.CompareFn)
+	ssn.clusterOrderFns = make(map[string]api.CompareFn)
+	ssn.predicateFns = make(map[string]api.PredicateFn)
+	ssn.prePredicateFns = make(map[string]api.PrePredicateFn)
+	ssn.bestNodeFns = make(map[string]api.BestNodeFn)
+	ssn.nodeOrderFns = make(map[string]api.NodeOrderFn)
+	ssn.batchNodeOrderFns = make(map[string]api.BatchNodeOrderFn)
+	ssn.nodeMapFns = make(map[string]api.NodeMapFn)
+	ssn.nodeReduceFns = make(map[string]api.NodeReduceFn)
+	ssn.hyperNodeOrderFns = make(map[string]api.HyperNodeOrderFn)
+	ssn.preemptableFns = make(map[string]api.EvictableFn)
+	ssn.reclaimableFns = make(map[string]api.EvictableFn)
+	ssn.overusedFns = make(map[string]api.ValidateFn)
+	ssn.preemptiveFns = make(map[string]api.ValidateWithCandidateFn)
+	ssn.allocatableFns = make(map[string]api.AllocatableFn)
+	ssn.jobReadyFns = make(map[string]api.ValidateFn)
+	ssn.jobPipelinedFns = make(map[string]api.VoteFn)
+	ssn.jobValidFns = make(map[string]api.ValidateExFn)
+	ssn.jobEnqueueableFns = make(map[string]api.VoteFn)
+	ssn.jobEnqueuedFns = make(map[string]api.JobEnqueuedFn)
+	ssn.targetJobFns = make(map[string]api.TargetJobFn)
+	ssn.reservedNodesFns = make(map[string]api.ReservedNodesFn)
+	ssn.victimTasksFns = make(map[string][]api.VictimTasksFn)
+	ssn.jobStarvingFns = make(map[string]api.ValidateFn)
+	ssn.simulateRemoveTaskFns = make(map[string]api.SimulateRemoveTaskFn)
+	ssn.simulateAddTaskFns = make(map[string]api.SimulateAddTaskFn)
+	ssn.simulatePredicateFns = make(map[string]api.SimulatePredicateFn)
+	ssn.simulateAllocatableFns = make(map[string]api.SimulateAllocatableFn)
+}
+
+// GetSchedulingPolicyFromJob return the SchedulingPolicy from the job.
+func GetSchedulingPolicyFromJob(job *api.JobInfo) *SchedulingPolicy {
+	schedulingPolicy, _ := job.SchedulingPolicy.(*SchedulingPolicy)
+	return schedulingPolicy
+}
+
+// GetSchedulingPolicyFromQueue return the SchedulingPolicy from the queue.
+func GetSchedulingPolicyFromQueue(queue *api.QueueInfo) *SchedulingPolicy {
+	schedulingPolicy, _ := queue.SchedulingPolicy.(*SchedulingPolicy)
+	return schedulingPolicy
+}
+
+// GetSchedulingPolicyFromTask return the SchedulingPolicy from the task.
+func GetSchedulingPolicyFromTask(task *api.TaskInfo) *SchedulingPolicy {
+	schedulingPolicy, _ := task.SchedulingPolicy.(*SchedulingPolicy)
+	return schedulingPolicy
+}
