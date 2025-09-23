@@ -88,26 +88,13 @@ func (cp *capacityPlugin) Name() string {
 	return PluginName
 }
 
-// HierarchyEnabled returns if hierarchy is enabled
-func (cp *capacityPlugin) HierarchyEnabled(ssn *framework.Session) bool {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if plugin.Name != PluginName {
-				continue
-			}
-			return plugin.EnabledHierarchy != nil && *plugin.EnabledHierarchy
-		}
-	}
-	return false
-}
-
 func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Prepare scheduling data for this session.
 	cp.totalResource.Add(ssn.TotalResource)
 
 	klog.V(4).Infof("The total resource is <%v>", cp.totalResource)
 
-	hierarchyEnabled := cp.HierarchyEnabled(ssn)
+	hierarchyEnabled := ssn.HierarchyEnabled(cp.Name())
 	readyToSchedule := true
 	if hierarchyEnabled {
 		readyToSchedule = cp.buildHierarchicalQueueAttrs(ssn)

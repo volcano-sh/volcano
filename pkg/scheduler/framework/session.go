@@ -800,6 +800,19 @@ func (ssn *Session) SharedDRAManager() k8sframework.SharedDRAManager {
 	return ssn.cache.SharedDRAManager()
 }
 
+// HierarchyEnabled returns whether plugin enabled hierarchical queues
+func (ssn *Session) HierarchyEnabled(pluginName string) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if plugin.Name != pluginName {
+				continue
+			}
+			return plugin.EnabledHierarchy != nil && *plugin.EnabledHierarchy
+		}
+	}
+	return false
+}
+
 // String return nodes and jobs information in the session
 func (ssn *Session) String() string {
 	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
