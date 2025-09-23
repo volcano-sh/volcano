@@ -60,15 +60,20 @@ config description：
 	</tr>
 	<tr>
 	    <td>MostAllocated</td>
-	    <td>requested/allocable</td>
+	    <td>(used + requested)/allocable</td>
 	    <td>Aggregated</td>
 	</tr>
 	<tr>
 	    <td>LeastAllocated</td>
-	    <td>(allocable-requested)/allocable</td>
+	    <td>(allocable - (used + requested))/allocable</td>
 	    <td>Dispersed</td>
 	</tr>
 </table>
+
+Formula Parameters:
+- `used`: Resources currently in use by running pods on the node
+- `requested`: Resources requested by pods that are scheduled to the node but not yet running
+- `allocable`: Total allocatable resources available on the node
 
 node score:
 ```

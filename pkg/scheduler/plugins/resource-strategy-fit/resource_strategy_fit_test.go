@@ -48,7 +48,7 @@ func Test_calculateWeight(t *testing.T) {
 		{
 			name: "test1",
 			args: args{framework.Arguments{
-				"ResourceStrategyFitPlusWeight": 10,
+				"resourceStrategyFitWeight": 10,
 				"resources": map[string]interface{}{
 					"cpu": map[string]interface{}{
 						"type":   "MostAllocated",
@@ -103,7 +103,7 @@ func Test_calculateWeight(t *testing.T) {
 		{
 			name: "test3",
 			args: args{framework.Arguments{
-				"ResourceStrategyFitPlusWeight": 10,
+				"resourceStrategyFitWeight": 10,
 			}},
 			want: ResourceStrategyFit{
 				ResourceStrategyFitWeight: 10,
@@ -244,7 +244,7 @@ func Test_calculateWeight(t *testing.T) {
 	}
 }
 
-func TestPlusScore(t *testing.T) {
+func TestScore(t *testing.T) {
 	type args struct {
 		task   *api.TaskInfo
 		node   *api.NodeInfo
@@ -424,7 +424,7 @@ func TestPlusScore(t *testing.T) {
 					},
 				},
 			},
-			want: 600},
+			want: 466.66666667},
 		{
 			name: "test6",
 			args: args{
@@ -458,7 +458,7 @@ func TestPlusScore(t *testing.T) {
 					},
 				},
 			},
-			want: 750},
+			want: 533.33333333},
 		{
 			name: "test7",
 			args: args{
@@ -557,15 +557,10 @@ func TestPlusScore(t *testing.T) {
 			},
 			want: 600},
 	}
-	score := map[string]float64{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := Score(tt.args.task, tt.args.node, tt.args.weight); got != tt.want {
-				if tt.name == "test5" || tt.name == "test6" {
-					score[tt.name] = got
-					return
-				}
-				t.Errorf("PlusScore() = %v, want %v", got, tt.want)
+			if got := Score(tt.args.task, tt.args.node, tt.args.weight); math.Abs(got-tt.want) > eps {
+				t.Errorf("Score() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -667,7 +662,7 @@ func Test_leastRequestedScore(t *testing.T) {
 	}
 }
 
-func Test_resourceStrategyFitPlusWeightPlusPlugin_OnSessionOpen(t *testing.T) {
+func TestResourceStrategyFitPlugin_OnSessionOpen(t *testing.T) {
 	type fields struct {
 		weight ResourceStrategyFit
 	}
@@ -749,7 +744,7 @@ func TestResourceStrategyFitPlugin(t *testing.T) {
 				Nodes:     []*v1.Node{n1, n2, n3, n4},
 			},
 			arguments: framework.Arguments{
-				"ResourceStrategyFitPlusWeight": 10,
+				"resourceStrategyFitWeight": 10,
 				"resources": map[string]interface{}{
 					"nvidia.com/gpu": map[string]interface{}{
 						"type":   "MostAllocated",
@@ -798,7 +793,7 @@ func TestResourceStrategyFitPlugin(t *testing.T) {
 				Nodes:     []*v1.Node{n5, n6},
 			},
 			arguments: framework.Arguments{
-				"ResourceStrategyFitPlusWeight": 10,
+				"resourceStrategyFitWeight": 10,
 				"resources": map[string]interface{}{
 					"nvidia.com/gpu": map[string]interface{}{
 						"type":   "MostAllocated",
@@ -850,7 +845,7 @@ func TestResourceStrategyFitPlugin(t *testing.T) {
 func TestAllocate(t *testing.T) {
 
 	arguments := framework.Arguments{
-		"ResourceStrategyFitPlusWeight": 10,
+		"resourceStrategyFitWeight": 10,
 		"resources": map[string]interface{}{
 			"nvidia.com/gpu": map[string]interface{}{
 				"type":   "MostAllocated",
