@@ -418,12 +418,12 @@ func (pg *pgcontroller) buildPodGroupFromPod(pod *v1.Pod, pgName string) *schedu
 	if networkTopology := parseNetworkTopologyFromPod(pod); networkTopology != nil {
 		obj.Spec.NetworkTopology = networkTopology
 
-		highestTierStr := "nil"
+		highestTier := 1 // default value
 		if networkTopology.HighestTierAllowed != nil {
-			highestTierStr = strconv.Itoa(*networkTopology.HighestTierAllowed)
+			highestTier = *networkTopology.HighestTierAllowed
 		}
-		klog.V(4).Infof("Set NetworkTopology for PodGroup %s/%s: mode=%s, highestTier=%s",
-			obj.Namespace, obj.Name, networkTopology.Mode, highestTierStr)
+		klog.V(4).Infof("Set NetworkTopology for PodGroup %s/%s: mode:%s, highestTier:%d",
+			obj.Namespace, obj.Name, networkTopology.Mode, highestTier)
 	}
 
 	return obj
