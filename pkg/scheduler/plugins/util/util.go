@@ -1,5 +1,11 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2024 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added NormalizeScore function for node scoring normalization
+- Added GetInqueueResource for calculating reserved resources of running jobs
+- Added comprehensive resource allocation tracking functions (GetAllocatedResource, CalculateAllocatedTaskNum)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +23,7 @@ limitations under the License.
 package util
 
 import (
+	"fmt"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -130,4 +137,18 @@ func GetInqueueResource(job *api.JobInfo, allocated *api.Resource) *api.Resource
 		}
 	}
 	return inqueue
+}
+
+// FormatResourceNames formats a list of resource names into a human-readable string.
+func FormatResourceNames(prefix, verb string, resourceNames []string) string {
+	if len(resourceNames) == 0 {
+		return prefix
+	}
+
+	var parts []string
+	for _, name := range resourceNames {
+		parts = append(parts, fmt.Sprintf("%s %s", verb, name))
+	}
+
+	return fmt.Sprintf("%s: %s", prefix, strings.Join(parts, ", "))
 }

@@ -1,5 +1,10 @@
 /*
 Copyright 2017 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Rewritten tests using TestCommonStruct framework with comprehensive allocation scenarios
+- Added TestAllocateWithNetWorkTopologies, BenchmarkAllocate, and other advanced test cases
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,6 +46,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/binpack"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
+	networktopologyaware "volcano.sh/volcano/pkg/scheduler/plugins/network-topology-aware"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
@@ -352,8 +358,9 @@ func BenchmarkAllocate(b *testing.B) {
 
 func TestAllocateWithNetWorkTopologies(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
-		predicates.PluginName: predicates.New,
-		gang.PluginName:       gang.New,
+		predicates.PluginName:           predicates.New,
+		gang.PluginName:                 gang.New,
+		networktopologyaware.PluginName: networktopologyaware.New,
 	}
 
 	tests := []uthelper.TestCommonStruct{
@@ -1439,6 +1446,11 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 					Name:             predicates.PluginName,
 					EnabledPredicate: &trueValue,
 				},
+				{
+					Name:                  networktopologyaware.PluginName,
+					EnabledNodeOrder:      &trueValue,
+					EnabledHyperNodeOrder: &trueValue,
+				},
 			},
 		},
 	}
@@ -1463,6 +1475,7 @@ func TestNodeLevelScoreWithNetWorkTopologies(t *testing.T) {
 	}
 
 	tests := []uthelper.TestCommonStruct{
+
 		{
 			Name: "hard network topology constrain, allocate job to highest score hypeNode with node level binpack",
 			PodGroups: []*schedulingv1.PodGroup{
@@ -1536,6 +1549,141 @@ func TestNodeLevelScoreWithNetWorkTopologies(t *testing.T) {
 	}
 }
 
+func TestHyperNodeBinpackWithNetWorkTopologies(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		predicates.PluginName:           predicates.New,
+		gang.PluginName:                 gang.New,
+		networktopologyaware.PluginName: networktopologyaware.New,
+	}
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name: "hard network topology constrain, allocate task to node under LCAHyperNode",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "", "q1", 4, nil, schedulingv1.PodGroupInqueue, "hard", 2),
+			},
+			Pods: []*v1.Pod{
+				// should use different role, because allocate actions default to enable the role caches when predicate
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("4", "8Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("4", "8Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("4", "8Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("4", "8Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n4", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s2-n5", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s2-n6", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				}), api.ParentOpt("s3")),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				}), api.ParentOpt("s3")),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 1, []api.MemberConfig{
+					{
+						Name:     "s2-n5",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s2-n6",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				}), api.ParentOpt("s3")),
+				"s3": api.NewHyperNodeInfo(api.BuildHyperNode("s3", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s2",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1", "s2"), 2: sets.New[string]("s3")},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3", "s1-n4"),
+				"s2": sets.New[string]("s2-n5", "s2-n6"),
+				"s3": sets.New[string]("s0-n1", "s0-n2", "s1-n3", "s2-n5", "s1-n4", "s2-n6"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum: 4,
+			// "s1-n3" and "s1-n4" nodes with same LCAHyperNode "s1", so when c1/p3 assigned to "s1-n3", c1/p3 will be assigned to "s1-n4"
+			ExpectBindNumsInHyperNode: []int{2, 2},
+		},
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:                gang.PluginName,
+					EnabledJobOrder:     &trueValue,
+					EnabledJobReady:     &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:                  networktopologyaware.PluginName,
+					EnabledNodeOrder:      &trueValue,
+					EnabledHyperNodeOrder: &trueValue,
+				},
+			},
+		},
+	}
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.Plugins = plugins
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run([]framework.Action{New()})
+			if err := test.CheckBindInHyperNode(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestFareShareAllocate(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
 		drf.PluginName:        drf.New,
@@ -1570,7 +1718,7 @@ func TestFareShareAllocate(t *testing.T) {
 			ExpectBindsNum: 1,
 		},
 		{
-			Name: "queue’s DRF share value will be updated and its priority will change before it is put back into the priority queue",
+			Name: "queue's DRF share value will be updated and its priority will change before it is put back into the priority queue",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroup("pg-small-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupRunning),
 				util.BuildPodGroup("pg-large-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupInqueue),
@@ -1597,7 +1745,7 @@ func TestFareShareAllocate(t *testing.T) {
 			ExpectBindsNum: 2,
 		},
 		{
-			Name: "queue’s one jobs has no pending tasks, should be put back to queues for next job",
+			Name: "queue's one jobs has no pending tasks, should be put back to queues for next job",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroup("pg-1", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupRunning),
 				util.BuildPodGroup("pg-2", "ns-1", "q-1", 0, nil, schedulingv1.PodGroupInqueue),

@@ -1,5 +1,11 @@
 /*
 Copyright 2017 The Kubernetes Authors.
+Copyright 2017-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added support for task roles and per-role minimum availability in gang scheduling
+- Enhanced job lifecycle management with comprehensive status tracking
+- Added resource topology awareness and NUMA support
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1066,6 +1072,13 @@ func (ji *JobInfo) IsSoftTopologyMode() bool {
 		return false
 	}
 	return ji.PodGroup.Spec.NetworkTopology.Mode == scheduling.SoftNetworkTopologyMode
+}
+
+func (ji *JobInfo) HasTopologyConstrain() bool {
+	if ji.PodGroup == nil || ji.PodGroup.Spec.NetworkTopology == nil {
+		return false
+	}
+	return true
 }
 
 // ResetFitErr will set job and node fit err to nil.

@@ -80,10 +80,7 @@ func enablePredicate(dsp *deviceSharePlugin) {
 	gpushare.NodeLockEnable = nodeLockEnable
 	vgpu.NodeLockEnable = nodeLockEnable
 
-	_, ok := args[SchedulePolicyArgument]
-	if ok {
-		dsp.schedulePolicy = args[SchedulePolicyArgument].(string)
-	}
+	args.GetString(&dsp.schedulePolicy, SchedulePolicyArgument)
 	args.GetInt(&dsp.scheduleWeight, ScheduleWeight)
 
 	if gpushare.GpuSharingEnable && gpushare.GpuNumberEnable {
@@ -96,14 +93,10 @@ func enablePredicate(dsp *deviceSharePlugin) {
 	if !vgpu.VGPUEnable {
 		return
 	}
-	knownGeometriesCMName, ok := args[KnownGeometriesCMName].(string)
-	if !ok {
-		knownGeometriesCMName = "volcano-vgpu-device-config"
-	}
-	knownGeometriesCMNamespace, ok := args[KnownGeometriesCMNamespace].(string)
-	if !ok {
-		knownGeometriesCMNamespace = "kube-system"
-	}
+	knownGeometriesCMName := "volcano-vgpu-device-config"
+	args.GetString(&knownGeometriesCMName, KnownGeometriesCMName)
+	knownGeometriesCMNamespace := "kube-system"
+	args.GetString(&knownGeometriesCMNamespace, KnownGeometriesCMNamespace)
 	config.InitDevicesConfig(knownGeometriesCMName, knownGeometriesCMNamespace)
 }
 
@@ -170,7 +163,8 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddNodeOrderFn(dp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
 		// DeviceScore
-		if len(dp.schedulePolicy) > 0 {
+		nodeScore := float64(0)
+		if dp.scheduleWeight > 0 {
 			score, status := getDeviceScore(context.TODO(), task.Pod, node, dp.schedulePolicy)
 			if !status.IsSuccess() {
 				klog.Warningf("Node: %s, Calculate Device Score Failed because of Error: %v", node.Name, status.AsError())
@@ -178,10 +172,10 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			// TODO: we should use a seperate plugin for devices, and seperate them from predicates and nodeOrder plugin.
-			nodeScore := float64(score) * float64(dp.scheduleWeight)
+			nodeScore = float64(score) * float64(dp.scheduleWeight)
 			klog.V(5).Infof("Node: %s, task<%s/%s> Device Score weight %d, score: %f", node.Name, task.Namespace, task.Name, dp.scheduleWeight, nodeScore)
 		}
-		return 0, nil
+		return nodeScore, nil
 	})
 }
 

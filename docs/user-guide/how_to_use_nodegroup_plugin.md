@@ -84,6 +84,93 @@ label `nodeGroupAffinity.requiredDuringSchedulingIgnoredDuringExecution` or `nod
 kubectl get po job-1-nginx-0 -o wide 
 ```
 
+### Hierarchical Queue Configuration
+
+#### Enabling Hierarchical Support
+
+To use hierarchical queues with nodegroup plugin, ensure the plugin configuration includes `enableHierarchy: true`:
+
+```yaml
+# scheduler configuration
+actions: "allocate, backfill, preempt, reclaim"
+tiers:
+- plugins:
+  - name: priority
+  - name: gang
+  - name: conformance
+- plugins:
+  - name: drf
+  - name: predicates
+  - name: proportion
+  - name: nodegroup
+    enableHierarchy: true
+```
+
+#### Creating Queue Hierarchies
+
+**Basic Hierarchy Setup**
+
+1. **Create root queue with nodegroup affinity:**
+```yaml
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: root
+spec:
+  weight: 1
+  affinity:
+    nodeGroupAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - production
+```
+
+2. **Create child queues that inherit affinity:**
+```yaml
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: engineering
+spec:
+  weight: 1
+  parent: root
+  # No affinity specified - inherits from root
+
+---
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: backend-team
+spec:
+  weight: 1
+  parent: engineering
+  # No affinity specified - inherits from root (through engineering)
+```
+
+3. **Create child queues with custom affinity:**
+```yaml
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: frontend-team
+spec:
+  weight: 1
+  parent: engineering
+  affinity:
+    nodeGroupAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - frontend
+    # Overrides inherited affinity from root
+```
+
+#### Inheritance Behavior
+
+| Scenario | Behavior |
+|----------|----------|
+| Child queue without affinity, parent has affinity | Inherits parent's affinity |
+| Child queue without affinity, parent also without affinity | Inherits from nearest ancestor with affinity |
+| Child queue with affinity | Uses its own affinity (no inheritance) |
+| Queue without parent specified | Considered child of root queue |
+
 ## How the Nodegroup Plugin Works
 
 The nodegroup design document provides the most detailed information about the node group. There are some tips to help avoid certain issues.These tips are based on a four-nodes cluster and vcjob called job-1:
@@ -223,3 +310,81 @@ spec:
            preferredDuringSchedulingIgnoredDuringExecution:
            - groupname3
    ```
+
+## Troubleshooting Hierarchical Queues
+
+### Issue: Tasks not scheduled despite available nodes
+
+**Symptoms:**
+- Tasks remain pending even with available nodes in nodegroups
+- Error messages about queue affinity requirements
+
+**Possible Causes:**
+1. Child queue inheriting restrictive affinity from parent
+2. Nodegroup labels not matching inherited affinity rules
+3. Circular queue dependencies
+
+**Solutions:**
+1. Check inheritance chain:
+```bash
+kubectl get queue <queue-name> -o yaml
+# Verify parent hierarchy and affinity inheritance
+```
+
+2. Override restrictive inheritance:
+```yaml
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: flexible-team
+spec:
+  parent: restrictive-parent
+  affinity:
+    nodeGroupAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - flexible-nodes
+```
+
+### Issue: Unexpected affinity behavior
+
+**Symptoms:**
+- Tasks scheduled on unexpected nodegroups
+- Inheritance not working as expected
+
+**Debugging Steps:**
+1. Enable detailed logging:
+```bash
+# Check scheduler logs with higher verbosity
+kubectl logs -n volcano-system volcano-scheduler-xxx --tail=100 | grep -i nodegroup
+```
+
+2. Verify queue configuration:
+```bash
+# List all queues with their hierarchy
+kubectl get queues -o custom-columns=NAME:.metadata.name,PARENT:.spec.parent,WEIGHT:.spec.weight
+```
+
+### Issue: Circular queue dependencies
+
+**Symptoms:**
+- Queues not building ancestry correctly
+- Warning messages about cycle detection
+
+**Solutions:**
+1. Review queue hierarchy:
+```bash
+# Check for circular references
+kubectl get queues -o custom-columns=NAME:.metadata.name,PARENT:.spec.parent
+```
+
+2. Fix circular dependencies by updating parent references:
+```yaml
+# Remove or correct circular parent relationships
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: problematic-queue
+spec:
+  parent: ""  # Remove circular reference
+  weight: 1
+```

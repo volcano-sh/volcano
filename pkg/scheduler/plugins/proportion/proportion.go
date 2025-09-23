@@ -1,5 +1,11 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added preempt simulation support (AddSimulateAllocatableFn, AddSimulateAddTaskFn, AddSimulateRemoveTaskFn, etc.)
+- Enhanced queue management with guarantee/capability and realCapability calculation
+- Added job enqueue logic with queue state validation
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -313,7 +319,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		attr := pp.queueOpts[queue.UID]
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
-		allocatable := futureUsed.LessEqualWithDimension(attr.deserved, candidate.Resreq)
+		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, candidate.Resreq)
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
@@ -339,7 +345,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
-		allocatable := futureUsed.LessEqualWithDimension(attr.deserved, candidate.Resreq)
+		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, candidate.Resreq)
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
@@ -396,7 +402,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		// The queue resource quota limit has not reached
 		r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 
-		inqueue := r.LessEqualWithDimension(attr.realCapability, minReq)
+		inqueue, resourceNames := r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
 			// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
@@ -404,7 +410,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.inqueue.Add(job.DeductSchGatedResources(minReq))
 			return util.Permit
 		}
-		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
+		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), util.FormatResourceNames("queue resource quota insufficient", "insufficient", resourceNames))
 		return util.Reject
 	})
 

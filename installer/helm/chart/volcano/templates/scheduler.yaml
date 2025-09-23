@@ -78,7 +78,7 @@ rules:
     resources: ["nodes"]
     verbs: ["get","list", "watch","update","patch"]
   - apiGroups: [ "storage.k8s.io" ]
-    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities", "volumeattachments"]
     verbs: [ "list", "watch" ]
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
@@ -226,6 +226,9 @@ spec:
             {{- if .Values.custom.scheduler_feature_gates }}
             - --feature-gates={{ .Values.custom.scheduler_feature_gates }}
             {{- end }}
+            {{- if .Values.custom.ignored_provisioners }}
+            - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
+            {{- end}}
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1
           env:

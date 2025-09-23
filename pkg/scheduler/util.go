@@ -1,5 +1,10 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added Unix socket-based HTTP interface for runtime klog level adjustment and debugging
+- Improved default scheduler configuration with comprehensive action and plugin setup
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

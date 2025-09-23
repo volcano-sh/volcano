@@ -1,5 +1,10 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Migrated from custom predicate logic to Kubernetes native scheduler plugins (NodeAffinity, NodePorts, InterPodAffinity, VolumeBinding, DRA, etc.) for better compatibility
+- Added multiple extension points: PrePredicate, BatchNodeOrder, SimulateAddTask, SimulateRemoveTask, etc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -333,6 +338,8 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		EnableSidecarContainers:                      utilFeature.DefaultFeatureGate.Enabled(features.SidecarContainers),
 		EnableDRAAdminAccess:                         utilFeature.DefaultFeatureGate.Enabled(features.DRAAdminAccess),
 		EnableDynamicResourceAllocation:              utilFeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation),
+		EnableVolumeAttributesClass:                  utilFeature.DefaultFeatureGate.Enabled(features.VolumeAttributesClass),
+		EnableCSIMigrationPortworx:                   utilFeature.DefaultFeatureGate.Enabled(features.CSIMigrationPortworx),
 	}
 	// Initialize k8s plugins
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go

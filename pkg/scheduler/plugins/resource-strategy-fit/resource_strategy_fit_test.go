@@ -118,6 +118,122 @@ func Test_calculateWeight(t *testing.T) {
 					},
 				},
 			}},
+		{
+			name: "test4",
+			args: args{framework.Arguments{
+				"ResourceStrategyFitPlusWeight": 10,
+				"resources": map[string]interface{}{
+					"cpu": map[string]interface{}{
+						"type":   "LeastAllocated",
+						"weight": 1,
+					},
+					"*": map[string]interface{}{
+						"type":   "MostAllocated",
+						"weight": 2,
+					},
+				},
+			}},
+			want: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
+				Resources: map[v1.ResourceName]ResourcesType{
+					"cpu": {
+						Type:   config.LeastAllocated,
+						Weight: 1,
+					},
+				},
+			},
+		},
+		{
+			name: "test5",
+			args: args{framework.Arguments{
+				"ResourceStrategyFitPlusWeight": 10,
+				"resources": map[string]interface{}{
+					"nvidia.com/gpu/*": map[string]interface{}{
+						"type":   "MostAllocated",
+						"weight": 3,
+					},
+					"cloudml.gpu**": map[string]interface{}{
+						"type":   "LeastAllocated",
+						"weight": 2,
+					},
+				},
+			}},
+			want: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
+				Resources: map[v1.ResourceName]ResourcesType{
+					"nvidia.com/gpu/*": {
+						Type:   config.MostAllocated,
+						Weight: 3,
+					},
+				},
+			},
+		},
+		{
+			name: "test6",
+			args: args{framework.Arguments{
+				"ResourceStrategyFitPlusWeight": 10,
+				"resources": map[string]interface{}{
+					"memory": map[string]interface{}{
+						"type":   "LeastAllocated",
+						"weight": 1,
+					},
+					"cloudml.*.gpu": map[string]interface{}{
+						"type":   "MostAllocated",
+						"weight": 2,
+					},
+					"*.com/gpu": map[string]interface{}{
+						"type":   "MostAllocated",
+						"weight": 3,
+					},
+				},
+			}},
+			want: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
+				Resources: map[v1.ResourceName]ResourcesType{
+					"memory": {
+						Type:   config.LeastAllocated,
+						Weight: 1,
+					},
+				},
+			},
+		},
+		{
+			name: "test7",
+			args: args{framework.Arguments{
+				"ResourceStrategyFitPlusWeight": 10,
+				"resources": map[string]interface{}{
+					"nvidia.com/gpu/*": map[string]interface{}{
+						"type":   "MostAllocated",
+						"weight": 3,
+					},
+					"example.com/foo/*": map[string]interface{}{
+						"type":   "LeastAllocated",
+						"weight": 2,
+					},
+					"*test*resource*": map[string]interface{}{
+						"type":   "MostAllocated",
+						"weight": 4,
+					},
+					"*": map[string]interface{}{
+						"type":   "LeastAllocated",
+						"weight": 1,
+					},
+				},
+			}},
+			want: ResourceStrategyFit{
+				ResourceStrategyFitWeight: 10,
+				Resources: map[v1.ResourceName]ResourcesType{
+					"nvidia.com/gpu/*": {
+						Type:   config.MostAllocated,
+						Weight: 3,
+					},
+					"example.com/foo/*": {
+						Type:   config.LeastAllocated,
+						Weight: 2,
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -861,6 +977,128 @@ func TestAllocate(t *testing.T) {
 			test.Run([]framework.Action{allocate.New()})
 			if err := test.CheckAll(i); err != nil {
 				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func Test_findResourceConfigWithPrefix(t *testing.T) {
+	type args struct {
+		resourceName string
+		resources    map[v1.ResourceName]ResourcesType
+	}
+	tests := []struct {
+		name        string
+		args        args
+		wantConfig  ResourcesType
+		wantFound   bool
+		description string
+	}{
+		{
+			name: "exact_match_priority",
+			args: args{
+				resourceName: "nvidia.com/gpu",
+				resources: map[v1.ResourceName]ResourcesType{
+					"nvidia.com/gpu": {
+						Type:   config.MostAllocated,
+						Weight: 3,
+					},
+					"nvidia.com/*": {
+						Type:   config.LeastAllocated,
+						Weight: 1,
+					},
+				},
+			},
+			wantConfig: ResourcesType{
+				Type:   config.MostAllocated,
+				Weight: 3,
+			},
+			wantFound:   true,
+			description: "exact match should have higher priority than wildcard match",
+		},
+		{
+			name: "longest_prefix_match",
+			args: args{
+				resourceName: "nvidia.com/gpu/v100",
+				resources: map[v1.ResourceName]ResourcesType{
+					"nvidia.com/gpu/*": {
+						Type:   config.MostAllocated,
+						Weight: 2,
+					},
+					"nvidia.com/*": {
+						Type:   config.LeastAllocated,
+						Weight: 1,
+					},
+				},
+			},
+			wantConfig: ResourcesType{
+				Type:   config.MostAllocated,
+				Weight: 2,
+			},
+			wantFound:   true,
+			description: "should select the longest prefix match",
+		},
+		{
+			name: "no_match_found",
+			args: args{
+				resourceName: "example.com/foo",
+				resources: map[v1.ResourceName]ResourcesType{
+					"nvidia.com/gpu/*": {
+						Type:   config.MostAllocated,
+						Weight: 2,
+					},
+				},
+			},
+			wantConfig:  ResourcesType{},
+			wantFound:   false,
+			description: "should return false when no match found",
+		},
+		{
+			name: "empty_resources_map",
+			args: args{
+				resourceName: "any.resource",
+				resources:    map[v1.ResourceName]ResourcesType{},
+			},
+			wantConfig:  ResourcesType{},
+			wantFound:   false,
+			description: "should handle empty resources map gracefully",
+		},
+		{
+			name: "multiple_valid_wildcards_longest_match",
+			args: args{
+				resourceName: "cloudml.gpu/tensorflow/v2",
+				resources: map[v1.ResourceName]ResourcesType{
+					"cloudml.gpu/tensorflow/*": {
+						Type:   config.MostAllocated,
+						Weight: 3,
+					},
+					"cloudml.gpu/*": {
+						Type:   config.LeastAllocated,
+						Weight: 2,
+					},
+					"cloudml/*": {
+						Type:   config.MostAllocated,
+						Weight: 1,
+					},
+				},
+			},
+			wantConfig: ResourcesType{
+				Type:   config.MostAllocated,
+				Weight: 3,
+			},
+			wantFound:   true,
+			description: "should select the longest matching prefix among multiple valid wildcards",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotConfig, gotFound := findResourceConfigWithPrefix(tt.args.resourceName, tt.args.resources)
+			if !reflect.DeepEqual(gotConfig, tt.wantConfig) {
+				t.Errorf("findResourceConfigWithPrefix() gotConfig = %v, want %v. %s", gotConfig, tt.wantConfig, tt.description)
+			}
+			if gotFound != tt.wantFound {
+				t.Errorf("findResourceConfigWithPrefix() gotFound = %v, want %v. %s", gotFound, tt.wantFound, tt.description)
 			}
 		})
 	}

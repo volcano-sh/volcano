@@ -1,5 +1,11 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added k8s client integration and event recording capabilities
+- Enhanced with HyperNode support for network topology aware scheduling
+- Extended plugin system with additional extension points
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,6 +65,7 @@ type Session struct {
 
 	TotalResource  *api.Resource
 	TotalGuarantee *api.Resource
+	TotalDeserved  *api.Resource
 	// PodGroupOldState contains podgroup status and annotations during schedule
 	// This should not be mutated after initiated
 	api.PodGroupOldState
@@ -145,6 +152,7 @@ func openSession(cache cache.Cache) *Session {
 
 		TotalResource:  api.EmptyResource(),
 		TotalGuarantee: api.EmptyResource(),
+		TotalDeserved:  api.EmptyResource(),
 		PodGroupOldState: api.PodGroupOldState{
 			Status:      map[api.JobID]scheduling.PodGroupStatus{},
 			Annotations: map[api.JobID]map[string]string{},
@@ -211,11 +219,6 @@ func openSession(cache cache.Cache) *Session {
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
 	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
 	for _, n := range ssn.Nodes {
-		if isNodeUnschedulable(n.Node) || isNodeNotReady(n.Node) {
-			klog.V(3).Infof("node %s is not ready or unschedulable, need to continue", n.Name)
-			continue
-		}
-
 		ssn.TotalResource.Add(n.Allocatable)
 	}
 
@@ -239,6 +242,21 @@ func (ssn *Session) parseHyperNodesTiers() {
 	ssn.HyperNodesTiers = tiers
 }
 
+func addNodeSharableDeviceUsage(ssn *Session, task *api.TaskInfo) {
+	node, ok := ssn.Nodes[task.NodeName]
+	taskReq := task.Resreq
+	if ok {
+		for _, sharedDevices := range node.Others {
+			if devices, ok := sharedDevices.(api.Devices); ok && devices.HasDeviceRequest(task.Pod) {
+				sResources := devices.AddQueueResource(task.Pod)
+				for k, v := range sResources {
+					taskReq.ScalarResources[v1.ResourceName(k)] = v
+				}
+			}
+		}
+	}
+}
+
 // updateQueueStatus updates allocated field in queue status on session close.
 func updateQueueStatus(ssn *Session) {
 	rootQueue := api.QueueID("root")
@@ -251,6 +269,7 @@ func updateQueueStatus(ssn *Session) {
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, task := range tasks {
+					addNodeSharableDeviceUsage(ssn, task)
 					allocatedResources[job.Queue].Add(task.Resreq)
 					// recursively updates the allocated resources of parent queues
 					queue := ssn.Queues[job.Queue].Queue
@@ -298,10 +317,10 @@ func updateQueueStatus(ssn *Session) {
 // updateRootQueueResources updates the deserved/guaranteed resource and allocated resource of the root queue
 func updateRootQueueResources(ssn *Session, allocated v1.ResourceList) {
 	rootQueue := api.QueueID("root")
-	totalResource := util.ConvertRes2ResList(ssn.TotalResource).DeepCopy()
+	totalDeserved := util.ConvertRes2ResList(ssn.TotalDeserved).DeepCopy()
 	totalGuarantee := util.ConvertRes2ResList(ssn.TotalGuarantee).DeepCopy()
 
-	if equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Spec.Deserved, totalResource) &&
+	if equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Spec.Deserved, totalDeserved) &&
 		equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Spec.Guarantee.Resource, totalGuarantee) &&
 		equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Status.Allocated, allocated) {
 		klog.V(5).Infof("Root queue deserved/guaranteed resource and allocated resource remains the same, no need to update the queue.")
@@ -315,9 +334,9 @@ func updateRootQueueResources(ssn *Session, allocated v1.ResourceList) {
 		return
 	}
 
-	if !equality.Semantic.DeepEqual(queue.Spec.Deserved, totalResource) ||
+	if !equality.Semantic.DeepEqual(queue.Spec.Deserved, totalDeserved) ||
 		!equality.Semantic.DeepEqual(queue.Spec.Guarantee.Resource, totalGuarantee) {
-		queue.Spec.Deserved = totalResource
+		queue.Spec.Deserved = totalDeserved
 		queue.Spec.Guarantee.Resource = totalGuarantee
 		queue, err = ssn.VCClient().SchedulingV1beta1().Queues().Update(context.TODO(), queue, metav1.UpdateOptions{})
 		if err != nil {
@@ -779,6 +798,19 @@ func (ssn *Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reaso
 // SharedDRAManager returns the shared DRAManager from cache
 func (ssn *Session) SharedDRAManager() k8sframework.SharedDRAManager {
 	return ssn.cache.SharedDRAManager()
+}
+
+// HierarchyEnabled returns whether plugin enabled hierarchical queues
+func (ssn *Session) HierarchyEnabled(pluginName string) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if plugin.Name != pluginName {
+				continue
+			}
+			return plugin.EnabledHierarchy != nil && *plugin.EnabledHierarchy
+		}
+	}
+	return false
 }
 
 // String return nodes and jobs information in the session

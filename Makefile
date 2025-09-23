@@ -99,6 +99,9 @@ images:
 		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
 	done
 
+vc-agent-image:
+	docker buildx build -t "${IMAGE_PREFIX}/vc-agent:$(TAG)" . -f ./installer/dockerfile/agent/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}
+
 generate-code:
 	./hack/update-gencode.sh
 
@@ -126,7 +129,8 @@ e2e: images
 	./hack/run-e2e-kind.sh
 
 e2e-test-schedulingbase: images
-	E2E_TYPE=SCHEDULINGBASE ./hack/run-e2e-kind.sh
+	# volume binding e2e testing has some cases using "kubernetes.io/no-provisioner" as the storage provisioner, so we need to specify an ignored provisioner here.
+	E2E_TYPE=SCHEDULINGBASE IGNORED_PROVISIONERS="kubernetes.io/no-provisioner" ./hack/run-e2e-kind.sh
 
 e2e-test-schedulingaction: images
 	E2E_TYPE=SCHEDULINGACTION ./hack/run-e2e-kind.sh
@@ -145,6 +149,9 @@ e2e-test-stress: images
 
 e2e-test-dra: images
 	E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true" ./hack/run-e2e-kind.sh
+
+e2e-test-hypernode: images
+	E2E_TYPE=HYPERNODE ./hack/run-e2e-kind.sh
 
 generate-yaml: init manifests
 	./hack/generate-yaml.sh CRD_VERSION=${CRD_VERSION}

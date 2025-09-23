@@ -1,5 +1,11 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Enhanced pod resource calculation with support for restartable init containers
+- Added pod preemptability support and revocable zone configuration
+- Added NUMA topology awareness and resource topology information extraction
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
