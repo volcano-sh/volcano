@@ -577,6 +577,9 @@ func (alloc *Action) allocateResourcesForTasks(podBunch *api.PodBunchInfo, tasks
 			// But then updating the second claim fails (e.g., apiserver down) and the scheduler has to retry. During the next pod scheduling attempt,
 			// the original node is no longer usable for other reasons. Other nodes are not usable either because of the allocated claim.
 			// The DRA scheduler plugin detects that and then when scheduling fails (= no node passed filtering), it recovers by de-allocating the allocated claim in PostFilter.
+			if fitErrors != nil && hyperNode != framework.ClusterTopHyperNode {
+				fitErrors.SetHyperNode(hyperNode)
+			}
 			job.NodesFitErrors[task.UID] = fitErrors
 			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
 			// so we should break from continuously allocating.
