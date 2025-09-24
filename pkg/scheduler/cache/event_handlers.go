@@ -29,6 +29,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -68,8 +69,8 @@ func isTerminated(status schedulingapi.TaskStatus) bool {
 func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *schedulingapi.JobInfo {
 	if len(pi.Job) == 0 {
 		if !slices.Contains(sc.schedulerNames, pi.Pod.Spec.SchedulerName) {
-			klog.V(4).Infof("Pod %s/%s will not scheduled by %#v, skip creating PodGroup and Job for it",
-				pi.Pod.Namespace, pi.Pod.Name, sc.schedulerNames)
+			klog.V(4).Infof("Pod %s/%s will not scheduled by %s, skip creating PodGroup and Job for it",
+				pi.Pod.Namespace, pi.Pod.Name, strings.Join(sc.schedulerNames, ","))
 		}
 		return nil
 	}
