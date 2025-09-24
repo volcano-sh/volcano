@@ -61,7 +61,7 @@ func Test_calculateWeight(t *testing.T) {
 				},
 			}},
 			want: ResourceStrategyFit{
-				ResourceStrategyFitWeight: 10,
+				Weight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.MostAllocated,
@@ -88,7 +88,7 @@ func Test_calculateWeight(t *testing.T) {
 				},
 			}},
 			want: ResourceStrategyFit{
-				ResourceStrategyFitWeight: 10,
+				Weight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.MostAllocated,
@@ -106,7 +106,7 @@ func Test_calculateWeight(t *testing.T) {
 				"resourceStrategyFitWeight": 10,
 			}},
 			want: ResourceStrategyFit{
-				ResourceStrategyFitWeight: 10,
+				Weight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.LeastAllocated,
@@ -134,7 +134,7 @@ func Test_calculateWeight(t *testing.T) {
 				},
 			}},
 			want: ResourceStrategyFit{
-				ResourceStrategyFitWeight: 10,
+				Weight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"cpu": {
 						Type:   config.LeastAllocated,
@@ -159,7 +159,7 @@ func Test_calculateWeight(t *testing.T) {
 				},
 			}},
 			want: ResourceStrategyFit{
-				ResourceStrategyFitWeight: 10,
+				Weight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"nvidia.com/gpu/*": {
 						Type:   config.MostAllocated,
@@ -188,7 +188,7 @@ func Test_calculateWeight(t *testing.T) {
 				},
 			}},
 			want: ResourceStrategyFit{
-				ResourceStrategyFitWeight: 10,
+				Weight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"memory": {
 						Type:   config.LeastAllocated,
@@ -221,7 +221,7 @@ func Test_calculateWeight(t *testing.T) {
 				},
 			}},
 			want: ResourceStrategyFit{
-				ResourceStrategyFitWeight: 10,
+				Weight: 10,
 				Resources: map[v1.ResourceName]ResourcesType{
 					"nvidia.com/gpu/*": {
 						Type:   config.MostAllocated,
@@ -275,7 +275,7 @@ func TestScore(t *testing.T) {
 					},
 				},
 				weight: ResourceStrategyFit{
-					ResourceStrategyFitWeight: 10,
+					Weight: 10,
 					Resources: map[v1.ResourceName]ResourcesType{
 						"cpu": {
 							Type:   config.LeastAllocated,
@@ -309,7 +309,7 @@ func TestScore(t *testing.T) {
 					},
 				},
 				weight: ResourceStrategyFit{
-					ResourceStrategyFitWeight: 10,
+					Weight: 10,
 					Resources: map[v1.ResourceName]ResourcesType{
 						"cpu": {
 							Type:   config.LeastAllocated,
@@ -343,7 +343,7 @@ func TestScore(t *testing.T) {
 					},
 				},
 				weight: ResourceStrategyFit{
-					ResourceStrategyFitWeight: 10,
+					Weight: 10,
 					Resources: map[v1.ResourceName]ResourcesType{
 						"cpu": {
 							Type:   config.MostAllocated,
@@ -377,7 +377,7 @@ func TestScore(t *testing.T) {
 					},
 				},
 				weight: ResourceStrategyFit{
-					ResourceStrategyFitWeight: 10,
+					Weight: 10,
 					Resources: map[v1.ResourceName]ResourcesType{
 						"cpu": {
 							Type:   config.MostAllocated,
@@ -411,7 +411,7 @@ func TestScore(t *testing.T) {
 					},
 				},
 				weight: ResourceStrategyFit{
-					ResourceStrategyFitWeight: 10,
+					Weight: 10,
 					Resources: map[v1.ResourceName]ResourcesType{
 						"cpu": {
 							Type:   config.LeastAllocated,
@@ -445,7 +445,7 @@ func TestScore(t *testing.T) {
 					},
 				},
 				weight: ResourceStrategyFit{
-					ResourceStrategyFitWeight: 10,
+					Weight: 10,
 					Resources: map[v1.ResourceName]ResourcesType{
 						"cpu": {
 							Type:   config.LeastAllocated,
@@ -479,7 +479,7 @@ func TestScore(t *testing.T) {
 					},
 				},
 				weight: ResourceStrategyFit{
-					ResourceStrategyFitWeight: 10,
+					Weight: 10,
 					Resources: map[v1.ResourceName]ResourcesType{
 						"cpu": {
 							Type:   config.LeastAllocated,
@@ -512,7 +512,7 @@ func TestScore(t *testing.T) {
 					},
 				},
 				weight: ResourceStrategyFit{
-					ResourceStrategyFitWeight: 10,
+					Weight: 10,
 					Resources: map[v1.ResourceName]ResourcesType{
 						"cpu": {
 							Type:   config.LeastAllocated,
@@ -546,7 +546,7 @@ func TestScore(t *testing.T) {
 					},
 				},
 				weight: ResourceStrategyFit{
-					ResourceStrategyFitWeight: 10,
+					Weight: 10,
 					Resources: map[v1.ResourceName]ResourcesType{
 						"memory": {
 							Type:   config.MostAllocated,
@@ -682,7 +682,7 @@ func TestResourceStrategyFitPlugin_OnSessionOpen(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rsf := &resourceStrategyFitPlugin{
-				weight: tt.fields.weight,
+				ResourceStrategyFit: tt.fields.weight,
 			}
 			rsf.OnSessionOpen(tt.args.ssn)
 		})
