@@ -225,6 +225,9 @@ func openSession(cache cache.Cache) *Session {
 	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
 
+	klog.V(4).Infof("Session %v is opened with TotalResource: <%s>, TotalDeserved: <%s>, TotalGuaranteed: <%s>",
+		ssn.UID, ssn.TotalResource.String(), ssn.TotalDeserved.String(), ssn.TotalGuarantee.String())
+
 	return ssn
 }
 
