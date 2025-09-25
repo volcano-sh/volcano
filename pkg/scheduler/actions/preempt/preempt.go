@@ -131,19 +131,28 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 
 		// check job if starving for more resources.
-		if ssn.JobStarving(job) {
-			if _, found := preemptorsMap[job.Queue]; !found {
-				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+		if !ssn.JobStarving(job) {
+			continue
+		}
+
+		// TODO: Currently, jobs containing networkTopology do not support preemption. Related issue: https://github.com/volcano-sh/volcano/issues/4374
+		if job.ContainsNetworkTopology() {
+			klog.V(3).Infof("Job <%s/%s> Queue <%s> skip preemption, reason: jobs containing networkTopology do not support preemption",
+				job.Namespace, job.Name, job.Queue)
+			continue
+		}
+
+		if _, found := preemptorsMap[job.Queue]; !found {
+			preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+		}
+		preemptorsMap[job.Queue].Push(job)
+		underRequest = append(underRequest, job)
+		preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
+		for _, task := range job.TaskStatusIndex[api.Pending] {
+			if task.SchGated {
+				continue
 			}
-			preemptorsMap[job.Queue].Push(job)
-			underRequest = append(underRequest, job)
-			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
-			for _, task := range job.TaskStatusIndex[api.Pending] {
-				if task.SchGated {
-					continue
-				}
-				preemptorTasks[job.UID].Push(task)
-			}
+			preemptorTasks[job.UID].Push(task)
 		}
 	}
 
