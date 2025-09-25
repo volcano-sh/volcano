@@ -20,8 +20,10 @@ import (
 	"math"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -41,7 +43,24 @@ func TestArguments(t *testing.T) {
 	defer framework.CleanupPluginBuilders()
 
 	arguments := framework.Arguments{
-		"weight": 2,
+		"weight":                                      2,
+		"hypernode.binpack.cpu":                       3,
+		"hypernode.binpack.memory":                    4,
+		"hypernode.binpack.resources":                 "nvidia.com/gpu, example.com/foo",
+		"hypernode.binpack.resources.nvidia.com/gpu":  5,
+		"hypernode.binpack.resources.example.com/foo": 6,
+	}
+
+	expected := &priorityWeight{
+		GlobalWeight:              2,
+		HyperNodeBinPackingCPU:    3,
+		HyperNodeBinPackingMemory: 4,
+		HyperNodeBinPackingResources: map[v1.ResourceName]int{
+			v1.ResourceCPU:    3,
+			v1.ResourceMemory: 4,
+			"nvidia.com/gpu":  5,
+			"example.com/foo": 6,
+		},
 	}
 
 	builder, ok := framework.GetPluginBuilder(PluginName)
@@ -54,10 +73,8 @@ func TestArguments(t *testing.T) {
 	if !ok {
 		t.Fatalf("plugin should be %T, but not %T", networkTopologyAware, plugin)
 	}
-	weight := calculateWeight(networkTopologyAware.pluginArguments)
-	if weight != 2 {
-		t.Errorf("weight should be 2, but get %v", weight)
-	}
+	actual := calculateWeight(networkTopologyAware.pluginArguments)
+	assert.Equal(t, expected, actual)
 }
 
 func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
@@ -489,8 +506,8 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 			},
 			expected: map[string]float64{
 				"s3-n1": 100.0,
-				"s4-n1": 50.0,
-				"s5-n1": 0.0,
+				"s4-n1": 66.6,
+				"s5-n1": 33.3,
 			},
 		},
 		{
@@ -573,7 +590,7 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 			},
 			expected: map[string]float64{
 				"s1-n1": 100.0,
-				"s2-n1": 0.0,
+				"s2-n1": 50.0,
 			},
 		},
 		{
@@ -787,8 +804,8 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 			},
 			expected: map[string]float64{
 				"s3-n1": 200.0,
-				"s4-n1": 100.0,
-				"s5-n1": 0.0,
+				"s4-n1": 133.3,
+				"s5-n1": 66.6,
 			},
 		},
 		{
@@ -938,9 +955,9 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 				"test4": "",
 			},
 			expected: map[string]float64{
-				"s3-n1": 100.0,
-				"s4-n1": 75.0,
-				"s5-n1": 0.0,
+				"s3-n1": 116.6,
+				"s4-n1": 91.6,
+				"s5-n1": 33.3,
 			},
 		},
 	}
@@ -955,10 +972,11 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 			{
 				Plugins: []conf.PluginOption{
 					{
-						Name:                  PluginName,
-						EnabledHyperNodeOrder: &trueValue,
-						EnabledNodeOrder:      &trueValue,
-						Arguments:             test.arguments,
+						Name:                     PluginName,
+						EnabledHyperNodeOrder:    &trueValue,
+						EnabledNodeOrder:         &trueValue,
+						EnabledHyperNodeGradient: &trueValue,
+						Arguments:                test.arguments,
 					},
 				},
 			},
@@ -978,13 +996,6 @@ func TestNetworkTopologyAwareNodeScore_Hard(t *testing.T) {
 			}
 		}
 	}
-}
-
-func parseJob(jobInfoMap map[api.JobID]*api.JobInfo) *api.JobInfo {
-	for _, job := range jobInfoMap {
-		return job
-	}
-	return nil
 }
 
 func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
@@ -1416,8 +1427,8 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 			},
 			expected: map[string]float64{
 				"s3-n1": 100.0,
-				"s4-n1": 50.0,
-				"s5-n1": 0.0,
+				"s4-n1": 66.6,
+				"s5-n1": 33.3,
 			},
 		},
 		{
@@ -1500,7 +1511,7 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 			},
 			expected: map[string]float64{
 				"s1-n1": 100.0,
-				"s2-n1": 0.0,
+				"s2-n1": 50.0,
 			},
 		},
 		{
@@ -1714,8 +1725,8 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 			},
 			expected: map[string]float64{
 				"s3-n1": 200.0,
-				"s4-n1": 100.0,
-				"s5-n1": 0.0,
+				"s4-n1": 133.3,
+				"s5-n1": 66.6,
 			},
 		},
 		{
@@ -1865,9 +1876,9 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 				"test4": "",
 			},
 			expected: map[string]float64{
-				"s3-n1": 100.0,
-				"s4-n1": 75.0,
-				"s5-n1": 0.0,
+				"s3-n1": 116.6,
+				"s4-n1": 91.6,
+				"s5-n1": 33.3,
 			},
 		},
 	}
@@ -1882,10 +1893,11 @@ func TestNetworkTopologyAwareNodeScore_Soft(t *testing.T) {
 			{
 				Plugins: []conf.PluginOption{
 					{
-						Name:                  PluginName,
-						EnabledHyperNodeOrder: &trueValue,
-						EnabledNodeOrder:      &trueValue,
-						Arguments:             test.arguments,
+						Name:                     PluginName,
+						EnabledHyperNodeOrder:    &trueValue,
+						EnabledNodeOrder:         &trueValue,
+						EnabledHyperNodeGradient: &trueValue,
+						Arguments:                test.arguments,
 					},
 				},
 			},
