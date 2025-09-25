@@ -39,6 +39,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -52,8 +53,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
-
-	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 )
 
 func TestMain(m *testing.M) {
@@ -763,6 +762,44 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			},
 
 			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
 			HyperNodes: map[string]sets.Set[string]{
 				"s0": sets.New[string]("s0-n1", "s0-n2"),
 				"s1": sets.New[string]("s1-n3", "s1-n4"),
@@ -792,6 +829,44 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 			},
 			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
 			HyperNodes: map[string]sets.Set[string]{
 				"s0": sets.New[string]("s0-n1", "s0-n2"),
 				"s1": sets.New[string]("s1-n3", "s1-n4"),
@@ -820,6 +895,44 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 			},
 			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
 			HyperNodes: map[string]sets.Set[string]{
 				"s0": sets.New[string]("s0-n1", "s0-n2"),
 				"s1": sets.New[string]("s1-n3", "s1-n4"),
@@ -1376,7 +1489,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			MinimalBindCheck: true,
 		},
 		{
-			Name: "hard network topology constrain and tasks in job rescheduled, can not allocate job when LCAHyperNode is empty",
+			Name: "hard network topology constrain and tasks in job rescheduled, can allocate job when LCAHyperNode is empty",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s0", "q1", 2, nil, schedulingv1.PodGroupInqueue, "hard", 2),
 			},
@@ -1426,7 +1539,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			Queues: []*schedulingv1.Queue{
 				util.BuildQueue("q1", 1, nil),
 			},
-			ExpectBindsNum:   0,
+			ExpectBindsNum:   1,
 			MinimalBindCheck: true,
 		},
 	}
@@ -1447,9 +1560,10 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 					EnabledPredicate: &trueValue,
 				},
 				{
-					Name:                  networktopologyaware.PluginName,
-					EnabledNodeOrder:      &trueValue,
-					EnabledHyperNodeOrder: &trueValue,
+					Name:                     networktopologyaware.PluginName,
+					EnabledNodeOrder:         &trueValue,
+					EnabledHyperNodeOrder:    &trueValue,
+					EnabledHyperNodeGradient: &trueValue,
 				},
 			},
 		},
@@ -1469,13 +1583,13 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 
 func TestNodeLevelScoreWithNetWorkTopologies(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
-		predicates.PluginName: predicates.New,
-		gang.PluginName:       gang.New,
-		binpack.PluginName:    binpack.New,
+		predicates.PluginName:           predicates.New,
+		gang.PluginName:                 gang.New,
+		binpack.PluginName:              binpack.New,
+		networktopologyaware.PluginName: networktopologyaware.New,
 	}
 
 	tests := []uthelper.TestCommonStruct{
-
 		{
 			Name: "hard network topology constrain, allocate job to highest score hypeNode with node level binpack",
 			PodGroups: []*schedulingv1.PodGroup{
@@ -1496,7 +1610,45 @@ func TestNodeLevelScoreWithNetWorkTopologies(t *testing.T) {
 				util.BuildNode("s1-n3", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 				util.BuildNode("s1-n4", api.BuildResourceList("8", "16Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
 			},
-			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("s0", "s1")},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
 			HyperNodes: map[string]sets.Set[string]{
 				"s0": sets.New[string]("s0-n1", "s0-n2"),
 				"s1": sets.New[string]("s1-n3", "s1-n4"),
@@ -1532,6 +1684,12 @@ func TestNodeLevelScoreWithNetWorkTopologies(t *testing.T) {
 				{
 					Name:             binpack.PluginName,
 					EnabledNodeOrder: &trueValue,
+				},
+				{
+					Name:                     networktopologyaware.PluginName,
+					EnabledNodeOrder:         &trueValue,
+					EnabledHyperNodeOrder:    &trueValue,
+					EnabledHyperNodeGradient: &trueValue,
 				},
 			},
 		},
@@ -1664,9 +1822,10 @@ func TestHyperNodeBinpackWithNetWorkTopologies(t *testing.T) {
 					EnabledPredicate: &trueValue,
 				},
 				{
-					Name:                  networktopologyaware.PluginName,
-					EnabledNodeOrder:      &trueValue,
-					EnabledHyperNodeOrder: &trueValue,
+					Name:                     networktopologyaware.PluginName,
+					EnabledNodeOrder:         &trueValue,
+					EnabledHyperNodeOrder:    &trueValue,
+					EnabledHyperNodeGradient: &trueValue,
 				},
 			},
 		},
