@@ -33,6 +33,7 @@ import (
 	"k8s.io/klog/v2"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/hypernode/api"
 	"volcano.sh/volcano/pkg/controllers/hypernode/utils"
 )
@@ -82,7 +83,7 @@ type ufmDiscoverer struct {
 }
 
 // NewUFMDiscoverer creates a new UFM topology discoverer
-func NewUFMDiscoverer(cfg api.DiscoveryConfig, kubeClient clientset.Interface) api.Discoverer {
+func NewUFMDiscoverer(cfg api.DiscoveryConfig, kubeClient clientset.Interface, vcClient vcclientset.Interface) api.Discoverer {
 	endpoint := cfg.Config["endpoint"].(string)
 	insecureSkipVerify, _ := cfg.Config["insecureSkipVerify"].(bool)
 
@@ -151,6 +152,9 @@ func (u *ufmDiscoverer) Stop() error {
 // Name returns the discoverer name
 func (u *ufmDiscoverer) Name() string {
 	return "ufm"
+}
+
+func (u *ufmDiscoverer) ResultSynced() {
 }
 
 // getCredentialsFromSecret retrieves username and password from a Kubernetes Secret

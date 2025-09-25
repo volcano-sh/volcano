@@ -65,3 +65,6 @@ func (f *fakeDiscoverer) Stop() error {
 	f.wg.Wait()
 	return nil
 }
+
+func (f *fakeDiscoverer) ResultSynced() {
+}

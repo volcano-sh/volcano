@@ -46,7 +46,7 @@ custom:
   agent_extend_resource_cpu_name: ~
   agent_extend_resource_memory_name: ~
 
-# Override the configuration for admission, scheduler or scheduler.
+# Override the configuration for admission, controller or scheduler.
 # For example:
 #
 #  scheduler_config_override: |
@@ -78,6 +78,17 @@ custom:
 #       config:
 #         endpoint: https://ufm-server:8080
 #         insecureSkipVerify: true
+#     - source: label
+#       enabled: true
+#       config:
+#         networkTopologyTypes:
+#           - topologyA2:
+#               - nodeLabel: "volcano.sh/tor"
+#               - nodeLabel: "kubernetes.io/hostname"
+#           - topologyA3:
+#               - nodeLabel: "volcano.sh/hypercluster"
+#               - nodeLabel: "volcano.sh/hypernode"
+#               - nodeLabel: "kubernetes.io/hostname"
   admission_config_override: ~
   scheduler_config_override: ~
   controller_config_override: ~
