@@ -44,6 +44,12 @@ func responsibleForPod(pod *v1.Pod, schedulerNames []string, mySchedulerPodName 
 	if !slices.Contains(schedulerNames, pod.Spec.SchedulerName) {
 		return false
 	}
+
+	if mySchedulerPodName == "" {
+		klog.V(5).Infof("No schedulerPodName specified for pod %v (not a multi-scheduler scenario)", pod.Name)
+		return true
+	}
+
 	if c != nil {
 		var key string
 		if len(pod.OwnerReferences) != 0 {
@@ -66,6 +72,11 @@ func responsibleForPod(pod *v1.Pod, schedulerNames []string, mySchedulerPodName 
 
 // responsibleForNode returns true if the Node is assigned to current scheduler in multi-scheduler scenario
 func responsibleForNode(nodeName string, mySchedulerPodName string, c *consistent.Consistent) bool {
+	if mySchedulerPodName == "" {
+		klog.V(5).Infof("No schedulerPodName specified for Node %v (not a multi-scheduler scenario)", nodeName)
+		return true
+	}
+
 	if c != nil {
 		schedulerPodName, err := c.Get(nodeName)
 		if err != nil {
@@ -82,6 +93,12 @@ func responsibleForNode(nodeName string, mySchedulerPodName string, c *consisten
 
 // responsibleForPodGroup returns true if Job which PodGroup belongs is assigned to current scheduler in multi-schedulers scenario
 func responsibleForPodGroup(pg *scheduling.PodGroup, mySchedulerPodName string, c *consistent.Consistent) bool {
+	if mySchedulerPodName == "" {
+		klog.V(5).Infof("No schedulerPodName specified for PodGroup %v/%v (not a multi-scheduler scenario)",
+			pg.Namespace, pg.Name)
+		return true
+	}
+
 	if c != nil {
 		var key string
 		if len(pg.OwnerReferences) != 0 {
