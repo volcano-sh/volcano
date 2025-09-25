@@ -25,18 +25,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
-
-func jobInfoEqual(l, r *JobInfo) bool {
-	return equality.Semantic.DeepEqual(l, r)
-}
 
 func TestAddTaskInfo(t *testing.T) {
 	// case1
@@ -85,6 +81,46 @@ func TestAddTaskInfo(t *testing.T) {
 						case01Task4.UID: case01Task4,
 					},
 				},
+				PodBunches: map[BunchID]*PodBunchInfo{
+					BunchID(case01UID): {
+						UID:          BunchID(case01UID),
+						Job:          case01UID,
+						MinAvailable: 0,
+						Priority:     1,
+						Tasks: TasksMap{
+							case01Task1.UID: case01Task1,
+							case01Task2.UID: case01Task2,
+							case01Task3.UID: case01Task3,
+							case01Task4.UID: case01Task4,
+						},
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Running: {
+								case01Task2.UID: case01Task2,
+							},
+							Pending: {
+								case01Task1.UID: case01Task1,
+							},
+							Bound: {
+								case01Task3.UID: case01Task3,
+								case01Task4.UID: case01Task4,
+							},
+						},
+						taskPriorities: map[int32]sets.Set[TaskID]{
+							1: {
+								case01Task1.UID: sets.Empty{},
+								case01Task2.UID: sets.Empty{},
+								case01Task3.UID: sets.Empty{},
+								case01Task4.UID: sets.Empty{},
+							},
+						},
+					},
+				},
+				TaskToPodBunch: map[TaskID]BunchID{
+					case01Task1.UID: BunchID(case01UID),
+					case01Task2.UID: BunchID(case01UID),
+					case01Task3.UID: BunchID(case01UID),
+					case01Task4.UID: BunchID(case01UID),
+				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
 				TaskMinAvailable: make(map[string]int32),
 				Budget:           &DisruptionBudget{},
@@ -92,18 +128,17 @@ func TestAddTaskInfo(t *testing.T) {
 		},
 	}
 
-	for i, test := range tests {
-		ps := NewJobInfo(test.uid)
-		ps.Budget = &DisruptionBudget{}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ps := NewJobInfo(test.uid)
+			ps.Budget = &DisruptionBudget{}
 
-		for _, pod := range test.pods {
-			pi := NewTaskInfo(pod)
-			ps.AddTaskInfo(pi)
-		}
-		if !jobInfoEqual(ps, test.expected) {
-			t.Errorf("podset info %d: \n expected: %v, \n got: %v \n",
-				i, test.expected, ps)
-		}
+			for _, pod := range test.pods {
+				pi := NewTaskInfo(pod)
+				ps.AddTaskInfo(pi)
+			}
+			assert.Equal(t, test.expected, ps)
+		})
 	}
 }
 
@@ -152,6 +187,32 @@ func TestDeleteTaskInfo(t *testing.T) {
 					Pending: {case01Task1.UID: case01Task1},
 					Running: {case01Task3.UID: case01Task3},
 				},
+				PodBunches: map[BunchID]*PodBunchInfo{
+					BunchID(case01UID): {
+						UID:          BunchID(case01UID),
+						Job:          case01UID,
+						MinAvailable: 0,
+						Priority:     1,
+						Tasks: TasksMap{
+							case01Task1.UID: case01Task1,
+							case01Task3.UID: case01Task3,
+						},
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Pending: {case01Task1.UID: case01Task1},
+							Running: {case01Task3.UID: case01Task3},
+						},
+						taskPriorities: map[int32]sets.Set[TaskID]{
+							1: {
+								case01Task1.UID: sets.Empty{},
+								case01Task3.UID: sets.Empty{},
+							},
+						},
+					},
+				},
+				TaskToPodBunch: map[TaskID]BunchID{
+					case01Task1.UID: BunchID(case01UID),
+					case01Task3.UID: BunchID(case01UID),
+				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
 				TaskMinAvailable: make(map[string]int32),
 				Budget:           &DisruptionBudget{},
@@ -178,6 +239,36 @@ func TestDeleteTaskInfo(t *testing.T) {
 						case02Task3.UID: case02Task3,
 					},
 				},
+				PodBunches: map[BunchID]*PodBunchInfo{
+					BunchID(case02UID): {
+						UID:          BunchID(case02UID),
+						Job:          case02UID,
+						MinAvailable: 0,
+						Priority:     1,
+						Tasks: TasksMap{
+							case02Task1.UID: case02Task1,
+							case02Task3.UID: case02Task3,
+						},
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Pending: {
+								case02Task1.UID: case02Task1,
+							},
+							Running: {
+								case02Task3.UID: case02Task3,
+							},
+						},
+						taskPriorities: map[int32]sets.Set[TaskID]{
+							1: {
+								case02Task1.UID: sets.Empty{},
+								case02Task3.UID: sets.Empty{},
+							},
+						},
+					},
+				},
+				TaskToPodBunch: map[TaskID]BunchID{
+					case02Task1.UID: BunchID(case02UID),
+					case02Task3.UID: BunchID(case02UID),
+				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
 				TaskMinAvailable: make(map[string]int32),
 				Budget:           &DisruptionBudget{},
@@ -185,24 +276,23 @@ func TestDeleteTaskInfo(t *testing.T) {
 		},
 	}
 
-	for i, test := range tests {
-		ps := NewJobInfo(test.uid)
-		ps.Budget = &DisruptionBudget{}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ps := NewJobInfo(test.uid)
+			ps.Budget = &DisruptionBudget{}
 
-		for _, pod := range test.pods {
-			pi := NewTaskInfo(pod)
-			ps.AddTaskInfo(pi)
-		}
+			for _, pod := range test.pods {
+				pi := NewTaskInfo(pod)
+				ps.AddTaskInfo(pi)
+			}
 
-		for _, pod := range test.rmPods {
-			pi := NewTaskInfo(pod)
-			ps.DeleteTaskInfo(pi)
-		}
+			for _, pod := range test.rmPods {
+				pi := NewTaskInfo(pod)
+				ps.DeleteTaskInfo(pi)
+			}
 
-		if !jobInfoEqual(ps, test.expected) {
-			t.Errorf("podset info %d: \n expected: %v, \n got: %v \n",
-				i, test.expected, ps)
-		}
+			assert.Equal(t, test.expected, ps)
+		})
 	}
 }
 

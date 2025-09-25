@@ -34,6 +34,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -178,6 +179,24 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	}
 	ready := new(atomic.Bool)
 	ready.Store(true)
+	for _, hni := range test.HyperNodesMap {
+		if hni.HyperNode == nil {
+			continue
+		}
+		for _, member := range hni.HyperNode.Spec.Members {
+			if member.Type != topologyv1alpha1.MemberTypeHyperNode {
+				continue
+			}
+			if member.Selector.ExactMatch == nil { // todo support other selector method
+				continue
+			}
+			child := member.Selector.ExactMatch.Name
+			hni.Children.Insert(child)
+			if childInfo, found := test.HyperNodesMap[child]; found {
+				childInfo.Parent = hni.Name
+			}
+		}
+	}
 	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
 
 	return schedulerCache
