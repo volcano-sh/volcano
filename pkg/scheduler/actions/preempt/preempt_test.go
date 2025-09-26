@@ -57,8 +57,8 @@ func TestPreempt(t *testing.T) {
 		priority.PluginName:    priority.New,
 		proportion.PluginName:  proportion.New,
 	}
-	highPrio := util.BuildPriorityClass("high-priority", 100000)
-	lowPrio := util.BuildPriorityClass("low-priority", 10)
+	highPrio := util.MakePriorityClass().Name("high-priority").SetValue(100000).Obj()
+	lowPrio := util.MakePriorityClass().Name("low-priority").SetValue(10).Obj()
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -324,8 +324,8 @@ func TestTopologyAwarePreempt(t *testing.T) {
 		proportion.PluginName:  proportion.New,
 		predicates.PluginName:  predicates.New,
 	}
-	highPrio := util.BuildPriorityClass("high-priority", 100000)
-	lowPrio := util.BuildPriorityClass("low-priority", 10)
+	highPrio := util.MakePriorityClass().Name("high-priority").SetValue(100000).Obj()
+	lowPrio := util.MakePriorityClass().Name("low-priority").SetValue(10).Obj()
 
 	tests := []uthelper.TestCommonStruct{
 		{

@@ -79,8 +79,8 @@ func TestPreempt(t *testing.T) {
 				Name:    "enable preempt low priority: enablePreemptable:true",
 				Plugins: plugins,
 				PriClass: []*schedulingv1.PriorityClass{
-					util.BuildPriorityClass("low-priority", 100),
-					util.BuildPriorityClass("high-priority", 1000),
+					util.MakePriorityClass().Name("low-priority").SetValue(100).Obj(),
+					util.MakePriorityClass().Name("high-priority").SetValue(1000).Obj(),
 				},
 				PodGroups: []*vcapisv1.PodGroup{
 					util.BuildPodGroupWithPrio("pg1", "ns1", "q1", 1, map[string]int32{}, vcapisv1.PodGroupInqueue, "low-priority"),
@@ -114,8 +114,8 @@ func TestPreempt(t *testing.T) {
 				Name:    "disable preempt low priority: enablePreemptable:false",
 				Plugins: plugins,
 				PriClass: []*schedulingv1.PriorityClass{
-					util.BuildPriorityClass("low-priority", 100),
-					util.BuildPriorityClass("high-priority", 1000),
+					util.MakePriorityClass().Name("low-priority").SetValue(100).Obj(),
+					util.MakePriorityClass().Name("high-priority").SetValue(1000).Obj(),
 				},
 				PodGroups: []*vcapisv1.PodGroup{
 					util.BuildPodGroupWithPrio("pg1", "ns1", "q1", 1, map[string]int32{}, vcapisv1.PodGroupInqueue, "low-priority"),

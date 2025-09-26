@@ -77,9 +77,9 @@ func TestReclaim(t *testing.T) {
 				proportion.PluginName:  proportion.New,
 			},
 			PriClass: []*schedulingv1.PriorityClass{
-				util.BuildPriorityClass("low-priority", 100),
-				util.BuildPriorityClass("mid-priority", 500),
-				util.BuildPriorityClass("high-priority", 1000),
+				util.MakePriorityClass().Name("low-priority").SetValue(100).Obj(),
+				util.MakePriorityClass().Name("mid-priority").SetValue(500).Obj(),
+				util.MakePriorityClass().Name("high-priority").SetValue(1000).Obj(),
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
 				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
@@ -143,8 +143,8 @@ func TestReclaim(t *testing.T) {
 				proportion.PluginName:  proportion.New,
 			},
 			PriClass: []*schedulingv1.PriorityClass{
-				util.BuildPriorityClass("low-priority", 100),
-				util.BuildPriorityClassWithPreemptionPolicy("high-priority", 1000, v1.PreemptNever),
+				util.MakePriorityClass().Name("low-priority").SetValue(100).Obj(),
+				util.MakePriorityClass().Name("high-priority").SetValue(1000).PreEmptionPolicy(v1.PreemptNever).Obj(),
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
 				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),

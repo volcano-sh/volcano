@@ -212,8 +212,8 @@ func TestPodAntiAffinity(t *testing.T) {
 		PluginName:          New,
 		priority.PluginName: priority.New,
 	}
-	highPrio := util.BuildPriorityClass("high-priority", 100000)
-	lowPrio := util.BuildPriorityClass("low-priority", 10)
+	highPrio := util.MakePriorityClass().Name("high-priority").SetValue(100000).Obj()
+	lowPrio := util.MakePriorityClass().Name("low-priority").SetValue(10).Obj()
 
 	w1 := util.BuildPodWithPriority("ns1", "worker-1", "n1", apiv1.PodRunning, api.BuildResourceList("3", "3G"), "pg1", map[string]string{"role": "worker"}, map[string]string{}, &highPrio.Value)
 	w2 := util.BuildPodWithPriority("ns1", "worker-2", "n1", apiv1.PodRunning, api.BuildResourceList("3", "3G"), "pg1", map[string]string{}, map[string]string{}, &lowPrio.Value)
