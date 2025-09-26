@@ -26,9 +26,10 @@ function kind-up-cluster {
 
   echo
   echo "Loading docker images into kind cluster"
-  kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}"
-  kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG} "${CLUSTER_CONTEXT[@]}"
-  kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG} "${CLUSTER_CONTEXT[@]}"
+  # only need to load images into control-plane node because volcano components are deployed on control-plane node.
+  kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
+  kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG}          "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
+  kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG}    "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
 }
 
 # check if the required images exist
