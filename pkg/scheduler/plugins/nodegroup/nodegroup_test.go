@@ -92,6 +92,9 @@ func TestNodeGroup(t *testing.T) {
 		},
 	}).Parent("root").Obj()
 
+	//
+	noAffinityRootQ := util.MakeQueue("root-no-affinity").Affinity(nil).Obj()
+
 	noAffinityQ := util.MakeQueue("q-no-affinity").Affinity(nil).Parent("root").Obj()
 	// q1-child's affinity is inherited from q1
 	queue1Child := util.MakeQueue("q1-child").Affinity(nil).Parent("q1").Obj()
@@ -161,6 +164,38 @@ func TestNodeGroup(t *testing.T) {
 					"n3": api.Success,
 					"n4": api.Success,
 					"n5": api.UnschedulableAndUnresolvable,
+				},
+			},
+		},
+		{
+			// test unnormal case
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name:      "case: soft constraints is not subset of hard constraints with strict=false",
+				PodGroups: []*schedulingv1.PodGroup{pg2},
+				Queues:    []*schedulingv1.Queue{noAffinityRootQ},
+				Pods:      []*v1.Pod{p2},
+				Nodes:     []*v1.Node{n1, n2, n3, n4, n5},
+				Plugins:   plugins,
+			},
+			arguments: framework.Arguments{
+				"strict": false,
+			},
+			expected: map[string]map[string]float64{
+				"c1/p2": {
+					"n1": 100,
+					"n2": 0.0,
+					"n3": 50,
+					"n4": -1,
+					"n5": 0.0,
+				},
+			},
+			expectedStatus: map[string]map[string]int{
+				"c1/p2": {
+					"n1": api.UnschedulableAndUnresolvable,
+					"n2": api.UnschedulableAndUnresolvable,
+					"n3": api.UnschedulableAndUnresolvable,
+					"n4": api.UnschedulableAndUnresolvable,
+					"n5": api.Success,
 				},
 			},
 		},
