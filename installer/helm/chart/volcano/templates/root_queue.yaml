@@ -1,0 +1,9 @@
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: root
+spec:
+  capability:
+    {{- toYaml .Values.custom.root_queue.capability | nindent 4 }}
+  reclaimable: {{ .Values.custom.root_queue.reclaimable | default false }}
+  weight: {{ .Values.custom.root_queue.weight | default 1 }}
