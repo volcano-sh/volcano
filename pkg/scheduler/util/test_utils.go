@@ -436,22 +436,36 @@ func BuildQueueWithPriorityAndResourcesQuantity(qname string, priority int32, de
 	return queue
 }
 
-// ////// build in resource //////
-// BuildPriorityClass return pc
-func BuildPriorityClass(name string, value int32) *schedulingv1.PriorityClass {
-	return &schedulingv1.PriorityClass{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+type PriorityClassWrapper struct {
+	schedulingv1.PriorityClass
+}
+
+// MakePriorityClass creates a new PriorityClassWrapper
+func MakePriorityClass() *PriorityClassWrapper {
+	return &PriorityClassWrapper{
+		PriorityClass: schedulingv1.PriorityClass{
+			ObjectMeta: metav1.ObjectMeta{},
 		},
-		Value: value,
 	}
 }
 
-// BuildPriorityClassWithPreemptionPolicy return a priorityClass with value and preemptionPolicy
-func BuildPriorityClassWithPreemptionPolicy(name string, value int32, preemptionPolicy v1.PreemptionPolicy) *schedulingv1.PriorityClass {
-	pc := BuildPriorityClass(name, value)
-	pc.PreemptionPolicy = &preemptionPolicy
-	return pc
+func (wrapper *PriorityClassWrapper) Name(name string) *PriorityClassWrapper {
+	wrapper.ObjectMeta.Name = name
+	return wrapper
+}
+
+func (wrapper *PriorityClassWrapper) SetValue(value int32) *PriorityClassWrapper {
+	wrapper.Value = value
+	return wrapper
+}
+
+func (wrapper *PriorityClassWrapper) PreEmptionPolicy(preemptionPolicy v1.PreemptionPolicy) *PriorityClassWrapper {
+	wrapper.PreemptionPolicy = &preemptionPolicy
+	return wrapper
+}
+
+func (wrapper *PriorityClassWrapper) Obj() *schedulingv1.PriorityClass {
+	return &wrapper.PriorityClass
 }
 
 // FakeBinder is used as fake binder
