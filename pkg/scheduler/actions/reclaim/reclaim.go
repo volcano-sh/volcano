@@ -108,13 +108,14 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		// Found "high" priority job
 		jobs, found := preemptorsMap[queue.UID]
 		if !found || jobs.Empty() {
-			continue
+			continue // if there are no jobs in the queue then we do not have to consider the queue
 		} else {
 			job = jobs.Pop().(*api.JobInfo)
 		}
 
 		// Found "high" priority task to reclaim others
 		if tasks, found := preemptorTasks[job.UID]; !found || tasks.Empty() || !ssn.JobStarving(job) {
+			queues.Push(queue) // push the queue back so that we can consider the next job in it
 			continue
 		} else {
 			task = tasks.Pop().(*api.TaskInfo)
@@ -132,16 +133,20 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		//In allocate action we need check all the ancestor queues' capability but in reclaim action we should just check current queue's capability, and reclaim happens when queue not allocatable so we just need focus on the reclaim here.
 		//So it's more descriptive to user preempt related semantics.
 		if !ssn.Preemptive(queue, task) {
+			// push the job and queue back so that we can consider the next task for the job
+			jobs.Push(job)
+			queues.Push(queue)
 			klog.V(3).Infof("Queue <%s> can not reclaim by preempt others when considering task <%s> , ignore it.", queue.Name, task.Name)
 			continue
 		}
 
 		if err := ssn.PrePredicateFn(task); err != nil {
+			jobs.Push(job)
+			queues.Push(queue)
 			klog.V(3).Infof("PrePredicate for task %s/%s failed for: %v", task.Namespace, task.Name, err)
 			continue
 		}
 
-		assigned := false
 		// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
 		totalNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
 		for _, n := range totalNodes {
@@ -220,15 +225,14 @@ func (ra *Action) Execute(ssn *framework.Session) {
 				}
 
 				// Ignore error of pipeline, will be corrected in next scheduling loop.
-				assigned = true
 
 				break
 			}
 		}
 
-		if assigned {
-			jobs.Push(job)
-		}
+		// the job and queue can be pushed back as they will be anyways considered in the next iteration of
+		// the loop
+		jobs.Push(job)
 		queues.Push(queue)
 	}
 }
