@@ -17,6 +17,7 @@ limitations under the License.
 package pod
 
 import (
+	"fmt"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -153,4 +154,157 @@ func milliCPUToShares(milliCPU int64) uint64 {
 		return maxShares
 	}
 	return uint64(shares)
+}
+
+func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
+	containerRes := []Resources{}
+	cpuWeightTotal, cpuMaxTotal, memoryMaxTotal := int64(0), int64(0), int64(0)
+	cpuLimitsDeclared := true
+	memoryLimitsDeclared := true
+
+	for _, c := range pod.Spec.Containers {
+		id := findContainerIDByName(pod, c.Name)
+		cpuReq, ok := c.Resources.Requests[apis.GetExtendResourceCPU()]
+		if ok && !cpuReq.IsZero() {
+			cpuWeight := int64(milliCPUToWeight(cpuReq.Value()))
+			containerRes = append(containerRes, Resources{
+				CgroupSubSystem: cgroup.CgroupCpuSubsystem,
+				ContainerID:     id,
+				SubPath:         cgroup.CPUWeightFileV2,
+				Value:           cpuWeight,
+			})
+			cpuWeightTotal += cpuWeight
+		}
+
+		cpuLimits, ok := c.Resources.Limits[apis.GetExtendResourceCPU()]
+		if ok {
+			// In cgroup v2, both zero and non-zero limits are meaningful
+			// Zero limit means unlimited, non-zero limit means specific quota
+			cpuMaxStr := milliCPUToMax(cpuLimits.Value(), quotaPeriod)
+			if cpuMaxStr == "max 100000" {
+				containerRes = append(containerRes, Resources{
+					CgroupSubSystem: cgroup.CgroupCpuSubsystem,
+					ContainerID:     id,
+					SubPath:         cgroup.CPUQuotaTotalFileV2,
+					Value:           -1,
+				})
+			} else {
+				// For cgroup v2, we need to write the full "quota period" string
+				// We'll use a special Value and handle it in resources.go
+				var cpuQuota, period int64
+				_, err := fmt.Sscanf(cpuMaxStr, "%d %d", &cpuQuota, &period)
+				if err == nil {
+					containerRes = append(containerRes, Resources{
+						CgroupSubSystem: cgroup.CgroupCpuSubsystem,
+						ContainerID:     id,
+						SubPath:         cgroup.CPUQuotaTotalFileV2,
+						Value:           cpuQuota, // Store the quota, we'll reconstruct the string in resources.go
+					})
+					cpuMaxTotal += cpuQuota
+				}
+			}
+		} else {
+			cpuLimitsDeclared = false
+		}
+
+		memoryLimits, ok := c.Resources.Limits[apis.GetExtendResourceMemory()]
+		if ok {
+			// In cgroup v2, both zero and non-zero limits are meaningful
+			// Zero limit means unlimited, non-zero limit means specific limit
+			memoryMaxStr := memoryLimitToMax(memoryLimits.Value())
+			if memoryMaxStr == "max" {
+				containerRes = append(containerRes, Resources{
+					CgroupSubSystem: cgroup.CgroupMemorySubsystem,
+					ContainerID:     id,
+					SubPath:         cgroup.MemoryMaxFileV2,
+					Value:           -1,
+				})
+			} else {
+				var memMax int64
+				_, err := fmt.Sscanf(memoryMaxStr, "%d", &memMax)
+				if err == nil {
+					containerRes = append(containerRes, Resources{
+						CgroupSubSystem: cgroup.CgroupMemorySubsystem,
+						ContainerID:     id,
+						SubPath:         cgroup.MemoryMaxFileV2,
+						Value:           memMax,
+					})
+					memoryMaxTotal += memMax
+				}
+			}
+		} else {
+			memoryLimitsDeclared = false
+		}
+	}
+	if cpuWeightTotal == 0 {
+		cpuWeightTotal = 100
+	}
+
+	containerRes = append(containerRes, Resources{
+		CgroupSubSystem: cgroup.CgroupCpuSubsystem,
+		SubPath:         cgroup.CPUWeightFileV2,
+		Value:           cpuWeightTotal,
+	})
+
+	if cpuLimitsDeclared {
+		if cpuMaxTotal == 0 {
+			containerRes = append(containerRes, Resources{
+				CgroupSubSystem: cgroup.CgroupCpuSubsystem,
+				SubPath:         cgroup.CPUQuotaTotalFileV2,
+				Value:           -1,
+			})
+		} else {
+			containerRes = append(containerRes, Resources{
+				CgroupSubSystem: cgroup.CgroupCpuSubsystem,
+				SubPath:         cgroup.CPUQuotaTotalFileV2,
+				Value:           cpuMaxTotal,
+			})
+		}
+	}
+
+	if memoryLimitsDeclared {
+		if memoryMaxTotal == 0 {
+			containerRes = append(containerRes, Resources{
+				CgroupSubSystem: cgroup.CgroupMemorySubsystem,
+				SubPath:         cgroup.MemoryMaxFileV2,
+				Value:           -1,
+			})
+		} else {
+			containerRes = append(containerRes, Resources{
+				CgroupSubSystem: cgroup.CgroupMemorySubsystem,
+				SubPath:         cgroup.MemoryMaxFileV2,
+				Value:           memoryMaxTotal,
+			})
+		}
+	}
+
+	return containerRes
+}
+
+func milliCPUToWeight(milliCPU int64) uint64 {
+	weight := uint64(milliCPU / 10)
+	if weight < 1 {
+		weight = 1
+	} else if weight > 100000 {
+		weight = 100000
+	}
+	return weight
+}
+
+func milliCPUToMax(milliCPU, period int64) string {
+	if milliCPU == 0 {
+		return "max 100000"
+	}
+	quota := (milliCPU * period) / 1000
+	if quota < 1000 {
+		quota = 1000
+	}
+	return fmt.Sprintf("%d %d", quota, period)
+}
+
+func memoryLimitToMax(memoryBytes int64) string {
+	if memoryBytes == 0 {
+		return "max"
+	}
+	return fmt.Sprintf("%d", memoryBytes)
 }
