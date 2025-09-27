@@ -40,7 +40,13 @@ const (
 	SraWeight = "sra.weight"
 	// resourceFmt is the format for resource key
 	resourceFmt = "%s[%d]"
+
+	// The annotation key for resource strategy
+	ResourceStrategyAnnotationKey       = "volcano.sh/resource-strategy-scoring-type"
+	ResourceStrategyWeightAnnotationKey = "volcano.sh/resource-strategy-weight"
 )
+
+type ResourceStrategyWeight map[v1.ResourceName]int
 
 type ResourceStrategyFit struct {
 	Weight    int                               `json:"resourceStrategyFitWeight"`
@@ -323,18 +329,45 @@ func Score(task *api.TaskInfo, node *api.NodeInfo, weight ResourceStrategyFit) f
 	allocatable := node.Allocatable
 	used := node.Used
 
+	var podLevelScoringWeigh ResourceStrategyWeight
+	podLevelScoringType := task.Pod.Annotations[ResourceStrategyAnnotationKey]
+	if podLevelScoringType != "" {
+		podLevelScoringWeighStr := task.Pod.Annotations[ResourceStrategyWeightAnnotationKey]
+		if podLevelScoringWeighStr == "" {
+			klog.Errorf("pod %s/%s: annotation '%s' is present, but annotation '%s' is missing or empty",
+				task.Namespace, task.Name, ResourceStrategyAnnotationKey, ResourceStrategyWeightAnnotationKey)
+			return 0
+		}
+		err := json.Unmarshal([]byte(podLevelScoringWeighStr), &podLevelScoringWeigh)
+		if err != nil {
+			klog.Errorf("failed to unmarshal pod level scoring weight: %v", err)
+			return 0
+		}
+		klog.V(4).Infof("pod %v/%v scoring type: %s, weight: %+v", task.Namespace, task.Name, podLevelScoringType, podLevelScoringWeigh)
+	}
+
 	for _, resource := range requested.ResourceNames() {
 		request := requested.Get(resource)
-
 		allocate := allocatable.Get(resource)
 		nodeUsed := used.Get(resource)
-		resourceConfig, found := findResourceConfigWithPrefix(string(resource), weight.Resources)
-		if !found {
-			continue
-		}
 
-		scoringType := resourceConfig.Type
-		resourceWeight := resourceConfig.Weight
+		var scoringType config.ScoringStrategyType
+		var resourceWeight int
+		var ok bool
+		if podLevelScoringType != "" {
+			resourceWeight, ok = podLevelScoringWeigh[resource]
+			if !ok {
+				continue
+			}
+			scoringType = config.ScoringStrategyType(podLevelScoringType)
+		} else {
+			resourceConfig, found := findResourceConfigWithPrefix(string(resource), weight.Resources)
+			if !found {
+				continue
+			}
+			scoringType = resourceConfig.Type
+			resourceWeight = resourceConfig.Weight
+		}
 
 		var resourceScore float64
 		var err error

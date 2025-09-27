@@ -21,6 +21,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -244,6 +245,86 @@ func Test_calculateWeight(t *testing.T) {
 	}
 }
 
+// buildTaskInfo creates a TaskInfo with specified resource requirements and pod annotations
+func buildTaskInfo(milliCPU, memory float64, annotations map[string]string) *api.TaskInfo {
+	return &api.TaskInfo{
+		Resreq: &api.Resource{
+			MilliCPU: milliCPU,
+			Memory:   memory,
+		},
+		Pod: &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: annotations,
+			},
+		},
+	}
+}
+
+// buildNodeInfo creates a NodeInfo with specified used and allocatable resources
+func buildNodeInfo(usedCPU, usedMemory, allocatableCPU, allocatableMemory float64) *api.NodeInfo {
+	return &api.NodeInfo{
+		Used: &api.Resource{
+			MilliCPU: usedCPU,
+			Memory:   usedMemory,
+		},
+		Allocatable: &api.Resource{
+			MilliCPU: allocatableCPU,
+			Memory:   allocatableMemory,
+		},
+	}
+}
+
+// buildResourceStrategyFit creates a ResourceStrategyFit with specified weight and resource configurations
+func buildResourceStrategyFit(weight int, resourceConfigs map[string]struct {
+	Type   config.ScoringStrategyType
+	Weight int
+}) ResourceStrategyFit {
+	resources := make(map[v1.ResourceName]ResourcesType)
+	for resourceName, config := range resourceConfigs {
+		resources[v1.ResourceName(resourceName)] = ResourcesType{
+			Type:   config.Type,
+			Weight: config.Weight,
+		}
+	}
+	return ResourceStrategyFit{
+		Weight:    weight,
+		Resources: resources,
+	}
+}
+
+// buildLeastAllocatedStrategy creates a ResourceStrategyFit with LeastAllocated strategy for CPU and memory
+func buildLeastAllocatedStrategy(weight, cpuWeight, memoryWeight int) ResourceStrategyFit {
+	return buildResourceStrategyFit(weight, map[string]struct {
+		Type   config.ScoringStrategyType
+		Weight int
+	}{
+		"cpu":    {Type: config.LeastAllocated, Weight: cpuWeight},
+		"memory": {Type: config.LeastAllocated, Weight: memoryWeight},
+	})
+}
+
+// buildMostAllocatedStrategy creates a ResourceStrategyFit with MostAllocated strategy for CPU and memory
+func buildMostAllocatedStrategy(weight, cpuWeight, memoryWeight int) ResourceStrategyFit {
+	return buildResourceStrategyFit(weight, map[string]struct {
+		Type   config.ScoringStrategyType
+		Weight int
+	}{
+		"cpu":    {Type: config.MostAllocated, Weight: cpuWeight},
+		"memory": {Type: config.MostAllocated, Weight: memoryWeight},
+	})
+}
+
+// buildMixedStrategy creates a ResourceStrategyFit with mixed strategies
+func buildMixedStrategy(weight int, cpuType config.ScoringStrategyType, cpuWeight int, memoryType config.ScoringStrategyType, memoryWeight int) ResourceStrategyFit {
+	return buildResourceStrategyFit(weight, map[string]struct {
+		Type   config.ScoringStrategyType
+		Weight int
+	}{
+		"cpu":    {Type: cpuType, Weight: cpuWeight},
+		"memory": {Type: memoryType, Weight: memoryWeight},
+	})
+}
+
 func TestScore(t *testing.T) {
 	type args struct {
 		task   *api.TaskInfo
@@ -258,304 +339,157 @@ func TestScore(t *testing.T) {
 		{
 			name: "test1",
 			args: args{
-				task: &api.TaskInfo{
-					Resreq: &api.Resource{
-						MilliCPU: 100,
-						Memory:   100,
-					},
-				},
-				node: &api.NodeInfo{
-					Used: &api.Resource{
-						MilliCPU: 200,
-						Memory:   200,
-					},
-					Allocatable: &api.Resource{
-						MilliCPU: 500,
-						Memory:   500,
-					},
-				},
-				weight: ResourceStrategyFit{
-					Weight: 10,
-					Resources: map[v1.ResourceName]ResourcesType{
-						"cpu": {
-							Type:   config.LeastAllocated,
-							Weight: 1,
-						},
-						"memory": {
-							Type:   config.LeastAllocated,
-							Weight: 1,
-						},
-					},
-				},
+				task:   buildTaskInfo(100, 100, map[string]string{}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildLeastAllocatedStrategy(10, 1, 1),
 			},
 			want: 400},
 		{
 			name: "test2",
 			args: args{
-				task: &api.TaskInfo{
-					Resreq: &api.Resource{
-						MilliCPU: 100,
-						Memory:   100,
-					},
-				},
-				node: &api.NodeInfo{
-					Used: &api.Resource{
-						MilliCPU: 200,
-						Memory:   200,
-					},
-					Allocatable: &api.Resource{
-						MilliCPU: 400,
-						Memory:   400,
-					},
-				},
-				weight: ResourceStrategyFit{
-					Weight: 10,
-					Resources: map[v1.ResourceName]ResourcesType{
-						"cpu": {
-							Type:   config.LeastAllocated,
-							Weight: 1,
-						},
-						"memory": {
-							Type:   config.LeastAllocated,
-							Weight: 1,
-						},
-					},
-				},
+				task:   buildTaskInfo(100, 100, map[string]string{}),
+				node:   buildNodeInfo(200, 200, 400, 400),
+				weight: buildLeastAllocatedStrategy(10, 1, 1),
 			},
 			want: 250},
 		{
 			name: "test3",
 			args: args{
-				task: &api.TaskInfo{
-					Resreq: &api.Resource{
-						MilliCPU: 100,
-						Memory:   100,
-					},
-				},
-				node: &api.NodeInfo{
-					Used: &api.Resource{
-						MilliCPU: 200,
-						Memory:   200,
-					},
-					Allocatable: &api.Resource{
-						MilliCPU: 500,
-						Memory:   500,
-					},
-				},
-				weight: ResourceStrategyFit{
-					Weight: 10,
-					Resources: map[v1.ResourceName]ResourcesType{
-						"cpu": {
-							Type:   config.MostAllocated,
-							Weight: 1,
-						},
-						"memory": {
-							Type:   config.MostAllocated,
-							Weight: 1,
-						},
-					},
-				},
+				task:   buildTaskInfo(100, 100, map[string]string{}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildMostAllocatedStrategy(10, 1, 1),
 			},
 			want: 600},
 		{
 			name: "test4",
 			args: args{
-				task: &api.TaskInfo{
-					Resreq: &api.Resource{
-						MilliCPU: 100,
-						Memory:   100,
-					},
-				},
-				node: &api.NodeInfo{
-					Used: &api.Resource{
-						MilliCPU: 200,
-						Memory:   200,
-					},
-					Allocatable: &api.Resource{
-						MilliCPU: 400,
-						Memory:   400,
-					},
-				},
-				weight: ResourceStrategyFit{
-					Weight: 10,
-					Resources: map[v1.ResourceName]ResourcesType{
-						"cpu": {
-							Type:   config.MostAllocated,
-							Weight: 1,
-						},
-						"memory": {
-							Type:   config.MostAllocated,
-							Weight: 1,
-						},
-					},
-				},
+				task:   buildTaskInfo(100, 100, map[string]string{}),
+				node:   buildNodeInfo(200, 200, 400, 400),
+				weight: buildMostAllocatedStrategy(10, 1, 1),
 			},
 			want: 750},
 		{
 			name: "test5",
 			args: args{
-				task: &api.TaskInfo{
-					Resreq: &api.Resource{
-						MilliCPU: 100,
-						Memory:   100,
-					},
-				},
-				node: &api.NodeInfo{
-					Used: &api.Resource{
-						MilliCPU: 200,
-						Memory:   200,
-					},
-					Allocatable: &api.Resource{
-						MilliCPU: 500,
-						Memory:   500,
-					},
-				},
-				weight: ResourceStrategyFit{
-					Weight: 10,
-					Resources: map[v1.ResourceName]ResourcesType{
-						"cpu": {
-							Type:   config.LeastAllocated,
-							Weight: 2,
-						},
-						"memory": {
-							Type:   config.MostAllocated,
-							Weight: 1,
-						},
-					},
-				},
+				task:   buildTaskInfo(100, 100, map[string]string{}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildMixedStrategy(10, config.LeastAllocated, 2, config.MostAllocated, 1),
 			},
 			want: 466.66666667},
 		{
 			name: "test6",
 			args: args{
-				task: &api.TaskInfo{
-					Resreq: &api.Resource{
-						MilliCPU: 100,
-						Memory:   100,
-					},
-				},
-				node: &api.NodeInfo{
-					Used: &api.Resource{
-						MilliCPU: 200,
-						Memory:   200,
-					},
-					Allocatable: &api.Resource{
-						MilliCPU: 500,
-						Memory:   500,
-					},
-				},
-				weight: ResourceStrategyFit{
-					Weight: 10,
-					Resources: map[v1.ResourceName]ResourcesType{
-						"cpu": {
-							Type:   config.LeastAllocated,
-							Weight: 1,
-						},
-						"memory": {
-							Type:   config.MostAllocated,
-							Weight: 2,
-						},
-					},
-				},
+				task:   buildTaskInfo(100, 100, map[string]string{}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildMixedStrategy(10, config.LeastAllocated, 1, config.MostAllocated, 2),
 			},
 			want: 533.33333333},
 		{
 			name: "test7",
 			args: args{
-				task: &api.TaskInfo{
-					Resreq: &api.Resource{
-						MilliCPU: 0,
-						Memory:   100,
-					},
-				},
-				node: &api.NodeInfo{
-					Used: &api.Resource{
-						MilliCPU: 200,
-						Memory:   200,
-					},
-					Allocatable: &api.Resource{
-						MilliCPU: 500,
-						Memory:   500,
-					},
-				},
-				weight: ResourceStrategyFit{
-					Weight: 10,
-					Resources: map[v1.ResourceName]ResourcesType{
-						"cpu": {
-							Type:   config.LeastAllocated,
-							Weight: 1,
-						},
-						"memory": {
-							Type:   config.MostAllocated,
-							Weight: 2,
-						},
-					},
-				},
+				task:   buildTaskInfo(0, 100, map[string]string{}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildMixedStrategy(10, config.LeastAllocated, 1, config.MostAllocated, 2),
 			},
 			want: 600},
 		{
 			name: "test8",
 			args: args{
-				task: &api.TaskInfo{
-					Resreq: &api.Resource{
-						MilliCPU: 100,
-						Memory:   100,
-					},
-				},
-				node: &api.NodeInfo{
-					Used: &api.Resource{
-						MilliCPU: 200,
-						Memory:   200,
-					},
-					Allocatable: &api.Resource{
-						Memory: 400,
-					},
-				},
-				weight: ResourceStrategyFit{
-					Weight: 10,
-					Resources: map[v1.ResourceName]ResourcesType{
-						"cpu": {
-							Type:   config.LeastAllocated,
-							Weight: 1,
-						},
-						"memory": {
-							Type:   config.MostAllocated,
-							Weight: 2,
-						},
-					},
-				},
+				task:   buildTaskInfo(100, 100, map[string]string{}),
+				node:   buildNodeInfo(200, 200, 0, 400), // CPU allocatable is 0
+				weight: buildMixedStrategy(10, config.LeastAllocated, 1, config.MostAllocated, 2),
 			},
 			want: 500},
 		{
 			name: "test9",
 			args: args{
-				task: &api.TaskInfo{
-					Resreq: &api.Resource{
-						MilliCPU: 100,
-						Memory:   100,
-					},
-				},
-				node: &api.NodeInfo{
-					Used: &api.Resource{
-						MilliCPU: 200,
-						Memory:   200,
-					},
-					Allocatable: &api.Resource{
-						MilliCPU: 500,
-						Memory:   500,
-					},
-				},
-				weight: ResourceStrategyFit{
-					Weight: 10,
-					Resources: map[v1.ResourceName]ResourcesType{
-						"memory": {
-							Type:   config.MostAllocated,
-							Weight: 2,
-						},
-					},
-				},
+				task: buildTaskInfo(100, 100, map[string]string{}),
+				node: buildNodeInfo(200, 200, 500, 500),
+				weight: buildResourceStrategyFit(10, map[string]struct {
+					Type   config.ScoringStrategyType
+					Weight int
+				}{
+					"memory": {Type: config.MostAllocated, Weight: 2},
+				}),
 			},
 			want: 600},
+		// Test cases for pod-level scoring annotations
+		{
+			name: "pod-level-scoring-least-allocated",
+			args: args{
+				task: buildTaskInfo(100, 100, map[string]string{
+					ResourceStrategyAnnotationKey:       string(config.LeastAllocated),
+					ResourceStrategyWeightAnnotationKey: `{"cpu": 2, "memory": 1}`,
+				}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildLeastAllocatedStrategy(10, 1, 1),
+			},
+			want: 400},
+		{
+			name: "pod-level-scoring-most-allocated",
+			args: args{
+				task: buildTaskInfo(100, 100, map[string]string{
+					ResourceStrategyAnnotationKey:       string(config.MostAllocated),
+					ResourceStrategyWeightAnnotationKey: `{"cpu": 1, "memory": 2}`,
+				}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildLeastAllocatedStrategy(10, 1, 1),
+			},
+			want: 600},
+		{
+			name: "pod-level-scoring-invalid-json",
+			args: args{
+				task: buildTaskInfo(100, 100, map[string]string{
+					ResourceStrategyAnnotationKey:       string(config.LeastAllocated),
+					ResourceStrategyWeightAnnotationKey: `invalid-json`,
+				}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildLeastAllocatedStrategy(10, 1, 1),
+			},
+			want: 0}, // Should return 0 due to JSON parsing error
+		{
+			name: "pod-level-scoring-missing-resource-weight",
+			args: args{
+				task: buildTaskInfo(100, 100, map[string]string{
+					ResourceStrategyAnnotationKey:       string(config.LeastAllocated),
+					ResourceStrategyWeightAnnotationKey: `{"cpu": 2}`,
+				}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildLeastAllocatedStrategy(10, 1, 1),
+			},
+			want: 400}, // Only CPU should be scored, memory weight missing
+		{
+			name: "zero-resources-requested",
+			args: args{
+				task:   buildTaskInfo(0, 0, map[string]string{}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildLeastAllocatedStrategy(10, 1, 1),
+			},
+			want: 0}, // Should return 0 for zero resource requests
+		{
+			name: "node-fully-allocated",
+			args: args{
+				task:   buildTaskInfo(100, 100, map[string]string{}),
+				node:   buildNodeInfo(500, 500, 500, 500),
+				weight: buildLeastAllocatedStrategy(10, 1, 1),
+			},
+			want: 0}, // Should return 0 when node is fully allocated
+		{
+			name: "mixed-scoring-strategies",
+			args: args{
+				task:   buildTaskInfo(100, 100, map[string]string{}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildMixedStrategy(10, config.LeastAllocated, 3, config.MostAllocated, 1),
+			},
+			want: 450}, // Mixed strategies with different weights
+		{
+			name: "high-weight-scenario",
+			args: args{
+				task:   buildTaskInfo(100, 100, map[string]string{}),
+				node:   buildNodeInfo(200, 200, 500, 500),
+				weight: buildLeastAllocatedStrategy(20, 5, 5),
+			},
+			want: 800}, // Higher weight should result in higher score
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
