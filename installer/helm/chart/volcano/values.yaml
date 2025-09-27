@@ -25,6 +25,10 @@ custom:
   scheduler_plugins_dir: ""
   scheduler_name: ~
   leader_elect_enable: false
+  # ValidatingAdmissionPolicy settings (auto-enabled for K8s >= 1.30)
+  vap_enable: false
+  # MutatingAdmissionPolicy settings (default disabled)
+  map_enable: false
   controller_kube_api_qps: 50
   controller_kube_api_burst: 100
   controller_worker_threads: 3
