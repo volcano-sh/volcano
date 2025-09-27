@@ -55,13 +55,15 @@ const (
 type nodeGroupPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
-
-	queueAttrs map[api.QueueID]*queueAttr
+	strict          bool
+	queueAttrs      map[api.QueueID]*queueAttr
 }
 
 // New function returns prioritize plugin object.
 func New(arguments framework.Arguments) framework.Plugin {
-	return &nodeGroupPlugin{pluginArguments: arguments}
+	nodeGroupPlugin := &nodeGroupPlugin{pluginArguments: arguments, strict: true}
+	arguments.GetBool(&nodeGroupPlugin.strict, "strict")
+	return nodeGroupPlugin
 }
 
 func (np *nodeGroupPlugin) Name() string {
@@ -269,19 +271,32 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddNodeOrderFn(np.Name(), nodeOrderFn)
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
+		job := ssn.Jobs[task.Job]
+		attr := np.queueAttrs[job.Queue]
+		unsetAffinity := attr.affinity == nil || (attr.affinity.queueGroupAffinityRequired.Len() == 0 && attr.affinity.queueGroupAffinityPreferred.Len() == 0)
 		if node.Node.Labels == nil {
-			return newFitErr(task, node, errNodeGroupLabelNotFound)
+			if np.strict || !unsetAffinity {
+				return newFitErr(task, node, errNodeGroupLabelNotFound)
+			} else {
+				return nil
+			}
 		}
 
 		group, exist := node.Node.Labels[NodeGroupNameKey]
 		if !exist {
-			return newFitErr(task, node, errNodeGroupLabelNotFound)
+			if np.strict || !unsetAffinity {
+				return newFitErr(task, node, errNodeGroupLabelNotFound)
+			} else {
+				return nil
+			}
 		}
 
-		job := ssn.Jobs[task.Job]
-		attr := np.queueAttrs[job.Queue]
 		if attr.affinity == nil {
-			return newFitErr(task, node, errNodeGroupAffinityNotFound)
+			if np.strict {
+				return newFitErr(task, node, errNodeGroupAffinityNotFound)
+			} else {
+				return nil
+			}
 		}
 
 		if err := attr.affinity.predicate(group); err != nil {
