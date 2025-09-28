@@ -273,30 +273,32 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		job := ssn.Jobs[task.Job]
 		attr := np.queueAttrs[job.Queue]
-		unsetAffinity := attr.affinity == nil || (attr.affinity.queueGroupAffinityRequired.Len() == 0 && attr.affinity.queueGroupAffinityPreferred.Len() == 0)
-		if node.Node.Labels == nil {
-			if np.strict || !unsetAffinity {
-				return newFitErr(task, node, errNodeGroupLabelNotFound)
-			} else {
-				return nil
-			}
+
+		// Check if the queue has any node group affinity rules
+		unsetAffinity := attr.affinity == nil ||
+			(attr.affinity.queueGroupAffinityRequired.Len() == 0 &&
+				attr.affinity.queueGroupAffinityPreferred.Len() == 0 &&
+				attr.affinity.queueGroupAntiAffinityRequired.Len() == 0 &&
+				attr.affinity.queueGroupAntiAffinityPreferred.Len() == 0)
+
+		group, exist := "", false
+		if node.Node.Labels != nil {
+			group, exist = node.Node.Labels[NodeGroupNameKey]
 		}
 
-		group, exist := node.Node.Labels[NodeGroupNameKey]
 		if !exist {
-			if np.strict || !unsetAffinity {
-				return newFitErr(task, node, errNodeGroupLabelNotFound)
-			} else {
+			// In non-strict mode, if the queue also has no affinity requirements,
+			// the task is allowed to be scheduled on this node.
+			if !np.strict && unsetAffinity {
 				return nil
 			}
+			// Otherwise (in strict mode, or if the queue has affinity rules), the node is not a fit.
+			return newFitErr(task, node, errNodeGroupLabelNotFound)
 		}
 
-		if attr.affinity == nil {
-			if np.strict {
-				return newFitErr(task, node, errNodeGroupAffinityNotFound)
-			} else {
-				return nil
-			}
+		// The node has a group label, but the queue has no affinity rules, we don't allow schedule onto this node.
+		if unsetAffinity {
+			return newFitErr(task, node, errNodeGroupAffinityNotFound)
 		}
 
 		if err := attr.affinity.predicate(group); err != nil {

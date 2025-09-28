@@ -40,6 +40,8 @@ func TestNodeGroup(t *testing.T) {
 
 	p4 := util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg4", nil, nil)
 
+	p5 := util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg5", nil, nil)
+
 	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi"), map[string]string{
 		NodeGroupNameKey: "group1",
 	})
@@ -58,6 +60,7 @@ func TestNodeGroup(t *testing.T) {
 	pg2 := util.BuildPodGroup("pg2", "c1", "q2", 0, nil, "")
 	pg3 := util.BuildPodGroup("pg3", "c1", "q1-child", 0, nil, "")
 	pg4 := util.BuildPodGroup("pg4", "c1", "q-no-affinity-child", 0, nil, "")
+	pg5 := util.BuildPodGroup("pg5", "c1", "root-no-affinity", 0, nil, "")
 
 	rootQ := util.MakeQueue("root").Affinity(&schedulingv1.Affinity{
 		NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
@@ -69,6 +72,7 @@ func TestNodeGroup(t *testing.T) {
 			PreferredDuringSchedulingIgnoredDuringExecution: []string{"group4"},
 		},
 	}).Obj()
+	noAffinityRootQ := util.MakeQueue("root-no-affinity").Affinity(nil).Obj()
 
 	queue1 := util.MakeQueue("q1").Affinity(&schedulingv1.Affinity{
 		NodeGroupAffinity: &schedulingv1.NodeGroupAffinity{
@@ -91,9 +95,6 @@ func TestNodeGroup(t *testing.T) {
 			PreferredDuringSchedulingIgnoredDuringExecution: []string{"group4"},
 		},
 	}).Parent("root").Obj()
-
-	//
-	noAffinityRootQ := util.MakeQueue("root-no-affinity").Affinity(nil).Obj()
 
 	noAffinityQ := util.MakeQueue("q-no-affinity").Affinity(nil).Parent("root").Obj()
 	// q1-child's affinity is inherited from q1
@@ -168,12 +169,11 @@ func TestNodeGroup(t *testing.T) {
 			},
 		},
 		{
-			// test unnormal case
 			TestCommonStruct: uthelper.TestCommonStruct{
-				Name:      "case: soft constraints is not subset of hard constraints with strict=false",
-				PodGroups: []*schedulingv1.PodGroup{pg2},
+				Name:      "case: affinity is not set for the queue, pods still cannot be scheduled to nodes with the nodegroup label when strict=false",
+				PodGroups: []*schedulingv1.PodGroup{pg5},
 				Queues:    []*schedulingv1.Queue{noAffinityRootQ},
-				Pods:      []*v1.Pod{p2},
+				Pods:      []*v1.Pod{p5},
 				Nodes:     []*v1.Node{n1, n2, n3, n4, n5},
 				Plugins:   plugins,
 			},
@@ -181,16 +181,16 @@ func TestNodeGroup(t *testing.T) {
 				"strict": false,
 			},
 			expected: map[string]map[string]float64{
-				"c1/p2": {
-					"n1": 100,
+				"c1/p5": {
+					"n1": 0.0,
 					"n2": 0.0,
-					"n3": 50,
-					"n4": -1,
+					"n3": 0.0,
+					"n4": 0.0,
 					"n5": 0.0,
 				},
 			},
 			expectedStatus: map[string]map[string]int{
-				"c1/p2": {
+				"c1/p5": {
 					"n1": api.UnschedulableAndUnresolvable,
 					"n2": api.UnschedulableAndUnresolvable,
 					"n3": api.UnschedulableAndUnresolvable,
