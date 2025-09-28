@@ -55,13 +55,15 @@ const (
 type nodeGroupPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
-
-	queueAttrs map[api.QueueID]*queueAttr
+	strict          bool
+	queueAttrs      map[api.QueueID]*queueAttr
 }
 
 // New function returns prioritize plugin object.
 func New(arguments framework.Arguments) framework.Plugin {
-	return &nodeGroupPlugin{pluginArguments: arguments}
+	nodeGroupPlugin := &nodeGroupPlugin{pluginArguments: arguments, strict: true}
+	arguments.GetBool(&nodeGroupPlugin.strict, "strict")
+	return nodeGroupPlugin
 }
 
 func (np *nodeGroupPlugin) Name() string {
@@ -269,18 +271,33 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddNodeOrderFn(np.Name(), nodeOrderFn)
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
-		if node.Node.Labels == nil {
-			return newFitErr(task, node, errNodeGroupLabelNotFound)
-		}
-
-		group, exist := node.Node.Labels[NodeGroupNameKey]
-		if !exist {
-			return newFitErr(task, node, errNodeGroupLabelNotFound)
-		}
-
 		job := ssn.Jobs[task.Job]
 		attr := np.queueAttrs[job.Queue]
-		if attr.affinity == nil {
+
+		// Check if the queue has any node group affinity rules
+		unsetAffinity := attr.affinity == nil ||
+			(attr.affinity.queueGroupAffinityRequired.Len() == 0 &&
+				attr.affinity.queueGroupAffinityPreferred.Len() == 0 &&
+				attr.affinity.queueGroupAntiAffinityRequired.Len() == 0 &&
+				attr.affinity.queueGroupAntiAffinityPreferred.Len() == 0)
+
+		group, exist := "", false
+		if node.Node.Labels != nil {
+			group, exist = node.Node.Labels[NodeGroupNameKey]
+		}
+
+		if !exist {
+			// In non-strict mode, if the queue also has no affinity requirements,
+			// the task is allowed to be scheduled on this node.
+			if !np.strict && unsetAffinity {
+				return nil
+			}
+			// Otherwise (in strict mode, or if the queue has affinity rules), the node is not a fit.
+			return newFitErr(task, node, errNodeGroupLabelNotFound)
+		}
+
+		// The node has a group label, but the queue has no affinity rules, we don't allow schedule onto this node.
+		if unsetAffinity {
 			return newFitErr(task, node, errNodeGroupAffinityNotFound)
 		}
 

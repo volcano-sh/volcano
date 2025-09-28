@@ -84,6 +84,33 @@ label `nodeGroupAffinity.requiredDuringSchedulingIgnoredDuringExecution` or `nod
 kubectl get po job-1-nginx-0 -o wide 
 ```
 
+### Nodegroup Plugin Strict Configuration
+
+`strict` is a boolean argument that controls scheduling behavior for queues that do not have node group affinity defined.
+
+*   When `strict: false`, tasks from a queue without affinity can be scheduled on nodes that **do not** have the `volcano.sh/nodegroup-name` label.
+*   When `strict: true` (the default), tasks are only allowed to be scheduled on nodes that have a `volcano.sh/nodegroup-name` label.
+
+The default value is `true`.
+
+```yaml
+# scheduler configuration
+actions: "allocate, backfill, preempt, reclaim"
+tiers:
+- plugins:
+  - name: priority
+  - name: gang
+  - name: conformance
+- plugins:
+  - name: drf
+  - name: predicates
+  - name: proportion
+  - name: nodegroup
+    arguments:
+      strict: false
+```
+
+
 ### Hierarchical Queue Configuration
 
 #### Enabling Hierarchical Support
