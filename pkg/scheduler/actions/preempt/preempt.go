@@ -56,6 +56,8 @@ const (
 	MinCandidateNodesPercentageKey = "minCandidateNodesPercentage"
 	MinCandidateNodesAbsoluteKey   = "minCandidateNodesAbsolute"
 	MaxCandidateNodesAbsoluteKey   = "maxCandidateNodesAbsolute"
+
+	EnableStrictGangPreemptionKey = "enableStrictGangPreemption"
 )
 
 type Action struct {
@@ -69,6 +71,8 @@ type Action struct {
 	minCandidateNodesPercentage   int
 	minCandidateNodesAbsolute     int
 	maxCandidateNodesAbsolute     int
+
+	enableStrictGangPreemption bool
 }
 
 func New() *Action {
@@ -79,6 +83,7 @@ func New() *Action {
 		minCandidateNodesPercentage:   10,
 		minCandidateNodesAbsolute:     1,
 		maxCandidateNodesAbsolute:     100,
+		enableStrictGangPreemption:    false,
 	}
 }
 
@@ -96,6 +101,7 @@ func (pmpt *Action) parseArguments(ssn *framework.Session) {
 	arguments.GetInt(&pmpt.minCandidateNodesPercentage, MinCandidateNodesPercentageKey)
 	arguments.GetInt(&pmpt.minCandidateNodesAbsolute, MinCandidateNodesAbsoluteKey)
 	arguments.GetInt(&pmpt.maxCandidateNodesAbsolute, MaxCandidateNodesAbsoluteKey)
+	arguments.GetBool(&pmpt.enableStrictGangPreemption, EnableStrictGangPreemptionKey)
 	pmpt.ssn = ssn
 }
 
@@ -316,6 +322,24 @@ func (pmpt *Action) normalPreempt(
 
 	currentQueue := ssn.Queues[job.Queue]
 
+	// Check if we have a node with resources available due to strictGangPreemption
+	if pmpt.enableStrictGangPreemption {
+		klog.V(4).Infof("Checking if nodes have free space due to previous strict gang preemption.")
+		for _, node := range selectedNodes {
+			if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
+				if err := stmt.Pipeline(preemptor, node.Name, true); err != nil {
+					klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
+						preemptor.Namespace, preemptor.Name, node.Name)
+					if rollbackErr := stmt.UnPipeline(preemptor); rollbackErr != nil {
+						klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
+							preemptor.UID, node.Name, ssn.UID, rollbackErr)
+					}
+				}
+				return true, nil
+			}
+		}
+	}
+
 	assigned := false
 
 	for _, node := range selectedNodes {
@@ -357,14 +381,44 @@ func (pmpt *Action) normalPreempt(
 				break
 			}
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
-			klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
-				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
-			if err := stmt.Evict(preemptee, "preempt"); err != nil {
-				klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
-					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
-				continue
+			var evictionPreemptees []*api.TaskInfo
+			evictionPreemptees = append(evictionPreemptees, preemptee)
+			if pmpt.enableStrictGangPreemption {
+				// If the victim task's job is already being preempted (status is Releasing), skip.
+				// This avoids double-counting resources and redundant evictions.
+				if task, f := ssn.Jobs[preemptee.Job].Tasks[preemptee.UID]; f && task.Status == api.Releasing {
+					continue
+				}
+				klog.V(3).Infof("StrictGangPreemption: Initial Victim Task <%s/%s> from Job <%s/%s> for Task <%s/%s>",
+					preemptee.Namespace, preemptee.Name, ssn.Jobs[preemptee.Job].Name,
+					ssn.Jobs[preemptee.Job].Namespace, preemptor.Namespace, preemptor.Name)
+
+				var victimJobTasksToEvict []*api.TaskInfo
+				for _, t := range ssn.Jobs[preemptee.Job].Tasks {
+					// Only evict tasks that are not in a terminal state.
+					if t.Status != api.Succeeded && t.Status != api.Failed && t.UID != preemptee.UID {
+						victimJobTasksToEvict = append(victimJobTasksToEvict, t)
+					}
+				}
+				// Refilter preemptees as all the tasks in PreempteeJob are now potential victims.
+				// This ensures that plugin level overrides are respected.
+				victimJobPQ := ssn.BuildVictimsPriorityQueue(victimJobTasksToEvict, preemptor)
+				for !victimJobPQ.Empty() {
+					evictionPreemptees = append(evictionPreemptees, victimJobPQ.Pop().(*api.TaskInfo))
+				}
+				evictionPreemptees = ssn.Preemptable(preemptor, evictionPreemptees)
 			}
-			preempted.Add(preemptee.Resreq)
+
+			for _, p := range evictionPreemptees {
+				klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
+					p.Namespace, p.Name, preemptor.Namespace, preemptor.Name)
+				if err := stmt.Evict(p, "preempt"); err != nil {
+					klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
+						p.Namespace, p.Name, preemptor.Namespace, preemptor.Name, err)
+					continue
+				}
+				preempted.Add(p.Resreq)
+			}
 		}
 
 		evictionOccurred := false
