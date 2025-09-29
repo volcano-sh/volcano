@@ -64,6 +64,7 @@ func (h *MemoryQoSHandle) Handle(event interface{}) error {
 	if err != nil {
 		return fmt.Errorf("failed to get pod cgroup file(%s), error: %v", podEvent.UID, err)
 	}
+
 	qosLevelFile := path.Join(cgroupPath, cgroup.MemoryQoSLevelFile)
 	qosLevel := []byte(fmt.Sprintf("%d", extension.NormalizeQosLevel(podEvent.QoSLevel)))
 
