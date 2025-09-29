@@ -29,6 +29,12 @@ import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
+const (
+	OrderingLess    = -1
+	OrderingEqual   = 0
+	OrderingGreater = 1
+)
+
 // TaskStatus defines the status of a task/pod.
 type TaskStatus int
 
