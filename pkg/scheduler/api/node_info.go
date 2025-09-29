@@ -507,6 +507,7 @@ func (ni *NodeInfo) addResource(pod *v1.Pod) {
 		ni.Others[gpushare.DeviceName].(Devices).AddResource(pod)
 	}
 	ni.Others[vgpu.DeviceName].(Devices).AddResource(pod)
+	ni.Others[vnpu.DeviceName].(Devices).AddResource(pod)
 }
 
 // subResource is used to subtract sharable devices
@@ -515,6 +516,7 @@ func (ni *NodeInfo) subResource(pod *v1.Pod) {
 		ni.Others[gpushare.DeviceName].(Devices).SubResource(pod)
 	}
 	ni.Others[vgpu.DeviceName].(Devices).SubResource(pod)
+	ni.Others[vnpu.DeviceName].(Devices).SubResource(pod)
 }
 
 // UpdateTask is used to update a task in nodeInfo object.

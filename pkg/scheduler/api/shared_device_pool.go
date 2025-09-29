@@ -61,6 +61,8 @@ type Devices interface {
 	// scheduling policies.
 	ScoreNode(pod *v1.Pod, policy string) float64
 
+	//ScoreBatchNodes(pod *v1.Pod, schedulePolicy string, neighbours []*Devices) []float64
+
 	// Allocate action in predicate
 	Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error
 	// Release action in predicate

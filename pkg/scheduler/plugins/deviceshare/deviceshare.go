@@ -32,6 +32,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	vnpu310p "volcano.sh/volcano/pkg/scheduler/plugins/deviceshare/policy/ascend/310p/vnpu"
 )
 
 // PluginName indicates name of volcano scheduler plugin.
@@ -124,7 +125,55 @@ func getDeviceScore(ctx context.Context, pod *v1.Pod, node *api.NodeInfo, schedu
 	return int64(math.Floor(s + 0.5)), nil
 }
 
+func ScoreBatchNodes(pod *v1.Pod, schedulePolicy string, device api.Devices, neighbours []api.Devices) []float64 {
+	switch d := device.(type) {
+	case *vnpu.NPUDevices:
+		// if you need to rewrite your score policy, add a case here
+		return vnpu310p.ScoreBatchNodes(pod, schedulePolicy, d, neighbours)
+	default:
+		score := make([]float64, 0)
+		score = append(score, device.ScoreNode(pod, schedulePolicy))
+		return score
+	}
+}
+
+func initScoreMap(nodes []*api.NodeInfo) map[string]float64 {
+	scoreMap := make(map[string]float64, len(nodes))
+	for _, node := range nodes {
+		if reflect.ValueOf(node).IsNil() {
+			continue
+		}
+		scoreMap[node.Name] = 0.0
+	}
+	return scoreMap
+}
+
+func initializeDevicesWithSession(ssn *framework.Session) {
+	for _, nodeInfo := range ssn.Nodes { // initialize every device in every node with global ssn
+		for _, val := range api.RegisteredDevices {
+			if dev, ok := nodeInfo.Others[val].(api.Devices); ok {
+				if err := initializeDevice(dev, ssn, nodeInfo); err != nil {
+					klog.Warningf("Failed to initialize devices with session for node %s: %v", nodeInfo.Name, err)
+				}
+			}
+		}
+	}
+}
+
+// initialization function for different devices
+func initializeDevice(device api.Devices, ssn *framework.Session, nodeInfo *api.NodeInfo) error {
+	switch d := device.(type) {
+	case *vnpu.NPUDevices:
+		return vnpu310p.InitVNPUDevice(d, ssn, nodeInfo)
+	default:
+		return nil
+	}
+}
+
 func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
+	// initialize devices which needs ssn as input
+	initializeDevicesWithSession(ssn)
+
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddPredicateFn(dp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
 		predicateStatus := make([]*api.Status, 0)
@@ -180,6 +229,48 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(5).Infof("Node: %s, task<%s/%s> Device Score weight %d, score: %f", node.Name, task.Namespace, task.Name, dp.scheduleWeight, nodeScore)
 		}
 		return nodeScore, nil
+	})
+
+	ssn.AddBatchNodeOrderFn(dp.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+		scoreMap := initScoreMap(nodes)
+		for _, deviceType := range api.RegisteredDevices {
+			//get all nodes' this device
+			//neighbours store all devices of the global nodes
+			neighbours := make([]api.Devices, 0)
+			for _, node := range nodes {
+				device, ok := node.Others[deviceType]
+				if ok {
+					if deviceInterface, isDeviceInterface := device.(api.Devices); isDeviceInterface {
+						neighbours = append(neighbours, deviceInterface)
+					}
+				}
+			}
+			for _, node := range nodes {
+				if dev, ok := node.Others[deviceType].(api.Devices); ok {
+					if reflect.ValueOf(dev).IsNil() {
+						// TODO When a pod requests a device of the current type, but the current node does not have such a device, an error is thrown
+						if dev == nil || dev.HasDeviceRequest(task.Pod) {
+
+							return nil, fmt.Errorf("node not initialized with device %s", deviceType)
+						}
+						klog.V(4).Infof("pod %s/%s did not request device %s on %s, skipping it", task.Pod.Namespace, task.Pod.Name, deviceType, nodes[0].Name)
+						continue
+					}
+					score := ScoreBatchNodes(task.Pod, dp.schedulePolicy, dev, neighbours)
+					if len(score) > 1 {
+						for i := range nodes {
+							scoreMap[nodes[i].Node.Name] += score[i]
+						}
+						break
+					}
+					scoreMap[node.Name] += score[0]
+				} else {
+					klog.Warningf("Devices %s assertion conversion failed, skip", deviceType)
+				}
+			}
+		}
+
+		return scoreMap, nil
 	})
 }
 
