@@ -51,7 +51,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.4.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.12.3-0.20250922071132-1aeba4dd588f
+	volcano.sh/apis v1.13.0
 )
 
 require (
