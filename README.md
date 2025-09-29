@@ -105,7 +105,7 @@ You can try Volcano by one of the following two ways.
 Install Volcano on an existing Kubernetes cluster. This way is both available for x86_64 and arm64 architecture.
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/master/installer/volcano-development.yaml
+kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/release-1.13/installer/volcano-development.yaml
 ```
 
 Enjoy! Volcano will create the following resources in `volcano-system` namespace.
@@ -189,6 +189,7 @@ Please follow the guide [Volcano Dashboard](https://github.com/volcano-sh/dashbo
 | Volcano v1.10         | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓                | -                | -                | -                |
 | Volcano v1.11         | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓                | ✓                | -                | -                |
 | Volcano v1.12         | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓                | ✓                | ✓                | -                |
+| Volcano v1.13         | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓                | ✓                | ✓                | ✓                |
 | Volcano HEAD (master) | -               | -               | -               | -               | -               | -               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓               | ✓                | ✓                | ✓                | ✓                |
 
 Key:
