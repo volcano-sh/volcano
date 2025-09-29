@@ -53,15 +53,15 @@ data:
           endpoint: https://roce-server:9090
       - source: label
         enabled: true
-          config:
-            networkTopologyTypes:
-              - topologyA2:
-                  - nodeLabel: "volcano.sh/tor" # A label that indicates which tor a node belongs to. If the values corresponding to this label on different nodes are the same, it means these nodes belong to the same tor. 
-                  - nodeLabel: "kubernetes.io/hostname" # A standard label automatically added to each node in a Kubernetes cluster, used to identify the hostname of the node.
-              - topologyA3:
-                  - nodeLabel: "volcano.sh/hypercluster" # A label that indicates which hypercluster a node belongs to. If the values corresponding to this label on different nodes are the same, it means these nodes belong to the same hypercluster.
-                  - nodeLabel: "volcano.sh/hypernode" # A label that indicates which hypernode a node belongs to. If the values corresponding to this label on different nodes are the same, it means these nodes belong to the same hypernode.
-                  - nodeLabel: "kubernetes.io/hostname" # A standard label automatically added to each node in a Kubernetes cluster, used to identify the hostname of the node.
+        config:
+          networkTopologyTypes:
+            topologyA2:
+              - nodeLabel: "volcano.sh/tor" # The label that indicates which tor a node belongs to. If the values corresponding to this label on different nodes are the same, it means these nodes belong to the same tor. 
+              - nodeLabel: "kubernetes.io/hostname" # A standard label automatically added to each node in a Kubernetes cluster, used to identify the hostname of the node.
+            topologyA3:
+              - nodeLabel: "volcano.sh/hypercluster" # The label that indicates which hypercluster a node belongs to. If the values corresponding to this label on different nodes are the same, it means these nodes belong to the same hypercluster.
+              - nodeLabel: "volcano.sh/hypernode" # The label that indicates which hypernode a node belongs to. If the values corresponding to this label on different nodes are the same, it means these nodes belong to the same hypernode.
+              - nodeLabel: "kubernetes.io/hostname" # A standard label automatically added to each node in a Kubernetes cluster, used to identify the hostname of the node.
 ```
 
 ### Configuration Options

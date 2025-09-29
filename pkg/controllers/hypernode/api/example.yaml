@@ -20,10 +20,10 @@ networkTopologyDiscovery:
     enabled: true
     config:
       networkTopologyTypes:
-        - topologyA2:
-            - nodeLabel: "volcano.sh/tor"
-            - nodeLabel: "kubernetes.io/hostname"
-        - topologyA3:
-            - nodeLabel: "volcano.sh/hypercluster"
-            - nodeLabel: "volcano.sh/hypernode"
-            - nodeLabel: "kubernetes.io/hostname"
+        topologyA2:
+          - nodeLabel: "volcano.sh/tor"
+          - nodeLabel: "kubernetes.io/hostname"
+        topologyA3:
+          - nodeLabel: "volcano.sh/hypercluster"
+          - nodeLabel: "volcano.sh/hypernode"
+          - nodeLabel: "kubernetes.io/hostname"
