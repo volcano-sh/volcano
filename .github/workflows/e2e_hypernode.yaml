@@ -36,7 +36,7 @@ jobs:
           curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.31.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
 
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
       
       - name: Run E2E Tests
         run: |
