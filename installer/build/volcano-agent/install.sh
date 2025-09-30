@@ -32,7 +32,7 @@ function log()
 function set_sched_prio_load_balance_enabled() {
     log "Start to enable cpu load balance"
     if [[ ! -f ${LOAD_BALANCE_ENABLED_PATH} ]]; then
-        log "Enable cpu load balance failed, file(${LOAD_BALANCE_ENABLED_PATH}) does not existed"
+        log "Skip enabling CPU load balance: file(${LOAD_BALANCE_ENABLED_PATH}) not found. OverSubscription, Node Pressure Eviction colocation features remain available"
         return 0
     fi
     cat ${LOAD_BALANCE_ENABLED_PATH}
@@ -43,7 +43,7 @@ function set_sched_prio_load_balance_enabled() {
 function set_memory_qos_enabled(){
     log "Start to enable memory qos enable"
     if [[ ! -f ${MEMORY_QOS_ENABLED_PATH} ]]; then
-        log "Enable memory cgroup qos failed, file(${MEMORY_QOS_ENABLED_PATH}) does not existed"
+        log "Skip enabling memory cgroup qos: file(${MEMORY_QOS_ENABLED_PATH}) not found. OverSubscription, Node Pressure Eviction colocation features remain available"
         return 0
     fi
     cat ${MEMORY_QOS_ENABLED_PATH}

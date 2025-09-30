@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Volcano Authors.
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,21 +14,62 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package predicates
+package resourcestrategyfit
 
 import (
 	"fmt"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
+type baseResource struct {
+	CPU    float64
+	Memory float64
+}
+
+func calculateProportionalResources(resources []string, cfg proportionalConfig) map[v1.ResourceName]baseResource {
+	resourcesProportional := make(map[v1.ResourceName]baseResource)
+
+	for _, resource := range resources {
+		resource = strings.TrimSpace(resource)
+		if resource == "" {
+			continue
+		}
+		// proportional.resources.[ResourceName]
+		cpuResourceKey := resource + ".cpu"
+		cpuResourceRate := 1.0
+		if v, ok := cfg.ResourceProportion[cpuResourceKey]; ok {
+			cpuResourceRate = v
+		}
+		if cpuResourceRate < 0 {
+			cpuResourceRate = 1.0
+		}
+		memoryResourceKey := resource + ".memory"
+		memoryResourceRate := 1.0
+		if v, ok := cfg.ResourceProportion[memoryResourceKey]; ok {
+			memoryResourceRate = v
+		}
+		if memoryResourceRate < 0 {
+			memoryResourceRate = 1.0
+		}
+		r := baseResource{
+			CPU:    cpuResourceRate,
+			Memory: memoryResourceRate,
+		}
+		resourcesProportional[v1.ResourceName(resource)] = r
+	}
+
+	return resourcesProportional
+}
+
 // checkNodeResourceIsProportional checks if a gpu:cpu:memory is Proportional
 func checkNodeResourceIsProportional(task *api.TaskInfo, node *api.NodeInfo, proportional map[v1.ResourceName]baseResource) (*api.Status, error) {
 	status := &api.Status{
 		Code:   api.Success,
-		Plugin: ProportionalPredicate,
+		Plugin: PluginName,
 	}
 	for resourceName := range proportional {
 		if value, found := task.Resreq.ScalarResources[resourceName]; found && value > 0 {

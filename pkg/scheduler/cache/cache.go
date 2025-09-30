@@ -66,6 +66,7 @@ import (
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
+
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
@@ -119,6 +120,7 @@ type SchedulerCache struct {
 	pvInformer                 infov1.PersistentVolumeInformer
 	pvcInformer                infov1.PersistentVolumeClaimInformer
 	scInformer                 storagev1.StorageClassInformer
+	vaInformer                 storagev1.VolumeAttachmentInformer
 	pcInformer                 schedv1.PriorityClassInformer
 	quotaInformer              infov1.ResourceQuotaInformer
 	csiNodeInformer            storagev1.CSINodeInformer
@@ -638,6 +640,8 @@ func (sc *SchedulerCache) addEventHandler() {
 	sc.pvInformer.Informer()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
 	sc.scInformer.Informer()
+	sc.vaInformer = informerFactory.Storage().V1().VolumeAttachments()
+	sc.vaInformer.Informer()
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
 	sc.csiNodeInformer.Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{

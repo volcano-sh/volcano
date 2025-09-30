@@ -127,7 +127,7 @@ func (hn *hyperNodeController) Initialize(opt *framework.ControllerOption) error
 		hn.configMapName,
 	)
 
-	hn.discoveryManager = discovery.NewManager(configLoader, hn.configMapQueue, hn.kubeClient)
+	hn.discoveryManager = discovery.NewManager(configLoader, hn.configMapQueue, hn.kubeClient, hn.vcClient)
 
 	// Add event handlers for HyperNode
 	hn.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -144,6 +144,7 @@ func (hn *hyperNodeController) watchDiscoveryResults() {
 	for result := range resultCh {
 		if result.HyperNodes != nil {
 			hn.reconcileTopology(result.Source, result.HyperNodes)
+			hn.discoveryManager.ResultSynced(result.Source)
 		}
 	}
 	klog.InfoS("Discovery result channel closed")

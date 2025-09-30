@@ -219,11 +219,6 @@ func openSession(cache cache.Cache) *Session {
 	ssn.NamespaceInfo = snapshot.NamespaceInfo
 	// calculate all nodes' resource only once in each schedule cycle, other plugins can clone it when need
 	for _, n := range ssn.Nodes {
-		if isNodeUnschedulable(n.Node) || isNodeNotReady(n.Node) {
-			klog.V(3).Infof("node %s is not ready or unschedulable, need to continue", n.Name)
-			continue
-		}
-
 		ssn.TotalResource.Add(n.Allocatable)
 	}
 
@@ -247,6 +242,21 @@ func (ssn *Session) parseHyperNodesTiers() {
 	ssn.HyperNodesTiers = tiers
 }
 
+func addNodeSharableDeviceUsage(ssn *Session, task *api.TaskInfo) {
+	node, ok := ssn.Nodes[task.NodeName]
+	taskReq := task.Resreq
+	if ok {
+		for _, sharedDevices := range node.Others {
+			if devices, ok := sharedDevices.(api.Devices); ok && devices.HasDeviceRequest(task.Pod) {
+				sResources := devices.AddQueueResource(task.Pod)
+				for k, v := range sResources {
+					taskReq.ScalarResources[v1.ResourceName(k)] = v
+				}
+			}
+		}
+	}
+}
+
 // updateQueueStatus updates allocated field in queue status on session close.
 func updateQueueStatus(ssn *Session) {
 	rootQueue := api.QueueID("root")
@@ -259,6 +269,7 @@ func updateQueueStatus(ssn *Session) {
 		for status, tasks := range job.TaskStatusIndex {
 			if api.AllocatedStatus(status) {
 				for _, task := range tasks {
+					addNodeSharableDeviceUsage(ssn, task)
 					allocatedResources[job.Queue].Add(task.Resreq)
 					// recursively updates the allocated resources of parent queues
 					queue := ssn.Queues[job.Queue].Queue
@@ -787,6 +798,19 @@ func (ssn *Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reaso
 // SharedDRAManager returns the shared DRAManager from cache
 func (ssn *Session) SharedDRAManager() k8sframework.SharedDRAManager {
 	return ssn.cache.SharedDRAManager()
+}
+
+// HierarchyEnabled returns whether plugin enabled hierarchical queues
+func (ssn *Session) HierarchyEnabled(pluginName string) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if plugin.Name != pluginName {
+				continue
+			}
+			return plugin.EnabledHierarchy != nil && *plugin.EnabledHierarchy
+		}
+	}
+	return false
 }
 
 // String return nodes and jobs information in the session

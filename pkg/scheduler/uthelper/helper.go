@@ -19,6 +19,8 @@ package uthelper
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -97,6 +99,8 @@ type TestCommonStruct struct {
 	ExpectBindsNum int
 	// ExpectEvictNum the expected evict events numbers, include preempted and reclaimed evict events
 	ExpectEvictNum int
+
+	ExpectBindNumsInHyperNode []int
 
 	// MinimalBindCheck true will only check both bind num, false by default.
 	MinimalBindCheck bool
@@ -356,5 +360,52 @@ func (test *TestCommonStruct) CheckPipelined(caseIndex int) error {
 			}
 		}
 	}
+	return nil
+}
+
+// CheckBind check expected bind result
+func (test *TestCommonStruct) CheckBindInHyperNode(caseIndex int) error {
+	binder := test.binder.(*util.FakeBinder)
+	for i := 0; i < test.ExpectBindsNum; i++ {
+		select {
+		case <-binder.Channel:
+		case <-time.After(300 * time.Millisecond):
+			return fmt.Errorf("failed to get Bind request in case %d(%s)", caseIndex, test.Name)
+		}
+	}
+
+	// in case expected test.BindsNum is 0, but actually there is a binding and wait the binding goroutine to run
+	select {
+	case <-time.After(300 * time.Millisecond):
+	case key := <-binder.Channel:
+		return fmt.Errorf("unexpect binding %s in case %d(%s)", key, caseIndex, test.Name)
+	}
+
+	if test.MinimalBindCheck {
+		return nil
+	}
+
+	binds := binder.Binds()
+
+	if test.ExpectBindsNum != len(binds) {
+		return fmt.Errorf("invalid setting for binding check: want bind count %d, want bind result length %d", test.ExpectBindsNum, len(binds))
+	}
+
+	realHyperNode := make(map[string]int, 0)
+	for _, node := range binds {
+		hyperNode := util.FindHyperNodeForNode(node, test.ssn.RealNodesList, test.ssn.HyperNodesTiers, test.ssn.HyperNodesSetByTier)
+		realHyperNode[hyperNode] += 1
+	}
+
+	actualBindNums := make([]int, 0, len(realHyperNode))
+	for _, value := range realHyperNode {
+		actualBindNums = append(actualBindNums, value)
+	}
+	sort.Ints(actualBindNums)
+
+	if !slices.Equal(actualBindNums, test.ExpectBindNumsInHyperNode) {
+		return fmt.Errorf("case %d(%s) check bind: \nwant: %v\n got: %v ", caseIndex, test.Name, test.ExpectBindNumsInHyperNode, actualBindNums)
+	}
+
 	return nil
 }

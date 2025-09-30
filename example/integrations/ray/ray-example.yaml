@@ -1,0 +1,32 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: ray-cluster-job
+spec:
+  minAvailable: 3
+  schedulerName: volcano
+  plugins:
+    ray: []
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  queue: default
+  tasks:
+    - replicas: 1
+      name: head
+      template:
+        spec:
+          containers:
+            - name: head
+              image: bitnami/ray:2.49.0
+              resources: {}
+          restartPolicy: OnFailure
+    - replicas: 2
+      name: worker
+      template:
+        spec:
+          containers:
+            - name: worker
+              image: bitnami/ray:2.49.0
+              resources: {}
+          restartPolicy: OnFailure

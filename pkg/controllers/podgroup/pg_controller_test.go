@@ -37,6 +37,7 @@ import (
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/framework"
@@ -1118,4 +1119,145 @@ func Test_pgcontroller_updateExistingPodGroup(t *testing.T) {
 			t.Error("expected isUpdated true, got false")
 		}
 	})
+}
+
+func TestBuildPodGroupFromPodWithNetworkTopology(t *testing.T) {
+	namespace := "test"
+
+	testCases := []struct {
+		name                    string
+		pod                     *v1.Pod
+		expectedNetworkTopology *scheduling.NetworkTopologySpec
+	}{
+		{
+			name: "Pod with NetworkTopology annotations - hard mode with tier",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: namespace,
+					Annotations: map[string]string{
+						topologyv1alpha1.NetworkTopologyModeAnnotationKey:        "hard",
+						topologyv1alpha1.NetworkTopologyHighestTierAnnotationKey: "2",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "test-container",
+							Image: "test-image",
+						},
+					},
+				},
+			},
+			expectedNetworkTopology: &scheduling.NetworkTopologySpec{
+				Mode:               scheduling.HardNetworkTopologyMode,
+				HighestTierAllowed: ptr.To(2),
+			},
+		},
+		{
+			name: "Pod with NetworkTopology annotations - soft mode only",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: namespace,
+					Annotations: map[string]string{
+						topologyv1alpha1.NetworkTopologyModeAnnotationKey: "soft",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "test-container",
+							Image: "test-image",
+						},
+					},
+				},
+			},
+			expectedNetworkTopology: &scheduling.NetworkTopologySpec{
+				Mode:               scheduling.SoftNetworkTopologyMode,
+				HighestTierAllowed: nil,
+			},
+		},
+		{
+			name: "Pod with tier annotation only - should default to hard mode",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: namespace,
+					Annotations: map[string]string{
+						topologyv1alpha1.NetworkTopologyHighestTierAnnotationKey: "1",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "test-container",
+							Image: "test-image",
+						},
+					},
+				},
+			},
+			expectedNetworkTopology: &scheduling.NetworkTopologySpec{
+				Mode:               scheduling.HardNetworkTopologyMode,
+				HighestTierAllowed: ptr.To(1),
+			},
+		},
+		{
+			name: "Pod without NetworkTopology annotations",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: namespace,
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "test-container",
+							Image: "test-image",
+						},
+					},
+				},
+			},
+			expectedNetworkTopology: nil,
+		},
+		{
+			name: "Pod with invalid mode annotation - should default to hard",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: namespace,
+					Annotations: map[string]string{
+						topologyv1alpha1.NetworkTopologyModeAnnotationKey:        "invalid",
+						topologyv1alpha1.NetworkTopologyHighestTierAnnotationKey: "3",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "test-container",
+							Image: "test-image",
+						},
+					},
+				},
+			},
+			expectedNetworkTopology: &scheduling.NetworkTopologySpec{
+				Mode:               scheduling.HardNetworkTopologyMode,
+				HighestTierAllowed: ptr.To(3),
+			},
+		},
+	}
+
+	controller := newFakeController()
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			pgName := "test-podgroup"
+			podGroup := controller.buildPodGroupFromPod(testCase.pod, pgName)
+
+			assert.NotNil(t, podGroup)
+			assert.Equal(t, pgName, podGroup.Name)
+			assert.Equal(t, namespace, podGroup.Namespace)
+			assert.Equal(t, testCase.expectedNetworkTopology, podGroup.Spec.NetworkTopology)
+		})
+	}
 }

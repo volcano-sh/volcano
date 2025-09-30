@@ -158,11 +158,11 @@ func decodePodDevices(str string) []ContainerDevices {
 
 func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 	for _, container := range pod.Spec.Containers {
-		_, ok := container.Resources.Limits[config.VolcanoVGPUMemory]
+		_, ok := container.Resources.Limits[v1.ResourceName(getConfig().ResourceMemoryName)]
 		if ok {
 			return true
 		}
-		_, ok = container.Resources.Limits[config.VolcanoVGPUNumber]
+		_, ok = container.Resources.Limits[v1.ResourceName(getConfig().ResourceCountName)]
 		if ok {
 			return true
 		}
@@ -171,10 +171,10 @@ func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 }
 
 func resourcereqs(pod *v1.Pod) []ContainerDeviceRequest {
-	resourceName := v1.ResourceName(config.VolcanoVGPUNumber)
-	resourceMem := v1.ResourceName(config.VolcanoVGPUMemory)
-	resourceMemPercentage := v1.ResourceName(config.VolcanoVGPUMemoryPercentage)
-	resourceCores := v1.ResourceName(config.VolcanoVGPUCores)
+	resourceName := v1.ResourceName(getConfig().ResourceCountName)
+	resourceMem := v1.ResourceName(getConfig().ResourceMemoryName)
+	resourceMemPercentage := v1.ResourceName(getConfig().ResourceMemoryPercentageName)
+	resourceCores := v1.ResourceName(getConfig().ResourceCoreName)
 	counts := []ContainerDeviceRequest{}
 
 	//Count Nvidia GPU
@@ -499,4 +499,11 @@ func patchNodeAnnotations(node *v1.Node, annotations map[string]string) error {
 		klog.Errorf("patch node %v failed, %v", node.Name, err)
 	}
 	return err
+}
+
+func getConfig() config.NvidiaConfig {
+	if config.GetConfig() != nil {
+		return config.GetConfig().NvidiaConfig
+	}
+	return config.GetDefaultDevicesConfig().NvidiaConfig
 }

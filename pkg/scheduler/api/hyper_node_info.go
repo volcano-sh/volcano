@@ -88,13 +88,44 @@ type HyperNodeInfo struct {
 	isDeleting bool
 }
 
+// HyperNodeInfoOption defines a function type for configuring HyperNodeInfo.
+type HyperNodeInfoOption func(*HyperNodeInfo)
+
+// TierOpt returns an option that sets the tier of the HyperNodeInfo.
+func TierOpt(tier int) HyperNodeInfoOption {
+	return func(hni *HyperNodeInfo) {
+		hni.tier = tier
+	}
+}
+
+// ParentOpt returns an option that sets the parent of the HyperNodeInfo.
+func ParentOpt(parent string) HyperNodeInfoOption {
+	return func(hni *HyperNodeInfo) {
+		hni.parent = parent
+	}
+}
+
+// IsDeletingOpt returns an option that sets the isDeleting flag of the HyperNodeInfo.
+func IsDeletingOpt(isDeleting bool) HyperNodeInfoOption {
+	return func(hni *HyperNodeInfo) {
+		hni.isDeleting = isDeleting
+	}
+}
+
 // NewHyperNodeInfo creates a new HyperNodeInfo instance.
-func NewHyperNodeInfo(hn *topologyv1alpha1.HyperNode) *HyperNodeInfo {
-	return &HyperNodeInfo{
+func NewHyperNodeInfo(hn *topologyv1alpha1.HyperNode, opts ...HyperNodeInfoOption) *HyperNodeInfo {
+	hni := &HyperNodeInfo{
 		Name:      hn.Name,
 		HyperNode: hn,
 		tier:      hn.Spec.Tier,
 	}
+
+	// Apply all options
+	for _, opt := range opts {
+		opt(hni)
+	}
+
+	return hni
 }
 
 // String returns a string representation of the HyperNodeInfo.

@@ -122,9 +122,20 @@ spec:
             {{- toYaml $agent_main_csc | nindent 12 }}
           {{- end }}
           command:
-            - /bin/sh
-            - '-c'
-            - /vc-agent --v=2 1>>/var/log/volcano/agent/volcano-agent.log 2>&1
+          - /bin/sh
+          - -c
+          - |
+           /vc-agent \
+           {{- with .Values.custom.agent_supported_features }}
+           --supported-features={{ . }} \
+           {{- end }}
+           {{- with .Values.custom.agent_extend_resource_cpu_name }}
+           --extend-resource-cpu-name={{ . }} \
+           {{- end }}
+           {{- with .Values.custom.agent_extend_resource_memory_name }}
+           --extend-resource-memory-name={{ . }} \
+           {{- end }}
+           --v=2 1>> /var/log/volcano/agent/volcano-agent.log 2>&1
           env:
             - name: SYS_FS_PATH
               value: /host/sys/fs
