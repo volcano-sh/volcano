@@ -8837,7 +8837,7 @@ spec:
             - --node-worker-threads=20
             - -v=3
             - 2>&1
-          env:
+          env: 
             - name: DEBUG_SOCKET_DIR
               value: /tmp/klog-socks
           imagePullPolicy: Always

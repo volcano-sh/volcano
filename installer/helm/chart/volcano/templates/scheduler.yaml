@@ -5,6 +5,7 @@
 {{ $scheduler_main_csc := or .Values.custom.scheduler_main_csc .Values.custom.default_csc }}
 {{ $scheduler_ns := or .Values.custom.scheduler_ns .Values.custom.default_ns }}
 {{ $scheduler_name := .Values.custom.scheduler_name }}
+{{ $multi_scheduler_enabled := .Values.custom.multi_scheduler_enabled | default false }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -139,9 +140,12 @@ roleRef:
   kind: ClusterRole
   name: {{ .Release.Name }}-scheduler
   apiGroup: rbac.authorization.k8s.io
-
 ---
+{{- if not $multi_scheduler_enabled }}
 kind: Deployment
+{{- else }}
+kind: StatefulSet
+{{- end }}
 apiVersion: apps/v1
 metadata:
   name: {{ .Release.Name }}-scheduler
@@ -232,6 +236,16 @@ spec:
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1
           env:
+            {{- if $multi_scheduler_enabled }}
+            - name: MULTI_SCHEDULER_ENABLE
+              value: "{{ $multi_scheduler_enabled }}"
+            - name: SCHEDULER_NUM
+              value: "{{ .Values.custom.scheduler_replicas }}"
+            - name: SCHEDULER_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- end }} 
             - name: DEBUG_SOCKET_DIR
               value: /tmp/klog-socks
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
@@ -266,6 +280,9 @@ metadata:
     {{- toYaml .Values.custom.common_labels | nindent 4 }}
     {{- end }}
 spec:
+  {{- if $multi_scheduler_enabled }}
+  clusterIP: None
+  {{- end }}
   {{- if .Values.service.ipFamilyPolicy }}
   ipFamilyPolicy: {{ .Values.service.ipFamilyPolicy }}
   {{- end }}
