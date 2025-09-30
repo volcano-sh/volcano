@@ -127,6 +127,7 @@ func TestPreemptableAndReclaimableFn(t *testing.T) {
 					Name: "shuffle",
 				},
 			},
+			nil,
 		)
 
 		// (d. register actions

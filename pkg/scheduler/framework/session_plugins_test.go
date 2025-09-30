@@ -113,7 +113,7 @@ func TestFilterOutPreemptMayNotHelpNodes(t *testing.T) {
 			for _, queue := range test.Queues {
 				scherCache.AddQueueV1beta1(queue)
 			}
-			ssn := OpenSession(scherCache, nil, nil)
+			ssn := OpenSession(scherCache, nil, nil, nil)
 			defer CloseSession(ssn)
 			for _, job := range ssn.Jobs {
 				for _, task := range job.TaskStatusIndex[api.Pending] {
