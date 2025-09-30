@@ -127,7 +127,8 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 	queue8 := util.BuildQueueWithPriorityAndResourcesQuantity("q8", 1, nil, api.BuildResourceList("2", "4Gi"))
 	queue9 := util.BuildQueueWithPriorityAndResourcesQuantity("q9", 10, nil, api.BuildResourceList("2", "4Gi"))
 
-	// case5: p16 + p17 in queue10 will exceed queue's deserved, is not preemptive
+	// case5:
+	// p16 + p17 in equals queue10 deserved on cpu dimension
 	p16 := util.BuildPod("ns1", "p16", "n1", corev1.PodRunning, api.BuildResourceList("1", "3Gi"), "pg16", make(map[string]string), nil)
 	p17 := util.BuildPod("ns1", "p17", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg17", make(map[string]string), nil)
 	p18 := util.BuildPod("ns1", "p18", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg18", make(map[string]string), nil)
@@ -138,6 +139,18 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 	// queue
 	queue10 := util.BuildQueueWithResourcesQuantity("q10", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("4", "4Gi"))
 	queue11 := util.BuildQueueWithResourcesQuantity("q11", api.BuildResourceList("0", "0Gi"), api.BuildResourceList("2", "2Gi"))
+
+	// case6: p19 + p20 in queue12 will exceed queue's deserved
+	p19 := util.BuildPod("ns1", "p19", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg19", make(map[string]string), nil)
+	p20 := util.BuildPod("ns1", "p20", "", corev1.PodPending, api.BuildResourceList("1", "2Gi"), "pg20", make(map[string]string), nil)
+	p21 := util.BuildPod("ns1", "p21", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg21", make(map[string]string), nil)
+	// podgroup
+	pg19 := util.BuildPodGroup("pg19", "ns1", "q12", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg20 := util.BuildPodGroup("pg20", "ns1", "q12", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg21 := util.BuildPodGroup("pg21", "ns1", "q13", 1, nil, schedulingv1beta1.PodGroupRunning)
+	// queue
+	queue12 := util.BuildQueueWithResourcesQuantity("q12", api.BuildResourceList("1", "2Gi"), api.BuildResourceList("4", "4Gi"))
+	queue13 := util.BuildQueueWithResourcesQuantity("q13", api.BuildResourceList("0", "0Gi"), api.BuildResourceList("2", "2Gi"))
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -201,12 +214,27 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 			ExpectBindsNum: 1,
 		},
 		{
-			Name:            "case5: Can not reclaim from other queues when allocated + req > deserved",
+			Name:      "case5: Can reclaim from other queues when allocated + req <= deserved on one dimension",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p16, p17, p18},
+			Nodes:     []*corev1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg16, pg17, pg18},
+			Queues:    []*schedulingv1beta1.Queue{queue10, queue11},
+			ExpectPipeLined: map[string][]string{
+				"ns1/pg17": {"n1"},
+			},
+			ExpectEvicted: []string{
+				"ns1/p18",
+			},
+			ExpectEvictNum: 1,
+		},
+		{
+			Name:            "case6: Can not reclaim from other queues when allocated + req > deserved",
 			Plugins:         plugins,
-			Pods:            []*corev1.Pod{p16, p17, p18},
+			Pods:            []*corev1.Pod{p19, p20, p21},
 			Nodes:           []*corev1.Node{n1},
-			PodGroups:       []*schedulingv1beta1.PodGroup{pg16, pg17, pg18},
-			Queues:          []*schedulingv1beta1.Queue{queue10, queue11},
+			PodGroups:       []*schedulingv1beta1.PodGroup{pg19, pg20, pg21},
+			Queues:          []*schedulingv1beta1.Queue{queue12, queue13},
 			ExpectPipeLined: map[string][]string{},
 			ExpectEvicted:   []string{},
 			ExpectEvictNum:  0,
