@@ -5,6 +5,8 @@
 {{ $scheduler_main_csc := or .Values.custom.scheduler_main_csc .Values.custom.default_csc }}
 {{ $scheduler_ns := or .Values.custom.scheduler_ns .Values.custom.default_ns }}
 {{ $scheduler_name := .Values.custom.scheduler_name }}
+{{ $multi_scheduler_enable := .Values.custom.multi_scheduler_enable | default false }}
+{{ $scheduler_num := .Values.custom.scheduler_replicas }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -141,6 +143,126 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 
 ---
+{{- if $multi_scheduler_enable }}
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: {{ .Release.Name }}-scheduler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: volcano-scheduler
+    {{- if or (.Values.custom.scheduler_labels) (.Values.custom.common_labels) }}
+    {{- mustMerge (.Values.custom.scheduler_labels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 4 }}
+    {{- end }}
+spec:
+  serviceName: {{ .Release.Name }}-scheduler
+  replicas: {{ .Values.custom.scheduler_replicas }}
+  selector:
+    matchLabels:
+      app: volcano-scheduler
+  template:
+    metadata:
+      labels:
+        app: volcano-scheduler
+        {{- if or (.Values.custom.scheduler_podLabels) (.Values.custom.common_labels) }}
+        {{- mustMerge (.Values.custom.scheduler_podLabels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if $scheduler_tolerations }}
+      tolerations: {{- toYaml $scheduler_tolerations | nindent 8 }}
+      {{- end }}
+      {{- if $scheduler_ns }}
+      nodeSelector: {{- toYaml $scheduler_ns | nindent 8 }}
+      {{- end }}
+      {{- if $scheduler_affinity }}
+      affinity:
+        {{- toYaml $scheduler_affinity | nindent 8 }}
+      {{- end }}
+      {{- if $scheduler_sc }}
+      securityContext:
+        {{- toYaml $scheduler_sc | nindent 8 }}
+      {{- end }}
+      serviceAccount: {{ .Release.Name }}-scheduler
+      priorityClassName: system-cluster-critical
+      {{- if .Values.basic.image_pull_secret }}
+      imagePullSecrets:
+          - name: {{ .Values.basic.image_pull_secret }}
+      {{- end }}
+      containers:
+        - name: {{ .Release.Name }}-scheduler
+          image: {{ .Values.basic.image_registry }}/{{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
+          {{- if .Values.custom.scheduler_resources }}
+          resources:
+          {{- toYaml .Values.custom.scheduler_resources | nindent 12 }}
+          {{- end }}
+          args:
+            - --logtostderr
+            - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.scheduler_config_file}}
+            {{- if $scheduler_name }}
+            - --scheduler-name={{- $scheduler_name }}
+            {{- end }}
+            - --enable-healthz=true
+            {{- if .Values.custom.scheduler_metrics_enable }}
+            - --enable-metrics=true
+            {{- end }}
+            {{- if .Values.custom.scheduler_pprof_enable }}
+            - --enable-pprof=true
+            {{- end }}
+            - --leader-elect={{ .Values.custom.leader_elect_enable }}
+            {{- if .Values.custom.leader_elect_enable }}
+            - --leader-elect-resource-namespace={{ .Release.Namespace }}
+            {{- end }}
+            {{- if .Values.custom.scheduler_kube_api_qps }}
+            - --kube-api-qps={{.Values.custom.scheduler_kube_api_qps}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_kube_api_burst }}
+            - --kube-api-burst={{.Values.custom.scheduler_kube_api_burst}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_schedule_period }}
+            - --schedule-period={{.Values.custom.scheduler_schedule_period}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_node_worker_threads }}
+            - --node-worker-threads={{.Values.custom.scheduler_node_worker_threads}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_plugins_dir }}
+            - --plugins-dir={{ .Values.custom.scheduler_plugins_dir }}
+            {{- end }}
+            {{- if .Values.custom.scheduler_feature_gates }}
+            - --feature-gates={{ .Values.custom.scheduler_feature_gates }}
+            {{- end }}
+            {{- if .Values.custom.ignored_provisioners }}
+            - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
+            {{- end}}
+            - -v={{.Values.custom.scheduler_log_level}}
+            - 2>&1
+          env:
+            - name: MULTI_SCHEDULER_ENABLE
+              value: "{{ $multi_scheduler_enable }}"
+            - name: SCHEDULER_NUM
+              value: "{{ $scheduler_num }}"
+            - name: SCHEDULER_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: DEBUG_SOCKET_DIR
+              value: /tmp/klog-socks
+          imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+          volumeMounts:
+            - name: scheduler-config
+              mountPath: /volcano.scheduler
+            - name: klog-sock
+              mountPath: /tmp/klog-socks
+          {{- if $scheduler_main_csc }}
+          securityContext:
+            {{- toYaml $scheduler_main_csc | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: scheduler-config
+          configMap:
+            name: {{ .Release.Name }}-scheduler-configmap
+        - name: klog-sock
+          emptyDir: {}
+{{- else }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -250,6 +372,7 @@ spec:
             name: {{ .Release.Name }}-scheduler-configmap
         - name: klog-sock
           emptyDir: {}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -280,4 +403,26 @@ spec:
   selector:
     app: volcano-scheduler
   type: ClusterIP
+---
+{{- if $multi_scheduler_enable }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-scheduler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: volcano-scheduler
+    {{- if .Values.custom.common_labels }}
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+    name: "metrics"
+  clusterIP: None
+  selector:
+    app: volcano-scheduler
+{{- end }}
 {{- end }}
