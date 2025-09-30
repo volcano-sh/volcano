@@ -702,13 +702,14 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 		ancestors: make([]api.QueueID, 0),
 		children:  make(map[api.QueueID]*queueAttr),
 
-		deserved:   api.NewResource(queue.Queue.Spec.Deserved),
-		allocated:  api.EmptyResource(),
-		request:    api.EmptyResource(),
-		elastic:    api.EmptyResource(),
-		inqueue:    api.EmptyResource(),
-		guarantee:  api.EmptyResource(),
-		capability: api.EmptyResource(),
+		deserved:       api.NewResource(queue.Queue.Spec.Deserved),
+		allocated:      api.EmptyResource(),
+		request:        api.EmptyResource(),
+		elastic:        api.EmptyResource(),
+		inqueue:        api.EmptyResource(),
+		guarantee:      api.EmptyResource(),
+		capability:     api.EmptyResource(),
+		realCapability: api.EmptyResource(),
 	}
 	if len(queue.Queue.Spec.Capability) != 0 {
 		attr.capability = api.NewResource(queue.Queue.Spec.Capability)
