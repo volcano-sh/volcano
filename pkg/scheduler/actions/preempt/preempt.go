@@ -541,13 +541,14 @@ func (pmpt *Action) findBestPreemptionTarget(
 	)
 	for _, n := range selectedNodes {
 		idle := n.FutureIdle()
+		idle.SetScalar("pods", 0)
 		// Fits without preemption
 		if preemptor.InitResreq.LessEqual(idle, api.Zero) {
 			return nil, n
 		}
 		need := preemptor.InitResreq.Clone()
 		// idle could be 0
-		need.SubWithoutAssert(idle)
+		need.Sub(idle)
 		for j, jtasks := range nodeJobVictimsMap[n.Name] {
 			sum := api.EmptyResource()
 			for _, t := range jtasks {
@@ -581,9 +582,9 @@ func (pmpt *Action) findBestPreemptionTarget(
 
 	for _, n := range selectedNodes {
 		idle := n.FutureIdle()
+		idle.SetScalar("pods", 0)
 		need := preemptor.InitResreq.Clone()
-		// idle could be 0
-		need.SubWithoutAssert(idle)
+		need.Sub(idle)
 
 		// Build candidates: per-job sum on this node
 		type jr struct {
