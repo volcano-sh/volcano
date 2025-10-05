@@ -98,6 +98,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	readyToSchedule := true
 	if hierarchyEnabled {
 		readyToSchedule = cp.buildHierarchicalQueueAttrs(ssn)
+		klog.V(4).Infof("Hierarchy is enabled in capacity plugin")
 	} else {
 		cp.buildQueueAttrs(ssn)
 	}
@@ -113,22 +114,64 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, reclaimee := range reclaimees {
 			job := ssn.Jobs[reclaimee.Job]
 			attr := cp.queueOpts[job.Queue]
+			klog.V(5).Infof("Considering reclaimee <%s/%s> from queue <%s> for reclaimer <%s/%s>.",
+				reclaimee.Namespace, reclaimee.Name, attr.queueID, reclaimer.Namespace, reclaimer.Name)
+			reclaimable := false
 
+			// If reclaimee doesn't have intersecting resource dimensions with reclaimer we can skip it.
+			reclaimerIntersecting := len(api.IntersectionWithIgnoredScalarResources(reclaimee.Resreq, reclaimer.Resreq)) > 0
+			if !reclaimerIntersecting {
+				klog.V(5).Infof("Reclaimee <%s/%s>: <%v> does not have intersecting resource dimensions with reclaimer <%s/%s>: <%v>, skip it.",
+					reclaimee.Namespace, reclaimee.Name, reclaimee.Resreq, reclaimer.Namespace, reclaimer.Name, reclaimer.Resreq)
+				continue
+			}
+
+			// allocations maps each queue to its current allocated resources (cloned) and 'allocated' points to this resource object.
+			// As victims (reclaimees) are selected, their resource requests are subtracted from the corresponding queue's allocation via this pointer.
+			// This ensures that subsequent victim selection for the same queue uses the updated allocation state.
 			if _, found := allocations[job.Queue]; !found {
 				allocations[job.Queue] = attr.allocated.Clone()
 			}
 			allocated := allocations[job.Queue]
 
+			// Check guarantee
 			exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
-			// When scalar resource not specified in deserved such as "pods", we should skip it and consider it as infinity,
-			// so the following first condition will be true and the current queue will not be reclaimed.
-			if allocated.LessEqual(attr.deserved, api.Infinity) || !attr.guarantee.LessEqual(exceptReclaimee, api.Zero) {
+			reclaimable = attr.guarantee.LessEqual(exceptReclaimee, api.Zero)
+			if !reclaimable {
 				continue
 			}
+
+			// If the reclaimee has no intersecting resource dimensions with deserved, it is a victim.
+			deservedIntersecting := len(api.Intersection(reclaimee.Resreq, attr.deserved)) > 0
+			if !deservedIntersecting {
+				allocated.Sub(reclaimee.Resreq)
+				victims = append(victims, reclaimee)
+				klog.V(5).Infof("No intersection between deserved: %v and reclaimee <%s/%s>. It's a victim."+
+					" Current victims: %+v.", attr.deserved, reclaimee.Namespace, reclaimee.Name, victims)
+				continue
+			}
+
+			// Check deserved
+			reclaimable, dims := allocated.GreaterPartlyWithRelevantDimensions(attr.deserved, reclaimee.Resreq)
+			if !reclaimable {
+				klog.V(5).Infof(
+					"Queue <%v> allocated resources are not greater than deserved on any relevant dimension of reclaimee. "+
+						"Hence reclaimee <%s/%s> cannot be reclaimed for reclaimer <%s/%s>. "+
+						"Deserved: <%v>, Allocated: <%v>, Reclaimee Resreq: <%v>. ",
+					attr.name, reclaimee.Namespace, reclaimee.Name, reclaimer.Namespace, reclaimer.Name, attr.deserved, allocated, reclaimee.Resreq,
+				)
+				continue
+			}
+
+			klog.V(5).Infof("Reclaimee <%s/%s> is a victim from queue <%s> for reclaimer <%s/%s>. "+
+				"Allocated: <%v>, Deserved: <%v>, Reclaimee Resreq: <%v>, Reclaimable on dimensions: %v.",
+				reclaimee.Namespace, reclaimee.Name, attr.queueID, reclaimer.Namespace, reclaimer.Name,
+				allocated, attr.deserved, reclaimee.Resreq, dims)
 			allocated.Sub(reclaimee.Resreq)
 			victims = append(victims, reclaimee)
+			klog.V(5).Infof("Current victims: %+v.", victims)
 		}
-		klog.V(4).Infof("Victims from capacity plugin, victims=%+v reclaimer=%s", victims, reclaimer)
+		klog.V(4).Infof("Victims from capacity plugin: victims=%+v reclaimer=%s.", victims, reclaimer)
 		return victims, util.Permit
 	})
 
