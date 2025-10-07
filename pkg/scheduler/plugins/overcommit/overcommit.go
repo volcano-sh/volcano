@@ -121,13 +121,15 @@ func (op *overcommitPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		//TODO: if allow 1 more job to be inqueue beyond overcommit-factor, large job may be inqueue and create pods
 		jobMinReq := job.GetMinResources()
-		if inqueue.Add(jobMinReq).LessEqualWithDimension(idle, jobMinReq) { // only compare the requested resource
+		couldInqueue, resourceNames := inqueue.Add(jobMinReq).LessEqualWithDimensionAndResourcesName(idle, jobMinReq)
+		if couldInqueue { // only compare the requested resource
 			klog.V(4).Infof("Sufficient resources, permit job <%s/%s> to be inqueue", job.Namespace, job.Name)
 			return util.Permit
 		}
 		klog.V(4).Infof("Resource in cluster is overused, reject job <%s/%s> to be inqueue",
 			job.Namespace, job.Name)
-		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "resource in cluster is overused")
+
+		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), util.FormatResourceNames("resource in cluster is overused", "overused", resourceNames))
 		return util.Reject
 	})
 

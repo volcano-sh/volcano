@@ -757,18 +757,30 @@ func TestLessEqual(t *testing.T) {
 	}
 }
 
-func TestLessEqualWithDimension(t *testing.T) {
+func TestLessEqualWithDimensionAndResourcesName(t *testing.T) {
 	tests := []struct {
-		resource1 *Resource
-		resource2 *Resource
-		req       *Resource
-		expected  bool
+		resource1             *Resource
+		resource2             *Resource
+		req                   *Resource
+		expectedFlag          bool
+		expectedResourceNames []string
 	}{
 		{
-			resource1: &Resource{},
-			resource2: &Resource{},
-			req:       nil,
-			expected:  true,
+			resource1:             &Resource{},
+			resource2:             &Resource{},
+			req:                   nil,
+			expectedFlag:          true,
+			expectedResourceNames: []string{},
+		},
+		{
+			resource1: &Resource{
+				MilliCPU: 5000,
+				Memory:   4000,
+			},
+			resource2:             &Resource{},
+			req:                   nil,
+			expectedFlag:          false,
+			expectedResourceNames: []string{"cpu", "memory"},
 		},
 		{
 			resource1: &Resource{MilliCPU: 5000},
@@ -777,23 +789,26 @@ func TestLessEqualWithDimension(t *testing.T) {
 				Memory:          2000,
 				ScalarResources: map[v1.ResourceName]float64{"scalar.test/scalar1": 1000},
 			},
-			req:      &Resource{MilliCPU: 1000},
-			expected: false,
+			req:                   &Resource{MilliCPU: 1000},
+			expectedFlag:          false,
+			expectedResourceNames: []string{"cpu"},
 		},
 		{
-			resource1: &Resource{MilliCPU: 3000, Memory: 3000},
-			resource2: &Resource{MilliCPU: 4000, Memory: 2000},
-			req:       &Resource{Memory: 1000},
-			expected:  false,
+			resource1:             &Resource{MilliCPU: 3000, Memory: 3000},
+			resource2:             &Resource{MilliCPU: 4000, Memory: 2000},
+			req:                   &Resource{Memory: 1000},
+			expectedFlag:          false,
+			expectedResourceNames: []string{"memory"},
 		},
 		{
 			resource1: &Resource{
 				MilliCPU: 4,
 				Memory:   4000,
 			},
-			resource2: &Resource{},
-			req:       &Resource{},
-			expected:  true,
+			resource2:             &Resource{},
+			req:                   &Resource{},
+			expectedFlag:          true,
+			expectedResourceNames: []string{},
 		},
 		{
 			resource1: &Resource{
@@ -805,7 +820,8 @@ func TestLessEqualWithDimension(t *testing.T) {
 				MilliCPU: 4, Memory: 2000,
 				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1},
 			},
-			expected: false,
+			expectedFlag:          false,
+			expectedResourceNames: []string{"nvidia.com/gpu"},
 		},
 		{
 			resource1: &Resource{
@@ -820,7 +836,8 @@ func TestLessEqualWithDimension(t *testing.T) {
 				MilliCPU: 10, Memory: 4000,
 				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 0, "nvidia.com/A100": 1, "scalar": 1},
 			},
-			expected: true,
+			expectedFlag:          true,
+			expectedResourceNames: []string{},
 		},
 		{
 			resource1: &Resource{
@@ -835,14 +852,18 @@ func TestLessEqualWithDimension(t *testing.T) {
 				Memory:          4000,
 				ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 0, "nvidia.com/A100": 1, "scalar": 1},
 			},
-			expected: true,
+			expectedFlag:          true,
+			expectedResourceNames: []string{},
 		},
 	}
 
 	for i, test := range tests {
-		flag := test.resource1.LessEqualWithDimension(test.resource2, test.req)
-		if !equality.Semantic.DeepEqual(test.expected, flag) {
-			t.Errorf("Case %v: expected: %#v, got: %#v", i, test.expected, flag)
+		flag, resourceNames := test.resource1.LessEqualWithDimensionAndResourcesName(test.resource2, test.req)
+		if !equality.Semantic.DeepEqual(test.expectedFlag, flag) {
+			t.Errorf("Case %v: expected: %#v, got: %#v", i, test.expectedFlag, flag)
+		}
+		if !equality.Semantic.DeepEqual(test.expectedResourceNames, resourceNames) {
+			t.Errorf("Case %v: expected: %#v, got: %#v", i, test.expectedResourceNames, resourceNames)
 		}
 	}
 }

@@ -122,6 +122,7 @@ type SchedulerCache struct {
 	pvInformer                 infov1.PersistentVolumeInformer
 	pvcInformer                infov1.PersistentVolumeClaimInformer
 	scInformer                 storagev1.StorageClassInformer
+	vaInformer                 storagev1.VolumeAttachmentInformer
 	pcInformer                 schedv1.PriorityClassInformer
 	quotaInformer              infov1.ResourceQuotaInformer
 	csiNodeInformer            storagev1.CSINodeInformer
@@ -657,6 +658,8 @@ func (sc *SchedulerCache) addEventHandler() {
 	sc.pvInformer.Informer()
 	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
 	sc.scInformer.Informer()
+	sc.vaInformer = informerFactory.Storage().V1().VolumeAttachments()
+	sc.vaInformer.Informer()
 	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
 	sc.csiNodeInformer.Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{

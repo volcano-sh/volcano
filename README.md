@@ -24,7 +24,8 @@ Volcano incorporates over fifteen years of collective experience in operating di
 As of 2025, Volcano has seen widespread adoption across numerous industries globally, including Internet/Cloud, Finance, Manufacturing, and Medical sectors. Many organizations and institutions are not only end-users but also active contributors to the project. Hundreds of contributors actively participate in code commits, pull request reviews, issue discussions, documentation updates, and design proposals. We encourage your participation in the ongoing development and growth of the Volcano project.
 
 
-**NOTE**: the scheduler is built based on [kube-batch](https://github.com/kubernetes-sigs/kube-batch);
+> [!NOTE]
+> the scheduler is built based on [kube-batch](https://github.com/kubernetes-sigs/kube-batch);
 refer to [#241](https://github.com/volcano-sh/volcano/issues/241) and [#288](https://github.com/volcano-sh/volcano/pull/288) for more detail.
 
 ![cncf_logo](docs/images/cncf-logo.png)
@@ -95,9 +96,9 @@ Volcano is an incubating project of the [Cloud Native Computing Foundation](http
 
 You can try Volcano by one of the following two ways.
 
-Note:
-* For Kubernetes v1.17+ use CRDs under config/crd/bases (recommended)
-* For Kubernetes versions < v1.16 use CRDs under config/crd/v1beta1 (deprecated)
+> [!NOTE]
+> * For Kubernetes v1.17 and above, use CRDs under config/crd/bases (recommended)
+> * For Kubernetes v1.16 and below, use CRDs under config/crd/v1beta1 (deprecated)
 
 ### Install with YAML files
 

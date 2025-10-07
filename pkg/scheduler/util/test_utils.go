@@ -564,3 +564,99 @@ func (ftsu *FakeStatusUpdater) UpdateQueueStatus(queue *api.QueueInfo) error {
 	// do nothing here
 	return nil
 }
+
+// QueueWrapper wraps a schedulingv1beta1.Queue for fluent construction.
+// TODO: QueueWrapper is inherited from https://github.com/volcano-sh/volcano/pull/4315, but this PR is not yet completed.
+// It is necessary to rewrite all the "BuildXXX" UT auxiliary functions in test_utils.go and use "Wrapper" to write more extensible UT auxiliary functions.
+// Once the refactor issue: https://github.com/volcano-sh/volcano/issues/4417 is completed, this TODO can be removed.
+type QueueWrapper struct {
+	*schedulingv1beta1.Queue
+}
+
+// MakeQueue creates a new QueueWrapper with the given name and default fields.
+func MakeQueue(name string) *QueueWrapper {
+	return &QueueWrapper{
+		Queue: &schedulingv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name,
+			},
+			Spec: schedulingv1beta1.QueueSpec{
+				Weight: 1, // default
+			},
+			Status: schedulingv1beta1.QueueStatus{
+				State: schedulingv1beta1.QueueStateOpen,
+			},
+		},
+	}
+}
+
+// Weight sets the weight of the queue.
+func (q *QueueWrapper) Weight(w int32) *QueueWrapper {
+	q.Spec.Weight = w
+	return q
+}
+
+// Capability sets the resource capability of the queue.
+func (q *QueueWrapper) Capability(cap v1.ResourceList) *QueueWrapper {
+	if cap == nil {
+		return q
+	}
+	copied := make(v1.ResourceList)
+	for k, v := range cap {
+		copied[k] = v.DeepCopy()
+	}
+	q.Spec.Capability = copied
+	return q
+}
+
+// Deserved sets the deserving resources of the queue.
+func (q *QueueWrapper) Deserved(deserved v1.ResourceList) *QueueWrapper {
+	if deserved == nil {
+		return q
+	}
+	copied := make(v1.ResourceList)
+	for k, v := range deserved {
+		copied[k] = v.DeepCopy()
+	}
+	q.Spec.Deserved = copied
+	return q
+}
+
+// Priority sets the priority of the queue.
+func (q *QueueWrapper) Priority(priority int32) *QueueWrapper {
+	q.Spec.Priority = priority
+	return q
+}
+
+func (q *QueueWrapper) Parent(parent string) *QueueWrapper {
+	q.Spec.Parent = parent
+	return q
+}
+
+// Annotations adds annotations to the queue object metadata.
+func (q *QueueWrapper) Annotations(annos map[string]string) *QueueWrapper {
+	if q.ObjectMeta.Annotations == nil {
+		q.ObjectMeta.Annotations = make(map[string]string)
+	}
+	for k, v := range annos {
+		q.ObjectMeta.Annotations[k] = v
+	}
+	return q
+}
+
+// State sets the state of the queue.
+func (q *QueueWrapper) State(state schedulingv1beta1.QueueState) *QueueWrapper {
+	q.Status.State = state
+	return q
+}
+
+// Affinity sets the affinity of the queue. We allow setting the affinity to nil.
+func (q *QueueWrapper) Affinity(affinity *schedulingv1beta1.Affinity) *QueueWrapper {
+	q.Spec.Affinity = affinity
+	return q
+}
+
+// Obj returns the raw Queue object.
+func (q *QueueWrapper) Obj() *schedulingv1beta1.Queue {
+	return q.Queue
+}

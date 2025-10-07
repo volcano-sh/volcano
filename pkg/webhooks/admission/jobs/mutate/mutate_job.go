@@ -29,6 +29,7 @@ import (
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/pytorch"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/ray"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/tensorflow"
 	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -236,7 +237,8 @@ func patchDefaultPlugins(job *v1alpha1.Job) *patchOperation {
 	_, hasTf := job.Spec.Plugins[tensorflow.TFPluginName]
 	_, hasMPI := job.Spec.Plugins[mpi.MPIPluginName]
 	_, hasPytorch := job.Spec.Plugins[pytorch.PytorchPluginName]
-	if hasTf || hasMPI || hasPytorch {
+	_, hasRay := job.Spec.Plugins[ray.RayPluginName]
+	if hasTf || hasMPI || hasPytorch || hasRay {
 		if _, ok := plugins["svc"]; !ok {
 			plugins["svc"] = []string{}
 		}
