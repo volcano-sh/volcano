@@ -1218,6 +1218,166 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG)",
 			ExpectErr:      true,
 		},
+		// task PartitionSize set less than zero
+		{
+			Name: "PartitionSize-lessThanZero",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "PartitionSize-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   -1,
+								TotalPartitions: 8,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "'PartitionSize' must be greater than 0 in task: task-1, job: PartitionSize-lessThanZero",
+			ExpectErr:      true,
+		},
+		// task TotalPartitions set less than zero
+		{
+			Name: "TotalPartitions-lessThanZero",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "TotalPartitions-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   8,
+								TotalPartitions: -1,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "'TotalPartitions' must be greater than 0 in task: task-1, job: TotalPartitions-lessThanZero",
+			ExpectErr:      true,
+		},
+		// task-with-invalid-PartitionPolicy: replicas not equal to TotalPartitions*PartitionSize
+		{
+			Name: "task-with-invalid-PartitionPolicy",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task-with-invalid-PartitionPolicy",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   3,
+								TotalPartitions: 2,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "'Replicas' are not equal to TotalPartitions*PartitionSize in task: task-1, job: task-with-invalid-PartitionPolicy",
+			ExpectErr:      true,
+		},
+		// task-with-valid-PartitionPolicy: replicas equal to TotalPartitions*PartitionSize
+		{
+			Name: "task-with-valid-PartitionPolicy",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task-with-valid-PartitionPolicy",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   4,
+								TotalPartitions: 2,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
 	}
 
 	defaultqueue := &schedulingv1beta2.Queue{

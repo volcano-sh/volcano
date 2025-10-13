@@ -41,8 +41,9 @@ spec:
               networkTopology:
                 properties:
                   highestTierAllowed:
-                    default: 1
                     type: integer
+                  highestTierName:
+                    type: string
                   mode:
                     default: hard
                     enum:
@@ -126,6 +127,35 @@ spec:
                       type: integer
                     name:
                       type: string
+                    partitionPolicy:
+                      properties:
+                        minPartitions:
+                          default: 0
+                          format: int32
+                          type: integer
+                        networkTopology:
+                          properties:
+                            highestTierAllowed:
+                              type: integer
+                            highestTierName:
+                              type: string
+                            mode:
+                              default: hard
+                              enum:
+                              - hard
+                              - soft
+                              type: string
+                          type: object
+                        partitionSize:
+                          format: int32
+                          type: integer
+                        totalPartitions:
+                          format: int32
+                          type: integer
+                      required:
+                      - partitionSize
+                      - totalPartitions
+                      type: object
                     policies:
                       items:
                         properties:
