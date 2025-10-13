@@ -33,7 +33,6 @@ import (
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 	"k8s.io/kubernetes/pkg/capabilities"
-
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
@@ -196,6 +195,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		podName := jobhelpers.MakePodName(job.Name, task.Name, index)
 		msg += validateK8sPodNameLength(podName)
 		msg += validateTaskTemplate(task, job, index)
+		msg += validatePartitionPolicy(task, job)
 	}
 
 	msg += validateJobName(job)
@@ -279,6 +279,15 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 				return fmt.Errorf("'minAvailable' must be <= 'replicas' in task: %s", task.Name)
 			}
 		}
+		if task.PartitionPolicy != nil {
+			if task.PartitionPolicy.TotalPartitions <= 0 {
+				return fmt.Errorf("'TotalPartitions' must be greater than 0 in task: %s", task.Name)
+			} else if task.PartitionPolicy.PartitionSize <= 0 {
+				return fmt.Errorf("'PartitionSize' must be greater than 0 in task: %s", task.Name)
+			} else if task.Replicas != task.PartitionPolicy.TotalPartitions*task.PartitionPolicy.PartitionSize {
+				return fmt.Errorf("'Replicas' are not equal to TotalPartitions*PartitionSize in task: %s", task.Name)
+			}
+		}
 
 		// count replicas
 		totalReplicas += task.Replicas
@@ -322,6 +331,24 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	}
 
 	return nil
+}
+
+func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {
+	var msg string
+	if task.PartitionPolicy != nil {
+		if task.PartitionPolicy.TotalPartitions <= 0 {
+			msg += fmt.Sprintf("'TotalPartitions' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
+		} else if task.PartitionPolicy.PartitionSize <= 0 {
+			msg += fmt.Sprintf("'PartitionSize' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
+		} else if task.Replicas != task.PartitionPolicy.TotalPartitions*task.PartitionPolicy.PartitionSize {
+			msg += fmt.Sprintf("'Replicas' are not equal to TotalPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
+		}
+	}
+
+	if msg != "" {
+		return msg
+	}
+	return ""
 }
 
 func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) string {

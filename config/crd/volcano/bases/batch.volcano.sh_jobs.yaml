@@ -145,6 +145,27 @@ spec:
                       type: integer
                     name:
                       type: string
+                    partitionPolicy:
+                      properties:
+                        networkTopology:
+                          properties:
+                            highestTierAllowed:
+                              default: 1
+                              type: integer
+                            mode:
+                              default: hard
+                              enum:
+                              - hard
+                              - soft
+                              type: string
+                          type: object
+                        partitionSize:
+                          format: int32
+                          type: integer
+                        totalPartitions:
+                          format: int32
+                          type: integer
+                      type: object
                     policies:
                       items:
                         properties:

@@ -71,6 +71,9 @@ func (cc *jobcontroller) killTarget(jobInfo *apis.JobInfo, target state.Target, 
 	} else if target.Type == state.TargetTypePod {
 		klog.V(3).Infof("Killing pod <%s> of Job <%s/%s>, current version %d", target.PodName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
 		defer klog.V(3).Infof("Finished pod <%s> of Job <%s/%s> killing, current version %d", target.PodName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
+	} else if target.Type == state.TargetTypePartition {
+		klog.V(3).Infof("Killing partition group <%s> partition-group of Job <%s/%s>, current version %d", target.PartitionGroupName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
+		defer klog.V(3).Infof("Finished partition group <%s> of Job <%s/%s> killing, current version %d", target.PartitionGroupName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
 	}
 	return cc.killPods(jobInfo, nil, &target, updateStatus)
 }
@@ -108,6 +111,33 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 				if pod, found := targetPods[target.PodName]; found {
 					podsToKill[target.PodName] = pod
 				}
+			}
+		} else if target.Type == state.TargetTypePartition {
+			bunchInfo, found := jobInfo.BunchGroup[target.TaskName]
+			if !found || bunchInfo == nil || bunchInfo.PartitionGroup == nil {
+				klog.Infof("Job <%s/%s> has not partition group in task %s, skip management process.",
+					job.Namespace, job.Name, target.TaskName)
+				return nil
+			}
+			podsInPartitionGroup, found := bunchInfo.PartitionGroup[target.PartitionGroupName]
+			if !found || podsInPartitionGroup == nil {
+				klog.Infof("Job <%s/%s> has not partition group %s in task %s, skip management process.",
+					job.Namespace, job.Name, target.PartitionGroupName, target.TaskName)
+				return nil
+			}
+			if targetPods, found := jobInfo.Pods[target.TaskName]; found {
+				for _, pod := range podsInPartitionGroup {
+					if pod, found := targetPods[pod.Name]; found {
+						if pod.Status.Phase != v1.PodPending {
+							podsToKill[pod.Name] = pod
+						}
+					}
+				}
+			}
+			if len(podsToKill) == 0 {
+				klog.Infof("Job <%s/%s> has not partition group in task %s, skip management process.",
+					job.Namespace, job.Name, target.TaskName)
+				return nil
 			}
 		}
 		total += len(podsToKill)
@@ -421,7 +451,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		for i := 0; i < int(ts.Replicas); i++ {
 			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
-				newPod := createJobPod(job, tc, ts.TopologyPolicy, i, jobForwarding)
+				newPod := createJobPod(job, tc, i, jobForwarding, pg, &ts)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
 					return err
 				}
@@ -773,6 +803,8 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 			}
 			pg.Spec.NetworkTopology = nt
 		}
+		// Adding PgBunchPolicy Information for PodGroup
+		setPgBunchPolicy(pg, job.Spec.Tasks)
 
 		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
@@ -787,6 +819,10 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	podGroupToUpdate := pg.DeepCopy()
 
 	pgShouldUpdate := cc.shouldUpdateExistingPodGroup(podGroupToUpdate, job)
+	if updatePgBunchPolicy(pg, job.Spec.Tasks) {
+		pgShouldUpdate = true
+	}
+
 	if !pgShouldUpdate {
 		return nil
 	}
@@ -992,4 +1028,71 @@ func newCondition(status batch.JobPhase, lastTransitionTime *metav1.Time) batch.
 		Status:             status,
 		LastTransitionTime: lastTransitionTime,
 	}
+}
+
+func setPgBunchPolicy(pg *scheduling.PodGroup, tasks []batch.TaskSpec) {
+	pg.Spec.BunchPolicy = make([]scheduling.BunchPolicySpec, 0)
+	for _, taskSpec := range tasks {
+		if taskSpec.PartitionPolicy == nil {
+			continue
+		}
+		bunchPolicy := getBunchPolicy(taskSpec)
+		pg.Spec.BunchPolicy = append(pg.Spec.BunchPolicy, bunchPolicy)
+	}
+}
+
+func updatePgBunchPolicy(pg *scheduling.PodGroup, tasks []batch.TaskSpec) bool {
+	bunchPolicyShouldUpdate := false
+
+	// Record the old BunchPolicy.
+	oldBunchPolicyMap := make(map[string]scheduling.BunchPolicySpec)
+	for _, bunchPolicy := range pg.Spec.BunchPolicy {
+		oldBunchPolicyMap[bunchPolicy.Name] = bunchPolicy
+	}
+	newBunchPolicyList := make([]scheduling.BunchPolicySpec, 0)
+	for _, taskSpec := range tasks {
+		if taskSpec.PartitionPolicy == nil {
+			if _, ok := oldBunchPolicyMap[taskSpec.Name]; ok {
+				bunchPolicyShouldUpdate = true
+			}
+			continue
+		}
+
+		newBunchPolicy := getBunchPolicy(taskSpec)
+		newBunchPolicyList = append(newBunchPolicyList, newBunchPolicy)
+		// compare the new bunchPolicy and old bunchPolicy
+		if !equality.Semantic.DeepEqual(newBunchPolicy, oldBunchPolicyMap[taskSpec.Name]) {
+			bunchPolicyShouldUpdate = true
+		}
+	}
+
+	// update bunchPolicy
+	if bunchPolicyShouldUpdate {
+		pg.Spec.BunchPolicy = newBunchPolicyList
+	}
+	return bunchPolicyShouldUpdate
+}
+
+func getBunchPolicy(taskSpec batch.TaskSpec) scheduling.BunchPolicySpec {
+	bunchPolicy := scheduling.BunchPolicySpec{
+		Name:        taskSpec.Name,
+		MatchPolicy: make([]scheduling.MatchPolicySpec, 0),
+		BunchSize:   &taskSpec.PartitionPolicy.PartitionSize,
+	}
+	// set MatchPolicy
+	labelKey := fmt.Sprintf("volcano.sh/%s-bunch-id", bunchPolicy.Name)
+	matchPolicySpec := scheduling.MatchPolicySpec{
+		LabelKey: labelKey,
+	}
+	bunchPolicy.MatchPolicy = append(bunchPolicy.MatchPolicy, matchPolicySpec)
+
+	// set NetworkTopology
+	if taskSpec.PartitionPolicy.NetworkTopology != nil {
+		nt := &scheduling.NetworkTopologySpec{
+			Mode:               scheduling.NetworkTopologyMode(taskSpec.PartitionPolicy.NetworkTopology.Mode),
+			HighestTierAllowed: taskSpec.PartitionPolicy.NetworkTopology.HighestTierAllowed,
+		}
+		bunchPolicy.NetworkTopology = nt
+	}
+	return bunchPolicy
 }

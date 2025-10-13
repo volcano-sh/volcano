@@ -141,6 +141,7 @@ func (jc *jobCache) Add(job *v1alpha1.Job) error {
 		Job:  job,
 		Pods: make(map[string]map[string]*v1.Pod),
 	}
+	jc.jobs[key].SetJob(job)
 
 	return nil
 }
@@ -169,7 +170,7 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 			return fmt.Errorf("job <%v> has too old resource version: %d (%d)", key, newResourceVersion, oldResourceVersion)
 		}
 	}
-	job.Job = obj
+	job.SetJob(obj)
 	return nil
 }
 
