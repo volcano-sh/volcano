@@ -328,8 +328,9 @@ spec:
               networkTopology:
                 properties:
                   highestTierAllowed:
-                    default: 1
                     type: integer
+                  highestTierName:
+                    type: string
                   mode:
                     default: hard
                     enum:
@@ -413,6 +414,35 @@ spec:
                       type: integer
                     name:
                       type: string
+                    partitionPolicy:
+                      properties:
+                        minPartitions:
+                          default: 0
+                          format: int32
+                          type: integer
+                        networkTopology:
+                          properties:
+                            highestTierAllowed:
+                              type: integer
+                            highestTierName:
+                              type: string
+                            mode:
+                              default: hard
+                              enum:
+                              - hard
+                              - soft
+                              type: string
+                          type: object
+                        partitionSize:
+                          format: int32
+                          type: integer
+                        totalPartitions:
+                          format: int32
+                          type: integer
+                      required:
+                      - partitionSize
+                      - totalPartitions
+                      type: object
                     policies:
                       items:
                         properties:
@@ -4535,8 +4565,9 @@ spec:
                       networkTopology:
                         properties:
                           highestTierAllowed:
-                            default: 1
                             type: integer
+                          highestTierName:
+                            type: string
                           mode:
                             default: hard
                             enum:
@@ -4620,6 +4651,35 @@ spec:
                               type: integer
                             name:
                               type: string
+                            partitionPolicy:
+                              properties:
+                                minPartitions:
+                                  default: 0
+                                  format: int32
+                                  type: integer
+                                networkTopology:
+                                  properties:
+                                    highestTierAllowed:
+                                      type: integer
+                                    highestTierName:
+                                      type: string
+                                    mode:
+                                      default: hard
+                                      enum:
+                                      - hard
+                                      - soft
+                                      type: string
+                                  type: object
+                                partitionSize:
+                                  format: int32
+                                  type: integer
+                                totalPartitions:
+                                  format: int32
+                                  type: integer
+                              required:
+                              - partitionSize
+                              - totalPartitions
+                              type: object
                             policies:
                               items:
                                 properties:
@@ -9241,10 +9301,14 @@ spec:
                   CRD.
                 properties:
                   highestTierAllowed:
-                    default: 1
                     description: HighestTierAllowed specifies the highest tier that
                       a job allowed to cross when scheduling.
                     type: integer
+                  highestTierName:
+                    description: |-
+                      HighestTierName specifies the highest tier name that a job allowed to cross when scheduling.
+                      HighestTierName and HighestTierAllowed cannot be set simultaneously.
+                    type: string
                   mode:
                     default: hard
                     description: Mode specifies the mode of the network topology constrain.
@@ -9268,6 +9332,63 @@ spec:
                   Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
                   the PodGroup will not be scheduled. Defaults to `default` Queue with the lowest weight.
                 type: string
+              subGroupPolicy:
+                description: SubGroupPolicy defines policies for dividing all pods
+                  within the podGroup into multiple groups.
+                items:
+                  properties:
+                    matchPolicy:
+                      description: |-
+                        MatchPolicy defines matching strategies for different groups, where pods with the same labelKey value are grouped together.
+                        The LabelKey in the list is unique.
+                      items:
+                        properties:
+                          labelKey:
+                            description: LabelKey specifies the label key used to
+                              group pods.
+                            type: string
+                        type: object
+                      type: array
+                    minSubGroups:
+                      default: 0
+                      description: MinSubGroups defines the minimum number of sub-affinity
+                        groups required.
+                      format: int32
+                      type: integer
+                    name:
+                      description: Name specifies the name of SubGroupPolicy
+                      type: string
+                    networkTopology:
+                      description: NetworkTopology defines the NetworkTopology config,
+                        this field works in conjunction with network topology feature
+                        and hyperNode CRD.
+                      properties:
+                        highestTierAllowed:
+                          description: HighestTierAllowed specifies the highest tier
+                            that a job allowed to cross when scheduling.
+                          type: integer
+                        highestTierName:
+                          description: |-
+                            HighestTierName specifies the highest tier name that a job allowed to cross when scheduling.
+                            HighestTierName and HighestTierAllowed cannot be set simultaneously.
+                          type: string
+                        mode:
+                          default: hard
+                          description: Mode specifies the mode of the network topology
+                            constrain.
+                          enum:
+                          - hard
+                          - soft
+                          type: string
+                      type: object
+                    subGroupSize:
+                      description: |-
+                        SubGroupSize defines the number of pods in each sub-affinity group.
+                        Only when a subGroup of pods, with a size of "subGroupSize", can satisfy the network topology constraint then will the subGroup be scheduled.
+                      format: int32
+                      type: integer
+                  type: object
+                type: array
             type: object
           status:
             description: |-
@@ -9662,6 +9783,9 @@ spec:
     - jsonPath: .spec.tier
       name: Tier
       type: string
+    - jsonPath: .spec.tierName
+      name: TierName
+      type: string
     - jsonPath: .status.nodeCount
       name: NodeCount
       type: integer
@@ -9789,6 +9913,9 @@ spec:
               tier:
                 description: Tier categorizes the performance level of the HyperNode.
                 type: integer
+              tierName:
+                description: TierName represents the level name of the HyperNode.
+                type: string
             required:
             - tier
             type: object
@@ -10174,8 +10301,9 @@ spec:
               networkTopology:
                 properties:
                   highestTierAllowed:
-                    default: 1
                     type: integer
+                  highestTierName:
+                    type: string
                   mode:
                     default: hard
                     enum:
@@ -10259,6 +10387,35 @@ spec:
                       type: integer
                     name:
                       type: string
+                    partitionPolicy:
+                      properties:
+                        minPartitions:
+                          default: 0
+                          format: int32
+                          type: integer
+                        networkTopology:
+                          properties:
+                            highestTierAllowed:
+                              type: integer
+                            highestTierName:
+                              type: string
+                            mode:
+                              default: hard
+                              enum:
+                              - hard
+                              - soft
+                              type: string
+                          type: object
+                        partitionSize:
+                          format: int32
+                          type: integer
+                        totalPartitions:
+                          format: int32
+                          type: integer
+                      required:
+                      - partitionSize
+                      - totalPartitions
+                      type: object
                     policies:
                       items:
                         properties:
@@ -14354,8 +14511,9 @@ spec:
                             networkTopology:
                               properties:
                                 highestTierAllowed:
-                                  default: 1
                                   type: integer
+                                highestTierName:
+                                  type: string
                                 mode:
                                   default: hard
                                   enum:
@@ -14439,6 +14597,35 @@ spec:
                                     type: integer
                                   name:
                                     type: string
+                                  partitionPolicy:
+                                    properties:
+                                      minPartitions:
+                                        default: 0
+                                        format: int32
+                                        type: integer
+                                      networkTopology:
+                                        properties:
+                                          highestTierAllowed:
+                                            type: integer
+                                          highestTierName:
+                                            type: string
+                                          mode:
+                                            default: hard
+                                            enum:
+                                            - hard
+                                            - soft
+                                            type: string
+                                        type: object
+                                      partitionSize:
+                                        format: int32
+                                        type: integer
+                                      totalPartitions:
+                                        format: int32
+                                        type: integer
+                                    required:
+                                    - partitionSize
+                                    - totalPartitions
+                                    type: object
                                   policies:
                                     items:
                                       properties:

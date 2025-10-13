@@ -27,14 +27,14 @@ import (
 
 // Request struct.
 type Request struct {
-	Namespace string
-	JobName   string
-	JobUid    types.UID
-	TaskName  string
-	QueueName string
-	PodName   string
-	PodUID    types.UID
-
+	Namespace  string
+	JobName    string
+	JobUid     types.UID
+	TaskName   string
+	QueueName  string
+	PodName    string
+	PodUID     types.UID
+	Partition  string
 	Event      v1alpha1.Event
 	ExitCode   int32
 	Action     v1alpha1.Action

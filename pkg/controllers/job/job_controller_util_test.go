@@ -17,16 +17,19 @@ limitations under the License.
 package job
 
 import (
+	"fmt"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	"volcano.sh/volcano/pkg/controllers/apis"
 )
 
@@ -62,6 +65,7 @@ func TestMakePodName(t *testing.T) {
 
 func TestCreateJobPod(t *testing.T) {
 	namespace := "test"
+	highestTierAllowed := 1
 
 	testcases := []struct {
 		Name        string
@@ -101,6 +105,7 @@ func TestCreateJobPod(t *testing.T) {
 			},
 			PodTemplate: &v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task0",
 					Namespace: namespace,
 				},
 				Spec: v1.PodSpec{
@@ -158,6 +163,7 @@ func TestCreateJobPod(t *testing.T) {
 			},
 			PodTemplate: &v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task0",
 					Namespace: namespace,
 				},
 				Spec: v1.PodSpec{
@@ -219,6 +225,7 @@ func TestCreateJobPod(t *testing.T) {
 			},
 			PodTemplate: &v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task0",
 					Namespace: namespace,
 				},
 				Spec: v1.PodSpec{
@@ -237,15 +244,110 @@ func TestCreateJobPod(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Test Create Job Pod with volumes added to controlled resources with PartitionPolicy",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Volumes: []v1alpha1.VolumeSpec{
+						{
+							VolumeClaimName: "vc1",
+							VolumeClaim: &v1.PersistentVolumeClaimSpec{
+								VolumeName: "v1",
+							},
+						},
+						{
+							VolumeClaimName: "vc2",
+						},
+					},
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task0",
+							Replicas: 6,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:               "hard",
+									HighestTierAllowed: &highestTierAllowed,
+								},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			PodTemplate: &v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task0",
+					Namespace: namespace,
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name: "Containers",
+						},
+					},
+				},
+			},
+			Index: 0,
+			ReturnVal: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1-task0-0",
+					Namespace: namespace,
+				},
+			},
+		},
+	}
+	pg := &scheduling.PodGroup{
+		Spec: scheduling.PodGroupSpec{
+			SubGroupPolicy: []scheduling.SubGroupPolicySpec{
+				{
+					Name: "task0",
+					MatchPolicy: []scheduling.MatchPolicySpec{
+						{
+							LabelKey: "labelKey",
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for i, testcase := range testcases {
 
 		t.Run(testcase.Name, func(t *testing.T) {
-			pod := createJobPod(testcase.Job, testcase.PodTemplate, "", testcase.Index, false)
-
-			if testcase.ReturnVal != nil && pod != nil && pod.Name != testcase.ReturnVal.Name && pod.Namespace != testcase.ReturnVal.Namespace {
-				t.Errorf("Expected Return Value to be %v but got %v in case %d", testcase.ReturnVal, pod, i)
+			for _, task := range testcase.Job.Spec.Tasks {
+				for index := 0; index < int(task.Replicas); index++ {
+					labelKey := fmt.Sprintf("volcano.sh/%s-subgroup-id", task.Name)
+					pg.Spec.SubGroupPolicy[0].MatchPolicy[0].LabelKey = labelKey
+					pod := createJobPod(testcase.Job, testcase.PodTemplate, index, false, pg, &task)
+					if value, found := pod.Labels[labelKey]; found {
+						if id := strconv.Itoa(index / int(task.PartitionPolicy.PartitionSize)); value != id {
+							t.Errorf("Expected Return Value to be %v but got %v in case %v", id, pod, value)
+						}
+					}
+					targetName := fmt.Sprintf("%s-%s-%d", testcase.Job.Name, task.Name, index)
+					if testcase.ReturnVal != nil && pod != nil && pod.Name != targetName && pod.Namespace != testcase.ReturnVal.Namespace {
+						t.Errorf("Expected Return Value to be %v but got %v in case %d", testcase.ReturnVal, pod, i)
+					}
+				}
 			}
 		})
 	}

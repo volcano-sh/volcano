@@ -55,7 +55,7 @@ func (ps *restartingState) Execute(action Action) error {
 	switch action.Action {
 	case v1alpha1.SyncJobAction:
 		return SyncJob(ps.job, ps.restartingUpdateStatus)
-	case v1alpha1.RestartTaskAction, v1alpha1.RestartPodAction:
+	case v1alpha1.RestartTaskAction, v1alpha1.RestartPodAction, v1alpha1.RestartPartitionAction:
 		return KillTarget(ps.job, action.Target, ps.restartingUpdateStatus)
 	default:
 		return KillJob(ps.job, PodRetainPhaseNone, ps.restartingUpdateStatus)
