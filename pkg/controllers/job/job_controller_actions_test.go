@@ -568,6 +568,7 @@ func TestCreatePVCFunc(t *testing.T) {
 
 func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 	namespace := "test"
+	highestTierAllowed := 1
 
 	testcases := []struct {
 		Name      string
@@ -578,10 +579,50 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 			Name: "CreatePodGroup success Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:       namespace,
-					Name:            "job1",
-					ResourceVersion: "100",
-					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+					Namespace: namespace,
+					Name:      "job1",
+					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Volumes: []v1alpha1.VolumeSpec{
+						{
+							VolumeClaimName: "vc1",
+							VolumeClaim: &v1.PersistentVolumeClaimSpec{
+								VolumeName: "v1",
+							},
+						},
+						{
+							VolumeClaimName: "vc2",
+						},
+					},
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:               "hard",
+									HighestTierAllowed: &highestTierAllowed,
+								},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 			ExpextVal: nil,
@@ -609,6 +650,7 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 
 func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 	namespace := "test"
+	highestTierAllowed := 1
 
 	testcases := []struct {
 		Name      string
@@ -657,6 +699,44 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: namespace,
 					Name:      "job2",
+				},
+				Spec: schedulingapi.PodGroupSpec{
+					MinResources: &v1.ResourceList{},
+				},
+			},
+			ExpectVal: nil,
+		},
+		{
+			Name: "UpdatePodGroup compatibility with PartitionPolicy",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:       namespace,
+					Name:            "job3",
+					ResourceVersion: "100",
+					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					PriorityClassName: "new",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:               "hard",
+									HighestTierAllowed: &highestTierAllowed,
+								},
+							},
+						},
+					},
+				},
+			},
+			PodGroup: &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "job3",
 				},
 				Spec: schedulingapi.PodGroupSpec{
 					MinResources: &v1.ResourceList{},

@@ -48,6 +48,6 @@ func FuzzCreateJobPod(f *testing.F) {
 		// Create a random PTS
 		template := &v1.PodTemplateSpec{}
 		fdp.GenerateStruct(template)
-		_ = createJobPod(job, template, batch.NumaPolicy(numaPolicy), ix, jobForwarding)
+		_ = createJobPod(job, template, ix, jobForwarding, nil, nil)
 	})
 }

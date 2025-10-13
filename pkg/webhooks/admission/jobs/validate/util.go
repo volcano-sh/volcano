@@ -44,18 +44,19 @@ var policyEventMap = map[busv1alpha1.Event]bool{
 
 // policyActionMap defines all policy actions and whether to allow external use.
 var policyActionMap = map[busv1alpha1.Action]bool{
-	busv1alpha1.AbortJobAction:     true,
-	busv1alpha1.RestartJobAction:   true,
-	busv1alpha1.RestartTaskAction:  true,
-	busv1alpha1.RestartPodAction:   true,
-	busv1alpha1.TerminateJobAction: true,
-	busv1alpha1.CompleteJobAction:  true,
-	busv1alpha1.ResumeJobAction:    true,
-	busv1alpha1.SyncJobAction:      false,
-	busv1alpha1.EnqueueAction:      false,
-	busv1alpha1.SyncQueueAction:    false,
-	busv1alpha1.OpenQueueAction:    false,
-	busv1alpha1.CloseQueueAction:   false,
+	busv1alpha1.AbortJobAction:         true,
+	busv1alpha1.RestartJobAction:       true,
+	busv1alpha1.RestartTaskAction:      true,
+	busv1alpha1.RestartPodAction:       true,
+	busv1alpha1.RestartPartitionAction: true,
+	busv1alpha1.TerminateJobAction:     true,
+	busv1alpha1.CompleteJobAction:      true,
+	busv1alpha1.ResumeJobAction:        true,
+	busv1alpha1.SyncJobAction:          false,
+	busv1alpha1.EnqueueAction:          false,
+	busv1alpha1.SyncQueueAction:        false,
+	busv1alpha1.OpenQueueAction:        false,
+	busv1alpha1.CloseQueueAction:       false,
 }
 
 func validatePolicies(policies []batchv1alpha1.LifecyclePolicy, fldPath *field.Path) error {

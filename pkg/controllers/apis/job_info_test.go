@@ -23,6 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
 	vcbatchv1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	vcbus "volcano.sh/apis/pkg/apis/bus/v1alpha1"
@@ -31,6 +32,7 @@ import (
 func TestAddPod(t *testing.T) {
 	namespace := "test"
 	name := "pod1"
+	highestTierAllowed := 1
 
 	testCases := []struct {
 		Name        string
@@ -69,6 +71,42 @@ func TestAddPod(t *testing.T) {
 			ExpectValue: true,
 			ExpectErr:   "duplicated pod",
 		},
+		{
+			Name: "AddPodForPartition",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
+					Name:      name,
+					Namespace: namespace,
+					Labels: map[string]string{
+						"volcano.sh/task1-subgroup-id": "0",
+						"volcano.sh/partition-id":      "volcano.sh_task1-subgroup-id_0",
+					},
+					Annotations: map[string]string{vcbatchv1.JobNameKey: "job1",
+						vcbatchv1.JobVersion:  "0",
+						vcbatchv1.TaskSpecKey: "task1"},
+				},
+			},
+			jobinfo: JobInfo{
+				Pods: make(map[string]map[string]*v1.Pod),
+				Partitions: map[string]*PartitionInfo{
+					"task1": {
+						Partition: map[string]map[string]*v1.Pod{},
+						MatchPolicy: []*v1beta1.MatchPolicySpec{
+							{
+								LabelKey: "volcano.sh/task1-subgroup-id",
+							},
+						},
+						NetworkTopology: &vcbatchv1.NetworkTopologySpec{
+							Mode:               "hard",
+							HighestTierAllowed: &highestTierAllowed,
+						},
+					},
+				},
+			},
+			ExpectValue: true,
+			ExpectErr:   "duplicated pod",
+		},
 	}
 
 	for i, testcase := range testCases {
@@ -79,6 +117,12 @@ func TestAddPod(t *testing.T) {
 
 		if _, ok := testcase.jobinfo.Pods["task1"][testcase.pod.Name]; ok != testcase.ExpectValue {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, ok)
+		}
+
+		if testcase.jobinfo.Partitions != nil {
+			if _, ok := testcase.jobinfo.Partitions["task1"].Partition["volcano.sh_task1-subgroup-id_0"][testcase.pod.Name]; ok != testcase.ExpectValue {
+				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, ok)
+			}
 		}
 
 		err = testcase.jobinfo.AddPod(testcase.pod)
@@ -93,6 +137,7 @@ func TestAddPod(t *testing.T) {
 func TestDeletePod(t *testing.T) {
 	namespace := "test"
 	name := "pod1"
+	highestTierAllowed := 1
 
 	testCases := []struct {
 		Name        string
@@ -129,12 +174,51 @@ func TestDeletePod(t *testing.T) {
 			},
 			ExpectValue: false,
 		},
+		{
+			Name: "deletePodForPartition",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					UID:       types.UID(fmt.Sprintf("%v-%v", namespace, name)),
+					Name:      name,
+					Namespace: namespace,
+					Labels: map[string]string{
+						"volcano.sh/task1-subgroup-id": "0",
+						"volcano.sh/partition-id":      "volcano.sh_task1-subgroup-id_0",
+					},
+					Annotations: map[string]string{vcbatchv1.JobNameKey: "job1",
+						vcbatchv1.JobVersion:  "0",
+						vcbatchv1.TaskSpecKey: "task1"},
+				},
+			},
+			jobinfo: JobInfo{
+				Pods: make(map[string]map[string]*v1.Pod),
+				Partitions: map[string]*PartitionInfo{
+					"task1": {
+						Partition: map[string]map[string]*v1.Pod{},
+						MatchPolicy: []*v1beta1.MatchPolicySpec{
+							{
+								LabelKey: "volcano.sh/task1-subgroup-id",
+							},
+						},
+						NetworkTopology: &vcbatchv1.NetworkTopologySpec{
+							Mode:               "hard",
+							HighestTierAllowed: &highestTierAllowed,
+						},
+					},
+				},
+			},
+			ExpectValue: false,
+		},
 	}
 
 	for i, testcase := range testCases {
 
 		testcase.jobinfo.Pods["task1"] = make(map[string]*v1.Pod)
 		testcase.jobinfo.Pods["task1"][testcase.pod.Name] = testcase.pod
+		if testcase.jobinfo.Partitions != nil {
+			testcase.jobinfo.Partitions["task1"].Partition["volcano.sh_task1-subgroup-id_0"] = make(map[string]*v1.Pod)
+			testcase.jobinfo.Partitions["task1"].Partition["volcano.sh_task1-subgroup-id_0"][testcase.pod.Name] = testcase.pod
+		}
 
 		err := testcase.jobinfo.DeletePod(testcase.pod)
 		if err != nil {
@@ -238,13 +322,31 @@ func TestClone(t *testing.T) {
 		{
 			Name: "Clone",
 			jobinfo: JobInfo{
-				Name: "testjobInfo",
-				Pods: make(map[string]map[string]*v1.Pod),
+				Name:       "testjobInfo",
+				Pods:       make(map[string]map[string]*v1.Pod),
+				Partitions: make(map[string]*PartitionInfo),
 			},
 		},
 	}
 
 	for i, testcase := range testCases {
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "testPod",
+				Labels: map[string]string{
+					"volcano.sh/task1-subgroup-id": "0",
+				},
+			},
+		}
+		partition := map[string]map[string]*v1.Pod{
+			"0": {
+				"pod1": pod,
+			},
+		}
+		partitionInfo := &PartitionInfo{
+			Partition: partition,
+		}
+		testcase.jobinfo.Partitions["task1"] = partitionInfo
 		newjobinfo := testcase.jobinfo.Clone()
 
 		if newjobinfo.Name != testcase.jobinfo.Name {
@@ -254,7 +356,7 @@ func TestClone(t *testing.T) {
 }
 
 func TestSetJob(t *testing.T) {
-
+	highestTierAllowed := 1
 	testCases := []struct {
 		Name    string
 		job     vcbatchv1.Job
@@ -271,6 +373,33 @@ func TestSetJob(t *testing.T) {
 			job: vcbatchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "testjob",
+				},
+			},
+		},
+		{
+			Name: "testPartitionAddPod",
+			jobinfo: JobInfo{
+				Name: "testjobInfo",
+				Pods: make(map[string]map[string]*v1.Pod),
+			},
+			job: vcbatchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testjob2",
+				},
+				Spec: vcbatchv1.JobSpec{
+					Tasks: []vcbatchv1.TaskSpec{
+						{
+							Name: "task1",
+							PartitionPolicy: &vcbatchv1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								NetworkTopology: &vcbatchv1.NetworkTopologySpec{
+									Mode:               "hard",
+									HighestTierAllowed: &highestTierAllowed,
+								},
+							},
+						},
+					},
 				},
 			},
 		},
