@@ -141,23 +141,31 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		queue := obj.(*api.QueueInfo)
 		task := candidate.(*api.TaskInfo)
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, can not reclaim for <%s>.", queue.Name, queue.Queue.Status.State, task.Name)
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, can not reclaim for <%s>.",
+				queue.Name, queue.Queue.Status.State, task.Name)
 			return false
 		}
-		attr := cp.queueOpts[queue.UID]
 
+		attr := cp.queueOpts[queue.UID]
 		futureUsed := attr.allocated.Clone().Add(task.Resreq)
-		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, task.Resreq)
-		overused := !allocatable
-		metrics.UpdateQueueOverused(attr.name, overused)
-		if overused {
-			klog.V(3).Infof("Queue <%v> can not reclaim, deserved <%v>, allocated <%v>, share <%v>, requested <%v>",
-				queue.Name, attr.deserved, attr.allocated, attr.share, task.Resreq)
+
+		// If there is a single dimension whose deserved is greater than allocated, current task can reclaim by preempt others.
+		isPreemptive, resourceNames := futureUsed.LessEqualPartlyWithDimensionZeroFiltered(attr.deserved, task.Resreq)
+		if isPreemptive {
+			klog.V(3).Infof("Queue <%v> can reclaim on resource dimensions: %v. "+
+				"The futureUsed: %v, deserved: %v, allocated: %v, task requested: %v",
+				queue.Name, resourceNames, futureUsed, attr.deserved, attr.allocated, task.Resreq)
+		} else {
+			klog.V(3).Infof("Queue <%v> can not reclaim, futureUsed: %v, deserved: %v, requested: %v",
+				queue.Name, futureUsed, attr.deserved, task.Resreq)
 		}
+
+		overused := !isPreemptive
+		metrics.UpdateQueueOverused(attr.name, overused)
 
 		// PreemptiveFn is the opposite of OverusedFn in proportion plugin cause as long as there is a one-dimensional
 		// resource whose deserved is greater than allocated, current task can reclaim by preempt others.
-		return !overused
+		return isPreemptive
 	})
 
 	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
@@ -193,7 +201,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		queue := ssn.Queues[queueID]
 		// If the queue is not open, do not enqueue
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.",
+				queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
 			return util.Reject
 		}
 		// If no capability is set, always enqueue the job.
@@ -822,7 +831,6 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 			return err
 		}
 	}
-
 	return nil
 }
 
