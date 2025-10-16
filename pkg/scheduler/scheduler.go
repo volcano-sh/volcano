@@ -142,8 +142,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 	}()
 
 	if pc.disableDefaultConf && len(pc.schedulerConf) == 0 {
-		klog.Errorf("no --scheduler-conf path provided and default configuration fallback is disabled")
-		os.Exit(1)
+		klog.Fatalf("No --scheduler-conf path provided and default configuration fallback is disabled")
 	}
 
 	var err error
@@ -151,8 +150,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 		pc.once.Do(func() {
 			pc.actions, pc.plugins, pc.configurations, pc.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
 			if err != nil {
-				klog.Errorf("unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
-				panic("invalid default configuration")
+				klog.Fatalf("Invalid default configuration: unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
 			}
 		})
 	}
@@ -164,8 +162,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 			klog.Errorf("Failed to read the Scheduler config in '%s', using previous configuration: %v",
 				pc.schedulerConf, err)
 			if pc.disableDefaultConf {
-				klog.Errorf("failed to read scheduler config and default configuration fallback is disabled")
-				os.Exit(1)
+				klog.Fatalf("Failed to read scheduler config and default configuration fallback is disabled")
 			}
 			return
 		}
@@ -176,8 +173,7 @@ func (pc *Scheduler) loadSchedulerConf() {
 	if err != nil {
 		klog.Errorf("Scheduler config %s is invalid: %v", config, err)
 		if pc.disableDefaultConf {
-			klog.Errorf("invalid scheduler configuration and default configuration fallback is disabled")
-			os.Exit(1)
+			klog.Fatalf("Invalid scheduler configuration and default configuration fallback is disabled")
 		}
 		return
 	}
