@@ -212,6 +212,10 @@ custom:
   scheduler_log_level: 3
   controller_log_level: 4
 
+  # Multi-scheduler configuration
+  # Enable multi-scheduler deployment mode (deploys as StatefulSet instead of Deployment)
+  multi_scheduler_enabled: false
+
 # Specify container security context for admission
 # For example:
 #
