@@ -42,8 +42,8 @@ import (
 	"k8s.io/component-helpers/storage/ephemeral"
 	storagehelpers "k8s.io/component-helpers/storage/volume"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/utils/cpuset"
 
@@ -456,7 +456,7 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 // addNodeImageStates adds states of the images on given node to the given nodeInfo and update the imageStates in
 // scheduler cache. This function assumes the lock to scheduler cache has been acquired.
 func (sc *SchedulerCache) addNodeImageStates(node *v1.Node, nodeInfo *schedulingapi.NodeInfo) {
-	newSum := make(map[string]*framework.ImageStateSummary)
+	newSum := make(map[string]*fwk.ImageStateSummary)
 
 	for _, image := range node.Status.Images {
 		for _, name := range image.Names {

@@ -1,0 +1,240 @@
+---
+# Source: volcano/templates/agent.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: volcano-agent
+  name: volcano-agent
+  namespace: volcano-system
+---
+# Source: volcano/templates/agent.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  labels:
+    app: volcano-agent
+  name: volcano-agent
+rules:
+  - apiGroups: [""]
+    resources: [ "nodes", "nodes/status" ]
+    verbs: [ "get", "list", "watch", "update", "patch" ]
+  - apiGroups: [ "" ]
+    resources: [ "configmaps" ]
+    verbs: [ "get", "list", "watch", "create", "update" ]
+  - apiGroups: [ "" ]
+    resources: [ "pods" ]
+    verbs: [ "get", "list", "watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "pods/eviction" ]
+    verbs: [ "create" ]
+  - apiGroups: [ "" ]
+    resources: [ "configmaps" ]
+    verbs: ["get", "list", "watch" ]
+  - apiGroups: [ "" ]
+    resources: [ "events" ]
+    verbs: [ "list", "watch", "create", "update", "patch" ]
+---
+# Source: volcano/templates/agent.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  labels:
+    app: volcano-agent
+  name: volcano-agent-role
+subjects:
+  - kind: ServiceAccount
+    name: volcano-agent
+    namespace: volcano-system
+  - kind: User
+    apiGroup: rbac.authorization.k8s.io
+    name: volcano-agent
+roleRef:
+  kind: ClusterRole
+  name: volcano-agent
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: volcano/templates/agent.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: volcano-agent
+  namespace: volcano-system
+spec:
+  selector:
+    matchLabels:
+      name: volcano-agent
+  template:
+    metadata:
+      name: volcano-agent
+      labels:
+        name: volcano-agent
+      annotations:
+        prometheus.io/path: /metrics
+        prometheus.io/port: '3300'
+        prometheus.io/scheme: http
+        prometheus.io/scrape: 'true'
+    spec:
+      tolerations:
+        - effect: NoSchedule
+          key: volcano.sh/offline-job-evicting
+          operator: Exists
+      securityContext:
+        seLinuxOptions:
+          level: s0:c123,c456
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: volcano-agent
+      hostNetwork: true
+      priorityClassName: system-node-critical
+      restartPolicy: Always
+      dnsPolicy: Default
+      volumes:
+        - name: bwm-dir
+          hostPath:
+            path: /usr/share/bwmcli/
+            type: DirectoryOrCreate
+        - name: cni-plugin-dir
+          hostPath:
+            path: /opt/cni/bin
+            type: Directory
+        - name: host-etc
+          hostPath:
+            path: /etc
+            type: Directory
+        - name: host-sys-fs
+          hostPath:
+            path: /sys/fs
+            type: Directory
+        - name: host-proc-sys
+          hostPath:
+            path: /proc/sys
+            type: Directory
+        - name: log
+          hostPath:
+            path: /var/log/volcano/agent
+            type: ''
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+            type: ''
+        - name: kubelet-cpu-manager-policy
+          hostPath:
+            path: /var/lib/kubelet/
+            type: ''
+        - name: proc-stat
+          hostPath:
+            path: /proc/stat
+            type: File
+      initContainers:
+        - name: volcano-agent-init
+          image: docker.io/volcanosh/vc-agent:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add:
+              - CHOWN
+              - DAC_OVERRIDE
+              - FOWNER
+              drop:
+              - ALL
+            runAsUser: 0
+          command:
+            - /bin/sh
+            - '-c'
+            - /usr/local/bin/install.sh
+          volumeMounts:
+            - name: bwm-dir
+              mountPath: /usr/share/bwmcli
+            - name: cni-plugin-dir
+              mountPath: /opt/cni/bin
+            - name: host-etc
+              mountPath: /host/etc
+            - mountPath: /var/log/volcano/agent
+              name: log
+            - name: host-proc-sys
+              mountPath: /host/proc/sys
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: Always
+      containers:
+        - name: volcano-agent
+          image: docker.io/volcanosh/vc-agent:latest
+          securityContext:
+            capabilities:
+              add:
+              - DAC_OVERRIDE
+              - SETUID
+              - SETGID
+              - SETFCAP
+              - BPF
+              drop:
+              - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+          command:
+          - /bin/sh
+          - -c
+          - |
+           /vc-agent \
+           --v=2 1>> /var/log/volcano/agent/volcano-agent.log 2>&1
+          env:
+            - name: SYS_FS_PATH
+              value: /host/sys/fs
+            - name: CNI_CONF_FILE_PATH
+              value: /host/etc/cni/net.d/cni.conflist
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: KUBE_POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: KUBE_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+          volumeMounts:
+            - name: bwm-dir
+              mountPath: /usr/share/bwmcli
+            - name: cni-plugin-dir
+              mountPath: /opt/cni/bin
+            - name: host-etc
+              mountPath: /host/etc
+            - mountPath: /var/log/volcano/agent
+              name: log
+            - name: host-sys-fs
+              mountPath: /host/sys/fs
+              mountPropagation: HostToContainer
+            - name: host-proc-sys
+              mountPath: /host/proc/sys
+            - name: localtime
+              readOnly: true
+              mountPath: /etc/localtime
+            - name: kubelet-cpu-manager-policy
+              readOnly: true
+              mountPath: /var/lib/kubelet
+            - name: proc-stat
+              readOnly: true
+              mountPath: /host/proc/stat
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3300
+              scheme: HTTP
+            initialDelaySeconds: 60
+            timeoutSeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 5
+          imagePullPolicy: Always
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 10%
+      maxSurge: 0
+  revisionHistoryLimit: 10

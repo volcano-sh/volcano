@@ -22,7 +22,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
@@ -72,7 +72,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node),
 					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node),
 				},
-				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 		},
 		{
@@ -98,7 +98,7 @@ func TestNodeInfo_AddPod(t *testing.T) {
 					gpushare.DeviceName: gpushare.NewGPUDevices("n2", case01Node),
 					vgpu.DeviceName:     vgpu.NewGPUDevices("n2", case01Node),
 				},
-				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 			expectedFailure: false,
 		},
@@ -163,7 +163,7 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node),
 					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node),
 				},
-				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 		},
 	}
@@ -230,7 +230,7 @@ func TestNodeInfo_SetNode(t *testing.T) {
 					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node1),
 					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node1),
 				},
-				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 			expected2: &NodeInfo{
 				Name:                     "n1",
@@ -253,7 +253,7 @@ func TestNodeInfo_SetNode(t *testing.T) {
 					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node1),
 					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node1),
 				},
-				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 		},
 	}

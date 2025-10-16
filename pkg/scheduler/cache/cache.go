@@ -49,8 +49,10 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	resourceslicetracker "k8s.io/dynamic-resource-allocation/resourceslice/tracker"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
+
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
 	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
@@ -767,18 +769,18 @@ func (sc *SchedulerCache) addEventHandler() {
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
 		ctx := context.TODO()
 		logger := klog.FromContext(ctx)
-		resourceClaimInformer := informerFactory.Resource().V1beta1().ResourceClaims().Informer()
+		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
 		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
 			EnableDeviceTaints: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
-			SliceInformer:      informerFactory.Resource().V1beta1().ResourceSlices(),
+			SliceInformer:      informerFactory.Resource().V1().ResourceSlices(),
 			KubeClient:         sc.kubeClient,
 		}
 		// If device taints are disabled, the additional informers are not needed and
 		// the tracker turns into a simple wrapper around the slice informer.
 		if resourceSliceTrackerOpts.EnableDeviceTaints {
 			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
-			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1beta1().DeviceClasses()
+			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
 		}
 		resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)
 		if err != nil {
@@ -1661,8 +1663,8 @@ func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*source.NodeMetric
 }
 
 // createImageStateSummary returns a summarizing snapshot of the given image's state.
-func (sc *SchedulerCache) createImageStateSummary(state *imageState) *k8sframework.ImageStateSummary {
-	return &k8sframework.ImageStateSummary{
+func (sc *SchedulerCache) createImageStateSummary(state *imageState) *fwk.ImageStateSummary {
+	return &fwk.ImageStateSummary{
 		Size:     state.size,
 		NumNodes: len(state.nodes),
 	}

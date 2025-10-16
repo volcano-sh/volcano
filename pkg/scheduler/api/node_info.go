@@ -23,7 +23,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -88,7 +88,7 @@ type NodeInfo struct {
 	// ImageStates holds the entry of an image if and only if this image is on the node. The entry can be used for
 	// checking an image's existence and advanced usage (e.g., image locality scheduling policy) based on the image
 	// state information.
-	ImageStates map[string]*k8sframework.ImageStateSummary
+	ImageStates map[string]*fwk.ImageStateSummary
 }
 
 // PodGroupOldState records podgroup old state
@@ -156,7 +156,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
 		Others:      make(map[string]interface{}),
-		ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+		ImageStates: make(map[string]*fwk.ImageStateSummary),
 	}
 
 	nodeInfo.setOversubscription(node)
@@ -556,10 +556,10 @@ func (ni *NodeInfo) Pods() (pods []*v1.Pod) {
 }
 
 // CloneImageSummary Clone Image State
-func (ni *NodeInfo) CloneImageSummary() map[string]*k8sframework.ImageStateSummary {
-	nodeImageStates := make(map[string]*k8sframework.ImageStateSummary)
+func (ni *NodeInfo) CloneImageSummary() map[string]*fwk.ImageStateSummary {
+	nodeImageStates := make(map[string]*fwk.ImageStateSummary)
 	for imageName, summary := range ni.ImageStates {
-		newImageSummary := &k8sframework.ImageStateSummary{
+		newImageSummary := &fwk.ImageStateSummary{
 			Size:     summary.Size,
 			NumNodes: summary.NumNodes,
 		}

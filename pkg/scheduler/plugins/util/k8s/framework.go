@@ -26,7 +26,9 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
 
@@ -107,7 +109,7 @@ func (f *Framework) EventRecorder() events.EventRecorder {
 	return nil
 }
 
-func (f *Framework) AddNominatedPod(logger klog.Logger, pod *framework.PodInfo, nominatingInfo *framework.NominatingInfo) {
+func (f *Framework) AddNominatedPod(logger klog.Logger, pod fwk.PodInfo, nominatingInfo *framework.NominatingInfo) {
 	panic("implement me")
 }
 
@@ -115,31 +117,31 @@ func (f *Framework) DeleteNominatedPodIfExists(pod *v1.Pod) {
 	panic("implement me")
 }
 
-func (f *Framework) UpdateNominatedPod(logger klog.Logger, oldPod *v1.Pod, newPodInfo *framework.PodInfo) {
+func (f *Framework) UpdateNominatedPod(logger klog.Logger, oldPod *v1.Pod, newPodInfo fwk.PodInfo) {
 	panic("implement me")
 }
 
-func (f *Framework) NominatedPodsForNode(nodeName string) []*framework.PodInfo {
+func (f *Framework) NominatedPodsForNode(nodeName string) []fwk.PodInfo {
 	panic("implement me")
 }
 
-func (f *Framework) RunPreScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeinfos []*framework.NodeInfo) *framework.Status {
+func (f *Framework) RunPreScorePlugins(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeinfos []fwk.NodeInfo) *fwk.Status {
 	panic("implement me")
 }
 
-func (f *Framework) RunScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeinfos []*framework.NodeInfo) ([]framework.NodePluginScores, *framework.Status) {
+func (f *Framework) RunScorePlugins(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeinfos []fwk.NodeInfo) ([]framework.NodePluginScores, *fwk.Status) {
 	panic("implement me")
 }
 
-func (f *Framework) RunFilterPlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, info *framework.NodeInfo) *framework.Status {
+func (f *Framework) RunFilterPlugins(ctx context.Context, state fwk.CycleState, pod *v1.Pod, info fwk.NodeInfo) *fwk.Status {
 	panic("implement me")
 }
 
-func (f *Framework) RunPreFilterExtensionAddPod(ctx context.Context, state *framework.CycleState, podToSchedule *v1.Pod, podInfoToAdd *framework.PodInfo, nodeInfo *framework.NodeInfo) *framework.Status {
+func (f *Framework) RunPreFilterExtensionAddPod(ctx context.Context, state fwk.CycleState, podToSchedule *v1.Pod, podInfoToAdd fwk.PodInfo, nodeInfo fwk.NodeInfo) *fwk.Status {
 	panic("implement me")
 }
 
-func (f *Framework) RunPreFilterExtensionRemovePod(ctx context.Context, state *framework.CycleState, podToSchedule *v1.Pod, podInfoToRemove *framework.PodInfo, nodeInfo *framework.NodeInfo) *framework.Status {
+func (f *Framework) RunPreFilterExtensionRemovePod(ctx context.Context, state fwk.CycleState, podToSchedule *v1.Pod, podInfoToRemove fwk.PodInfo, nodeInfo fwk.NodeInfo) *fwk.Status {
 	panic("implement me")
 }
 
@@ -151,7 +153,7 @@ func (f *Framework) KubeConfig() *rest.Config {
 	panic("implement me")
 }
 
-func (f *Framework) RunFilterPluginsWithNominatedPods(ctx context.Context, state *framework.CycleState, pod *v1.Pod, info *framework.NodeInfo) *framework.Status {
+func (f *Framework) RunFilterPluginsWithNominatedPods(ctx context.Context, state fwk.CycleState, pod *v1.Pod, info fwk.NodeInfo) *fwk.Status {
 	panic("implement me")
 }
 
@@ -171,8 +173,16 @@ func (f *Framework) SharedDRAManager() framework.SharedDRAManager {
 	return f.sharedDRAManager
 }
 
+func (f *Framework) APICacher() framework.APICacher {
+	return nil
+}
+
+func (f *Framework) APIDispatcher() fwk.APIDispatcher {
+	return nil
+}
+
 // NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
-func NewFrameworkHandle(nodeMap map[string]*framework.NodeInfo, client kubernetes.Interface, informerFactory informers.SharedInformerFactory, opts ...Option) framework.Handle {
+func NewFrameworkHandle(nodeMap map[string]fwk.NodeInfo, client kubernetes.Interface, informerFactory informers.SharedInformerFactory, opts ...Option) framework.Handle {
 	snapshot := NewSnapshot(nodeMap)
 	fw := &Framework{
 		snapshot:        snapshot,

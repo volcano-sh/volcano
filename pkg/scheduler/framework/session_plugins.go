@@ -23,6 +23,7 @@ package framework
 import (
 	"context"
 
+	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -693,7 +694,7 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 }
 
 // SimulateAllocatableFn invoke simulateAllocatableFn function of the plugins
-func (ssn *Session) SimulateAllocatableFn(ctx context.Context, state *k8sframework.CycleState, queue *api.QueueInfo, task *api.TaskInfo) bool {
+func (ssn *Session) SimulateAllocatableFn(ctx context.Context, state fwk.CycleState, queue *api.QueueInfo, task *api.TaskInfo) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledAllocatable) {
@@ -712,7 +713,7 @@ func (ssn *Session) SimulateAllocatableFn(ctx context.Context, state *k8sframewo
 }
 
 // SimulatePredicateFn invoke simulatePredicateFn function of the plugins
-func (ssn *Session) SimulatePredicateFn(ctx context.Context, state *k8sframework.CycleState, task *api.TaskInfo, node *api.NodeInfo) error {
+func (ssn *Session) SimulatePredicateFn(ctx context.Context, state fwk.CycleState, task *api.TaskInfo, node *api.NodeInfo) error {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledPredicate) {
@@ -732,7 +733,7 @@ func (ssn *Session) SimulatePredicateFn(ctx context.Context, state *k8sframework
 }
 
 // SimulateRemoveTaskFn invoke simulateRemoveTaskFn function of the plugins
-func (ssn *Session) SimulateRemoveTaskFn(ctx context.Context, state *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+func (ssn *Session) SimulateRemoveTaskFn(ctx context.Context, state fwk.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledPreemptable) && !isEnabled(plugin.EnabledAllocatable) {
@@ -752,7 +753,7 @@ func (ssn *Session) SimulateRemoveTaskFn(ctx context.Context, state *k8sframewor
 }
 
 // SimulateAddTaskFn invoke simulateAddTaskFn function of the plugins
-func (ssn *Session) SimulateAddTaskFn(ctx context.Context, state *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+func (ssn *Session) SimulateAddTaskFn(ctx context.Context, state fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledPreemptable) && !isEnabled(plugin.EnabledAllocatable) {
