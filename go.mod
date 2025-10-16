@@ -51,7 +51,8 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.4.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.12.3-0.20250922071132-1aeba4dd588f
+	//volcano.sh/apis v1.12.3-0.20250922071132-1aeba4dd588f
+	volcano.sh/apis v0.0.0
 )
 
 require (
@@ -132,7 +133,7 @@ require (
 	github.com/google/cel-go v0.23.2 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.24.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -225,3 +226,7 @@ replace (
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.33.2
 	k8s.io/sample-controller => k8s.io/sample-controller v0.33.2
 )
+
+// replace volcano.sh/apis => ../volcano-apis
+
+replace volcano.sh/apis => github.com/LegGasai/apis v0.0.0-20250706051525-6ddbe606d32f
