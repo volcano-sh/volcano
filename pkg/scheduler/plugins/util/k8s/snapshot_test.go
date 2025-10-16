@@ -23,6 +23,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -40,6 +41,11 @@ func TestSnapshot(t *testing.T) {
 			map[string]string{"test": "test"}, make(map[string]string))
 	)
 
+	pod1Info, _ := framework.NewPodInfo(pod1)
+	pod2Info, _ := framework.NewPodInfo(pod2)
+
+	nodeInfo := framework.NewNodeInfo(pod1, pod2)
+
 	tests := []struct {
 		name              string
 		nodeInfoMap       map[string]*framework.NodeInfo
@@ -48,69 +54,26 @@ func TestSnapshot(t *testing.T) {
 		expectErr         error
 	}{
 		{
-			name: "test snapshot operation",
-			nodeInfoMap: map[string]*framework.NodeInfo{nodeName: {
-				Requested:        &framework.Resource{},
-				NonZeroRequested: &framework.Resource{},
-				Allocatable:      &framework.Resource{},
-				Generation:       2,
-				ImageStates:      map[string]*framework.ImageStateSummary{},
-				PVCRefCounts:     map[string]int{},
-				Pods: []*framework.PodInfo{
-					{
-						Pod: pod1,
-					},
-					{
-						Pod: pod2,
-					},
-				},
-				PodsWithAffinity: []*framework.PodInfo{
-					{
-						Pod: pod1,
-					},
-					{
-						Pod: pod2,
-					},
-				},
-				PodsWithRequiredAntiAffinity: []*framework.PodInfo{
-					{
-						Pod: pod1,
-					},
-					{
-						Pod: pod2,
-					},
-				},
-			}},
+			name:        "test snapshot operation",
+			nodeInfoMap: map[string]*framework.NodeInfo{nodeName: nodeInfo},
 			expectedNodeInfos: []*framework.NodeInfo{{
 				Requested:        &framework.Resource{},
 				NonZeroRequested: &framework.Resource{},
 				Allocatable:      &framework.Resource{},
 				Generation:       2,
-				ImageStates:      map[string]*framework.ImageStateSummary{},
+				ImageStates:      map[string]*fwk.ImageStateSummary{},
 				PVCRefCounts:     map[string]int{},
-				Pods: []*framework.PodInfo{
-					{
-						Pod: pod1,
-					},
-					{
-						Pod: pod2,
-					},
+				Pods: []fwk.PodInfo{
+					pod1Info,
+					pod2Info,
 				},
-				PodsWithAffinity: []*framework.PodInfo{
-					{
-						Pod: pod1,
-					},
-					{
-						Pod: pod2,
-					},
+				PodsWithAffinity: []fwk.PodInfo{
+					pod1Info,
+					pod2Info,
 				},
-				PodsWithRequiredAntiAffinity: []*framework.PodInfo{
-					{
-						Pod: pod1,
-					},
-					{
-						Pod: pod2,
-					},
+				PodsWithRequiredAntiAffinity: []fwk.PodInfo{
+					pod1Info,
+					pod2Info,
 				},
 			}},
 			expectedPods: []*v1.Pod{pod2},
@@ -120,7 +83,7 @@ func TestSnapshot(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			snapshot := NewSnapshot(tc.nodeInfoMap)
+			snapshot := NewSnapshot(util.ConvertNodeInfoSliceToInterface(tc.nodeInfoMap))
 			nodeInfoList, err := snapshot.List()
 			if !reflect.DeepEqual(nodeInfoList, tc.expectedNodeInfos) || err != nil {
 				t.Fatalf("unexpected list nodeInfos value (+got: %s/-want: %s), err: %s", tc.expectedNodeInfos, nodeInfoList, err)

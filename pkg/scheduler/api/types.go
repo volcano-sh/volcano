@@ -26,6 +26,7 @@ import (
 	"errors"
 	"strings"
 
+	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -281,21 +282,21 @@ func (s StatusSets) Reasons() []string {
 }
 
 // ConvertPredicateStatus return predicate status from k8sframework status
-func ConvertPredicateStatus(status *k8sframework.Status) *Status {
+func ConvertPredicateStatus(status *fwk.Status) *Status {
 	internalStatus := &Status{}
 	if status != nil {
 		internalStatus.Plugin = status.Plugin() // function didn't check whether Status is nil
 	}
 	switch status.Code() {
-	case k8sframework.Error:
+	case fwk.Error:
 		internalStatus.Code = Error
-	case k8sframework.Unschedulable:
+	case fwk.Unschedulable:
 		internalStatus.Code = Unschedulable
-	case k8sframework.UnschedulableAndUnresolvable:
+	case fwk.UnschedulableAndUnresolvable:
 		internalStatus.Code = UnschedulableAndUnresolvable
-	case k8sframework.Wait:
+	case fwk.Wait:
 		internalStatus.Code = Wait
-	case k8sframework.Skip:
+	case fwk.Skip:
 		internalStatus.Code = Skip
 	default:
 		internalStatus.Code = Success
@@ -365,15 +366,15 @@ type VictimTasksFn func([]*TaskInfo) []*TaskInfo
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool
 
 // SimulateRemoveTaskFn is the func declaration used to simulate the result of removing a task from a node.
-type SimulateRemoveTaskFn func(ctx context.Context, state *k8sframework.CycleState, taskToSchedule *TaskInfo, taskInfoToRemove *TaskInfo, nodeInfo *NodeInfo) error
+type SimulateRemoveTaskFn func(ctx context.Context, state fwk.CycleState, taskToSchedule *TaskInfo, taskInfoToRemove *TaskInfo, nodeInfo *NodeInfo) error
 
 // SimulateAddTaskFn is the func declaration used to simulate the result of adding a task to a node.
-type SimulateAddTaskFn func(ctx context.Context, state *k8sframework.CycleState, taskToSchedule *TaskInfo, taskInfoToAdd *TaskInfo, nodeInfo *NodeInfo) error
+type SimulateAddTaskFn func(ctx context.Context, state fwk.CycleState, taskToSchedule *TaskInfo, taskInfoToAdd *TaskInfo, nodeInfo *NodeInfo) error
 
 // Simulate the predicate check for a task on a node.
 // Plugins implement this function to verify if the task can be scheduled to the node while maintaining topology constraints
-type SimulatePredicateFn func(ctx context.Context, state *k8sframework.CycleState, task *TaskInfo, nodeInfo *NodeInfo) error
+type SimulatePredicateFn func(ctx context.Context, state fwk.CycleState, task *TaskInfo, nodeInfo *NodeInfo) error
 
 // Simulate the allocatable check for a node
 // Plugins implement this function to verify if the queue has enough resources to schedule the task while maintaining topology constraints
-type SimulateAllocatableFn func(ctx context.Context, state *k8sframework.CycleState, queue *QueueInfo, task *TaskInfo) bool
+type SimulateAllocatableFn func(ctx context.Context, state fwk.CycleState, queue *QueueInfo, task *TaskInfo) bool

@@ -31,6 +31,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	fwk "k8s.io/kube-scheduler/framework"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -659,4 +661,12 @@ func (q *QueueWrapper) Affinity(affinity *schedulingv1beta1.Affinity) *QueueWrap
 // Obj returns the raw Queue object.
 func (q *QueueWrapper) Obj() *schedulingv1beta1.Queue {
 	return q.Queue
+}
+
+func ConvertNodeInfoSliceToInterface(m map[string]*k8sframework.NodeInfo) map[string]fwk.NodeInfo {
+	out := make(map[string]fwk.NodeInfo, len(m))
+	for k, v := range m {
+		out[k] = v.Snapshot()
+	}
+	return out
 }
