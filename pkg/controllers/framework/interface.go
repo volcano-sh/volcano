@@ -37,6 +37,7 @@ type ControllerOption struct {
 	MaxRequeueNum           int
 
 	InheritOwnerAnnotations bool
+	EnableShadowPodGroup    bool
 	WorkerThreadsForPG      uint32
 	WorkerThreadsForQueue   uint32
 	WorkerThreadsForGC      uint32
