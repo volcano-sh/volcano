@@ -233,18 +233,21 @@ func GetNodeList(nodes map[string]*api.NodeInfo, nodeList []string) []*api.NodeI
 	return result
 }
 
-// GetRealNodesListByHyperNode returns values of the map 'hyperNodes'.
-func GetRealNodesListByHyperNode(hyperNodes map[string]sets.Set[string], allNodes map[string]*api.NodeInfo) map[string][]*api.NodeInfo {
-	result := make(map[string][]*api.NodeInfo)
+// GetRealNodesByHyperNode returns values of the map 'hyperNodes'.
+func GetRealNodesByHyperNode(hyperNodes map[string]sets.Set[string], allNodes map[string]*api.NodeInfo) (map[string][]*api.NodeInfo, map[string]sets.Set[string]) {
+	resultList := make(map[string][]*api.NodeInfo)
+	resultSet := make(map[string]sets.Set[string])
 	for hyperNodeName, nodes := range hyperNodes {
-		result[hyperNodeName] = make([]*api.NodeInfo, 0, len(nodes))
+		resultList[hyperNodeName] = make([]*api.NodeInfo, 0, len(nodes))
+		resultSet[hyperNodeName] = make(sets.Set[string], len(nodes))
 		for node := range nodes {
 			if ni, ok := allNodes[node]; ok {
-				result[hyperNodeName] = append(result[hyperNodeName], ni)
+				resultList[hyperNodeName] = append(resultList[hyperNodeName], ni)
+				resultSet[hyperNodeName].Insert(ni.Name)
 			}
 		}
 	}
-	return result
+	return resultList, resultSet
 }
 
 // ValidateVictims returns an error if the resources of the victims can't satisfy the preemptor
