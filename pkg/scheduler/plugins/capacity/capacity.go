@@ -886,7 +886,15 @@ func (cp *capacityPlugin) checkJobEnqueueableHierarchically(ssn *framework.Sessi
 	list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
 	// Check whether the job can be enqueued to the queue and all its ancestors.
 	for i := len(list) - 1; i >= 0; i-- {
-		if inqueue, resourceNames := cp.jobEnqueueable(ssn.Queues[list[i]], job); !inqueue {
+		currentQueue := ssn.Queues[list[i]]
+
+		// Skip capacity check for root queue - allow enqueue and let reclaim handle preemption
+		if cp.queueOpts[list[i]].name == cp.rootQueue {
+			klog.V(4).Infof("Skip capacity check for root queue, allow job <%s/%s> to enqueue for potential reclaim", job.Namespace, job.Name)
+			continue
+		}
+
+		if inqueue, resourceNames := cp.jobEnqueueable(currentQueue, job); !inqueue {
 			// If log level is 5, print the information of all queues from leaf to ancestor.
 			if klog.V(5).Enabled() {
 				for j := i - 1; j >= 0; j-- {
