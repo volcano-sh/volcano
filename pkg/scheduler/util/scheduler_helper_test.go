@@ -239,15 +239,7 @@ func TestGetHyperNodeList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GetRealNodesListByHyperNode(tc.hyperNodes, tc.allNodes)
-			nodesSet := make(map[string]sets.Set[string])
-			for name, nodes := range result {
-				s := sets.New[string]()
-				for _, node := range nodes {
-					s.Insert(node.Name)
-				}
-				nodesSet[name] = s
-			}
+			_, nodesSet := GetRealNodesByHyperNode(tc.hyperNodes, tc.allNodes)
 			assert.Equal(t, tc.expected, nodesSet)
 		})
 	}
