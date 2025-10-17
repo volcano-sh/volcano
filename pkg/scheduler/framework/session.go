@@ -25,6 +25,7 @@ package framework
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"sync"
 
@@ -45,6 +46,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -73,7 +75,7 @@ type Session struct {
 	TotalDeserved  *api.Resource
 	// PodGroupOldState contains podgroup status and annotations during schedule
 	// This should not be mutated after initiated
-	api.PodGroupOldState
+	PodGroupOldState *api.PodGroupOldState
 	// DirtyJobs include the jobs that need to flush to SchedulerCache on session close
 	DirtyJobs sets.Set[api.JobID]
 
@@ -165,7 +167,7 @@ func openSession(cache cache.Cache) *Session {
 		TotalResource:  api.EmptyResource(),
 		TotalGuarantee: api.EmptyResource(),
 		TotalDeserved:  api.EmptyResource(),
-		PodGroupOldState: api.PodGroupOldState{
+		PodGroupOldState: &api.PodGroupOldState{
 			Status:      map[api.JobID]scheduling.PodGroupStatus{},
 			Annotations: map[api.JobID]map[string]string{},
 		},
@@ -221,15 +223,18 @@ func openSession(cache cache.Cache) *Session {
 	for _, job := range ssn.Jobs {
 		if job.PodGroup != nil {
 			ssn.PodGroupOldState.Status[job.UID] = *job.PodGroup.Status.DeepCopy()
-			ssn.PodGroupOldState.Annotations[job.UID] = job.PodGroup.GetAnnotations()
+			ssn.PodGroupOldState.Annotations[job.UID] = maps.Clone(job.PodGroup.GetAnnotations())
 		}
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
+
 	ssn.HyperNodes = snapshot.HyperNodes
 	ssn.HyperNodesSetByTier = snapshot.HyperNodesSetByTier
-	ssn.parseHyperNodesTiers()
 	ssn.RealNodesList = util.GetRealNodesListByHyperNode(snapshot.RealNodesSet, snapshot.Nodes)
 	ssn.HyperNodesReadyToSchedule = snapshot.HyperNodesReadyToSchedule
+	ssn.addClusterTopHyperNode(ssn.NodeList)
+	ssn.parseHyperNodesTiers()
+
 	ssn.Nodes = snapshot.Nodes
 	ssn.CSINodesStatus = snapshot.CSINodesStatus
 	ssn.RevocableNodes = snapshot.RevocableNodes
@@ -244,6 +249,33 @@ func openSession(cache cache.Cache) *Session {
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues), ssn.HyperNodesReadyToSchedule)
 
 	return ssn
+}
+
+// addClusterTopHyperNode adds a virtual top hyperNode of all hyperNodes in the cluster into the session
+func (ssn *Session) addClusterTopHyperNode(nodes []*api.NodeInfo) {
+	topTier := 1
+	for tier := range ssn.HyperNodesSetByTier {
+		if tier >= topTier {
+			topTier = tier + 1 // topTier should be greater than the highest tier of real hyperNodes
+		}
+	}
+
+	topHn := &topologyv1alpha1.HyperNode{}
+	topHn.Name = ClusterTopHyperNode
+	topHn.Spec.Tier = topTier
+	topHni := api.NewHyperNodeInfo(topHn)
+
+	for _, hni := range ssn.HyperNodes {
+		if hni.Parent != "" {
+			continue
+		}
+		hni.Parent = topHn.Name
+		topHni.Children.Insert(hni.Name)
+	}
+
+	ssn.HyperNodes[topHni.Name] = topHni
+	ssn.HyperNodesSetByTier[topHni.Tier()] = sets.New(topHni.Name)
+	ssn.RealNodesList[topHni.Name] = nodes
 }
 
 func (ssn *Session) parseHyperNodesTiers() {
