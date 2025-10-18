@@ -22,6 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
@@ -61,6 +62,8 @@ type Devices interface {
 	// scheduling policies.
 	ScoreNode(pod *v1.Pod, policy string) float64
 
+	//ScoreBatchNodes(pod *v1.Pod, schedulePolicy string, neighbours []*Devices) []float64
+
 	// Allocate action in predicate
 	Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) error
 	// Release action in predicate
@@ -80,6 +83,7 @@ var _ Devices = new(vgpu.GPUDevices)
 var RegisteredDevices = []string{
 	gpushare.DeviceName,
 	vgpu.DeviceName,
+	vnpu.DeviceName,
 }
 
 var IgnoredDevicesList = ignoredDevicesList{}
