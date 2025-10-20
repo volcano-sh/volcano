@@ -17,21 +17,21 @@ spec:
     jsonPatch:
       expression: |
         has(object.metadata.annotations) &&
-        "scheduling.volcano.sh/hierarchy" in object.metadata.annotations &&
-        "scheduling.volcano.sh/hierarchy-weights" in object.metadata.annotations &&
-        object.metadata.annotations["scheduling.volcano.sh/hierarchy"] != "" &&
-        object.metadata.annotations["scheduling.volcano.sh/hierarchy-weights"] != "" &&
-        !object.metadata.annotations["scheduling.volcano.sh/hierarchy"].startsWith("root") ?
+        has(object.metadata.annotations["volcano.sh/hierarchy"]) &&
+        has(object.metadata.annotations["volcano.sh/hierarchy-weights"]) &&
+        object.metadata.annotations["volcano.sh/hierarchy"] != "" &&
+        object.metadata.annotations["volcano.sh/hierarchy-weights"] != "" &&
+        !object.metadata.annotations["volcano.sh/hierarchy"].startsWith("root") ?
         [
           JSONPatch{
             op: "replace",
-            path: "/metadata/annotations/" + jsonpatch.escapeKey("scheduling.volcano.sh/hierarchy"),
-            value: "root/" + object.metadata.annotations["scheduling.volcano.sh/hierarchy"]
+            path: "/metadata/annotations/" + jsonpatch.escapeKey("volcano.sh/hierarchy"),
+            value: "root/" + object.metadata.annotations["volcano.sh/hierarchy"]
           },
           JSONPatch{
-            op: "replace", 
-            path: "/metadata/annotations/" + jsonpatch.escapeKey("scheduling.volcano.sh/hierarchy-weights"),
-            value: "1/" + object.metadata.annotations["scheduling.volcano.sh/hierarchy-weights"]
+            op: "replace",
+            path: "/metadata/annotations/" + jsonpatch.escapeKey("volcano.sh/hierarchy-weights"),
+            value: "1/" + object.metadata.annotations["volcano.sh/hierarchy-weights"]
           }
         ] : []
 
