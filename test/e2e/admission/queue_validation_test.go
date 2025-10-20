@@ -103,49 +103,6 @@ var _ = ginkgo.Describe("Queue Validating Webhook E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	// Test invalid state rejection
-	// Status will not be sent to admission webhook
-	ginkgo.XIt("Should reject queue creation with invalid state", func() {
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		queue := &schedulingv1beta1.Queue{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-queue-invalid-state",
-			},
-			Spec: schedulingv1beta1.QueueSpec{
-				Weight: 1,
-			},
-			Status: schedulingv1beta1.QueueStatus{
-				State: "wrong",
-			},
-		}
-
-		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("queue state must be in"))
-	})
-
-	// Test weight validation
-	// will be fixed by mutation webhook
-	ginkgo.XIt("Should reject queue creation with zero weight", func() {
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		queue := &schedulingv1beta1.Queue{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-queue-zero-weight",
-			},
-			Spec: schedulingv1beta1.QueueSpec{
-				Weight: 0,
-			},
-		}
-
-		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("queue weight must be a positive integer"))
-	})
-
 	// validate by crd
 	ginkgo.It("Should reject queue creation with negative weight", func() {
 		testCtx := util.InitTestContext(util.Options{})
@@ -504,23 +461,4 @@ var _ = ginkgo.Describe("Queue Validating Webhook E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	// VAP cannot validate parent queue existence
-	ginkgo.XIt("Should reject hierarchical queue creation with non-existent parent", func() {
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		childQueue := &schedulingv1beta1.Queue{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-orphan-queue",
-			},
-			Spec: schedulingv1beta1.QueueSpec{
-				Weight: 1,
-				Parent: "non-existent-parent",
-			},
-		}
-
-		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), childQueue, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("failed to get parent queue"))
-	})
 })

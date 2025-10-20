@@ -366,37 +366,6 @@ var _ = ginkgo.Describe("Job Mutating Webhook E2E Test", func() {
 		gomega.Expect(createdJob.Spec.Plugins["svc"]).To(gomega.ContainElement("--enable-networking"))
 	})
 
-	ginkgo.XIt("Should not add plugins when no distributed framework plugins are used", func() {
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		job := &v1alpha1.Job{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "no-framework-plugins-job",
-				Namespace: testCtx.Namespace,
-			},
-			Spec: v1alpha1.JobSpec{
-				MinAvailable: 1,
-				Queue:        "default",
-				Plugins:      map[string][]string{},
-				Tasks: []v1alpha1.TaskSpec{
-					{
-						Name:     "task-1",
-						Replicas: 1,
-						Template: createPodTemplateForMutation(),
-					},
-				},
-			},
-		}
-
-		createdJob, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		gomega.Expect(createdJob.Spec.Plugins).To(gomega.HaveKey("gang"))
-		// Should not automatically add svc or ssh plugins
-		gomega.Expect(createdJob.Spec.Plugins).NotTo(gomega.HaveKey("svc"))
-		gomega.Expect(createdJob.Spec.Plugins).NotTo(gomega.HaveKey("ssh"))
-	})
-
 	ginkgo.It("Should preserve existing field values when specified", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)

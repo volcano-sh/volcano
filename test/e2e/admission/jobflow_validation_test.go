@@ -146,47 +146,6 @@ var _ = ginkgo.Describe("JobFlow Validating Webhook E2E Test", func() {
 		gomega.Expect(err.Error()).To(gomega.ContainSubstring("vertex is not defined"))
 	})
 
-	// VAP cannot be used to test the validation logic
-	ginkgo.XIt("Should reject jobflow creation with circular dependency (not DAG)", func() {
-		jobFlowName := "circular-dependency-jobflow"
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		jobFlow := &flowv1alpha1.JobFlow{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: testCtx.Namespace,
-				Name:      jobFlowName,
-			},
-			Spec: flowv1alpha1.JobFlowSpec{
-				Flows: []flowv1alpha1.Flow{
-					{
-						Name: "a",
-						DependsOn: &flowv1alpha1.DependsOn{
-							Targets: []string{"b"},
-						},
-					},
-					{
-						Name: "b",
-						DependsOn: &flowv1alpha1.DependsOn{
-							Targets: []string{"a"}, // Circular dependency
-						},
-					},
-					{
-						Name: "c",
-						DependsOn: &flowv1alpha1.DependsOn{
-							Targets: []string{"a", "b"},
-						},
-					},
-				},
-				JobRetainPolicy: flowv1alpha1.RetainPolicy("retain"),
-			},
-		}
-
-		_, err := testCtx.Vcclient.FlowV1alpha1().JobFlows(testCtx.Namespace).Create(context.TODO(), jobFlow, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("jobflow Flow is not DAG"))
-	})
-
 	ginkgo.It("Should allow jobflow creation with multiple flows having same dependency target", func() {
 		jobFlowName := "multi-dependency-jobflow"
 		testCtx := util.InitTestContext(util.Options{})
@@ -269,47 +228,6 @@ var _ = ginkgo.Describe("JobFlow Validating Webhook E2E Test", func() {
 
 		_, err = testCtx.Vcclient.FlowV1alpha1().JobFlows(testCtx.Namespace).Update(context.TODO(), createdJobFlow, metav1.UpdateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	})
-
-	// VAP can be used to test the validation logic
-	ginkgo.XIt("Should reject jobflow update with circular dependency", func() {
-		jobFlowName := "update-invalid-jobflow"
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		// Create initial valid jobflow
-		jobFlow := &flowv1alpha1.JobFlow{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: testCtx.Namespace,
-				Name:      jobFlowName,
-			},
-			Spec: flowv1alpha1.JobFlowSpec{
-				Flows: []flowv1alpha1.Flow{
-					{
-						Name: "a",
-					},
-					{
-						Name: "b",
-						DependsOn: &flowv1alpha1.DependsOn{
-							Targets: []string{"a"},
-						},
-					},
-				},
-				JobRetainPolicy: flowv1alpha1.RetainPolicy("retain"),
-			},
-		}
-
-		createdJobFlow, err := testCtx.Vcclient.FlowV1alpha1().JobFlows(testCtx.Namespace).Create(context.TODO(), jobFlow, metav1.CreateOptions{})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-		// Update to create circular dependency
-		createdJobFlow.Spec.Flows[0].DependsOn = &flowv1alpha1.DependsOn{
-			Targets: []string{"b"}, // Creates circular dependency: a->b->a
-		}
-
-		_, err = testCtx.Vcclient.FlowV1alpha1().JobFlows(testCtx.Namespace).Update(context.TODO(), createdJobFlow, metav1.UpdateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("jobflow Flow is not DAG"))
 	})
 
 	ginkgo.It("Should allow jobflow creation with simple linear dependency chain", func() {

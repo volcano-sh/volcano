@@ -24,12 +24,10 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/test/e2e/util"
 )
 
@@ -255,24 +253,6 @@ var _ = ginkgo.Describe("Job Validating Webhook E2E Test", func() {
 		gomega.Expect(err.Error()).To(gomega.ContainSubstring("either event and exitCode should be specified"))
 	})
 
-	// validated by crd installer/helm/chart/volcano/crd/v1/batch.volcano.sh_jobs.yaml
-	ginkgo.XIt("Should reject job creation with invalid policy event", func() {
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		job := createBaseJob("invalid-policy-event-job", testCtx.Namespace)
-		job.Spec.Policies = []v1alpha1.LifecyclePolicy{
-			{
-				Event:  busv1alpha1.Event("InvalidEvent"),
-				Action: busv1alpha1.AbortJobAction,
-			},
-		}
-
-		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("invalid policy event"))
-	})
-
 	ginkgo.It("Should reject job creation with invalid policy action", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
@@ -352,21 +332,6 @@ var _ = ginkgo.Describe("Job Validating Webhook E2E Test", func() {
 		gomega.Expect(err.Error()).To(gomega.ContainSubstring("if there's * here, no other policy should be here"))
 	})
 
-	// VAP is unable to verify this situation
-	ginkgo.XIt("Should reject job creation with unknown job plugin", func() {
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		job := createBaseJob("invalid-plugin-job", testCtx.Namespace)
-		job.Spec.Plugins = map[string][]string{
-			"unknown_plugin": {},
-		}
-
-		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("unable to find job plugin"))
-	})
-
 	ginkgo.It("Should reject job creation with invalid volume mount path", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
@@ -421,63 +386,6 @@ var _ = ginkgo.Describe("Job Validating Webhook E2E Test", func() {
 		gomega.Expect(err.Error()).To(gomega.ContainSubstring("either VolumeClaim or VolumeClaimName must be specified"))
 	})
 
-	// VAP is unable to verify this situation
-	ginkgo.XIt("Should reject job creation with non-existent queue", func() {
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		job := createBaseJob("invalid-queue-job", testCtx.Namespace)
-		job.Spec.Queue = "non-existent-queue"
-
-		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("unable to find job queue"))
-	})
-
-	// VAP is unable to verify this situation
-	ginkgo.XIt("Should reject job creation submitted to closed queue", func() {
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		// Create a closed queue
-		closedQueue := &schedulingv1beta1.Queue{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "closed-queue-test",
-			},
-			Spec: schedulingv1beta1.QueueSpec{
-				Weight: 1,
-			},
-		}
-		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), closedQueue, metav1.CreateOptions{})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-		// Update queue to closed state with retry on conflict
-		var updateErr error
-		for retryCount := 0; retryCount < 5; retryCount++ {
-			// Fetch the latest version before updating
-			latestQueue, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), "closed-queue-test", metav1.GetOptions{})
-			gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-			// Update queue to closed state
-			latestQueue.Status.State = schedulingv1beta1.QueueStateClosed
-			_, updateErr = testCtx.Vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), latestQueue, metav1.UpdateOptions{})
-			// If we get a conflict, retry with fresh object
-			if errors.IsConflict(updateErr) {
-				continue
-			}
-			// For any other error or success, break
-			break
-		}
-		gomega.Expect(updateErr).NotTo(gomega.HaveOccurred())
-
-		job := createBaseJob("closed-queue-job", testCtx.Namespace)
-		job.Spec.Queue = "closed-queue"
-
-		_, err = testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("can only submit job to queue with state `Open`"))
-	})
-
 	ginkgo.It("Should allow job creation with valid task dependencies (DAG)", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
@@ -510,64 +418,6 @@ var _ = ginkgo.Describe("Job Validating Webhook E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	})
-
-	// VAP is unable to verify this situation
-	ginkgo.XIt("Should reject job creation with invalid task dependencies (non-DAG)", func() {
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		job := &v1alpha1.Job{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "invalid-dag-job",
-				Namespace: testCtx.Namespace,
-			},
-			Spec: v1alpha1.JobSpec{
-				MinAvailable: 1,
-				Queue:        "default",
-				Tasks: []v1alpha1.TaskSpec{
-					{
-						Name:     "t1",
-						Replicas: 1,
-						DependsOn: &v1alpha1.DependsOn{
-							Name: []string{"t3"}, // t3 doesn't exist
-						},
-						Template: createPodTemplate(),
-					},
-					{
-						Name:     "t2",
-						Replicas: 1,
-						Template: createPodTemplate(),
-					},
-				},
-			},
-		}
-
-		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("job has dependencies between tasks, but doesn't form a directed acyclic graph"))
-	})
-
-	// VAP is unable to verify this situation
-	ginkgo.XIt("Should reject job creation with invalid topology policy and non-integer CPU", func() {
-		testCtx := util.InitTestContext(util.Options{})
-		defer util.CleanupTestContext(testCtx)
-
-		job := createBaseJob("invalid-topology-policy-job", testCtx.Namespace)
-		job.Spec.Tasks[0].TopologyPolicy = v1alpha1.Restricted
-		// Set non-integer CPU request (500m)
-		job.Spec.Tasks[0].Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU: resource.MustParse("500m"),
-			},
-			Limits: corev1.ResourceList{
-				corev1.ResourceCPU: resource.MustParse("500m"),
-			},
-		}
-
-		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("the cpu request isn't  an integer"))
 	})
 
 	ginkgo.It("Should allow job update with valid changes to minAvailable and replicas", func() {
