@@ -65,19 +65,14 @@ esac
 
 ARCH=$(go env GOARCH)
 
-# Set VAP enablement based on environment variable
-VAP_ENABLED="false"
+# Display VAP and MAP status
 if [[ "$ENABLE_VAP" == "true" ]]; then
-  VAP_ENABLED="true"
   echo "ValidatingAdmissionPolicy enabled"
 else
   echo "ValidatingAdmissionPolicy disabled"
 fi
 
-# Set MAP enablement based on environment variable
-MAP_ENABLED="false"
 if [[ "$ENABLE_MAP" == "true" ]]; then
-  MAP_ENABLED="true"
   echo "MutatingAdmissionPolicy enabled"
 else
   echo "MutatingAdmissionPolicy disabled"
@@ -149,7 +144,7 @@ cat ${VK_ROOT}/installer/namespace.yaml > ${DEPLOYMENT_FILE}
 # Volcano
 HELM_CMD="${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
-      --set custom.vap_enable=${VAP_ENABLED} --set custom.map_enable=${MAP_ENABLED}\
+      --set custom.vap_enable=${ENABLE_VAP} --set custom.map_enable=${ENABLE_MAP}\
       -s templates/admission.yaml \
       -s templates/admission-init.yaml \
       -s templates/batch_v1alpha1_job.yaml \
@@ -164,11 +159,11 @@ HELM_CMD="${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano 
       -s templates/webhooks.yaml"
 
 # Add VAP and MAP templates if enabled
-if [[ "$VAP_ENABLED" == "true" ]]; then
+if [[ "$ENABLE_VAP" == "true" ]]; then
   HELM_CMD="$HELM_CMD -s templates/validating_admission_policy.yaml"
 fi
 
-if [[ "$MAP_ENABLED" == "true" ]]; then
+if [[ "$ENABLE_MAP" == "true" ]]; then
   HELM_CMD="$HELM_CMD -s templates/mutating_admission_policy.yaml"
 fi
 
