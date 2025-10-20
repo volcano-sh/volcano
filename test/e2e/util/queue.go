@@ -34,6 +34,8 @@ type QueueSpec struct {
 	Name              string
 	Weight            int32
 	GuaranteeResource v1.ResourceList
+	Annotations       map[string]string
+	Capacity          v1.ResourceList
 }
 
 func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
@@ -47,9 +49,22 @@ func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
 				Weight: queueSpec.Weight,
 			},
 		}
+
+		// set annotations
+		if queueSpec.Annotations != nil {
+			queue.ObjectMeta.Annotations = queueSpec.Annotations
+		}
+
+		// set guarantee resource
 		if len(queueSpec.GuaranteeResource) != 0 {
 			queue.Spec.Guarantee.Resource = queueSpec.GuaranteeResource
 		}
+
+		// set capacity
+		if len(queueSpec.Capacity) != 0 {
+			queue.Spec.Capability = queueSpec.Capacity
+		}
+
 		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", queueSpec.Name)
 	}
