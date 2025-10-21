@@ -1,0 +1,59 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: jobflow-validation-policy
+  labels:
+    volcano.sh/component: jobflow-webhook
+    volcano.sh/migration: vap
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: ["flow.volcano.sh"]
+        apiVersions: ["v1alpha1"]
+        resources: ["jobflows"]
+  variables:
+    # Extract flows from the jobflow spec
+    - name: flows
+      expression: "has(object.spec.flows) ? object.spec.flows : []"
+    # Extract flow names for validation
+    - name: flowNames
+      expression: "variables.flows.map(flow, flow.name)"
+  validations:
+    # 1. Valid Dependency References - Dependencies must reference existing flows
+    - expression: |
+        variables.flows.all(flow,
+          !has(flow.dependsOn) ||
+          !has(flow.dependsOn.targets) ||
+          flow.dependsOn.targets.all(target, target in variables.flowNames)
+        )
+      message: "jobflow Flow is not DAG: vertex is not defined"
+      reason: Invalid
+
+    # 2. No Self-Dependencies - A flow cannot depend on itself
+    - expression: |
+        variables.flows.all(flow,
+          !has(flow.dependsOn) ||
+          !has(flow.dependsOn.targets) ||
+          !(flow.name in flow.dependsOn.targets)
+        )
+      message: "jobflow Flow is not DAG"
+      reason: Invalid
+
+  # Note: Complex DAG cycle detection (transitive cycles) is handled by
+  # the validating webhook since CEL expressions cannot implement
+  # full graph traversal algorithms. However, basic validations like
+  # missing references and self-dependencies can be handled here.
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: jobflow-validation-policy-binding
+  labels:
+    volcano.sh/component: jobflow-webhook
+    volcano.sh/migration: vap
+spec:
+  policyName: jobflow-validation-policy
+  validationActions: [Deny]

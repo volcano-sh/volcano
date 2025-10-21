@@ -469,7 +469,6 @@ webhooks:
     timeoutSeconds: 10
 {{- end }}
 {{- if .Values.custom.enabled_admissions | regexMatch "/cronjobs/validate" }} 
-{{- end }}
 ---  
 apiVersion: admissionregistration.k8s.io/v1  
 kind: ValidatingWebhookConfiguration  
@@ -515,4 +514,5 @@ webhooks:
         scope: '*'  
     sideEffects: NoneOnDryRun  
     timeoutSeconds: 10  
+{{- end }}
 {{- end }}

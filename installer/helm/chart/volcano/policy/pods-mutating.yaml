@@ -1,0 +1,129 @@
+apiVersion: admissionregistration.k8s.io/v1alpha1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: volcano-pod-mutation-policy
+spec:
+  # NOTE: This MutatingAdmissionPolicy provides a PARTIAL replacement for the webhook
+  # implementation. It contains HARDCODED logic for specific resource groups and namespaces
+  # and CANNOT handle dynamic configuration like the webhook implementation.
+  #
+  # IMPLEMENTED:
+  # - Scheduler name setting for 'default' resource group and 'volcano-system' namespace
+  # - Basic nodeSelector and tolerations for 'default' resource group
+  # - Fixed node-group labels and tolerations
+  #
+  # NOT IMPLEMENTED:
+  # - Dynamic configuration reading from config files
+  # - Configurable resource groups beyond 'default'
+  # - Flexible namespace handling beyond 'volcano-system'
+  # - Custom node selectors and tolerations per configuration
+  #
+  # For complete functionality with configurable resource groups and namespaces,
+  # the existing webhook must remain active alongside this policy.
+
+  failurePolicy: Fail
+  reinvocationPolicy: Never
+  matchConstraints:
+    resourceRules:
+    - operations: ["CREATE"]
+      apiGroups: [""]
+      apiVersions: ["v1"] 
+      resources: ["pods"]
+  mutations:
+  # Patch scheduler name when pod has volcano resource group annotation
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        has(object.metadata.annotations) &&
+        'volcano.sh/resource-group' in object.metadata.annotations &&
+        object.metadata.annotations['volcano.sh/resource-group'] == 'default' ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/schedulerName",
+          value: "volcano"
+        }] : []
+
+  # Add nodeSelector field if it doesn't exist for resource group matching
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        has(object.metadata.annotations) &&
+        'volcano.sh/resource-group' in object.metadata.annotations &&
+        object.metadata.annotations['volcano.sh/resource-group'] == 'default' &&
+        !has(object.spec.nodeSelector) ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/nodeSelector",
+          value: {}
+        }] : []
+
+  # Add specific nodeSelector label
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        has(object.metadata.annotations) &&
+        'volcano.sh/resource-group' in object.metadata.annotations &&
+        object.metadata.annotations['volcano.sh/resource-group'] == 'default' ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/nodeSelector/" + jsonpatch.escapeKey("volcano.sh/node-group"),
+          value: "compute"
+        }] : []
+
+  # Add tolerations field if it doesn't exist for resource group matching
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        has(object.metadata.annotations) &&
+        'volcano.sh/resource-group' in object.metadata.annotations &&
+        object.metadata.annotations['volcano.sh/resource-group'] == 'default' &&
+        !has(object.spec.tolerations) ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/tolerations",
+          value: []
+        }] : []
+
+  # Add toleration entry  
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        has(object.metadata.annotations) &&
+        'volcano.sh/resource-group' in object.metadata.annotations &&
+        object.metadata.annotations['volcano.sh/resource-group'] == 'default' ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/tolerations/-",
+          value: {
+            "key": "volcano.sh/node-group",
+            "operator": "Equal",
+            "value": "compute", 
+            "effect": "NoSchedule"
+          }
+        }] : []
+
+  # Handle namespace-based resource group matching (example for 'volcano-system' namespace)
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        object.metadata.namespace == 'volcano-system' &&
+        (!has(object.metadata.annotations) || 
+         !('volcano.sh/resource-group' in object.metadata.annotations)) ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/schedulerName", 
+          value: "volcano"
+        }] : []
+---
+apiVersion: admissionregistration.k8s.io/v1alpha1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: volcano-pod-mutation-binding
+spec:
+  policyName: volcano-pod-mutation-policy
+  matchResources:
+    resourceRules:
+    - operations: ["CREATE"]
+      apiGroups: [""]
+      apiVersions: ["v1"]
+      resources: ["pods"]
