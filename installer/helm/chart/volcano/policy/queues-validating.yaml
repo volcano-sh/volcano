@@ -1,0 +1,136 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: queue-validation-policy
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - operations: ["CREATE", "UPDATE", "DELETE"]
+        apiGroups: ["scheduling.volcano.sh"]
+        apiVersions: ["v1beta1"]
+        resources: ["queues"]
+  variables:
+    # Extract hierarchy annotation if present
+    - name: hierarchyPath
+      expression: |
+        has(object.metadata) && has(object.metadata.annotations) && "volcano.sh/hierarchy" in object.metadata.annotations ? 
+        object.metadata.annotations["volcano.sh/hierarchy"] : ""
+    # Extract hierarchy weights annotation if present
+    - name: hierarchyWeights
+      expression: |
+        has(object.metadata) && has(object.metadata.annotations) && "volcano.sh/hierarchy-weights" in object.metadata.annotations ?
+        object.metadata.annotations["volcano.sh/hierarchy-weights"] : ""
+    # Split hierarchy path by "/"
+    - name: hierarchyPaths
+      expression: |
+        variables.hierarchyPath != "" ? variables.hierarchyPath.split('/') : []
+    # Split hierarchy weights by "/"
+    - name: hierarchyWeightsList
+      expression: |
+        variables.hierarchyWeights != "" ? variables.hierarchyWeights.split('/') : []
+  validations:
+    # Validate queue state - only allow "Open" or "Closed" or empty
+    - expression: |
+        !has(object.status) || !has(object.status.state) || object.status.state == "" ||
+        object.status.state == "Open" || object.status.state == "Closed"
+      message: "queue state must be in [Open, Closed]"
+      reason: Invalid
+        # Basic resource validation - ensure resource values are non-empty when defined
+    - expression: |
+        !has(object.spec) || !has(object.spec.capability) || 
+        object.spec.capability.all(k, object.spec.capability[k] != "")
+      message: "capability resource values must not be empty"
+      reason: Invalid
+    - expression: |
+        !has(object.spec) || !has(object.spec.deserved) || 
+        object.spec.deserved.all(k, object.spec.deserved[k] != "")
+      message: "deserved resource values must not be empty"
+      reason: Invalid
+    - expression: |
+        !has(object.spec) || !has(object.spec.guarantee) || !has(object.spec.guarantee.resource) || 
+        object.spec.guarantee.resource.all(k, object.spec.guarantee.resource[k] != "")
+      message: "guarantee resource values must not be empty"
+      reason: Invalid
+    # Resource comparison validation using k8s quantity library
+    # Validate deserved <= capability (deserved should less equal than capability)
+    - expression: |
+        !has(object.spec) || !has(object.spec.capability) || !has(object.spec.deserved) ||
+        size(object.spec.capability) == 0 || size(object.spec.deserved) == 0 ||
+        object.spec.capability.all(resourceName,
+          !(resourceName in object.spec.deserved) ||
+          quantity(object.spec.capability[resourceName]).compareTo(quantity(object.spec.deserved[resourceName])) >= 0
+        ) &&
+        object.spec.deserved.all(resourceName,
+          resourceName in object.spec.capability &&
+          quantity(object.spec.deserved[resourceName]).compareTo(quantity(object.spec.capability[resourceName])) <= 0
+        )
+      message: "deserved should less equal than capability"
+      reason: Invalid
+    # Validate guarantee <= capability (guarantee should less equal than capability)
+    - expression: |
+        !has(object.spec) || !has(object.spec.capability) || !has(object.spec.guarantee) ||
+        !has(object.spec.guarantee.resource) || size(object.spec.capability) == 0 ||
+        size(object.spec.guarantee.resource) == 0 ||
+        object.spec.capability.all(resourceName,
+          !(resourceName in object.spec.guarantee.resource) ||
+          quantity(object.spec.capability[resourceName]).compareTo(quantity(object.spec.guarantee.resource[resourceName])) >= 0
+        ) &&
+        object.spec.guarantee.resource.all(resourceName,
+          resourceName in object.spec.capability &&
+          quantity(object.spec.guarantee.resource[resourceName]).compareTo(quantity(object.spec.capability[resourceName])) <= 0
+        )
+      message: "guarantee should less equal than capability"
+      reason: Invalid
+    # Validate guarantee <= deserved (guarantee should less equal than deserved)
+    - expression: |
+        !has(object.spec) || !has(object.spec.deserved) || !has(object.spec.guarantee) ||
+        !has(object.spec.guarantee.resource) || size(object.spec.deserved) == 0 ||
+        size(object.spec.guarantee.resource) == 0 ||
+        object.spec.deserved.all(resourceName,
+          !(resourceName in object.spec.guarantee.resource) ||
+          quantity(object.spec.deserved[resourceName]).compareTo(quantity(object.spec.guarantee.resource[resourceName])) >= 0
+        ) &&
+        object.spec.guarantee.resource.all(resourceName,
+          resourceName in object.spec.deserved &&
+          quantity(object.spec.guarantee.resource[resourceName]).compareTo(quantity(object.spec.deserved[resourceName])) <= 0
+        )
+      message: "guarantee should less equal than deserved"
+      reason: Invalid
+    # Validate hierarchical attributes - path and weights length must match
+    - expression: |
+        (variables.hierarchyPath == "" && variables.hierarchyWeights == "") ||
+        (variables.hierarchyPath != "" && variables.hierarchyWeights != "" && 
+         size(variables.hierarchyPaths) == size(variables.hierarchyWeightsList))
+      message: "volcano.sh/hierarchy must have the same length with volcano.sh/hierarchy-weights"
+      reason: Invalid
+    # Validate hierarchical weights - all must be positive numbers
+    - expression: |
+        variables.hierarchyWeights == "" ||
+        variables.hierarchyWeightsList.all(weight, 
+          weight.matches('^[0-9]+(\\.[0-9]+)?$') && double(weight) > 0
+        )
+      message: "weights in volcano.sh/hierarchy-weights must be larger than 0"
+      reason: Invalid
+    # Prevent deletion of default queue
+    - expression: |
+        request.operation != "DELETE" || oldObject.metadata.name != "default"
+      message: "`default` queue can not be deleted"
+      reason: Invalid
+    # Prevent deletion of root queue
+    - expression: |
+        request.operation != "DELETE" || oldObject.metadata.name != "root"
+      message: "`root` queue can not be deleted"
+      reason: Invalid
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: queue-validation-policy-binding
+  labels:
+    volcano.sh/component: queue-webhook
+    volcano.sh/migration: vap
+spec:
+  policyName: queue-validation-policy
+  validationActions: [Deny]
