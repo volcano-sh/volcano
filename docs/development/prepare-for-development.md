@@ -8,7 +8,8 @@ need to set up before being able to build and run the code.
 - [Setting up Go](#setting-up-go)
 - [Setting up Docker](#setting-up-docker)
 - [Setting up Kubernetes](#setting-up-kubernetes)
-- [Setting up personal access token](#setting-up-a-personal-access-token)
+- [Setting up a personal access token](#setting-up-a-personal-access-token)
+- [What's next?](#whats-next)
 
 ## Setting up Go
 
@@ -21,13 +22,12 @@ Volcano currently builds with Go 1.14
 
 ## Setting up Docker
 
-Istio has a Docker build system for creating and publishing Docker images.
+Volcano has a Docker build system for creating and publishing Docker images.
 To leverage that you will need:
 
 - **Docker platform:** To download and install Docker follow [these instructions](https://docs.docker.com/install/).
 
-- **Docker Hub ID:** If you do not yet have a Docker ID account you can follow [these steps](https://docs.docker.com/docker-id/) to create one. This ID will be used in a later step when setting up the environment variables.
-
+- **Docker Hub ID:** If you do not yet have a Docker ID account you can follow [these steps](https://docs.docker.com/docker-id/) to create one. This ID will be used in a later step when setting up the environment variables. Or You can use the free mirror repository service [ghcr.io](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry) provided by GitHub.
 
 ## Setting up Kubernetes
 
@@ -41,7 +41,7 @@ If you aren't sure which Kubernetes platform is right for you, see [Picking the 
 
 * [Installing Kubernetes with kind](https://kind.sigs.k8s.io/)
 
-### Setting up a personal access token
+## Setting up a personal access token
 
 This is only necessary for core contributors in order to push changes to the main repos.
 You can make pull requests without two-factor authentication
@@ -53,7 +53,7 @@ you must setup a personal access token to enable push via HTTPS. Please follow
 for how to create a token.
 Alternatively you can [add your SSH keys](https://help.github.com/articles/adding-a-new-ssh-key-to-your-github-account/).
 
-### What's next?
+## What's next?
 
 Once you've set up the prerequisites, continue with [Using the Code Base](./development.md)
 for more details about how to build & test Volcano.
