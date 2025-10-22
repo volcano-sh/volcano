@@ -510,6 +510,7 @@ func (pmpt *Action) gangPreempt(
 			break
 		}
 	}
+	assigned := false
 	// If this check fails, it implies some Evictions failed.
 	// Since we are optimizing for gangs per node we should try again in next session
 	if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(targetNode.FutureIdle(), api.Zero) {
@@ -520,9 +521,11 @@ func (pmpt *Action) gangPreempt(
 				klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
 					preemptor.UID, targetNode.Name, ssn.UID, rollbackErr)
 			}
+		} else {
+			assigned = true
 		}
 	}
-	return true, nil
+	return assigned, nil
 }
 
 // Returns the node and the minimal-count set of victim jobs on that node.
@@ -530,7 +533,7 @@ func (pmpt *Action) gangPreempt(
 // If impossible on all nodes: jobs == nil, node == nil.
 func (pmpt *Action) findBestPreemptionTarget(
 	selectedNodes []*api.NodeInfo,
-	nodeJobVictimsMap map[string]map[api.JobID][]*api.TaskInfo,
+	nodeJobPreempteesMap map[string]map[api.JobID][]*api.TaskInfo,
 	preemptor *api.TaskInfo,
 ) (jobs []api.JobID, node *api.NodeInfo) {
 	// ---- Phase 1: try best single-job victim (minimal overage) ----
@@ -549,12 +552,9 @@ func (pmpt *Action) findBestPreemptionTarget(
 		need := preemptor.InitResreq.Clone()
 		// idle could be 0
 		need.Sub(idle)
-		for j, jtasks := range nodeJobVictimsMap[n.Name] {
+		for j, jtasks := range nodeJobPreempteesMap[n.Name] {
 			sum := api.EmptyResource()
 			for _, t := range jtasks {
-				if t.Job == preemptor.Job {
-					continue
-				}
 				sum.Add(t.Resreq)
 			}
 			if !need.LessEqual(sum, api.Zero) {
@@ -592,19 +592,16 @@ func (pmpt *Action) findBestPreemptionTarget(
 			res *api.Resource
 		}
 		var cand []jr
-		for j, jtasks := range nodeJobVictimsMap[n.Name] {
+		for j, jtasks := range nodeJobPreempteesMap[n.Name] {
 			sum := api.EmptyResource()
 			for _, t := range jtasks {
-				if t.Job == preemptor.Job {
-					continue
-				}
 				sum.Add(t.Resreq)
 			}
 			cand = append(cand, jr{j, sum})
 		}
 		// Sort descending by resource (largest first).
 		sort.Slice(cand, func(i, j int) bool {
-			return !cand[i].res.LessEqual(cand[j].res, api.Zero)
+			return cand[j].res.Less(cand[i].res, api.Zero)
 		})
 
 		acc := api.EmptyResource()
