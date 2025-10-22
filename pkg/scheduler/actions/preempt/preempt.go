@@ -600,8 +600,10 @@ func (pmpt *Action) findBestPreemptionTarget(
 			cand = append(cand, jr{j, sum})
 		}
 		// Sort descending by resource (largest first).
+		// We need not-less-equal sort because number of pods in the ScalarResources can be same (like 0).
+		// In this case strictly less check fails hence we use strictly greater (not-less-equal)
 		sort.Slice(cand, func(i, j int) bool {
-			return cand[j].res.Less(cand[i].res, api.Zero)
+			return !cand[i].res.LessEqual(cand[j].res, api.Zero)
 		})
 
 		acc := api.EmptyResource()
