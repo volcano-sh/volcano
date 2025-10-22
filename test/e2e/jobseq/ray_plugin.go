@@ -28,6 +28,15 @@ import (
 )
 
 var _ = Describe("Ray Plugin E2E Test", func() {
+	BeforeEach(func() {
+		By("Prune images before test")
+		PruneUnusedImagesOnAllNodes(e2eutil.KubeClient)
+	})
+	AfterEach(func() {
+		By("Prune images after test")
+		PruneUnusedImagesOnAllNodes(e2eutil.KubeClient)
+	})
+
 	It("Will Start in pending state and  get running phase", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
 		defer e2eutil.CleanupTestContext(ctx)
