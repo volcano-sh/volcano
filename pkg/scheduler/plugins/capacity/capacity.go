@@ -51,7 +51,8 @@ type capacityPlugin struct {
 
 	queueOpts map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
-	pluginArguments framework.Arguments
+	pluginArguments         framework.Arguments
+	overwriteRootCapability bool
 }
 
 type queueAttr struct {
@@ -76,12 +77,17 @@ type queueAttr struct {
 
 // New return capacityPlugin action
 func New(arguments framework.Arguments) framework.Plugin {
-	return &capacityPlugin{
-		totalResource:   api.EmptyResource(),
-		totalGuarantee:  api.EmptyResource(),
-		queueOpts:       map[api.QueueID]*queueAttr{},
-		pluginArguments: arguments,
+	cp := &capacityPlugin{
+		totalResource:           api.EmptyResource(),
+		totalGuarantee:          api.EmptyResource(),
+		queueOpts:               map[api.QueueID]*queueAttr{},
+		pluginArguments:         arguments,
+		overwriteRootCapability: false,
 	}
+
+	arguments.GetBool(&cp.overwriteRootCapability, "overwriteRootCapability")
+
+	return cp
 }
 
 func (cp *capacityPlugin) Name() string {
@@ -603,7 +609,19 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	if rootQueueAttr.deserved.IsEmpty() {
 		rootQueueAttr.deserved = cp.totalResource
 	}
-	rootQueueAttr.realCapability = cp.totalResource
+
+	// https://github.com/volcano-sh/volcano/issues/3910
+	// If overwriteRootCapability is true, we need to set realCapability to the user-configured capability.
+	// If the user does not edit the root queue's capability, it will be set to total resource above.
+	if cp.overwriteRootCapability {
+		rootQueueAttr.realCapability = rootQueueAttr.capability
+		klog.V(4).Infof("Using user-configured root queue capability <%v> instead of cluster resources <%v> due to overwriteRootCapability=true",
+			rootQueueAttr.capability, cp.totalResource)
+	} else {
+		// Use actual cluster resources
+		rootQueueAttr.realCapability = cp.totalResource
+	}
+
 	// Check the hierarchical structure of queues
 	err := cp.checkHierarchicalQueue(rootQueueAttr)
 	if err != nil {
