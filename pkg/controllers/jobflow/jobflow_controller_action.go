@@ -19,6 +19,7 @@ package jobflow
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -255,9 +256,26 @@ func (jf *jobflowcontroller) loadJobTemplateAndSetJob(jobFlow *v1alpha1flow.JobF
 	// load jobTemplate
 	jobTemplate, err := jf.jobTemplateLister.JobTemplates(jobFlow.Namespace).Get(flowName)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting JobTemplate %q in ns %q: %w", flowName, jobFlow.Namespace, err)
 	}
 
+	jobTemplate = jobTemplate.DeepCopy()
+
+	flow, err := getFlowByName(jobFlow, flowName)
+	if err != nil {
+		return fmt.Errorf("looking up flow %q in jobFlow %s/%s: %w", flowName, jobFlow.Namespace, jobFlow.Name, err)
+	}
+
+	if flow.Patch != nil {
+		if !reflect.DeepEqual(flow.Patch.JobSpec, v1alpha1.JobSpec{}) {
+			patchedJobSpec, err := jf.patchJobTemplate(&jobTemplate.Spec, &flow.Patch.JobSpec)
+			if err != nil {
+				return fmt.Errorf("patching JobTemplate.Spec for flow %q: %w", flowName, err)
+			}
+			jobTemplate.Spec = *patchedJobSpec
+		}
+	}
+	// create a new job
 	*job = v1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
@@ -271,11 +289,84 @@ func (jf *jobflowcontroller) loadJobTemplateAndSetJob(jobFlow *v1alpha1flow.JobF
 				CreatedByJobFlow:     GenerateObjectString(jobFlow.Namespace, jobFlow.Name),
 			},
 		},
-		Spec:   jobTemplate.Spec,
+		Spec:   *jobTemplate.Spec.DeepCopy(),
 		Status: v1alpha1.JobStatus{},
 	}
+	if err := controllerutil.SetControllerReference(jobFlow, job, scheme.Scheme); err != nil {
+		return fmt.Errorf("setting owner reference on job %s/%s: %w", job.Namespace, job.Name, err)
+	}
+	return nil
+}
 
-	return controllerutil.SetControllerReference(jobFlow, job, scheme.Scheme)
+func (jf *jobflowcontroller) patchJobTemplate(baseSpec *v1alpha1.JobSpec, patchSpec *v1alpha1.JobSpec) (*v1alpha1.JobSpec, error) {
+	if baseSpec == nil {
+		return nil, fmt.Errorf("baseSpec cannot be nil")
+	}
+
+	merged := baseSpec.DeepCopy()
+	if patchSpec == nil {
+		return merged, nil
+	}
+
+	if patchSpec.SchedulerName != "" {
+		merged.SchedulerName = patchSpec.SchedulerName
+	}
+	// TODO(mahdi): add unit tests
+	merged.MinAvailable = patchSpec.MinAvailable
+
+	// it should update matching volumes and add new volumes by MountPath
+	if patchSpec.Volumes != nil {
+		merged.Volumes = mergeJobLevelVolumes(baseSpec.Volumes, patchSpec.Volumes)
+	}
+	// to merge by task name, it should merge TaskSpec recursively and add new tasks
+	if patchSpec.Tasks != nil {
+		tasks, err := mergeJobLevelTasks(baseSpec.Tasks, patchSpec.Tasks)
+		if err != nil {
+			return nil, fmt.Errorf("mergeJobLevelTasks: %w", err)
+		}
+		merged.Tasks = tasks
+	}
+	// it should override the existing list or add the new list if not
+	if patchSpec.Policies != nil {
+		merged.Policies = patchSpec.Policies
+	}
+	// merge plugins by updating existing arguments or adding new entries
+	if patchSpec.Plugins != nil {
+		if merged.Plugins == nil {
+			merged.Plugins = make(map[string][]string)
+		}
+		// merge existing plugin arguments and not override them
+		for pluginName, args := range patchSpec.Plugins {
+			if existingArgs, ok := merged.Plugins[pluginName]; ok {
+				merged.Plugins[pluginName] = append(existingArgs, args...)
+			} else {
+				merged.Plugins[pluginName] = args
+			}
+		}
+	}
+	if patchSpec.RunningEstimate != nil {
+		merged.RunningEstimate = patchSpec.RunningEstimate
+	}
+	if patchSpec.Queue != "" {
+		merged.Queue = patchSpec.Queue
+	}
+	// MaxRetry can be zero to disable retries
+	// TODO(mahdi): add a unit-test for when MaxRetry could be zero
+	merged.MaxRetry = patchSpec.MaxRetry
+	// TTLSecondsAfterFinished type is *int32
+	if patchSpec.TTLSecondsAfterFinished != nil {
+		merged.TTLSecondsAfterFinished = patchSpec.TTLSecondsAfterFinished
+	}
+	if patchSpec.PriorityClassName != "" {
+		merged.PriorityClassName = patchSpec.PriorityClassName
+	}
+	if patchSpec.MinSuccess != nil {
+		merged.MinSuccess = patchSpec.MinSuccess
+	}
+	if patchSpec.NetworkTopology != nil {
+		merged.NetworkTopology = patchSpec.NetworkTopology
+	}
+	return merged, nil
 }
 
 func (jf *jobflowcontroller) deleteAllJobsCreatedByJobFlow(jobFlow *v1alpha1flow.JobFlow) error {
