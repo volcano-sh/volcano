@@ -1,0 +1,79 @@
+name: Scan images
+on:
+  push:
+    branches:
+      - master
+  schedule:
+    - cron: '0 0 * * *' # Daily at midnight UTC
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.23.x 
+      
+      - name: Build Docker images
+        run: |
+          make TAG=latest images
+
+      - name: Scan volcano-scheduler image
+        uses: aquasecurity/trivy-action@0.31.0
+        with:
+          image-ref: volcanosh/vc-scheduler:latest
+          format: sarif
+          output: trivy-scheduler.sarif
+          ignore-unfixed: true
+
+      - name: Upload volcano-scheduler report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-scheduler.sarif
+          category: volcano-scheduler
+
+      - name: Scan volcano-controller-manager image
+        uses: aquasecurity/trivy-action@0.31.0
+        with:
+          image-ref: volcanosh/vc-controller-manager:latest
+          format: sarif
+          output: trivy-controller-manager.sarif
+          ignore-unfixed: true
+
+      - name: Upload volcano-controller-manager report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-controller-manager.sarif
+          category: volcano-controller-manager
+
+      - name: Scan volcano-webhook-manager image
+        uses: aquasecurity/trivy-action@0.31.0
+        with:
+          image-ref: volcanosh/vc-webhook-manager:latest
+          format: sarif
+          output: trivy-webhook-manager.sarif
+          ignore-unfixed: true
+
+      - name: Upload volcano-webhook-manager report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-webhook-manager.sarif
+          category: volcano-webhook-manager
+
+      - name: Scan volcano-agent image
+        uses: aquasecurity/trivy-action@0.31.0
+        with:
+          image-ref: volcanosh/vc-agent:latest
+          format: sarif
+          output: trivy-agent.sarif
+          ignore-unfixed: true
+
+      - name: Upload volcano-agent report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-agent.sarif
+          category: volcano-agent
