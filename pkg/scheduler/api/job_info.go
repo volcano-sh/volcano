@@ -147,6 +147,8 @@ type TaskInfo struct {
 	CustomBindErrHandler func() error `json:"-"`
 	// CustomBindErrHandlerSucceeded indicates whether CustomBindErrHandler is executed successfully.
 	CustomBindErrHandlerSucceeded bool
+
+	SchedulingPolicy SchedulingPolicy
 }
 
 func getJobID(pod *v1.Pod) JobID {
@@ -374,6 +376,8 @@ type JobInfo struct {
 	// * value means workload can use all the revocable node for during node active revocable time.
 	RevocableZone string
 	Budget        *DisruptionBudget
+
+	SchedulingPolicy SchedulingPolicy
 }
 
 // NewJobInfo creates a new jobInfo for set of tasks
