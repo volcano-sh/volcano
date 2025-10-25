@@ -156,6 +156,12 @@ e2e-test-dra: images
 e2e-test-hypernode: images
 	E2E_TYPE=HYPERNODE ./hack/run-e2e-kind.sh
 
+e2e-test-admission-webhook: images
+	E2E_TYPE=ADMISSION_WEBHOOK ./hack/run-e2e-kind.sh
+
+e2e-test-admission-policy: images
+	E2E_TYPE=ADMISSION_POLICY ./hack/run-e2e-kind.sh
+
 generate-yaml: init manifests
 	./hack/generate-yaml.sh CRD_VERSION=${CRD_VERSION}
 
@@ -217,6 +223,16 @@ update-development-yaml:
 	mv installer/volcano-${TAG}.yaml installer/volcano-development.yaml
 	mv installer/volcano-agent-${TAG}.yaml installer/volcano-agent-development.yaml
 	mv installer/volcano-monitoring-${TAG}.yaml installer/volcano-monitoring.yaml
+
+	ENABLE_VAP=true make generate-yaml RELEASE_DIR=installer
+	mv installer/volcano-${TAG}.yaml installer/volcano-development-vap.yaml
+	rm installer/volcano-agent-${TAG}.yaml
+	rm installer/volcano-monitoring-${TAG}.yaml
+
+	ENABLE_VAP=true ENABLE_MAP=true make generate-yaml RELEASE_DIR=installer
+	mv installer/volcano-${TAG}.yaml installer/volcano-development-vap-map.yaml
+	rm installer/volcano-agent-${TAG}.yaml
+	rm installer/volcano-monitoring-${TAG}.yaml
 
 mod-download-go:
 	@-GOFLAGS="-mod=readonly" find -name go.mod -execdir go mod download \;
