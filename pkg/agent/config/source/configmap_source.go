@@ -137,6 +137,10 @@ func (cs *configMapSource) GetLatestConfig() (cfg *api.ColocationConfig, err err
 	if err = json.Unmarshal([]byte(data), config); err != nil {
 		return nil, err
 	}
+	utils.SetDefaultVolcanoAgentConfig(config)
+	if err = utils.ValidateVolcanoAgentConfig(config).ToAggregate(); err != nil {
+		return nil, err
+	}
 	return utils.MergerCfg(config, node)
 }
 
