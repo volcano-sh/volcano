@@ -55,6 +55,7 @@ type TaskSpec struct {
 	Taskpriority          string
 	MaxRetry              int32
 	SchGates              []v1.PodSchedulingGate
+	PartitionPolicy       *batchv1alpha1.PartitionPolicySpec
 }
 
 type JobSpec struct {
@@ -122,9 +123,10 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 		}
 
 		ts := batchv1alpha1.TaskSpec{
-			Name:     name,
-			Replicas: task.Rep,
-			Policies: task.Policies,
+			Name:            name,
+			Replicas:        task.Rep,
+			Policies:        task.Policies,
+			PartitionPolicy: task.PartitionPolicy,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   name,
@@ -226,10 +228,11 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 		}
 
 		ts := batchv1alpha1.TaskSpec{
-			Name:     name,
-			Replicas: task.Rep,
-			Policies: task.Policies,
-			MaxRetry: maxRetry,
+			Name:            name,
+			Replicas:        task.Rep,
+			Policies:        task.Policies,
+			MaxRetry:        maxRetry,
+			PartitionPolicy: task.PartitionPolicy,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   name,
