@@ -109,7 +109,6 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 	preemptorTasks := map[api.JobID]*util.PriorityQueue{}
 
 	var underRequest []*api.JobInfo
-	queues := map[api.QueueID]*api.QueueInfo{}
 
 	for _, job := range ssn.Jobs {
 		if job.IsPending() {
@@ -121,12 +120,9 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		if queue, found := ssn.Queues[job.Queue]; !found {
+		if _, found := ssn.Queues[job.Queue]; !found {
+			klog.V(3).Infof("Queue <%s> not found for Job <%s/%s>, skip preemption", job.Queue, job.Namespace, job.Name)
 			continue
-		} else if _, existed := queues[queue.UID]; !existed {
-			klog.V(3).Infof("Added Queue <%s> for Job <%s/%s>",
-				queue.Name, job.Namespace, job.Name)
-			queues[queue.UID] = queue
 		}
 
 		// check job if starving for more resources.
@@ -146,9 +142,20 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 	}
 
+	// If plugin defines queue order function, use it to order queues.
+	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
+	for _, queue := range ssn.Queues {
+		queues.Push(queue)
+	}
+
 	ph := util.NewPredicateHelper()
 	// Preemption between Jobs within Queue.
-	for _, queue := range queues {
+	for {
+		if queues.Empty() {
+			break
+		}
+
+		queue := queues.Pop().(*api.QueueInfo)
 		for {
 			preemptors := preemptorsMap[queue.UID]
 
@@ -214,56 +221,56 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 				preemptors.Push(preemptorJob)
 			}
 		}
+	}
 
-		// Preemption between Task within Job.
-		for _, job := range underRequest {
-			// Fix: preemptor numbers lose when in same job
-			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
-			for _, task := range job.TaskStatusIndex[api.Pending] {
-				// Again, skip scheduling gated tasks
-				if task.SchGated {
-					continue
-				}
-				preemptorTasks[job.UID].Push(task)
+	// Preemption between Task within Job.
+	for _, job := range underRequest {
+		// Fix: preemptor numbers lose when in same job
+		preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
+		for _, task := range job.TaskStatusIndex[api.Pending] {
+			// Again, skip scheduling gated tasks
+			if task.SchGated {
+				continue
 			}
-			for {
-				if _, found := preemptorTasks[job.UID]; !found {
-					break
+			preemptorTasks[job.UID].Push(task)
+		}
+		for {
+			if _, found := preemptorTasks[job.UID]; !found {
+				break
+			}
+
+			if preemptorTasks[job.UID].Empty() {
+				break
+			}
+
+			preemptor := preemptorTasks[job.UID].Pop().(*api.TaskInfo)
+
+			stmt := framework.NewStatement(ssn)
+			assigned, err := pmpt.preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
+				// Ignore non running task.
+				if !api.PreemptableStatus(task.Status) {
+					return false
+				}
+				// BestEffort pod is not supported to preempt unBestEffort pod.
+				if preemptor.BestEffort && !task.BestEffort {
+					return false
+				}
+				// should skip not preemptable pod
+				if !task.Preemptable {
+					return false
 				}
 
-				if preemptorTasks[job.UID].Empty() {
-					break
-				}
+				// Preempt tasks within job.
+				return preemptor.Job == task.Job
+			}, ph)
+			if err != nil {
+				klog.V(3).Infof("Preemptor <%s/%s> failed to preempt Task , err: %s", preemptor.Namespace, preemptor.Name, err)
+			}
+			stmt.Commit()
 
-				preemptor := preemptorTasks[job.UID].Pop().(*api.TaskInfo)
-
-				stmt := framework.NewStatement(ssn)
-				assigned, err := pmpt.preempt(ssn, stmt, preemptor, func(task *api.TaskInfo) bool {
-					// Ignore non running task.
-					if !api.PreemptableStatus(task.Status) {
-						return false
-					}
-					// BestEffort pod is not supported to preempt unBestEffort pod.
-					if preemptor.BestEffort && !task.BestEffort {
-						return false
-					}
-					// should skip not preemptable pod
-					if !task.Preemptable {
-						return false
-					}
-
-					// Preempt tasks within job.
-					return preemptor.Job == task.Job
-				}, ph)
-				if err != nil {
-					klog.V(3).Infof("Preemptor <%s/%s> failed to preempt Task , err: %s", preemptor.Namespace, preemptor.Name, err)
-				}
-				stmt.Commit()
-
-				// If no preemption, next job.
-				if !assigned {
-					break
-				}
+			// If no preemption, next job.
+			if !assigned {
+				break
 			}
 		}
 	}
