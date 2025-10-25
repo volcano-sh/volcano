@@ -25,12 +25,13 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
-	e2edra "k8s.io/kubernetes/test/e2e/dra"
-	"k8s.io/kubernetes/test/e2e/feature"
+	"k8s.io/kubernetes/pkg/features"
+	drautils "k8s.io/kubernetes/test/e2e/dra/utils"
+
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	admissionapi "k8s.io/pod-security-admission/api"
@@ -46,7 +47,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 
 	// claimTests tries out several different combinations of pods with
 	// claims, both inline and external.
-	claimTests := func(b *builder, driver *e2edra.Driver) {
+	claimTests := func(b *builder, driver *drautils.Driver) {
 		ginkgo.It("supports simple pod referencing inline resource claim", func(ctx context.Context) {
 			pod, template := b.podInline()
 			b.create(ctx, pod, template)
@@ -111,7 +112,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			framework.ExpectNoError(e2epod.WaitForPodNoLongerRunningInNamespace(ctx, f.ClientSet, pod.Name, pod.Namespace), "wait for pod to finish")
 			ginkgo.By("waiting for claim to be unreserved")
 			gomega.Eventually(ctx, func(ctx context.Context) (*resourceapi.ResourceClaim, error) {
-				return f.ClientSet.ResourceV1beta1().ResourceClaims(pod.Namespace).Get(ctx, claim.Name, metav1.GetOptions{})
+				return f.ClientSet.ResourceV1().ResourceClaims(pod.Namespace).Get(ctx, claim.Name, metav1.GetOptions{})
 			}).WithTimeout(f.Timeouts.PodDelete).Should(gomega.HaveField("Status.ReservedFor", gomega.BeEmpty()), "reservation should have been removed")
 		})
 
@@ -124,7 +125,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			framework.ExpectNoError(e2epod.WaitForPodNoLongerRunningInNamespace(ctx, f.ClientSet, pod.Name, pod.Namespace), "wait for pod to finish")
 			ginkgo.By("waiting for claim to be deleted")
 			gomega.Eventually(ctx, func(ctx context.Context) ([]resourceapi.ResourceClaim, error) {
-				claims, err := f.ClientSet.ResourceV1beta1().ResourceClaims(pod.Namespace).List(ctx, metav1.ListOptions{})
+				claims, err := f.ClientSet.ResourceV1().ResourceClaims(pod.Namespace).List(ctx, metav1.ListOptions{})
 				if err != nil {
 					return nil, err
 				}
@@ -150,7 +151,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			b.create(ctx, claim, pod)
 
 			gomega.Eventually(ctx, func(ctx context.Context) (*resourceapi.ResourceClaim, error) {
-				return b.f.ClientSet.ResourceV1beta1().ResourceClaims(b.f.Namespace.Name).Get(ctx, claim.Name, metav1.GetOptions{})
+				return b.f.ClientSet.ResourceV1().ResourceClaims(b.f.Namespace.Name).Get(ctx, claim.Name, metav1.GetOptions{})
 			}).WithTimeout(f.Timeouts.PodDelete).ShouldNot(gomega.HaveField("Status.Allocation", (*resourceapi.AllocationResult)(nil)))
 
 			b.testPod(ctx, f, pod)
@@ -160,18 +161,18 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 
 			ginkgo.By("waiting for claim to get deallocated")
 			gomega.Eventually(ctx, func(ctx context.Context) (*resourceapi.ResourceClaim, error) {
-				return b.f.ClientSet.ResourceV1beta1().ResourceClaims(b.f.Namespace.Name).Get(ctx, claim.Name, metav1.GetOptions{})
+				return b.f.ClientSet.ResourceV1().ResourceClaims(b.f.Namespace.Name).Get(ctx, claim.Name, metav1.GetOptions{})
 			}).WithTimeout(f.Timeouts.PodDelete).Should(gomega.HaveField("Status.Allocation", (*resourceapi.AllocationResult)(nil)))
 		})
 
-		f.It("must be possible for the driver to update the ResourceClaim.Status.Devices once allocated", feature.DRAResourceClaimDeviceStatus, func(ctx context.Context) {
+		f.It("must be possible for the driver to update the ResourceClaim.Status.Devices once allocated", f.WithFeatureGate(features.DRAResourceClaimDeviceStatus), func(ctx context.Context) {
 			pod := b.podExternal()
 			claim := b.externalClaim()
 			b.create(ctx, claim, pod)
 
 			b.testPod(ctx, f, pod)
 
-			allocatedResourceClaim, err := b.f.ClientSet.ResourceV1beta1().ResourceClaims(b.f.Namespace.Name).Get(ctx, claim.Name, metav1.GetOptions{})
+			allocatedResourceClaim, err := b.f.ClientSet.ResourceV1().ResourceClaims(b.f.Namespace.Name).Get(ctx, claim.Name, metav1.GetOptions{})
 			framework.ExpectNoError(err)
 			gomega.Expect(allocatedResourceClaim).ToNot(gomega.BeNil())
 			gomega.Expect(allocatedResourceClaim.Status.Allocation).ToNot(gomega.BeNil())
@@ -235,14 +236,10 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 	}
 
 	singleNodeTests := func() {
-		nodes := e2edra.NewNodes(f, 1, 1)
+		nodes := drautils.NewNodes(f, 1, 1)
 		maxAllocations := 1
 		numPods := 10
-		generateResources := func() e2edra.Resources {
-			resources := perNode(maxAllocations, nodes)()
-			return resources
-		}
-		driver := e2edra.NewDriver(f, nodes, generateResources) // All tests get their own driver instance.
+		driver := drautils.NewDriver(f, nodes, drautils.DriverResources(maxAllocations)) // All tests get their own driver instance.
 		b := newBuilder(f, driver)
 		// We have to set the parameters *before* creating the class.
 		b.classParameters = `{"x":"y"}`
@@ -338,7 +335,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 
 			// First modify the class so that it matches no nodes (for classic DRA) and no devices (structured parameters).
 			deviceClassName := template.Spec.Spec.Devices.Requests[0].DeviceClassName
-			class, err := f.ClientSet.ResourceV1beta1().DeviceClasses().Get(ctx, deviceClassName, metav1.GetOptions{})
+			class, err := f.ClientSet.ResourceV1().DeviceClasses().Get(ctx, deviceClassName, metav1.GetOptions{})
 			framework.ExpectNoError(err)
 			originalClass := class.DeepCopy()
 			class.Spec.Selectors = []resourceapi.DeviceSelector{{
@@ -346,7 +343,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 					Expression: "false",
 				},
 			}}
-			class, err = f.ClientSet.ResourceV1beta1().DeviceClasses().Update(ctx, class, metav1.UpdateOptions{})
+			class, err = f.ClientSet.ResourceV1().DeviceClasses().Update(ctx, class, metav1.UpdateOptions{})
 			framework.ExpectNoError(err)
 
 			// Now create the pod.
@@ -357,7 +354,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 
 			// Unblock the pod.
 			class.Spec.Selectors = originalClass.Spec.Selectors
-			_, err = f.ClientSet.ResourceV1beta1().DeviceClasses().Update(ctx, class, metav1.UpdateOptions{})
+			_, err = f.ClientSet.ResourceV1().DeviceClasses().Update(ctx, class, metav1.UpdateOptions{})
 			framework.ExpectNoError(err)
 
 			b.testPod(ctx, f, pod, expectedEnv...)
@@ -387,10 +384,10 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 	// The following tests only make sense when there is more than one node.
 	// They get skipped when there's only one node.
 	multiNodeTests := func() {
-		nodes := e2edra.NewNodes(f, 3, 8)
+		nodes := drautils.NewNodes(f, 3, 8)
 
 		ginkgo.Context("with node-local resources", func() {
-			driver := e2edra.NewDriver(f, nodes, perNode(1, nodes))
+			driver := drautils.NewDriver(f, nodes, drautils.DriverResources(1))
 			b := newBuilder(f, driver)
 
 			ginkgo.It("uses all resources", func(ctx context.Context) {
@@ -440,16 +437,3 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 		multiNodeTests()
 	})
 })
-
-// perNode returns a function which can be passed to NewDriver. The nodes
-// parameter has be instantiated, but not initialized yet, so the returned
-// function has to capture it and use it when being called.
-func perNode(maxAllocations int, nodes *e2edra.Nodes) func() e2edra.Resources {
-	return func() e2edra.Resources {
-		return e2edra.Resources{
-			NodeLocal:      true,
-			MaxAllocations: maxAllocations,
-			Nodes:          nodes.NodeNames,
-		}
-	}
-}

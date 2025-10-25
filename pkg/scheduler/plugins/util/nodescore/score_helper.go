@@ -23,6 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -35,7 +36,7 @@ type BaseScorePlugin interface {
 // such as VolumeBinding, ExampleNormalizer can be used, indicating that there is no need to normalize the score
 type EmptyNormalizer struct{}
 
-func (e *EmptyNormalizer) NormalizeScore(ctx context.Context, state *k8sframework.CycleState, p *v1.Pod, scores k8sframework.NodeScoreList) *k8sframework.Status {
+func (e *EmptyNormalizer) NormalizeScore(ctx context.Context, state fwk.CycleState, p *v1.Pod, scores k8sframework.NodeScoreList) *fwk.Status {
 	return nil
 }
 
@@ -43,9 +44,9 @@ func CalculatePluginScore(
 	pluginName string,
 	plugin BaseScorePlugin,
 	normalizer k8sframework.ScoreExtensions,
-	cycleState *k8sframework.CycleState,
+	cycleState fwk.CycleState,
 	pod *v1.Pod,
-	nodeInfos []*k8sframework.NodeInfo,
+	nodeInfos []fwk.NodeInfo,
 	weight int,
 ) (map[string]float64, error) {
 	preScoreStatus := plugin.PreScore(context.TODO(), cycleState, pod, nodeInfos)

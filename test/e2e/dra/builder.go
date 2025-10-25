@@ -33,7 +33,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
-	e2edra "k8s.io/kubernetes/test/e2e/dra"
+	e2edra "k8s.io/kubernetes/test/e2e/dra/utils"
+
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	"k8s.io/utils/ptr"

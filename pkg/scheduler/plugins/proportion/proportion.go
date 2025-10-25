@@ -30,7 +30,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/klog/v2"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -332,7 +332,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return queueAllocatable(queue, candidate)
 	})
 
-	ssn.AddSimulateAllocatableFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+	ssn.AddSimulateAllocatableFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		state, err := getProportionState(cycleState)
 		if err != nil {
 			klog.Errorf("getProportionState error: %v", err)
@@ -414,7 +414,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return util.Reject
 	})
 
-	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 		state, err := getProportionState(cycleState)
 		if err != nil {
 			return fmt.Errorf("failed to get capacity state: %w", err)
@@ -430,7 +430,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return nil
 	})
 
-	ssn.AddSimulateRemoveTaskFn(pp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	ssn.AddSimulateRemoveTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 		state, err := getProportionState(cycleState)
 		if err != nil {
 			return fmt.Errorf("failed to get capacity state: %w", err)
@@ -511,7 +511,7 @@ func (qa *queueAttr) Clone() *queueAttr {
 	}
 }
 
-func (s *proportionState) Clone() k8sframework.StateData {
+func (s *proportionState) Clone() fwk.StateData {
 	if s == nil {
 		return nil
 	}
@@ -528,7 +528,7 @@ func (s *proportionState) Clone() k8sframework.StateData {
 	return newState
 }
 
-func getProportionState(cycleState *k8sframework.CycleState) (*proportionState, error) {
+func getProportionState(cycleState fwk.CycleState) (*proportionState, error) {
 	c, err := cycleState.Read(proportionStateKey)
 	if err != nil {
 		// preFilterState doesn't exist, likely PreFilter wasn't invoked.
