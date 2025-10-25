@@ -17,6 +17,7 @@ limitations under the License.
 package cache
 
 import (
+	"maps"
 	"sync"
 
 	"k8s.io/klog/v2"
@@ -59,4 +60,13 @@ func (r *BinderRegistry) Register(name string, binder interface{}) {
 		klog.V(5).Infof("Register preBinder %s successfully", name)
 		r.preBinders[name] = pb
 	}
+}
+
+// getRegisteredPreBinders returns a snapshot of currently registered PreBinders.
+// The caller can safely use the returned map without holding the registry lock.
+func (r *BinderRegistry) getRegisteredPreBinders() map[string]PreBinder {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return maps.Clone(r.preBinders)
 }
