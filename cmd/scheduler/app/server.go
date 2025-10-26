@@ -34,11 +34,9 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/client-go/kubernetes"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
 	// Register gcp auth
@@ -183,8 +181,8 @@ func startMetricsServer(opt *options.ServerOption) {
 // setupComponentGlobals discovers the API server version and sets
 // Volcano's effective version + feature gate defaults to match the cluster.
 // This makes defaults (like DRA) correct on older clusters.
-func setupComponentGlobals(config *rest.Config) error {
-	client, err := kubernetes.NewForConfig(config)
+func setupComponentGlobals(config *restclient.Config) error {
+	client, err := clientset.NewForConfig(config)
 	if err != nil {
 		return err
 	}
