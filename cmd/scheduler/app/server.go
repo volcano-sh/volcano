@@ -39,9 +39,9 @@ import (
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/klog/v2"
 
-	// Register gcp auth
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
+
+	// Register gcp auth
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
@@ -63,6 +63,7 @@ func Run(opt *options.ServerOption) error {
 	// Align default feature-gates with the connected cluster's version.
 	if err := setupComponentGlobals(config); err != nil {
 		klog.Errorf("failed to set component globals: %v", err)
+		return err
 	}
 
 	if opt.PluginsDir != "" {
@@ -197,11 +198,14 @@ func setupComponentGlobals(config *restclient.Config) error {
 
 	componentGlobalsRegistry := basecompatibility.NewComponentGlobalsRegistry()
 	if componentGlobalsRegistry.EffectiveVersionFor(basecompatibility.DefaultKubeComponent) == nil {
-		utilruntime.Must(componentGlobalsRegistry.Register(
+		err = componentGlobalsRegistry.Register(
 			basecompatibility.DefaultKubeComponent,
 			kubeEffectiveVersion,
 			utilfeature.DefaultMutableFeatureGate,
-		))
+		)
+		if err != nil {
+			return fmt.Errorf("failed to register component globals: %w", err)
+		}
 	}
 
 	return componentGlobalsRegistry.Set()

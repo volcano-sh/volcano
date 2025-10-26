@@ -23,7 +23,7 @@ nodes:
         kind: ClusterConfiguration
         apiServer:
           extraArgs:
-            runtime-config: "resource.k8s.io/v1beta1=true"
+            runtime-config: "resource.k8s.io/v1beta1=true,admissionregistration.k8s.io/v1beta1"
   # the four workers
   - role: worker
   - role: worker

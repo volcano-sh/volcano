@@ -292,6 +292,14 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		EnableDynamicResourceAllocation:              utilFeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation),
 		EnableVolumeAttributesClass:                  utilFeature.DefaultFeatureGate.Enabled(features.VolumeAttributesClass),
 		EnableCSIMigrationPortworx:                   utilFeature.DefaultFeatureGate.Enabled(features.CSIMigrationPortworx),
+		EnableDRAExtendedResource:                    utilFeature.DefaultFeatureGate.Enabled(features.DRAExtendedResource),
+		EnableDRAPrioritizedList:                     utilFeature.DefaultFeatureGate.Enabled(features.DRAPrioritizedList),
+		EnableConsumableCapacity:                     utilFeature.DefaultFeatureGate.Enabled(features.DRAConsumableCapacity),
+		EnableDRADeviceTaints:                        utilFeature.DefaultFeatureGate.Enabled(features.DRADeviceTaints),
+		EnableDRASchedulerFilterTimeout:              utilFeature.DefaultFeatureGate.Enabled(features.DRASchedulerFilterTimeout),
+		EnableDRAResourceClaimDeviceStatus:           utilFeature.DefaultFeatureGate.Enabled(features.DRAResourceClaimDeviceStatus),
+		EnableDRADeviceBindingConditions:             utilFeature.DefaultFeatureGate.Enabled(features.DRADeviceBindingConditions),
+		EnablePartitionableDevices:                   utilFeature.DefaultFeatureGate.Enabled(features.DRAPartitionableDevices),
 	}
 	// Initialize k8s plugins
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
@@ -351,7 +359,9 @@ func (pp *predicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	var dynamicResourceAllocationPlugin *dynamicresources.DynamicResources
 	if predicate.dynamicResourceAllocationEnable {
 		var err error
-		plugin, err = dynamicresources.New(context.TODO(), nil, handle, features)
+		draArgs := defaultDynamicResourcesArgs()
+		setUpDynamicResourcesArgs(draArgs, pp.pluginArguments)
+		plugin, err = dynamicresources.New(context.TODO(), draArgs.DynamicResourcesArgs, handle, features)
 		if err != nil {
 			klog.Fatalf("failed to create dra plugin with err: %v", err)
 		}

@@ -18,7 +18,9 @@ package predicates
 
 import (
 	"testing"
+	"time"
 
+	"github.com/stretchr/testify/assert"
 	apiv1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -276,6 +278,45 @@ func TestPodAntiAffinity(t *testing.T) {
 			if err := test.CheckAll(i); err != nil {
 				t.Fatal(err)
 			}
+		})
+	}
+}
+
+func TestSetUpDynamicResourcesArgs_Default(t *testing.T) {
+	dra := defaultDynamicResourcesArgs()
+	setUpDynamicResourcesArgs(dra, nil)
+
+	assert.Equal(t, metav1.Duration{Duration: defaultDRAFilterTimeout}, dra.FilterTimeout)
+}
+
+func TestSetUpDynamicResourcesArgs_OverideSeconds(t *testing.T) {
+	tests := []struct {
+		name        string
+		rawArgs     framework.Arguments
+		expectedDur time.Duration
+	}{
+		{
+			name:        "override with seconds (int)",
+			rawArgs:     framework.Arguments{draFilterTimeoutSecondsKey: 3},
+			expectedDur: 3 * time.Second,
+		},
+		{
+			name:        "ignore negative seconds",
+			rawArgs:     framework.Arguments{draFilterTimeoutSecondsKey: -5},
+			expectedDur: defaultDRAFilterTimeout,
+		},
+		{
+			name:        "no key keeps default",
+			rawArgs:     framework.Arguments{},
+			expectedDur: defaultDRAFilterTimeout,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dra := defaultDynamicResourcesArgs()
+			setUpDynamicResourcesArgs(dra, tt.rawArgs)
+			assert.Equal(t, metav1.Duration{Duration: tt.expectedDur}, dra.FilterTimeout)
 		})
 	}
 }
