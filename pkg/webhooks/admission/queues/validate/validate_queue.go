@@ -273,6 +273,12 @@ func validateHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
 	if queue.Spec.Parent == "" || queue.Spec.Parent == "root" {
 		return nil
 	}
+
+	// Prevent a queue from using its own name as the parent
+	if queue.Spec.Parent == queue.Name {
+		return fmt.Errorf("queue %s cannot use itself as parent", queue.Name)
+	}
+
 	parentQueue, err := config.QueueLister.Get(queue.Spec.Parent)
 	if err != nil {
 		return fmt.Errorf("failed to get parent queue of queue %s: %v", queue.Name, err)

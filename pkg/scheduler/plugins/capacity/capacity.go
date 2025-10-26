@@ -525,7 +525,8 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 
 		attr := cp.newQueueAttr(queue)
 		cp.queueOpts[queue.UID] = attr
-		err := cp.updateAncestors(queue, ssn)
+		visited := make(map[api.QueueID]struct{})
+		err := cp.updateAncestors(queue, ssn, visited)
 		if err != nil {
 			klog.Errorf("Failed to update Queue <%s> attributes, error: %v", queue.Name, err)
 			return false
@@ -722,10 +723,17 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 	return attr
 }
 
-func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.Session) error {
+func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.Session, visited map[api.QueueID]struct{}) error {
 	if queue.Name == cp.rootQueue {
 		return nil
 	}
+
+	// Check for cycles in queue hierarchy
+	if _, exist := visited[queue.UID]; exist {
+		return fmt.Errorf("cycle detected in queue hierarchy for queue %s", queue.Name)
+	}
+	visited[queue.UID] = struct{}{}
+	defer delete(visited, queue.UID)
 
 	parent := cp.rootQueue
 	if queue.Queue.Spec.Parent != "" {
@@ -739,7 +747,7 @@ func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.S
 	if _, found := cp.queueOpts[parentInfo.UID]; !found {
 		parentAttr := cp.newQueueAttr(parentInfo)
 		cp.queueOpts[parentAttr.queueID] = parentAttr
-		err := cp.updateAncestors(parentInfo, ssn)
+		err := cp.updateAncestors(parentInfo, ssn, visited)
 		if err != nil {
 			return err
 		}
