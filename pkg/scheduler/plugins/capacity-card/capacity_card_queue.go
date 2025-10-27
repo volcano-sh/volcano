@@ -192,7 +192,7 @@ func (p *Plugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 func (p *Plugin) newQueueResourceSupportingCard(q *scheduling.Queue, rl v1.ResourceList) *api.Resource {
 	var (
 		queueResource     = api.NewResource(rl)
-		queueCardResource = GetCardResourceFromAnnotations(q.Annotations, QueueAnnotationKeyCardQuota)
+		queueCardResource = GetCardResourceFromAnnotations("queue"+"/"+q.Name, q.Annotations, QueueAnnotationKeyCardQuota)
 	)
 	queueResource.ScalarResources = make(map[v1.ResourceName]float64)
 	for cardName, cardCountMilli := range queueCardResource.ScalarResources {

@@ -49,6 +49,7 @@ type JobInfo struct {
 func (p *Plugin) NewJobInfo(job *api.JobInfo) (*JobInfo, error) {
 	// read card request from Job(PodGroup).
 	preCheckCardResource := GetCardResourceFromAnnotations(
+		"job"+"/"+job.Namespace+"/"+job.Name,
 		job.PodGroup.Annotations,
 		JobAnnotationKeyCardRequest,
 	)

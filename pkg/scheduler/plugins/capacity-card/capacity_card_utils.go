@@ -49,14 +49,14 @@ const (
 )
 
 // GetCardResourceFromAnnotations extracts card resource from annotations.
-func GetCardResourceFromAnnotations(annotations map[string]string, key string) *api.Resource {
+func GetCardResourceFromAnnotations(name string, annotations map[string]string, key string) *api.Resource {
 	cardResource := api.EmptyResource()
-	if cardJson, ok := annotations[key]; ok {
+	if cardJson, ok := annotations[key]; ok && cardJson != "" {
 		cardMap := make(map[string]int)
 		if err := json.Unmarshal([]byte(cardJson), &cardMap); err != nil {
 			klog.Warningf(
-				`failed to unmarshal card json: %s, %+v`,
-				cardJson, err,
+				`failed to unmarshal card json: %s, key: %s, name: %s, %+v`,
+				cardJson, key, name, err,
 			)
 			return cardResource
 		}

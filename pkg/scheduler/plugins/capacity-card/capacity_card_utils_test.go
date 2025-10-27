@@ -134,7 +134,7 @@ func TestGetCardResourceFromAnnotations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := GetCardResourceFromAnnotations(tt.annotations, tt.key)
+			result := GetCardResourceFromAnnotations("", tt.annotations, tt.key)
 
 			if result == nil {
 				t.Fatalf("expected non-nil result")
