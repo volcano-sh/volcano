@@ -42,7 +42,7 @@ jobs:
           make e2e-test-dra CC=/usr/local/musl/bin/musl-gcc
 
       - name: Upload e2e dra logs
-        if: failure()
+        if: '!success()'
         uses: actions/upload-artifact@v4
         with:
           name: volcano_e2e_dra_logs
