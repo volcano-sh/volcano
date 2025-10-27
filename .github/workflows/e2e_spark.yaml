@@ -105,7 +105,7 @@ jobs:
         build/sbt -Pvolcano -Pkubernetes -Pkubernetes-integration-tests -Dspark.kubernetes.test.driverRequestCores=0.5 -Dspark.kubernetes.test.executorRequestCores=0.2 -Dspark.kubernetes.test.volcanoMaxConcurrencyJobNum=1 -Dtest.include.tags=volcano "kubernetes-integration-tests/test"
       working-directory: ${{ github.workspace }}/spark
     - name: Collect Volcano logs
-      if: failure()
+      if: '!success()'
       run: |
         kubectl logs $(kubectl get po -nvolcano-system | grep volcano-scheduler |cut -d" " -f1) -nvolcano-system > volcano-scheduler.log
         kubectl logs $(kubectl get po -nvolcano-system | grep volcano-admission |cut -d" " -f1 | grep -v init) -nvolcano-system > volcano-admission.log
@@ -113,7 +113,7 @@ jobs:
         kubectl get pod -A
         kubectl describe node
     - name: Upload Spark on K8S integration tests log files
-      if: failure()
+      if: '!success()'
       uses: actions/upload-artifact@v4
       with:
         name: spark-on-kubernetes-it-log
