@@ -1,0 +1,137 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: hypernode-validation-policy
+  labels:
+    volcano.sh/component: hypernode-webhook
+    volcano.sh/migration: vap
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: ["topology.volcano.sh"]
+        apiVersions: ["v1alpha1"]
+        resources: ["hypernodes"]
+  variables:
+    # Count how many selector types are defined for each member
+    - name: membersWithSelectorCounts
+      expression: |
+        has(object.spec) && has(object.spec.members) ? 
+        object.spec.members.map(member, 
+          (has(member.selector.exactMatch) ? 1 : 0) + 
+          (has(member.selector.regexMatch) ? 1 : 0) + 
+          (has(member.selector.labelMatch) ? 1 : 0)
+        ) : []
+    # Extract all exactMatch names for validation
+    - name: exactMatchNames
+      expression: |
+        has(object.spec) && has(object.spec.members) ? 
+        object.spec.members
+          .filter(member, has(member.selector.exactMatch))
+          .map(member, member.selector.exactMatch.name) : []
+    # Extract all regexMatch patterns for validation
+    - name: regexMatchPatterns
+      expression: |
+        has(object.spec) && has(object.spec.members) ? 
+        object.spec.members
+          .filter(member, has(member.selector.regexMatch))
+          .map(member, member.selector.regexMatch.pattern) : []
+  validations:
+    # Validate that at least one member is specified
+    - expression: |
+        has(object.spec) && has(object.spec.members) && size(object.spec.members) > 0
+      message: "member must have at least one member"
+      reason: Invalid
+
+    # Validate that each member has at least one selector type
+    - expression: |
+        !has(object.spec) || !has(object.spec.members) || size(object.spec.members) == 0 ||
+        variables.membersWithSelectorCounts.all(count, count >= 1)
+      message: "member selector must have one of exactMatch, regexMatch, or labelMatch"
+      reason: Invalid
+
+    # Validate that each member has no more than one selector type
+    - expression: |
+        !has(object.spec) || !has(object.spec.members) || size(object.spec.members) == 0 ||
+        variables.membersWithSelectorCounts.all(count, count <= 1)
+      message: "cannot specify more than one selector type (exactMatch, regexMatch, labelMatch)"
+      reason: Invalid
+
+    # Validate exactMatch names are not empty
+    - expression: |
+        !has(object.spec) || !has(object.spec.members) || size(object.spec.members) == 0 ||
+        object.spec.members
+          .filter(member, has(member.selector.exactMatch))
+          .all(member, member.selector.exactMatch.name != "")
+      message: "member exactMatch name is required"
+      reason: Invalid
+
+    # Validate exactMatch names follow Kubernetes qualified name rules using CEL format library
+    - expression: |
+        !has(object.spec) || !has(object.spec.members) || size(object.spec.members) == 0 ||
+        variables.exactMatchNames.all(name,
+          !format.qualifiedName().validate(name).hasValue()
+        )
+      message: "member exactMatch validate failed [name part must consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character]"
+      reason: Invalid
+
+    # Validate regexMatch patterns are not empty
+    - expression: |
+        !has(object.spec) || !has(object.spec.members) || size(object.spec.members) == 0 || 
+        object.spec.members
+          .filter(member, has(member.selector.regexMatch))
+          .all(member, member.selector.regexMatch.pattern != "")
+      message: "member regexMatch pattern is required"
+      reason: Invalid
+
+    # Basic regex pattern validation - check for common invalid patterns
+    # Note: CEL doesn't have full regex compilation support, so we do basic checks
+
+    # Check for unmatched parentheses
+    - expression: |
+        !has(object.spec) || !has(object.spec.members) || size(object.spec.members) == 0 ||
+        variables.regexMatchPatterns.all(pattern, 
+          !pattern.contains('(') || 
+          (pattern.split('(').size() == pattern.split(')').size())
+        )
+      message: "member regexMatch pattern is invalid: unmatched parentheses"
+      reason: Invalid
+
+    # Check for unmatched square brackets
+    - expression: |
+        !has(object.spec) || !has(object.spec.members) || size(object.spec.members) == 0 ||
+        variables.regexMatchPatterns.all(pattern, 
+          !pattern.contains('[') || 
+          (pattern.split('[').size() == pattern.split(']').size())
+        )
+      message: "member regexMatch pattern is invalid: unmatched square brackets"
+      reason: Invalid
+
+    # Check for unmatched curly braces
+    - expression: |
+        !has(object.spec) || !has(object.spec.members) || size(object.spec.members) == 0 ||
+        variables.regexMatchPatterns.all(pattern, 
+          !pattern.contains('{') || 
+          (pattern.split('{').size() == pattern.split('}').size())
+        )
+      message: "member regexMatch pattern is invalid: unmatched curly braces"
+      reason: Invalid
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: hypernode-validation-policy-binding
+  labels:
+    volcano.sh/component: hypernode-webhook
+    volcano.sh/migration: vap
+spec:
+  policyName: hypernode-validation-policy
+  validationActions: [Deny]
+  matchResources:
+    resourceRules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: ["topology.volcano.sh"]
+        apiVersions: ["v1alpha1"]
+        resources: ["hypernodes"]

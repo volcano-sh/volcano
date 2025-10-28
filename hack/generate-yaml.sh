@@ -31,6 +31,8 @@ export MONITOR_YAML_FILENAME=volcano-monitoring-${VOLCANO_IMAGE_TAG}.yaml
 export AGENT_YAML_FILENAME=volcano-agent-${VOLCANO_IMAGE_TAG}.yaml
 
 export CRD_VERSION=${CRD_VERSION:-v1}
+export ENABLE_VAP=${ENABLE_VAP:-false}
+export ENABLE_MAP=${ENABLE_MAP:-false}
 
 case $CRD_VERSION in
   bases)
@@ -62,6 +64,19 @@ case $LOCAL_OS in
 esac
 
 ARCH=$(go env GOARCH)
+
+# Display VAP and MAP status
+if [[ "$ENABLE_VAP" == "true" ]]; then
+  echo "ValidatingAdmissionPolicy enabled"
+else
+  echo "ValidatingAdmissionPolicy disabled"
+fi
+
+if [[ "$ENABLE_MAP" == "true" ]]; then
+  echo "MutatingAdmissionPolicy enabled"
+else
+  echo "MutatingAdmissionPolicy disabled"
+fi
 
 # Step1. install helm binary
 if [[ ! -f "${HELM_BIN_DIR}/version.helm.${HELM_VER}" ]] || [[ ! -f "${HELM_BIN_DIR}/helm" ]] ; then
@@ -127,8 +142,9 @@ fi
 cat ${VK_ROOT}/installer/namespace.yaml > ${DEPLOYMENT_FILE}
 
 # Volcano
-${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
+HELM_CMD="${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
+      --set custom.vap_enable=${ENABLE_VAP} --set custom.map_enable=${ENABLE_MAP}\
       -s templates/admission.yaml \
       -s templates/admission-init.yaml \
       -s templates/batch_v1alpha1_job.yaml \
@@ -140,8 +156,18 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       -s templates/scheduling_v1beta1_queue.yaml \
       -s templates/nodeinfo_v1alpha1_numatopologies.yaml \
       -s templates/topology_v1alpha1_hypernodes.yaml \
-      -s templates/webhooks.yaml \
-      >> ${DEPLOYMENT_FILE}
+      -s templates/webhooks.yaml"
+
+# Add VAP and MAP templates if enabled
+if [[ "$ENABLE_VAP" == "true" ]]; then
+  HELM_CMD="$HELM_CMD -s templates/validating_admission_policy.yaml"
+fi
+
+if [[ "$ENABLE_MAP" == "true" ]]; then
+  HELM_CMD="$HELM_CMD -s templates/mutating_admission_policy.yaml"
+fi
+
+eval "$HELM_CMD >> ${DEPLOYMENT_FILE}"
 
 # JobFlow
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano/charts/jobflow --namespace volcano-system \

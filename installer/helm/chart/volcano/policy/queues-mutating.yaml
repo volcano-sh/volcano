@@ -1,0 +1,71 @@
+apiVersion: admissionregistration.k8s.io/v1alpha1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: volcano-queue-mutation-policy
+spec:
+  failurePolicy: Fail
+  reinvocationPolicy: Never
+  matchConstraints:
+    resourceRules:
+    - operations: ["CREATE"]
+      apiGroups: ["scheduling.volcano.sh"]
+      apiVersions: ["v1beta1"]
+      resources: ["queues"]
+  mutations:
+  # Add root prefix to hierarchy annotation if hierarchy is specified but doesn't start with "root"
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        has(object.metadata.annotations) &&
+        "volcano.sh/hierarchy" in object.metadata.annotations &&
+        "volcano.sh/hierarchy-weights" in object.metadata.annotations &&
+        object.metadata.annotations["volcano.sh/hierarchy"] != "" &&
+        object.metadata.annotations["volcano.sh/hierarchy-weights"] != "" &&
+        !object.metadata.annotations["volcano.sh/hierarchy"].startsWith("root") ?
+        [
+          JSONPatch{
+            op: "add",
+            path: "/metadata/annotations/" + jsonpatch.escapeKey("volcano.sh/hierarchy"),
+            value: "root/" + object.metadata.annotations["volcano.sh/hierarchy"]
+          },
+          JSONPatch{
+            op: "add",
+            path: "/metadata/annotations/" + jsonpatch.escapeKey("volcano.sh/hierarchy-weights"),
+            value: "1/" + object.metadata.annotations["volcano.sh/hierarchy-weights"]
+          }
+        ] : []
+
+  # Set default reclaimable to true
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        !has(object.spec.reclaimable) ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/reclaimable",
+          value: true
+        }] : []
+
+  # Set default weight to 1 if weight is 0 or not specified
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        (!has(object.spec.weight) || object.spec.weight == 0) ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/weight", 
+          value: 1
+        }] : []
+---
+apiVersion: admissionregistration.k8s.io/v1alpha1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: volcano-queue-mutation-binding
+spec:
+  policyName: volcano-queue-mutation-policy
+  matchResources:
+    resourceRules:
+    - operations: ["CREATE"]
+      apiGroups: ["scheduling.volcano.sh"]
+      apiVersions: ["v1beta1"] 
+      resources: ["queues"]
