@@ -156,6 +156,9 @@ e2e-test-dra: images
 e2e-test-hypernode: images
 	E2E_TYPE=HYPERNODE ./hack/run-e2e-kind.sh
 
+e2e-test-capacitycard: images
+	E2E_TYPE=CAPACITYCARD ./hack/run-e2e-kind.sh
+
 generate-yaml: init manifests
 	./hack/generate-yaml.sh CRD_VERSION=${CRD_VERSION}
 

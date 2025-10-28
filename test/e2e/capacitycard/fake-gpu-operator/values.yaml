@@ -1,0 +1,14 @@
+topology:
+  nodePools:
+    default:
+      gpuProduct: "Tesla-K80"
+      gpuCount: 8
+      gpuMemory: 11441
+    card1:
+      gpuProduct: "NVIDIA-GeForce-RTX-4090"
+      gpuCount: 8
+      gpuMemory: 22882
+    card2:
+      gpuProduct: "NVIDIA-H800"
+      gpuCount: 8
+      gpuMemory: 81559

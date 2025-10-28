@@ -48,6 +48,7 @@ type TaskSpec struct {
 	Limit                 v1.ResourceList
 	Affinity              *v1.Affinity
 	Labels                map[string]string
+	Annotations           map[string]string
 	Policies              []batchv1alpha1.LifecyclePolicy
 	RestartPolicy         v1.RestartPolicy
 	Tolerations           []v1.Toleration
@@ -75,6 +76,7 @@ type JobSpec struct {
 	MaxRetry int32
 	// network topology mode hard or soft
 	NetworkTopology *batchv1alpha1.NetworkTopologySpec
+	Annotations     map[string]string
 }
 
 func Namespace(context *TestContext, job *JobSpec) string {
@@ -193,8 +195,9 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 
 	job := &batchv1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobSpec.Name,
-			Namespace: ns,
+			Name:        jobSpec.Name,
+			Namespace:   ns,
+			Annotations: jobSpec.Annotations,
 		},
 		Spec: batchv1alpha1.JobSpec{
 			SchedulerName:           "volcano",
@@ -226,15 +229,16 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 		}
 
 		ts := batchv1alpha1.TaskSpec{
-			Name:     name,
-			Replicas: task.Rep,
-			Policies: task.Policies,
-			MaxRetry: maxRetry,
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   name,
-					Labels: task.Labels,
-				},
+				Name:     name,
+				Replicas: task.Rep,
+				Policies: task.Policies,
+				MaxRetry: maxRetry,
+				Template: v1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        name,
+						Labels:      task.Labels,
+						Annotations: task.Annotations,
+					},
 				Spec: v1.PodSpec{
 					RestartPolicy:     restartPolicy,
 					Containers:        CreateContainers(task.Img, task.Command, task.WorkingDir, task.Req, task.Limit, task.Hostport),
