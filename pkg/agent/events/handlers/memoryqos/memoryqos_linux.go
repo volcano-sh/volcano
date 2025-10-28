@@ -76,6 +76,8 @@ func (h *MemoryQoSHandle) Handle(event interface{}) error {
 		return err
 	}
 
+	// TODO: Should we set the memory qos values here ?
+
 	klog.InfoS("Successfully set memory qos level to cgroup file", "qosLevel", qosLevel, "cgroupFile", qosLevelFile)
 	return nil
 }

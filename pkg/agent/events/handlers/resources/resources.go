@@ -31,6 +31,7 @@ import (
 	"volcano.sh/volcano/pkg/agent/features"
 	"volcano.sh/volcano/pkg/agent/utils"
 	"volcano.sh/volcano/pkg/agent/utils/cgroup"
+	utilnode "volcano.sh/volcano/pkg/agent/utils/node"
 	utilpod "volcano.sh/volcano/pkg/agent/utils/pod"
 	"volcano.sh/volcano/pkg/config"
 	"volcano.sh/volcano/pkg/metriccollect"
@@ -42,7 +43,9 @@ func init() {
 
 type ResourcesHandle struct {
 	*base.BaseHandle
-	cgroupMgr cgroup.CgroupManager
+	cgroupMgr              cgroup.CgroupManager
+	getNodeFunc            utilnode.ActiveNode
+	memoryThrottlingFactor float64
 }
 
 func NewResources(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, cgroupMgr cgroup.CgroupManager) framework.Handle {
@@ -52,7 +55,9 @@ func NewResources(config *config.Configuration, mgr *metriccollect.MetricCollect
 			Config: config,
 			Active: true,
 		},
-		cgroupMgr: cgroupMgr,
+		cgroupMgr:              cgroupMgr,
+		getNodeFunc:            config.GetNode,
+		memoryThrottlingFactor: config.GenericConfiguration.MemoryThrottlingFactor,
 	}
 }
 
@@ -66,7 +71,13 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 		return nil
 	}
 
-	resources := utilpod.CalculateExtendResources(podEvent.Pod)
+	node, err := r.getNodeFunc()
+	if err != nil {
+		klog.ErrorS(err, "Failed to get node")
+		return err
+	}
+
+	resources := utilpod.CalculateExtendResources(podEvent.Pod, node, r.memoryThrottlingFactor)
 	var errs []error
 	// set container and pod level cgroup.
 	for _, cr := range resources {

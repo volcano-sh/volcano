@@ -28,7 +28,8 @@ import (
 const (
 	serverPort = 3300
 
-	defaultOverSubscriptionRatio = 60
+	defaultOverSubscriptionRatio  = 60
+	defaultMemoryThrottlingFactor = 0.9
 )
 
 type VolcanoAgentOptions struct {
@@ -68,6 +69,9 @@ type VolcanoAgentOptions struct {
 
 	// ExtendResourceMemoryName is the extend resource memory, which is used to calculate overSubscription resources.
 	ExtendResourceMemoryName string
+
+	// MemoryThrottlingFactor is used to calculate the throttling limit for a Pod for CGroupV2.
+	MemoryThrottlingFactor float64
 }
 
 func NewVolcanoAgentOptions() *VolcanoAgentOptions {
@@ -89,6 +93,7 @@ func (options *VolcanoAgentOptions) AddFlags(c *cobra.Command) {
 	c.Flags().BoolVar(&options.IncludeSystemUsage, "include-system-usage", false, "It determines whether considering system usage when calculate overSubscription resource and evict.")
 	c.Flags().StringVar(&options.ExtendResourceCPUName, "extend-resource-cpu-name", "", "The extended cpu resource name, which is used to calculate oversubscription resources, default to kubernetes.io/batch-cpu")
 	c.Flags().StringVar(&options.ExtendResourceMemoryName, "extend-resource-memory-name", "", "The extended memory resource name, which is used to calculate oversubscription resources, default to kubernetes.io/batch-memory")
+	c.Flags().Float64Var(&options.MemoryThrottlingFactor, "memory-throttling-factor", defaultMemoryThrottlingFactor, "The memory throttling factor is used to calculate the memory throttling limit of a Pod for CGroupV2, default to 0.9")
 }
 
 func (options *VolcanoAgentOptions) Validate() error {
@@ -111,5 +116,6 @@ func (options *VolcanoAgentOptions) ApplyTo(cfg *config.Configuration) error {
 	cfg.GenericConfiguration.IncludeSystemUsage = options.IncludeSystemUsage
 	cfg.GenericConfiguration.ExtendResourceCPUName = options.ExtendResourceCPUName
 	cfg.GenericConfiguration.ExtendResourceMemoryName = options.ExtendResourceMemoryName
+	cfg.GenericConfiguration.MemoryThrottlingFactor = options.MemoryThrottlingFactor
 	return nil
 }

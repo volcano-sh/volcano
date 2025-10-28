@@ -17,6 +17,8 @@ limitations under the License.
 package pod
 
 import (
+	"math"
+	"os"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -48,8 +50,10 @@ type Resources struct {
 	Value           int64
 }
 
+var defaultPageSize = int64(os.Getpagesize())
+
 // CalculateExtendResources calculates pod and container that use extend resource level cgroup resource, include cpu and memory
-func CalculateExtendResources(pod *v1.Pod) []Resources {
+func CalculateExtendResources(pod *v1.Pod, node *v1.Node, memoryThrottlingFactor float64) []Resources {
 	containerRes := []Resources{}
 	cpuSharesTotal, cpuLimitsTotal, memoryLimitsTotal := int64(0), int64(0), int64(0)
 	// track if limits were applied for each resource.
@@ -79,10 +83,49 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 		// set memory limit.
 		memoryLimit, ok := c.Resources.Limits[apis.GetExtendResourceMemory()]
 		if ok && !memoryLimit.IsZero() {
-			containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.MemoryLimitFile, Value: memoryLimit.Value()})
 			memoryLimitsTotal += memoryLimit.Value()
 		} else {
 			memoryLimitsDeclared = false
+		}
+
+		if cgroup.IsCgroupV2() {
+			// Set memory request as memory.min for cgroup v2.
+			memoryReq, ok := c.Resources.Requests[apis.GetExtendResourceMemory()]
+			if ok && !memoryReq.IsZero() {
+				containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.CGroupV2MemoryMinFile, Value: memoryReq.Value()})
+			}
+			// Set memory throttling as memory.high for cgroup v2.
+			// calculate memory.high according to memory limit.
+			if !memoryReq.Equal(memoryLimit) {
+				// The formula for memory.high for container cgroup is modified in Alpha stage of the feature in K8s v1.27.
+				// It will be set based on formula:
+				// `memory.high=floor[(requests.memory + memory throttling factor * (limits.memory or node allocatable memory - requests.memory))/pageSize] * pageSize`
+				// where default value of memory throttling factor is set to 0.9
+				// More info: https://git.k8s.io/enhancements/keps/sig-node/2570-memory-qos
+				memoryLimitToUse := float64(0)
+				if !memoryLimit.IsZero() {
+					memoryLimitToUse = float64(memoryLimit.Value())
+				} else {
+					// TODO: Get "node allocatable memory" from node info.
+					nodeAlloc := node.Status.Allocatable
+					allocatableMemory, ok := nodeAlloc[v1.ResourceMemory]
+					if ok && allocatableMemory.Value() > 0 {
+						memoryLimitToUse = float64(allocatableMemory.Value())
+					}
+				}
+				if memoryLimitToUse != 0 {
+					memoryHigh := int64(math.Floor(
+						float64(memoryReq.Value())+
+							(memoryLimitToUse-float64(memoryReq.Value()))*memoryThrottlingFactor)/float64(defaultPageSize)) * defaultPageSize
+					containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.CGroupV2MemoryHighFile, Value: memoryHigh})
+				}
+			}
+
+			if memoryLimitsDeclared {
+				containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.CGroupV2MemoryLimitFile, Value: memoryLimit.Value()})
+			}
+		} else if memoryLimitsDeclared {
+			containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, ContainerID: id, SubPath: cgroup.CGroupV1MemoryLimitFile, Value: memoryLimit.Value()})
 		}
 	}
 
@@ -103,8 +146,9 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUQuotaTotalFile, Value: cpuLimitsTotal})
 	}
 	// pod level should not set limit when exits one container has no memory limit.
+	// TODO: Should there be any changes here ?
 	if memoryLimitsDeclared {
-		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, SubPath: cgroup.MemoryLimitFile, Value: memoryLimitsTotal})
+		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, SubPath: cgroup.CGroupV1MemoryLimitFile, Value: memoryLimitsTotal})
 	}
 	return containerRes
 }

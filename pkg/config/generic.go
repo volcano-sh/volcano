@@ -80,4 +80,7 @@ type VolcanoAgentConfiguration struct {
 
 	// ExtendResourceMemoryName is the extend resource memory, which is used to calculate overSubscription resources.
 	ExtendResourceMemoryName string
+
+	// MemoryThrottlingFactor is used to calculate the throttling limit for a Pod for CGroupV2.
+	MemoryThrottlingFactor float64
 }
