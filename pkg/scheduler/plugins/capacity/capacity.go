@@ -41,6 +41,8 @@ const (
 	// Using the name of the plugin will likely help us avoid collisions with other plugins.
 	capacityStateKey = PluginName
 	rootQueueID      = "root"
+
+	overwriteRootQueueRealCapability = "overwriteRootQueueRealCapability"
 )
 
 type capacityPlugin struct {
@@ -85,7 +87,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 		overwriteRootQueueRealCapability: false,
 	}
 
-	arguments.GetBool(&cp.overwriteRootQueueRealCapability, "overwriteRootQueueRealCapability")
+	arguments.GetBool(&cp.overwriteRootQueueRealCapability, overwriteRootQueueRealCapability)
 
 	return cp
 }
