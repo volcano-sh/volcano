@@ -1,0 +1,123 @@
+apiVersion: admissionregistration.k8s.io/v1alpha1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: volcano-job-mutation-policy
+spec:
+  failurePolicy: Fail
+  reinvocationPolicy: Never
+  matchConstraints:
+    resourceRules:
+    - operations: ["CREATE"]
+      apiGroups: ["batch.volcano.sh"]
+      apiVersions: ["v1alpha1"]
+      resources: ["jobs"]
+  
+  # NOTE: This MutatingAdmissionPolicy provides a PARTIAL replacement for the webhook
+  # implementation. It handles Job-level mutations but CANNOT handle task-level mutations
+  # due to CEL expression limitations in dynamically processing arbitrary numbers of tasks.
+  # 
+  # IMPLEMENTED: Job-level defaults (queue, schedulerName, maxRetry, minAvailable, plugins)
+  # NOT IMPLEMENTED: Task-level defaults (names, minAvailable, maxRetry, DNSPolicy)
+  #
+  # For complete functionality, the existing webhook must remain active alongside this policy.
+  
+  mutations:
+  # Set default queue
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        !has(object.spec.queue) || object.spec.queue == "" ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/queue",
+          value: "default"
+        }] : []
+  
+  # Set default schedulerName  
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        !has(object.spec.schedulerName) || object.spec.schedulerName == "" ?
+        [JSONPatch{
+          op: "add", 
+          path: "/spec/schedulerName",
+          value: "volcano"
+        }] : []
+  
+  # Set default maxRetry
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        !has(object.spec.maxRetry) || object.spec.maxRetry == 0 ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/maxRetry", 
+          value: 3
+        }] : []
+  
+  # Set default minAvailable
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        !has(object.spec.minAvailable) || object.spec.minAvailable == 0 ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/minAvailable",
+          value: object.spec.tasks.map(task, 
+            has(task.minAvailable) && task.minAvailable != null ? 
+            task.minAvailable : task.replicas
+          ).sum()
+        }] : []
+
+  # NOTE: The following task-level mutations are NOT implemented in MutatingAdmissionPolicy
+  # because CEL expressions cannot dynamically iterate over arbitrary number of tasks.
+  # MutatingAdmissionPolicy would require hardcoded rules for each task index (0, 1, 2, etc.)
+  # which is not scalable and differs from the webhook implementation that handles all tasks.
+  # 
+  # Missing task-level mutations that require webhook implementation:
+  # - Set default task names (task0, task1, task2, ...)
+  # - Set default task minAvailable values 
+  # - Set default task maxRetry values
+  # - Set DNSPolicy for tasks using hostNetwork
+  #
+  # These mutations must be handled by the existing webhook for proper functionality.
+
+  # Add svc plugin for distributed frameworks
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        has(object.spec.plugins) && (
+          has(object.spec.plugins.tensorflow) || 
+          has(object.spec.plugins.mpi) || 
+          has(object.spec.plugins.pytorch)
+        ) && !has(object.spec.plugins.svc) ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/plugins/svc",
+          value: []
+        }] : []
+
+  # Add ssh plugin for mpi jobs
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        has(object.spec.plugins) && has(object.spec.plugins.mpi) && 
+        !has(object.spec.plugins.ssh) ?
+        [JSONPatch{
+          op: "add", 
+          path: "/spec/plugins/ssh",
+          value: []
+        }] : []
+---
+apiVersion: admissionregistration.k8s.io/v1alpha1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: volcano-job-mutation-binding
+spec:
+  policyName: volcano-job-mutation-policy
+  matchResources:
+    resourceRules:
+    - operations: ["CREATE"]
+      apiGroups: ["batch.volcano.sh"] 
+      apiVersions: ["v1alpha1"]
+      resources: ["jobs"]

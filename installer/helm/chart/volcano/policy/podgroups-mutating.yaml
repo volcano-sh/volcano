@@ -1,0 +1,40 @@
+apiVersion: admissionregistration.k8s.io/v1alpha1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: volcano-podgroup-mutation-policy
+spec:
+  failurePolicy: Fail
+  reinvocationPolicy: Never
+  matchConstraints:
+    resourceRules:
+    - operations: ["CREATE"]
+      apiGroups: ["scheduling.volcano.sh"]
+      apiVersions: ["v1beta1"]
+      resources: ["podgroups"]
+  mutations:
+  # Set queue from namespace annotation if podgroup queue is default
+  - patchType: JSONPatch
+    jsonPatch:
+      expression: |
+        object.spec.queue == "default" &&
+        namespaceObject != null &&
+        has(namespaceObject.metadata.annotations) &&
+        "scheduling.volcano.sh/queue-name" in namespaceObject.metadata.annotations ?
+        [JSONPatch{
+          op: "add",
+          path: "/spec/queue",
+          value: namespaceObject.metadata.annotations["scheduling.volcano.sh/queue-name"]
+        }] : []
+---
+apiVersion: admissionregistration.k8s.io/v1alpha1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: volcano-podgroup-mutation-binding
+spec:
+  policyName: volcano-podgroup-mutation-policy
+  matchResources:
+    resourceRules:
+    - operations: ["CREATE"]
+      apiGroups: ["scheduling.volcano.sh"]
+      apiVersions: ["v1beta1"]
+      resources: ["podgroups"]

@@ -42,7 +42,7 @@ jobs:
           make e2e-test-vcctl CC=/usr/local/musl/bin/musl-gcc
 
       - name: Upload e2e vcctl logs
-        if: failure()
+        if: '!success()'
         uses: actions/upload-artifact@v4
         with:
           name: volcano_e2e_vcctl_logs

@@ -1,0 +1,252 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: job-validation-policy
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: ["batch.volcano.sh"]
+        apiVersions: ["v1alpha1"]
+        resources: ["jobs"]
+  variables:
+    # Extract task names for validation
+    - name: taskNames
+      expression: |
+        has(object.spec) && has(object.spec.tasks) ? 
+        object.spec.tasks.map(task, task.name) : []
+    # Calculate total replicas
+    - name: totalReplicas
+      expression: |
+        has(object.spec) && has(object.spec.tasks) ? 
+        object.spec.tasks.map(task, task.replicas).sum() : 0
+    # Check if tasks have dependencies
+    - name: hasDependencies
+      expression: |
+        has(object.spec) && has(object.spec.tasks) ? 
+        object.spec.tasks.exists(task, has(task.dependsOn) && has(task.dependsOn.name) && size(task.dependsOn.name) > 0) : false
+    # Extract all policy events
+    - name: policyEvents
+      expression: |
+        has(object.spec) && has(object.spec.policies) ? 
+        object.spec.policies.filter(policy, has(policy.event)).map(policy, policy.event) : []
+    # Extract all policy exit codes
+    - name: policyExitCodes
+      expression: |
+        has(object.spec) && has(object.spec.policies) ? 
+        object.spec.policies.filter(policy, has(policy.exitCode)).map(policy, policy.exitCode) : []
+    # Extract volume mount paths
+    - name: volumeMountPaths
+      expression: |
+        has(object.spec) && has(object.spec.volumes) ? 
+        object.spec.volumes.map(volume, volume.mountPath) : []
+    # Valid policy events
+    - name: validEvents
+      expression: |
+        ["*","PodFailed","PodEvicted","PodPending","Unknown","TaskCompleted","JobUpdated","TaskFailed"]
+    # Valid policy actions
+    - name: validActions
+      expression: |
+        ["AbortJob", "RestartJob", "RestartTask", "RestartPod", "TerminateJob", "CompleteJob", "ResumeJob"]
+  validations:
+    # Basic job validations
+    # Validate minAvailable >= 0
+    - expression: |
+        !has(object.spec) || !has(object.spec.minAvailable) || object.spec.minAvailable >= 0
+      message: "job 'minAvailable' must be >= 0"
+      reason: Invalid
+    # Validate maxRetry >= 0
+    - expression: |
+        !has(object.spec) || !has(object.spec.maxRetry) || object.spec.maxRetry >= 0
+      message: "'maxRetry' cannot be less than zero"
+      reason: Invalid
+    # Validate TTLSecondsAfterFinished >= 0
+    - expression: |
+        !has(object.spec) || !has(object.spec.ttlSecondsAfterFinished) || 
+        object.spec.ttlSecondsAfterFinished >= 0
+      message: "'ttlSecondsAfterFinished' cannot be less than zero"
+      reason: Invalid
+    # Validate at least one task is specified
+    - expression: |
+        has(object.spec) && has(object.spec.tasks) && size(object.spec.tasks) > 0
+      message: "No task specified in job spec"
+      reason: Invalid
+    # Validate task names are unique
+    - expression: |
+        !has(object.spec) || !has(object.spec.tasks) || 
+        object.spec.tasks.all(task1, 
+          object.spec.tasks.filter(task2, task2.name == task1.name).size() == 1
+        )
+      message: "duplicated task name found"
+      reason: Invalid
+    # Validate task names are DNS1123 labels using CEL format library (gives precise errors)
+    - expression: |
+        !has(object.spec) || !has(object.spec.tasks) ||
+        object.spec.tasks.all(t, !format.dns1123Label().validate(t.name).hasValue())
+      message: "a lowercase RFC 1123 label must consist of lower case alphanumeric characters"
+      reason: Invalid
+    # Task validations
+    # Validate task replicas >= 0
+    - expression: |
+        !has(object.spec) || !has(object.spec.tasks) ||
+        object.spec.tasks.all(task, !has(task.replicas) || task.replicas >= 0)
+      message: "'replicas' < 0 in task"
+      reason: Invalid
+    # Validate task minAvailable >= 0 when specified
+    - expression: |
+        !has(object.spec) || !has(object.spec.tasks) ||
+        object.spec.tasks.all(task, 
+          !has(task.minAvailable) || task.minAvailable >= 0
+        )
+      message: "'minAvailable' < 0 in task"
+      reason: Invalid
+    # Validate task minAvailable <= replicas when specified
+    - expression: |
+        !has(object.spec) || !has(object.spec.tasks) ||
+        object.spec.tasks.all(task, 
+          !has(task.minAvailable) || !has(task.replicas) || task.minAvailable <= task.replicas
+        )
+      message: "'minAvailable' is greater than 'replicas' in task"
+      reason: Invalid
+    # Validate job minAvailable <= total replicas
+    - expression: |
+        !has(object.spec) || !has(object.spec.minAvailable) ||
+        object.spec.minAvailable <= variables.totalReplicas
+      message: "job 'minAvailable' should not be greater than total replicas in tasks"
+      reason: Invalid
+    # Policy validations
+    # Validate policy events are valid
+    - expression: |
+        !has(object.spec) || !has(object.spec.policies) ||
+        object.spec.policies.all(policy, 
+          !has(policy.event) || policy.event in variables.validEvents
+        )
+      message: "invalid policy event"
+      reason: Invalid
+    # Validate policy actions are valid
+    - expression: |
+        !has(object.spec) || !has(object.spec.policies) ||
+        object.spec.policies.all(policy, 
+          !has(policy.action) || policy.action in variables.validActions
+        )
+      message: "invalid policy action"
+      reason: Invalid
+    # Validate policy has either event or exitCode, not both
+    - expression: |
+        !has(object.spec) || !has(object.spec.policies) ||
+        object.spec.policies.all(policy, 
+          (has(policy.event) && !has(policy.exitCode)) ||
+          (!has(policy.event) && has(policy.exitCode)) ||
+          (!has(policy.event) && !has(policy.exitCode))
+        )
+      message: "must not specify event and exitCode simultaneously"
+      reason: Invalid
+    # Validate policy has either event or exitCode specified
+    - expression: |
+        !has(object.spec) || !has(object.spec.policies) ||
+        object.spec.policies.all(policy, 
+          has(policy.event) || has(policy.exitCode) || (has(policy.events) && size(policy.events) > 0)
+        )
+      message: "either event and exitCode should be specified"
+      reason: Invalid
+    # Validate policy exit code is not zero
+    - expression: |
+        !has(object.spec) || !has(object.spec.policies) ||
+        object.spec.policies.all(policy, 
+          !has(policy.exitCode) || policy.exitCode != 0
+        )
+      message: "0 is not a valid error code"
+      reason: Invalid
+    # Validate no duplicate policy events
+    - expression: |
+        !has(object.spec) || !has(object.spec.policies) ||
+        object.spec.policies.filter(policy, has(policy.event)).all(policy1,
+          object.spec.policies.filter(policy2, has(policy2.event) && policy2.event == policy1.event).size() == 1
+        )
+      message: "duplicate policy event found"
+      reason: Invalid
+    # Validate no duplicate policy exit codes
+    - expression: |
+        !has(object.spec) || !has(object.spec.policies) ||
+        object.spec.policies.filter(policy, has(policy.exitCode)).all(policy1,
+          object.spec.policies.filter(policy2, has(policy2.exitCode) && policy2.exitCode == policy1.exitCode).size() == 1
+        )
+      message: "duplicate exitCode found"
+      reason: Invalid
+    # Validate AnyEvent (*) policy restrictions
+    - expression: |
+        !has(object.spec) || !has(object.spec.policies) ||
+        !("*" in variables.policyEvents) || size(variables.policyEvents) == 1
+      message: "if there's * here, no other policy should be here"
+      reason: Invalid
+    # Volume validations
+    # Validate volume mount paths are not empty
+    - expression: |
+        !has(object.spec) || !has(object.spec.volumes) ||
+        object.spec.volumes.all(volume, volume.mountPath != "")
+      message: "mountPath is required"
+      reason: Invalid
+    # Validate no duplicate volume mount paths
+    - expression: |
+        !has(object.spec) || !has(object.spec.volumes) ||
+        object.spec.volumes.all(volume1,
+          object.spec.volumes.filter(volume2, volume2.mountPath == volume1.mountPath).size() == 1
+        )
+      message: "duplicated mountPath found"
+      reason: Invalid
+    # Validate volume has either VolumeClaimName or VolumeClaim
+    - expression: |
+        !has(object.spec) || !has(object.spec.volumes) ||
+        object.spec.volumes.all(volume, 
+          (has(volume.volumeClaimName) && volume.volumeClaimName != "") ||
+          has(volume.volumeClaim)
+        )
+      message: "either VolumeClaim or VolumeClaimName must be specified"
+      reason: Invalid
+    # Update-specific validations (for UPDATE operations)
+    # Prevent adding or removing tasks
+    - expression: |
+        request.operation != "UPDATE" || 
+        (has(oldObject.spec) && has(oldObject.spec.tasks) && 
+         has(object.spec) && has(object.spec.tasks) &&
+         size(oldObject.spec.tasks) == size(object.spec.tasks))
+      message: "job updates may not add or remove tasks"
+      reason: Invalid
+    # Prevent changing queue name on update
+    - expression: |
+        request.operation != "UPDATE" ||
+        (has(oldObject.spec) && has(oldObject.spec.queue) &&
+         has(object.spec) && has(object.spec.queue) &&
+         oldObject.spec.queue == object.spec.queue)
+      message: "job updates may not change fields other than `minAvailable`, `tasks[*].replicas under spec` and `PriorityClassName`"
+      reason: Invalid
+    # For UPDATE operations, validate minAvailable against new total replicas
+    - expression: |
+        request.operation != "UPDATE" ||
+        !has(object.spec) || !has(object.spec.minAvailable) ||
+        !has(object.spec.tasks) ||
+        object.spec.minAvailable <= object.spec.tasks.map(task, task.replicas).sum()
+      message: "job 'minAvailable' must not be greater than total replicas"
+      reason: Invalid
+    # Validate job name is a valid qualified name using CEL format library
+    - expression: |
+        !has(object.metadata) || !has(object.metadata.name) ||
+        !format.qualifiedName().validate(object.metadata.name).hasValue()
+      message: "job name must be a valid qualified name"
+      messageExpression: |
+        has(object.metadata) && has(object.metadata.name) && format.qualifiedName().validate(object.metadata.name).hasValue() ?
+        'job name errors: ' + format.qualifiedName().validate(object.metadata.name).orValue([]).join('; ') : ''
+      reason: Invalid
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: job-validation-policy-binding
+  labels:
+    volcano.sh/component: job-webhook
+    volcano.sh/migration: vap
+spec:
+  policyName: job-validation-policy
+  validationActions: [Deny]

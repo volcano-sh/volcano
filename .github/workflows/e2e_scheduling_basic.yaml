@@ -42,7 +42,7 @@ jobs:
           make e2e-test-schedulingbase CC=/usr/local/musl/bin/musl-gcc
 
       - name: Upload e2e scheduling basic logs
-        if: failure()
+        if: '!success()'
         uses: actions/upload-artifact@v4
         with:
           name: volcano_e2e_scheduling_basic_logs
