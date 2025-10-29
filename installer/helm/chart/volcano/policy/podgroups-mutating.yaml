@@ -1,4 +1,4 @@
-apiVersion: admissionregistration.k8s.io/v1alpha1
+apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingAdmissionPolicy
 metadata:
   name: volcano-podgroup-mutation-policy
@@ -26,7 +26,7 @@ spec:
           value: namespaceObject.metadata.annotations["scheduling.volcano.sh/queue-name"]
         }] : []
 ---
-apiVersion: admissionregistration.k8s.io/v1alpha1
+apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingAdmissionPolicyBinding
 metadata:
   name: volcano-podgroup-mutation-binding
