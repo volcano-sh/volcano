@@ -25,7 +25,7 @@ import (
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
-	resourcev1beta1 "k8s.io/api/resource/v1beta1"
+	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -183,40 +183,46 @@ func BuildPV(name, scName string, capacity v1.ResourceList) *v1.PersistentVolume
 	}
 }
 
-func BuildDeviceRequest(name, deviceClassName string, selectors []resourcev1beta1.DeviceSelector,
-	allocationMode *resourcev1beta1.DeviceAllocationMode, count *int64) resourcev1beta1.DeviceRequest {
-	deviceRequest := resourcev1beta1.DeviceRequest{
-		Name:            name,
+func BuildDeviceRequest(name, deviceClassName string, selectors []resourcev1.DeviceSelector,
+	allocationMode *resourcev1.DeviceAllocationMode, count *int64) resourcev1.DeviceRequest {
+	exactCount := int64(1)
+	if count != nil {
+		exactCount = *count
+	}
+
+	// Default to ExactCount mode if not specified
+	defaultMode := resourcev1.DeviceAllocationModeExactCount
+	mode := defaultMode
+	if allocationMode != nil {
+		mode = *allocationMode
+	}
+
+	exactRequest := &resourcev1.ExactDeviceRequest{
 		DeviceClassName: deviceClassName,
-		AllocationMode:  resourcev1beta1.DeviceAllocationModeExactCount,
-		Count:           1,
+		Count:           exactCount,
+		AllocationMode:  mode,
 	}
 
 	if selectors != nil {
-		deviceRequest.Selectors = selectors
+		exactRequest.Selectors = selectors
 	}
 
-	if allocationMode != nil {
-		deviceRequest.AllocationMode = *allocationMode
+	return resourcev1.DeviceRequest{
+		Name:    name,
+		Exactly: exactRequest,
 	}
-
-	if allocationMode != nil && *allocationMode == resourcev1beta1.DeviceAllocationModeExactCount && count != nil {
-		deviceRequest.Count = *count
-	}
-
-	return deviceRequest
 }
 
-func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1beta1.DeviceRequest,
-	constraints []resourcev1beta1.DeviceConstraint, config []resourcev1beta1.DeviceClaimConfiguration) *resourcev1beta1.ResourceClaim {
-	rc := &resourcev1beta1.ResourceClaim{
+func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1.DeviceRequest,
+	constraints []resourcev1.DeviceConstraint, config []resourcev1.DeviceClaimConfiguration) *resourcev1.ResourceClaim {
+	rc := &resourcev1.ResourceClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:       namespace,
 			Name:            name,
 			ResourceVersion: "1",
 		},
-		Spec: resourcev1beta1.ResourceClaimSpec{
-			Devices: resourcev1beta1.DeviceClaim{
+		Spec: resourcev1.ResourceClaimSpec{
+			Devices: resourcev1.DeviceClaim{
 				Requests: deviceRequests,
 			},
 		},
@@ -233,12 +239,12 @@ func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1beta1
 	return rc
 }
 
-func BuildDeviceClass(name string, selectors []resourcev1beta1.DeviceSelector, config []resourcev1beta1.DeviceClassConfiguration) *resourcev1beta1.DeviceClass {
-	dc := &resourcev1beta1.DeviceClass{
+func BuildDeviceClass(name string, selectors []resourcev1.DeviceSelector, config []resourcev1.DeviceClassConfiguration) *resourcev1.DeviceClass {
+	dc := &resourcev1.DeviceClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: resourcev1beta1.DeviceClassSpec{
+		Spec: resourcev1.DeviceClassSpec{
 			Selectors: selectors,
 		},
 	}
@@ -250,24 +256,22 @@ func BuildDeviceClass(name string, selectors []resourcev1beta1.DeviceSelector, c
 	return dc
 }
 
-func BuildDevice(name string, attributes map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceAttribute,
-	capacity map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceCapacity) resourcev1beta1.Device {
-	return resourcev1beta1.Device{
-		Name: name,
-		Basic: &resourcev1beta1.BasicDevice{
-			Attributes: attributes,
-			Capacity:   capacity,
-		},
+func BuildDevice(name string, attributes map[resourcev1.QualifiedName]resourcev1.DeviceAttribute,
+	capacity map[resourcev1.QualifiedName]resourcev1.DeviceCapacity) resourcev1.Device {
+	return resourcev1.Device{
+		Name:       name,
+		Attributes: attributes,
+		Capacity:   capacity,
 	}
 }
 
-func BuildResourceSlice(name, driver, nodeName string, pool resourcev1beta1.ResourcePool, devices []resourcev1beta1.Device) *resourcev1beta1.ResourceSlice {
-	return &resourcev1beta1.ResourceSlice{
+func BuildResourceSlice(name, driver, nodeName string, pool resourcev1.ResourcePool, devices []resourcev1.Device) *resourcev1.ResourceSlice {
+	return &resourcev1.ResourceSlice{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: resourcev1beta1.ResourceSliceSpec{
-			NodeName: nodeName,
+		Spec: resourcev1.ResourceSliceSpec{
+			NodeName: &nodeName,
 			Driver:   driver,
 			Pool:     pool,
 			Devices:  devices,

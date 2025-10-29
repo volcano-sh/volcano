@@ -228,7 +228,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			gomega.Expect(updatedResourceClaim2).ToNot(gomega.BeNil())
 			gomega.Expect(updatedResourceClaim2.Status.Devices).To(gomega.Equal(updatedResourceClaim.Status.Devices))
 
-			getResourceClaim, err := b.f.ClientSet.ResourceV1beta1().ResourceClaims(b.f.Namespace.Name).Get(ctx, claim.Name, metav1.GetOptions{})
+			getResourceClaim, err := b.f.ClientSet.ResourceV1().ResourceClaims(b.f.Namespace.Name).Get(ctx, claim.Name, metav1.GetOptions{})
 			framework.ExpectNoError(err)
 			gomega.Expect(getResourceClaim).ToNot(gomega.BeNil())
 			gomega.Expect(getResourceClaim.Status.Devices).To(gomega.Equal(updatedResourceClaim.Status.Devices))
@@ -311,11 +311,11 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 		ginkgo.It("retries pod scheduling after creating device class", func(ctx context.Context) {
 			var objects []klog.KMetadata
 			pod, template := b.podInline()
-			deviceClassName := template.Spec.Spec.Devices.Requests[0].DeviceClassName
-			class, err := f.ClientSet.ResourceV1beta1().DeviceClasses().Get(ctx, deviceClassName, metav1.GetOptions{})
+			deviceClassName := template.Spec.Spec.Devices.Requests[0].Exactly.DeviceClassName
+			class, err := f.ClientSet.ResourceV1().DeviceClasses().Get(ctx, deviceClassName, metav1.GetOptions{})
 			framework.ExpectNoError(err)
 			deviceClassName += "-b"
-			template.Spec.Spec.Devices.Requests[0].DeviceClassName = deviceClassName
+			template.Spec.Spec.Devices.Requests[0].Exactly.DeviceClassName = deviceClassName
 			objects = append(objects, template, pod)
 			b.create(ctx, objects...)
 
@@ -334,7 +334,7 @@ var _ = ginkgo.Describe("DRA E2E Test", func() {
 			pod, template := b.podInline()
 
 			// First modify the class so that it matches no nodes (for classic DRA) and no devices (structured parameters).
-			deviceClassName := template.Spec.Spec.Devices.Requests[0].DeviceClassName
+			deviceClassName := template.Spec.Spec.Devices.Requests[0].Exactly.DeviceClassName
 			class, err := f.ClientSet.ResourceV1().DeviceClasses().Get(ctx, deviceClassName, metav1.GetOptions{})
 			framework.ExpectNoError(err)
 			originalClass := class.DeepCopy()

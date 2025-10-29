@@ -28,7 +28,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
-	resourcev1beta1 "k8s.io/api/resource/v1beta1"
+	resourcev1 "k8s.io/api/resource/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -1946,20 +1946,20 @@ func TestAllocateWithDRA(t *testing.T) {
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name: "Allocate normal resourceClaim successfully",
-			ResourceClaims: []*resourcev1beta1.ResourceClaim{
+			ResourceClaims: []*resourcev1.ResourceClaim{
 				util.BuildResourceClaim("c1", "claim1",
-					[]resourcev1beta1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
+					[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
 					nil, nil),
 			},
-			ResourceSlices: []*resourcev1beta1.ResourceSlice{
-				util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1beta1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
-					[]resourcev1beta1.Device{
+			ResourceSlices: []*resourcev1.ResourceSlice{
+				util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+					[]resourcev1.Device{
 						util.BuildDevice("gpu-1", nil, nil),
 					}),
 			},
-			DeviceClasses: []*resourcev1beta1.DeviceClass{
-				util.BuildDeviceClass("gpu.example.com", []resourcev1beta1.DeviceSelector{
-					{CEL: &resourcev1beta1.CELDeviceSelector{
+			DeviceClasses: []*resourcev1.DeviceClass{
+				util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{
+					{CEL: &resourcev1.CELDeviceSelector{
 						Expression: fmt.Sprintf(`device.driver == 'gpu.example.com'`),
 					}},
 				}, nil),
@@ -1969,7 +1969,7 @@ func TestAllocateWithDRA(t *testing.T) {
 			},
 			Pods: []*v1.Pod{
 				util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
-					[]v1.ResourceClaim{{Name: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+					[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
 			},
 			Queues: []*schedulingv1.Queue{
 				util.BuildQueue("c1", 1, nil),
@@ -1987,21 +1987,21 @@ func TestAllocateWithDRA(t *testing.T) {
 		},
 		{
 			Name: "claim cel runtime errors",
-			ResourceClaims: []*resourcev1beta1.ResourceClaim{
+			ResourceClaims: []*resourcev1.ResourceClaim{
 				util.BuildResourceClaim("c1", "claim1",
-					[]resourcev1beta1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
+					[]resourcev1.DeviceRequest{util.BuildDeviceRequest("gpu", "gpu.example.com", nil, nil, nil)},
 					nil, nil),
 			},
-			ResourceSlices: []*resourcev1beta1.ResourceSlice{
-				util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1beta1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
-					[]resourcev1beta1.Device{
+			ResourceSlices: []*resourcev1.ResourceSlice{
+				util.BuildResourceSlice("n1-slice1", "gpu.example.com", "n1", resourcev1.ResourcePool{Name: "gpu-worker", Generation: 1, ResourceSliceCount: 1},
+					[]resourcev1.Device{
 						util.BuildDevice("gpu-1", nil, nil),
 					}),
 			},
-			DeviceClasses: []*resourcev1beta1.DeviceClass{
-				util.BuildDeviceClass("gpu.example.com", []resourcev1beta1.DeviceSelector{
-					{CEL: &resourcev1beta1.CELDeviceSelector{
-						Expression: fmt.Sprintf(`device.attributes["%s"].%s`, "some-driver", resourcev1beta1.QualifiedName("healthy")),
+			DeviceClasses: []*resourcev1.DeviceClass{
+				util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{
+					{CEL: &resourcev1.CELDeviceSelector{
+						Expression: fmt.Sprintf(`device.attributes["%s"].%s`, "some-driver", resourcev1.QualifiedName("healthy")),
 					}},
 				}, nil),
 			},
@@ -2010,7 +2010,7 @@ func TestAllocateWithDRA(t *testing.T) {
 			},
 			Pods: []*v1.Pod{
 				util.BuildPodWithResourceClaim("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", make(map[string]string), make(map[string]string),
-					[]v1.ResourceClaim{{Name: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
+					[]v1.ResourceClaim{{Name: "gpu", Request: "gpu"}}, []v1.PodResourceClaim{{Name: "gpu", ResourceClaimName: ptr.To("claim1")}}),
 			},
 			Queues: []*schedulingv1.Queue{
 				util.BuildQueue("c1", 1, nil),

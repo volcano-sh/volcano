@@ -286,7 +286,7 @@ func TestSetUpDynamicResourcesArgs_Default(t *testing.T) {
 	dra := defaultDynamicResourcesArgs()
 	setUpDynamicResourcesArgs(dra, nil)
 
-	assert.Equal(t, metav1.Duration{Duration: defaultDRAFilterTimeout}, dra.FilterTimeout)
+	assert.Equal(t, &metav1.Duration{Duration: defaultDRAFilterTimeout}, dra.FilterTimeout)
 }
 
 func TestSetUpDynamicResourcesArgs_OverideSeconds(t *testing.T) {
@@ -316,7 +316,7 @@ func TestSetUpDynamicResourcesArgs_OverideSeconds(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dra := defaultDynamicResourcesArgs()
 			setUpDynamicResourcesArgs(dra, tt.rawArgs)
-			assert.Equal(t, metav1.Duration{Duration: tt.expectedDur}, dra.FilterTimeout)
+			assert.Equal(t, &metav1.Duration{Duration: tt.expectedDur}, dra.FilterTimeout)
 		})
 	}
 }

@@ -28,7 +28,7 @@ import (
 	"github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	resourceapi "k8s.io/api/resource/v1beta1"
+	resourceapi "k8s.io/api/resource/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -110,8 +110,11 @@ func (b *builder) claimSpec() resourceapi.ResourceClaimSpec {
 	spec := resourceapi.ResourceClaimSpec{
 		Devices: resourceapi.DeviceClaim{
 			Requests: []resourceapi.DeviceRequest{{
-				Name:            "my-request",
-				DeviceClassName: b.className(),
+				Name: "my-request",
+				Exactly: &resourceapi.ExactDeviceRequest{
+					DeviceClassName: b.className(),
+					Count:           1,
+				},
 			}},
 			Config: []resourceapi.DeviceClaimConfiguration{{
 				DeviceConfiguration: resourceapi.DeviceConfiguration{
@@ -230,9 +233,9 @@ func (b *builder) create(ctx context.Context, objs ...klog.KMetadata) []klog.KMe
 		var createdObj klog.KMetadata
 		switch obj := obj.(type) {
 		case *resourceapi.DeviceClass:
-			createdObj, err = b.f.ClientSet.ResourceV1beta1().DeviceClasses().Create(ctx, obj, metav1.CreateOptions{})
+			createdObj, err = b.f.ClientSet.ResourceV1().DeviceClasses().Create(ctx, obj, metav1.CreateOptions{})
 			ginkgo.DeferCleanup(func(ctx context.Context) {
-				err := b.f.ClientSet.ResourceV1beta1().DeviceClasses().Delete(ctx, createdObj.GetName(), metav1.DeleteOptions{})
+				err := b.f.ClientSet.ResourceV1().DeviceClasses().Delete(ctx, createdObj.GetName(), metav1.DeleteOptions{})
 				framework.ExpectNoError(err, "delete device class")
 			})
 		case *v1.Pod:
@@ -240,13 +243,13 @@ func (b *builder) create(ctx context.Context, objs ...klog.KMetadata) []klog.KMe
 		case *v1.ConfigMap:
 			createdObj, err = b.f.ClientSet.CoreV1().ConfigMaps(b.f.Namespace.Name).Create(ctx, obj, metav1.CreateOptions{})
 		case *resourceapi.ResourceClaim:
-			createdObj, err = b.f.ClientSet.ResourceV1beta1().ResourceClaims(b.f.Namespace.Name).Create(ctx, obj, metav1.CreateOptions{})
+			createdObj, err = b.f.ClientSet.ResourceV1().ResourceClaims(b.f.Namespace.Name).Create(ctx, obj, metav1.CreateOptions{})
 		case *resourceapi.ResourceClaimTemplate:
-			createdObj, err = b.f.ClientSet.ResourceV1beta1().ResourceClaimTemplates(b.f.Namespace.Name).Create(ctx, obj, metav1.CreateOptions{})
+			createdObj, err = b.f.ClientSet.ResourceV1().ResourceClaimTemplates(b.f.Namespace.Name).Create(ctx, obj, metav1.CreateOptions{})
 		case *resourceapi.ResourceSlice:
-			createdObj, err = b.f.ClientSet.ResourceV1beta1().ResourceSlices().Create(ctx, obj, metav1.CreateOptions{})
+			createdObj, err = b.f.ClientSet.ResourceV1().ResourceSlices().Create(ctx, obj, metav1.CreateOptions{})
 			ginkgo.DeferCleanup(func(ctx context.Context) {
-				err := b.f.ClientSet.ResourceV1beta1().ResourceSlices().Delete(ctx, createdObj.GetName(), metav1.DeleteOptions{})
+				err := b.f.ClientSet.ResourceV1().ResourceSlices().Delete(ctx, createdObj.GetName(), metav1.DeleteOptions{})
 				framework.ExpectNoError(err, "delete node resource slice")
 			})
 		case *appsv1.DaemonSet:
@@ -358,14 +361,14 @@ func (b *builder) tearDown(ctx context.Context) {
 		return b.listTestPods(ctx)
 	}).WithTimeout(time.Minute).Should(gomega.BeEmpty(), "remaining pods despite deletion")
 
-	claims, err := b.f.ClientSet.ResourceV1beta1().ResourceClaims(b.f.Namespace.Name).List(ctx, metav1.ListOptions{})
+	claims, err := b.f.ClientSet.ResourceV1().ResourceClaims(b.f.Namespace.Name).List(ctx, metav1.ListOptions{})
 	framework.ExpectNoError(err, "get resource claims")
 	for _, claim := range claims.Items {
 		if claim.DeletionTimestamp != nil {
 			continue
 		}
 		ginkgo.By(fmt.Sprintf("deleting %T %s", &claim, klog.KObj(&claim)))
-		err := b.f.ClientSet.ResourceV1beta1().ResourceClaims(b.f.Namespace.Name).Delete(ctx, claim.Name, metav1.DeleteOptions{})
+		err := b.f.ClientSet.ResourceV1().ResourceClaims(b.f.Namespace.Name).Delete(ctx, claim.Name, metav1.DeleteOptions{})
 		if !apierrors.IsNotFound(err) {
 			framework.ExpectNoError(err, "delete claim")
 		}
@@ -378,7 +381,7 @@ func (b *builder) tearDown(ctx context.Context) {
 
 	ginkgo.By("waiting for claims to be deallocated and deleted")
 	gomega.Eventually(func() ([]resourceapi.ResourceClaim, error) {
-		claims, err := b.f.ClientSet.ResourceV1beta1().ResourceClaims(b.f.Namespace.Name).List(ctx, metav1.ListOptions{})
+		claims, err := b.f.ClientSet.ResourceV1().ResourceClaims(b.f.Namespace.Name).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return nil, err
 		}

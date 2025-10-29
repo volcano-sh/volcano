@@ -41,41 +41,23 @@ func TestSnapshot(t *testing.T) {
 			map[string]string{"test": "test"}, make(map[string]string))
 	)
 
-	pod1Info, _ := framework.NewPodInfo(pod1)
-	pod2Info, _ := framework.NewPodInfo(pod2)
-
 	nodeInfo := framework.NewNodeInfo(pod1, pod2)
 
 	tests := []struct {
-		name              string
-		nodeInfoMap       map[string]*framework.NodeInfo
-		expectedNodeInfos []*framework.NodeInfo
-		expectedPods      []*v1.Pod
-		expectErr         error
+		name                                          string
+		nodeInfoMap                                   map[string]*framework.NodeInfo
+		expectedNodeInfos                             []fwk.NodeInfo
+		expectedPodsWithAffinityNodeInfos             []fwk.NodeInfo
+		expectedPodsWithRequiredAntiAffinityNodeInfos []fwk.NodeInfo
+		expectedPods                                  []*v1.Pod
+		expectErr                                     error
 	}{
 		{
-			name:        "test snapshot operation",
-			nodeInfoMap: map[string]*framework.NodeInfo{nodeName: nodeInfo},
-			expectedNodeInfos: []*framework.NodeInfo{{
-				Requested:        &framework.Resource{},
-				NonZeroRequested: &framework.Resource{},
-				Allocatable:      &framework.Resource{},
-				Generation:       2,
-				ImageStates:      map[string]*fwk.ImageStateSummary{},
-				PVCRefCounts:     map[string]int{},
-				Pods: []fwk.PodInfo{
-					pod1Info,
-					pod2Info,
-				},
-				PodsWithAffinity: []fwk.PodInfo{
-					pod1Info,
-					pod2Info,
-				},
-				PodsWithRequiredAntiAffinity: []fwk.PodInfo{
-					pod1Info,
-					pod2Info,
-				},
-			}},
+			name:                              "test snapshot operation",
+			nodeInfoMap:                       map[string]*framework.NodeInfo{nodeName: nodeInfo},
+			expectedNodeInfos:                 []fwk.NodeInfo{nodeInfo.Snapshot()},
+			expectedPodsWithAffinityNodeInfos: []fwk.NodeInfo{}, // pods don't have affinity
+			expectedPodsWithRequiredAntiAffinityNodeInfos: []fwk.NodeInfo{}, // pods don't have anti-affinity
 			expectedPods: []*v1.Pod{pod2},
 			expectErr:    fmt.Errorf("nodeinfo not found for node name %q", nodeName),
 		},
@@ -86,7 +68,7 @@ func TestSnapshot(t *testing.T) {
 			snapshot := NewSnapshot(util.ConvertNodeInfoSliceToInterface(tc.nodeInfoMap))
 			nodeInfoList, err := snapshot.List()
 			if !reflect.DeepEqual(nodeInfoList, tc.expectedNodeInfos) || err != nil {
-				t.Fatalf("unexpected list nodeInfos value (+got: %s/-want: %s), err: %s", tc.expectedNodeInfos, nodeInfoList, err)
+				t.Fatalf("unexpected list nodeInfos value\ngot: %+v\nwant: %+v\nerr: %s", nodeInfoList, tc.expectedNodeInfos, err)
 			}
 
 			_, err = snapshot.Get(nodeName)
@@ -95,31 +77,31 @@ func TestSnapshot(t *testing.T) {
 			}
 
 			nodeInfoList, err = snapshot.HavePodsWithAffinityList()
-			if !reflect.DeepEqual(tc.expectedNodeInfos, nodeInfoList) || err != nil {
-				t.Fatalf("unexpected list HavePodsWithAffinity nodeInfos value (+got: %s/-want: %s), err: %s", nodeInfoList, tc.expectedNodeInfos, err)
+			if !reflect.DeepEqual(tc.expectedPodsWithAffinityNodeInfos, nodeInfoList) || err != nil {
+				t.Fatalf("unexpected havePodsWithAffinityNodeInfoList\ngot:  %+v\nwant: %+v\nerr: %v", nodeInfoList, tc.expectedPodsWithAffinityNodeInfos, err)
 			}
 
 			nodeInfoList, err = snapshot.HavePodsWithRequiredAntiAffinityList()
-			if !reflect.DeepEqual(tc.expectedNodeInfos, nodeInfoList) || err != nil {
-				t.Fatalf("unexpected list PodsWithRequiredAntiAffinity nodeInfos value (+got: %s/-want: %s), err: %s", nodeInfoList, tc.expectedNodeInfos, err)
+			if !reflect.DeepEqual(tc.expectedPodsWithRequiredAntiAffinityNodeInfos, nodeInfoList) || err != nil {
+				t.Fatalf("unexpected havePodsWithRequiredAntiAffinityNodeInfoList\ngot:  %+v\nwant: %+v\nerr: %v", nodeInfoList, tc.expectedPodsWithRequiredAntiAffinityNodeInfos, err)
 			}
 
 			sel, _ := labels.Parse("test==test")
 			pods, err := snapshot.Pods().List(sel)
 			if !reflect.DeepEqual(tc.expectedPods, pods) || err != nil {
-				t.Fatalf("unexpected list pods value (+got: %s/-want: %s), err: %s", pods, tc.expectedNodeInfos, err)
+				t.Fatalf("unexpected list pods value\ngot:  %+v\nwant: %+v\nerr: %v", pods, tc.expectedPods, err)
 			}
 
 			pods, err = snapshot.Pods().FilteredList(func(pod *v1.Pod) bool {
 				return true
 			}, sel)
 			if !reflect.DeepEqual(tc.expectedPods, pods) || err != nil {
-				t.Fatalf("unexpected list filtered pods value (+got: %s/-want: %s), err: %s", pods, tc.expectedPods, err)
+				t.Fatalf("unexpected list filtered pods value\ngot:  %+v\nwant: %+v\nerr: %v", pods, tc.expectedPods, err)
 			}
 
 			nodeInfos, err := snapshot.NodeInfos().List()
 			if !reflect.DeepEqual(tc.expectedNodeInfos, nodeInfos) || err != nil {
-				t.Fatalf("unexpected list nodeInfos value (+got: %s/-want: %s), err: %s", nodeInfos, tc.expectedNodeInfos, err)
+				t.Fatalf("unexpected NodeInfos list value\ngot:  %+v\nwant: %+v\nerr: %v", nodeInfos, tc.expectedNodeInfos, err)
 			}
 		})
 	}
