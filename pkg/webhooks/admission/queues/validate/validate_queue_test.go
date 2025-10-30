@@ -1485,11 +1485,58 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 		t.Errorf("Create queue failed for %v.", err)
 	}
 
+	selfReferencingQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "self-referencing-queue",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "self-referencing-queue",
+			Weight: 1,
+		},
+	}
+
+	selfReferencingQueueJSON, err := json.Marshal(selfReferencingQueue)
+	if err != nil {
+		t.Errorf("Marshal self-referencing queue failed for %v.", err)
+	}
+
 	testCases := []struct {
 		Name           string
 		AR             admissionv1.AdmissionReview
 		reviewResponse *admissionv1.AdmissionResponse
 	}{
+		{
+			Name: "Queue cannot use itself as parent",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "self-referencing-queue",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: selfReferencingQueueJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "queue self-referencing-queue cannot use itself as parent",
+				},
+			},
+		},
 		{
 			Name: "Parent Queue has jobs",
 			AR: admissionv1.AdmissionReview{
