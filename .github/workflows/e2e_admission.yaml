@@ -33,8 +33,8 @@ jobs:
 
       - name: Install dependences
         run: |
-          GO111MODULE="on" go install sigs.k8s.io/kind@v0.29.0
-          curl -LO https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+          GO111MODULE="on" go install sigs.k8s.io/kind@v0.30.0
+          curl -LO https://dl.k8s.io/release/v1.34.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
 
       - name: Run E2E Tests
         run: |
@@ -72,8 +72,8 @@ jobs:
 
       - name: Install dependences
         run: |
-          GO111MODULE="on" go install sigs.k8s.io/kind@v0.29.0
-          curl -LO https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+          GO111MODULE="on" go install sigs.k8s.io/kind@v0.30.0
+          curl -LO https://dl.k8s.io/release/v1.34.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
 
       - name: Run E2E Tests
         run: |

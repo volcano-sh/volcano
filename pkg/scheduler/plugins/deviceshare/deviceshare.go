@@ -23,7 +23,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
@@ -108,7 +108,7 @@ func createStatus(code int, reason string) *api.Status {
 	return &status
 }
 
-func getDeviceScore(ctx context.Context, pod *v1.Pod, node *api.NodeInfo, schedulePolicy string) (int64, *k8sframework.Status) {
+func getDeviceScore(ctx context.Context, pod *v1.Pod, node *api.NodeInfo, schedulePolicy string) (int64, *fwk.Status) {
 	s := float64(0)
 	for _, devices := range node.Others {
 		if devices.(api.Devices).HasDeviceRequest(pod) {

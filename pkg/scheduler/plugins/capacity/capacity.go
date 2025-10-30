@@ -23,7 +23,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 
@@ -239,7 +239,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return nil
 	})
 
-	ssn.AddSimulateAddTaskFn(cp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	ssn.AddSimulateAddTaskFn(cp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 		state, err := getCapacityState(cycleState)
 		if err != nil {
 			return fmt.Errorf("failed to get capacity state: %w", err)
@@ -261,7 +261,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return nil
 	})
 
-	ssn.AddSimulateRemoveTaskFn(cp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	ssn.AddSimulateRemoveTaskFn(cp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 		state, err := getCapacityState(cycleState)
 		if err != nil {
 			return fmt.Errorf("failed to get capacity state: %w", err)
@@ -282,7 +282,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return nil
 	})
 
-	ssn.AddSimulateAllocatableFn(cp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+	ssn.AddSimulateAllocatableFn(cp.Name(), func(ctx context.Context, cycleState fwk.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		state, err := getCapacityState(cycleState)
 		if err != nil {
 			return false
@@ -917,7 +917,7 @@ func getQueueLevel(l *queueAttr, r *queueAttr) int {
 	return level
 }
 
-func getCapacityState(cycleState *k8sframework.CycleState) (*capacityState, error) {
+func getCapacityState(cycleState fwk.CycleState) (*capacityState, error) {
 	c, err := cycleState.Read(capacityStateKey)
 	if err != nil {
 		// preFilterState doesn't exist, likely PreFilter wasn't invoked.
@@ -967,7 +967,7 @@ func (qa *queueAttr) Clone() *queueAttr {
 	return cloned
 }
 
-func (s *capacityState) Clone() k8sframework.StateData {
+func (s *capacityState) Clone() fwk.StateData {
 	if s == nil {
 		return nil
 	}

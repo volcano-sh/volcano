@@ -26,6 +26,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
@@ -308,7 +309,7 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	batchNodeOrderFn := func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
 		// InterPodAffinity
 		state := k8sframework.NewCycleState()
-		nodeInfos := make([]*k8sframework.NodeInfo, 0, len(nodeInfo))
+		nodeInfos := make([]fwk.NodeInfo, 0, len(nodeInfo))
 		nodes := make([]*v1.Node, 0, len(nodeInfo))
 		for _, node := range nodeInfo {
 			newNodeInfo := &k8sframework.NodeInfo{}
@@ -345,9 +346,9 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 
 func interPodAffinityScore(
 	interPodAffinity *interpodaffinity.InterPodAffinity,
-	state *k8sframework.CycleState,
+	state fwk.CycleState,
 	pod *v1.Pod,
-	nodeInfos []*k8sframework.NodeInfo,
+	nodeInfos []fwk.NodeInfo,
 	podAffinityWeight int,
 ) (map[string]float64, error) {
 	return nodescore.CalculatePluginScore(interPodAffinity.Name(), interPodAffinity, interPodAffinity,
@@ -356,9 +357,9 @@ func interPodAffinityScore(
 
 func taintTolerationScore(
 	taintToleration *tainttoleration.TaintToleration,
-	cycleState *k8sframework.CycleState,
+	cycleState fwk.CycleState,
 	pod *v1.Pod,
-	nodeInfos []*k8sframework.NodeInfo,
+	nodeInfos []fwk.NodeInfo,
 	taintTolerationWeight int,
 ) (map[string]float64, error) {
 	return nodescore.CalculatePluginScore(taintToleration.Name(), taintToleration, taintToleration,
@@ -367,9 +368,9 @@ func taintTolerationScore(
 
 func podTopologySpreadScore(
 	podTopologySpread *podtopologyspread.PodTopologySpread,
-	cycleState *k8sframework.CycleState,
+	cycleState fwk.CycleState,
 	pod *v1.Pod,
-	nodeInfos []*k8sframework.NodeInfo,
+	nodeInfos []fwk.NodeInfo,
 	podTopologySpreadWeight int,
 ) (map[string]float64, error) {
 	return nodescore.CalculatePluginScore(podTopologySpread.Name(), podTopologySpread, podTopologySpread,

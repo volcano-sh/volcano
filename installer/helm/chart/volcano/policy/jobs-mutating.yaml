@@ -1,4 +1,4 @@
-apiVersion: admissionregistration.k8s.io/v1alpha1
+apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingAdmissionPolicy
 metadata:
   name: volcano-job-mutation-policy
@@ -109,7 +109,7 @@ spec:
           value: []
         }] : []
 ---
-apiVersion: admissionregistration.k8s.io/v1alpha1
+apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingAdmissionPolicyBinding
 metadata:
   name: volcano-job-mutation-binding

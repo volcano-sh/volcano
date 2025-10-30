@@ -38,8 +38,9 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	k8sutil "k8s.io/kubernetes/pkg/scheduler/util"
+
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -671,7 +672,7 @@ func (cl *candidateList) get() []*candidate {
 // for "pod" to be scheduled.
 func SelectVictimsOnNode(
 	ctx context.Context,
-	state *k8sframework.CycleState,
+	state fwk.CycleState,
 	preemptor *api.TaskInfo,
 	currentQueue *api.QueueInfo,
 	nodeInfo *api.NodeInfo,

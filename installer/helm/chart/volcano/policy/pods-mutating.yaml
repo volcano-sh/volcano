@@ -1,4 +1,4 @@
-apiVersion: admissionregistration.k8s.io/v1alpha1
+apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingAdmissionPolicy
 metadata:
   name: volcano-pod-mutation-policy
@@ -115,7 +115,7 @@ spec:
           value: "volcano"
         }] : []
 ---
-apiVersion: admissionregistration.k8s.io/v1alpha1
+apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingAdmissionPolicyBinding
 metadata:
   name: volcano-pod-mutation-binding
