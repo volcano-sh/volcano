@@ -46,6 +46,9 @@ const (
 
 	// CronVolcanoJobSupport can identify and schedule volcano cronjob.
 	CronVolcanoJobSupport featuregate.Feature = "CronVolcanoJobSupport"
+
+	// SchedulingPolicy supports queue-level scheduling policies.
+	SchedulingPolicy featuregate.Feature = "SchedulingPolicy"
 )
 
 func init() {
@@ -62,4 +65,5 @@ var defaultVolcanoFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec
 	CSIStorage:            {Default: false, PreRelease: featuregate.Alpha},
 	ResourceTopology:      {Default: true, PreRelease: featuregate.Alpha},
 	CronVolcanoJobSupport: {Default: true, PreRelease: featuregate.Alpha},
+	SchedulingPolicy: {Default: false, PreRelease: featuregate.Alpha},
 }

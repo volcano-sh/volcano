@@ -24,8 +24,10 @@ package reclaim
 
 import (
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -57,6 +59,19 @@ func (ra *Action) Execute(ssn *framework.Session) {
 		len(ssn.Jobs), len(ssn.Queues))
 
 	for _, job := range ssn.Jobs {
+		if utilfeature.DefaultFeatureGate.Enabled(features.SchedulingPolicy) {
+			schedulingPolicy := framework.GetSchedulingPolicyFromJob(job)
+			if schedulingPolicy != nil && !schedulingPolicy.HasAction(ra.Name()) {
+				klog.V(4).Infof("%v's SchedulingPolicy does not include the action %v.", job.Name, ra.Name())
+				continue
+			}
+
+			if schedulingPolicy == nil && !ssn.HasAction(ra.Name()) {
+				klog.V(4).Infof("Action %v is not defined in the global schedulingPolicy.", ra.Name())
+				continue
+			}
+		}
+
 		if job.IsPending() {
 			continue
 		}
