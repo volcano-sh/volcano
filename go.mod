@@ -45,7 +45,7 @@ require (
 	k8s.io/dynamic-resource-allocation v0.0.0
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubectl v0.0.0
-	k8s.io/kubernetes v1.33.2
+	k8s.io/kubernetes v1.33.4
 	k8s.io/metrics v0.33.2
 	k8s.io/pod-security-admission v0.0.0
 	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979
