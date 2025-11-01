@@ -28,7 +28,6 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v2"
-	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -86,7 +85,7 @@ func UnmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
 			actions = append(actions, action)
 		} else {
-			klog.Errorf("Failed to find Action %s, ignore it", actionName)
+			return nil, nil, nil, nil, fmt.Errorf("failed to find Action %s", actionName)
 		}
 	}
 
