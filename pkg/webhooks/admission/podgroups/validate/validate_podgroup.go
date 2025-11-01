@@ -88,6 +88,12 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 
 // validatePodGroup validates a PodGroup when it's being created
 func validatePodGroup(pg *schedulingv1beta1.PodGroup) error {
+	if pg.Spec.Preemptable != nil && !*pg.Spec.Preemptable {
+		// TODO: Implement logic to check all existing Pods in the group and ensure none are preemptable.
+		// This requires access to the Kubernetes client to list Pods with the same PodGroup label/annotation.
+		// If any Pod is preemptable, return an error.
+		// For now, just a placeholder comment for the enforcement logic.
+	}
 	return checkQueueState(pg.Spec.Queue)
 }
 

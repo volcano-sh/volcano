@@ -195,6 +195,10 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					if !found {
 						return false
 					}
+					// Skip if PodGroup is un-preemptable
+					if job.PodGroup != nil && job.PodGroup.Spec.Preemptable != nil && !*job.PodGroup.Spec.Preemptable {
+						return false
+					}
 					// Preempt other jobs within queue
 					return job.Queue == preemptorJob.Queue && preemptor.Job != task.Job
 				}, ph)
@@ -254,6 +258,14 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 					}
 
 					// Preempt tasks within job.
+					job, found := ssn.Jobs[task.Job]
+					if !found {
+						return false
+					}
+					// Skip if PodGroup is un-preemptable
+					if job.PodGroup != nil && job.PodGroup.Spec.Preemptable != nil && !*job.PodGroup.Spec.Preemptable {
+						return false
+					}
 					return preemptor.Job == task.Job
 				}, ph)
 				if err != nil {
