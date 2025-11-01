@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: List
+items:
+- apiVersion: scheduling.volcano.sh/v1beta1
+  kind: Queue
+  metadata:
+    name: fifo-queue
+    annotations:
+      volcano.sh/dequeue-strategy: "fifo"
+  spec:
+    weight: 10
+    capability:
+      cpu: "4"
+      memory: "8Gi"
+
+- apiVersion: scheduling.volcano.sh/v1beta1
+  kind: Queue
+  metadata:
+    name: traverse-queue
+    annotations:
+      volcano.sh/dequeue-strategy: "traverse"
+  spec:
+    weight: 10
+    capability:
+      cpu: "4"
+      memory: "8Gi"
+
+
+
+- apiVersion: scheduling.volcano.sh/v1beta1
+  kind: Queue
+  metadata:
+    name: default-queue
+    # No dequeue strategy annotation - should default to traverse
+  spec:
+    weight: 10
+    capability:
+      cpu: "4"
+      memory: "8Gi"
