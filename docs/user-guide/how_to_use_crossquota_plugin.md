@@ -19,6 +19,7 @@ This guide will walk you through setting up and using the CrossQuota plugin effe
 - ✅ Configurable resource weights for fine-grained control
 - ✅ Pod-level strategy selection via annotations
 - ✅ Automatic GPU node and CPU pod detection
+- ✅ Label-based pod filtering for selective quota enforcement
 - ✅ Backward compatible with CPU-only configurations
 
 ## Prerequisites
@@ -200,6 +201,58 @@ spec:
 Available strategies:
 - `most-allocated`: Prefer nodes with higher utilization (default)
 - `least-allocated`: Prefer nodes with lower utilization
+
+### Label Selector Configuration
+
+Use label selectors to control which pods are subject to quota enforcement:
+
+```yaml
+- name: crossquota
+  arguments:
+    gpu-resource-names: "nvidia.com/gpu"
+    quota-resources: "cpu,memory"
+    quota.cpu: "32"
+    quota.memory: "64Gi"
+    # Only apply quota to pods with these labels
+    label-selector:
+      matchLabels:
+        quota-controlled: "true"
+        team: "data-science"
+      matchExpressions:
+        - key: environment
+          operator: In
+          values:
+            - production
+            - staging
+```
+
+**Supported Operators**:
+- `In`: Label value must be in the specified list
+- `NotIn`: Label value must not be in the specified list
+- `Exists`: Label key must exist (value doesn't matter)
+- `DoesNotExist`: Label key must not exist
+
+**Pod Labels Example**:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: quota-controlled-pod
+  labels:
+    quota-controlled: "true"
+    team: "data-science"
+    environment: "production"
+spec:
+  schedulerName: volcano
+  containers:
+  - name: app
+    image: my-app:latest
+    resources:
+      requests:
+        cpu: "4"
+        memory: "8Gi"
+```
 
 ## Usage Examples
 
@@ -391,6 +444,154 @@ kubectl annotate node gpu-node-v100 \
 - Hugepages usage considered in node scoring
 - Comprehensive resource control
 
+### Example 7: Label-Based Selective Quota Enforcement
+
+**Scenario**: Apply quotas only to development and testing workloads, allow production workloads to use full resources.
+
+**Configuration**:
+
+```yaml
+- name: crossquota
+  arguments:
+    gpu-resource-names: "nvidia.com/gpu"
+    quota-resources: "cpu,memory"
+    quota.cpu: "16"
+    quota.memory: "32Gi"
+    label-selector:
+      matchExpressions:
+        - key: environment
+          operator: In
+          values:
+            - development
+            - testing
+        - key: priority
+          operator: NotIn
+          values:
+            - high
+            - critical
+```
+
+**Development Pod** (controlled by quota):
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dev-pod
+  labels:
+    environment: "development"
+    priority: "normal"
+spec:
+  schedulerName: volcano
+  containers:
+  - name: app
+    image: dev-app:latest
+    resources:
+      requests:
+        cpu: "4"
+        memory: "8Gi"
+```
+
+**Production Pod** (not controlled by quota):
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prod-pod
+  labels:
+    environment: "production"
+    priority: "high"
+spec:
+  schedulerName: volcano
+  containers:
+  - name: app
+    image: prod-app:latest
+    resources:
+      requests:
+        cpu: "8"
+        memory: "16Gi"
+```
+
+**Result**:
+- Development and testing pods limited to 16 CPU cores and 32 GiB memory
+- Production pods can use full node resources
+- Flexible policy enforcement based on workload characteristics
+
+### Example 8: Multi-Tenancy with Team-Based Quotas
+
+**Scenario**: Different teams have different quota limits on shared GPU nodes.
+
+**Configuration**:
+
+```yaml
+- name: crossquota
+  arguments:
+    gpu-resource-names: "nvidia.com/gpu"
+    quota-resources: "cpu,memory"
+    quota.cpu: "24"
+    quota.memory: "48Gi"
+    label-selector:
+      matchLabels:
+        quota-enabled: "true"
+```
+
+**Node-Specific Override for Team A**:
+
+```bash
+kubectl annotate node gpu-node-team-a \
+  volcano.sh/crossquota-cpu="32" \
+  volcano.sh/crossquota-memory="64Gi"
+```
+
+**Team A Pod**:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: team-a-pod
+  labels:
+    quota-enabled: "true"
+    team: "team-a"
+spec:
+  schedulerName: volcano
+  nodeSelector:
+    team: "team-a"
+  containers:
+  - name: app
+    image: team-a-app:latest
+    resources:
+      requests:
+        cpu: "8"
+        memory: "16Gi"
+```
+
+**Team B Pod** (without quota-enabled label):
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: team-b-pod
+  labels:
+    team: "team-b"
+spec:
+  schedulerName: volcano
+  containers:
+  - name: app
+    image: team-b-app:latest
+    resources:
+      requests:
+        cpu: "4"
+        memory: "8Gi"
+```
+
+**Result**:
+- Team A pods are quota-controlled (24 CPU cores, 48 GiB memory by default)
+- Team B pods without quota-enabled label can use full resources
+- Per-node quota overrides allow team-specific configurations
+
 ## Scoring Strategies Explained
 
 ### Most-Allocated Strategy
@@ -498,6 +699,47 @@ Result: Node B is preferred
 | Monitoring/Logging | `least-allocated` | Avoid concentration |
 | CI/CD Jobs | `most-allocated` | Optimize resource packing |
 
+### Label Selector Best Practices
+
+1. **Use Opt-in Approach**: Apply quotas only to pods with specific labels to avoid surprises.
+
+   ```yaml
+   label-selector:
+     matchExpressions:
+       - key: quota-controlled
+         operator: Exists
+   ```
+
+2. **Combine Multiple Criteria**: Layer multiple conditions for precise control.
+
+   ```yaml
+   label-selector:
+     matchLabels:
+       team: "data-science"
+     matchExpressions:
+       - key: environment
+         operator: In
+         values:
+           - development
+           - testing
+   ```
+
+3. **Exempt Critical Workloads**: Use `DoesNotExist` or `NotIn` to exclude high-priority pods.
+
+   ```yaml
+   label-selector:
+     matchExpressions:
+       - key: priority
+         operator: NotIn
+         values:
+           - critical
+           - high
+   ```
+
+4. **Document Label Requirements**: Maintain clear documentation of required labels for quota control.
+
+5. **Use Admission Webhooks**: Validate that pods have required labels before admission to avoid scheduling issues.
+
 ## Monitoring and Debugging
 
 ### Enable Detailed Logging
@@ -515,8 +757,13 @@ kubectl edit deployment volcano-scheduler -n volcano-system
 
 **Plugin Initialization** (V=3):
 ```
-crossquota initialized. GPUPatterns=[nvidia.com/gpu], quotaResources=[cpu memory]
+crossquota initialized. GPUPatterns=[nvidia.com/gpu], quotaResources=[cpu memory], labelSelector=quota-controlled=true
 crossquota: plugin weight=10, resource weights=map[cpu:10 memory:1]
+```
+
+**Label Selector Parsing** (V=4):
+```
+crossquota: parsed label selector: quota-controlled=true,environment in (production,staging)
 ```
 
 **Quota Calculation** (V=4):
@@ -582,6 +829,33 @@ weight: 10, need 4000.000000, used 20000.000000, total 32000.000000, score 7.500
    volcano.sh/crossquota-scoring-strategy: "most-allocated"  # Correct
    ```
 
+#### Issue 4: Pods Not Matching Label Selector
+
+**Symptom**: Pods are not being quota-controlled despite configuration.
+
+**Solution**:
+1. Verify pod has required labels:
+   ```bash
+   kubectl get pod my-pod -o jsonpath='{.metadata.labels}'
+   ```
+
+2. Test label selector matching:
+   ```bash
+   kubectl get pods -l quota-controlled=true
+   ```
+
+3. Check label selector syntax in configuration:
+   ```yaml
+   label-selector:
+     matchLabels:
+       quota-controlled: "true"  # Must be a string
+   ```
+
+4. Review scheduler logs for label selector warnings:
+   ```bash
+   kubectl logs -n volcano-system volcano-scheduler-xxx | grep "label selector"
+   ```
+
 ## Advanced Usage
 
 ### Multi-Tier Quotas
@@ -638,6 +912,7 @@ quota.ephemeral-storage: "100Gi"
 | `quota-percentage.<resource>` | string | - | Percentage quota for resource (0-100) |
 | `crossQuotaWeight` | int | 10 | Plugin weight for node ordering |
 | `weight.<resource>` | int | varies | Weight for resource in scoring |
+| `label-selector` | object | - | Label selector for filtering pods (matchLabels and matchExpressions) |
 
 ### Annotations
 
