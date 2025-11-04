@@ -225,6 +225,50 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	return ti
 }
 
+// UpdateByPod reset all fields, just like NewTaskInfo but reuse taskInfo pointer
+func (ti *TaskInfo) UpdateByPod(newPod *v1.Pod) {
+	initResReq := GetPodResourceRequest(newPod)
+	resReq := initResReq
+	bestEffort := initResReq.IsEmpty()
+	preemptable := GetPodPreemptable(newPod)
+	revocableZone := GetPodRevocableZone(newPod)
+	topologyInfo := GetPodTopologyInfo(newPod)
+	role := getTaskRole(newPod)
+	hasRestartableInitContainer := hasRestartableInitContainer(newPod)
+	schGated := calSchedulingGated(newPod)
+	jobID := getJobID(newPod)
+
+	// update each field of TaskInfo
+	ti.UID = TaskID(newPod.UID)
+	ti.Job = jobID
+	ti.Name = newPod.Name
+	ti.Namespace = newPod.Namespace
+	ti.TaskRole = role
+	ti.Priority = 1
+	ti.Pod = newPod
+	ti.Resreq = resReq
+	ti.InitResreq = initResReq
+	ti.Preemptable = preemptable
+	ti.BestEffort = bestEffort
+	ti.HasRestartableInitContainer = hasRestartableInitContainer
+	ti.RevocableZone = revocableZone
+	ti.NumaInfo = topologyInfo
+	ti.SchGated = schGated
+	ti.TransactionContext = TransactionContext{
+		NodeName: newPod.Spec.NodeName,
+		Status:   getTaskStatus(newPod),
+	}
+	if newPod.Spec.Priority != nil {
+		ti.Priority = *newPod.Spec.Priority
+	}
+
+	if taskPriority, ok := newPod.Annotations[TaskPriorityAnnotation]; ok {
+		if priority, err := strconv.ParseInt(taskPriority, 10, 32); err == nil {
+			ti.Priority = int32(priority)
+		}
+	}
+}
+
 // GetTransactionContext get transaction context of a task
 func (ti *TaskInfo) GetTransactionContext() TransactionContext {
 	return ti.TransactionContext

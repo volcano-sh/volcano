@@ -319,14 +319,24 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 		return nil
 	}
 
-	if err := sc.deletePod(oldPod); err != nil {
+	taskInfo, err := sc.NewTaskInfo(newPod)
+	if err != nil {
+		klog.Errorf("generate taskInfo for pod(%s) failed: %v", newPod.Name, err)
+		sc.resyncTask(taskInfo)
+	}
+
+	// delete taskInfo
+	if err := sc.deleteTask(taskInfo); err != nil {
 		return err
 	}
+
 	//when delete pod, the ownerreference of pod will be set nil, just as orphan pod
 	if len(utils.GetController(newPod)) == 0 {
 		newPod.OwnerReferences = oldPod.OwnerReferences
 	}
-	return sc.addPod(newPod)
+	// update taskInfo by new pod
+	taskInfo.UpdateByPod(newPod)
+	return sc.addTask(taskInfo)
 }
 
 func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
