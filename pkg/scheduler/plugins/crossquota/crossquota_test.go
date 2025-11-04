@@ -51,6 +51,11 @@ func buildTaskInfo(uid types.UID, name, namespace string, request corev1.Resourc
 
 // buildTaskInfoWithAnnotations creates a TaskInfo with the given parameters and annotations
 func buildTaskInfoWithAnnotations(uid types.UID, name, namespace string, request corev1.ResourceList, annotations map[string]string) *api.TaskInfo {
+	return buildTaskInfoWithLabelsAndAnnotations(uid, name, namespace, request, nil, annotations)
+}
+
+// buildTaskInfoWithLabelsAndAnnotations creates a TaskInfo with the given parameters, labels and annotations
+func buildTaskInfoWithLabelsAndAnnotations(uid types.UID, name, namespace string, request corev1.ResourceList, labels map[string]string, annotations map[string]string) *api.TaskInfo {
 	return &api.TaskInfo{
 		UID:  api.TaskID(uid),
 		Name: name,
@@ -59,6 +64,7 @@ func buildTaskInfoWithAnnotations(uid types.UID, name, namespace string, request
 				UID:         uid,
 				Name:        name,
 				Namespace:   namespace,
+				Labels:      labels,
 				Annotations: annotations,
 			},
 			Spec: corev1.PodSpec{
@@ -1851,6 +1857,531 @@ func TestCalculateResourceScore(t *testing.T) {
 				t.Errorf("Expected score %.4f, but got %.4f. %s", tc.expected, result, tc.description)
 			}
 		})
+	}
+}
+
+// TestParseLabelSelector tests the parseLabelSelector method
+func TestParseLabelSelector(t *testing.T) {
+	testCases := []struct {
+		name         string
+		arguments    framework.Arguments
+		expectNil    bool
+		expectEmpty  bool
+		description  string
+		validateFunc func(*testing.T, *crossQuotaPlugin)
+	}{
+		{
+			name:        "No label selector configured",
+			arguments:   framework.Arguments{},
+			expectEmpty: true,
+			description: "Should default to matching everything when no label selector",
+		},
+		{
+			name: "Valid matchLabels only",
+			arguments: framework.Arguments{
+				LabelSelector: map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"env":  "production",
+						"team": "backend",
+					},
+				},
+			},
+			expectEmpty: false,
+			description: "Should parse matchLabels correctly",
+			validateFunc: func(t *testing.T, p *crossQuotaPlugin) {
+				// Create a task with matching labels
+				matchingTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("matching"), "matching", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"env": "production", "team": "backend"},
+					nil,
+				)
+				if !p.matchesLabelSelector(matchingTask) {
+					t.Error("Expected matching task to match label selector")
+				}
+
+				// Create a task with non-matching labels
+				nonMatchingTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("non-matching"), "non-matching", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"env": "development"},
+					nil,
+				)
+				if p.matchesLabelSelector(nonMatchingTask) {
+					t.Error("Expected non-matching task to not match label selector")
+				}
+			},
+		},
+		{
+			name: "Valid matchExpressions only",
+			arguments: framework.Arguments{
+				LabelSelector: map[string]interface{}{
+					"matchExpressions": []interface{}{
+						map[string]interface{}{
+							"key":      "environment",
+							"operator": "In",
+							"values":   []interface{}{"production", "staging"},
+						},
+					},
+				},
+			},
+			expectEmpty: false,
+			description: "Should parse matchExpressions correctly",
+			validateFunc: func(t *testing.T, p *crossQuotaPlugin) {
+				// Create a task with matching labels
+				matchingTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("matching"), "matching", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"environment": "production"},
+					nil,
+				)
+				if !p.matchesLabelSelector(matchingTask) {
+					t.Error("Expected matching task to match label selector")
+				}
+
+				// Create a task with non-matching labels
+				nonMatchingTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("non-matching"), "non-matching", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"environment": "development"},
+					nil,
+				)
+				if p.matchesLabelSelector(nonMatchingTask) {
+					t.Error("Expected non-matching task to not match label selector")
+				}
+			},
+		},
+		{
+			name: "Combined matchLabels and matchExpressions",
+			arguments: framework.Arguments{
+				LabelSelector: map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"team": "backend",
+					},
+					"matchExpressions": []interface{}{
+						map[string]interface{}{
+							"key":      "environment",
+							"operator": "In",
+							"values":   []interface{}{"production", "staging"},
+						},
+					},
+				},
+			},
+			expectEmpty: false,
+			description: "Should parse combined matchLabels and matchExpressions",
+			validateFunc: func(t *testing.T, p *crossQuotaPlugin) {
+				// Both conditions must match
+				matchingTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("matching"), "matching", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"team": "backend", "environment": "production"},
+					nil,
+				)
+				if !p.matchesLabelSelector(matchingTask) {
+					t.Error("Expected matching task to match label selector")
+				}
+
+				// Only one condition matches
+				partialMatchTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("partial"), "partial", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"team": "backend", "environment": "development"},
+					nil,
+				)
+				if p.matchesLabelSelector(partialMatchTask) {
+					t.Error("Expected partial match task to not match label selector")
+				}
+			},
+		},
+		{
+			name: "NotIn operator",
+			arguments: framework.Arguments{
+				LabelSelector: map[string]interface{}{
+					"matchExpressions": []interface{}{
+						map[string]interface{}{
+							"key":      "priority",
+							"operator": "NotIn",
+							"values":   []interface{}{"high", "critical"},
+						},
+					},
+				},
+			},
+			expectEmpty: false,
+			description: "Should parse NotIn operator correctly",
+			validateFunc: func(t *testing.T, p *crossQuotaPlugin) {
+				// Task with excluded priority
+				excludedTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("excluded"), "excluded", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"priority": "high"},
+					nil,
+				)
+				if p.matchesLabelSelector(excludedTask) {
+					t.Error("Expected excluded task to not match label selector")
+				}
+
+				// Task with allowed priority
+				allowedTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("allowed"), "allowed", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"priority": "low"},
+					nil,
+				)
+				if !p.matchesLabelSelector(allowedTask) {
+					t.Error("Expected allowed task to match label selector")
+				}
+			},
+		},
+		{
+			name: "Exists operator",
+			arguments: framework.Arguments{
+				LabelSelector: map[string]interface{}{
+					"matchExpressions": []interface{}{
+						map[string]interface{}{
+							"key":      "quota-enabled",
+							"operator": "Exists",
+						},
+					},
+				},
+			},
+			expectEmpty: false,
+			description: "Should parse Exists operator correctly",
+			validateFunc: func(t *testing.T, p *crossQuotaPlugin) {
+				// Task with the label
+				withLabelTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("with-label"), "with-label", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"quota-enabled": "true"},
+					nil,
+				)
+				if !p.matchesLabelSelector(withLabelTask) {
+					t.Error("Expected task with label to match selector")
+				}
+
+				// Task without the label
+				withoutLabelTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("without-label"), "without-label", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"other-label": "value"},
+					nil,
+				)
+				if p.matchesLabelSelector(withoutLabelTask) {
+					t.Error("Expected task without label to not match selector")
+				}
+			},
+		},
+		{
+			name: "DoesNotExist operator",
+			arguments: framework.Arguments{
+				LabelSelector: map[string]interface{}{
+					"matchExpressions": []interface{}{
+						map[string]interface{}{
+							"key":      "quota-exempt",
+							"operator": "DoesNotExist",
+						},
+					},
+				},
+			},
+			expectEmpty: false,
+			description: "Should parse DoesNotExist operator correctly",
+			validateFunc: func(t *testing.T, p *crossQuotaPlugin) {
+				// Task without the exempt label (should match)
+				normalTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("normal"), "normal", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"env": "production"},
+					nil,
+				)
+				if !p.matchesLabelSelector(normalTask) {
+					t.Error("Expected normal task to match selector")
+				}
+
+				// Task with exempt label (should not match)
+				exemptTask := buildTaskInfoWithLabelsAndAnnotations(
+					types.UID("exempt"), "exempt", "default",
+					api.BuildResourceList("1", "1Gi"),
+					map[string]string{"quota-exempt": "true"},
+					nil,
+				)
+				if p.matchesLabelSelector(exemptTask) {
+					t.Error("Expected exempt task to not match selector")
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			plugin := &crossQuotaPlugin{
+				pluginArguments: tc.arguments,
+			}
+
+			plugin.parseLabelSelector()
+
+			if tc.expectEmpty {
+				if plugin.labelSelector == nil || !plugin.labelSelector.Empty() {
+					// When no label selector is configured, it should match everything
+					// Empty() returns true for labels.Everything()
+				}
+			} else {
+				if plugin.labelSelector == nil {
+					t.Errorf("Expected label selector to be initialized, but got nil. %s", tc.description)
+				}
+			}
+
+			// Run validation function if provided
+			if tc.validateFunc != nil {
+				tc.validateFunc(t, plugin)
+			}
+		})
+	}
+}
+
+// TestMatchesLabelSelector tests the matchesLabelSelector method
+func TestMatchesLabelSelector(t *testing.T) {
+	testCases := []struct {
+		name        string
+		selector    map[string]interface{}
+		task        *api.TaskInfo
+		shouldMatch bool
+		description string
+	}{
+		{
+			name:     "No label selector - should match everything",
+			selector: nil,
+			task: buildTaskInfoWithLabelsAndAnnotations(
+				types.UID("task-1"), "task-1", "default",
+				api.BuildResourceList("1", "1Gi"),
+				map[string]string{"env": "production"},
+				nil,
+			),
+			shouldMatch: true,
+			description: "Should match all pods when no selector configured",
+		},
+		{
+			name: "Task without pod - should not match",
+			selector: map[string]interface{}{
+				"matchLabels": map[string]interface{}{
+					"env": "production",
+				},
+			},
+			task: &api.TaskInfo{
+				Pod: nil,
+			},
+			shouldMatch: false,
+			description: "Should not match task without pod",
+		},
+		{
+			name: "Task with nil labels - should not match",
+			selector: map[string]interface{}{
+				"matchLabels": map[string]interface{}{
+					"env": "production",
+				},
+			},
+			task: buildTaskInfoWithLabelsAndAnnotations(
+				types.UID("task-2"), "task-2", "default",
+				api.BuildResourceList("1", "1Gi"),
+				nil,
+				nil,
+			),
+			shouldMatch: false,
+			description: "Should not match task with nil labels",
+		},
+		{
+			name: "Task with empty labels - should not match",
+			selector: map[string]interface{}{
+				"matchLabels": map[string]interface{}{
+					"env": "production",
+				},
+			},
+			task: buildTaskInfoWithLabelsAndAnnotations(
+				types.UID("task-3"), "task-3", "default",
+				api.BuildResourceList("1", "1Gi"),
+				map[string]string{},
+				nil,
+			),
+			shouldMatch: false,
+			description: "Should not match task with empty labels",
+		},
+		{
+			name: "Exact label match",
+			selector: map[string]interface{}{
+				"matchLabels": map[string]interface{}{
+					"env": "production",
+				},
+			},
+			task: buildTaskInfoWithLabelsAndAnnotations(
+				types.UID("task-4"), "task-4", "default",
+				api.BuildResourceList("1", "1Gi"),
+				map[string]string{"env": "production"},
+				nil,
+			),
+			shouldMatch: true,
+			description: "Should match task with exact label",
+		},
+		{
+			name: "Label mismatch",
+			selector: map[string]interface{}{
+				"matchLabels": map[string]interface{}{
+					"env": "production",
+				},
+			},
+			task: buildTaskInfoWithLabelsAndAnnotations(
+				types.UID("task-5"), "task-5", "default",
+				api.BuildResourceList("1", "1Gi"),
+				map[string]string{"env": "development"},
+				nil,
+			),
+			shouldMatch: false,
+			description: "Should not match task with different label value",
+		},
+		{
+			name: "Multiple labels - all match",
+			selector: map[string]interface{}{
+				"matchLabels": map[string]interface{}{
+					"env":  "production",
+					"team": "backend",
+				},
+			},
+			task: buildTaskInfoWithLabelsAndAnnotations(
+				types.UID("task-6"), "task-6", "default",
+				api.BuildResourceList("1", "1Gi"),
+				map[string]string{"env": "production", "team": "backend", "extra": "label"},
+				nil,
+			),
+			shouldMatch: true,
+			description: "Should match task with all required labels (extra labels OK)",
+		},
+		{
+			name: "Multiple labels - partial match",
+			selector: map[string]interface{}{
+				"matchLabels": map[string]interface{}{
+					"env":  "production",
+					"team": "backend",
+				},
+			},
+			task: buildTaskInfoWithLabelsAndAnnotations(
+				types.UID("task-7"), "task-7", "default",
+				api.BuildResourceList("1", "1Gi"),
+				map[string]string{"env": "production"},
+				nil,
+			),
+			shouldMatch: false,
+			description: "Should not match task with only some required labels",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			plugin := &crossQuotaPlugin{
+				pluginArguments: framework.Arguments{},
+			}
+
+			if tc.selector != nil {
+				plugin.pluginArguments[LabelSelector] = tc.selector
+			}
+
+			plugin.parseLabelSelector()
+
+			result := plugin.matchesLabelSelector(tc.task)
+			if result != tc.shouldMatch {
+				t.Errorf("Expected match=%v, but got %v. %s", tc.shouldMatch, result, tc.description)
+			}
+		})
+	}
+}
+
+// TestCalculateCurrentUsage tests the calculateCurrentUsage method
+func TestCalculateCurrentUsage(t *testing.T) {
+	plugin := &crossQuotaPlugin{
+		gpuResourcePatterns: []*regexp.Regexp{
+			regexp.MustCompile(`nvidia\.com/gpu`),
+		},
+		quotaResourceNames: []corev1.ResourceName{
+			corev1.ResourceCPU,
+			corev1.ResourceMemory,
+		},
+		pluginArguments: framework.Arguments{
+			LabelSelector: map[string]interface{}{
+				"matchLabels": map[string]interface{}{
+					"quota-controlled": "true",
+				},
+			},
+		},
+	}
+	plugin.parseLabelSelector()
+
+	// Create a GPU node
+	node := buildNodeInfo(types.UID("gpu-node-1"), "gpu-node-1",
+		api.BuildResourceList("32", "64Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...),
+		api.BuildResourceList("0", "0"),
+		api.BuildResourceList("32", "64Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...))
+
+	// Add CPU tasks with different labels
+	// Task 1: Allocated, CPU pod, matches selector
+	task1 := buildTaskInfoWithLabelsAndAnnotations(
+		types.UID("task-1"), "task-1", "default",
+		api.BuildResourceList("4", "8Gi"),
+		map[string]string{"quota-controlled": "true"},
+		nil,
+	)
+	task1.Status = api.Allocated
+	node.Tasks[api.PodKey(task1.Pod)] = task1
+
+	// Task 2: Allocated, CPU pod, does NOT match selector
+	task2 := buildTaskInfoWithLabelsAndAnnotations(
+		types.UID("task-2"), "task-2", "default",
+		api.BuildResourceList("2", "4Gi"),
+		map[string]string{"quota-controlled": "false"},
+		nil,
+	)
+	task2.Status = api.Allocated
+	node.Tasks[api.PodKey(task2.Pod)] = task2
+
+	// Task 3: Allocated, CPU pod, matches selector
+	task3 := buildTaskInfoWithLabelsAndAnnotations(
+		types.UID("task-3"), "task-3", "default",
+		api.BuildResourceList("2", "4Gi"),
+		map[string]string{"quota-controlled": "true"},
+		nil,
+	)
+	task3.Status = api.Allocated
+	node.Tasks[api.PodKey(task3.Pod)] = task3
+
+	// Task 4: Pending, CPU pod, matches selector (should not be counted)
+	task4 := buildTaskInfoWithLabelsAndAnnotations(
+		types.UID("task-4"), "task-4", "default",
+		api.BuildResourceList("4", "8Gi"),
+		map[string]string{"quota-controlled": "true"},
+		nil,
+	)
+	task4.Status = api.Pending
+	node.Tasks[api.PodKey(task4.Pod)] = task4
+
+	// Task 5: Allocated, GPU pod, matches selector (should not be counted)
+	task5 := buildTaskInfoWithLabelsAndAnnotations(
+		types.UID("task-5"), "task-5", "default",
+		api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...),
+		map[string]string{"quota-controlled": "true"},
+		nil,
+	)
+	task5.Status = api.Allocated
+	node.Tasks[api.PodKey(task5.Pod)] = task5
+
+	// Calculate current usage
+	currentUsage := plugin.calculateCurrentUsage(node)
+
+	// Only task1 and task3 should be counted
+	// Expected: 4 + 2 = 6 cores, 8Gi + 4Gi = 12Gi
+	expectedCPU := float64(6000)                       // 6 cores in millicores
+	expectedMemory := float64(12 * 1024 * 1024 * 1024) // 12Gi in bytes
+
+	if currentUsage.MilliCPU != expectedCPU {
+		t.Errorf("Expected CPU usage %.0f, but got %.0f", expectedCPU, currentUsage.MilliCPU)
+	}
+
+	if currentUsage.Memory != expectedMemory {
+		t.Errorf("Expected Memory usage %.0f, but got %.0f", expectedMemory, currentUsage.Memory)
 	}
 }
 

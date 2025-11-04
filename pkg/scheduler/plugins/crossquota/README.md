@@ -17,6 +17,7 @@ The plugin automatically identifies GPU nodes and non-GPU tasks, then enforces r
 - **Regex Support**: Supports regular expressions for GPU resource name patterns
 - **Backward Compatibility**: Defaults to CPU-only quotas for backward compatibility
 - **Node Ordering Support**: Scores and ranks nodes based on resource utilization with configurable strategies
+- **Label Selector Support**: Allows filtering pods based on labels using Kubernetes standard LabelSelector format
 
 ## Configuration
 
@@ -30,6 +31,7 @@ The plugin accepts the following configuration arguments:
 - `quota-resources`: Comma-separated list of resource names to be quota-controlled
 - `quota.<resource-name>`: Absolute quota for a specific resource (e.g., `quota.cpu: "4"`)
 - `quota-percentage.<resource-name>`: Percentage quota for a specific resource (e.g., `quota-percentage.memory: "50"`)
+- `label-selector`: Label selector for filtering pods (structured format with matchLabels and matchExpressions)
 
 #### Node Ordering Configuration
 
@@ -51,6 +53,24 @@ Pods can specify their preferred scoring strategy using annotations:
   - `most-allocated`: Prioritize nodes with higher resource utilization (resource concentration)
   - `least-allocated`: Prioritize nodes with lower resource utilization (resource distribution)
   - Default: `most-allocated`
+
+### Label Selector Configuration
+
+The `label-selector` argument allows you to filter which pods are controlled by the crossquota plugin. It supports the standard Kubernetes LabelSelector format with both `matchLabels` and `matchExpressions`.
+
+#### Supported Operators in matchExpressions
+
+- `In`: Label value must be in the specified list
+- `NotIn`: Label value must not be in the specified list
+- `Exists`: Label key must exist (value doesn't matter)
+- `DoesNotExist`: Label key must not exist
+
+#### Label Selector Behavior
+
+- If no label selector is configured, the plugin applies to all non-GPU pods on GPU nodes (default behavior)
+- If a label selector is configured, only pods matching the selector are controlled by the plugin
+- Pods that don't match the label selector are ignored by both predicate and scoring functions
+- When calculating current resource usage on nodes, only matching pods are counted
 
 ### Priority Order
 
@@ -94,6 +114,16 @@ data:
           crossQuotaWeight: 10
           weight.cpu: 10
           weight.memory: 1
+          # Optional: Label selector to filter pods
+          label-selector:
+            matchLabels:
+              quota-controlled: "true"
+            matchExpressions:
+              - key: environment
+                operator: In
+                values:
+                  - production
+                  - staging
       - name: nodeorder
       - name: binpack
 ```
@@ -189,6 +219,86 @@ quota.cpu: "4"
 This configuration:
 - Maintains backward compatibility with CPU-only configurations
 - Defaults to controlling only CPU resources when `quota-resources` is not specified
+
+### Example 6: Label Selector with matchLabels
+
+```yaml
+# Scheduler configuration
+gpu-resource-names: "nvidia.com/gpu"
+quota-resources: "cpu,memory"
+quota.cpu: "8"
+quota.memory: "16Gi"
+label-selector:
+  matchLabels:
+    quota-controlled: "true"
+    environment: "production"
+```
+
+This configuration:
+- Only applies quota control to pods that have both labels: `quota-controlled=true` AND `environment=production`
+- Other non-GPU pods without these labels can use unlimited resources on GPU nodes
+- Useful for selectively applying quotas to specific workload types
+
+### Example 7: Label Selector with matchExpressions
+
+```yaml
+# Scheduler configuration
+gpu-resource-names: "nvidia.com/gpu"
+quota-resources: "cpu,memory"
+quota-percentage.cpu: "50"
+quota-percentage.memory: "75"
+label-selector:
+  matchExpressions:
+    - key: kubernetes.io/os
+      operator: In
+      values:
+        - linux
+    - key: workload-type
+      operator: NotIn
+      values:
+        - system
+        - critical
+    - key: quota-enabled
+      operator: Exists
+```
+
+This configuration:
+- Applies to pods where:
+  - OS is Linux
+  - Workload type is NOT system or critical
+  - The label `quota-enabled` exists (regardless of value)
+- Provides fine-grained control over which pods are quota-controlled
+
+### Example 8: Combined matchLabels and matchExpressions
+
+```yaml
+# Scheduler configuration
+gpu-resource-names: "nvidia.com/gpu,amd.com/gpu"
+quota-resources: "cpu,memory,ephemeral-storage"
+quota.cpu: "16"
+quota.memory: "32Gi"
+quota-percentage.ephemeral-storage: "50"
+label-selector:
+  matchLabels:
+    team: "data-science"
+  matchExpressions:
+    - key: environment
+      operator: In
+      values:
+        - development
+        - testing
+        - staging
+    - key: priority
+      operator: NotIn
+      values:
+        - high
+        - critical
+```
+
+This configuration:
+- Applies to data science team pods in development/testing/staging environments
+- Excludes high and critical priority pods from quota control
+- Allows flexible policy enforcement based on multiple criteria
 
 ## Resource Format Support
 
@@ -312,6 +422,7 @@ finalScore = (Σ(resourceScore × resourceWeight) / Σ(resourceWeight)) × plugi
 ## How It Works
 
 1. **Session Initialization**: During `OnSessionOpen`, the plugin:
+   - Parses and validates the label selector configuration
    - Identifies GPU nodes based on configured resource patterns
    - Calculates resource quotas for each GPU node
    - Creates tracking structures for resource usage
@@ -320,13 +431,18 @@ finalScore = (Σ(resourceScore × resourceWeight) / Σ(resourceWeight)) × plugi
 
 2. **Predicate Function**: During scheduling, the plugin:
    - Skips non-GPU tasks and non-GPU nodes
+   - Checks if the task matches the label selector (if configured)
+   - Skips tasks that don't match the label selector
+   - Calculates current resource usage from matching tasks already on the node
    - Checks if adding the task would exceed any resource quota
    - Returns error if any quota would be exceeded
 
 3. **Node Ordering Function**: During scheduling, the plugin:
    - Scores only non-GPU tasks on GPU nodes
+   - Checks if the task matches the label selector (if configured)
+   - Returns zero score for tasks that don't match the label selector
    - Reads scoring strategy from Pod annotation
-   - Calculates current resource usage on the node
+   - Calculates current resource usage from matching tasks on the node
    - Computes weighted score based on strategy and resource weights
    - Returns final score for node ranking
 
@@ -349,6 +465,7 @@ The plugin handles various error conditions:
 The plugin provides detailed logging:
 
 - Plugin initialization and weight configuration (level 3)
+- Label selector parsing and validation (level 4)
 - GPU node identification (level 4)
 - Resource quota calculations (level 4)
 - Node ordering scores (level 4)
@@ -357,7 +474,8 @@ The plugin provides detailed logging:
 
 Example log messages:
 ```
-crossquota initialized. GPUPatterns=[nvidia.com/gpu], quotaResources=[cpu memory]
+crossquota initialized. GPUPatterns=[nvidia.com/gpu], quotaResources=[cpu memory], labelSelector=quota-controlled=true
+crossquota: parsed label selector: quota-controlled=true,environment in (production,staging)
 crossquota: plugin weight=10, resource weights=map[cpu:10 memory:1]
 crossquota: node gpu-node-1 quota cpu set to 4000 (original 8000)
 crossquota: parsed resource weight cpu = 10
@@ -403,10 +521,3 @@ Task default/cpu-pod-1 on node gpu-node-1 resource cpu, strategy: most-allocated
    - Enable V(5) logging for detailed resource-level scoring
    - Adjust weights based on observed scheduling patterns
 
-## Limitations
-
-- Only tracks configured resources (other resources are not limited)
-- Requires GPU resource patterns to be correctly configured
-- Node annotations take precedence over global configuration
-- Quota enforcement is based on resource requests, not actual usage
-- Custom resource tracking may require additional implementation for complex scenarios

@@ -17,6 +17,7 @@ limitations under the License.
 package crossquota
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -24,6 +25,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -74,6 +77,9 @@ const (
 	// ScoringStrategyLeastAllocated indicates least allocated strategy
 	ScoringStrategyLeastAllocated = "least-allocated"
 
+	// LabelSelector is the key for pod label selector configuration
+	LabelSelector = "label-selector"
+
 	minMilliScalarResources float64 = 10
 )
 
@@ -103,6 +109,9 @@ type crossQuotaPlugin struct {
 
 	// Resource weights for scoring
 	resourceWeights map[corev1.ResourceName]int
+
+	// Label selector for filtering pods
+	labelSelector labels.Selector
 }
 
 // New returns crossquota plugin
@@ -158,7 +167,10 @@ func (cq *crossQuotaPlugin) parseArguments() {
 	// Pre-parse quota configurations from plugin arguments
 	cq.parseQuotaConfigurations()
 
-	klog.V(3).Infof("crossquota initialized. GPUPatterns=%v, quotaResources=%v", cq.gpuResourcePatterns, cq.quotaResourceNames)
+	// Parse label selector configuration
+	cq.parseLabelSelector()
+
+	klog.V(3).Infof("crossquota initialized. GPUPatterns=%v, quotaResources=%v, labelSelector=%v", cq.gpuResourcePatterns, cq.quotaResourceNames, cq.labelSelector)
 }
 
 // parseQuotaConfigurations pre-parses quota configurations from plugin arguments
@@ -245,6 +257,102 @@ func (cq *crossQuotaPlugin) parseWeightArguments() {
 	}
 
 	klog.V(3).Infof("crossquota: plugin weight=%d, resource weights=%v", cq.pluginWeight, cq.resourceWeights)
+}
+
+// parseLabelSelector parses the label selector configuration from plugin arguments
+// It supports structured format with matchLabels and matchExpressions
+func (cq *crossQuotaPlugin) parseLabelSelector() {
+	// Default to nil selector (matches everything)
+	cq.labelSelector = labels.Everything()
+
+	selectorConfig, exists := cq.pluginArguments[LabelSelector]
+	if !exists {
+		return
+	}
+
+	// Parse as structured map (format with matchLabels and matchExpressions)
+	selectorMap, ok := selectorConfig.(map[string]interface{})
+	if !ok {
+		klog.Warningf("crossquota: label selector must be a map, got %T, will match all pods", selectorConfig)
+		return
+	}
+
+	labelSelector, err := cq.parseLabelSelectorFromMap(selectorMap)
+	if err != nil {
+		klog.Warningf("crossquota: invalid label selector map: %v, will match all pods", err)
+		return
+	}
+
+	// Convert to labels.Selector
+	if labelSelector != nil {
+		parsedSelector, err := metav1.LabelSelectorAsSelector(labelSelector)
+		if err != nil {
+			klog.Warningf("crossquota: failed to convert label selector: %v, will match all pods", err)
+			return
+		}
+
+		cq.labelSelector = parsedSelector
+		klog.V(4).Infof("crossquota: parsed label selector: %s", parsedSelector.String())
+	}
+}
+
+// parseLabelSelectorFromMap parses a structured label selector map
+// Supports matchLabels and matchExpressions
+func (cq *crossQuotaPlugin) parseLabelSelectorFromMap(selectorMap map[string]interface{}) (*metav1.LabelSelector, error) {
+	// Convert map to JSON and then unmarshal to LabelSelector
+	jsonBytes, err := json.Marshal(selectorMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal selector map: %v", err)
+	}
+
+	var labelSelector metav1.LabelSelector
+	if err := json.Unmarshal(jsonBytes, &labelSelector); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal to LabelSelector: %v", err)
+	}
+
+	return &labelSelector, nil
+}
+
+// matchesLabelSelector checks if a task's pod matches the configured label selector
+func (cq *crossQuotaPlugin) matchesLabelSelector(task *api.TaskInfo) bool {
+	// If no label selector is configured, match everything
+	if cq.labelSelector == nil || cq.labelSelector.Empty() {
+		return true
+	}
+
+	// If task has no pod, don't match
+	if task.Pod == nil {
+		return false
+	}
+
+	// Check if pod labels match the selector
+	return cq.labelSelector.Matches(labels.Set(task.Pod.Labels))
+}
+
+// calculateCurrentUsage calculates current CPU pod resource usage on a node
+// Only counts tasks that are CPU pods, allocated, and match the label selector
+func (cq *crossQuotaPlugin) calculateCurrentUsage(node *api.NodeInfo) *api.Resource {
+	currentUsage := &api.Resource{}
+	for _, existingTask := range node.Tasks {
+		if cq.isCPUPod(existingTask) && existingTask.Status == api.Allocated && cq.matchesLabelSelector(existingTask) {
+			// Add this task's resource usage to current usage
+			for _, rn := range cq.quotaResourceNames {
+				req := getTaskRequest(existingTask, rn)
+				switch rn {
+				case corev1.ResourceCPU:
+					currentUsage.MilliCPU += req
+				case corev1.ResourceMemory:
+					currentUsage.Memory += req
+				default:
+					if currentUsage.ScalarResources == nil {
+						currentUsage.ScalarResources = make(map[corev1.ResourceName]float64)
+					}
+					currentUsage.ScalarResources[rn] += req
+				}
+			}
+		}
+	}
+	return currentUsage
 }
 
 // -------- Node & Task classification --------
@@ -463,6 +571,10 @@ func (cq *crossQuotaPlugin) predicateFn(task *api.TaskInfo, node *api.NodeInfo) 
 	if !cq.isGPUNode(node) {
 		return nil
 	}
+	// Only control pods that match the label selector
+	if !cq.matchesLabelSelector(task) {
+		return nil
+	}
 	// Must be tracked
 	quotaResource, ok := cq.NodeQuotas[node.Name]
 	if !ok {
@@ -470,26 +582,7 @@ func (cq *crossQuotaPlugin) predicateFn(task *api.TaskInfo, node *api.NodeInfo) 
 	}
 
 	// Calculate current CPU pod resource usage on this node
-	currentUsage := &api.Resource{}
-	for _, existingTask := range node.Tasks {
-		if cq.isCPUPod(existingTask) && existingTask.Status == api.Allocated {
-			// Add this task's resource usage to current usage
-			for _, rn := range cq.quotaResourceNames {
-				req := getTaskRequest(existingTask, rn)
-				switch rn {
-				case corev1.ResourceCPU:
-					currentUsage.MilliCPU += req
-				case corev1.ResourceMemory:
-					currentUsage.Memory += req
-				default:
-					if currentUsage.ScalarResources == nil {
-						currentUsage.ScalarResources = make(map[corev1.ResourceName]float64)
-					}
-					currentUsage.ScalarResources[rn] += req
-				}
-			}
-		}
-	}
+	currentUsage := cq.calculateCurrentUsage(node)
 
 	// Check all configured resources
 	for _, rn := range cq.quotaResourceNames {
@@ -536,26 +629,7 @@ func (cq *crossQuotaPlugin) calculateScore(task *api.TaskInfo, node *api.NodeInf
 	totalWeight := 0
 
 	// Calculate current CPU pod resource usage on this node
-	currentUsage := &api.Resource{}
-	for _, existingTask := range node.Tasks {
-		if cq.isCPUPod(existingTask) && api.AllocatedStatus(existingTask.Status) {
-			// Add this task's resource usage to current usage
-			for _, rn := range cq.quotaResourceNames {
-				req := getTaskRequest(existingTask, rn)
-				switch rn {
-				case corev1.ResourceCPU:
-					currentUsage.MilliCPU += req
-				case corev1.ResourceMemory:
-					currentUsage.Memory += req
-				default:
-					if currentUsage.ScalarResources == nil {
-						currentUsage.ScalarResources = make(map[corev1.ResourceName]float64)
-					}
-					currentUsage.ScalarResources[rn] += req
-				}
-			}
-		}
-	}
+	currentUsage := cq.calculateCurrentUsage(node)
 
 	// Calculate weighted score for each quota resource
 	for _, resource := range cq.quotaResourceNames {
