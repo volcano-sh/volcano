@@ -157,9 +157,10 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 	return nil
 }
 
-func (jc *jobCache) Delete(key string) error {
+func (jc *jobCache) Delete(job *v1alpha1.Job) error {
 	jc.Mutex.Lock()
 	defer jc.Mutex.Unlock()
+	key := JobKey(job)
 	delete(jc.jobs, key)
 	return nil
 }
@@ -220,12 +221,6 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 	if err := job.DeletePod(pod); err != nil {
 		return err
 	}
-
-	if jc.jobs[key].Job == nil {
-		jc.Delete(key)
-		klog.V(3).Infof("job cache handle delete job %s", key)
-	}
-
 	return nil
 }
 
