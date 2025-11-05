@@ -300,8 +300,6 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 		}(i)
 	}
 
-	go cc.cache.Run(stopCh)
-
 	// Re-sync error tasks.
 	go wait.Until(cc.processResyncTask, 0, stopCh)
 
@@ -352,6 +350,12 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	}
 
 	klog.V(3).Infof("Try to handle request <%v>", req)
+	if req.IsDeleteJobAction {
+		klog.V(3).Infof("process delete job action for %s", key)
+		cc.cache.Delete(key)
+		queue.Forget(req)
+		return true
+	}
 
 	cc.CleanPodDelayActionsIfNeed(req)
 

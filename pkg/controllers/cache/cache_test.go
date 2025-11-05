@@ -378,7 +378,7 @@ func TestJobCache_Delete(t *testing.T) {
 			}
 		}
 
-		err := jobCache.Delete(testcase.DeleteJob)
+		err := jobCache.Delete(JobKey(testcase.DeleteJob))
 		if err != nil && testcase.ExpectedErr != nil && err.Error() != testcase.ExpectedErr.Error() {
 			t.Errorf("Expected to get: %s, but got: %s in case %d", testcase.ExpectedErr, err, i)
 		}

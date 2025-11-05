@@ -20,12 +20,8 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"time"
 
-	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -36,8 +32,7 @@ import (
 type jobCache struct {
 	sync.Mutex
 
-	jobs        map[string]*apis.JobInfo
-	deletedJobs workqueue.TypedRateLimitingInterface[*apis.JobInfo]
+	jobs map[string]*apis.JobInfo
 }
 
 func keyFn(ns, name string) string {
@@ -59,10 +54,6 @@ func JobKey(job *v1alpha1.Job) string {
 	return keyFn(job.Namespace, job.Name)
 }
 
-func jobTerminated(job *apis.JobInfo) bool {
-	return job.Job == nil && len(job.Pods) == 0
-}
-
 func jobKeyOfPod(pod *v1.Pod) (string, error) {
 	jobName, found := pod.Annotations[v1alpha1.JobNameKey]
 	if !found {
@@ -75,15 +66,8 @@ func jobKeyOfPod(pod *v1.Pod) (string, error) {
 
 // New gets the job Cache.
 func New() Cache {
-	queue := workqueue.NewTypedMaxOfRateLimiter(
-		workqueue.NewTypedItemExponentialFailureRateLimiter[*apis.JobInfo](5*time.Millisecond, 180*time.Second),
-		// 10 qps, 100 bucket size.  This is only for retry speed and its only the overall factor (not per item)
-		&workqueue.TypedBucketRateLimiter[*apis.JobInfo]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
-	)
-
 	return &jobCache{
-		jobs:        map[string]*apis.JobInfo{},
-		deletedJobs: workqueue.NewTypedRateLimitingQueue(queue),
+		jobs: map[string]*apis.JobInfo{},
 	}
 }
 
@@ -173,18 +157,10 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 	return nil
 }
 
-func (jc *jobCache) Delete(obj *v1alpha1.Job) error {
-	jc.Lock()
-	defer jc.Unlock()
-
-	key := JobKey(obj)
-	jobInfo, found := jc.jobs[key]
-	if !found {
-		return fmt.Errorf("failed to find job <%v>", key)
-	}
-	jobInfo.Job = nil
-	jc.deleteJob(jobInfo)
-
+func (jc *jobCache) Delete(key string) error {
+	jc.Mutex.Lock()
+	defer jc.Mutex.Unlock()
+	delete(jc.jobs, key)
 	return nil
 }
 
@@ -219,10 +195,8 @@ func (jc *jobCache) UpdatePod(pod *v1.Pod) error {
 
 	job, found := jc.jobs[key]
 	if !found {
-		job = &apis.JobInfo{
-			Pods: make(map[string]map[string]*v1.Pod),
-		}
-		jc.jobs[key] = job
+		klog.V(3).Infof("job %s not found while update pod", job.Name)
+		return nil
 	}
 
 	return job.UpdatePod(pod)
@@ -237,20 +211,22 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 		return err
 	}
 
-	if job, found := jc.jobs[key]; found {
-		if err := job.DeletePod(pod); err != nil {
-			return err
-		}
-		if jobTerminated(job) {
-			jc.deleteJob(job)
-		}
+	job, found := jc.jobs[key]
+	if !found {
+		klog.V(3).Infof("job %s not found while delete pod", key)
+		return nil
+	}
+
+	if err := job.DeletePod(pod); err != nil {
+		return err
+	}
+
+	if jc.jobs[key].Job == nil {
+		jc.Delete(key)
+		klog.V(3).Infof("job cache handle delete job %s", key)
 	}
 
 	return nil
-}
-
-func (jc *jobCache) Run(stopCh <-chan struct{}) {
-	wait.Until(jc.worker, 0, stopCh)
 }
 
 func (jc *jobCache) TaskCompleted(jobKey, taskName string) bool {
@@ -336,45 +312,4 @@ func (jc *jobCache) TaskFailed(jobKey, taskName string) bool {
 		}
 	}
 	return retried >= maxRetry
-}
-
-func (jc *jobCache) worker() {
-	for jc.processCleanupJob() {
-	}
-}
-
-func (jc *jobCache) processCleanupJob() bool {
-	job, shutdown := jc.deletedJobs.Get()
-	if shutdown {
-		return false
-	}
-	defer jc.deletedJobs.Done(job)
-
-	jc.Mutex.Lock()
-	defer jc.Mutex.Unlock()
-
-	if jobTerminated(job) {
-		jc.deletedJobs.Forget(job)
-		key := keyFn(job.Namespace, job.Name)
-		delete(jc.jobs, key)
-		klog.V(3).Infof("Job <%s> was deleted.", key)
-	} else {
-		// Retry
-		jc.retryDeleteJob(job)
-	}
-	return true
-}
-
-func (jc *jobCache) deleteJob(job *apis.JobInfo) {
-	klog.V(3).Infof("Try to delete Job <%v/%v>",
-		job.Namespace, job.Name)
-
-	jc.deletedJobs.Add(job)
-}
-
-func (jc *jobCache) retryDeleteJob(job *apis.JobInfo) {
-	klog.V(3).Infof("Retry to delete Job <%v/%v>",
-		job.Namespace, job.Name)
-
-	jc.deletedJobs.AddRateLimited(job)
 }
