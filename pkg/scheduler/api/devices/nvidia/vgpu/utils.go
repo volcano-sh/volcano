@@ -386,10 +386,14 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 			if gs.Device[i].Number <= uint(gs.Device[i].UsedNum) {
 				continue
 			}
-			if val.MemPercentagereq != 101 && val.Memreq == 0 {
-				val.Memreq = gs.Device[i].Memory * uint(val.MemPercentagereq/100)
+			memreqForCard := uint(0)
+			// if we have mempercentage request, we ignore the mem request for every cards
+			if val.MemPercentagereq != 101 {
+				memreqForCard = uint(float64(gs.Device[i].Memory) * float64(val.MemPercentagereq) / 100.0)
+			} else {
+				memreqForCard = val.Memreq
 			}
-			if int(gs.Device[i].Memory)-int(gs.Device[i].UsedMem) < int(val.Memreq) {
+			if int(gs.Device[i].Memory)-int(gs.Device[i].UsedMem) < int(memreqForCard) {
 				continue
 			}
 			if gs.Device[i].UsedCore+val.Coresreq > 100 {
@@ -407,7 +411,7 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 				klog.Errorln("failed checktype", gs.Device[i].Type, val.Type)
 				continue
 			}
-			fit, uuid := gs.Sharing.TryAddPod(gs.Device[i], uint(val.Memreq), uint(val.Coresreq))
+			fit, uuid := gs.Sharing.TryAddPod(gs.Device[i], memreqForCard, uint(val.Coresreq))
 			if !fit {
 				klog.V(3).Info(gs.Device[i].ID, "not fit")
 				continue
@@ -420,7 +424,7 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 				devs = append(devs, ContainerDevice{
 					UUID:      uuid,
 					Type:      val.Type,
-					Usedmem:   val.Memreq,
+					Usedmem:   memreqForCard,
 					Usedcores: val.Coresreq,
 				})
 				score += GPUScore(schedulePolicy, gs.Device[i])
