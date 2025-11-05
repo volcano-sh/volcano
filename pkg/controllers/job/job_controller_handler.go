@@ -130,8 +130,9 @@ func (cc *jobcontroller) deleteJob(obj interface{}) {
 		}
 	}
 	req := apis.Request{
-		Namespace: job.Namespace,
-		JobName:   job.Name,
+		Namespace:         job.Namespace,
+		JobName:           job.Name,
+		IsDeleteJobAction: true,
 	}
 	state.DeleteJobMetrics(fmt.Sprintf("%s/%s", job.Namespace, job.Name), job.Spec.Queue)
 	key := jobhelpers.GetJobKeyByReq(&req)

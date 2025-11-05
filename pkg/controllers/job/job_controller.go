@@ -350,12 +350,6 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	}
 
 	klog.V(3).Infof("Try to handle request <%v>", req)
-	if req.IsDeleteJobAction {
-		klog.V(3).Infof("process delete job action for %s", key)
-		cc.cache.Delete(key)
-		queue.Forget(req)
-		return true
-	}
 
 	cc.CleanPodDelayActionsIfNeed(req)
 
@@ -363,6 +357,12 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	if err != nil {
 		// TODO(k82cn): ignore not-ready error.
 		klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
+		return true
+	}
+	if req.IsDeleteJobAction {
+		klog.V(3).Infof("process delete job action for %s", key)
+		cc.cache.Delete(jobInfo.Job)
+		queue.Forget(req)
 		return true
 	}
 
