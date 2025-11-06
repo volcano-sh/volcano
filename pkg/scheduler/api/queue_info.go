@@ -35,6 +35,14 @@ import (
 type DequeueStrategy = string
 
 const (
+
+	// DequeueStrategyFIFO means if the first job in queue whose jobs are sorted by ssn.JobOrderFn cannot be dequeued,
+	// the system will repeatedly try to dequeue the first job without skipping
+	DequeueStrategyFIFO DequeueStrategy = "fifo"
+	// DequeueStrategyTraverse means if the first job in queue whose jobs are sorted by ssn.JobOrderFn cannot be dequeued,
+	// the system will skip it and try subsequent jobs in the queue
+	DequeueStrategyTraverse DequeueStrategy = "traverse"
+
 	// DequeueStrategyCreationtimeBasedFIFO means if the first job in queue whose jobs are orted by creation time first
 	//  cannot be dequeued, the system will repeatedly try to dequeue the first job without skipping
 	DequeueStrategyCreationtimeBasedFIFO DequeueStrategy = "creationtime-based-fifo"
@@ -52,11 +60,11 @@ const (
 	DequeueStrategyPriorityBasedTraverse DequeueStrategy = "priority-based-traverse"
 
 	// Default dequeue strategy is traverse
-	DefaultDequeueStrategy DequeueStrategy = DequeueStrategyPriorityBasedTraverse
-
-	// Annotation key for dequeue strategy
-	DequeueStrategyAnnotationKey = "volcano.sh/dequeue-strategy"
+	DefaultDequeueStrategy DequeueStrategy = DequeueStrategyTraverse
 )
+
+// Annotation key for dequeue strategy
+var DequeueStrategyAnnotationKey = "volcano.sh/dequeue-strategy"
 
 // QueueID is UID type, serves as unique ID for each queue
 type QueueID types.UID

@@ -584,6 +584,15 @@ func (ssn *Session) JobCreationTimeBasedOrderFn(l, r interface{}) bool {
 	return lv.CreationTimestamp.Before(&rv.CreationTimestamp)
 }
 
+func (ssn *Session) JobPriorityBasedOrderFn(l, r interface{}) bool {
+	lv := l.(*api.JobInfo)
+	rv := r.(*api.JobInfo)
+	if lv.Priority == rv.Priority {
+		return ssn.JobOrderFn(l, r)
+	}
+	return lv.Priority > rv.Priority
+}
+
 // ClusterOrderFn invoke ClusterOrderFn function of the plugins
 func (ssn *Session) ClusterOrderFn(l, r interface{}) bool {
 	for _, tier := range ssn.Tiers {

@@ -110,10 +110,12 @@ func (alloc *Action) pickUpQueuesAndJobs(queues *util.PriorityQueue, jobsMap map
 		}
 
 		if _, found := jobsMap[job.Queue]; !found {
-			if ssn.Queues[job.Queue].DequeueStrategy == api.DequeueStrategyCreationtimeBasedFIFO ||
-				ssn.Queues[job.Queue].DequeueStrategy == api.DequeueStrategyCreationTimeBasedTraverse {
+			switch ssn.Queues[job.Queue].DequeueStrategy {
+			case api.DequeueStrategyCreationtimeBasedFIFO, api.DequeueStrategyCreationTimeBasedTraverse:
 				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobCreationTimeBasedOrderFn)
-			} else {
+			case api.DequeueStrategyPriorityBasedFIFO, api.DequeueStrategyPriorityBasedTraverse:
+				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobPriorityBasedOrderFn)
+			default:
 				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
 			}
 			queues.Push(ssn.Queues[job.Queue])
@@ -216,7 +218,9 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 		// block the queue by not re-queuing it.
 		// This prevents subsequent jobs in the same queue from being scheduled in the current cycle.
 		if (queue.DequeueStrategy == api.DequeueStrategyCreationtimeBasedFIFO ||
-			queue.DequeueStrategy == api.DequeueStrategyPriorityBasedFIFO) && stmt == nil {
+			queue.DequeueStrategy == api.DequeueStrategyPriorityBasedFIFO ||
+			queue.DequeueStrategy == api.DequeueStrategyFIFO) &&
+			stmt == nil {
 			continue
 		}
 		// Put back the queue to priority queue after job's resource allocating finished,
