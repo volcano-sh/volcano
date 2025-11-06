@@ -319,10 +319,52 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 		return nil
 	}
 
-	taskInfo, err := sc.NewTaskInfo(newPod)
-	if err != nil {
-		klog.Errorf("generate taskInfo for pod(%s) failed: %v", newPod.Name, err)
-		sc.resyncTask(taskInfo)
+	if oldPod.ResourceVersion == newPod.ResourceVersion {
+		// the version has not changed
+		return nil
+	}
+
+	var (
+		// JobID is join by namespace and the value of annotation "scheduling.k8s.io/group-name"
+		jobID    = schedulingapi.GetJobID(newPod)
+		taskUID  = schedulingapi.TaskID(newPod.UID)
+		jobInfo  *schedulingapi.JobInfo
+		taskInfo *schedulingapi.TaskInfo
+	)
+
+	// updatePod needs to handle three scenarios:
+	//
+	// 1. Pods created by the Volcano controller.
+	//    These pods already carry the "scheduling.k8s.io/group-name" annotation at creation time.
+	//    Such pods must already exist in jobInfo before updatePod is called.
+	//    Handling logic: find taskInfo --> deleteTask --> UpdateByPod --> addTask.
+	//
+	// 2. Pods not created by the Volcano controller but scheduled by Volcano.
+	//    These pods are added into jobInfo during the first call to updatePod.
+	//    How to determine if it's the first updatePod call?
+	//    We need to check not only whether jobInfo exists, but also whether taskInfo exists,
+	//    since the "add podgroup" and "patch pod" events may arrive in any order.
+	//
+	// 3. Pods not scheduled by Volcano.
+	//    For this scenario, to simplify reuse of existing functions,
+	//    duplicate memory allocation is not specially handled.
+	if jobID != "" {
+		jobInfo = sc.Jobs[jobID]
+		if jobInfo == nil {
+			if err := sc.addPod(newPod); err != nil {
+				return fmt.Errorf("not found in Jobs: add pod<%s/%s> to cache error: %w", newPod.Namespace, newPod.Name, err)
+			}
+			return nil
+		}
+		taskInfo = jobInfo.Tasks[taskUID]
+		if taskInfo == nil {
+			if err := sc.addPod(newPod); err != nil {
+				return fmt.Errorf("not found in Tasks: add pod<%s/%s> to cache error: %w", newPod.Namespace, newPod.Name, err)
+			}
+			return nil
+		}
+	} else {
+		taskInfo = schedulingapi.NewTaskInfo(newPod)
 	}
 
 	// delete taskInfo
@@ -334,8 +376,11 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	if len(utils.GetController(newPod)) == 0 {
 		newPod.OwnerReferences = oldPod.OwnerReferences
 	}
+
 	// update taskInfo by new pod
 	taskInfo.UpdateByPod(newPod)
+
+	// add taskInfo
 	return sc.addTask(taskInfo)
 }
 
