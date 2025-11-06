@@ -110,7 +110,12 @@ func (alloc *Action) pickUpQueuesAndJobs(queues *util.PriorityQueue, jobsMap map
 		}
 
 		if _, found := jobsMap[job.Queue]; !found {
-			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			if ssn.Queues[job.Queue].DequeueStrategy == api.DequeueStrategyCreationtimeBasedFIFO ||
+				ssn.Queues[job.Queue].DequeueStrategy == api.DequeueStrategyCreationTimeBasedTraverse {
+				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobCreationTimeBasedOrderFn)
+			} else {
+				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			}
 			queues.Push(ssn.Queues[job.Queue])
 		}
 

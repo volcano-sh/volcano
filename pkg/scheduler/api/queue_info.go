@@ -30,18 +30,29 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
+// TODO: will replace by the dequeue strategy in https://github.com/volcano-sh/apis/pull/200
 // Dequeue strategy constants
-const (
-	// DequeueStrategyFIFO means if the first job in queue cannot be dequeued,
-	// the system will repeatedly try to dequeue the first job without skipping
-	DequeueStrategyFIFO = "fifo"
+type DequeueStrategy = string
 
-	// DequeueStrategyTraverse means if the first job in queue cannot be dequeued,
-	// the system will skip it and try subsequent jobs in the queue
-	DequeueStrategyTraverse = "traverse"
+const (
+	// DequeueStrategyCreationtimeBasedFIFO means if the first job in queue whose jobs are orted by creation time first
+	//  cannot be dequeued, the system will repeatedly try to dequeue the first job without skipping
+	DequeueStrategyCreationtimeBasedFIFO DequeueStrategy = "creationtime-based-fifo"
+
+	// DequeueStrategyPriorityBasedFIFO means if the first job in queue whose jobs are sorted by priority first
+	//  cannot be dequeued, the system will repeatedly try to dequeue the first job without skipping
+	DequeueStrategyPriorityBasedFIFO DequeueStrategy = "priority-based-fifo"
+
+	// DequeueStrategyTraverse means if the first job in queue whose jobs are sorted by creation time first
+	// cannot be dequeued, the system will skip it and try subsequent jobs in the queue
+	DequeueStrategyCreationTimeBasedTraverse DequeueStrategy = "creationtime-based-traverse"
+
+	// DequeueStrategyPriorityBasedTraverse means if the first job in queue whose jobs are sorted by priority first
+	// cannot be dequeued, the system will skip it and try subsequent jobs in the queue
+	DequeueStrategyPriorityBasedTraverse DequeueStrategy = "priority-based-traverse"
 
 	// Default dequeue strategy is traverse
-	DefaultDequeueStrategy = DequeueStrategyTraverse
+	DefaultDequeueStrategy DequeueStrategy = DequeueStrategyPriorityBasedTraverse
 
 	// Annotation key for dequeue strategy
 	DequeueStrategyAnnotationKey = "volcano.sh/dequeue-strategy"
@@ -66,8 +77,7 @@ type QueueInfo struct {
 	Hierarchy string
 
 	// DequeueStrategy defines the strategy for dequeuing jobs from the queue
-	// Possible values: "fifo", "traverse"
-	DequeueStrategy string
+	DequeueStrategy DequeueStrategy
 
 	Queue *scheduling.Queue
 }
@@ -79,13 +89,16 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 	if queue.Annotations != nil {
 		if strategy, exists := queue.Annotations[DequeueStrategyAnnotationKey]; exists && strategy != "" {
 			switch strategy {
-			case DequeueStrategyFIFO, DequeueStrategyTraverse:
+			case DequeueStrategyCreationtimeBasedFIFO, DequeueStrategyPriorityBasedFIFO, DequeueStrategyCreationTimeBasedTraverse, DequeueStrategyPriorityBasedTraverse:
 				dequeueStrategy = strategy
 			default:
 				// Invalid strategy, use default
 				klog.Warningf("Invalid dequeue strategy '%s' for queue '%s', using default strategy '%s'", strategy, queue.Name, DefaultDequeueStrategy)
 				dequeueStrategy = DefaultDequeueStrategy
 			}
+		} else {
+			klog.Warningf("No dequeue strategy annotation found for queue '%s', using default strategy '%s'", queue.Name, DefaultDequeueStrategy)
+			dequeueStrategy = DefaultDequeueStrategy
 		}
 	}
 
