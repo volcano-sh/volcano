@@ -85,6 +85,10 @@ spec:
           hostPath:
             path: /proc/stat
             type: File
+        - name: proc-meminfo
+          hostPath:
+            path: /proc/meminfo
+            type: File
       initContainers:
         - name: volcano-agent-init
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.agent_image_name}}:{{.Values.basic.image_tag_version}}
@@ -183,6 +187,13 @@ spec:
             - name: proc-stat
               readOnly: true
               mountPath: /host/proc/stat
+            - name: proc-meminfo
+              readOnly: true
+              mountPath: /host/proc/meminfo
+          ports:
+            - name: metrics
+              containerPort: 3300
+              protocol: TCP
           livenessProbe:
             httpGet:
               path: /healthz
