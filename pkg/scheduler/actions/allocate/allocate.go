@@ -214,7 +214,8 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 
 		// For FIFO, if a job fails to allocate (stmt == nil), block the queue by not re-queuing it.
 		// This prevents subsequent jobs in the same queue from being scheduled in the current cycle.
-		if queue.DequeueStrategy == api.DequeueStrategyFIFO && stmt == nil {
+		if (queue.DequeueStrategy == api.DequeueStrategyCreationtimeBasedFIFO ||
+			queue.DequeueStrategy == api.DequeueStrategyCreationTimeBasedTraverse) && stmt == nil {
 			continue
 		}
 		// Put back the queue to priority queue after job's resource allocating finished,
