@@ -6,7 +6,7 @@ This design document describes the design and implementation of the HyperNode ne
 
 ## Design Goals
 
-*   **Automated Discovery**: Automatically discover network topology information from different data sources (such as UFM, RoCE, etc.).
+*   **Automated Discovery**: Automatically discover network topology information from different data sources (such as UFM, RoCE, label, etc.).
 *   **Scalability**: Support multiple network topology discovery sources and easily extend new discovery methods.
 *   **Real-time**: Be able to reflect changes in network topology in a timely manner.
 *   **Fault Tolerance**: When a discovery source fails, it does not affect the normal operation of the system.
@@ -63,9 +63,16 @@ networkTopologyDiscovery:
     config:
       [...]
   - source: label
-    enabled: false
+    enabled: true
     config:
-      # Configuration of the label discovery source
+      networkTopologyTypes:
+        rack-level-topology: # 2-level topology
+          - nodeLabel: "volcano.sh/tor"
+          - nodeLabel: "kubernetes.io/hostname"
+        cluster-level-topology: # 3-level topology
+          - nodeLabel: "volcano.sh/hypercluster"
+          - nodeLabel: "volcano.sh/hypernode"
+          - nodeLabel: "kubernetes.io/hostname"
 ```
 
 *   **Code Example**:
@@ -91,7 +98,7 @@ type Credentials struct {
 
 // DiscoveryConfig contains configuration for a specific discovery source
 type DiscoveryConfig struct {
-    // Source specifies the discover source (e.g., "ufm", "roce", etc.)
+    // Source specifies the discover source (e.g., "ufm", "roce", "label", etc.)
     Source string `json:"source" yaml:"source"`
 
     // Enabled determines if discovery for this source is active
