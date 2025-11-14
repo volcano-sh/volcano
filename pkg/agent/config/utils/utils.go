@@ -52,6 +52,10 @@ const (
 	DefaultEvictingMemoryHighWatermark = 60
 	DefaultEvictingCPULowWatermark     = 30
 	DefaultEvictingMemoryLowWatermark  = 30
+
+	// CPU QoS config
+	DefaultCPUThrottlingThreshold = 80
+	DefaultCPUProtectionWatermark = 30
 )
 
 const (
@@ -90,7 +94,9 @@ func DefaultColocationConfig() *api.ColocationConfig {
 			NodeColocationEnable:       utilpointer.Bool(false),
 			NodeOverSubscriptionEnable: utilpointer.Bool(false),
 		},
-		CPUQosConfig:    &api.CPUQos{Enable: utilpointer.Bool(true)},
+		CPUQosConfig: &api.CPUQos{
+			Enable: utilpointer.Bool(true),
+		},
 		CPUBurstConfig:  &api.CPUBurst{Enable: utilpointer.Bool(true)},
 		MemoryQosConfig: &api.MemoryQos{Enable: utilpointer.Bool(true)},
 		NetworkQosConfig: &api.NetworkQos{
