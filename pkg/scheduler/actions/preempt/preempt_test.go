@@ -35,6 +35,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/plugins/capacity"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
@@ -318,6 +319,7 @@ func TestPreempt(t *testing.T) {
 
 func TestTopologyAwarePreempt(t *testing.T) {
 	plugins := map[string]framework.PluginBuilder{
+		capacity.PluginName:    capacity.New,
 		conformance.PluginName: conformance.New,
 		gang.PluginName:        gang.New,
 		priority.PluginName:    priority.New,
@@ -556,6 +558,28 @@ func TestTopologyAwarePreempt(t *testing.T) {
 			ExpectEvictNum: 1,
 			ExpectEvicted:  []string{"c1/preemptee2"},
 		},
+		{
+			Name: "preemption with multiple queues",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg3", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupRunning, "high-priority"),
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg3", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPodWithPreemptionPolicy("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string), v1.PreemptLowerPriority),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueueWithPriorityAndResourcesQuantity("q1", 1, api.BuildResourceList("1", "1G"), api.BuildResourceList("1", "1G")),
+				util.BuildQueueWithPriorityAndResourcesQuantity("q2", 10, api.BuildResourceList("1", "1G"), api.BuildResourceList("1", "1G")),
+			},
+			ExpectEvictNum: 1,
+			ExpectEvicted:  []string{"c1/preemptee1"},
+		},
 	}
 
 	trueValue := true
@@ -591,6 +615,10 @@ func TestTopologyAwarePreempt(t *testing.T) {
 					Name:               predicates.PluginName,
 					EnabledPreemptable: &trueValue,
 					EnabledPredicate:   &trueValue,
+				},
+				{
+					Name:              capacity.PluginName,
+					EnabledQueueOrder: &trueValue,
 				},
 			},
 		}}
