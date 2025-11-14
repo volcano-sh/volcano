@@ -17,6 +17,8 @@ limitations under the License.
 package api
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -64,6 +66,9 @@ type ColocationConfig struct {
 
 	// Evicting related config.
 	EvictingConfig *Evicting `json:"evictingConfig,omitempty" configKey:"Evicting"`
+
+	// TimeBasedQoSPolicies is a list of time based QoS policies.
+	TimeBasedQoSPolicies []*TimeBasedQoSPolicy `json:"timeBasedQoSPolicies,omitempty" configKey:"TimeBasedQoSPolicies"`
 }
 
 type CPUQos struct {
@@ -110,4 +115,24 @@ type Evicting struct {
 	EvictingCPULowWatermark *int `json:"evictingCPULowWatermark,omitempty"`
 	// EvictingMemoryLowWatermark defines the low watermark percent of memory usage when the node could recover schedule pods.
 	EvictingMemoryLowWatermark *int `json:"evictingMemoryLowWatermark,omitempty"`
+}
+
+// TODO: need to set default values for TimeBasedQoSPolicy
+type TimeBasedQoSPolicy struct {
+	// Enable indicates whether this TimeBasedQoSPolicy is enabled.
+	Enable *bool `json:"enable,omitempty"`
+	// Name is the name of the TimeBasedQoSPolicy.
+	Name string `json:"name,omitempty"`
+	// StartTime is the start time of the policy, format: "HH:MM", e.g., "08:00".
+	StartTime *string `json:"startTime,omitempty"`
+	// EndTime is the end time of the policy, format: "HH:MM", e.g., "18:00".
+	EndTime *string `json:"endTime,omitempty"`
+	// TimeZone specifies the timezone for the policy, e.g., "UTC", "Asia/Shanghai". If timeZone is not specified, the local timezone will be used.
+	TimeZone *string `json:"timeZone,omitempty"`
+	// Selector is used to select pods that this policy applies to.
+	Selector *metav1.LabelSelector `json:"selector,omitempty"`
+	// TargetQoSLevel defines the target QoS level to be applied during the specified time period.
+	TargetQoSLevel *int `json:"targetQoSLevel,omitempty"`
+	// CheckInterval specifies how often to check if the policy should be applied, format is a duration string, e.g., "30s", "1m". Default is 15s.
+	CheckInterval *time.Duration `json:"checkInterval,omitempty"`
 }
