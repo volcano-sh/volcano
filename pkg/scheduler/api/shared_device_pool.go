@@ -22,7 +22,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
-	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/ascend310p/vnpu"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/hami"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
@@ -78,11 +79,21 @@ type Devices interface {
 var _ Devices = new(gpushare.GPUDevices)
 var _ Devices = new(vgpu.GPUDevices)
 var _ Devices = new(vnpu.NPUDevices)
+var _ Devices = new(hami.AscendDevices)
 
 var RegisteredDevices = []string{
 	gpushare.DeviceName,
 	vgpu.DeviceName,
 	vnpu.DeviceName,
+}
+
+func RegisterDevice(deviceName string) {
+	for _, name := range RegisteredDevices {
+		if name == deviceName {
+			return
+		}
+	}
+	RegisteredDevices = append(RegisteredDevices, deviceName)
 }
 
 var IgnoredDevicesList = ignoredDevicesList{}
