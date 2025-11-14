@@ -162,6 +162,9 @@ e2e-test-admission-webhook: images
 e2e-test-admission-policy: images
 	E2E_TYPE=ADMISSION_POLICY ./hack/run-e2e-kind.sh
 
+e2e-test-capacitycard: images
+	E2E_TYPE=CAPACITYCARD ./hack/run-e2e-kind.sh
+
 generate-yaml: init manifests
 	./hack/generate-yaml.sh CRD_VERSION=${CRD_VERSION}
 
