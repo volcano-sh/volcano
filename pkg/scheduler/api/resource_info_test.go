@@ -1180,6 +1180,163 @@ func TestLessEqualPartly(t *testing.T) {
 	}
 }
 
+func TestLessEqualPartlyWithDimension(t *testing.T) {
+	tests := []struct {
+		r         *Resource
+		rr        *Resource
+		req       *Resource
+		wantBool  bool
+		wantNames []string
+	}{
+		{
+			r:         &Resource{MilliCPU: 1000},
+			rr:        &Resource{MilliCPU: 2000},
+			req:       nil,
+			wantBool:  false,
+			wantNames: []string{},
+		},
+		{
+			r:         &Resource{MilliCPU: 3000},
+			rr:        &Resource{MilliCPU: 2000},
+			req:       &Resource{MilliCPU: 4000},
+			wantBool:  false,
+			wantNames: []string{},
+		},
+		{
+			r:         &Resource{MilliCPU: 1000},
+			rr:        &Resource{MilliCPU: 2000},
+			req:       &Resource{MilliCPU: 500},
+			wantBool:  true,
+			wantNames: []string{"cpu"},
+		},
+		{
+			r:         &Resource{Memory: 1024},
+			rr:        &Resource{Memory: 1024},
+			req:       &Resource{Memory: 512},
+			wantBool:  true,
+			wantNames: []string{"memory"},
+		},
+		{
+			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2}},
+			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 4}},
+			req:       &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1}},
+			wantBool:  true,
+			wantNames: []string{"nvidia.com/gpu"},
+		},
+		{
+			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 4}},
+			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 4}},
+			req:       &Resource{ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2}},
+			wantBool:  true,
+			wantNames: []string{"nvidia.com/gpu"},
+		},
+		{
+			r:         &Resource{MilliCPU: 3000, Memory: 2048, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 5}},
+			rr:        &Resource{MilliCPU: 2000, Memory: 1024, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 4}},
+			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 1}},
+			wantBool:  false,
+			wantNames: []string{},
+		},
+		{
+			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2, "fpga": 2}},
+			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2}},
+			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"rdma": 1, "fpga": 1, "nvidia.com/gpu": 2}},
+			wantBool:  true,
+			wantNames: []string{"cpu", "memory", "rdma", "nvidia.com/gpu"},
+		},
+		{
+			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 1, "fpga": 2, "nvidia.com/gpu": 2}},
+			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2, "fpga": 2}},
+			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2, "rdma": 1, "fpga": 1}},
+			wantBool:  true,
+			wantNames: []string{"cpu", "memory", "rdma", "fpga"},
+		},
+	}
+
+	for _, tt := range tests {
+		gotBool, gotNames := tt.r.LessEqualPartlyWithDimension(tt.rr, tt.req)
+		if gotBool != tt.wantBool {
+			t.Errorf("got bool %v, want %v", gotBool, tt.wantBool)
+		}
+		sort.Strings(gotNames)
+		sort.Strings(tt.wantNames)
+		if !equality.Semantic.DeepEqual(gotNames, tt.wantNames) {
+			t.Errorf("got names %v, want %v", gotNames, tt.wantNames)
+		}
+	}
+}
+
+func TestLessEqualPartlyWithDimensionZeroFiltered(t *testing.T) {
+	tests := []struct {
+		r         *Resource
+		rr        *Resource
+		req       *Resource
+		wantBool  bool
+		wantNames []string
+	}{
+		{
+			r:         &Resource{MilliCPU: 0, Memory: 0},
+			rr:        &Resource{MilliCPU: 0, Memory: 0},
+			req:       &Resource{MilliCPU: 1000, Memory: 512},
+			wantBool:  false,
+			wantNames: []string{},
+		},
+		{
+			r:         &Resource{MilliCPU: 1000, Memory: 0},
+			rr:        &Resource{MilliCPU: 2000, Memory: 0},
+			req:       &Resource{MilliCPU: 1000, Memory: 512},
+			wantBool:  true,
+			wantNames: []string{"cpu"},
+		},
+		{
+			r:         &Resource{MilliCPU: 0, Memory: 0},
+			rr:        &Resource{MilliCPU: 0, Memory: 2048},
+			req:       &Resource{MilliCPU: 1000, Memory: 512},
+			wantBool:  true,
+			wantNames: []string{"memory"},
+		},
+		{
+			r:         &Resource{MilliCPU: 1000, Memory: 1024},
+			rr:        &Resource{MilliCPU: 2000, Memory: 2048},
+			req:       &Resource{MilliCPU: 1000, Memory: 512},
+			wantBool:  true,
+			wantNames: []string{"cpu", "memory"},
+		},
+		{
+			r:         &Resource{MilliCPU: 0, Memory: 1024},
+			rr:        &Resource{MilliCPU: 2000, Memory: 0, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 4}},
+			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2}},
+			wantBool:  true,
+			wantNames: []string{"cpu", "nvidia.com/gpu"},
+		},
+		{
+			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2, "fpga": 2}},
+			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2}},
+			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2, "rdma": 1, "fpga": 1}},
+			wantBool:  true,
+			wantNames: []string{"rdma"},
+		},
+		{
+			r:         &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 1, "fpga": 2, "nvidia.com/gpu": 2}},
+			rr:        &Resource{ScalarResources: map[v1.ResourceName]float64{"rdma": 2, "fpga": 2}},
+			req:       &Resource{MilliCPU: 1000, Memory: 512, ScalarResources: map[v1.ResourceName]float64{"nvidia.com/gpu": 2, "rdma": 1, "fpga": 1}},
+			wantBool:  true,
+			wantNames: []string{"rdma", "fpga"},
+		},
+	}
+
+	for _, tt := range tests {
+		gotBool, gotNames := tt.r.LessEqualPartlyWithDimensionZeroFiltered(tt.rr, tt.req)
+		if gotBool != tt.wantBool {
+			t.Errorf("got bool %v, want %v", gotBool, tt.wantBool)
+		}
+		sort.Strings(gotNames)
+		sort.Strings(tt.wantNames)
+		if !equality.Semantic.DeepEqual(gotNames, tt.wantNames) {
+			t.Errorf("got names %v, want %v", gotNames, tt.wantNames)
+		}
+	}
+}
 func TestEqual(t *testing.T) {
 	tests := []struct {
 		resource1 *Resource
