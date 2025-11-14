@@ -191,7 +191,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			victimsQueue := ssn.BuildVictimsPriorityQueue(victims, task)
 
 			resreq := task.InitResreq.Clone()
-			reclaimed := api.EmptyResource()
+			reclaimed := n.Idle.Clone()
 
 			// Reclaim victims for tasks.
 			for !victimsQueue.Empty() {
