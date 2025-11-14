@@ -22,6 +22,7 @@ package util
 
 import (
 	"container/heap"
+	"slices"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -73,13 +74,9 @@ func (q *PriorityQueue) Len() int {
 func (q *PriorityQueue) Clone() *PriorityQueue {
 	newPq := &PriorityQueue{
 		queue: priorityQueue{
-			items:  make([]interface{}, 0),
+			items:  slices.Clone(q.queue.items),
 			lessFn: q.queue.lessFn,
 		},
-	}
-
-	for _, it := range q.queue.items {
-		newPq.Push(it)
 	}
 	return newPq
 }
