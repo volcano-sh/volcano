@@ -300,8 +300,6 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 		}(i)
 	}
 
-	go cc.cache.Run(stopCh)
-
 	// Re-sync error tasks.
 	go wait.Until(cc.processResyncTask, 0, stopCh)
 
@@ -359,6 +357,12 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	if err != nil {
 		// TODO(k82cn): ignore not-ready error.
 		klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
+		return true
+	}
+	if req.IsDeleteJobAction {
+		klog.V(3).Infof("process delete job action for %s", key)
+		cc.cache.Delete(jobInfo.Job)
+		queue.Forget(req)
 		return true
 	}
 
