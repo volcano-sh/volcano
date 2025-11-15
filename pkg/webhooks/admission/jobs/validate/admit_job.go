@@ -196,6 +196,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		podName := jobhelpers.MakePodName(job.Name, task.Name, index)
 		msg += validateK8sPodNameLength(podName)
 		msg += validateTaskTemplate(task, job, index)
+		msg += validatePartitionPolicy(task, job)
 	}
 
 	msg += validateJobName(job)
@@ -279,6 +280,10 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 				return fmt.Errorf("'minAvailable' must be <= 'replicas' in task: %s", task.Name)
 			}
 		}
+		msg := validatePartitionPolicy(task, new)
+		if msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
 
 		// count replicas
 		totalReplicas += task.Replicas
@@ -322,6 +327,21 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	}
 
 	return nil
+}
+
+func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {
+	var msg string
+	if task.PartitionPolicy != nil {
+		if task.PartitionPolicy.TotalPartitions <= 0 {
+			msg += fmt.Sprintf("'TotalPartitions' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
+		} else if task.PartitionPolicy.PartitionSize <= 0 {
+			msg += fmt.Sprintf("'PartitionSize' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
+		} else if task.Replicas != task.PartitionPolicy.TotalPartitions*task.PartitionPolicy.PartitionSize {
+			msg += fmt.Sprintf("'Replicas' are not equal to TotalPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
+		}
+	}
+
+	return msg
 }
 
 func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) string {

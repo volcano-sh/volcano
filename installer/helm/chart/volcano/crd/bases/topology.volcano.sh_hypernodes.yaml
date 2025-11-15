@@ -19,6 +19,9 @@ spec:
     - jsonPath: .spec.tier
       name: Tier
       type: string
+    - jsonPath: .spec.tierName
+      name: TierName
+      type: string
     - jsonPath: .status.nodeCount
       name: NodeCount
       type: integer
@@ -146,6 +149,9 @@ spec:
               tier:
                 description: Tier categorizes the performance level of the HyperNode.
                 type: integer
+              tierName:
+                description: TierName represents the level name of the HyperNode.
+                type: string
             required:
             - tier
             type: object
