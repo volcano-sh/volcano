@@ -2,7 +2,7 @@
     
 ## Motivation
 
-The use of cluster autoscalers such as [Cluster Autoscaler (CA)](https://github.com/kubernetes/autoscaler/tree/master) or [Karpenter](https://github.com/kubernetes-sigs/karpenter) is common in Kubernetes environments to dynamically adjust node capacity based on scheduler signals. Both autoscalers monitor pod scheduling conditions, specifically looking for pods that match:
+Cluster autoscalers such as [Cluster Autoscaler (CA)](https://github.com/kubernetes/autoscaler/tree/master) or [Karpenter](https://github.com/kubernetes-sigs/karpenter) is present in almost all Kubernetes environments to dynamically adjust node capacity based on scheduler signals. Both systems monitor pod scheduling conditions, specifically looking for pods that match:
 
 ```yaml
 type: PodScheduled
@@ -10,9 +10,10 @@ status: "False"
 reason: Unschedulable
 ```
 
-These pods are interpreted as evidence of insufficient cluster capacity, triggering a scale-up simulations to eventually add new nodes.
+These pods, usually marked by the kube-scheduler, are interpreted as evidence of insufficient cluster capacity, triggering a scale-up simulations to eventually add new nodes.
 
-> Please refer to the following pointers regarding detecting `Unschedulable` Pods in CA and Karpenter:
+
+Please refer to the links below regarding detecting `Unschedulable` Pods in ClusterAutoscaler and Karpenter:
 > * [CA (v1.34.1): listers.go – func isUnschedulable(pod \*apiv1.Pod) bool](https://github.com/kubernetes/autoscaler/blob/cluster-autoscaler-1.34.1/cluster-autoscaler/utils/kubernetes/listers.go#L161-L170) (also check [FAQ.md](https://github.com/kubernetes/autoscaler/blob/cluster-autoscaler-release-1.34/cluster-autoscaler/FAQ.md#how-does-scale-up-work))  
 > * [Karpenter (v1.8.0): scheduling.go – func FailedToSchedule(pod \*corev1.Pod) bool](https://github.com/kubernetes-sigs/karpenter/blob/v1.8.0/pkg/utils/pod/scheduling.go#L116-L129)
 
@@ -24,11 +25,11 @@ This mechanism works as intended with the default `kube-scheduler`, but can caus
 
 Volcano sets the `Unschedulable` condition on pods through its cache event recording mechanism in [`pkg/scheduler/cache/cache.go`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/cache/cache.go). After each scheduling cycle, the [`RecordJobStatusEvent`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/cache/cache.go#L1515) function examines tasks (pods) that have not been allocated and updates their `PodScheduled` condition with `status=False` and `reason=Unschedulable`.
 
-This happens for **any** task that fails allocation, regardless of whether the failure is due to insufficient node resources (legitimate scale-up scenario) or queue capacity limits (false signal for autoscalers). Autoscalers cannot distinguish between these scenarios, as they only see the `Unschedulable` condition.
+This happens for **any** task that fails allocation, regardless of whether the failure is due to insufficient cluster resources (legitimately triggering a scale-up ) or queue capacity limits (but also triggering a scale-up). Autoscalers cannot distinguish between these scenarios, as they only see the `Unschedulable` condition.
 
 ## Proposal
 
-This proposal introduces the use of Kubernetes `schedulingGates` (as defined in [KEP-3521](https://github.com/kubernetes/enhancements/tree/master/keps/sig-scheduling/3521-pod-scheduling-readiness#summary)) to control when a Pod is considered ready for scheduling. The core idea is to delay setting the `Unschedulable` condition until the Queue has enough capacity to accommodate the Pod.
+This proposal leverages the use of Kubernetes `schedulingGates` (as defined in [KEP-3521](https://github.com/kubernetes/enhancements/tree/master/keps/sig-scheduling/3521-pod-scheduling-readiness#summary)) to control when a Pod is considered ready for scheduling. The core idea is to delay setting the `Unschedulable` condition until the Queue has enough capacity to accommodate the Pod.
 
 ### Goals
 
@@ -86,20 +87,20 @@ func patchSchedulingGates(pod *v1.Pod) *patchOperation {
 
 **`schedulingGates` Field Immutability**
 
-Kubernetes `schedulingGates` can only be removed, **not added after pod creation** ([see PodSpec documentation](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#scheduling)). The gates will then be gradually removed in the scheduler side, since the latter contains the actions and plugins that determine if the Pod can be allocated to a queue and eventually a node:
+Kubernetes `schedulingGates` can only be removed and **not added after pod creation** ([see PodSpec documentation](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#scheduling)). The gates will then be gradually removed in the scheduler side, since the latter contains the actions and plugins that determine if the Pod can be allocated to a queue and eventually a node:
 
 - **During bind**: For successfully allocated pods, gates are removed atomically with binding.
-- **For node-fit failures**: When queue has capacity but no node fits the pod, gates are removed to signal the `Unschedulable` condition to autoscalers.
+- **For lack of cluster capacity**: When queue has capacity but no node can fit the pod, gates are removed to signal the `Unschedulable` condition to autoscalers and trigger a scale-up.
 
 #### Changes to the Volcano Scheduler
 
-Volcano already adapted to the concept of `schedulingGates` through the **Pod Scheduling Readiness** design document ([pod-scheduling-readiness.md](https://github.com/volcano-sh/volcano/blob/master/docs/design/pod-scheduling-readiness.md)), which skips tasks of a job whose Pods are scheduling gated, ensuring that a scheduling gated pod will not be bound to a node. In this case, the [allocate](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/allocate/allocate.go#L159), [backfill](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/backfill/backfill.go#L139-L141), [reclaim](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/reclaim/reclaim.go#L85-L87), and [preempt](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/preempt/preempt.go#L223-L226) actions already skip Pods that [have at least one gate](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/api/job_info.go#L246-L252).
+Volcano already adopted the concept of `schedulingGates` through the **Pod Scheduling Readiness** design document ([pod-scheduling-readiness.md](https://github.com/volcano-sh/volcano/blob/master/docs/design/pod-scheduling-readiness.md)), which skips tasks of a job whose Pods are scheduling gated, ensuring that a scheduling gated pod will not be bound to a node. In this case, the [allocate](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/allocate/allocate.go#L159), [backfill](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/backfill/backfill.go#L139-L141), [reclaim](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/reclaim/reclaim.go#L85-L87), and [preempt](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/preempt/preempt.go#L223-L226) actions already skip Pods that [have at least one gate](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/api/job_info.go#L246-L252).
 
 Each time the `Allocate` action is executed, `alloc.allocateResourcesForTasks(...)` tries to allocate resources for each Task in a given Queue and `ssn.Allocatable(queue, task)` gives us the needed signal (by running every plugin check) for eventually removing the gate added previously by the **MutatingAdmissionWebhook**. Gates should be removed for signaling the `Unschedulable` condition to autoscalers when no node fits the pod, otherwise, the pod will be allocated to a node and gates are removed during the bind operation.
 
 ##### Asynchronous Gate Removal
 
-To avoid blocking the scheduler, gate removals for node-fit failures are queued to background workers and processed asynchronously. The following code snippet showcases the possible high-level changes to the function `allocateResourcesForTasks(...)`:
+To avoid blocking the scheduler, gate removals for lack of cluster capacity are queued to background workers and processed asynchronously. The following code snippet showcases the possible high-level changes to the function `allocateResourcesForTasks(...)`:
 
 ```go
 // Enhance allocateResourcesForTasks with gate management
@@ -206,7 +207,7 @@ func (alloc *Action) schGateRemovalWorker() {
 
 ##### Queue Capacity Accounting for Ungated Pods
 
-When a pod's gate is removed due to node-fit failure, it becomes visible to autoscalers but remains unallocated (waiting for matching nodes). This creates a potential race condition: between gate removal and actual allocation, other pods might consume the available queue capacity, leaving the ungated pod unable to allocate despite being `Unschedulable`.
+When a pod's gate is removed due to lack of cluster capacity, it becomes visible to autoscalers but remains unallocated (waiting for matching nodes). This creates a potential race condition: between gate removal and actual allocation to a node, other pods might consume the available queue capacity, leaving the ungated pod unable to allocate despite being `Unschedulable`.
 
 To prevent this, the queue capacity accounting logic must be enhanced to treat ungated pods as "reservations" that count toward the queue's "virtual" used capacity. Specifically, the `ssn.Allocatable(queue, task)` function needs to be modified to:
 
@@ -242,7 +243,7 @@ This ensures that once a gate is removed, the pod effectively "reserves" its que
 
 ##### Gate Removal During Successful Bind
 
-Finally, the last case is when a task successfully passes **all allocation checks** (i.e., `ssn.Allocatable(queue, task)` returns `true` and there's a node that fits the pod), then the gate will only be removed during the `Bind(...)` operation:
+Finally, the last case is when a task successfully passes **all allocation checks** (i.e., `ssn.Allocatable(queue, task)` returns `true` and there's a node that can fit the pod), then the gate will only be removed during the `Bind(...)` operation:
 
 ```go
 func (db *DefaultBinder) Bind(...) map[schedulingapi.TaskID]string {
@@ -267,9 +268,9 @@ func (db *DefaultBinder) Bind(...) map[schedulingapi.TaskID]string {
 
 ## Conclusions
 
-Scheduling Gates are a Kubernetes feature that allows external controllers to delay pod scheduling until specific conditions are met. The proposed design leverages this mechanism to defer scheduling until the queue has sufficient capacity, preventing pods from appearing as `Unschedulable` when they're simply waiting for queue admission.
+Scheduling Gates are a Kubernetes feature that allows external controllers to delay pod scheduling until specific conditions are met. The proposed design leverages this mechanism to defer scheduling until the queue has sufficient capacity, preventing pods from appearing as `Unschedulable` when they're simply waiting for queue admission and falsely trigger cluster scale-ups.
 
-This implementation requires pods to opt in via the `volcano.sh/enable-queue-allocation-gate: "true"` annotation. This conservative approach ensures backward compatibility and allows users to adopt the feature incrementally. Future iterations **could enable this behavior by default** once the feature maturity is validated in production environments.
+This implementation requires pods to opt in via the `volcano.sh/enable-queue-allocation-gate: "true"` annotation, making it a conservative approach ensuring backward compatibility whilst allowing users to adopt the feature gradually. Future iterations **could enable this behavior by default** once the feature maturity is validated in production environments.
 
 ## Related Issues
 
