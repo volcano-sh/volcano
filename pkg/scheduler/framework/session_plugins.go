@@ -183,19 +183,19 @@ func (ssn *Session) AddSimulatePredicateFn(name string, fn api.SimulatePredicate
 	ssn.simulatePredicateFns[name] = fn
 }
 
-// AddPodBunchReadyFn add PodBunchReady function
-func (ssn *Session) AddPodBunchReadyFn(name string, vf api.ValidateFn) {
-	ssn.podBunchReadyFns[name] = vf
+// AddSubJobReadyFn add SubJobReady function
+func (ssn *Session) AddSubJobReadyFn(name string, vf api.ValidateFn) {
+	ssn.subJobReadyFns[name] = vf
 }
 
-// AddPodBunchPipelinedFn add PodBunchPipelined function
-func (ssn *Session) AddPodBunchPipelinedFn(name string, vf api.VoteFn) {
-	ssn.podBunchPipelinedFns[name] = vf
+// AddSubJobPipelinedFn add SubJobPipelined function
+func (ssn *Session) AddSubJobPipelinedFn(name string, vf api.VoteFn) {
+	ssn.subJobPipelinedFns[name] = vf
 }
 
-// AddPodBunchOrderFn add PodBunchOrderFn function
-func (ssn *Session) AddPodBunchOrderFn(name string, fn api.CompareFn) {
-	ssn.podBunchOrderFns[name] = fn
+// AddSubJobOrderFn add SubJobOrderFn function
+func (ssn *Session) AddSubJobOrderFn(name string, fn api.CompareFn) {
+	ssn.subJobOrderFns[name] = fn
 }
 
 // AddHyperNodeGradientForJobFn add HyperNodeGradientForJobFn function
@@ -203,9 +203,9 @@ func (ssn *Session) AddHyperNodeGradientForJobFn(name string, fn api.HyperNodeGr
 	ssn.hyperNodeGradientForJobFns[name] = fn
 }
 
-// AddHyperNodeGradientForPodBunchFn add HyperNodeGradientForPodBunchFn function
-func (ssn *Session) AddHyperNodeGradientForPodBunchFn(name string, fn api.HyperNodeGradientForPodBunchFn) {
-	ssn.hyperNodeGradientForPodBunchFns[name] = fn
+// AddHyperNodeGradientForSubJobFn add HyperNodeGradientForSubJobFn function
+func (ssn *Session) AddHyperNodeGradientForSubJobFn(name string, fn api.HyperNodeGradientForSubJobFn) {
+	ssn.hyperNodeGradientForSubJobFns[name] = fn
 }
 
 // Reclaimable invoke reclaimable function of the plugins
@@ -367,22 +367,22 @@ func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) b
 	return true
 }
 
-func (ssn *Session) PodBunchReady(job *api.JobInfo, podBunch *api.PodBunchInfo) bool {
-	if !job.ContainsBunchPolicy() {
+func (ssn *Session) SubJobReady(job *api.JobInfo, subJob *api.SubJobInfo) bool {
+	if !job.ContainsSubJobPolicy() {
 		return ssn.JobReady(job)
 	}
 
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledPodBunchReady) {
+			if !isEnabled(plugin.EnabledSubJobReady) {
 				continue
 			}
-			fn, found := ssn.podBunchReadyFns[plugin.Name]
+			fn, found := ssn.subJobReadyFns[plugin.Name]
 			if !found {
 				continue
 			}
 
-			if !fn(podBunch) {
+			if !fn(subJob) {
 				return false
 			}
 		}
@@ -391,23 +391,23 @@ func (ssn *Session) PodBunchReady(job *api.JobInfo, podBunch *api.PodBunchInfo) 
 	return true
 }
 
-func (ssn *Session) PodBunchPipelined(job *api.JobInfo, podBunch *api.PodBunchInfo) bool {
-	if !job.ContainsBunchPolicy() {
+func (ssn *Session) SubJobPipelined(job *api.JobInfo, subJob *api.SubJobInfo) bool {
+	if !job.ContainsSubJobPolicy() {
 		return ssn.JobPipelined(job)
 	}
 
 	var hasFound bool
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledPodBunchPipelined) {
+			if !isEnabled(plugin.EnabledSubJobPipelined) {
 				continue
 			}
-			fn, found := ssn.podBunchPipelinedFns[plugin.Name]
+			fn, found := ssn.subJobPipelinedFns[plugin.Name]
 			if !found {
 				continue
 			}
 
-			res := fn(podBunch)
+			res := fn(subJob)
 			if res < 0 {
 				return false
 			}
@@ -632,13 +632,13 @@ func (ssn *Session) ReservedNodes() {
 	}
 }
 
-func (ssn *Session) PodBunchOrderFn(l, r interface{}) bool {
+func (ssn *Session) SubJobOrderFn(l, r interface{}) bool {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
-			if !isEnabled(plugin.EnabledPodBunchOrder) {
+			if !isEnabled(plugin.EnabledSubJobOrder) {
 				continue
 			}
-			fn, found := ssn.podBunchOrderFns[plugin.Name]
+			fn, found := ssn.subJobOrderFns[plugin.Name]
 			if !found {
 				continue
 			}
@@ -648,9 +648,9 @@ func (ssn *Session) PodBunchOrderFn(l, r interface{}) bool {
 		}
 	}
 
-	// If no podBunch order funcs, order podBunch by MatchIndex and UID.
-	lv := l.(*api.PodBunchInfo)
-	rv := r.(*api.PodBunchInfo)
+	// If no subJob order funcs, order subJob by MatchIndex and UID.
+	lv := l.(*api.SubJobInfo)
+	rv := r.(*api.SubJobInfo)
 	if lv.MatchIndex != rv.MatchIndex {
 		return lv.MatchIndex < rv.MatchIndex
 	}
@@ -1000,7 +1000,7 @@ func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[
 }
 
 // HyperNodeOrderMapFn invoke hyperNode order function of the plugins
-func (ssn *Session) HyperNodeOrderMapFn(podBunch *api.PodBunchInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]map[string]float64, error) {
+func (ssn *Session) HyperNodeOrderMapFn(subJob *api.SubJobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]map[string]float64, error) {
 	nodeGroupScore := make(map[string]map[string]float64)
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -1011,7 +1011,7 @@ func (ssn *Session) HyperNodeOrderMapFn(podBunch *api.PodBunchInfo, hyperNodes m
 			if !found {
 				continue
 			}
-			scoreTmp, err := pfn(podBunch, hyperNodes)
+			scoreTmp, err := pfn(subJob, hyperNodes)
 			if err != nil {
 				return nodeGroupScore, err
 			}
@@ -1066,20 +1066,20 @@ func (ssn *Session) HyperNodeGradientForJobFn(job *api.JobInfo, hyperNode *api.H
 	return [][]*api.HyperNodeInfo{{hyperNode}}
 }
 
-// HyperNodeGradientForPodBunchFn group hyperNodes into several gradients,
-// and discard hyperNodes that unmatched the podBunch topology requirements.
+// HyperNodeGradientForSubJobFn group hyperNodes into several gradients,
+// and discard hyperNodes that unmatched the subJob topology requirements.
 // The result is determined by the first plugin that registered this fn.
-func (ssn *Session) HyperNodeGradientForPodBunchFn(podBunch *api.PodBunchInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
+func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledHyperNodeGradient) {
 				continue
 			}
-			fn, found := ssn.hyperNodeGradientForPodBunchFns[plugin.Name]
+			fn, found := ssn.hyperNodeGradientForSubJobFns[plugin.Name]
 			if !found {
 				continue
 			}
-			return fn(podBunch, hyperNode)
+			return fn(subJob, hyperNode)
 		}
 	}
 

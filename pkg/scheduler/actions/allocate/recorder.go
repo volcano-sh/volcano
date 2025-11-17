@@ -23,21 +23,21 @@ import (
 )
 
 type Recorder struct {
-	jobDecisions      map[api.JobID]string
-	podBunchDecisions map[api.JobID]map[string]map[api.BunchID]string
+	jobDecisions    map[api.JobID]string
+	subJobDecisions map[api.JobID]map[string]map[api.SubJobID]string
 
-	podBunchStatusSnapshot map[api.JobID]map[api.BunchID]*PodBunchStatus
+	subJobStatusSnapshot map[api.JobID]map[api.SubJobID]*SubJobStatus
 }
 
-type PodBunchStatus struct {
+type SubJobStatus struct {
 	AllocatedHyperNode string
 }
 
 func NewRecorder() *Recorder {
 	return &Recorder{
-		jobDecisions:           make(map[api.JobID]string),
-		podBunchDecisions:      make(map[api.JobID]map[string]map[api.BunchID]string),
-		podBunchStatusSnapshot: make(map[api.JobID]map[api.BunchID]*PodBunchStatus),
+		jobDecisions:         make(map[api.JobID]string),
+		subJobDecisions:      make(map[api.JobID]map[string]map[api.SubJobID]string),
+		subJobStatusSnapshot: make(map[api.JobID]map[api.SubJobID]*SubJobStatus),
 	}
 }
 
@@ -45,14 +45,14 @@ func (d *Recorder) SaveJobDecision(job api.JobID, hyperNodeForJob string) {
 	d.jobDecisions[job] = hyperNodeForJob
 }
 
-func (d *Recorder) SavePodBunchDecision(job api.JobID, hyperNodeForJob string, podBunch api.BunchID, hyperNodeForPodBunch string) {
-	if d.podBunchDecisions[job] == nil {
-		d.podBunchDecisions[job] = make(map[string]map[api.BunchID]string)
+func (d *Recorder) SaveSubJobDecision(job api.JobID, hyperNodeForJob string, subJob api.SubJobID, hyperNodeForSubJob string) {
+	if d.subJobDecisions[job] == nil {
+		d.subJobDecisions[job] = make(map[string]map[api.SubJobID]string)
 	}
-	if d.podBunchDecisions[job][hyperNodeForJob] == nil {
-		d.podBunchDecisions[job][hyperNodeForJob] = make(map[api.BunchID]string)
+	if d.subJobDecisions[job][hyperNodeForJob] == nil {
+		d.subJobDecisions[job][hyperNodeForJob] = make(map[api.SubJobID]string)
 	}
-	d.podBunchDecisions[job][hyperNodeForJob][podBunch] = hyperNodeForPodBunch
+	d.subJobDecisions[job][hyperNodeForJob][subJob] = hyperNodeForSubJob
 }
 
 func (d *Recorder) UpdateDecisionToJob(job *api.JobInfo, hyperNodes api.HyperNodeInfoMap) {
@@ -68,39 +68,39 @@ func (d *Recorder) UpdateDecisionToJob(job *api.JobInfo, hyperNodes api.HyperNod
 		job.AllocatedHyperNode = jobAllocatedHyperNode
 	}
 
-	for bunchId, hyperNode := range d.podBunchDecisions[job.UID][hyperNodeForJob] {
-		podBunch, found := job.PodBunches[bunchId]
+	for subJobID, hyperNode := range d.subJobDecisions[job.UID][hyperNodeForJob] {
+		subJob, found := job.SubJobs[subJobID]
 		if !found {
-			klog.Errorf("podBunch %s not found", bunchId)
+			klog.Errorf("subJob %s not found", subJobID)
 			continue
 		}
-		allocatedHyperNode := hyperNodes.GetLCAHyperNode(podBunch.AllocatedHyperNode, hyperNode)
-		if podBunch.AllocatedHyperNode != allocatedHyperNode {
-			klog.V(3).InfoS("update allocated hyperNode for podBunch", "podBunch", podBunch.UID,
-				"old", podBunch.AllocatedHyperNode, "new", allocatedHyperNode)
-			podBunch.AllocatedHyperNode = allocatedHyperNode
+		allocatedHyperNode := hyperNodes.GetLCAHyperNode(subJob.AllocatedHyperNode, hyperNode)
+		if subJob.AllocatedHyperNode != allocatedHyperNode {
+			klog.V(3).InfoS("update allocated hyperNode for subJob", "subJob", subJob.UID,
+				"old", subJob.AllocatedHyperNode, "new", allocatedHyperNode)
+			subJob.AllocatedHyperNode = allocatedHyperNode
 		}
 	}
 }
 
-func (d *Recorder) SnapshotPodBunchStatus(job *api.JobInfo, worksheet *JobWorksheet) {
-	result := make(map[api.BunchID]*PodBunchStatus)
-	for bunchID := range worksheet.podBunchWorksheets {
-		if podBunch, found := job.PodBunches[bunchID]; found {
-			result[bunchID] = &PodBunchStatus{AllocatedHyperNode: podBunch.AllocatedHyperNode}
+func (d *Recorder) SnapshotSubJobStatus(job *api.JobInfo, worksheet *JobWorksheet) {
+	result := make(map[api.SubJobID]*SubJobStatus)
+	for subJobID := range worksheet.subJobWorksheets {
+		if subJob, found := job.SubJobs[subJobID]; found {
+			result[subJobID] = &SubJobStatus{AllocatedHyperNode: subJob.AllocatedHyperNode}
 		}
 	}
-	d.podBunchStatusSnapshot[job.UID] = result
+	d.subJobStatusSnapshot[job.UID] = result
 }
 
-func (d *Recorder) RecoverPodBunchStatus(job *api.JobInfo) {
-	snapshot, ok := d.podBunchStatusSnapshot[job.UID]
+func (d *Recorder) RecoverSubJobStatus(job *api.JobInfo) {
+	snapshot, ok := d.subJobStatusSnapshot[job.UID]
 	if !ok {
 		return
 	}
-	for bunchID, status := range snapshot {
-		if podBunch, found := job.PodBunches[bunchID]; found {
-			podBunch.AllocatedHyperNode = status.AllocatedHyperNode
+	for subJobID, status := range snapshot {
+		if subJob, found := job.SubJobs[subJobID]; found {
+			subJob.AllocatedHyperNode = status.AllocatedHyperNode
 		}
 	}
 }

@@ -193,8 +193,8 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 	}()
 	nta.hyperNodesTier.init(ssn.HyperNodesTiers)
 
-	ssn.AddHyperNodeOrderFn(nta.Name(), func(podBunch *api.PodBunchInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
-		return nta.HyperNodeOrderFn(ssn, podBunch, hyperNodes)
+	ssn.AddHyperNodeOrderFn(nta.Name(), func(subJob *api.SubJobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
+		return nta.HyperNodeOrderFn(ssn, subJob, hyperNodes)
 	})
 
 	ssn.AddBatchNodeOrderFn(nta.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
@@ -214,15 +214,15 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		return [][]*api.HyperNodeInfo{{hyperNode}}
 	})
 
-	ssn.AddHyperNodeGradientForPodBunchFn(nta.Name(), func(podBunch *api.PodBunchInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
-		if job, found := ssn.Jobs[podBunch.Job]; found && !job.ContainsBunchPolicy() {
-			return [][]*api.HyperNodeInfo{{hyperNode}} // it is unnecessary to try child hyperNode when there is no actual podBunch
+	ssn.AddHyperNodeGradientForSubJobFn(nta.Name(), func(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
+		if job, found := ssn.Jobs[subJob.Job]; found && !job.ContainsSubJobPolicy() {
+			return [][]*api.HyperNodeInfo{{hyperNode}} // it is unnecessary to try child hyperNode when there is no actual subJob
 		}
-		if hardMode, highestAllowedTier := podBunch.IsHardTopologyMode(); hardMode {
-			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, podBunch.AllocatedHyperNode)
+		if hardMode, highestAllowedTier := subJob.IsHardTopologyMode(); hardMode {
+			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, subJob.AllocatedHyperNode)
 			if err != nil {
-				klog.ErrorS(err, "build hyperNode gradient fail", "podBunch", podBunch.UID, "hyperNode", hyperNode.Name,
-					"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", podBunch.AllocatedHyperNode)
+				klog.ErrorS(err, "build hyperNode gradient fail", "subJob", subJob.UID, "hyperNode", hyperNode.Name,
+					"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", subJob.AllocatedHyperNode)
 				return nil
 			}
 			return result
@@ -231,8 +231,8 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 }
 
-func (nta *networkTopologyAwarePlugin) HyperNodeOrderFn(ssn *framework.Session, podBunch *api.PodBunchInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
-	hyperNodeScores := nta.getHyperNodeBinPackingScore(podBunch, hyperNodes)
+func (nta *networkTopologyAwarePlugin) HyperNodeOrderFn(ssn *framework.Session, subJob *api.SubJobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]float64, error) {
+	hyperNodeScores := nta.getHyperNodeBinPackingScore(subJob, hyperNodes)
 
 	scoreToHyperNodes := map[float64][]string{}
 	var maxScore float64 = -1
@@ -247,7 +247,7 @@ func (nta *networkTopologyAwarePlugin) HyperNodeOrderFn(ssn *framework.Session, 
 	if len(scoreToHyperNodes[maxScore]) > 1 {
 		candidateHyperNodes := scoreToHyperNodes[maxScore]
 		for _, hyperNode := range candidateHyperNodes {
-			taskNumScore := nta.scoreWithTaskNum(hyperNode, podBunch.Tasks, ssn.RealNodesList)
+			taskNumScore := nta.scoreWithTaskNum(hyperNode, subJob.Tasks, ssn.RealNodesList)
 			taskNumScore *= float64(nta.weight.GlobalWeight)
 			hyperNodeScores[hyperNode] += taskNumScore
 		}
@@ -257,10 +257,10 @@ func (nta *networkTopologyAwarePlugin) HyperNodeOrderFn(ssn *framework.Session, 
 	return hyperNodeScores, nil
 }
 
-func (nta *networkTopologyAwarePlugin) getHyperNodeBinPackingScore(podBunch *api.PodBunchInfo, hyperNodes map[string][]*api.NodeInfo) map[string]float64 {
+func (nta *networkTopologyAwarePlugin) getHyperNodeBinPackingScore(subJob *api.SubJobInfo, hyperNodes map[string][]*api.NodeInfo) map[string]float64 {
 	tasksRequest := make(map[v1.ResourceName]float64)
-	// currently, the podBunch can only be fully scheduled (minAvailable == taskNum)
-	for _, task := range podBunch.Tasks {
+	// currently, the subJob can only be fully scheduled (minAvailable == taskNum)
+	for _, task := range subJob.Tasks {
 		for _, resourceName := range task.Resreq.ResourceNames() {
 			if _, ok := nta.weight.getBinPackWeight(resourceName); !ok {
 				continue
@@ -290,14 +290,14 @@ func (nta *networkTopologyAwarePlugin) getHyperNodeBinPackingScore(podBunch *api
 			}
 
 			if used+request > allocatable {
-				klog.V(4).InfoS("cannot binpack the hyperNode", "podBunch", podBunch.UID, "hyperNode", hyperNode,
+				klog.V(4).InfoS("cannot binpack the hyperNode", "subJob", subJob.UID, "hyperNode", hyperNode,
 					"resource", resourceName, "allocatable", allocatable, "used", used, "request", request)
 				overused = true
 				break
 			}
 
 			score := (used + request) * float64(resourceWeight) / allocatable
-			klog.V(5).InfoS("hyperNode binpacking score calculation", "podBunch", podBunch.UID, "hyperNode", hyperNode,
+			klog.V(5).InfoS("hyperNode binpacking score calculation", "subJob", subJob.UID, "hyperNode", hyperNode,
 				"resource", resourceName, "allocatable", allocatable, "used", used, "request", request)
 
 			totalScore += score
@@ -323,9 +323,9 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFn(ssn *framework.Session, 
 	nodeScores := make(map[string]float64)
 
 	job := ssn.Jobs[task.Job]
-	podBunch := job.PodBunches[job.TaskToPodBunch[task.UID]]
+	subJob := job.SubJobs[job.TaskToSubJob[task.UID]]
 
-	if !podBunch.WithNetworkTopology() {
+	if !subJob.WithNetworkTopology() {
 		return nodeScores, nil
 	}
 
@@ -351,7 +351,7 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFn(ssn *framework.Session, 
 		candidateNodes := scoreToNodes[maxScore]
 		for _, node := range candidateNodes {
 			hyperNode := util.FindHyperNodeForNode(node, ssn.RealNodesList, ssn.HyperNodesTiers, ssn.HyperNodesSetByTier)
-			taskNumScore := nta.scoreWithTaskNum(hyperNode, podBunch.Tasks, ssn.RealNodesList)
+			taskNumScore := nta.scoreWithTaskNum(hyperNode, subJob.Tasks, ssn.RealNodesList)
 			taskNumScore *= float64(nta.weight.GlobalWeight)
 			nodeScores[node] += taskNumScore
 		}
