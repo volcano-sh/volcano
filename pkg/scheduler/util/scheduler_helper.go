@@ -137,9 +137,9 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 }
 
 // PrioritizeHyperNodes returns a map whose key is hyperNode's score and value are corresponding hyperNodes
-func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, podBunch *api.PodBunchInfo, fn api.HyperNodeOrderMapFn) (map[float64][]string, error) {
+func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, subJob *api.SubJobInfo, fn api.HyperNodeOrderMapFn) (map[float64][]string, error) {
 	hyperNodesScoreMap := make(map[string]float64)
-	mapScores, err := fn(podBunch, candidateHyperNodes)
+	mapScores, err := fn(subJob, candidateHyperNodes)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +147,7 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, podBun
 	// plugin scores of hyperNode.
 	for pluginName, scores := range mapScores {
 		for hyperNode, score := range scores {
-			klog.V(5).InfoS("Add plugin score at hypeNode", "podBunch", podBunch.UID, "pluginName", pluginName, "hyperNodeName", hyperNode, "score", score)
+			klog.V(5).InfoS("Add plugin score at hypeNode", "subJob", subJob.UID, "pluginName", pluginName, "hyperNodeName", hyperNode, "score", score)
 			hyperNodesScoreMap[hyperNode] += score
 		}
 	}
@@ -167,7 +167,7 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, podBun
 		}
 	}
 
-	klog.V(5).InfoS("Prioritize hyperNode score map for podBunch", "podBunch", podBunch.UID, "scoreMap", hyperNodeScoreMap)
+	klog.V(5).InfoS("Prioritize hyperNode score map for subJob", "subJob", subJob.UID, "scoreMap", hyperNodeScoreMap)
 	return hyperNodeScores, nil
 }
 

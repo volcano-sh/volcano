@@ -81,9 +81,9 @@ func TestAddTaskInfo(t *testing.T) {
 						case01Task4.UID: case01Task4,
 					},
 				},
-				PodBunches: map[BunchID]*PodBunchInfo{
-					BunchID(case01UID): {
-						UID:          BunchID(case01UID),
+				SubJobs: map[SubJobID]*SubJobInfo{
+					SubJobID(case01UID): {
+						UID:          SubJobID(case01UID),
 						Job:          case01UID,
 						MinAvailable: 0,
 						Priority:     1,
@@ -115,11 +115,11 @@ func TestAddTaskInfo(t *testing.T) {
 						},
 					},
 				},
-				TaskToPodBunch: map[TaskID]BunchID{
-					case01Task1.UID: BunchID(case01UID),
-					case01Task2.UID: BunchID(case01UID),
-					case01Task3.UID: BunchID(case01UID),
-					case01Task4.UID: BunchID(case01UID),
+				TaskToSubJob: map[TaskID]SubJobID{
+					case01Task1.UID: SubJobID(case01UID),
+					case01Task2.UID: SubJobID(case01UID),
+					case01Task3.UID: SubJobID(case01UID),
+					case01Task4.UID: SubJobID(case01UID),
 				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
 				TaskMinAvailable: make(map[string]int32),
@@ -187,9 +187,9 @@ func TestDeleteTaskInfo(t *testing.T) {
 					Pending: {case01Task1.UID: case01Task1},
 					Running: {case01Task3.UID: case01Task3},
 				},
-				PodBunches: map[BunchID]*PodBunchInfo{
-					BunchID(case01UID): {
-						UID:          BunchID(case01UID),
+				SubJobs: map[SubJobID]*SubJobInfo{
+					SubJobID(case01UID): {
+						UID:          SubJobID(case01UID),
 						Job:          case01UID,
 						MinAvailable: 0,
 						Priority:     1,
@@ -209,9 +209,9 @@ func TestDeleteTaskInfo(t *testing.T) {
 						},
 					},
 				},
-				TaskToPodBunch: map[TaskID]BunchID{
-					case01Task1.UID: BunchID(case01UID),
-					case01Task3.UID: BunchID(case01UID),
+				TaskToSubJob: map[TaskID]SubJobID{
+					case01Task1.UID: SubJobID(case01UID),
+					case01Task3.UID: SubJobID(case01UID),
 				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
 				TaskMinAvailable: make(map[string]int32),
@@ -239,9 +239,9 @@ func TestDeleteTaskInfo(t *testing.T) {
 						case02Task3.UID: case02Task3,
 					},
 				},
-				PodBunches: map[BunchID]*PodBunchInfo{
-					BunchID(case02UID): {
-						UID:          BunchID(case02UID),
+				SubJobs: map[SubJobID]*SubJobInfo{
+					SubJobID(case02UID): {
+						UID:          SubJobID(case02UID),
 						Job:          case02UID,
 						MinAvailable: 0,
 						Priority:     1,
@@ -265,9 +265,9 @@ func TestDeleteTaskInfo(t *testing.T) {
 						},
 					},
 				},
-				TaskToPodBunch: map[TaskID]BunchID{
-					case02Task1.UID: BunchID(case02UID),
-					case02Task3.UID: BunchID(case02UID),
+				TaskToSubJob: map[TaskID]SubJobID{
+					case02Task1.UID: SubJobID(case02UID),
+					case02Task3.UID: SubJobID(case02UID),
 				},
 				NodesFitErrors:   make(map[TaskID]*FitErrors),
 				TaskMinAvailable: make(map[string]int32),

@@ -140,14 +140,14 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddJobOrderFn(gp.Name(), jobOrderFn)
 
-	podBunchOrderFn := func(l, r interface{}) int {
-		lv := l.(*api.PodBunchInfo)
-		rv := r.(*api.PodBunchInfo)
+	subJobOrderFn := func(l, r interface{}) int {
+		lv := l.(*api.SubJobInfo)
+		rv := r.(*api.SubJobInfo)
 
 		lReady := lv.IsReady()
 		rReady := rv.IsReady()
 
-		klog.V(4).Infof("Gang PodBunchOrderFn: <%v> is ready: %t, <%v> is ready: %t",
+		klog.V(4).Infof("Gang SubJobOrderFn: <%v> is ready: %t, <%v> is ready: %t",
 			lv.UID, lReady, rv.UID, rReady)
 
 		if lReady && rReady {
@@ -164,7 +164,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		return 0
 	}
-	ssn.AddPodBunchOrderFn(gp.Name(), podBunchOrderFn)
+	ssn.AddSubJobOrderFn(gp.Name(), subJobOrderFn)
 
 	ssn.AddJobReadyFn(gp.Name(), func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
@@ -174,9 +174,9 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 		return false
 	})
 
-	ssn.AddPodBunchReadyFn(gp.Name(), func(obj interface{}) bool {
-		pbi := obj.(*api.PodBunchInfo)
-		return pbi.IsReady()
+	ssn.AddSubJobReadyFn(gp.Name(), func(obj interface{}) bool {
+		sji := obj.(*api.SubJobInfo)
+		return sji.IsReady()
 	})
 
 	pipelinedFn := func(obj interface{}) int {
@@ -188,9 +188,9 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 	ssn.AddJobPipelinedFn(gp.Name(), pipelinedFn)
 
-	ssn.AddPodBunchPipelinedFn(gp.Name(), func(obj interface{}) int {
-		pbi := obj.(*api.PodBunchInfo)
-		if pbi.IsPipelined() {
+	ssn.AddSubJobPipelinedFn(gp.Name(), func(obj interface{}) int {
+		sji := obj.(*api.SubJobInfo)
+		if sji.IsPipelined() {
 			return util.Permit
 		}
 		return util.Reject

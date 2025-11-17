@@ -355,8 +355,8 @@ type JobInfo struct {
 	NodesFitErrors map[TaskID]*FitErrors
 
 	AllocatedHyperNode string
-	PodBunches         map[BunchID]*PodBunchInfo
-	TaskToPodBunch     map[TaskID]BunchID
+	SubJobs            map[SubJobID]*SubJobInfo
+	TaskToSubJob       map[TaskID]SubJobID
 
 	// All tasks of the Job.
 	TaskStatusIndex       map[TaskStatus]TasksMap
@@ -393,8 +393,8 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 		TaskStatusIndex:  map[TaskStatus]TasksMap{},
 		Tasks:            TasksMap{},
 		TaskMinAvailable: map[string]int32{},
-		PodBunches:       map[BunchID]*PodBunchInfo{},
-		TaskToPodBunch:   map[TaskID]BunchID{},
+		SubJobs:          map[SubJobID]*SubJobInfo{},
+		TaskToSubJob:     map[TaskID]SubJobID{},
 	}
 
 	for _, task := range tasks {
@@ -408,9 +408,9 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 func (ji *JobInfo) UnsetPodGroup() {
 	ji.PodGroup = nil
 
-	clear(ji.PodBunches)
+	clear(ji.SubJobs)
 	for _, task := range ji.Tasks {
-		ji.addTaskToPodBunch(task)
+		ji.addTaskToSubJob(task)
 	}
 }
 
@@ -448,10 +448,10 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 	ji.PgUID = pg.UID
 	ji.PodGroup = pg
 
-	if oldPG == nil || !equality.Semantic.DeepEqual(oldPG.Spec.BunchPolicy, pg.Spec.BunchPolicy) {
-		clear(ji.PodBunches)
+	if oldPG == nil || !equality.Semantic.DeepEqual(oldPG.Spec.SubGroupPolicy, pg.Spec.SubGroupPolicy) {
+		clear(ji.SubJobs)
 		for _, task := range ji.Tasks {
-			ji.addTaskToPodBunch(task)
+			ji.addTaskToSubJob(task)
 		}
 	}
 }
@@ -623,7 +623,7 @@ func (ji *JobInfo) AddTaskInfo(ti *TaskInfo) {
 	if AllocatedStatus(ti.Status) {
 		ji.Allocated.Add(ti.Resreq)
 	}
-	ji.addTaskToPodBunch(ti)
+	ji.addTaskToSubJob(ti)
 }
 
 // UpdateTaskStatus is used to update task's status in a job.
@@ -666,7 +666,7 @@ func (ji *JobInfo) DeleteTaskInfo(ti *TaskInfo) error {
 		}
 		delete(ji.Tasks, task.UID)
 		ji.deleteTaskIndex(task)
-		ji.deleteTaskFromPodBunch(ti)
+		ji.deleteTaskFromSubJob(ti)
 		return nil
 	}
 
@@ -701,8 +701,8 @@ func (ji *JobInfo) Clone() *JobInfo {
 		RevocableZone:         ji.RevocableZone,
 		Budget:                ji.Budget.Clone(),
 		AllocatedHyperNode:    ji.AllocatedHyperNode,
-		PodBunches:            map[BunchID]*PodBunchInfo{},
-		TaskToPodBunch:        map[TaskID]BunchID{},
+		SubJobs:               map[SubJobID]*SubJobInfo{},
+		TaskToSubJob:          map[TaskID]SubJobID{},
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
@@ -714,11 +714,11 @@ func (ji *JobInfo) Clone() *JobInfo {
 		info.AddTaskInfo(task.Clone())
 	}
 
-	for bunchID, podBunch := range ji.PodBunches {
-		if pbi, found := info.PodBunches[bunchID]; found {
-			pbi.CloneStatusFrom(podBunch)
+	for subJobID, subJob := range ji.SubJobs {
+		if sji, found := info.SubJobs[subJobID]; found {
+			sji.CloneStatusFrom(subJob)
 		} else {
-			klog.Errorf("Failed to clone podBunch %s for job %s", podBunch.UID, ji.UID)
+			klog.Errorf("Failed to clone subJob %s for job %s", subJob.UID, ji.UID)
 		}
 	}
 
@@ -861,10 +861,10 @@ func (ji *JobInfo) AllocatedTaskNum() int32 {
 }
 
 // FitFailedRoles returns the job roles' failed fit records
-func (ji *JobInfo) FitFailedRoles(podBunch BunchID) map[string]struct{} {
+func (ji *JobInfo) FitFailedRoles(subJob SubJobID) map[string]struct{} {
 	failedRoles := map[string]struct{}{}
 	for tid := range ji.NodesFitErrors {
-		if ji.TaskToPodBunch[tid] != podBunch {
+		if ji.TaskToSubJob[tid] != subJob {
 			continue
 		}
 		task := ji.Tasks[tid]
@@ -874,13 +874,13 @@ func (ji *JobInfo) FitFailedRoles(podBunch BunchID) map[string]struct{} {
 }
 
 // TaskHasFitErrors checks if the task has fit errors and can continue try predicating
-func (ji *JobInfo) TaskHasFitErrors(podBunch BunchID, task *TaskInfo) bool {
+func (ji *JobInfo) TaskHasFitErrors(subJob SubJobID, task *TaskInfo) bool {
 	// if the task didn't set the spec key, should not use the cache
 	if len(task.TaskRole) == 0 {
 		return false
 	}
 
-	_, exist := ji.FitFailedRoles(podBunch)[task.TaskRole]
+	_, exist := ji.FitFailedRoles(subJob)[task.TaskRole]
 	return exist
 }
 
@@ -898,23 +898,23 @@ func (ji *JobInfo) TaskHasFitErrors(podBunch BunchID, task *TaskInfo) bool {
 //
 //	As the failed predicating role has been pre-checked when it was popped from queue,
 //	this function will only be called at most as the number of roles in this job.
-func (ji *JobInfo) NeedContinueAllocating(bunchID BunchID) bool {
+func (ji *JobInfo) NeedContinueAllocating(subJobID SubJobID) bool {
 	// Ensures all tasks must be running; if any pod allocation fails, further execution stops
 	if int(ji.MinAvailable) == len(ji.Tasks) {
 		return false
 	}
-	if podBunch, found := ji.PodBunches[bunchID]; found {
-		if int(podBunch.MinAvailable) >= len(podBunch.Tasks) {
+	if subJob, found := ji.SubJobs[subJobID]; found {
+		if int(subJob.MinAvailable) >= len(subJob.Tasks) {
 			return false
 		}
 	}
 
-	// todo: job contains bunch policy does not supports the strategies below
-	if ji.ContainsBunchPolicy() {
+	// todo: job contains subJob policy does not supports the strategies below
+	if ji.ContainsSubJobPolicy() {
 		return true
 	}
 
-	failedRoles := ji.FitFailedRoles(bunchID)
+	failedRoles := ji.FitFailedRoles(subJobID)
 
 	pending := map[string]int32{}
 	for _, task := range ji.TaskStatusIndex[Pending] {
@@ -1143,81 +1143,81 @@ func (ji *JobInfo) ResetFitErr() {
 	ji.NodesFitErrors = make(map[TaskID]*FitErrors)
 }
 
-// ResetPodBunchFitErr will set podBunch's node fit err to nil.
-func (ji *JobInfo) ResetPodBunchFitErr(podBunch BunchID) {
+// ResetSubJobFitErr will set subJob's node fit err to nil.
+func (ji *JobInfo) ResetSubJobFitErr(subJob SubJobID) {
 	maps.DeleteFunc(ji.NodesFitErrors, func(taskID TaskID, _ *FitErrors) bool {
-		return ji.TaskToPodBunch[taskID] == podBunch
+		return ji.TaskToSubJob[taskID] == subJob
 	})
 }
 
-func (ji *JobInfo) DefaultPodBunchID() BunchID {
-	return BunchID(ji.UID)
+func (ji *JobInfo) DefaultSubJobID() SubJobID {
+	return SubJobID(ji.UID)
 }
 
-func (ji *JobInfo) getOrCreateDefaultPodBunch() *PodBunchInfo {
-	defaultPodBunch := ji.DefaultPodBunchID()
-	if _, found := ji.PodBunches[defaultPodBunch]; !found {
-		policy := &scheduling.BunchPolicySpec{}
-		if !ji.ContainsBunchPolicy() {
-			policy.BunchSize = ptr.To(ji.MinAvailable)
+func (ji *JobInfo) getOrCreateDefaultSubJob() *SubJobInfo {
+	defaultSubJob := ji.DefaultSubJobID()
+	if _, found := ji.SubJobs[defaultSubJob]; !found {
+		policy := &scheduling.SubGroupPolicySpec{}
+		if !ji.ContainsSubJobPolicy() {
+			policy.SubGroupSize = ptr.To(ji.MinAvailable)
 		}
 		if ji.PodGroup != nil && ji.PodGroup.Spec.NetworkTopology != nil {
 			policy.NetworkTopology = ji.PodGroup.Spec.NetworkTopology.DeepCopy()
 		}
-		ji.PodBunches[defaultPodBunch] = NewPodBunchInfo(defaultPodBunch, ji.UID, policy, nil)
+		ji.SubJobs[defaultSubJob] = NewSubJobInfo(defaultSubJob, ji.UID, policy, nil)
 	}
-	return ji.PodBunches[defaultPodBunch]
+	return ji.SubJobs[defaultSubJob]
 }
 
-func (ji *JobInfo) getOrCreatePodBunch(ti *TaskInfo) *PodBunchInfo {
+func (ji *JobInfo) getOrCreateSubJob(ti *TaskInfo) *SubJobInfo {
 	if ji.PodGroup == nil {
-		return ji.getOrCreateDefaultPodBunch()
+		return ji.getOrCreateDefaultSubJob()
 	}
 
-	for _, policy := range ji.PodGroup.Spec.BunchPolicy {
-		if matchValues := getPodBunchMatchValues(policy, ti.Pod); len(matchValues) > 0 {
-			bunchID := getPodBunchId(ji.UID, policy.Name, matchValues)
-			if _, found := ji.PodBunches[bunchID]; !found {
-				ji.PodBunches[bunchID] = NewPodBunchInfo(bunchID, ji.UID, &policy, matchValues)
+	for _, policy := range ji.PodGroup.Spec.SubGroupPolicy {
+		if matchValues := getSubJobMatchValues(policy, ti.Pod); len(matchValues) > 0 {
+			subJobID := getSubJobID(ji.UID, policy.Name, matchValues)
+			if _, found := ji.SubJobs[subJobID]; !found {
+				ji.SubJobs[subJobID] = NewSubJobInfo(subJobID, ji.UID, &policy, matchValues)
 			}
-			return ji.PodBunches[bunchID]
+			return ji.SubJobs[subJobID]
 		}
 	}
 
-	return ji.getOrCreateDefaultPodBunch()
+	return ji.getOrCreateDefaultSubJob()
 }
 
-func (ji *JobInfo) addTaskToPodBunch(ti *TaskInfo) {
-	podBunch := ji.getOrCreatePodBunch(ti)
-	podBunch.addTask(ti)
+func (ji *JobInfo) addTaskToSubJob(ti *TaskInfo) {
+	subJob := ji.getOrCreateSubJob(ti)
+	subJob.addTask(ti)
 
-	ji.TaskToPodBunch[ti.UID] = podBunch.UID
+	ji.TaskToSubJob[ti.UID] = subJob.UID
 }
 
-func (ji *JobInfo) deleteTaskFromPodBunch(ti *TaskInfo) {
-	bunchID := ji.TaskToPodBunch[ti.UID]
-	if podBunch, found := ji.PodBunches[bunchID]; found {
-		podBunch.deleteTask(ti)
+func (ji *JobInfo) deleteTaskFromSubJob(ti *TaskInfo) {
+	subJobID := ji.TaskToSubJob[ti.UID]
+	if subJob, found := ji.SubJobs[subJobID]; found {
+		subJob.deleteTask(ti)
 	}
 
-	delete(ji.TaskToPodBunch, ti.UID)
+	delete(ji.TaskToSubJob, ti.UID)
 }
 
-// ContainsBunchPolicy returns whether the job has any other podBunches besides the virtual default podBunch
-func (ji *JobInfo) ContainsBunchPolicy() bool {
+// ContainsSubJobPolicy returns whether the job has any other subJobs besides the virtual default subJob
+func (ji *JobInfo) ContainsSubJobPolicy() bool {
 	if ji.PodGroup == nil {
 		return false
 	}
-	return len(ji.PodGroup.Spec.BunchPolicy) > 0
+	return len(ji.PodGroup.Spec.SubGroupPolicy) > 0
 }
 
-// ContainsHardTopologyBunch returns whether the podBunches in the job contain hard network topology
-func (ji *JobInfo) ContainsHardTopologyBunch() bool {
+// ContainsHardTopologyInSubJob returns whether the subJobs in the job contain hard network topology
+func (ji *JobInfo) ContainsHardTopologyInSubJob() bool {
 	if ji.PodGroup == nil {
 		return false
 	}
 
-	for _, policy := range ji.PodGroup.Spec.BunchPolicy {
+	for _, policy := range ji.PodGroup.Spec.SubGroupPolicy {
 		if policy.NetworkTopology != nil && policy.NetworkTopology.Mode == scheduling.HardNetworkTopologyMode &&
 			policy.NetworkTopology.HighestTierAllowed != nil {
 			return true
@@ -1226,21 +1226,21 @@ func (ji *JobInfo) ContainsHardTopologyBunch() bool {
 	return false
 }
 
-// ContainsHardTopology returns whether the job and the podBunches in the job contain hard network topology
+// ContainsHardTopology returns whether the job and the subJobs in the job contain hard network topology
 func (ji *JobInfo) ContainsHardTopology() bool {
-	if hard, _ := ji.IsHardTopologyMode(); hard || ji.ContainsHardTopologyBunch() {
+	if hard, _ := ji.IsHardTopologyMode(); hard || ji.ContainsHardTopologyInSubJob() {
 		return true
 	}
 	return false
 }
 
-// ContainsNetworkTopologyBunch returns whether the podBunches in the job contain network topology
-func (ji *JobInfo) ContainsNetworkTopologyBunch() bool {
+// ContainsNetworkTopologyInSubJob returns whether the subJobs in the job contain network topology
+func (ji *JobInfo) ContainsNetworkTopologyInSubJob() bool {
 	if ji.PodGroup == nil {
 		return false
 	}
 
-	for _, policy := range ji.PodGroup.Spec.BunchPolicy {
+	for _, policy := range ji.PodGroup.Spec.SubGroupPolicy {
 		if policy.NetworkTopology != nil {
 			return true
 		}
@@ -1248,7 +1248,7 @@ func (ji *JobInfo) ContainsNetworkTopologyBunch() bool {
 	return false
 }
 
-// ContainsNetworkTopology returns whether the job and the podBunches in the job contain network topology
+// ContainsNetworkTopology returns whether the job and the subJobs in the job contain network topology
 func (ji *JobInfo) ContainsNetworkTopology() bool {
-	return ji.WithNetworkTopology() || ji.ContainsNetworkTopologyBunch()
+	return ji.WithNetworkTopology() || ji.ContainsNetworkTopologyInSubJob()
 }

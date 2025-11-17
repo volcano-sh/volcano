@@ -39,50 +39,50 @@ type allocateContext struct {
 }
 
 type JobWorksheet struct {
-	podBunches         *util.PriorityQueue // queue of *api.PodBunchInfo
-	podBunchWorksheets map[api.BunchID]*PodBunchWorksheet
+	subJobs          *util.PriorityQueue // queue of *api.SubJobInfo
+	subJobWorksheets map[api.SubJobID]*SubJobWorksheet
 }
 
 func (w *JobWorksheet) ShallowCopyFrom(another *JobWorksheet) {
 	if another == nil {
 		return
 	}
-	w.podBunches = another.podBunches
-	w.podBunchWorksheets = another.podBunchWorksheets
+	w.subJobs = another.subJobs
+	w.subJobWorksheets = another.subJobWorksheets
 }
 
 func (w *JobWorksheet) Empty() bool {
-	return w.podBunches == nil || w.podBunches.Empty()
+	return w.subJobs == nil || w.subJobs.Empty()
 }
 
 func (w *JobWorksheet) Clone() *JobWorksheet {
-	podBunchWorksheets := make(map[api.BunchID]*PodBunchWorksheet)
-	for bunchID, tasks := range w.podBunchWorksheets {
-		podBunchWorksheets[bunchID] = tasks.Clone()
+	subJobWorksheets := make(map[api.SubJobID]*SubJobWorksheet)
+	for subJobID, tasks := range w.subJobWorksheets {
+		subJobWorksheets[subJobID] = tasks.Clone()
 	}
 	return &JobWorksheet{
-		podBunches:         w.podBunches.Clone(),
-		podBunchWorksheets: podBunchWorksheets,
+		subJobs:          w.subJobs.Clone(),
+		subJobWorksheets: subJobWorksheets,
 	}
 }
 
-type PodBunchWorksheet struct {
+type SubJobWorksheet struct {
 	tasks *util.PriorityQueue // queue of *api.TaskInfo
 }
 
-func (w *PodBunchWorksheet) ShallowCopyFrom(another *PodBunchWorksheet) {
+func (w *SubJobWorksheet) ShallowCopyFrom(another *SubJobWorksheet) {
 	if another == nil {
 		return
 	}
 	w.tasks = another.tasks
 }
 
-func (w *PodBunchWorksheet) Empty() bool {
+func (w *SubJobWorksheet) Empty() bool {
 	return w.tasks == nil || w.tasks.Empty()
 }
 
-func (w *PodBunchWorksheet) Clone() *PodBunchWorksheet {
-	return &PodBunchWorksheet{
+func (w *SubJobWorksheet) Clone() *SubJobWorksheet {
+	return &SubJobWorksheet{
 		tasks: w.tasks.Clone(),
 	}
 }
@@ -189,8 +189,8 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 
 		// job without any hard network topology policy use actx.tasksNoHardTopology
 		if !job.ContainsHardTopology() {
-			if podbunchWorksheet, exist := worksheet.podBunchWorksheets[job.DefaultPodBunchID()]; exist {
-				actx.tasksNoHardTopology[job.UID] = podbunchWorksheet.tasks
+			if subJobWorksheet, exist := worksheet.subJobWorksheets[job.DefaultSubJobID()]; exist {
+				actx.tasksNoHardTopology[job.UID] = subJobWorksheet.tasks
 			}
 		}
 	}
@@ -202,16 +202,16 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 	ssn := alloc.session
 
 	jWorksheet := &JobWorksheet{
-		podBunches:         util.NewPriorityQueue(ssn.PodBunchOrderFn),
-		podBunchWorksheets: make(map[api.BunchID]*PodBunchWorksheet),
+		subJobs:          util.NewPriorityQueue(ssn.SubJobOrderFn),
+		subJobWorksheets: make(map[api.SubJobID]*SubJobWorksheet),
 	}
 
-	for bunchID, podBunch := range job.PodBunches {
-		pbWorksheet := &PodBunchWorksheet{
+	for subJobID, subJob := range job.SubJobs {
+		sjWorksheet := &SubJobWorksheet{
 			tasks: util.NewPriorityQueue(ssn.TaskOrderFn),
 		}
 
-		for _, task := range podBunch.TaskStatusIndex[api.Pending] {
+		for _, task := range subJob.TaskStatusIndex[api.Pending] {
 			// Skip tasks whose pod are scheduling gated
 			if task.SchGated {
 				continue
@@ -223,12 +223,12 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 					task.Namespace, task.Name)
 				continue
 			}
-			pbWorksheet.tasks.Push(task)
+			sjWorksheet.tasks.Push(task)
 		}
 
-		if !pbWorksheet.Empty() {
-			jWorksheet.podBunches.Push(podBunch)
-			jWorksheet.podBunchWorksheets[bunchID] = pbWorksheet
+		if !sjWorksheet.Empty() {
+			jWorksheet.subJobs.Push(subJob)
+			jWorksheet.subJobWorksheets[subJobID] = sjWorksheet
 		}
 	}
 
@@ -263,7 +263,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 			jobWorksheet := actx.jobWorksheet[job.UID]
 
 			klog.V(3).InfoS("Try to allocate resource for job contains hard topology", "queue", queue.Name, "job", job.UID,
-				"allocatedHyperNode", job.AllocatedHyperNode, "podBunchNum", jobWorksheet.podBunches.Len())
+				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
 				stmt.Commit()
@@ -276,11 +276,11 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 				}
 			}
 		} else {
-			podBunch, pbExist := job.PodBunches[job.DefaultPodBunchID()]
+			subJob, sjExist := job.SubJobs[job.DefaultSubJobID()]
 			tasks, tasksExist := actx.tasksNoHardTopology[job.UID]
-			if pbExist && tasksExist {
+			if sjExist && tasksExist {
 				klog.V(3).InfoS("Try to allocate resource", "queue", queue.Name, "job", job.UID, "taskNum", tasks.Len())
-				stmt := alloc.allocateResourcesForTasks(podBunch, tasks, framework.ClusterTopHyperNode)
+				stmt := alloc.allocateResourcesForTasks(subJob, tasks, framework.ClusterTopHyperNode)
 				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
 					stmt.Commit()
 
@@ -290,8 +290,8 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 					}
 				}
 			} else {
-				klog.ErrorS(nil, "Can not find default podBunch or tasks for job", "job", job.UID,
-					"podBunchExist", pbExist, "tasksExist", tasksExist)
+				klog.ErrorS(nil, "Can not find default subJob or tasks for job", "job", job.UID,
+					"subJobExist", sjExist, "tasksExist", tasksExist)
 			}
 		}
 
@@ -309,35 +309,35 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 		return nil
 	}
 
-	alloc.recorder.SnapshotPodBunchStatus(job, jobWorksheet)
+	alloc.recorder.SnapshotSubJobStatus(job, jobWorksheet)
 
 	hyperNodeGradients := ssn.HyperNodeGradientForJobFn(job, hyperNodeToAllocate)
 	for gradient, hyperNodes := range hyperNodeGradients {
-		stmtBackup := make(map[string]*framework.Statement)    // backup the statement after the job is allocated to a hyperNode
-		jobWorksheetsBackup := make(map[string]*JobWorksheet)  // backup the job worksheet after the job is allocated to a hyperNode
-		podBunchesAllocationScores := make(map[string]float64) // save the podBunches allocation score of the job allocated to a hyperNode
+		stmtBackup := make(map[string]*framework.Statement)   // backup the statement after the job is allocated to a hyperNode
+		jobWorksheetsBackup := make(map[string]*JobWorksheet) // backup the job worksheet after the job is allocated to a hyperNode
+		subJobsAllocationScores := make(map[string]float64)   // save the subJobs allocation score of the job allocated to a hyperNode
 
 		for _, hyperNode := range hyperNodes {
 			var stmtList []*framework.Statement
-			var podBunchesAllocationScore float64
+			var subJobsAllocationScore float64
 
 			// Clone jobWorksheet and rest job's fit err to make sure it's a clean cache when everytime filter a hyperNode and do not affect each other between hyperNodes.
 			job.ResetFitErr()
 			jobWorksheetCopy := jobWorksheet.Clone()
 			klog.V(3).InfoS("Try to allocate resource for job in hyperNode", "job", job.UID, "hyperNode", hyperNode.Name)
 
-			for !jobWorksheetCopy.podBunches.Empty() {
-				podBunch := jobWorksheetCopy.podBunches.Pop().(*api.PodBunchInfo)
-				bunchWorksheet := jobWorksheetCopy.podBunchWorksheets[podBunch.UID]
+			for !jobWorksheetCopy.subJobs.Empty() {
+				subJob := jobWorksheetCopy.subJobs.Pop().(*api.SubJobInfo)
+				subJobWorksheet := jobWorksheetCopy.subJobWorksheets[subJob.UID]
 
-				stmt, allocationScore := alloc.allocateForPodBunch(podBunch, bunchWorksheet, hyperNode)
+				stmt, allocationScore := alloc.allocateForSubJob(subJob, subJobWorksheet, hyperNode)
 
 				if stmt != nil && len(stmt.Operations()) > 0 {
 					stmtList = append(stmtList, stmt)
-					podBunchesAllocationScore += allocationScore
-					// push back when podBunch is ready and remain pending task
-					if !bunchWorksheet.Empty() {
-						jobWorksheetCopy.podBunches.Push(podBunch)
+					subJobsAllocationScore += allocationScore
+					// push back when subJob is ready and remain pending task
+					if !subJobWorksheet.Empty() {
+						jobWorksheetCopy.subJobs.Push(subJob)
 					}
 
 					if ssn.JobReady(job) {
@@ -345,17 +345,17 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 					}
 				}
 			}
-			// reset the podBunches to initial status
-			alloc.recorder.RecoverPodBunchStatus(job)
+			// reset the subJobs to initial status
+			alloc.recorder.RecoverSubJobStatus(job)
 
 			mergedStmt := framework.SaveOperations(stmtList...)
 			if len(mergedStmt.Operations()) == 0 {
 				continue // skip recording this empty solution
 			}
 			if ssn.JobReady(job) || ssn.JobPipelined(job) {
-				stmtBackup[hyperNode.Name] = mergedStmt                                // backup successful solution
-				jobWorksheetsBackup[hyperNode.Name] = jobWorksheetCopy                 // backup remains podBunches
-				podBunchesAllocationScores[hyperNode.Name] = podBunchesAllocationScore // save the podBunches allocation score of the job
+				stmtBackup[hyperNode.Name] = mergedStmt                          // backup successful solution
+				jobWorksheetsBackup[hyperNode.Name] = jobWorksheetCopy           // backup remains subJobs
+				subJobsAllocationScores[hyperNode.Name] = subJobsAllocationScore // save the subJobs allocation score of the job
 			}
 
 			// dry run in every hyperNode
@@ -364,12 +364,12 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 			}
 		}
 
-		if len(podBunchesAllocationScores) == 0 {
+		if len(subJobsAllocationScores) == 0 {
 			klog.V(5).InfoS("Find solution for job fail", "job", job.UID, "gradient", gradient)
 			continue // try next gradient
 		}
 
-		bestHyperNode, err := alloc.selectBestHyperNodeForJob(podBunchesAllocationScores, job)
+		bestHyperNode, err := alloc.selectBestHyperNodeForJob(subJobsAllocationScores, job)
 		if err != nil {
 			klog.ErrorS(err, "Cannot find best hyper node for job", "job", job.UID, "gradient", gradient)
 			return nil
@@ -396,81 +396,81 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 	return nil
 }
 
-func (alloc *Action) allocateForPodBunch(podBunch *api.PodBunchInfo, podBunchWorksheet *PodBunchWorksheet, hyperNodeForJob *api.HyperNodeInfo) (*framework.Statement, float64) {
+func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *SubJobWorksheet, hyperNodeForJob *api.HyperNodeInfo) (*framework.Statement, float64) {
 	ssn := alloc.session
-	job := ssn.Jobs[podBunch.Job]
+	job := ssn.Jobs[subJob.Job]
 
-	if podBunchWorksheet == nil || podBunchWorksheet.Empty() {
-		klog.V(4).InfoS("Empty podBunch worksheet", "job", podBunch.Job, "podBunch", podBunch.UID)
+	if subJobWorksheet == nil || subJobWorksheet.Empty() {
+		klog.V(4).InfoS("Empty subJob worksheet", "job", subJob.Job, "subJob", subJob.UID)
 		return nil, 0
 	}
 
-	klog.V(3).InfoS("Try to allocate resource for podBunch", "job", podBunch.Job,
-		"podBunch", podBunch.UID, "allocatedHyperNode", podBunch.AllocatedHyperNode, "taskNum", podBunchWorksheet.tasks.Len())
+	klog.V(3).InfoS("Try to allocate resource for subJob", "job", subJob.Job,
+		"subJob", subJob.UID, "allocatedHyperNode", subJob.AllocatedHyperNode, "taskNum", subJobWorksheet.tasks.Len())
 
-	hyperNodeGradients := ssn.HyperNodeGradientForPodBunchFn(podBunch, hyperNodeForJob)
+	hyperNodeGradients := ssn.HyperNodeGradientForSubJobFn(subJob, hyperNodeForJob)
 	for gradient, hyperNodes := range hyperNodeGradients {
-		stmtBackup := make(map[string]*framework.Statement)             // backup the statement after the podBunch is allocated to a hyperNode
-		podBunchWorksheetsBackup := make(map[string]*PodBunchWorksheet) // backup the podBunch worksheet after the podBunch is allocated to a hyperNode
+		stmtBackup := make(map[string]*framework.Statement)         // backup the statement after the subJob is allocated to a hyperNode
+		subJobWorksheetsBackup := make(map[string]*SubJobWorksheet) // backup the subJob worksheet after the subJob is allocated to a hyperNode
 
 		for _, hyperNode := range hyperNodes {
-			// Clone podBunchWorksheet and rest podBunch's fit err to make sure it's a clean cache when everytime filter a hyperNode and do not affect each other between hyperNodes.
-			job.ResetPodBunchFitErr(podBunch.UID)
-			podBunchWorksheetCopy := podBunchWorksheet.Clone()
+			// Clone subJobWorksheet and rest subJob's fit err to make sure it's a clean cache when everytime filter a hyperNode and do not affect each other between hyperNodes.
+			job.ResetSubJobFitErr(subJob.UID)
+			subJobWorksheetCopy := subJobWorksheet.Clone()
 
-			klog.V(3).InfoS("Try to allocate resource for tasks in podBunch", "job", podBunch.Job,
-				"podBunch", podBunch.UID, "taskNum", podBunchWorksheetCopy.tasks.Len(), "hyperNode", hyperNode.Name)
-			stmt := alloc.allocateResourcesForTasks(podBunch, podBunchWorksheetCopy.tasks, hyperNode.Name)
+			klog.V(3).InfoS("Try to allocate resource for tasks in subJob", "job", subJob.Job,
+				"subJob", subJob.UID, "taskNum", subJobWorksheetCopy.tasks.Len(), "hyperNode", hyperNode.Name)
+			stmt := alloc.allocateResourcesForTasks(subJob, subJobWorksheetCopy.tasks, hyperNode.Name)
 
 			if stmt != nil && len(stmt.Operations()) > 0 {
-				stmtBackup[hyperNode.Name] = framework.SaveOperations(stmt)      // backup successful solution
-				podBunchWorksheetsBackup[hyperNode.Name] = podBunchWorksheetCopy // backup remains tasks
-				stmt.Discard()                                                   // dry run in every hyperNode
+				stmtBackup[hyperNode.Name] = framework.SaveOperations(stmt)  // backup successful solution
+				subJobWorksheetsBackup[hyperNode.Name] = subJobWorksheetCopy // backup remains tasks
+				stmt.Discard()                                               // dry run in every hyperNode
 			}
 		}
 
 		if len(stmtBackup) == 0 {
-			klog.V(5).InfoS("Find solution for podBunch fail", "podBunch", podBunch.UID, "gradient", gradient)
+			klog.V(5).InfoS("Find solution for subJob fail", "subJob", subJob.UID, "gradient", gradient)
 			continue // try next gradient
 		}
 
 		// select the best solution
-		bestHyperNode, bestScore, err := alloc.selectBestHyperNodeForPodBunch(stmtBackup, podBunch)
+		bestHyperNode, bestScore, err := alloc.selectBestHyperNodeForSubJob(stmtBackup, subJob)
 		if err != nil {
-			klog.ErrorS(err, "Cannot find best hyper node for podBunch", "podBunch", podBunch.UID, "gradient", gradient)
+			klog.ErrorS(err, "Cannot find best hyper node for subJob", "subJob", subJob.UID, "gradient", gradient)
 			return nil, 0
 		}
 
-		// recover the stmt and update podBunch's allocatedHyperNode field
+		// recover the stmt and update subJob's allocatedHyperNode field
 		bestStmt := stmtBackup[bestHyperNode]
 		finalStmt := framework.NewStatement(ssn)
 		if err = finalStmt.RecoverOperations(bestStmt); err != nil {
-			klog.ErrorS(err, "Failed to recover operations", "podBunch", podBunch.UID, "hyperNode", bestHyperNode)
+			klog.ErrorS(err, "Failed to recover operations", "subJob", subJob.UID, "hyperNode", bestHyperNode)
 			return nil, 0
 		}
-		newAllocatedHyperNode := ssn.HyperNodes.GetLCAHyperNode(podBunch.AllocatedHyperNode, bestHyperNode)
-		podBunch.AllocatedHyperNode = newAllocatedHyperNode
+		newAllocatedHyperNode := ssn.HyperNodes.GetLCAHyperNode(subJob.AllocatedHyperNode, bestHyperNode)
+		subJob.AllocatedHyperNode = newAllocatedHyperNode
 
 		// inherit the remains worksheet after allocate to the best hyperNode
-		podBunchWorksheet.ShallowCopyFrom(podBunchWorksheetsBackup[bestHyperNode])
+		subJobWorksheet.ShallowCopyFrom(subJobWorksheetsBackup[bestHyperNode])
 
-		alloc.recorder.SavePodBunchDecision(podBunch.Job, hyperNodeForJob.Name, podBunch.UID, newAllocatedHyperNode)
-		klog.V(3).InfoS("Allocate podBunch to hyperNode success", "podBunch", podBunch.UID,
+		alloc.recorder.SaveSubJobDecision(subJob.Job, hyperNodeForJob.Name, subJob.UID, newAllocatedHyperNode)
+		klog.V(3).InfoS("Allocate subJob to hyperNode success", "subJob", subJob.UID,
 			"hyperNode", bestHyperNode, "score", bestScore, "newAllocatedHyperNode", newAllocatedHyperNode)
 
 		return finalStmt, bestScore
 	}
 
-	klog.V(5).InfoS("Cannot find any solution for podBunch", "podBunch", podBunch.UID)
+	klog.V(5).InfoS("Cannot find any solution for subJob", "subJob", subJob.UID)
 	return nil, 0
 }
 
 // selectBestHyperNodeForJob return the best hyperNode for the job,
 // it will score and select the best hyperNode among all available hyperNodes.
-func (alloc *Action) selectBestHyperNodeForJob(podBunchesAllocationScores map[string]float64, job *api.JobInfo) (string, error) {
+func (alloc *Action) selectBestHyperNodeForJob(subJobsAllocationScores map[string]float64, job *api.JobInfo) (string, error) {
 	highestScore := math.Inf(-1)
 	bestHyperNode := ""
-	for hyperNode, score := range podBunchesAllocationScores {
+	for hyperNode, score := range subJobsAllocationScores {
 		if score > highestScore {
 			highestScore = score
 			bestHyperNode = hyperNode
@@ -484,11 +484,11 @@ func (alloc *Action) selectBestHyperNodeForJob(podBunchesAllocationScores map[st
 	return bestHyperNode, nil
 }
 
-// selectBestHyperNodeForPodBunch return the best hyperNode for the podBunch,
+// selectBestHyperNodeForSubJob return the best hyperNode for the subJob,
 // it will score and select the best hyperNode among all available hyperNodes.
-func (alloc *Action) selectBestHyperNodeForPodBunch(stmts map[string]*framework.Statement, podBunch *api.PodBunchInfo) (string, float64, error) {
+func (alloc *Action) selectBestHyperNodeForSubJob(stmts map[string]*framework.Statement, subJob *api.SubJobInfo) (string, float64, error) {
 	if len(stmts) <= 0 {
-		return "", 0, fmt.Errorf("no solution found for podBunch %s", podBunch.UID)
+		return "", 0, fmt.Errorf("no solution found for subJob %s", subJob.UID)
 	}
 
 	ssn := alloc.session
@@ -497,22 +497,22 @@ func (alloc *Action) selectBestHyperNodeForPodBunch(stmts map[string]*framework.
 		candidateHyperNodeGroups[hyperNode] = ssn.RealNodesList[hyperNode]
 	}
 
-	hyperNodeScores, err := util.PrioritizeHyperNodes(candidateHyperNodeGroups, podBunch, ssn.HyperNodeOrderMapFn)
+	hyperNodeScores, err := util.PrioritizeHyperNodes(candidateHyperNodeGroups, subJob, ssn.HyperNodeOrderMapFn)
 	if err != nil {
-		return "", 0, fmt.Errorf("prioritize hyperNodes for podBunch %s fail: %w", podBunch.UID, err)
+		return "", 0, fmt.Errorf("prioritize hyperNodes for subJob %s fail: %w", subJob.UID, err)
 	}
 
 	bestHyperNode, bestScore := util.SelectBestHyperNodeAndScore(hyperNodeScores)
 	if bestHyperNode == "" {
-		return "", 0, fmt.Errorf("cannot find best hyperNode for podBunch %s", podBunch.UID)
+		return "", 0, fmt.Errorf("cannot find best hyperNode for subJob %s", subJob.UID)
 	}
 	return bestHyperNode, bestScore, nil
 }
 
-func (alloc *Action) allocateResourcesForTasks(podBunch *api.PodBunchInfo, tasks *util.PriorityQueue, hyperNode string) *framework.Statement {
+func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *util.PriorityQueue, hyperNode string) *framework.Statement {
 	ssn := alloc.session
 
-	job := ssn.Jobs[podBunch.Job]
+	job := ssn.Jobs[subJob.Job]
 	queue := ssn.Queues[job.Queue]
 	nodes, exist := ssn.RealNodesList[hyperNode]
 	if !exist || len(nodes) == 0 {
@@ -523,7 +523,7 @@ func (alloc *Action) allocateResourcesForTasks(podBunch *api.PodBunchInfo, tasks
 	stmt := framework.NewStatement(ssn)
 	ph := util.NewPredicateHelper()
 
-	allocatedHyperNode := podBunch.AllocatedHyperNode
+	allocatedHyperNode := subJob.AllocatedHyperNode
 
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
@@ -533,7 +533,7 @@ func (alloc *Action) allocateResourcesForTasks(podBunch *api.PodBunchInfo, tasks
 		}
 
 		// check if the task with its spec has already predicates failed
-		if job.TaskHasFitErrors(podBunch.UID, task) {
+		if job.TaskHasFitErrors(subJob.UID, task) {
 			msg := fmt.Sprintf("Task %s with role spec %s has already predicated failed, skip", task.Name, task.TaskRole)
 			klog.V(5).Info(msg)
 			fitErrors := api.NewFitErrors()
@@ -584,14 +584,14 @@ func (alloc *Action) allocateResourcesForTasks(podBunch *api.PodBunchInfo, tasks
 			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
 			// so we should break from continuously allocating.
 			// otherwise, should continue to find other allocatable task
-			if job.NeedContinueAllocating(podBunch.UID) {
+			if job.NeedContinueAllocating(subJob.UID) {
 				continue
 			} else {
 				break
 			}
 		}
 
-		if podBunch.WithNetworkTopology() {
+		if subJob.WithNetworkTopology() {
 			task.JobAllocatedHyperNode = allocatedHyperNode
 		}
 
@@ -605,23 +605,23 @@ func (alloc *Action) allocateResourcesForTasks(podBunch *api.PodBunchInfo, tasks
 			continue
 		}
 
-		if podBunch.WithNetworkTopology() {
+		if subJob.WithNetworkTopology() {
 			allocatedHyperNode = getNewAllocatedHyperNode(ssn, bestNode.Name, allocatedHyperNode)
 		}
 
-		if ssn.PodBunchReady(job, podBunch) {
+		if ssn.SubJobReady(job, subJob) {
 			break
 		}
 	}
 
-	if ssn.PodBunchReady(job, podBunch) {
-		klog.V(3).InfoS("PodBunch ready, return statement", "job", job.UID, "podBunch", podBunch.UID)
-		if podBunch.IsSoftTopologyMode() {
-			podBunch.AllocatedHyperNode = allocatedHyperNode
+	if ssn.SubJobReady(job, subJob) {
+		klog.V(3).InfoS("SubJob ready, return statement", "job", job.UID, "subJob", subJob.UID)
+		if subJob.IsSoftTopologyMode() {
+			subJob.AllocatedHyperNode = allocatedHyperNode
 		}
 		return stmt
-	} else if ssn.PodBunchPipelined(job, podBunch) {
-		klog.V(3).InfoS("PodBunch pipelined, return statement", "job", job.UID, "podBunch", podBunch.UID)
+	} else if ssn.SubJobPipelined(job, subJob) {
+		klog.V(3).InfoS("SubJob pipelined, return statement", "job", job.UID, "subJob", subJob.UID)
 		return stmt
 	}
 
