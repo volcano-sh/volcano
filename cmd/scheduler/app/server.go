@@ -79,8 +79,11 @@ func Run(opt *options.ServerOption) error {
 		panic(err)
 	}
 
+	// InitKubeSchedulerRelatedMetrics must always be called to initialize
+	// k8smetrics.Goroutines which is used by Kubernetes scheduler framework plugins
+	metrics.InitKubeSchedulerRelatedMetrics()
+
 	if opt.EnableMetrics || opt.EnablePprof {
-		metrics.InitKubeSchedulerRelatedMetrics()
 		go startMetricsServer(opt)
 	}
 
