@@ -13,25 +13,26 @@ the task policy.
 * Users can set multiple policy for a job or a task.
 * Currently, Volcano provides **6 built-in events** for users. The details are as follows.
 
-| ID  | Event           | Description                                                                                                       |
-|-----|----------------|-------------------------------------------------------------------------------------------------------------------|
-| 1   | `PodFailed`    | Check whether there is any pod' status is `Failed`.                                                               |
-| 2   | `PodEvicted`   | Check whether there is any pod is evicted.                                                                        |
-| 3   | `PodPending`   | Check whether there is any pod is pending. It is usually used with timeout. If the pod is not pending, the timeout action will be canceled.                                                                        |
-| 4   | `TaskCompleted`| Check whether there is a task whose all pods are succeed. If `minsuccess` is configured for a task, it will also be regarded as task completes. |
-| 4   | `Unknown`      | Check whether the status of a volcano job is `Unknown`. The most possible factor is task unschedulable. It is triggered when part pods can't be scheduled while some are already running in gang-scheduling case. |
-| 5   | `*`           | It means all the events, which is not so common used.                                                             |
+| ID | Event           | Description                                                                                                       |
+|----|-----------------|-------------------------------------------------------------------------------------------------------------------|
+| 1  | `PodFailed`     | Check whether there is any pod' status is `Failed`.                                                               |
+| 2  | `PodEvicted`    | Check whether there is any pod is evicted.                                                                        |
+| 3  | `PodPending`    | Check whether there is any pod is pending. It is usually used with timeout. If the pod is not pending, the timeout action will be canceled.                                                                        |
+| 4  | `TaskCompleted` | Check whether there is a task whose all pods are succeed. If `minsuccess` is configured for a task, it will also be regarded as task completes. |
+| 5  | `Unknown`       | Check whether the status of a volcano job is `Unknown`. The most possible factor is task unschedulable. It is triggered when part pods can't be scheduled while some are already running in gang-scheduling case. |
+| 6  | `*`             | It means all the events, which is not so common used.                                                             |
 
 * Currently, Volcano provides **5 built-in actions** for users. The details are as follows.
 
-| ID  | Action            | Description                                                                                                      |
-|-----|-------------------|------------------------------------------------------------------------------------------------------------------|
-| 1   | `AbortJob`        | Abort the whole job, but it can be resumed. All pods will be evicted and no pod will be recreated.               |
-| 2   | `RestartJob`      | Restart the whole job.                                                                                           |
-| 3   | `RestartTask`     | The task will be restarted. This action **cannot** work with job level events such as `Unknown`. |
-| 2   | `RestartPod`      | The pod will be restarted. This action **cannot** work with job level events such as `Unknown`. |
-| 4   | `TerminateJob`    | Terminate the whole job and it **cannot** be resumed. All pods will be evicted and no pod will be recreated.     |
-| 5   | `CompleteJob`     | Regard the job as completed. The unfinished pods will be killed.                                                 |
+| ID | Action             | Description                                                                                                  |
+|----|--------------------|--------------------------------------------------------------------------------------------------------------|
+| 1  | `AbortJob`         | Abort the whole job, but it can be resumed. All pods will be evicted and no pod will be recreated.           |
+| 2  | `RestartJob`       | Restart the whole job.                                                                                       |
+| 3  | `RestartTask`      | The task will be restarted. This action **cannot** work with job level events such as `Unknown`.             |
+| 4  | `RestartPod`       | The pod will be restarted. This action **cannot** work with job level events such as `Unknown`.              |
+| 5  | `RestartPartition` | The partition will be restarted. This action **cannot** work with job level events such as `Unknown`.        |
+| 6  | `TerminateJob`     | Terminate the whole job and it **cannot** be resumed. All pods will be evicted and no pod will be recreated. |
+| 7  | `CompleteJob`      | Regard the job as completed. The unfinished pods will be killed.                                             |
 
 ## Examples
 1. Set a pair of `event` and `action`.
