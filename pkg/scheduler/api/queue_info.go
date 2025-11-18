@@ -39,7 +39,7 @@ type QueueInfo struct {
 
 	Weight int32
 
-	// Weights is a list of slash sperated float numbers.
+	// Weights is a list of slash separated float numbers.
 	// Each of them is a weight corresponding the
 	// hierarchy level.
 	Weights string
