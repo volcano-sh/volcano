@@ -191,6 +191,21 @@ func TestGarbageCollector_IsJobFinished(t *testing.T) {
 			ExpectedVal: true,
 		},
 		{
+			Name: "Aborted Case",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+				Status: v1alpha1.JobStatus{
+					State: v1alpha1.JobState{
+						Phase: v1alpha1.Aborted,
+					},
+				},
+			},
+			ExpectedVal: true,
+		},
+		{
 			Name: "False Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
