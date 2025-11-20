@@ -155,7 +155,7 @@ func (ns *NPUDevices) AddQueueResource(pod *v1.Pod) map[string]float64 {
 }
 
 func (ns *NPUDevices) HasDeviceRequest(pod *v1.Pod) bool {
-	if Ascend310pvNPUEnable && checkVNPUResourcesInPod(pod) {
+	if AscendMindClusterVNPUEnable && checkVNPUResourcesInPod(pod) {
 		return true
 	}
 	return false

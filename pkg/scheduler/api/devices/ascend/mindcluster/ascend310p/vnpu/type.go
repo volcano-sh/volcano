@@ -9,13 +9,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-var Ascend310pvNPUEnable bool
+var AscendMindClusterVNPUEnable bool
 
 const (
 	DeviceName = "ascend310p-vNPU"
 )
 
-type NPUDevice struct { // One VNode/VChip?
+type NPUDevice struct {
 	VT VTemplate
 	// Chips map chipID to VChip class
 	Chips map[int]*VChip
@@ -42,7 +42,7 @@ type NPUDevice struct { // One VNode/VChip?
 
 	// for Concurrent task. not same core request task only has one on a node in same time.
 	// nodeName: templateName:taskUID
-	ConCache map[string]map[types.UID]struct{} //types.UID对应pod.UID
+	ConCache map[string]map[types.UID]struct{} //types.UID equals to pod.UID
 }
 
 type NodeInf struct {

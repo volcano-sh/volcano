@@ -27,7 +27,8 @@ import (
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/ascend310p/vnpu"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/hami"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
@@ -350,10 +351,16 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 	ni.Others[gpushare.DeviceName] = gpushare.NewGPUDevices(ni.Name, node)
 	ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
 	ni.Others[vnpu.DeviceName] = vnpu.NewNPUDevices(ni.Name, node)
+	ascend_ignored_list := []string{}
+	for device_name, devices := range hami.NewAscendDevices(ni.Name, node) {
+		ni.Others[device_name] = devices
+		ascend_ignored_list = append(ascend_ignored_list, devices.GetIgnoredDevices()...)
+	}
 	IgnoredDevicesList.Set(
 		ni.Others[gpushare.DeviceName].(Devices).GetIgnoredDevices(),
 		ni.Others[vgpu.DeviceName].(Devices).GetIgnoredDevices(),
 		ni.Others[vnpu.DeviceName].(Devices).GetIgnoredDevices(),
+		ascend_ignored_list,
 	)
 }
 
@@ -507,6 +514,13 @@ func (ni *NodeInfo) addResource(pod *v1.Pod) {
 	}
 	ni.Others[vgpu.DeviceName].(Devices).AddResource(pod)
 	ni.Others[vnpu.DeviceName].(Devices).AddResource(pod)
+	for _, name := range hami.GetAscendDeviceNames() {
+		if other, exists := ni.Others[name]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.AddResource(pod)
+			}
+		}
+	}
 }
 
 // subResource is used to subtract sharable devices
@@ -516,6 +530,13 @@ func (ni *NodeInfo) subResource(pod *v1.Pod) {
 	}
 	ni.Others[vgpu.DeviceName].(Devices).SubResource(pod)
 	ni.Others[vnpu.DeviceName].(Devices).SubResource(pod)
+	for _, name := range hami.GetAscendDeviceNames() {
+		if other, exists := ni.Others[name]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.SubResource(pod)
+			}
+		}
+	}
 }
 
 // UpdateTask is used to update a task in nodeInfo object.
