@@ -93,6 +93,7 @@ func enablePredicate(dsp *deviceSharePlugin) {
 
 	gpushare.NodeLockEnable = nodeLockEnable
 	vgpu.NodeLockEnable = nodeLockEnable
+	hami.NodeLockEnable = nodeLockEnable
 
 	args.GetString(&dsp.schedulePolicy, SchedulePolicyArgument)
 	args.GetInt(&dsp.scheduleWeight, ScheduleWeight)

@@ -33,7 +33,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 
-	"volcano.sh/volcano/third_party/ascend-for-volcano/common/util"
+	"volcano.sh/volcano/third_party/mindcluster/common/util"
 )
 
 type IsConfigMapChangedArgs struct {

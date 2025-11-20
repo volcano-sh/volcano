@@ -33,17 +33,13 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
+	"volcano.sh/volcano/third_party/hami/util"
 )
 
 const (
-	HAMiAnnotationsPrefix   = "hami.io"
-	AssignedNodeAnnotations = "hami.io/vgpu-node"
-	AssignedTimeAnnotations = "hami.io/vgpu-time"
-	BindTimeAnnotations     = "hami.io/bind-time"
-	DeviceBindPhase         = "hami.io/bind-phase"
-	DeviceBindAllocating    = "allocating"
-	DeviceBindFailed        = "failed"
-	DeviceBindSuccess       = "success"
+	DeviceBindAllocating = "allocating"
+	DeviceBindFailed     = "failed"
+	DeviceBindSuccess    = "success"
 
 	Ascend910Prefix        = "Ascend910"
 	Ascend910NetworkWeight = 10
@@ -303,14 +299,13 @@ func (ads *AscendDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod)
 	if err != nil {
 		return errors.Errorf("failed to select ascend devices for pod %s: %v", pod.Name, err)
 	}
-	annotations := make(map[string]string)
-	ads.PatchAnnotations(pod, &annotations, podDevs)
+	annotations := ads.CreateAnnotations(pod, podDevs)
 
 	ads.addResource(annotations, pod)
-	annotations[AssignedNodeAnnotations] = ads.NodeName
-	annotations[AssignedTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
-	annotations[DeviceBindPhase] = "allocating"
-	annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
+	annotations[util.AssignedNodeAnnotations] = ads.NodeName
+	annotations[util.AssignedTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
+	annotations[util.DeviceBindPhase] = "allocating"
+	annotations[util.BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
 
 	err = devices.PatchPodAnnotations(kubeClient, pod, annotations)
 	if err != nil {
@@ -534,18 +529,18 @@ func InitDevices(config []config.VNPUConfig) []*AscendDevice {
 		commonWord := vnpu.CommonWord
 		dev := &AscendDevice{
 			config:           vnpu,
-			nodeRegisterAnno: fmt.Sprintf("%s/node-register-%s", HAMiAnnotationsPrefix, commonWord),
-			useUUIDAnno:      fmt.Sprintf("%s/use-%s-uuid", HAMiAnnotationsPrefix, commonWord),
-			noUseUUIDAnno:    fmt.Sprintf("%s/no-use-%s-uuid", HAMiAnnotationsPrefix, commonWord),
-			handshakeAnno:    fmt.Sprintf("%s/node-handshake-%s", HAMiAnnotationsPrefix, commonWord),
+			nodeRegisterAnno: fmt.Sprintf("%s/node-register-%s", util.HAMiAnnotationsPrefix, commonWord),
+			useUUIDAnno:      fmt.Sprintf("%s/use-%s-uuid", util.HAMiAnnotationsPrefix, commonWord),
+			noUseUUIDAnno:    fmt.Sprintf("%s/no-use-%s-uuid", util.HAMiAnnotationsPrefix, commonWord),
+			handshakeAnno:    fmt.Sprintf("%s/node-handshake-%s", util.HAMiAnnotationsPrefix, commonWord),
 		}
 		sort.Slice(dev.config.Templates, func(i, j int) bool {
 			return dev.config.Templates[i].Memory < dev.config.Templates[j].Memory
 		})
 		_, ok := devices.InRequestDevices[commonWord]
 		if !ok {
-			devices.InRequestDevices[commonWord] = fmt.Sprintf("%s/%s-devices-to-allocate", HAMiAnnotationsPrefix, commonWord)
-			devices.SupportDevices[commonWord] = fmt.Sprintf("%s/%s-devices-allocated", HAMiAnnotationsPrefix, commonWord)
+			devices.InRequestDevices[commonWord] = fmt.Sprintf("%s/%s-devices-to-allocate", util.HAMiAnnotationsPrefix, commonWord)
+			devices.SupportDevices[commonWord] = fmt.Sprintf("%s/%s-devices-allocated", util.HAMiAnnotationsPrefix, commonWord)
 			// util.HandshakeAnnos[commonWord] = dev.handshakeAnno
 		}
 		devs = append(devs, dev)
@@ -596,16 +591,17 @@ func (dev *AscendDevice) ResourceReqs(pod *v1.Pod) []devices.ContainerDeviceRequ
 	return reqs
 }
 
-func (ads *AscendDevices) PatchAnnotations(pod *v1.Pod, annoInput *map[string]string, devList devices.PodSingleDevice) map[string]string {
+func (ads *AscendDevices) CreateAnnotations(pod *v1.Pod, devList devices.PodSingleDevice) map[string]string {
+	annotations := make(map[string]string)
 	dev, err := ads.getFirstDevice()
 	if err != nil {
-		return *annoInput
+		return annotations
 	}
 	commonWord := dev.CommonWord()
 
-	(*annoInput)[devices.InRequestDevices[commonWord]] = devices.EncodePodSingleDevice(devList)
-	(*annoInput)[devices.SupportDevices[commonWord]] = devices.EncodePodSingleDevice(devList)
-	(*annoInput)["predicate-time"] = strconv.FormatInt(time.Now().Unix(), 10)
+	annotations[devices.InRequestDevices[commonWord]] = devices.EncodePodSingleDevice(devList)
+	annotations[devices.SupportDevices[commonWord]] = devices.EncodePodSingleDevice(devList)
+	annotations["predicate-time"] = strconv.FormatInt(time.Now().Unix(), 10)
 	allocateStr := fmt.Sprintf("huawei.com/%s", dev.CommonWord())
 	var rtInfo []RuntimeInfo
 	for _, dp := range devList {
@@ -621,9 +617,9 @@ func (ads *AscendDevices) PatchAnnotations(pod *v1.Pod, annoInput *map[string]st
 	if err != nil {
 		klog.ErrorS(err, "failed to marshal runtime info", "runtime info", rtInfo)
 	}
-	(*annoInput)[allocateStr] = string(s)
+	annotations[allocateStr] = string(s)
 
-	return *annoInput
+	return annotations
 }
 
 func (dev *AscendDevice) GetResourceNames() devices.ResourceNames {

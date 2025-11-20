@@ -208,9 +208,9 @@ func ExtractResourceRequest(pod *v1.Pod, resourceType, countName, memoryName, pe
 						mempnum = int32(mempnums)
 					}
 				}
-				if mempnum == 101 && memnum == 0 {
-					mempnum = 100
-				}
+			}
+			if mempnum == 101 && memnum == 0 {
+				mempnum = 100
 			}
 			corenum := int32(0)
 			if coreName != "" {

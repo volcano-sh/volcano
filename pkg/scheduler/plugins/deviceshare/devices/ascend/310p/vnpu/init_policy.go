@@ -31,10 +31,10 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
-	"volcano.sh/volcano/third_party/ascend-for-volcano/common/k8s"
-	"volcano.sh/volcano/third_party/ascend-for-volcano/common/util"
-	"volcano.sh/volcano/third_party/ascend-for-volcano/config"
-	"volcano.sh/volcano/third_party/ascend-for-volcano/plugin"
+	"volcano.sh/volcano/third_party/mindcluster/common/k8s"
+	"volcano.sh/volcano/third_party/mindcluster/common/util"
+	"volcano.sh/volcano/third_party/mindcluster/config"
+	"volcano.sh/volcano/third_party/mindcluster/plugin"
 )
 
 func InitVNPUDevice(device *vnpu.NPUDevices, ssn *framework.Session, nodeInfo *api.NodeInfo) error {

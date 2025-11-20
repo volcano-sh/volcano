@@ -20,7 +20,7 @@ Package plugin is using for HuaWei Ascend pin affinity schedule frame.
 
 package plugin
 
-import "volcano.sh/volcano/third_party/ascend-for-volcano/common/util"
+import "volcano.sh/volcano/third_party/mindcluster/common/util"
 
 const (
 	// TorNodeCMName the Name of tor info configmap

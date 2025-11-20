@@ -24,7 +24,7 @@ import (
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
-	"volcano.sh/volcano/third_party/ascend-for-volcano/common/util"
+	"volcano.sh/volcano/third_party/mindcluster/common/util"
 )
 
 func ScoreBatchNodes(pod *v1.Pod, schedulePolicy string, device api.Devices, neighbours []api.Devices) []float64 {

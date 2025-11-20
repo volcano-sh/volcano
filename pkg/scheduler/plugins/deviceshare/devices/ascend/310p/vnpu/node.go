@@ -20,7 +20,7 @@ import (
 	"sort"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
-	"volcano.sh/volcano/third_party/ascend-for-volcano/common/util"
+	"volcano.sh/volcano/third_party/mindcluster/common/util"
 )
 
 func orderVNodesByFreeResource(nodes []*vnpu.NodeInf) []*vnpu.NodeInf {
