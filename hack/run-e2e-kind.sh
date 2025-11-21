@@ -30,10 +30,20 @@ CLUSTER_NAME=${CLUSTER_NAME:-integration}
 export CLUSTER_CONTEXT=("--name" "${CLUSTER_NAME}")
 
 export KIND_OPT=${KIND_OPT:="--config ${VK_ROOT}/hack/e2e-kind-config.yaml"}
-
+export FAKE_GPU_OPERATOR_VALUES=${FAKE_GPU_OPERATOR_VALUES:="${VK_ROOT}/hack/fake-gpu-operator-values.yaml"}
 # kwok node config
 export KWOK_NODE_CPU=${KWOK_NODE_CPU:-8}      # 8 cores
 export KWOK_NODE_MEMORY=${KWOK_NODE_MEMORY:-8Gi}  # 8GB
+
+# pull images and load into kind cluster if PULL_IMAGES is true
+export PULL_IMAGES=${PULL_IMAGES:-false}
+
+# scheduler config
+if [[ ${E2E_TYPE} == "CAPACITYCARD" ]]; then
+  export VOLCANO_SCHEDULER_CONFIG="config/volcano-scheduler-capacity-card-ci.conf"
+else
+  export VOLCANO_SCHEDULER_CONFIG="config/volcano-scheduler-ci.conf"
+fi
 
 # create kwok node
 function create-kwok-node() {
@@ -199,7 +209,7 @@ EOF
 basic:
   image_pull_policy: IfNotPresent
   image_tag_version: ${TAG}
-  scheduler_config_file: config/volcano-scheduler-ci.conf
+  scheduler_config_file: ${VOLCANO_SCHEDULER_CONFIG}
   crd_version: ${crd_version}
 
 custom:
@@ -248,6 +258,10 @@ function generate-log {
 function cleanup {
   uninstall-volcano
 
+  if [[ ${E2E_TYPE} == "CAPACITYCARD" ]]; then
+    uninstall-fake-gpu-operator
+  fi
+
   echo "Running kind: [kind delete cluster ${CLUSTER_CONTEXT[*]}]"
   kind delete cluster "${CLUSTER_CONTEXT[@]}"
 }
@@ -281,6 +295,10 @@ install-kwok-with-helm
 
 if [[ -z ${KUBECONFIG+x} ]]; then
     export KUBECONFIG="${HOME}/.kube/config"
+fi
+
+if [[ ${E2E_TYPE} == "CAPACITYCARD" ]]; then
+  install-fake-gpu-operator
 fi
 
 install-volcano
@@ -348,6 +366,10 @@ case ${E2E_TYPE} in
 "CRONJOB")  
     echo "Running cronjob e2e suite..."  
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/cronjob/  
+    ;;
+"CAPACITYCARD")
+    echo "Running capacitycard e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/capacitycard/
     ;;
 esac
 
