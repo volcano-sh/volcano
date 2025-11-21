@@ -88,6 +88,26 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobOrderFn(pp.Name(), jobOrderFn)
 
+	subJobOrderFn := func(l, r interface{}) int {
+		lv := l.(*api.SubJobInfo)
+		rv := r.(*api.SubJobInfo)
+
+		klog.V(4).Infof("Priority SubJobOrderFn: <%v> priority: %d, <%v> priority: %d",
+			lv.UID, lv.Priority, rv.UID, rv.Priority)
+
+		if lv.Priority > rv.Priority {
+			return -1
+		}
+
+		if lv.Priority < rv.Priority {
+			return 1
+		}
+
+		return 0
+	}
+
+	ssn.AddSubJobOrderFn(pp.Name(), subJobOrderFn)
+
 	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		preemptorJob := ssn.Jobs[preemptor.Job]
 
