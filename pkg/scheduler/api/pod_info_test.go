@@ -28,6 +28,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	k8sfeature "k8s.io/kubernetes/pkg/features"
 
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 )
@@ -435,6 +438,182 @@ func TestGetGPUIndex(t *testing.T) {
 			got := gpushare.GetGPUIndex(tc.pod)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Errorf("Unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestGetPodResourceWithResize(t *testing.T) {
+	// Mock feature gate
+	featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, k8sfeature.InPlacePodVerticalScaling, true)
+
+	tests := []struct {
+		name     string
+		pod      *v1.Pod
+		expected *Resource
+	}{
+		{
+			name: "pod with no pending resize",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name: "c1",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("2"),
+									v1.ResourceMemory: resource.MustParse("2Gi"),
+								},
+							},
+						},
+					},
+				},
+				Status: v1.PodStatus{
+					ContainerStatuses: []v1.ContainerStatus{
+						{
+							Name: "c1",
+							Resources: &v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("1"),
+									v1.ResourceMemory: resource.MustParse("1Gi"),
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: NewResource(v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("2"),
+				v1.ResourceMemory: resource.MustParse("2Gi"),
+			}),
+		},
+		{
+			name: "pod with resize in infeasible",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name: "c1",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("2"),
+									v1.ResourceMemory: resource.MustParse("2Gi"),
+								},
+							},
+						},
+					},
+				},
+				Status: v1.PodStatus{
+					Conditions: []v1.PodCondition{{
+						Type:   v1.PodResizePending,
+						Status: v1.ConditionTrue,
+						Reason: v1.PodReasonInfeasible,
+					}},
+					ContainerStatuses: []v1.ContainerStatus{
+						{
+							Name: "c1",
+							Resources: &v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("1"),
+									v1.ResourceMemory: resource.MustParse("1Gi"),
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: NewResource(v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("1"),
+				v1.ResourceMemory: resource.MustParse("1Gi"),
+			}),
+		},
+		{
+			name: "pod with resize in progress",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name: "c1",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("1"),
+									v1.ResourceMemory: resource.MustParse("1Gi"),
+								},
+							},
+						},
+					},
+				},
+				Status: v1.PodStatus{
+					Conditions: []v1.PodCondition{{
+						Type:   v1.PodResizeInProgress,
+						Status: v1.ConditionTrue,
+						Reason: v1.PodReasonInfeasible,
+					}},
+					ContainerStatuses: []v1.ContainerStatus{
+						{
+							Name: "c1",
+							Resources: &v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("1"),
+									v1.ResourceMemory: resource.MustParse("1Gi"),
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: NewResource(v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("1"),
+				v1.ResourceMemory: resource.MustParse("1Gi"),
+			}),
+		},
+		{
+			name: "pod with resize in deferred",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name: "c1",
+							Resources: v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("2"),
+									v1.ResourceMemory: resource.MustParse("2Gi"),
+								},
+							},
+						},
+					},
+				},
+				Status: v1.PodStatus{
+					Conditions: []v1.PodCondition{{
+						Type:   v1.PodResizePending,
+						Status: v1.ConditionTrue,
+						Reason: v1.PodReasonDeferred,
+					}},
+					ContainerStatuses: []v1.ContainerStatus{
+						{
+							Name: "c1",
+							Resources: &v1.ResourceRequirements{
+								Requests: v1.ResourceList{
+									v1.ResourceCPU:    resource.MustParse("1"),
+									v1.ResourceMemory: resource.MustParse("1Gi"),
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: NewResource(v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("2"),
+				v1.ResourceMemory: resource.MustParse("2Gi"),
+			}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := GetPodResourceWithoutInitContainers(tt.pod)
+			if !got.Equal(tt.expected, Zero) {
+				t.Errorf("GetPodResourceWithoutInitContainers() = %v, want %v", got, tt.expected)
 			}
 		})
 	}
