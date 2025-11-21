@@ -24,10 +24,47 @@ package api
 
 import (
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
+
+// TODO: will replace by the dequeue strategy in https://github.com/volcano-sh/apis/pull/200
+// Dequeue strategy constants
+type DequeueStrategy = string
+
+const (
+
+	// DequeueStrategyFIFO means if the first job in queue whose jobs are sorted by ssn.JobOrderFn cannot be dequeued,
+	// the system will repeatedly try to dequeue the first job without skipping
+	DequeueStrategyFIFO DequeueStrategy = "fifo"
+	// DequeueStrategyTraverse means if the first job in queue whose jobs are sorted by ssn.JobOrderFn cannot be dequeued,
+	// the system will skip it and try subsequent jobs in the queue
+	DequeueStrategyTraverse DequeueStrategy = "traverse"
+
+	// DequeueStrategyCreationtimeBasedFIFO means if the first job in queue whose jobs are orted by creation time first
+	//  cannot be dequeued, the system will repeatedly try to dequeue the first job without skipping
+	DequeueStrategyCreationtimeBasedFIFO DequeueStrategy = "creationtime-based-fifo"
+
+	// DequeueStrategyPriorityBasedFIFO means if the first job in queue whose jobs are sorted by priority first
+	//  cannot be dequeued, the system will repeatedly try to dequeue the first job without skipping
+	DequeueStrategyPriorityBasedFIFO DequeueStrategy = "priority-based-fifo"
+
+	// DequeueStrategyTraverse means if the first job in queue whose jobs are sorted by creation time first
+	// cannot be dequeued, the system will skip it and try subsequent jobs in the queue
+	DequeueStrategyCreationTimeBasedTraverse DequeueStrategy = "creationtime-based-traverse"
+
+	// DequeueStrategyPriorityBasedTraverse means if the first job in queue whose jobs are sorted by priority first
+	// cannot be dequeued, the system will skip it and try subsequent jobs in the queue
+	DequeueStrategyPriorityBasedTraverse DequeueStrategy = "priority-based-traverse"
+
+	// Default dequeue strategy is traverse
+	DefaultDequeueStrategy DequeueStrategy = DequeueStrategyTraverse
+)
+
+// Annotation key for dequeue strategy
+var DequeueStrategyAnnotationKey = "volcano.sh/dequeue-strategy"
 
 // QueueID is UID type, serves as unique ID for each queue
 type QueueID types.UID
@@ -47,11 +84,32 @@ type QueueInfo struct {
 	// path from the root to the node itself.
 	Hierarchy string
 
+	// DequeueStrategy defines the strategy for dequeuing jobs from the queue
+	DequeueStrategy DequeueStrategy
+
 	Queue *scheduling.Queue
 }
 
 // NewQueueInfo creates new queueInfo object
 func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
+	// Read dequeue strategy from annotation, default to traverse
+	dequeueStrategy := DefaultDequeueStrategy
+	if queue.Annotations != nil {
+		if strategy, exists := queue.Annotations[DequeueStrategyAnnotationKey]; exists && strategy != "" {
+			switch strategy {
+			case DequeueStrategyCreationtimeBasedFIFO, DequeueStrategyPriorityBasedFIFO, DequeueStrategyCreationTimeBasedTraverse, DequeueStrategyPriorityBasedTraverse:
+				dequeueStrategy = strategy
+			default:
+				// Invalid strategy, use default
+				klog.Warningf("Invalid dequeue strategy '%s' for queue '%s', using default strategy '%s'", strategy, queue.Name, DefaultDequeueStrategy)
+				dequeueStrategy = DefaultDequeueStrategy
+			}
+		} else {
+			klog.Warningf("No dequeue strategy annotation found for queue '%s', using default strategy '%s'", queue.Name, DefaultDequeueStrategy)
+			dequeueStrategy = DefaultDequeueStrategy
+		}
+	}
+
 	return &QueueInfo{
 		UID:  QueueID(queue.Name),
 		Name: queue.Name,
@@ -60,6 +118,8 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 		Hierarchy: queue.Annotations[v1beta1.KubeHierarchyAnnotationKey],
 		Weights:   queue.Annotations[v1beta1.KubeHierarchyWeightAnnotationKey],
 
+		DequeueStrategy: dequeueStrategy,
+
 		Queue: queue,
 	}
 }
@@ -67,12 +127,13 @@ func NewQueueInfo(queue *scheduling.Queue) *QueueInfo {
 // Clone is used to clone queueInfo object
 func (q *QueueInfo) Clone() *QueueInfo {
 	return &QueueInfo{
-		UID:       q.UID,
-		Name:      q.Name,
-		Weight:    q.Weight,
-		Hierarchy: q.Hierarchy,
-		Weights:   q.Weights,
-		Queue:     q.Queue,
+		UID:             q.UID,
+		Name:            q.Name,
+		Weight:          q.Weight,
+		Hierarchy:       q.Hierarchy,
+		Weights:         q.Weights,
+		DequeueStrategy: q.DequeueStrategy,
+		Queue:           q.Queue,
 	}
 }
 

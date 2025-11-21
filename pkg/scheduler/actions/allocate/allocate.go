@@ -110,7 +110,14 @@ func (alloc *Action) pickUpQueuesAndJobs(queues *util.PriorityQueue, jobsMap map
 		}
 
 		if _, found := jobsMap[job.Queue]; !found {
-			jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			switch ssn.Queues[job.Queue].DequeueStrategy {
+			case api.DequeueStrategyCreationtimeBasedFIFO, api.DequeueStrategyCreationTimeBasedTraverse:
+				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobCreationTimeBasedOrderFn)
+			case api.DequeueStrategyPriorityBasedFIFO, api.DequeueStrategyPriorityBasedTraverse:
+				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobPriorityBasedOrderFn)
+			default:
+				jobsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			}
 			queues.Push(ssn.Queues[job.Queue])
 		}
 
@@ -143,8 +150,7 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 			continue
 		}
 
-		klog.V(3).Infof("Try to allocate resource to Jobs in Queue <%s>", queue.Name)
-
+		klog.V(3).Infof("Try to allocate resource to Jobs in Queue <%s> with strategy <%s>", queue.Name, queue.DequeueStrategy)
 		jobs, found := jobsMap[queue.UID]
 		if !found || jobs.Empty() {
 			klog.V(4).Infof("Can not find jobs for queue %s.", queue.Name)
@@ -208,6 +214,15 @@ func (alloc *Action) allocateResources(queues *util.PriorityQueue, jobsMap map[a
 			stmt.Commit()
 		}
 
+		// For creation-time-based strategies, if a job fails to allocate any resources (empty statement),
+		// block the queue by not re-queuing it.
+		// This prevents subsequent jobs in the same queue from being scheduled in the current cycle.
+		if (queue.DequeueStrategy == api.DequeueStrategyCreationtimeBasedFIFO ||
+			queue.DequeueStrategy == api.DequeueStrategyPriorityBasedFIFO ||
+			queue.DequeueStrategy == api.DequeueStrategyFIFO) &&
+			stmt == nil {
+			continue
+		}
 		// Put back the queue to priority queue after job's resource allocating finished,
 		// To ensure that the priority of the queue is calculated based on the latest resource allocation situation.
 		queues.Push(queue)
