@@ -52,6 +52,10 @@ type capacityPlugin struct {
 	queueOpts map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
+	// checkQueueDimensionsOnly indicates whether to only check resources defined in queue capability
+	// When enabled, only resource dimensions specified in queue's capability will be checked
+	// e.g., if queue capability only defines GPU, then only GPU will be checked
+	checkQueueDimensionsOnly bool
 }
 
 type queueAttr struct {
@@ -76,12 +80,23 @@ type queueAttr struct {
 
 // New return capacityPlugin action
 func New(arguments framework.Arguments) framework.Plugin {
-	return &capacityPlugin{
-		totalResource:   api.EmptyResource(),
-		totalGuarantee:  api.EmptyResource(),
-		queueOpts:       map[api.QueueID]*queueAttr{},
-		pluginArguments: arguments,
+	cp := &capacityPlugin{
+		totalResource:            api.EmptyResource(),
+		totalGuarantee:           api.EmptyResource(),
+		queueOpts:                map[api.QueueID]*queueAttr{},
+		pluginArguments:          arguments,
+		checkQueueDimensionsOnly: false,
 	}
+
+	// Read configuration from arguments
+	if args, ok := arguments["checkQueueDimensionsOnly"]; ok {
+		if val, ok := args.(bool); ok {
+			cp.checkQueueDimensionsOnly = val
+			klog.V(4).Infof("Capacity plugin: checkQueueDimensionsOnly is set to %v", val)
+		}
+	}
+
+	return cp
 }
 
 func (cp *capacityPlugin) Name() string {
@@ -846,7 +861,32 @@ func (cp *capacityPlugin) isLeafQueue(queueID api.QueueID) bool {
 
 func (cp *capacityPlugin) queueAllocatable(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 	attr := cp.queueOpts[queue.UID]
-	return queueAllocatable(attr, candidate, queue)
+	return cp.queueAllocatableWithCheck(attr, candidate, queue)
+}
+
+func (cp *capacityPlugin) queueAllocatableWithCheck(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo) bool {
+	futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
+
+	var allocatable bool
+	var insufficientResources []string
+
+	// If checkQueueDimensionsOnly is enabled, only check dimensions defined in queue capability
+	if cp.checkQueueDimensionsOnly && attr.capability != nil && !attr.capability.IsEmpty() {
+		allocatable, insufficientResources = futureUsed.LessEqualWithSpecifiedDimensions(attr.realCapability, attr.capability)
+		if !allocatable {
+			klog.V(3).Infof("Queue <%v>: checkQueueDimensionsOnly enabled, checking only dimensions in capability <%v>; realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>, insufficient resources: %v",
+				queue.Name, attr.capability, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq, insufficientResources)
+		}
+	} else {
+		// Default behavior: check all dimensions in task request
+		allocatable, insufficientResources = futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, candidate.Resreq)
+		if !allocatable {
+			klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>, insufficient resources: %v",
+				queue.Name, attr.realCapability, attr.allocated, candidate.Name, candidate.Resreq, insufficientResources)
+		}
+	}
+
+	return allocatable
 }
 
 func queueAllocatable(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo) bool {
@@ -887,6 +927,12 @@ func (cp *capacityPlugin) jobEnqueueable(queue *api.QueueInfo, job *api.JobInfo)
 	// The queue resource quota limit has not reached
 	r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 
+	// If checkQueueDimensionsOnly is enabled, only check dimensions defined in queue capability
+	if cp.checkQueueDimensionsOnly && attr.capability != nil && !attr.capability.IsEmpty() {
+		return r.LessEqualWithSpecifiedDimensions(attr.realCapability, attr.capability)
+	}
+
+	// Default behavior: check all dimensions in job's min resource request
 	return r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
 }
 

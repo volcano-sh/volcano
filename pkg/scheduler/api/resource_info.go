@@ -521,6 +521,75 @@ func (r *Resource) LessEqualWithResourcesName(rr *Resource, defaultValue Dimensi
 	return true, resources
 }
 
+// LessEqualWithSpecifiedDimensions compares two resources only for dimensions defined in specifiedDimensions
+// Will return true and empty slice if left <= right for all specified dimensions, otherwise return false and insufficient resource names
+// @param r the resource to check (left side of comparison)
+// @param rr the capacity resource to compare against (right side of comparison)
+// @param specifiedDimensions resource containing the dimensions to be compared (only checks dimensions with value > 0)
+// This function is useful when you only want to check specific resource dimensions, e.g., only GPU resources
+// NOTE: It's safe to pass nil for specifiedDimensions - the function will fall back to checking all dimensions
+func (r *Resource) LessEqualWithSpecifiedDimensions(rr *Resource, specifiedDimensions *Resource) (bool, []string) {
+	resources := []string{}
+	if r == nil {
+		return true, []string{}
+	}
+	if rr == nil {
+		for _, name := range r.ResourceNames() {
+			resources = append(resources, string(name))
+		}
+		return false, resources
+	}
+	// Safety check: if specifiedDimensions is nil or empty, fall back to checking all dimensions
+	// This ensures we never dereference a nil pointer when accessing specifiedDimensions.MilliCPU or specifiedDimensions.Memory
+	if specifiedDimensions == nil || specifiedDimensions.IsEmpty() {
+		// If no dimensions specified, check all dimensions
+		return r.LessEqualWithResourcesName(rr, Zero)
+	}
+
+	lessEqualFunc := func(l, r, diff float64) bool {
+		if l < r || math.Abs(l-r) < diff {
+			return true
+		}
+		return false
+	}
+
+	// Only check CPU if it's specified in dimensions
+	if specifiedDimensions.MilliCPU >= minResource {
+		if !lessEqualFunc(r.MilliCPU, rr.MilliCPU, minResource) {
+			resources = append(resources, "cpu")
+		}
+	}
+
+	// Only check Memory if it's specified in dimensions
+	if specifiedDimensions.Memory >= minResource {
+		if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
+			resources = append(resources, "memory")
+		}
+	}
+
+	// Only check scalar resources that are specified in dimensions
+	if specifiedDimensions.ScalarResources != nil {
+		for name, dimValue := range specifiedDimensions.ScalarResources {
+			if IsIgnoredScalarResource(name) {
+				continue
+			}
+			// Only check this scalar resource if it's specified in dimensions
+			if dimValue >= minResource {
+				leftValue := r.Get(name)
+				rightValue := rr.Get(name)
+				if !lessEqualFunc(leftValue, rightValue, minResource) {
+					resources = append(resources, string(name))
+				}
+			}
+		}
+	}
+
+	if len(resources) > 0 {
+		return false, resources
+	}
+	return true, resources
+}
+
 // LessPartly returns true if there exists any dimension whose resource amount in r is less than that in rr.
 // Otherwise returns false.
 // @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
