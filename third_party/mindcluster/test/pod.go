@@ -30,7 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"volcano.sh/volcano/pkg/scheduler/api"
 
-	"volcano.sh/volcano/third_party/ascend-for-volcano/common/util"
+	"volcano.sh/volcano/third_party/mindcluster/common/util"
 )
 
 func makePodSpec(pod NPUPod) v1.PodSpec {

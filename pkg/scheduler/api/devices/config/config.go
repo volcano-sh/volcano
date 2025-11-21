@@ -44,11 +44,30 @@ const (
    hygon:
      resourceCountName: "volcano.sh/vdcu"
      ...
+   vnpus:
+   - chipName: 910B3
+      commonWord: Ascend910B3
+      resourceName: huawei.com/Ascend910B3
+      resourceMemoryName: huawei.com/Ascend910B3-memory
+      memoryAllocatable: 65536
+      memoryCapacity: 65536
+      aiCore: 20
+      aiCPU: 7
+      templates:
+        - name: vir05_1c_16g
+          memory: 16384
+          aiCore: 5
+          aiCPU: 1
+        - name: vir10_3c_32g
+          memory: 32768
+          aiCore: 10
+          aiCPU: 3
 */
 
 type Config struct {
 	//NvidiaConfig is used for vGPU feature for nvidia, gpushare is not using this config
 	NvidiaConfig NvidiaConfig `yaml:"nvidia"`
+	VNPUs        []VNPUConfig `yaml:"vnpus"`
 }
 
 var (
@@ -96,6 +115,38 @@ func GetDefaultDevicesConfig() *Config {
 			DeviceMemoryScaling: 1,
 			DeviceCoreScaling:   1,
 			DisableCoreLimit:    false,
+		},
+		VNPUs: []VNPUConfig{
+			{
+				CommonWord:         "Ascend310P",
+				ChipName:           "310P3",
+				ResourceName:       "huawei.com/Ascend310P",
+				ResourceMemoryName: "huawei.com/Ascend310P-memory",
+				MemoryAllocatable:  21527,
+				MemoryCapacity:     24576,
+				AICore:             8,
+				AICPU:              7,
+				Templates: []Template{
+					{
+						Name:   "vir01",
+						Memory: 3072,
+						AICore: 1,
+						AICPU:  1,
+					},
+					{
+						Name:   "vir02",
+						Memory: 6144,
+						AICore: 2,
+						AICPU:  2,
+					},
+					{
+						Name:   "vir04",
+						Memory: 12288,
+						AICore: 4,
+						AICPU:  4,
+					},
+				},
+			},
 		},
 	}
 }

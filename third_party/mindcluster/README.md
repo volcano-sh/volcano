@@ -20,14 +20,14 @@ The code was copied from the official `mind-cluster` repository.
 
 To integrate with the Volcano project structure, the following modifications were made to the import paths in the copied source files:
 
-- The original import path `volcano.sh/volcano/pkg/scheduler/plugins/ascend-volcano-plugin/common/util` was changed to `volcano.sh/volcano/third_party/ascend-for-volcano/common/util`.
-- The original import path `volcano.sh/volcano/pkg/scheduler/plugins/ascend-volcano-plugin/test` was changed to `volcano.sh/volcano/third_party/ascend-for-volcano/test`. 
+- The original import path `volcano.sh/volcano/pkg/scheduler/plugins/ascend-volcano-plugin/common/util` was changed to `volcano.sh/volcano/third_party/mindcluster/common/util`.
+- The original import path `volcano.sh/volcano/pkg/scheduler/plugins/ascend-volcano-plugin/test` was changed to `volcano.sh/volcano/third_party/mindcluster/test`. 
 - The original import path `k8s.io/klog` was changed to `k8s.io/klog/v2`
-- `nodeInf.Capability` in `third_party/ascend-for-volcano/test/node.go` was changed to `nodeInf.Capacity`
-- `VolumeBinder:  &util.FakeVolumeBinder{}` in `third_party/ascend-for-volcano/test/frame.go` was removed
-- `binder := &util.FakeBinder` in `third_party/ascend-for-volcano/test/frame.go` was changed to `binder := util.NewFakeBinder(0)`
-- New Function `GetDeviceInfoAndSetInformerStart` is added to `third_party/ascend-for-volcano/common/k8s/cmmgr.go`.
-- New Function `GetNodeDInfo` is added to `third_party/ascend-for-volcano/common/k8s/cmmgr.go`.
+- `nodeInf.Capability` in `third_party/mindcluster/test/node.go` was changed to `nodeInf.Capacity`
+- `VolumeBinder:  &util.FakeVolumeBinder{}` in `third_party/mindcluster/test/frame.go` was removed
+- `binder := &util.FakeBinder` in `third_party/mindcluster/test/frame.go` was changed to `binder := util.NewFakeBinder(0)`
+- New Function `GetDeviceInfoAndSetInformerStart` is added to `third_party/mindcluster/common/k8s/cmmgr.go`.
+- New Function `GetNodeDInfo` is added to `third_party/mindcluster/common/k8s/cmmgr.go`.
 - `plugin/type.go` only reserves the top 90 lines and removes the others.
 
 ## Upgrade Process
@@ -57,7 +57,7 @@ This method is suitable for minor upgrades where changes are expected to be smal
 
 This method is simpler and safer for major upgrades or when changes are extensive, as it avoids potential errors from manually applying a large number of patches.
 
-1.  **Delete**: In this `volcano` project, remove the current `common` and `test` directories under `third_party/ascend-for-volcano`.
+1.  **Delete**: In this `volcano` project, remove the current `common` and `test` directories under `third_party/mindcluster`.
 2.  **Copy**: From a local clone of the `mind-cluster` repository (checked out at the new tag), copy the `component/ascend-for-volcano/common` and `component/ascend-for-volcano/test` directories here.
 3.  **Apply Modifications**: **Crucially**, you must re-apply the import path modifications as described in the "Modifications" section above. This step is mandatory for the code to compile.
 

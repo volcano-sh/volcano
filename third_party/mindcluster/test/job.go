@@ -30,7 +30,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
 
-	"volcano.sh/volcano/third_party/ascend-for-volcano/common/util"
+	"volcano.sh/volcano/third_party/mindcluster/common/util"
 )
 
 // SetTestJobPodGroupPendingStatus set test job's PodGroupStatus
