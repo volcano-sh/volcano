@@ -654,6 +654,205 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	}
 }
 
+func TestOverwriteRootQueueRealCapability(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New, predicates.PluginName: predicates.New, gang.PluginName: gang.New}
+	trueValue := true
+	actions := []framework.Action{enqueue.New(), allocate.New()}
+
+	// Cluster ALWAYS has 4 CPU, 8Gi Memory
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+
+	// ===== Cases for overwriteRootQueueRealCapability = false =====
+	// Root queue capability: 4 CPU (matches cluster)
+	rootQueue4CPU := buildQueueWithParents("root", "", nil, api.BuildResourceList("4", "8Gi"))
+	childQueue1_4CPU := buildQueueWithParents("child1", "root", nil, api.BuildResourceList("4", "8Gi"))
+
+	// Case 1: Pod 2 CPU - should succeed
+	p1 := util.BuildPod("ns1", "p1", "", corev1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", make(map[string]string), map[string]string{})
+	pg1 := util.BuildPodGroup("pg1", "ns1", "child1", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	res2c4g := api.BuildResourceList("2", "4Gi")
+	pg1.Spec.MinResources = &res2c4g
+
+	// Case 2: Pod 4 CPU - should succeed
+	p2 := util.BuildPod("ns1", "p2", "", corev1.PodPending, api.BuildResourceList("4", "8Gi"), "pg2", make(map[string]string), map[string]string{})
+	pg2 := util.BuildPodGroup("pg2", "ns1", "child1", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	res4c8g := api.BuildResourceList("4", "8Gi")
+	pg2.Spec.MinResources = &res4c8g
+
+	// Case 3: Pod 6 CPU - should NOT succeed (exceeds both queue and cluster)
+	p3 := util.BuildPod("ns1", "p3", "", corev1.PodPending, api.BuildResourceList("6", "8Gi"), "pg3", make(map[string]string), map[string]string{})
+	pg3 := util.BuildPodGroup("pg3", "ns1", "child1", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	res6c8g := api.BuildResourceList("6", "8Gi")
+	pg3.Spec.MinResources = &res6c8g
+
+	// ===== Cases for overwriteRootQueueRealCapability = true =====
+	// Root queue capability: 10 CPU (exceeds cluster's 4 CPU)
+	rootQueue10CPU := buildQueueWithParents("root", "", nil, api.BuildResourceList("10", "20Gi"))
+	childQueue1_10CPU := buildQueueWithParents("child1", "root", nil, api.BuildResourceList("10", "20Gi"))
+
+	// Case 4: Pod 2 CPU - should succeed
+	p4 := util.BuildPod("ns1", "p4", "", corev1.PodPending, api.BuildResourceList("2", "4Gi"), "pg4", make(map[string]string), map[string]string{})
+	pg4 := util.BuildPodGroup("pg4", "ns1", "child1", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg4.Spec.MinResources = &res2c4g
+
+	// Case 5: Pod 4 CPU - should succeed
+	p5 := util.BuildPod("ns1", "p5", "", corev1.PodPending, api.BuildResourceList("4", "8Gi"), "pg5", make(map[string]string), map[string]string{})
+	pg5 := util.BuildPodGroup("pg5", "ns1", "child1", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg5.Spec.MinResources = &res4c8g
+
+	// Case 6: Pod 6 CPU with root queue 4 CPU - should NOT succeed
+	rootQueue4CPU_case6 := buildQueueWithParents("root", "", nil, api.BuildResourceList("4", "8Gi"))
+	childQueue1_4CPU_case6 := buildQueueWithParents("child1", "root", nil, api.BuildResourceList("4", "8Gi"))
+	p6 := util.BuildPod("ns1", "p6", "", corev1.PodPending, api.BuildResourceList("6", "8Gi"), "pg6", make(map[string]string), map[string]string{})
+	pg6 := util.BuildPodGroup("pg6", "ns1", "child1", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg6.Spec.MinResources = &res6c8g
+
+	// Case 7: Pod 6 CPU with root queue 10 CPU - should succeed (key difference!)
+	p7 := util.BuildPod("ns1", "p7", "", corev1.PodPending, api.BuildResourceList("6", "12Gi"), "pg7", make(map[string]string), map[string]string{})
+	pg7 := util.BuildPodGroup("pg7", "ns1", "child1", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	res6c12g := api.BuildResourceList("6", "12Gi")
+	pg7.Spec.MinResources = &res6c12g
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name:           "Case 1: overwriteRootQueueRealCapability=false, root=4CPU, pod=2CPU -> SUCCESS",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p1},
+			Nodes:          []*corev1.Node{n1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg1},
+			Queues:         []*schedulingv1beta1.Queue{rootQueue4CPU, childQueue1_4CPU},
+			ExpectBindsNum: 1,
+		},
+		{
+			Name:           "Case 2: overwriteRootQueueRealCapability=false, root=4CPU, pod=4CPU -> SUCCESS",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p2},
+			Nodes:          []*corev1.Node{n1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg2},
+			Queues:         []*schedulingv1beta1.Queue{rootQueue4CPU, childQueue1_4CPU},
+			ExpectBindsNum: 1,
+		},
+		{
+			Name:           "Case 3: overwriteRootQueueRealCapability=false, root=4CPU, pod=6CPU -> FAIL",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p3},
+			Nodes:          []*corev1.Node{n1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg3},
+			Queues:         []*schedulingv1beta1.Queue{rootQueue4CPU, childQueue1_4CPU},
+			ExpectBindsNum: 0,
+		},
+		{
+			Name:           "Case 4: overwriteRootQueueRealCapability=true, root=4CPU, pod=2CPU -> SUCCESS",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p4},
+			Nodes:          []*corev1.Node{n1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg4},
+			Queues:         []*schedulingv1beta1.Queue{rootQueue4CPU_case6, childQueue1_4CPU_case6},
+			ExpectBindsNum: 1,
+		},
+		{
+			Name:           "Case 5: overwriteRootQueueRealCapability=true, root=4CPU, pod=4CPU -> SUCCESS",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p5},
+			Nodes:          []*corev1.Node{n1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg5},
+			Queues:         []*schedulingv1beta1.Queue{rootQueue4CPU_case6, childQueue1_4CPU_case6},
+			ExpectBindsNum: 1,
+		},
+		{
+			Name:           "Case 6: overwriteRootQueueRealCapability=true, root=4CPU, pod=6CPU -> FAIL",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p6},
+			Nodes:          []*corev1.Node{n1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg6},
+			Queues:         []*schedulingv1beta1.Queue{rootQueue4CPU_case6, childQueue1_4CPU_case6},
+			ExpectBindsNum: 0,
+		},
+		{
+			Name:           "Case 7: overwriteRootQueueRealCapability=true, root=10CPU, pod=6CPU -> SUCCESS (KEY TEST)",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{p7},
+			Nodes:          []*corev1.Node{n1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{pg7},
+			Queues:         []*schedulingv1beta1.Queue{rootQueue10CPU, childQueue1_10CPU},
+			ExpectBindsNum: 1,
+		},
+	}
+
+	// Tiers for default behavior (overwriteRootQueueRealCapability=false)
+	tiersDefault := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledJobEnqueued: &trueValue,
+					EnabledHierarchy:   &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:               gang.PluginName,
+					EnabledJobStarving: &trueValue,
+				},
+			},
+		},
+	}
+
+	// Tiers for overwrite enabled
+	tiersOverwrite := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledJobEnqueued: &trueValue,
+					EnabledHierarchy:   &trueValue,
+					Arguments: map[string]interface{}{
+						"overwriteRootQueueRealCapability": true,
+					},
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:               gang.PluginName,
+					EnabledJobStarving: &trueValue,
+				},
+			},
+		},
+	}
+
+	// Run Cases 1-3 with default behavior
+	for i := 0; i < 3; i++ {
+		t.Run(tests[i].Name, func(t *testing.T) {
+			test := tests[i]
+			test.RegisterSession(tiersDefault, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+
+	// Run Cases 4-7 with overwrite enabled
+	for i := 3; i < 7; i++ {
+		t.Run(tests[i].Name, func(t *testing.T) {
+			test := tests[i]
+			test.RegisterSession(tiersOverwrite, nil)
+			defer test.Close()
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func buildQueueWithParents(name string, parent string, deserved corev1.ResourceList, cap corev1.ResourceList) *schedulingv1beta1.Queue {
 	queue := util.BuildQueueWithResourcesQuantity(name, deserved, cap)
 	queue.Spec.Parent = parent
