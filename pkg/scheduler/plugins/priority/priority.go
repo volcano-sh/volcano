@@ -22,8 +22,14 @@ limitations under the License.
 package priority
 
 import (
+	"regexp"
+	"strconv"
+	"strings"
+
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
@@ -46,25 +52,36 @@ func (pp *priorityPlugin) Name() string {
 	return PluginName
 }
 
-func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
-	taskOrderFn := func(l interface{}, r interface{}) int {
-		lv := l.(*api.TaskInfo)
-		rv := r.(*api.TaskInfo)
+func taskOrderFn(l interface{}, r interface{}) int {
+	lv := l.(*api.TaskInfo)
+	rv := r.(*api.TaskInfo)
 
-		klog.V(4).Infof("Priority TaskOrder: <%v/%v> priority is %v, <%v/%v> priority is %v",
-			lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
-
-		if lv.Priority == rv.Priority {
-			return 0
+	// if NodeIPAware feature is enabled, sort tasks by rank first
+	if utilfeature.DefaultFeatureGate.Enabled(features.NodeIPAware) {
+		if ret := compareTaskByRank(lv, rv); ret != 0 {
+			return ret
 		}
-
-		if lv.Priority > rv.Priority {
-			return -1
-		}
-
-		return 1
 	}
 
+	klog.V(4).Infof("Priority TaskOrder: <%v/%v> priority is %v, <%v/%v> priority is %v",
+		lv.Namespace, lv.Name, lv.Priority, rv.Namespace, rv.Name, rv.Priority)
+
+	if lv.Priority == rv.Priority {
+		// if NodeIPAware feature is enabled, sort tasks by name suffix
+		if utilfeature.DefaultFeatureGate.Enabled(features.NodeIPAware) {
+			return compareTaskByNameSuffix(lv, rv)
+		}
+		return api.OrderingEqual
+	}
+
+	if lv.Priority > rv.Priority {
+		return api.OrderingLess
+	}
+
+	return api.OrderingGreater
+}
+
+func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Add Task Order function
 	ssn.AddTaskOrderFn(pp.Name(), taskOrderFn)
 
@@ -126,3 +143,92 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func (pp *priorityPlugin) OnSessionClose(ssn *framework.Session) {}
+
+var replicaTypeMap = map[string]int{
+	"launcher": 1,
+	"master":   2,
+	"worker":   3,
+	"ps":       4,
+}
+
+func compareTaskByRank(a, b *api.TaskInfo) int {
+	rankA := a.GetRank()
+	rankB := b.GetRank()
+
+	// If RANK is specified
+	if rankA != "" || rankB != "" {
+		return compareNumberStr(rankA, rankB)
+	}
+	return api.OrderingEqual
+}
+
+func compareTaskByNameSuffix(a, b *api.TaskInfo) int {
+	// If RANK is not specified (primarily for MPI tasks, as ranktable parsing
+	// can be complex), sort by pod name index for graceful handling.
+	// FOR PyTorchJob, the pods that created are named as
+	// xxx-master-0
+	// xxx-worker-0
+	// xxx-worker-1
+	//
+	// FOR MPIJob, the pods that created are named as
+	// xxx-launcher
+	// xxx-worker-0
+	// xxx-worker-1
+
+	var getReplicateType = func(name string) string {
+		subStrs := strings.Split(name, "-")
+		if len(subStrs) < 2 {
+			return ""
+		}
+		if subStrs[len(subStrs)-1] == "launcher" {
+			return "launcher"
+		}
+		return subStrs[len(subStrs)-2]
+	}
+
+	aRT := getReplicateType(a.Name)
+	bRT := getReplicateType(b.Name)
+	if aRT != bRT {
+		// Tasks with a replica type that has a lower integer value come first.
+		if replicaTypeMap[aRT] < replicaTypeMap[bRT] {
+			return api.OrderingLess
+		}
+		return api.OrderingGreater
+	}
+
+	aNum := extractTrailingNumber(a.Name)
+	bNum := extractTrailingNumber(b.Name)
+	return compareNumberStr(aNum, bNum)
+}
+func compareNumberStr(rankA, rankB string) int {
+	rankAId, aErr := strconv.Atoi(rankA)
+	rankBId, bErr := strconv.Atoi(rankB)
+	if aErr == nil && bErr == nil {
+		switch {
+		case rankAId < rankBId:
+			return api.OrderingLess
+		case rankAId > rankBId:
+			return api.OrderingGreater
+		default:
+			return api.OrderingEqual
+		}
+	}
+	if aErr == nil && bErr != nil {
+		return api.OrderingGreater
+	}
+
+	if aErr != nil && bErr == nil {
+		return api.OrderingLess
+	}
+	return api.OrderingEqual
+}
+
+var trailingNumberRegex = regexp.MustCompile(`-(\d+)$`)
+
+func extractTrailingNumber(str string) string {
+	matches := trailingNumberRegex.FindStringSubmatch(str)
+	if len(matches) < 2 {
+		return ""
+	}
+	return matches[1]
+}
