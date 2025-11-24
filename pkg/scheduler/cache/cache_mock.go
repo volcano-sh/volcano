@@ -123,7 +123,7 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
 		errTasks:            workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[*schedulingapi.JobInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.JobInfo]()),
+		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		kubeClient:          fake.NewSimpleClientset(),
 		vcClient:            fakevcClient.NewSimpleClientset(),
