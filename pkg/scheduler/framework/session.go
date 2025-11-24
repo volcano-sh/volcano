@@ -640,7 +640,8 @@ func (ssn *Session) CreateBindContext(task *api.TaskInfo) *cache.BindContext {
 	for _, plugin := range ssn.plugins {
 		// If the plugin implements the BindContextHandler interface, call the SetupBindContextExtension method.
 		if handler, ok := plugin.(BindContextHandler); ok {
-			handler.SetupBindContextExtension(ssn, bindContext)
+			state := ssn.GetCycleState(task.UID)
+			handler.SetupBindContextExtension(state, bindContext)
 		}
 	}
 

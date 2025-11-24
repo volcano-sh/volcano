@@ -25,7 +25,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/cache"
 )
 
-// Action is the interface of scheduler action.
+// // Action is the interface of agent scheduler action.
 type Action interface {
 	// The unique name of Action.
 	Name() string
@@ -34,22 +34,25 @@ type Action interface {
 	Initialize()
 
 	// Execute allocates the cluster's resources into each queue.
-	Execute(ssn *Session)
+	Execute(sc *ScheduleCycle)
 
 	// UnInitialize un-initializes the allocator plugins.
 	UnInitialize()
 }
 
-// Plugin is the interface of scheduler plugin
+// Plugin is the interface of agent scheduler plugin
 type Plugin interface {
 	// The unique name of Plugin.
 	Name() string
 
-	OnSessionOpen(ssn *Session)
-	OnSessionClose(ssn *Session)
+	// OnSchedulingStart is called when a new schedule cycle start
+	OnSchedulingStart(sc *ScheduleCycle)
+
+	// OnSchedulingStart is called when a schedule cycle end
+	OnSchedulingEnd(sc *ScheduleCycle)
 }
 
 type BindContextHandler interface {
 	// SetupBindContextExtension allows the plugin to set up extension information in the bind context
-	SetupBindContextExtension(state *k8sframework.CycleState, bindCtx *cache.BindContext)
+	SetupBindContextExtension(sc *k8sframework.CycleState, bindCtx *cache.BindContext)
 }
