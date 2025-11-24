@@ -19,47 +19,52 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package agentscheduler
+package scheduler
 
 import (
-	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/fsnotify/fsnotify"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
-	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
-	schedcache "volcano.sh/volcano/pkg/agentscheduler/cache"
-	"volcano.sh/volcano/pkg/agentscheduler/conf"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/agentscheduler/framework"
+	vfwk "volcano.sh/volcano/pkg/agentscheduler/framework"
 	"volcano.sh/volcano/pkg/filewatcher"
-	"volcano.sh/volcano/pkg/scheduler/api"
+	schedcache "volcano.sh/volcano/pkg/scheduler/cache"
+	"volcano.sh/volcano/pkg/scheduler/conf"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 // Scheduler represents a "Volcano Scheduler".
 // Scheduler watches for new unscheduled pods(PodGroup) in Volcano.
 // It attempts to find nodes that can accommodate these pods and writes the binding information back to the API server.
 type Scheduler struct {
-	agentCache     schedcache.Cache
+	cache          schedcache.Cache
 	schedulerConf  string
 	fileWatcher    filewatcher.FileWatcher
 	schedulePeriod time.Duration
 	once           sync.Once
 
 	mutex              sync.Mutex
+	actions            []framework.Action
+	tiers              []conf.Tier
 	configurations     []conf.Configuration
 	metricsConf        map[string]string
 	dumper             schedcache.Dumper
 	disableDefaultConf bool
+	plugins            map[string]framework.Plugin
 }
 
 // NewScheduler returns a Scheduler
-func NewAgentScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, error) {
+func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, error) {
 	var watcher filewatcher.FileWatcher
 	if opt.SchedulerConf != "" {
 		var err error
@@ -74,7 +79,7 @@ func NewAgentScheduler(config *rest.Config, opt *options.ServerOption) (*Schedul
 	scheduler := &Scheduler{
 		schedulerConf:      opt.SchedulerConf,
 		fileWatcher:        watcher,
-		agentCache:         cache,
+		cache:              cache,
 		schedulePeriod:     opt.SchedulePeriod,
 		dumper:             schedcache.Dumper{Cache: cache, RootDir: opt.CacheDumpFileDir},
 		disableDefaultConf: opt.DisableDefaultSchedulerConfig,
@@ -84,11 +89,16 @@ func NewAgentScheduler(config *rest.Config, opt *options.ServerOption) (*Schedul
 }
 
 // Run initializes and starts the Scheduler. It loads the configuration,
-// initializes the agentCache, and begins the scheduling process.
+// initializes the cache, and begins the scheduling process.
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
-	pc.agentCache.Run(stopCh)
+	pc.loadSchedulerConf()
+	go pc.watchSchedulerConf(stopCh)
+	// Start cache for policy.
+	pc.cache.SetMetricsConf(pc.metricsConf)
+	pc.cache.Run(stopCh)
+	pc.registerPlugins(pc.tiers)
 	klog.V(2).Infof("Scheduler completes Initialization and start to run")
-	go wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
+	go wait.Until(pc.runOnce, 0, stopCh)
 	if options.ServerOpts.EnableCacheDumper {
 		pc.dumper.ListenForSignal(stopCh)
 	}
@@ -98,40 +108,136 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 // runOnce executes a single scheduling cycle. This function is called periodically
 // as defined by the Scheduler's schedule period.
 func (pc *Scheduler) runOnce() {
-	// TODO
-}
+	klog.V(4).Infof("Start scheduling ...")
+	scheduleStartTime := time.Now()
+	defer klog.V(4).Infof("End scheduling ...")
 
-// 基础节点选择
-func (pc *Scheduler) selectNode(task *api.TaskInfo, nodes map[string]*api.NodeInfo) *api.NodeInfo {
-	for _, node := range nodes {
-		// 基础的资源检查
-		if node.Allocatable.LessEqual(task.Resreq, api.Zero) {
-			continue
-		}
+	pc.mutex.Lock()
+	actions := pc.actions
+	// configurations := pc.configurations
+	pc.mutex.Unlock()
 
-		// 基础的状态检查
-		if !node.Ready() {
-			continue
-		}
-
-		return node
-	}
-	return nil
-}
-
-// 基础绑定
-func (pc *Scheduler) bindTask(task *api.TaskInfo, node *api.NodeInfo) {
-	binding := &v1.Binding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      task.Name,
-			Namespace: task.Namespace,
-		},
-		Target: v1.ObjectReference{
-			Kind: "Node",
-			Name: node.Name,
-		},
+	// Load ConfigMap to check which action is enabled.
+	conf.EnabledActionMap = make(map[string]bool)
+	for _, action := range actions {
+		conf.EnabledActionMap[action.Name()] = true
 	}
 
-	pc.agentCache.Client().CoreV1().Pods(task.Namespace).Bind(
-		context.TODO(), binding, metav1.CreateOptions{})
+	cycle := vfwk.StartSchedulingCycle(pc.cache, pc.plugins)
+	defer func() {
+		vfwk.EndSchedulingCycle(cycle)
+		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
+	}()
+
+	for _, action := range actions {
+		actionStartTime := time.Now()
+		action.Execute(cycle)
+		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
+	}
+}
+
+func (pc *Scheduler) loadSchedulerConf() {
+	klog.V(4).Infof("Start loadSchedulerConf ...")
+	defer func() {
+		actions, plugins := pc.getSchedulerConf()
+		klog.V(2).Infof("Finished loading scheduler config. Final state: actions=%v, plugins=%v", actions, plugins)
+	}()
+
+	if pc.disableDefaultConf && len(pc.schedulerConf) == 0 {
+		klog.Fatalf("No --scheduler-conf path provided and default configuration fallback is disabled")
+	}
+
+	var err error
+	if !pc.disableDefaultConf {
+		pc.once.Do(func() {
+			pc.actions, pc.tiers, pc.configurations, pc.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
+			if err != nil {
+				klog.Fatalf("Invalid default configuration: unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
+			}
+		})
+	}
+
+	var config string
+	if len(pc.schedulerConf) != 0 {
+		confData, err := os.ReadFile(pc.schedulerConf)
+		if err != nil {
+			if pc.disableDefaultConf {
+				klog.Fatalf("Failed to read scheduler config and default configuration fallback is disabled")
+			}
+			klog.Errorf("Failed to read the Scheduler config in '%s', using previous configuration: %v",
+				pc.schedulerConf, err)
+			return
+		}
+		config = strings.TrimSpace(string(confData))
+	}
+
+	actions, tiers, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
+	if err != nil {
+		if pc.disableDefaultConf {
+			klog.Fatalf("Invalid scheduler configuration and default configuration fallback is disabled")
+		}
+		klog.Errorf("Scheduler config %s is invalid: %v", config, err)
+		return
+	}
+
+	pc.mutex.Lock()
+	pc.actions = actions
+	pc.tiers = tiers
+	pc.configurations = configurations
+	pc.metricsConf = metricsConf
+	pc.mutex.Unlock()
+}
+
+func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
+	for _, action := range pc.actions {
+		actions = append(actions, action.Name())
+	}
+	for _, tier := range pc.tiers {
+		for _, plugin := range tier.Plugins {
+			plugins = append(plugins, plugin.Name)
+		}
+	}
+	return
+}
+
+func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
+	if pc.fileWatcher == nil {
+		return
+	}
+	eventCh := pc.fileWatcher.Events()
+	errCh := pc.fileWatcher.Errors()
+	for {
+		select {
+		case event, ok := <-eventCh:
+			if !ok {
+				return
+			}
+			klog.V(4).Infof("watch %s event: %v", pc.schedulerConf, event)
+			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
+				pc.loadSchedulerConf()
+				pc.cache.SetMetricsConf(pc.metricsConf)
+			}
+		case err, ok := <-errCh:
+			if !ok {
+				return
+			}
+			klog.Infof("watch %s error: %v", pc.schedulerConf, err)
+		case <-stopCh:
+			return
+		}
+	}
+}
+
+func (pc *Scheduler) registerPlugins(tiers []conf.Tier) {
+	pc.plugins = make(map[string]framework.Plugin)
+	for _, tier := range tiers {
+		for _, plugin := range tier.Plugins {
+			if pb, found := framework.GetPluginBuilder(plugin.Name); !found {
+				klog.Errorf("Failed to get plugin %s.", plugin.Name)
+			} else {
+				plugin := pb(plugin.Arguments)
+				pc.plugins[plugin.Name()] = plugin
+			}
+		}
+	}
 }

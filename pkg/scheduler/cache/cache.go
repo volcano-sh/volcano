@@ -37,9 +37,6 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	infov1 "k8s.io/client-go/informers/core/v1"
-	schedv1 "k8s.io/client-go/informers/scheduling/v1"
-	storagev1 "k8s.io/client-go/informers/storage/v1"
-	storagev1beta1 "k8s.io/client-go/informers/storage/v1beta1"
 	"k8s.io/client-go/kubernetes"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
@@ -47,15 +44,11 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
-	resourceslicetracker "k8s.io/dynamic-resource-allocation/resourceslice/tracker"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
-	kubefeatures "k8s.io/kubernetes/pkg/features"
 
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
-	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 	"stathat.com/c/consistent"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -65,11 +58,7 @@ import (
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
-	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
-
-	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/features"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -113,22 +102,22 @@ type SchedulerCache struct {
 	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
-	resyncPeriod               time.Duration
-	podInformer                infov1.PodInformer
-	nodeInformer               infov1.NodeInformer
-	hyperNodeInformer          topologyinformerv1alpha1.HyperNodeInformer
-	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
-	queueInformerV1beta1       vcinformerv1.QueueInformer
-	pvInformer                 infov1.PersistentVolumeInformer
-	pvcInformer                infov1.PersistentVolumeClaimInformer
-	scInformer                 storagev1.StorageClassInformer
-	vaInformer                 storagev1.VolumeAttachmentInformer
-	pcInformer                 schedv1.PriorityClassInformer
-	quotaInformer              infov1.ResourceQuotaInformer
-	csiNodeInformer            storagev1.CSINodeInformer
-	csiDriverInformer          storagev1.CSIDriverInformer
-	csiStorageCapacityInformer storagev1beta1.CSIStorageCapacityInformer
-	cpuInformer                cpuinformerv1.NumatopologyInformer
+	resyncPeriod time.Duration
+	podInformer  infov1.PodInformer
+	nodeInformer infov1.NodeInformer
+	// hyperNodeInformer topologyinformerv1alpha1.HyperNodeInformer
+	podGroupInformerV1beta1 vcinformerv1.PodGroupInformer
+	queueInformerV1beta1    vcinformerv1.QueueInformer
+	// pvInformer  infov1.PersistentVolumeInformer
+	// pvcInformer infov1.PersistentVolumeClaimInformer
+	// scInformer  storagev1.StorageClassInformer
+	// vaInformer                 storagev1.VolumeAttachmentInformer
+	// pcInformer                 schedv1.PriorityClassInformer
+	// quotaInformer              infov1.ResourceQuotaInformer
+	// csiNodeInformer storagev1.CSINodeInformer
+	// csiDriverInformer          storagev1.CSIDriverInformer
+	// csiStorageCapacityInformer storagev1beta1.CSIStorageCapacityInformer
+	// cpuInformer                cpuinformerv1.NumatopologyInformer
 
 	Binder         Binder
 	Evictor        Evictor
@@ -636,29 +625,29 @@ func (sc *SchedulerCache) addEventHandler() {
 		},
 	)
 
-	sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
-	sc.pvcInformer.Informer()
-	sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
-	sc.pvInformer.Informer()
-	sc.scInformer = informerFactory.Storage().V1().StorageClasses()
-	sc.scInformer.Informer()
-	sc.vaInformer = informerFactory.Storage().V1().VolumeAttachments()
-	sc.vaInformer.Informer()
-	sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
-	sc.csiNodeInformer.Informer().AddEventHandler(
-		cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddOrUpdateCSINode,
-			UpdateFunc: sc.UpdateCSINode,
-			DeleteFunc: sc.DeleteCSINode,
-		},
-	)
+	// sc.pvcInformer = informerFactory.Core().V1().PersistentVolumeClaims()
+	// sc.pvcInformer.Informer()
+	// sc.pvInformer = informerFactory.Core().V1().PersistentVolumes()
+	// sc.pvInformer.Informer()
+	// sc.scInformer = informerFactory.Storage().V1().StorageClasses()
+	// sc.scInformer.Informer()
+	// sc.vaInformer = informerFactory.Storage().V1().VolumeAttachments()
+	// sc.vaInformer.Informer()
+	// sc.csiNodeInformer = informerFactory.Storage().V1().CSINodes()
+	// sc.csiNodeInformer.Informer().AddEventHandler(
+	// 	cache.ResourceEventHandlerFuncs{
+	// 		AddFunc:    sc.AddOrUpdateCSINode,
+	// 		UpdateFunc: sc.UpdateCSINode,
+	// 		DeleteFunc: sc.DeleteCSINode,
+	// 	},
+	// )
 
-	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
-		sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
-		sc.csiDriverInformer.Informer()
-		sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
-		sc.csiStorageCapacityInformer.Informer()
-	}
+	// if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage && utilfeature.DefaultFeatureGate.Enabled(features.CSIStorage) {
+	// 	sc.csiDriverInformer = informerFactory.Storage().V1().CSIDrivers()
+	// 	sc.csiDriverInformer.Informer()
+	// 	sc.csiStorageCapacityInformer = informerFactory.Storage().V1beta1().CSIStorageCapacities()
+	// 	sc.csiStorageCapacityInformer.Informer()
+	// }
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
 	// create informer for pod information
@@ -694,26 +683,26 @@ func (sc *SchedulerCache) addEventHandler() {
 			},
 		})
 
-	if options.ServerOpts != nil && options.ServerOpts.EnablePriorityClass && utilfeature.DefaultFeatureGate.Enabled(features.PriorityClass) {
-		sc.pcInformer = informerFactory.Scheduling().V1().PriorityClasses()
-		sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddPriorityClass,
-			UpdateFunc: sc.UpdatePriorityClass,
-			DeleteFunc: sc.DeletePriorityClass,
-		})
-	}
+	// if options.ServerOpts != nil && options.ServerOpts.EnablePriorityClass && utilfeature.DefaultFeatureGate.Enabled(features.PriorityClass) {
+	// 	sc.pcInformer = informerFactory.Scheduling().V1().PriorityClasses()
+	// 	sc.pcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// 		AddFunc:    sc.AddPriorityClass,
+	// 		UpdateFunc: sc.UpdatePriorityClass,
+	// 		DeleteFunc: sc.DeletePriorityClass,
+	// 	})
+	// }
 
-	sc.quotaInformer = informerFactory.Core().V1().ResourceQuotas()
-	sc.quotaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddResourceQuota,
-		UpdateFunc: sc.UpdateResourceQuota,
-		DeleteFunc: sc.DeleteResourceQuota,
-	})
+	// sc.quotaInformer = informerFactory.Core().V1().ResourceQuotas()
+	// sc.quotaInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// 	AddFunc:    sc.AddResourceQuota,
+	// 	UpdateFunc: sc.UpdateResourceQuota,
+	// 	DeleteFunc: sc.DeleteResourceQuota,
+	// })
 
 	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, sc.resyncPeriod)
 	sc.vcInformerFactory = vcinformers
 
-	// create informer for PodGroup(v1beta1) information
+	// // create informer for PodGroup(v1beta1) information
 	sc.podGroupInformerV1beta1 = vcinformers.Scheduling().V1beta1().PodGroups()
 	sc.podGroupInformerV1beta1.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
@@ -742,7 +731,7 @@ func (sc *SchedulerCache) addEventHandler() {
 			},
 		})
 
-	// create informer(v1beta1) for Queue information
+	// // create informer(v1beta1) for Queue information
 	sc.queueInformerV1beta1 = vcinformers.Scheduling().V1beta1().Queues()
 	sc.queueInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.AddQueueV1beta1,
@@ -750,44 +739,44 @@ func (sc *SchedulerCache) addEventHandler() {
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.ResourceTopology) {
-		sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
-		sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.AddNumaInfoV1alpha1,
-			UpdateFunc: sc.UpdateNumaInfoV1alpha1,
-			DeleteFunc: sc.DeleteNumaInfoV1alpha1,
-		})
-	}
+	// if utilfeature.DefaultFeatureGate.Enabled(features.ResourceTopology) {
+	// 	sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
+	// 	sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// 		AddFunc:    sc.AddNumaInfoV1alpha1,
+	// 		UpdateFunc: sc.UpdateNumaInfoV1alpha1,
+	// 		DeleteFunc: sc.DeleteNumaInfoV1alpha1,
+	// 	})
+	// }
 
-	sc.hyperNodeInformer = sc.vcInformerFactory.Topology().V1alpha1().HyperNodes()
-	sc.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    sc.AddHyperNode,
-		UpdateFunc: sc.UpdateHyperNode,
-		DeleteFunc: sc.DeleteHyperNode,
-	})
+	// sc.hyperNodeInformer = sc.vcInformerFactory.Topology().V1alpha1().HyperNodes()
+	// sc.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// 	AddFunc:    sc.AddHyperNode,
+	// 	UpdateFunc: sc.UpdateHyperNode,
+	// 	DeleteFunc: sc.DeleteHyperNode,
+	// })
 
-	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
-		ctx := context.TODO()
-		logger := klog.FromContext(ctx)
-		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
-		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
-		resourceSliceTrackerOpts := resourceslicetracker.Options{
-			EnableDeviceTaints: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
-			SliceInformer:      informerFactory.Resource().V1().ResourceSlices(),
-			KubeClient:         sc.kubeClient,
-		}
-		// If device taints are disabled, the additional informers are not needed and
-		// the tracker turns into a simple wrapper around the slice informer.
-		if resourceSliceTrackerOpts.EnableDeviceTaints {
-			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
-			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
-		}
-		resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)
-		if err != nil {
-			klog.V(3).Infof("couldn't start resource slice tracker: %v", err)
-		}
-		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, resourceSliceTracker, informerFactory)
-	}
+	// if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
+	// 	ctx := context.TODO()
+	// 	logger := klog.FromContext(ctx)
+	// 	resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
+	// 	resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+	// 	resourceSliceTrackerOpts := resourceslicetracker.Options{
+	// 		EnableDeviceTaints: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
+	// 		SliceInformer:      informerFactory.Resource().V1().ResourceSlices(),
+	// 		KubeClient:         sc.kubeClient,
+	// 	}
+	// 	// If device taints are disabled, the additional informers are not needed and
+	// 	// the tracker turns into a simple wrapper around the slice informer.
+	// 	if resourceSliceTrackerOpts.EnableDeviceTaints {
+	// 		resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
+	// 		resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
+	// 	}
+	// 	resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)
+	// 	if err != nil {
+	// 		klog.V(3).Infof("couldn't start resource slice tracker: %v", err)
+	// 	}
+	// 	sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, resourceSliceTracker, informerFactory)
+	// }
 }
 
 // Run  starts the schedulerCache
@@ -800,7 +789,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	}
 
 	// Sync hyperNode.
-	go wait.Until(sc.processSyncHyperNode, 0, stopCh)
+	// go wait.Until(sc.processSyncHyperNode, 0, stopCh)
 
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
@@ -1192,28 +1181,28 @@ func (sc *SchedulerCache) processSyncNode() bool {
 	return true
 }
 
-func (sc *SchedulerCache) processSyncHyperNode() {
-	worker := func() bool {
-		name, shutdown := sc.hyperNodesQueue.Get()
-		if shutdown {
-			return false
-		}
-		defer sc.hyperNodesQueue.Done(name)
+// func (sc *SchedulerCache) processSyncHyperNode() {
+// 	worker := func() bool {
+// 		name, shutdown := sc.hyperNodesQueue.Get()
+// 		if shutdown {
+// 			return false
+// 		}
+// 		defer sc.hyperNodesQueue.Done(name)
 
-		klog.V(5).Infof("started sync hyperNode %s", name)
-		err := sc.SyncHyperNode(name)
-		if err == nil {
-			sc.hyperNodesQueue.Forget(name)
-			return true
-		}
+// 		klog.V(5).Infof("started sync hyperNode %s", name)
+// 		err := sc.SyncHyperNode(name)
+// 		if err == nil {
+// 			sc.hyperNodesQueue.Forget(name)
+// 			return true
+// 		}
 
-		klog.ErrorS(err, "Failed to sync hyperNode, retry it.", "name", name)
-		sc.hyperNodesQueue.AddRateLimited(name)
-		return true
-	}
-	for worker() {
-	}
-}
+// 		klog.ErrorS(err, "Failed to sync hyperNode, retry it.", "name", name)
+// 		sc.hyperNodesQueue.AddRateLimited(name)
+// 		return true
+// 	}
+// 	for worker() {
+// 	}
+// }
 
 // AddBindTask add task to be bind to a cache which consumes by go runtime
 func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {

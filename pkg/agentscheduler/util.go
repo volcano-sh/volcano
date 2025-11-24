@@ -19,40 +19,55 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package agentscheduler
+package scheduler
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 
-	"volcano.sh/volcano/pkg/agentscheduler/conf"
+	"volcano.sh/volcano/pkg/agentscheduler/framework"
+	"volcano.sh/volcano/pkg/agentscheduler/plugins"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/util"
 )
 
 var DefaultSchedulerConf = `
-actions: "enqueue, allocate, backfill"
+actions: "allocate"
 tiers:
 - plugins:
-  - name: priority
-  - name: gang
-  - name: conformance
-- plugins:
-  - name: overcommit
-  - name: drf
   - name: predicates
-  - name: proportion
   - name: nodeorder
 `
 
-func UnmarshalSchedulerConf(confStr string) ([]conf.Configuration, map[string]string, error) {
+func UnmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []conf.Configuration, map[string]string, error) {
+	var actions []framework.Action
+
 	schedulerConf := &conf.SchedulerConfiguration{}
 
 	if err := yaml.Unmarshal([]byte(confStr), schedulerConf); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	return schedulerConf.Configurations, schedulerConf.MetricsConfiguration, nil
+	// Set default settings for each plugin if not set
+	for i, tier := range schedulerConf.Tiers {
+		for j := range tier.Plugins {
+			plugins.ApplyPluginConfDefaults(&schedulerConf.Tiers[i].Plugins[j])
+		}
+	}
+
+	actionNames := strings.Split(schedulerConf.Actions, ",")
+	for _, actionName := range actionNames {
+		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
+			actions = append(actions, action)
+		} else {
+			return nil, nil, nil, nil, fmt.Errorf("failed to find Action %s", actionName)
+		}
+	}
+
+	return actions, schedulerConf.Tiers, schedulerConf.Configurations, schedulerConf.MetricsConfiguration, nil
 }
 
 func runSchedulerSocket() {
