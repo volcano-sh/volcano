@@ -1,0 +1,187 @@
+---
+# Source: volcano/templates/scheduler.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-scheduler
+  namespace: volcano-system
+---
+# Source: volcano/templates/scheduler.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-scheduler-configmap
+  namespace: volcano-system
+data:
+  agent-scheduler.conf: |
+    actions: "enqueue, allocate, backfill"
+    tiers:
+    - plugins:
+      - name: predicates
+      - name: nodeorder
+      - name: binpack
+---
+# Source: volcano/templates/scheduler.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: agent-scheduler
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["pods/binding"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["namespaces", "services", "replicationcontrollers"]
+    verbs: ["list", "watch", "get"]
+  - apiGroups: [""]
+    resources: ["resourcequotas"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get","list", "watch","update","patch"]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities", "volumeattachments"]
+    verbs: [ "list", "watch" ]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
+    resources: ["podgroups"]
+    verbs: ["list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "replicasets", "statefulsets"]
+    verbs: ["list", "watch", "get"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "watch"]
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["resourceclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["resourceclaims/status"]
+    verbs: ["update"]
+---
+# Source: volcano/templates/scheduler.yaml
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: agent-scheduler-role
+subjects:
+  - kind: ServiceAccount
+    name: agent-scheduler
+    namespace: volcano-system
+roleRef:
+  kind: ClusterRole
+  name: agent-scheduler
+  apiGroup: rbac.authorization.k8s.io
+---
+# Source: volcano/templates/scheduler.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8080"
+    prometheus.io/scrape: "true"
+  name: agent-scheduler-service
+  namespace: volcano-system
+  labels:
+    app: agent-scheduler
+spec:
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+    name: "metrics"
+  selector:
+    app: agent-scheduler
+  type: ClusterIP
+---
+# Source: volcano/templates/scheduler.yaml
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: agent-scheduler
+  namespace: volcano-system
+  labels:
+    app: agent-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-scheduler
+  template:
+    metadata:
+      labels:
+        app: agent-scheduler
+    spec:
+      securityContext:
+        seLinuxOptions:
+          level: s0:c123,c456
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccount: agent-scheduler
+      priorityClassName: system-cluster-critical
+      containers:
+        - name: agent-scheduler
+          image: docker.io/volcanosh/vc-agent-scheduler:latest
+          args:
+            - --logtostderr
+            - --scheduler-conf=/volcano.scheduler/agent-scheduler.conf
+            - --enable-healthz=true
+            - --enable-metrics=true
+            - --leader-elect=false
+            - --kube-api-qps=2000
+            - --kube-api-burst=2000
+            - --schedule-period=1s
+            - --node-worker-threads=20
+            - -v=3
+            - 2>&1
+          env:
+            - name: DEBUG_SOCKET_DIR
+              value: /tmp/klog-socks
+          imagePullPolicy: Always
+          volumeMounts:
+            - name: scheduler-config
+              mountPath: /volcano.scheduler
+            - name: klog-sock
+              mountPath: /tmp/klog-socks
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              add:
+              - DAC_OVERRIDE
+              drop:
+              - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+      volumes:
+        - name: scheduler-config
+          configMap:
+            name: agent-scheduler-configmap
+        - name: klog-sock
+          emptyDir: {}
