@@ -1,11 +1,13 @@
 basic:
   controller_image_name: "volcanosh/vc-controller-manager"
   scheduler_image_name: "volcanosh/vc-scheduler"
+  agent_scheduler_image_name: "volcanosh/vc-agent-scheduler"
   admission_image_name: "volcanosh/vc-webhook-manager"
   agent_image_name: "volcanosh/vc-agent"
   admission_secret_name: "volcano-admission-secret"
   admission_config_file: "config/volcano-admission.conf"
   scheduler_config_file: "config/volcano-scheduler.conf"
+  agent_scheduler_config_file: "config/agent-scheduler.conf"
   image_pull_secret: ""
   image_pull_policy: "Always"
   image_tag_version: "latest"
@@ -19,6 +21,9 @@ custom:
   controller_replicas: 1
   controller_metrics_enable: true
   scheduler_enable: true
+  agent_scheduler_enable: false  # 默认关闭,需要时设置为true
+  agent_scheduler_replicas: 1
+  agent_scheduler_name: "agent-scheduler"
   scheduler_replicas: 1
   scheduler_metrics_enable: true
   scheduler_pprof_enable: false

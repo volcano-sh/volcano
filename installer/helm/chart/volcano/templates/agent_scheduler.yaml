@@ -1,0 +1,264 @@
+{{- if .Values.custom.agent_scheduler_enable }}
+{{ $agent_scheduler_affinity := or .Values.custom.agent_scheduler_affinity .Values.custom.default_affinity }}
+{{ $agent_scheduler_tolerations := or .Values.custom.agent_scheduler_tolerations .Values.custom.default_tolerations }}
+{{ $agent_scheduler_sc := or .Values.custom.agent_scheduler_sc .Values.custom.default_sc }}
+{{ $agent_scheduler_main_csc := or .Values.custom.agent_scheduler_main_csc .Values.custom.default_csc }}
+{{ $agent_scheduler_ns := or .Values.custom.agent_scheduler_ns .Values.custom.default_ns }}
+{{ $agent_scheduler_name := .Values.custom.agent_scheduler_name }}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-agent-scheduler-configmap
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+data:
+  {{- if .Values.custom.scheduler_config_override }}
+  agent-scheduler.conf: |
+    {{- .Values.custom.scheduler_config_override | nindent 4 }}
+  {{- else }}
+  agent-scheduler.conf: |
+    actions: "enqueue, allocate"
+    tiers:
+    - plugins:
+      - name: predicates
+  {{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-agent-scheduler
+  namespace: {{ .Release.Namespace }}
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Release.Name }}-agent-scheduler
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["pods/binding"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["namespaces", "services", "replicationcontrollers"]
+    verbs: ["list", "watch", "get"]
+  - apiGroups: [""]
+    resources: ["resourcequotas"]
+    verbs: ["list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get","list", "watch","update","patch"]
+  - apiGroups: [ "storage.k8s.io" ]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities", "volumeattachments"]
+    verbs: [ "list", "watch" ]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
+    resources: ["podgroups"]
+    verbs: ["list", "watch", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets", "replicasets", "statefulsets"]
+    verbs: ["list", "watch", "get"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "watch"]
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["resourceclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["resourceclaims/status"]
+    verbs: ["update"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ .Release.Name }}-agent-scheduler-role
+  {{- if .Values.custom.common_labels }}
+  labels:
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+  {{- end }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-agent-scheduler
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-agent-scheduler
+  apiGroup: rbac.authorization.k8s.io
+
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: {{ .Release.Name }}-agent-scheduler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: agent-scheduler
+    {{- if or (.Values.custom.scheduler_labels) (.Values.custom.common_labels) }}
+    {{- mustMerge (.Values.custom.scheduler_labels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.custom.scheduler_replicas }}
+  selector:
+    matchLabels:
+      app: agent-scheduler
+  template:
+    metadata:
+      labels:
+        app: agent-scheduler
+        {{- if or (.Values.custom.scheduler_podLabels) (.Values.custom.common_labels) }}
+        {{- mustMerge (.Values.custom.scheduler_podLabels | default (dict)) (.Values.custom.common_labels | default (dict)) | toYaml | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if $agent_scheduler_tolerations }}
+      tolerations: {{- toYaml $agent_scheduler_tolerations | nindent 8 }}
+      {{- end }}
+      {{- if $agent_scheduler_ns }}
+      nodeSelector: {{- toYaml $agent_scheduler_ns | nindent 8 }}
+      {{- end }}
+      {{- if $agent_scheduler_affinity }}
+      affinity:
+        {{- toYaml $agent_scheduler_affinity | nindent 8 }}
+      {{- end }}
+      {{- if $agent_scheduler_sc }}
+      securityContext:
+        {{- toYaml $agent_scheduler_sc | nindent 8 }}
+      {{- end }}
+      serviceAccount: {{ .Release.Name }}-scheduler
+      priorityClassName: system-cluster-critical
+      {{- if .Values.basic.image_pull_secret }}
+      imagePullSecrets:
+          - name: {{ .Values.basic.image_pull_secret }}
+      {{- end }}
+      containers:
+        - name: {{ .Release.Name }}-agent-scheduler
+          image: {{ .Values.basic.image_registry }}/{{.Values.basic.agent_scheduler_image_name}}:{{.Values.basic.image_tag_version}}
+          {{- if .Values.custom.scheduler_resources }}
+          resources:
+          {{- toYaml .Values.custom.scheduler_resources | nindent 12 }}
+          {{- end }}
+          args:
+            - --logtostderr
+            - --scheduler-conf=/volcano.scheduler/{{base .Values.basic.agent_scheduler_config_file}}
+            {{- if $agent_scheduler_name }}
+            - --scheduler-name={{- $agent_scheduler_name }}
+            {{- end }}
+            - --enable-healthz=true
+            {{- if .Values.custom.scheduler_metrics_enable }}
+            - --enable-metrics=true
+            {{- end }}
+            {{- if .Values.custom.scheduler_pprof_enable }}
+            - --enable-pprof=true
+            {{- end }}
+            - --leader-elect={{ .Values.custom.leader_elect_enable }}
+            {{- if .Values.custom.leader_elect_enable }}
+            - --leader-elect-resource-namespace={{ .Release.Namespace }}
+            {{- end }}
+            {{- if .Values.custom.scheduler_kube_api_qps }}
+            - --kube-api-qps={{.Values.custom.scheduler_kube_api_qps}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_kube_api_burst }}
+            - --kube-api-burst={{.Values.custom.scheduler_kube_api_burst}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_schedule_period }}
+            - --schedule-period={{.Values.custom.scheduler_schedule_period}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_node_worker_threads }}
+            - --node-worker-threads={{.Values.custom.scheduler_node_worker_threads}}
+            {{- end }}
+            {{- if .Values.custom.scheduler_plugins_dir }}
+            - --plugins-dir={{ .Values.custom.scheduler_plugins_dir }}
+            {{- end }}
+            {{- if .Values.custom.scheduler_feature_gates }}
+            - --feature-gates={{ .Values.custom.scheduler_feature_gates }}
+            {{- end }}
+            {{- if .Values.custom.ignored_provisioners }}
+            - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
+            {{- end}}
+            - -v={{.Values.custom.scheduler_log_level}}
+            - 2>&1
+          env:
+            - name: DEBUG_SOCKET_DIR
+              value: /tmp/klog-socks
+          imagePullPolicy: {{ .Values.basic.image_pull_policy }}
+          volumeMounts:
+            - name: agent-scheduler-config
+              mountPath: /volcano.scheduler
+            - name: klog-sock
+              mountPath: /tmp/klog-socks
+          {{- if $agent_scheduler_main_csc }}
+          securityContext:
+            {{- toYaml $agent_scheduler_main_csc | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: agent-scheduler-config
+          configMap:
+            name: {{ .Release.Name }}-agent-scheduler-configmap
+        - name: klog-sock
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "8080"
+    prometheus.io/scrape: "true"
+  name: {{ .Release.Name }}-agent-scheduler-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: agent-scheduler
+    {{- if .Values.custom.common_labels }}
+    {{- toYaml .Values.custom.common_labels | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if .Values.service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ .Values.service.ipFamilyPolicy }}
+  {{- end }}
+  {{- if .Values.service.ipFamilies }}
+  ipFamilies: {{ toYaml .Values.service.ipFamilies | nindent 4 }}
+  {{- end }}
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+    name: "metrics"
+  selector:
+    app: agent-scheduler
+  type: ClusterIP
+{{- end }}
