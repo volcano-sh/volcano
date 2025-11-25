@@ -258,7 +258,12 @@ custom:
 
   # Specify feature gates for components
   scheduler_feature_gates: ~
-
+  controller_readinessProbe: {}
+  controller_livenessProbe: {}
+  scheduler_readinessProbe: {}
+  scheduler_livenessProbe: {}
+  admission_readinessProbe: {}
+  admission_livenessProbe: {}
 # Specify options for agent-scheduler
   agent_scheduler_worker_count: 1
 
