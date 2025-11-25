@@ -79,7 +79,7 @@ func (p *PrometheusMetricsClient) NodeMetricsAvg(ctx context.Context, nodeName s
 	}
 	v1api := prometheusv1.NewAPI(client)
 	nodeMetrics := &NodeMetrics{}
-	cpuQueryStr := fmt.Sprintf("avg_over_time((100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\",instance=\"%s\"}[5m])) * 100))[%s:30s])", nodeName, NODE_METRICS_PERIOD)
+	cpuQueryStr := fmt.Sprintf(`avg_over_time(clamp_min(100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle",instance="%s"}[5m])) * 100), 0)[%s:30s])`, nodeName, NODE_METRICS_PERIOD)
 	memQueryStr := fmt.Sprintf("100*avg_over_time(((1-node_memory_MemAvailable_bytes{instance=\"%s\"}/node_memory_MemTotal_bytes{instance=\"%s\"}))[%s:30s])", nodeName, nodeName, NODE_METRICS_PERIOD)
 
 	for _, metric := range []string{cpuQueryStr, memQueryStr} {
