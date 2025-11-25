@@ -32,8 +32,8 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"volcano.sh/volcano/pkg/scheduler/api"
 
-	"volcano.sh/volcano/third_party/ascend-for-volcano/common/util"
-	"volcano.sh/volcano/third_party/ascend-for-volcano/test"
+	"volcano.sh/volcano/third_party/mindcluster/common/util"
+	"volcano.sh/volcano/third_party/mindcluster/test"
 )
 
 func fakeClusterInfoCm[T any](cmPrefix string) *v1.ConfigMap {

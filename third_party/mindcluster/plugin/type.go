@@ -20,7 +20,7 @@ package plugin
 import (
 	"regexp"
 
-	"volcano.sh/volcano/third_party/ascend-for-volcano/common/util"
+	"volcano.sh/volcano/third_party/mindcluster/common/util"
 )
 
 const (
