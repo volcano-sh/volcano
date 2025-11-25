@@ -37,6 +37,7 @@ const (
 	defaultCronJobWorkers      = 3
 	defaultMaxRequeueNum       = 15
 	defaultSchedulerName       = "volcano"
+	agentSchedulerName         = "agent-scheduler"
 	defaultHealthzAddress      = ":11251"
 	defaultListenAddress       = ":8081"
 	defaultLockObjectNamespace = "volcano-system"
@@ -120,7 +121,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet, knownControllers []string) {
 	fs.Uint32Var(&s.WorkerThreads, "worker-threads", defaultWorkers, "The number of threads syncing job operations concurrently. "+
 		"Larger number = faster job updating, but more CPU load")
 	fs.Uint32Var(&s.WorkerThreadsForCronJob, "worker-threads-for-cronjob", defaultCronJobWorkers, "The number of threads syncing cronjob operations. The larger the number, the faster the cronjob processing, but requires more CPU load.")
-	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName}, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
+	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{defaultSchedulerName, agentSchedulerName}, "Volcano will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.IntVar(&s.MaxRequeueNum, "max-requeue-num", defaultMaxRequeueNum, "The number of times a job, queue or command will be requeued before it is dropped out of the queue")
 	fs.StringVar(&s.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
