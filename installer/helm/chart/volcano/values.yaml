@@ -259,7 +259,12 @@ custom:
 
   # Specify feature gates for components
   scheduler_feature_gates: ~
-
+  controller_readinessProbe: {}
+  controller_livenessProbe: {}
+  scheduler_readinessProbe: {}
+  scheduler_livenessProbe: {}
+  admission_readinessProbe: {}
+  admission_livenessProbe: {}
 # Specify options for scheduler sharding
   agent_scheduler_sharding_mode: ~
   agent_scheduler_sharding_name: ~
