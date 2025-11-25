@@ -66,7 +66,7 @@ include Makefile.def
 
 .EXPORT_ALL_VARIABLES:
 
-all: vc-scheduler vc-controller-manager vc-webhook-manager vc-agent vcctl command-lines
+all: vc-scheduler vc-agent-scheduler vc-controller-manager vc-webhook-manager vc-agent vcctl command-lines
 
 init:
 	mkdir -p ${BIN_DIR}
@@ -77,6 +77,13 @@ vc-scheduler: init
 		CC=${MUSL_CC} CGO_ENABLED=1 go build -ldflags ${LD_FLAGS_CGO} -o ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
 	else\
 		CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-scheduler ./cmd/scheduler;\
+	fi;
+
+vc-agent-scheduler: init
+	if [ ${SUPPORT_PLUGINS} = "yes" ];then\
+		CC=${MUSL_CC} CGO_ENABLED=1 go build -ldflags ${LD_FLAGS_CGO} -o ${BIN_DIR}/vc-agent-scheduler ./cmd/agent-scheduler;\
+	else\
+		CC=${CC} CGO_ENABLED=0 go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vc-agent-scheduler ./cmd/agent-scheduler;\
 	fi;
 
 vc-controller-manager: init
@@ -92,10 +99,10 @@ vc-agent: init
 vcctl: init
 	CC=${CC} CGO_ENABLED=0 GOOS=${OS} go build -ldflags ${LD_FLAGS} -o ${BIN_DIR}/vcctl ./cmd/cli
 
-image_bins: vc-scheduler vc-controller-manager vc-webhook-manager vc-agent
+image_bins: vc-scheduler vc-agent-scheduler vc-controller-manager vc-webhook-manager vc-agent
 
 images:
-	for name in controller-manager scheduler webhook-manager agent; do\
+	for name in controller-manager scheduler agent-scheduler webhook-manager agent; do\
 		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
 	done
 
@@ -221,6 +228,7 @@ endif
 update-development-yaml:
 	make generate-yaml RELEASE_DIR=installer
 	mv installer/volcano-${TAG}.yaml installer/volcano-development.yaml
+	mv installer/agnet-scheduler-${TAG}.yaml installer/agnet-scheduler-development.yaml
 	mv installer/volcano-agent-${TAG}.yaml installer/volcano-agent-development.yaml
 	mv installer/volcano-monitoring-${TAG}.yaml installer/volcano-monitoring.yaml
 
