@@ -1,9 +1,9 @@
 name: FOSSA
 on:
   push:
-    branches: [master]
+    branches: [master, agent-scheduler]
   pull_request:
-    branches: [master]
+    branches: [master, agent-scheduler]
 
 jobs:
   build:
