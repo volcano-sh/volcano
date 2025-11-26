@@ -92,6 +92,9 @@ type Cache interface {
 
 	// SharedDRAManager returns the shared DRAManager
 	SharedDRAManager() framework.SharedDRAManager
+
+	// EnqueueScheduleResult enqueue schedule result for bind check
+	EnqueueScheduleResult(result *PodScheduleResult)
 }
 
 // Binder interface for binding task and hostname

@@ -172,7 +172,7 @@ func (alloc *Action) CreateBindContext(task *api.TaskInfo) *vcache.BindContext {
 }
 
 func (alloc *Action) EnqueueSchedulerResultForTask(task *api.TaskInfo, nodeInfos []*api.NodeInfo) {
-	result := cache.PodScheduleResult{
+	result := &cache.PodScheduleResult{
 		SuggestedNodes: nodeInfos,
 		Task:           task,
 		BindContext:    alloc.CreateBindContext(task),

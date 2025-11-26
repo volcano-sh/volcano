@@ -1190,3 +1190,7 @@ func (sc *SchedulerCache) RegisterBinder(name string, binder interface{}) {
 	}
 	sc.binderRegistry.Register(name, binder)
 }
+
+func (sc *SchedulerCache) EnqueueScheduleResult(result *PodScheduleResult) {
+	sc.BindCheckChannel <- result
+}
