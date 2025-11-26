@@ -24,15 +24,11 @@ package predicates
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilFeature "k8s.io/apiserver/pkg/util/feature"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/features"
@@ -101,27 +97,20 @@ var (
 type PredicatesPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
-	// The VolumeBindingPlugin needs to store to execute in PreBind and PreBindRollBack
-	volumeBindingPlugin *vbcap.VolumeBinding
-	// The DynamicResourceAllocationPlugin needs to store to execute in PreBind and PreBindRollBack
-	dynamicResourceAllocationPlugin *dynamicresources.DynamicResources
 
 	enabledPredicates predicateEnable
 
 	features feature.Features
-}
 
-type PredicatesPluginState struct {
-	KubeClient        kubernetes.Interface
-	InformerFactory   informers.SharedInformerFactory
-	SharedDRAManager  k8sframework.SharedDRAManager
-	NodeMap           map[string]fwk.NodeInfo
-	NodeInfoList      []fwk.NodeInfo
-	FilterPlugins     map[string]k8sframework.FilterPlugin
-	PrefilterPlugins  map[string]k8sframework.PreFilterPlugin
-	PredicateCache    *predicateCache
-	GetCycleState     func(taskID api.TaskID) *k8sframework.CycleState
-	VolumeBindingArgs *wrapVolumeBindingArgs
+	FilterPlugins       map[string]k8sframework.FilterPlugin
+	StableFilterPlugins map[string]k8sframework.FilterPlugin // Subset of FilterPlugins for cache-stable filters
+	PrefilterPlugins    map[string]k8sframework.PreFilterPlugin
+	ReservePlugins      map[string]k8sframework.ReservePlugin
+	PreBindPlugins      map[string]k8sframework.PreBindPlugin
+	ScorePlugins        map[string]nodescore.BaseScorePlugin
+	ScoreWeights        map[string]int // Weight for each score plugin
+	PredicateCache      *predicateCache
+	Handle              k8sframework.Handle
 }
 
 // New return predicate plugin
@@ -197,15 +186,21 @@ type BindContextExtension struct {
 
 func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	pl := ssn.PodLister
-	pluginState := &PredicatesPluginState{}
-	pluginState.NodeMap = ssn.NodeMap
-	pluginState.NodeInfoList = slices.Collect(maps.Values(ssn.NodeMap))
-	pluginState.KubeClient = ssn.KubeClient()
-	pluginState.InformerFactory = ssn.InformerFactory()
-	pluginState.SharedDRAManager = ssn.SharedDRAManager()
-	pluginState.GetCycleState = ssn.GetCycleState
 
-	pp.InitPluginState(pluginState)
+	nodeMap := ssn.NodeMap
+	handle := k8s.NewFramework(nodeMap,
+		k8s.WithSharedDRAManager(ssn.SharedDRAManager()),
+		k8s.WithClientSet(ssn.KubeClient()),
+		k8s.WithInformerFactory(ssn.InformerFactory()),
+	)
+	pp.Handle = handle
+
+	pp.InitPlugin()
+
+	// Initialize PredicateCache if enabled
+	if pp.enabledPredicates.cacheEnable {
+		pp.PredicateCache = predicateCacheNew()
+	}
 
 	// Register event handlers to update task info in PodLister & nodeMap
 	ssn.AddEventHandler(&framework.EventHandler{
@@ -213,9 +208,9 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infoln("predicates, allocate", event.Task.NodeName)
 			pod := pl.UpdateTask(event.Task, event.Task.NodeName)
 			nodeName := event.Task.NodeName
-			node, found := pluginState.NodeMap[nodeName]
-			if !found {
-				klog.Errorf("predicates, update pod %s/%s allocate to NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+			node, err := pp.Handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
+			if err != nil {
+				klog.Errorf("predicates, get node %s info failed: %v", nodeName, err)
 				return
 			}
 			nodeInfo, ok := ssn.Nodes[nodeName]
@@ -251,12 +246,13 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			klog.V(4).Infoln("predicates, deallocate", event.Task.NodeName)
 			pod := pl.UpdateTask(event.Task, "")
 			nodeName := event.Task.NodeName
-			node, found := pluginState.NodeMap[nodeName]
-			if !found {
-				klog.Errorf("predicates, update pod %s/%s allocate from NOT EXIST node [%s]", pod.Namespace, pod.Name, nodeName)
+			node, err := pp.Handle.SnapshotSharedLister().NodeInfos().Get(nodeName)
+			if err != nil {
+				klog.Errorf("predicates, get node %s info failed: %v", nodeName, err)
 				return
 			}
 
+			// Get volcano NodeInfo from session for device deallocation
 			nodeInfo, ok := ssn.Nodes[nodeName]
 			if !ok {
 				klog.Errorf("Failed to get node %s info from cache", nodeName)
@@ -283,8 +279,7 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 				}
 			}
 
-			err := node.RemovePod(klog.FromContext(context.TODO()), pod)
-			if err != nil {
+			if err = node.RemovePod(klog.FromContext(context.TODO()), pod); err != nil {
 				klog.Errorf("predicates, remove pod %s/%s from node [%s] error: %v", pod.Namespace, pod.Name, nodeName, err)
 				return
 			}
@@ -292,14 +287,33 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		},
 	})
 
-	ssn.AddPrePredicateFn(pp.Name(), pp.GetPrePredicateFn(pluginState))
+	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {
+		state := ssn.GetCycleState(task.UID)
+		nodeInfoList, err := pp.Handle.SnapshotSharedLister().NodeInfos().List()
+		if err != nil {
+			klog.Errorf("Failed to list nodes from snapshot: %v", err)
+			return err
+		}
+		return pp.PrePredicate(task, state, nodeInfoList)
+	})
 
-	ssn.AddPredicateFn(pp.Name(), pp.GetPredicateFn(pluginState))
+	ssn.AddPredicateFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) error {
+		state := ssn.GetCycleState(task.UID)
+		return pp.Predicate(task, node, state)
+	})
 
 	// TODO: Need to unify the plugins in nodeorder to predicates.
 	// Currently, if the volumebinding plugin crosses predicates plugins and nodeorder plugins, it involves two initializations, which increases memory overhead.
 	// Therefore, a BatchNodeOrder extension point needs to be added in here, as volumebinding involves PreScore and Score extension points
-	ssn.AddBatchNodeOrderFn(pp.Name(), pp.GetBatchNodeOrderFn(pluginState))
+	ssn.AddBatchNodeOrderFn(pp.Name(), func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+		state := ssn.GetCycleState(task.UID)
+		nodeInfoList, err := pp.Handle.SnapshotSharedLister().NodeInfos().List()
+		if err != nil {
+			klog.Errorf("Failed to list nodes from snapshot: %v", err)
+			return nil, err
+		}
+		return pp.BatchNodeOrder(task, nodeInfoList, state)
+	})
 
 	ssn.RegisterBinder(pp.Name(), pp)
 
@@ -314,12 +328,12 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		k8sNodeInfo.SetNode(nodeInfo.Node)
 
 		if pp.enabledPredicates.podAffinityEnable {
-			podAffinityFilter := pluginState.FilterPlugins["podAffinityFilter"].((*interpodaffinity.InterPodAffinity))
+			podAffinityFilter := pp.FilterPlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity)
 			isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, podAffinityFilter.Name())
 			if !isSkipInterPodAffinity {
 				status := podAffinityFilter.AddPod(ctx, cycleState, taskToSchedule.Pod, podInfoToAdd, k8sNodeInfo)
 				if !status.IsSuccess() {
-					return fmt.Errorf("failed to remove pod from node %s: %w", nodeInfo.Name, status.AsError())
+					return fmt.Errorf("failed to add pod to node %s: %w", nodeInfo.Name, status.AsError())
 				}
 			}
 		}
@@ -338,7 +352,7 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		k8sNodeInfo.SetNode(nodeInfo.Node)
 
 		if pp.enabledPredicates.podAffinityEnable {
-			podAffinityFilter := pluginState.FilterPlugins["podAffinityFilter"].((*interpodaffinity.InterPodAffinity))
+			podAffinityFilter := pp.FilterPlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity)
 			isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, podAffinityFilter.Name())
 			if !isSkipInterPodAffinity {
 				status := podAffinityFilter.RemovePod(ctx, cycleState, taskToSchedule.Pod, podInfoToRemove, k8sNodeInfo)
@@ -356,10 +370,9 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		k8sNodeInfo.SetNode(node.Node)
 
 		if pp.enabledPredicates.podAffinityEnable {
-			isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, pluginState.FilterPlugins["podAffinityFilter"].Name())
+			isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, interpodaffinity.Name)
 			if !isSkipInterPodAffinity {
-				status := pluginState.FilterPlugins["podAffinityFilter"].Filter(ctx, cycleState, task.Pod, k8sNodeInfo)
-
+				status := pp.FilterPlugins[interpodaffinity.Name].Filter(ctx, cycleState, task.Pod, k8sNodeInfo)
 				if !status.IsSuccess() {
 					return fmt.Errorf("failed to filter pod on node %s: %w", node.Name, status.AsError())
 				} else {
@@ -371,139 +384,104 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 }
 
-func (pp *PredicatesPlugin) GetPrePredicateFn(pluginState *PredicatesPluginState) func(task *api.TaskInfo) error {
-	return func(task *api.TaskInfo) error {
-		// It is safe here to directly use the state to run plugins because we have already initialized the cycle state
-		// for each pending pod when open session and will not meet nil state
-		state := pluginState.GetCycleState(task.UID)
-		// Check NodePorts
-		if pp.enabledPredicates.nodePortEnable {
-			_, status := pluginState.PrefilterPlugins["nodePortFilter"].PreFilter(context.TODO(), state, task.Pod, pluginState.NodeInfoList)
-			if err := handleSkipPrePredicatePlugin(status, state, task, nodeports.Name); err != nil {
-				return err
-			}
-		}
-		// Check restartable container
-		if !pp.features.EnableSidecarContainers && task.HasRestartableInitContainer {
-			// Scheduler will calculate resources usage for a Pod containing
-			// restartable init containers that will be equal or more than kubelet will
-			// require to run the Pod. So there will be no overbooking. However, to
-			// avoid the inconsistency in resource calculation between the scheduler
-			// and the older (before v1.28) kubelet, make the Pod unschedulable.
-			return fmt.Errorf("pod has a restartable init container and the SidecarContainers feature is disabled")
-		}
-
-		// InterPodAffinity Predicate
-		// TODO: Update the node information to be processed by the filer based on the node list returned by the prefilter.
-		// In K8S V1.25, the return value result is added to the Prefile interface,
-		// indicating the list of nodes that meet filtering conditions.
-		// If the value of result is nil, all nodes meet the conditions.
-		// If the specified node information exists, only the node information in result meets the conditions.
-		// The value of Prefile in the current InterPodAffinity package always returns nil.
-		// The outer layer does not need to be processed temporarily.
-		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
-		// the processing logic needs to be added to the return value result.
-		if pp.enabledPredicates.podAffinityEnable {
-			klog.Infof("Executing podAffinityFilter PreFilter for task %s/%s", task.Namespace, task.Name)
-			_, status := pluginState.PrefilterPlugins["podAffinityFilter"].PreFilter(context.TODO(), state, task.Pod, pluginState.NodeInfoList)
-			if err := handleSkipPrePredicatePlugin(status, state, task, interpodaffinity.Name); err != nil {
-				return err
-			}
-		}
-
-		// Check PodTopologySpread
-		// TODO: Update the node information to be processed by the filer based on the node list returned by the prefilter.
-		// In K8S V1.25, the return value result is added to the Prefile interface,
-		// indicating the list of nodes that meet filtering conditions.
-		// If the value of result is nil, all nodes meet the conditions.
-		// If the specified node information exists, only the node information in result meets the conditions.
-		// The value of Prefile in the current PodTopologySpread package always returns nil.
-		// The outer layer does not need to be processed temporarily.
-		// If the filtering logic is added to the Prefile node in the Volumebinding package in the future,
-		// the processing logic needs to be added to the return value result.
-		podTopologySpreadFilter := pluginState.PrefilterPlugins["podTopologySpreadFilter"]
-		if pp.enabledPredicates.podTopologySpreadEnable {
-			_, status := podTopologySpreadFilter.PreFilter(context.TODO(), state, task.Pod, pluginState.NodeInfoList)
-			if err := handleSkipPrePredicatePlugin(status, state, task, podTopologySpreadFilter.Name()); err != nil {
-				return err
-			}
-		}
-
-		// VolumeBinding Predicate
-		volumeBindingPlugin := pluginState.PrefilterPlugins["volumeBindingPlugin"]
-		if pp.enabledPredicates.volumeBindingEnable {
-			_, status := volumeBindingPlugin.PreFilter(context.TODO(), state, task.Pod, pluginState.NodeInfoList)
-			if err := handleSkipPrePredicatePlugin(status, state, task, pp.volumeBindingPlugin.Name()); err != nil {
-				return err
-			}
-		}
-
-		// DRA Predicate
-		dynamicResourceAllocationPlugin := pluginState.PrefilterPlugins["dynamicResourceAllocationPlugin"]
-		if pp.enabledPredicates.dynamicResourceAllocationEnable {
-			_, status := dynamicResourceAllocationPlugin.PreFilter(context.TODO(), state, task.Pod, pluginState.NodeInfoList)
-			if err := handleSkipPrePredicatePlugin(status, state, task, dynamicResourceAllocationPlugin.Name()); err != nil {
-				return err
-			}
-		}
-
-		return nil
+// PrePredicate runs all PreFilter plugins for the given task.
+// It is safe here to directly use the state to run plugins because we have already initialized the cycle state
+// for each pending pod when open session and will not meet nil state.
+func (pp *PredicatesPlugin) PrePredicate(task *api.TaskInfo, state *k8sframework.CycleState, nodeInfoList []fwk.NodeInfo) error {
+	// Check restartable container
+	if !pp.features.EnableSidecarContainers && task.HasRestartableInitContainer {
+		// Scheduler will calculate resources usage for a Pod containing
+		// restartable init containers that will be equal or more than kubelet will
+		// require to run the Pod. So there will be no overbooking. However, to
+		// avoid the inconsistency in resource calculation between the scheduler
+		// and the older (before v1.28) kubelet, make the Pod unschedulable.
+		return fmt.Errorf("pod has a restartable init container and the SidecarContainers feature is disabled")
 	}
+
+	// Run all PreFilter plugins
+	for name, plugin := range pp.PrefilterPlugins {
+		_, status := plugin.PreFilter(context.TODO(), state, task.Pod, nodeInfoList)
+		if err := handleSkipPrePredicatePlugin(status, state, task, name); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (pp *PredicatesPlugin) InitPluginState(pluginState *PredicatesPluginState) error {
-	pluginState.PredicateCache = predicateCacheNew()
+func (pp *PredicatesPlugin) InitPlugin() {
 	filterPlugins := map[string]k8sframework.FilterPlugin{}
+	stableFilterPlugins := map[string]k8sframework.FilterPlugin{} // Subset for cache-stable filters
 	prefilterPlugins := map[string]k8sframework.PreFilterPlugin{}
+	reservePlugins := map[string]k8sframework.ReservePlugin{}
+	scorePlugins := map[string]nodescore.BaseScorePlugin{}
+	preBindPlugins := map[string]k8sframework.PreBindPlugin{}
+	scoreWeights := map[string]int{} // Weight for each score plugin
 
 	// Initialize k8s plugins
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
-	handle := k8s.NewFrameworkHandle(pluginState.NodeMap, pluginState.KubeClient, pluginState.InformerFactory,
-		k8s.WithSharedDRAManager(pluginState.SharedDRAManager))
-	// 1. NodeUnschedulable
-	plugin, _ := nodeunschedulable.New(context.TODO(), nil, handle, pp.features)
+	// 1. NodeUnschedulable (stable filter for cache)
+	plugin, _ := nodeunschedulable.New(context.TODO(), nil, pp.Handle, pp.features)
 	nodeUnscheduleFilter := plugin.(*nodeunschedulable.NodeUnschedulable)
-	filterPlugins["nodeUnscheduleFilter"] = nodeUnscheduleFilter
-	// 2. NodeAffinity
-	nodeAffinityArgs := config.NodeAffinityArgs{
-		AddedAffinity: &v1.NodeAffinity{},
+	filterPlugins[nodeunschedulable.Name] = nodeUnscheduleFilter
+	stableFilterPlugins[nodeunschedulable.Name] = nodeUnscheduleFilter
+
+	// 2. NodeAffinity (stable filter for cache)
+	if pp.enabledPredicates.nodeAffinityEnable {
+		nodeAffinityArgs := config.NodeAffinityArgs{
+			AddedAffinity: &v1.NodeAffinity{},
+		}
+		plugin, _ = nodeaffinity.New(context.TODO(), &nodeAffinityArgs, pp.Handle, pp.features)
+		nodeAffinityFilter := plugin.(*nodeaffinity.NodeAffinity)
+		filterPlugins[nodeaffinity.Name] = nodeAffinityFilter
+		stableFilterPlugins[nodeaffinity.Name] = nodeAffinityFilter
 	}
-	plugin, _ = nodeaffinity.New(context.TODO(), &nodeAffinityArgs, handle, pp.features)
-	nodeAffinityFilter := plugin.(*nodeaffinity.NodeAffinity)
-	filterPlugins["nodeAffinityFilter"] = nodeAffinityFilter
 	// 3. NodePorts
-	plugin, _ = nodeports.New(context.TODO(), nil, handle, pp.features)
-	nodePortFilter := plugin.(*nodeports.NodePorts)
-	filterPlugins["nodePortFilter"] = nodePortFilter
-	prefilterPlugins["nodePortFilter"] = nodePortFilter
-	// 4. TaintToleration
-	plugin, _ = tainttoleration.New(context.TODO(), nil, handle, pp.features)
-	tolerationFilter := plugin.(*tainttoleration.TaintToleration)
-	filterPlugins["tolerationFilter"] = tolerationFilter
+	if pp.enabledPredicates.nodePortEnable {
+		plugin, _ = nodeports.New(context.TODO(), nil, pp.Handle, pp.features)
+		nodePortFilter := plugin.(*nodeports.NodePorts)
+		filterPlugins[nodeports.Name] = nodePortFilter
+		prefilterPlugins[nodeports.Name] = nodePortFilter
+	}
+	// 4. TaintToleration (stable filter for cache)
+	if pp.enabledPredicates.taintTolerationEnable {
+		plugin, _ = tainttoleration.New(context.TODO(), nil, pp.Handle, pp.features)
+		tolerationFilter := plugin.(*tainttoleration.TaintToleration)
+		filterPlugins[tainttoleration.Name] = tolerationFilter
+		stableFilterPlugins[tainttoleration.Name] = tolerationFilter
+	}
 	// 5. InterPodAffinity
-	plArgs := &config.InterPodAffinityArgs{}
-	plugin, _ = interpodaffinity.New(context.TODO(), plArgs, handle, pp.features)
-	podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
-	filterPlugins["podAffinityFilter"] = podAffinityFilter
-	prefilterPlugins["podAffinityFilter"] = podAffinityFilter
+	if pp.enabledPredicates.podAffinityEnable {
+		plArgs := &config.InterPodAffinityArgs{}
+		plugin, _ = interpodaffinity.New(context.TODO(), plArgs, pp.Handle, pp.features)
+		podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
+		filterPlugins[interpodaffinity.Name] = podAffinityFilter
+		prefilterPlugins[interpodaffinity.Name] = podAffinityFilter
+	}
 	// 6. NodeVolumeLimits
-	plugin, _ = nodevolumelimits.NewCSI(context.TODO(), nil, handle, pp.features)
-	nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
-	filterPlugins["nodeVolumeLimitsCSIFilter"] = nodeVolumeLimitsCSIFilter
+	if pp.enabledPredicates.nodeVolumeLimitsEnable {
+		plugin, _ = nodevolumelimits.NewCSI(context.TODO(), nil, pp.Handle, pp.features)
+		nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
+		filterPlugins[nodevolumelimits.CSIName] = nodeVolumeLimitsCSIFilter
+	}
 	// 7. VolumeZone
-	plugin, _ = volumezone.New(context.TODO(), nil, handle, pp.features)
-	volumeZoneFilter := plugin.(*volumezone.VolumeZone)
-	filterPlugins["volumeZoneFilter"] = volumeZoneFilter
+	if pp.enabledPredicates.volumeZoneEnable {
+		plugin, _ = volumezone.New(context.TODO(), nil, pp.Handle, pp.features)
+		volumeZoneFilter := plugin.(*volumezone.VolumeZone)
+		filterPlugins[volumezone.Name] = volumeZoneFilter
+	}
 	// 8. PodTopologySpread
-	// Setting cluster level default constraints is not support for now.
-	ptsArgs := &config.PodTopologySpreadArgs{DefaultingType: config.SystemDefaulting}
-	plugin, _ = podtopologyspread.New(context.TODO(), ptsArgs, handle, pp.features)
-	podTopologySpreadFilter := plugin.(*podtopologyspread.PodTopologySpread)
-	filterPlugins["podTopologySpreadFilter"] = podTopologySpreadFilter
-	prefilterPlugins["podTopologySpreadFilter"] = podTopologySpreadFilter
+	if pp.enabledPredicates.podTopologySpreadEnable {
+		// Setting cluster level default constraints is not support for now.
+		ptsArgs := &config.PodTopologySpreadArgs{DefaultingType: config.SystemDefaulting}
+		plugin, _ = podtopologyspread.New(context.TODO(), ptsArgs, pp.Handle, pp.features)
+		podTopologySpreadFilter := plugin.(*podtopologyspread.PodTopologySpread)
+		filterPlugins[podtopologyspread.Name] = podTopologySpreadFilter
+		prefilterPlugins[podtopologyspread.Name] = podTopologySpreadFilter
+	}
 	// 9. VolumeBinding
-	vbArgs := defaultVolumeBindingArgs()
 	if pp.enabledPredicates.volumeBindingEnable {
+		vbArgs := defaultVolumeBindingArgs()
 		// Currently, we support initializing the VolumeBinding plugin once, but do not support hot loading the plugin after modifying the VolumeBinding parameters.
 		// This is because VolumeBinding involves AssumeCache, which contains eventHandler. If VolumeBinding is initialized multiple times,
 		// eventHandler will be added continuously, causing memory leaks. For details, see: https://github.com/volcano-sh/volcano/issues/2554.
@@ -512,277 +490,183 @@ func (pp *PredicatesPlugin) InitPluginState(pluginState *PredicatesPluginState) 
 			setUpVolumeBindingArgs(vbArgs, pp.pluginArguments)
 
 			var err error
-			plugin, err = vbcap.New(context.TODO(), vbArgs.VolumeBindingArgs, handle, pp.features)
+			plugin, err = vbcap.New(context.TODO(), vbArgs.VolumeBindingArgs, pp.Handle, pp.features)
 			if err != nil {
 				klog.Fatalf("failed to create volume binding plugin with args %+v: %v", vbArgs, err)
 			}
 			volumeBindingPluginInstance = plugin.(*vbcap.VolumeBinding)
 		})
 
-		pp.volumeBindingPlugin = volumeBindingPluginInstance
-		filterPlugins["volumeBindingPlugin"] = volumeBindingPluginInstance
-		prefilterPlugins["volumeBindingPlugin"] = volumeBindingPluginInstance
+		filterPlugins[vbcap.Name] = volumeBindingPluginInstance
+		prefilterPlugins[vbcap.Name] = volumeBindingPluginInstance
+		reservePlugins[vbcap.Name] = volumeBindingPluginInstance
+		preBindPlugins[vbcap.Name] = volumeBindingPluginInstance
+		scorePlugins[vbcap.Name] = volumeBindingPluginInstance
+		scoreWeights[vbcap.Name] = vbArgs.Weight // Set weight from plugin args
 	}
 	// 10. DRA
-	var dynamicResourceAllocationPlugin *dynamicresources.DynamicResources
 	if pp.enabledPredicates.dynamicResourceAllocationEnable {
 		var err error
 		draArgs := defaultDynamicResourcesArgs()
 		setUpDynamicResourcesArgs(draArgs, pp.pluginArguments)
-		plugin, err = dynamicresources.New(context.TODO(), draArgs.DynamicResourcesArgs, handle, pp.features)
+		plugin, err = dynamicresources.New(context.TODO(), draArgs.DynamicResourcesArgs, pp.Handle, pp.features)
 		if err != nil {
 			klog.Fatalf("failed to create dra plugin with err: %v", err)
 		}
-		dynamicResourceAllocationPlugin = plugin.(*dynamicresources.DynamicResources)
-		pp.dynamicResourceAllocationPlugin = dynamicResourceAllocationPlugin
-		filterPlugins["dynamicResourceAllocationPlugin"] = dynamicResourceAllocationPlugin
-		prefilterPlugins["dynamicResourceAllocationPlugin"] = dynamicResourceAllocationPlugin
+		dynamicResourceAllocationPlugin := plugin.(*dynamicresources.DynamicResources)
+		filterPlugins[dynamicresources.Name] = dynamicResourceAllocationPlugin
+		prefilterPlugins[dynamicresources.Name] = dynamicResourceAllocationPlugin
+		reservePlugins[dynamicresources.Name] = dynamicResourceAllocationPlugin
+		preBindPlugins[dynamicresources.Name] = dynamicResourceAllocationPlugin
 	}
 
-	pluginState.FilterPlugins = filterPlugins
-	pluginState.PrefilterPlugins = prefilterPlugins
-	pluginState.VolumeBindingArgs = vbArgs
+	pp.FilterPlugins = filterPlugins
+	pp.StableFilterPlugins = stableFilterPlugins
+	pp.PrefilterPlugins = prefilterPlugins
+	pp.ReservePlugins = reservePlugins
+	pp.PreBindPlugins = preBindPlugins
+	pp.ScorePlugins = scorePlugins
+	pp.ScoreWeights = scoreWeights
+}
+
+// Predicate runs all Filter plugins for the given task and node.
+func (pp *PredicatesPlugin) Predicate(task *api.TaskInfo, node *api.NodeInfo, state *k8sframework.CycleState) error {
+	predicateStatus := make([]*api.Status, 0)
+	nodeInfo, err := pp.Handle.SnapshotSharedLister().NodeInfos().Get(node.Name)
+	if err != nil {
+		klog.V(4).Infof("NodeInfo predicates Task <%s/%s> on Node <%s> failed, node info not found",
+			task.Namespace, task.Name, node.Name)
+		nodeInfoStatus := &api.Status{
+			Code:   api.Error,
+			Reason: "node info not found",
+			Plugin: pp.Name(),
+		}
+		predicateStatus = append(predicateStatus, nodeInfoStatus)
+		return api.NewFitErrWithStatus(task, node, predicateStatus...)
+	}
+
+	if node.Allocatable.MaxTaskNum <= len(nodeInfo.GetPods()) {
+		klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
+			task.Namespace, task.Name, node.Name, node.Allocatable.MaxTaskNum, len(nodeInfo.GetPods()))
+		podsNumStatus := &api.Status{
+			Code:   api.Unschedulable,
+			Reason: api.NodePodNumberExceeded,
+			Plugin: pp.Name(),
+		}
+		predicateStatus = append(predicateStatus, podsNumStatus)
+	}
+
+	predicateByStablefilter := func(nodeInfo fwk.NodeInfo) ([]*api.Status, bool, error) {
+		// Run all stable filter plugins (for cache)
+		predicateStatus := make([]*api.Status, 0)
+
+		for name, plugin := range pp.StableFilterPlugins {
+			status := plugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
+			filterStatus := api.ConvertPredicateStatus(status)
+			if filterStatus.Code != api.Success {
+				predicateStatus = append(predicateStatus, filterStatus)
+				if util.ShouldAbort(filterStatus) {
+					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", name, status.Message())
+				}
+			}
+		}
+
+		return predicateStatus, true, nil
+	}
+
+	// Check PredicateWithCache
+	var fit bool
+	predicateCacheStatus := make([]*api.Status, 0)
+	if pp.enabledPredicates.cacheEnable {
+		fit, err = pp.PredicateCache.PredicateWithCache(node.Name, task.Pod)
+		if err != nil {
+			predicateCacheStatus, fit, _ = predicateByStablefilter(nodeInfo)
+			pp.PredicateCache.UpdateCache(node.Name, task.Pod, fit)
+		} else {
+			if !fit {
+				err = fmt.Errorf("plugin equivalence cache predicates failed")
+				predicateCacheStatus = append(predicateCacheStatus, &api.Status{
+					Code: api.Error, Reason: err.Error(), Plugin: CachePredicate,
+				})
+			}
+		}
+	} else {
+		predicateCacheStatus, fit, _ = predicateByStablefilter(nodeInfo)
+	}
+
+	predicateStatus = append(predicateStatus, predicateCacheStatus...)
+	if !fit {
+		return api.NewFitErrWithStatus(task, node, predicateStatus...)
+	}
+
+	// Run all Filter plugins (except those in StableFilterPlugins)
+	for name, plugin := range pp.FilterPlugins {
+		// Skip plugins that are already handled in predicateByStablefilter
+		if _, isStable := pp.StableFilterPlugins[name]; isStable {
+			continue
+		}
+
+		// Check if this plugin should be skipped
+		if handleSkipPredicatePlugin(state, name) {
+			continue
+		}
+
+		status := plugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
+		filterStatus := api.ConvertPredicateStatus(status)
+		if filterStatus.Code != api.Success {
+			predicateStatus = append(predicateStatus, filterStatus)
+			if util.ShouldAbort(filterStatus) {
+				return api.NewFitErrWithStatus(task, node, predicateStatus...)
+			}
+		}
+	}
+
+	if len(predicateStatus) > 0 {
+		return api.NewFitErrWithStatus(task, node, predicateStatus...)
+	}
+
 	return nil
 }
 
-func (pp *PredicatesPlugin) GetPredicateFn(pluginState *PredicatesPluginState) func(task *api.TaskInfo, node *api.NodeInfo) error {
-	return func(task *api.TaskInfo, node *api.NodeInfo) error {
-		state := pluginState.GetCycleState(task.UID)
-		predicateStatus := make([]*api.Status, 0)
-		// nodeInfo := k8sframework.NewNodeInfo(node.Pods()...)
-		// nodeInfo.SetNode(node.Node)
-		nodeInfo, found := pluginState.NodeMap[node.Name]
-		if !found {
-			klog.V(4).Infof("NodeInfo predicates Task <%s/%s> on Node <%s> failed, node info not found",
-				task.Namespace, task.Name, node.Name)
-			nodeInfoStatus := &api.Status{
-				Code:   api.Error,
-				Reason: "node info not found",
-				Plugin: pp.Name(),
-			}
-			predicateStatus = append(predicateStatus, nodeInfoStatus)
-			return api.NewFitErrWithStatus(task, node, predicateStatus...)
+// BatchNodeOrder runs all Score plugins for the given task and nodes.
+func (pp *PredicatesPlugin) BatchNodeOrder(task *api.TaskInfo, nodes []fwk.NodeInfo, state *k8sframework.CycleState) (map[string]float64, error) {
+	nodeScores := make(map[string]float64, len(nodes))
+
+	// Run all Score plugins
+	for name, plugin := range pp.ScorePlugins {
+		// Get normalizer (most plugins don't need normalization, use EmptyNormalizer by default)
+		normalizer := &nodescore.EmptyNormalizer{}
+
+		// Get weight from ScoreWeights map, default to 1 if not set
+		weight := 1
+		if w, exists := pp.ScoreWeights[name]; exists {
+			weight = w
 		}
 
-		if node.Allocatable.MaxTaskNum <= len(nodeInfo.GetPods()) {
-			klog.V(4).Infof("NodePodNumber predicates Task <%s/%s> on Node <%s> failed, allocatable <%d>, existed <%d>",
-				task.Namespace, task.Name, node.Name, node.Allocatable.MaxTaskNum, len(nodeInfo.GetPods()))
-			podsNumStatus := &api.Status{
-				Code:   api.Unschedulable,
-				Reason: api.NodePodNumberExceeded,
-				Plugin: pp.Name(),
-			}
-			predicateStatus = append(predicateStatus, podsNumStatus)
-		}
-
-		predicateByStablefilter := func(nodeInfo fwk.NodeInfo) ([]*api.Status, bool, error) {
-			// CheckNodeUnschedulable
-			predicateStatus := make([]*api.Status, 0)
-			status := pluginState.FilterPlugins["nodeUnscheduleFilter"].Filter(context.TODO(), state, task.Pod, nodeInfo)
-			nodeUnscheduleStatus := api.ConvertPredicateStatus(status)
-			if nodeUnscheduleStatus.Code != api.Success {
-				predicateStatus = append(predicateStatus, nodeUnscheduleStatus)
-				if util.ShouldAbort(nodeUnscheduleStatus) {
-					return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", pluginState.FilterPlugins["nodeUnscheduleFilter"].Name(), status.Message())
-				}
-			}
-
-			// Check NodeAffinity
-			if pp.enabledPredicates.nodeAffinityEnable {
-				status := pluginState.FilterPlugins["nodeAffinityFilter"].Filter(context.TODO(), state, task.Pod, nodeInfo)
-				nodeAffinityStatus := api.ConvertPredicateStatus(status)
-				if nodeAffinityStatus.Code != api.Success {
-					predicateStatus = append(predicateStatus, nodeAffinityStatus)
-					if util.ShouldAbort(nodeAffinityStatus) {
-						return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", pluginState.FilterPlugins["nodeAffinityFilter"].Name(), status.Message())
-					}
-				}
-			}
-
-			// PodToleratesNodeTaints: TaintToleration
-			if pp.enabledPredicates.taintTolerationEnable {
-				status := pluginState.FilterPlugins["tolerationFilter"].Filter(context.TODO(), state, task.Pod, nodeInfo)
-				tolerationStatus := api.ConvertPredicateStatus(status)
-				if tolerationStatus.Code != api.Success {
-					predicateStatus = append(predicateStatus, tolerationStatus)
-					if util.ShouldAbort(tolerationStatus) {
-						return predicateStatus, false, fmt.Errorf("plugin %s predicates failed %s", pluginState.FilterPlugins["tolerationFilter"].Name(), status.Message())
-					}
-				}
-			}
-
-			return predicateStatus, true, nil
-		}
-
-		// Check PredicateWithCache
-		var err error
-		var fit bool
-		predicateCacheStatus := make([]*api.Status, 0)
-		if pp.enabledPredicates.cacheEnable {
-			fit, err = pluginState.PredicateCache.PredicateWithCache(node.Name, task.Pod)
-			if err != nil {
-				predicateCacheStatus, fit, _ = predicateByStablefilter(nodeInfo)
-				pluginState.PredicateCache.UpdateCache(node.Name, task.Pod, fit)
-			} else {
-				if !fit {
-					err = fmt.Errorf("plugin equivalence cache predicates failed")
-					predicateCacheStatus = append(predicateCacheStatus, &api.Status{
-						Code: api.Error, Reason: err.Error(), Plugin: CachePredicate,
-					})
-				}
-			}
-		} else {
-			predicateCacheStatus, fit, _ = predicateByStablefilter(nodeInfo)
-		}
-
-		predicateStatus = append(predicateStatus, predicateCacheStatus...)
-		if !fit {
-			return api.NewFitErrWithStatus(task, node, predicateStatus...)
-		}
-
-		// Check NodePort
-		if pp.enabledPredicates.nodePortEnable {
-			isSkipNodePorts := handleSkipPredicatePlugin(state, pluginState.FilterPlugins["nodePortFilter"].Name())
-			if !isSkipNodePorts {
-				status := pluginState.FilterPlugins["nodePortFilter"].Filter(context.TODO(), state, nil, nodeInfo)
-				nodePortStatus := api.ConvertPredicateStatus(status)
-				if nodePortStatus.Code != api.Success {
-					predicateStatus = append(predicateStatus, nodePortStatus)
-					if util.ShouldAbort(nodePortStatus) {
-						return api.NewFitErrWithStatus(task, node, predicateStatus...)
-					}
-				}
-			}
-		}
-
-		// Check PodAffinity
-		if pp.enabledPredicates.podAffinityEnable {
-			isSkipInterPodAffinity := handleSkipPredicatePlugin(state, pluginState.FilterPlugins["podAffinityFilter"].Name())
-			if !isSkipInterPodAffinity {
-				status := pluginState.FilterPlugins["podAffinityFilter"].Filter(context.TODO(), state, task.Pod, nodeInfo)
-				podAffinityStatus := api.ConvertPredicateStatus(status)
-				if podAffinityStatus.Code != api.Success {
-					predicateStatus = append(predicateStatus, podAffinityStatus)
-					if util.ShouldAbort(podAffinityStatus) {
-						return api.NewFitErrWithStatus(task, node, predicateStatus...)
-					}
-				}
-			}
-		}
-
-		// Check NodeVolumeLimits
-		if pp.enabledPredicates.nodeVolumeLimitsEnable {
-			status := pluginState.FilterPlugins["nodeVolumeLimitsCSIFilter"].Filter(context.TODO(), state, task.Pod, nodeInfo)
-			nodeVolumeStatus := api.ConvertPredicateStatus(status)
-			if nodeVolumeStatus.Code != api.Success {
-				predicateStatus = append(predicateStatus, nodeVolumeStatus)
-				if util.ShouldAbort(nodeVolumeStatus) {
-					return api.NewFitErrWithStatus(task, node, predicateStatus...)
-				}
-			}
-		}
-
-		// Check VolumeZone
-		if pp.enabledPredicates.volumeZoneEnable {
-			status := pluginState.FilterPlugins["volumeZoneFilter"].Filter(context.TODO(), state, task.Pod, nodeInfo)
-			volumeZoneStatus := api.ConvertPredicateStatus(status)
-			if volumeZoneStatus.Code != api.Success {
-				predicateStatus = append(predicateStatus, volumeZoneStatus)
-				if util.ShouldAbort(volumeZoneStatus) {
-					return api.NewFitErrWithStatus(task, node, predicateStatus...)
-				}
-			}
-		}
-
-		// Check PodTopologySpread
-		if pp.enabledPredicates.podTopologySpreadEnable {
-			isSkipPodTopologySpreadFilter := handleSkipPredicatePlugin(state, pluginState.FilterPlugins["podTopologySpreadFilter"].Name())
-			if !isSkipPodTopologySpreadFilter {
-				status := pluginState.FilterPlugins["podTopologySpreadFilter"].Filter(context.TODO(), state, task.Pod, nodeInfo)
-				podTopologyStatus := api.ConvertPredicateStatus(status)
-				if podTopologyStatus.Code != api.Success {
-					predicateStatus = append(predicateStatus, podTopologyStatus)
-					if util.ShouldAbort(podTopologyStatus) {
-						return api.NewFitErrWithStatus(task, node, predicateStatus...)
-					}
-				}
-			}
-		}
-
-		// Check VolumeBinding
-		if pp.enabledPredicates.volumeBindingEnable {
-			isSkipVolumeBinding := handleSkipPredicatePlugin(state, pp.volumeBindingPlugin.Name())
-			if !isSkipVolumeBinding {
-				status := pp.volumeBindingPlugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
-				volumeBindingStatus := api.ConvertPredicateStatus(status)
-				if volumeBindingStatus.Code != api.Success {
-					predicateStatus = append(predicateStatus, volumeBindingStatus)
-					if util.ShouldAbort(volumeBindingStatus) {
-						return api.NewFitErrWithStatus(task, node, predicateStatus...)
-					}
-				}
-			}
-		}
-
-		// Check DRA
-		if pp.enabledPredicates.dynamicResourceAllocationEnable {
-			isSkipDRA := handleSkipPredicatePlugin(state, pp.dynamicResourceAllocationPlugin.Name())
-			if !isSkipDRA {
-				status := pp.dynamicResourceAllocationPlugin.Filter(context.TODO(), state, task.Pod, nodeInfo)
-				dynamicResourceAllocationStatus := api.ConvertPredicateStatus(status)
-				if dynamicResourceAllocationStatus.Code != api.Success {
-					predicateStatus = append(predicateStatus, dynamicResourceAllocationStatus)
-					if util.ShouldAbort(dynamicResourceAllocationStatus) {
-						return api.NewFitErrWithStatus(task, node, predicateStatus...)
-					}
-				}
-			}
-		}
-
-		if len(predicateStatus) > 0 {
-			return api.NewFitErrWithStatus(task, node, predicateStatus...)
-		}
-
-		return nil
-	}
-}
-
-func (pp *PredicatesPlugin) GetBatchNodeOrderFn(pluginState *PredicatesPluginState) func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
-	return func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
-		state := pluginState.GetCycleState(task.UID)
-		nodeList := slices.Collect(maps.Values(pluginState.NodeMap))
-		nodeScores := make(map[string]float64, len(nodeList))
-
-		volumeBindingScores, err := volumeBindingScore(pp.enabledPredicates.volumeBindingEnable, pp.volumeBindingPlugin, state, task.Pod, nodeList, pluginState.VolumeBindingArgs.Weight)
+		// Calculate score using the helper function
+		pluginScores, err := nodescore.CalculatePluginScore(name, plugin, normalizer, state, task.Pod, nodes, weight)
 		if err != nil {
 			return nil, err
 		}
 
+		// Accumulate scores
 		for _, node := range nodes {
-			nodeScores[node.Name] += volumeBindingScores[node.Name]
+			nodeName := node.Node().Name
+			nodeScores[nodeName] += pluginScores[nodeName]
 		}
-
-		klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
-		return nodeScores, nil
 	}
+
+	klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
+	return nodeScores, nil
 }
 
 func (pp *PredicatesPlugin) runReservePlugins(ssn *framework.Session, event *framework.Event) {
 	state := ssn.GetCycleState(event.Task.UID)
 
-	// Volume Binding Reserve
-	if pp.volumeBindingPlugin != nil {
-		status := pp.volumeBindingPlugin.Reserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
+	for name, plugin := range pp.ReservePlugins {
+		status := plugin.Reserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
 		if !status.IsSuccess() {
-			event.Err = status.AsError()
-			return
-		}
-	}
-
-	// DRA Reserve
-	if pp.dynamicResourceAllocationPlugin != nil {
-		status := pp.dynamicResourceAllocationPlugin.Reserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
-		if !status.IsSuccess() {
+			klog.Errorf("Reserve plugin %s failed for pod %s/%s: %v", name, event.Task.Namespace, event.Task.Name, status.AsError())
 			event.Err = status.AsError()
 			return
 		}
@@ -792,28 +676,20 @@ func (pp *PredicatesPlugin) runReservePlugins(ssn *framework.Session, event *fra
 func (pp *PredicatesPlugin) runUnReservePlugins(ssn *framework.Session, event *framework.Event) {
 	state := ssn.GetCycleState(event.Task.UID)
 
-	// Volume Binding UnReserve
-	if pp.volumeBindingPlugin != nil {
-		pp.volumeBindingPlugin.Unreserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
-	}
-
-	// DRA UnReserve
-	if pp.dynamicResourceAllocationPlugin != nil {
-		pp.dynamicResourceAllocationPlugin.Unreserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
+	for _, plugin := range pp.ReservePlugins {
+		plugin.Unreserve(context.TODO(), state, event.Task.Pod, event.Task.Pod.Spec.NodeName)
 	}
 }
 
 // needsPreBind judges whether the pod needs set up extension information in bind context
 // to execute extra extension points like PreBind.
 // Currently, if a pod has any of the following resources, we assume that the pod needs to pass extension information:
-// 1. With volumes
-// 2. With resourceClaims
-// ...
+// 1. With volumes (for VolumeBinding plugin)
+// 2. With resourceClaims (for DRA plugin)
 // If a pod doesn't contain any of the above resources, the pod doesn't need to set up extension information in bind context.
-// If necessary, more refined filtering can be added in this func.
 func (pp *PredicatesPlugin) needsPreBind(task *api.TaskInfo) bool {
-	// 1. With volumes
-	if pp.volumeBindingPlugin != nil {
+	// Check if pod has volumes that need binding (only when VolumeBinding is enabled)
+	if pp.enabledPredicates.volumeBindingEnable {
 		for _, vol := range task.Pod.Spec.Volumes {
 			if vol.PersistentVolumeClaim != nil || vol.Ephemeral != nil {
 				return true
@@ -821,8 +697,8 @@ func (pp *PredicatesPlugin) needsPreBind(task *api.TaskInfo) bool {
 		}
 	}
 
-	// 2. With resourceClaims
-	if pp.dynamicResourceAllocationPlugin != nil {
+	// Check if pod has resource claims (only when DRA is enabled)
+	if pp.enabledPredicates.dynamicResourceAllocationEnable {
 		if len(task.Pod.Spec.ResourceClaims) > 0 {
 			return true
 		}
@@ -838,18 +714,11 @@ func (pp *PredicatesPlugin) PreBind(ctx context.Context, bindCtx *cache.BindCont
 
 	state := bindCtx.Extensions[pp.Name()].(*BindContextExtension).State
 
-	// VolumeBinding PreBind
-	if pp.volumeBindingPlugin != nil {
-		status := pp.volumeBindingPlugin.PreBind(ctx, state, bindCtx.TaskInfo.Pod, bindCtx.TaskInfo.Pod.Spec.NodeName)
+	// Run all PreBind plugins
+	for name, plugin := range pp.PreBindPlugins {
+		status := plugin.PreBind(ctx, state, bindCtx.TaskInfo.Pod, bindCtx.TaskInfo.Pod.Spec.NodeName)
 		if !status.IsSuccess() {
-			return status.AsError()
-		}
-	}
-
-	// DRA PreBind
-	if pp.dynamicResourceAllocationPlugin != nil {
-		status := pp.dynamicResourceAllocationPlugin.PreBind(ctx, state, bindCtx.TaskInfo.Pod, bindCtx.TaskInfo.Pod.Spec.NodeName)
-		if !status.IsSuccess() {
+			klog.Errorf("PreBind plugin %s failed for pod %s/%s: %v", name, bindCtx.TaskInfo.Namespace, bindCtx.TaskInfo.Name, status.AsError())
 			return status.AsError()
 		}
 	}
@@ -864,14 +733,8 @@ func (pp *PredicatesPlugin) PreBindRollBack(ctx context.Context, bindCtx *cache.
 
 	state := bindCtx.Extensions[pp.Name()].(*BindContextExtension).State
 
-	// VolumeBinding UnReserve
-	if pp.volumeBindingPlugin != nil {
-		pp.volumeBindingPlugin.Unreserve(ctx, state, bindCtx.TaskInfo.Pod, bindCtx.TaskInfo.Pod.Spec.NodeName)
-	}
-
-	// DRA UnReserve
-	if pp.dynamicResourceAllocationPlugin != nil {
-		pp.dynamicResourceAllocationPlugin.Unreserve(ctx, state, bindCtx.TaskInfo.Pod, bindCtx.TaskInfo.Pod.Spec.NodeName)
+	for _, plugin := range pp.ReservePlugins {
+		plugin.Unreserve(ctx, state, bindCtx.TaskInfo.Pod, bindCtx.TaskInfo.Pod.Spec.NodeName)
 	}
 }
 
@@ -901,21 +764,6 @@ func handleSkipPrePredicatePlugin(status *fwk.Status, state *k8sframework.CycleS
 	}
 
 	return nil
-}
-
-func volumeBindingScore(
-	volumeBindingEnable bool,
-	volumeBinding *vbcap.VolumeBinding,
-	cycleState fwk.CycleState,
-	pod *v1.Pod,
-	nodeInfos []fwk.NodeInfo,
-	volumeBindingWeight int,
-) (map[string]float64, error) {
-	if !volumeBindingEnable {
-		return map[string]float64{}, nil
-	}
-	return nodescore.CalculatePluginScore(volumeBinding.Name(), volumeBinding, &nodescore.EmptyNormalizer{},
-		cycleState, pod, nodeInfos, volumeBindingWeight)
 }
 
 func (pp *PredicatesPlugin) OnSessionClose(ssn *framework.Session) {}
