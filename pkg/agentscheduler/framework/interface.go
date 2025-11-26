@@ -40,9 +40,12 @@ type Plugin interface {
 	// Name returns the unique name of Plugin.
 	Name() string
 
-	// OnSchedulingStart is called when the scheduler framework starts (initialization)
-	OnSchedulingStart(fwk *Framework)
+	// OnPluginInit initializes the plugin. It is called once when the framework is created.
+	OnPluginInit(fwk *Framework)
 
-	// OnSchedulingEnd is called when a schedule cycle end
-	OnSchedulingEnd(fwk *Framework)
+	// OnCycleStart is called at the beginning of a scheduling cycle.
+	OnCycleStart(fwk *Framework)
+
+	// OnCycleEnd is called at the end of a scheduling cycle.
+	OnCycleEnd(fwk *Framework)
 }

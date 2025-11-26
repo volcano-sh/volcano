@@ -125,11 +125,12 @@ func (pc *Scheduler) runOnce() {
 
 	// TODO: Update snapshot
 	// pc.framework.UpdateSnapshot()
+	// pc.framework.OnCycleStart()
 	defer func() {
 		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
-		// Call OnSchedulingEnd for all plugins
+		// Call OnCycleEnd for all plugins
 		if pc.framework != nil {
-			pc.framework.OnSchedulingEnd()
+			pc.framework.OnCycleEnd()
 		}
 		// Clear CycleState at the end of scheduling cycle
 		if pc.framework != nil {

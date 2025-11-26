@@ -91,7 +91,7 @@ func NewFramework(tiers []conf.Tier, cache cache.Cache) *Framework {
 			} else {
 				plugin := pb(pluginConf.Arguments)
 				fwk.plugins[plugin.Name()] = plugin
-				plugin.OnSchedulingStart(fwk)
+				plugin.OnPluginInit(fwk)
 			}
 		}
 	}
@@ -116,9 +116,16 @@ func (f *Framework) ClearCycleState() {
 	f.currentCycleState = nil // Let GC reclaim it
 }
 
-// OnSchedulingEnd calls OnSchedulingEnd for all plugins.
-func (f *Framework) OnSchedulingEnd() {
+// OnCycleStart calls OnCycleStart for all plugins.
+func (f *Framework) OnCycleStart() {
 	for _, plugin := range f.plugins {
-		plugin.OnSchedulingEnd(f)
+		plugin.OnCycleStart(f)
+	}
+}
+
+// OnCycleEnd calls OnCycleEnd for all plugins.
+func (f *Framework) OnCycleEnd() {
+	for _, plugin := range f.plugins {
+		plugin.OnCycleEnd(f)
 	}
 }
