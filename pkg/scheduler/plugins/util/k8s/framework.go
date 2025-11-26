@@ -55,6 +55,27 @@ func WithSharedDRAManager(sharedDRAManager framework.SharedDRAManager) Option {
 	}
 }
 
+// WithSnapshotSharedLister sets the SharedLister of the snapshot.
+func WithSnapshotSharedLister(snapshotSharedLister framework.SharedLister) Option {
+	return func(o *Framework) {
+		o.snapshot = snapshotSharedLister
+	}
+}
+
+// WithClientSet sets clientSet for the scheduling frameworkImpl.
+func WithClientSet(clientSet kubernetes.Interface) Option {
+	return func(o *Framework) {
+		o.kubeClient = clientSet
+	}
+}
+
+// WithInformerFactory sets informer factory for the scheduling frameworkImpl.
+func WithInformerFactory(informerFactory informers.SharedInformerFactory) Option {
+	return func(o *Framework) {
+		o.informerFactory = informerFactory
+	}
+}
+
 // SnapshotSharedLister returns the scheduler's SharedLister of the latest NodeInfo
 // snapshot. The snapshot is taken at the beginning of a scheduling cycle and remains
 // unchanged until a pod finishes "Reserve". There is no guarantee that the information
@@ -181,17 +202,18 @@ func (f *Framework) APIDispatcher() fwk.APIDispatcher {
 	return nil
 }
 
-// NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
-func NewFrameworkHandle(nodeMap map[string]fwk.NodeInfo, client kubernetes.Interface, informerFactory informers.SharedInformerFactory, opts ...Option) framework.Handle {
-	snapshot := NewSnapshot(nodeMap)
-	fw := &Framework{
-		snapshot:        snapshot,
-		kubeClient:      client,
-		informerFactory: informerFactory,
-	}
+// NewFramework is the constructor of Framework
+func NewFramework(nodeMap map[string]fwk.NodeInfo, opts ...Option) *Framework {
+	fw := &Framework{}
 
 	for _, opt := range opts {
 		opt(fw)
+	}
+
+	// If no snapshot is provided, create a new one with the given nodeMap, it's mainly used in volcano batch scheduler(session scheduling).
+	if fw.snapshot == nil {
+		snapshot := NewSnapshot(nodeMap)
+		fw.snapshot = snapshot
 	}
 
 	return fw

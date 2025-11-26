@@ -60,7 +60,7 @@ type Scheduler struct {
 	metricsConf        map[string]string
 	dumper             schedcache.Dumper
 	disableDefaultConf bool
-	plugins            map[string]framework.Plugin
+	framework          *vfwk.Framework
 }
 
 // NewScheduler returns a Scheduler
@@ -96,7 +96,7 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	// Start cache for policy.
 	pc.cache.SetMetricsConf(pc.metricsConf)
 	pc.cache.Run(stopCh)
-	pc.registerPlugins(pc.tiers)
+	pc.framework = vfwk.NewFramework(pc.tiers, pc.cache)
 	klog.V(2).Infof("Scheduler completes Initialization and start to run")
 	go wait.Until(pc.runOnce, 0, stopCh)
 	if options.ServerOpts.EnableCacheDumper {
@@ -123,15 +123,23 @@ func (pc *Scheduler) runOnce() {
 		conf.EnabledActionMap[action.Name()] = true
 	}
 
-	cycle := vfwk.StartSchedulingCycle(pc.cache, pc.plugins)
+	// TODO: Update snapshot
+	// pc.framework.UpdateSnapshot()
 	defer func() {
-		vfwk.EndSchedulingCycle(cycle)
 		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
+		// Call OnSchedulingEnd for all plugins
+		if pc.framework != nil {
+			pc.framework.OnSchedulingEnd()
+		}
+		// Clear CycleState at the end of scheduling cycle
+		if pc.framework != nil {
+			pc.framework.ClearCycleState()
+		}
 	}()
 
 	for _, action := range actions {
 		actionStartTime := time.Now()
-		action.Execute(cycle)
+		action.Execute(pc.framework)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
 	}
 }
@@ -224,20 +232,6 @@ func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
 			klog.Infof("watch %s error: %v", pc.schedulerConf, err)
 		case <-stopCh:
 			return
-		}
-	}
-}
-
-func (pc *Scheduler) registerPlugins(tiers []conf.Tier) {
-	pc.plugins = make(map[string]framework.Plugin)
-	for _, tier := range tiers {
-		for _, plugin := range tier.Plugins {
-			if pb, found := framework.GetPluginBuilder(plugin.Name); !found {
-				klog.Errorf("Failed to get plugin %s.", plugin.Name)
-			} else {
-				plugin := pb(plugin.Arguments)
-				pc.plugins[plugin.Name()] = plugin
-			}
 		}
 	}
 }
