@@ -20,21 +20,16 @@ limitations under the License.
 
 package framework
 
-import (
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
-	"volcano.sh/volcano/pkg/scheduler/cache"
-)
-
-// // Action is the interface of agent scheduler action.
+// Action is the interface of agent scheduler action.
 type Action interface {
-	// The unique name of Action.
+	// Name returns the unique name of Action.
 	Name() string
 
 	// Initialize initializes the allocator plugins.
 	Initialize()
 
 	// Execute allocates the cluster's resources into each queue.
-	Execute(sc *ScheduleCycle)
+	Execute(fwk *Framework)
 
 	// UnInitialize un-initializes the allocator plugins.
 	UnInitialize()
@@ -42,17 +37,15 @@ type Action interface {
 
 // Plugin is the interface of agent scheduler plugin
 type Plugin interface {
-	// The unique name of Plugin.
+	// Name returns the unique name of Plugin.
 	Name() string
 
-	// OnSchedulingStart is called when a new schedule cycle start
-	OnSchedulingStart(sc *ScheduleCycle)
+	// OnPluginInit initializes the plugin. It is called once when the framework is created.
+	OnPluginInit(fwk *Framework)
 
-	// OnSchedulingStart is called when a schedule cycle end
-	OnSchedulingEnd(sc *ScheduleCycle)
-}
+	// OnCycleStart is called at the beginning of a scheduling cycle.
+	OnCycleStart(fwk *Framework)
 
-type BindContextHandler interface {
-	// SetupBindContextExtension allows the plugin to set up extension information in the bind context
-	SetupBindContextExtension(sc *k8sframework.CycleState, bindCtx *cache.BindContext)
+	// OnCycleEnd is called at the end of a scheduling cycle.
+	OnCycleEnd(fwk *Framework)
 }
