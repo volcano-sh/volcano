@@ -31,7 +31,7 @@ func (pp *predicatesPlugin) Name() string {
 	return PluginName
 }
 
-func (pp *predicatesPlugin) OnSchedulingStart(fwk *framework.Framework) {
+func (pp *predicatesPlugin) OnPluginInit(fwk *framework.Framework) {
 	pp.PredicatesPlugin.InitPlugin()
 
 	fwk.AddPrePredicateFn(PluginName, func(task *api.TaskInfo) error {
@@ -50,5 +50,7 @@ func (pp *predicatesPlugin) OnSchedulingStart(fwk *framework.Framework) {
 	})
 }
 
-func (pp *predicatesPlugin) OnSchedulingEnd(fwk *framework.Framework) {
+func (pp *predicatesPlugin) OnCycleStart(fwk *framework.Framework) {
+}
+func (pp *predicatesPlugin) OnCycleEnd(fwk *framework.Framework) {
 }
