@@ -40,6 +40,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/component-helpers/storage/ephemeral"
+	storagehelpers "k8s.io/component-helpers/storage/volume"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
@@ -83,136 +85,136 @@ func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *scheduling
 // addPodCSIVolumesToTask counts the csi volumes used by task
 // @Lily922 TODO: support counting shared volumes. Currently, if two different pods use the same attachable volume
 // and scheduled on the same nodes the volume will be count twice, but actually only use one attachable limit resource
-// func (sc *SchedulerCache) addPodCSIVolumesToTask(pi *schedulingapi.TaskInfo) error {
-// 	volumes, err := sc.getPodCSIVolumes(pi.Pod)
-// 	if err != nil {
-// 		klog.Errorf("got pod csi attachment persistent volumes count error: %s", err.Error())
-// 		return err
-// 	}
+func (sc *SchedulerCache) addPodCSIVolumesToTask(pi *schedulingapi.TaskInfo) error {
+	volumes, err := sc.getPodCSIVolumes(pi.Pod)
+	if err != nil {
+		klog.Errorf("got pod csi attachment persistent volumes count error: %s", err.Error())
+		return err
+	}
 
-// 	for key, count := range volumes {
-// 		pi.Resreq.AddScalar(key, float64(count))
-// 	}
-// 	return nil
-// }
+	for key, count := range volumes {
+		pi.Resreq.AddScalar(key, float64(count))
+	}
+	return nil
+}
 
-// func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int64, error) {
-// 	volumes := make(map[v1.ResourceName]int64)
-// 	for _, vol := range pod.Spec.Volumes {
-// 		pvcName := ""
-// isEphemeral := false
-// switch {
-// case vol.PersistentVolumeClaim != nil:
-// 	// Normal CSI volume can only be used through PVC
-// 	pvcName = vol.PersistentVolumeClaim.ClaimName
-// case vol.Ephemeral != nil:
-// 	// Generic ephemeral inline volumes also use a PVC,
-// 	// just with a computed name and certain ownership.
-// 	// That is checked below once the pvc object is
-// 	// retrieved.
-// 	pvcName = ephemeral.VolumeClaimName(pod, &vol)
-// 	isEphemeral = true
-// default:
-// 	// @Lily922 TODO: support Inline volumes.
-// 	// Inline volume is not supported now
-// 	continue
-// }
-// if pvcName == "" {
-// 	return volumes, fmt.Errorf("PersistentVolumeClaim had no name")
-// }
+func (sc *SchedulerCache) getPodCSIVolumes(pod *v1.Pod) (map[v1.ResourceName]int64, error) {
+	volumes := make(map[v1.ResourceName]int64)
+	for _, vol := range pod.Spec.Volumes {
+		pvcName := ""
+		isEphemeral := false
+		switch {
+		case vol.PersistentVolumeClaim != nil:
+			// Normal CSI volume can only be used through PVC
+			pvcName = vol.PersistentVolumeClaim.ClaimName
+		case vol.Ephemeral != nil:
+			// Generic ephemeral inline volumes also use a PVC,
+			// just with a computed name and certain ownership.
+			// That is checked below once the pvc object is
+			// retrieved.
+			pvcName = ephemeral.VolumeClaimName(pod, &vol)
+			isEphemeral = true
+		default:
+			// @Lily922 TODO: support Inline volumes.
+			// Inline volume is not supported now
+			continue
+		}
+		if pvcName == "" {
+			return volumes, fmt.Errorf("PersistentVolumeClaim had no name")
+		}
 
-// pvc, err := sc.pvcInformer.Lister().PersistentVolumeClaims(pod.Namespace).Get(pvcName)
-// if err != nil {
-// 	// The PVC is required to proceed with
-// 	// scheduling of a new pod because it cannot
-// 	// run without it. Bail out immediately.
-// 	return volumes, fmt.Errorf("looking up PVC %s/%s: %v", pod.Namespace, pvcName, err)
-// }
-// The PVC for an ephemeral volume must be owned by the pod.
-// if isEphemeral {
-// 	if err := ephemeral.VolumeIsForPod(pod, pvc); err != nil {
-// 		return volumes, err
-// 	}
-// }
+		pvc, err := sc.pvcInformer.Lister().PersistentVolumeClaims(pod.Namespace).Get(pvcName)
+		if err != nil {
+			// The PVC is required to proceed with
+			// scheduling of a new pod because it cannot
+			// run without it. Bail out immediately.
+			return volumes, fmt.Errorf("looking up PVC %s/%s: %v", pod.Namespace, pvcName, err)
+		}
+		// The PVC for an ephemeral volume must be owned by the pod.
+		if isEphemeral {
+			if err := ephemeral.VolumeIsForPod(pod, pvc); err != nil {
+				return volumes, err
+			}
+		}
 
-// driverName := sc.getCSIDriverInfo(pvc)
-// if sc.isIgnoredProvisioner(driverName) {
-// 	klog.V(5).InfoS("Provisioner ignored, skip count pod pvc num", "driverName", driverName)
-// 	continue
-// }
-// if driverName == "" {
-// 	klog.V(5).InfoS("Could not find a CSI driver name for pvc(%s/%s), not counting volume", pvc.Namespace, pvc.Name)
-// 	continue
-// }
+		driverName := sc.getCSIDriverInfo(pvc)
+		if sc.isIgnoredProvisioner(driverName) {
+			klog.V(5).InfoS("Provisioner ignored, skip count pod pvc num", "driverName", driverName)
+			continue
+		}
+		if driverName == "" {
+			klog.V(5).InfoS("Could not find a CSI driver name for pvc(%s/%s), not counting volume", pvc.Namespace, pvc.Name)
+			continue
+		}
 
-// Count all csi volumes in cache, because the storage may change from unattachable volumes to attachable volumes after
-// the cache set up, in this case it is very difficult to refresh all task caches.
-// For unattachable volume, set the limits number to a very large value, in this way, scheduling will never
-// be limited due to insufficient quantity of it.
-// k := v1.ResourceName(volumeutil.GetCSIAttachLimitKey(driverName))
-// if _, ok := volumes[k]; !ok {
-// 	volumes[k] = 1
-// } else {
-// 	volumes[k] += 1
-// }
-// }
-// return volumes, nil
-// }
+		// Count all csi volumes in cache, because the storage may change from unattachable volumes to attachable volumes after
+		// the cache set up, in this case it is very difficult to refresh all task caches.
+		// For unattachable volume, set the limits number to a very large value, in this way, scheduling will never
+		// be limited due to insufficient quantity of it.
+		k := v1.ResourceName(volumeutil.GetCSIAttachLimitKey(driverName))
+		if _, ok := volumes[k]; !ok {
+			volumes[k] = 1
+		} else {
+			volumes[k] += 1
+		}
+	}
+	return volumes, nil
+}
 
 func (sc *SchedulerCache) isIgnoredProvisioner(driverName string) bool {
 	return sc.IgnoredCSIProvisioners.Has(driverName)
 }
 
-// func (sc *SchedulerCache) getCSIDriverInfo(pvc *v1.PersistentVolumeClaim) string {
-// 	pvName := pvc.Spec.VolumeName
+func (sc *SchedulerCache) getCSIDriverInfo(pvc *v1.PersistentVolumeClaim) string {
+	pvName := pvc.Spec.VolumeName
 
-// 	if pvName == "" {
-// 		klog.V(5).Infof("PV had no name for pvc <%s>", klog.KObj(pvc))
-// 		return sc.getCSIDriverInfoFromSC(pvc)
-// 	}
+	if pvName == "" {
+		klog.V(5).Infof("PV had no name for pvc <%s>", klog.KObj(pvc))
+		return sc.getCSIDriverInfoFromSC(pvc)
+	}
 
-// 	pv, err := sc.pvInformer.Lister().Get(pvName)
-// 	if err != nil {
-// 		klog.V(5).InfoS("Failed to get pv <%s> for pvc <%s>: %v", klog.KRef("", pvName), klog.KObj(pvc), err)
-// 		// If we can't fetch PV associated with PVC, may be it got deleted
-// 		// or PVC was prebound to a PVC that hasn't been created yet.
-// 		// fallback to using StorageClass for volume counting
-// 		return sc.getCSIDriverInfoFromSC(pvc)
-// 	}
+	pv, err := sc.pvInformer.Lister().Get(pvName)
+	if err != nil {
+		klog.V(5).InfoS("Failed to get pv <%s> for pvc <%s>: %v", klog.KRef("", pvName), klog.KObj(pvc), err)
+		// If we can't fetch PV associated with PVC, may be it got deleted
+		// or PVC was prebound to a PVC that hasn't been created yet.
+		// fallback to using StorageClass for volume counting
+		return sc.getCSIDriverInfoFromSC(pvc)
+	}
 
-// 	csiSource := pv.Spec.PersistentVolumeSource.CSI
-// 	if csiSource == nil {
-// 		// @Lily922 TODO: support non-CSI volumes and migrating pvc
-// 		// CSIMigration is not supported now.
-// 		klog.Warningf("Not support non-csi pvc.")
-// 		return ""
-// 	}
+	csiSource := pv.Spec.PersistentVolumeSource.CSI
+	if csiSource == nil {
+		// @Lily922 TODO: support non-CSI volumes and migrating pvc
+		// CSIMigration is not supported now.
+		klog.Warningf("Not support non-csi pvc.")
+		return ""
+	}
 
-// 	return csiSource.Driver
-// }
+	return csiSource.Driver
+}
 
 // getCSIDriverInfoFromSC get the name of the csi driver through the sc of the pvc.
-// func (sc *SchedulerCache) getCSIDriverInfoFromSC(pvc *v1.PersistentVolumeClaim) string {
-// 	scName := storagehelpers.GetPersistentVolumeClaimClass(pvc)
+func (sc *SchedulerCache) getCSIDriverInfoFromSC(pvc *v1.PersistentVolumeClaim) string {
+	scName := storagehelpers.GetPersistentVolumeClaimClass(pvc)
 
-// 	// If StorageClass is not set or not found, then PVC must be using immediate binding mode
-// 	// and hence it must be bound before scheduling. So it is safe to not count it.
-// 	if scName == "" {
-// 		klog.V(3).Infof("PVC <%s> has no StorageClass", klog.KObj(pvc))
-// 		return ""
-// 	}
+	// If StorageClass is not set or not found, then PVC must be using immediate binding mode
+	// and hence it must be bound before scheduling. So it is safe to not count it.
+	if scName == "" {
+		klog.V(3).Infof("PVC <%s> has no StorageClass", klog.KObj(pvc))
+		return ""
+	}
 
-// 	storageClass, err := sc.scInformer.Lister().Get(scName)
-// 	if err != nil {
-// 		klog.Errorf("Failed to get StorageClass for pvc <%s>: %v", klog.KObj(pvc), err)
-// 		return ""
-// 	}
+	storageClass, err := sc.scInformer.Lister().Get(scName)
+	if err != nil {
+		klog.Errorf("Failed to get StorageClass for pvc <%s>: %v", klog.KObj(pvc), err)
+		return ""
+	}
 
-// 	if driverName, ok := storageClass.Parameters["csi.storage.k8s.io/csi-driver-name"]; ok {
-// 		return driverName
-// 	}
-// 	return storageClass.Provisioner
-// }
+	if driverName, ok := storageClass.Parameters["csi.storage.k8s.io/csi-driver-name"]; ok {
+		return driverName
+	}
+	return storageClass.Provisioner
+}
 
 func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 	if len(pi.NodeName) != 0 {
@@ -241,9 +243,9 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 
 func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, error) {
 	taskInfo := schedulingapi.NewTaskInfo(pod)
-	// if err := sc.addPodCSIVolumesToTask(taskInfo); err != nil {
-	// 	return taskInfo, err
-	// }
+	if err := sc.addPodCSIVolumesToTask(taskInfo); err != nil {
+		return taskInfo, err
+	}
 	// Update BestEffort because the InitResreq maybe changes
 	taskInfo.BestEffort = taskInfo.InitResreq.IsEmpty()
 	return taskInfo, nil
@@ -627,12 +629,12 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 		return nil
 	}
 	nodeCopy := node.DeepCopy()
-	// csiNode, err := sc.csiNodeInformer.Lister().Get(nodeName)
-	// if err == nil {
-	// 	sc.setCSIResourceOnNode(csiNode, nodeCopy)
-	// } else if !errors.IsNotFound(err) {
-	// 	return err
-	// }
+	csiNode, err := sc.csiNodeInformer.Lister().Get(nodeName)
+	if err == nil {
+		sc.setCSIResourceOnNode(csiNode, nodeCopy)
+	} else if !errors.IsNotFound(err) {
+		return err
+	}
 	return sc.AddOrUpdateNode(nodeCopy)
 }
 
@@ -712,24 +714,24 @@ func (sc *SchedulerCache) DeleteCSINode(obj interface{}) {
 	sc.nodeQueue.Add(csiNode.Name)
 }
 
-// func (sc *SchedulerCache) SyncHyperNode(name string) error {
-// 	eventSource := getHyperNodeEventSource(name)
-// 	if eventSource == nil {
-// 		klog.ErrorS(nil, "Failed to get event source for node <%s>", "eventSource", name)
-// 		// just return nil and not process again as it's an invalid event.
-// 		return nil
-// 	}
-// 	switch eventSource[0] {
-// 	case string(hyperNodeEventSourceNode):
-// 		return sc.triggerUpdateHyperNode(eventSource[1])
-// 	case string(hyperNodeEventSourceHyperNode):
-// 		return sc.processHyperNode(eventSource[1])
-// 	default:
-// 		// should never happen.
-// 		klog.ErrorS(nil, "Unknown event source", "name", eventSource)
-// 	}
-// 	return nil
-// }
+func (sc *SchedulerCache) SyncHyperNode(name string) error {
+	eventSource := getHyperNodeEventSource(name)
+	if eventSource == nil {
+		klog.ErrorS(nil, "Failed to get event source for node <%s>", "eventSource", name)
+		// just return nil and not process again as it's an invalid event.
+		return nil
+	}
+	switch eventSource[0] {
+	case string(hyperNodeEventSourceNode):
+		return sc.triggerUpdateHyperNode(eventSource[1])
+	case string(hyperNodeEventSourceHyperNode):
+		return sc.processHyperNode(eventSource[1])
+	default:
+		// should never happen.
+		klog.ErrorS(nil, "Unknown event source", "name", eventSource)
+	}
+	return nil
+}
 
 func (sc *SchedulerCache) triggerUpdateHyperNode(name string) error {
 	sc.HyperNodesInfo.Lock()
@@ -764,19 +766,19 @@ func (sc *SchedulerCache) triggerUpdateHyperNode(name string) error {
 	return nil
 }
 
-// func (sc *SchedulerCache) processHyperNode(name string) error {
-// 	sc.HyperNodesInfo.Lock()
-// 	defer sc.HyperNodesInfo.Unlock()
+func (sc *SchedulerCache) processHyperNode(name string) error {
+	sc.HyperNodesInfo.Lock()
+	defer sc.HyperNodesInfo.Unlock()
 
-// 	hn, err := sc.hyperNodeInformer.Lister().Get(name)
-// 	if err != nil {
-// 		if !errors.IsNotFound(err) {
-// 			return fmt.Errorf("failed to get hyperNode <%s>: %v", name, err)
-// 		}
-// 		return sc.deleteHyperNode(name)
-// 	}
-// 	return sc.updateHyperNode(hn)
-// }
+	hn, err := sc.hyperNodeInformer.Lister().Get(name)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to get hyperNode <%s>: %v", name, err)
+		}
+		return sc.deleteHyperNode(name)
+	}
+	return sc.updateHyperNode(hn)
+}
 
 func getJobID(pg *schedulingapi.PodGroup) schedulingapi.JobID {
 	return schedulingapi.JobID(fmt.Sprintf("%s/%s", pg.Namespace, pg.Name))
