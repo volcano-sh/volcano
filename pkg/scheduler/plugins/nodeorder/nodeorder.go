@@ -170,7 +170,10 @@ func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	// Initialize k8s scheduling plugins
-	handle := k8s.NewFrameworkHandle(nodeMap, ssn.KubeClient(), ssn.InformerFactory())
+	handle := k8s.NewFramework(nodeMap,
+		k8s.WithClientSet(ssn.KubeClient()),
+		k8s.WithInformerFactory(ssn.InformerFactory()),
+	)
 
 	// 1. NodeResourcesLeastAllocated
 	leastAllocatedArgs := &config.NodeResourcesFitArgs{

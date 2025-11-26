@@ -1,9 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
-Copyright 2019-2025 The Volcano Authors.
-
-Modifications made by Volcano authors:
-- Added additional plugin extension points
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -220,4 +216,24 @@ func (f *Framework) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 		}
 	}
 	return nodeScoreMap, nil
+}
+
+// Action management
+var actionMap = map[string]Action{}
+
+// RegisterAction register action
+func RegisterAction(act Action) {
+	pluginMutex.Lock()
+	defer pluginMutex.Unlock()
+
+	actionMap[act.Name()] = act
+}
+
+// GetAction get the action by name
+func GetAction(name string) (Action, bool) {
+	pluginMutex.RLock()
+	defer pluginMutex.RUnlock()
+
+	act, found := actionMap[name]
+	return act, found
 }
