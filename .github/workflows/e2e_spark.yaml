@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - master
+      - agent-scheduler
   # PR triggered job
   pull_request:
 jobs:
