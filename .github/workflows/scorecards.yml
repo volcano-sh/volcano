@@ -8,7 +8,7 @@ on:
   schedule:
     - cron: '26 15 * * 6'
   push:
-    branches: [ "master" ]
+    branches: [ "master", "agent-scheduler" ]
 
 # Declare default permissions as read only.
 permissions: read-all

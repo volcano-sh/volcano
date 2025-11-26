@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - agent-scheduler
     tags:
   pull_request:
 
