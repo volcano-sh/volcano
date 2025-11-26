@@ -1,9 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
-Copyright 2018-2023 The Volcano Authors.
-
-Modifications made by Volcano authors:
-- Enhanced session initialization with configuration support
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,8 +33,9 @@ import (
 type Framework struct {
 	*k8sutil.Framework // Embedding Framework to implement framework.Handle interface
 
-	plugins map[string]Plugin
-	Tiers   []conf.Tier
+	Plugins        map[string]Plugin
+	Tiers          []conf.Tier
+	Configurations []conf.Configuration
 
 	// Function registries
 	PredicateFns      map[string]api.PredicateFn
@@ -54,13 +51,13 @@ type Framework struct {
 	// Since agent scheduler schedules one pod per cycle, we only need one CycleState.
 	// When multiple workers collaborate on scheduling simultaneously in the future,
 	// we may need to store cycleState using sync.Map or similar methods.
-	currentCycleState *k8sframework.CycleState
+	CurrentCycleState *k8sframework.CycleState
 }
 
 var _ framework.Handle = &Framework{}
 
 // NewFramework initializes the framework with the given plugins.
-func NewFramework(tiers []conf.Tier, cache cache.Cache) *Framework {
+func NewFramework(tiers []conf.Tier, cache cache.Cache, configurations []conf.Configuration) *Framework {
 	utilFwk := k8sutil.NewFramework(
 		nil, // fast path scheduler needs to use snapshot shared lister instead
 		k8sutil.WithSnapshotSharedLister(k8scache.NewEmptySnapshot()), // TODO: may need to use to volcano scheduler's own snapshot?
@@ -70,8 +67,9 @@ func NewFramework(tiers []conf.Tier, cache cache.Cache) *Framework {
 	)
 
 	fwk := &Framework{
-		plugins:           make(map[string]Plugin),
+		Plugins:           make(map[string]Plugin),
 		Tiers:             tiers,
+		Configurations:    configurations,
 		PredicateFns:      make(map[string]api.PredicateFn),
 		PrePredicateFns:   make(map[string]api.PrePredicateFn),
 		NodeOrderFns:      make(map[string]api.NodeOrderFn),
@@ -90,7 +88,7 @@ func NewFramework(tiers []conf.Tier, cache cache.Cache) *Framework {
 				klog.Errorf("Failed to get plugin %s.", pluginConf.Name)
 			} else {
 				plugin := pb(pluginConf.Arguments)
-				fwk.plugins[plugin.Name()] = plugin
+				fwk.Plugins[plugin.Name()] = plugin
 				plugin.OnPluginInit(fwk)
 			}
 		}
@@ -102,30 +100,30 @@ func NewFramework(tiers []conf.Tier, cache cache.Cache) *Framework {
 // GetCycleState returns the CycleState for the current scheduling cycle.
 // Since agent scheduler schedules one pod per cycle, all calls return the same state.
 func (f *Framework) GetCycleState(taskUID types.UID) *k8sframework.CycleState {
-	if f.currentCycleState != nil {
-		return f.currentCycleState
+	if f.CurrentCycleState != nil {
+		return f.CurrentCycleState
 	}
 
 	// First call in this cycle, create new state
-	f.currentCycleState = k8sframework.NewCycleState()
-	return f.currentCycleState
+	f.CurrentCycleState = k8sframework.NewCycleState()
+	return f.CurrentCycleState
 }
 
 // ClearCycleState clears the current CycleState.
 func (f *Framework) ClearCycleState() {
-	f.currentCycleState = nil // Let GC reclaim it
+	f.CurrentCycleState = nil // Let GC reclaim it
 }
 
 // OnCycleStart calls OnCycleStart for all plugins.
 func (f *Framework) OnCycleStart() {
-	for _, plugin := range f.plugins {
+	for _, plugin := range f.Plugins {
 		plugin.OnCycleStart(f)
 	}
 }
 
 // OnCycleEnd calls OnCycleEnd for all plugins.
 func (f *Framework) OnCycleEnd() {
-	for _, plugin := range f.plugins {
+	for _, plugin := range f.Plugins {
 		plugin.OnCycleEnd(f)
 	}
 }

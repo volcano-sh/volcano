@@ -1,5 +1,9 @@
 /*
-Copyright 2025 The Volcano Authors.
+Copyright 2019 The Kubernetes Authors.
+Copyright 2018-2022 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added enqueue and shuffle actions to extend scheduling capabilities
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,21 +18,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package plugins
+package actions
 
 import (
-	"volcano.sh/volcano/pkg/scheduler/conf"
+	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
+	"volcano.sh/volcano/pkg/scheduler/framework"
 )
 
-// ApplyPluginConfDefaults sets option's filed to its default value if not set
-func ApplyPluginConfDefaults(option *conf.PluginOption) {
-	setDefaultIfNil(&option.EnabledPredicate)
-	setDefaultIfNil(&option.EnabledNodeOrder)
-}
-
-func setDefaultIfNil(field **bool) {
-	defaultValue := true
-	if *field == nil {
-		*field = &defaultValue
-	}
+func init() {
+	framework.RegisterAction(allocate.New())
 }

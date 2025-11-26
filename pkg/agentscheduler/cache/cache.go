@@ -30,6 +30,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -59,7 +60,9 @@ import (
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/features"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
+	vcache "volcano.sh/volcano/pkg/scheduler/cache"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -84,6 +87,13 @@ func init() {
 // New returns a Cache implementation.
 func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration) Cache {
 	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod)
+}
+
+type PodScheduleResult struct {
+	Task             *api.TaskInfo
+	BindContext      *vcache.BindContext
+	SuggestedNodes   []*api.NodeInfo
+	ScheduleCycleUID types.UID
 }
 
 // SchedulerCache cache for the kube batch
@@ -137,6 +147,9 @@ type SchedulerCache struct {
 
 	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
 	sharedDRAManager k8sframework.SharedDRAManager
+
+	// BindCheckChannel is used to store allocate result for bind
+	BindCheckChannel chan *PodScheduleResult
 }
 
 type multiSchedulerInfo struct {

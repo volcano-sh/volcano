@@ -36,7 +36,6 @@ import (
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
-	vfwk "volcano.sh/volcano/pkg/agentscheduler/framework"
 	"volcano.sh/volcano/pkg/filewatcher"
 	schedcache "volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -60,7 +59,8 @@ type Scheduler struct {
 	metricsConf        map[string]string
 	dumper             schedcache.Dumper
 	disableDefaultConf bool
-	framework          *vfwk.Framework
+	framework          *framework.Framework
+	workerCount        uint32
 }
 
 // NewScheduler returns a Scheduler
@@ -83,6 +83,7 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 		schedulePeriod:     opt.SchedulePeriod,
 		dumper:             schedcache.Dumper{Cache: cache, RootDir: opt.CacheDumpFileDir},
 		disableDefaultConf: opt.DisableDefaultSchedulerConfig,
+		workerCount:        opt.ScheduleWorkerCount,
 	}
 
 	return scheduler, nil
@@ -90,32 +91,39 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 
 // Run initializes and starts the Scheduler. It loads the configuration,
 // initializes the cache, and begins the scheduling process.
-func (pc *Scheduler) Run(stopCh <-chan struct{}) {
-	pc.loadSchedulerConf()
-	go pc.watchSchedulerConf(stopCh)
+func (sched *Scheduler) Run(stopCh <-chan struct{}) {
+	sched.loadSchedulerConf()
+	go sched.watchSchedulerConf(stopCh)
 	// Start cache for policy.
-	pc.cache.SetMetricsConf(pc.metricsConf)
-	pc.cache.Run(stopCh)
-	pc.framework = vfwk.NewFramework(pc.tiers, pc.cache)
-	klog.V(2).Infof("Scheduler completes Initialization and start to run")
-	go wait.Until(pc.runOnce, 0, stopCh)
-	if options.ServerOpts.EnableCacheDumper {
-		pc.dumper.ListenForSignal(stopCh)
+	sched.cache.SetMetricsConf(sched.metricsConf)
+	sched.cache.Run(stopCh)
+	sched.framework = framework.NewFramework(sched.tiers, sched.cache, sched.configurations)
+	klog.V(2).Infof("Scheduler completes Initialization and start to run %d workers", sched.workerCount)
+	for i := range sched.workerCount {
+		index := i
+		go wait.Until(func() { sched.runOnce(index) }, 0, stopCh)
 	}
+	if options.ServerOpts.EnableCacheDumper {
+		sched.dumper.ListenForSignal(stopCh)
+	}
+	if options.ServerOpts.EnableCacheDumper {
+		sched.dumper.ListenForSignal(stopCh)
+	}
+
 	go runSchedulerSocket()
 }
 
 // runOnce executes a single scheduling cycle. This function is called periodically
 // as defined by the Scheduler's schedule period.
-func (pc *Scheduler) runOnce() {
-	klog.V(4).Infof("Start scheduling ...")
+func (sched *Scheduler) runOnce(index uint32) {
+	klog.V(4).Infof("Start scheduling in worker %d ...", index)
 	scheduleStartTime := time.Now()
-	defer klog.V(4).Infof("End scheduling ...")
+	defer klog.V(4).Infof("End scheduling in worker %d ...", index)
 
-	pc.mutex.Lock()
-	actions := pc.actions
-	// configurations := pc.configurations
-	pc.mutex.Unlock()
+	sched.mutex.Lock()
+	actions := sched.actions
+	// configurations := sched.configurations
+	sched.mutex.Unlock()
 
 	// Load ConfigMap to check which action is enabled.
 	conf.EnabledActionMap = make(map[string]bool)
@@ -123,43 +131,46 @@ func (pc *Scheduler) runOnce() {
 		conf.EnabledActionMap[action.Name()] = true
 	}
 
+	//TODO: Pop a pod
+	//taskInfo = sched.NextPod()
+
 	// TODO: Update snapshot
-	// pc.framework.UpdateSnapshot()
-	// pc.framework.OnCycleStart()
+	// sched.framework.UpdateSnapshot()
+	// sched.framework.OnCycleStart()
 	defer func() {
 		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 		// Call OnCycleEnd for all plugins
-		if pc.framework != nil {
-			pc.framework.OnCycleEnd()
+		if sched.framework != nil {
+			sched.framework.OnCycleEnd()
 		}
 		// Clear CycleState at the end of scheduling cycle
-		if pc.framework != nil {
-			pc.framework.ClearCycleState()
+		if sched.framework != nil {
+			sched.framework.ClearCycleState()
 		}
 	}()
 
 	for _, action := range actions {
 		actionStartTime := time.Now()
-		action.Execute(pc.framework)
+		action.Execute(sched.framework)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
 	}
 }
 
-func (pc *Scheduler) loadSchedulerConf() {
+func (sched *Scheduler) loadSchedulerConf() {
 	klog.V(4).Infof("Start loadSchedulerConf ...")
 	defer func() {
-		actions, plugins := pc.getSchedulerConf()
+		actions, plugins := sched.getSchedulerConf()
 		klog.V(2).Infof("Finished loading scheduler config. Final state: actions=%v, plugins=%v", actions, plugins)
 	}()
 
-	if pc.disableDefaultConf && len(pc.schedulerConf) == 0 {
+	if sched.disableDefaultConf && len(sched.schedulerConf) == 0 {
 		klog.Fatalf("No --scheduler-conf path provided and default configuration fallback is disabled")
 	}
 
 	var err error
-	if !pc.disableDefaultConf {
-		pc.once.Do(func() {
-			pc.actions, pc.tiers, pc.configurations, pc.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
+	if !sched.disableDefaultConf {
+		sched.once.Do(func() {
+			sched.actions, sched.tiers, sched.configurations, sched.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
 			if err != nil {
 				klog.Fatalf("Invalid default configuration: unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
 			}
@@ -167,14 +178,14 @@ func (pc *Scheduler) loadSchedulerConf() {
 	}
 
 	var config string
-	if len(pc.schedulerConf) != 0 {
-		confData, err := os.ReadFile(pc.schedulerConf)
+	if len(sched.schedulerConf) != 0 {
+		confData, err := os.ReadFile(sched.schedulerConf)
 		if err != nil {
-			if pc.disableDefaultConf {
+			if sched.disableDefaultConf {
 				klog.Fatalf("Failed to read scheduler config and default configuration fallback is disabled")
 			}
 			klog.Errorf("Failed to read the Scheduler config in '%s', using previous configuration: %v",
-				pc.schedulerConf, err)
+				sched.schedulerConf, err)
 			return
 		}
 		config = strings.TrimSpace(string(confData))
@@ -182,26 +193,26 @@ func (pc *Scheduler) loadSchedulerConf() {
 
 	actions, tiers, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
 	if err != nil {
-		if pc.disableDefaultConf {
+		if sched.disableDefaultConf {
 			klog.Fatalf("Invalid scheduler configuration and default configuration fallback is disabled")
 		}
 		klog.Errorf("Scheduler config %s is invalid: %v", config, err)
 		return
 	}
 
-	pc.mutex.Lock()
-	pc.actions = actions
-	pc.tiers = tiers
-	pc.configurations = configurations
-	pc.metricsConf = metricsConf
-	pc.mutex.Unlock()
+	sched.mutex.Lock()
+	sched.actions = actions
+	sched.tiers = tiers
+	sched.configurations = configurations
+	sched.metricsConf = metricsConf
+	sched.mutex.Unlock()
 }
 
-func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
-	for _, action := range pc.actions {
+func (sched *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
+	for _, action := range sched.actions {
 		actions = append(actions, action.Name())
 	}
-	for _, tier := range pc.tiers {
+	for _, tier := range sched.tiers {
 		for _, plugin := range tier.Plugins {
 			plugins = append(plugins, plugin.Name)
 		}
@@ -209,28 +220,28 @@ func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
 	return
 }
 
-func (pc *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
-	if pc.fileWatcher == nil {
+func (sched *Scheduler) watchSchedulerConf(stopCh <-chan struct{}) {
+	if sched.fileWatcher == nil {
 		return
 	}
-	eventCh := pc.fileWatcher.Events()
-	errCh := pc.fileWatcher.Errors()
+	eventCh := sched.fileWatcher.Events()
+	errCh := sched.fileWatcher.Errors()
 	for {
 		select {
 		case event, ok := <-eventCh:
 			if !ok {
 				return
 			}
-			klog.V(4).Infof("watch %s event: %v", pc.schedulerConf, event)
+			klog.V(4).Infof("watch %s event: %v", sched.schedulerConf, event)
 			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
-				pc.loadSchedulerConf()
-				pc.cache.SetMetricsConf(pc.metricsConf)
+				sched.loadSchedulerConf()
+				sched.cache.SetMetricsConf(sched.metricsConf)
 			}
 		case err, ok := <-errCh:
 			if !ok {
 				return
 			}
-			klog.Infof("watch %s error: %v", pc.schedulerConf, err)
+			klog.Infof("watch %s error: %v", sched.schedulerConf, err)
 		case <-stopCh:
 			return
 		}
