@@ -47,6 +47,7 @@ const (
 	defaultPercentageOfNodesToFind    = 0
 	defaultLockObjectNamespace        = "volcano-system"
 	defaultNodeWorkers                = 20
+	defaultScheduleWorkerCount        = 1
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -97,6 +98,9 @@ type ServerOption struct {
 	// DisableDefaultSchedulerConfig indicates if the scheduler should fallback to default
 	// config if the current scheduler config is invalid
 	DisableDefaultSchedulerConfig bool
+
+	//Count of workers for scheduling
+	ScheduleWorkerCount uint32
 }
 
 // DecryptFunc is custom function to parse ca file
@@ -156,6 +160,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
+	fs.Uint32Var(&s.ScheduleWorkerCount, "worker-count", defaultScheduleWorkerCount, "The flag indicates the number of worker threads for scheduling.")
 }
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.

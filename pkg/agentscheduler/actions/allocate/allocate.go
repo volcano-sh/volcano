@@ -68,12 +68,20 @@ func (alloc *Action) Execute(fwk *framework.Framework) {
 	// 2. use ssn.NodeOrderFn to judge the best node and assign it to T
 
 	alloc.fwk = fwk
-	// alloc.allocateTask(taskInfo, nodes)
+	var taskInfo *api.TaskInfo
+	var nodeList []*api.NodeInfo
+	var nodeMap map[string]*api.NodeInfo
+	//TODO: get task and nodes from queue and snapshot
+	alloc.allocateTask(taskInfo, nodeMap, nodeList)
 
 	//push to bind checking channel
 }
 
 func (alloc *Action) allocateTask(task *api.TaskInfo, nodes map[string]*api.NodeInfo, nodeList []*api.NodeInfo) {
+	if task == nil {
+		klog.Warning("No task to allocate")
+		return
+	}
 	alloc.fwk.SnapshotSharedLister().NodeInfos().List()
 	ph := util.NewPredicateHelper()
 

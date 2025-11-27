@@ -34,6 +34,7 @@ type Framework struct {
 	*k8sutil.Framework // Embedding Framework to implement framework.Handle interface
 
 	Plugins        map[string]Plugin
+	Actions        []Action
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 
@@ -57,7 +58,7 @@ type Framework struct {
 var _ framework.Handle = &Framework{}
 
 // NewFramework initializes the framework with the given plugins.
-func NewFramework(tiers []conf.Tier, cache cache.Cache, configurations []conf.Configuration) *Framework {
+func NewFramework(actions []Action, tiers []conf.Tier, cache cache.Cache, configurations []conf.Configuration) *Framework {
 	utilFwk := k8sutil.NewFramework(
 		nil, // fast path scheduler needs to use snapshot shared lister instead
 		k8sutil.WithSnapshotSharedLister(k8scache.NewEmptySnapshot()), // TODO: may need to use to volcano scheduler's own snapshot?
@@ -68,6 +69,7 @@ func NewFramework(tiers []conf.Tier, cache cache.Cache, configurations []conf.Co
 
 	fwk := &Framework{
 		Plugins:           make(map[string]Plugin),
+		Actions:           actions,
 		Tiers:             tiers,
 		Configurations:    configurations,
 		PredicateFns:      make(map[string]api.PredicateFn),

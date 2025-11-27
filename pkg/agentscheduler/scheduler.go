@@ -34,7 +34,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
-	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	schedcache "volcano.sh/volcano/pkg/agentscheduler/cache"
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
 	"volcano.sh/volcano/pkg/filewatcher"
@@ -59,8 +59,11 @@ type Scheduler struct {
 	metricsConf        map[string]string
 	dumper             schedcache.Dumper
 	disableDefaultConf bool
-	framework          *framework.Framework
 	workerCount        uint32
+}
+
+type Worker struct {
+	framework *framework.Framework
 }
 
 // NewScheduler returns a Scheduler
@@ -97,11 +100,13 @@ func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 	// Start cache for policy.
 	sched.cache.SetMetricsConf(sched.metricsConf)
 	sched.cache.Run(stopCh)
-	sched.framework = framework.NewFramework(sched.tiers, sched.cache, sched.configurations)
+
 	klog.V(2).Infof("Scheduler completes Initialization and start to run %d workers", sched.workerCount)
 	for i := range sched.workerCount {
+		worker := &Worker{}
+		worker.framework = framework.NewFramework(sched.actions, sched.tiers, sched.cache, sched.configurations)
 		index := i
-		go wait.Until(func() { sched.runOnce(index) }, 0, stopCh)
+		go wait.Until(func() { worker.runOnce(index) }, 0, stopCh)
 	}
 	if options.ServerOpts.EnableCacheDumper {
 		sched.dumper.ListenForSignal(stopCh)
@@ -115,19 +120,13 @@ func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 
 // runOnce executes a single scheduling cycle. This function is called periodically
 // as defined by the Scheduler's schedule period.
-func (sched *Scheduler) runOnce(index uint32) {
+func (worker *Worker) runOnce(index uint32) {
 	klog.V(4).Infof("Start scheduling in worker %d ...", index)
 	scheduleStartTime := time.Now()
 	defer klog.V(4).Infof("End scheduling in worker %d ...", index)
-
-	sched.mutex.Lock()
-	actions := sched.actions
-	// configurations := sched.configurations
-	sched.mutex.Unlock()
-
 	// Load ConfigMap to check which action is enabled.
 	conf.EnabledActionMap = make(map[string]bool)
-	for _, action := range actions {
+	for _, action := range worker.framework.Actions {
 		conf.EnabledActionMap[action.Name()] = true
 	}
 
@@ -135,23 +134,23 @@ func (sched *Scheduler) runOnce(index uint32) {
 	//taskInfo = sched.NextPod()
 
 	// TODO: Update snapshot
-	// sched.framework.UpdateSnapshot()
-	// sched.framework.OnCycleStart()
+	// worker.framework.UpdateSnapshot()
+	// worker.framework.OnCycleStart()
 	defer func() {
 		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 		// Call OnCycleEnd for all plugins
-		if sched.framework != nil {
-			sched.framework.OnCycleEnd()
+		if worker.framework != nil {
+			worker.framework.OnCycleEnd()
 		}
 		// Clear CycleState at the end of scheduling cycle
-		if sched.framework != nil {
-			sched.framework.ClearCycleState()
+		if worker.framework != nil {
+			worker.framework.ClearCycleState()
 		}
 	}()
 
-	for _, action := range actions {
+	for _, action := range worker.framework.Actions {
 		actionStartTime := time.Now()
-		action.Execute(sched.framework)
+		action.Execute(worker.framework)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
 	}
 }
