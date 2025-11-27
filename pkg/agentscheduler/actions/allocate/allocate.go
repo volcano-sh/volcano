@@ -69,20 +69,19 @@ func (alloc *Action) Execute(fwk *framework.Framework) {
 
 	alloc.fwk = fwk
 	var taskInfo *api.TaskInfo
-	var nodeList []*api.NodeInfo
-	var nodeMap map[string]*api.NodeInfo
 	//TODO: get task and nodes from queue and snapshot
-	alloc.allocateTask(taskInfo, nodeMap, nodeList)
+	alloc.allocateTask(taskInfo)
 
 	//push to bind checking channel
 }
 
-func (alloc *Action) allocateTask(task *api.TaskInfo, nodes map[string]*api.NodeInfo, nodeList []*api.NodeInfo) {
+// TODO: Do we need to exit quickly after meeting an error?
+func (alloc *Action) allocateTask(task *api.TaskInfo) {
 	if task == nil {
 		klog.Warning("No task to allocate")
 		return
 	}
-	alloc.fwk.SnapshotSharedLister().NodeInfos().List()
+	nodes := alloc.fwk.VolcanoNodeInfos()
 	ph := util.NewPredicateHelper()
 
 	// TODO: check is pod allocatable
@@ -104,14 +103,20 @@ func (alloc *Action) allocateTask(task *api.TaskInfo, nodes map[string]*api.Node
 	// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
 	// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
 	if len(task.Pod.Status.NominatedNodeName) > 0 {
-		if nominatedNodeInfo, ok := nodes[task.Pod.Status.NominatedNodeName]; ok && task.InitResreq.LessEqual(nominatedNodeInfo.FutureIdle(), api.Zero) {
+		nominatedNodeInfo, err := alloc.fwk.GetVolcanoNodeInfo(task.Pod.Status.NominatedNodeName)
+		if err != nil {
+			fitErrors.SetNodeError(task.Pod.Status.NominatedNodeName, err)
+			return
+		}
+
+		if nominatedNodeInfo != nil && task.InitResreq.LessEqual(nominatedNodeInfo.FutureIdle(), api.Zero) {
 			predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache)
 		}
 	}
 
 	// If the nominated node is not found or the nominated node is not suitable for the task, we need to find a suitable node for the task from all nodes.
 	if len(predicateNodes) == 0 {
-		predicateNodes, fitErrors = ph.PredicateNodes(task, nodeList, alloc.predicate, alloc.enablePredicateErrorCache)
+		predicateNodes, fitErrors = ph.PredicateNodes(task, nodes, alloc.predicate, alloc.enablePredicateErrorCache)
 	}
 
 	if len(predicateNodes) == 0 {

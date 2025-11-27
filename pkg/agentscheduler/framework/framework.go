@@ -19,7 +19,6 @@ package framework
 import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-	k8scache "k8s.io/kubernetes/pkg/scheduler/backend/cache"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
@@ -27,6 +26,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	vcutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 )
 
 // Framework manages the scheduler plugins and their execution points.
@@ -61,7 +61,7 @@ var _ framework.Handle = &Framework{}
 func NewFramework(actions []Action, tiers []conf.Tier, cache cache.Cache, configurations []conf.Configuration) *Framework {
 	utilFwk := k8sutil.NewFramework(
 		nil, // fast path scheduler needs to use snapshot shared lister instead
-		k8sutil.WithSnapshotSharedLister(k8scache.NewEmptySnapshot()), // TODO: may need to use to volcano scheduler's own snapshot?
+		k8sutil.WithSnapshotSharedLister(vcutil.NewEmptySnapshot()),
 		k8sutil.WithSharedDRAManager(cache.SharedDRAManager()),
 		k8sutil.WithClientSet(cache.Client()),
 		k8sutil.WithInformerFactory(cache.SharedInformerFactory()),

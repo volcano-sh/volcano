@@ -28,6 +28,7 @@ import (
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
+	"volcano.sh/volcano/pkg/scheduler/api"
 
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
@@ -38,7 +39,7 @@ import (
 // Framework is a K8S framework who mainly provides some methods
 // about snapshot and plugins such as predicates
 type Framework struct {
-	snapshot         framework.SharedLister
+	snapshot         *Snapshot
 	kubeClient       kubernetes.Interface
 	informerFactory  informers.SharedInformerFactory
 	sharedDRAManager framework.SharedDRAManager
@@ -56,9 +57,9 @@ func WithSharedDRAManager(sharedDRAManager framework.SharedDRAManager) Option {
 }
 
 // WithSnapshotSharedLister sets the SharedLister of the snapshot.
-func WithSnapshotSharedLister(snapshotSharedLister framework.SharedLister) Option {
+func WithSnapshotSharedLister(snapshot *Snapshot) Option {
 	return func(o *Framework) {
-		o.snapshot = snapshotSharedLister
+		o.snapshot = snapshot
 	}
 }
 
@@ -200,6 +201,16 @@ func (f *Framework) APICacher() framework.APICacher {
 
 func (f *Framework) APIDispatcher() fwk.APIDispatcher {
 	return nil
+}
+
+// VolcanoNodeInfos returns a list of volcano NodeInfo.
+func (f *Framework) VolcanoNodeInfos() []*api.NodeInfo {
+	return f.snapshot.VolcanoNodeInfos()
+}
+
+// GetVolcanoNodeInfo returns the volcano NodeInfo of the given node name.
+func (f *Framework) GetVolcanoNodeInfo(nodeName string) (*api.NodeInfo, error) {
+	return f.snapshot.GetVolcanoNodeInfo(nodeName)
 }
 
 // NewFramework is the constructor of Framework
