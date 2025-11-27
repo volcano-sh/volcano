@@ -234,6 +234,13 @@ spec:
           env:
             - name: DEBUG_SOCKET_DIR
               value: /tmp/klog-socks
+            {{- if .Values.custom.go_memlimit_enable }}
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+                  divisor: "1"
+            {{- end }}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           volumeMounts:
             - name: scheduler-config

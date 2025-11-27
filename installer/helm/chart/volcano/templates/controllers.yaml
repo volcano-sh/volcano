@@ -206,6 +206,13 @@ spec:
             value: {{ .Release.Namespace }}
           - name: HELM_RELEASE_NAME
             value: {{ .Release.Name }}
+          {{- if .Values.custom.go_memlimit_enable }}
+          - name: GOMEMLIMIT
+            valueFrom:
+              resourceFieldRef:
+                resource: limits.memory
+                divisor: "1"
+          {{- end }}
 ---
 apiVersion: v1
 kind: Service

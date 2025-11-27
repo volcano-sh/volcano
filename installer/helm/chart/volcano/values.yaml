@@ -12,6 +12,7 @@ basic:
   admission_port: 8443
   image_registry: "docker.io"
 custom:
+  go_memlimit_enable: false
   metrics_enable: false
   admission_enable: true
   admission_replicas: 1
