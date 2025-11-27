@@ -54,41 +54,6 @@ var (
 			Buckets:   prometheus.ExponentialBuckets(32, 2, 10),
 		},
 	)
-
-	pluginSchedulingLatency = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Subsystem: VolcanoSubSystemName,
-			Name:      "plugin_scheduling_latency_milliseconds",
-			Help:      "Plugin scheduling latency in milliseconds",
-			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
-		}, []string{"plugin", "OnSchedulingSycle"},
-	)
-
-	actionSchedulingLatency = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Subsystem: VolcanoSubSystemName,
-			Name:      "action_scheduling_latency_milliseconds",
-			Help:      "Action scheduling latency in milliseconds",
-			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
-		}, []string{"action"},
-	)
-
-	taskSchedulingLatency = promauto.NewHistogram(
-		prometheus.HistogramOpts{
-			Subsystem: VolcanoSubSystemName,
-			Name:      "task_scheduling_latency_milliseconds",
-			Help:      "Task scheduling latency in milliseconds",
-			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
-		},
-	)
-
-	scheduleAttempts = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Subsystem: VolcanoSubSystemName,
-			Name:      "schedule_attempts_total",
-			Help:      "Number of attempts to schedule pods, by the result. 'unschedulable' means a pod could not be scheduled, while 'error' means an internal scheduler problem.",
-		}, []string{"result"},
-	)
 )
 
 // UpdateE2eSchedulingDurationByPod updates entire end to end scheduling duration

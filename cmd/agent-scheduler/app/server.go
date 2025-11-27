@@ -25,7 +25,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
-	"volcano.sh/volcano/pkg/agentscheduler"
+	scheduler "volcano.sh/volcano/pkg/agentscheduler"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/signals"
 	commonutil "volcano.sh/volcano/pkg/util"
@@ -64,7 +64,7 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
-	sched, err := agentscheduler.NewAgentScheduler(config, opt)
+	sched, err := scheduler.NewScheduler(config, opt)
 	if err != nil {
 		panic(err)
 	}
