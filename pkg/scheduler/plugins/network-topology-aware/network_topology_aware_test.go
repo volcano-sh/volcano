@@ -17,8 +17,11 @@ limitations under the License.
 package networktopologyaware
 
 import (
+	"context"
 	"math"
+	"os"
 	"testing"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -35,6 +38,12 @@ import (
 const (
 	eps = 1e-1
 )
+
+func TestMain(m *testing.M) {
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+	os.Exit(m.Run())
+}
 
 func TestArguments(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)

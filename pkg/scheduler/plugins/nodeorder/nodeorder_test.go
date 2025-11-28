@@ -17,8 +17,10 @@ limitations under the License.
 package nodeorder
 
 import (
+	"context"
 	"os"
 	"testing"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	v1 "k8s.io/api/core/v1"
 	k8smetrics "k8s.io/kubernetes/pkg/scheduler/metrics"
@@ -37,6 +39,8 @@ import (
 func TestMain(m *testing.M) {
 	options.Default()
 	k8smetrics.Register()
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
 	os.Exit(m.Run())
 }
 

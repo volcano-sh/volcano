@@ -17,10 +17,13 @@ limitations under the License.
 package tdm
 
 import (
+	"context"
 	"fmt"
 	"math"
+	"os"
 	"testing"
 	"time"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	v1 "k8s.io/api/core/v1"
 
@@ -35,6 +38,13 @@ import (
 const (
 	eps = 1e-8
 )
+
+func TestMain(m *testing.M) {
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+
+	os.Exit(m.Run())
+}
 
 func Test_parseRevocableZone(t *testing.T) {
 	tests := []struct {

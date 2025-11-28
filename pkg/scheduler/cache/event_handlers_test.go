@@ -17,10 +17,12 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
 	"testing"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -149,6 +151,9 @@ func TestSchedulerCache_UpdatePod(t *testing.T) {
 }
 
 func TestSchedulerCache_AddPodGroupV1beta1(t *testing.T) {
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+
 	namespace := "test"
 	owner := buildOwnerReference("j1")
 

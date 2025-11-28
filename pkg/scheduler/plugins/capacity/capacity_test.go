@@ -17,8 +17,10 @@ limitations under the License.
 package capacity
 
 import (
+	"context"
 	"os"
 	"testing"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -40,6 +42,8 @@ import (
 
 func TestMain(m *testing.M) {
 	options.Default()
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
 	os.Exit(m.Run())
 }
 

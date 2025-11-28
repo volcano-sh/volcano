@@ -17,12 +17,15 @@ limitations under the License.
 package metrics
 
 import (
+	"context"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto" // auto-registry collectors in default registry
 	"k8s.io/component-base/metrics"
 	k8smetrics "k8s.io/kubernetes/pkg/scheduler/metrics"
+
+	"volcano.sh/volcano/pkg/util"
 )
 
 const (
@@ -37,6 +40,10 @@ const (
 )
 
 var (
+	e2eJobSchedulingDuration  *util.TTLCollectorWrapper
+	e2eJobSchedulingStartTime *util.TTLCollectorWrapper
+	e2eJobSchedulingLastTime  *util.TTLCollectorWrapper
+
 	e2eSchedulingLatency = promauto.NewHistogram(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -53,33 +60,6 @@ var (
 			Help:      "E2e job scheduling latency in milliseconds",
 			Buckets:   prometheus.ExponentialBuckets(32, 2, 10),
 		},
-	)
-
-	e2eJobSchedulingDuration = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: VolcanoSubSystemName,
-			Name:      "e2e_job_scheduling_duration",
-			Help:      "E2E job scheduling duration",
-		},
-		[]string{"job_name", "queue", "job_namespace"},
-	)
-
-	e2eJobSchedulingStartTime = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: VolcanoSubSystemName,
-			Name:      "e2e_job_scheduling_start_time",
-			Help:      "E2E job scheduling start time",
-		},
-		[]string{"job_name", "queue", "job_namespace"},
-	)
-
-	e2eJobSchedulingLastTime = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: VolcanoSubSystemName,
-			Name:      "e2e_job_scheduling_last_time",
-			Help:      "E2E job scheduling last time",
-		},
-		[]string{"job_name", "queue", "job_namespace"},
 	)
 
 	pluginSchedulingLatency = promauto.NewHistogramVec(
@@ -150,6 +130,47 @@ var (
 	)
 )
 
+func InitTTLJobMetrics(ctx context.Context) {
+	expirationTime := time.Hour * 2
+	checkIntervalTime := time.Hour
+
+	e2eJobSchedulingDuration = util.NewTTLGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "e2e_job_scheduling_duration",
+			Help:      "E2E job scheduling duration",
+		},
+		[]string{"job_name", "queue", "job_namespace"},
+		expirationTime,
+		checkIntervalTime,
+		ctx,
+	)
+
+	e2eJobSchedulingStartTime = util.NewTTLGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "e2e_job_scheduling_start_time",
+			Help:      "E2E job scheduling start time",
+		},
+		[]string{"job_name", "queue", "job_namespace"},
+		expirationTime,
+		checkIntervalTime,
+		ctx,
+	)
+
+	e2eJobSchedulingLastTime = util.NewTTLGaugeVec(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "e2e_job_scheduling_last_time",
+			Help:      "E2E job scheduling last time",
+		},
+		[]string{"job_name", "queue", "job_namespace"},
+		expirationTime,
+		checkIntervalTime,
+		ctx,
+	)
+}
+
 // InitKubeSchedulerRelatedMetrics is used to init metrics global variables in k8s.io/kubernetes/pkg/scheduler/metrics/metrics.go.
 // We don't use InitMetrics() to init all global variables because currently only "Goroutines" is required when calling kube-scheduler
 // related plugins. And there is no need to export these metrics, therefore currently initialization is enough.
@@ -180,18 +201,18 @@ func UpdateE2eDuration(duration time.Duration) {
 
 // UpdateE2eSchedulingDurationByJob updates entire end to end scheduling duration
 func UpdateE2eSchedulingDurationByJob(jobName string, queue string, namespace string, duration time.Duration) {
-	e2eJobSchedulingDuration.WithLabelValues(jobName, queue, namespace).Set(DurationInMilliseconds(duration))
+	e2eJobSchedulingDuration.ObserveWithLabelValues(DurationInMilliseconds(duration), jobName, queue, namespace)
 	e2eJobSchedulingLatency.Observe(DurationInMilliseconds(duration))
 }
 
 // UpdateE2eSchedulingStartTimeByJob updates the start time of scheduling
 func UpdateE2eSchedulingStartTimeByJob(jobName string, queue string, namespace string, t time.Time) {
-	e2eJobSchedulingStartTime.WithLabelValues(jobName, queue, namespace).Set(ConvertToUnix(t))
+	e2eJobSchedulingStartTime.ObserveWithLabelValues(ConvertToUnix(t), jobName, queue, namespace)
 }
 
 // UpdateE2eSchedulingLastTimeByJob updates the last time of scheduling
 func UpdateE2eSchedulingLastTimeByJob(jobName string, queue string, namespace string, t time.Time) {
-	e2eJobSchedulingLastTime.WithLabelValues(jobName, queue, namespace).Set(ConvertToUnix(t))
+	e2eJobSchedulingLastTime.ObserveWithLabelValues(ConvertToUnix(t), jobName, queue, namespace)
 }
 
 // UpdateTaskScheduleDuration updates single task scheduling latency

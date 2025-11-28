@@ -17,13 +17,15 @@ limitations under the License.
 package usage
 
 import (
+	"context"
 	"fmt"
+	v1 "k8s.io/api/core/v1"
 	"math"
+	"os"
 	"strings"
 	"testing"
 	"time"
-
-	v1 "k8s.io/api/core/v1"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -57,6 +59,13 @@ func updateNodeUsage(nodesInfo map[string]*api.NodeInfo, nodesUsage map[string]*
 			nodeInfo.ResourceUsage = nodeUsage
 		}
 	}
+}
+
+func TestMain(m *testing.M) {
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+
+	os.Exit(m.Run())
 }
 
 func TestUsage_predicateFn(t *testing.T) {

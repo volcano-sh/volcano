@@ -22,9 +22,11 @@ limitations under the License.
 package allocate
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -58,6 +60,9 @@ import (
 
 func TestMain(m *testing.M) {
 	options.Default()
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+
 	os.Exit(m.Run())
 }
 

@@ -17,7 +17,10 @@ limitations under the License.
 package backfill
 
 import (
+	"context"
+	"os"
 	"testing"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -35,6 +38,13 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func TestMain(m *testing.M) {
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+
+	os.Exit(m.Run())
+}
 
 func TestPickUpPendingTasks(t *testing.T) {
 	framework.RegisterPluginBuilder("priority", priority.New)

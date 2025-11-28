@@ -17,9 +17,12 @@ limitations under the License.
 package binpack
 
 import (
+	"context"
 	"fmt"
 	"math"
+	"os"
 	"testing"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -35,6 +38,12 @@ import (
 const (
 	eps = 1e-8
 )
+
+func TestMain(m *testing.M) {
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+	os.Exit(m.Run())
+}
 
 func TestArguments(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)
