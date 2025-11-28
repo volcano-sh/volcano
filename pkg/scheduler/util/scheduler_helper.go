@@ -213,6 +213,39 @@ func SelectBestNodeAndScore(nodeScores map[float64][]*api.NodeInfo) (*api.NodeIn
 	return bestNodes[rand.Intn(len(bestNodes))], maxScore
 }
 
+// SelectBestNodesAndScores returns the best N node whose score is highest N score, pick one randomly if there are many nodes with same score.
+func SelectBestNodesAndScores(nodeScores map[float64][]*api.NodeInfo, count int) ([]*api.NodeInfo, []float64) {
+	nodes := []*api.NodeInfo{}
+	scores := []float64{}
+	if count <= 0 || len(nodeScores) == 0 {
+		return nodes, scores
+	}
+	allScores := make([]float64, 0, len(nodeScores))
+	for score := range nodeScores {
+		allScores = append(allScores, score)
+	}
+	sort.Sort(sort.Reverse(sort.Float64Slice(allScores)))
+
+	selecteNodeCount := 0
+	for _, score := range scores {
+		nodes := nodeScores[score]
+		if len(nodes)+selecteNodeCount > count {
+			rand.Shuffle(len(nodes), func(i, j int) {
+				nodes[i], nodes[j] = nodes[j], nodes[i]
+			})
+		}
+		for _, node := range nodes {
+			nodes = append(nodes, node)
+			scores = append(scores, score)
+			selecteNodeCount++
+			if len(nodes) == count {
+				return nodes, scores
+			}
+		}
+	}
+	return nodes, scores
+}
+
 // SelectBestHyperNode return the best hyperNode name whose score is highest, pick one randomly if there are many hyperNodes with same score.
 func SelectBestHyperNode(hyperNodeScores map[float64][]string) string {
 	var bestHyperNodes []string
