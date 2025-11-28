@@ -442,6 +442,20 @@ func BuildQueueWithPriorityAndResourcesQuantity(qname string, priority int32, de
 	return queue
 }
 
+// BuildQueueWithStrategy builds a queue with dequeue strategy annotation
+func BuildQueueWithStrategy(qname string, weight int32, strategy schedulingv1beta1.DequeueStrategy, cap v1.ResourceList) *schedulingv1beta1.Queue {
+	queue := BuildQueue(qname, weight, cap)
+	queue.Spec.DequeueStrategy = strategy
+	return queue
+}
+
+// BuildPodGroupWithTime builds a podgroup with creation timestamp
+func BuildPodGroupWithTime(name, ns, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, creationTime metav1.Time) *schedulingv1beta1.PodGroup {
+	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
+	pg.CreationTimestamp = creationTime
+	return pg
+}
+
 // ////// build in resource //////
 // BuildPriorityClass return pc
 func BuildPriorityClass(name string, value int32) *schedulingv1.PriorityClass {
