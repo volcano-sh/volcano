@@ -241,6 +241,21 @@ func (ti *TaskInfo) ClearLastTxContext() {
 	ti.LastTransaction = nil
 }
 
+func (ti *TaskInfo) GetRank() string {
+	if ti == nil || ti.Pod == nil {
+		return ""
+	}
+	for _, c := range ti.Pod.Spec.Containers {
+		for _, env := range c.Env {
+			if env.Name == "RANK" {
+				klog.V(4).Infof(" pod %v/%v get rank %v", ti.Namespace, ti.Name, env.Value)
+				return env.Value
+			}
+		}
+	}
+	return ""
+}
+
 // Return if the pod of a task is scheduling gated by checking if length of sch gates is zero
 // When the Pod is not yet created or sch gates field not set, return false
 func calSchedulingGated(pod *v1.Pod) bool {
