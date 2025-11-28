@@ -17,6 +17,8 @@ limitations under the License.
 package overcommit
 
 import (
+	"context"
+	"os"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -27,9 +29,16 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func TestMain(m *testing.M) {
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+	os.Exit(m.Run())
+}
 
 func TestOvercommitPlugin(t *testing.T) {
 	n1 := util.BuildNode("n1", api.BuildResourceList("2", "4Gi"), make(map[string]string))

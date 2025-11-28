@@ -17,13 +17,17 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"os"
 	"testing"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 func TestMain(m *testing.M) {
 	options.Default()
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
 	os.Exit(m.Run())
 }

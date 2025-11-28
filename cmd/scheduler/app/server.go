@@ -94,6 +94,8 @@ func Run(opt *options.ServerOption) error {
 	}
 
 	ctx := signals.SetupSignalContext()
+	metrics.InitTTLQueueMetrics(ctx)
+	metrics.InitTTLJobMetrics(ctx)
 	run := func(ctx context.Context) {
 		sched.Run(ctx.Done())
 		<-ctx.Done()

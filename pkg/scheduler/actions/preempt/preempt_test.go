@@ -22,19 +22,21 @@ limitations under the License.
 package preempt
 
 import (
+	"context"
 	"flag"
+	"k8s.io/klog/v2"
+	"os"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/v2"
-
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/plugins/conformance"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
@@ -44,10 +46,15 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-func init() {
+func TestMain(m *testing.M) {
 	options.Default()
 	klog.InitFlags(nil)
 	flag.Set("v", "4")
+
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+
+	os.Exit(m.Run())
 }
 
 func TestPreempt(t *testing.T) {
