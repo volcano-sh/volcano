@@ -23,6 +23,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"k8s.io/component-base/metrics"
+	k8smetrics "k8s.io/kubernetes/pkg/scheduler/metrics"
 )
 
 const (
@@ -55,6 +58,19 @@ var (
 		},
 	)
 )
+
+// InitKubeSchedulerRelatedMetrics is used to init metrics global variables in k8s.io/kubernetes/pkg/scheduler/metrics/metrics.go.
+// We don't use InitMetrics() to init all global variables because currently only "Goroutines" is required when calling kube-scheduler
+// related plugins. And there is no need to export these metrics, therefore currently initialization is enough.
+func InitKubeSchedulerRelatedMetrics() {
+	k8smetrics.Goroutines = metrics.NewGaugeVec(
+		&metrics.GaugeOpts{
+			Subsystem:      VolcanoSubSystemName,
+			Name:           "goroutines",
+			Help:           "Number of running goroutines split by the work they do such as binding.",
+			StabilityLevel: metrics.ALPHA,
+		}, []string{"operation"})
+}
 
 // UpdateE2eSchedulingDurationByPod updates entire end to end scheduling duration
 func UpdateE2eSchedulingDurationByPod(podName string, namespace string, duration time.Duration) {

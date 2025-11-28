@@ -329,6 +329,7 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 		}
 	}
 	sc.removeNodeImageStates(nodeName)
+	sc.ConflictAwareBinder.RemoveBindRecord(nodeName)
 
 	if _, ok := sc.Nodes[nodeName]; !ok {
 		return fmt.Errorf("node <%s> does not exist", nodeName)

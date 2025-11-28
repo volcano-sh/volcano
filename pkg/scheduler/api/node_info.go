@@ -19,6 +19,7 @@ package api
 import (
 	"fmt"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -90,6 +91,9 @@ type NodeInfo struct {
 	// checking an image's existence and advanced usage (e.g., image locality scheduling policy) based on the image
 	// state information.
 	ImageStates map[string]*fwk.ImageStateSummary
+
+	// BindGeneration is used to check conflict before binding
+	BindGeneration int64
 }
 
 // PodGroupOldState records podgroup old state
@@ -229,6 +233,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 
 	res.Others = ni.CloneOthers()
 	res.ImageStates = ni.CloneImageSummary()
+	res.BindGeneration = ni.BindGeneration
 	return res
 }
 
@@ -641,6 +646,10 @@ func (ni *NodeInfo) CloneOthers() map[string]interface{} {
 		others[k] = v
 	}
 	return others
+}
+
+func (ni *NodeInfo) NextBindGeneration() {
+	atomic.AddInt64(&ni.BindGeneration, 1)
 }
 
 // Clone clone csi node status info

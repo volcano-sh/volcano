@@ -24,6 +24,7 @@ import (
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	scheduler "volcano.sh/volcano/pkg/agentscheduler"
+	"volcano.sh/volcano/pkg/agentscheduler/metrics"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/signals"
 	commonutil "volcano.sh/volcano/pkg/util"
@@ -66,6 +67,8 @@ func Run(opt *options.ServerOption) error {
 	if err != nil {
 		panic(err)
 	}
+
+	metrics.InitKubeSchedulerRelatedMetrics()
 
 	if opt.EnableHealthz {
 		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-agent-scheduler", opt.CaCertData, opt.CertData, opt.KeyData); err != nil {

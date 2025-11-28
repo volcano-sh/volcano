@@ -69,7 +69,6 @@ func (alloc *Action) Execute(fwk *framework.Framework) {
 
 	alloc.fwk = fwk
 	var taskInfo *api.TaskInfo
-	//TODO: get task and nodes from queue and snapshot
 	alloc.allocateTask(taskInfo)
 
 	//push to bind checking channel
@@ -94,6 +93,7 @@ func (alloc *Action) allocateTask(task *api.TaskInfo) {
 		for _, ni := range nodes {
 			fitErrors.SetNodeError(ni.Name, err)
 		}
+		alloc.RecordTaskFailStatus(task, fitErrors)
 		return
 	}
 
@@ -109,7 +109,7 @@ func (alloc *Action) allocateTask(task *api.TaskInfo) {
 			return
 		}
 
-		if nominatedNodeInfo != nil && task.InitResreq.LessEqual(nominatedNodeInfo.FutureIdle(), api.Zero) {
+		if nominatedNodeInfo != nil {
 			predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache)
 		}
 	}
@@ -120,7 +120,7 @@ func (alloc *Action) allocateTask(task *api.TaskInfo) {
 	}
 
 	if len(predicateNodes) == 0 {
-		alloc.updateTaskStatus(task, fitErrors)
+		alloc.RecordTaskFailStatus(task, fitErrors)
 		//TODO: push back to queue
 		return
 	}
@@ -186,14 +186,32 @@ func (alloc *Action) EnqueueSchedulerResultForTask(result *cache.PodScheduleResu
 	alloc.fwk.Cache.EnqueueScheduleResult(result)
 }
 
-func (alloc *Action) updateTaskStatus(task *api.TaskInfo, fitErrors *api.FitErrors) {
-	//TODO: Update pod status
+func (alloc *Action) RecordTaskFailStatus(taskInfo *api.TaskInfo, fitErrors *api.FitErrors) {
+	// The pod of a scheduling gated task is given
+	// the ScheduleGated condition by the api-server. Do not change it.
+	if taskInfo.SchGated {
+		return
+	}
+	reason := api.PodReasonUnschedulable
+	var msg string
+	if fitErrors != nil {
+		msg = fitErrors.Error()
+		if len(msg) == 0 {
+			msg = api.AllNodeUnavailableMsg
+		}
+	} else {
+		msg = api.AllNodeUnavailableMsg
+	}
+	if err := alloc.fwk.Cache.TaskUnschedulable(taskInfo, reason, msg); err != nil {
+		klog.ErrorS(err, "Failed to update unschedulable task status", "task", klog.KRef(taskInfo.Namespace, taskInfo.Name),
+			"reason", reason, "message", msg)
+	}
 }
 
 func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	// Check for Resource Predicate
 	var statusSets api.StatusSets
-	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
+	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.Idle, api.Zero); !ok {
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}

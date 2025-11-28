@@ -26,6 +26,7 @@ import (
 	"k8s.io/component-base/config"
 	componentbaseconfigvalidation "k8s.io/component-base/config/validation"
 
+	voptions "volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/kube"
 )
 
@@ -171,6 +172,9 @@ func (s *ServerOption) CheckOptionOrDie() error {
 // RegisterOptions registers options.
 func (s *ServerOption) RegisterOptions() {
 	ServerOpts = s
+	//some package from scheduler pkg rely on options defined in scheduler pkg
+	voptions.ServerOpts = voptions.NewServerOption()
+	voptions.ServerOpts.EnableCSIStorage = s.EnableCSIStorage
 }
 
 // readCAFiles read data from ca file path

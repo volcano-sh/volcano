@@ -33,6 +33,7 @@ import (
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	vcache "volcano.sh/volcano/pkg/scheduler/cache"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 )
 
@@ -50,7 +51,7 @@ type Cache interface {
 
 	// AddBindTask binds Task to the target host.
 	// TODO(jinzhej): clean up expire Tasks.
-	AddBindTask(bindCtx *BindContext) error
+	AddBindTask(bindCtx *vcache.BindContext) error
 
 	// Evict evicts the task to release resources.
 	Evict(task *api.TaskInfo, reason string) error
@@ -80,11 +81,14 @@ type Cache interface {
 	// SharedDRAManager returns the shared DRAManager
 	SharedDRAManager() framework.SharedDRAManager
 
-	// EnqueueScheduleResult enqueue schedule result for bind check
-	EnqueueScheduleResult(result *PodScheduleResult)
-
 	// UpdateSnapshot is used to update the passed-in snapshot to ensure consistency between the cache's nodeinfo and the snapshot.
 	UpdateSnapshot(snapshot *k8sutil.Snapshot) error
+
+	// TaskUnschedulable update pod unschedulable status
+	TaskUnschedulable(task *api.TaskInfo, reason, message string) error
+
+	// EnqueueScheduleResult put result into binder check queue
+	EnqueueScheduleResult(result *PodScheduleResult)
 }
 
 // Binder interface for binding task and hostname
@@ -108,8 +112,8 @@ type BatchBinder interface {
 }
 
 type PreBinder interface {
-	PreBind(ctx context.Context, bindCtx *BindContext) error
+	PreBind(ctx context.Context, bindCtx *vcache.BindContext) error
 
 	// PreBindRollBack is called when the pre-bind or bind fails.
-	PreBindRollBack(ctx context.Context, bindCtx *BindContext)
+	PreBindRollBack(ctx context.Context, bindCtx *vcache.BindContext)
 }

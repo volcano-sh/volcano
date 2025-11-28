@@ -19,19 +19,17 @@ package framework
 import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
-	"volcano.sh/volcano/pkg/scheduler/api"
 
 	"volcano.sh/volcano/pkg/agentscheduler/cache"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
-	vcutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 )
 
 // Framework manages the scheduler plugins and their execution points.
 type Framework struct {
-	*k8sutil.Framework // Embedding Framework to implement framework.Handle interface
+	*k8sutil.Framework // Embedding Framework to implement k8sframework.Handle interface
 
 	Plugins        map[string]Plugin
 	Actions        []Action
@@ -46,7 +44,7 @@ type Framework struct {
 	NodeMapFns        map[string]api.NodeMapFn
 	NodeReduceFns     map[string]api.NodeReduceFn
 
-	Cache cache.Cache // TODO: need to replace to agent scheduler's own cache
+	Cache cache.Cache
 
 	// CycleState for the current scheduling cycle
 	// Since agent scheduler schedules one pod per cycle, we only need one CycleState.
@@ -55,13 +53,13 @@ type Framework struct {
 	CurrentCycleState *k8sframework.CycleState
 }
 
-var _ framework.Handle = &Framework{}
+var _ k8sframework.Handle = &Framework{}
 
 // NewFramework initializes the framework with the given plugins.
 func NewFramework(actions []Action, tiers []conf.Tier, cache cache.Cache, configurations []conf.Configuration) *Framework {
 	utilFwk := k8sutil.NewFramework(
 		nil, // fast path scheduler needs to use snapshot shared lister instead
-		k8sutil.WithSnapshotSharedLister(vcutil.NewEmptySnapshot()),
+		k8sutil.WithSnapshotSharedLister(k8sutil.NewEmptySnapshot()),
 		k8sutil.WithSharedDRAManager(cache.SharedDRAManager()),
 		k8sutil.WithClientSet(cache.Client()),
 		k8sutil.WithInformerFactory(cache.SharedInformerFactory()),
