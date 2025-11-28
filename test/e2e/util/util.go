@@ -183,13 +183,14 @@ func InitTestContext(o Options) *TestContext {
 	return ctx
 }
 
-func NamespaceNotExist(ctx *TestContext) wait.ConditionFunc {
+// New function returning ConditionWithContextFunc
+func NamespaceNotExist(ctx *TestContext) wait.ConditionWithContextFunc {
 	return NamespaceNotExistWithName(ctx, ctx.Namespace)
 }
 
-func NamespaceNotExistWithName(ctx *TestContext, name string) wait.ConditionFunc {
-	return func() (bool, error) {
-		_, err := ctx.Kubeclient.CoreV1().Namespaces().Get(context.TODO(), name, metav1.GetOptions{})
+func NamespaceNotExistWithName(ctx *TestContext, name string) wait.ConditionWithContextFunc {
+	return func(c context.Context) (bool, error) {
+		_, err := ctx.Kubeclient.CoreV1().Namespaces().Get(c, name, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return true, nil
 		}
@@ -227,7 +228,7 @@ func CleanupTestContext(ctx *TestContext) {
 	}
 
 	// Wait for namespace deleted.
-	err = wait.Poll(100*time.Millisecond, FiveMinute, NamespaceNotExist(ctx))
+	err = wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, FiveMinute, false, NamespaceNotExist(ctx))
 	Expect(err).NotTo(HaveOccurred(), "failed to wait for namespace deleted")
 }
 
