@@ -253,7 +253,12 @@ custom:
 
   # Specify feature gates for components
   scheduler_feature_gates: ~
-
+  controller_readinessProbe: {}
+  controller_livenessProbe: {}
+  scheduler_readinessProbe: {}
+  scheduler_livenessProbe: {}
+  admission_readinessProbe: {}
+  admission_livenessProbe: {}
 service:
   # @param service.ipFamilyPolicy [string], support SingleStack, PreferDualStack and RequireDualStack
   #
