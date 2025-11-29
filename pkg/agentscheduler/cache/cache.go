@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -60,6 +61,7 @@ import (
 	vcache "volcano.sh/volcano/pkg/scheduler/cache"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	commonutil "volcano.sh/volcano/pkg/util"
+	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
 
 func init() {
@@ -99,8 +101,10 @@ type SchedulerCache struct {
 
 	Recorder record.EventRecorder
 
-	Nodes    map[string]*schedulingapi.NodeInfo
+	Nodes    map[string]*schedulingapi.NodeInfo // TODO: do we need to also add a seperate lock for Nodes cache?
 	NodeList []string
+
+	taskCache *TaskCache
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
@@ -129,6 +133,46 @@ type SchedulerCache struct {
 	sharedDRAManager k8sframework.SharedDRAManager
 
 	ConflictAwareBinder *ConflictAwareBinder
+
+	// schedulingQueue is used to store pods waiting to be scheduled
+	schedulingQueue k8sschedulingqueue.SchedulingQueue
+}
+
+// TaskCache encapsulates the task map with a seperate lock
+type TaskCache struct {
+	sync.RWMutex
+	tasks map[schedulingapi.TaskID]*schedulingapi.TaskInfo
+}
+
+func NewTaskCache() *TaskCache {
+	return &TaskCache{
+		tasks: make(map[schedulingapi.TaskID]*schedulingapi.TaskInfo),
+	}
+}
+
+func (tc *TaskCache) Get(id schedulingapi.TaskID) (*schedulingapi.TaskInfo, bool) {
+	tc.RLock()
+	defer tc.RUnlock()
+	task, ok := tc.tasks[id]
+	return task, ok
+}
+
+func (tc *TaskCache) Add(task *schedulingapi.TaskInfo) {
+	tc.Lock()
+	defer tc.Unlock()
+	tc.tasks[task.UID] = task
+}
+
+func (tc *TaskCache) Update(task *schedulingapi.TaskInfo) {
+	tc.Lock()
+	defer tc.Unlock()
+	tc.tasks[task.UID] = task
+}
+
+func (tc *TaskCache) Delete(id schedulingapi.TaskID) {
+	tc.Lock()
+	defer tc.Unlock()
+	delete(tc.tasks, id)
 }
 
 type multiSchedulerInfo struct {
@@ -330,10 +374,10 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 
 		NodeList:    []string{},
 		nodeWorkers: nodeWorkers,
+		taskCache:   NewTaskCache(),
 	}
 
 	sc.resyncPeriod = resyncPeriod
-	sc.schedulerPodName, sc.c = getMultiSchedulerInfo()
 
 	if len(nodeSelectors) > 0 {
 		sc.updateNodeSelectors(nodeSelectors)
@@ -367,6 +411,16 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	sc.addEventHandler()
 
 	sc.ConflictAwareBinder = NewConflictAwareBinder(sc.AddBindTask)
+
+	sc.schedulingQueue = k8sschedulingqueue.NewSchedulingQueue(
+		Less,
+		sc.informerFactory,
+		k8sschedulingqueue.WithClock(defaultSchedulerOptions.clock),
+		k8sschedulingqueue.WithPodInitialBackoffDuration(time.Duration(defaultSchedulerOptions.podInitialBackoffSeconds)*time.Second),
+		k8sschedulingqueue.WithPodMaxBackoffDuration(time.Duration(defaultSchedulerOptions.podMaxBackoffSeconds)*time.Second),
+		k8sschedulingqueue.WithPodMaxInUnschedulablePodsDuration(defaultSchedulerOptions.podMaxInUnschedulablePodsDuration),
+	)
+
 	return sc
 }
 
@@ -420,21 +474,16 @@ func (sc *SchedulerCache) addEventHandler() {
 	)
 
 	sc.podInformer = informerFactory.Core().V1().Pods()
-	// create informer for pod information
+	// 1. Pods already scheduled, refresh its state in cache
 	sc.podInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
 				switch v := obj.(type) {
 				case *v1.Pod:
-					if !responsibleForPod(v, sc.schedulerNames, sc.schedulerPodName, sc.c) {
-						if len(v.Spec.NodeName) == 0 {
-							return false
-						}
-						if !responsibleForNode(v.Spec.NodeName, sc.schedulerPodName, sc.c) {
-							return false
-						}
+					if len(v.Spec.NodeName) != 0 {
+						return true
 					}
-					return true
+					return false
 				case cache.DeletedFinalStateUnknown:
 					if _, ok := v.Obj.(*v1.Pod); ok {
 						// The carried object may be stale, always pass to clean up stale obj in event handlers.
@@ -443,13 +492,44 @@ func (sc *SchedulerCache) addEventHandler() {
 					klog.Errorf("Cannot convert object %T to *v1.Pod", v.Obj)
 					return false
 				default:
+					klog.ErrorS(nil, "Unable to handle object", "objType", fmt.Sprintf("%T", obj), "obj", obj)
 					return false
 				}
 			},
 			Handler: cache.ResourceEventHandlerFuncs{
-				AddFunc:    sc.AddPod,
-				UpdateFunc: sc.UpdatePod,
-				DeleteFunc: sc.DeletePod,
+				AddFunc:    sc.AddPodToCache,
+				UpdateFunc: sc.UpdatePodInCache,
+				DeleteFunc: sc.DeletePodFromCache,
+			},
+		})
+
+	// 2. Pods not scheduled yet, and needed to be scheduled by agent scheduler, add them to scheduling queue
+	sc.podInformer.Informer().AddEventHandler(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: func(obj interface{}) bool {
+				switch v := obj.(type) {
+				case *v1.Pod:
+					// if the pod is not scheduled and scheduled by agent scheduler
+					if len(v.Spec.NodeName) == 0 && slices.Contains(sc.schedulerNames, v.Spec.SchedulerName) {
+						return true
+					}
+					return false
+				case cache.DeletedFinalStateUnknown:
+					if _, ok := v.Obj.(*v1.Pod); ok {
+						// The carried object may be stale, always pass to clean up stale obj in event handlers.
+						return true
+					}
+					klog.Errorf("Cannot convert object %T to *v1.Pod", v.Obj)
+					return false
+				default:
+					klog.ErrorS(nil, "Unable to handle object", "objType", fmt.Sprintf("%T", obj), "obj", obj)
+					return false
+				}
+			},
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sc.AddPodToSchedulingQueue,
+				UpdateFunc: sc.UpdatePodInSchedulingQueue,
+				DeleteFunc: sc.DeletePodFromSchedulingQueue,
 			},
 		})
 
@@ -506,32 +586,29 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 	sc.vcInformerFactory.WaitForCacheSync(stopCh)
 }
 
-// findTask returns job and the task info
-func (sc *SchedulerCache) findTask(taskInfo *schedulingapi.TaskInfo) (*schedulingapi.TaskInfo, error) {
-	// TODO returns task info, need to refactoring
-	return taskInfo, nil
-}
-
 // Evict will evict the pod.
 //
 // If error occurs both task and job are guaranteed to be in the original state.
-func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string) error {
+func (sc *SchedulerCache) Evict(task *schedulingapi.TaskInfo, reason string) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-	// TODO need to refactoring
-	task, err := sc.findTask(taskInfo)
-	if err != nil {
-		return err
-	}
 
 	node, found := sc.Nodes[task.NodeName]
 	if !found {
 		return fmt.Errorf("failed to evict Task %v from host %v, host does not exist",
 			task.UID, task.NodeName)
 	}
-	sc.resyncTask(task)
+
+	originalStatus := task.Status
+
 	// Add new task to node.
 	if err := node.UpdateTask(task); err != nil {
+		// After failing to update task to a node we need to revert task status from Releasing,
+		// otherwise task might be stuck in the Releasing state indefinitely.
+		klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+			"from %s to %s after failing to update Task on Node <%s>: %v",
+			task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+		sc.resyncTask(task)
 		return err
 	}
 
@@ -601,6 +678,11 @@ func (sc *SchedulerCache) SharedInformerFactory() informers.SharedInformerFactor
 	return sc.informerFactory
 }
 
+// SchedulingQueue returns the scheduling queue instance in the cache
+func (sc *SchedulerCache) SchedulingQueue() k8sschedulingqueue.SchedulingQueue {
+	return sc.schedulingQueue
+}
+
 // SetSharedInformerFactory sets the scheduler SharedInformerFactory for unit test
 func (sc *SchedulerCache) SetSharedInformerFactory(factory informers.SharedInformerFactory) {
 	sc.informerFactory = factory
@@ -667,6 +749,26 @@ func (sc *SchedulerCache) TaskUnschedulable(task *schedulingapi.TaskInfo, reason
 
 func (sc *SchedulerCache) processCleanupJob() {
 	// TODO process clean up Job
+}
+
+// GetTaskInfo retrieves a task by its ID.
+func (sc *SchedulerCache) GetTaskInfo(taskID schedulingapi.TaskID) (*schedulingapi.TaskInfo, bool) {
+	return sc.taskCache.Get(taskID)
+}
+
+// AddTaskInfo adds a new task in the cache
+func (sc *SchedulerCache) AddTaskInfo(task *schedulingapi.TaskInfo) {
+	sc.taskCache.Add(task)
+}
+
+// UpdateTaskInfo updates a task in the cache.
+func (sc *SchedulerCache) UpdateTaskInfo(task *schedulingapi.TaskInfo) {
+	sc.taskCache.Update(task)
+}
+
+// DeleteTaskInfo removes a task from the cache by its ID.
+func (sc *SchedulerCache) DeleteTaskInfo(taskID schedulingapi.TaskID) {
+	sc.taskCache.Delete(taskID)
 }
 
 func (sc *SchedulerCache) resyncTask(task *schedulingapi.TaskInfo) {
@@ -758,10 +860,10 @@ func (sc *SchedulerCache) AddBindTask(bindContext *vcache.BindContext) error {
 	defer sc.Mutex.Unlock()
 	task := bindContext.TaskInfo
 
-	node, found := sc.Nodes[bindContext.TaskInfo.NodeName]
+	node, found := sc.Nodes[task.NodeName]
 	if !found {
 		return fmt.Errorf("failed to bind Task %v to host %v, host does not exist",
-			task.UID, bindContext.TaskInfo.NodeName)
+			task.UID, task.NodeName)
 	}
 
 	originalStatus := task.Status

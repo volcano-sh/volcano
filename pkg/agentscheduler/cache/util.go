@@ -17,79 +17,32 @@ limitations under the License.
 package cache
 
 import (
-	"fmt"
-	"os"
-	"slices"
-	"strconv"
-	"strings"
+	"time"
 
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
-	"stathat.com/c/consistent"
+	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
+	schedfwk "k8s.io/kube-scheduler/framework"
+	"k8s.io/utils/clock"
+	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
 
-// responsibleForPod returns false at following conditions:
-// 1. The current scheduler is not specified scheduler in Pod's spec.
-// 2. The Job which the Pod belongs is not assigned to current scheduler based on the hash algorithm in multi-schedulers scenario
-func responsibleForPod(pod *v1.Pod, schedulerNames []string, mySchedulerPodName string, c *consistent.Consistent) bool {
-	if !slices.Contains(schedulerNames, pod.Spec.SchedulerName) {
-		return false
-	}
-	if c != nil {
-		var key string
-		if len(pod.OwnerReferences) != 0 {
-			key = pod.OwnerReferences[0].Name
-		} else {
-			key = pod.Name
-		}
-		schedulerPodName, err := c.Get(key)
-		if err != nil {
-			klog.Errorf("Failed to get scheduler by hash algorithm, err: %v", err)
-		}
-		if schedulerPodName != mySchedulerPodName {
-			return false
-		}
-	}
-
-	klog.V(4).Infof("schedulerPodName %v is responsible to Pod %v/%v", mySchedulerPodName, pod.Namespace, pod.Name)
-	return true
+type schedulerOptions struct {
+	clock                             clock.WithTicker
+	podInitialBackoffSeconds          int64
+	podMaxBackoffSeconds              int64
+	podMaxInUnschedulablePodsDuration time.Duration
 }
 
-// responsibleForNode returns true if the Node is assigned to current scheduler in multi-scheduler scenario
-func responsibleForNode(nodeName string, mySchedulerPodName string, c *consistent.Consistent) bool {
-	if c != nil {
-		schedulerPodName, err := c.Get(nodeName)
-		if err != nil {
-			klog.Errorf("Failed to get scheduler by hash algorithm, err: %v", err)
-		}
-		if schedulerPodName != mySchedulerPodName {
-			return false
-		}
-	}
-
-	klog.V(4).Infof("schedulerPodName %v is responsible to Node %v", mySchedulerPodName, nodeName)
-	return true
+// TODO: these default values can be overwritten by config file or command line args
+var defaultSchedulerOptions = schedulerOptions{
+	clock:                             clock.RealClock{},
+	podInitialBackoffSeconds:          int64(k8sschedulingqueue.DefaultPodInitialBackoffDuration.Seconds()),
+	podMaxBackoffSeconds:              int64(k8sschedulingqueue.DefaultPodMaxBackoffDuration.Seconds()),
+	podMaxInUnschedulablePodsDuration: k8sschedulingqueue.DefaultPodMaxInUnschedulablePodsDuration,
 }
 
-// getMultiSchedulerInfo return the Pod name of current scheduler and the hash table for all schedulers
-func getMultiSchedulerInfo() (schedulerPodName string, c *consistent.Consistent) {
-	multiSchedulerEnable := os.Getenv("MULTI_SCHEDULER_ENABLE")
-	mySchedulerPodName := os.Getenv("SCHEDULER_POD_NAME")
-	c = nil
-	if multiSchedulerEnable == "true" {
-		klog.V(3).Infof("multiSchedulerEnable true")
-		schedulerNumStr := os.Getenv("SCHEDULER_NUM")
-		schedulerNum, err := strconv.Atoi(schedulerNumStr)
-		if err != nil {
-			schedulerNum = 1
-		}
-		index := strings.LastIndex(mySchedulerPodName, "-")
-		baseName := mySchedulerPodName[0:index]
-		c = consistent.New()
-		for i := 0; i < schedulerNum; i++ {
-			name := fmt.Sprintf("%s-%d", baseName, i)
-			c.Add(name)
-		}
-	}
-	return mySchedulerPodName, c
+// Less is the function used by the activeQ heap algorithm to sort pods. Currently, we use the same logic as PrioritySort plugin.
+func Less(pInfo1, pInfo2 schedfwk.QueuedPodInfo) bool {
+	p1 := corev1helpers.PodPriority(pInfo1.GetPodInfo().GetPod())
+	p2 := corev1helpers.PodPriority(pInfo2.GetPodInfo().GetPod())
+	return (p1 > p2) || (p1 == p2 && pInfo1.GetTimestamp().Before(pInfo2.GetTimestamp()))
 }

@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	schedcache "volcano.sh/volcano/pkg/agentscheduler/cache"
@@ -130,8 +131,15 @@ func (worker *Worker) runOnce(index uint32) {
 		conf.EnabledActionMap[action.Name()] = true
 	}
 
-	//TODO: Pop a pod
-	//taskInfo = sched.NextPod()
+	task, err := worker.nextTask()
+	if err != nil {
+		klog.Errorf("Failed to get next task: %v", err)
+		return
+	}
+	if task == nil {
+		klog.Warningf("No task to schedule")
+		return
+	}
 
 	// Update snapshot from cache before scheduling
 	snapshot := worker.framework.GetSnapshot()
@@ -152,9 +160,36 @@ func (worker *Worker) runOnce(index uint32) {
 
 	for _, action := range worker.framework.Actions {
 		actionStartTime := time.Now()
-		action.Execute(worker.framework)
+		action.Execute(worker.framework, task)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
 	}
+}
+
+func (worker *Worker) nextTask() (*schedulingapi.TaskInfo, error) {
+	if worker.framework == nil {
+		return nil, fmt.Errorf("framework is not initialized")
+	}
+	if worker.framework.Cache == nil {
+		return nil, fmt.Errorf("cache is not initialized")
+	}
+
+	queue := worker.framework.Cache.SchedulingQueue()
+	if queue == nil {
+		return nil, fmt.Errorf("scheduling queue is not initialized")
+	}
+
+	podInfo, err := queue.Pop(klog.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to pop scheduling task: %w", err)
+	}
+
+	task, exist := worker.framework.Cache.GetTaskInfo(schedulingapi.TaskID(podInfo.Pod.UID))
+	if !exist {
+		klog.Warningf("Task %s/%s not found in cache, skip scheduling", podInfo.Pod.Namespace, podInfo.Pod.Name)
+		return nil, nil
+	}
+
+	return task, nil
 }
 
 func (sched *Scheduler) loadSchedulerConf() {

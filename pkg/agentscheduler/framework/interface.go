@@ -16,6 +16,8 @@ limitations under the License.
 
 package framework
 
+import "volcano.sh/volcano/pkg/scheduler/api"
+
 // Action is the interface of agent scheduler action.
 type Action interface {
 	// Name returns the unique name of Action.
@@ -24,8 +26,8 @@ type Action interface {
 	// Initialize initializes the allocator plugins.
 	Initialize()
 
-	// Execute allocates the cluster's resources into each queue.
-	Execute(fwk *Framework)
+	// Execute allocates resources for the given task.
+	Execute(fwk *Framework, task *api.TaskInfo)
 
 	// UnInitialize un-initializes the allocator plugins.
 	UnInitialize()

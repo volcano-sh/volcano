@@ -57,7 +57,7 @@ func (alloc *Action) parseArguments(fwk *framework.Framework) {
 	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
 }
 
-func (alloc *Action) Execute(fwk *framework.Framework) {
+func (alloc *Action) Execute(fwk *framework.Framework, task *api.TaskInfo) {
 	klog.V(5).Infof("Enter Allocate ...")
 	defer klog.V(5).Infof("Leaving Allocate ...")
 
@@ -68,18 +68,13 @@ func (alloc *Action) Execute(fwk *framework.Framework) {
 	// 2. use ssn.NodeOrderFn to judge the best node and assign it to T
 
 	alloc.fwk = fwk
-	var taskInfo *api.TaskInfo
-	alloc.allocateTask(taskInfo)
+	alloc.allocateTask(task)
 
 	//push to bind checking channel
 }
 
 // TODO: Do we need to exit quickly after meeting an error?
 func (alloc *Action) allocateTask(task *api.TaskInfo) {
-	if task == nil {
-		klog.Warning("No task to allocate")
-		return
-	}
 	nodes := alloc.fwk.VolcanoNodeInfos()
 	ph := util.NewPredicateHelper()
 

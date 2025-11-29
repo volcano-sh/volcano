@@ -35,6 +35,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	vcache "volcano.sh/volcano/pkg/scheduler/cache"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
 
 // Cache collects pods/nodes/queues information
@@ -89,6 +90,12 @@ type Cache interface {
 
 	// EnqueueScheduleResult put result into binder check queue
 	EnqueueScheduleResult(result *PodScheduleResult)
+
+	// SchedulingQueue returns the scheduling queue instance in the cache
+	SchedulingQueue() k8sschedulingqueue.SchedulingQueue
+
+	// GetTaskInfo returns the TaskInfo from the cache with the given taskID.
+	GetTaskInfo(taskID api.TaskID) (*api.TaskInfo, bool)
 }
 
 // Binder interface for binding task and hostname
