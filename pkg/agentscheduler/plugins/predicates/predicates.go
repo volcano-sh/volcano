@@ -48,8 +48,11 @@ func (pp *predicatesPlugin) Name() string {
 }
 
 func (pp *predicatesPlugin) OnPluginInit(fwk *framework.Framework) {
+	// 1. Set the framework handle to the predicates plugin
+	pp.Handle = fwk
+	// 2. Initialize all the plugin introduced from kube-scheduler ( Notice that Handle must be set before this step)
 	pp.PredicatesPlugin.InitPlugin()
-
+	// 3. Register predicates related extension points
 	fwk.AddPrePredicateFn(PluginName, func(task *api.TaskInfo) error {
 		state := fwk.GetCycleState(types.UID(task.UID))
 		nodeInfoList, err := fwk.SnapshotSharedLister().NodeInfos().List()
