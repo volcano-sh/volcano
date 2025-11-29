@@ -17,7 +17,9 @@ limitations under the License.
 package priority
 
 import (
+	"context"
 	"testing"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	v1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
@@ -35,6 +37,8 @@ import (
 
 func init() {
 	options.Default()
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
 }
 
 var (

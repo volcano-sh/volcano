@@ -17,7 +17,10 @@
 package shuffle
 
 import (
+	"context"
+	"os"
 	"testing"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	"github.com/golang/mock/gomock"
 	v1 "k8s.io/api/core/v1"
@@ -30,6 +33,13 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func TestMain(m *testing.M) {
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+
+	os.Exit(m.Run())
+}
 
 func TestShuffle(t *testing.T) {
 	var highPriority int32

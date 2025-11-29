@@ -17,6 +17,7 @@ limitations under the License.
 package proportion
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"os"
@@ -24,6 +25,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	apiv1 "k8s.io/api/core/v1"
@@ -49,6 +51,8 @@ import (
 
 func TestMain(m *testing.M) {
 	options.Default()
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
 	os.Exit(m.Run())
 }
 

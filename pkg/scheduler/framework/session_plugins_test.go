@@ -17,8 +17,11 @@ limitations under the License.
 package framework
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"testing"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -31,6 +34,12 @@ import (
 
 func newFitErr(taskName, nodeName string, sts ...*api.Status) *api.FitError {
 	return api.NewFitErrWithStatus(&api.TaskInfo{Name: taskName}, &api.NodeInfo{Name: nodeName}, sts...)
+}
+
+func TestMain(m *testing.M) {
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+	os.Exit(m.Run())
 }
 
 func TestFilterOutPreemptMayNotHelpNodes(t *testing.T) {
