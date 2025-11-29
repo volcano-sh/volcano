@@ -51,22 +51,8 @@ type Cache interface {
 	// TODO(jinzhej): clean up expire Tasks.
 	AddBindTask(bindCtx *BindContext) error
 
-	// BindPodGroup Pod/PodGroup to cluster
-	BindPodGroup(job *api.JobInfo, cluster string) error
-
 	// Evict evicts the task to release resources.
 	Evict(task *api.TaskInfo, reason string) error
-
-	// RecordJobStatusEvent records related events according to job status.
-	// Deprecated: remove it after removed PDB support.
-	RecordJobStatusEvent(job *api.JobInfo, updatePG bool)
-
-	// UpdateJobStatus puts job in backlog for a while.
-	UpdateJobStatus(job *api.JobInfo, updatePGStatus, updatePGAnnotations bool) (*api.JobInfo, error)
-
-	// UpdateQueueStatus update queue status.
-	UpdateQueueStatus(queue *api.QueueInfo) error
-
 	// Client returns the kubernetes clientSet, which can be used by plugins
 	Client() kubernetes.Interface
 
@@ -110,7 +96,6 @@ type Evictor interface {
 // StatusUpdater updates pod with given PodCondition
 type StatusUpdater interface {
 	UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error)
-	UpdateQueueStatus(queue *api.QueueInfo) error
 }
 
 // BatchBinder updates podgroup or job information

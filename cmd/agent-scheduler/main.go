@@ -28,15 +28,15 @@ import (
 	cliflag "k8s.io/component-base/cli/flag"
 	componentbaseoptions "k8s.io/component-base/config/options"
 	"k8s.io/klog/v2"
-	"volcano.sh/volcano/cmd/agent-scheduler/app"
 
+	"volcano.sh/volcano/cmd/agent-scheduler/app"
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/version"
 
 	// Import default actions/plugins.
-	_ "volcano.sh/volcano/pkg/scheduler/actions"
-	_ "volcano.sh/volcano/pkg/scheduler/plugins"
+	_ "volcano.sh/volcano/pkg/agentscheduler/actions"
+	_ "volcano.sh/volcano/pkg/agentscheduler/plugins"
 
 	// init assert
 	_ "volcano.sh/volcano/pkg/scheduler/util/assert"

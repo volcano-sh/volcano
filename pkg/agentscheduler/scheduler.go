@@ -19,7 +19,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package scheduler
+package agentscheduler
 
 import (
 	"fmt"
@@ -66,8 +66,8 @@ type Worker struct {
 	framework *framework.Framework
 }
 
-// NewScheduler returns a Scheduler
-func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, error) {
+// NewAgentScheduler returns a Scheduler
+func NewAgentScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, error) {
 	var watcher filewatcher.FileWatcher
 	if opt.SchedulerConf != "" {
 		var err error

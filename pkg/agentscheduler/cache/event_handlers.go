@@ -25,10 +25,6 @@ package cache
 import (
 	"context"
 	"fmt"
-	"math"
-	"slices"
-	"strconv"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -37,36 +33,13 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
-	"k8s.io/utils/cpuset"
 
-	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
-var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
-
 func isTerminated(status schedulingapi.TaskStatus) bool {
 	return status == schedulingapi.Succeeded || status == schedulingapi.Failed
-}
-
-// getOrCreateJob will return corresponding Job for pi if it exists, or it will create a Job and return it if
-// pi.Pod.Spec.SchedulerName is same as volcano scheduler's name, otherwise it will return nil.
-func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *schedulingapi.JobInfo {
-	if len(pi.Job) == 0 {
-		if !slices.Contains(sc.schedulerNames, pi.Pod.Spec.SchedulerName) {
-			klog.V(4).Infof("Pod %s/%s is not scheduled by %s, skip creating PodGroup and Job for it in cache.",
-				pi.Pod.Namespace, pi.Pod.Name, strings.Join(sc.schedulerNames, ","))
-		}
-		return nil
-	}
-
-	//if _, found := sc.Jobs[pi.Job]; !found {
-	//	sc.Jobs[pi.Job] = schedulingapi.NewJobInfo(pi.Job)
-	//}
-	//
-	return nil
 }
 
 func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
@@ -169,18 +142,8 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 }
 
 func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
+	// TODO need to refactoring
 	var nodeErr error
-
-	//if len(ti.Job) != 0 {
-	//	if job, found := sc.Jobs[ti.Job]; found {
-	//		jobErr = job.DeleteTaskInfo(ti)
-	//	} else {
-	//		klog.Warningf("Failed to find Job <%v> for Task <%v/%v> in cache.", ti.Job, ti.Namespace, ti.Name)
-	//	}
-	//} else {
-	//	klog.V(4).Infof("Task <%s/%s> has null jobID in cache.", ti.Namespace, ti.Name)
-	//}
-
 	if len(ti.NodeName) != 0 {
 		// We don't need to delete tasks from the Nodes cache that are already terminated.
 		// These tasks will be cleaned up during the UpdatePod -> updatePod -> deletePod -> deleteTask sequence,
@@ -203,25 +166,12 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
+	//TODO need to refactoring
 	pi := schedulingapi.NewTaskInfo(pod)
-	//
-	//// Delete the Task in cache to handle Binding status.
-	//task := pi
-	//if job, found := sc.Jobs[pi.Job]; found {
-	//	if t, found := job.Tasks[pi.UID]; found {
-	//		task = t
-	//	}
-	//}
-	_, task, err := sc.findJobAndTask(pi)
-	if err = sc.deleteTask(task); err != nil {
+	task, _ := sc.findTask(pi)
+	if err := sc.deleteTask(task); err != nil {
 		klog.Warningf("Failed to delete task from cache: %v", err)
 	}
-
-	//// If job was terminated, delete it.
-	//if job, found := sc.Jobs[pi.Job]; found && schedulingapi.JobTerminated(job) {
-	//	sc.deleteJob(job)
-	//}
-
 	return nil
 }
 
@@ -408,6 +358,11 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 
 // UpdateNode update node to scheduler cache
 func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
+	_, ok := oldObj.(*v1.Node)
+	if !ok {
+		klog.Errorf("Cannot convert oldObj to *v1.Node: %v", oldObj)
+		return
+	}
 	newNode, ok := newObj.(*v1.Node)
 	if !ok {
 		klog.Errorf("Cannot convert newObj to *v1.Node: %v", newObj)
@@ -552,143 +507,4 @@ func (sc *SchedulerCache) AddResourceQuota(obj interface{}) {
 
 	klog.V(3).Infof("Add ResourceQuota <%s/%v> in cache, with spec: %v.", r.Namespace, r.Name, r.Spec.Hard)
 	sc.updateResourceQuota(r)
-}
-
-func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.NumatopoInfo {
-	numaInfo := &schedulingapi.NumatopoInfo{
-		Namespace:   srcInfo.Namespace,
-		Name:        srcInfo.Name,
-		Policies:    make(map[nodeinfov1alpha1.PolicyName]string),
-		NumaResMap:  make(map[string]*schedulingapi.ResourceInfo),
-		CPUDetail:   topology.CPUDetails{},
-		ResReserved: make(v1.ResourceList),
-	}
-
-	policies := srcInfo.Spec.Policies
-	for name, policy := range policies {
-		numaInfo.Policies[name] = policy
-	}
-
-	numaResMap := srcInfo.Spec.NumaResMap
-	for name, resInfo := range numaResMap {
-		tmp := schedulingapi.ResourceInfo{}
-		tmp.Capacity = resInfo.Capacity
-		allocatable, err := cpuset.Parse(resInfo.Allocatable)
-		if err != nil {
-			klog.ErrorS(err, "Failed to parse input as CPUSet", resInfo.Allocatable)
-		}
-		tmp.Allocatable = allocatable
-		numaInfo.NumaResMap[name] = &tmp
-	}
-
-	cpuDetail := srcInfo.Spec.CPUDetail
-	for key, detail := range cpuDetail {
-		cpuID, _ := strconv.Atoi(key)
-		numaInfo.CPUDetail[cpuID] = topology.CPUInfo{
-			NUMANodeID: detail.NUMANodeID,
-			SocketID:   detail.SocketID,
-			CoreID:     detail.CoreID,
-		}
-	}
-
-	resReserved, err := schedulingapi.ParseResourceList(srcInfo.Spec.ResReserved)
-	if err != nil {
-		klog.Errorf("ParseResourceList failed, err=%v", err)
-	} else {
-		numaInfo.ResReserved = resReserved
-	}
-
-	return numaInfo
-}
-
-// Assumes that lock is already acquired.
-func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopology) error {
-	if sc.Nodes[info.Name] == nil {
-		sc.Nodes[info.Name] = schedulingapi.NewNodeInfo(nil)
-		sc.Nodes[info.Name].Name = info.Name
-	}
-
-	if sc.Nodes[info.Name].NumaInfo == nil {
-		sc.Nodes[info.Name].NumaInfo = getNumaInfo(info)
-		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoMoreFlag
-	} else {
-		newLocalInfo := getNumaInfo(info)
-		if sc.Nodes[info.Name].NumaInfo.Compare(newLocalInfo) {
-			sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoMoreFlag
-		} else {
-			sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoLessFlag
-		}
-
-		sc.Nodes[info.Name].NumaInfo = newLocalInfo
-	}
-
-	for resName, NumaResInfo := range sc.Nodes[info.Name].NumaInfo.NumaResMap {
-		klog.V(3).Infof("resource %s Allocatable %v on node[%s] into cache", resName, NumaResInfo, info.Name)
-	}
-
-	klog.V(3).Infof("Policies %v on node[%s] into cache, change= %v",
-		sc.Nodes[info.Name].NumaInfo.Policies, info.Name, sc.Nodes[info.Name].NumaChgFlag)
-	return nil
-}
-
-// Assumes that lock is already acquired.
-func (sc *SchedulerCache) deleteNumaInfo(info *nodeinfov1alpha1.Numatopology) {
-	if sc.Nodes[info.Name] != nil {
-		sc.Nodes[info.Name].NumaInfo = nil
-		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoResetFlag
-		klog.V(3).Infof("delete numainfo in cache for node<%s>", info.Name)
-	}
-}
-
-// AddNumaInfoV1alpha1 add numa information to scheduler cache
-func (sc *SchedulerCache) AddNumaInfoV1alpha1(obj interface{}) {
-	ss, ok := obj.(*nodeinfov1alpha1.Numatopology)
-	if !ok {
-		klog.Errorf("Cannot convert oldObj to *nodeinfov1alpha1.Numatopology: %v", obj)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	sc.addNumaInfo(ss)
-}
-
-// UpdateNumaInfoV1alpha1 update numa information to scheduler cache
-func (sc *SchedulerCache) UpdateNumaInfoV1alpha1(oldObj, newObj interface{}) {
-	ss, ok := newObj.(*nodeinfov1alpha1.Numatopology)
-	if !ok {
-		klog.Errorf("Cannot convert oldObj to *nodeinfov1alpha1.Numatopology: %v", newObj)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-	sc.addNumaInfo(ss)
-	klog.V(3).Infof("update numaInfo<%s> in cache, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
-}
-
-// DeleteNumaInfoV1alpha1 delete numa information from scheduler cache
-func (sc *SchedulerCache) DeleteNumaInfoV1alpha1(obj interface{}) {
-	var ss *nodeinfov1alpha1.Numatopology
-	switch t := obj.(type) {
-	case *nodeinfov1alpha1.Numatopology:
-		ss = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		ss, ok = t.Obj.(*nodeinfov1alpha1.Numatopology)
-		if !ok {
-			klog.Errorf("Cannot convert to Numatopo: %v", t.Obj)
-			return
-		}
-	default:
-		klog.Errorf("Cannot convert to Numatopo: %v", t)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	sc.deleteNumaInfo(ss)
-	klog.V(3).Infof("Delete numaInfo<%s> from cache, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
 }

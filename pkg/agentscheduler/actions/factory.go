@@ -21,8 +21,8 @@ limitations under the License.
 package actions
 
 import (
-	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
-	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/agentscheduler/actions/allocate"
+	"volcano.sh/volcano/pkg/agentscheduler/framework"
 )
 
 func init() {

@@ -28,11 +28,10 @@ import (
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
-	"volcano.sh/volcano/pkg/scheduler/api"
-
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
 
+	"volcano.sh/volcano/pkg/scheduler/api"
 	scheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 

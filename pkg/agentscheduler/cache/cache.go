@@ -27,7 +27,6 @@ import (
 
 	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -42,7 +41,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	resourceslicetracker "k8s.io/dynamic-resource-allocation/resourceslice/tracker"
 	"k8s.io/klog/v2"
@@ -54,8 +52,6 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 	"stathat.com/c/consistent"
 
-	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
-	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -65,16 +61,6 @@ import (
 	vcache "volcano.sh/volcano/pkg/scheduler/cache"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
-
-const (
-	// default interval for sync data from metrics server, the value is 30s
-	defaultMetricsInternal = 30 * time.Second
-
-	taskUpdaterWorker = 16
-)
-
-// defaultIgnoredProvisioners contains provisioners that will be ignored during pod pvc request computation and preemption.
-var defaultIgnoredProvisioners = []string{"rancher.io/local-path", "hostpath.csi.k8s.io"}
 
 func init() {
 	schemeBuilder := runtime.SchemeBuilder{
@@ -123,9 +109,8 @@ type SchedulerCache struct {
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
-	errTasks    workqueue.TypedRateLimitingInterface[string]
-	nodeQueue   workqueue.TypedRateLimitingInterface[string]
-	DeletedJobs workqueue.TypedRateLimitingInterface[*schedulingapi.JobInfo]
+	errTasks  workqueue.TypedRateLimitingInterface[string]
+	nodeQueue workqueue.TypedRateLimitingInterface[string]
 
 	informerFactory   informers.SharedInformerFactory
 	vcInformerFactory vcinformer.SharedInformerFactory
@@ -299,27 +284,6 @@ func (su *defaultStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
 	return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
 }
 
-// UpdateQueueStatus will update the status of queue
-func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
-	newQueue := &vcv1beta1.Queue{}
-	if err := schedulingscheme.Scheme.Convert(queue.Queue, newQueue, nil); err != nil {
-		klog.Errorf("error occurred in converting scheduling.Queue to v1beta1.Queue: %s", err.Error())
-		return err
-	}
-
-	_, err := su.vcclient.SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), newQueue, metav1.UpdateOptions{})
-	if err != nil {
-		klog.Errorf("error occurred in updating Queue <%s>: %s", newQueue.Name, err.Error())
-		return err
-	}
-	return nil
-}
-
-type podgroupBinder struct {
-	kubeclient kubernetes.Interface
-	vcclient   vcclient.Interface
-}
-
 // updateNodeSelectors parse and update node selector key value pairs to schedule cache
 func (sc *SchedulerCache) updateNodeSelectors(nodeSelectors []string) {
 	for _, nodeSelectorLabel := range nodeSelectors {
@@ -351,61 +315,6 @@ func (sc *SchedulerCache) setBatchBindParallel() {
 	}
 }
 
-// newDefaultAndRootQueue init default queue and root queue
-func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
-	reclaimable := false
-	rootQueue := vcv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "root",
-		},
-		Spec: vcv1beta1.QueueSpec{
-			Reclaimable: &reclaimable,
-			Weight:      1,
-		},
-	}
-
-	err := retry.OnError(wait.Backoff{
-		Steps:    60,
-		Duration: time.Second,
-		Factor:   1,
-		Jitter:   0.1,
-	}, func(err error) bool {
-		return !apierrors.IsAlreadyExists(err)
-	}, func() error {
-		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &rootQueue, metav1.CreateOptions{})
-		return err
-	})
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		panic(fmt.Errorf("failed init root queue, with err: %v", err))
-	}
-
-	reclaimable = true
-	defaultQue := vcv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: defaultQueue,
-		},
-		Spec: vcv1beta1.QueueSpec{
-			Reclaimable: &reclaimable,
-			Weight:      1,
-		},
-	}
-
-	err = retry.OnError(wait.Backoff{
-		Steps:    60,
-		Duration: time.Second,
-		Factor:   1,
-		Jitter:   0.1,
-	}, func(err error) bool {
-		return !apierrors.IsAlreadyExists(err)
-	}, func() error {
-		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{})
-		return err
-	})
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		panic(fmt.Errorf("failed init default queue, with err: %v", err))
-	}
-}
-
 func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -420,10 +329,6 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		panic(fmt.Sprintf("failed init eventClient, with err: %v", err))
 	}
 
-	// create default queue and root queue
-	klog.Infof("Creating default queue and root queue")
-	newDefaultAndRootQueue(vcClient, defaultQueue)
-
 	errTaskRateLimiter := workqueue.NewTypedMaxOfRateLimiter[string](
 		workqueue.NewTypedItemExponentialFailureRateLimiter[string](5*time.Millisecond, 1000*time.Second),
 		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
@@ -433,7 +338,6 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		Nodes:               make(map[string]*schedulingapi.NodeInfo),
 		errTasks:            workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[*schedulingapi.JobInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.JobInfo]()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
 		restConfig:          config,
@@ -616,10 +520,10 @@ func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 	sc.vcInformerFactory.WaitForCacheSync(stopCh)
 }
 
-// findJobAndTask returns job and the task info
-func (sc *SchedulerCache) findJobAndTask(taskInfo *schedulingapi.TaskInfo) (*schedulingapi.JobInfo, *schedulingapi.TaskInfo, error) {
-	// TODO returns job and the task info
-	return nil, taskInfo, nil
+// findTask returns job and the task info
+func (sc *SchedulerCache) findTask(taskInfo *schedulingapi.TaskInfo) (*schedulingapi.TaskInfo, error) {
+	// TODO returns task info, need to refactoring
+	return taskInfo, nil
 }
 
 // Evict will evict the pod.
@@ -628,8 +532,8 @@ func (sc *SchedulerCache) findJobAndTask(taskInfo *schedulingapi.TaskInfo) (*sch
 func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-
-	job, task, err := sc.findJobAndTask(taskInfo)
+	// TODO need to refactoring
+	task, err := sc.findTask(taskInfo)
 	if err != nil {
 		return err
 	}
@@ -639,22 +543,9 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 		return fmt.Errorf("failed to evict Task %v from host %v, host does not exist",
 			task.UID, task.NodeName)
 	}
-
-	originalStatus := task.Status
-	if err := job.UpdateTaskStatus(task, schedulingapi.Releasing); err != nil {
-		return err
-	}
-
+	sc.resyncTask(task)
 	// Add new task to node.
 	if err := node.UpdateTask(task); err != nil {
-		// After failing to update task to a node we need to revert task status from Releasing,
-		// otherwise task might be stuck in the Releasing state indefinitely.
-		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
-			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
-				"from %s to %s after failing to update Task on Node <%s>: %v",
-				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
-			sc.resyncTask(task)
-		}
 		return err
 	}
 
@@ -702,11 +593,6 @@ func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext,
 			sc.resyncTask(bindContext.TaskInfo)
 		}
 	}
-}
-
-// BindPodGroup binds job to silo cluster
-func (sc *SchedulerCache) BindPodGroup(job *schedulingapi.JobInfo, cluster string) error {
-	return nil
 }
 
 // Client returns the kubernetes clientSet
@@ -807,20 +693,8 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 	return nil
 }
 
-func (sc *SchedulerCache) deleteJob(job *schedulingapi.JobInfo) {
-	klog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
-
-	sc.DeletedJobs.Add(job)
-}
-
-func (sc *SchedulerCache) retryDeleteJob(job *schedulingapi.JobInfo) {
-	klog.V(3).Infof("Retry to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
-
-	sc.DeletedJobs.AddRateLimited(job)
-}
-
 func (sc *SchedulerCache) processCleanupJob() {
-	// TODO
+	// TODO process clean up Job
 }
 
 func (sc *SchedulerCache) resyncTask(task *schedulingapi.TaskInfo) {
@@ -836,7 +710,7 @@ func (sc *SchedulerCache) generateErrTaskKey(task *schedulingapi.TaskInfo) strin
 }
 
 func (sc *SchedulerCache) parseErrTaskKey(key string) (*schedulingapi.TaskInfo, error) {
-	// TODO
+	// TODO  need to refactoring
 	return nil, nil
 }
 
@@ -910,43 +784,7 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	klog.V(5).Infof("add bind task %v/%v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name)
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-	job, task, err := sc.findJobAndTask(bindContext.TaskInfo)
-	if err != nil {
-		return err
-	}
-
-	node, found := sc.Nodes[bindContext.TaskInfo.NodeName]
-	if !found {
-		return fmt.Errorf("failed to bind Task %v to host %v, host does not exist",
-			task.UID, bindContext.TaskInfo.NodeName)
-	}
-
-	originalStatus := task.Status
-	if err := job.UpdateTaskStatus(task, schedulingapi.Binding); err != nil {
-		return err
-	}
-
-	err = bindContext.TaskInfo.SetPodResourceDecision()
-	if err != nil {
-		return fmt.Errorf("set task %v/%v resource decision failed, err %v", task.Namespace, task.Name, err)
-	}
-	task.NumaInfo = bindContext.TaskInfo.NumaInfo.Clone()
-
-	// Add task to the node.
-	if err := node.AddTask(task); err != nil {
-		// After failing to update task to a node we need to revert task status from Releasing,
-		// otherwise task might be stuck in the Releasing state indefinitely.
-		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
-			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
-				"from %s to %s after failing to update Task on Node <%s>: %v",
-				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
-			sc.resyncTask(task)
-		}
-		return err
-	}
-
-	sc.BindFlowChannel <- bindContext
-
+	// TODO need to refactoring
 	return nil
 }
 
@@ -1051,8 +889,6 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	snapshot := &schedulingapi.ClusterInfo{
 		Nodes:          make(map[string]*schedulingapi.NodeInfo),
 		RealNodesSet:   make(map[string]sets.Set[string]),
-		Jobs:           make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Queues:         make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
 		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
 		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
 		NodeList:       make([]string, len(sc.NodeList)),
@@ -1081,7 +917,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		info := value.Snapshot()
 		snapshot.NamespaceInfo[info.Name] = info
 	}
-	klog.V(3).InfoS("SnapShot for scheduling", "NodeNum", len(snapshot.Nodes))
+	klog.V(3).InfoS("SnapShot for scheduling", "NodeNum", "NamespaceNum", "RevocableNodesNum", len(snapshot.Nodes), len(snapshot.NamespaceInfo), len(snapshot.RevocableNodes))
 	return snapshot
 }
 
@@ -1123,53 +959,6 @@ func (sc *SchedulerCache) String() string {
 	}
 
 	return str
-}
-
-// RecordJobStatusEvent records related events according to job status.
-func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updatePG bool) {
-	fitErrStr := job.FitError()
-	baseErrorMessage := fitErrStr
-	if baseErrorMessage == "" {
-		baseErrorMessage = schedulingapi.AllNodeUnavailableMsg
-	}
-	// Update podCondition for tasks Allocated and Pending before job discarded
-	for _, status := range []schedulingapi.TaskStatus{schedulingapi.Allocated, schedulingapi.Pending, schedulingapi.Pipelined} {
-		statusTasks := job.TaskStatusIndex[status]
-		taskInfos := make([]*schedulingapi.TaskInfo, 0, len(statusTasks))
-		for _, task := range statusTasks {
-			taskInfos = append(taskInfos, task)
-		}
-
-		workqueue.ParallelizeUntil(context.TODO(), taskUpdaterWorker, len(taskInfos), func(index int) {
-			taskInfo := taskInfos[index]
-
-			// The pod of a scheduling gated task is given
-			// the ScheduleGated condition by the api-server. Do not change it.
-			if taskInfo.SchGated {
-				return
-			}
-
-			reason, msg, nominatedNodeName := job.TaskSchedulingReason(taskInfo.UID)
-			if len(msg) == 0 {
-				msg = baseErrorMessage
-			}
-
-			if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {
-				klog.ErrorS(err, "Failed to update unschedulable task status", "task", klog.KRef(taskInfo.Namespace, taskInfo.Name),
-					"reason", reason, "message", msg)
-			}
-		})
-	}
-}
-
-// UpdateJobStatus update the status of job and its tasks.
-func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePGStatus, updatePGAnnotations bool) (*schedulingapi.JobInfo, error) {
-	return job, nil
-}
-
-// UpdateQueueStatus update the status of queue.
-func (sc *SchedulerCache) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
-	return sc.StatusUpdater.UpdateQueueStatus(queue)
 }
 
 func (sc *SchedulerCache) SetMetricsConf(conf map[string]string) {

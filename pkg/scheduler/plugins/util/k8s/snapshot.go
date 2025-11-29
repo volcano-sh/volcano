@@ -30,8 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
-	"volcano.sh/volcano/pkg/scheduler/api"
 
+	"volcano.sh/volcano/pkg/scheduler/api"
 	scheduler "volcano.sh/volcano/pkg/scheduler/framework"
 )
 
@@ -42,7 +42,7 @@ type Snapshot struct {
 	volcanoInfo
 
 	// generation is the snapshot generation, used to identify whether the snapshot is stale.
-	generation int64
+	//generation int64
 }
 
 // fwkInfo holds snapshot information from the kube-scheduler framework.

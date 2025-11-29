@@ -228,7 +228,7 @@ endif
 update-development-yaml:
 	make generate-yaml RELEASE_DIR=installer
 	mv installer/volcano-${TAG}.yaml installer/volcano-development.yaml
-	mv installer/agnet-scheduler-${TAG}.yaml installer/agnet-scheduler-development.yaml
+	mv installer/agent-scheduler-${TAG}.yaml installer/agent-scheduler-development.yaml
 	mv installer/volcano-agent-${TAG}.yaml installer/volcano-agent-development.yaml
 	mv installer/volcano-monitoring-${TAG}.yaml installer/volcano-monitoring.yaml
 

@@ -27,6 +27,7 @@ export RELEASE_FOLDER=${VK_ROOT}/${RELEASE_DIR}
 export HELM_VER=${HELM_VER:-v3.6.3}
 export VOLCANO_IMAGE_TAG=${TAG:-"latest"}
 export YAML_FILENAME=volcano-${VOLCANO_IMAGE_TAG}.yaml
+export AGENT_SCHEDULER_YAML_FILENAME=agent-scheduler-${VOLCANO_IMAGE_TAG}.yaml
 export MONITOR_YAML_FILENAME=volcano-monitoring-${VOLCANO_IMAGE_TAG}.yaml
 export AGENT_YAML_FILENAME=volcano-agent-${VOLCANO_IMAGE_TAG}.yaml
 
@@ -122,6 +123,7 @@ if [[ ! -d ${RELEASE_FOLDER} ]];then
 fi
 
 DEPLOYMENT_FILE=${RELEASE_FOLDER}/${YAML_FILENAME}
+AGENT_SCHEDULER_DEPLOYMENT_YAML_FILENAME=${RELEASE_FOLDER}/${AGENT_SCHEDULER_YAML_FILENAME}
 MONITOR_DEPLOYMENT_YAML_FILENAME=${RELEASE_FOLDER}/${MONITOR_YAML_FILENAME}
 AGENT_DEPLOYMENT_YAML_FILENAME=${RELEASE_FOLDER}/${AGENT_YAML_FILENAME}
 
@@ -131,6 +133,9 @@ if [[ -f ${DEPLOYMENT_FILE} ]];then
     rm ${DEPLOYMENT_FILE}
 fi
 
+if [[ -f ${AGENT_SCHEDULER_DEPLOYMENT_YAML_FILENAME} ]];then
+    rm ${AGENT_SCHEDULER_DEPLOYMENT_YAML_FILENAME}
+fi
 if [[ -f ${MONITOR_DEPLOYMENT_YAML_FILENAME} ]];then
     rm ${MONITOR_DEPLOYMENT_YAML_FILENAME}
 fi
@@ -191,3 +196,11 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set custom.colocation_enable=true \
       -s templates/agent.yaml \
       >> ${AGENT_DEPLOYMENT_YAML_FILENAME}
+
+# Agent Scheduler
+${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
+      --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} \
+      -s templates/agent_scheduler.yaml \
+      >> ${AGENT_SCHEDULER_DEPLOYMENT_YAML_FILENAME}
+
+echo "Generating agent scheduler yaml file into ${AGENT_SCHEDULER_DEPLOYMENT_YAML_FILENAME}"
