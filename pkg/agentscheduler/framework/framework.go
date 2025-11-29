@@ -21,9 +21,9 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/api"
 
 	"volcano.sh/volcano/pkg/agentscheduler/cache"
-	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	vcutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
@@ -128,4 +128,9 @@ func (f *Framework) OnCycleEnd() {
 	for _, plugin := range f.Plugins {
 		plugin.OnCycleEnd(f)
 	}
+}
+
+// GetSnapshot returns the snapshot from the embedded k8sutil.Framework.
+func (f *Framework) GetSnapshot() *k8sutil.Snapshot {
+	return f.Framework.SnapshotSharedLister().(*k8sutil.Snapshot)
 }

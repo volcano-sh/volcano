@@ -133,19 +133,21 @@ func (worker *Worker) runOnce(index uint32) {
 	//TODO: Pop a pod
 	//taskInfo = sched.NextPod()
 
-	// TODO: Update snapshot
-	// worker.framework.UpdateSnapshot()
+	// Update snapshot from cache before scheduling
+	snapshot := worker.framework.GetSnapshot()
+	if err := worker.framework.Cache.UpdateSnapshot(snapshot); err != nil {
+		klog.Errorf("Failed to update snapshot in worker %d: %v, skip this scheduling cycle", index, err)
+		return
+	}
+
+	// TODO: Call OnCycleStart for all plugins
 	// worker.framework.OnCycleStart()
+
 	defer func() {
 		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
-		// Call OnCycleEnd for all plugins
-		if worker.framework != nil {
-			worker.framework.OnCycleEnd()
-		}
-		// Clear CycleState at the end of scheduling cycle
-		if worker.framework != nil {
-			worker.framework.ClearCycleState()
-		}
+		// TODO: Call OnCycleEnd for all plugins
+		// worker.framework.OnCycleEnd()
+		worker.framework.ClearCycleState()
 	}()
 
 	for _, action := range worker.framework.Actions {

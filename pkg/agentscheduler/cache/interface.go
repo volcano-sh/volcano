@@ -33,6 +33,7 @@ import (
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 )
 
 // Cache collects pods/nodes/queues information
@@ -81,6 +82,9 @@ type Cache interface {
 
 	// EnqueueScheduleResult enqueue schedule result for bind check
 	EnqueueScheduleResult(result *PodScheduleResult)
+
+	// UpdateSnapshot is used to update the passed-in snapshot to ensure consistency between the cache's nodeinfo and the snapshot.
+	UpdateSnapshot(snapshot *k8sutil.Snapshot) error
 }
 
 // Binder interface for binding task and hostname

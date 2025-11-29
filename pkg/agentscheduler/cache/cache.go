@@ -59,6 +59,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	vcache "volcano.sh/volcano/pkg/scheduler/cache"
+	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -69,6 +70,8 @@ func init() {
 
 	utilruntime.Must(schemeBuilder.AddToScheme(scheme.Scheme))
 }
+
+var _ Cache = &SchedulerCache{}
 
 // New returns a Cache implementation.
 func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration) Cache {
@@ -919,6 +922,11 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	}
 	klog.V(3).InfoS("SnapShot for scheduling", "NodeNum", "NamespaceNum", "RevocableNodesNum", len(snapshot.Nodes), len(snapshot.NamespaceInfo), len(snapshot.RevocableNodes))
 	return snapshot
+}
+
+func (sc *SchedulerCache) UpdateSnapshot(snapshot *k8sutil.Snapshot) error {
+	//TODO: update the passed-in snapshot with the latest cache info
+	return nil
 }
 
 func (sc *SchedulerCache) SharedDRAManager() k8sframework.SharedDRAManager {
