@@ -109,3 +109,55 @@ function install-kwok-with-helm {
   # delete pod-complete stage to avoid volcano-job-pod change status to complete.
   kubectl delete stage pod-complete
 }
+
+function install-fake-gpu-operator {
+  if [[ ${PULL_IMAGES} == true ]]; then
+    # download images
+    docker pull ghcr.io/run-ai/fake-gpu-operator/device-plugin:0.0.63
+    docker pull ghcr.io/run-ai/fake-gpu-operator/status-updater:0.0.63
+    docker pull ghcr.io/run-ai/fake-gpu-operator/status-exporter:0.0.63
+    docker pull ghcr.io/run-ai/fake-gpu-operator/topology-server:0.0.63
+    docker pull ghcr.io/run-ai/fake-gpu-operator/mig-faker:0.0.63
+    docker pull ghcr.io/run-ai/fake-gpu-operator/kwok-gpu-device-plugin:0.0.63
+    docker pull ubuntu:24.04
+    docker pull nginx:latest
+
+    # load images into kind cluster
+    kind load docker-image ghcr.io/run-ai/fake-gpu-operator/device-plugin:0.0.63 "${CLUSTER_CONTEXT[@]}"
+    kind load docker-image ghcr.io/run-ai/fake-gpu-operator/status-updater:0.0.63 "${CLUSTER_CONTEXT[@]}"
+    kind load docker-image ghcr.io/run-ai/fake-gpu-operator/status-exporter:0.0.63 "${CLUSTER_CONTEXT[@]}"
+    kind load docker-image ghcr.io/run-ai/fake-gpu-operator/topology-server:0.0.63 "${CLUSTER_CONTEXT[@]}"
+    kind load docker-image ghcr.io/run-ai/fake-gpu-operator/mig-faker:0.0.63 "${CLUSTER_CONTEXT[@]}"
+    kind load docker-image ghcr.io/run-ai/fake-gpu-operator/kwok-gpu-device-plugin:0.0.63 "${CLUSTER_CONTEXT[@]}"
+    kind load docker-image ubuntu:24.04 "${CLUSTER_CONTEXT[@]}"
+    kind load docker-image nginx:latest "${CLUSTER_CONTEXT[@]}"
+  fi
+
+  # label nodes
+  kubectl label node "${CLUSTER_CONTEXT[1]}-worker" run.ai/simulated-gpu-node-pool=card1
+  kubectl label node "${CLUSTER_CONTEXT[1]}-worker2" run.ai/simulated-gpu-node-pool=card2
+  kubectl label node "${CLUSTER_CONTEXT[1]}-worker3" run.ai/simulated-gpu-node-pool=card3
+
+  # install fake-gpu-operator
+  helm upgrade --namespace gpu-operator --install fake-gpu-operator oci://ghcr.io/run-ai/fake-gpu-operator/fake-gpu-operator --version 0.0.63 -f ${FAKE_GPU_OPERATOR_VALUES} --create-namespace
+
+  # check resources
+  check-fake-gpu-operator
+}
+
+# check if fake gpu operator is ready
+function check-fake-gpu-operator {
+  echo "Checking fake gpu operator"
+  # retry get gpu resources on nodes
+  while true; do
+    if [[ $(kubectl get nodes -l nvidia.com/gpu.present=true --no-headers | wc -l) -eq 3 ]]; then
+      break
+    fi
+    sleep 1
+  done
+}
+
+
+function uninstall-fake-gpu-operator {
+  helm uninstall fake-gpu-operator -n gpu-operator
+}
