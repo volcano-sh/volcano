@@ -46,6 +46,10 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	setDefaultIfNil(&option.EnabledOverused)
 	setDefaultIfNil(&option.EnabledAllocatable)
 	setDefaultIfNil(&option.EnabledHyperNodeOrder)
+	setDefaultIfNil(&option.EnabledSubJobReady)
+	setDefaultIfNil(&option.EnabledSubJobPipelined)
+	setDefaultIfNil(&option.EnabledSubJobOrder)
+	setDefaultIfNil(&option.EnabledHyperNodeGradient)
 }
 
 func setDefaultIfNil(field **bool) {

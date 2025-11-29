@@ -567,36 +567,36 @@ func TestHyperNodesInfo_GetAncestors(t *testing.T) {
 func TestGetLCAHyperNode(t *testing.T) {
 	selector := "exact"
 	hnim := HyperNodeInfoMap{
-		"s0": {parent: "s4", tier: 1, HyperNode: BuildHyperNode("s0", 1, []MemberConfig{
+		"s0": {Parent: "s4", tier: 1, HyperNode: BuildHyperNode("s0", 1, []MemberConfig{
 			{"node-0", topologyv1alpha1.MemberTypeNode, selector, nil},
 			{"node-1", topologyv1alpha1.MemberTypeNode, selector, nil},
 		})},
-		"s1": {parent: "s4", tier: 1, HyperNode: BuildHyperNode("s1", 1, []MemberConfig{
+		"s1": {Parent: "s4", tier: 1, HyperNode: BuildHyperNode("s1", 1, []MemberConfig{
 			{"node-2", topologyv1alpha1.MemberTypeNode, selector, nil},
 			{"node-3", topologyv1alpha1.MemberTypeNode, selector, nil},
 		})},
-		"s2": {parent: "s5", tier: 1, HyperNode: BuildHyperNode("s2", 1, []MemberConfig{
+		"s2": {Parent: "s5", tier: 1, HyperNode: BuildHyperNode("s2", 1, []MemberConfig{
 			{"node-4", topologyv1alpha1.MemberTypeNode, selector, nil},
 			{"node-5", topologyv1alpha1.MemberTypeNode, selector, nil},
 		})},
-		"s3": {parent: "s5", tier: 1, HyperNode: BuildHyperNode("s3", 1, []MemberConfig{
+		"s3": {Parent: "s5", tier: 1, HyperNode: BuildHyperNode("s3", 1, []MemberConfig{
 			{"node-6", topologyv1alpha1.MemberTypeNode, selector, nil},
 			{"node-7", topologyv1alpha1.MemberTypeNode, selector, nil},
 		})},
-		"s4": {parent: "s6", tier: 2, HyperNode: BuildHyperNode("s4", 2, []MemberConfig{
+		"s4": {Parent: "s6", tier: 2, HyperNode: BuildHyperNode("s4", 2, []MemberConfig{
 			{"s0", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 			{"s1", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 		})},
-		"s5": {parent: "s6", tier: 2, HyperNode: BuildHyperNode("s5", 2, []MemberConfig{
+		"s5": {Parent: "s6", tier: 2, HyperNode: BuildHyperNode("s5", 2, []MemberConfig{
 			{"s2", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 			{"s3", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 		})},
-		"s6": {parent: "", tier: 3, HyperNode: BuildHyperNode("s6", 3, []MemberConfig{
+		"s6": {Parent: "", tier: 3, HyperNode: BuildHyperNode("s6", 3, []MemberConfig{
 			{"s4", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 			{"s5", topologyv1alpha1.MemberTypeHyperNode, selector, nil},
 		})},
 		// s-orphan is an orphan hypernode that does not have parent
-		"s-orphan": {parent: "", tier: 1, HyperNode: BuildHyperNode("s-orphan", 1, []MemberConfig{
+		"s-orphan": {Parent: "", tier: 1, HyperNode: BuildHyperNode("s-orphan", 1, []MemberConfig{
 			{"node-8", topologyv1alpha1.MemberTypeNode, selector, nil},
 			{"node-9", topologyv1alpha1.MemberTypeNode, selector, nil},
 		})},

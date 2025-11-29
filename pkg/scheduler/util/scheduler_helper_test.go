@@ -239,15 +239,7 @@ func TestGetHyperNodeList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := GetRealNodesListByHyperNode(tc.hyperNodes, tc.allNodes)
-			nodesSet := make(map[string]sets.Set[string])
-			for name, nodes := range result {
-				s := sets.New[string]()
-				for _, node := range nodes {
-					s.Insert(node.Name)
-				}
-				nodesSet[name] = s
-			}
+			_, nodesSet := GetRealNodesByHyperNode(tc.hyperNodes, tc.allNodes)
 			assert.Equal(t, tc.expected, nodesSet)
 		})
 	}
@@ -349,7 +341,7 @@ func TestFindJobTaskNumOfHyperNode(t *testing.T) {
 				taskInfo.NodeName = node
 				job.Tasks[taskInfo.UID] = taskInfo
 			}
-			result := FindJobTaskNumOfHyperNode(tc.hyperNodeName, job, tc.hyperNodes)
+			result := FindJobTaskNumOfHyperNode(tc.hyperNodeName, job.Tasks, tc.hyperNodes)
 			if result != tc.expectedRes {
 				t.Errorf("Test case '%s' failed. Expected result: %d, but got: %d",
 					tc.name, tc.expectedRes, result)
