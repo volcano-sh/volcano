@@ -122,6 +122,14 @@ func (s *Snapshot) StorageInfos() framework.StorageInfoLister {
 }
 
 // VolcanoNodeInfos returns a list of volcano NodeInfo.
+func (s *Snapshot) GetK8sNodeInfo(nodeName string) (fwk.NodeInfo, error) {
+	if v, ok := s.fwkInfo.nodeInfoMap[nodeName]; ok {
+		return v, nil
+	}
+	return nil, fmt.Errorf("nodeinfo not found for node name %q", nodeName)
+}
+
+// VolcanoNodeInfos returns a list of volcano NodeInfo.
 func (s *Snapshot) VolcanoNodeInfos() []*api.NodeInfo {
 	return s.volcanoInfo.nodeInfoList
 }

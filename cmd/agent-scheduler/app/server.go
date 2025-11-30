@@ -63,12 +63,12 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
+	metrics.InitKubeSchedulerRelatedMetrics()
+
 	sched, err := scheduler.NewAgentScheduler(config, opt)
 	if err != nil {
 		panic(err)
 	}
-
-	metrics.InitKubeSchedulerRelatedMetrics()
 
 	if opt.EnableHealthz {
 		if err := helpers.StartHealthz(opt.HealthzBindAddress, "volcano-agent-scheduler", opt.CaCertData, opt.CertData, opt.KeyData); err != nil {

@@ -43,8 +43,8 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
-// Scheduler represents a "Volcano Scheduler".
-// Scheduler watches for new unscheduled pods(PodGroup) in Volcano.
+// Scheduler represents a "Volcano Agent Scheduler".
+// Scheduler watches for new unscheduled pods.
 // It attempts to find nodes that can accommodate these pods and writes the binding information back to the API server.
 type Scheduler struct {
 	cache          schedcache.Cache
@@ -108,9 +108,6 @@ func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 		worker.framework = framework.NewFramework(sched.actions, sched.tiers, sched.cache, sched.configurations)
 		index := i
 		go wait.Until(func() { worker.runOnce(index) }, 0, stopCh)
-	}
-	if options.ServerOpts.EnableCacheDumper {
-		sched.dumper.ListenForSignal(stopCh)
 	}
 	if options.ServerOpts.EnableCacheDumper {
 		sched.dumper.ListenForSignal(stopCh)

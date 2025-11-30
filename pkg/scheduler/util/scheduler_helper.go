@@ -224,10 +224,10 @@ func SelectBestHyperNodeAndScore(hyperNodeScores map[float64][]string) (string, 
 
 // SelectBestNodesAndScores returns the best N node whose score is highest N score, pick one randomly if there are many nodes with same score.
 func SelectBestNodesAndScores(nodeScores map[float64][]*api.NodeInfo, count int) ([]*api.NodeInfo, []float64) {
-	nodes := []*api.NodeInfo{}
+	bestNodes := []*api.NodeInfo{}
 	scores := []float64{}
 	if count <= 0 || len(nodeScores) == 0 {
-		return nodes, scores
+		return bestNodes, scores
 	}
 	allScores := make([]float64, 0, len(nodeScores))
 	for score := range nodeScores {
@@ -236,7 +236,7 @@ func SelectBestNodesAndScores(nodeScores map[float64][]*api.NodeInfo, count int)
 	sort.Sort(sort.Reverse(sort.Float64Slice(allScores)))
 
 	selecteNodeCount := 0
-	for _, score := range scores {
+	for _, score := range allScores {
 		nodes := nodeScores[score]
 		if len(nodes)+selecteNodeCount > count {
 			rand.Shuffle(len(nodes), func(i, j int) {
@@ -244,7 +244,7 @@ func SelectBestNodesAndScores(nodeScores map[float64][]*api.NodeInfo, count int)
 			})
 		}
 		for _, node := range nodes {
-			nodes = append(nodes, node)
+			bestNodes = append(bestNodes, node)
 			scores = append(scores, score)
 			selecteNodeCount++
 			if len(nodes) == count {
@@ -252,7 +252,7 @@ func SelectBestNodesAndScores(nodeScores map[float64][]*api.NodeInfo, count int)
 			}
 		}
 	}
-	return nodes, scores
+	return bestNodes, scores
 }
 
 // GetNodeList returns values of the map 'nodes'

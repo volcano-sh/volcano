@@ -54,8 +54,6 @@ type Cache interface {
 	// TODO(jinzhej): clean up expire Tasks.
 	AddBindTask(bindCtx *vcache.BindContext) error
 
-	// Evict evicts the task to release resources.
-	Evict(task *api.TaskInfo, reason string) error
 	// Client returns the kubernetes clientSet, which can be used by plugins
 	Client() kubernetes.Interface
 
@@ -103,19 +101,9 @@ type Binder interface {
 	Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) map[api.TaskID]string
 }
 
-// Evictor interface for evict pods
-type Evictor interface {
-	Evict(pod *v1.Pod, reason string) error
-}
-
 // StatusUpdater updates pod with given PodCondition
 type StatusUpdater interface {
 	UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error)
-}
-
-// BatchBinder updates podgroup or job information
-type BatchBinder interface {
-	Bind(job *api.JobInfo, cluster string) (*api.JobInfo, error)
 }
 
 type PreBinder interface {

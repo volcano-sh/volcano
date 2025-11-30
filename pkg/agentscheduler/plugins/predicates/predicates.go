@@ -67,6 +67,16 @@ func (pp *predicatesPlugin) OnPluginInit(fwk *framework.Framework) {
 		state := fwk.GetCycleState(types.UID(task.UID))
 		return pp.PredicatesPlugin.Predicate(task, node, state)
 	})
+
+	fwk.AddBatchNodeOrderFn(PluginName, func(task *api.TaskInfo, nodes []*api.NodeInfo) (map[string]float64, error) {
+		state := fwk.GetCycleState(types.UID(task.UID))
+		nodeInfoList, err := fwk.SnapshotSharedLister().NodeInfos().List()
+		if err != nil {
+			klog.Errorf("Failed to list nodes from snapshot: %v", err)
+			return nil, err
+		}
+		return pp.BatchNodeOrder(task, nodeInfoList, state)
+	})
 }
 
 func (pp *predicatesPlugin) OnCycleStart(fwk *framework.Framework) {

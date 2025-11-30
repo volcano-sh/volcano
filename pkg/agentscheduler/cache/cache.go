@@ -96,7 +96,6 @@ type SchedulerCache struct {
 	nodeInformer infov1.NodeInformer
 
 	Binder        Binder
-	Evictor       Evictor
 	StatusUpdater StatusUpdater
 
 	Recorder record.EventRecorder
@@ -105,8 +104,6 @@ type SchedulerCache struct {
 	NodeList []string
 
 	taskCache *TaskCache
-
-	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
 	errTasks  workqueue.TypedRateLimitingInterface[string]
 	nodeQueue workqueue.TypedRateLimitingInterface[string]
@@ -361,16 +358,15 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	)
 
 	sc := &SchedulerCache{
-		Nodes:               make(map[string]*schedulingapi.NodeInfo),
-		errTasks:            workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
-		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		kubeClient:          kubeClient,
-		vcClient:            vcClient,
-		restConfig:          config,
-		schedulerNames:      schedulerNames,
-		nodeSelectorLabels:  make(map[string]sets.Empty),
-		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
-		imageStates:         make(map[string]*imageState),
+		Nodes:              make(map[string]*schedulingapi.NodeInfo),
+		errTasks:           workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
+		nodeQueue:          workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		kubeClient:         kubeClient,
+		vcClient:           vcClient,
+		restConfig:         config,
+		schedulerNames:     schedulerNames,
+		nodeSelectorLabels: make(map[string]sets.Empty),
+		imageStates:        make(map[string]*imageState),
 
 		NodeList:    []string{},
 		nodeWorkers: nodeWorkers,
@@ -395,11 +391,6 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	}
 	sc.Binder = GetBindMethod()
 
-	sc.Evictor = &defaultEvictor{
-		kubeclient: sc.kubeClient,
-		recorder:   sc.Recorder,
-	}
-
 	sc.StatusUpdater = &defaultStatusUpdater{
 		kubeclient: sc.kubeClient,
 		vcclient:   sc.vcClient,
@@ -410,7 +401,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	// add all events handlers
 	sc.addEventHandler()
 
-	sc.ConflictAwareBinder = NewConflictAwareBinder(sc.AddBindTask)
+	sc.ConflictAwareBinder = NewConflictAwareBinder(sc)
 
 	sc.schedulingQueue = k8sschedulingqueue.NewSchedulingQueue(
 		Less,
@@ -572,9 +563,6 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	// Re-sync error tasks.
 	go wait.Until(sc.processResyncTask, 0, stopCh)
 
-	// Cleanup jobs.
-	go wait.Until(sc.processCleanupJob, 0, stopCh)
-
 	go wait.Until(sc.processBindTask, time.Millisecond*20, stopCh)
 
 	sc.ConflictAwareBinder.Run(stopCh)
@@ -584,43 +572,6 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 func (sc *SchedulerCache) WaitForCacheSync(stopCh <-chan struct{}) {
 	sc.informerFactory.WaitForCacheSync(stopCh)
 	sc.vcInformerFactory.WaitForCacheSync(stopCh)
-}
-
-// Evict will evict the pod.
-//
-// If error occurs both task and job are guaranteed to be in the original state.
-func (sc *SchedulerCache) Evict(task *schedulingapi.TaskInfo, reason string) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	node, found := sc.Nodes[task.NodeName]
-	if !found {
-		return fmt.Errorf("failed to evict Task %v from host %v, host does not exist",
-			task.UID, task.NodeName)
-	}
-
-	originalStatus := task.Status
-
-	// Add new task to node.
-	if err := node.UpdateTask(task); err != nil {
-		// After failing to update task to a node we need to revert task status from Releasing,
-		// otherwise task might be stuck in the Releasing state indefinitely.
-		klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
-			"from %s to %s after failing to update Task on Node <%s>: %v",
-			task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
-		sc.resyncTask(task)
-		return err
-	}
-
-	p := task.Pod
-
-	go func() {
-		err := sc.Evictor.Evict(p, reason)
-		if err != nil {
-			sc.resyncTask(task)
-		}
-	}()
-	return nil
 }
 
 // Bind binds task to the target host.
@@ -747,10 +698,6 @@ func (sc *SchedulerCache) TaskUnschedulable(task *schedulingapi.TaskInfo, reason
 	return nil
 }
 
-func (sc *SchedulerCache) processCleanupJob() {
-	// TODO process clean up Job
-}
-
 // GetTaskInfo retrieves a task by its ID.
 func (sc *SchedulerCache) GetTaskInfo(taskID schedulingapi.TaskID) (*schedulingapi.TaskInfo, bool) {
 	return sc.taskCache.Get(taskID)
@@ -772,15 +719,7 @@ func (sc *SchedulerCache) DeleteTaskInfo(taskID schedulingapi.TaskID) {
 }
 
 func (sc *SchedulerCache) resyncTask(task *schedulingapi.TaskInfo) {
-	key := sc.generateErrTaskKey(task)
-	sc.errTasks.AddRateLimited(key)
-}
-
-func (sc *SchedulerCache) generateErrTaskKey(task *schedulingapi.TaskInfo) string {
-	// Job UID is namespace + / +name, for example: theNs/theJob
-	// Task UID is derived from the Pod UID, for example: d336abea-4f14-42c7-8a6b-092959a31407
-	// In the example above, the key ultimately becomes: theNs/theJob/d336abea-4f14-42c7-8a6b-092959a31407
-	return fmt.Sprintf("%s/%s", task.Job, task.UID)
+	sc.errTasks.AddRateLimited(string(task.UID))
 }
 
 func (sc *SchedulerCache) parseErrTaskKey(key string) (*schedulingapi.TaskInfo, error) {
@@ -990,17 +929,15 @@ func (sc *SchedulerCache) BindTask() {
 	sc.bindCache = make([]*vcache.BindContext, 0)
 }
 
-// Snapshot returns the complete snapshot of the cluster from cache
+// Snapshot returns the complete snapshot of the cluster from cache, used for dump purpose only
 func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
-		Nodes:          make(map[string]*schedulingapi.NodeInfo),
-		RealNodesSet:   make(map[string]sets.Set[string]),
-		NamespaceInfo:  make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
-		RevocableNodes: make(map[string]*schedulingapi.NodeInfo),
-		NodeList:       make([]string, len(sc.NodeList)),
+		Nodes:        make(map[string]*schedulingapi.NodeInfo),
+		RealNodesSet: make(map[string]sets.Set[string]),
+		NodeList:     make([]string, len(sc.NodeList)),
 	}
 
 	// TODO add agent scheduler cache
@@ -1016,17 +953,8 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		}
 
 		snapshot.Nodes[value.Name] = value.Clone()
-
-		if value.RevocableZone != "" {
-			snapshot.RevocableNodes[value.Name] = snapshot.Nodes[value.Name]
-		}
 	}
-
-	for _, value := range sc.NamespaceCollection {
-		info := value.Snapshot()
-		snapshot.NamespaceInfo[info.Name] = info
-	}
-	klog.V(3).InfoS("SnapShot for scheduling", "NodeNum", "NamespaceNum", "RevocableNodesNum", len(snapshot.Nodes), len(snapshot.NamespaceInfo), len(snapshot.RevocableNodes))
+	klog.V(3).InfoS("SnapShot for scheduling", "NodeNum", len(snapshot.Nodes))
 	return snapshot
 }
 
@@ -1057,14 +985,6 @@ func (sc *SchedulerCache) String() string {
 				str += fmt.Sprintf("\t\t %d: %v\n", i, p)
 				i++
 			}
-		}
-	}
-
-	if len(sc.NamespaceCollection) != 0 {
-		str += "Namespaces:\n"
-		for _, ns := range sc.NamespaceCollection {
-			info := ns.Snapshot()
-			str += fmt.Sprintf("\t Namespace(%s)\n", info.Name)
 		}
 	}
 

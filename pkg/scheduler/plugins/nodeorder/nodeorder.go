@@ -66,17 +66,27 @@ const (
 	PodTopologySpreadWeight = "podtopologyspread.weight"
 )
 
-type nodeOrderPlugin struct {
+type NodeOrderPlugin struct {
 	// Arguments given for the plugin
-	pluginArguments framework.Arguments
+	pluginArguments       framework.Arguments
+	weight                priorityWeight
+	Handle                k8sframework.Handle
+	ScorePlugins          map[string]nodescore.BaseScorePlugin
+	NodeOrderScorePlugins map[string]ScorePluginWithWeight
+}
+
+type ScorePluginWithWeight struct {
+	plugin k8sframework.ScorePlugin
+	weight int
 }
 
 // New function returns nodeorder plugin object.
 func New(arguments framework.Arguments) framework.Plugin {
-	return &nodeOrderPlugin{pluginArguments: arguments}
+	weight := calculateWeight(arguments)
+	return &NodeOrderPlugin{pluginArguments: arguments, weight: weight}
 }
 
-func (pp *nodeOrderPlugin) Name() string {
+func (pp *NodeOrderPlugin) Name() string {
 	return PluginName
 }
 
@@ -160,191 +170,164 @@ func calculateWeight(args framework.Arguments) priorityWeight {
 	return weight
 }
 
-func (pp *nodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
-	weight := calculateWeight(pp.pluginArguments)
+func (pp *NodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeMap := ssn.NodeMap
+	// Initialize k8s scheduling plugins
+	handle := k8s.NewFramework(nodeMap,
+		k8s.WithClientSet(ssn.KubeClient()),
+		k8s.WithInformerFactory(ssn.InformerFactory()),
+	)
+	pp.Handle = handle
+	pp.InitPlugin()
+
+	ssn.AddNodeOrderFn(pp.Name(), func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
+		nodeInfo := nodeMap[node.Name]
+		state := k8sframework.NewCycleState()
+		return pp.NodeOrderFn(task, node, nodeInfo, state)
+	})
+
+	ssn.AddBatchNodeOrderFn(pp.Name(), func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
+		state := k8sframework.NewCycleState()
+		return pp.BatchNodeOrderFn(task, nodeInfo, state)
+	})
+
+}
+
+func (pp *NodeOrderPlugin) InitPlugin() {
+	scorePlugins := map[string]nodescore.BaseScorePlugin{}
+	nodeOrderScorePlugins := map[string]ScorePluginWithWeight{}
 
 	fts := feature.Features{
 		EnableNodeInclusionPolicyInPodTopologySpread: utilFeature.DefaultFeatureGate.Enabled(features.NodeInclusionPolicyInPodTopologySpread),
 		EnableMatchLabelKeysInPodTopologySpread:      utilFeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread),
 	}
 
-	// Initialize k8s scheduling plugins
-	handle := k8s.NewFramework(nodeMap,
-		k8s.WithClientSet(ssn.KubeClient()),
-		k8s.WithInformerFactory(ssn.InformerFactory()),
-	)
-
-	// 1. NodeResourcesLeastAllocated
-	leastAllocatedArgs := &config.NodeResourcesFitArgs{
-		ScoringStrategy: &config.ScoringStrategy{
-			Type:      config.LeastAllocated,
-			Resources: []config.ResourceSpec{{Name: "cpu", Weight: 50}, {Name: "memory", Weight: 50}},
-		},
+	if pp.weight.leastReqWeight != 0 {
+		// 1. NodeResourcesLeastAllocated
+		leastAllocatedArgs := &config.NodeResourcesFitArgs{
+			ScoringStrategy: &config.ScoringStrategy{
+				Type:      config.LeastAllocated,
+				Resources: []config.ResourceSpec{{Name: "cpu", Weight: 50}, {Name: "memory", Weight: 50}},
+			},
+		}
+		p, _ := noderesources.NewFit(context.TODO(), leastAllocatedArgs, pp.Handle, fts)
+		leastAllocated := p.(*noderesources.Fit)
+		nodeOrderScorePlugins["Least Allocated"] = ScorePluginWithWeight{leastAllocated, pp.weight.leastReqWeight}
 	}
-	p, _ := noderesources.NewFit(context.TODO(), leastAllocatedArgs, handle, fts)
-	leastAllocated := p.(*noderesources.Fit)
 
-	// 2. NodeResourcesMostAllocated
-	mostAllocatedArgs := &config.NodeResourcesFitArgs{
-		ScoringStrategy: &config.ScoringStrategy{
-			Type:      config.MostAllocated,
-			Resources: []config.ResourceSpec{{Name: "cpu", Weight: 1}, {Name: "memory", Weight: 1}},
-		},
+	if pp.weight.mostReqWeight != 0 {
+		// 2. NodeResourcesMostAllocated
+		mostAllocatedArgs := &config.NodeResourcesFitArgs{
+			ScoringStrategy: &config.ScoringStrategy{
+				Type:      config.MostAllocated,
+				Resources: []config.ResourceSpec{{Name: "cpu", Weight: 1}, {Name: "memory", Weight: 1}},
+			},
+		}
+		p, _ := noderesources.NewFit(context.TODO(), mostAllocatedArgs, pp.Handle, fts)
+		mostAllocation := p.(*noderesources.Fit)
+		nodeOrderScorePlugins["Most Allocated"] = ScorePluginWithWeight{mostAllocation, pp.weight.mostReqWeight}
 	}
-	p, _ = noderesources.NewFit(context.TODO(), mostAllocatedArgs, handle, fts)
-	mostAllocation := p.(*noderesources.Fit)
 
-	// 3. NodeResourcesBalancedAllocation
-	blArgs := &config.NodeResourcesBalancedAllocationArgs{
-		Resources: []config.ResourceSpec{
-			{Name: string(v1.ResourceCPU), Weight: 1},
-			{Name: string(v1.ResourceMemory), Weight: 1},
-			{Name: "nvidia.com/gpu", Weight: 1},
-		},
+	if pp.weight.balancedResourceWeight != 0 {
+		// 3. NodeResourcesBalancedAllocation
+		blArgs := &config.NodeResourcesBalancedAllocationArgs{
+			Resources: []config.ResourceSpec{
+				{Name: string(v1.ResourceCPU), Weight: 1},
+				{Name: string(v1.ResourceMemory), Weight: 1},
+				{Name: "nvidia.com/gpu", Weight: 1},
+			},
+		}
+		p, _ := noderesources.NewBalancedAllocation(context.TODO(), blArgs, pp.Handle, fts)
+		balancedAllocation := p.(*noderesources.BalancedAllocation)
+		nodeOrderScorePlugins["Balanced Resource Allocation"] = ScorePluginWithWeight{balancedAllocation, pp.weight.balancedResourceWeight}
 	}
-	p, _ = noderesources.NewBalancedAllocation(context.TODO(), blArgs, handle, fts)
-	balancedAllocation := p.(*noderesources.BalancedAllocation)
 
-	// 4. NodeAffinity
-	naArgs := &config.NodeAffinityArgs{
-		AddedAffinity: &v1.NodeAffinity{},
+	if pp.weight.nodeAffinityWeight != 0 {
+		// 4. NodeAffinity
+		naArgs := &config.NodeAffinityArgs{
+			AddedAffinity: &v1.NodeAffinity{},
+		}
+		p, _ := nodeaffinity.New(context.TODO(), naArgs, pp.Handle, fts)
+		nodeAffinity := p.(*nodeaffinity.NodeAffinity)
+		nodeOrderScorePlugins["Node Affinity"] = ScorePluginWithWeight{nodeAffinity, pp.weight.nodeAffinityWeight}
 	}
-	p, _ = nodeaffinity.New(context.TODO(), naArgs, handle, fts)
-	nodeAffinity := p.(*nodeaffinity.NodeAffinity)
 
 	// 5. ImageLocality
-	p, _ = imagelocality.New(context.TODO(), nil, handle)
-	imageLocality := p.(*imagelocality.ImageLocality)
-
-	nodeOrderFn := func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
-		var nodeScore = 0.0
-
-		state := k8sframework.NewCycleState()
-		if weight.imageLocalityWeight != 0 {
-			nodeInfo := ssn.NodeMap[node.Name]
-			score, status := imageLocality.Score(context.TODO(), state, task.Pod, nodeInfo)
-			if !status.IsSuccess() {
-				klog.Warningf("Node: %s, Image Locality Priority Failed because of Error: %v", node.Name, status.AsError())
-				return 0, status.AsError()
-			}
-
-			// If imageLocalityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-			nodeScore += float64(score) * float64(weight.imageLocalityWeight)
-			klog.V(5).Infof("Node: %s, task<%s/%s> Image Locality weight %d, score: %f", node.Name, task.Namespace, task.Name, weight.imageLocalityWeight, float64(score)*float64(weight.imageLocalityWeight))
-		}
-
-		// NodeResourcesLeastAllocated
-		if weight.leastReqWeight != 0 {
-			nodeInfo := ssn.NodeMap[node.Name]
-			score, status := leastAllocated.Score(context.TODO(), state, task.Pod, nodeInfo)
-			if !status.IsSuccess() {
-				klog.Warningf("Node: %s, Least Allocated Priority Failed because of Error: %v", node.Name, status.AsError())
-				return 0, status.AsError()
-			}
-
-			// If leastReqWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-			nodeScore += float64(score) * float64(weight.leastReqWeight)
-			klog.V(5).Infof("Node: %s, task<%s/%s> Least Request weight %d, score: %f", node.Name, task.Namespace, task.Name, weight.leastReqWeight, float64(score)*float64(weight.leastReqWeight))
-		}
-
-		// NodeResourcesMostAllocated
-		if weight.mostReqWeight != 0 {
-			nodeInfo := ssn.NodeMap[node.Name]
-			score, status := mostAllocation.Score(context.TODO(), state, task.Pod, nodeInfo)
-			if !status.IsSuccess() {
-				klog.Warningf("Node: %s, Most Allocated Priority Failed because of Error: %v", node.Name, status.AsError())
-				return 0, status.AsError()
-			}
-
-			// If mostRequestedWeight is provided, host.Score is multiplied with weight, it's 0 by default
-			nodeScore += float64(score) * float64(weight.mostReqWeight)
-			klog.V(5).Infof("Node: %s, task<%s/%s> Most Request weight %d, score: %f", node.Name, task.Namespace, task.Name, weight.mostReqWeight, float64(score)*float64(weight.mostReqWeight))
-		}
-
-		// NodeResourcesBalancedAllocation
-		if weight.balancedResourceWeight != 0 {
-			nodeInfo := ssn.NodeMap[node.Name]
-			score, status := balancedAllocation.Score(context.TODO(), state, task.Pod, nodeInfo)
-			if !status.IsSuccess() {
-				klog.Warningf("Node: %s, Balanced Resource Allocation Priority Failed because of Error: %v", node.Name, status.AsError())
-				return 0, status.AsError()
-			}
-
-			// If balancedResourceWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-			nodeScore += float64(score) * float64(weight.balancedResourceWeight)
-			klog.V(5).Infof("Node: %s, task<%s/%s> Balanced Request weight %d, score: %f", node.Name, task.Namespace, task.Name, weight.balancedResourceWeight, float64(score)*float64(weight.balancedResourceWeight))
-		}
-
-		// NodeAffinity
-		if weight.nodeAffinityWeight != 0 {
-			nodeInfo := ssn.NodeMap[node.Name]
-			score, status := nodeAffinity.Score(context.TODO(), state, task.Pod, nodeInfo)
-			if !status.IsSuccess() {
-				klog.Warningf("Node: %s, Calculate Node Affinity Priority Failed because of Error: %v", node.Name, status.AsError())
-				return 0, status.AsError()
-			}
-
-			// TODO: should we normalize the score
-			// If nodeAffinityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
-			nodeScore += float64(score) * float64(weight.nodeAffinityWeight)
-			klog.V(5).Infof("Node: %s, task<%s/%s> Node Affinity weight %d, score: %f", node.Name, task.Namespace, task.Name, weight.nodeAffinityWeight, float64(score)*float64(weight.nodeAffinityWeight))
-		}
-
-		klog.V(4).Infof("Nodeorder Total Score for task<%s/%s> on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)
-		return nodeScore, nil
+	if pp.weight.imageLocalityWeight != 0 {
+		p, _ := imagelocality.New(context.TODO(), nil, pp.Handle)
+		imageLocality := p.(*imagelocality.ImageLocality)
+		nodeOrderScorePlugins["Image Locality"] = ScorePluginWithWeight{imageLocality, pp.weight.imageLocalityWeight}
 	}
-	ssn.AddNodeOrderFn(pp.Name(), nodeOrderFn)
 
 	plArgs := &config.InterPodAffinityArgs{}
-	p, _ = interpodaffinity.New(context.TODO(), plArgs, handle, fts)
+	p, _ := interpodaffinity.New(context.TODO(), plArgs, pp.Handle, fts)
 	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
+	scorePlugins[interpodaffinity.Name] = interPodAffinity
 
-	p, _ = tainttoleration.New(context.TODO(), nil, handle, fts)
+	p, _ = tainttoleration.New(context.TODO(), nil, pp.Handle, fts)
 	taintToleration := p.(*tainttoleration.TaintToleration)
+	scorePlugins[tainttoleration.Name] = taintToleration
 
 	ptsArgs := &config.PodTopologySpreadArgs{
 		DefaultingType: config.SystemDefaulting,
 	}
-	p, _ = podtopologyspread.New(context.TODO(), ptsArgs, handle, fts)
+	p, _ = podtopologyspread.New(context.TODO(), ptsArgs, pp.Handle, fts)
 	podTopologySpread := p.(*podtopologyspread.PodTopologySpread)
+	scorePlugins[podtopologyspread.Name] = podTopologySpread
 
-	batchNodeOrderFn := func(task *api.TaskInfo, nodeInfo []*api.NodeInfo) (map[string]float64, error) {
-		// InterPodAffinity
-		state := k8sframework.NewCycleState()
-		nodeInfos := make([]fwk.NodeInfo, 0, len(nodeInfo))
-		nodes := make([]*v1.Node, 0, len(nodeInfo))
-		for _, node := range nodeInfo {
-			newNodeInfo := &k8sframework.NodeInfo{}
-			newNodeInfo.SetNode(node.Node)
-			nodeInfos = append(nodeInfos, newNodeInfo)
-			nodes = append(nodes, node.Node)
-		}
-		nodeScores := make(map[string]float64, len(nodes))
+	pp.NodeOrderScorePlugins = nodeOrderScorePlugins
+	pp.ScorePlugins = scorePlugins
+}
 
-		podAffinityScores, podErr := interPodAffinityScore(interPodAffinity, state, task.Pod, nodeInfos, weight.podAffinityWeight)
-		if podErr != nil {
-			return nil, podErr
+func (pp *NodeOrderPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo, k8sNodeInfo fwk.NodeInfo, state *k8sframework.CycleState) (float64, error) {
+	var nodeScore = 0.0
+	for name, p := range pp.NodeOrderScorePlugins {
+		score, status := p.plugin.Score(context.TODO(), state, task.Pod, k8sNodeInfo)
+		if !status.IsSuccess() {
+			klog.Warningf("Node: %s, <%s> Priority Failed because of Error: %v", node.Name, name, status.AsError())
+			return 0, status.AsError()
 		}
 
-		nodeTolerationScores, err := taintTolerationScore(taintToleration, state, task.Pod, nodeInfos, weight.taintTolerationWeight)
-		if err != nil {
-			return nil, err
-		}
-
-		podTopologySpreadScores, err := podTopologySpreadScore(podTopologySpread, state, task.Pod, nodeInfos, weight.podTopologySpreadWeight)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, node := range nodes {
-			nodeScores[node.Name] = podAffinityScores[node.Name] + nodeTolerationScores[node.Name] + podTopologySpreadScores[node.Name]
-		}
-
-		klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
-		return nodeScores, nil
+		// If imageLocalityWeight is provided, host.Score is multiplied with weight, if not, host.Score is added to total score.
+		nodeScore += float64(score) * float64(p.weight)
+		klog.V(5).Infof("Node: %s, task<%s/%s> %s weight %d, score: %f", node.Name, task.Namespace, task.Name, name, pp.weight.imageLocalityWeight, float64(score)*float64(p.weight))
 	}
-	ssn.AddBatchNodeOrderFn(pp.Name(), batchNodeOrderFn)
+	klog.V(4).Infof("Nodeorder Total Score for task<%s/%s> on node %s is: %f", task.Namespace, task.Name, node.Name, nodeScore)
+	return nodeScore, nil
+}
+
+func (pp *NodeOrderPlugin) BatchNodeOrderFn(task *api.TaskInfo, nodeInfo []*api.NodeInfo, state *k8sframework.CycleState) (map[string]float64, error) {
+	nodeInfos := make([]fwk.NodeInfo, 0, len(nodeInfo))
+	nodes := make([]*v1.Node, 0, len(nodeInfo))
+	for _, node := range nodeInfo {
+		newNodeInfo := &k8sframework.NodeInfo{}
+		newNodeInfo.SetNode(node.Node)
+		nodeInfos = append(nodeInfos, newNodeInfo)
+		nodes = append(nodes, node.Node)
+	}
+	nodeScores := make(map[string]float64, len(nodes))
+
+	podAffinityScores, podErr := interPodAffinityScore(pp.ScorePlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity), state, task.Pod, nodeInfos, pp.weight.podAffinityWeight)
+	if podErr != nil {
+		return nil, podErr
+	}
+
+	nodeTolerationScores, err := taintTolerationScore(pp.ScorePlugins[tainttoleration.Name].(*tainttoleration.TaintToleration), state, task.Pod, nodeInfos, pp.weight.taintTolerationWeight)
+	if err != nil {
+		return nil, err
+	}
+
+	podTopologySpreadScores, err := podTopologySpreadScore(pp.ScorePlugins[podtopologyspread.Name].(*podtopologyspread.PodTopologySpread), state, task.Pod, nodeInfos, pp.weight.podTopologySpreadWeight)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, node := range nodes {
+		nodeScores[node.Name] = podAffinityScores[node.Name] + nodeTolerationScores[node.Name] + podTopologySpreadScores[node.Name]
+	}
+
+	klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)
+	return nodeScores, nil
 }
 
 func interPodAffinityScore(
@@ -380,5 +363,5 @@ func podTopologySpreadScore(
 		cycleState, pod, nodeInfos, podTopologySpreadWeight)
 }
 
-func (pp *nodeOrderPlugin) OnSessionClose(ssn *framework.Session) {
+func (pp *NodeOrderPlugin) OnSessionClose(ssn *framework.Session) {
 }

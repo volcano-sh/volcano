@@ -21,6 +21,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	vcache "volcano.sh/volcano/pkg/scheduler/cache"
@@ -39,15 +40,15 @@ type ConflictAwareBinder struct {
 	// BindCheckChannel is used to store allocate result for bind
 	BindCheckChannel chan *PodScheduleResult
 	nodeBindRecords  map[string]int64
-	AddBindTask      func(bindContext *vcache.BindContext) error
 	recordsMutex     sync.Mutex
+	cache            Cache
 }
 
-func NewConflictAwareBinder(addBindTaskFn func(bindContext *vcache.BindContext) error) *ConflictAwareBinder {
+func NewConflictAwareBinder(schedulerCache Cache) *ConflictAwareBinder {
 	return &ConflictAwareBinder{
-		AddBindTask:      addBindTaskFn,
 		nodeBindRecords:  make(map[string]int64, 0),
 		BindCheckChannel: make(chan *PodScheduleResult, 5000),
+		cache:            schedulerCache,
 	}
 }
 func (binder *ConflictAwareBinder) Run(stopCh <-chan struct{}) {
@@ -75,6 +76,7 @@ func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *PodScheduleRe
 	//1. Check conflict
 	node := binder.FindNonConflictingNode(scheduleResult)
 	if node == nil {
+		klog.V(5).Infof("%d candidates of pod %s/%s are conflict with previouse bind node, put back to queue for retry", len(scheduleResult.SuggestedNodes), scheduleResult.Task.Namespace, scheduleResult.Task.Name)
 		//TODO: Put pod back to queue if conflict
 		return
 	}
@@ -84,7 +86,7 @@ func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *PodScheduleRe
 	task.NodeName = node.Name
 	task.Pod.Spec.NodeName = node.Name
 	nodeBindGeneration := node.BindGeneration
-	if err := binder.AddBindTask(scheduleResult.BindContext); err != nil {
+	if err := binder.cache.AddBindTask(scheduleResult.BindContext); err != nil {
 		//TODO: Put pod back to queue if conflict
 		return
 	}

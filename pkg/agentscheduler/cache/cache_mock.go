@@ -42,9 +42,7 @@ import (
 // NewCustomMockSchedulerCache returns a mock scheduler cache with custom interface
 func NewCustomMockSchedulerCache(schedulerName string,
 	binder Binder,
-	evictor Evictor,
 	statusUpdater StatusUpdater,
-	PodGroupBinder BatchBinder,
 	recorder record.EventRecorder,
 ) *SchedulerCache {
 	msc := newMockSchedulerCache(schedulerName)
@@ -52,7 +50,6 @@ func NewCustomMockSchedulerCache(schedulerName string,
 	msc.addEventHandler()
 	msc.Recorder = recorder
 	msc.Binder = binder
-	msc.Evictor = evictor
 	msc.StatusUpdater = statusUpdater
 	checkAndSetDefaultInterface(msc)
 	return msc
@@ -79,12 +76,6 @@ func checkAndSetDefaultInterface(sc *SchedulerCache) {
 			recorder:   sc.Recorder,
 		}
 	}
-	if sc.Evictor == nil {
-		sc.Evictor = &defaultEvictor{
-			kubeclient: sc.kubeClient,
-			recorder:   sc.Recorder,
-		}
-	}
 	if sc.StatusUpdater == nil {
 		sc.StatusUpdater = &defaultStatusUpdater{
 			kubeclient: sc.kubeClient,
@@ -107,16 +98,15 @@ func getNodeWorkers() uint32 {
 // newMockSchedulerCache init the mock scheduler cache structure
 func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 	msc := &SchedulerCache{
-		Nodes:               make(map[string]*schedulingapi.NodeInfo),
-		errTasks:            workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		kubeClient:          fake.NewSimpleClientset(),
-		vcClient:            fakevcClient.NewSimpleClientset(),
-		restConfig:          nil,
-		schedulerNames:      []string{schedulerName},
-		nodeSelectorLabels:  make(map[string]sets.Empty),
-		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
-		imageStates:         make(map[string]*imageState),
+		Nodes:              make(map[string]*schedulingapi.NodeInfo),
+		errTasks:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		nodeQueue:          workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		kubeClient:         fake.NewSimpleClientset(),
+		vcClient:           fakevcClient.NewSimpleClientset(),
+		restConfig:         nil,
+		schedulerNames:     []string{schedulerName},
+		nodeSelectorLabels: make(map[string]sets.Empty),
+		imageStates:        make(map[string]*imageState),
 
 		NodeList:       []string{},
 		binderRegistry: NewBinderRegistry(),

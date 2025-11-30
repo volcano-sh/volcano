@@ -18,11 +18,11 @@ package plugins
 
 import (
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
+	"volcano.sh/volcano/pkg/agentscheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/agentscheduler/plugins/predicates"
 )
 
 func init() {
-	// Plugins for Jobs
 	framework.RegisterPluginBuilder(predicates.PluginName, predicates.New)
-	// framework.RegisterPluginBuilder(nodeorder.PluginName, nodeorder.New)
+	framework.RegisterPluginBuilder(nodeorder.PluginName, nodeorder.New)
 }

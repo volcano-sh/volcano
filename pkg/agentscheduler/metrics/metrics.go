@@ -70,6 +70,9 @@ func InitKubeSchedulerRelatedMetrics() {
 			Help:           "Number of running goroutines split by the work they do such as binding.",
 			StabilityLevel: metrics.ALPHA,
 		}, []string{"operation"})
+
+	//TODO: k8smetrics is inited here to resolve startup NPE because backkoff queue rely on k8s metrics. This line need be removed if metrics depdendency issue is fixed
+	k8smetrics.InitMetrics()
 }
 
 // UpdateE2eSchedulingDurationByPod updates entire end to end scheduling duration
