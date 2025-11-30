@@ -18,6 +18,7 @@ package jobseq
 
 import (
 	"context"
+	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,12 +32,29 @@ import (
 )
 
 var _ = Describe("Queue E2E Test", func() {
+	var currentTestContext *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		// Only dump context if test failed
+		if CurrentSpecReport().Failed() && currentTestContext != nil {
+			By("Dumping test context for failed test")
+			artifactsPath := os.Getenv("ARTIFACTS_PATH")
+			if artifactsPath == "" {
+				artifactsPath = "./artifacts"
+			}
+			if err := e2eutil.DumpTestContext(currentTestContext, currentTestContext.Namespace, artifactsPath); err != nil {
+				// Log error but don't fail the test
+				GinkgoWriter.Printf("Failed to dump test context: %v\n", err)
+			}
+		}
+	})
 	It("Queue Command Close And Open With State Check", func() {
 		q1 := "queue-command-close"
 		defaultQueue := "default"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1},
 		})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Close queue command check")
@@ -82,6 +100,7 @@ var _ = Describe("Queue E2E Test", func() {
 			},
 		})
 		ctx.Queues = []string{q11, q1, q2}
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Close queue with child queues")

@@ -19,6 +19,7 @@ package jobseq
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -36,11 +37,29 @@ import (
 )
 
 var _ = Describe("Job E2E Test: Test Job Plugins", func() {
+	var currentTestContext *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		// Only dump context if test failed
+		if CurrentSpecReport().Failed() && currentTestContext != nil {
+			By("Dumping test context for failed test")
+			artifactsPath := os.Getenv("ARTIFACTS_PATH")
+			if artifactsPath == "" {
+				artifactsPath = "./artifacts"
+			}
+			if err := e2eutil.DumpTestContext(currentTestContext, currentTestContext.Namespace, artifactsPath); err != nil {
+				// Log error but don't fail the test
+				GinkgoWriter.Printf("Failed to dump test context: %v\n", err)
+			}
+		}
+	})
+
 	It("Test SVC Plugin with Node Affinity", func() {
 		jobName := "job-with-svc-plugin"
 		taskName := "task"
 		foundVolume := false
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		nodeName, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)
@@ -112,6 +131,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		taskName := "task"
 		foundVolume := false
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		_, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)
@@ -182,6 +202,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		jobName := "svc-with-disable-network-policy"
 		taskName := "task"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		_, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)
@@ -220,6 +241,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		foundVolume := false
 		foundEnv := false
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		_, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)

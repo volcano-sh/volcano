@@ -18,6 +18,7 @@ package jobseq
 
 import (
 	"context"
+	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -28,6 +29,8 @@ import (
 )
 
 var _ = Describe("Ray Plugin E2E Test", func() {
+	var currentTestContext *e2eutil.TestContext
+
 	BeforeEach(func() {
 		By("Prune images before test")
 		PruneUnusedImagesOnAllNodes(e2eutil.KubeClient)
@@ -37,8 +40,24 @@ var _ = Describe("Ray Plugin E2E Test", func() {
 		PruneUnusedImagesOnAllNodes(e2eutil.KubeClient)
 	})
 
+	JustAfterEach(func() {
+		// Only dump context if test failed
+		if CurrentSpecReport().Failed() && currentTestContext != nil {
+			By("Dumping test context for failed test")
+			artifactsPath := os.Getenv("ARTIFACTS_PATH")
+			if artifactsPath == "" {
+				artifactsPath = "./artifacts"
+			}
+			if err := e2eutil.DumpTestContext(currentTestContext, currentTestContext.Namespace, artifactsPath); err != nil {
+				// Log error but don't fail the test
+				GinkgoWriter.Printf("Failed to dump test context: %v\n", err)
+			}
+		}
+	})
+
 	It("Will Start in pending state and  get running phase", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		slot := e2eutil.OneCPU

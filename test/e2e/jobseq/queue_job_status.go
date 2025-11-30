@@ -19,6 +19,7 @@ package jobseq
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -37,6 +38,23 @@ import (
 var _ = Describe("Queue Job Status Transition", func() {
 
 	var ctx *e2eutil.TestContext
+	var currentTestContext *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		// Only dump context if test failed
+		if CurrentSpecReport().Failed() && currentTestContext != nil {
+			By("Dumping test context for failed test")
+			artifactsPath := os.Getenv("ARTIFACTS_PATH")
+			if artifactsPath == "" {
+				artifactsPath = "./artifacts"
+			}
+			if err := e2eutil.DumpTestContext(currentTestContext, currentTestContext.Namespace, artifactsPath); err != nil {
+				// Log error but don't fail the test
+				GinkgoWriter.Printf("Failed to dump test context: %v\n", err)
+			}
+		}
+	})
+
 	AfterEach(func() {
 		e2eutil.CleanupTestContext(ctx)
 	})
@@ -49,6 +67,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1},
 		})
+		currentTestContext = ctx
 		slot := e2eutil.HalfCPU
 		rep = e2eutil.ClusterSize(ctx, slot)
 
@@ -100,6 +119,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1},
 		})
+		currentTestContext = ctx
 		podNamespace = ctx.Namespace
 		slot := e2eutil.HalfCPU
 		rep = e2eutil.ClusterSize(ctx, slot)
@@ -162,6 +182,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1},
 		})
+		currentTestContext = ctx
 		podNamespace = ctx.Namespace
 		slot := e2eutil.HalfCPU
 		rep = e2eutil.ClusterSize(ctx, slot)

@@ -17,6 +17,8 @@ limitations under the License.
 package jobseq
 
 import (
+	"os"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -25,10 +27,28 @@ import (
 )
 
 var _ = Describe("Pytorch Plugin E2E Test", func() {
+	var currentTestContext *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		// Only dump context if test failed
+		if CurrentSpecReport().Failed() && currentTestContext != nil {
+			By("Dumping test context for failed test")
+			artifactsPath := os.Getenv("ARTIFACTS_PATH")
+			if artifactsPath == "" {
+				artifactsPath = "./artifacts"
+			}
+			if err := e2eutil.DumpTestContext(currentTestContext, currentTestContext.Namespace, artifactsPath); err != nil {
+				// Log error but don't fail the test
+				GinkgoWriter.Printf("Failed to dump test context: %v\n", err)
+			}
+		}
+	})
+
 	It("will run and complete finally", func() {
 		// Community CI can skip this use case, and enable this use case verification when releasing the version.
 		Skip("Pytorch's test image download fails probabilistically, causing the current use case to fail. ")
 		context := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = context
 		defer e2eutil.CleanupTestContext(context)
 
 		slot := e2eutil.OneCPU

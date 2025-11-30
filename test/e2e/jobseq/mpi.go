@@ -17,6 +17,8 @@ limitations under the License.
 package jobseq
 
 import (
+	"os"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -27,8 +29,26 @@ import (
 )
 
 var _ = Describe("MPI E2E Test", func() {
+	var currentTestContext *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		// Only dump context if test failed
+		if CurrentSpecReport().Failed() && currentTestContext != nil {
+			By("Dumping test context for failed test")
+			artifactsPath := os.Getenv("ARTIFACTS_PATH")
+			if artifactsPath == "" {
+				artifactsPath = "./artifacts"
+			}
+			if err := e2eutil.DumpTestContext(currentTestContext, currentTestContext.Namespace, artifactsPath); err != nil {
+				// Log error but don't fail the test
+				GinkgoWriter.Printf("Failed to dump test context: %v\n", err)
+			}
+		}
+	})
+
 	It("will run and complete finally", func() {
 		context := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = context
 		defer e2eutil.CleanupTestContext(context)
 
 		slot := e2eutil.OneCPU
