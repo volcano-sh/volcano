@@ -19,29 +19,12 @@ func PruneUnusedImagesOnAllNodes(clientset *kubernetes.Clientset) error {
 	for _, node := range nodes.Items {
 		fmt.Printf("[Prune] Node: %s\n", node.Name)
 
-		ctrCheckCmd := fmt.Sprintf("kubectl debug node/%s --image=%s -- chroot /host sh -c 'test -S /run/containerd/containerd.sock'", node.Name, e2eutil.DefaultBusyBoxImage)
-		if err := exec.Command("bash", "-c", ctrCheckCmd).Run(); err == nil {
-			cmd := fmt.Sprintf("kubectl debug node/%s --image=%s -- chroot /host sh -c 'ctr -n k8s.io images prune -all || true'", node.Name, e2eutil.DefaultBusyBoxImage)
-			out, err := exec.Command("bash", "-c", cmd).CombinedOutput()
-			if err != nil {
-				fmt.Printf("[Warning] Failed to run containerd image prune on node %s: %v. Output: %s\n", node.Name, err, string(out))
-			}
-			fmt.Printf("[CTR Prune Output]\n%s\n", string(out))
-			continue
+		cmd := fmt.Sprintf("kubectl debug node/%s --attach --profile=general --image=%s -- chroot /host sh -c 'ctr -n k8s.io images prune -all || true'", node.Name, e2eutil.DefaultBusyBoxImage)
+		out, err := exec.Command("bash", "-c", cmd).CombinedOutput()
+		if err != nil {
+			fmt.Printf("[Warning] Failed to run containerd image prune on node %s: %v. Output: %s\n", node.Name, err, string(out))
 		}
-
-		dockerCheckCmd := fmt.Sprintf("kubectl debug node/%s --image=%s -- chroot /host sh -c 'docker version >/dev/null 2>&1'", node.Name, e2eutil.DefaultBusyBoxImage)
-		if err := exec.Command("bash", "-c", dockerCheckCmd).Run(); err == nil {
-			cmd := fmt.Sprintf("kubectl debug node/%s --image=%s -- chroot /host sh -c 'docker image prune -af || true'", node.Name, e2eutil.DefaultBusyBoxImage)
-			out, err := exec.Command("bash", "-c", cmd).CombinedOutput()
-			if err != nil {
-				fmt.Printf("[Warning] Failed to run docker image prune on node %s: %v. Output: %s\n", node.Name, err, string(out))
-			}
-			fmt.Printf("[Docker Prune Output]\n%s\n", string(out))
-			continue
-		}
-
-		fmt.Printf("[Warning] Node %s: No known container runtime detected, skipping prune\n", node.Name)
+		fmt.Printf("[CTR Prune Output]\n%s\n", string(out))
 	}
 
 	return nil
