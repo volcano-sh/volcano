@@ -191,9 +191,9 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			victimsQueue := ssn.BuildVictimsPriorityQueue(victims, task)
 
 			resreq := task.InitResreq.Clone()
+			reclaimed := api.EmptyResource()
 			// The reclaimed resources should be added to the remaining available resources of the nodes to avoid over-reclaiming.
-			reclaimed := n.FutureIdle()
-
+			availableResources := n.FutureIdle()
 			// Reclaim victims for tasks.
 			for !victimsQueue.Empty() {
 				reclaimee := victimsQueue.Pop().(*api.TaskInfo)
@@ -205,16 +205,17 @@ func (ra *Action) Execute(ssn *framework.Session) {
 					continue
 				}
 				reclaimed.Add(reclaimee.Resreq)
+				availableResources.Add(reclaimee.Resreq)
 				// If reclaimed enough resources, break loop to avoid Sub panic.
-				if resreq.LessEqual(reclaimed, api.Zero) {
+				if resreq.LessEqual(availableResources, api.Zero) {
 					break
 				}
 			}
 
-			klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>.",
-				reclaimed, task.Namespace, task.Name, task.InitResreq)
+			klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v> node availableResources <%v>.",
+				reclaimed, task.Namespace, task.Name, task.InitResreq, availableResources)
 
-			if task.InitResreq.LessEqual(reclaimed, api.Zero) {
+			if task.InitResreq.LessEqual(availableResources, api.Zero) {
 				if err := ssn.Pipeline(task, n.Name); err != nil {
 					klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 						task.Namespace, task.Name, n.Name)
