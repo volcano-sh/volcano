@@ -18,6 +18,7 @@ package framework
 
 import (
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
@@ -44,6 +45,13 @@ type Framework struct {
 	NodeMapFns        map[string]api.NodeMapFn
 	NodeReduceFns     map[string]api.NodeReduceFn
 
+	// These sets are used to record the names of failed plugins.
+	// When there are resource changes, plugins can only focus on the resource changes they are interested in,
+	// avoiding unnecessary event wake-ups of unschedulable pods.
+	// TODO: Implement QueueingHint and set these failed plugins in queuedPodInfo.
+	PrePredicateFailedFns sets.Set[string]
+	PredicateFailedFns    sets.Set[string]
+
 	Cache cache.Cache
 
 	// CycleState for the current scheduling cycle
@@ -52,8 +60,6 @@ type Framework struct {
 	// we may need to store cycleState using sync.Map or similar methods.
 	CurrentCycleState *k8sframework.CycleState
 }
-
-var _ k8sframework.Handle = &Framework{}
 
 // NewFramework initializes the framework with the given plugins.
 func NewFramework(actions []Action, tiers []conf.Tier, cache cache.Cache, configurations []conf.Configuration) *Framework {

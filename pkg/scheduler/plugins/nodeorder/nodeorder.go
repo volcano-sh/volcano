@@ -190,7 +190,6 @@ func (pp *NodeOrderPlugin) OnSessionOpen(ssn *framework.Session) {
 		state := k8sframework.NewCycleState()
 		return pp.BatchNodeOrderFn(task, nodeInfo, state)
 	})
-
 }
 
 func (pp *NodeOrderPlugin) InitPlugin() {

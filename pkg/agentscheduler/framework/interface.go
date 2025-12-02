@@ -16,7 +16,19 @@ limitations under the License.
 
 package framework
 
-import "volcano.sh/volcano/pkg/scheduler/api"
+import (
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+
+	"volcano.sh/volcano/pkg/scheduler/api"
+)
+
+// SchedulingContext contains all information needed for scheduling a task
+type SchedulingContext struct {
+	// Task is the task to be scheduled
+	Task *api.TaskInfo
+	// QueuedPodInfo is the original pod info from the scheduling queue
+	QueuedPodInfo *k8sframework.QueuedPodInfo
+}
 
 // Action is the interface of agent scheduler action.
 type Action interface {
@@ -27,7 +39,7 @@ type Action interface {
 	Initialize()
 
 	// Execute allocates resources for the given task.
-	Execute(fwk *Framework, task *api.TaskInfo)
+	Execute(fwk *Framework, schedCtx *SchedulingContext)
 
 	// UnInitialize un-initializes the allocator plugins.
 	UnInitialize()

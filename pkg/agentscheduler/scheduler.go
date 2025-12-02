@@ -33,12 +33,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
-	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	schedcache "volcano.sh/volcano/pkg/agentscheduler/cache"
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
 	"volcano.sh/volcano/pkg/filewatcher"
+	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 )
@@ -128,12 +128,12 @@ func (worker *Worker) runOnce(index uint32) {
 		conf.EnabledActionMap[action.Name()] = true
 	}
 
-	task, err := worker.nextTask()
+	schedCtx, err := worker.generateNextSchedulingContext()
 	if err != nil {
 		klog.Errorf("Failed to get next task: %v", err)
 		return
 	}
-	if task == nil {
+	if schedCtx == nil {
 		klog.Warningf("No task to schedule")
 		return
 	}
@@ -157,12 +157,13 @@ func (worker *Worker) runOnce(index uint32) {
 
 	for _, action := range worker.framework.Actions {
 		actionStartTime := time.Now()
-		action.Execute(worker.framework, task)
+		action.Execute(worker.framework, schedCtx)
 		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
 	}
 }
 
-func (worker *Worker) nextTask() (*schedulingapi.TaskInfo, error) {
+// generateNextSchedulingContext generates a new scheduling context for the next task to be scheduled.
+func (worker *Worker) generateNextSchedulingContext() (*framework.SchedulingContext, error) {
 	if worker.framework == nil {
 		return nil, fmt.Errorf("framework is not initialized")
 	}
@@ -186,7 +187,10 @@ func (worker *Worker) nextTask() (*schedulingapi.TaskInfo, error) {
 		return nil, nil
 	}
 
-	return task, nil
+	return &framework.SchedulingContext{
+		Task:          task,
+		QueuedPodInfo: podInfo,
+	}, nil
 }
 
 func (sched *Scheduler) loadSchedulerConf() {

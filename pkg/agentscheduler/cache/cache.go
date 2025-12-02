@@ -50,7 +50,6 @@ import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
 	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
-	"stathat.com/c/consistent"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
@@ -120,10 +119,6 @@ type SchedulerCache struct {
 
 	nodeWorkers uint32
 
-	// multiSchedulerInfo holds multi schedulers info without using node selector, please see the following link for more details.
-	// https://github.com/volcano-sh/volcano/blob/master/docs/design/deploy-multi-volcano-schedulers-without-using-selector.md
-	multiSchedulerInfo
-
 	binderRegistry *BinderRegistry
 
 	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
@@ -172,11 +167,6 @@ func (tc *TaskCache) Delete(id schedulingapi.TaskID) {
 	delete(tc.tasks, id)
 }
 
-type multiSchedulerInfo struct {
-	schedulerPodName string
-	c                *consistent.Consistent
-}
-
 type imageState struct {
 	// Size of the image
 	size int64
@@ -218,57 +208,6 @@ func NewDefaultBinder(kbclient kubernetes.Interface, record record.EventRecorder
 		kubeclient: kbclient,
 		recorder:   record,
 	}
-}
-
-type defaultEvictor struct {
-	kubeclient kubernetes.Interface
-	recorder   record.EventRecorder
-}
-
-// Evict will send delete pod request to api server
-func (de *defaultEvictor) Evict(p *v1.Pod, reason string) error {
-	klog.V(3).Infof("Evicting pod %v/%v, because of %v", p.Namespace, p.Name, reason)
-
-	evictMsg := fmt.Sprintf("Pod is evicted, because of %v", reason)
-	annotations := map[string]string{}
-	// record that we are evicting the pod
-	de.recorder.AnnotatedEventf(p, annotations, v1.EventTypeWarning, "Evict", evictMsg)
-
-	pod := p.DeepCopy()
-	condition := &v1.PodCondition{
-		Type:    v1.PodReady,
-		Status:  v1.ConditionFalse,
-		Reason:  "Evict",
-		Message: evictMsg,
-	}
-	if !podutil.UpdatePodCondition(&pod.Status, condition) {
-		klog.V(1).Infof("UpdatePodCondition: existed condition, not update")
-		klog.V(1).Infof("%+v", pod.Status.Conditions)
-		return nil
-	}
-
-	condition = &v1.PodCondition{
-		Type:    v1.DisruptionTarget,
-		Status:  v1.ConditionTrue,
-		Reason:  v1.PodReasonPreemptionByScheduler,
-		Message: fmt.Sprintf("%s: preempting to accommodate a higher priority pod", pod.Spec.SchedulerName),
-	}
-	if !podutil.UpdatePodCondition(&pod.Status, condition) {
-		klog.V(1).Infof("UpdatePodCondition: existed condition, not update")
-		klog.V(1).Infof("%+v", pod.Status.Conditions)
-		return nil
-	}
-
-	if _, err := de.kubeclient.CoreV1().Pods(p.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
-		klog.Errorf("Failed to update pod <%v/%v> status: %v", pod.Namespace, pod.Name, err)
-		return err
-	}
-	if err := de.kubeclient.CoreV1().Pods(p.Namespace).Delete(context.TODO(), p.Name, metav1.DeleteOptions{}); err != nil {
-		klog.Errorf("Failed to evict pod <%v/%v>: %#v", p.Namespace, p.Name, err)
-		return err
-	}
-
-	return nil
 }
 
 // defaultStatusUpdater is the default implementation of the StatusUpdater interface
@@ -401,8 +340,6 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	// add all events handlers
 	sc.addEventHandler()
 
-	sc.ConflictAwareBinder = NewConflictAwareBinder(sc)
-
 	sc.schedulingQueue = k8sschedulingqueue.NewSchedulingQueue(
 		Less,
 		sc.informerFactory,
@@ -411,6 +348,8 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		k8sschedulingqueue.WithPodMaxBackoffDuration(time.Duration(defaultSchedulerOptions.podMaxBackoffSeconds)*time.Second),
 		k8sschedulingqueue.WithPodMaxInUnschedulablePodsDuration(defaultSchedulerOptions.podMaxInUnschedulablePodsDuration),
 	)
+
+	sc.ConflictAwareBinder = NewConflictAwareBinder(sc, sc.schedulingQueue)
 
 	return sc
 }
