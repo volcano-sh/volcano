@@ -174,7 +174,7 @@ func (sm *ShardingManager) filterEligibleNodes(
 			continue
 		}
 
-		// 修复: 精确的范围比较，使用小数点后两位精度
+		// round the utilization with 2 floating points
 		cpuUtilRounded := math.Round(resourceInfo.CPUUtilization*100) / 100
 		minCPURounded := math.Round(minCPU*100) / 100
 		maxCPURounded := math.Round(maxCPU*100) / 100
@@ -205,13 +205,13 @@ func (sm *ShardingManager) prioritizeNodes(
 		return nodes
 	}
 
-	// 创建节点索引
+	// create node index
 	nodeIndex := make(map[string]int)
 	for i, node := range nodes {
 		nodeIndex[node.Name] = i
 	}
 
-	// 首先按 warmup 状态分组
+	// divide nodes into two groups using the warmup label
 	warmupNodes := make([]*corev1.Node, 0)
 	nonWarmupNodes := make([]*corev1.Node, 0)
 
@@ -224,7 +224,7 @@ func (sm *ShardingManager) prioritizeNodes(
 		}
 	}
 
-	// 对每组内部按 CPU 利用率排序
+	// sort nodes by CPU utilization within groups
 	sort.Slice(warmupNodes, func(i, j int) bool {
 		infoI := nodeResources[warmupNodes[i].Name]
 		infoJ := nodeResources[warmupNodes[j].Name]
@@ -237,7 +237,7 @@ func (sm *ShardingManager) prioritizeNodes(
 		return infoI.CPUUtilization > infoJ.CPUUtilization
 	})
 
-	// 合并结果：优先选择 warmup 节点，然后是非 warmup 节点
+	// combine results：prefer warmup node
 	prioritized := make([]*corev1.Node, 0, len(nodes))
 
 	if config.ShardStrategy.PreferWarmupNodes {
@@ -256,30 +256,30 @@ func (sm *ShardingManager) selectNodesWithinConstraints(
 	config SchedulerConfig,
 	nodes []*corev1.Node,
 ) []string {
-	// 计算所需节点数
+	// compute the number of necessary nodes
 	desiredCount := sm.calculateDesiredNodeCount(config, len(nodes))
 
-	// 确保不低于最小节点数
+	// ensure the desired node count is smaller than the minimum nodes
 	if desiredCount < config.ShardStrategy.MinNodes {
 		desiredCount = config.ShardStrategy.MinNodes
 	}
 
-	// 如果合格节点数小于所需节点数，使用所有合格节点
+	// if eligible nodes is smaller than desired, then use all eligible nodes
 	if len(nodes) < desiredCount {
 		desiredCount = len(nodes)
 	}
 
-	// 选择节点
+	// select nodes
 	selected := make([]string, 0, desiredCount)
 
-	// 首先，按优先级选择节点
+	// first select nodes according to priority
 	for i := 0; i < desiredCount && i < len(nodes); i++ {
 		selected = append(selected, nodes[i].Name)
 	}
 
-	// 检查是否满足最小节点约束
+	// check whether it meets the minimum node constraint
 	if len(selected) < config.ShardStrategy.MinNodes && len(nodes) > len(selected) {
-		// 添加额外节点直到满足最小约束
+		// add extra nodes until the minimum node constraint is met
 		additionalNeeded := config.ShardStrategy.MinNodes - len(selected)
 		for i := len(selected); i < len(nodes) && additionalNeeded > 0; i++ {
 			selected = append(selected, nodes[i].Name)
@@ -287,7 +287,7 @@ func (sm *ShardingManager) selectNodesWithinConstraints(
 		}
 	}
 
-	// 移除重复节点
+	// remvoe repeated nodes
 	uniqueSelected := make(map[string]bool)
 	finalSelection := make([]string, 0, len(selected))
 
@@ -303,37 +303,21 @@ func (sm *ShardingManager) selectNodesWithinConstraints(
 
 // calculateDesiredNodeCount calculates desired node count based on strategy constraints
 func (sm *ShardingManager) calculateDesiredNodeCount(config SchedulerConfig, eligibleNodeCount int) int {
-	// 基本策略: 选择所有合格节点
+	// select all eligible nodes
 	desired := eligibleNodeCount
 
-	// 应用 max 约束
+	// apply max constraint
 	if desired > config.ShardStrategy.MaxNodes {
 		desired = config.ShardStrategy.MaxNodes
 	}
 
-	// 应用 min 约束
+	// apply min constraint
 	if desired < config.ShardStrategy.MinNodes {
 		desired = config.ShardStrategy.MinNodes
 	}
 
 	return desired
 }
-
-// validateMutualExclusivity ensures no node is assigned to multiple schedulers
-// func (sm *ShardingManager) validateMutualExclusivity(assignments []*ShardAssignment) error {
-// 	nodeToScheduler := make(map[string]string)
-
-// 	for _, assignment := range assignments {
-// 		for _, node := range assignment.NodesDesired {
-// 			if prevScheduler, exists := nodeToScheduler[node]; exists {
-// 				return fmt.Errorf("node %s is assigned to both %s and %s", node, prevScheduler, assignment.SchedulerName)
-// 			}
-// 			nodeToScheduler[node] = assignment.SchedulerName
-// 		}
-// 	}
-
-// 	return nil
-// }
 
 // prepareNodeResourcesInfo prepares resource information for nodes
 func (sm *ShardingManager) prepareNodeResourcesInfo(nodes []*corev1.Node) map[string]*NodeResourceInfo {
@@ -376,104 +360,6 @@ func (sm *ShardingManager) prepareNodeResourcesInfo(nodes []*corev1.Node) map[st
 	return resources
 }
 
-// func (sm *ShardingManager) prepareNodeResourcesInfo(nodes []*corev1.Node) map[string]*NodeResourceInfo {
-// 	resources := make(map[string]*NodeResourceInfo)
-
-// 	for i := range nodes {
-// 		node := nodes[i]
-// 		info := &NodeResourceInfo{
-// 			NodeName:     node.Name,
-// 			Labels:       node.Labels,
-// 			Annotations:  node.Annotations,
-// 			IsWarmupNode: node.Labels["node.volcano.sh/warmup"] == "true",
-// 		}
-
-// 		// Get allocatable resources
-// 		info.CPUAllocatable = node.Status.Allocatable[corev1.ResourceCPU]
-// 		info.MemoryAllocatable = node.Status.Allocatable[corev1.ResourceMemory]
-// 		info.CPUCapacity = node.Status.Capacity[corev1.ResourceCPU]
-// 		info.MemoryCapacity = node.Status.Capacity[corev1.ResourceMemory]
-
-// 		// Estimate utilization
-// 		info.CPUUtilization = sm.estimateCPUUtilization(node)
-// 		info.MemoryUtilization = sm.estimateMemoryUtilization(node)
-
-// 		// Get pod count (simplified)
-// 		info.PodCount = sm.estimatePodCount(node)
-
-// 		resources[node.Name] = info
-// 	}
-
-// 	return resources
-// }
-
-// estimateCPUUtilization 从节点状态缓存获取CPU利用率
-// func (sm *ShardingManager) estimateCPUUtilization(node *corev1.Node) float64 {
-// 	state := sm.getNodeState(node.Name)
-// 	return state.CPUUtilization
-// }
-
-// // estimateMemoryUtilization 从节点状态缓存获取内存利用率
-// func (sm *ShardingManager) estimateMemoryUtilization(node *corev1.Node) float64 {
-// 	state := sm.getNodeState(node.Name)
-// 	return state.MemoryUtilization
-// }
-
-// // getNodeState 安全获取节点状态
-// func (sm *ShardingManager) getNodeState(nodeName string) *NodeState {
-// 	if sm.getNodeStateFn == nil {
-// 		return &NodeState{CPUUtilization: 0.3, MemoryUtilization: 0.4}
-// 	}
-
-// 	state := sm.getNodeStateFn(nodeName)
-// 	if state == nil {
-// 		// 缓存未命中，返回默认值
-// 		return &NodeState{CPUUtilization: 0.3, MemoryUtilization: 0.4}
-// 	}
-
-// 	return state
-// }
-
-// // estimateCPUUtilization estimates CPU utilization for a node
-// func (sm *ShardingManager) estimateCPUUtilization(node *corev1.Node) float64 {
-// 	// Try to get from annotation first
-// 	if utilStr, exists := node.Annotations["node.volcano.sh/cpu-utilization"]; exists {
-// 		if utilFloat, err := strconv.ParseFloat(utilStr, 64); err == nil {
-// 			// Clamp to [0.0, 1.0] range
-// 			if utilFloat < 0.0 {
-// 				return 0.0
-// 			}
-// 			if utilFloat > 1.0 {
-// 				return 1.0
-// 			}
-// 			return utilFloat
-// 		}
-// 	}
-
-// 	// Default estimation
-// 	return 0.3
-// }
-
-// // estimateMemoryUtilization estimates memory utilization for a node
-// func (sm *ShardingManager) estimateMemoryUtilization(node *corev1.Node) float64 {
-// 	// Try to get from annotation first
-// 	if utilStr, exists := node.Annotations["node.volcano.sh/memory-utilization"]; exists {
-// 		if utilFloat, err := strconv.ParseFloat(utilStr, 64); err == nil {
-// 			// Clamp to [0.0, 1.0] range
-// 			if utilFloat < 0.0 {
-// 				return 0.0
-// 			}
-// 			if utilFloat > 1.0 {
-// 				return 1.0
-// 			}
-// 			return utilFloat
-// 		}
-// 	}
-
-// 	// Default estimation
-// 	return 0.4
-// }
-
 // calculateSingleSchedulerAssignment calculates assignment for a single scheduler
 // This implementation uses hard filtering instead of complex scoring
 func (sm *ShardingManager) calculateSingleSchedulerAssignment(
@@ -486,10 +372,6 @@ func (sm *ShardingManager) calculateSingleSchedulerAssignment(
 		klog.V(4).Infof("Calculated single scheduler assignment for %s in %v", config.Name, duration)
 	}()
 
-	// Prepare node resources if not provided in context
-	// if ctx.NodeResources == nil {
-	// 	ctx.NodeResources = sm.prepareNodeResourcesInfo(ctx.AllNodes)
-	// }
 	nodeResources := sm.prepareNodeResourcesInfo(ctx.AllNodes)
 
 	// Create node map for quick lookup
@@ -539,27 +421,3 @@ func (sm *ShardingManager) generateAssignmentReason(config SchedulerConfig, sele
 	return fmt.Sprintf("Selected %d nodes from %d eligible nodes in CPU range [%.2f, %.2f] %s",
 		selectedCount, eligibleCount, minCPU, maxCPU, warmupPref)
 }
-
-// estimatePodCount estimates the number of pods running on a node
-// func (sm *ShardingManager) estimatePodCount(node *corev1.Node) int {
-// 	// Try to get from annotation
-// 	if countStr, exists := node.Annotations["node.volcano.sh/pod-count"]; exists {
-// 		if count, err := strconv.Atoi(countStr); err == nil {
-// 			return count
-// 		}
-// 	}
-
-// 	// Default estimation based on node size
-// 	cpuCapacity := node.Status.Capacity.Cpu().Value()
-// 	if cpuCapacity >= 32 {
-// 		return 110 // Large node
-// 	} else if cpuCapacity >= 16 {
-// 		return 80 // Medium-large node
-// 	} else if cpuCapacity >= 8 {
-// 		return 50 // Medium node
-// 	} else if cpuCapacity >= 4 {
-// 		return 30 // Small-medium node
-// 	}
-
-// 	return 15 // Small node default
-// }

@@ -36,34 +36,6 @@ type TestControllerOption struct {
 	StopCh           chan struct{} // Add stop channel
 }
 
-// NewTestControllerOption creates a new test controller option
-// func NewTestControllerOption(objs ...runtime.Object) *TestControllerOption {
-// 	stopCh := make(chan struct{})
-// 	return &TestControllerOption{
-// 		StopCh: stopCh,
-// 	}
-// }
-
-// addTestIndexers adds required indexers for testing
-// func addTestIndexers(kubeFactory kubeinformer.SharedInformerFactory) {
-// 	// Add pod index by node name
-// 	podInformer := kubeFactory.Core().V1().Pods()
-// 	if err := podInformer.Informer().AddIndexers(cache.Indexers{
-// 		"node": func(obj interface{}) ([]string, error) {
-// 			pod, ok := obj.(*corev1.Pod)
-// 			if !ok {
-// 				return []string{}, nil
-// 			}
-// 			if pod.Spec.NodeName == "" {
-// 				return []string{}, nil
-// 			}
-// 			return []string{pod.Spec.NodeName}, nil
-// 		},
-// 	}); err != nil {
-// 		klog.Errorf("Failed to add pod index by node in test: %v", err)
-// 	}
-// }
-
 // NewTestShardingController creates a new test controller with proper setup
 func NewTestShardingController(t *testing.T, opt *TestControllerOption) *TestShardingController {
 	// Create controller
@@ -110,31 +82,6 @@ func NewTestShardingController(t *testing.T, opt *TestControllerOption) *TestSha
 	// Initialize with scheduler configs
 	err = controller.InitializeWithConfigs(controllerOpt, opt.SchedulerConfigs)
 	assert.NoError(t, err, "should initialize controller with configs successfully")
-
-	// // Start informers
-	// stopCh := make(chan struct{})
-	// //addTestIndexers(kubeInformerFactory)
-	// kubeInformerFactory.Start(stopCh)
-	// vcInformerFactory.Start(stopCh)
-
-	// // Wait for cache sync
-	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// defer cancel()
-
-	// if !cache.WaitForCacheSync(
-	// 	ctx.Done(),
-	// 	kubeInformerFactory.Core().V1().Nodes().Informer().HasSynced,
-	// 	vcInformerFactory.Shard().V1alpha1().NodeShards().Informer().HasSynced,
-	// 	kubeInformerFactory.Core().V1().Pods().Informer().HasSynced,
-	// ) {
-	// 	t.Fatal("Failed to sync caches within timeout")
-	// }
-
-	// // Give time for event handlers to register
-	// time.Sleep(200 * time.Millisecond)
-
-	// // Initialize node metrics for test nodes
-	// controller.initializeNodeMetrics()
 
 	// Start controller in separate goroutine
 	go controller.Run(opt.StopCh)

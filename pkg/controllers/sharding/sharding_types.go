@@ -36,7 +36,6 @@ type AssignmentCache struct {
 	Version     string
 	Timestamp   time.Time
 	Assignments map[string]*ShardAssignment // scheduler name -> assignment
-	// NodeStates  map[string]*NodeState       // node name -> state
 }
 
 // NodeMetrics contains comprehensive metrics for a node
@@ -84,18 +83,6 @@ type NodeResourceInfo struct {
 	Annotations       map[string]string
 }
 
-// NodeState captures node state for assignment decisions
-// type NodeState struct {
-// 	Name              string
-// 	ResourceVersion   string
-// 	CPUUtilization    float64
-// 	MemoryUtilization float64
-// 	IsWarmup          bool
-// 	Labels            map[string]string
-// 	Annotations       map[string]string
-// 	LastUpdated       time.Time
-// }
-
 type NodeUtilization struct {
 	CPUUtilization    float64
 	MemoryUtilization float64
@@ -134,5 +121,4 @@ type AssignmentContext struct {
 	SchedulerConfigs []SchedulerConfig
 	AssignedNodes    map[string]string // node name -> scheduler name
 	Timestamp        time.Time
-	// NodeResources    map[string]*NodeResourceInfo
 }

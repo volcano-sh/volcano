@@ -30,8 +30,9 @@ import (
 const (
 	controllerName              = "sharding-controller"
 	defaultShardSyncPeriod      = 60 * time.Second
-	nodeRecheckInterval         = 5 * time.Second
 	maxAssignmentCacheRetention = 5 * time.Minute
+	nodeChangeThreshold         = 0.2
+	updateTimeoutThreshold      = 15 * time.Second
 )
 
 func init() {
@@ -67,13 +68,9 @@ type ShardingController struct {
 	shardSyncPeriod  time.Duration
 	schedulerConfigs []SchedulerConfig
 
-	// Core optimization: assignment cache
+	// assignment cache
 	assignmentCache *AssignmentCache
 	cacheMutex      sync.Mutex
-
-	// Node state tracking
-	// nodeStates map[string]*NodeState
-	// nodeMutex sync.RWMutex
 
 	// Event channels
 	assignmentChangeChan chan *AssignmentChangeEvent
@@ -270,39 +267,6 @@ func (sc *ShardingController) parseSchedulerConfigsFromOptions() {
 	}
 }
 
-// // logCacheState logs the current state of caches for debugging
-// func (sc *ShardingController) logCacheState() {
-// 	klog.Infof("=== CACHE STATE DEBUG ===")
-
-// 	// Check node cache
-// 	nodes, err := sc.nodeLister.List(labels.Everything())
-// 	if err != nil {
-// 		klog.Errorf("Failed to list nodes: %v", err)
-// 	} else {
-// 		klog.Infof("Node cache contains %d items", len(nodes))
-// 		for i, node := range nodes {
-// 			if i < 5 { // Log first 5 nodes
-// 				klog.Infof("  Node %d: %s", i, node.Name)
-// 			}
-// 		}
-// 	}
-
-// 	// Check API server directly
-// 	apiNodes, err := sc.kubeClient.CoreV1().Nodes().List(sc.ctx, metav1.ListOptions{})
-// 	if err != nil {
-// 		klog.Errorf("Failed to list nodes from API server: %v", err)
-// 	} else {
-// 		klog.Infof("API server contains %d nodes", len(apiNodes.Items))
-// 		for i, node := range apiNodes.Items {
-// 			if i < 5 { // Log first 5 nodes
-// 				klog.Infof("  API Node %d: %s", i, node.Name)
-// 			}
-// 		}
-// 	}
-
-// 	klog.Infof("=== END CACHE STATE DEBUG ===")
-// }
-
 // worker processes items from the work queue
 func (sc *ShardingController) worker() {
 	for sc.processNextItem() {
@@ -351,7 +315,7 @@ func (sc *ShardingController) processAssignmentChange(event *AssignmentChangeEve
 	// Log significant changes
 	if len(event.OldNodes) > 0 {
 		changePercent := float64(abs(len(event.NewNodes)-len(event.OldNodes))) / float64(len(event.OldNodes))
-		if changePercent > 0.2 { // 20% change
+		if changePercent > nodeChangeThreshold {
 			klog.Infof("Significant node change for %s: %.0f%% (%d -> %d nodes)",
 				event.SchedulerName, changePercent*100, len(event.OldNodes), len(event.NewNodes))
 		}
@@ -367,7 +331,7 @@ func (sc *ShardingController) syncShards() {
 		klog.V(3).Infof("Completed global shard synchronization in %v", duration)
 	}()
 
-	// 确保所有节点状态是最新的
+	// ensure all nodes states are updated
 	sc.ensureNodeStatesUpdated()
 
 	// Get nodes from cache (not API server)
@@ -403,9 +367,9 @@ func (sc *ShardingController) syncShards() {
 		len(newAssignments), len(nodes))
 }
 
-// ensureNodeStatesUpdated 确保节点状态是最新的
+// ensureNodeStatesUpdated ensure all nodes states are up-to-date
 func (sc *ShardingController) ensureNodeStatesUpdated() {
-	// 如果最近更新时间超过阈值，触发重新计算
+	// trigger re-computation if the time interval since the last update exceeds timeout threshold
 	sc.metricsMutex.RLock()
 	lastUpdateTime := time.Time{}
 	for _, nodeMetrics := range sc.nodeMetricsCache {
@@ -415,13 +379,13 @@ func (sc *ShardingController) ensureNodeStatesUpdated() {
 	}
 	sc.metricsMutex.RUnlock()
 
-	if time.Since(lastUpdateTime) > 15*time.Second {
+	if time.Since(lastUpdateTime) > updateTimeoutThreshold {
 		klog.V(4).Infof("Node states stale, triggering update")
 		sc.updateAllNodeStates()
 	}
 }
 
-// updateAllNodeStates 更新所有节点状态
+// updateAllNodeStates update all node states
 func (sc *ShardingController) updateAllNodeStates() {
 	nodes, err := sc.nodeLister.List(labels.Everything())
 	if err != nil {
@@ -430,7 +394,7 @@ func (sc *ShardingController) updateAllNodeStates() {
 	}
 
 	for _, node := range nodes {
-		// 异步更新节点状态，避免阻塞
+		// update node states asynchronously to avoid blocking
 		go func(nodeName string) {
 			util, err := sc.calculateNodeUtilization(nodeName)
 			if err != nil {
@@ -481,7 +445,6 @@ func (sc *ShardingController) updateAssignmentCache(newAssignments map[string]*S
 		Version:     version,
 		Timestamp:   time.Now(),
 		Assignments: newAssignments,
-		// NodeStates:  sc.snapshotNodeStates(),
 	}
 
 	klog.V(4).Infof("Updated assignment cache with version %s", version)
@@ -491,7 +454,7 @@ func (sc *ShardingController) updateAssignmentCache(newAssignments map[string]*S
 func (sc *ShardingController) createShard(schedulerName string, nodesDesired []string) error {
 	klog.Infof("Creating new shard for scheduler: %s", schedulerName)
 
-	// 修复：先检查shard是否已存在
+	// First check whether the shard already exists or not
 	_, err := sc.shardLister.Get(schedulerName)
 	if err == nil {
 		klog.Infof("Shard %s already exists, skipping creation", schedulerName)
@@ -519,7 +482,7 @@ func (sc *ShardingController) createShard(schedulerName string, nodesDesired []s
 		},
 	}
 
-	// 修复：使用Create，而不是Update
+	// create a new shard
 	_, err = sc.vcClient.ShardV1alpha1().NodeShards().Create(sc.ctx, shard, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
@@ -554,11 +517,6 @@ func (sc *ShardingController) applyAssignment(schedulerName string, assignment *
 	newShard := shard.DeepCopy()
 	newShard.Spec.NodesDesired = assignment.NodesDesired
 	newShard.Status.LastUpdateTime = metav1.Now()
-
-	// Only update NodesInUse if it's significantly different
-	// if sc.shouldUpdateNodesInUse(shard, assignment) {
-	// 	newShard.Status.NodesInUse = assignment.NodesDesired
-	// }
 
 	// Apply update
 	_, err = sc.vcClient.ShardV1alpha1().NodeShards().Update(sc.ctx, newShard, metav1.UpdateOptions{})
@@ -609,46 +567,17 @@ func (sc *ShardingController) assignmentNeedsUpdate(shard *shardv1alpha1.NodeSha
 	return changed
 }
 
-// shouldUpdateNodesInUse determines if NodesInUse should be updated
-// func (sc *ShardingController) shouldUpdateNodesInUse(shard *shardv1alpha1.NodeShard, assignment *ShardAssignment) bool {
-// 	// Only update if there's a significant difference
-// 	currentSet := make(map[string]bool)
-// 	for _, node := range shard.Status.NodesInUse {
-// 		currentSet[node] = true
-// 	}
-
-// 	changeCount := 0
-// 	for _, node := range assignment.NodesDesired {
-// 		if !currentSet[node] {
-// 			changeCount++
-// 		}
-// 	}
-
-// 	// Update if >20% of nodes changed or no nodes in use
-// 	return changeCount > len(assignment.NodesDesired)/5 || len(shard.Status.NodesInUse) == 0
-// }
-
 // listNodesFromCache lists nodes from informer cache
 func (sc *ShardingController) listNodesFromCache() ([]*corev1.Node, error) {
 	if sc.nodeLister == nil {
 		return nil, fmt.Errorf("nodeLister not initialized")
 	}
 
-	// 修复：正确处理 indexer 返回的对象
 	nodes, err := sc.nodeLister.List(labels.Everything())
 	if err != nil {
 		klog.V(4).Infof("No nodes found in cache")
 		return nil, err
 	}
-
-	// nodes := make([]corev1.Node, 0, len(items))
-	// for _, obj := range items {
-	// 	node, ok := obj.(*corev1.Node)
-	// 	if !ok {
-	// 		continue
-	// 	}
-	// 	nodes = append(nodes, *node)
-	// }
 
 	return nodes, nil
 }
@@ -677,8 +606,6 @@ func (sc *ShardingController) calculateAndApplyAssignment(schedulerName string) 
 
 	ctx := &AssignmentContext{
 		AllNodes: nodes,
-		// Use cached node states if available
-		// NodeResources: sc.getNodeResourcesFromCache(),
 	}
 
 	assignment, err := sc.shardingManager.calculateSingleSchedulerAssignment(*schedulerConfig, ctx)
@@ -692,26 +619,6 @@ func (sc *ShardingController) calculateAndApplyAssignment(schedulerName string) 
 		Version:       fmt.Sprintf("%d", time.Now().UnixNano()),
 	})
 }
-
-// getNodeResourcesFromCache gets node resources from cache
-// func (sc *ShardingController) getNodeResourcesFromCache() map[string]*NodeResourceInfo {
-// 	sc.nodeMutex.RLock()
-// 	defer sc.nodeMutex.RUnlock()
-
-// 	resources := make(map[string]*NodeResourceInfo)
-// 	for nodeName, state := range sc.nodeStates {
-// 		resources[nodeName] = &NodeResourceInfo{
-// 			NodeName:          nodeName,
-// 			CPUUtilization:    state.CPUUtilization,
-// 			MemoryUtilization: state.MemoryUtilization,
-// 			IsWarmupNode:      state.IsWarmup,
-// 			Labels:            state.Labels,
-// 			Annotations:       state.Annotations,
-// 		}
-// 	}
-
-// 	return resources
-// }
 
 // enqueueShard adds a shard to the work queue
 func (sc *ShardingController) enqueueShard(schedulerName string) {
@@ -757,22 +664,6 @@ func (sc *ShardingController) deleteShard(obj interface{}) {
 	sc.enqueueShard(shard.Name)
 }
 
-// abs returns absolute value of int
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
-// max returns maximum of two integers
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // InitializeWithConfigs initializes the controller with specific scheduler configs
 func (sc *ShardingController) InitializeWithConfigs(opt *framework.ControllerOption, configSpecs []SchedulerConfigSpec) error {
 	if err := sc.Initialize(opt); err != nil {
@@ -816,4 +707,20 @@ func (sc *ShardingController) InitializeWithConfigs(opt *framework.ControllerOpt
 	}
 
 	return nil
+}
+
+// abs returns absolute value of int
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// max returns maximum of two integers
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

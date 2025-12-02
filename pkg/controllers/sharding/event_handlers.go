@@ -24,17 +24,12 @@ func (sc *ShardingController) updateNodeMetricsFromEvent(event *NodeEvent) {
 		klog.Warningf("Failed to calculate metrics for node %s: %v", event.NodeName, err)
 		return
 	}
-	// klog.Infof("Calculated metrics for node %s: CPU=%.2f, Memory=%.2f",
-	// 	event.NodeName, metrics.CPUUtilization, metrics.MemoryUtilization)
 
 	// Update cache
 	if sc.nodeMetricsCache == nil {
 		sc.nodeMetricsCache = make(map[string]*NodeMetrics)
 	}
 	sc.nodeMetricsCache[event.NodeName] = metrics
-
-	// klog.Infof("Updated metrics for node %s: CPU=%.2f, Memory=%.2f",
-	// 	event.NodeName, metrics.CPUUtilization, metrics.MemoryUtilization)
 
 	// Trigger shard sync if utilization changed significantly
 	if sc.isUtilizationSignificantlyChanged(event.NodeName, metrics) {
@@ -44,26 +39,6 @@ func (sc *ShardingController) updateNodeMetricsFromEvent(event *NodeEvent) {
 		})
 	}
 }
-
-// handlePodEvent processes pod-related events and updates node metrics
-// func (sc *ShardingController) handlePodEvent(pod *corev1.Pod, eventType string) {
-// 	if pod.Spec.NodeName == "" {
-// 		return // Pod not scheduled yet
-// 	}
-
-// 	klog.V(5).Infof("Pod %s/%s %s on node %s", pod.Namespace, pod.Name, eventType, pod.Spec.NodeName)
-
-// 	// Create node event
-// 	event := &NodeEvent{
-// 		EventType: fmt.Sprintf("pod-%s", eventType),
-// 		NodeName:  pod.Spec.NodeName,
-// 		Source:    "pod-controller",
-// 		Timestamp: time.Now(),
-// 	}
-
-// 	// Process event in background to avoid blocking
-// 	go sc.updateNodeMetricsFromEvent(event)
-// }
 
 // isUtilizationSignificantlyChanged checks if utilization changed significantly
 func (sc *ShardingController) isUtilizationSignificantlyChanged(nodeName string, newMetrics *NodeMetrics) bool {
