@@ -77,7 +77,10 @@ func NewTestShardingController(t *testing.T, opt *TestControllerOption) *TestSha
 
 	// Set default scheduler configs if none provided
 	if len(opt.SchedulerConfigs) == 0 {
-		opt.SchedulerConfigs = getDefaultTestSchedulerConfigs()
+		klog.Infof("Using default scheduler configs for test")
+		opt.SchedulerConfigs = NewShardingControllerOptions().SchedulerConfigs
+		//getDefaultTestSchedulerConfigs()
+		klog.Infof("Default scheduler configs: %+v", opt.SchedulerConfigs)
 	}
 
 	if opt.StopCh == nil {

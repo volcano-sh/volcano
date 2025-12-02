@@ -28,11 +28,17 @@ type ShardingControllerOptions struct {
 }
 
 func NewShardingControllerOptions() *ShardingControllerOptions {
-	return &ShardingControllerOptions{
+	controllerOptions := &ShardingControllerOptions{
 		// Default scheduler configs will be added by AddFlags
 		ShardSyncPeriod:        60 * time.Second,
 		EnableNodeEventTrigger: true,
+		SchedulerConfigsRaw: []string{
+			"volcano:volcano:0.0:0.6:false:2:100",
+			"agent-scheduler:agent:0.7:1.0:true:2:100",
+		},
 	}
+	controllerOptions.ParseConfig()
+	return controllerOptions
 }
 
 // AddFlags adds flags to the flag set using pflag pattern

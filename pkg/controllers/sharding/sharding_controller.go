@@ -34,6 +34,10 @@ const (
 	maxAssignmentCacheRetention = 5 * time.Minute
 )
 
+func init() {
+	framework.RegisterController(&ShardingController{})
+}
+
 // ShardingController implements the framework.Controller interface
 type ShardingController struct {
 	ctx               context.Context
@@ -75,8 +79,14 @@ type ShardingController struct {
 	assignmentChangeChan chan *AssignmentChangeEvent
 }
 
+// Return the name of the controller
+func (sc *ShardingController) Name() string {
+	return controllerName
+}
+
 // Initialize initializes the controller
 func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error {
+	klog.V(6).Infof("Initializing ShardingController...")
 	sc.ctx = context.Background()
 	sc.controllerOptions = *NewShardingControllerOptions()
 
@@ -144,6 +154,7 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 		UpdateFunc: sc.updatePod,
 		DeleteFunc: sc.deletePod,
 	})
+	klog.V(6).Infof("ShardingController initialized successfully")
 
 	return nil
 }
@@ -152,6 +163,9 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 func (sc *ShardingController) Run(stopCh <-chan struct{}) {
 	defer sc.queue.ShutDown()
 	defer sc.nodeEventQueue.ShutDown()
+
+	klog.Infof("Starting sharding controller.")
+	defer klog.Infof("Shutting down sharding controller.")
 
 	// FIX 1: Start informer factories HERE
 	sc.kubeInformerFactory.Start(stopCh)
@@ -542,9 +556,9 @@ func (sc *ShardingController) applyAssignment(schedulerName string, assignment *
 	newShard.Status.LastUpdateTime = metav1.Now()
 
 	// Only update NodesInUse if it's significantly different
-	if sc.shouldUpdateNodesInUse(shard, assignment) {
-		newShard.Status.NodesInUse = assignment.NodesDesired
-	}
+	// if sc.shouldUpdateNodesInUse(shard, assignment) {
+	// 	newShard.Status.NodesInUse = assignment.NodesDesired
+	// }
 
 	// Apply update
 	_, err = sc.vcClient.ShardV1alpha1().NodeShards().Update(sc.ctx, newShard, metav1.UpdateOptions{})
@@ -596,23 +610,23 @@ func (sc *ShardingController) assignmentNeedsUpdate(shard *shardv1alpha1.NodeSha
 }
 
 // shouldUpdateNodesInUse determines if NodesInUse should be updated
-func (sc *ShardingController) shouldUpdateNodesInUse(shard *shardv1alpha1.NodeShard, assignment *ShardAssignment) bool {
-	// Only update if there's a significant difference
-	currentSet := make(map[string]bool)
-	for _, node := range shard.Status.NodesInUse {
-		currentSet[node] = true
-	}
+// func (sc *ShardingController) shouldUpdateNodesInUse(shard *shardv1alpha1.NodeShard, assignment *ShardAssignment) bool {
+// 	// Only update if there's a significant difference
+// 	currentSet := make(map[string]bool)
+// 	for _, node := range shard.Status.NodesInUse {
+// 		currentSet[node] = true
+// 	}
 
-	changeCount := 0
-	for _, node := range assignment.NodesDesired {
-		if !currentSet[node] {
-			changeCount++
-		}
-	}
+// 	changeCount := 0
+// 	for _, node := range assignment.NodesDesired {
+// 		if !currentSet[node] {
+// 			changeCount++
+// 		}
+// 	}
 
-	// Update if >20% of nodes changed or no nodes in use
-	return changeCount > len(assignment.NodesDesired)/5 || len(shard.Status.NodesInUse) == 0
-}
+// 	// Update if >20% of nodes changed or no nodes in use
+// 	return changeCount > len(assignment.NodesDesired)/5 || len(shard.Status.NodesInUse) == 0
+// }
 
 // listNodesFromCache lists nodes from informer cache
 func (sc *ShardingController) listNodesFromCache() ([]*corev1.Node, error) {
