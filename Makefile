@@ -228,17 +228,19 @@ endif
 update-development-yaml:
 	make generate-yaml RELEASE_DIR=installer
 	mv installer/volcano-${TAG}.yaml installer/volcano-development.yaml
-	mv installer/agent-scheduler-${TAG}.yaml installer/agent-scheduler-development.yaml
+	mv installer/volcano-agent-scheduler-${TAG}.yaml installer/volcano-agent-scheduler-development.yaml
 	mv installer/volcano-agent-${TAG}.yaml installer/volcano-agent-development.yaml
 	mv installer/volcano-monitoring-${TAG}.yaml installer/volcano-monitoring.yaml
 
 	ENABLE_VAP=true make generate-yaml RELEASE_DIR=installer
 	mv installer/volcano-${TAG}.yaml installer/volcano-development-vap.yaml
+	rm installer/volcano-agent-scheduler-${TAG}.yaml
 	rm installer/volcano-agent-${TAG}.yaml
 	rm installer/volcano-monitoring-${TAG}.yaml
 
 	ENABLE_VAP=true ENABLE_MAP=true make generate-yaml RELEASE_DIR=installer
 	mv installer/volcano-${TAG}.yaml installer/volcano-development-vap-map.yaml
+	rm installer/volcano-agent-scheduler-${TAG}.yaml
 	rm installer/volcano-agent-${TAG}.yaml
 	rm installer/volcano-monitoring-${TAG}.yaml
 

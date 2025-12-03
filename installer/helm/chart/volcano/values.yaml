@@ -259,6 +259,9 @@ custom:
   # Specify feature gates for components
   scheduler_feature_gates: ~
 
+# Specify options for agent-scheduler
+  agent_scheduler_worker_count: 1
+
 service:
   # @param service.ipFamilyPolicy [string], support SingleStack, PreferDualStack and RequireDualStack
   #

@@ -8891,6 +8891,9 @@ rules:
   - apiGroups: [ "" ]
     resources: [ "nodes" ]
     verbs: [ "list", "watch" ]
+  - apiGroups: ["shard.volcano.sh"]
+    resources: ["nodeshards"]
+    verbs: ["list", "watch", "get", "create", "delete", "update", "patch"]
 ---
 # Source: volcano/templates/controllers.yaml
 kind: ClusterRoleBinding
@@ -9102,6 +9105,9 @@ rules:
   - apiGroups: [ "resource.k8s.io" ]
     resources: [ "devicetaintrules" ]
     verbs: [ "get", "list", "watch" ]
+  - apiGroups: ["shard.volcano.sh"]
+    resources: ["nodeshards"]
+    verbs: ["list", "watch", "get", "update"]
 ---
 # Source: volcano/templates/scheduler.yaml
 kind: ClusterRoleBinding
