@@ -51,7 +51,6 @@ func NewTestShardingController(t *testing.T, opt *TestControllerOption) *TestSha
 	if len(opt.SchedulerConfigs) == 0 {
 		klog.Infof("Using default scheduler configs for test")
 		opt.SchedulerConfigs = NewShardingControllerOptions().SchedulerConfigs
-		//getDefaultTestSchedulerConfigs()
 		klog.Infof("Default scheduler configs: %+v", opt.SchedulerConfigs)
 	}
 
@@ -92,30 +91,6 @@ func NewTestShardingController(t *testing.T, opt *TestControllerOption) *TestSha
 	return &TestShardingController{
 		Controller: controller,
 		StopCh:     opt.StopCh,
-	}
-}
-
-// getDefaultTestSchedulerConfigs returns default scheduler configs for testing
-func getDefaultTestSchedulerConfigs() []SchedulerConfigSpec {
-	return []SchedulerConfigSpec{
-		{
-			Name:              "volcano-scheduler",
-			Type:              "volcano",
-			CPUUtilizationMin: 0.0,
-			CPUUtilizationMax: 0.6,
-			PreferWarmupNodes: false,
-			MinNodes:          1,
-			MaxNodes:          10,
-		},
-		{
-			Name:              "agent-scheduler",
-			Type:              "agent",
-			CPUUtilizationMin: 0.7,
-			CPUUtilizationMax: 1.0,
-			PreferWarmupNodes: true,
-			MinNodes:          1,
-			MaxNodes:          10,
-		},
 	}
 }
 
