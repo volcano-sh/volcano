@@ -175,7 +175,7 @@ spec:
               port: 11251
               scheme: HTTP
             initialDelaySeconds: {{ .Values.custom.controller_livenessProbe.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.custom.controller_livenessProbe.periodSeconds | default 10 }}
+            periodSeconds: {{ .Values.custom.controller_livenessProbe.periodSeconds | default 20 }}
             timeoutSeconds: {{ .Values.custom.controller_livenessProbe.timeoutSeconds | default 5 }}
             failureThreshold: {{ .Values.custom.controller_livenessProbe.failureThreshold | default 5 }}
             successThreshold: {{ .Values.custom.controller_livenessProbe.successThreshold | default 1 }}
@@ -185,7 +185,7 @@ spec:
               port: 11251
               scheme: HTTP
             initialDelaySeconds: {{ .Values.custom.controller_readinessProbe.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.custom.controller_readinessProbe.periodSeconds | default 10 }}
+            periodSeconds: {{ .Values.custom.controller_readinessProbe.periodSeconds | default 20 }}
             timeoutSeconds: {{ .Values.custom.controller_readinessProbe.timeoutSeconds | default 5 }}
             failureThreshold: {{ .Values.custom.controller_readinessProbe.failureThreshold | default 5 }}
             successThreshold: {{ .Values.custom.controller_readinessProbe.successThreshold | default 1 }}
