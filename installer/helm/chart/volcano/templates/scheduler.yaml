@@ -204,7 +204,7 @@ spec:
               port: 11251
               scheme: HTTP
             initialDelaySeconds: {{ .Values.custom.scheduler_livenessProbe.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.custom.scheduler_livenessProbe.periodSeconds | default 10 }}
+            periodSeconds: {{ .Values.custom.scheduler_livenessProbe.periodSeconds | default 20 }}
             timeoutSeconds: {{ .Values.custom.scheduler_livenessProbe.timeoutSeconds | default 5 }}
             failureThreshold: {{ .Values.custom.scheduler_livenessProbe.failureThreshold | default 5 }}
             successThreshold: {{ .Values.custom.scheduler_livenessProbe.successThreshold | default 1 }}
@@ -214,10 +214,11 @@ spec:
               port: 11251
               scheme: HTTP
             initialDelaySeconds: {{ .Values.custom.scheduler_readinessProbe.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.custom.scheduler_readinessProbe.periodSeconds | default 10 }}
+            periodSeconds: {{ .Values.custom.scheduler_readinessProbe.periodSeconds | default 20 }}
             timeoutSeconds: {{ .Values.custom.scheduler_readinessProbe.timeoutSeconds | default 5 }}
             failureThreshold: {{ .Values.custom.scheduler_readinessProbe.failureThreshold | default 5 }}
             successThreshold: {{ .Values.custom.scheduler_readinessProbe.successThreshold | default 1 }}
+          {{- if .Values.custom.scheduler_resources }}
           resources:
           {{- toYaml .Values.custom.scheduler_resources | nindent 12 }}
           {{- end }}
