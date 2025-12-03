@@ -143,6 +143,13 @@ func TestCheckControllers(t *testing.T) {
 			expectErr: nil,
 		},
 		{
+			name: "normal case: use * at the last place when combined with other inputs",
+			serverOption: &ServerOption{
+				Controllers: []string{"-sharding-controller", "*"},
+			},
+			expectErr: nil,
+		},
+		{
 			name: "fail case: use duplicate job-controller",
 			serverOption: &ServerOption{
 				Controllers: []string{"+gc-controller", "+job-controller", "-job-controller"},
@@ -157,11 +164,11 @@ func TestCheckControllers(t *testing.T) {
 			expectErr: fmt.Errorf("controllers option %s cannot have both '-' and '+' prefixes", "job-controller"),
 		},
 		{
-			name: "fail case: use * but combined with other input",
+			name: "fail case: use * at the first place when combined with other input",
 			serverOption: &ServerOption{
 				Controllers: []string{"*", "+job-controller"},
 			},
-			expectErr: fmt.Errorf("wildcard '*' cannot be combined with other input"),
+			expectErr: fmt.Errorf("wildcard '*' can only be placed at the final position when combined with other input"),
 		},
 	}
 

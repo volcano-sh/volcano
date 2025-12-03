@@ -5,6 +5,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+
 	shardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 )
 
@@ -83,12 +84,6 @@ type NodeResourceInfo struct {
 	Annotations       map[string]string
 }
 
-type NodeUtilization struct {
-	CPUUtilization    float64
-	MemoryUtilization float64
-	LastUpdated       time.Time
-}
-
 // ShardAssignment represents assignment for a single scheduler
 type ShardAssignment struct {
 	SchedulerName string
@@ -105,13 +100,6 @@ type AssignmentChangeEvent struct {
 	NewNodes      []string
 	Version       string
 	Timestamp     time.Time
-}
-
-// ShardingStrategyPlugin interface for sharding strategy plugins
-type ShardingStrategyPlugin interface {
-	Name() string
-	SupportsStrategy(strategy ShardStrategy) bool
-	ScoreNode(node *corev1.Node, strategy ShardStrategy, resourceInfo *NodeResourceInfo) (float64, string)
 }
 
 // AssignmentContext contains context information for shard assignment
