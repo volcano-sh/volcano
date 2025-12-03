@@ -92,19 +92,68 @@ func RegisterDevice(deviceName string) {
 	RegisteredDevices = append(RegisteredDevices, deviceName)
 }
 
-var IgnoredDevicesList = ignoredDevicesList{}
+var IgnoredDevicesList = newIgnoredDevicesList()
 
 type ignoredDevicesList struct {
 	sync.RWMutex
 	ignoredDevices []string
+	ignoredIndex   map[string]struct{}
+}
+
+func newIgnoredDevicesList() *ignoredDevicesList {
+	return &ignoredDevicesList{
+		ignoredIndex: make(map[string]struct{}),
+	}
 }
 
 func (l *ignoredDevicesList) Set(deviceLists ...[]string) {
 	l.Lock()
 	defer l.Unlock()
 	l.ignoredDevices = l.ignoredDevices[:0]
+	clear(l.ignoredIndex)
 	for _, devices := range deviceLists {
-		l.ignoredDevices = append(l.ignoredDevices, devices...)
+		for _, device := range devices {
+			if device == "" {
+				continue
+			}
+			if _, exists := l.ignoredIndex[device]; exists {
+				continue
+			}
+			l.ignoredIndex[device] = struct{}{}
+			l.ignoredDevices = append(l.ignoredDevices, device)
+		}
+	}
+}
+
+func (l *ignoredDevicesList) Append(devices ...string) {
+	l.Lock()
+	defer l.Unlock()
+	for _, device := range devices {
+		if device == "" {
+			continue
+		}
+		if _, exists := l.ignoredIndex[device]; exists {
+			continue
+		}
+		l.ignoredIndex[device] = struct{}{}
+		l.ignoredDevices = append(l.ignoredDevices, device)
+	}
+}
+
+func (l *ignoredDevicesList) AppendList(devicesLists ...[]string) {
+	l.Lock()
+	defer l.Unlock()
+	for _, devices := range devicesLists {
+		for _, device := range devices {
+			if device == "" {
+				continue
+			}
+			if _, exists := l.ignoredIndex[device]; exists {
+				continue
+			}
+			l.ignoredIndex[device] = struct{}{}
+			l.ignoredDevices = append(l.ignoredDevices, device)
+		}
 	}
 }
 
@@ -116,4 +165,12 @@ func (l *ignoredDevicesList) Range(f func(i int, device string) bool) {
 			break
 		}
 	}
+}
+
+func (l *ignoredDevicesList) List() []string {
+	l.RLock()
+	defer l.RUnlock()
+	devices := make([]string, len(l.ignoredDevices))
+	copy(devices, l.ignoredDevices)
+	return devices
 }
