@@ -95,7 +95,8 @@ func TestNodeAdditionAndDeletion(t *testing.T) {
 		InitialObjects: []runtime.Object{
 			CreateTestNode("initial-node", "8", true, nil),
 		},
-		ShardSyncPeriod: 2 * time.Second,
+		SchedulerConfigs: getDefaultTestSchedulerConfigs(),
+		ShardSyncPeriod:  2 * time.Second,
 	}
 
 	testCtrl := NewTestShardingController(t, opt)
