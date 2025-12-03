@@ -44,7 +44,7 @@ const (
 	defaultPodGroupWorkers     = 5
 	defaultQueueWorkers        = 5
 	defaultGCWorkers           = 1
-	defaultControllers         = "*"
+	defaultControllers         = "-sharding-controller,*"
 )
 
 // ServerOption is the main context object for the controllers.
