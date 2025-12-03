@@ -284,3 +284,27 @@ func CleanupController(testCtrl *TestShardingController) {
 		testCtrl.Controller = nil
 	}
 }
+
+// getDefaultTestSchedulerConfigs returns default scheduler configs for testing
+func getDefaultTestSchedulerConfigs() []SchedulerConfigSpec {
+	return []SchedulerConfigSpec{
+		{
+			Name:              "volcano-scheduler",
+			Type:              "volcano",
+			CPUUtilizationMin: 0.0,
+			CPUUtilizationMax: 0.6,
+			PreferWarmupNodes: false,
+			MinNodes:          1,
+			MaxNodes:          10,
+		},
+		{
+			Name:              "agent-scheduler",
+			Type:              "agent",
+			CPUUtilizationMin: 0.7,
+			CPUUtilizationMax: 1.0,
+			PreferWarmupNodes: true,
+			MinNodes:          1,
+			MaxNodes:          10,
+		},
+	}
+}
