@@ -515,13 +515,25 @@ func (ni *NodeInfo) addResource(pod *v1.Pod) {
 
 	// Add an if judgment condition to fix the panic.
 	if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
-		ni.Others[gpushare.DeviceName].(Devices).AddResource(pod)
+		if other, exists := ni.Others[gpushare.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.AddResource(pod)
+			}
+		}
 	}
 	if vgpu.VGPUEnable {
-		ni.Others[vgpu.DeviceName].(Devices).AddResource(pod)
+		if other, exists := ni.Others[vgpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.AddResource(pod)
+			}
+		}
 	}
 	if vnpu.AscendMindClusterVNPUEnable {
-		ni.Others[vnpu.DeviceName].(Devices).AddResource(pod)
+		if other, exists := ni.Others[vnpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.AddResource(pod)
+			}
+		}
 	}
 	if hami.AscendHAMiVNPUEnable {
 		for _, name := range hami.GetAscendDeviceNames() {
@@ -537,13 +549,25 @@ func (ni *NodeInfo) addResource(pod *v1.Pod) {
 // subResource is used to subtract sharable devices
 func (ni *NodeInfo) subResource(pod *v1.Pod) {
 	if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
-		ni.Others[gpushare.DeviceName].(Devices).SubResource(pod)
+		if other, exists := ni.Others[gpushare.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.SubResource(pod)
+			}
+		}
 	}
 	if vgpu.VGPUEnable {
-		ni.Others[vgpu.DeviceName].(Devices).SubResource(pod)
+		if other, exists := ni.Others[vgpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.SubResource(pod)
+			}
+		}
 	}
 	if vnpu.AscendMindClusterVNPUEnable {
-		ni.Others[vnpu.DeviceName].(Devices).SubResource(pod)
+		if other, exists := ni.Others[vnpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.SubResource(pod)
+			}
+		}
 	}
 	if hami.AscendHAMiVNPUEnable {
 		for _, name := range hami.GetAscendDeviceNames() {
