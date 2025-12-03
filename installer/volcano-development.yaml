@@ -26,32 +26,20 @@ metadata:
   name: volcano-admission-configmap
   namespace: volcano-system
 data:
-  volcano-admission.conf: |
-    #resourceGroups:
-    #- resourceGroup: management                    # set the resource group name
-    #  object:
-    #    key: namespace                             # set the field and the value to be matched
-    #    value:
-    #    - mng-ns-1
-    #  schedulerName: default-scheduler             # set the scheduler for patching
-    #  tolerations:                                 # set the tolerations for patching
-    #  - effect: NoSchedule
-    #    key: taint
-    #    operator: Exists
-    #  labels:
-    #    volcano.sh/nodetype: management           # set the nodeSelector for patching
-    #- resourceGroup: cpu
-    #  object:
-    #    key: annotation
-    #    value:
-    #    - "volcano.sh/resource-group: cpu"
-    #  schedulerName: volcano
-    #  labels:
-    #    volcano.sh/nodetype: cpu
-    #- resourceGroup: gpu                          # if the object is unsetted, default is:  the key is annotation,
-    #  schedulerName: volcano                      # the annotation key is fixed and is "volcano.sh/resource-group", The corresponding value is the resourceGroup field
-    #  labels:
-    #    volcano.sh/nodetype: gpu
+  volcano-admission.conf: "#resourceGroups:\r\n#- resourceGroup: management                    #
+    set the resource group name\r\n#  object:\r\n#    key: namespace                             #
+    set the field and the value to be matched\r\n#    value:\r\n#    - mng-ns-1\r\n#
+    \ schedulerName: default-scheduler             # set the scheduler for patching\r\n#
+    \ tolerations:                                 # set the tolerations for patching\r\n#
+    \ - effect: NoSchedule\r\n#    key: taint\r\n#    operator: Exists\r\n#  labels:\r\n#
+    \   volcano.sh/nodetype: management           # set the nodeSelector for patching\r\n#-
+    resourceGroup: cpu\r\n#  object:\r\n#    key: annotation\r\n#    value:\r\n#    -
+    \"volcano.sh/resource-group: cpu\"\r\n#  schedulerName: volcano\r\n#  labels:\r\n#
+    \   volcano.sh/nodetype: cpu\r\n#- resourceGroup: gpu                          #
+    if the object is unsetted, default is:  the key is annotation,\r\n#  schedulerName:
+    volcano                      # the annotation key is fixed and is \"volcano.sh/resource-group\",
+    The corresponding value is the resourceGroup field\r\n#  labels:\r\n#    volcano.sh/nodetype:
+    gpu\r\n"
 ---
 # Source: volcano/templates/admission.yaml
 kind: ClusterRole
@@ -162,21 +150,21 @@ spec:
               path: /healthz
               port: 11251
               scheme: HTTPS
-            initialDelaySeconds: {{ .Values.custom.admission_livenessProbe.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.custom.admission_livenessProbe.periodSeconds | default 20 }}
-            timeoutSeconds: {{ .Values.custom.admission_livenessProbe.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.custom.admission_livenessProbe.failureThreshold | default 5 }}
-            successThreshold: {{ .Values.custom.admission_livenessProbe.successThreshold | default 1 }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
           readinessProbe:
             httpGet:
               path: /healthz
               port: 11251
               scheme: HTTPS
-            initialDelaySeconds: {{ .Values.custom.admission_readinessProbe.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.custom.admission_readinessProbe.periodSeconds | default 20 }}
-            timeoutSeconds: {{ .Values.custom.admission_readinessProbe.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.custom.admission_readinessProbe.failureThreshold | default 5 }}
-            successThreshold: {{ .Values.custom.admission_readinessProbe.successThreshold | default 1 }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
           volumeMounts:
             - mountPath: /admission.local.config/certificates
               name: admission-certs
@@ -8981,21 +8969,21 @@ spec:
               path: /healthz
               port: 11251
               scheme: HTTP
-            initialDelaySeconds: {{ .Values.custom.controller_livenessProbe.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.custom.controller_livenessProbe.periodSeconds | default 20 }}
-            timeoutSeconds: {{ .Values.custom.controller_livenessProbe.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.custom.controller_livenessProbe.failureThreshold | default 5 }}
-            successThreshold: {{ .Values.custom.controller_livenessProbe.successThreshold | default 1 }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
           readinessProbe:
             httpGet:
               path: /healthz
               port: 11251
               scheme: HTTP
-            initialDelaySeconds: {{ .Values.custom.controller_readinessProbe.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.custom.controller_readinessProbe.periodSeconds | default 20 }}
-            timeoutSeconds: {{ .Values.custom.controller_readinessProbe.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.custom.controller_readinessProbe.failureThreshold | default 5 }}
-            successThreshold: {{ .Values.custom.controller_readinessProbe.successThreshold | default 1 }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
           args:
             - --logtostderr
             - --enable-healthz=true
@@ -9038,22 +9026,11 @@ metadata:
   name: volcano-scheduler-configmap
   namespace: volcano-system
 data:
-  volcano-scheduler.conf: |
-    actions: "enqueue, allocate, backfill"
-    tiers:
-    - plugins:
-      - name: priority
-      - name: gang
-        enablePreemptable: false
-      - name: conformance
-    - plugins:
-      - name: overcommit
-      - name: drf
-        enablePreemptable: false
-      - name: predicates
-      - name: proportion
-      - name: nodeorder
-      - name: binpack
+  volcano-scheduler.conf: "actions: \"enqueue, allocate, backfill\"\r\ntiers:\r\n- plugins:\r\n
+    \ - name: priority\r\n  - name: gang\r\n    enablePreemptable: false\r\n  - name:
+    conformance\r\n- plugins:\r\n  - name: overcommit\r\n  - name: drf\r\n    enablePreemptable:
+    false\r\n  - name: predicates\r\n  - name: proportion\r\n  - name: nodeorder\r\n
+    \ - name: binpack\r\n"
 ---
 # Source: volcano/templates/scheduler.yaml
 kind: ClusterRole
@@ -9212,21 +9189,21 @@ spec:
               path: /healthz
               port: 11251
               scheme: HTTP
-            initialDelaySeconds: {{ .Values.custom.scheduler_livenessProbe.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.custom.scheduler_livenessProbe.periodSeconds | default 20 }}
-            timeoutSeconds: {{ .Values.custom.scheduler_livenessProbe.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.custom.scheduler_livenessProbe.failureThreshold | default 5 }}
-            successThreshold: {{ .Values.custom.scheduler_livenessProbe.successThreshold | default 1 }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
           readinessProbe:
             httpGet:
               path: /healthz
               port: 11251
               scheme: HTTP
-            initialDelaySeconds: {{ .Values.custom.scheduler_readinessProbe.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.custom.scheduler_readinessProbe.periodSeconds | default 20 }}
-            timeoutSeconds: {{ .Values.custom.scheduler_readinessProbe.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.custom.scheduler_readinessProbe.failureThreshold | default 5 }}
-            successThreshold: {{ .Values.custom.scheduler_readinessProbe.successThreshold | default 1 }}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
