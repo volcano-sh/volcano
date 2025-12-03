@@ -19,6 +19,7 @@ package options
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,7 +105,7 @@ func TestAddFlags(t *testing.T) {
 		WorkerThreadsForPG:    5,
 		WorkerThreadsForQueue: 5,
 		WorkerThreadsForGC:    1,
-		Controllers:           []string{"*"},
+		Controllers:           strings.Split("-sharding-controller,*", ","),
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{features.ResourceTopology: false}
 
