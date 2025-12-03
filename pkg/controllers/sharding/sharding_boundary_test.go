@@ -119,8 +119,9 @@ func TestBoundaryUtilization(t *testing.T) {
 func TestEmptyCluster(t *testing.T) {
 	// Setup controller with no initial objects
 	opt := &TestControllerOption{
-		InitialObjects:  []runtime.Object{},
-		ShardSyncPeriod: 2 * time.Second,
+		InitialObjects:   []runtime.Object{},
+		SchedulerConfigs: getDefaultTestSchedulerConfigs(),
+		ShardSyncPeriod:  2 * time.Second,
 	}
 
 	testCtrl := NewTestShardingController(t, opt)
@@ -164,7 +165,8 @@ func TestEmptyCluster(t *testing.T) {
 func TestMaxUtilization(t *testing.T) {
 	// Setup controller
 	opt := &TestControllerOption{
-		ShardSyncPeriod: 2 * time.Second,
+		ShardSyncPeriod:  2 * time.Second,
+		SchedulerConfigs: getDefaultTestSchedulerConfigs(),
 	}
 
 	testCtrl := NewTestShardingController(t, opt)
