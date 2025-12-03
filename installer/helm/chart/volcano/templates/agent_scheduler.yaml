@@ -215,6 +215,9 @@ spec:
             - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
             {{- end}}
             - --worker-count={{.Values.custom.agent_scheduler_worker_count}}
+            {{- if .Values.custom.schedule_sharding_enable }}
+            - --schedule-sharding=true
+            {{- end}}
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1
           env:

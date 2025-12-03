@@ -35,7 +35,7 @@ import (
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	schedutil "k8s.io/kubernetes/pkg/scheduler/util"
-
+	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -472,4 +472,51 @@ func (sc *SchedulerCache) nodeCanAddCache(node *v1.Node) bool {
 	}
 	klog.Infof("node %s ignore add/update/delete into schedulerCache", node.Name)
 	return false
+}
+
+// AddNode add node to scheduler cache
+func (sc *SchedulerCache) AddNodeShard(obj interface{}) {
+	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert to *nodeshardv1alpha1.NodeShard: %v", obj)
+		return
+	}
+	sc.addOrUpdateNodeShard(shard)
+}
+
+// UpdateNode update node to scheduler cache
+func (sc *SchedulerCache) UpdateNodeShard(oldObj, newObj interface{}) {
+	newShard, ok := newObj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert newObj to *nodeshardv1alpha1.NodeShard: %v", newObj)
+		return
+	}
+	sc.addOrUpdateNodeShard(newShard)
+}
+
+// DeleteNode delete node from scheduler cache
+func (sc *SchedulerCache) DeleteNodeShard(obj interface{}) {
+	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert to *nodeshardv1alpha1.NodeShard: %v", obj)
+		return
+	}
+	sc.deleteNodeShard(shard.Name)
+}
+
+func (sc *SchedulerCache) addOrUpdateNodeShard(shard *nodeshardv1alpha1.NodeShard) {
+	shardInfo := schedulingapi.NewNodeShardInfo(shard)
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	sc.NodeShards[shard.Name] = shardInfo
+	sc.ShardCoordinator.RefreshNodeShards(sc.NodeShards)
+}
+
+func (sc *SchedulerCache) deleteNodeShard(name string) {
+	if _, ok := sc.NodeShards[name]; ok {
+		sc.Mutex.Lock()
+		defer sc.Mutex.Unlock()
+		delete(sc.NodeShards, name)
+		sc.ShardCoordinator.RefreshNodeShards(sc.NodeShards)
+	}
 }

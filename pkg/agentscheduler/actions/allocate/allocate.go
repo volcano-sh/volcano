@@ -19,8 +19,10 @@ package allocate
 import (
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -84,8 +86,28 @@ func (alloc *Action) allocateTask(schedCtx *agentapi.SchedulingContext) error {
 
 	nodes := alloc.fwk.VolcanoNodeInfos()
 
+	shardingMode := options.ServerOpts.ShardingMode
+
+	nodesToPredicate := make([]*api.NodeInfo, 0, len(schedCtx.NodesInShard))
+	nodesNotInShard := make([]*api.NodeInfo, 0, len(nodes)-len(schedCtx.NodesInShard))
+	if shardingMode == options.HardShardingMode {
+		//use nodes in shard only
+		for _, node := range nodes {
+			if schedCtx.NodesInShard.Has(node.Name) {
+				nodesToPredicate = append(nodesToPredicate, node)
+			} else {
+				nodesNotInShard = append(nodesNotInShard, node)
+			}
+		}
+		if len(schedCtx.NodesInShard) <= 0 {
+			klog.Errorf("No nodes in shard for this scheduler")
+		}
+	} else {
+		nodesToPredicate = nodes
+	}
+
 	// TODO: check is pod allocatable
-	klog.V(3).Infof("There are <%d> nodes for task <%v/%v>", len(nodes), task.Namespace, task.Name)
+	klog.V(3).Infof("There are <%d> nodes for task <%v/%v>", len(nodesToPredicate), task.Namespace, task.Name)
 
 	if err := alloc.fwk.PrePredicateFn(task); err != nil {
 		err = fmt.Errorf("pre-predicate failed for task %s/%s: %w", task.Namespace, task.Name, err)
@@ -93,15 +115,21 @@ func (alloc *Action) allocateTask(schedCtx *agentapi.SchedulingContext) error {
 		return err
 	}
 
-	predicatedNodes, err := alloc.predicateFeasibleNodes(task, nodes)
+	predicatedNodes, err := alloc.predicateFeasibleNodes(task, nodesToPredicate)
 	if len(predicatedNodes) == 0 {
 		klog.ErrorS(err, "Predicate failed", "task", klog.KRef(task.Namespace, task.Name))
 		if err == nil {
 			return fmt.Errorf(api.AllNodeUnavailableMsg)
+		} else {
+			if shardingMode == options.HardShardingMode {
+				for _, node := range nodesNotInShard {
+					err.SetNodeError(node.Name, fmt.Errorf("node isn't in scheduler node shard"))
+				}
+			}
 		}
 		return err
 	}
-	bestNodes := alloc.prioritizeNodes(task, predicatedNodes)
+	bestNodes := alloc.prioritizeNodes(task, predicatedNodes, schedCtx.NodesInShard, shardingMode)
 	result := &agentapi.PodScheduleResult{
 		SuggestedNodes: bestNodes,
 		SchedCtx:       schedCtx,
@@ -112,7 +140,7 @@ func (alloc *Action) allocateTask(schedCtx *agentapi.SchedulingContext) error {
 	return nil
 }
 
-func (alloc *Action) predicateFeasibleNodes(task *api.TaskInfo, allNodes []*api.NodeInfo) ([]*api.NodeInfo, error) {
+func (alloc *Action) predicateFeasibleNodes(task *api.TaskInfo, allNodes []*api.NodeInfo) ([]*api.NodeInfo, *api.FitErrors) {
 	var predicateNodes []*api.NodeInfo
 	var fitErrors *api.FitErrors
 	ph := util.NewPredicateHelper()
@@ -151,32 +179,54 @@ func (alloc *Action) predicateFeasibleNodes(task *api.TaskInfo, allNodes []*api.
 }
 
 // prioritizeNodes selects the highest score node that idle resource meet task requirement.
-func (alloc *Action) prioritizeNodes(task *api.TaskInfo, predicateNodes []*api.NodeInfo) []*api.NodeInfo {
-	var idleCandidateNodes []*api.NodeInfo
+func (alloc *Action) prioritizeNodes(task *api.TaskInfo, predicateNodes []*api.NodeInfo, nodesInShard sets.Set[string], shardMode string) []*api.NodeInfo {
+	var candidateNodes [2][]*api.NodeInfo
+	var candidateNodesInShard []*api.NodeInfo
+	var candidateNodesInOtherShards []*api.NodeInfo
 	for _, n := range predicateNodes {
 		if task.InitResreq.LessEqual(n.Idle, api.Zero) {
-			idleCandidateNodes = append(idleCandidateNodes, n)
+			switch shardMode {
+			case options.NoneShardingMode:
+			case options.HardShardingMode:
+				candidateNodesInShard = append(candidateNodesInShard, n) //in hardmode, all predicates nodes are in shard
+			case options.SoftShardingMode:
+				if nodesInShard.Has(n.Name) {
+					candidateNodesInShard = append(candidateNodesInShard, n)
+				} else {
+					candidateNodesInOtherShards = append(candidateNodesInOtherShards, n)
+				}
+			}
 		} else {
 			klog.V(5).Infof("Predicate filtered node %v, idle: %v do not meet the requirements of task: %v",
 				n.Name, n.Idle, task.Name)
 		}
 	}
+	candidateNodes[0] = candidateNodesInShard
+	candidateNodes[1] = candidateNodesInOtherShards
 
 	var bestNodes = []*api.NodeInfo{}
-	if klog.V(5).Enabled() {
-		for _, node := range idleCandidateNodes {
-			klog.V(5).Infof("node %v, idle: %v", node.Name, node.Idle)
+	for index, nodes := range candidateNodes {
+		if index > 0 && shardMode != options.SoftShardingMode {
+			//only SoftShardingMode need check nodes in other shard
+			break
 		}
-	}
-	switch {
-	case len(idleCandidateNodes) == 0:
-		klog.V(5).Infof("Task: %v, no matching node is found in the idleCandidateNodes list.", task.Name)
-	case len(idleCandidateNodes) == 1: // If only one node after predicate, just use it.
-		bestNodes = append(bestNodes, idleCandidateNodes[0])
-	case len(idleCandidateNodes) > 1: // If more than one node after predicate, using "the best" one
-		nodeScores := util.PrioritizeNodes(task, idleCandidateNodes, alloc.fwk.BatchNodeOrderFn, alloc.fwk.NodeOrderMapFn, alloc.fwk.NodeOrderReduceFn)
-
-		bestNodes, _ = util.SelectBestNodesAndScores(nodeScores, alloc.candidateNodeCount)
+		if klog.V(5).Enabled() {
+			for _, node := range nodes {
+				klog.V(5).Infof("node %v, idle: %v", node.Name, node.Idle)
+			}
+		}
+		switch {
+		case len(nodes) == 0:
+			klog.V(5).Infof("Task: %v, no matching node is found in the idleCandidateNodes list.", task.Name)
+		case len(nodes) == 1: // If only one node after predicate, just use it.
+			bestNodes = append(bestNodes, nodes[0])
+		case len(nodes) > 1: // If more than one node after predicate, using "the best" one
+			nodeScores := util.PrioritizeNodes(task, nodes, alloc.fwk.BatchNodeOrderFn, alloc.fwk.NodeOrderMapFn, alloc.fwk.NodeOrderReduceFn)
+			bestNodes, _ = util.SelectBestNodesAndScores(nodeScores, nodesInShard, shardMode, alloc.candidateNodeCount)
+		}
+		if len(bestNodes) > 0 {
+			break
+		}
 	}
 	return bestNodes
 }

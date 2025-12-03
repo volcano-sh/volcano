@@ -50,6 +50,10 @@ const (
 	defaultLockObjectNamespace        = "volcano-system"
 	defaultNodeWorkers                = 20
 	defaultScheduleWorkerCount        = 1
+
+	HardShardingMode = "hard"
+	SoftShardingMode = "soft"
+	NoneShardingMode = "none"
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -92,6 +96,9 @@ type ServerOption struct {
 
 	//Count of workers for scheduling
 	ScheduleWorkerCount uint32
+
+	//enable sheduling with shard
+	ShardingMode string
 }
 
 // DecryptFunc is custom function to parse ca file
@@ -145,6 +152,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 	fs.Uint32Var(&s.ScheduleWorkerCount, "worker-count", defaultScheduleWorkerCount, "The flag indicates the number of worker threads for scheduling.")
+	fs.StringVar(&s.ShardingMode, "schedule-sharding-mode", NoneShardingMode, "The node sharding mode for scheduling")
 }
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.

@@ -25,6 +25,7 @@ import (
 	"context"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -94,6 +95,12 @@ type Cache interface {
 
 	// GetTaskInfo returns the TaskInfo from the cache with the given taskID.
 	GetTaskInfo(taskID api.TaskID) (*api.TaskInfo, bool)
+
+	//UpdateNodesShardStatus update status in nodeshard
+	UpdateNodesShardStatus(shardName string, usedNodeInCache sets.Set[string]) error
+
+	// GetAndSyncNodesForWorker get nodes to be used and triger nodeshard sync if necessary
+	GetAndSyncNodesForWorker(index uint32) sets.Set[string]
 }
 
 // Binder interface for binding task and hostname
