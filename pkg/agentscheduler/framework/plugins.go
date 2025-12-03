@@ -93,7 +93,7 @@ func (f *Framework) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 			}
 			err := pfn(task, node)
 			if err != nil {
-				f.PredicateFailedFns.Insert(plugin.Name)
+				f.UpdateFailedFns(f.PredicateFailedFns, plugin.Name)
 				return err
 			}
 		}
@@ -115,7 +115,7 @@ func (f *Framework) PrePredicateFn(task *api.TaskInfo) error {
 			}
 			err := pfn(task)
 			if err != nil {
-				f.PrePredicateFailedFns.Insert(plugin.Name)
+				f.UpdateFailedFns(f.PrePredicateFailedFns, plugin.Name)
 				return err
 			}
 		}

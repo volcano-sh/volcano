@@ -49,6 +49,7 @@ import (
 	kubefeatures "k8s.io/kubernetes/pkg/features"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
+	k8smetrics "k8s.io/kubernetes/pkg/scheduler/metrics"
 	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
@@ -128,6 +129,10 @@ type SchedulerCache struct {
 
 	// schedulingQueue is used to store pods waiting to be scheduled
 	schedulingQueue k8sschedulingqueue.SchedulingQueue
+
+	// cancel is used to stop all goroutines started by scheduler cache,
+	// currently is only needed to cancel the scheduling queues' metrics async recorder
+	cancel context.CancelFunc
 }
 
 // TaskCache encapsulates the task map with a seperate lock
@@ -340,6 +345,15 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	// add all events handlers
 	sc.addEventHandler()
 
+	// init scheduling queue
+	ctx, cancel := context.WithCancel(context.Background())
+	metricsRecorder := k8smetrics.NewMetricsAsyncRecorder(1000, time.Second, ctx.Done())
+	sc.cancel = cancel
+
+	queueingHintMapPerProfile := make(k8sschedulingqueue.QueueingHintMapPerProfile)
+	for _, schedulerName := range sc.schedulerNames {
+		queueingHintMapPerProfile[schedulerName] = buildQueueingHintMap()
+	}
 	sc.schedulingQueue = k8sschedulingqueue.NewSchedulingQueue(
 		Less,
 		sc.informerFactory,
@@ -347,11 +361,33 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		k8sschedulingqueue.WithPodInitialBackoffDuration(time.Duration(defaultSchedulerOptions.podInitialBackoffSeconds)*time.Second),
 		k8sschedulingqueue.WithPodMaxBackoffDuration(time.Duration(defaultSchedulerOptions.podMaxBackoffSeconds)*time.Second),
 		k8sschedulingqueue.WithPodMaxInUnschedulablePodsDuration(defaultSchedulerOptions.podMaxInUnschedulablePodsDuration),
+		k8sschedulingqueue.WithMetricsRecorder(metricsRecorder),
+		k8sschedulingqueue.WithQueueingHintMapPerProfile(queueingHintMapPerProfile),
 	)
 
 	sc.ConflictAwareBinder = NewConflictAwareBinder(sc, sc.schedulingQueue)
 
 	return sc
+}
+
+// defaultQueueingHintFn is the default queueing hint function.
+// It always returns Queue as the queueing hint.
+var defaultQueueingHintFn = func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fwk.QueueingHint, error) {
+	return fwk.Queue, nil
+}
+
+// buildQueueingHintMap builds the queueing hint map for the scheduling queue.
+func buildQueueingHintMap() k8sschedulingqueue.QueueingHintMap {
+	queueingHintMap := make(k8sschedulingqueue.QueueingHintMap)
+
+	// Currently, we only register a wild card event with the default queueing hint function.
+	// TODO: Support more specific events and queueing hint functions.
+	wildCardEvent := fwk.ClusterEvent{Resource: fwk.WildCard, ActionType: fwk.All}
+	queueingHintMap[wildCardEvent] = append(queueingHintMap[wildCardEvent], &k8sschedulingqueue.QueueingHintFunction{
+		QueueingHintFn: defaultQueueingHintFn,
+	})
+
+	return queueingHintMap
 }
 
 func (sc *SchedulerCache) addEventHandler() {
@@ -504,7 +540,17 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 
 	go wait.Until(sc.processBindTask, time.Millisecond*20, stopCh)
 
+	ctx := context.TODO()
+	logger := klog.FromContext(ctx)
+	sc.schedulingQueue.Run(logger)
+
 	sc.ConflictAwareBinder.Run(stopCh)
+
+	go func() {
+		<-stopCh
+		sc.cancel() // cancel other goroutines such as metricsRecorder
+		sc.schedulingQueue.Close()
+	}()
 }
 
 // WaitForCacheSync sync the cache with the api server

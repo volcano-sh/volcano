@@ -89,8 +89,11 @@ func (alloc *Action) allocateTask(task *api.TaskInfo) error {
 	}
 
 	predicatedNodes, err := alloc.predicateFeasibleNodes(task, nodes)
-	if err != nil {
+	if len(predicatedNodes) == 0 {
 		klog.ErrorS(err, "Predicate failed", "task", klog.KRef(task.Namespace, task.Name))
+		if err == nil {
+			return fmt.Errorf(api.AllNodeUnavailableMsg)
+		}
 		return err
 	}
 	bestNodes := alloc.prioritizeNodes(task, predicatedNodes)

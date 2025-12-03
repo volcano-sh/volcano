@@ -17,6 +17,8 @@ limitations under the License.
 package framework
 
 import (
+	"sync"
+
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -51,6 +53,9 @@ type Framework struct {
 	// TODO: Implement QueueingHint and set these failed plugins in queuedPodInfo.
 	PrePredicateFailedFns sets.Set[string]
 	PredicateFailedFns    sets.Set[string]
+	// This lock is mainly used for protecting the above two sets. Because there are concurrent scenarios for Predicates,
+	// requiring concurrent updates to Predicate/PrePredicate failed fns
+	Mutex sync.RWMutex
 
 	Cache cache.Cache
 
@@ -72,16 +77,18 @@ func NewFramework(actions []Action, tiers []conf.Tier, cache cache.Cache, config
 	)
 
 	fwk := &Framework{
-		Plugins:           make(map[string]Plugin),
-		Actions:           actions,
-		Tiers:             tiers,
-		Configurations:    configurations,
-		PredicateFns:      make(map[string]api.PredicateFn),
-		PrePredicateFns:   make(map[string]api.PrePredicateFn),
-		NodeOrderFns:      make(map[string]api.NodeOrderFn),
-		BatchNodeOrderFns: make(map[string]api.BatchNodeOrderFn),
-		NodeMapFns:        make(map[string]api.NodeMapFn),
-		NodeReduceFns:     make(map[string]api.NodeReduceFn),
+		Plugins:               make(map[string]Plugin),
+		Actions:               actions,
+		Tiers:                 tiers,
+		Configurations:        configurations,
+		PredicateFns:          make(map[string]api.PredicateFn),
+		PrePredicateFns:       make(map[string]api.PrePredicateFn),
+		NodeOrderFns:          make(map[string]api.NodeOrderFn),
+		BatchNodeOrderFns:     make(map[string]api.BatchNodeOrderFn),
+		NodeMapFns:            make(map[string]api.NodeMapFn),
+		NodeReduceFns:         make(map[string]api.NodeReduceFn),
+		PrePredicateFailedFns: sets.New[string](),
+		PredicateFailedFns:    sets.New[string](),
 
 		Cache: cache,
 
@@ -137,4 +144,12 @@ func (f *Framework) OnCycleEnd() {
 // GetSnapshot returns the snapshot from the embedded k8sutil.Framework.
 func (f *Framework) GetSnapshot() *k8sutil.Snapshot {
 	return f.Framework.SnapshotSharedLister().(*k8sutil.Snapshot)
+}
+
+// UpdateFailedFns is used to update the failed plugin sets.
+func (f *Framework) UpdateFailedFns(failedFns sets.Set[string], failedPluginName string) {
+	f.Mutex.Lock()
+	defer f.Mutex.Unlock()
+
+	failedFns.Insert(failedPluginName)
 }
