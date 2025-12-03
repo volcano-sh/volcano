@@ -358,6 +358,9 @@ func (sc *SchedulerCache) AddOrUpdateNode(node *v1.Node) error {
 	if sc.Nodes[node.Name] != nil {
 		sc.Nodes[node.Name].SetNode(node)
 		sc.removeNodeImageStates(node.Name)
+		// TODO The generation needs to be optimized to increment globally by one.
+		sc.Nodes[node.Name].Generation++
+		klog.V(5).Infof("Node %s added/updated, generation incremented to %d", node.Name, sc.Nodes[node.Name].Generation)
 	} else {
 		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
 	}

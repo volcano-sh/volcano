@@ -92,6 +92,9 @@ type NodeInfo struct {
 	// state information.
 	ImageStates map[string]*fwk.ImageStateSummary
 
+	// Generation is incremented every time the cache is updated (node add/update/delete)
+	Generation int64
+
 	// BindGeneration is used to check conflict before binding
 	BindGeneration int64
 }

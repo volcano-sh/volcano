@@ -899,6 +899,36 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 func (sc *SchedulerCache) UpdateSnapshot(snapshot *k8sutil.Snapshot) error {
 	//TODO: update the passed-in snapshot with the latest cache info
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	klog.V(5).Infof("begin to update the snapshot ...")
+	klog.V(5).Infof("the snapshot is %v", snapshot)
+
+	// Record the names of nodes that exist in the cache for later deletion of nodes that do not exist in the snapshot.
+	currentNodeNames := make(map[string]bool)
+	for nodeName, nodeInfo := range sc.Nodes {
+		klog.V(5).Infof("current node name in cache is %s", nodeName)
+		currentNodeNames[nodeName] = true
+		if !nodeInfo.Ready() {
+			klog.V(5).Infof("Node (%s) is not ready, skip to update node snapshot", nodeName)
+			continue
+		}
+		// TODO Currently, all information is copied via Clone; subsequent updates will be incremental.
+		snapshot.AddOrUpdateNode(nodeInfo)
+		klog.V(5).Infof("Updated node %s in snapshot", nodeName)
+	}
+
+	// Remove deleted nodes and rebuild node lists in place
+	snapshot.RemoveDeletedNodesFromSnapshot(currentNodeNames)
+	// TODO The generation field in multi-work scenarios needs to be redesigned.
+	snapshot.Generation++
+	klog.V(4).Infof("Snapshot updated: generation=%d, total nodes=%d",
+		snapshot.Generation, len(snapshot.GetFwkNodeInfoMap()))
+
+	// TODO just for debugging code, will be removed in the future.
+	klog.V(5).Infof("Snapshot updated: node list len is %d, vc node list: %v, k8s node list: %v, vc node map: %v, k8s node map: %v",
+		len(snapshot.GetFwkNodeInfoList()), snapshot.GetFwkNodeInfoList(), snapshot.GetFwkNodeInfoList(), snapshot.GetVolcanoNodeInfoMap(), snapshot.GetFwkNodeInfoMap())
 	return nil
 }
 
@@ -953,7 +983,7 @@ func (sc *SchedulerCache) RegisterBinder(name string, binder interface{}) {
 	sc.binderRegistry.Register(name, binder)
 }
 
-// TODO: refer to UpdateTaskStatus
+// UpdateTaskStatus TODO: refer to update task status
 func (sc *SchedulerCache) UpdateTaskStatus(task *api.TaskInfo, status api.TaskStatus) error {
 	task.Status = status
 	return nil

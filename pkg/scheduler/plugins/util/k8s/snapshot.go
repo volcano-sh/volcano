@@ -41,8 +41,8 @@ type Snapshot struct {
 	fwkInfo
 	volcanoInfo
 
-	// generation is the snapshot generation, used to identify whether the snapshot is stale.
-	//generation int64
+	// Generation is the snapshot Generation, used to identify whether the snapshot is stale.
+	Generation int64
 }
 
 // fwkInfo holds snapshot information from the kube-scheduler framework.
@@ -106,6 +106,147 @@ func NewSnapshot(nodeInfoMap map[string]fwk.NodeInfo) *Snapshot {
 	return s
 }
 
+// AddOrUpdateNode adds or updates node information in both fwkInfo and volcanoInfo.
+func (s *Snapshot) AddOrUpdateNode(nodeInfo *api.NodeInfo) {
+	// Create Volcano NodeInfo
+	volcanoNodeInfo := nodeInfo.Clone()
+	nodeName := volcanoNodeInfo.Node.Name
+	// Create k8s NodeInfo from vcNodeInfo
+	fwkNodeInfo := framework.NewNodeInfo(volcanoNodeInfo.Pods()...)
+	fwkNodeInfo.SetNode(volcanoNodeInfo.Node)
+
+	// Update volcano node information
+	if _, exists := s.volcanoInfo.nodeInfoMap[nodeName]; !exists {
+		// New node, add to list
+		s.volcanoInfo.nodeInfoList = append(s.volcanoInfo.nodeInfoList, volcanoNodeInfo)
+	} else {
+		// Update existing node in list
+		for i, n := range s.volcanoInfo.nodeInfoList {
+			if n.Node.Name == nodeName {
+				s.volcanoInfo.nodeInfoList[i] = volcanoNodeInfo
+				break
+			}
+		}
+	}
+	s.volcanoInfo.nodeInfoMap[nodeName] = volcanoNodeInfo
+
+	// Update framework node information
+	wasInAffinityList := false
+	wasInRequiredAntiAffinityList := false
+
+	// Check if node was in affinity lists
+	if oldNodeInfo, exists := s.fwkInfo.nodeInfoMap[nodeName]; exists {
+		if len(oldNodeInfo.GetPodsWithAffinity()) > 0 {
+			wasInAffinityList = true
+		}
+		if len(oldNodeInfo.GetPodsWithRequiredAntiAffinity()) > 0 {
+			wasInRequiredAntiAffinityList = true
+		}
+	}
+
+	if _, exists := s.fwkInfo.nodeInfoMap[nodeName]; !exists {
+		// New node, add to list
+		s.fwkInfo.nodeInfoList = append(s.fwkInfo.nodeInfoList, fwkNodeInfo)
+	} else {
+		// Update existing node in list
+		for i, n := range s.fwkInfo.nodeInfoList {
+			if n.Node().Name == nodeName {
+				s.fwkInfo.nodeInfoList[i] = fwkNodeInfo
+				break
+			}
+		}
+	}
+	s.fwkInfo.nodeInfoMap[nodeName] = fwkNodeInfo
+
+	// Update affinity lists if needed
+	hasAffinityPods := len(fwkNodeInfo.GetPodsWithAffinity()) > 0
+	hasRequiredAntiAffinityPods := len(fwkNodeInfo.GetPodsWithRequiredAntiAffinity()) > 0
+
+	// Update havePodsWithAffinityNodeInfoList
+	s.updateAffinityList(&s.fwkInfo.havePodsWithAffinityNodeInfoList, nodeName, fwkNodeInfo,
+		wasInAffinityList, hasAffinityPods)
+
+	// Update havePodsWithRequiredAntiAffinityNodeInfoList
+	s.updateAffinityList(&s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList, nodeName, fwkNodeInfo,
+		wasInRequiredAntiAffinityList, hasRequiredAntiAffinityPods)
+}
+
+// DeleteNode removes node information from both fwkInfo and volcanoInfo.
+func (s *Snapshot) DeleteNode(nodeName string) {
+	// Remove from volcano map
+	delete(s.volcanoInfo.nodeInfoMap, nodeName)
+	// Remove from framework map
+	delete(s.fwkInfo.nodeInfoMap, nodeName)
+
+	// Remove from volcano list
+	for i, nodeInfo := range s.volcanoInfo.nodeInfoList {
+		// volcano list
+		if nodeInfo.Node.Name == nodeName {
+			s.volcanoInfo.nodeInfoList = append(s.volcanoInfo.nodeInfoList[:i], s.volcanoInfo.nodeInfoList[i+1:]...)
+			// framework list
+			if i < len(s.fwkInfo.nodeInfoList) && s.fwkInfo.nodeInfoList[i].Node().Name == nodeName {
+				s.fwkInfo.nodeInfoList = append(s.fwkInfo.nodeInfoList[:i], s.fwkInfo.nodeInfoList[i+1:]...)
+			} else {
+				// Fallback to scanning if order mismatch
+				for j, fwkNode := range s.fwkInfo.nodeInfoList {
+					if fwkNode.Node().Name == nodeName {
+						s.fwkInfo.nodeInfoList = append(s.fwkInfo.nodeInfoList[:j], s.fwkInfo.nodeInfoList[j+1:]...)
+						break
+					}
+				}
+			}
+			break
+		}
+	}
+
+	// Remove from havePodsWithAffinityNodeInfoList
+	for i, nodeInfo := range s.fwkInfo.havePodsWithAffinityNodeInfoList {
+		if nodeInfo.Node().Name == nodeName {
+			s.fwkInfo.havePodsWithAffinityNodeInfoList = append(
+				s.fwkInfo.havePodsWithAffinityNodeInfoList[:i],
+				s.fwkInfo.havePodsWithAffinityNodeInfoList[i+1:]...)
+			break
+		}
+	}
+
+	// Remove from havePodsWithRequiredAntiAffinityNodeInfoList
+	for i, nodeInfo := range s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList {
+		if nodeInfo.Node().Name == nodeName {
+			s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList = append(
+				s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList[:i],
+				s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList[i+1:]...)
+			break
+		}
+	}
+}
+
+// RemoveDeletedNodesFromSnapshot removes nodes that are not in the cache from the snapshot
+func (s *Snapshot) RemoveDeletedNodesFromSnapshot(currentNodeNames map[string]bool) {
+	for nodeName := range s.volcanoInfo.nodeInfoMap {
+		if !currentNodeNames[nodeName] {
+			s.DeleteNode(nodeName)
+		}
+	}
+}
+
+// updateAffinityList updates an affinity list based on node changes
+func (s *Snapshot) updateAffinityList(list *[]fwk.NodeInfo, nodeName string, nodeInfo fwk.NodeInfo, wasInList, shouldBeInList bool) {
+	// Remove from list if it was there
+	if wasInList {
+		for i, n := range *list {
+			if n.Node().Name == nodeName {
+				*list = append((*list)[:i], (*list)[i+1:]...)
+				break
+			}
+		}
+	}
+
+	// Add to list if it should be there
+	if shouldBeInList {
+		*list = append(*list, nodeInfo)
+	}
+}
+
 // Pods returns a PodLister
 func (s *Snapshot) Pods() scheduler.PodsLister {
 	return podLister(s.fwkInfo.nodeInfoList)
@@ -140,6 +281,26 @@ func (s *Snapshot) GetVolcanoNodeInfo(nodeName string) (*api.NodeInfo, error) {
 		return v, nil
 	}
 	return nil, fmt.Errorf("nodeinfo not found for node name %q", nodeName)
+}
+
+// GetFwkNodeInfoMap returns internal fwk nodeInfoMap
+func (s *Snapshot) GetFwkNodeInfoMap() map[string]fwk.NodeInfo {
+	return s.fwkInfo.nodeInfoMap
+}
+
+// GetVolcanoNodeInfoMap returns internal volcano nodeInfoMap
+func (s *Snapshot) GetVolcanoNodeInfoMap() map[string]*api.NodeInfo {
+	return s.volcanoInfo.nodeInfoMap
+}
+
+// GetFwkNodeInfoList returns internal fwk nodeInfoList
+func (s *Snapshot) GetFwkNodeInfoList() []fwk.NodeInfo {
+	return s.fwkInfo.nodeInfoList
+}
+
+// GetVolcanoNodeInfoList returns internal volcano nodeInfoList
+func (s *Snapshot) GetVolcanoNodeInfoList() []*api.NodeInfo {
+	return s.volcanoInfo.nodeInfoList
 }
 
 type podLister []fwk.NodeInfo
