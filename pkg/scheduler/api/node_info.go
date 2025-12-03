@@ -356,12 +356,14 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 		ni.Others[device_name] = devices
 		ascend_ignored_list = append(ascend_ignored_list, devices.GetIgnoredDevices()...)
 	}
-	IgnoredDevicesList.Set(
+	klog.V(5).Infof("ascend_ignored_list is %v", ascend_ignored_list)
+	IgnoredDevicesList.AppendList(
 		ni.Others[gpushare.DeviceName].(Devices).GetIgnoredDevices(),
 		ni.Others[vgpu.DeviceName].(Devices).GetIgnoredDevices(),
 		ni.Others[vnpu.DeviceName].(Devices).GetIgnoredDevices(),
 		ascend_ignored_list,
 	)
+	klog.V(5).Infof("ignoredDevicesList is %v", IgnoredDevicesList.List())
 }
 
 // setNode sets kubernetes node object to nodeInfo object without assertion
