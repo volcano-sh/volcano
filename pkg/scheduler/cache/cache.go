@@ -151,7 +151,7 @@ type SchedulerCache struct {
 
 	errTasks        workqueue.TypedRateLimitingInterface[string]
 	nodeQueue       workqueue.TypedRateLimitingInterface[string]
-	DeletedJobs     workqueue.TypedRateLimitingInterface[*schedulingapi.JobInfo]
+	DeletedJobs     workqueue.TypedRateLimitingInterface[string]
 	hyperNodesQueue workqueue.TypedRateLimitingInterface[string]
 
 	informerFactory   informers.SharedInformerFactory
@@ -516,6 +516,10 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		workqueue.NewTypedItemExponentialFailureRateLimiter[string](5*time.Millisecond, 1000*time.Second),
 		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
 	)
+	deletedJobsRateLimiter := workqueue.NewTypedMaxOfRateLimiter[string](
+		workqueue.NewTypedItemExponentialFailureRateLimiter[string](5*time.Millisecond, 1000*time.Second),
+		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
+	)
 
 	sc := &SchedulerCache{
 		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
@@ -524,7 +528,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
 		errTasks:            workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[*schedulingapi.JobInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.JobInfo]()),
+		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[string](deletedJobsRateLimiter),
 		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
@@ -1048,46 +1052,70 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 func (sc *SchedulerCache) deleteJob(job *schedulingapi.JobInfo) {
 	klog.V(3).Infof("Try to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
 
-	sc.DeletedJobs.Add(job)
-}
-
-func (sc *SchedulerCache) retryDeleteJob(job *schedulingapi.JobInfo) {
-	klog.V(3).Infof("Retry to delete Job <%v:%v/%v>", job.UID, job.Namespace, job.Name)
-
-	sc.DeletedJobs.AddRateLimited(job)
+	key := sc.generateDeletedJobsKey(job)
+	sc.DeletedJobs.Add(key)
 }
 
 func (sc *SchedulerCache) processCleanupJob() {
-	job, shutdown := sc.DeletedJobs.Get()
+	jobKey, shutdown := sc.DeletedJobs.Get()
 	if shutdown {
 		return
 	}
 
-	defer sc.DeletedJobs.Done(job)
+	klog.V(5).Infof("the length of deletedJobs is %d", sc.DeletedJobs.Len())
+
+	defer sc.DeletedJobs.Done(jobKey)
+
+	jobUID, jobPgUID, err := sc.parseDeletedJobsKey(jobKey)
+	if err != nil {
+		klog.Errorf("Failed to get job for process cleanup job, jobKey: %s, err: %v", jobKey, err)
+		sc.DeletedJobs.Forget(jobKey)
+		return
+	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	if schedulingapi.JobTerminated(job) {
-		oldJob, found := sc.Jobs[job.UID]
-		if !found {
-			klog.V(3).Infof("Failed to find Job <%v:%v/%v>, ignore it", job.UID, job.Namespace, job.Name)
-			sc.DeletedJobs.Forget(job)
-			return
-		}
-		newPgVersion := oldJob.PgUID
-		oldPgVersion := job.PgUID
+	currJob, found := sc.Jobs[schedulingapi.JobID(jobUID)]
+	if !found {
+		klog.V(3).Infof("Failed to find Job <%v>, ignore it", jobUID)
+		sc.DeletedJobs.Forget(jobKey)
+		return
+	}
+
+	if schedulingapi.JobTerminated(currJob) {
+		newPgVersion := string(currJob.PgUID)
+		oldPgVersion := jobPgUID
 		klog.V(5).Infof("Just add pguid:%v, try to delete pguid:%v", newPgVersion, oldPgVersion)
 		if oldPgVersion == newPgVersion {
-			delete(sc.Jobs, job.UID)
-			metrics.DeleteJobMetrics(job.Name, string(job.Queue), job.Namespace)
-			klog.V(3).Infof("Job <%v:%v/%v> was deleted.", job.UID, job.Namespace, job.Name)
+			delete(sc.Jobs, currJob.UID)
+			metrics.DeleteJobMetrics(currJob.Name, string(currJob.Queue), currJob.Namespace)
+			klog.V(3).Infof("Job <%v:%v/%v> was deleted.", currJob.UID, currJob.Namespace, currJob.Name)
 		}
-		sc.DeletedJobs.Forget(job)
+		sc.DeletedJobs.Forget(jobKey)
 	} else {
 		// Retry
-		sc.retryDeleteJob(job)
+		klog.V(3).Infof("Retry to delete Job <%v:%v/%v>", currJob.UID, currJob.Namespace, currJob.Name)
+		sc.DeletedJobs.AddRateLimited(jobKey)
 	}
+}
+
+func (sc *SchedulerCache) generateDeletedJobsKey(job *schedulingapi.JobInfo) string {
+	// Job UID is namespace + / +name, for example: theNs/theJob
+	// Job PgUID is derived from the Job PgUID, for example: d336abea-4f14-42c7-8a6b-092959a31407
+	// In the example above, the key ultimately becomes: theNs/theJob/d336abea-4f14-42c7-8a6b-092959a31407
+	return fmt.Sprintf("%s/%s", job.UID, job.PgUID)
+}
+
+func (sc *SchedulerCache) parseDeletedJobsKey(key string) (jobUID string, jobPgUID string, err error) {
+	i := strings.LastIndex(key, "/")
+	if i == -1 {
+		return "", "", fmt.Errorf("failed to split task key %s", key)
+	}
+
+	jobUID = key[:i]
+	jobPgUID = key[i+1:]
+	return jobUID, jobPgUID, nil
 }
 
 func (sc *SchedulerCache) resyncTask(task *schedulingapi.TaskInfo) {

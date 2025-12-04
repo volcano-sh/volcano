@@ -347,21 +347,26 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 		klog.Warningf("received argument of nil node, no need to set other resources for %s", ni.Name)
 		return
 	}
-
-	ni.Others[gpushare.DeviceName] = gpushare.NewGPUDevices(ni.Name, node)
-	ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
-	ni.Others[vnpu.DeviceName] = vnpu.NewNPUDevices(ni.Name, node)
-	ascend_ignored_list := []string{}
-	for device_name, devices := range hami.NewAscendDevices(ni.Name, node) {
-		ni.Others[device_name] = devices
-		ascend_ignored_list = append(ascend_ignored_list, devices.GetIgnoredDevices()...)
+	ignored_list := []string{}
+	if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
+		ni.Others[gpushare.DeviceName] = gpushare.NewGPUDevices(ni.Name, node)
+		ignored_list = append(ignored_list, gpushare.NewGPUDevices(ni.Name, node).GetIgnoredDevices()...)
 	}
-	IgnoredDevicesList.Set(
-		ni.Others[gpushare.DeviceName].(Devices).GetIgnoredDevices(),
-		ni.Others[vgpu.DeviceName].(Devices).GetIgnoredDevices(),
-		ni.Others[vnpu.DeviceName].(Devices).GetIgnoredDevices(),
-		ascend_ignored_list,
-	)
+	if vgpu.VGPUEnable {
+		ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
+		ignored_list = append(ignored_list, vgpu.NewGPUDevices(ni.Name, node).GetIgnoredDevices()...)
+	}
+	if vnpu.AscendMindClusterVNPUEnable {
+		ni.Others[vnpu.DeviceName] = vnpu.NewNPUDevices(ni.Name, node)
+		ignored_list = append(ignored_list, vnpu.NewNPUDevices(ni.Name, node).GetIgnoredDevices()...)
+	}
+	if hami.AscendHAMiVNPUEnable {
+		for deviceName, devices := range hami.NewAscendDevices(ni.Name, node) {
+			ni.Others[deviceName] = devices
+			ignored_list = append(ignored_list, devices.GetIgnoredDevices()...)
+		}
+	}
+	IgnoredDevicesList.Set(ignored_list)
 }
 
 // setNode sets kubernetes node object to nodeInfo object without assertion
@@ -510,14 +515,32 @@ func (ni *NodeInfo) addResource(pod *v1.Pod) {
 
 	// Add an if judgment condition to fix the panic.
 	if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
-		ni.Others[gpushare.DeviceName].(Devices).AddResource(pod)
-	}
-	ni.Others[vgpu.DeviceName].(Devices).AddResource(pod)
-	ni.Others[vnpu.DeviceName].(Devices).AddResource(pod)
-	for _, name := range hami.GetAscendDeviceNames() {
-		if other, exists := ni.Others[name]; exists {
+		if other, exists := ni.Others[gpushare.DeviceName]; exists {
 			if devices, ok := other.(Devices); ok {
 				devices.AddResource(pod)
+			}
+		}
+	}
+	if vgpu.VGPUEnable {
+		if other, exists := ni.Others[vgpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.AddResource(pod)
+			}
+		}
+	}
+	if vnpu.AscendMindClusterVNPUEnable {
+		if other, exists := ni.Others[vnpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.AddResource(pod)
+			}
+		}
+	}
+	if hami.AscendHAMiVNPUEnable {
+		for _, name := range hami.GetAscendDeviceNames() {
+			if other, exists := ni.Others[name]; exists {
+				if devices, ok := other.(Devices); ok {
+					devices.AddResource(pod)
+				}
 			}
 		}
 	}
@@ -526,14 +549,32 @@ func (ni *NodeInfo) addResource(pod *v1.Pod) {
 // subResource is used to subtract sharable devices
 func (ni *NodeInfo) subResource(pod *v1.Pod) {
 	if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
-		ni.Others[gpushare.DeviceName].(Devices).SubResource(pod)
-	}
-	ni.Others[vgpu.DeviceName].(Devices).SubResource(pod)
-	ni.Others[vnpu.DeviceName].(Devices).SubResource(pod)
-	for _, name := range hami.GetAscendDeviceNames() {
-		if other, exists := ni.Others[name]; exists {
+		if other, exists := ni.Others[gpushare.DeviceName]; exists {
 			if devices, ok := other.(Devices); ok {
 				devices.SubResource(pod)
+			}
+		}
+	}
+	if vgpu.VGPUEnable {
+		if other, exists := ni.Others[vgpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.SubResource(pod)
+			}
+		}
+	}
+	if vnpu.AscendMindClusterVNPUEnable {
+		if other, exists := ni.Others[vnpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.SubResource(pod)
+			}
+		}
+	}
+	if hami.AscendHAMiVNPUEnable {
+		for _, name := range hami.GetAscendDeviceNames() {
+			if other, exists := ni.Others[name]; exists {
+				if devices, ok := other.(Devices); ok {
+					devices.SubResource(pod)
+				}
 			}
 		}
 	}

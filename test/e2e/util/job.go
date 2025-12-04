@@ -593,7 +593,7 @@ func WaitPodPhaseRunningMoreThanNum(ctx *TestContext, namespace string, num int)
 
 func waitJobPhaseExpect(ctx *TestContext, job *batchv1alpha1.Job, state batchv1alpha1.JobPhase, waitTime time.Duration) error {
 	var additionalError error
-	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
+	err := wait.Poll(100*time.Millisecond, waitTime, func() (bool, error) {
 		job, err := ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		expected := job.Status.State.Phase == state
