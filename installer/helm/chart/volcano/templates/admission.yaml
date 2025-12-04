@@ -153,6 +153,26 @@ spec:
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           name: admission
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 11251
+              scheme: HTTPS
+            initialDelaySeconds: {{ .Values.custom.admission_livenessProbe.initialDelaySeconds | default 10 }}
+            periodSeconds: {{ .Values.custom.admission_livenessProbe.periodSeconds | default 20 }}
+            timeoutSeconds: {{ .Values.custom.admission_livenessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.custom.admission_livenessProbe.failureThreshold | default 5 }}
+            successThreshold: {{ .Values.custom.admission_livenessProbe.successThreshold | default 1 }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 11251
+              scheme: HTTPS
+            initialDelaySeconds: {{ .Values.custom.admission_readinessProbe.initialDelaySeconds | default 10 }}
+            periodSeconds: {{ .Values.custom.admission_readinessProbe.periodSeconds | default 20 }}
+            timeoutSeconds: {{ .Values.custom.admission_readinessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.custom.admission_readinessProbe.failureThreshold | default 5 }}
+            successThreshold: {{ .Values.custom.admission_readinessProbe.successThreshold | default 1 }}
           {{- if .Values.custom.admission_resources }}
           resources:
           {{- toYaml .Values.custom.admission_resources | nindent 12 }}
