@@ -17,6 +17,7 @@
 package api
 
 import (
+	"slices"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
@@ -96,34 +97,25 @@ func RegisterDevice(deviceName string) {
 	RegisteredDevices = append(RegisteredDevices, deviceName)
 }
 
-var IgnoredDevicesList = newIgnoredDevicesList()
+var IgnoredDevicesList = ignoredDevicesList{}
 
 type ignoredDevicesList struct {
 	sync.RWMutex
 	ignoredDevices []string
-	ignoredIndex   map[string]struct{}
-}
-
-func newIgnoredDevicesList() *ignoredDevicesList {
-	return &ignoredDevicesList{
-		ignoredIndex: make(map[string]struct{}),
-	}
 }
 
 func (l *ignoredDevicesList) Set(deviceLists ...[]string) {
 	l.Lock()
 	defer l.Unlock()
 	l.ignoredDevices = l.ignoredDevices[:0]
-	clear(l.ignoredIndex)
 	for _, devices := range deviceLists {
 		for _, device := range devices {
 			if device == "" {
 				continue
 			}
-			if _, exists := l.ignoredIndex[device]; exists {
+			if exists := slices.Contains(l.ignoredDevices, device); exists {
 				continue
 			}
-			l.ignoredIndex[device] = struct{}{}
 			l.ignoredDevices = append(l.ignoredDevices, device)
 		}
 	}
@@ -136,10 +128,9 @@ func (l *ignoredDevicesList) Append(devices ...string) {
 		if device == "" {
 			continue
 		}
-		if _, exists := l.ignoredIndex[device]; exists {
+		if exists := slices.Contains(l.ignoredDevices, device); exists {
 			continue
 		}
-		l.ignoredIndex[device] = struct{}{}
 		l.ignoredDevices = append(l.ignoredDevices, device)
 	}
 }
@@ -152,10 +143,9 @@ func (l *ignoredDevicesList) AppendList(devicesLists ...[]string) {
 			if device == "" {
 				continue
 			}
-			if _, exists := l.ignoredIndex[device]; exists {
+			if exists := slices.Contains(l.ignoredDevices, device); exists {
 				continue
 			}
-			l.ignoredIndex[device] = struct{}{}
 			l.ignoredDevices = append(l.ignoredDevices, device)
 		}
 	}
