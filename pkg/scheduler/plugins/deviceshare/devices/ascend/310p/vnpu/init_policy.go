@@ -254,11 +254,6 @@ func initNPUNodeByNodeInf(device *vnpu.NPUDevices, npuNode *api.NodeInfo, device
 }
 
 func setNodeVNPUInfo(device *vnpu.NPUDevices, ni *api.NodeInfo, jobTemplate map[string]map[string]vnpu.VResource) error {
-	device.NPUDevice = vnpu.NPUDevice{
-		Chips:            make(map[int]*vnpu.VChip, util.MapInitNum),
-		UnhealthyChipIds: make(map[int]struct{}),
-	}
-
 	if !checkDyVNodeResourceInitialized(device) {
 		return fmt.Errorf("setNodeVNPUInfo %s: DyVNode resource not initialized", device.NodeInf.Name)
 	}

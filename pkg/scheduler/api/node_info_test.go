@@ -108,6 +108,9 @@ func TestNodeInfo_AddPod(t *testing.T) {
 	}
 
 	for i, test := range tests {
+		gpushare.GpuSharingEnable = true
+		vgpu.VGPUEnable = true
+		vnpu.AscendMindClusterVNPUEnable = true
 		ni := NewNodeInfo(test.node)
 		for _, pod := range test.pods {
 			pi := NewTaskInfo(pod)
