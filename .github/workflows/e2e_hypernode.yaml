@@ -8,10 +8,14 @@ on:
   pull_request:
 
 jobs:
+  build-images:
+    uses: ./.github/workflows/images.yaml
+
   e2e_hypernode:
     runs-on: ubuntu-24.04
     name: E2E about Hypernode
     timeout-minutes: 40
+    needs: build-images
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -49,10 +53,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
       
+      - name: Download Images
+        uses: actions/download-artifact@v4
+        with:
+          name: volcano-images
+          path: images
+
+      - name: Load Images
+        run: |
+          for image in images/*.tar; do
+            docker load -i $image
+          done
+
       - name: Run E2E Tests
         run: |
           export ARTIFACTS_PATH=${{ github.workspace }}/e2e-hypernode-logs
-          make e2e-test-hypernode CC=/usr/local/musl/bin/musl-gcc
+          E2E_TYPE=HYPERNODE ./hack/run-e2e-kind.sh
 
       - name: Upload e2e hypernode logs
         if: '!success()'
