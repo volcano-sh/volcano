@@ -47,7 +47,7 @@ func Test_ignoredDevicesList_Set_BasicUsage(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lst := newIgnoredDevicesList()
+			lst := ignoredDevicesList{}
 			lst.Set(tt.deviceLists...)
 			assert.Equal(t, tt.expectedIgnoredDevices, lst.ignoredDevices)
 		})
@@ -55,7 +55,7 @@ func Test_ignoredDevicesList_Set_BasicUsage(t *testing.T) {
 }
 
 func Test_ignoredDevicesList_Range_BasicUsage(t *testing.T) {
-	lst := newIgnoredDevicesList()
+	lst := ignoredDevicesList{}
 	expected := []string{"volcano.sh/vgpu-memory", "volcano.sh/vgpu-memory-percentage", "volcano.sh/vgpu-cores"}
 	lst.Set(expected)
 
@@ -86,7 +86,7 @@ func Test_ignoredDevicesList_Range_BasicUsage(t *testing.T) {
 }
 
 func Test_ignoredDevicesList_Set_Concurrent(t *testing.T) {
-	lst := newIgnoredDevicesList()
+	lst := ignoredDevicesList{}
 	expected := []string{"volcano.sh/vgpu-memory", "volcano.sh/vgpu-memory-percentage", "volcano.sh/vgpu-cores"}
 
 	var wg sync.WaitGroup
@@ -103,7 +103,7 @@ func Test_ignoredDevicesList_Set_Concurrent(t *testing.T) {
 }
 
 func Test_ignoredDevicesList_Range_Concurrent(t *testing.T) {
-	lst := newIgnoredDevicesList()
+	lst := ignoredDevicesList{}
 	lst.Set([]string{"volcano.sh/vgpu-memory", "volcano.sh/vgpu-memory-percentage", "volcano.sh/vgpu-cores"})
 
 	var wg sync.WaitGroup
@@ -123,7 +123,7 @@ func Test_ignoredDevicesList_Range_Concurrent(t *testing.T) {
 }
 
 func Test_ignoredDevicesList_NoRace(t *testing.T) {
-	lst := newIgnoredDevicesList()
+	lst := ignoredDevicesList{}
 
 	var wg sync.WaitGroup
 	wg.Add(16)
@@ -143,7 +143,7 @@ func Test_ignoredDevicesList_NoRace(t *testing.T) {
 }
 
 func Test_ignoredDevicesList_Set_DeduplicateAndOrder(t *testing.T) {
-	lst := newIgnoredDevicesList()
+	lst := ignoredDevicesList{}
 	lst.Set(
 		[]string{"volcano.sh/vgpu-memory", "volcano.sh/vgpu-memory"},
 		[]string{"", "volcano.sh/vgpu-cores", "volcano.sh/vgpu-memory"},
@@ -153,7 +153,7 @@ func Test_ignoredDevicesList_Set_DeduplicateAndOrder(t *testing.T) {
 }
 
 func Test_ignoredDevicesList_Append_PreservesOrder(t *testing.T) {
-	lst := newIgnoredDevicesList()
+	lst := ignoredDevicesList{}
 	lst.Set([]string{"volcano.sh/vgpu-memory"})
 	lst.Append("volcano.sh/vgpu-memory", "volcano.sh/vgpu-cores", "")
 
@@ -161,7 +161,7 @@ func Test_ignoredDevicesList_Append_PreservesOrder(t *testing.T) {
 }
 
 func Test_ignoredDevicesList_List_ReturnsCopy(t *testing.T) {
-	lst := newIgnoredDevicesList()
+	lst := ignoredDevicesList{}
 	lst.Set([]string{"volcano.sh/vgpu-memory"})
 
 	copyList := lst.List()
