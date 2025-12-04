@@ -1,0 +1,41 @@
+name: Build Images
+
+on:
+  workflow_call:
+
+jobs:
+  build-images:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build Images
+        run: |
+          make images
+
+      - name: Save Images
+        run: |
+          mkdir -p images
+          docker save volcanosh/vc-controller-manager:$(git rev-parse --verify HEAD) -o images/vc-controller-manager.tar
+          docker save volcanosh/vc-scheduler:$(git rev-parse --verify HEAD) -o images/vc-scheduler.tar
+          docker save volcanosh/vc-webhook-manager:$(git rev-parse --verify HEAD) -o images/vc-webhook-manager.tar
+          docker save volcanosh/vc-agent:$(git rev-parse --verify HEAD) -o images/vc-agent.tar
+
+      - name: Upload Images
+        uses: actions/upload-artifact@v4
+        with:
+          name: volcano-images
+          path: images
+          retention-days: 5
