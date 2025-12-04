@@ -35,6 +35,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
+	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	schedcache "volcano.sh/volcano/pkg/agentscheduler/cache"
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
 	"volcano.sh/volcano/pkg/filewatcher"
@@ -163,7 +164,7 @@ func (worker *Worker) runOnce(index uint32) {
 }
 
 // generateNextSchedulingContext generates a new scheduling context for the next task to be scheduled.
-func (worker *Worker) generateNextSchedulingContext() (*framework.SchedulingContext, error) {
+func (worker *Worker) generateNextSchedulingContext() (*agentapi.SchedulingContext, error) {
 	if worker.framework == nil {
 		return nil, fmt.Errorf("framework is not initialized")
 	}
@@ -187,7 +188,7 @@ func (worker *Worker) generateNextSchedulingContext() (*framework.SchedulingCont
 		return nil, nil
 	}
 
-	return &framework.SchedulingContext{
+	return &agentapi.SchedulingContext{
 		Task:          task,
 		QueuedPodInfo: podInfo,
 	}, nil

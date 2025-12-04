@@ -21,7 +21,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"volcano.sh/volcano/pkg/agentscheduler/cache"
+	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/agentscheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	vcache "volcano.sh/volcano/pkg/scheduler/cache"
@@ -59,7 +59,7 @@ func (alloc *Action) parseArguments(fwk *framework.Framework) {
 	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
 }
 
-func (alloc *Action) Execute(fwk *framework.Framework, schedCtx *framework.SchedulingContext) {
+func (alloc *Action) Execute(fwk *framework.Framework, schedCtx *agentapi.SchedulingContext) {
 	klog.V(5).Infof("Enter Allocate ...")
 	defer klog.V(5).Infof("Leaving Allocate ...")
 
@@ -70,13 +70,15 @@ func (alloc *Action) Execute(fwk *framework.Framework, schedCtx *framework.Sched
 	// 2. use ssn.NodeOrderFn to judge the best node and assign it to T
 
 	alloc.fwk = fwk
-	if err := alloc.allocateTask(schedCtx.Task); err != nil {
+	if err := alloc.allocateTask(schedCtx); err != nil {
 		alloc.recordTaskFailStatus(schedCtx, err)
 		alloc.failureHandler(schedCtx)
 	}
 }
 
-func (alloc *Action) allocateTask(task *api.TaskInfo) error {
+func (alloc *Action) allocateTask(schedCtx *agentapi.SchedulingContext) error {
+	task := schedCtx.Task
+
 	nodes := alloc.fwk.VolcanoNodeInfos()
 
 	// TODO: check is pod allocatable
@@ -97,10 +99,10 @@ func (alloc *Action) allocateTask(task *api.TaskInfo) error {
 		return err
 	}
 	bestNodes := alloc.prioritizeNodes(task, predicatedNodes)
-	result := &cache.PodScheduleResult{
+	result := &agentapi.PodScheduleResult{
 		SuggestedNodes: bestNodes,
-		Task:           task,
-		BindContext:    alloc.CreateBindContext(task),
+		SchedCtx:       schedCtx,
+		BindContext:    alloc.CreateBindContext(schedCtx),
 	}
 	alloc.EnqueueSchedulerResultForTask(result)
 
@@ -177,15 +179,15 @@ func (alloc *Action) prioritizeNodes(task *api.TaskInfo, predicateNodes []*api.N
 	return bestNodes
 }
 
-func (alloc *Action) CreateBindContext(task *api.TaskInfo) *vcache.BindContext {
-	bindContext := &vcache.BindContext{
-		TaskInfo:   task,
+func (alloc *Action) CreateBindContext(schedCtx *agentapi.SchedulingContext) *agentapi.BindContext {
+	bindContext := &agentapi.BindContext{
+		SchedCtx:   schedCtx,
 		Extensions: make(map[string]vcache.BindContextExtension),
 	}
 
 	for _, plugin := range alloc.fwk.Plugins {
 		// If the plugin implements the BindContextHandler interface, call the SetupBindContextExtension method.
-		if handler, ok := plugin.(vfwk.BindContextHandler); ok {
+		if handler, ok := plugin.(framework.BindContextHandler); ok {
 			state := alloc.fwk.CurrentCycleState
 			handler.SetupBindContextExtension(state, bindContext)
 		}
@@ -194,11 +196,11 @@ func (alloc *Action) CreateBindContext(task *api.TaskInfo) *vcache.BindContext {
 	return bindContext
 }
 
-func (alloc *Action) EnqueueSchedulerResultForTask(result *cache.PodScheduleResult) {
+func (alloc *Action) EnqueueSchedulerResultForTask(result *agentapi.PodScheduleResult) {
 	alloc.fwk.Cache.EnqueueScheduleResult(result)
 }
 
-func (alloc *Action) recordTaskFailStatus(schedCtx *framework.SchedulingContext, err error) {
+func (alloc *Action) recordTaskFailStatus(schedCtx *agentapi.SchedulingContext, err error) {
 	taskInfo := schedCtx.Task
 	// The pod of a scheduling gated task is given
 	// the ScheduleGated condition by the api-server. Do not change it.
@@ -222,7 +224,7 @@ func (alloc *Action) recordTaskFailStatus(schedCtx *framework.SchedulingContext,
 	}
 }
 
-func (alloc *Action) failureHandler(schedCtx *framework.SchedulingContext) {
+func (alloc *Action) failureHandler(schedCtx *agentapi.SchedulingContext) {
 	schedulingQueue := alloc.fwk.Cache.SchedulingQueue() // schedulingQueue will not be nil since we already checked in generateSchedulingContext before
 	if err := schedulingQueue.AddUnschedulableIfNotPresent(klog.Background(), schedCtx.QueuedPodInfo, schedulingQueue.SchedulingCycle()); err != nil {
 		klog.ErrorS(err, "Failed to add pod back to scheduling queue", "pod", klog.KObj(schedCtx.QueuedPodInfo.Pod))

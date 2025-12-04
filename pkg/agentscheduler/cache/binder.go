@@ -19,12 +19,11 @@ package cache
 import (
 	"sync"
 
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 
+	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	vcache "volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
@@ -36,17 +35,9 @@ const (
 	RequeueReasonBindTaskFailure = "BindTaskFailure"
 )
 
-type PodScheduleResult struct {
-	Task             *api.TaskInfo
-	BindContext      *vcache.BindContext
-	SuggestedNodes   []*api.NodeInfo
-	ScheduleCycleUID types.UID
-}
-
 type ConflictAwareBinder struct {
-	// cache Cache
 	// BindCheckChannel is used to store allocate result for bind
-	BindCheckChannel chan *PodScheduleResult
+	BindCheckChannel chan *agentapi.PodScheduleResult
 	nodeBindRecords  map[string]int64
 	recordsMutex     sync.Mutex
 	// schedulingQueue is used to re-queue pods when binding conflict occurs
@@ -57,7 +48,7 @@ type ConflictAwareBinder struct {
 func NewConflictAwareBinder(schedulerCache Cache, schedulingQueue k8sschedulingqueue.SchedulingQueue) *ConflictAwareBinder {
 	return &ConflictAwareBinder{
 		nodeBindRecords:  make(map[string]int64, 0),
-		BindCheckChannel: make(chan *PodScheduleResult, 5000),
+		BindCheckChannel: make(chan *agentapi.PodScheduleResult, 5000),
 		schedulingQueue:  schedulingQueue,
 		cache:            schedulerCache,
 	}
@@ -84,6 +75,8 @@ func (binder *ConflictAwareBinder) processScheduleResult() {
 
 // requeuePodWithPriority requeues a pod with specified priority and reason
 func (binder *ConflictAwareBinder) requeuePodWithPriority(task *api.TaskInfo, priority int, reason string) {
+	binder.schedulingQueue.Done(task.Pod.UID) // Mark previous processing as done
+
 	if binder.schedulingQueue == nil {
 		klog.ErrorS(nil, "schedulingQueue is nil, cannot re-queue pod", "pod", klog.KObj(task.Pod))
 		return
@@ -98,24 +91,23 @@ func (binder *ConflictAwareBinder) requeuePodWithPriority(task *api.TaskInfo, pr
 		Reason:   reason,
 	})
 
-	binder.schedulingQueue.Add(klog.Background(), podCopy)
+	binder.schedulingQueue.Add(klog.Background(), podCopy) // Add back to the scheduling queue and make an urgent retry
 	klog.V(4).InfoS("Pod re-queued with priority", "pod", klog.KObj(task.Pod), "priority", priority, "reason", reason)
 }
 
 // CheckAndBindPod check the pod schedule result, send pod for binding if no conflict. Put pod back to schedule queue if there is conflict
-func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *PodScheduleResult) {
-	//1. Check conflict
+func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *agentapi.PodScheduleResult) {
+	task := scheduleResult.SchedCtx.Task
+	// 1. Check conflict
 	node := binder.FindNonConflictingNode(scheduleResult)
 	if node == nil {
-		klog.V(5).Infof("%d candidates of pod %s/%s are conflict with previouse bind node, put back to queue for retry", len(scheduleResult.SuggestedNodes), scheduleResult.Task.Namespace, scheduleResult.Task.Name)
+		klog.V(5).Infof("%d candidates of pod %s/%s are conflict with previouse bind node, put back to queue for retry", len(scheduleResult.SuggestedNodes), task.Namespace, task.Name)
 		// Binding conflict needs urgent retry
-		// Since pod has been popped from activeQ, it's not in any queue, we can safely use Add()
-		binder.requeuePodWithPriority(scheduleResult.Task, SchedulingPriorityUrgent, RequeueReasonBindingConflict)
+		binder.requeuePodWithPriority(task, SchedulingPriorityUrgent, RequeueReasonBindingConflict)
 		return
 	}
 
-	//2. Bind pod if no conflict
-	task := scheduleResult.Task
+	// 2. Bind pod if no conflict
 	task.NodeName = node.Name
 	task.Pod.Spec.NodeName = node.Name
 	nodeBindGeneration := node.BindGeneration
@@ -124,6 +116,8 @@ func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *PodScheduleRe
 		binder.requeuePodWithPriority(task, SchedulingPriorityUrgent, RequeueReasonBindTaskFailure)
 		return
 	}
+
+	binder.schedulingQueue.Done(task.Pod.UID) // Mark previous processing as done to clean in-flight records, avoid memory leak
 	binder.recordsMutex.Lock()
 	defer binder.recordsMutex.Unlock()
 	binder.nodeBindRecords[node.Name] = nodeBindGeneration
@@ -131,7 +125,7 @@ func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *PodScheduleRe
 }
 
 // FindNonConflictingNode return node if version of candidate node is newer than the version of node used in last bind
-func (binder *ConflictAwareBinder) FindNonConflictingNode(scheduleResult *PodScheduleResult) *api.NodeInfo {
+func (binder *ConflictAwareBinder) FindNonConflictingNode(scheduleResult *agentapi.PodScheduleResult) *api.NodeInfo {
 	binder.recordsMutex.Lock()
 	defer binder.recordsMutex.Unlock()
 	for _, node := range scheduleResult.SuggestedNodes {
@@ -146,7 +140,7 @@ func (binder *ConflictAwareBinder) FindNonConflictingNode(scheduleResult *PodSch
 	return nil
 }
 
-func (binder *ConflictAwareBinder) EnqueueScheduleResult(scheduleResult *PodScheduleResult) {
+func (binder *ConflictAwareBinder) EnqueueScheduleResult(scheduleResult *agentapi.PodScheduleResult) {
 	binder.BindCheckChannel <- scheduleResult
 }
 

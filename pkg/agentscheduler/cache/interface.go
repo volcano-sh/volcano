@@ -32,8 +32,8 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	vcache "volcano.sh/volcano/pkg/scheduler/cache"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
@@ -52,7 +52,7 @@ type Cache interface {
 
 	// AddBindTask binds Task to the target host.
 	// TODO(jinzhej): clean up expire Tasks.
-	AddBindTask(bindCtx *vcache.BindContext) error
+	AddBindTask(bindCtx *agentapi.BindContext) error
 
 	// Client returns the kubernetes clientSet, which can be used by plugins
 	Client() kubernetes.Interface
@@ -87,7 +87,7 @@ type Cache interface {
 	TaskUnschedulable(task *api.TaskInfo, reason, message string) error
 
 	// EnqueueScheduleResult put result into binder check queue
-	EnqueueScheduleResult(result *PodScheduleResult)
+	EnqueueScheduleResult(result *agentapi.PodScheduleResult)
 
 	// SchedulingQueue returns the scheduling queue instance in the cache
 	SchedulingQueue() k8sschedulingqueue.SchedulingQueue
@@ -107,8 +107,8 @@ type StatusUpdater interface {
 }
 
 type PreBinder interface {
-	PreBind(ctx context.Context, bindCtx *vcache.BindContext) error
+	PreBind(ctx context.Context, bindCtx *agentapi.BindContext) error
 
 	// PreBindRollBack is called when the pre-bind or bind fails.
-	PreBindRollBack(ctx context.Context, bindCtx *vcache.BindContext)
+	PreBindRollBack(ctx context.Context, bindCtx *agentapi.BindContext)
 }

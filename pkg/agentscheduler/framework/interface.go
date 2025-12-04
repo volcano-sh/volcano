@@ -19,16 +19,8 @@ package framework
 import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
-	"volcano.sh/volcano/pkg/scheduler/api"
+	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 )
-
-// SchedulingContext contains all information needed for scheduling a task
-type SchedulingContext struct {
-	// Task is the task to be scheduled
-	Task *api.TaskInfo
-	// QueuedPodInfo is the original pod info from the scheduling queue
-	QueuedPodInfo *k8sframework.QueuedPodInfo
-}
 
 // Action is the interface of agent scheduler action.
 type Action interface {
@@ -39,7 +31,7 @@ type Action interface {
 	Initialize()
 
 	// Execute allocates resources for the given task.
-	Execute(fwk *Framework, schedCtx *SchedulingContext)
+	Execute(fwk *Framework, schedCtx *agentapi.SchedulingContext)
 
 	// UnInitialize un-initializes the allocator plugins.
 	UnInitialize()
@@ -58,4 +50,9 @@ type Plugin interface {
 
 	// OnCycleEnd is called at the end of a scheduling cycle.
 	OnCycleEnd(fwk *Framework)
+}
+
+type BindContextHandler interface {
+	// SetupBindContextExtension allows the plugin to set up extension information in the bind context
+	SetupBindContextExtension(state *k8sframework.CycleState, bindCtx *agentapi.BindContext)
 }

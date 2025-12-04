@@ -82,42 +82,6 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 	return sc.addTask(pi)
 }
 
-func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
-	newPod, err := sc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(context.TODO(), oldTask.Name, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			sc.Mutex.Lock()
-			defer sc.Mutex.Unlock()
-			err := sc.deleteTask(oldTask)
-			if err != nil {
-				klog.Errorf("Failed to delete Pod <%v/%v> and remove from cache: %s", oldTask.Namespace, oldTask.Name, err.Error())
-				return err
-			}
-			klog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldTask.Namespace, oldTask.Name)
-
-			return nil
-		}
-		return fmt.Errorf("failed to get Pod <%v/%v>: err %v", oldTask.Namespace, oldTask.Name, err)
-	}
-
-	newTask, err := sc.NewTaskInfo(newPod)
-	if err != nil {
-		return fmt.Errorf("failed to generate taskInfo of pod(%s), error: %v", newPod.Name, err)
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-	return sc.updateTask(oldTask, newTask)
-}
-
-func (sc *SchedulerCache) updateTask(oldTask, newTask *schedulingapi.TaskInfo) error {
-	if err := sc.deleteTask(oldTask); err != nil {
-		klog.Warningf("Failed to delete task from cache: %v", err)
-	}
-
-	return sc.addTask(newTask)
-}
-
 // Check the pod allocated status in cache
 func (sc *SchedulerCache) allocatedPodInCache(pod *v1.Pod) bool {
 	// TODO: check the pod allocated status in cache
