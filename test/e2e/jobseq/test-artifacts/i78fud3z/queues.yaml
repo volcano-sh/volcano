@@ -1,0 +1,131 @@
+items:
+- apiVersion: scheduling.volcano.sh/v1beta1
+  kind: Queue
+  metadata:
+    creationTimestamp: "2025-12-05T20:52:05Z"
+    generation: 2
+    managedFields:
+    - apiVersion: scheduling.volcano.sh/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:status:
+          f:state: {}
+      manager: queue-controller
+      operation: Apply
+      subresource: status
+      time: "2025-12-05T20:52:05Z"
+    - apiVersion: scheduling.volcano.sh/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:spec:
+          f:parent: {}
+      manager: vc-controller-manager
+      operation: Update
+      time: "2025-12-05T20:52:05Z"
+    - apiVersion: scheduling.volcano.sh/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:spec:
+          .: {}
+          f:guarantee: {}
+          f:reclaimable: {}
+          f:weight: {}
+      manager: vc-scheduler
+      operation: Update
+      time: "2025-12-05T20:52:05Z"
+    - apiVersion: scheduling.volcano.sh/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:status:
+          f:allocated:
+            .: {}
+            f:cpu: {}
+            f:memory: {}
+          f:reservation: {}
+      manager: vc-scheduler
+      operation: Update
+      subresource: status
+      time: "2025-12-05T20:53:38Z"
+    name: default
+    resourceVersion: "1205"
+    uid: 6e9ca8c8-fdf6-4496-b757-9436d8785746
+  spec:
+    guarantee: {}
+    parent: root
+    reclaimable: true
+    weight: 1
+  status:
+    allocated:
+      cpu: "0"
+      memory: "0"
+    reservation: {}
+    state: Open
+- apiVersion: scheduling.volcano.sh/v1beta1
+  kind: Queue
+  metadata:
+    creationTimestamp: "2025-12-05T20:52:05Z"
+    generation: 2
+    managedFields:
+    - apiVersion: scheduling.volcano.sh/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:status:
+          f:state: {}
+      manager: queue-controller
+      operation: Apply
+      subresource: status
+      time: "2025-12-05T20:52:05Z"
+    - apiVersion: scheduling.volcano.sh/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:spec:
+          .: {}
+          f:deserved:
+            .: {}
+            f:cpu: {}
+            f:memory: {}
+          f:guarantee:
+            .: {}
+            f:resource:
+              .: {}
+              f:cpu: {}
+              f:memory: {}
+          f:reclaimable: {}
+          f:weight: {}
+      manager: vc-scheduler
+      operation: Update
+      time: "2025-12-05T20:52:05Z"
+    - apiVersion: scheduling.volcano.sh/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:status:
+          f:allocated:
+            .: {}
+            f:cpu: {}
+            f:memory: {}
+          f:reservation: {}
+      manager: vc-scheduler
+      operation: Update
+      subresource: status
+      time: "2025-12-05T20:53:39Z"
+    name: root
+    resourceVersion: "1206"
+    uid: c909ec2d-950d-4127-a166-29a178afc992
+  spec:
+    deserved:
+      cpu: "0"
+      memory: "0"
+    guarantee:
+      resource:
+        cpu: "0"
+        memory: "0"
+    reclaimable: false
+    weight: 1
+  status:
+    allocated:
+      cpu: "0"
+      memory: "0"
+    reservation: {}
+    state: Open
+metadata:
+  resourceVersion: "1820"

@@ -18,7 +18,6 @@ package jobseq
 
 import (
 	"context"
-	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -35,18 +34,7 @@ var _ = Describe("Queue E2E Test", func() {
 	var currentTestContext *e2eutil.TestContext
 
 	JustAfterEach(func() {
-		// Only dump context if test failed
-		if CurrentSpecReport().Failed() && currentTestContext != nil {
-			By("Dumping test context for failed test")
-			artifactsPath := os.Getenv("ARTIFACTS_PATH")
-			if artifactsPath == "" {
-				artifactsPath = "./artifacts"
-			}
-			if err := e2eutil.DumpTestContext(currentTestContext, currentTestContext.Namespace, artifactsPath); err != nil {
-				// Log error but don't fail the test
-				GinkgoWriter.Printf("Failed to dump test context: %v\n", err)
-			}
-		}
+		e2eutil.DumpTestContextIfFailed(currentTestContext, CurrentSpecReport())
 	})
 	It("Queue Command Close And Open With State Check", func() {
 		q1 := "queue-command-close"

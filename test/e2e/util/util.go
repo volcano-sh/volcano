@@ -389,10 +389,26 @@ func GetPodList(ctx context.Context, c clientset.Interface, namespace string, ls
 	return podList
 }
 
+// DumpTestContextIfFailed is a helper function to be used in JustAfterEach hooks
+// It checks if the test failed and dumps the context if needed
+func DumpTestContextIfFailed(ctx *TestContext, specReport SpecReport) {
+	if !specReport.Failed() || ctx == nil {
+		return
+	}
+
+	By("Dumping test context for failed test")
+	artifactsPath := os.Getenv("ARTIFACTS_PATH")
+	if artifactsPath == "" {
+		artifactsPath = "./artifacts"
+	}
+
+	DumpTestContext(ctx, ctx.Namespace, artifactsPath)
+}
+
 // DumpTestContext collects and dumps all relevant Kubernetes resources
 // for a given namespace when a test fails. This provides complete cluster
 // state snapshots for debugging test failures.
-func DumpTestContext(ctx *TestContext, namespace string, artifactsPath string) error {
+func DumpTestContext(ctx *TestContext, namespace string, artifactsPath string) {
 	if artifactsPath == "" {
 		// Default to current directory if not specified
 		artifactsPath = "./artifacts"
@@ -401,63 +417,32 @@ func DumpTestContext(ctx *TestContext, namespace string, artifactsPath string) e
 	// Create directory structure: artifacts/{namespace}/
 	nsPath := filepath.Join(artifactsPath, namespace)
 	if err := os.MkdirAll(nsPath, 0755); err != nil {
-		return fmt.Errorf("failed to create artifacts directory: %v", err)
+		klog.Errorf("Failed to create artifacts directory: %v", err)
+		return
 	}
 
 	klog.Infof("Dumping test context for namespace %s to %s", namespace, nsPath)
 
-	// Dump Pods
-	if err := dumpPods(ctx, namespace, nsPath); err != nil {
-		klog.Errorf("Failed to dump pods: %v", err)
+	resourceDumpers := map[string]func() error{
+		"pods":            func() error { return dumpPods(ctx, namespace, nsPath) },
+		"podgroups":       func() error { return dumpPodGroups(ctx, namespace, nsPath) },
+		"queues":          func() error { return dumpQueues(ctx, nsPath) },
+		"priorityclasses": func() error { return dumpPriorityClasses(ctx, nsPath) },
+		"VC jobs":         func() error { return dumpVCJobs(ctx, namespace, nsPath) },
+		"VC cronjobs":     func() error { return dumpVCronJobs(ctx, namespace, nsPath) },
+		"K8s jobs":        func() error { return dumpK8sJobs(ctx, namespace, nsPath) },
+		"K8s cronjobs":    func() error { return dumpK8sCronJobs(ctx, namespace, nsPath) },
+		"deployments":     func() error { return dumpDeployments(ctx, namespace, nsPath) },
+		"statefulsets":    func() error { return dumpStatefulSets(ctx, namespace, nsPath) },
 	}
 
-	// Dump PodGroups
-	if err := dumpPodGroups(ctx, namespace, nsPath); err != nil {
-		klog.Errorf("Failed to dump podgroups: %v", err)
-	}
-
-	// Dump Queues (cluster-scoped, not namespace-specific)
-	if err := dumpQueues(ctx, nsPath); err != nil {
-		klog.Errorf("Failed to dump queues: %v", err)
-	}
-
-	// Dump PriorityClasses (cluster-scoped, not namespace-specific)
-	if err := dumpPriorityClasses(ctx, nsPath); err != nil {
-		klog.Errorf("Failed to dump priority classes: %v", err)
-	}
-
-	// Dump Volcano Jobs
-	if err := dumpVCJobs(ctx, namespace, nsPath); err != nil {
-		klog.Errorf("Failed to dump VC jobs: %v", err)
-	}
-
-	// Dump Volcano CronJobs
-	if err := dumpVCronJobs(ctx, namespace, nsPath); err != nil {
-		klog.Errorf("Failed to dump VC cronjobs: %v", err)
-	}
-
-	// Dump Standard Kubernetes Jobs
-	if err := dumpK8sJobs(ctx, namespace, nsPath); err != nil {
-		klog.Errorf("Failed to dump K8s jobs: %v", err)
-	}
-
-	// Dump Standard Kubernetes CronJobs
-	if err := dumpK8sCronJobs(ctx, namespace, nsPath); err != nil {
-		klog.Errorf("Failed to dump K8s cronjobs: %v", err)
-	}
-
-	// Dump Deployments
-	if err := dumpDeployments(ctx, namespace, nsPath); err != nil {
-		klog.Errorf("Failed to dump deployments: %v", err)
-	}
-
-	// Dump StatefulSets
-	if err := dumpStatefulSets(ctx, namespace, nsPath); err != nil {
-		klog.Errorf("Failed to dump statefulsets: %v", err)
+	for name, dumper := range resourceDumpers {
+		if err := dumper(); err != nil {
+			klog.Errorf("Failed to dump %s: %v", name, err)
+		}
 	}
 
 	klog.Infof("Finished dumping test context for namespace %s", namespace)
-	return nil
 }
 
 // dumpPods dumps all pods in the namespace
