@@ -27,8 +27,15 @@ import (
 )
 
 var _ = Describe("MPI E2E Test", func() {
+	var currentTestContext *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(currentTestContext, CurrentSpecReport())
+	})
+
 	It("will run and complete finally", func() {
 		context := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = context
 		defer e2eutil.CleanupTestContext(context)
 
 		slot := e2eutil.OneCPU

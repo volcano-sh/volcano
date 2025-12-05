@@ -1,0 +1,43 @@
+items:
+- description: Used for system critical pods that must run in the cluster, but can
+    be moved to another node if necessary.
+  metadata:
+    creationTimestamp: "2025-12-05T20:51:20Z"
+    generation: 1
+    managedFields:
+    - apiVersion: scheduling.k8s.io/v1
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:description: {}
+        f:preemptionPolicy: {}
+        f:value: {}
+      manager: kube-apiserver
+      operation: Update
+      time: "2025-12-05T20:51:20Z"
+    name: system-cluster-critical
+    resourceVersion: "70"
+    uid: f5ca876f-a58e-41f8-943b-655635a85ad4
+  preemptionPolicy: PreemptLowerPriority
+  value: 2000000000
+- description: Used for system critical pods that must not be moved from their current
+    node.
+  metadata:
+    creationTimestamp: "2025-12-05T20:51:20Z"
+    generation: 1
+    managedFields:
+    - apiVersion: scheduling.k8s.io/v1
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:description: {}
+        f:preemptionPolicy: {}
+        f:value: {}
+      manager: kube-apiserver
+      operation: Update
+      time: "2025-12-05T20:51:20Z"
+    name: system-node-critical
+    resourceVersion: "69"
+    uid: 13f629db-b616-4ff7-925e-c21f06496fbe
+  preemptionPolicy: PreemptLowerPriority
+  value: 2000001000
+metadata:
+  resourceVersion: "1820"

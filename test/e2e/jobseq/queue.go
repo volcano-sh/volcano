@@ -31,12 +31,18 @@ import (
 )
 
 var _ = Describe("Queue E2E Test", func() {
+	var currentTestContext *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(currentTestContext, CurrentSpecReport())
+	})
 	It("Queue Command Close And Open With State Check", func() {
 		q1 := "queue-command-close"
 		defaultQueue := "default"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1},
 		})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Close queue command check")
@@ -82,6 +88,7 @@ var _ = Describe("Queue E2E Test", func() {
 			},
 		})
 		ctx.Queues = []string{q11, q1, q2}
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("Close queue with child queues")

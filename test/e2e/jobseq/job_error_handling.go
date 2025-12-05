@@ -36,9 +36,15 @@ import (
 )
 
 var _ = Describe("Job Error Handling", func() {
+	var currentTestContext *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(currentTestContext, CurrentSpecReport())
+	})
 	It("job level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
 		By("init test context")
 		context := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = context
 		defer e2eutil.CleanupTestContext(context)
 
 		By("create job")
@@ -76,6 +82,7 @@ var _ = Describe("Job Error Handling", func() {
 	It("job level LifecyclePolicy, Event: PodFailed; Action: TerminateJob", func() {
 		By("init test context")
 		context := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = context
 		defer e2eutil.CleanupTestContext(context)
 
 		By("create job")
@@ -112,6 +119,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -149,6 +157,7 @@ var _ = Describe("Job Error Handling", func() {
 	It("job level LifecyclePolicy, Event: PodFailed, Action: RestartPod; Event PodEvicted, Action: TerminateJob, Timeout: 5m", func() {
 		By("init test context")
 		context := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = context
 		defer e2eutil.CleanupTestContext(context)
 
 		By("create job")
@@ -192,6 +201,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -235,6 +245,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -278,6 +289,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: AbortJob", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -321,6 +333,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: Any; Action: RestartJob", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -365,6 +378,7 @@ var _ = Describe("Job Error Handling", func() {
 	It("Job error handling: Restart job when job is unschedulable", func() {
 		By("init test context")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
 
@@ -423,6 +437,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("Job error handling: Abort job when job is unschedulable", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
 
@@ -478,6 +493,7 @@ var _ = Describe("Job Error Handling", func() {
 	It("job level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
 		By("init test context")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -520,6 +536,7 @@ var _ = Describe("Job Error Handling", func() {
 	It("job level LifecyclePolicy, Event: TaskFailed; Action: TerminateJob", func() {
 		By("init test context")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -575,6 +592,7 @@ var _ = Describe("Job Error Handling", func() {
 	It("job level LifecyclePolicy, error code: 3; Action: RestartJob", func() {
 		By("init test context")
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -613,6 +631,7 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event[]: PodEvicted, PodFailed; Action: TerminateJob", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -659,6 +678,7 @@ var _ = Describe("Job Error Handling", func() {
 	It("Task level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
 		By("init test context")
 		context := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = context
 		defer e2eutil.CleanupTestContext(context)
 
 		By("create job")
@@ -694,6 +714,7 @@ var _ = Describe("Job Error Handling", func() {
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -737,6 +758,7 @@ var _ = Describe("Job Error Handling", func() {
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -779,6 +801,7 @@ var _ = Describe("Job Error Handling", func() {
 	})
 	It("Task level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		By("create job")
@@ -819,6 +842,7 @@ var _ = Describe("Job Error Handling", func() {
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob and Task level lifecyclePolicy, Event : PodFailed; Action: RestartJob", func() {
 		By("init test context")
 		context := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = context
 		defer e2eutil.CleanupTestContext(context)
 
 		By("create job")
@@ -867,6 +891,7 @@ var _ = Describe("Job Error Handling", func() {
 				e2eutil.WorkerPriority: e2eutil.WorkerPriorityValue,
 			},
 		})
+		currentTestContext = context
 		defer e2eutil.CleanupTestContext(context)
 
 		rep := e2eutil.ClusterSize(context, e2eutil.OneCPU)

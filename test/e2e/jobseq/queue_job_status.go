@@ -37,6 +37,12 @@ import (
 var _ = Describe("Queue Job Status Transition", func() {
 
 	var ctx *e2eutil.TestContext
+	var currentTestContext *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(currentTestContext, CurrentSpecReport())
+	})
+
 	AfterEach(func() {
 		e2eutil.CleanupTestContext(ctx)
 	})
@@ -49,6 +55,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1},
 		})
+		currentTestContext = ctx
 		slot := e2eutil.HalfCPU
 		rep = e2eutil.ClusterSize(ctx, slot)
 
@@ -100,6 +107,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1},
 		})
+		currentTestContext = ctx
 		podNamespace = ctx.Namespace
 		slot := e2eutil.HalfCPU
 		rep = e2eutil.ClusterSize(ctx, slot)
@@ -162,6 +170,7 @@ var _ = Describe("Queue Job Status Transition", func() {
 		ctx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1},
 		})
+		currentTestContext = ctx
 		podNamespace = ctx.Namespace
 		slot := e2eutil.HalfCPU
 		rep = e2eutil.ClusterSize(ctx, slot)

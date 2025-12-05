@@ -36,11 +36,18 @@ import (
 )
 
 var _ = Describe("Job E2E Test: Test Job Plugins", func() {
+	var currentTestContext *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(currentTestContext, CurrentSpecReport())
+	})
+
 	It("Test SVC Plugin with Node Affinity", func() {
 		jobName := "job-with-svc-plugin"
 		taskName := "task"
 		foundVolume := false
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		nodeName, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)
@@ -112,6 +119,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		taskName := "task"
 		foundVolume := false
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		_, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)
@@ -182,6 +190,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		jobName := "svc-with-disable-network-policy"
 		taskName := "task"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		_, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)
@@ -220,6 +229,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		foundVolume := false
 		foundEnv := false
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		_, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)

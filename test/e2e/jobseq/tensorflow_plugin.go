@@ -32,8 +32,15 @@ import (
 )
 
 var _ = Describe("TensorFlow Plugin E2E Test", func() {
+	var currentTestContext *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(currentTestContext, CurrentSpecReport())
+	})
+
 	It("Will Start in pending state and goes through other phases to get complete phase", func() {
 		ctx := e2eutil.InitTestContext(e2eutil.Options{})
+		currentTestContext = ctx
 		defer e2eutil.CleanupTestContext(ctx)
 
 		jobName := "tensorflow-dist-mnist"

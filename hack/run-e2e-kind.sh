@@ -24,6 +24,10 @@ export E2E_TYPE=${E2E_TYPE:-"ALL"}
 export ARTIFACTS_PATH=${ARTIFACTS_PATH:-"${VK_ROOT}/volcano-e2e-logs"}
 mkdir -p "$ARTIFACTS_PATH"
 
+# Set default TAG and IMAGE_PREFIX if not already set
+export TAG=${TAG:-$(git -C "${VK_ROOT}" rev-parse --verify HEAD 2>/dev/null || echo "latest")}
+export IMAGE_PREFIX=${IMAGE_PREFIX:-volcanosh}
+
 NAMESPACE=${NAMESPACE:-volcano-system}
 CLUSTER_NAME=${CLUSTER_NAME:-integration}
 
