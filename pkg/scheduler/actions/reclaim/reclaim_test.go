@@ -218,6 +218,36 @@ func TestReclaim(t *testing.T) {
 			ExpectEvictNum: 0,
 			ExpectEvicted:  []string{},
 		},
+		{
+			Name: "Reclaim for the 3rd Task in a Job when we are not able to reclaim for the 1st and 2nd Task",
+			Plugins: map[string]framework.PluginBuilder{
+				conformance.PluginName: conformance.New,
+				gang.PluginName:        gang.New,
+				proportion.PluginName:  proportion.New,
+			},
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee3", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
+				// preemptor1 and preemptor2 will fail the ssn.Preemptive(queue, task) check as they require too many resources
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("3", "3G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptor2", "", v1.PodPending, api.BuildResourceList("5", "5G"), "pg2", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptor3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("3", "3Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, nil),
+				util.BuildQueue("q2", 1, nil),
+			},
+			ExpectEvictNum: 1,
+			ExpectEvicted:  []string{"c1/preemptee2"},
+		},
 	}
 
 	reclaim := New()
