@@ -17,6 +17,7 @@ limitations under the License.
 package capacity
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -32,6 +33,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
@@ -40,6 +42,8 @@ import (
 
 func TestMain(m *testing.M) {
 	options.Default()
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
 	os.Exit(m.Run())
 }
 

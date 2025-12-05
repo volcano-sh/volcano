@@ -17,7 +17,9 @@ limitations under the License.
 package networktopologyaware
 
 import (
+	"context"
 	"math"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,6 +31,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -36,6 +39,12 @@ import (
 const (
 	eps = 1e-1
 )
+
+func TestMain(m *testing.M) {
+	metrics.InitTTLQueueMetrics(context.Background())
+	metrics.InitTTLJobMetrics(context.Background())
+	os.Exit(m.Run())
+}
 
 func TestArguments(t *testing.T) {
 	framework.RegisterPluginBuilder(PluginName, New)
