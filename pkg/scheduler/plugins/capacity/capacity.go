@@ -612,16 +612,14 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		rootQueueAttr.deserved = cp.totalResource
 	}
 
-	// https://github.com/volcano-sh/volcano/issues/3910
-	// If overwriteRootQueueRealCapability is true, we need to set realCapability to the user-configured capability.
-	// If the user does not edit the root queue's capability, it will be set to total resource above.
+	// If overwriteRootQueueRealCapability is true and the user has explicitly configured the root queue's
+	// capability, use that value. Otherwise, default to the total cluster resources as the root queue's realCapability.
+	// This allows cluster-autoscalers to work correctly by respecting user overrides.
 	if cp.overwriteRootQueueRealCapability {
-		// Use user-configured capability instead of forcing cluster resources
 		rootQueueAttr.realCapability = rootQueueAttr.capability.Clone()
-		klog.V(4).Infof("Using user-configured root queue capability <%v> instead of cluster resources <%v> due to overwriteRootQueueRealCapability=true",
-			rootQueueAttr.capability, cp.totalResource)
+		klog.V(4).Infof("Root queue realCapability: <%v> (user override); cluster resources: <%v>",
+			rootQueueAttr.realCapability, cp.totalResource)
 	} else {
-		// Default behavior: use actual cluster resources
 		rootQueueAttr.realCapability = cp.totalResource.Clone()
 	}
 
