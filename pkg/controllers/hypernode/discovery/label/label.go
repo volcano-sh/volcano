@@ -68,9 +68,10 @@ type NetworkTopologyType struct {
 
 // HyperNodeInfo contains detailed information about a HyperNode, which is used to describe the hypernode's tier, members, and label attributes.
 type HyperNodeInfo struct {
-	tier    int
-	members []string
-	labels  map[string]string
+	tier     int
+	tierName string
+	members  []string
+	labels   map[string]string
 }
 
 // labelDiscoverer implements the Discoverer interface for label
@@ -282,7 +283,7 @@ func (l *labelDiscoverer) buildHyperNodes(hyperNodeInfoMap map[string]HyperNodeI
 		}
 
 		// Create the HyperNode object
-		hyperNode := utils.BuildHyperNode(hyperNodeName, hyperNodeInfo.tier, members, labelMap)
+		hyperNode := utils.BuildHyperNodeWithTierName(hyperNodeName, hyperNodeInfo.tier, hyperNodeInfo.tierName, members, labelMap)
 
 		// Add to the list for the hyperNode
 		hyperNodes = append(hyperNodes, hyperNode)
@@ -394,9 +395,10 @@ func (l *labelDiscoverer) generateHyperNodeInfo() (map[string]HyperNodeInfo, err
 				_, exists = hyperNodeInfoMap[hyperNodeName]
 				if !exists {
 					hyperNodeInfoMap[hyperNodeName] = HyperNodeInfo{
-						tier:    tier,
-						members: make([]string, 0),
-						labels:  map[string]string{key: value},
+						tier:     tier,
+						tierName: key,
+						members:  make([]string, 0),
+						labels:   map[string]string{key: value},
 					}
 				}
 				hyperNodeInfo := hyperNodeInfoMap[hyperNodeName]

@@ -1387,16 +1387,17 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	defer sc.Mutex.Unlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
-		Nodes:               make(map[string]*schedulingapi.NodeInfo),
-		HyperNodes:          make(map[string]*schedulingapi.HyperNodeInfo),
-		HyperNodesSetByTier: make(map[int]sets.Set[string]),
-		RealNodesSet:        make(map[string]sets.Set[string]),
-		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		NamespaceInfo:       make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
-		RevocableNodes:      make(map[string]*schedulingapi.NodeInfo),
-		NodeList:            make([]string, len(sc.NodeList)),
-		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
+		Nodes:                make(map[string]*schedulingapi.NodeInfo),
+		HyperNodes:           make(map[string]*schedulingapi.HyperNodeInfo),
+		HyperNodesSetByTier:  make(map[int]sets.Set[string]),
+		HyperNodeTierNameMap: make(schedulingapi.HyperNodeTierNameMap),
+		RealNodesSet:         make(map[string]sets.Set[string]),
+		Jobs:                 make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Queues:               make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		NamespaceInfo:        make(map[schedulingapi.NamespaceName]*schedulingapi.NamespaceInfo),
+		RevocableNodes:       make(map[string]*schedulingapi.NodeInfo),
+		NodeList:             make([]string, len(sc.NodeList)),
+		CSINodesStatus:       make(map[string]*schedulingapi.CSINodeStatusInfo),
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)
@@ -1424,6 +1425,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	sc.HyperNodesInfo.Lock()
 	snapshot.HyperNodes = sc.HyperNodesInfo.HyperNodes()
 	snapshot.HyperNodesSetByTier = sc.HyperNodesInfo.HyperNodesSetByTier()
+	snapshot.HyperNodeTierNameMap = sc.HyperNodesInfo.HyperNodeTierNameMap()
 	snapshot.RealNodesSet = sc.HyperNodesInfo.RealNodesSet()
 	snapshot.HyperNodesReadyToSchedule = sc.HyperNodesInfo.Ready()
 	sc.HyperNodesInfo.Unlock()

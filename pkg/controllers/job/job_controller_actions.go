@@ -801,6 +801,8 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 			}
 			if job.Spec.NetworkTopology.HighestTierAllowed != nil {
 				nt.HighestTierAllowed = job.Spec.NetworkTopology.HighestTierAllowed
+			} else if job.Spec.NetworkTopology.HighestTierName != "" {
+				nt.HighestTierName = job.Spec.NetworkTopology.HighestTierName
 			}
 			pg.Spec.NetworkTopology = nt
 		}
@@ -1097,6 +1099,7 @@ func getSubGroupPolicy(taskSpec batch.TaskSpec) scheduling.SubGroupPolicySpec {
 		nt := &scheduling.NetworkTopologySpec{
 			Mode:               scheduling.NetworkTopologyMode(taskSpec.PartitionPolicy.NetworkTopology.Mode),
 			HighestTierAllowed: taskSpec.PartitionPolicy.NetworkTopology.HighestTierAllowed,
+			HighestTierName:    taskSpec.PartitionPolicy.NetworkTopology.HighestTierName,
 		}
 		subGroupPolicy.NetworkTopology = nt
 	}

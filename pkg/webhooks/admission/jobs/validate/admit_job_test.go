@@ -40,6 +40,7 @@ func TestValidateJobCreate(t *testing.T) {
 	var invMinAvailable int32 = -1
 	namespace := "test"
 	privileged := true
+	highestTierAllowed := 1
 
 	testCases := []struct {
 		Name           string
@@ -1377,6 +1378,190 @@ func TestValidateJobCreate(t *testing.T) {
 			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "",
 			ExpectErr:      false,
+		},
+		{
+			Name: "task-with-valid-NetworkTopology-and-PartitionPolicy",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task-with-valid-NetworkTopology-and-PartitionPolicy",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					NetworkTopology: &v1alpha1.NetworkTopologySpec{
+						Mode:            v1alpha1.HardNetworkTopologyMode,
+						HighestTierName: "volcano.sh/hypernode",
+					},
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   4,
+								TotalPartitions: 2,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:            v1alpha1.HardNetworkTopologyMode,
+									HighestTierName: "volcano.sh/hypernode",
+								},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		{
+			Name: "job-with-invalid-NetworkTopology-and-PartitionPolicy",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-invalid-NetworkTopology-and-PartitionPolicy",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					NetworkTopology: &v1alpha1.NetworkTopologySpec{
+						Mode:               v1alpha1.HardNetworkTopologyMode,
+						HighestTierAllowed: &highestTierAllowed,
+						HighestTierName:    "volcano.sh/hypernode",
+					},
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   4,
+								TotalPartitions: 2,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:               v1alpha1.HardNetworkTopologyMode,
+									HighestTierAllowed: &highestTierAllowed,
+									HighestTierName:    "volcano.sh/hypernode",
+								},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously",
+			ExpectErr:      true,
+		},
+		{
+			Name: "job-with-invalid-NetworkTopology",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-invalid-NetworkTopology",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					NetworkTopology: &v1alpha1.NetworkTopologySpec{
+						Mode:               v1alpha1.HardNetworkTopologyMode,
+						HighestTierAllowed: &highestTierAllowed,
+						HighestTierName:    "volcano.sh/hypernode",
+					},
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   4,
+								TotalPartitions: 2,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously",
+			ExpectErr:      true,
+		},
+		{
+			Name: "task-with-invalid-PartitionPolicy",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task-with-invalid-PartitionPolicy",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   4,
+								TotalPartitions: 2,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:               v1alpha1.HardNetworkTopologyMode,
+									HighestTierAllowed: &highestTierAllowed,
+									HighestTierName:    "volcano.sh/hypernode",
+								},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously",
+			ExpectErr:      true,
 		},
 	}
 
