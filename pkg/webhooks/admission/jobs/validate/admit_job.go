@@ -155,6 +155,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		}
 	}
 
+	msg += validateNetworkTopology(job.Spec.NetworkTopology)
 	hasDependenciesBetweenTasks := false
 	for index, task := range job.Spec.Tasks {
 		if task.DependsOn != nil {
@@ -294,6 +295,10 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	if new.Spec.MinAvailable < 0 {
 		return fmt.Errorf("job 'minAvailable' must be >= 0")
 	}
+	networkTopology := new.Spec.NetworkTopology
+	if networkTopology != nil && networkTopology.HighestTierAllowed != nil && networkTopology.HighestTierName != "" {
+		return fmt.Errorf("must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously")
+	}
 
 	if len(old.Spec.Tasks) != len(new.Spec.Tasks) {
 		return fmt.Errorf("job updates may not add or remove tasks")
@@ -339,9 +344,17 @@ func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {
 		} else if task.Replicas != task.PartitionPolicy.TotalPartitions*task.PartitionPolicy.PartitionSize {
 			msg += fmt.Sprintf("'Replicas' are not equal to TotalPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
 		}
+		msg += validateNetworkTopology(task.PartitionPolicy.NetworkTopology)
 	}
 
 	return msg
+}
+
+func validateNetworkTopology(networkTopology *v1alpha1.NetworkTopologySpec) string {
+	if networkTopology != nil && networkTopology.HighestTierAllowed != nil && networkTopology.HighestTierName != "" {
+		return "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously"
+	}
+	return ""
 }
 
 func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) string {
@@ -370,11 +383,7 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 	}
 
 	msg := validateTaskTopoPolicy(task, index)
-	if msg != "" {
-		return msg
-	}
-
-	return ""
+	return msg
 }
 
 func validateK8sPodNameLength(podName string) string {

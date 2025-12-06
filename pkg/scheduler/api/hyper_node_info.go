@@ -55,6 +55,8 @@ type HyperNodesInfo struct {
 
 type HyperNodeInfoMap map[string]*HyperNodeInfo
 
+type HyperNodeTierNameMap map[string]int
+
 // NewHyperNodesInfo initializes a new HyperNodesInfo instance.
 func NewHyperNodesInfo(lister listerv1.NodeLister) *HyperNodesInfo {
 	ready := new(atomic.Bool)
@@ -89,6 +91,7 @@ type HyperNodeInfo struct {
 	Children sets.Set[string]
 
 	tier       int
+	tierName   string
 	isDeleting bool
 }
 
@@ -99,6 +102,13 @@ type HyperNodeInfoOption func(*HyperNodeInfo)
 func TierOpt(tier int) HyperNodeInfoOption {
 	return func(hni *HyperNodeInfo) {
 		hni.tier = tier
+	}
+}
+
+// TierNameOpt returns an option that sets the tierName of the HyperNodeInfo.
+func TierNameOpt(tierName string) HyperNodeInfoOption {
+	return func(hni *HyperNodeInfo) {
+		hni.tierName = tierName
 	}
 }
 
@@ -122,6 +132,7 @@ func NewHyperNodeInfo(hn *topologyv1alpha1.HyperNode, opts ...HyperNodeInfoOptio
 		Name:      hn.Name,
 		HyperNode: hn,
 		tier:      hn.Spec.Tier,
+		tierName:  hn.Spec.TierName,
 		Children:  sets.New[string](),
 	}
 
@@ -138,6 +149,7 @@ func (hni *HyperNodeInfo) String() string {
 	return strings.Join([]string{
 		fmt.Sprintf("Name: %s", hni.Name),
 		fmt.Sprintf(" Tier: %d", hni.tier),
+		fmt.Sprintf(" TierName: %s", hni.tierName),
 		fmt.Sprintf(" Parent: %s", hni.Parent)},
 		",")
 }
@@ -155,6 +167,7 @@ func (hni *HyperNodeInfo) DeepCopy() *HyperNodeInfo {
 	copiedHyperNodeInfo := &HyperNodeInfo{
 		Name:       hni.Name,
 		tier:       hni.tier,
+		tierName:   hni.tierName,
 		HyperNode:  hni.HyperNode.DeepCopy(),
 		isDeleting: hni.isDeleting,
 		Parent:     hni.Parent,
@@ -173,6 +186,21 @@ func (hni *HyperNodesInfo) HyperNodes() HyperNodeInfoMap {
 	}
 
 	return copiedHyperNodes
+}
+
+// HyperNodeTierNameMap returns the mapping of tierName and tier.
+func (hni *HyperNodesInfo) HyperNodeTierNameMap() HyperNodeTierNameMap {
+	hyperNodeTierNameMap := make(map[string]int, len(hni.hyperNodes))
+	for _, info := range hni.hyperNodes {
+		if info.tierName != "" {
+			if existingTier, ok := hyperNodeTierNameMap[info.tierName]; ok && existingTier != info.tier {
+				klog.Warningf("Conflicting tiers for tierName %s: existing %d, new %d. Using %d.", info.tierName, existingTier, info.tier, info.tier)
+			}
+			hyperNodeTierNameMap[info.tierName] = info.tier
+		}
+	}
+
+	return hyperNodeTierNameMap
 }
 
 // HyperNode returns a hyperNode by name.
@@ -228,6 +256,7 @@ func (hni *HyperNodesInfo) UpdateHyperNode(hn *topologyv1alpha1.HyperNode) error
 	if exists {
 		old.HyperNode = hn
 		old.tier = hn.Spec.Tier
+		old.tierName = hn.Spec.TierName
 	} else {
 		hni.hyperNodes[name] = NewHyperNodeInfo(hn)
 	}

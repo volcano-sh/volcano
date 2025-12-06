@@ -627,6 +627,58 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 			},
 			ExpextVal: nil,
 		},
+		{
+			Name: "CreatePodGroup success Case with highestTierName",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "job2",
+					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Volumes: []v1alpha1.VolumeSpec{
+						{
+							VolumeClaimName: "vc1",
+							VolumeClaim: &v1.PersistentVolumeClaimSpec{
+								VolumeName: "v1",
+							},
+						},
+						{
+							VolumeClaimName: "vc2",
+						},
+					},
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:            "hard",
+									HighestTierName: "volcano.sh/hypernode",
+								},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ExpextVal: nil,
+		},
 	}
 
 	for _, testcase := range testcases {
@@ -737,6 +789,44 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: namespace,
 					Name:      "job3",
+				},
+				Spec: schedulingapi.PodGroupSpec{
+					MinResources: &v1.ResourceList{},
+				},
+			},
+			ExpectVal: nil,
+		},
+		{
+			Name: "UpdatePodGroup compatibility with highestTierName",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:       namespace,
+					Name:            "job4",
+					ResourceVersion: "100",
+					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					PriorityClassName: "new",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:            "hard",
+									HighestTierName: "volcano.sh/hypernode",
+								},
+							},
+						},
+					},
+				},
+			},
+			PodGroup: &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "job4",
 				},
 				Spec: schedulingapi.PodGroupSpec{
 					MinResources: &v1.ResourceList{},

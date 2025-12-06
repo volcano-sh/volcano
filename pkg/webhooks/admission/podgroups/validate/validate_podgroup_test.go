@@ -24,12 +24,14 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 )
 
 func TestValidatePodGroup(t *testing.T) {
+	highestTierAllowed := 1
 	tests := []struct {
 		name        string
 		podGroup    *schedulingv1beta1.PodGroup
@@ -92,6 +94,120 @@ func TestValidatePodGroup(t *testing.T) {
 			},
 			queue:       &schedulingv1beta1.Queue{},
 			expectError: false,
+		},
+		{
+			name: "invalid podgroup with a queue that does not exist",
+			podGroup: &schedulingv1beta1.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "PodGroup",
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-podgroup",
+				},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					Queue: "test-queue",
+				},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: true,
+		},
+		{
+			name: "valid podgroup configured with SubGroupPolicy containing HighestTierName",
+			podGroup: &schedulingv1beta1.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "PodGroup",
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-podgroup",
+				},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					SubGroupPolicy: []schedulingv1beta1.SubGroupPolicySpec{
+						{
+							Name: "test-policy",
+							NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+								Mode:            schedulingv1beta1.HardNetworkTopologyMode,
+								HighestTierName: "volcano.sh/hypernode",
+							},
+						},
+					},
+				},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: false,
+		},
+		{
+			name: "valid podgroup configured with SubGroupPolicy containing HighestTierAllowed",
+			podGroup: &schedulingv1beta1.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "PodGroup",
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-podgroup",
+				},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					SubGroupPolicy: []schedulingv1beta1.SubGroupPolicySpec{
+						{
+							Name: "test-policy",
+							NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+								Mode:               schedulingv1beta1.HardNetworkTopologyMode,
+								HighestTierAllowed: &highestTierAllowed,
+							},
+						},
+					},
+				},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: false,
+		},
+		{
+			name: "invalid podgroup configured with SubGroupPolicy containing HighestTierAllowed and HighestTierName",
+			podGroup: &schedulingv1beta1.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "PodGroup",
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-podgroup",
+				},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					SubGroupPolicy: []schedulingv1beta1.SubGroupPolicySpec{
+						{
+							Name: "test-policy",
+							NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+								Mode:               schedulingv1beta1.HardNetworkTopologyMode,
+								HighestTierAllowed: &highestTierAllowed,
+								HighestTierName:    "volcano.sh/hypernode",
+							},
+						},
+					},
+				},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: true,
+		},
+		{
+			name: "invalid podgroup configured with NetworkTopology containing HighestTierAllowed and HighestTierName",
+			podGroup: &schedulingv1beta1.PodGroup{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "PodGroup",
+					APIVersion: "scheduling.volcano.sh/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-podgroup",
+				},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+						Mode:               schedulingv1beta1.HardNetworkTopologyMode,
+						HighestTierAllowed: &highestTierAllowed,
+						HighestTierName:    "volcano.sh/hypernode",
+					},
+				},
+			},
+			queue:       &schedulingv1beta1.Queue{},
+			expectError: true,
 		},
 	}
 

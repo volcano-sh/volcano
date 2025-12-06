@@ -54,7 +54,7 @@ func (d *Dumper) dumpToJSONFile() {
 	defer file.Close()
 	klog.Infoln("Starting to dump info in scheduler cache to file", fName)
 
-	if err := encodeCache(file, snapshot.Nodes, snapshot.HyperNodesSetByTier, snapshot.RealNodesSet, snapshot.HyperNodes, snapshot.Jobs); err != nil {
+	if err := encodeCache(file, snapshot.Nodes, snapshot.HyperNodesSetByTier, snapshot.HyperNodeTierNameMap, snapshot.RealNodesSet, snapshot.HyperNodes, snapshot.Jobs); err != nil {
 		klog.Errorf("Failed to dump info in scheduler cache, json encode error: %v", err)
 		return
 	}
