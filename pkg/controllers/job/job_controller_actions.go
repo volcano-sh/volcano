@@ -1077,15 +1077,20 @@ func updatePgSubGroupPolicy(pg *scheduling.PodGroup, tasks []batch.TaskSpec) boo
 func getSubGroupPolicy(taskSpec batch.TaskSpec) scheduling.SubGroupPolicySpec {
 	subGroupPolicy := scheduling.SubGroupPolicySpec{
 		Name:         taskSpec.Name,
-		MatchPolicy:  make([]scheduling.MatchPolicySpec, 0),
 		SubGroupSize: &taskSpec.PartitionPolicy.PartitionSize,
 	}
-	// set MatchPolicy
-	labelKey := fmt.Sprintf("volcano.sh/%s-subgroup-id", subGroupPolicy.Name)
-	matchPolicySpec := scheduling.MatchPolicySpec{
-		LabelKey: labelKey,
+
+	// Set LabelSelector
+	if taskSpec.PartitionPolicy != nil {
+		subGroupPolicy.LabelSelector = &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				batch.TaskNameKey: taskSpec.Name,
+			},
+		}
 	}
-	subGroupPolicy.MatchPolicy = append(subGroupPolicy.MatchPolicy, matchPolicySpec)
+
+	// Set MatchLabelKey
+	subGroupPolicy.MatchLabelKeys = []string{batch.TaskPartitionID}
 
 	// set NetworkTopology
 	if taskSpec.PartitionPolicy.NetworkTopology != nil {
