@@ -55,7 +55,8 @@ func (ji *JobInfo) Clone() *JobInfo {
 	for key, pods := range ji.Pods {
 		job.Pods[key] = make(map[string]*v1.Pod, len(pods))
 		for pn, pod := range pods {
-			job.Pods[key][pn] = pod
+			clonedPod := pod.DeepCopy()
+			job.Pods[key][pn] = clonedPod
 		}
 	}
 

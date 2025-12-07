@@ -166,8 +166,15 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int, jobForwa
 
 	// Assign partition labels
 	if ts.PartitionPolicy != nil {
+		var partitionID int
+		// Handle invalid partition size, default to partition -1
+		if ts.PartitionPolicy.PartitionSize <= 0 {
+			partitionID = -1
+		} else {
+			partitionID = ix / int(ts.PartitionPolicy.PartitionSize)
+		}
 		pod.Labels[batch.TaskNameKey] = ts.Name
-		pod.Labels[batch.TaskPartitionID] = strconv.Itoa(ix / int(ts.PartitionPolicy.PartitionSize))
+		pod.Labels[batch.TaskPartitionID] = strconv.Itoa(partitionID)
 	}
 
 	return pod
@@ -180,7 +187,7 @@ func applyPolicies(job *batch.Job, req *apis.Request) (delayAct *delayAction) {
 		taskName:  req.TaskName,
 		podName:   req.PodName,
 		podUID:    req.PodUID,
-		partition: req.Partition,
+		partition: req.PartitionID,
 		// default action is sync job
 		action: v1alpha1.SyncJobAction,
 	}
