@@ -261,7 +261,8 @@ custom:
 
 # Specify options for agent-scheduler
   agent_scheduler_worker_count: 1
-  schedule_sharding_enable: false
+  agent_scheduler_sharding_mode: none
+  agent_scheduler_sharding_name: ""
 
 service:
   # @param service.ipFamilyPolicy [string], support SingleStack, PreferDualStack and RequireDualStack

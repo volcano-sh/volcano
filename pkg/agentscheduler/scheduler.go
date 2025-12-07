@@ -59,13 +59,14 @@ type Scheduler struct {
 	metricsConf        map[string]string
 	dumper             schedcache.Dumper
 	disableDefaultConf bool
-	workerCount        uint32
+	workerCount        int
 	shardingMode       string
 }
 
 type Worker struct {
 	framework *framework.Framework
-	index     uint32
+	index     int
+	cache     schedcache.Cache
 }
 
 // NewAgentScheduler returns a Scheduler
@@ -86,7 +87,7 @@ func NewAgentScheduler(config *rest.Config, opt *options.ServerOption) (*Schedul
 		cache:              cache,
 		dumper:             schedcache.Dumper{Cache: cache, RootDir: opt.CacheDumpFileDir},
 		disableDefaultConf: opt.DisableDefaultSchedulerConfig,
-		workerCount:        opt.ScheduleWorkerCount,
+		workerCount:        int(opt.ScheduleWorkerCount),
 		shardingMode:       opt.ShardingMode,
 	}
 
@@ -158,7 +159,8 @@ func (worker *Worker) runOnce() {
 		return
 	}
 
-	schedCtx.NodesInShard = worker.framework.Cache.GetAndSyncNodesForWorker(worker.index)
+	schedCtx.NodesInShard = worker.cache.GetNodesForWorker(worker.index)
+	worker.cache.OnWorkerStartSchedulingCycle(worker.index)
 
 	// TODO: Call OnCycleStart for all plugins
 	// worker.framework.OnCycleStart()
@@ -167,6 +169,7 @@ func (worker *Worker) runOnce() {
 		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 		// TODO: Call OnCycleEnd for all plugins
 		// worker.framework.OnCycleEnd()
+		worker.cache.OnWorkerEndSchedulingCycle(worker.index)
 		worker.framework.ClearCycleState()
 	}()
 

@@ -370,7 +370,7 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 	)
 
 	sc.ConflictAwareBinder = NewConflictAwareBinder(sc, sc.schedulingQueue)
-	sc.ShardCoordinator = NewShardCoordinator(sc, int(opt.ScheduleWorkerCount), opt.SchedulerNames[0], opt.ShardingMode)
+	sc.ShardCoordinator = NewShardCoordinator(sc, int(opt.ScheduleWorkerCount), opt.ShardName, opt.ShardingMode)
 	return sc
 }
 
@@ -627,6 +627,11 @@ func (sc *SchedulerCache) ClientConfig() *rest.Config {
 // SharedInformerFactory returns the scheduler SharedInformerFactory
 func (sc *SchedulerCache) SharedInformerFactory() informers.SharedInformerFactory {
 	return sc.informerFactory
+}
+
+// VCSharedInformerFactory returns the scheduler VC SharedInformerFactory
+func (sc *SchedulerCache) VCSharedInformerFactory() vcinformer.SharedInformerFactory {
+	return sc.vcInformerFactory
 }
 
 // SchedulingQueue returns the scheduling queue instance in the cache
@@ -1028,7 +1033,7 @@ func (sc *SchedulerCache) EnqueueScheduleResult(scheduleResult *agentapi.PodSche
 	sc.ConflictAwareBinder.EnqueueScheduleResult(scheduleResult)
 }
 
-func (sc *SchedulerCache) UpdateNodesShardStatus(shardName string, usedNodeInCache sets.Set[string]) error {
+func (sc *SchedulerCache) UpdateNodeShardStatus(shardName string, usedNodeInCache sets.Set[string]) error {
 	klog.V(3).Infof("Update NodeShard %s status...", shardName)
 	nodeSahrd, err := sc.nodeShardLister.Get(shardName)
 	if err != nil {
@@ -1060,10 +1065,20 @@ func (sc *SchedulerCache) UpdateNodesShardStatus(shardName string, usedNodeInCac
 		klog.Errorf("Failed to update NodeShard %s status %v", shardName, err)
 		return err
 	}
-	klog.V(3).InfoS("Updated NodeShard %s status", shardName)
+	klog.V(3).Infof("Updated NodeShard %s status", shardName)
 	return nil
 }
 
-func (sc *SchedulerCache) GetAndSyncNodesForWorker(index uint32) sets.Set[string] {
-	return sc.ShardCoordinator.GetAndSyncNodesForWorker(index)
+func (sc *SchedulerCache) GetNodesForWorker(index int) sets.Set[string] {
+	return sc.ShardCoordinator.GetNodesForWorker(index)
+}
+
+// OnWorkerStartSchedulingCycle is called when scheduler worker start a new scheduling cycle
+func (sc *SchedulerCache) OnWorkerStartSchedulingCycle(index int) {
+	sc.ShardCoordinator.OnWorkerStartSchedulingCycle(index)
+}
+
+// OnWorkerEndSchedulingCycle is called when scheduler worker end a scheduling cycle
+func (sc *SchedulerCache) OnWorkerEndSchedulingCycle(index int) {
+	sc.ShardCoordinator.OnWorkerEndSchedulingCycle(index)
 }

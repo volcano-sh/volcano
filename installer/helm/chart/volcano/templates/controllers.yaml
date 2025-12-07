@@ -98,7 +98,7 @@ rules:
     resources: [ "nodes" ]
     verbs: [ "list", "watch" ]
   - apiGroups: ["shard.volcano.sh"]
-    resources: ["nodeshards"]
+    resources: ["nodeshards", "nodeshards/status"]
     verbs: ["list", "watch", "get", "create", "delete", "update", "patch"]
 ---
 kind: ClusterRoleBinding

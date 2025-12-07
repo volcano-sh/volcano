@@ -33,6 +33,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
@@ -69,6 +70,9 @@ type Cache interface {
 	// SharedInformerFactory return scheduler SharedInformerFactory
 	SharedInformerFactory() informers.SharedInformerFactory
 
+	// SharedInformerFactory return scheduler vc SharedInformerFactory
+	VCSharedInformerFactory() vcinformer.SharedInformerFactory
+
 	// SetMetricsConf set the metrics server related configuration
 	SetMetricsConf(conf map[string]string)
 
@@ -96,11 +100,17 @@ type Cache interface {
 	// GetTaskInfo returns the TaskInfo from the cache with the given taskID.
 	GetTaskInfo(taskID api.TaskID) (*api.TaskInfo, bool)
 
-	//UpdateNodesShardStatus update status in nodeshard
-	UpdateNodesShardStatus(shardName string, usedNodeInCache sets.Set[string]) error
+	//UpdateNodeShardStatus update status in nodeshard
+	UpdateNodeShardStatus(shardName string, usedNodeInCache sets.Set[string]) error
 
-	// GetAndSyncNodesForWorker get nodes to be used and triger nodeshard sync if necessary
-	GetAndSyncNodesForWorker(index uint32) sets.Set[string]
+	// GetNodesForWorker get nodes can be involved in worker
+	GetNodesForWorker(index int) sets.Set[string]
+
+	// OnWorkerStartSchedulingCycle is called when scheduler worker start a new scheduling cycle
+	OnWorkerStartSchedulingCycle(index int)
+
+	// OnWorkerEndSchedulingCycle is called when scheduler worker end a scheduling cycle
+	OnWorkerEndSchedulingCycle(index int)
 }
 
 // Binder interface for binding task and hostname
