@@ -246,6 +246,7 @@ type schGateRemovalOperation struct {
 
 // Background worker processes gate removal operations
 func (alloc *Action) schGateRemovalWorker() {
+    defer alloc.schGateRemovalWorkersWg.Done()
     for {
         select {
         case op := <-alloc.schGateRemovalOperationCh:
@@ -255,6 +256,9 @@ func (alloc *Action) schGateRemovalWorker() {
         }
     }
 }
+
+// Note: When starting the worker routine (e.g., in Action initialization), we should
+// call alloc.schGateRemovalWorkersWg.Add(1) before launching the goroutine.
 ```
 
 ##### Queue Capacity Accounting for Ungated Pods
