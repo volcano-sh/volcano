@@ -308,7 +308,7 @@ deleted.
 
 Finally, the last case is when a task successfully passes **all allocation checks** (i.e.,
 `ssn.Allocatable(queue, task)` returns `true` and there's a node that can fit the pod), then the gate will only be
-removed during the `Bind(...)` operation:
+removed during the [`Bind(...)`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/cache/cache.go#L209) operation:
 
 ```go
 func (db *DefaultBinder) Bind(...) map[schedulingapi.TaskID]string {
