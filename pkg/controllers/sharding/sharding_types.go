@@ -98,6 +98,8 @@ type AssignmentChangeEvent struct {
 	SchedulerName string
 	OldNodes      []string
 	NewNodes      []string
+	NodesToAdd    []string
+	NodesToRemove []string
 	Version       string
 	Timestamp     time.Time
 }
