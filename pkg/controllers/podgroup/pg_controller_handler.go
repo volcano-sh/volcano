@@ -104,9 +104,11 @@ func (pg *pgcontroller) addReplicaSet(obj interface{}) {
 				klog.V(4).Infof("Pod %s field SchedulerName is not matched", klog.KObj(&pod))
 				return
 			}
-			err := pg.createNormalPodPGIfNotExist(&pod)
+			// In the upgrade scenario, need to synchronize and update the podgroup-related information.
+			// For example, if you update `scheduling.volcano.sh/group-min-member: "2"`, the podgroup's `minMember` needs to be updated to 2.
+			err := pg.createOrUpdateNormalPodPG(&pod)
 			if err != nil {
-				klog.Errorf("Failed to create PodGroup for pod %s: %v", klog.KObj(&pod), err)
+				klog.Errorf("Failed to create or update PodGroup for pod %s: %v", klog.KObj(&pod), err)
 			}
 		}
 	}
