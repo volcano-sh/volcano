@@ -315,7 +315,7 @@ func (db *DefaultBinder) Bind(...) map[schedulingapi.TaskID]string {
     // ...
 
     for _, task := range tasks {
-        if task.RemoveGateDuringBind && hasOnlyVolcanoSchedulingGate(task.Pod) {
+        if task.RemoveGateDuringBind {
             if err := removeVolcanoSchGateFromPodByName(kubeClient, task.Namespace, task.Name); err != nil {
                 // ...
             }
