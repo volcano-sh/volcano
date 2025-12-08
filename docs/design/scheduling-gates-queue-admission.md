@@ -189,7 +189,7 @@ func (alloc *Action) allocateResourcesForTasks(...) {
         // for autoscalers since it indicates node resource/constraint issues
         if err := ssn.PrePredicateFn(task); err != nil {
             // ...
-            alloc.enqueueSchedulingGateRemoval(task)
+            alloc.schedulingGateRemoval(task)
             // ...
         }
 
@@ -197,7 +197,7 @@ func (alloc *Action) allocateResourcesForTasks(...) {
         // Remove gate so pod becomes Unschedulable (same as PrePredicate failure)
         if len(predicateNodes) == 0 {
             // ...
-            alloc.enqueueSchedulingGateRemoval(task)
+            alloc.schedulingGateRemoval(task)
             // ...
         }
 
@@ -205,7 +205,7 @@ func (alloc *Action) allocateResourcesForTasks(...) {
         // Remove gate so pod becomes Unschedulable (same as PrePredicate failure)
         if bestNode == nil {
             // ...
-            alloc.enqueueSchedulingGateRemoval(task)
+            alloc.schedulingGateRemoval(task)
             // ...
         }
 
@@ -215,8 +215,8 @@ func (alloc *Action) allocateResourcesForTasks(...) {
     // ...
 }
 
-// enqueueSchedulingGateRemoval queues async gate removal for node-fit failures
-func (alloc *Action) enqueueSchedulingGateRemoval(task *api.TaskInfo) {
+// schedulingGateRemoval queues async gate removal for node-fit failures
+func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo) {
     if hasOnlyVolcanoSchedulingGate(task.Pod) {
         op := schGateRemovalOperation{namespace: task.Namespace, name: task.Name}
         alloc.schGateRemovalOperationCh <- op
