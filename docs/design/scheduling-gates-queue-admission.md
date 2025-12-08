@@ -72,11 +72,18 @@ condition until the Queue has enough capacity to accommodate the Pod.
 In this proposal, changes will be required to both the **admission process** and also the **scheduler routines**, as the
 latter is responsible for applying the logic for actions and plugins.
 
+#### API Constant Definition
+
+The following annotation key should be defined as a constant in the [Scheduling v1beta1 API package](https://github.com/volcano-sh/apis/blob/v1.13.0/pkg/apis/scheduling/v1beta1/labels.go#L17) to be used throughout the implementation:
+
+```go
+const QueueAllocationGateKey = GroupName + "/queue-allocation-gate"
+```
+
 #### Changes to the Volcano `MutatingAdmissionWebhook`
 
-Volcano's `MutatingAdmissionWebhook` needs to be extended to detect Pods annotated with
-`volcano.sh/enable-queue-allocation-gate="true"` and must patch Pods at **creation time** with a new `schedulingGate`
-entry, for instance, called `volcano.sh/queue-allocation-gate`:
+Volcano's `MutatingAdmissionWebhook` must be extended to detect Pods annotated with
+`schedulingv1beta1.QueueAllocationGateKey="true"`. At **creation time**, the webhook should patch the Pod's `spec.schedulingGates` (through the [`createPatch`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/webhooks/admission/pods/mutate/mutate_pod.go#L103) function) by adding a new `schedulingGate` entry using the same constant:
 
 ```go
 // Existing createPatch function needs to include the new optional patch
@@ -97,7 +104,7 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 func patchSchedulingGates(pod *v1.Pod) *patchOperation {
 
     // Check if opt-in annotation is present
-    if pod.Annotations == nil || pod.Annotations["volcano.sh/enable-queue-allocation-gate"] != "true" {
+    if pod.Annotations == nil || pod.Annotations[schedulingv1beta1.QueueAllocationGateKey] != "true" {
         return nil
     }
 
@@ -105,8 +112,8 @@ func patchSchedulingGates(pod *v1.Pod) *patchOperation {
 
     return &patchOperation{
         Op:    "add",
-        Path:  "/spec/schedulingGates",
-        Value: append(pod.Spec.SchedulingGates, v1.PodSchedulingGate{Name: "volcano.sh/queue-allocation-gate"}),
+        Path:  "/spec/schedulingGates/-",
+        Value: append(pod.Spec.SchedulingGates, v1.PodSchedulingGate{Name: schedulingv1beta1.QueueAllocationGateKey}),
     }
 }
 ```
@@ -145,7 +152,7 @@ and gates are removed during the bind operation.
 
 To avoid blocking the scheduler, gate removals for lack of cluster capacity are queued to background workers and
 processed asynchronously. The following code snippet showcases the possible high-level changes to the function
-`allocateResourcesForTasks(...)`:
+[`allocateResourcesForTasks(...)`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/allocate/allocate.go#L356):
 
 ```go
 // Enhance allocateResourcesForTasks with gate management
@@ -182,7 +189,7 @@ func (alloc *Action) allocateResourcesForTasks(...) {
         // for autoscalers since it indicates node resource/constraint issues
         if err := ssn.PrePredicateFn(task); err != nil {
             // ...
-            alloc.enqueueSchedulingGateRemoval(task)
+            alloc.schedulingGateRemoval(task)
             // ...
         }
 
@@ -190,7 +197,7 @@ func (alloc *Action) allocateResourcesForTasks(...) {
         // Remove gate so pod becomes Unschedulable (same as PrePredicate failure)
         if len(predicateNodes) == 0 {
             // ...
-            alloc.enqueueSchedulingGateRemoval(task)
+            alloc.schedulingGateRemoval(task)
             // ...
         }
 
@@ -198,7 +205,7 @@ func (alloc *Action) allocateResourcesForTasks(...) {
         // Remove gate so pod becomes Unschedulable (same as PrePredicate failure)
         if bestNode == nil {
             // ...
-            alloc.enqueueSchedulingGateRemoval(task)
+            alloc.schedulingGateRemoval(task)
             // ...
         }
 
@@ -208,11 +215,11 @@ func (alloc *Action) allocateResourcesForTasks(...) {
     // ...
 }
 
-// enqueueSchedulingGateRemoval queues async gate removal for node-fit failures
-func (alloc *Action) enqueueSchedulingGateRemoval(task *api.TaskInfo) {
+// schedulingGateRemoval queues async gate removal for node-fit failures
+func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo) {
     if hasOnlyVolcanoSchedulingGate(task.Pod) {
         op := schGateRemovalOperation{namespace: task.Namespace, name: task.Name}
-        alloc.schGateRemovalOperationCh <- op
+        alloc.schGateRemovalStopCh <- op
         task.SchGated = false  // Mark as ungated in cache
     }
 }
@@ -227,7 +234,7 @@ type Action struct {
     // ...
 
     // Async gate removal channel
-    schGateRemovalOperationCh chan schGateRemovalOperation
+    schGateRemovalStopCh chan schGateRemovalOperation
     schGateRemovalWorkersWg   sync.WaitGroup
     schGateRemovalShutdownCh  chan struct{}
 }
@@ -239,15 +246,19 @@ type schGateRemovalOperation struct {
 
 // Background worker processes gate removal operations
 func (alloc *Action) schGateRemovalWorker() {
+    defer alloc.schGateRemovalWorkersWg.Done()
     for {
         select {
-        case op := <-alloc.schGateRemovalOperationCh:
+        case op := <-alloc.schGateRemovalStopCh:
             cache.RemoveVolcanoSchGate(kubeClient, op.namespace, op.name)
         case <-alloc.schGateRemovalShutdownCh:
             return
         }
     }
 }
+
+// Note: When starting the worker routine (e.g., in Action initialization), we should
+// call alloc.schGateRemovalWorkersWg.Add(1) before launching the goroutine.
 ```
 
 ##### Queue Capacity Accounting for Ungated Pods
@@ -297,14 +308,14 @@ deleted.
 
 Finally, the last case is when a task successfully passes **all allocation checks** (i.e.,
 `ssn.Allocatable(queue, task)` returns `true` and there's a node that can fit the pod), then the gate will only be
-removed during the `Bind(...)` operation:
+removed during the [`Bind(...)`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/cache/cache.go#L209) operation:
 
 ```go
 func (db *DefaultBinder) Bind(...) map[schedulingapi.TaskID]string {
     // ...
 
     for _, task := range tasks {
-        if task.RemoveGateDuringBind && hasOnlyVolcanoSchedulingGate(task.Pod) {
+        if task.RemoveGateDuringBind {
             if err := removeVolcanoSchGateFromPodByName(kubeClient, task.Namespace, task.Name); err != nil {
                 // ...
             }
@@ -327,7 +338,7 @@ conditions are met. The proposed design leverages this mechanism to defer schedu
 capacity, preventing pods from appearing as `Unschedulable` when they're simply waiting for queue admission and falsely
 trigger cluster scale-ups.
 
-This implementation requires pods to opt in via the `volcano.sh/enable-queue-allocation-gate: "true"` annotation, making
+This implementation requires pods to opt in via the `schedulingv1beta1.QueueAllocationGateKey: "true"` annotation (defined as `volcano.sh/queue-allocation-gate`), making
 it a conservative approach ensuring backward compatibility whilst allowing users to adopt the feature gradually. Future
 iterations **could enable this behavior by default** once the feature maturity is validated in production environments.
 
