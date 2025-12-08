@@ -112,7 +112,7 @@ func patchSchedulingGates(pod *v1.Pod) *patchOperation {
 
     return &patchOperation{
         Op:    "add",
-        Path:  "/spec/schedulingGates",
+        Path:  "/spec/schedulingGates/-",
         Value: append(pod.Spec.SchedulingGates, v1.PodSchedulingGate{Name: schedulingv1beta1.QueueAllocationGateKey}),
     }
 }
