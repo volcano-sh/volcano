@@ -328,6 +328,33 @@ func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[st
 	}
 }
 
+func BuildSubGroupPolicy(name string, matchPolicy []string, mode string, highestTierAllowed int) schedulingv1beta1.SubGroupPolicySpec {
+	return BuildSubGroupPolicyWithSubGroupSize(name, matchPolicy, mode, highestTierAllowed, 1)
+}
+
+func BuildSubGroupPolicyWithSubGroupSize(name string, matchPolicy []string, mode string, highestTierAllowed int, subGroupSize int32) schedulingv1beta1.SubGroupPolicySpec {
+	subGroupPolicy := schedulingv1beta1.SubGroupPolicySpec{
+		Name: name,
+		NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+			Mode:               schedulingv1beta1.NetworkTopologyMode(mode),
+			HighestTierAllowed: &highestTierAllowed,
+		},
+		SubGroupSize: &subGroupSize,
+	}
+	subGroupPolicy.MatchPolicy = []schedulingv1beta1.MatchPolicySpec{}
+	for _, mp := range matchPolicy {
+		subGroupPolicy.MatchPolicy = append(subGroupPolicy.MatchPolicy, schedulingv1beta1.MatchPolicySpec{LabelKey: mp})
+	}
+	return subGroupPolicy
+}
+
+// BuildPodGroupWithSubGroupPolicy builds podGroup with NetworkTopology and SubGroupPolicy.
+func BuildPodGroupWithSubGroupPolicy(name, ns, hyperNodeName, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode string, highestTierAllowed int, subGroupPolicy []schedulingv1beta1.SubGroupPolicySpec) *schedulingv1beta1.PodGroup {
+	pg := BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue, minMember, taskMinMember, status, mode, highestTierAllowed)
+	pg.Spec.SubGroupPolicy = subGroupPolicy
+	return pg
+}
+
 // BuildPodGroupWithNetWorkTopologies builds podGroup with NetWorkTopologies.
 func BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode string, highestTierAllowed int) *schedulingv1beta1.PodGroup {
 	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
