@@ -474,11 +474,12 @@ func (sc *ShardingController) createShard(schedulerName string, nodesDesired []s
 			Name: schedulerName,
 		},
 		Spec: shardv1alpha1.NodeShardSpec{
-			SchedulerName: schedulerName,
-			NodesDesired:  nodesDesired,
+			NodesDesired: nodesDesired,
 		},
 		Status: shardv1alpha1.NodeShardStatus{
 			LastUpdateTime: metav1.Now(),
+			NodesToAdd:     nodesDesired,
+			NodesToRemove:  []string{},
 		},
 	}
 
@@ -514,9 +515,14 @@ func (sc *ShardingController) applyAssignment(schedulerName string, assignment *
 	}
 
 	// Create new shard
+	currentNodesInUse := shard.Status.NodesInUse
 	newShard := shard.DeepCopy()
 	newShard.Spec.NodesDesired = assignment.NodesDesired
 	newShard.Status.LastUpdateTime = metav1.Now()
+	nodesToAdd, nodesToRemove := sc.findNodesToAddRemove(currentNodesInUse, assignment.NodesDesired)
+	newShard.Status.NodesToAdd = nodesToAdd
+	newShard.Status.NodesToRemove = nodesToRemove
+	klog.V(6).Infof("%s - current shard: %s, assignment: %s, NodesToadd: %s, NodesToRemove: %s", schedulerName, currentNodesInUse, assignment.NodesDesired, nodesToAdd, nodesToRemove)
 
 	// Apply update
 	_, err = sc.vcClient.ShardV1alpha1().NodeShards().Update(sc.ctx, newShard, metav1.UpdateOptions{})
@@ -529,12 +535,49 @@ func (sc *ShardingController) applyAssignment(schedulerName string, assignment *
 		SchedulerName: schedulerName,
 		OldNodes:      shard.Spec.NodesDesired,
 		NewNodes:      assignment.NodesDesired,
+		NodesToAdd:    nodesToAdd,
+		NodesToRemove: nodesToRemove,
 		Version:       assignment.Version,
 		Timestamp:     time.Now(),
 	}
 
-	klog.Infof("Updated shard %s with %d nodes", schedulerName, len(assignment.NodesDesired))
+	klog.V(6).Infof("Updated shard %s with %d nodes", schedulerName, len(assignment.NodesDesired))
 	return nil
+}
+
+// find NodesToAdd and NodesToRemove in assignments
+func (sc *ShardingController) findNodesToAddRemove(oldNodes []string, newNodes []string) (nodesToAdd []string, nodesToRemove []string) {
+	// Create hash maps to store presence of elements in each list.
+	oldNodesMap := make(map[string]bool)
+	newNodesMap := make(map[string]bool)
+
+	// Populate oldNodesMap with elements from oldNodes.
+	for _, node := range oldNodes {
+		oldNodesMap[node] = true
+	}
+
+	// Populate newNodesMap with elements from newNodes.
+	for _, node := range newNodes {
+		newNodesMap[node] = true
+	}
+
+	// find nodes to remove
+	nodesToRemove = []string{}
+	for _, node := range oldNodes {
+		if _, foundInNewNodes := newNodesMap[node]; !foundInNewNodes {
+			nodesToRemove = append(nodesToRemove, node)
+		}
+	}
+
+	// find nodes to add
+	nodesToAdd = []string{}
+	for _, node := range newNodes {
+		if _, foundInOldNodes := oldNodesMap[node]; !foundInOldNodes {
+			nodesToAdd = append(nodesToAdd, node)
+		}
+	}
+
+	return nodesToAdd, nodesToRemove
 }
 
 // assignmentNeedsUpdate determines if assignment needs update

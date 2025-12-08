@@ -138,6 +138,13 @@ func ForceSyncShards(t *testing.T, controller *ShardingController, timeout time.
 	}
 }
 
+func fakeShardInUse(t *testing.T, controller *ShardingController, schedulerName string) {
+	shard, err := controller.vcClient.ShardV1alpha1().NodeShards().Get(context.TODO(), schedulerName, metav1.GetOptions{})
+	assert.NoError(t, err, "should get shard for %s", schedulerName)
+	shard.Status.NodesInUse = shard.Spec.NodesDesired
+	controller.vcClient.ShardV1alpha1().NodeShards().Update(context.TODO(), shard, metav1.UpdateOptions{})
+}
+
 // VerifyAssignment verifies assignment for a scheduler
 func VerifyAssignment(t *testing.T, controller *ShardingController, schedulerName string, expectedNodes []string) {
 	shard, err := controller.vcClient.ShardV1alpha1().NodeShards().Get(context.TODO(), schedulerName, metav1.GetOptions{})
@@ -148,8 +155,17 @@ func VerifyAssignment(t *testing.T, controller *ShardingController, schedulerNam
 	sort.Strings(actualNodes)
 	sort.Strings(expectedNodes)
 
-	assert.ElementsMatch(t, expectedNodes, shard.Spec.NodesDesired,
+	assert.ElementsMatch(t, expectedNodes, actualNodes,
 		"nodes assigned to %s should match expected", schedulerName)
+}
+
+func VerifyAssignmentUpdate(t *testing.T, controller *ShardingController, schedulerName string, expectedNodesToAdd []string, expectedNodesToRemove []string) {
+	shard, err := controller.vcClient.ShardV1alpha1().NodeShards().Get(context.TODO(), schedulerName, metav1.GetOptions{})
+	assert.NoError(t, err, "should get shard for %s", schedulerName)
+
+	// Sort nodes for consistent comparison
+	assert.ElementsMatch(t, shard.Status.NodesToAdd, expectedNodesToAdd, "nodesToAdd assigned to %s should match expected", schedulerName)
+	assert.ElementsMatch(t, shard.Status.NodesToRemove, expectedNodesToRemove, "nodesToRemove assigned to %s should match expected", schedulerName)
 }
 
 // SetupPodsOnNode creates multiple pods on a specific node

@@ -152,6 +152,10 @@ func TestNodeAdditionAndDeletion(t *testing.T) {
 		controller.addPod(pod)
 	}
 
+	// Fake Use
+	fakeShardInUse(t, controller, "agent-scheduler")
+	fakeShardInUse(t, controller, "volcano-scheduler")
+
 	// Sync
 	ForceSyncShards(t, controller, 2*time.Second)
 
@@ -160,6 +164,7 @@ func TestNodeAdditionAndDeletion(t *testing.T) {
 	// new-node: ~18.75% -> volcano-scheduler
 	VerifyAssignment(t, controller, "agent-scheduler", []string{"initial-node"})
 	VerifyAssignment(t, controller, "volcano-scheduler", []string{"new-node"})
+	VerifyAssignmentUpdate(t, controller, "volcano-scheduler", []string{"new-node"}, []string{})
 
 	// Delete initial node
 	err = controller.kubeClient.CoreV1().Nodes().Delete(context.TODO(), "initial-node", metav1.DeleteOptions{})
@@ -172,10 +177,13 @@ func TestNodeAdditionAndDeletion(t *testing.T) {
 	controller.deleteNodeEvent(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "initial-node"}})
 
 	// Sync
+	fakeShardInUse(t, controller, "agent-scheduler")
+	fakeShardInUse(t, controller, "volcano-scheduler")
 	ForceSyncShards(t, controller, 2*time.Second)
 
 	// Verify assignments after deletion
 	// Only new-node should remain, assigned to volcano-scheduler
 	VerifyAssignment(t, controller, "agent-scheduler", []string{})
+	VerifyAssignmentUpdate(t, controller, "agent-scheduler", []string{}, []string{"initial-node"})
 	VerifyAssignment(t, controller, "volcano-scheduler", []string{"new-node"})
 }
