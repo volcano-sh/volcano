@@ -1,18 +1,10 @@
 name: E2E Spark Integration Test
 
 on:
-  # Post check in below branches
-  push:
-    branches:
-      - master
-  # PR triggered job
-  pull_request:
-jobs:
-  build-images:
-    uses: ./.github/workflows/images.yaml
+  workflow_call:
 
+jobs:
   k8s-integration-tests:
-    needs: build-images
     name: "E2E about Spark Integration test"
     runs-on: ubuntu-24.04
     steps:

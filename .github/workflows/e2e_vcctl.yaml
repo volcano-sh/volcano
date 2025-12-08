@@ -1,21 +1,13 @@
 name: Vcctl Test
 
 on:
-  push:
-    branches:
-      - master
-    tags:
-  pull_request:
+  workflow_call:
 
 jobs:
-  build-images:
-    uses: ./.github/workflows/images.yaml
-
   e2e_vcctl:
     runs-on: ubuntu-24.04
     name: E2E about Volcano CLI
     timeout-minutes: 50
-    needs: build-images
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -59,7 +51,7 @@ jobs:
         run: |
           export ARTIFACTS_PATH=${{ github.workspace }}/e2e-vcctl-logs
           make vcctl
-          E2E_TYPE=VCCTL ./hack/run-e2e-kind.sh
+          make e2e-test-vcctl
 
       - name: Upload e2e vcctl logs
         if: '!success()'

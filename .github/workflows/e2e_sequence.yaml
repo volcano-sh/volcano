@@ -1,21 +1,13 @@
 name: E2E Sequence Jobs
 
 on:
-  push:
-    branches:
-      - master
-    tags:
-  pull_request:
+  workflow_call:
 
 jobs:
-  build-images:
-    uses: ./.github/workflows/images.yaml
-
   e2e_sequence:
     runs-on: ubuntu-24.04
     name: E2E about Sequence
     timeout-minutes: 50
-    needs: build-images
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -58,7 +50,7 @@ jobs:
       - name: Run E2E Tests
         run: |
           export ARTIFACTS_PATH=${{ github.workspace }}/e2e-sequence-logs
-          E2E_TYPE=JOBSEQ ./hack/run-e2e-kind.sh
+          make e2e-test-jobseq
 
       - name: Upload e2e sequence logs
         if: '!success()'

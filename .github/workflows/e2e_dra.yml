@@ -1,21 +1,13 @@
 name: E2E DRA
 
 on:
-  push:
-    branches:
-      - master
-    tags:
-  pull_request:
+  workflow_call:
 
 jobs:
-  build-images:
-    uses: ./.github/workflows/images.yaml
-
   e2e_dra:
     runs-on: ubuntu-24.04
     name: E2E about DRA
     timeout-minutes: 40
-    needs: build-images
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -58,7 +50,7 @@ jobs:
       - name: Run E2E Tests
         run: |
           export ARTIFACTS_PATH=${{ github.workspace }}/e2e-dra-logs
-          E2E_TYPE=DRA FEATURE_GATES="DynamicResourceAllocation=true" ./hack/run-e2e-kind.sh
+          make e2e-test-dra
 
       - name: Upload e2e dra logs
         if: '!success()'
