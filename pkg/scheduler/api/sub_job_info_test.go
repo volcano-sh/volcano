@@ -276,154 +276,196 @@ func TestSubJobInfo_IsSoftTopologyMode(t *testing.T) {
 	}
 }
 
-func TestSubJobInfo_getSubJobMatchValues(t *testing.T) {
-	type args struct {
-		policy scheduling.SubGroupPolicySpec
-		pod    *v1.Pod
-	}
+func TestGetSubJobMatchValues_Basic(t *testing.T) {
 	tests := []struct {
-		name string
-		args args
-		want []string
+		name     string
+		policy   scheduling.SubGroupPolicySpec
+		pod      *v1.Pod
+		expected []string
 	}{
 		{
-			name: "Normale case with matching labels",
-			args: args{
-				policy: scheduling.SubGroupPolicySpec{
-					MatchPolicy: []scheduling.MatchPolicySpec{
-						{
-							LabelKey: "key1",
-						},
-						{
-							LabelKey: "key2",
-						},
-					},
+			name: "match label selector and collect match values",
+			policy: scheduling.SubGroupPolicySpec{
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "test"},
 				},
-				pod: &v1.Pod{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{
-							"key1": "value1",
-							"key2": "value2",
-						},
-					},
+				MatchLabelKeys: []string{"version", "env"},
+			},
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "test", "version": "v1", "env": "dev"},
 				},
 			},
-			want: []string{"value1", "value2"},
+			expected: []string{"v1", "dev"},
 		},
 		{
-			name: "Policy MatchPolicy is empty",
-			args: args{
-				policy: scheduling.SubGroupPolicySpec{
-					MatchPolicy: []scheduling.MatchPolicySpec{},
-				},
-				pod: &v1.Pod{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{
-							"key1": "value1",
-							"key2": "value2",
-						},
-					},
+			name: "no label selector with match keys",
+			policy: scheduling.SubGroupPolicySpec{
+				MatchLabelKeys: []string{"zone"},
+			},
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"zone": "zone-1"},
 				},
 			},
-			want: nil,
+			expected: []string{"zone-1"},
 		},
 		{
-			name: "Pod Labels is nil",
-			args: args{
-				policy: scheduling.SubGroupPolicySpec{
-					MatchPolicy: []scheduling.MatchPolicySpec{
-						{
-							LabelKey: "key1",
-						},
-						{
-							LabelKey: "key2",
-						},
-					},
-				},
-				pod: &v1.Pod{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: nil,
-					},
+			name: "no match keys returns empty slice",
+			policy: scheduling.SubGroupPolicySpec{
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "test"},
 				},
 			},
-			want: nil,
-		},
-		{
-			name: "Pod Labels does not contain all required keys",
-			args: args{
-				policy: scheduling.SubGroupPolicySpec{
-					MatchPolicy: []scheduling.MatchPolicySpec{
-						{
-							LabelKey: "key1",
-						},
-						{
-							LabelKey: "key2",
-						},
-					},
-				},
-				pod: &v1.Pod{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{
-							"key1": "value1",
-						},
-					},
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "test"},
 				},
 			},
-			want: nil,
-		},
-		{
-			name: "Pod Labels contains empty value for required key",
-			args: args{
-				policy: scheduling.SubGroupPolicySpec{
-					MatchPolicy: []scheduling.MatchPolicySpec{
-						{
-							LabelKey: "key1",
-						},
-						{
-							LabelKey: "key2",
-						},
-					},
-				},
-				pod: &v1.Pod{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{
-							"key1": "value1",
-							"key2": "",
-						},
-					},
-				},
-			},
-			want: nil,
-		},
-		{
-			name: "Pod Labels contains all required keys with non-empty values",
-			args: args{
-				policy: scheduling.SubGroupPolicySpec{
-					MatchPolicy: []scheduling.MatchPolicySpec{
-						{
-							LabelKey: "key1",
-						},
-						{
-							LabelKey: "key2",
-						},
-					},
-				},
-				pod: &v1.Pod{
-					ObjectMeta: metav1.ObjectMeta{
-						Labels: map[string]string{
-							"key1": "value1",
-							"key2": "value2",
-							"key3": "value3",
-						},
-					},
-				},
-			},
-			want: []string{"value1", "value2"},
+			expected: []string{},
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equalf(t, tt.want, getSubJobMatchValues(tt.args.policy, tt.args.pod), "getSubJobMatchValues(%v, %v)", tt.args.policy, tt.args.pod)
+			result := getSubJobMatchValues(tt.policy, tt.pod)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGetSubJobMatchValues_Boundary(t *testing.T) {
+	tests := []struct {
+		name     string
+		policy   scheduling.SubGroupPolicySpec
+		pod      *v1.Pod
+		expected []string
+	}{
+		{
+			name: "empty label selector matches all",
+			policy: scheduling.SubGroupPolicySpec{
+				LabelSelector:  &metav1.LabelSelector{},
+				MatchLabelKeys: []string{"key"},
+			},
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"key": "value"},
+				},
+			},
+			expected: []string{"value"},
+		},
+		{
+			name: "match expression selector",
+			policy: scheduling.SubGroupPolicySpec{
+				LabelSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "app",
+							Operator: metav1.LabelSelectorOpIn,
+							Values:   []string{"test", "demo"},
+						},
+					},
+				},
+				MatchLabelKeys: []string{"app"},
+			},
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "demo"},
+				},
+			},
+			expected: []string{"demo"},
+		},
+		{
+			name: "multiple match keys with empty values",
+			policy: scheduling.SubGroupPolicySpec{
+				MatchLabelKeys: []string{"a", "b"},
+			},
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"a": "", "b": "val"},
+				},
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getSubJobMatchValues(tt.policy, tt.pod)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestGetSubJobMatchValues_Error(t *testing.T) {
+	tests := []struct {
+		name     string
+		policy   scheduling.SubGroupPolicySpec
+		pod      *v1.Pod
+		expected []string
+	}{
+		{
+			name: "invalid label selector",
+			policy: scheduling.SubGroupPolicySpec{
+				LabelSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      "app",
+							Operator: "invalid", // 无效的操作符
+						},
+					},
+				},
+			},
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "test"},
+				},
+			},
+			expected: []string{},
+		},
+		{
+			name: "pod labels do not match selector",
+			policy: scheduling.SubGroupPolicySpec{
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "test"},
+				},
+				MatchLabelKeys: []string{"version"},
+			},
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "prod"},
+				},
+			},
+			expected: []string{},
+		},
+		{
+			name: "missing label key in pod",
+			policy: scheduling.SubGroupPolicySpec{
+				MatchLabelKeys: []string{"missing"},
+			},
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"existing": "value"},
+				},
+			},
+			expected: []string{},
+		},
+		{
+			name: "pod has no labels",
+			policy: scheduling.SubGroupPolicySpec{
+				MatchLabelKeys: []string{"any"},
+			},
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{}, // 无标签
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getSubJobMatchValues(tt.policy, tt.pod)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
