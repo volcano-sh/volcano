@@ -152,7 +152,7 @@ and gates are removed during the bind operation.
 
 To avoid blocking the scheduler, gate removals for lack of cluster capacity are queued to background workers and
 processed asynchronously. The following code snippet showcases the possible high-level changes to the function
-`allocateResourcesForTasks(...)`:
+[`allocateResourcesForTasks(...)`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/allocate/allocate.go#L356):
 
 ```go
 // Enhance allocateResourcesForTasks with gate management
