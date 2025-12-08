@@ -75,7 +75,7 @@ latter is responsible for applying the logic for actions and plugins.
 #### Changes to the Volcano `MutatingAdmissionWebhook`
 
 Volcano's `MutatingAdmissionWebhook` needs to be extended to detect Pods annotated with
-`volcano.sh/enable-queue-allocation-gate="true"` and must patch Pods at **creation time** with a new `schedulingGate`
+`volcano.sh/enable-queue-allocation-gate="true"` and must patch Pods at **creation time** (through [`createPatch`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/webhooks/admission/pods/mutate/mutate_pod.go#L103) function) with a new `schedulingGate`
 entry, for instance, called `volcano.sh/queue-allocation-gate`:
 
 ```go
