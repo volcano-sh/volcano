@@ -8,10 +8,14 @@ on:
   pull_request:
 
 jobs:
+  build-images:
+    uses: ./.github/workflows/images.yaml
+
   e2e_sequence:
     runs-on: ubuntu-24.04
     name: E2E about Sequence
     timeout-minutes: 50
+    needs: build-images
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -29,12 +33,6 @@ jobs:
         with:
           go-version: 1.24.x
 
-      - name: Install musl
-        run: |
-          wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
-          tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
-          ./configure
-          make && sudo make install
       - uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
@@ -47,10 +45,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Download Images
+        uses: actions/download-artifact@v4
+        with:
+          name: volcano-images
+          path: _output/images
+
+      - name: Load Images
+        run: |
+          make load-images
+
       - name: Run E2E Tests
         run: |
           export ARTIFACTS_PATH=${{ github.workspace }}/e2e-sequence-logs
-          make e2e-test-jobseq CC=/usr/local/musl/bin/musl-gcc
+          E2E_TYPE=JOBSEQ ./hack/run-e2e-kind.sh
 
       - name: Upload e2e sequence logs
         if: '!success()'

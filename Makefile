@@ -99,6 +99,25 @@ images:
 		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
 	done
 
+IMAGES_DIR=_output/images
+
+save-images:
+	@mkdir -p ${IMAGES_DIR}
+	@echo "Saving images with OCI format and gzip compression..."
+	docker save --format oci ${IMAGE_PREFIX}/vc-controller-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-controller-manager-$(TAG).tar.gz
+	docker save --format oci ${IMAGE_PREFIX}/vc-scheduler:$(TAG) | gzip > ${IMAGES_DIR}/vc-scheduler-$(TAG).tar.gz
+	docker save --format oci ${IMAGE_PREFIX}/vc-webhook-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-webhook-manager-$(TAG).tar.gz
+	docker save --format oci ${IMAGE_PREFIX}/vc-agent:$(TAG) | gzip > ${IMAGES_DIR}/vc-agent-$(TAG).tar.gz
+	@echo "Images saved to ${IMAGES_DIR}"
+
+load-images:
+	@echo "Loading images from ${IMAGES_DIR}..."
+	@for image in ${IMAGES_DIR}/*.tar.gz; do \
+		echo "Loading $$image..."; \
+		gunzip -c $$image | docker load; \
+	done
+	@echo "All images loaded successfully"
+
 vc-agent-image:
 	docker buildx build -t "${IMAGE_PREFIX}/vc-agent:$(TAG)" . -f ./installer/dockerfile/agent/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}
 
