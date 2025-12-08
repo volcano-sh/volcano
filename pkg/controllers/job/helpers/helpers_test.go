@@ -608,3 +608,78 @@ func TestGetTaskReplicasUnderJob(t *testing.T) {
 		})
 	}
 }
+
+func TestIsOutOfSyncPod(t *testing.T) {
+	testCases := []struct {
+		name     string
+		pod      *v1.Pod
+		expected bool
+	}{
+		{
+			name: "pod with out-of-sync annotation should return true",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Annotations: map[string]string{
+						OutOfSyncKey: "true",
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "pod without out-of-sync annotation should return false",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Annotations: map[string]string{
+						"other-key": "value",
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "pod with no annotations should return false",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+				},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := IsOutOfSyncPod(tc.pod)
+
+			if result != tc.expected {
+				t.Errorf("expected IsOutOfSyncPod to return %v, got %v", tc.expected, result)
+			}
+		})
+	}
+}
+
+func TestOutOfSyncJSONPatch(t *testing.T) {
+	testCases := []struct {
+		name     string
+		expected string
+	}{
+		{
+			name:     "should generate valid JSON patch for out-of-sync annotation",
+			expected: `[{"op":"add","path":"/metadata/annotations/volcano.sh~1controller-out-of-sync","value":"true"}]`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := OutOfSyncJSONPatch()
+			resultStr := string(result)
+
+			if resultStr != tc.expected {
+				t.Errorf("expected JSON patch %q, got %q", tc.expected, resultStr)
+			}
+		})
+	}
+}

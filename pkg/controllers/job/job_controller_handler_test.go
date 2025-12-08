@@ -79,6 +79,7 @@ func buildPod(namespace, name string, p v1.PodPhase, labels map[string]string) *
 			Name:            name,
 			Namespace:       namespace,
 			Labels:          labels,
+			Annotations:     map[string]string{"foo": "bar"},
 			ResourceVersion: string(uuid.NewUUID()),
 			OwnerReferences: []metav1.OwnerReference{
 				{
