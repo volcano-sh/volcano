@@ -221,8 +221,8 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 		if hardMode, highestAllowedTier := subJob.IsHardTopologyMode(); hardMode {
 			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, subJob.AllocatedHyperNode)
 			if err != nil {
-				klog.ErrorS(err, "build hyperNode gradient fail", "subJob", subJob.UID, "hyperNode", hyperNode.Name,
-					"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", subJob.AllocatedHyperNode)
+				klog.Warningf("build hyperNode gradient fail, subJob: %s, hyperNode: %s, highestAllowedTier: %d, allocatedHyperNode: %s, %v", subJob.UID, hyperNode.Name,
+					highestAllowedTier, subJob.AllocatedHyperNode, err)
 				return nil
 			}
 			return result
