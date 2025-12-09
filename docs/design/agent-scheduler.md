@@ -35,6 +35,52 @@ Design of the scheduling workflow, scheduling queue, Plugin and Action mechanism
 ### Scheduler architecture
 ![](images/agent-scheduler/agent-scheduler.png)
 
+### Component Relationship and Initialization
+
+The system architecture relies on a strict hierarchy and initialization sequence
+
+#### Hierarchy
+- **Scheduler**: The top-level component that manages the lifecycle of the entire scheduling system. It owns the Cache, Configurations, and the Worker Pool.
+- **Worker**: A concurrent scheduling unit. Each worker is independent and contains its own Framework instance. 
+Multiple workers will simultaneously retrieve pods from the central scheduling queue for scheduling, employing optimistic parallel scheduling.
+- **Framework**: The runtime environment for plugins within a worker. It holds a registry of plugins and actions, and crucially, maintains a **Snapshot** of the cluster state specific to that worker's current scheduling cycle.
+- **Snapshot**: A point-in-time view of the cluster state (Nodes, Pods, etc.) derived from the global Cache. Each worker updates its snapshot at the beginning of a scheduling cycle to ensure consistency.
+- **Action**: Defines the high-level scheduling logic (e.g., Allocate). Actions orchestrate the execution of multiple Plugins in a defined sequence.
+- **Plugin**: Implements specific scheduling algorithms (e.g., Predicates, NodeOrder). Plugins are registered within the Framework and invoked by Actions.
+
+#### Initialization Sequence
+
+The initialization process begins with the **Scheduler**, which first establishes the global **Cache** to synchronize with the Kubernetes API server. 
+It then loads the scheduling configuration to determine the active Actions and Plugins. Following this, the Scheduler initializes the **Worker Pool**. 
+For each **Worker** spawned, a distinct **Framework** instance is created. At runtime, when a worker begins a scheduling cycle, 
+it first updates its Framework's **Snapshot** from the global cache, providing a consistent view for the subsequent Action and Plugin execution.
+
+### Scheduling Queue
+
+#### Acknowledgments
+The design of the scheduling queue is heavily inspired by and directly references the mature queue architecture of [kube-scheduler](https://github.com/kubernetes/kubernetes/tree/release-1.34/pkg/scheduler/backend/queue). We extend our sincere gratitude to the kube-scheduler contributors for their excellent work. As the design goals of the Volcano fast-path scheduler align closely with the principles behind kube-scheduler's queue management, we have chosen to build upon this proven architecture to rapidly establish a robust and efficient scheduling framework for agent workloads.
+
+#### Queue Architecture
+The scheduling queue manages the execution order of pods and consists of three components: **activeQ**, **backoffQ**, and **unschedulable pods pool**.
+
+- **ActiveQ**: Stores pods that are ready for immediate scheduling.
+- **BackoffQ**: Stores pods that have failed scheduling but are waiting for a backoff period to expire.
+- **Unschedulable Pods Pool**: Stores pods that have failed scheduling and are determined to be unschedulable under current cluster conditions.
+
+A key enhancement over the standard queue logic is the **Urgent Retry Mechanism** for binding conflicts. 
+When the Conflict-Aware Binder detects a conflict (i.e., multiple workers trying to bind to the same node), 
+it pushes the pod back to the **ActiveQ** with an elevated internal priority (e.g., `SchedulingPriorityUrgent`). 
+This ensures that the conflicting pod is prioritized over other pending pods for immediate rescheduling, 
+minimizing the latency impact of optimistic concurrency collisions.
+
+The workflow is as follows:
+
+1. When new unscheduled pending pods are watched, they are added to the **activeQ**, the pods will be popped from the **activeQ** and tried to be scheduled.
+2. If scheduling fails for the pod, it will be added to the **unschedulable pods pool**.
+3. When cluster events occur (such as node updates, pod deletions, etc.), the scheduler checks pods in the **unschedulable pods pool**, if the event makes a pod potentially schedulable, the pod is moved to either **backoffQ** or **activeQ**, depending on whether it is still within its backoff period.
+4. **On Binding Conflict**: The pod is annotated with a high-priority tag and immediately re-added to the **activeQ**'s head, 
+bypassing the backoff cycle to quickly retry scheduling.
+
 
 ## Snapshot maintenance
 Design of snapshot fast update mechanism and why. 
