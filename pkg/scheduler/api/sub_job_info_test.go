@@ -385,7 +385,7 @@ func TestGetSubJobMatchValues_Boundary(t *testing.T) {
 					Labels: map[string]string{"a": "", "b": "val"},
 				},
 			},
-			expected: []string{},
+			expected: nil,
 		},
 	}
 
@@ -421,7 +421,7 @@ func TestGetSubJobMatchValues_Error(t *testing.T) {
 					Labels: map[string]string{"app": "test"},
 				},
 			},
-			expected: []string{},
+			expected: nil,
 		},
 		{
 			name: "pod labels do not match selector",
@@ -436,7 +436,7 @@ func TestGetSubJobMatchValues_Error(t *testing.T) {
 					Labels: map[string]string{"app": "prod"},
 				},
 			},
-			expected: []string{},
+			expected: nil,
 		},
 		{
 			name: "missing label key in pod",
@@ -448,7 +448,7 @@ func TestGetSubJobMatchValues_Error(t *testing.T) {
 					Labels: map[string]string{"existing": "value"},
 				},
 			},
-			expected: []string{},
+			expected: nil,
 		},
 		{
 			name: "pod has no labels",
@@ -458,7 +458,7 @@ func TestGetSubJobMatchValues_Error(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{}, // 无标签
 			},
-			expected: []string{},
+			expected: nil,
 		},
 	}
 

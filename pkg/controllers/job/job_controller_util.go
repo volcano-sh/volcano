@@ -167,13 +167,12 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int, jobForwa
 	// Assign partition labels
 	if ts.PartitionPolicy != nil {
 		var partitionID int
-		// Handle invalid partition size, default to partition -1
+		// Handle invalid partition size, default to partition 0
 		if ts.PartitionPolicy.PartitionSize <= 0 {
-			partitionID = -1
+			partitionID = 0
 		} else {
 			partitionID = ix / int(ts.PartitionPolicy.PartitionSize)
 		}
-		pod.Labels[batch.TaskNameKey] = ts.Name
 		pod.Labels[batch.TaskPartitionID] = strconv.Itoa(partitionID)
 	}
 

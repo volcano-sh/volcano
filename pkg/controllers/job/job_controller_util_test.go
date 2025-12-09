@@ -376,8 +376,8 @@ func TestCreatePodWithPartitionPolicy(t *testing.T) {
 			}
 
 			// Verify task name label
-			if pod.Labels[v1alpha1.TaskNameKey] != tt.expectedTask {
-				t.Errorf("expected task name %s, got %s", tt.expectedTask, pod.Labels[v1alpha1.TaskNameKey])
+			if pod.Labels[v1alpha1.TaskSpecKey] != tt.expectedTask {
+				t.Errorf("expected task name %s, got %s", tt.expectedTask, pod.Labels[v1alpha1.TaskSpecKey])
 			}
 		})
 	}
@@ -412,10 +412,6 @@ func TestPartitionPolicyWithoutPolicy(t *testing.T) {
 	if _, ok := pod.Labels[v1alpha1.TaskPartitionID]; ok {
 		t.Error("should not set partition ID label when no partition policy")
 	}
-
-	if _, ok := pod.Labels[v1alpha1.TaskNameKey]; ok {
-		t.Error("should not set task name label when no partition policy")
-	}
 }
 
 // TestPartitionPolicyEdgeCases tests boundary conditions
@@ -436,7 +432,7 @@ func TestPartitionPolicyEdgeCases(t *testing.T) {
 			name:          "partition size 0 (invalid), index 5",
 			partitionSize: 0,
 			index:         5,
-			expectedPart:  "-1", // Go returns 0 for division by zero
+			expectedPart:  "0", // Go returns 0 for division by zero
 		},
 		{
 			name:          "negative index (invalid), size 3",

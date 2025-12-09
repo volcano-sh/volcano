@@ -1084,7 +1084,7 @@ func getSubGroupPolicy(taskSpec batch.TaskSpec) scheduling.SubGroupPolicySpec {
 	if taskSpec.PartitionPolicy != nil {
 		subGroupPolicy.LabelSelector = &metav1.LabelSelector{
 			MatchLabels: map[string]string{
-				batch.TaskNameKey: taskSpec.Name,
+				batch.TaskSpecKey: taskSpec.Name,
 			},
 		}
 	}

@@ -153,35 +153,35 @@ func (sji *SubJobInfo) getTaskHighestPriority() int32 {
 // If any key is missing or has an empty value, returns nil.
 // If no matching rules are configured, returns an empty slice indicating the default group.
 func getSubJobMatchValues(policy scheduling.SubGroupPolicySpec, pod *v1.Pod) []string {
-	matchValues := make([]string, 0, len(policy.MatchLabelKeys))
 	// Check if the pod matches the label selector specified in the policy
 	if policy.LabelSelector != nil {
 		selector, err := metav1.LabelSelectorAsSelector(policy.LabelSelector)
 		if err != nil {
 			klog.Errorf("Failed to convert label selector %v: %v", policy.LabelSelector, err)
-			return matchValues
+			return nil
 		}
 
 		podLabels := labels.Set(pod.Labels)
 		if !selector.Matches(podLabels) {
 			klog.V(4).Infof("Pod %s/%s labels %v do not match selector %q", pod.Namespace, pod.Name, podLabels, selector.String())
-			return matchValues
+			return nil
 		}
 		klog.V(4).Infof("Pod %s/%s labels %v match selector %q", pod.Namespace, pod.Name, podLabels, selector.String())
 	}
 
+	matchValues := make([]string, 0, len(policy.MatchLabelKeys))
 	// Collect match values from pod labels based on policy's MatchLabelKeys
 	if len(policy.MatchLabelKeys) > 0 {
 		if pod.Labels == nil {
 			klog.V(4).Infof("Pod %s/%s has no labels, cannot match MatchLabelKeys %v", pod.Namespace, pod.Name, policy.MatchLabelKeys)
-			return matchValues
+			return nil
 		}
 
 		for _, key := range policy.MatchLabelKeys {
 			value, ok := pod.Labels[key]
 			if !ok || value == "" {
 				klog.V(4).Infof("Pod %s/%s missing or empty label value for key %q, cannot match", pod.Namespace, pod.Name, key)
-				return matchValues
+				return nil
 			}
 			matchValues = append(matchValues, value)
 		}
