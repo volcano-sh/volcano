@@ -209,9 +209,12 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 				Resources: []config.ResourceSpec{{Name: "cpu", Weight: 50}, {Name: "memory", Weight: 50}},
 			},
 		}
-		p, _ := noderesources.NewFit(context.TODO(), leastAllocatedArgs, pp.Handle, fts)
-		leastAllocated := p.(*noderesources.Fit)
-		nodeOrderScorePlugins["Least Allocated"] = ScorePluginWithWeight{leastAllocated, pp.weight.leastReqWeight}
+		if p, err := noderesources.NewFit(context.TODO(), leastAllocatedArgs, pp.Handle, fts); err == nil {
+			leastAllocated := p.(*noderesources.Fit)
+			nodeOrderScorePlugins["Least Allocated"] = ScorePluginWithWeight{leastAllocated, pp.weight.leastReqWeight}
+		} else {
+			klog.Errorf("Failed to init Least Allocated plugin %v", err)
+		}
 	}
 
 	if pp.weight.mostReqWeight != 0 {
@@ -222,9 +225,12 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 				Resources: []config.ResourceSpec{{Name: "cpu", Weight: 1}, {Name: "memory", Weight: 1}},
 			},
 		}
-		p, _ := noderesources.NewFit(context.TODO(), mostAllocatedArgs, pp.Handle, fts)
-		mostAllocation := p.(*noderesources.Fit)
-		nodeOrderScorePlugins["Most Allocated"] = ScorePluginWithWeight{mostAllocation, pp.weight.mostReqWeight}
+		if p, err := noderesources.NewFit(context.TODO(), mostAllocatedArgs, pp.Handle, fts); err == nil {
+			mostAllocation := p.(*noderesources.Fit)
+			nodeOrderScorePlugins["Most Allocated"] = ScorePluginWithWeight{mostAllocation, pp.weight.mostReqWeight}
+		} else {
+			klog.Errorf("Failed to init Most Allocated plugin %v", err)
+		}
 	}
 
 	if pp.weight.balancedResourceWeight != 0 {
@@ -236,9 +242,12 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 				{Name: "nvidia.com/gpu", Weight: 1},
 			},
 		}
-		p, _ := noderesources.NewBalancedAllocation(context.TODO(), blArgs, pp.Handle, fts)
-		balancedAllocation := p.(*noderesources.BalancedAllocation)
-		nodeOrderScorePlugins["Balanced Resource Allocation"] = ScorePluginWithWeight{balancedAllocation, pp.weight.balancedResourceWeight}
+		if p, err := noderesources.NewBalancedAllocation(context.TODO(), blArgs, pp.Handle, fts); err == nil {
+			balancedAllocation := p.(*noderesources.BalancedAllocation)
+			nodeOrderScorePlugins["Balanced Resource Allocation"] = ScorePluginWithWeight{balancedAllocation, pp.weight.balancedResourceWeight}
+		} else {
+			klog.Errorf("Failed to init Balanced Resource Allocation plugin %v", err)
+		}
 	}
 
 	if pp.weight.nodeAffinityWeight != 0 {
@@ -246,16 +255,22 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		naArgs := &config.NodeAffinityArgs{
 			AddedAffinity: &v1.NodeAffinity{},
 		}
-		p, _ := nodeaffinity.New(context.TODO(), naArgs, pp.Handle, fts)
-		nodeAffinity := p.(*nodeaffinity.NodeAffinity)
-		nodeOrderScorePlugins["Node Affinity"] = ScorePluginWithWeight{nodeAffinity, pp.weight.nodeAffinityWeight}
+		if p, err := nodeaffinity.New(context.TODO(), naArgs, pp.Handle, fts); err == nil {
+			nodeAffinity := p.(*nodeaffinity.NodeAffinity)
+			nodeOrderScorePlugins["Node Affinity"] = ScorePluginWithWeight{nodeAffinity, pp.weight.nodeAffinityWeight}
+		} else {
+			klog.Errorf("Failed to init Node Affinity plugin %v", err)
+		}
 	}
 
 	// 5. ImageLocality
 	if pp.weight.imageLocalityWeight != 0 {
-		p, _ := imagelocality.New(context.TODO(), nil, pp.Handle)
-		imageLocality := p.(*imagelocality.ImageLocality)
-		nodeOrderScorePlugins["Image Locality"] = ScorePluginWithWeight{imageLocality, pp.weight.imageLocalityWeight}
+		if p, err := imagelocality.New(context.TODO(), nil, pp.Handle); err == nil {
+			imageLocality := p.(*imagelocality.ImageLocality)
+			nodeOrderScorePlugins["Image Locality"] = ScorePluginWithWeight{imageLocality, pp.weight.imageLocalityWeight}
+		} else {
+			klog.Errorf("Failed to init Image Locality plugin %v", err)
+		}
 	}
 
 	plArgs := &config.InterPodAffinityArgs{}
@@ -281,6 +296,7 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 func (pp *NodeOrderPlugin) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo, k8sNodeInfo fwk.NodeInfo, state *k8sframework.CycleState) (float64, error) {
 	var nodeScore = 0.0
 	for name, p := range pp.NodeOrderScorePlugins {
+		klog.V(5).Infof("Score node through %s plugin", name)
 		score, status := p.plugin.Score(context.TODO(), state, task.Pod, k8sNodeInfo)
 		if !status.IsSuccess() {
 			klog.Warningf("Node: %s, <%s> Priority Failed because of Error: %v", node.Name, name, status.AsError())

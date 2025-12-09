@@ -200,7 +200,7 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
 
 # Agent Scheduler
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
-      --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} \
+      --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set custom.agent_scheduler_enable=true \
       -s templates/agent_scheduler.yaml \
       >> ${AGENT_SCHEDULER_DEPLOYMENT_YAML_FILENAME}
 

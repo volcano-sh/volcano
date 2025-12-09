@@ -328,13 +328,16 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		k8sNodeInfo.SetNode(nodeInfo.Node)
 
 		if pp.enabledPredicates.podAffinityEnable {
-			podAffinityFilter := pp.FilterPlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity)
-			isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, podAffinityFilter.Name())
-			if !isSkipInterPodAffinity {
-				status := podAffinityFilter.AddPod(ctx, cycleState, taskToSchedule.Pod, podInfoToAdd, k8sNodeInfo)
-				if !status.IsSuccess() {
-					return fmt.Errorf("failed to add pod to node %s: %w", nodeInfo.Name, status.AsError())
+			if podAffinityFilter, exist := pp.FilterPlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity); exist {
+				isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, podAffinityFilter.Name())
+				if !isSkipInterPodAffinity {
+					status := podAffinityFilter.AddPod(ctx, cycleState, taskToSchedule.Pod, podInfoToAdd, k8sNodeInfo)
+					if !status.IsSuccess() {
+						return fmt.Errorf("failed to add pod to node %s: %w", nodeInfo.Name, status.AsError())
+					}
 				}
+			} else {
+				return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", interpodaffinity.Name, taskToAdd.Namespace, taskToAdd.Name, nodeInfo.Name)
 			}
 		}
 
@@ -352,13 +355,16 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		k8sNodeInfo.SetNode(nodeInfo.Node)
 
 		if pp.enabledPredicates.podAffinityEnable {
-			podAffinityFilter := pp.FilterPlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity)
-			isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, podAffinityFilter.Name())
-			if !isSkipInterPodAffinity {
-				status := podAffinityFilter.RemovePod(ctx, cycleState, taskToSchedule.Pod, podInfoToRemove, k8sNodeInfo)
-				if !status.IsSuccess() {
-					return fmt.Errorf("failed to remove pod from node %s: %w", nodeInfo.Name, status.AsError())
+			if podAffinityFilter, exist := pp.FilterPlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity); exist {
+				isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, podAffinityFilter.Name())
+				if !isSkipInterPodAffinity {
+					status := podAffinityFilter.RemovePod(ctx, cycleState, taskToSchedule.Pod, podInfoToRemove, k8sNodeInfo)
+					if !status.IsSuccess() {
+						return fmt.Errorf("failed to remove pod from node %s: %w", nodeInfo.Name, status.AsError())
+					}
 				}
+			} else {
+				return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", interpodaffinity.Name, taskToRemove.Namespace, taskToRemove.Name, nodeInfo.Name)
 			}
 		}
 		return nil
@@ -372,11 +378,15 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 		if pp.enabledPredicates.podAffinityEnable {
 			isSkipInterPodAffinity := handleSkipPredicatePlugin(cycleState, interpodaffinity.Name)
 			if !isSkipInterPodAffinity {
-				status := pp.FilterPlugins[interpodaffinity.Name].Filter(ctx, cycleState, task.Pod, k8sNodeInfo)
-				if !status.IsSuccess() {
-					return fmt.Errorf("failed to filter pod on node %s: %w", node.Name, status.AsError())
+				if podAffinityFilter, exist := pp.FilterPlugins[interpodaffinity.Name]; exist {
+					status := podAffinityFilter.Filter(ctx, cycleState, task.Pod, k8sNodeInfo)
+					if !status.IsSuccess() {
+						return fmt.Errorf("failed to filter pod on node %s: %w", node.Name, status.AsError())
+					} else {
+						klog.Infof("pod affinity for task %s/%s filter success on node %s", task.Namespace, task.Name, node.Name)
+					}
 				} else {
-					klog.Infof("pod affinity for task %s/%s filter success on node %s", task.Namespace, task.Name, node.Name)
+					return fmt.Errorf("failed to call %s plugin for task %s/%s on node %s, plugin does not exist", interpodaffinity.Name, task.Namespace, task.Name, node.Name)
 				}
 			}
 		}
@@ -421,63 +431,87 @@ func (pp *PredicatesPlugin) InitPlugin() {
 	// Initialize k8s plugins
 	// TODO: Add more predicates, k8s.io/kubernetes/pkg/scheduler/framework/plugins/legacy_registry.go
 	// 1. NodeUnschedulable (stable filter for cache)
-	plugin, _ := nodeunschedulable.New(context.TODO(), nil, pp.Handle, pp.features)
-	nodeUnscheduleFilter := plugin.(*nodeunschedulable.NodeUnschedulable)
-	filterPlugins[nodeunschedulable.Name] = nodeUnscheduleFilter
-	stableFilterPlugins[nodeunschedulable.Name] = nodeUnscheduleFilter
+	if plugin, err := nodeunschedulable.New(context.TODO(), nil, pp.Handle, pp.features); err == nil {
+		nodeUnscheduleFilter := plugin.(*nodeunschedulable.NodeUnschedulable)
+		filterPlugins[nodeunschedulable.Name] = nodeUnscheduleFilter
+		stableFilterPlugins[nodeunschedulable.Name] = nodeUnscheduleFilter
+	} else {
+		klog.Errorf("Failed to init %s plugin %v", nodeunschedulable.Name, err)
+	}
 
 	// 2. NodeAffinity (stable filter for cache)
 	if pp.enabledPredicates.nodeAffinityEnable {
 		nodeAffinityArgs := config.NodeAffinityArgs{
 			AddedAffinity: &v1.NodeAffinity{},
 		}
-		plugin, _ = nodeaffinity.New(context.TODO(), &nodeAffinityArgs, pp.Handle, pp.features)
-		nodeAffinityFilter := plugin.(*nodeaffinity.NodeAffinity)
-		filterPlugins[nodeaffinity.Name] = nodeAffinityFilter
-		stableFilterPlugins[nodeaffinity.Name] = nodeAffinityFilter
+		if plugin, err := nodeaffinity.New(context.TODO(), &nodeAffinityArgs, pp.Handle, pp.features); err == nil {
+			nodeAffinityFilter := plugin.(*nodeaffinity.NodeAffinity)
+			filterPlugins[nodeaffinity.Name] = nodeAffinityFilter
+			stableFilterPlugins[nodeaffinity.Name] = nodeAffinityFilter
+		} else {
+			klog.Errorf("Failed to init %s plugin %v", nodeaffinity.Name, err)
+		}
 	}
 	// 3. NodePorts
 	if pp.enabledPredicates.nodePortEnable {
-		plugin, _ = nodeports.New(context.TODO(), nil, pp.Handle, pp.features)
-		nodePortFilter := plugin.(*nodeports.NodePorts)
-		filterPlugins[nodeports.Name] = nodePortFilter
-		prefilterPlugins[nodeports.Name] = nodePortFilter
+		if plugin, err := nodeports.New(context.TODO(), nil, pp.Handle, pp.features); err == nil {
+			nodePortFilter := plugin.(*nodeports.NodePorts)
+			filterPlugins[nodeports.Name] = nodePortFilter
+			prefilterPlugins[nodeports.Name] = nodePortFilter
+		} else {
+			klog.Errorf("Failed to init %s plugin %v", nodeports.Name, err)
+		}
 	}
 	// 4. TaintToleration (stable filter for cache)
 	if pp.enabledPredicates.taintTolerationEnable {
-		plugin, _ = tainttoleration.New(context.TODO(), nil, pp.Handle, pp.features)
-		tolerationFilter := plugin.(*tainttoleration.TaintToleration)
-		filterPlugins[tainttoleration.Name] = tolerationFilter
-		stableFilterPlugins[tainttoleration.Name] = tolerationFilter
+		if plugin, err := tainttoleration.New(context.TODO(), nil, pp.Handle, pp.features); err == nil {
+			tolerationFilter := plugin.(*tainttoleration.TaintToleration)
+			filterPlugins[tainttoleration.Name] = tolerationFilter
+			stableFilterPlugins[tainttoleration.Name] = tolerationFilter
+		} else {
+			klog.Errorf("Failed to init %s plugin %v", tainttoleration.Name, err)
+		}
 	}
 	// 5. InterPodAffinity
 	if pp.enabledPredicates.podAffinityEnable {
 		plArgs := &config.InterPodAffinityArgs{}
-		plugin, _ = interpodaffinity.New(context.TODO(), plArgs, pp.Handle, pp.features)
-		podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
-		filterPlugins[interpodaffinity.Name] = podAffinityFilter
-		prefilterPlugins[interpodaffinity.Name] = podAffinityFilter
+		if plugin, err := interpodaffinity.New(context.TODO(), plArgs, pp.Handle, pp.features); err == nil {
+			podAffinityFilter := plugin.(*interpodaffinity.InterPodAffinity)
+			filterPlugins[interpodaffinity.Name] = podAffinityFilter
+			prefilterPlugins[interpodaffinity.Name] = podAffinityFilter
+		} else {
+			klog.Errorf("Failed to init %s plugin %v", interpodaffinity.Name, err)
+		}
 	}
 	// 6. NodeVolumeLimits
 	if pp.enabledPredicates.nodeVolumeLimitsEnable {
-		plugin, _ = nodevolumelimits.NewCSI(context.TODO(), nil, pp.Handle, pp.features)
-		nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
-		filterPlugins[nodevolumelimits.CSIName] = nodeVolumeLimitsCSIFilter
+		if plugin, err := nodevolumelimits.NewCSI(context.TODO(), nil, pp.Handle, pp.features); err == nil {
+			nodeVolumeLimitsCSIFilter := plugin.(*nodevolumelimits.CSILimits)
+			filterPlugins[nodevolumelimits.CSIName] = nodeVolumeLimitsCSIFilter
+		} else {
+			klog.Errorf("Failed to init %s plugin %v", nodevolumelimits.CSIName, err)
+		}
 	}
 	// 7. VolumeZone
 	if pp.enabledPredicates.volumeZoneEnable {
-		plugin, _ = volumezone.New(context.TODO(), nil, pp.Handle, pp.features)
-		volumeZoneFilter := plugin.(*volumezone.VolumeZone)
-		filterPlugins[volumezone.Name] = volumeZoneFilter
+		if plugin, err := volumezone.New(context.TODO(), nil, pp.Handle, pp.features); err == nil {
+			volumeZoneFilter := plugin.(*volumezone.VolumeZone)
+			filterPlugins[volumezone.Name] = volumeZoneFilter
+		} else {
+			klog.Errorf("Failed to init %s plugin %v", volumezone.Name, err)
+		}
 	}
 	// 8. PodTopologySpread
 	if pp.enabledPredicates.podTopologySpreadEnable {
 		// Setting cluster level default constraints is not support for now.
 		ptsArgs := &config.PodTopologySpreadArgs{DefaultingType: config.SystemDefaulting}
-		plugin, _ = podtopologyspread.New(context.TODO(), ptsArgs, pp.Handle, pp.features)
-		podTopologySpreadFilter := plugin.(*podtopologyspread.PodTopologySpread)
-		filterPlugins[podtopologyspread.Name] = podTopologySpreadFilter
-		prefilterPlugins[podtopologyspread.Name] = podTopologySpreadFilter
+		if plugin, err := podtopologyspread.New(context.TODO(), ptsArgs, pp.Handle, pp.features); err == nil {
+			podTopologySpreadFilter := plugin.(*podtopologyspread.PodTopologySpread)
+			filterPlugins[podtopologyspread.Name] = podTopologySpreadFilter
+			prefilterPlugins[podtopologyspread.Name] = podTopologySpreadFilter
+		} else {
+			klog.Errorf("Failed to init %s plugin %v", podtopologyspread.Name, err)
+		}
 	}
 	// 9. VolumeBinding
 	if pp.enabledPredicates.volumeBindingEnable {
@@ -489,8 +523,7 @@ func (pp *PredicatesPlugin) InitPlugin() {
 		volumeBindingPluginOnce.Do(func() {
 			setUpVolumeBindingArgs(vbArgs, pp.pluginArguments)
 
-			var err error
-			plugin, err = vbcap.New(context.TODO(), vbArgs.VolumeBindingArgs, pp.Handle, pp.features)
+			plugin, err := vbcap.New(context.TODO(), vbArgs.VolumeBindingArgs, pp.Handle, pp.features)
 			if err != nil {
 				klog.Fatalf("failed to create volume binding plugin with args %+v: %v", vbArgs, err)
 			}
@@ -506,10 +539,9 @@ func (pp *PredicatesPlugin) InitPlugin() {
 	}
 	// 10. DRA
 	if pp.enabledPredicates.dynamicResourceAllocationEnable {
-		var err error
 		draArgs := defaultDynamicResourcesArgs()
 		setUpDynamicResourcesArgs(draArgs, pp.pluginArguments)
-		plugin, err = dynamicresources.New(context.TODO(), draArgs.DynamicResourcesArgs, pp.Handle, pp.features)
+		plugin, err := dynamicresources.New(context.TODO(), draArgs.DynamicResourcesArgs, pp.Handle, pp.features)
 		if err != nil {
 			klog.Fatalf("failed to create dra plugin with err: %v", err)
 		}

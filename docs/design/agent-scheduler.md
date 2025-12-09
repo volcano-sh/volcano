@@ -1,6 +1,6 @@
 # Agent Scheduler
 
-## Desgin Overview
+## Design Overview
 
 ### Problem
 The Volcano Scheduler is designed and optimized for various batch and elastic workloads for Big Data, HPC, ML, and AI frameworks, providing high-performance scheduling and advanced scheduling strategies and algorithms. But Not all workloads require batch-scheduling characteristics. Instead, these workloads have scheduling requirements in other aspects which can not be satisfied in Volcano scheduler. Take AI Agent workloads as example:
@@ -11,7 +11,7 @@ The Volcano Scheduler is designed and optimized for various batch and elastic wo
 ### Design Goal
 
 1. A scheduler capable of rapidly scheduling a large number of Pods.  
-Improve scheduling efficiency through workflow optimization and strategy simplification。
+Improve scheduling efficiency through workflow optimization and strategy simplification.
 
 2. A scheduler that can collaborate with the Volcano scheduler to handle different types of workloads.  
 Enable collaboration and resource management between schedulers through shard-based parallel scheduling.
@@ -91,7 +91,7 @@ Single scheduling process has performance bottleneck when a large number of Pods
 Parallel scheduling may bring scheduling conflict when cluster lack of resource. So Binder component is involved to resolve the conflict before executing real binding.
 
 
-Workers pops Pods from the scheduling queue and perform scheduling. After predicates and node ordering, multiple candidate nodes (configurable in number) is stored in scheduling result for allocating. The scheduling results are then passed to the Binder for final binding. The Binder processes allocation results from multiple workers, using optimistic concurrency control to resolve scheduling confilct, executing Bind for non-conflicting results.
+Workers pops Pods from the scheduling queue and perform scheduling. After predicates and node ordering, multiple candidate nodes (configurable in number) is stored in scheduling result for allocating. The scheduling results are then passed to the Binder for final binding. The Binder processes allocation results from multiple workers, using optimistic concurrency control to resolve scheduling conflict, executing Bind for non-conflicting results.
 
 ![](images/agent-scheduler/binder-flow.png)
 
@@ -106,7 +106,7 @@ Workers pops Pods from the scheduling queue and perform scheduling. After predic
 5. In new allocation based on node with updated binding version, binder will treat the allocation is based on new resource view of node and then allow binding. E.g. node1 (v2) is allocated for Pod D based previous bound Pod information in node, so it is not treated as a conflict.
 
 ## Sharding synchronization
-Nodes within a shard change dynamically, so the scheduler needs to be aware of these changes to determine which nodes can be used for scheduling. Scheudler also needs to coordinate with other schedulers to ensure that the same node does not appear simultaneously in the scheduling caches of different schedulers, becasue nodes being used in scheduler cache and Shard definition may be different.
+Nodes within a shard change dynamically, so the scheduler needs to be aware of these changes to determine which nodes can be used for scheduling. Scheduler also needs to coordinate with other schedulers to ensure that the same node does not appear simultaneously in the scheduling caches of different schedulers, because nodes being used in scheduler cache and Shard definition may be different.
 
 ### Sharding coordinator
 The sharding coordinator is responsible for detecting changes in NodeShards and calculating the nodes that can be used in the next scheduling cycle. Based on the in-use status of nodes in different shards and the nodes assigned to this scheduler's shard, the coordinator computes which nodes this scheduler can use in its next scheduling cycle.
@@ -117,7 +117,7 @@ After synchronizing the schedulable nodes, the coordinator updates the NodesInUs
 
 ### Scheduling
 Before scheduling, workers obtain the nodes available for the current scheduling cycle from the sharding coordinator.
-Sharding mode can be configured via startup parameter `--scheduler-sharding-mode=xxx`,  available value are  `none`, `soft`, or `hard`. Scheuling behavior is different based on this setting. 
+Sharding mode can be configured via startup parameter `--scheduler-sharding-mode=xxx`,  available value are  `none`, `soft`, or `hard`. Scheduling behavior is different based on this setting. 
 
 - **none:** No sharding is applied. The scheduler can schedule across the entire cluster.
 
