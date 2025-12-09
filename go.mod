@@ -214,5 +214,3 @@ replace (
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.34.1
 	k8s.io/sample-controller => k8s.io/sample-controller v0.34.1
 )
-
-replace volcano.sh/apis => github.com/qi-min/apis v0.0.0-20251119063805-8178fefd560e

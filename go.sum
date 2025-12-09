@@ -238,8 +238,6 @@ github.com/prometheus/procfs v0.16.1 h1:hZ15bTNuirocR6u0JZ6BAHHmwS1p8B4P6MRqxtzM
 github.com/prometheus/procfs v0.16.1/go.mod h1:teAbpZRB1iIAJYREa1LsoWUXykVXA1KlTmWl8x/U+Is=
 github.com/prometheus/prometheus v0.39.1 h1:abZM6A+sKAv2eKTbRIaHq4amM/nT07MuxRm0+QTaTj0=
 github.com/prometheus/prometheus v0.39.1/go.mod h1:GjQjgLhHMc0oo4Ko7qt/yBSJMY4hUoiAZwsYQgjaePA=
-github.com/qi-min/apis v0.0.0-20251119063805-8178fefd560e h1:VMztxPiHPo5D/iLyOuUgqpgRaNkGsMgR3GA+4kLeEt0=
-github.com/qi-min/apis v0.0.0-20251119063805-8178fefd560e/go.mod h1:CKQbxVt0o4lTKisC0MonoXWruGFC0S8KU+UuzaZ5E7k=
 github.com/robfig/cron/v3 v3.0.1 h1:WdRxkvbJztn8LMz/QEvLN5sBU+xKpSqwwUO1Pjr4qDs=
 github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzGIFLtro=
 github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR38lUII=
