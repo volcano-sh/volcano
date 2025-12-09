@@ -18,6 +18,8 @@
 
 export VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export VC_BIN=${VK_ROOT}/${BIN_DIR}/${BIN_OSARCH}
+export TAG=${TAG:-$(git -C "${VK_ROOT}" rev-parse --verify HEAD 2>/dev/null || echo "latest")}
+export IMAGE_PREFIX=${IMAGE_PREFIX:-volcanosh}
 export LOG_LEVEL=3
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export E2E_TYPE=${E2E_TYPE:-"ALL"}

@@ -27,9 +27,15 @@ import (
 )
 
 var _ = Describe("MPI E2E Test", func() {
+	var testCtx *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
+	})
+
 	It("will run and complete finally", func() {
-		context := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(context)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		slot := e2eutil.OneCPU
 
@@ -71,9 +77,9 @@ mpiexec --allow-run-as-root --hostfile /etc/volcano/mpiworker.host -np 2 mpi_hel
 			},
 		}
 
-		job := e2eutil.CreateJob(context, spec)
+		job := e2eutil.CreateJob(testCtx, spec)
 
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{
 			vcbatch.Pending, vcbatch.Running, vcbatch.Completing, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 	})

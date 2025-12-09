@@ -83,6 +83,7 @@ network_closure.sh
 
 # Test artifacts produced by Jenkins jobs
 /_artifacts/
+/test-artifacts/
 
 # Go dependencies installed on Jenkins
 /_gopath/

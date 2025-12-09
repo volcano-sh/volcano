@@ -36,13 +36,18 @@ import (
 )
 
 var _ = Describe("Job Error Handling", func() {
+	var testCtx *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
+	})
 	It("job level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
 		By("init test context")
-		context := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(context)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(context, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "failed-restart-job",
 			Policies: []vcbatch.LifecyclePolicy{
 				{
@@ -69,17 +74,17 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: TerminateJob", func() {
 		By("init test context")
-		context := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(context)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(context, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "failed-terminate-job",
 			Policies: []vcbatch.LifecyclePolicy{
 				{
@@ -106,16 +111,16 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Terminating -> Terminated
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Terminating, vcbatch.Terminated})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "failed-abort-job",
 			Policies: []vcbatch.LifecyclePolicy{
 				{
@@ -142,17 +147,17 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Aborting -> Aborted
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Aborting, vcbatch.Aborted})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Aborting, vcbatch.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: PodFailed, Action: RestartPod; Event PodEvicted, Action: TerminateJob, Timeout: 5m", func() {
 		By("init test context")
-		context := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(context)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(context, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "failed-restart-job",
 			Policies: []vcbatch.LifecyclePolicy{
 				{
@@ -186,16 +191,16 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting -> running
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-restart-job",
 			Policies: []vcbatch.LifecyclePolicy{
 				{
@@ -220,25 +225,25 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobctl.MakePodName(job.Name, "delete", 0)
-		err = ctx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+		err = testCtx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
+		err = e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-terminate-job",
 			Policies: []vcbatch.LifecyclePolicy{
 				{
@@ -263,25 +268,25 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobctl.MakePodName(job.Name, "delete", 0)
-		err = ctx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+		err = testCtx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: PodEvicted; Action: AbortJob", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-abort-job",
 			Policies: []vcbatch.LifecyclePolicy{
 				{
@@ -306,25 +311,25 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobctl.MakePodName(job.Name, "delete", 0)
-		err = ctx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+		err = testCtx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Aborting -> Aborted
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Aborting, vcbatch.Aborted})
+		err = e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Aborting, vcbatch.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: Any; Action: RestartJob", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "any-restart-job",
 			Policies: []vcbatch.LifecyclePolicy{
 				{
@@ -349,28 +354,28 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobctl.MakePodName(job.Name, "delete", 0)
-		err = ctx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+		err = testCtx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
+		err = e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Job error handling: Restart job when job is unschedulable", func() {
 		By("init test context")
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
-		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+		rep := e2eutil.ClusterSize(testCtx, e2eutil.OneCPU)
 
 		jobSpec := &e2eutil.JobSpec{
 			Name:      "job-restart-when-unschedulable",
-			Namespace: ctx.Namespace,
+			Namespace: testCtx.Namespace,
 			Policies: []vcbatch.LifecyclePolicy{
 				{
 					Event:  vcbus.JobUnknownEvent,
@@ -388,8 +393,8 @@ var _ = Describe("Job Error Handling", func() {
 			},
 		}
 		By("Create the Job")
-		job := e2eutil.CreateJob(ctx, jobSpec)
-		err := e2eutil.WaitJobReady(ctx, job)
+		job := e2eutil.CreateJob(testCtx, jobSpec)
+		err := e2eutil.WaitJobReady(testCtx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Taint all nodes")
@@ -400,35 +405,35 @@ var _ = Describe("Job Error Handling", func() {
 				Effect: v1.TaintEffectNoSchedule,
 			},
 		}
-		err = e2eutil.TaintAllNodes(ctx, taints)
+		err = e2eutil.TaintAllNodes(testCtx, taints)
 		Expect(err).NotTo(HaveOccurred())
 
 		podName := jobctl.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
-		err = ctx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+		err = testCtx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is restarting")
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
+		err = e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{
 			vcbatch.Restarting, vcbatch.Pending})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Untaint all nodes")
-		err = e2eutil.RemoveTaintsFromAllNodes(ctx, taints)
+		err = e2eutil.RemoveTaintsFromAllNodes(testCtx, taints)
 		Expect(err).NotTo(HaveOccurred())
 		By("Job is running again")
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Running})
+		err = e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Job error handling: Abort job when job is unschedulable", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
-		rep := e2eutil.ClusterSize(ctx, e2eutil.OneCPU)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
+		rep := e2eutil.ClusterSize(testCtx, e2eutil.OneCPU)
 
 		jobSpec := &e2eutil.JobSpec{
 			Name:      "job-abort-when-unschedulable",
-			Namespace: ctx.Namespace,
+			Namespace: testCtx.Namespace,
 			Policies: []vcbatch.LifecyclePolicy{
 				{
 					Event:  vcbus.JobUnknownEvent,
@@ -446,8 +451,8 @@ var _ = Describe("Job Error Handling", func() {
 			},
 		}
 		By("Create the Job")
-		job := e2eutil.CreateJob(ctx, jobSpec)
-		err := e2eutil.WaitJobReady(ctx, job)
+		job := e2eutil.CreateJob(testCtx, jobSpec)
+		err := e2eutil.WaitJobReady(testCtx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Taint all nodes")
@@ -458,32 +463,32 @@ var _ = Describe("Job Error Handling", func() {
 				Effect: v1.TaintEffectNoSchedule,
 			},
 		}
-		err = e2eutil.TaintAllNodes(ctx, taints)
+		err = e2eutil.TaintAllNodes(testCtx, taints)
 		Expect(err).NotTo(HaveOccurred())
 
 		podName := jobctl.MakePodName(job.Name, "test", 0)
 		By("Kill one of the pod in order to trigger unschedulable status")
-		err = ctx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+		err = testCtx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Job is aborted")
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
+		err = e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{
 			vcbatch.Aborting, vcbatch.Aborted})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = e2eutil.RemoveTaintsFromAllNodes(ctx, taints)
+		err = e2eutil.RemoveTaintsFromAllNodes(testCtx, taints)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
 		By("init test context")
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name:      "any-complete-job",
-			Namespace: ctx.Namespace,
+			Namespace: testCtx.Namespace,
 			Policies: []vcbatch.LifecyclePolicy{
 				{
 					Action: vcbus.CompleteJobAction,
@@ -511,7 +516,7 @@ var _ = Describe("Job Error Handling", func() {
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
 		// TODO: skip running -> completing for the github CI pool performance
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{
 			vcbatch.Pending, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -519,13 +524,13 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: TaskFailed; Action: TerminateJob", func() {
 		By("init test context")
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name:      "task-failed-terminate-job",
-			Namespace: ctx.Namespace,
+			Namespace: testCtx.Namespace,
 			Policies: []vcbatch.LifecyclePolicy{
 				{
 					Action: vcbus.TerminateJobAction,
@@ -554,34 +559,34 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: Pending -> Running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("update one pod of job")
 		podName := jobctl.MakePodName(job.Name, "failed", 0)
-		pod, err := ctx.Kubeclient.CoreV1().Pods(job.Namespace).Get(context.TODO(), podName, metav1.GetOptions{})
+		pod, err := testCtx.Kubeclient.CoreV1().Pods(job.Namespace).Get(context.TODO(), podName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		pod.Status.ContainerStatuses = []v1.ContainerStatus{{RestartCount: 4}}
-		_, err = ctx.Kubeclient.CoreV1().Pods(job.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
+		_, err = testCtx.Kubeclient.CoreV1().Pods(job.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 
 	})
 
 	It("job level LifecyclePolicy, error code: 3; Action: RestartJob", func() {
 		By("init test context")
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
 		var erroCode int32 = 3
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name:      "errorcode-restart-job",
-			Namespace: ctx.Namespace,
+			Namespace: testCtx.Namespace,
 			Policies: []vcbatch.LifecyclePolicy{
 				{
 					Action:   vcbus.RestartJobAction,
@@ -607,16 +612,16 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("job level LifecyclePolicy, Event[]: PodEvicted, PodFailed; Action: TerminateJob", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-terminate-job",
 			Policies: []vcbatch.LifecyclePolicy{
 				{
@@ -644,25 +649,25 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobctl.MakePodName(job.Name, "delete", 0)
-		err = ctx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+		err = testCtx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodFailed; Action: RestartJob", func() {
 		By("init test context")
-		context := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(context)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(context, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "failed-restart-job",
 			Tasks: []e2eutil.TaskSpec{
 				{
@@ -689,15 +694,15 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> restarting
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: RestartJob", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-restart-job",
 
 			Tasks: []e2eutil.TaskSpec{
@@ -723,24 +728,24 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobctl.MakePodName(job.Name, "delete", 0)
-		err = ctx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+		err = testCtx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Restarting -> Running
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
+		err = e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Restarting, vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: PodEvicted; Action: TerminateJob", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "evicted-terminate-job",
 			Tasks: []e2eutil.TaskSpec{
 				{
@@ -765,24 +770,24 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("delete one pod of job")
 		podName := jobctl.MakePodName(job.Name, "delete", 0)
-		err = ctx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+		err = testCtx.Kubeclient.CoreV1().Pods(job.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// job phase: Terminating -> Terminated
-		err = e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
+		err = e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Terminating, vcbatch.Terminated})
 		Expect(err).NotTo(HaveOccurred())
 	})
 	It("Task level LifecyclePolicy, Event: TaskCompleted; Action: CompletedJob", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "any-complete-job",
 			Tasks: []e2eutil.TaskSpec{
 				{
@@ -810,7 +815,7 @@ var _ = Describe("Job Error Handling", func() {
 
 		By("job scheduled, then task 'completed_task' finished and job finally complete")
 		// job phase: pending -> running -> completing -> completed
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{
 			vcbatch.Pending, vcbatch.Completed})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -818,11 +823,11 @@ var _ = Describe("Job Error Handling", func() {
 
 	It("job level LifecyclePolicy, Event: PodFailed; Action: AbortJob and Task level lifecyclePolicy, Event : PodFailed; Action: RestartJob", func() {
 		By("init test context")
-		context := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(context)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("create job")
-		job := e2eutil.CreateJob(context, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "failed-restart-job",
 			Policies: []vcbatch.LifecyclePolicy{
 				{
@@ -855,24 +860,24 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running -> Restarting
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Restarting})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("Task Priority", func() {
 		By("init test context")
-		context := e2eutil.InitTestContext(e2eutil.Options{
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{
 			PriorityClasses: map[string]int32{
 				e2eutil.MasterPriority: e2eutil.MasterPriorityValue,
 				e2eutil.WorkerPriority: e2eutil.WorkerPriorityValue,
 			},
 		})
-		defer e2eutil.CleanupTestContext(context)
+		defer e2eutil.CleanupTestContext(testCtx)
 
-		rep := e2eutil.ClusterSize(context, e2eutil.OneCPU)
-		nodecount := e2eutil.ClusterNodeNumber(context)
+		rep := e2eutil.ClusterSize(testCtx, e2eutil.OneCPU)
+		nodecount := e2eutil.ClusterNodeNumber(testCtx)
 		By("create job")
-		job := e2eutil.CreateJob(context, &e2eutil.JobSpec{
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
 			Name: "task-priority-job",
 			Min:  int32(nodecount),
 			Tasks: []e2eutil.TaskSpec{
@@ -894,14 +899,14 @@ var _ = Describe("Job Error Handling", func() {
 		})
 
 		// job phase: pending -> running
-		err := e2eutil.WaitJobPhases(context, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 		expteced := map[string]int{
 			e2eutil.MasterPriority: nodecount,
 			e2eutil.WorkerPriority: 0,
 		}
 
-		err = e2eutil.WaitTasksReadyEx(context, job, expteced)
+		err = e2eutil.WaitTasksReadyEx(testCtx, job, expteced)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
