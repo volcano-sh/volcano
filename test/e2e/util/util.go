@@ -403,7 +403,7 @@ func DumpTestContextIfFailed(ctx *TestContext, specReport SpecReport) {
 func DumpTestContext(ctx *TestContext) {
 	artifactsPath := os.Getenv("ARTIFACTS_PATH")
 	if artifactsPath == "" {
-		artifactsPath = "./artifacts"
+		artifactsPath = "./_artifacts"
 	}
 
 	// Create directory structure: artifacts/{namespace}/
