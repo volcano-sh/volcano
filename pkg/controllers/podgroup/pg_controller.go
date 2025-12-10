@@ -132,7 +132,7 @@ func (pg *pgcontroller) Run(stopCh <-chan struct{}) {
 		}
 	}
 
-	for i := 0; i < int(pg.workers); i++ {
+	for range int(pg.workers) {
 		go wait.Until(pg.worker, 0, stopCh)
 	}
 
