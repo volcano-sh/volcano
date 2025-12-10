@@ -45,7 +45,7 @@ func NewShardingControllerOptions() *ShardingControllerOptions {
 func (opts *ShardingControllerOptions) AddFlags(fs *pflag.FlagSet) {
 	// Default scheduler configs
 	defaultConfigs := []string{
-		"volcano-scheduler:volcano:0.0:0.6:false:2:100",
+		"volcano:volcano:0.0:0.6:false:2:100",
 		"agent-scheduler:agent:0.7:1.0:true:2:100",
 	}
 
@@ -82,11 +82,9 @@ func (opts *ShardingControllerOptions) ParseConfig() error {
 		}
 
 		// Parse prefer warmup
-		preferWarmup := false
-		if parts[4] == "true" {
-			preferWarmup = true
-		} else if parts[4] != "false" {
-			return fmt.Errorf("invalid prefer warmup flag in %s: %s, expected 'true' or 'false'", configStr, parts[4])
+		preferWarmup, err := strconv.ParseBool(parts[4])
+		if err != nil {
+			return fmt.Errorf("invalid prefer warmup flag in %s: %v", configStr, err)
 		}
 
 		// Parse min nodes

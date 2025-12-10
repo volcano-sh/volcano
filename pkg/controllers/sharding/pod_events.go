@@ -98,7 +98,3 @@ func (sc *ShardingController) getPodFromObject(obj interface{}) *corev1.Pod {
 		return nil
 	}
 }
-
-func (sc *ShardingController) enqueueSyncEvent() {
-	sc.nodeEventQueue.Add("global-sync-trigger")
-}

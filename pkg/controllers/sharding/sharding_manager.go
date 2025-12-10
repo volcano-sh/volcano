@@ -330,9 +330,10 @@ func (sm *ShardingManager) prepareNodeResourcesInfo(nodes []*corev1.Node) map[st
 		metrics := allMetrics[node.Name]
 		if metrics == nil {
 			// Create default metrics if not available
+			klog.Warningf("Metrics not found for node %s, assuming zero utilization for sharding calculation.", node.Name)
 			metrics = &NodeMetrics{
-				CPUUtilization:    0.3,
-				MemoryUtilization: 0.4,
+				CPUUtilization:    0.0,
+				MemoryUtilization: 0.0,
 				IsWarmupNode:      node.Labels["node.volcano.sh/warmup"] == "true",
 				Labels:            node.Labels,
 				Annotations:       node.Annotations,

@@ -59,9 +59,7 @@ func (sc *ShardingController) deleteNodeEvent(obj interface{}) {
 	sc.metricsMutex.Unlock()
 
 	// Trigger shard sync
-	time.AfterFunc(100*time.Millisecond, func() {
-		sc.syncShards()
-	})
+	sc.enqueueNodeEvent(node.Name, "node-deleted", "node-controller")
 }
 
 // getNodeFromObject safely extracts a Node from an object
@@ -91,11 +89,7 @@ func (sc *ShardingController) isNodeSignificantlyChanged(oldNode, newNode *corev
 	// Check capacity change
 	oldCPU := oldNode.Status.Capacity.Cpu().Value()
 	newCPU := newNode.Status.Capacity.Cpu().Value()
-	if float64(abs(int(newCPU-oldCPU)))/float64(oldCPU+1) > 0.1 { // 10% change
-		return true
-	}
-
-	return false
+	return float64(abs(int(newCPU-oldCPU)))/float64(oldCPU+1) > nodeUsageChangeThreshold
 }
 
 // areMapsEqual checks if two maps are equal

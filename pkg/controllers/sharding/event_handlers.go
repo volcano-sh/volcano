@@ -1,6 +1,7 @@
 package sharding
 
 import (
+	"math"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -34,9 +35,7 @@ func (sc *ShardingController) updateNodeMetricsFromEvent(event *NodeEvent) {
 	// Trigger shard sync if utilization changed significantly
 	if sc.isUtilizationSignificantlyChanged(event.NodeName, metrics) {
 		klog.V(4).Infof("Node %s utilization changed significantly, scheduling sync", event.NodeName)
-		time.AfterFunc(200*time.Millisecond, func() {
-			sc.syncShards()
-		})
+		sc.enqueueNodeEvent(event.NodeName, "node-updated", "node-controller")
 	}
 }
 
@@ -47,15 +46,9 @@ func (sc *ShardingController) isUtilizationSignificantlyChanged(nodeName string,
 		return true // New node always considered significant
 	}
 
-	cpuChange := newMetrics.CPUUtilization - oldMetrics.CPUUtilization
-	if cpuChange < 0 {
-		cpuChange = -cpuChange
-	}
+	cpuChange := math.Abs(newMetrics.CPUUtilization - oldMetrics.CPUUtilization)
 
-	memChange := newMetrics.MemoryUtilization - oldMetrics.MemoryUtilization
-	if memChange < 0 {
-		memChange = -memChange
-	}
+	memChange := math.Abs(newMetrics.MemoryUtilization - oldMetrics.MemoryUtilization)
 
-	return cpuChange > 0.1 || memChange > 0.1 // 10% threshold
+	return cpuChange > nodeUsageChangeThreshold || memChange > nodeUsageChangeThreshold
 }

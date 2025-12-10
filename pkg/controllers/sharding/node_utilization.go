@@ -38,7 +38,7 @@ func (sc *ShardingController) updateNodeUtilization(nodeName string, metrics *No
 			klog.Infof("Node %s utilization changed significantly: CPU %.2f->%.2f, Memory %.2f->%.2f",
 				nodeName, prevMetrics.CPUUtilization, metrics.CPUUtilization,
 				prevMetrics.MemoryUtilization, metrics.MemoryUtilization)
-			sc.enqueueSyncEvent()
+			sc.enqueueNodeEvent(nodeName, "node-updated", "node-utilization-manager")
 		}
 	}
 }
