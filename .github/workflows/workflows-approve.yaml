@@ -7,7 +7,6 @@ on:
       - synchronize
     branches:
       - master
-      - agent-scheduler
       - release-**
 
 permissions:
