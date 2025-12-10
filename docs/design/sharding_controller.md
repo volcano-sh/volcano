@@ -127,7 +127,7 @@ graph LR
     A[Pod Added/Updated/Deleted] --> B{Is Node Significant?}
     B -->|Yes| C[Recalculate Node Metrics]
     B -->|No| D[Ignore Event]
-    C --> E{Utilization Changed > 10%?}
+    C --> E{Utilization Changed > UtilizationThreshold?}
     E -->|Yes| F[Schedule Shard Sync]
     E -->|No| G[Update Cache Only]
     F --> H[Queue Sync Event]
@@ -251,7 +251,7 @@ scheduler-configs:
 - name: volcano-scheduler
   type: volcano
   cpu-utilization-min: 0.0
-  cpu-utilization-max: 0.6
+  cpu-utilization-max: 0.69
   prefer-warmup-nodes: false
   min-nodes: 1
   max-nodes: 100
@@ -272,8 +272,8 @@ scheduler-configs:
 - **Indexers**: Node-to-pod index for efficient lookups
 
 ### 8.2 Batch Processing for Large Clusters
-For clusters with >50 nodes:
-- Process nodes in batches of 50
+For clusters with a huge number of nodes:
+- Process nodes in batches of fixed size (default: 50)
 - Add small delays between batches to prevent resource starvation
 - Use incremental updates instead of full recalculation when possible
 
@@ -314,8 +314,7 @@ On controller restart:
 - Multiple scheduler configurations
 
 ### 10.3 Performance Tests
-- 100-node cluster sync time (<5 seconds)
-- 1000-node cluster sync time (<30 seconds)
+- 100-node cluster sync time (<200 ms)
 - 100 events per second handling
 
 ### 10.4 Failure Recovery Tests

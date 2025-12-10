@@ -31,8 +31,9 @@ const (
 	controllerName              = "sharding-controller"
 	defaultShardSyncPeriod      = 60 * time.Second
 	maxAssignmentCacheRetention = 5 * time.Minute
-	nodeChangeThreshold         = 0.2
+	nodeCountChangeThreshold    = 0.5
 	updateTimeoutThreshold      = 15 * time.Second
+	nodeUsageChangeThreshold    = 0.5
 )
 
 func init() {
@@ -315,7 +316,7 @@ func (sc *ShardingController) processAssignmentChange(event *AssignmentChangeEve
 	// Log significant changes
 	if len(event.OldNodes) > 0 {
 		changePercent := float64(abs(len(event.NewNodes)-len(event.OldNodes))) / float64(len(event.OldNodes))
-		if changePercent > nodeChangeThreshold {
+		if changePercent > nodeCountChangeThreshold {
 			klog.Infof("Significant node change for %s: %.0f%% (%d -> %d nodes)",
 				event.SchedulerName, changePercent*100, len(event.OldNodes), len(event.NewNodes))
 		}

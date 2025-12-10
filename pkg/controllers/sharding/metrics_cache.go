@@ -48,8 +48,6 @@ func (sc *ShardingController) initializeNodeMetrics() {
 	}
 
 	for _, node := range nodes {
-		// Initialize in background to avoid blocking startup
-		// go func(nodeName string) {
 		event := &NodeEvent{
 			EventType: "initialization",
 			NodeName:  node.Name,
@@ -57,7 +55,6 @@ func (sc *ShardingController) initializeNodeMetrics() {
 			Timestamp: time.Now(),
 		}
 		sc.updateNodeMetricsFromEvent(event)
-		// }(node.Name)
 	}
 
 	klog.Infof("Finish initialization for %d nodes", len(nodes))
