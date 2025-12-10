@@ -28,7 +28,6 @@ import (
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
-	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/hami"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
@@ -115,6 +114,15 @@ func enablePredicate(dsp *deviceSharePlugin) {
 
 func registerDevices() {
 	once.Do(func() {
+		if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
+			api.RegisterDevice(gpushare.DeviceName)
+		}
+		if vgpu.VGPUEnable {
+			api.RegisterDevice(vgpu.DeviceName)
+		}
+		if vnpu.AscendMindClusterVNPUEnable {
+			api.RegisterDevice(vnpu.DeviceName)
+		}
 		if hami.AscendHAMiVNPUEnable {
 			for _, vnpu := range config.GetConfig().VNPUs {
 				klog.V(3).Infof("register device %s", vnpu.CommonWord)
@@ -205,15 +213,6 @@ func (dp *deviceSharePlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, val := range api.RegisteredDevices {
 			if dev, ok := node.Others[val].(api.Devices); ok {
 				if reflect.ValueOf(dev).IsNil() {
-					// TODO When a pod requests a device of the current type, but the current node does not have such a device, an error is thrown
-					if dev == nil {
-						predicateStatus = append(predicateStatus, &api.Status{
-							Code:   devices.Unschedulable,
-							Reason: "node not initialized with device" + val,
-							Plugin: PluginName,
-						})
-						return api.NewFitErrWithStatus(task, node, predicateStatus...)
-					}
 					klog.V(4).Infof("device %s is null, skipping it", val)
 					continue
 				}

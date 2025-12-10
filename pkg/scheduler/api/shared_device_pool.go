@@ -81,11 +81,7 @@ var _ Devices = new(vgpu.GPUDevices)
 var _ Devices = new(vnpu.NPUDevices)
 var _ Devices = new(hami.AscendDevices)
 
-var RegisteredDevices = []string{
-	gpushare.DeviceName,
-	vgpu.DeviceName,
-	vnpu.DeviceName,
-}
+var RegisteredDevices = []string{}
 
 func RegisterDevice(deviceName string) {
 	for _, name := range RegisteredDevices {
