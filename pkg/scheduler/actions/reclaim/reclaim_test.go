@@ -27,6 +27,7 @@ import (
 	schedulingv1 "k8s.io/api/scheduling/v1"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -38,6 +39,10 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
+
+func init() {
+	options.Default()
+}
 
 func TestReclaim(t *testing.T) {
 	tests := []uthelper.TestCommonStruct{
@@ -271,9 +276,10 @@ func TestReclaim(t *testing.T) {
 				util.BuildPodGroupWithPrio("pg-preemptor", "c1", "q2", 2, nil, schedulingv1beta1.PodGroupInqueue, "high-priority-no-preempt"),
 			},
 			Pods: []*v1.Pod{
-				util.BuildPod("c1", "victim-pod", "n1", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPodWithPrio("c1", "preemptor-task1-non-preemptable", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-preemptor", make(map[string]string), make(map[string]string), "high-priority-no-preempt"),
-				util.BuildPodWithPrio("c1", "preemptor-task2-preemptable", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-preemptor", make(map[string]string), make(map[string]string), "high-priority-can-preempt"),
+				util.BuildPod("c1", "victim-pod-no", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, make(map[string]string)),
+				util.BuildPod("c1", "victim-pod", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPodWithPreemptionPolicy("c1", "preemptor-task1-non-preemptable", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-preemptor", make(map[string]string), make(map[string]string), v1.PreemptNever),
+				util.BuildPod("c1", "preemptor-task2-preemptable", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg-preemptor", make(map[string]string), make(map[string]string)),
 			},
 			Nodes: []*v1.Node{
 				util.BuildNode("n1", api.BuildResourceList("2", "2G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
@@ -282,7 +288,7 @@ func TestReclaim(t *testing.T) {
 				util.BuildQueue("q1", 1, nil),
 				util.BuildQueue("q2", 1, nil),
 			},
-			ExpectEvictNum: 1, // The old code would result in 0 evictions. The correct code will result in 1.
+			ExpectEvictNum: 1,
 			ExpectEvicted:  []string{"c1/victim-pod"},
 		},
 	}

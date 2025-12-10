@@ -27,14 +27,19 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-type Action struct{}
+type Action struct {
+	enablePredicateErrorCache bool
+}
 
 func New() *Action {
-	return &Action{}
+	return &Action{
+		enablePredicateErrorCache: true,
+	}
 }
 
 func (ra *Action) Name() string {
@@ -43,9 +48,16 @@ func (ra *Action) Name() string {
 
 func (ra *Action) Initialize() {}
 
+func (ra *Action) parseArguments(ssn *framework.Session) {
+	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, ra.Name())
+	arguments.GetBool(&ra.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+}
+
 func (ra *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Reclaim ...")
 	defer klog.V(5).Infof("Leaving Reclaim ...")
+
+	ra.parseArguments(ssn)
 
 	queues := util.NewPriorityQueue(ssn.QueueOrderFn)
 	queueMap := map[api.QueueID]*api.QueueInfo{}
@@ -101,156 +113,139 @@ func (ra *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		// Pick the next starving job in this queue.
-		jobsQ, found := preemptorsMap[queue.UID]
-		if !found || jobsQ.Empty() {
-			// This queue has no starving jobs now, push it back for later consideration.
-			continue
-		}
-		job := jobsQ.Pop().(*api.JobInfo)
-
-		// Pick up all its candidate tasks.
-		tasksQ, ok := preemptorTasks[job.UID]
-		if !ok || tasksQ.Empty() || !ssn.JobStarving(job) {
-			jobsQ.Push(job)
-			queues.Push(queue)
-			continue
-		}
-
-		klog.V(3).Infof("Try reclaim for %d tasks of job <%s/%s>", tasksQ.Len(), job.Namespace, job.Name)
-		assignedInJob := false
-
-		for !tasksQ.Empty() {
-			task := tasksQ.Pop().(*api.TaskInfo)
-
-			if task.Pod.Spec.PreemptionPolicy != nil && *task.Pod.Spec.PreemptionPolicy == v1.PreemptNever {
-				klog.V(3).Infof("Task %s/%s cannot preempt (policy Never)", task.Namespace, task.Name)
-				continue
+		for {
+			// Pick the starving jobs in this queue.
+			jobsQ, found := preemptorsMap[queue.UID]
+			if !found || jobsQ.Empty() {
+				klog.V(4).Infof("No preemptors in Queue <%s>, break.", queue.Name)
+				break
 			}
+			job := jobsQ.Pop().(*api.JobInfo)
+			stmt := framework.NewStatement(ssn)
 
-			if !ssn.Preemptive(queue, task) {
-				klog.V(3).Infof("Queue <%s> cannot reclaim for task <%s>, skip", queue.Name, task.Name)
-				continue
-			}
-
-			if err := ssn.PrePredicateFn(task); err != nil {
-				klog.V(3).Infof("PrePredicate failed for task %s/%s: %v", task.Namespace, task.Name, err)
-				continue
-			}
-
-			taskReclaimed := false
-			totalNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
-			for _, n := range totalNodes {
-				if err := ssn.PredicateForPreemptAction(task, n); err != nil {
-					klog.V(4).Infof("Reclaim predicate for task %s/%s on node %s return error %v ", task.Namespace, task.Name, n.Name, err)
-					continue
-				}
-
-				klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.", task.Namespace, task.Name, n.Name)
-
-				var reclaimees []*api.TaskInfo
-				for _, taskOnNode := range n.Tasks {
-					if taskOnNode.Status != api.Running || !taskOnNode.Preemptable {
-						continue
-					}
-
-			resreq := task.InitResreq.Clone()
-			reclaimed := api.EmptyResource()
-			// The reclaimed resources should be added to the remaining available resources of the nodes to avoid over-reclaiming.
-			availableResources := n.FutureIdle()
-			// Reclaim victims for tasks.
-			for !victimsQueue.Empty() {
-				reclaimee := victimsQueue.Pop().(*api.TaskInfo)
-				klog.Errorf("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
-					reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
-				if err := ssn.Evict(reclaimee, "reclaim"); err != nil {
-					klog.Errorf("Failed to reclaim Task <%s/%s> for Tasks <%s/%s>: %v",
-						reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name, err)
-					continue
-				}
-				reclaimed.Add(reclaimee.Resreq)
-				availableResources.Add(reclaimee.Resreq)
-				// If reclaimed enough resources, break loop to avoid Sub panic.
-				if resreq.LessEqual(availableResources, api.Zero) {
+			for {
+				// If job is not request more resource, then stop reclaiming.
+				if !ssn.JobStarving(job) {
 					break
 				}
-			}
 
-			klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v> node availableResources <%v>.",
-				reclaimed, task.Namespace, task.Name, task.InitResreq, availableResources)
-
-			if task.InitResreq.LessEqual(availableResources, api.Zero) {
-				if err := ssn.Pipeline(task, n.Name); err != nil {
-					klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
-						task.Namespace, task.Name, n.Name)
-					if j, found := ssn.Jobs[taskOnNode.Job]; !found {
-						continue
-					} else if j.Queue != job.Queue {
-						q := ssn.Queues[j.Queue]
-						if !q.Reclaimable() {
-							continue
-						}
-						reclaimees = append(reclaimees, taskOnNode.Clone())
-					}
-				}
-
-				if len(reclaimees) == 0 {
-					klog.V(4).Infof("No reclaimees on Node <%s>.", n.Name)
-					continue
-				}
-
-				victims := ssn.Reclaimable(task, reclaimees)
-				if err := util.ValidateVictims(task, n, victims); err != nil {
-					klog.V(3).Infof("No validated victims on Node <%s>: %v", n.Name, err)
-					continue
-				}
-
-				victimsQueue := ssn.BuildVictimsPriorityQueue(victims, task)
-				resreq := task.InitResreq.Clone()
-				reclaimed := api.EmptyResource()
-				// The reclaimed resources should be added to the remaining available resources of the nodes to avoid over-reclaiming.
-				availableResources := n.FutureIdle()
-				// Reclaim victims for tasks.
-				for !victimsQueue.Empty() {
-					reclaimee := victimsQueue.Pop().(*api.TaskInfo)
-					klog.Errorf("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
-						reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
-					if err := ssn.Evict(reclaimee, "reclaim"); err != nil {
-						klog.Errorf("Failed to reclaim Task <%s/%s> for Tasks <%s/%s>: %v",
-							reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name, err)
-						continue
-					}
-					reclaimed.Add(reclaimee.Resreq)
-					availableResources.Add(reclaimee.Resreq)
-					// If reclaimed enough resources, break loop to avoid Sub panic.
-					if resreq.LessEqual(availableResources, api.Zero) {
-						break
-					}
-				}
-	
-				klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v> node availableResources <%v>.",
-					reclaimed, task.Namespace, task.Name, task.InitResreq, availableResources)
-	
-				if task.InitResreq.LessEqual(availableResources, api.Zero) {
-					if err := ssn.Pipeline(task, n.Name); err != nil {
-						klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
-							task.Namespace, task.Name, n.Name)
-					taskReclaimed = true
-					assignedInJob = true
+				// Pick up all its candidate tasks.
+				tasksQ, ok := preemptorTasks[job.UID]
+				if !ok || tasksQ.Empty() {
+					klog.V(3).Infof("No preemptor task in job <%s/%s>.",
+						job.Namespace, job.Name)
 					break
 				}
+
+				klog.V(3).Infof("Considering reclaim for %d tasks of job <%s/%s>.", tasksQ.Len(), job.Namespace, job.Name)
+
+				task := tasksQ.Pop().(*api.TaskInfo)
+
+				if task.Pod.Spec.PreemptionPolicy != nil && *task.Pod.Spec.PreemptionPolicy == v1.PreemptNever {
+					klog.V(3).Infof("Task %s/%s cannot preempt (policy Never)", task.Namespace, task.Name)
+					continue
+				}
+
+				if !ssn.Preemptive(queue, task) {
+					klog.V(3).Infof("Queue <%s> cannot reclaim for task <%s>, skip", queue.Name, task.Name)
+					continue
+				}
+
+				if err := ssn.PrePredicateFn(task); err != nil {
+					klog.V(3).Infof("PrePredicate failed for task %s/%s: %v", task.Namespace, task.Name, err)
+					continue
+				}
+
+				ra.reclaimForTask(ssn, stmt, task, job)
 			}
 
-			if taskReclaimed {
+			if ssn.JobPipelined(job) {
+				stmt.Commit()
+			} else {
+				stmt.Discard()
+			}
+
+			if !jobsQ.Empty() {
+				queues.Push(queue)
+			}
+		}
+	}
+}
+
+func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Statement, task *api.TaskInfo, job *api.JobInfo) {
+	totalNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
+	predicateHelper := util.NewPredicateHelper()
+	predicateNodes, _ := predicateHelper.PredicateNodes(task, totalNodes, ssn.PredicateForPreemptAction, ra.enablePredicateErrorCache)
+
+	for _, n := range predicateNodes {
+		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.", task.Namespace, task.Name, n.Name)
+
+		var reclaimees []*api.TaskInfo
+		for _, taskOnNode := range n.Tasks {
+			if taskOnNode.Status != api.Running || !taskOnNode.Preemptable {
+				continue
+			}
+
+			if j, found := ssn.Jobs[taskOnNode.Job]; !found {
+				continue
+			} else if j.Queue != job.Queue {
+				q := ssn.Queues[j.Queue]
+				if !q.Reclaimable() {
+					continue
+				}
+				reclaimees = append(reclaimees, taskOnNode.Clone())
+			}
+		}
+
+		if len(reclaimees) == 0 {
+			klog.V(4).Infof("No reclaimees on Node <%s>.", n.Name)
+			continue
+		}
+
+		victims := ssn.Reclaimable(task, reclaimees)
+		if err := util.ValidateVictims(task, n, victims); err != nil {
+			klog.V(3).Infof("No validated victims on Node <%s>: %v", n.Name, err)
+			continue
+		}
+
+		victimsQueue := ssn.BuildVictimsPriorityQueue(victims, task)
+		resreq := task.InitResreq.Clone()
+		reclaimed := api.EmptyResource()
+
+		// The reclaimed resources should be added to the remaining available resources of the nodes to avoid over-reclaiming.
+		availableResources := n.FutureIdle()
+
+		evictionOccurred := false
+		for !victimsQueue.Empty() {
+			reclaimee := victimsQueue.Pop().(*api.TaskInfo)
+			klog.V(3).Infof("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
+				reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
+			if err := stmt.Evict(reclaimee, "reclaim"); err != nil {
+				klog.Errorf("Failed to reclaim Task <%s/%s> for Tasks <%s/%s>: %v",
+					reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name, err)
+				continue
+			}
+			reclaimed.Add(reclaimee.Resreq)
+			availableResources.Add(reclaimee.Resreq)
+			evictionOccurred = true
+			if resreq.LessEqual(availableResources, api.Zero) {
 				break
 			}
 		}
 
-		// Put job and queue back if there’s more to do.
-		if assignedInJob {
-			jobsQ.Push(job)
+		klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>, and Node <%s> availableResources <%v>.", reclaimed, task.Namespace, task.Name, task.InitResreq, n.Name, availableResources)
+
+		if task.InitResreq.LessEqual(availableResources, api.Zero) {
+			if err := stmt.Pipeline(task, n.Name, evictionOccurred); err != nil {
+				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
+					task.Namespace, task.Name, n.Name)
+				if rollbackErr := stmt.UnPipeline(task); rollbackErr != nil {
+					klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
+						task.UID, n.Name, ssn.UID, rollbackErr)
+				}
+			}
+			break
 		}
-		queues.Push(queue)
 	}
 }
 
