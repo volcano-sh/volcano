@@ -25,10 +25,6 @@ package cache
 import (
 	"context"
 	"fmt"
-	"math"
-	"slices"
-	"strconv"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -37,36 +33,15 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
-	"k8s.io/utils/cpuset"
+	"k8s.io/kubernetes/pkg/scheduler/framework"
+	schedutil "k8s.io/kubernetes/pkg/scheduler/util"
 
-	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
 
-var DefaultAttachableVolumeQuantity int64 = math.MaxInt32
-
 func isTerminated(status schedulingapi.TaskStatus) bool {
 	return status == schedulingapi.Succeeded || status == schedulingapi.Failed
-}
-
-// getOrCreateJob will return corresponding Job for pi if it exists, or it will create a Job and return it if
-// pi.Pod.Spec.SchedulerName is same as volcano scheduler's name, otherwise it will return nil.
-func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *schedulingapi.JobInfo {
-	if len(pi.Job) == 0 {
-		if !slices.Contains(sc.schedulerNames, pi.Pod.Spec.SchedulerName) {
-			klog.V(4).Infof("Pod %s/%s is not scheduled by %s, skip creating PodGroup and Job for it in cache.",
-				pi.Pod.Namespace, pi.Pod.Name, strings.Join(sc.schedulerNames, ","))
-		}
-		return nil
-	}
-
-	//if _, found := sc.Jobs[pi.Job]; !found {
-	//	sc.Jobs[pi.Job] = schedulingapi.NewJobInfo(pi.Job)
-	//}
-	//
-	return nil
 }
 
 func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
@@ -98,49 +73,13 @@ func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, err
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
-	pi, err := sc.NewTaskInfo(pod)
-	if err != nil {
-		klog.Errorf("generate taskInfo for pod(%s) failed: %v", pod.Name, err)
-		sc.resyncTask(pi)
+	pi, exist := sc.GetTaskInfo(schedulingapi.TaskID(pod.UID))
+	if !exist {
+		// If it doesn't exist, then new a taskinfo, especially for those pods which are not scheduled by agent-scheduler or in restarting scenario
+		pi = schedulingapi.NewTaskInfo(pod)
 	}
 
 	return sc.addTask(pi)
-}
-
-func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
-	newPod, err := sc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(context.TODO(), oldTask.Name, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			sc.Mutex.Lock()
-			defer sc.Mutex.Unlock()
-			err := sc.deleteTask(oldTask)
-			if err != nil {
-				klog.Errorf("Failed to delete Pod <%v/%v> and remove from cache: %s", oldTask.Namespace, oldTask.Name, err.Error())
-				return err
-			}
-			klog.V(3).Infof("Pod <%v/%v> was deleted, removed from cache.", oldTask.Namespace, oldTask.Name)
-
-			return nil
-		}
-		return fmt.Errorf("failed to get Pod <%v/%v>: err %v", oldTask.Namespace, oldTask.Name, err)
-	}
-
-	newTask, err := sc.NewTaskInfo(newPod)
-	if err != nil {
-		return fmt.Errorf("failed to generate taskInfo of pod(%s), error: %v", newPod.Name, err)
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-	return sc.updateTask(oldTask, newTask)
-}
-
-func (sc *SchedulerCache) updateTask(oldTask, newTask *schedulingapi.TaskInfo) error {
-	if err := sc.deleteTask(oldTask); err != nil {
-		klog.Warningf("Failed to delete task from cache: %v", err)
-	}
-
-	return sc.addTask(newTask)
 }
 
 // Check the pod allocated status in cache
@@ -169,18 +108,8 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 }
 
 func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
+	// TODO need to refactoring
 	var nodeErr error
-
-	//if len(ti.Job) != 0 {
-	//	if job, found := sc.Jobs[ti.Job]; found {
-	//		jobErr = job.DeleteTaskInfo(ti)
-	//	} else {
-	//		klog.Warningf("Failed to find Job <%v> for Task <%v/%v> in cache.", ti.Job, ti.Namespace, ti.Name)
-	//	}
-	//} else {
-	//	klog.V(4).Infof("Task <%s/%s> has null jobID in cache.", ti.Namespace, ti.Name)
-	//}
-
 	if len(ti.NodeName) != 0 {
 		// We don't need to delete tasks from the Nodes cache that are already terminated.
 		// These tasks will be cleaned up during the UpdatePod -> updatePod -> deletePod -> deleteTask sequence,
@@ -203,100 +132,139 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 
 // Assumes that lock is already acquired.
 func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
-	pi := schedulingapi.NewTaskInfo(pod)
-	//
-	//// Delete the Task in cache to handle Binding status.
-	//task := pi
-	//if job, found := sc.Jobs[pi.Job]; found {
-	//	if t, found := job.Tasks[pi.UID]; found {
-	//		task = t
-	//	}
-	//}
-	_, task, err := sc.findJobAndTask(pi)
-	if err = sc.deleteTask(task); err != nil {
-		klog.Warningf("Failed to delete task from cache: %v", err)
+	pi, exist := sc.GetTaskInfo(schedulingapi.TaskID(pod.UID))
+	if !exist {
+		// If it doesn't exist, then new a taskinfo, especially for those pods which are not scheduled by agent-scheduler or in restarting scenario
+		pi = schedulingapi.NewTaskInfo(pod)
 	}
-
-	//// If job was terminated, delete it.
-	//if job, found := sc.Jobs[pi.Job]; found && schedulingapi.JobTerminated(job) {
-	//	sc.deleteJob(job)
-	//}
+	if err := sc.deleteTask(pi); err != nil {
+		klog.Errorf("Failed to delete task from cache: %v", err)
+		return err
+	}
 
 	return nil
 }
 
-// AddPod add pod to scheduler cache
-func (sc *SchedulerCache) AddPod(obj interface{}) {
-	pod, ok := obj.(*v1.Pod)
-	if !ok {
-		klog.Errorf("Cannot convert to *v1.Pod: %v", obj)
+// AddPodToCache add pod to scheduler cache
+func (sc *SchedulerCache) AddPodToCache(obj interface{}) {
+	_, pod, err := schedutil.As[*v1.Pod](nil, obj)
+	if err != nil {
+		klog.Errorf("Failed to convert objects to *v1.Pod: %v", err)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.addPod(pod)
+	err = sc.addPod(pod)
 	if err != nil {
 		klog.Errorf("Failed to add pod <%s/%s> into cache: %v",
 			pod.Namespace, pod.Name, err)
 		return
 	}
 	klog.V(3).Infof("Added pod <%s/%v> into cache.", pod.Namespace, pod.Name)
+
+	// Currently we still use AssignedPodAdded and only care about pod affinity and pod topology spread,
+	// directly using MoveAllToActiveOrBackoffQueue may lead to a decrease in throughput.
+	sc.schedulingQueue.AssignedPodAdded(klog.Background(), pod)
 }
 
-// UpdatePod update pod to scheduler cache
-func (sc *SchedulerCache) UpdatePod(oldObj, newObj interface{}) {
-	oldPod, ok := oldObj.(*v1.Pod)
-	if !ok {
-		klog.Errorf("Cannot convert oldObj to *v1.Pod: %v", oldObj)
-		return
-	}
-	newPod, ok := newObj.(*v1.Pod)
-	if !ok {
-		klog.Errorf("Cannot convert newObj to *v1.Pod: %v", newObj)
+// UpdatePodInCache update pod to scheduler cache
+func (sc *SchedulerCache) UpdatePodInCache(oldObj, newObj interface{}) {
+	oldPod, newPod, err := schedutil.As[*v1.Pod](oldObj, newObj)
+	if err != nil {
+		klog.Errorf("Failed to convert objects to *v1.Pod: %v", err)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.updatePod(oldPod, newPod)
+	err = sc.updatePod(oldPod, newPod)
 	if err != nil {
 		klog.Errorf("Failed to update pod %v in cache: %v", oldPod.Name, err)
 		return
 	}
 	klog.V(4).Infof("Updated pod <%s/%v> in cache.", oldPod.Namespace, oldPod.Name)
+
+	events := framework.PodSchedulingPropertiesChange(newPod, oldPod)
+	for _, evt := range events {
+		// Currently we still use AssignedPodUpdated and only care about pod affinity and pod topology spread,
+		// directly using MoveAllToActiveOrBackoffQueue may lead to a decrease in throughput.
+		sc.schedulingQueue.AssignedPodUpdated(klog.Background(), oldPod, newPod, evt)
+	}
 }
 
-// DeletePod delete pod from scheduler cache
-func (sc *SchedulerCache) DeletePod(obj interface{}) {
-	var pod *v1.Pod
-	switch t := obj.(type) {
-	case *v1.Pod:
-		pod = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		pod, ok = t.Obj.(*v1.Pod)
-		if !ok {
-			klog.Errorf("Cannot convert to *v1.Pod: %v", t.Obj)
-			return
-		}
-	default:
-		klog.Errorf("Cannot convert to *v1.Pod: %v", t)
+// DeletePodFromCache delete pod from scheduler cache
+func (sc *SchedulerCache) DeletePodFromCache(obj interface{}) {
+	_, pod, err := schedutil.As[*v1.Pod](nil, obj)
+	if err != nil {
+		klog.Errorf("Failed to convert objects to *v1.Pod: %v", err)
 		return
 	}
 
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
-	err := sc.deletePod(pod)
+	err = sc.deletePod(pod)
 	if err != nil {
 		klog.Errorf("Failed to delete pod %v from cache: %v", pod.Name, err)
 		return
 	}
 
 	klog.V(3).Infof("Deleted pod <%s/%v> from cache.", pod.Namespace, pod.Name)
+
+	// If QueueingHint is not enabled, the scheduler will move all unschedulable pods to backoffQ/activeQ when a pod delete event occurs,
+	// therefore we can add queueing hint support in the future.
+	sc.schedulingQueue.MoveAllToActiveOrBackoffQueue(klog.Background(), framework.EventAssignedPodDelete, pod, nil, nil)
+}
+
+func (sc *SchedulerCache) AddPodToSchedulingQueue(obj interface{}) {
+	_, pod, err := schedutil.As[*v1.Pod](nil, obj)
+	if err != nil {
+		klog.Errorf("Failed to convert objects to *v1.Pod: %v", err)
+		return
+	}
+
+	ti := schedulingapi.NewTaskInfo(pod)
+	sc.AddTaskInfo(ti)
+
+	sc.schedulingQueue.Add(klog.Background(), pod)
+}
+
+func (sc *SchedulerCache) UpdatePodInSchedulingQueue(oldObj, newObj interface{}) {
+	oldPod, newPod, err := schedutil.As[*v1.Pod](oldObj, newObj)
+	if err != nil {
+		klog.Errorf("Failed to convert objects to *v1.Pod: %v", err)
+		return
+	}
+
+	if oldPod.ResourceVersion == newPod.ResourceVersion {
+		return
+	}
+
+	// For update scenario, we simply override the old taskInfo and let gc reclaim the old taskInfo
+	ti := schedulingapi.NewTaskInfo(newPod)
+	sc.AddTaskInfo(ti)
+
+	sc.schedulingQueue.Update(klog.Background(), oldPod, newPod)
+}
+
+func (sc *SchedulerCache) DeletePodFromSchedulingQueue(obj interface{}) {
+	_, pod, err := schedutil.As[*v1.Pod](nil, obj)
+	if err != nil {
+		klog.Errorf("Failed to convert objects to *v1.Pod: %v", err)
+		return
+	}
+
+	tid := schedulingapi.TaskID(pod.UID)
+	if _, exist := sc.GetTaskInfo(tid); !exist {
+		klog.Errorf("Failed to find task <%s/%s> in cache.", pod.Namespace, pod.Name)
+		return
+	}
+	sc.DeleteTaskInfo(tid)
+
+	sc.schedulingQueue.Delete(pod)
 }
 
 // addNodeImageStates adds states of the images on given node to the given nodeInfo and update the imageStates in
@@ -346,9 +314,17 @@ func (sc *SchedulerCache) AddOrUpdateNode(node *v1.Node) error {
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
+	var oldNode *v1.Node
+	if n, ok := sc.Nodes[node.Name]; ok {
+		oldNode = n.Node
+	}
+
 	if sc.Nodes[node.Name] != nil {
 		sc.Nodes[node.Name].SetNode(node)
 		sc.removeNodeImageStates(node.Name)
+		// TODO The generation needs to be optimized to increment globally by one.
+		sc.Nodes[node.Name].Generation++
+		klog.V(5).Infof("Node %s added/updated, generation incremented to %d", node.Name, sc.Nodes[node.Name].Generation)
 	} else {
 		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
 	}
@@ -364,6 +340,19 @@ func (sc *SchedulerCache) AddOrUpdateNode(node *v1.Node) error {
 	if !nodeExisted {
 		sc.NodeList = append(sc.NodeList, node.Name)
 	}
+
+	if oldNode != nil {
+		events := framework.NodeSchedulingPropertiesChange(node, oldNode)
+		for _, evt := range events {
+			// TODO: We may need to add a preCheckForNode function to filter nodes before moving pods
+			sc.schedulingQueue.MoveAllToActiveOrBackoffQueue(klog.Background(), evt, oldNode, node, nil)
+		}
+	} else {
+		evt := fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Add}
+		// TODO: We may need to add a preCheckForNode function to filter nodes before moving pods
+		sc.schedulingQueue.MoveAllToActiveOrBackoffQueue(klog.Background(), evt, nil, node, nil)
+	}
+
 	return nil
 }
 
@@ -379,10 +368,13 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 		}
 	}
 	sc.removeNodeImageStates(nodeName)
+	sc.ConflictAwareBinder.RemoveBindRecord(nodeName)
 
 	if _, ok := sc.Nodes[nodeName]; !ok {
 		return fmt.Errorf("node <%s> does not exist", nodeName)
 	}
+
+	node := sc.Nodes[nodeName].Node
 
 	numaInfo := sc.Nodes[nodeName].NumaInfo
 	if numaInfo != nil {
@@ -393,6 +385,10 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 		}
 	}
 	delete(sc.Nodes, nodeName)
+
+	evt := fwk.ClusterEvent{Resource: fwk.Node, ActionType: fwk.Delete}
+	sc.schedulingQueue.MoveAllToActiveOrBackoffQueue(klog.Background(), evt, node, nil, nil)
+
 	return nil
 }
 
@@ -408,6 +404,11 @@ func (sc *SchedulerCache) AddNode(obj interface{}) {
 
 // UpdateNode update node to scheduler cache
 func (sc *SchedulerCache) UpdateNode(oldObj, newObj interface{}) {
+	_, ok := oldObj.(*v1.Node)
+	if !ok {
+		klog.Errorf("Cannot convert oldObj to *v1.Node: %v", oldObj)
+		return
+	}
 	newNode, ok := newObj.(*v1.Node)
 	if !ok {
 		klog.Errorf("Cannot convert newObj to *v1.Node: %v", newObj)
@@ -461,9 +462,6 @@ func (sc *SchedulerCache) SyncNode(nodeName string) error {
 }
 
 func (sc *SchedulerCache) nodeCanAddCache(node *v1.Node) bool {
-	if !responsibleForNode(node.Name, sc.schedulerPodName, sc.c) {
-		return false
-	}
 	if len(sc.nodeSelectorLabels) == 0 {
 		return true
 	}
@@ -475,220 +473,4 @@ func (sc *SchedulerCache) nodeCanAddCache(node *v1.Node) bool {
 	}
 	klog.Infof("node %s ignore add/update/delete into schedulerCache", node.Name)
 	return false
-}
-
-func (sc *SchedulerCache) updateResourceQuota(quota *v1.ResourceQuota) {
-	collection, ok := sc.NamespaceCollection[quota.Namespace]
-	if !ok {
-		collection = schedulingapi.NewNamespaceCollection(quota.Namespace)
-		sc.NamespaceCollection[quota.Namespace] = collection
-	}
-
-	collection.Update(quota)
-}
-
-func (sc *SchedulerCache) deleteResourceQuota(quota *v1.ResourceQuota) {
-	collection, ok := sc.NamespaceCollection[quota.Namespace]
-	if !ok {
-		return
-	}
-
-	collection.Delete(quota)
-}
-
-// DeleteResourceQuota delete ResourceQuota from the scheduler cache
-func (sc *SchedulerCache) DeleteResourceQuota(obj interface{}) {
-	var r *v1.ResourceQuota
-	switch t := obj.(type) {
-	case *v1.ResourceQuota:
-		r = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		r, ok = t.Obj.(*v1.ResourceQuota)
-		if !ok {
-			klog.Errorf("Cannot convert to *v1.ResourceQuota: %v", t.Obj)
-			return
-		}
-	default:
-		klog.Errorf("Cannot convert to *v1.ResourceQuota: %v", t)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	klog.V(3).Infof("Delete ResourceQuota <%s/%v> in cache", r.Namespace, r.Name)
-	sc.deleteResourceQuota(r)
-}
-
-// UpdateResourceQuota update ResourceQuota to scheduler cache
-func (sc *SchedulerCache) UpdateResourceQuota(oldObj, newObj interface{}) {
-	newR, ok := newObj.(*v1.ResourceQuota)
-	if !ok {
-		klog.Errorf("Cannot convert newObj to *v1.ResourceQuota: %v", newObj)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	klog.V(3).Infof("Update ResourceQuota <%s/%v> in cache, with spec: %v.", newR.Namespace, newR.Name, newR.Spec.Hard)
-	sc.updateResourceQuota(newR)
-}
-
-// AddResourceQuota add ResourceQuota to scheduler cache
-func (sc *SchedulerCache) AddResourceQuota(obj interface{}) {
-	var r *v1.ResourceQuota
-	switch t := obj.(type) {
-	case *v1.ResourceQuota:
-		r = t
-	default:
-		klog.Errorf("Cannot convert to *v1.ResourceQuota: %v", t)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	klog.V(3).Infof("Add ResourceQuota <%s/%v> in cache, with spec: %v.", r.Namespace, r.Name, r.Spec.Hard)
-	sc.updateResourceQuota(r)
-}
-
-func getNumaInfo(srcInfo *nodeinfov1alpha1.Numatopology) *schedulingapi.NumatopoInfo {
-	numaInfo := &schedulingapi.NumatopoInfo{
-		Namespace:   srcInfo.Namespace,
-		Name:        srcInfo.Name,
-		Policies:    make(map[nodeinfov1alpha1.PolicyName]string),
-		NumaResMap:  make(map[string]*schedulingapi.ResourceInfo),
-		CPUDetail:   topology.CPUDetails{},
-		ResReserved: make(v1.ResourceList),
-	}
-
-	policies := srcInfo.Spec.Policies
-	for name, policy := range policies {
-		numaInfo.Policies[name] = policy
-	}
-
-	numaResMap := srcInfo.Spec.NumaResMap
-	for name, resInfo := range numaResMap {
-		tmp := schedulingapi.ResourceInfo{}
-		tmp.Capacity = resInfo.Capacity
-		allocatable, err := cpuset.Parse(resInfo.Allocatable)
-		if err != nil {
-			klog.ErrorS(err, "Failed to parse input as CPUSet", resInfo.Allocatable)
-		}
-		tmp.Allocatable = allocatable
-		numaInfo.NumaResMap[name] = &tmp
-	}
-
-	cpuDetail := srcInfo.Spec.CPUDetail
-	for key, detail := range cpuDetail {
-		cpuID, _ := strconv.Atoi(key)
-		numaInfo.CPUDetail[cpuID] = topology.CPUInfo{
-			NUMANodeID: detail.NUMANodeID,
-			SocketID:   detail.SocketID,
-			CoreID:     detail.CoreID,
-		}
-	}
-
-	resReserved, err := schedulingapi.ParseResourceList(srcInfo.Spec.ResReserved)
-	if err != nil {
-		klog.Errorf("ParseResourceList failed, err=%v", err)
-	} else {
-		numaInfo.ResReserved = resReserved
-	}
-
-	return numaInfo
-}
-
-// Assumes that lock is already acquired.
-func (sc *SchedulerCache) addNumaInfo(info *nodeinfov1alpha1.Numatopology) error {
-	if sc.Nodes[info.Name] == nil {
-		sc.Nodes[info.Name] = schedulingapi.NewNodeInfo(nil)
-		sc.Nodes[info.Name].Name = info.Name
-	}
-
-	if sc.Nodes[info.Name].NumaInfo == nil {
-		sc.Nodes[info.Name].NumaInfo = getNumaInfo(info)
-		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoMoreFlag
-	} else {
-		newLocalInfo := getNumaInfo(info)
-		if sc.Nodes[info.Name].NumaInfo.Compare(newLocalInfo) {
-			sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoMoreFlag
-		} else {
-			sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoLessFlag
-		}
-
-		sc.Nodes[info.Name].NumaInfo = newLocalInfo
-	}
-
-	for resName, NumaResInfo := range sc.Nodes[info.Name].NumaInfo.NumaResMap {
-		klog.V(3).Infof("resource %s Allocatable %v on node[%s] into cache", resName, NumaResInfo, info.Name)
-	}
-
-	klog.V(3).Infof("Policies %v on node[%s] into cache, change= %v",
-		sc.Nodes[info.Name].NumaInfo.Policies, info.Name, sc.Nodes[info.Name].NumaChgFlag)
-	return nil
-}
-
-// Assumes that lock is already acquired.
-func (sc *SchedulerCache) deleteNumaInfo(info *nodeinfov1alpha1.Numatopology) {
-	if sc.Nodes[info.Name] != nil {
-		sc.Nodes[info.Name].NumaInfo = nil
-		sc.Nodes[info.Name].NumaChgFlag = schedulingapi.NumaInfoResetFlag
-		klog.V(3).Infof("delete numainfo in cache for node<%s>", info.Name)
-	}
-}
-
-// AddNumaInfoV1alpha1 add numa information to scheduler cache
-func (sc *SchedulerCache) AddNumaInfoV1alpha1(obj interface{}) {
-	ss, ok := obj.(*nodeinfov1alpha1.Numatopology)
-	if !ok {
-		klog.Errorf("Cannot convert oldObj to *nodeinfov1alpha1.Numatopology: %v", obj)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	sc.addNumaInfo(ss)
-}
-
-// UpdateNumaInfoV1alpha1 update numa information to scheduler cache
-func (sc *SchedulerCache) UpdateNumaInfoV1alpha1(oldObj, newObj interface{}) {
-	ss, ok := newObj.(*nodeinfov1alpha1.Numatopology)
-	if !ok {
-		klog.Errorf("Cannot convert oldObj to *nodeinfov1alpha1.Numatopology: %v", newObj)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-	sc.addNumaInfo(ss)
-	klog.V(3).Infof("update numaInfo<%s> in cache, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
-}
-
-// DeleteNumaInfoV1alpha1 delete numa information from scheduler cache
-func (sc *SchedulerCache) DeleteNumaInfoV1alpha1(obj interface{}) {
-	var ss *nodeinfov1alpha1.Numatopology
-	switch t := obj.(type) {
-	case *nodeinfov1alpha1.Numatopology:
-		ss = t
-	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		ss, ok = t.Obj.(*nodeinfov1alpha1.Numatopology)
-		if !ok {
-			klog.Errorf("Cannot convert to Numatopo: %v", t.Obj)
-			return
-		}
-	default:
-		klog.Errorf("Cannot convert to Numatopo: %v", t)
-		return
-	}
-
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
-	sc.deleteNumaInfo(ss)
-	klog.V(3).Infof("Delete numaInfo<%s> from cache, with spec: Policy: %v, resMap: %v", ss.Name, ss.Spec.Policies, ss.Spec.NumaResMap)
 }

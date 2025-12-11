@@ -17,79 +17,110 @@ limitations under the License.
 package cache
 
 import (
-	"fmt"
-	"os"
-	"slices"
 	"strconv"
-	"strings"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
-	"stathat.com/c/consistent"
+	corev1helpers "k8s.io/component-helpers/scheduling/corev1"
+	schedfwk "k8s.io/kube-scheduler/framework"
+	"k8s.io/utils/clock"
+
+	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
 
-// responsibleForPod returns false at following conditions:
-// 1. The current scheduler is not specified scheduler in Pod's spec.
-// 2. The Job which the Pod belongs is not assigned to current scheduler based on the hash algorithm in multi-schedulers scenario
-func responsibleForPod(pod *v1.Pod, schedulerNames []string, mySchedulerPodName string, c *consistent.Consistent) bool {
-	if !slices.Contains(schedulerNames, pod.Spec.SchedulerName) {
-		return false
-	}
-	if c != nil {
-		var key string
-		if len(pod.OwnerReferences) != 0 {
-			key = pod.OwnerReferences[0].Name
-		} else {
-			key = pod.Name
-		}
-		schedulerPodName, err := c.Get(key)
-		if err != nil {
-			klog.Errorf("Failed to get scheduler by hash algorithm, err: %v", err)
-		}
-		if schedulerPodName != mySchedulerPodName {
-			return false
-		}
-	}
+const (
+	// AnnotationSchedulingPriority is used to mark the internal scheduling priority of a pod
+	// Higher value means higher priority in the scheduling queue
+	AnnotationSchedulingPriority = "volcano.sh/scheduling-priority"
+	// AnnotationSchedulingPriorityReason records why the pod gets this priority
+	AnnotationSchedulingPriorityReason = "volcano.sh/scheduling-priority-reason"
+	// AnnotationSchedulingPriorityTimestamp records when the priority was set
+	AnnotationSchedulingPriorityTimestamp = "volcano.sh/scheduling-priority-timestamp"
+)
 
-	klog.V(4).Infof("schedulerPodName %v is responsible to Pod %v/%v", mySchedulerPodName, pod.Namespace, pod.Name)
-	return true
+// Scheduling priority levels - higher value means higher priority
+const (
+	SchedulingPriorityUrgent int = 100 // For urgent retry scenarios (e.g., binding conflict)
+	SchedulingPriorityHigh   int = 50  // For high priority scenarios
+	SchedulingPriorityNormal int = 0   // Default priority
+)
+
+// RequeueOptions contains options for requeuing a pod with custom priority
+type RequeueOptions struct {
+	Priority int
+	Reason   string // Reason for requeue
 }
 
-// responsibleForNode returns true if the Node is assigned to current scheduler in multi-scheduler scenario
-func responsibleForNode(nodeName string, mySchedulerPodName string, c *consistent.Consistent) bool {
-	if c != nil {
-		schedulerPodName, err := c.Get(nodeName)
-		if err != nil {
-			klog.Errorf("Failed to get scheduler by hash algorithm, err: %v", err)
-		}
-		if schedulerPodName != mySchedulerPodName {
-			return false
-		}
-	}
-
-	klog.V(4).Infof("schedulerPodName %v is responsible to Node %v", mySchedulerPodName, nodeName)
-	return true
+type schedulerOptions struct {
+	clock                             clock.WithTicker
+	podInitialBackoffSeconds          int64
+	podMaxBackoffSeconds              int64
+	podMaxInUnschedulablePodsDuration time.Duration
 }
 
-// getMultiSchedulerInfo return the Pod name of current scheduler and the hash table for all schedulers
-func getMultiSchedulerInfo() (schedulerPodName string, c *consistent.Consistent) {
-	multiSchedulerEnable := os.Getenv("MULTI_SCHEDULER_ENABLE")
-	mySchedulerPodName := os.Getenv("SCHEDULER_POD_NAME")
-	c = nil
-	if multiSchedulerEnable == "true" {
-		klog.V(3).Infof("multiSchedulerEnable true")
-		schedulerNumStr := os.Getenv("SCHEDULER_NUM")
-		schedulerNum, err := strconv.Atoi(schedulerNumStr)
-		if err != nil {
-			schedulerNum = 1
-		}
-		index := strings.LastIndex(mySchedulerPodName, "-")
-		baseName := mySchedulerPodName[0:index]
-		c = consistent.New()
-		for i := 0; i < schedulerNum; i++ {
-			name := fmt.Sprintf("%s-%d", baseName, i)
-			c.Add(name)
-		}
+// TODO: these default values can be overwritten by config file or command line args
+var defaultSchedulerOptions = schedulerOptions{
+	clock:                             clock.RealClock{},
+	podInitialBackoffSeconds:          int64(k8sschedulingqueue.DefaultPodInitialBackoffDuration.Seconds()),
+	podMaxBackoffSeconds:              int64(k8sschedulingqueue.DefaultPodMaxBackoffDuration.Seconds()),
+	podMaxInUnschedulablePodsDuration: k8sschedulingqueue.DefaultPodMaxInUnschedulablePodsDuration,
+}
+
+// SetPodSchedulingPriority sets the scheduling priority for a pod (in-memory only, not persisted)
+// This is used to control the order in which pods are popped from the scheduling queue.
+func SetPodSchedulingPriority(pod *v1.Pod, opts RequeueOptions) {
+	if pod.Annotations == nil {
+		pod.Annotations = make(map[string]string)
 	}
-	return mySchedulerPodName, c
+	pod.Annotations[AnnotationSchedulingPriority] = strconv.Itoa(opts.Priority)
+	if opts.Reason != "" {
+		pod.Annotations[AnnotationSchedulingPriorityReason] = opts.Reason
+	}
+	pod.Annotations[AnnotationSchedulingPriorityTimestamp] = strconv.FormatInt(time.Now().UnixNano(), 10)
+}
+
+// GetPodSchedulingPriority extracts the scheduling priority from pod annotations
+// Returns SchedulingPriorityNormal (0) if not set
+func GetPodSchedulingPriority(pod *v1.Pod) int {
+	if pod.Annotations == nil {
+		return SchedulingPriorityNormal
+	}
+	priorityStr, ok := pod.Annotations[AnnotationSchedulingPriority]
+	if !ok {
+		return SchedulingPriorityNormal
+	}
+	priority, err := strconv.Atoi(priorityStr)
+	if err != nil {
+		return SchedulingPriorityNormal
+	}
+	return priority
+}
+
+// Less is the function used by the activeQ heap algorithm to sort pods.
+// Priority order:
+// 1. Internal scheduling priority (set via annotations, e.g., for urgent retry scenarios such as binding conflict)
+// 2. Pod priority class (from PodSpec)
+// 3. Timestamp (earlier is higher priority)
+func Less(pInfo1, pInfo2 schedfwk.QueuedPodInfo) bool {
+	pod1 := pInfo1.GetPodInfo().GetPod()
+	pod2 := pInfo2.GetPodInfo().GetPod()
+
+	// 1. Compare internal scheduling priority (from annotations)
+	schedulingPriority1 := GetPodSchedulingPriority(pod1)
+	schedulingPriority2 := GetPodSchedulingPriority(pod2)
+
+	if schedulingPriority1 != schedulingPriority2 {
+		return schedulingPriority1 > schedulingPriority2
+	}
+
+	// 2. If scheduling priorities are equal, compare pod priority class
+	podPriority1 := corev1helpers.PodPriority(pod1)
+	podPriority2 := corev1helpers.PodPriority(pod2)
+
+	if podPriority1 != podPriority2 {
+		return podPriority1 > podPriority2
+	}
+
+	// 3. If pod priorities are also equal, compare timestamp (FIFO for same priority)
+	return pInfo1.GetTimestamp().Before(pInfo2.GetTimestamp())
 }

@@ -49,7 +49,7 @@ func NewBinderRegistry() *BinderRegistry {
 	}
 }
 
-// Register registers or updates a binder for the given plugin name. The plugin can be such as preBinder or postBinder.
+// Register registers or updates a binder for the given plugin name . The plugin can be such as preBinder or postBinder.
 // It always overwrites the existing binder map to support plugin configuration updates
 // during runtime, as plugins may be reconfigured without restarting the scheduler.
 func (r *BinderRegistry) Register(name string, binder interface{}) {
