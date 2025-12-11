@@ -520,3 +520,105 @@ func TestHasTopologyHardConstrain(t *testing.T) {
 		})
 	}
 }
+
+func TestParseMinMemberInfoChanged(t *testing.T) {
+	tests := []struct {
+		name                          string
+		minTaskMemberInitial          map[string]int32
+		minTaskMemberChanged          map[string]int32
+		expectedTaskMinAvailable      map[string]int32
+		expectedTaskMinAvailableTotal int32
+	}{
+		{
+			name: "task member changed from single to multiple roles",
+			minTaskMemberInitial: map[string]int32{
+				"worker": 3,
+			},
+			minTaskMemberChanged: map[string]int32{
+				"master": 1,
+				"worker": 2,
+				"gpu":    1,
+			},
+			expectedTaskMinAvailable: map[string]int32{
+				"master": 1,
+				"worker": 2,
+				"gpu":    1,
+			},
+			expectedTaskMinAvailableTotal: 4,
+		},
+		{
+			name: "task member decreased",
+			minTaskMemberInitial: map[string]int32{
+				"master": 2,
+				"worker": 5,
+				"gpu":    3,
+			},
+			minTaskMemberChanged: map[string]int32{
+				"master": 1,
+				"worker": 2,
+			},
+			expectedTaskMinAvailable: map[string]int32{
+				"master": 1,
+				"worker": 2,
+			},
+			expectedTaskMinAvailableTotal: 3,
+		},
+		{
+			name: "task member increased",
+			minTaskMemberInitial: map[string]int32{
+				"worker": 2,
+			},
+			minTaskMemberChanged: map[string]int32{
+				"master": 2,
+				"worker": 5,
+				"gpu":    3,
+			},
+			expectedTaskMinAvailable: map[string]int32{
+				"master": 2,
+				"worker": 5,
+				"gpu":    3,
+			},
+			expectedTaskMinAvailableTotal: 10,
+		},
+		{
+			name: "task member replaced completely",
+			minTaskMemberInitial: map[string]int32{
+				"old-master": 1,
+				"old-worker": 3,
+			},
+			minTaskMemberChanged: map[string]int32{
+				"new-master": 1,
+				"new-worker": 3,
+			},
+			expectedTaskMinAvailable: map[string]int32{
+				"new-master": 1,
+				"new-worker": 3,
+			},
+			expectedTaskMinAvailableTotal: 4,
+		},
+		{
+			name: "task member changed to empty",
+			minTaskMemberInitial: map[string]int32{
+				"master": 1,
+				"worker": 3,
+			},
+			minTaskMemberChanged:          map[string]int32{},
+			expectedTaskMinAvailable:      map[string]int32{},
+			expectedTaskMinAvailableTotal: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			jobInfo := NewJobInfo("test-job")
+			pg := &PodGroup{}
+			pg.Spec.MinTaskMember = tt.minTaskMemberInitial
+			jobInfo.ParseMinMemberInfo(pg)
+			pg.Spec.MinTaskMember = tt.minTaskMemberChanged
+			jobInfo.ParseMinMemberInfo(pg)
+
+			assert.Equal(t, tt.expectedTaskMinAvailable, jobInfo.TaskMinAvailable)
+			assert.Equal(t, tt.expectedTaskMinAvailableTotal, jobInfo.TaskMinAvailableTotal)
+		})
+	}
+}
