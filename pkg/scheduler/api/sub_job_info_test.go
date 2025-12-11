@@ -411,7 +411,7 @@ func TestGetSubJobMatchValues_Error(t *testing.T) {
 					MatchExpressions: []metav1.LabelSelectorRequirement{
 						{
 							Key:      "app",
-							Operator: "invalid", // 无效的操作符
+							Operator: "invalid",
 						},
 					},
 				},
@@ -456,7 +456,7 @@ func TestGetSubJobMatchValues_Error(t *testing.T) {
 				MatchLabelKeys: []string{"any"},
 			},
 			pod: &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{}, // 无标签
+				ObjectMeta: metav1.ObjectMeta{},
 			},
 			expected: nil,
 		},
