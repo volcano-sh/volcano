@@ -19,13 +19,12 @@ package app
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"net/http/pprof"
 	"os"
 
 	"volcano.sh/apis/pkg/apis/helpers"
 	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
-	"volcano.sh/volcano/pkg/agentscheduler"
+	scheduler "volcano.sh/volcano/pkg/agentscheduler"
+	"volcano.sh/volcano/pkg/agentscheduler/metrics"
 	"volcano.sh/volcano/pkg/kube"
 	"volcano.sh/volcano/pkg/signals"
 	commonutil "volcano.sh/volcano/pkg/util"
@@ -64,7 +63,9 @@ func Run(opt *options.ServerOption) error {
 		return err
 	}
 
-	sched, err := agentscheduler.NewAgentScheduler(config, opt)
+	metrics.InitKubeSchedulerRelatedMetrics()
+
+	sched, err := scheduler.NewAgentScheduler(config, opt)
 	if err != nil {
 		panic(err)
 	}
@@ -134,34 +135,6 @@ func Run(opt *options.ServerOption) error {
 		},
 	})
 	return fmt.Errorf("lost lease")
-}
-
-func startMetricsServer(opt *options.ServerOption) {
-	mux := http.NewServeMux()
-
-	if opt.EnableMetrics {
-		mux.Handle("/metrics", commonutil.PromHandler())
-	}
-
-	if opt.EnablePprof {
-		mux.HandleFunc("/debug/pprof/", pprof.Index)
-		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	}
-
-	server := &http.Server{
-		Addr:              opt.ListenAddress,
-		Handler:           mux,
-		ReadHeaderTimeout: helpers.DefaultReadHeaderTimeout,
-		ReadTimeout:       helpers.DefaultReadTimeout,
-		WriteTimeout:      helpers.DefaultWriteTimeout,
-	}
-
-	if err := server.ListenAndServe(); err != nil {
-		klog.Errorf("start metrics/pprof http server failed: %v", err)
-	}
 }
 
 // setupComponentGlobals discovers the API server version and sets
