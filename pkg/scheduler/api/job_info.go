@@ -543,6 +543,7 @@ func (ji *JobInfo) extractBudget(pg *PodGroup) *DisruptionBudget {
 // 2. calculate sum of all roles' min members and set to TaskMinAvailableTotal
 func (ji *JobInfo) ParseMinMemberInfo(pg *PodGroup) {
 	taskMinAvailableTotal := int32(0)
+	clear(ji.TaskMinAvailable)
 	for task, member := range pg.Spec.MinTaskMember {
 		ji.TaskMinAvailable[task] = member
 		taskMinAvailableTotal += member
