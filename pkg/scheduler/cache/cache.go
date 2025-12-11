@@ -66,6 +66,7 @@ import (
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	shardinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/shard/v1alpha1"
 	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -128,6 +129,7 @@ type SchedulerCache struct {
 	csiDriverInformer          storagev1.CSIDriverInformer
 	csiStorageCapacityInformer storagev1beta1.CSIStorageCapacityInformer
 	cpuInformer                cpuinformerv1.NumatopologyInformer
+	nodeShardInformer          shardinformerv1alpha1.NodeShardInformer
 
 	Binder         Binder
 	Evictor        Evictor
@@ -139,12 +141,14 @@ type SchedulerCache struct {
 	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
 	Nodes                map[string]*schedulingapi.NodeInfo
 	Queues               map[schedulingapi.QueueID]*schedulingapi.QueueInfo
+	NodeShards           map[string]*schedulingapi.NodeShardInfo
 	PriorityClasses      map[string]*schedulingv1.PriorityClass
 	NodeList             []string
 	defaultPriorityClass *schedulingv1.PriorityClass
 	defaultPriority      int32
 	CSINodesStatus       map[string]*schedulingapi.CSINodeStatusInfo
 	HyperNodesInfo       *schedulingapi.HyperNodesInfo
+	InUseNodesInShard    sets.Set[string]
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
@@ -178,6 +182,8 @@ type SchedulerCache struct {
 
 	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
 	sharedDRAManager k8sframework.SharedDRAManager
+
+	shardUpdateCoordinator *ShardUpdateCoordinator
 }
 
 type multiSchedulerInfo struct {
@@ -521,23 +527,26 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	)
 
 	sc := &SchedulerCache{
-		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Nodes:               make(map[string]*schedulingapi.NodeInfo),
-		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
-		errTasks:            workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
-		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[string](deletedJobsRateLimiter),
-		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		kubeClient:          kubeClient,
-		vcClient:            vcClient,
-		restConfig:          config,
-		defaultQueue:        defaultQueue,
-		schedulerNames:      schedulerNames,
-		nodeSelectorLabels:  make(map[string]sets.Empty),
-		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
-		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
-		imageStates:         make(map[string]*imageState),
+		Jobs:                   make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Nodes:                  make(map[string]*schedulingapi.NodeInfo),
+		Queues:                 make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		PriorityClasses:        make(map[string]*schedulingv1.PriorityClass),
+		errTasks:               workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
+		nodeQueue:              workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		DeletedJobs:            workqueue.NewTypedRateLimitingQueue[string](deletedJobsRateLimiter),
+		hyperNodesQueue:        workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		kubeClient:             kubeClient,
+		vcClient:               vcClient,
+		restConfig:             config,
+		defaultQueue:           defaultQueue,
+		schedulerNames:         schedulerNames,
+		nodeSelectorLabels:     make(map[string]sets.Empty),
+		NamespaceCollection:    make(map[string]*schedulingapi.NamespaceCollection),
+		CSINodesStatus:         make(map[string]*schedulingapi.CSINodeStatusInfo),
+		imageStates:            make(map[string]*imageState),
+		InUseNodesInShard:      sets.Set[string]{},
+		shardUpdateCoordinator: NewShardUpdateCoordinator(),
+		NodeShards:             make(map[string]*schedulingapi.NodeShardInfo),
 
 		NodeList:    []string{},
 		nodeWorkers: nodeWorkers,
@@ -768,6 +777,15 @@ func (sc *SchedulerCache) addEventHandler() {
 		UpdateFunc: sc.UpdateHyperNode,
 		DeleteFunc: sc.DeleteHyperNode,
 	})
+
+	if options.ServerOpts.ShardingMode == commonutil.HardShardingMode || options.ServerOpts.ShardingMode == commonutil.SoftShardingMode {
+		sc.nodeShardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
+		sc.nodeShardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddNodeShard,
+			UpdateFunc: sc.UpdateNodeShard,
+			DeleteFunc: sc.DeleteNodeShard,
+		})
+	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
 		ctx := context.TODO()
@@ -1407,9 +1425,11 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		RevocableNodes:       make(map[string]*schedulingapi.NodeInfo),
 		NodeList:             make([]string, len(sc.NodeList)),
 		CSINodesStatus:       make(map[string]*schedulingapi.CSINodeStatusInfo),
+		NodesInShard:         sets.Set[string]{},
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)
+	snapshot.NodesInShard = sc.InUseNodesInShard.Clone()
 	for _, value := range sc.Nodes {
 		value.RefreshNumaSchedulerInfoByCrd()
 	}
@@ -1649,6 +1669,39 @@ func (sc *SchedulerCache) UpdateQueueStatus(queue *schedulingapi.QueueInfo) erro
 	return sc.StatusUpdater.UpdateQueueStatus(queue)
 }
 
+// UpdateNodeShardStatus update the status of nodeshard
+func (sc *SchedulerCache) UpdateNodeShardStatus(nodeShardName string) error {
+	klog.V(3).Infof("Update NodeShard %s status...", nodeShardName)
+
+	nodeShard, exist := sc.NodeShards[nodeShardName]
+	if !exist {
+		klog.Warningf("NodeShard %s does not exist in cache, skip status update", nodeShardName)
+	}
+
+	nodesInUse := sets.New(nodeShard.NodeShard.Status.NodesInUse...)
+	if sc.InUseNodesInShard.Equal(nodesInUse) {
+		// nodes to use is same as nodes in use recorded in nodeshard
+		return nil
+	}
+
+	// Create a deep copy to avoid modifying cache objects
+	nodeShardCopy := nodeShard.NodeShard.DeepCopy()
+	desiredNodes := sets.New(nodeShardCopy.Spec.NodesDesired...)
+	nodesToRemove := sc.InUseNodesInShard.Difference(desiredNodes)
+	nodesToAdd := desiredNodes.Difference(sc.InUseNodesInShard)
+	nodeShardCopy.Status.NodesInUse = sc.InUseNodesInShard.UnsortedList()
+	nodeShardCopy.Status.NodesToRemove = nodesToRemove.UnsortedList()
+	nodeShardCopy.Status.NodesToAdd = nodesToAdd.UnsortedList()
+
+	_, err := sc.vcClient.ShardV1alpha1().NodeShards().UpdateStatus(context.Background(), nodeShardCopy, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("Failed to update NodeShard %s status %v", nodeShard.Name, err)
+		return err
+	}
+	klog.V(3).Infof("Updated NodeShard %s status", nodeShard.Name)
+	return nil
+}
+
 func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {
 	if podGroup == nil {
 		return
@@ -1734,4 +1787,21 @@ func (sc *SchedulerCache) RegisterBinder(name string, binder interface{}) {
 		sc.binderRegistry = NewBinderRegistry()
 	}
 	sc.binderRegistry.Register(name, binder)
+}
+
+func (sc *SchedulerCache) OnSessionOpen() {
+	if sc.shardUpdateCoordinator != nil {
+		sc.shardUpdateCoordinator.ShardUpdateMu.Lock()
+		sc.shardUpdateCoordinator.IsSessionRunning = true
+		sc.shardUpdateCoordinator.ShardUpdateMu.Unlock()
+	}
+}
+
+func (sc *SchedulerCache) OnSessionClose() {
+	if sc.shardUpdateCoordinator != nil {
+		sc.shardUpdateCoordinator.ShardUpdateMu.Lock()
+		sc.shardUpdateCoordinator.IsSessionRunning = false
+		sc.shardUpdateCoordinator.ShardUpdateCond.Broadcast()
+		sc.shardUpdateCoordinator.ShardUpdateMu.Unlock()
+	}
 }

@@ -218,8 +218,10 @@ spec:
             - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
             {{- end}}
             - --scheduler-worker-count={{.Values.custom.agent_scheduler_worker_count}}
+            {{- if .Values.custom.agent_scheduler_sharding_mode }}
             - --scheduler-sharding-mode={{.Values.custom.agent_scheduler_sharding_mode}}
-            {{- if .Values.custom.scheduler_plugins_dir }}
+            {{- end}}
+            {{- if .Values.custom.agent_scheduler_sharding_name }}
             - --scheduler-sharding-name={{.Values.custom.agent_scheduler_sharding_name}}
             {{- end }}
             - -v={{.Values.custom.scheduler_log_level}}

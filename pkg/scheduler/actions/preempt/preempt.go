@@ -299,13 +299,22 @@ func (pmpt *Action) preempt(
 
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
 	allNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(preemptor)
-	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache)
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache, ssn.NodesInShard)
 
-	if pmpt.enableTopologyAwarePreemption {
-		return pmpt.topologyAwarePreempt(ssn, stmt, preemptor, filter, predicateNodes)
+	candidateNodes := util.GetPredicatedNodeByShard(predicateNodes, ssn.NodesInShard)
+	var result bool
+	var err error
+	//try to preempt in order if multiple candidate Nodes group with priority exist
+	for _, nodes := range candidateNodes {
+		if pmpt.enableTopologyAwarePreemption {
+			if result, err = pmpt.topologyAwarePreempt(ssn, stmt, preemptor, filter, nodes); result {
+				break
+			}
+		} else if result, err = pmpt.normalPreempt(ssn, stmt, preemptor, filter, nodes); result {
+			break
+		}
 	}
-
-	return pmpt.normalPreempt(ssn, stmt, preemptor, filter, predicateNodes)
+	return result, err
 }
 
 func (pmpt *Action) normalPreempt(

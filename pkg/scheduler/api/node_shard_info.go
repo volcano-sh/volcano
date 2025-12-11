@@ -36,7 +36,7 @@ type NodeShardInfo struct {
 	NodeShard    *nodeshardv1alpha1.NodeShard
 }
 
-// NewQueueInfo creates new queueInfo object
+// NewNodeShardInfo creates new NodeShardInfo object
 func NewNodeShardInfo(shard *nodeshardv1alpha1.NodeShard) *NodeShardInfo {
 	shardInfo := &NodeShardInfo{
 		Name:         shard.Name,

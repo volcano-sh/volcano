@@ -27,6 +27,7 @@ import (
 	componentbaseconfigvalidation "k8s.io/component-base/config/validation"
 
 	voptions "volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/util"
 )
 
 const (
@@ -48,15 +49,13 @@ const (
 	defaultLockObjectNamespace        = "volcano-system"
 	defaultNodeWorkers                = 20
 	defaultScheduleWorkerCount        = 1
-
-	HardShardingMode = "hard"
-	SoftShardingMode = "soft"
-	NoneShardingMode = "none"
 )
 
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
 	*voptions.ServerOption
+
+	SchedulerName string
 
 	//Count of workers for scheduling
 	ScheduleWorkerCount uint32
@@ -119,7 +118,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 	fs.Uint32Var(&s.ScheduleWorkerCount, "scheduler-worker-count", defaultScheduleWorkerCount, "The flag indicates the number of worker threads for scheduling.")
-	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", NoneShardingMode, "The node sharding mode for scheduling")
+	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling")
 	fs.StringVar(&s.ShardName, "scheduler-sharding-name", agentSchedulerName, "The name of shard used for this scheduler")
 }
 

@@ -56,9 +56,8 @@ func TestAddFlags(t *testing.T) {
 	fs.Parse(args)
 
 	// This is a snapshot of expected options parsed by args.
-	expected := &ServerOption{
-		SchedulerName: agentSchedulerName,
-		ResyncPeriod:  0,
+	serverOptions := &voptions.ServerOption{
+		ResyncPeriod: 0,
 		LeaderElection: config.LeaderElectionConfiguration{
 			LeaderElect:       true,
 			LeaseDuration:     metav1.Duration{Duration: 60 * time.Second},
@@ -81,8 +80,14 @@ func TestAddFlags(t *testing.T) {
 		NodeWorkerThreads:             defaultNodeWorkers,
 		CacheDumpFileDir:              "/tmp",
 		DisableDefaultSchedulerConfig: false,
-	},
-		ScheduleWorkerCount: defaultScheduleWorkerCount}
+	}
+	expected := &ServerOption{
+		ServerOption:        serverOptions,
+		SchedulerName:       agentSchedulerName,
+		ScheduleWorkerCount: defaultScheduleWorkerCount,
+		ShardingMode:        commonutil.NoneShardingMode,
+		ShardName:           agentSchedulerName,
+	}
 	expectedFeatureGates := map[featuregate.Feature]bool{
 		features.PodDisruptionBudgetsSupport: false,
 		features.VolcanoJobSupport:           true,

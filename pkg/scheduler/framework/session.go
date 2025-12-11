@@ -159,6 +159,8 @@ type Session struct {
 	// the state needs to be temporarily stored in cycleStatesMap when an extension point is executed.
 	// The key is task's UID, value is the CycleState.
 	cycleStatesMap sync.Map
+
+	NodesInShard sets.Set[string]
 }
 
 func openSession(cache cache.Cache) *Session {
@@ -270,6 +272,8 @@ func openSession(cache cache.Cache) *Session {
 	for _, n := range ssn.Nodes {
 		ssn.TotalResource.Add(n.Allocatable)
 	}
+
+	ssn.NodesInShard = snapshot.NodesInShard
 
 	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues. HyperNodesReadyToSchedule: %v",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues), ssn.HyperNodesReadyToSchedule)

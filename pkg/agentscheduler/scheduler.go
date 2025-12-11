@@ -66,7 +66,6 @@ type Scheduler struct {
 type Worker struct {
 	framework *framework.Framework
 	index     int
-	cache     schedcache.Cache
 }
 
 // NewAgentScheduler returns a Scheduler
@@ -109,16 +108,15 @@ func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 
 	klog.V(2).Infof("Scheduler completes Initialization and start to run %d workers", sched.workerCount)
 	for i := range sched.workerCount {
-		worker := &Worker{}
+		worker := &Worker{index: i}
 		worker.framework = framework.NewFramework(sched.actions, sched.tiers, sched.cache, sched.configurations)
-		index := i
 		go func() {
 			for {
 				select {
 				case <-stopCh:
 					return
 				default:
-					worker.runOnce(index)
+					worker.runOnce()
 				}
 			}
 		}()
@@ -159,8 +157,7 @@ func (worker *Worker) runOnce() {
 		return
 	}
 
-	schedCtx.NodesInShard = worker.cache.GetNodesForWorker(worker.index)
-	worker.cache.OnWorkerStartSchedulingCycle(worker.index)
+	worker.framework.Cache.OnWorkerStartSchedulingCycle(worker.index, schedCtx)
 
 	// TODO: Call OnCycleStart for all plugins
 	// worker.framework.OnCycleStart()
@@ -169,7 +166,7 @@ func (worker *Worker) runOnce() {
 		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
 		// TODO: Call OnCycleEnd for all plugins
 		// worker.framework.OnCycleEnd()
-		worker.cache.OnWorkerEndSchedulingCycle(worker.index)
+		worker.framework.Cache.OnWorkerEndSchedulingCycle(worker.index)
 		worker.framework.ClearCycleState()
 	}()
 

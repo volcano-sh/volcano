@@ -95,6 +95,14 @@ type Cache interface {
 
 	// IsJobTerminated returns if the job was terminated
 	IsJobTerminated(jobId api.JobID) bool
+	//UpdateNodeShardStatus update status in nodeshard
+	UpdateNodeShardStatus(nodeShardName string) error
+
+	//OnSessionOpen is called before session open
+	OnSessionOpen()
+
+	//OnSessionClose is called after session close
+	OnSessionClose()
 }
 
 // Binder interface for binding task and hostname

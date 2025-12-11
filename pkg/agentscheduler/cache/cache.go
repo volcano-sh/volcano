@@ -62,6 +62,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	"volcano.sh/volcano/pkg/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
@@ -312,7 +313,7 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 		kubeClient:         kubeClient,
 		vcClient:           vcClient,
 		restConfig:         config,
-		schedulerName:      schedulerName,
+		schedulerName:      opt.SchedulerName,
 		nodeSelectorLabels: make(map[string]sets.Empty),
 		imageStates:        make(map[string]*imageState),
 
@@ -414,7 +415,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	informerFactory.Core().V1().PersistentVolumes().Informer()
 	informerFactory.Storage().V1().StorageClasses().Informer()
 	informerFactory.Storage().V1().CSINodes().Informer()
-	if options.ServerOpts.EnableCSIStorage {
+	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage {
 		informerFactory.Storage().V1().CSIDrivers().Informer()
 		informerFactory.Storage().V1beta1().CSIStorageCapacities().Informer()
 	}
@@ -509,7 +510,7 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, sc.resyncPeriod)
 	sc.vcInformerFactory = vcinformers
-	if sc.shardingMode == options.HardShardingMode || sc.shardingMode == options.SoftShardingMode {
+	if sc.shardingMode == util.HardShardingMode || sc.shardingMode == util.SoftShardingMode {
 		sc.nodeShardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
 		sc.nodeShardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    sc.AddNodeShard,
@@ -1035,7 +1036,7 @@ func (sc *SchedulerCache) EnqueueScheduleResult(scheduleResult *agentapi.PodSche
 
 func (sc *SchedulerCache) UpdateNodeShardStatus(shardName string, usedNodeInCache sets.Set[string]) error {
 	klog.V(3).Infof("Update NodeShard %s status...", shardName)
-	nodeSahrd, err := sc.nodeShardLister.Get(shardName)
+	nodeShard, err := sc.nodeShardLister.Get(shardName)
 	if err != nil {
 		// Check if the error happens because the HyperNode is deleted
 		if errors.IsNotFound(err) {
@@ -1046,16 +1047,20 @@ func (sc *SchedulerCache) UpdateNodeShardStatus(shardName string, usedNodeInCach
 		return err
 	}
 
-	nodesInUse := sets.New(nodeSahrd.Status.NodesInUse...)
-	if usedNodeInCache.Equal(nodesInUse) {
+	oldNodesInUse := sets.New(nodeShard.Status.NodesInUse...)
+	oldNodesToRemove := sets.New(nodeShard.Status.NodesToRemove...)
+	oldNodesToAdd := sets.New(nodeShard.Status.NodesToAdd...)
+
+	// Create a deep copy to avoid modifying cache objects
+	nodeShardCopy := nodeShard.DeepCopy()
+	desiredNodes := sets.New(nodeShard.Spec.NodesDesired...)
+
+	nodesToRemove := usedNodeInCache.Difference(desiredNodes)
+	nodesToAdd := desiredNodes.Difference(usedNodeInCache)
+	if usedNodeInCache.Equal(oldNodesInUse) && nodesToRemove.Equal(oldNodesToRemove) && nodesToAdd.Equal(oldNodesToAdd) {
 		return nil
 	}
 
-	// Create a deep copy to avoid modifying cache objects
-	nodeShardCopy := nodeSahrd.DeepCopy()
-	desiredNodes := sets.New(nodeSahrd.Spec.NodesDesired...)
-	nodesToRemove := usedNodeInCache.Difference(desiredNodes)
-	nodesToAdd := desiredNodes.Difference(usedNodeInCache)
 	nodeShardCopy.Status.NodesInUse = usedNodeInCache.UnsortedList()
 	nodeShardCopy.Status.NodesToRemove = nodesToRemove.UnsortedList()
 	nodeShardCopy.Status.NodesToAdd = nodesToAdd.UnsortedList()
@@ -1069,13 +1074,13 @@ func (sc *SchedulerCache) UpdateNodeShardStatus(shardName string, usedNodeInCach
 	return nil
 }
 
-func (sc *SchedulerCache) GetNodesForWorker(index int) sets.Set[string] {
-	return sc.ShardCoordinator.GetNodesForWorker(index)
+func (sc *SchedulerCache) GetNodesForScheduling(workerIdx int) sets.Set[string] {
+	return sc.ShardCoordinator.GetNodesForScheduling(workerIdx)
 }
 
 // OnWorkerStartSchedulingCycle is called when scheduler worker start a new scheduling cycle
-func (sc *SchedulerCache) OnWorkerStartSchedulingCycle(index int) {
-	sc.ShardCoordinator.OnWorkerStartSchedulingCycle(index)
+func (sc *SchedulerCache) OnWorkerStartSchedulingCycle(index int, schedCtx *agentapi.SchedulingContext) {
+	sc.ShardCoordinator.OnWorkerStartSchedulingCycle(index, schedCtx)
 }
 
 // OnWorkerEndSchedulingCycle is called when scheduler worker end a scheduling cycle

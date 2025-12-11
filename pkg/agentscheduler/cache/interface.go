@@ -103,11 +103,11 @@ type Cache interface {
 	//UpdateNodeShardStatus update status in nodeshard
 	UpdateNodeShardStatus(shardName string, usedNodeInCache sets.Set[string]) error
 
-	// GetNodesForWorker get nodes can be involved in worker
-	GetNodesForWorker(index int) sets.Set[string]
+	// GetNodesForScheduling get nodes can be involved in worker
+	GetNodesForScheduling(workerIdx int) sets.Set[string]
 
 	// OnWorkerStartSchedulingCycle is called when scheduler worker start a new scheduling cycle
-	OnWorkerStartSchedulingCycle(index int)
+	OnWorkerStartSchedulingCycle(index int, schedCtx *agentapi.SchedulingContext)
 
 	// OnWorkerEndSchedulingCycle is called when scheduler worker end a scheduling cycle
 	OnWorkerEndSchedulingCycle(index int)

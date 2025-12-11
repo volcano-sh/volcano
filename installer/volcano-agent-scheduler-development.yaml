@@ -181,7 +181,6 @@ spec:
             - --kube-api-burst=2000
             - --node-worker-threads=20
             - --scheduler-worker-count=1
-            - --scheduler-sharding-mode=none
             - -v=3
             - 2>&1
           env:
