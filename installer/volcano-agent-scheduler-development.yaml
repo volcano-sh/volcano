@@ -1,31 +1,43 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: volcano-system
+  labels:
+    kubernetes.io/metadata.name: volcano-system
 ---
-# Source: volcano/templates/scheduler.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: volcano-monitoring
+  labels:
+    kubernetes.io/metadata.name: volcano-monitoring
+---
+# Source: volcano/templates/agent_scheduler.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: agent-scheduler
+  name: volcano-agent-scheduler
   namespace: volcano-system
 ---
-# Source: volcano/templates/scheduler.yaml
+# Source: volcano/templates/agent_scheduler.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: agent-scheduler-configmap
+  name: volcano-agent-scheduler-configmap
   namespace: volcano-system
 data:
   agent-scheduler.conf: |
-    actions: "enqueue, allocate, backfill"
+    actions: "allocate"
     tiers:
     - plugins:
       - name: predicates
       - name: nodeorder
-      - name: binpack
 ---
-# Source: volcano/templates/scheduler.yaml
+# Source: volcano/templates/agent_scheduler.yaml
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: agent-scheduler
+  name: volcano-agent-scheduler
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
@@ -84,22 +96,28 @@ rules:
   - apiGroups: ["resource.k8s.io"]
     resources: ["resourceclaims/status"]
     verbs: ["update"]
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["deviceclasses","resourceslices"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: ["shard.volcano.sh"]
+    resources: ["nodeshards"]
+    verbs: ["list", "watch", "get", "update"]
 ---
-# Source: volcano/templates/scheduler.yaml
+# Source: volcano/templates/agent_scheduler.yaml
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: agent-scheduler-role
+  name: volcano-agent-scheduler-role
 subjects:
   - kind: ServiceAccount
-    name: agent-scheduler
+    name: volcano-agent-scheduler
     namespace: volcano-system
 roleRef:
   kind: ClusterRole
-  name: agent-scheduler
+  name: volcano-agent-scheduler
   apiGroup: rbac.authorization.k8s.io
 ---
-# Source: volcano/templates/scheduler.yaml
+# Source: volcano/templates/agent_scheduler.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -107,7 +125,7 @@ metadata:
     prometheus.io/path: /metrics
     prometheus.io/port: "8080"
     prometheus.io/scrape: "true"
-  name: agent-scheduler-service
+  name: volcano-agent-scheduler-service
   namespace: volcano-system
   labels:
     app: agent-scheduler
@@ -121,11 +139,11 @@ spec:
     app: agent-scheduler
   type: ClusterIP
 ---
-# Source: volcano/templates/scheduler.yaml
+# Source: volcano/templates/agent_scheduler.yaml
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: agent-scheduler
+  name: volcano-agent-scheduler
   namespace: volcano-system
   labels:
     app: agent-scheduler
@@ -144,14 +162,15 @@ spec:
           level: s0:c123,c456
         seccompProfile:
           type: RuntimeDefault
-      serviceAccount: agent-scheduler
+      serviceAccount: volcano-agent-scheduler
       priorityClassName: system-cluster-critical
       containers:
-        - name: agent-scheduler
+        - name: volcano-agent-scheduler
           image: docker.io/volcanosh/vc-agent-scheduler:latest
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/agent-scheduler.conf
+            - --scheduler-name=agent-scheduler
             - --enable-healthz=true
             - --enable-metrics=true
             - --leader-elect=false
@@ -159,6 +178,7 @@ spec:
             - --kube-api-burst=2000
             - --schedule-period=1s
             - --node-worker-threads=20
+            - --worker-count=1
             - -v=3
             - 2>&1
           env:
@@ -166,7 +186,7 @@ spec:
               value: /tmp/klog-socks
           imagePullPolicy: Always
           volumeMounts:
-            - name: scheduler-config
+            - name: agent-scheduler-config
               mountPath: /volcano.scheduler
             - name: klog-sock
               mountPath: /tmp/klog-socks
@@ -180,8 +200,8 @@ spec:
             runAsNonRoot: true
             runAsUser: 1000
       volumes:
-        - name: scheduler-config
+        - name: agent-scheduler-config
           configMap:
-            name: agent-scheduler-configmap
+            name: volcano-agent-scheduler-configmap
         - name: klog-sock
           emptyDir: {}

@@ -16,9 +16,6 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.schedulerName
-      name: SCHEDULER
-      type: string
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date
@@ -48,20 +45,13 @@ spec:
             description: Specification of the desired behavior of the NodeShard.
             properties:
               nodesDesired:
-                description: |-
-                  NodesDesired defines the list of nodes desired to be included in this NodeShard.
-                  Required.
+                description: NodesDesired defines the list of nodes desired to be
+                  included in this NodeShard.
                 items:
                   type: string
                 type: array
-              schedulerName:
-                description: |-
-                  SchedulerName indicates which scheduler should handle this NodeShard.
-                  Required.
-                type: string
             required:
             - nodesDesired
-            - schedulerName
             type: object
           status:
             description: |-
@@ -91,7 +81,10 @@ spec:
                   type: string
                 type: array
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
-    subresources: {}
+    subresources:
+      status: {}
