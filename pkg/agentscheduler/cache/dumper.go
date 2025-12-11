@@ -79,13 +79,6 @@ func (d *Dumper) dumpAll() {
 		klog.Info(d.printNodeInfo(nodeInfo))
 	}
 
-	klog.Info("Dump of jobs info in scheduler cache")
-	for _, jobInfo := range snapshot.Jobs {
-		klog.Info(d.printJobInfo(jobInfo))
-	}
-
-	klog.Info("Dump of hyperNodes info in scheduler cache")
-
 	d.displaySchedulerMemStats()
 }
 
@@ -99,14 +92,6 @@ func (d *Dumper) printNodeInfo(node *api.NodeInfo) string {
 	var data strings.Builder
 	data.WriteString("\n")
 	data.WriteString(node.String())
-	data.WriteString("\n")
-	return data.String()
-}
-
-func (d *Dumper) printJobInfo(jobInfo *api.JobInfo) string {
-	var data strings.Builder
-	data.WriteString("\n")
-	data.WriteString(jobInfo.String())
 	data.WriteString("\n")
 	return data.String()
 }

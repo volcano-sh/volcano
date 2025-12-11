@@ -32,7 +32,10 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
 
 // Cache collects pods/nodes/queues information
@@ -49,23 +52,7 @@ type Cache interface {
 
 	// AddBindTask binds Task to the target host.
 	// TODO(jinzhej): clean up expire Tasks.
-	AddBindTask(bindCtx *BindContext) error
-
-	// BindPodGroup Pod/PodGroup to cluster
-	BindPodGroup(job *api.JobInfo, cluster string) error
-
-	// Evict evicts the task to release resources.
-	Evict(task *api.TaskInfo, reason string) error
-
-	// RecordJobStatusEvent records related events according to job status.
-	// Deprecated: remove it after removed PDB support.
-	RecordJobStatusEvent(job *api.JobInfo, updatePG bool)
-
-	// UpdateJobStatus puts job in backlog for a while.
-	UpdateJobStatus(job *api.JobInfo, updatePGStatus, updatePGAnnotations bool) (*api.JobInfo, error)
-
-	// UpdateQueueStatus update queue status.
-	UpdateQueueStatus(queue *api.QueueInfo) error
+	AddBindTask(bindCtx *agentapi.BindContext) error
 
 	// Client returns the kubernetes clientSet, which can be used by plugins
 	Client() kubernetes.Interface
@@ -92,6 +79,21 @@ type Cache interface {
 
 	// SharedDRAManager returns the shared DRAManager
 	SharedDRAManager() framework.SharedDRAManager
+
+	// UpdateSnapshot is used to update the passed-in snapshot to ensure consistency between the cache's nodeinfo and the snapshot.
+	UpdateSnapshot(snapshot *k8sutil.Snapshot) error
+
+	// TaskUnschedulable update pod unschedulable status
+	TaskUnschedulable(task *api.TaskInfo, reason, message string) error
+
+	// EnqueueScheduleResult put result into binder check queue
+	EnqueueScheduleResult(result *agentapi.PodScheduleResult)
+
+	// SchedulingQueue returns the scheduling queue instance in the cache
+	SchedulingQueue() k8sschedulingqueue.SchedulingQueue
+
+	// GetTaskInfo returns the TaskInfo from the cache with the given taskID.
+	GetTaskInfo(taskID api.TaskID) (*api.TaskInfo, bool)
 }
 
 // Binder interface for binding task and hostname
@@ -99,25 +101,14 @@ type Binder interface {
 	Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInfo) map[api.TaskID]string
 }
 
-// Evictor interface for evict pods
-type Evictor interface {
-	Evict(pod *v1.Pod, reason string) error
-}
-
 // StatusUpdater updates pod with given PodCondition
 type StatusUpdater interface {
 	UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error)
-	UpdateQueueStatus(queue *api.QueueInfo) error
-}
-
-// BatchBinder updates podgroup or job information
-type BatchBinder interface {
-	Bind(job *api.JobInfo, cluster string) (*api.JobInfo, error)
 }
 
 type PreBinder interface {
-	PreBind(ctx context.Context, bindCtx *BindContext) error
+	PreBind(ctx context.Context, bindCtx *agentapi.BindContext) error
 
 	// PreBindRollBack is called when the pre-bind or bind fails.
-	PreBindRollBack(ctx context.Context, bindCtx *BindContext)
+	PreBindRollBack(ctx context.Context, bindCtx *agentapi.BindContext)
 }

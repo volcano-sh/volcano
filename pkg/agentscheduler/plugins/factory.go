@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The Volcano Authors.
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,16 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cache
+package plugins
 
 import (
-	"os"
-	"testing"
-
-	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
+	"volcano.sh/volcano/pkg/agentscheduler/framework"
+	"volcano.sh/volcano/pkg/agentscheduler/plugins/nodeorder"
+	"volcano.sh/volcano/pkg/agentscheduler/plugins/predicates"
 )
 
-func TestMain(m *testing.M) {
-	options.Default()
-	os.Exit(m.Run())
+func init() {
+	framework.RegisterPluginBuilder(predicates.PluginName, predicates.New)
+	framework.RegisterPluginBuilder(nodeorder.PluginName, nodeorder.New)
 }

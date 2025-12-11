@@ -1,5 +1,5 @@
 /*
-Copyright 2023 The Volcano Authors.
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,16 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cache
+package plugins
 
 import (
-	"os"
-	"testing"
-
-	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
-func TestMain(m *testing.M) {
-	options.Default()
-	os.Exit(m.Run())
+// ApplyPluginConfDefaults sets option's filed to its default value if not set
+func ApplyPluginConfDefaults(option *conf.PluginOption) {
+	setDefaultIfNil(&option.EnabledPredicate)
+	setDefaultIfNil(&option.EnabledNodeOrder)
+}
+
+func setDefaultIfNil(field **bool) {
+	defaultValue := true
+	if *field == nil {
+		*field = &defaultValue
+	}
 }
