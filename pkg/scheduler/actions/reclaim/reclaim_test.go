@@ -219,7 +219,7 @@ func TestReclaim(t *testing.T) {
 			ExpectEvicted:  []string{},
 		},
 		{
-			Name: "Reclaimed resources plus node available resources",
+			Name: "Node available resources should be included in reclaimed resources",
 			Plugins: map[string]framework.PluginBuilder{
 				conformance.PluginName: conformance.New,
 				gang.PluginName:        gang.New,
@@ -232,24 +232,22 @@ func TestReclaim(t *testing.T) {
 				util.BuildPriorityClass("high-priority", 1000),
 			},
 			PodGroups: []*schedulingv1beta1.PodGroup{
-				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
-				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "mid-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q2", 0, nil, schedulingv1beta1.PodGroupRunning, "mid-priority"),
 				util.BuildPodGroupWithPrio("pg3", "c1", "q3", 1, nil, schedulingv1beta1.PodGroupInqueue, "mid-priority"),
 			},
 			Pods: []*v1.Pod{
 				util.BuildPod("c1", "preemptee1-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee1-2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
 				util.BuildPod("c1", "preemptee2-1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg2", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptee2-2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg2", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
-				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("4", "1G"), "pg3", make(map[string]string), make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("2", "1G"), "pg3", make(map[string]string), make(map[string]string)),
 			},
 			Nodes: []*v1.Node{
-				util.BuildNode("n1", api.BuildResourceList("10", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				util.BuildNode("n1", api.BuildResourceList("10", "2Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
 			},
 			Queues: []*schedulingv1beta1.Queue{
 				util.BuildQueueWithPriorityAndResourcesQuantity("q1", 1, nil, nil),
 				util.BuildQueueWithPriorityAndResourcesQuantity("q2", 2, nil, nil),
-				util.BuildQueueWithPriorityAndResourcesQuantity("q3", 3, nil, nil),
+				util.BuildQueue("q3", 3, nil),
 			},
 			ExpectEvictNum: 1,
 			// cpu resource is enough in node, memory resource is not enough, need 1G memory to schedule preemptor1
