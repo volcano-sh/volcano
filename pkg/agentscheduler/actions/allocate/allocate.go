@@ -52,18 +52,21 @@ func (alloc *Action) Name() string {
 	return "allocate"
 }
 
+// OnActionInit initializes the plugin. It is called once when the framework is created.
+func (alloc *Action) OnActionInit(configurations []conf.Configuration) {
+	alloc.parseArguments(configurations)
+}
+
 func (alloc *Action) Initialize() {}
 
-func (alloc *Action) parseArguments(fwk *framework.Framework) {
-	arguments := vfwk.GetArgOfActionFromConf(fwk.Configurations, alloc.Name())
+func (alloc *Action) parseArguments(configurations []conf.Configuration) {
+	arguments := vfwk.GetArgOfActionFromConf(configurations, alloc.Name())
 	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
 }
 
 func (alloc *Action) Execute(fwk *framework.Framework, schedCtx *agentapi.SchedulingContext) {
 	klog.V(5).Infof("Enter Allocate ...")
 	defer klog.V(5).Infof("Leaving Allocate ...")
-
-	alloc.parseArguments(fwk)
 
 	// the allocation for pod may have many stages
 	// 1. use predicateFn to filter out node that T can not be allocated on.

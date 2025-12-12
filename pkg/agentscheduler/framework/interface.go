@@ -20,12 +20,16 @@ import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
 // Action is the interface of agent scheduler action.
 type Action interface {
 	// Name returns the unique name of Action.
 	Name() string
+
+	// OnActionInit initializes the plugin. It is called once when the framework is created.
+	OnActionInit(configurations []conf.Configuration)
 
 	// Initialize initializes the allocator plugins.
 	Initialize()

@@ -1,5 +1,6 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,7 +59,6 @@ func TestAddFlags(t *testing.T) {
 	// This is a snapshot of expected options parsed by args.
 	expected := &ServerOption{
 		SchedulerNames: []string{agentSchedulerName},
-		SchedulePeriod: 5 * time.Minute,
 		ResyncPeriod:   0,
 		LeaderElection: config.LeaderElectionConfiguration{
 			LeaderElect:       true,
@@ -68,7 +68,6 @@ func TestAddFlags(t *testing.T) {
 			ResourceLock:      resourcelock.LeasesResourceLock,
 			ResourceNamespace: defaultLockObjectNamespace,
 		},
-		DefaultQueue:  defaultQueue,
 		ListenAddress: defaultListenAddress,
 		KubeClientOptions: kube.ClientOptions{
 			Master:     "",
@@ -76,7 +75,6 @@ func TestAddFlags(t *testing.T) {
 			QPS:        defaultQPS,
 			Burst:      defaultBurst,
 		},
-		PluginsDir:                    defaultPluginsDir,
 		HealthzBindAddress:            ":11251",
 		MinNodesToFind:                defaultMinNodesToFind,
 		MinPercentageOfNodesToFind:    defaultMinPercentageOfNodesToFind,

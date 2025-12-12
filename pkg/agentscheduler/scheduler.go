@@ -48,11 +48,10 @@ import (
 // Scheduler watches for new unscheduled pods.
 // It attempts to find nodes that can accommodate these pods and writes the binding information back to the API server.
 type Scheduler struct {
-	cache          schedcache.Cache
-	schedulerConf  string
-	fileWatcher    filewatcher.FileWatcher
-	schedulePeriod time.Duration
-	once           sync.Once
+	cache         schedcache.Cache
+	schedulerConf string
+	fileWatcher   filewatcher.FileWatcher
+	once          sync.Once
 
 	mutex              sync.Mutex
 	actions            []framework.Action
@@ -80,12 +79,11 @@ func NewAgentScheduler(config *rest.Config, opt *options.ServerOption) (*Schedul
 		}
 	}
 
-	cache := schedcache.New(config, opt.SchedulerNames, opt.DefaultQueue, opt.NodeSelector, opt.NodeWorkerThreads, opt.IgnoredCSIProvisioners, opt.ResyncPeriod)
+	cache := schedcache.New(config, opt.SchedulerNames, opt.NodeSelector, opt.NodeWorkerThreads, opt.ResyncPeriod)
 	scheduler := &Scheduler{
 		schedulerConf:      opt.SchedulerConf,
 		fileWatcher:        watcher,
 		cache:              cache,
-		schedulePeriod:     opt.SchedulePeriod,
 		dumper:             schedcache.Dumper{Cache: cache, RootDir: opt.CacheDumpFileDir},
 		disableDefaultConf: opt.DisableDefaultSchedulerConfig,
 		workerCount:        opt.ScheduleWorkerCount,
@@ -102,6 +100,10 @@ func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 	// Start cache for policy.
 	sched.cache.SetMetricsConf(sched.metricsConf)
 	sched.cache.Run(stopCh)
+
+	for _, action := range sched.actions {
+		action.OnActionInit(sched.configurations)
+	}
 
 	klog.V(2).Infof("Scheduler completes Initialization and start to run %d workers", sched.workerCount)
 	for i := range sched.workerCount {

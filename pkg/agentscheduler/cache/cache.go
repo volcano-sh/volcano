@@ -76,8 +76,8 @@ func init() {
 var _ Cache = &SchedulerCache{}
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration) Cache {
-	return newSchedulerCache(config, schedulerNames, defaultQueue, nodeSelectors, nodeWorkers, ignoredProvisioners, resyncPeriod)
+func New(config *rest.Config, schedulerNames []string, nodeSelectors []string, nodeWorkers uint32, resyncPeriod time.Duration) Cache {
+	return newSchedulerCache(config, schedulerNames, nodeSelectors, nodeWorkers, resyncPeriod)
 }
 
 // SchedulerCache cache for the kube batch
@@ -283,7 +283,7 @@ func (sc *SchedulerCache) setBatchBindParallel() {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueue string, nodeSelectors []string, nodeWorkers uint32, ignoredProvisioners []string, resyncPeriod time.Duration) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerNames []string, nodeSelectors []string, nodeWorkers uint32, resyncPeriod time.Duration) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))

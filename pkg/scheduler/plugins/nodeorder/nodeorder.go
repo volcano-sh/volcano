@@ -211,7 +211,7 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		}
 		if p, err := noderesources.NewFit(context.TODO(), leastAllocatedArgs, pp.Handle, fts); err == nil {
 			leastAllocated := p.(*noderesources.Fit)
-			nodeOrderScorePlugins["Least Allocated"] = ScorePluginWithWeight{leastAllocated, pp.weight.leastReqWeight}
+			nodeOrderScorePlugins[leastAllocated.Name()+"_LeastAllocated"] = ScorePluginWithWeight{leastAllocated, pp.weight.leastReqWeight}
 		} else {
 			klog.Errorf("Failed to init Least Allocated plugin %v", err)
 		}
@@ -227,7 +227,7 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		}
 		if p, err := noderesources.NewFit(context.TODO(), mostAllocatedArgs, pp.Handle, fts); err == nil {
 			mostAllocation := p.(*noderesources.Fit)
-			nodeOrderScorePlugins["Most Allocated"] = ScorePluginWithWeight{mostAllocation, pp.weight.mostReqWeight}
+			nodeOrderScorePlugins[mostAllocation.Name()+"_MostAllocated"] = ScorePluginWithWeight{mostAllocation, pp.weight.mostReqWeight}
 		} else {
 			klog.Errorf("Failed to init Most Allocated plugin %v", err)
 		}
@@ -244,7 +244,7 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		}
 		if p, err := noderesources.NewBalancedAllocation(context.TODO(), blArgs, pp.Handle, fts); err == nil {
 			balancedAllocation := p.(*noderesources.BalancedAllocation)
-			nodeOrderScorePlugins["Balanced Resource Allocation"] = ScorePluginWithWeight{balancedAllocation, pp.weight.balancedResourceWeight}
+			nodeOrderScorePlugins[balancedAllocation.Name()] = ScorePluginWithWeight{balancedAllocation, pp.weight.balancedResourceWeight}
 		} else {
 			klog.Errorf("Failed to init Balanced Resource Allocation plugin %v", err)
 		}
@@ -257,7 +257,7 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		}
 		if p, err := nodeaffinity.New(context.TODO(), naArgs, pp.Handle, fts); err == nil {
 			nodeAffinity := p.(*nodeaffinity.NodeAffinity)
-			nodeOrderScorePlugins["Node Affinity"] = ScorePluginWithWeight{nodeAffinity, pp.weight.nodeAffinityWeight}
+			nodeOrderScorePlugins[nodeAffinity.Name()] = ScorePluginWithWeight{nodeAffinity, pp.weight.nodeAffinityWeight}
 		} else {
 			klog.Errorf("Failed to init Node Affinity plugin %v", err)
 		}
@@ -267,7 +267,7 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 	if pp.weight.imageLocalityWeight != 0 {
 		if p, err := imagelocality.New(context.TODO(), nil, pp.Handle); err == nil {
 			imageLocality := p.(*imagelocality.ImageLocality)
-			nodeOrderScorePlugins["Image Locality"] = ScorePluginWithWeight{imageLocality, pp.weight.imageLocalityWeight}
+			nodeOrderScorePlugins[imageLocality.Name()] = ScorePluginWithWeight{imageLocality, pp.weight.imageLocalityWeight}
 		} else {
 			klog.Errorf("Failed to init Image Locality plugin %v", err)
 		}
