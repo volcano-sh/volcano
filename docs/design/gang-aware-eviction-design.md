@@ -30,19 +30,14 @@ The Volcano scheduler's existing actions (`allocate`, `preempt`, `reclaim`) suff
 
 ## 2. Architectural Change: The Gang-Level Pipeline
 
-To resolve these issues, we introduce three new extension points that allow plugins to control the "If", "Where", and "Who" of Gang Scheduling.
+To resolve these issues, we introduce two new extension points that allow plugins to control the "Where", and "Who" of Gang Scheduling.
 
 ### 2.1 New Plugin Extension Points
 
 ```go
 // pkg/scheduler/api/interface.go
 
-// 1. The "If" (Optimization)
-// GangPredicateFn checks if the entire gang fits in the current cluster state.
-// Returns an error if the job should be skipped entirely (Fast Fail).
-type GangPredicateFn func(job *JobInfo, snapshot *ClusterSnapshot) error
-
-// 2. The "Where" (Constraint)
+// 1. The "Where" (Constraint)
 // GangSearchSpaceFn returns a list of "Feasible Domains"
 // The Gang must be scheduled entirely within ONE of these sets.
 // IMPORTANT: Domains must be returned in preference order (Best to Worst).
@@ -60,62 +55,119 @@ const (
     PurposeEvict
 )
 
-// 3. The "Who" (Policy)
+// 2. The "Who" (Policy)
 // GangVictimSelectorFn selects specific victim gangs to satisfy a resource requirement.
-// Returns: A list of JobIDs (gangs) recommended for eviction.
+// Returns: A map with JobID as key and a list of taskIDs as value
 // Used to override default "Least Global Waste" logic.
-type GangVictimSelectorFn func(preemptor *JobInfo, neededResources *Resource, candidates []*JobInfo) ([]JobID, error)
+type GangVictimSelectorFn func(preemptor *JobInfo, neededResources *Resource, candidates []*JobInfo) (map[JobId][]TaskID, error)
 ```
 
 > **Note**: The purpose parameter of GangSearchSpaceFn decides different results for different actions.
 >    *   **Allocate**: Plugin returns **ALL** feasible domains. The `allocate` action performs an exhaustive simulation + scoring to find the optimal placement.
->    *   **Evict**: Plugin returns **Top-K** domains sorted by feasibility (Cost to Enter). The `preempt` action uses a greedy "First Fit" approach to minimize scheduler latency.
+>    *   **Evict**: Plugin returns **Top-K** domains sorted by feasibility (Cost to Enter). The `reclaim`/`preempt` action uses a greedy "First Fit" approach to minimize scheduler latency.
 
 ### 2.2 Execution Pipeline (Composable Search)
 
-The Session executes a 3-stage pipeline for Gang operations:
+The Session executes a 2-stage pipeline for Gang operations:
 
-#### Phase 1: Feasibility Check (GangPredicate)
-*   Call `GangPredicateFn(job)` on all plugins.
-*   **Purpose**: Fast-fail jobs that cannot possibly fit (e.g., "Cluster total capacity < Job request").
-
-#### Phase 2: Search Space Reduction (GangSearchSpace)
+#### Phase 1: Search Space Reduction (GangSearchSpace)
 *   Call `GangSearchSpaceFn(job)` on plugins ordered by Priority (Config order).
 *   **Logic (Primary Driver)**: The **First Plugin** that returns a non-empty result defines the Search Space. Subsequent plugins are ignored for domain generation.
 *   **Reasoning**: This "Winner-Takes-All" approach avoids complex intersection logic and ordering conflicts. The highest-priority plugin (e.g., `network-topology-aware`) drives the structural constraint.
 *   **Result**: A list of `OrderedValidDomains` (`[][]*NodeInfo`).
 
-#### Phase 3: Assignment or Eviction
+#### Phase 2: Assignment or Eviction
 
 The execution logic diverges based on the action type:
 
 *   **Allocate Action (Exhaustive Search)**:
     *   Iterate through **ALL** `OrderedValidDomains`.
-    *   Simulate allocation on each domain to calculate a score (Fit Score + Topology Score).
+    *   Simulate allocation on each domain to calculate a score.
     *   Select the **Global Best** domain, Commit, and Return.
 *   **Preempt/Reclaim Action (Greedy First-Fit)**:
     *   Iterate through `OrderedValidDomains` (D1, D2, ...) in the returned order.
     *   **Try D1**: Search victims in D1. If valid victims found & simulation passes, **Evict & Return Immediately**.
     *   If D1 fails, try D2.
 
+```mermaid
+graph TD
+    Start[Start Gang Action] --> P1{Plugin 1: SearchSpace?}
+    P1 -- Returns Domains --> Domains[Ordered Valid Domains]
+    P1 -- Empty --> P2{Plugin 2: SearchSpace?}
+    P2 -- Returns Domains --> Domains
+    
+    Domains --> Loop{Iterate Domain D}
+    Loop -- Next D --> Select[SelectGangVictimsInDomain]
+    Select --> Sim{Simulate Allocation}
+    
+    Sim -- Success --> Evict[Evict Victims]
+    Evict --> Nominate[Update .status.nominatedNodeName]
+    Nominate --> Return[Return Success]
+    
+    Sim -- Fail --> Loop
+    Loop -- End of List --> Fail[Return Fail]
+```
+
 ---
 
-## 3. Proposed Solution: Gang-Aware Eviction (`gang-preempt` / `gang-reclaim`)
+## 3. Proposed Solution: Enhanced Preempt & Reclaim Actions
 
-With the pipeline in place, Gang-Aware Reclaim follows this flow: (Preemption will be discussed with minor changes in another section)
+Instead of creating new actions (`gang-preempt`, `gang-reclaim`), we will enhance the existing `preempt` and `reclaim` actions to support Gang-Aware logic via configuration flags. This ensures backward compatibility and simplifies user configuration.
 
-### 3.1 Algorithm
+### 3.1 Configuration
+
+Both actions will support a new argument: `gangAwareEnable`.
+
+```yaml
+actions: "allocate, backfill, preempt, reclaim"
+tiers:
+  - plugins:
+    - name: gang
+    - name: priority
+    - name: drf
+    - name: predicates
+    - name: nodeorder
+    - name: binpack
+    arguments:
+      preempt.gangAwareEnable: true
+      reclaim.gangAwareEnable: true
+```
+
+### 3.2 Logic Flow (Branching)
+
+The `Execute` method in both actions will detect the flag and branch into the Gang-Aware pipeline if enabled.
+
+The gang-aware logic is a completely independent execution path. If `gangAwareEnable` is true, the action does **NOT** execute any of the legacy task-centric logic (e.g. `nornalPreempt` or `normalReclaim`). It calls `executeGangPath` and returns immediately. This prevents any interference or complexity from mixing the two models.
+
+```go
+func (a *Action) Execute(ssn *framework.Session) {
+    // 1. Check Configuration
+    if a.gangAwareEnable {
+        // 2. Branch to Unified Gang-Aware Pipeline
+        // This function handles the entire lifecycle (Search -> Select -> Evict -> Nominate)
+        // independently from the legacy code below.
+        a.executeGangPath(ssn)
+        return
+    }
+    
+    // 3. Fallback to Legacy (Task-Centric) Logic
+    // ... existing logic ...
+}
+```
+
+### 3.3 Gang-Aware Eviction Alogorithm (Shared by reclaim and preempt)
+
 
 1.  **Identify Need**: Preemptor Job P needs resources.
 2.  **Determine Search Space**:
-    - Call `ssn.GetGangValidDomains(P)` (Phase 2 above).
+    - Call `ssn.GetGangValidDomains(P)` (Phase 1 above).
     - We receive `[PreferredDomain, SecondaryDomain, ...]`.
 3.  **Process Domains (Greedy)**:
     - **For each Domain** (set of nodes):
         - **Select Victims (Domain-Wide)**: Call `SelectGangVictimsInDomain(Preemptor, Domain)`.
             - This differs from legacy preemption by considering the *entire footprint* of victim gangs within the domain, rather than iterating node-by-node for each task of the gang.
         - **Simulate & Execute**:
-            - Run the **Task-to-Node Nomination** logic (see Section 3.1.2) on the domain assuming victims are evicted.
+            - Run the **Task-to-Node Nomination** logic (see Section 3.3.2) on the domain assuming victims are evicted.
             - **If Simulation Succeeds**:
                 - **Evict**: Evict the selected victims.
                 - **Nominate**: Apply the results of the simulation (update `.status.nominatedNodeName`).
@@ -123,13 +175,13 @@ With the pipeline in place, Gang-Aware Reclaim follows this flow: (Preemption wi
             - **If Simulation Fails**:
                 - Continue to next domain.
 
-### 3.1.1 Why NominatedNodeName is Critical (Gang vs. Task)
+#### 3.3.1 Why NominatedNodeName is Critical (Gang vs. Task)
 Unlike the legacy `reclaim` action, `gang-reclaim` **MUST** set the `.status.nominatedNodeName` (via `Pipeline`).
 
 *   **The Risk**: If we only evict victims without reserving the nodes, the resources become "Free" in the next scheduling cycle. A smaller job (or a higher-priority single-task job) could "steal" one of the freed nodes.
 *   **The Gang Consequence**: For a single task, losing a node is an inconvenience. For a Gang requiring 5 specific nodes (topology domain), losing **one** node means the **entire Gang fails** to start. The eviction of the other 4 nodes becomes "wasted waste." By setting `nominatedNodeName`, the `allocate` action in the next cycle will prioritize these specific nodes for the Gang's tasks, guaranteeing the "Domain" remains intact.
 
-### 3.1.2 Task-to-Node Nomination Strategy
+### 3.3.2 Task-to-Node Nomination Strategy
 A critical challenge in `gang-reclaim` is determining **which task** in the gang should be nominated to **which node** in the cleared domain.
 
 **Strategy: Reuse Allocate Logic (Dry-Run)**
@@ -153,9 +205,9 @@ Instead of inventing a new matching algorithm, we reuse the existing `allocate` 
     *   Convert these `Allocate` operations into `Pipeline` operations.
     *   Execute `stmt.Pipeline(Task, Node)` to update the `.status.nominatedNodeName`.
 
-> **Note**: While the standard `reclaim` action in Volcano does *not* use nomination (it relies on queue priority), the `preempt` action *does*. For `gang-reclaim`, we align with the `preempt` pattern because locking the specific topology domain is essential for the Gang's atomicity. A Gang cannot rely on general queue priority to secure a specific set of 5 connected nodes.
+> **Note**: While the standard `reclaim` action in Volcano does *not* use nomination, the `preempt` action *does*. For `gang-reclaim`, we align with the `preempt` pattern because locking the specific topology domain is essential for the Gang's atomicity. A Gang cannot rely on general queue priority to secure a specific set of nodes.
 
-### 3.2 Victim Selection (Bundles)
+### 3.4 Victim Selection (Bundles)
 
 When selecting victims within a Domain, we categorize the "footprint" of each candidate gang into "Bundles":
 
@@ -167,7 +219,7 @@ When selecting victims within a Domain, we categorize the "footprint" of each ca
 2.  **Whole Bundle**:
     - **Core**: Tasks required to maintain `MinAvailable`.
     - **Cost**: High (Requires restarting the whole gang).
-
+    
 **Sorting Logic (The "Sound" Strategy)**:
 We sort bundles to minimize disruption:
 1.  **Gang State**: Always take **Safe/Broken** bundles first (Priority 0).
@@ -177,7 +229,83 @@ We sort bundles to minimize disruption:
     - Break gangs that are primarily located *inside* the target domain. Avoid destroying a large distributed job to free a small local resource.
 4.  **Job Priority**: Respect `JobOrderFn` (Priority, DRF, etc.).
 
-### 3.2.1 Victim Selection Algorithm Pseudo-Code
+#### Example 1: Safe vs Whole Bundles (Standard Gang)
+
+Consider a Gang **Job-A**:
+*   **Replicas**: 5
+*   **MinAvailable**: 3
+*   **Current Running**: 5 (Full Health)
+
+If we need to reclaim resources from **Job-A**, we split it into two bundles:
+
+1.  **Safe Bundle**:
+    *   **Contains**: 2 Tasks (Task4, Task5)
+    *   **Logic**: `Running (5) - MinAvailable (3) = 2 Surplus`
+    *   **Impact**: Evicting these tasks does **NOT** break the gang. Job-A continues running with 3 tasks.
+    *   **Cost**: Low (Preemption allowed).
+
+2.  **Whole Bundle**:
+    *   **Contains**: 3 Tasks (Task1, Task2, Task3)
+    *   **Logic**: These are the core tasks required for the gang to function.
+    *   **Impact**: Evicting *any one* of these tasks forces the **entire gang** to restart.
+    *   **Cost**: High (Avoid unless necessary).
+
+#### Example 2: Safe vs Whole Bundles (With Roles)
+
+Consider a Gang **Job-B**
+*   **Roles**:
+    *   `driver`: 1 Replicas, Min 1.
+    *   `worker`: 4 Replicas, Min 3.
+*   **Global MinAvailable**: 4
+*   **Current Running**: 5 (1 driver, 4 workers) - Full Health.
+
+We analyze the surplus for each role to split bundles:
+
+1.  **Safe Bundle**:
+    *   **Contains**: 1 Task (`worker-3`)
+    *   **Logic**:
+        *   `driver`: 1 Running - 1 Min = 0 Surplus.
+        *   `worker`: 4 Running - 3 Min = 1 Surplus.
+    *   **Impact**: Evicting `worker-3` leaves the job with 1 driver + 3 workers (Total 4), which satisfies `MinAvailable`.
+    *   **Cost**: Low.
+
+2.  **Whole Bundle**:
+    *   **Contains**: 4 Tasks (`driver-0`, `worker-0`, `worker-1`, `worker-2`)
+    *   **Logic**:
+        *   `driver-0`: Critical (Count drops to 0 < 1).
+        *   `worker-{0,1,2}`: Core (Count drops to 2 < 3).
+    *   **Impact**: Evicting *any* of these violates the job's strict constraints, forcing a full restart.
+    *   **Cost**: High.
+
+
+### 3.4.1 Victim Selection Algorithm Pseudo-Code
+
+```mermaid
+flowchart TB
+    Start([Input: Candidates]) --> JobLoop[Phase 1: Process Each Job]
+    
+    subgraph JobProcessing [Job Level]
+        JobLoop --> SortTasks[Sort Tasks inside Job]
+        SortTasks --> CreateBundles[Create Bundles<br/>Safe vs Whole]
+    end
+    
+    CreateBundles --> InitialSort[Phase 2: Initial Bundle Sort]
+    InitialSort --> Flatten[Phase 3: Flatten to Ordered Task List]
+    Flatten --> Plugins{Feed to Plugins<br/>ReclaimableFn}
+    
+    Plugins --> Allowed[Allowed Tasks Set]
+    Allowed --> Atomic[Atomic Enforcement]
+    
+    Atomic -- "Whole Bundle<br/>(Any Rejected)" --> Discard[Discard Bundle]
+    Atomic -- "Safe Bundle<br/>(Partial Rejected)" --> Shrink[Shrink Bundle]
+    Atomic -- "All Approved" --> Valid[Valid Bundles]
+    
+    Shrink --> Valid
+    
+    Valid --> FinalSort[Phase 4: Final Sort<br/>ROI / Efficiency]
+    FinalSort --> Select[Phase 5: Select Top Bundles]
+    Select --> End([Return Victims])
+```
 
 ```python
 # ALGORITHM: SelectGangVictimsInDomain
@@ -256,7 +384,7 @@ FOR EACH Job IN Candidates:
             Bundles.Add(NewBundle(Type: WHOLE, Tasks: CoreTasks, Job: Job))
 
 
-# --- PHASE 2: Initial Sort (Plugin Presentation) ---
+# --- PHASE 2: Initial Sort (Fed to plugins) ---
 # Goal: Present "Cheapest" and "Most Fair" victims to the stateful plugins first.
 # This ensures that limited quotas (e.g. Queue Deserved) are consumed by the preferred victims.
 Sort Bundles using Comparator(Bundle A, Bundle B):
@@ -349,7 +477,15 @@ FOR EACH Bundle IN ValidBundles:
 RETURN Victims
 ```
 
-### 3.2.2 Bundle Scoring (ROI)
+#### 3.4.2 Plugin Compatibility (Adapter Layer)
+To support existing plugins (which operate on `TaskInfo`), the new gang-aware logic should perform the following steps:
+1.  **Flattening**: When calling `ReclaimableFn` or `PreemptableFn`, the framework presents the constituent tasks of a Bundle.
+2.  **Atomic Enforcement**: 
+    -   If a plugin rejects *any* task in a **Whole Bundle**, the framework rejects the **entire bundle**.
+    -   If a plugin rejects tasks in a **Safe Bundle**, the framework accepts the partial result (evicting only the approved tasks).
+This ensures legacy plugins control *policy* (quotas, priorities) while the framework enforces *mechanism* (gang integrity).
+
+### 3.4.3 Bundle Scoring (ROI)
 
 To handle heterogeneous resources (CPU, Memory, GPU), we define **Local Gain** and **Global Cost** using a weighted normalization strategy.
 
@@ -369,66 +505,174 @@ To handle heterogeneous resources (CPU, Memory, GPU), we define **Local Gain** a
     *   `Efficiency = LocalGainScore / GlobalCostScore`
     *   We prioritize victims that solve the local bottleneck with the least global cluster disruption.
 
-### 3.3 New Action Structure
+4.  **Unrequested resource**
+    * Skip unrequested resources in the score calculation. For example, if the preemptor doesn't need GPU, but one of the victim has GPU. The score of the GPU won't be counted.
+    * Consider adding some penalty to the efficiency if a victim of unrequested resource is evicted.
 
-```go
-package gang_preempt
+#### Example 1: Local vs Global Footprint (The "Distributed Job" Case)
 
-func (a *Action) Execute(ssn *framework.Session) {
-    // Iterate Jobs
-    for _, job := range ssn.Jobs {
-        // ...
-        
-        // 1. Fast Fail (GangPredicate)
-        if !ssn.GangPredicatesPass(job) { continue }
-        
-        // 2. Get Valid Search Space (GangSearchSpace)
-        validDomains := ssn.GetGangValidDomains(job) // [[NodeA, NodeB], [NodeC, NodeD]]
-        
-        // 3. Greedy Domain Search
-        for _, domain := range validDomains {
-             
-             // 4. Gang-Aware Victim Search (Domain-Wide)
-             // Returns optimal victims across the entire domain based on Bundle Strategy
-             victims, err := ssn.SelectGangVictimsInDomain(job, domain)
-             if err != nil { continue }
-             
-             // 5. Simulate & Execute
-             if victims != nil && SimulateAndExecute(domain, victims, job) {
-                 break
-             }
-        }
-    }
-}
-```
+**Preemptor needs: `2 GPU`**
 
----
+| Victim | Local Resources | Global Resources | Local Score | Global Score | Efficiency | Winner |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **A** | 2 GPU | 4 GPU | `Min(2,2)/2` = **1.0** | `4/2` = **2.0** | `1.0/2.0` = **0.5** | No |
+| **B** | 2 GPU | 2 GPU | `Min(2,2)/2` = **1.0** | `2/2` = **1.0** | `1.0/1.0` = **1.0** | **Yes** |
 
-### 3.4 Action-Specific Implementation
+#### Example 2: Partial Fit (Incremental Eviction)
 
-Instead of introducing complex new plugin interfaces, we implement distinct logic for `gang-preempt` and `gang-reclaim` to handle their differing policy requirements, while sharing core "Gang Utility" functions.
+**Preemptor needs: `10 CPU`**
 
-#### 3.4.1 Shared Utility (Mechanism)
+| Victim | Local Resources | Global Resources | Local Score | Global Score | Efficiency | Winner |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **C** | 10 CPU | 20 CPU | `Min(10,10)/10` = **1.0** | `20/10` = **2.0** | `1.0/2.0` = **0.5** | No |
+| **D** | 2 CPU | 2 CPU | `Min(2,10)/10` = **0.2** | `2/10` = **0.2** | `0.2/0.2` = **1.0** | **Yes** |
+
+
+#### Example 3: Multi-Resource Saturation
+
+**Preemptor needs: `4 CPU, 16GB Mem`**
+
+| Victim | Local Resources | Global Resources | Local Score | Global Score | Efficiency | Winner |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **E** | 4 CPU, 4GB | 4 CPU, 4GB | `Min(4,4)/4 + Min(4,16)/16` = **1.25** | `4/4 + 4/16` = **1.25** | `1.25/1.25` = **1.0** | Tie |
+| **F** | 2 CPU, 8GB | 2 CPU, 8GB | `Min(2,4)/4 + Min(8,16)/16` = **1.0** | `2/4 + 8/16` = **1.0** | `1.0/1.0` = **1.0** | Tie |
+
+#### Example 4: Resource Mismatch (The "GPU for CPU" Anti-Pattern)
+
+**Preemptor needs: `4 CPU` (No GPU needed)**
+
+| Victim | Local Resources | Global Resources | Local Score | Global Score | Efficiency | Winner |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **G** | 4 CPU | 4 CPU | `Min(4,4)/4` = **1.0** | `4/4` = **1.0** | `1.0/1.0` = **1.0** | **Yes** |
+| **H** | 4 CPU, 1 GPU | 4 CPU, 1 GPU | `Min(4,4)/4` = **1.0** | `4/4 + 1/0(Ignore)` = **1.0** * | `1.0/1.0` = **1.0** | Tie* |
+
+
+### 3.5 Difference between Preempt and Reclaim Logic
+
+#### 3.5.1 Shared Utility (Mechanism)
 Both actions utilize the same underlying mechanisms provided by the `Session` or helper packages:
 1.  **Search Space**: `ssn.GetGangValidDomains(job)`
 2.  **Bundle Logic**: `util.CreateBundles(candidates)` (Categorizes tasks into Safe/Whole bundles)
 3.  **Efficiency Check**: `util.CalculateROI(bundle, needed)`
 
-#### 3.4.2 Gang-Preempt Victim Selection Strategy (Priority-Driven)
+#### 3.5.2 Preempt (Priority-Driven)
 *   **Goal**: Satisfy high-priority jobs by evicting low-priority ones with minimal disruption.
+*   **Candidates**: Jobs in the **Same Queue**.
 *   **Filter**: Strictly `Preemptor.Priority > Victim.Priority`.
 *   **Ordering**:
-    1.  **Gang State**: Prefer `Safe` bundles (Priority 0) over `Whole` bundles (Priority 1).
+    1.  **Gang State**: Prefer `Safe` bundles over `Whole` bundles.
     2.  **Job Priority**: Prefer evicting lower priority victims first.
     3.  **Efficiency**: Break ties with ROI (Global Cost).
 
-#### 3.4.3 Gang-Reclaim Selection Strategy (Fairness-Driven)
+#### 3.5.3 Reclaim (Fairness-Driven)
 *   **Goal**: Recover resources from over-quota queues for under-quota queues.
+*   **Candidates**: Jobs in **Other Queues** that are `Overused`.
 *   **Filter**: Respect `Queue.Reclaimable()` and `Queue.Overused()`.
 *   **Ordering**:
-    1.  **Gang State**: Prefer `Safe` bundles.
+    1.  **Gang State**: Prefer `Safe` bundles over `Whole` bundles.
     2.  **Queue Fairness**: Prefer evicting from queues that are most over-quota (`ssn.VictimQueueOrderFn`).
     3.  **Efficiency**: Break ties with ROI.
     4.  **Job Priority**: Only used as a final tie-breaker.
 
 This separation ensures that Preemption never violates priority for efficiency, while Reclaim always respects queue fairness guarantees.
+
+---
+
+## 4. Long-Term Vision & Migration Strategy
+
+With the new interfaces, we could aims to evolve the Volcano scheduler from a "Task-Centric" model to a "Gang-Native" model.
+
+### 4.1 The North Star: Unified Eviction Pipeline
+
+Currently, Volcano maintains separate code paths for `allocate`, `preempt`, and `reclaim`.
+*   **Allocate** understands Topology but is complex and rigid.
+*   **Preempt/Reclaim** understand Priority/Fairness but are blind to Topology and Gang atomic units.
+
+The **Unified Pipeline** envisions a single, generalized logic path where:
+1.  **Every Job is a Gang**: Standard jobs are treated as "Gangs of Size 1".
+2.  **Domain-Scoped Scheduling**: Instead of searching the entire cluster, we allocate and evict resources within specific "Topology Domains" (defined by plugins), ensuring structural constraints are respected at the root of the decision process.
+3.  **Every Eviction is a Bundle**: We never evict a "Task"; we evict a "Bundle" (which might be 1 task or 100 tasks).
+
+**Benefits**:
+*   **Code Deduplication**: One robust engine for all eviction scenarios.
+*   **Consistent Behavior**: Allocations and Evictions respect the domain constraint.
+
+### 4.2 The Challenge: Barriers to Immediate Unification
+
+Migrating to the Unified Pipeline immediately is risky due to:
+*   **Performance**: Simulating the eviction of massive gangs (1000+ tasks) in a "Dry Run" loop is significantly more expensive than the current lightweight checks.
+*   **Plugin Ecosystem**: The current ecosystem of 20+ plugins expects `TaskInfo`. A full rewrite would break compatibility.
+*   **Fairness Guarantees**: The legacy `reclaim` action has highly tuned logic for Queue Fairness that is difficult to replicate perfectly in a generic pipeline without regressions.
+
+### 4.3 Step 1: Retrofitting Legacy Actions (Intermediate Solution)
+
+Instead of a "Big Bang" rewrite, we can **retrofit** the existing legacy actions (`preempt` and `reclaim`) with the new Gang Capabilities. This allows us to fix critical bugs (like Topology Blindness) immediately while keeping the stable core loop.
+
+#### 4.3.1 The "Plugin Injection" Strategy
+We inject the new `GangSearchSpace` interface into the legacy control loop to act as a **Smart Filter**.
+
+*   **Before**: The legacy loop iterates over *all* nodes to find victims. It asks: *"Does the victim fit on this node?"*
+*   **After**: The legacy loop first asks the new plugin: *"Which nodes are topologically valid for this Gang?"*. It then restricts the victim search *only* to those nodes.
+
+#### 4.3.2 Solving "Split Domains" (The Sticky Domain Fix)
+A major flaw in the legacy "Task-by-Task" loop is that different tasks of the same Gang might be scheduled on incompatible domains (e.g., Task A on Rack 1, Task B on Rack 2).
+
+To fix this **without** a rewrite, we introduce **Job-Level State** (`Sticky Domain`):
+1.  **Lazy Pinning**: The first task of a job that needs preemption triggers a topology search (`GetGangValidDomains`). The scheduler selects the best domain and **pins** it for the job.
+2.  **Strict Enforcement**: All subsequent tasks of that job are forced to search *only* within the pinned domain.
+3.  **Fail-Fast Safety**: If a subsequent task cannot find space in the pinned domain, the job **fails** for the current cycle. This prevents the "Split Gang" corruption, prioritizing correctness over partial progress.
+4. **Soft Topology Constraint**: For soft topology constraint, we'll keep the current behavior to return all nodes in the cluster for victim searching.
+4   **Running Gangs**: If a Gang is already partially running, the plugin detects this and restricts the "Valid Domain" to match the running tasks (e.g., "Must be on Rack 1"). The legacy action naturally obeys this constraint by only looking for victims and trying to allocate in this domain.
+
+#### 4.3.4 Limitations of the Retrofit Approach
+While the Retrofit solves the critical "Topology Blindness" issue, it still has some limitations.
+
+1.  **Sub-Optimal Domain Selection (Greedy Commit)**: The "Sticky Domain" logic commits to a domain based on the *first* task processed. If `Rack A` (chosen for Task 1) runs out of capacity later, the entire job fails for this cycle, even if `Rack B` had enough capacity for the whole gang. The legacy loop cannot "look ahead" to see which domain is globally best for the *entire* gang.
+2.  **Task-Centric Cost**: The legacy actions still view victims as individual tasks. They cannot calculate the "Global Cost" of breaking a gang (e.g., evicting 1 task might kill a 100-task job). The "Bundle" and "ROI" logic from the Unified Design is **not** applied here.
+3.  **No "Nomination" in Reclaim**: Legacy Reclaim does not use `.status.nominatedNodeName`. This means there is still a race condition where a small job might "steal" the resources freed by a Gang Reclaim before the Gang can bind to them. May need to fix this before the implementation of this design.
+
+---
+
+## 5. High-level Implementation Plan
+
+This section outlines the step-by-step plan to implement the Gang-Aware Eviction logic and refactor the legacy actions.
+
+### 5.1 Part 1: Implementation of New Gang-Aware Logic
+
+This phase introduces the new execution path and necessary plugin interfaces.
+
+1.  **Core API & Framework**:
+    *   **Interface Definition**: Add `GangSearchSpaceFn` and `GangVictimSelectorFn` to `pkg/scheduler/api/interface.go`.
+    *   **Session Support**: Update `Session` struct to manage these new function maps. Add helper method `GetGangValidDomains`.
+    *   **Bundle Utilities**: Create `pkg/scheduler/util/gang_utils.go` to implement:
+        *   `CreateBundles(candidates)`: Logic to split tasks into Safe/Whole bundles.
+        *   `CalculateROI(bundle)`: Logic for scoring bundles.
+
+2.  **Plugin Updates**:
+    *   **`network-topology-aware` Plugin**:
+        *   Implement `GangSearchSpaceFn`.
+        *   **Logic**: Calculate valid HyperNodes based on the job's topology constraints. Return `[][]*NodeInfo` representing valid domains (e.g., nodes in a specific Rack or Switch).
+    *   **`gang` Plugin**:
+        *   **Relax Constraints**: Update `ReclaimableFn` and `PreemptableFn` logic. Currently, it strictly blocks eviction if `Ready < MinAvailable`. For the new Gang-Aware path (handling "Whole Bundles"), this check needs to be context-aware or bypassed, as the framework intentionally manages gang breakage based on Global Cost.
+        *   **Selector**: Add `GangVictimSelectorFn` to implement the viction selection logic.
+
+3.  **Action Updates (New Path)**:
+    *   **`preempt` & `reclaim` Actions**:
+        *   Add configuration flag parsing for `gangAwareEnable`.
+        *   Implement `executeGangPath` method in both actions.
+        *   **Workflow**:
+            1.  Trigger `GetGangValidDomains` (driven by `network-topology-aware`).
+            2.  Call `SelectGangVictimsInDomain` (driven by `gang` utilities).
+            3.  Simulate eviction and allocation.
+            4.  Execute eviction and nomination.
+
+### 5.2 Part 2: Refactoring Legacy Actions (Retrofitting)
+
+This phase improves the existing "Task-Centric" logic by injecting Topology Awareness via the new interfaces.
+
+1.  **Refactor Legacy Preempt/Reclaim Loops**:
+    *   **Injection Point**: Before iterating over nodes or victims, call `ssn.GetGangValidDomains(job)` to get nodes for victim searching.
+    *   **Filtering**:
+        *   Restrict victim search *strictly* to these valid domains.
+        *   Implement the sticky domain logic to ensure domain constraint is honored when iterating through tasks
+        *   This fixes the "Topology Blindness" where legacy actions would evict tasks on nodes that the job cannot actually use due to topology constraints.
