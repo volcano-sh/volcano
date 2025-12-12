@@ -166,6 +166,12 @@ spec:
             {{- toYaml .Values.custom.controller_resources | nindent 14 }}
             {{- end }}
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
+          livenessProbe:
+            {{- $probeCtx := dict "values" .Values.custom.controller_livenessProbe "scheme" "HTTP" "Values" .Values }}
+            {{- include "volcano.probe" $probeCtx | nindent 12 }}
+          readinessProbe:
+            {{- $probeCtx := dict "values" .Values.custom.controller_readinessProbe "scheme" "HTTP" "Values" .Values }}
+            {{- include "volcano.probe" $probeCtx | nindent 12 }}
           args:
             - --logtostderr
             - --enable-healthz=true

@@ -187,6 +187,12 @@ spec:
       containers:
         - name: {{ .Release.Name }}-scheduler
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
+          livenessProbe:
+            {{- $probeCtx := dict "values" .Values.custom.scheduler_livenessProbe "scheme" "HTTP" "Values" .Values }}
+            {{- include "volcano.probe" $probeCtx | nindent 12 }}
+          readinessProbe:
+            {{- $probeCtx := dict "values" .Values.custom.scheduler_readinessProbe "scheme" "HTTP" "Values" .Values }}
+            {{- include "volcano.probe" $probeCtx | nindent 12 }}
           {{- if .Values.custom.scheduler_resources }}
           resources:
           {{- toYaml .Values.custom.scheduler_resources | nindent 12 }}

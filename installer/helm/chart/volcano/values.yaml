@@ -1,4 +1,5 @@
 basic:
+  healthz_port: 11251
   controller_image_name: "volcanosh/vc-controller-manager"
   scheduler_image_name: "volcanosh/vc-scheduler"
   admission_image_name: "volcanosh/vc-webhook-manager"
@@ -253,7 +254,35 @@ custom:
 
   # Specify feature gates for components
   scheduler_feature_gates: ~
-
+  
+# Example probe configuration:
+# livenessProbe:
+#   httpGet:
+#     path: /healthz
+#     port: 11251
+#     scheme: HTTPS
+#   initialDelaySeconds: 10
+#   periodSeconds: 20
+#   timeoutSeconds: 5
+#   failureThreshold: 3
+#   successThreshold: 1
+#
+# readinessProbe:
+#   httpGet:
+#     path: /healthz
+#     port: 11251
+#     scheme: HTTPS
+#   initialDelaySeconds: 10
+#   periodSeconds: 20
+#   timeoutSeconds: 5
+#   failureThreshold: 3
+#   successThreshold: 1
+  controller_readinessProbe: {}
+  controller_livenessProbe: {}
+  scheduler_readinessProbe: {}
+  scheduler_livenessProbe: {}
+  admission_readinessProbe: {}
+  admission_livenessProbe: {}
 service:
   # @param service.ipFamilyPolicy [string], support SingleStack, PreferDualStack and RequireDualStack
   #
