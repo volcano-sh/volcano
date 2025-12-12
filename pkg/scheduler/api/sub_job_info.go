@@ -32,7 +32,10 @@ import (
 
 type SubJobID types.UID
 
+type SubJobGID types.UID // All subgroups within a SubGroupPolicy have the same SubJobGID.
+
 type SubJobInfo struct {
+	GID SubJobGID
 	UID SubJobID
 	Job JobID
 
@@ -49,8 +52,9 @@ type SubJobInfo struct {
 	networkTopology *scheduling.NetworkTopologySpec
 }
 
-func NewSubJobInfo(uid SubJobID, job JobID, policy *scheduling.SubGroupPolicySpec, matchValues []string) *SubJobInfo {
+func NewSubJobInfo(gid SubJobGID, uid SubJobID, job JobID, policy *scheduling.SubGroupPolicySpec, matchValues []string) *SubJobInfo {
 	sji := &SubJobInfo{
+		GID:             gid,
 		UID:             uid,
 		Job:             job,
 		MinAvailable:    1,
@@ -158,6 +162,10 @@ func getSubJobMatchValues(policy scheduling.SubGroupPolicySpec, pod *v1.Pod) []s
 		values = append(values, value)
 	}
 	return values
+}
+
+func getSubJobGID(job JobID, policy string) SubJobGID {
+	return SubJobGID(fmt.Sprintf("%s/%s", job, policy))
 }
 
 func getSubJobID(job JobID, policy string, matchValues []string) SubJobID {
