@@ -21,6 +21,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 )
@@ -34,7 +35,7 @@ func TestCreatePatchExecution(t *testing.T) {
 		Job       v1alpha1.Job
 		operation patchOperation
 	}{
-		Name: "patch default task name",
+		Name: "patch default task",
 		Job: v1alpha1.Job{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "path-task-name",
@@ -60,7 +61,57 @@ func TestCreatePatchExecution(t *testing.T) {
 						},
 					},
 					{
+						Replicas:     2,
+						MinAvailable: ptr.To(int32(1)),
+						Template: v1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{
+								Labels: map[string]string{"name": "test"},
+							},
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name:  "fake-name",
+										Image: "busybox:1.24",
+									},
+								},
+							},
+						},
+					},
+					{
 						Replicas: 1,
+						PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+							TotalPartitions: 1,
+							MinPartitions:   1,
+							PartitionSize:   1,
+							NetworkTopology: &v1alpha1.NetworkTopologySpec{
+								HighestTierAllowed: ptr.To(1),
+								Mode:               v1alpha1.HardNetworkTopologyMode,
+							},
+						},
+						Template: v1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{
+								Labels: map[string]string{"name": "test"},
+							},
+							Spec: v1.PodSpec{
+								Containers: []v1.Container{
+									{
+										Name:  "fake-name",
+										Image: "busybox:1.24",
+									},
+								},
+							},
+						},
+					},
+					{
+						Replicas: 1,
+						PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+							TotalPartitions: 1,
+							PartitionSize:   1,
+							NetworkTopology: &v1alpha1.NetworkTopologySpec{
+								HighestTierAllowed: ptr.To(1),
+								Mode:               v1alpha1.HardNetworkTopologyMode,
+							},
+						},
 						Template: v1.PodTemplateSpec{
 							ObjectMeta: metav1.ObjectMeta{
 								Labels: map[string]string{"name": "test"},
@@ -83,8 +134,9 @@ func TestCreatePatchExecution(t *testing.T) {
 			Path: "/spec/tasks",
 			Value: []v1alpha1.TaskSpec{
 				{
-					Name:     v1alpha1.DefaultTaskSpec + "0",
-					Replicas: 1,
+					Name:         v1alpha1.DefaultTaskSpec + "0",
+					Replicas:     1,
+					MinAvailable: ptr.To(int32(1)),
 					Template: v1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{"name": "test"},
@@ -100,8 +152,61 @@ func TestCreatePatchExecution(t *testing.T) {
 					},
 				},
 				{
-					Name:     v1alpha1.DefaultTaskSpec + "1",
+					Name:         v1alpha1.DefaultTaskSpec + "1",
+					Replicas:     2,
+					MinAvailable: ptr.To(int32(1)),
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{"name": "test"},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "fake-name",
+									Image: "busybox:1.24",
+								},
+							},
+						},
+					},
+				},
+				{
+					Name:     v1alpha1.DefaultTaskSpec + "2",
 					Replicas: 1,
+					PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+						TotalPartitions: 1,
+						MinPartitions:   1,
+						PartitionSize:   1,
+						NetworkTopology: &v1alpha1.NetworkTopologySpec{
+							HighestTierAllowed: ptr.To(1),
+							Mode:               v1alpha1.HardNetworkTopologyMode,
+						},
+					},
+					Template: v1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{"name": "test"},
+						},
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{
+								{
+									Name:  "fake-name",
+									Image: "busybox:1.24",
+								},
+							},
+						},
+					},
+				},
+				{
+					Name:         v1alpha1.DefaultTaskSpec + "3",
+					Replicas:     1,
+					MinAvailable: ptr.To(int32(1)),
+					PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+						TotalPartitions: 1,
+						PartitionSize:   1,
+						NetworkTopology: &v1alpha1.NetworkTopologySpec{
+							HighestTierAllowed: ptr.To(1),
+							Mode:               v1alpha1.HardNetworkTopologyMode,
+						},
+					},
 					Template: v1.PodTemplateSpec{
 						ObjectMeta: metav1.ObjectMeta{
 							Labels: map[string]string{"name": "test"},
@@ -141,6 +246,22 @@ func TestCreatePatchExecution(t *testing.T) {
 		if aTask.MaxRetry != defaultMaxRetry {
 			t.Errorf("testCase '%s's expected patch 'task.MaxRetry' with value %v, but got %v",
 				testCase.Name, defaultMaxRetry, aTask.MaxRetry)
+		}
+
+		areNotEqual := func(a, b *int32) bool {
+			if a == nil && b == nil {
+				return false
+			}
+
+			if a == nil || b == nil {
+				return true
+			}
+
+			return *a != *b
+		}
+		if areNotEqual(aTask.MinAvailable, task.MinAvailable) {
+			t.Errorf("testCase '%s's expected patch 'task.MinAvailable' with value %v, but got %v",
+				testCase.Name, task.MinAvailable, aTask.MinAvailable)
 		}
 	}
 

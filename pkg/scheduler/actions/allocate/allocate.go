@@ -19,8 +19,10 @@ package allocate
 import (
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -201,8 +203,43 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 	ssn := alloc.session
 
+	subJobs := make([]*api.SubJobInfo, 0, len(job.SubJobs))
+	subJobCountMap := map[api.SubJobGID]int32{}
+	for _, subJob := range job.SubJobs {
+		if ssn.SubJobReady(job, subJob) {
+			// Record the number of subJobs that have been satisfied in subGroupPolicy
+			subJobCountMap[subJob.GID]++
+		} else {
+			// Filter out subJobs that are already ready.
+			subJobs = append(subJobs, subJob)
+		}
+	}
+	slices.SortFunc(subJobs, func(l, r *api.SubJobInfo) int {
+		if !ssn.SubJobOrderFn(l, r) {
+			return 1
+		}
+		return -1
+	})
+	// Find the smallest set of subJobs that meets the requirements for job execution.
+	requireSubJobs := sets.Set[api.SubJobID]{}
+	for _, subJob := range subJobs {
+		if subJobCountMap[subJob.GID] < job.MinSubJobs[subJob.GID] {
+			requireSubJobs.Insert(subJob.UID)
+			subJobCountMap[subJob.GID]++
+		}
+	}
 	jWorksheet := &JobWorksheet{
-		subJobs:          util.NewPriorityQueue(ssn.SubJobOrderFn),
+		subJobs: util.NewPriorityQueue(func(l, r interface{}) bool {
+			lv := l.(*api.SubJobInfo)
+			rv := r.(*api.SubJobInfo)
+
+			lreq := requireSubJobs.Has(lv.UID)
+			rreq := requireSubJobs.Has(rv.UID)
+			if lreq != rreq {
+				return lreq
+			}
+			return ssn.SubJobOrderFn(l, r)
+		}),
 		subJobWorksheets: make(map[api.SubJobID]*SubJobWorksheet),
 	}
 

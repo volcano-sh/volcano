@@ -81,8 +81,10 @@ func TestAddTaskInfo(t *testing.T) {
 						case01Task4.UID: case01Task4,
 					},
 				},
+				MinSubJobs: make(map[SubJobGID]int32),
 				SubJobs: map[SubJobID]*SubJobInfo{
 					SubJobID(case01UID): {
+						GID:          SubJobGID(case01UID),
 						UID:          SubJobID(case01UID),
 						Job:          case01UID,
 						MinAvailable: 0,
@@ -187,8 +189,10 @@ func TestDeleteTaskInfo(t *testing.T) {
 					Pending: {case01Task1.UID: case01Task1},
 					Running: {case01Task3.UID: case01Task3},
 				},
+				MinSubJobs: make(map[SubJobGID]int32),
 				SubJobs: map[SubJobID]*SubJobInfo{
 					SubJobID(case01UID): {
+						GID:          SubJobGID(case01UID),
 						UID:          SubJobID(case01UID),
 						Job:          case01UID,
 						MinAvailable: 0,
@@ -239,8 +243,10 @@ func TestDeleteTaskInfo(t *testing.T) {
 						case02Task3.UID: case02Task3,
 					},
 				},
+				MinSubJobs: make(map[SubJobGID]int32),
 				SubJobs: map[SubJobID]*SubJobInfo{
 					SubJobID(case02UID): {
+						GID:          SubJobGID(case02UID),
 						UID:          SubJobID(case02UID),
 						Job:          case02UID,
 						MinAvailable: 0,
