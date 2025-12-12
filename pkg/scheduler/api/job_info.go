@@ -46,6 +46,8 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
+type subJobCondition func(*SubJobInfo) bool
+
 // DisruptionBudget define job min pod available and max pod unavailable value
 type DisruptionBudget struct {
 	MinAvailable   string
@@ -357,6 +359,7 @@ type JobInfo struct {
 	AllocatedHyperNode string
 	SubJobs            map[SubJobID]*SubJobInfo
 	TaskToSubJob       map[TaskID]SubJobID
+	MinSubJobs         map[SubJobGID]int32 // key is name of "PodGroup.Spec.SubGroupPolicy", value is minSubGroups
 
 	// All tasks of the Job.
 	TaskStatusIndex       map[TaskStatus]TasksMap
@@ -395,6 +398,7 @@ func NewJobInfo(uid JobID, tasks ...*TaskInfo) *JobInfo {
 		TaskMinAvailable: map[string]int32{},
 		SubJobs:          map[SubJobID]*SubJobInfo{},
 		TaskToSubJob:     map[TaskID]SubJobID{},
+		MinSubJobs:       map[SubJobGID]int32{},
 	}
 
 	for _, task := range tasks {
@@ -452,6 +456,15 @@ func (ji *JobInfo) SetPodGroup(pg *PodGroup) {
 		clear(ji.SubJobs)
 		for _, task := range ji.Tasks {
 			ji.addTaskToSubJob(task)
+		}
+		clear(ji.MinSubJobs)
+		for _, policy := range pg.Spec.SubGroupPolicy {
+			groupID := getSubJobGID(ji.UID, policy.Name)
+			if policy.MinSubGroups == nil {
+				ji.MinSubJobs[groupID] = 0
+			} else {
+				ji.MinSubJobs[groupID] = *policy.MinSubGroups
+			}
 		}
 	}
 }
@@ -704,6 +717,7 @@ func (ji *JobInfo) Clone() *JobInfo {
 		AllocatedHyperNode:    ji.AllocatedHyperNode,
 		SubJobs:               map[SubJobID]*SubJobInfo{},
 		TaskToSubJob:          map[TaskID]SubJobID{},
+		MinSubJobs:            maps.Clone(ji.MinSubJobs),
 	}
 
 	ji.CreationTimestamp.DeepCopyInto(&info.CreationTimestamp)
@@ -1092,6 +1106,64 @@ func (ji *JobInfo) ValidTaskNum() int32 {
 	return int32(occupied)
 }
 
+func (ji *JobInfo) CheckSubJobValid() bool {
+	subJobs := map[SubJobGID]int32{}
+	for _, subJob := range ji.SubJobs {
+		if _, ok := subJobs[subJob.GID]; !ok {
+			subJobs[subJob.GID] = 0
+		}
+		subJobs[subJob.GID]++
+	}
+	for subJobGID, minSubJobs := range ji.MinSubJobs {
+		if subJobs[subJobGID] < minSubJobs {
+			return false
+		}
+	}
+	return true
+}
+
+func (ji *JobInfo) checkSubJobCondition(condition subJobCondition) error {
+	allocatedSubJobs := map[SubJobGID]int32{}
+	for _, subJob := range ji.SubJobs {
+		if _, ok := allocatedSubJobs[subJob.GID]; !ok {
+			allocatedSubJobs[subJob.GID] = 0
+		}
+		if condition(subJob) {
+			allocatedSubJobs[subJob.GID]++
+		}
+	}
+	for subJobGID, minSubJobs := range ji.MinSubJobs {
+		if minSubJobs == 0 {
+			continue
+		}
+		if allocatedSubJobs[subJobGID] < minSubJobs {
+			return fmt.Errorf("the number of allocated subGroups %d is less than the number of subGroups %d with the minSubGroups attribute in subGroupPolicy %s.",
+				allocatedSubJobs[subJobGID], minSubJobs, subJobGID)
+		}
+	}
+	return nil
+}
+
+func (ji *JobInfo) CheckSubJobReady() bool {
+	if err := ji.checkSubJobCondition(func(subJob *SubJobInfo) bool {
+		return subJob.IsReady()
+	}); err != nil {
+		klog.V(4).Infof("Job %s/%s SubJob not ready, reason: %v", ji.Namespace, ji.Name, err.Error())
+		return false
+	}
+	return true
+}
+
+func (ji *JobInfo) CheckSubJobPipelined() bool {
+	if err := ji.checkSubJobCondition(func(subJob *SubJobInfo) bool {
+		return subJob.IsPipelined()
+	}); err != nil {
+		klog.V(4).Infof("Job %s/%s SubJob not pipelined, reason: %v", ji.Namespace, ji.Name, err.Error())
+		return false
+	}
+	return true
+}
+
 func (ji *JobInfo) IsReady() bool {
 	return ji.ReadyTaskNum()+ji.PendingBestEffortTaskNum() >= ji.MinAvailable
 }
@@ -1151,11 +1223,16 @@ func (ji *JobInfo) ResetSubJobFitErr(subJob SubJobID) {
 	})
 }
 
+func (ji *JobInfo) DefaultSubJobGID() SubJobGID {
+	return SubJobGID(ji.UID)
+}
+
 func (ji *JobInfo) DefaultSubJobID() SubJobID {
 	return SubJobID(ji.UID)
 }
 
 func (ji *JobInfo) getOrCreateDefaultSubJob() *SubJobInfo {
+	defaultSubJobGID := ji.DefaultSubJobGID()
 	defaultSubJob := ji.DefaultSubJobID()
 	if _, found := ji.SubJobs[defaultSubJob]; !found {
 		policy := &scheduling.SubGroupPolicySpec{}
@@ -1165,7 +1242,7 @@ func (ji *JobInfo) getOrCreateDefaultSubJob() *SubJobInfo {
 		if ji.PodGroup != nil && ji.PodGroup.Spec.NetworkTopology != nil {
 			policy.NetworkTopology = ji.PodGroup.Spec.NetworkTopology.DeepCopy()
 		}
-		ji.SubJobs[defaultSubJob] = NewSubJobInfo(defaultSubJob, ji.UID, policy, nil)
+		ji.SubJobs[defaultSubJob] = NewSubJobInfo(defaultSubJobGID, defaultSubJob, ji.UID, policy, nil)
 	}
 	return ji.SubJobs[defaultSubJob]
 }
@@ -1177,9 +1254,10 @@ func (ji *JobInfo) getOrCreateSubJob(ti *TaskInfo) *SubJobInfo {
 
 	for _, policy := range ji.PodGroup.Spec.SubGroupPolicy {
 		if matchValues := getSubJobMatchValues(policy, ti.Pod); len(matchValues) > 0 {
+			groupID := getSubJobGID(ji.UID, policy.Name)
 			subJobID := getSubJobID(ji.UID, policy.Name, matchValues)
 			if _, found := ji.SubJobs[subJobID]; !found {
-				ji.SubJobs[subJobID] = NewSubJobInfo(subJobID, ji.UID, &policy, matchValues)
+				ji.SubJobs[subJobID] = NewSubJobInfo(groupID, subJobID, ji.UID, &policy, matchValues)
 			}
 			return ji.SubJobs[subJobID]
 		}

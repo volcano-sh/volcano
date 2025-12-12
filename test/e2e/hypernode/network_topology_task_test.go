@@ -1121,4 +1121,360 @@ var _ = Describe("Network Topology Task Tests", func() {
 			Expect(e2eutil.VerifyHyperNodeScheduling(ctx, "s2", 3)).NotTo(HaveOccurred())
 		})
 	})
+
+	Context("Both the Job and PartitionPolicy network topology with minPartitions are hard mode tests", func() {
+		It("Case 9.1: Schedule to node-2 and node-3 when hypernode resources just meet the job's minAvailable requirement.", func() {
+			By("Create job that fits in s1's resources")
+
+			// schedule pod to s1 (node-2 and node-3) to make sure the s1's binpack score is higher
+			podSpecs := []e2eutil.PodSpec{
+				{Name: "case-9-1-pod-0", Node: "kwok-node-2", Req: e2eutil.CPU1Mem1, Tolerations: tolerations},
+				{Name: "case-9-1-pod-1", Node: "kwok-node-3", Req: e2eutil.CPU1Mem1, Tolerations: tolerations},
+			}
+
+			pods := make([]*v1.Pod, len(podSpecs))
+			for i, podSpec := range podSpecs {
+				pods[i] = e2eutil.CreatePod(ctx, podSpec)
+			}
+
+			defer func() {
+				for _, pod := range pods {
+					e2eutil.DeletePod(ctx, pod)
+				}
+			}()
+
+			By("Wait for all pods to be ready")
+			for _, pod := range pods {
+				Expect(e2eutil.WaitPodReady(ctx, pod)).NotTo(HaveOccurred())
+			}
+
+			job := &e2eutil.JobSpec{
+				Name: "job-9-1",
+				NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+					Mode:               batchv1alpha1.HardNetworkTopologyMode,
+					HighestTierAllowed: ptr.To(1),
+				},
+				Min: int32(4),
+				Tasks: []e2eutil.TaskSpec{
+					{
+						Name:        "task-9-1",
+						Img:         e2eutil.DefaultNginxImage,
+						Req:         e2eutil.CPU3Mem3,
+						Rep:         4,
+						Tolerations: tolerations,
+						PartitionPolicy: &batchv1alpha1.PartitionPolicySpec{
+							MinPartitions:   int32(2),
+							TotalPartitions: 2,
+							PartitionSize:   2,
+							NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+								Mode:               batchv1alpha1.HardNetworkTopologyMode,
+								HighestTierAllowed: ptr.To(1),
+							},
+						},
+					},
+				},
+			}
+			topologyJob := e2eutil.CreateJob(ctx, job)
+
+			defer func() {
+				By("Delete job")
+				e2eutil.DeleteJob(ctx, topologyJob)
+			}()
+
+			By("Wait for job running")
+			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
+
+			By("Verify pods are scheduled to s1")
+			Expect(e2eutil.VerifyPodScheduling(ctx, topologyJob, []string{"kwok-node-2", "kwok-node-3"})).NotTo(HaveOccurred())
+		})
+
+		It("Case 9.2: Schedule to s4 when hypernode resources has more resources than the minAvailable resources requested by the job.", func() {
+			By("Create job that fits in s4's resources")
+
+			// schedule pod to s1 (node-2 and node-3) to make sure the s1's binpack score is higher
+			podSpecs := []e2eutil.PodSpec{
+				{Name: "case-9-2-pod-0", Node: "kwok-node-2", Req: e2eutil.CPU1Mem1, Tolerations: tolerations},
+				{Name: "case-9-2-pod-1", Node: "kwok-node-3", Req: e2eutil.CPU1Mem1, Tolerations: tolerations},
+			}
+
+			pods := make([]*v1.Pod, len(podSpecs))
+			for i, podSpec := range podSpecs {
+				pods[i] = e2eutil.CreatePod(ctx, podSpec)
+			}
+
+			defer func() {
+				for _, pod := range pods {
+					e2eutil.DeletePod(ctx, pod)
+				}
+			}()
+
+			By("Wait for all pods to be ready")
+			for _, pod := range pods {
+				Expect(e2eutil.WaitPodReady(ctx, pod)).NotTo(HaveOccurred())
+			}
+
+			job := &e2eutil.JobSpec{
+				Name: "job-9-2",
+				NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+					Mode:               batchv1alpha1.HardNetworkTopologyMode,
+					HighestTierAllowed: ptr.To(2),
+				},
+				Min: int32(4),
+				Tasks: []e2eutil.TaskSpec{
+					{
+						Name:        "task-9-2",
+						Img:         e2eutil.DefaultNginxImage,
+						Req:         e2eutil.CPU3Mem3,
+						Rep:         8,
+						Tolerations: tolerations,
+						PartitionPolicy: &batchv1alpha1.PartitionPolicySpec{
+							MinPartitions:   int32(4),
+							TotalPartitions: 4,
+							PartitionSize:   2,
+							NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+								Mode:               batchv1alpha1.HardNetworkTopologyMode,
+								HighestTierAllowed: ptr.To(1),
+							},
+						},
+					},
+				},
+			}
+			topologyJob := e2eutil.CreateJob(ctx, job)
+
+			defer func() {
+				By("Delete job")
+				e2eutil.DeleteJob(ctx, topologyJob)
+			}()
+
+			By("Wait for job running")
+			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
+
+			By("Verify pods are scheduled to s4")
+			Expect(e2eutil.VerifyHyperNodeScheduling(ctx, "s0", 4)).NotTo(HaveOccurred())
+			Expect(e2eutil.VerifyHyperNodeScheduling(ctx, "s1", 6)).NotTo(HaveOccurred())
+			Expect(e2eutil.VerifyHyperNodeScheduling(ctx, "s4", 10)).NotTo(HaveOccurred())
+		})
+
+		It("Case 9.3: Pods remain pending when hypernode resources meet minPartitions but do not meet the job's minAvailable.", func() {
+			job := &e2eutil.JobSpec{
+				Name: "job-9-3",
+				NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+					Mode:               batchv1alpha1.HardNetworkTopologyMode,
+					HighestTierAllowed: ptr.To(1),
+				},
+				Min: int32(6),
+				Tasks: []e2eutil.TaskSpec{
+					{
+						Name:        "task-9-3",
+						Img:         e2eutil.DefaultNginxImage,
+						Req:         e2eutil.CPU3Mem3,
+						Rep:         12,
+						Tolerations: tolerations,
+						PartitionPolicy: &batchv1alpha1.PartitionPolicySpec{
+							MinPartitions:   int32(2),
+							TotalPartitions: 6,
+							PartitionSize:   2,
+							NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+								Mode:               batchv1alpha1.HardNetworkTopologyMode,
+								HighestTierAllowed: ptr.To(1),
+							},
+						},
+					},
+				},
+			}
+			topologyJob := e2eutil.CreateJob(ctx, job)
+
+			defer func() {
+				By("Delete job")
+				e2eutil.DeleteJob(ctx, topologyJob)
+			}()
+
+			By("Verify pods are pending")
+			Expect(e2eutil.WaitTaskPhase(ctx, topologyJob, []v1.PodPhase{v1.PodPending}, 0)).NotTo(HaveOccurred())
+		})
+
+		It("Case 9.4: Pods remain pending when hypernode resources meet the job's minAvailable but do not meet minPartitions.", func() {
+			job := &e2eutil.JobSpec{
+				Name: "job-9-4",
+				NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+					Mode:               batchv1alpha1.HardNetworkTopologyMode,
+					HighestTierAllowed: ptr.To(1),
+				},
+				Min: int32(4),
+				Tasks: []e2eutil.TaskSpec{
+					{
+						Name:        "task-9-4",
+						Img:         e2eutil.DefaultNginxImage,
+						Req:         e2eutil.CPU3Mem3,
+						Rep:         12,
+						Tolerations: tolerations,
+						PartitionPolicy: &batchv1alpha1.PartitionPolicySpec{
+							MinPartitions:   int32(4),
+							TotalPartitions: 6,
+							PartitionSize:   2,
+							NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+								Mode:               batchv1alpha1.HardNetworkTopologyMode,
+								HighestTierAllowed: ptr.To(1),
+							},
+						},
+					},
+				},
+			}
+			topologyJob := e2eutil.CreateJob(ctx, job)
+
+			defer func() {
+				By("Delete job")
+				e2eutil.DeleteJob(ctx, topologyJob)
+			}()
+
+			By("Verify pods are pending")
+			Expect(e2eutil.WaitTaskPhase(ctx, topologyJob, []v1.PodPhase{v1.PodPending}, 12)).NotTo(HaveOccurred())
+		})
+
+		It("Case 9.5: pod of job will be rescheduled to same hypernode when be killed", func() {
+			podSpecs := []e2eutil.PodSpec{
+				{Name: "case-9-5-pod-0", Node: "kwok-node-6", Req: e2eutil.CPU1Mem1, Tolerations: tolerations},
+				{Name: "case-9-5-pod-1", Node: "kwok-node-7", Req: e2eutil.CPU1Mem1, Tolerations: tolerations},
+			}
+
+			pods := make([]*v1.Pod, len(podSpecs))
+			for i, podSpec := range podSpecs {
+				pods[i] = e2eutil.CreatePod(ctx, podSpec)
+			}
+
+			defer func() {
+				for _, pod := range pods {
+					e2eutil.DeletePod(ctx, pod)
+				}
+			}()
+
+			By("Wait for all pods to be ready")
+			for _, pod := range pods {
+				Expect(e2eutil.WaitPodReady(ctx, pod)).NotTo(HaveOccurred())
+			}
+
+			job := &e2eutil.JobSpec{
+				Name: "job-9-5",
+				NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+					Mode:               batchv1alpha1.HardNetworkTopologyMode,
+					HighestTierAllowed: ptr.To(2),
+				},
+				Tasks: []e2eutil.TaskSpec{
+					{
+						Name:        "task-9-5",
+						Img:         e2eutil.DefaultNginxImage,
+						Req:         e2eutil.CPU3Mem3,
+						Rep:         4,
+						Tolerations: tolerations,
+						PartitionPolicy: &batchv1alpha1.PartitionPolicySpec{
+							TotalPartitions: 2,
+							PartitionSize:   2,
+							MinPartitions:   int32(2),
+							NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+								Mode:               batchv1alpha1.HardNetworkTopologyMode,
+								HighestTierAllowed: ptr.To(1),
+							},
+						},
+					},
+				},
+			}
+
+			topologyJob := e2eutil.CreateJob(ctx, job)
+
+			defer func() {
+				By("Delete job")
+				e2eutil.DeleteJob(ctx, topologyJob)
+			}()
+
+			By("Wait for job running")
+			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
+
+			Expect(e2eutil.VerifyPodScheduling(ctx, topologyJob, []string{"kwok-node-6", "kwok-node-7"})).NotTo(HaveOccurred())
+
+			jobPods := e2eutil.GetTasksOfJob(ctx, topologyJob)
+			Expect(len(jobPods)).To(Equal(4))
+
+			By("Kill pod of job")
+			e2eutil.DeletePod(ctx, jobPods[0])
+
+			By("Wait for job running again")
+			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
+
+			By("Verify pod of job is scheduled to same hypernode")
+			Expect(e2eutil.VerifyPodScheduling(ctx, topologyJob, []string{"kwok-node-6", "kwok-node-7"})).NotTo(HaveOccurred())
+		})
+
+		It("Case 9.6: subJob of job will be rescheduled to same hypernode when be killed", func() {
+			podSpecs := []e2eutil.PodSpec{
+				{Name: "case-9-6-pod-0", Node: "kwok-node-6", Req: e2eutil.CPU1Mem1, Tolerations: tolerations},
+				{Name: "case-9-6-pod-1", Node: "kwok-node-7", Req: e2eutil.CPU1Mem1, Tolerations: tolerations},
+			}
+
+			pods := make([]*v1.Pod, len(podSpecs))
+			for i, podSpec := range podSpecs {
+				pods[i] = e2eutil.CreatePod(ctx, podSpec)
+			}
+
+			defer func() {
+				for _, pod := range pods {
+					e2eutil.DeletePod(ctx, pod)
+				}
+			}()
+
+			By("Wait for all pods to be ready")
+			for _, pod := range pods {
+				Expect(e2eutil.WaitPodReady(ctx, pod)).NotTo(HaveOccurred())
+			}
+
+			job := &e2eutil.JobSpec{
+				Name: "job-9-6",
+				NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+					Mode:               batchv1alpha1.HardNetworkTopologyMode,
+					HighestTierAllowed: ptr.To(1),
+				},
+				Min: int32(4),
+				Tasks: []e2eutil.TaskSpec{
+					{
+						Name:        "task-9-6",
+						Img:         e2eutil.DefaultNginxImage,
+						Req:         e2eutil.CPU3Mem3,
+						Rep:         8,
+						Tolerations: tolerations,
+						PartitionPolicy: &batchv1alpha1.PartitionPolicySpec{
+							TotalPartitions: 4,
+							PartitionSize:   2,
+							MinPartitions:   int32(2),
+							NetworkTopology: &batchv1alpha1.NetworkTopologySpec{
+								Mode:               batchv1alpha1.HardNetworkTopologyMode,
+								HighestTierAllowed: ptr.To(1),
+							},
+						},
+					},
+				},
+			}
+
+			topologyJob := e2eutil.CreateJob(ctx, job)
+
+			defer func() {
+				By("Delete job")
+				e2eutil.DeleteJob(ctx, topologyJob)
+			}()
+
+			By("Wait for job running")
+			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
+
+			jobPods := e2eutil.GetTasksOfJob(ctx, topologyJob)
+			Expect(len(jobPods)).To(Equal(8))
+
+			By("Kill pod of job")
+			e2eutil.DeletePod(ctx, jobPods[0])
+			e2eutil.DeletePod(ctx, jobPods[1])
+
+			By("Wait for job running again")
+			Expect(e2eutil.WaitJobReady(ctx, topologyJob)).NotTo(HaveOccurred())
+
+			Expect(e2eutil.WaitPodPhase(ctx, jobPods[0], []v1.PodPhase{v1.PodRunning})).NotTo(HaveOccurred())
+			Expect(e2eutil.WaitPodPhase(ctx, jobPods[1], []v1.PodPhase{v1.PodRunning})).NotTo(HaveOccurred())
+		})
+	})
 })

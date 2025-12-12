@@ -72,6 +72,14 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		if valid := job.CheckSubJobValid(); !valid {
+			return &api.ValidateResult{
+				Pass:    false,
+				Reason:  v1beta1.NotEnoughPodsOfTaskReason,
+				Message: "Not enough valid subGroups of each task for gang-scheduling",
+			}
+		}
+
 		vtn := job.ValidTaskNum()
 		if vtn < job.MinAvailable {
 			return &api.ValidateResult{
@@ -168,7 +176,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddJobReadyFn(gp.Name(), func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
-		if ji.CheckTaskReady() && ji.IsReady() {
+		if ji.CheckTaskReady() && ji.CheckSubJobReady() && ji.IsReady() {
 			return true
 		}
 		return false
@@ -181,7 +189,7 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	pipelinedFn := func(obj interface{}) int {
 		ji := obj.(*api.JobInfo)
-		if ji.CheckTaskPipelined() && ji.IsPipelined() {
+		if ji.CheckTaskPipelined() && ji.CheckSubJobPipelined() && ji.IsPipelined() {
 			return util.Permit
 		}
 		return util.Reject

@@ -394,7 +394,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			ExpectBindsNum:   3,
 		},
 		{
-			Name: "soft network topology constrain, can allocate job when minavailiable < replicas",
+			Name: "soft network topology constrain, can allocate job when minavailable < replicas",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "", "q1", 1, nil, schedulingv1.PodGroupInqueue, "soft", 0),
 			},
@@ -552,7 +552,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			MinimalBindCheck: true,
 		},
 		{
-			Name: "soft network topology constrain and tasks in job rescheduled, can allocate job when resources are enough and minavailiable = replicas",
+			Name: "soft network topology constrain and tasks in job rescheduled, can allocate job when resources are enough and minavailable = replicas",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s0", "q1", 3, nil, schedulingv1.PodGroupInqueue, "soft", 0),
 			},
@@ -946,7 +946,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			MinimalBindCheck: true,
 		},
 		{
-			Name: "hard network topology constrain, can allocate job when minavailiable < replicas",
+			Name: "hard network topology constrain, can allocate job when minavailable < replicas",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "", "q1", 1, nil, schedulingv1.PodGroupInqueue, "hard", 1),
 			},
@@ -1104,7 +1104,7 @@ func TestAllocateWithNetWorkTopologies(t *testing.T) {
 			MinimalBindCheck: true,
 		},
 		{
-			Name: "hard network topology constrain and tasks in job rescheduled, can allocate job when highestTierAllowed not reached and minavailiable = replicas",
+			Name: "hard network topology constrain and tasks in job rescheduled, can allocate job when highestTierAllowed not reached and minavailable = replicas",
 			PodGroups: []*schedulingv1.PodGroup{
 				util.BuildPodGroupWithNetWorkTopologies("pg1", "c1", "s0", "q1", 3, nil, schedulingv1.PodGroupInqueue, "hard", 2),
 			},
@@ -4469,6 +4469,679 @@ func TestAllocateWithPartitionPolicyNetworkTopology(t *testing.T) {
 			ExpectBindsNum:   1,
 			MinimalBindCheck: true,
 		},
+		{
+			Name: "podgroup hard network topology constrain and subGroup hard network topology constrain, can allocate job according to the network topology constrain of subGroup policy with minSubGroups",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", 5, nil, schedulingv1.PodGroupInqueue, "hard", 2,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicyWithMinSubGroups("task1", []string{"volcano.sh/task-spec"}, "hard", 1, 1, 1),
+						util.BuildSubGroupPolicyWithMinSubGroups("task2", []string{"volcano.sh/task-instance"}, "hard", 1, 2, 2),
+					}),
+			},
+			Pods: []*v1.Pod{
+				// should use different role, because allocate actions default to enable the role caches when predicate
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s2-n5", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1", "s2"), 2: sets.New[string]("s3")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 1, []api.MemberConfig{
+					{
+						Name:     "s2-n5",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s3": api.NewHyperNodeInfo(api.BuildHyperNode("s3", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s2",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3", "s1-n4"),
+				"s2": sets.New[string]("s2-n5"),
+				"s3": sets.New[string]("s0-n1", "s0-n2", "s1-n3", "s1-n4", "s2-n5"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum: 5,
+			ExpectBindMap: map[string]string{
+				"c1/p1": "s2-n5",
+			},
+			MinimalBindCheck: true,
+		},
+		{
+			Name: "podgroup hard network topology constrain and subGroup hard network topology constrain, can allocate job according to the network topology constrain of subGroup policy with minSubGroups and minavailable = replicas",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", 3, nil, schedulingv1.PodGroupInqueue, "hard", 2,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicyWithMinSubGroups("task1", []string{"volcano.sh/task-spec"}, "hard", 1, 1, 1),
+						util.BuildSubGroupPolicyWithMinSubGroups("task2", []string{"volcano.sh/task-instance"}, "hard", 1, 2, 1),
+					}),
+			},
+			Pods: []*v1.Pod{
+				// should use different role, because allocate actions default to enable the role caches when predicate
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3"),
+				"s2": sets.New[string]("s0-n1", "s0-n2", "s1-n3"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum: 3,
+			ExpectBindMap: map[string]string{
+				"c1/p1": "s1-n3",
+			},
+			MinimalBindCheck: true,
+		},
+		{
+			Name: "podgroup hard network topology constrain and subGroup hard network topology constrain, can allocate job according to the network topology constrain of subGroup policy with minSubGroups and hypernode resources meet minSubGroups",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", 3, nil, schedulingv1.PodGroupInqueue, "hard", 2,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicyWithMinSubGroups("task1", []string{"volcano.sh/task-spec"}, "hard", 1, 1, 2),
+						util.BuildSubGroupPolicyWithMinSubGroups("task2", []string{"volcano.sh/task-instance"}, "hard", 1, 2, 1),
+					}),
+			},
+			Pods: []*v1.Pod{
+				// should use different role, because allocate actions default to enable the role caches when predicate
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master2"}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master3"}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master4"}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p6", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p7", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+				util.BuildPod("c1", "p8", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3", "s1-n4"),
+				"s2": sets.New[string]("s0-n1", "s0-n2", "s1-n3", "s1-n4"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum:   4,
+			MinimalBindCheck: true,
+		},
+		{
+			Name: "podgroup hard network topology constrain and subGroup hard network topology constrain, can not allocate job when minMember is not satisfied",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", 5, nil, schedulingv1.PodGroupInqueue, "hard", 2,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicyWithMinSubGroups("task1", []string{"volcano.sh/task-spec"}, "hard", 1, 1, 1),
+						util.BuildSubGroupPolicyWithMinSubGroups("task2", []string{"volcano.sh/task-instance"}, "hard", 1, 2, 1),
+					}),
+			},
+			Pods: []*v1.Pod{
+				// should use different role, because allocate actions default to enable the role caches when predicate
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3", "s1-n4"),
+				"s2": sets.New[string]("s0-n1", "s0-n2", "s1-n3", "s1-n4"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum:   0,
+			MinimalBindCheck: true,
+		},
+		{
+			Name: "podgroup hard network topology constrain and subGroup hard network topology constrain, can not allocate job when minSubGroups is not satisfied",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", 3, nil, schedulingv1.PodGroupInqueue, "hard", 2,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicyWithMinSubGroups("task1", []string{"volcano.sh/task-spec"}, "hard", 1, 1, 1),
+						util.BuildSubGroupPolicyWithMinSubGroups("task2", []string{"volcano.sh/task-instance"}, "hard", 1, 2, 2),
+					}),
+			},
+			Pods: []*v1.Pod{
+				// should use different role, because allocate actions default to enable the role caches when predicate
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3", "s1-n4"),
+				"s2": sets.New[string]("s0-n1", "s0-n2", "s1-n3", "s1-n4"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum:   0,
+			MinimalBindCheck: true,
+		},
+		{
+			Name: "podgroup hard network topology constrain and subGroup hard network topology constrain with minSubGroups and tasks in job rescheduled, two available hyperNodes, can allocate job to nodes with affinity",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", 2, nil, schedulingv1.PodGroupInqueue, "hard", 2,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicyWithMinSubGroups("task1", []string{"volcano.sh/task-spec"}, "hard", 1, 2, 1),
+					}),
+			},
+			Pods: []*v1.Pod{
+				// should use different role, because allocate actions default to enable the role caches when predicate
+				util.BuildPod("c1", "p1", "s0-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "s1-n3", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3", "s1-n4"),
+				"s2": sets.New[string]("s0-n1", "s0-n2", "s1-n3", "s1-n4"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum: 1,
+			ExpectBindMap: map[string]string{
+				"c1/p3": "s1-n4",
+			},
+			MinimalBindCheck: true,
+		},
+		{
+			Name: "podgroup hard network topology constrain and subGroup hard network topology constrain with minSubGroups and tasks in job rescheduled, can not allocate job when hypernode resources are insufficient.",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", 2, nil, schedulingv1.PodGroupInqueue, "hard", 2,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicyWithMinSubGroups("task1", []string{"volcano.sh/task-spec"}, "hard", 1, 2, 1),
+					}),
+			},
+			Pods: []*v1.Pod{
+				// should use different role, because allocate actions default to enable the role caches when predicate
+				util.BuildPod("c1", "p1", "s0-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "s1-n3", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+				util.BuildPod("c1", "p3", "s1-n4", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3", "s1-n4"),
+				"s2": sets.New[string]("s0-n1", "s0-n2", "s1-n3", "s1-n4"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum:   0,
+			MinimalBindCheck: true,
+		},
+		{
+			Name: "podgroup hard network topology constrain and subGroup hard network topology constrain with minSubGroups and tasks in job rescheduled, can allocate job when highestTierAllowed not reached and minAvailable = replicas",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "s0", "q1", 4, nil, schedulingv1.PodGroupInqueue, "hard", 2,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicyWithMinSubGroups("task1", []string{"volcano.sh/task-spec"}, "hard", 2, 2, 2),
+					}),
+			},
+			Pods: []*v1.Pod{
+				// should use different role, because allocate actions default to enable the role caches when predicate
+				util.BuildPod("c1", "p1", "s0-n1", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "s0-n2", v1.PodRunning, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3", "s1-n4"),
+				"s2": sets.New[string]("s0-n1", "s0-n2", "s1-n3", "s1-n4"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum:   2,
+			MinimalBindCheck: true,
+		},
+		{
+			Name: "podgroup hard network topology constrain and subGroup hard network topology constrain with minSubGroups and tasks in job rescheduled, can allocate job when subGroup is rescheduled",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", 3, nil, schedulingv1.PodGroupInqueue, "hard", 2,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicyWithMinSubGroups("task1", []string{"volcano.sh/task-spec"}, "hard", 1, 1, 2),
+						util.BuildSubGroupPolicyWithMinSubGroups("task2", []string{"volcano.sh/task-instance"}, "hard", 1, 2, 1),
+					}),
+			},
+			Pods: []*v1.Pod{
+				// should use different role, because allocate actions default to enable the role caches when predicate
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master2"}, nil),
+				util.BuildPod("c1", "p3", "s0-n1", v1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master3"}, nil),
+				util.BuildPod("c1", "p4", "s0-n2", v1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-spec": "master4"}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p6", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker"}, nil),
+				util.BuildPod("c1", "p7", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+				util.BuildPod("c1", "p8", "", v1.PodPending, api.BuildResourceList("2", "4Gi"), "pg1", map[string]string{"volcano.sh/task-instance": "worker2"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n4", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("s0", "s1"), 2: sets.New[string]("s2")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"s0": api.NewHyperNodeInfo(api.BuildHyperNode("s0", 1, []api.MemberConfig{
+					{
+						Name:     "s0-n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s0-n2",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s1": api.NewHyperNodeInfo(api.BuildHyperNode("s1", 1, []api.MemberConfig{
+					{
+						Name:     "s1-n3",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1-n4",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+				"s2": api.NewHyperNodeInfo(api.BuildHyperNode("s2", 2, []api.MemberConfig{
+					{
+						Name:     "s0",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+					{
+						Name:     "s1",
+						Type:     topologyv1alpha1.MemberTypeHyperNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3", "s1-n4"),
+				"s2": sets.New[string]("s0-n1", "s0-n2", "s1-n3", "s1-n4"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum:   2,
+			MinimalBindCheck: true,
+		},
 	}
 
 	trueValue := true
@@ -4482,6 +5155,7 @@ func TestAllocateWithPartitionPolicyNetworkTopology(t *testing.T) {
 					EnabledJobPipelined: &trueValue,
 					EnabledJobStarving:  &trueValue,
 					EnabledSubJobReady:  &trueValue,
+					EnabledSubJobOrder:  &trueValue,
 				},
 				{
 					Name:             predicates.PluginName,

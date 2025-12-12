@@ -333,6 +333,10 @@ func BuildSubGroupPolicy(name string, matchLabelKeys []string, mode string, high
 }
 
 func BuildSubGroupPolicyWithSubGroupSize(name string, matchLabelKeys []string, mode string, highestTierAllowed int, subGroupSize int32) schedulingv1beta1.SubGroupPolicySpec {
+	return BuildSubGroupPolicyWithMinSubGroups(name, matchLabelKeys, mode, highestTierAllowed, subGroupSize, 0)
+}
+
+func BuildSubGroupPolicyWithMinSubGroups(name string, matchLabelKeys []string, mode string, highestTierAllowed int, subGroupSize, minSubGroups int32) schedulingv1beta1.SubGroupPolicySpec {
 	subGroupPolicy := schedulingv1beta1.SubGroupPolicySpec{
 		Name: name,
 		NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
@@ -340,6 +344,7 @@ func BuildSubGroupPolicyWithSubGroupSize(name string, matchLabelKeys []string, m
 			HighestTierAllowed: &highestTierAllowed,
 		},
 		SubGroupSize: &subGroupSize,
+		MinSubGroups: &minSubGroups,
 	}
 	subGroupPolicy.MatchLabelKeys = matchLabelKeys
 	return subGroupPolicy
