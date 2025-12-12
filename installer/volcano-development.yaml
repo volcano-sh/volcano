@@ -165,7 +165,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 20
             timeoutSeconds: 5
-            failureThreshold: 5
+            failureThreshold: 3
             successThreshold: 1
           readinessProbe:
             httpGet:
@@ -175,7 +175,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 20
             timeoutSeconds: 5
-            failureThreshold: 5
+            failureThreshold: 3
             successThreshold: 1
           volumeMounts:
             - mountPath: /admission.local.config/certificates
@@ -8987,7 +8987,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 20
             timeoutSeconds: 5
-            failureThreshold: 5
+            failureThreshold: 3
             successThreshold: 1
           readinessProbe:
             httpGet:
@@ -8997,7 +8997,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 20
             timeoutSeconds: 5
-            failureThreshold: 5
+            failureThreshold: 3
             successThreshold: 1
           args:
             - --logtostderr
@@ -9221,7 +9221,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 20
             timeoutSeconds: 5
-            failureThreshold: 5
+            failureThreshold: 3
             successThreshold: 1
           readinessProbe:
             httpGet:
@@ -9231,7 +9231,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 20
             timeoutSeconds: 5
-            failureThreshold: 5
+            failureThreshold: 3
             successThreshold: 1
           args:
             - --logtostderr

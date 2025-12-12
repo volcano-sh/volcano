@@ -1,4 +1,5 @@
 basic:
+  healthz_port: 11251
   controller_image_name: "volcanosh/vc-controller-manager"
   scheduler_image_name: "volcanosh/vc-scheduler"
   agent_scheduler_image_name: "volcanosh/vc-agent-scheduler"
