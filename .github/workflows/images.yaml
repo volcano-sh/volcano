@@ -1,0 +1,37 @@
+name: Build Images
+
+on:
+  workflow_call:
+
+jobs:
+  build-images:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build Images
+        run: |
+          make images
+
+      - name: Save Images
+        run: |
+          make save-images
+
+      - name: Upload Images
+        uses: actions/upload-artifact@v4
+        with:
+          name: volcano-images
+          path: _output/images
+          retention-days: 5
