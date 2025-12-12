@@ -36,14 +36,20 @@ import (
 )
 
 var _ = Describe("Job E2E Test: Test Job Plugins", func() {
+	var testCtx *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
+	})
+
 	It("Test SVC Plugin with Node Affinity", func() {
 		jobName := "job-with-svc-plugin"
 		taskName := "task"
 		foundVolume := false
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
-		nodeName, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)
+		nodeName, rep := e2eutil.ComputeNode(testCtx, e2eutil.OneCPU)
 		Expect(rep).NotTo(Equal(0))
 
 		affinity := &cv1.Affinity{
@@ -64,8 +70,8 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			},
 		}
 
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
-			Namespace: ctx.Namespace,
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
+			Namespace: testCtx.Namespace,
 			Name:      jobName,
 			Plugins: map[string][]string{
 				"svc": {},
@@ -82,15 +88,15 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			},
 		})
 
-		err := e2eutil.WaitJobReady(ctx, job)
+		err := e2eutil.WaitJobReady(testCtx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		pluginName := fmt.Sprintf("%s-svc", jobName)
-		_, err = ctx.Kubeclient.CoreV1().ConfigMaps(ctx.Namespace).Get(context.TODO(),
+		_, err = testCtx.Kubeclient.CoreV1().ConfigMaps(testCtx.Namespace).Get(context.TODO(),
 			pluginName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Get(context.TODO(),
+		pod, err := testCtx.Kubeclient.CoreV1().Pods(testCtx.Namespace).Get(context.TODO(),
 			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
@@ -101,7 +107,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		}
 		Expect(foundVolume).To(BeTrue())
 
-		pods := e2eutil.GetTasksOfJob(ctx, job)
+		pods := e2eutil.GetTasksOfJob(testCtx, job)
 		for _, pod := range pods {
 			Expect(pod.Spec.NodeName).To(Equal(nodeName))
 		}
@@ -111,10 +117,10 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		jobName := "job-with-ssh-plugin"
 		taskName := "task"
 		foundVolume := false
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
-		_, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)
+		_, rep := e2eutil.ComputeNode(testCtx, e2eutil.OneCPU)
 		Expect(rep).NotTo(Equal(0))
 
 		labels := map[string]string{"foo": "bar"}
@@ -132,8 +138,8 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			},
 		}
 
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
-			Namespace: ctx.Namespace,
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
+			Namespace: testCtx.Namespace,
 			Name:      jobName,
 			Plugins: map[string][]string{
 				"ssh": {"--no-root"},
@@ -151,15 +157,15 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			},
 		})
 
-		err := e2eutil.WaitJobReady(ctx, job)
+		err := e2eutil.WaitJobReady(testCtx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		secretName := genSSHSecretName(job)
-		_, err = ctx.Kubeclient.CoreV1().Secrets(ctx.Namespace).Get(context.TODO(),
+		_, err = testCtx.Kubeclient.CoreV1().Secrets(testCtx.Namespace).Get(context.TODO(),
 			secretName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Get(context.TODO(),
+		pod, err := testCtx.Kubeclient.CoreV1().Pods(testCtx.Namespace).Get(context.TODO(),
 			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
@@ -170,7 +176,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		}
 		Expect(foundVolume).To(BeTrue())
 
-		pods := e2eutil.GetTasksOfJob(ctx, job)
+		pods := e2eutil.GetTasksOfJob(testCtx, job)
 		// All pods should be scheduled to the same node.
 		nodeName := pods[0].Spec.NodeName
 		for _, pod := range pods {
@@ -181,14 +187,14 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 	It("Test SVC Plugin with disableNetworkPolicy", func() {
 		jobName := "svc-with-disable-network-policy"
 		taskName := "task"
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
-		_, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)
+		_, rep := e2eutil.ComputeNode(testCtx, e2eutil.OneCPU)
 		Expect(rep).NotTo(Equal(0))
 
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
-			Namespace: ctx.Namespace,
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
+			Namespace: testCtx.Namespace,
 			Name:      jobName,
 			Plugins: map[string][]string{
 				"svc": {"--disable-network-policy=true"},
@@ -204,12 +210,12 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			},
 		})
 
-		err := e2eutil.WaitJobReady(ctx, job)
+		err := e2eutil.WaitJobReady(testCtx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Check whether network policy is created with job name
 		networkPolicyName := jobName
-		_, err = ctx.Kubeclient.NetworkingV1().NetworkPolicies(ctx.Namespace).Get(context.TODO(), networkPolicyName, v1.GetOptions{})
+		_, err = testCtx.Kubeclient.NetworkingV1().NetworkPolicies(testCtx.Namespace).Get(context.TODO(), networkPolicyName, v1.GetOptions{})
 		// Error will occur because there is no policy should be created
 		Expect(err).To(HaveOccurred())
 	})
@@ -219,14 +225,14 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		taskName := "task"
 		foundVolume := false
 		foundEnv := false
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
-		_, rep := e2eutil.ComputeNode(ctx, e2eutil.OneCPU)
+		_, rep := e2eutil.ComputeNode(testCtx, e2eutil.OneCPU)
 		Expect(rep).NotTo(Equal(0))
 
-		job := e2eutil.CreateJob(ctx, &e2eutil.JobSpec{
-			Namespace: ctx.Namespace,
+		job := e2eutil.CreateJob(testCtx, &e2eutil.JobSpec{
+			Namespace: testCtx.Namespace,
 			Name:      jobName,
 			Plugins: map[string][]string{
 				"ssh": {"--no-root"},
@@ -244,15 +250,15 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 			},
 		})
 
-		err := e2eutil.WaitJobReady(ctx, job)
+		err := e2eutil.WaitJobReady(testCtx, job)
 		Expect(err).NotTo(HaveOccurred())
 
 		secretName := genSSHSecretName(job)
-		_, err = ctx.Kubeclient.CoreV1().Secrets(ctx.Namespace).Get(context.TODO(),
+		_, err = testCtx.Kubeclient.CoreV1().Secrets(testCtx.Namespace).Get(context.TODO(),
 			secretName, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Get(context.TODO(),
+		pod, err := testCtx.Kubeclient.CoreV1().Pods(testCtx.Namespace).Get(context.TODO(),
 			fmt.Sprintf(helpers.PodNameFmt, jobName, taskName, 0), v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		for _, volume := range pod.Spec.Volumes {
@@ -289,7 +295,7 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		}
 
 		// Check whether service is created with job name
-		_, err = ctx.Kubeclient.CoreV1().Services(job.Namespace).Get(context.TODO(), job.Name, v1.GetOptions{})
+		_, err = testCtx.Kubeclient.CoreV1().Services(job.Namespace).Get(context.TODO(), job.Name, v1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
