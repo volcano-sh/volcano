@@ -259,6 +259,29 @@ custom:
 
   # Specify feature gates for components
   scheduler_feature_gates: ~
+  
+# Example probe configuration:
+# livenessProbe:
+#   httpGet:
+#     path: /healthz
+#     port: 11251
+#     scheme: HTTPS
+#   initialDelaySeconds: 10
+#   periodSeconds: 20
+#   timeoutSeconds: 5
+#   failureThreshold: 3
+#   successThreshold: 1
+#
+# readinessProbe:
+#   httpGet:
+#     path: /healthz
+#     port: 11251
+#     scheme: HTTPS
+#   initialDelaySeconds: 10
+#   periodSeconds: 20
+#   timeoutSeconds: 5
+#   failureThreshold: 3
+#   successThreshold: 1
   controller_readinessProbe: {}
   controller_livenessProbe: {}
   scheduler_readinessProbe: {}
