@@ -90,6 +90,13 @@ spec:
                   x-kubernetes-int-or-string: true
                 description: ResourceList is a set of (resource name, quantity) pairs.
                 type: object
+              dequeueStrategy:
+                default: traverse
+                description: DequeueStrategy defines the dequeue strategy of queue
+                enum:
+                - fifo
+                - traverse
+                type: string
               deserved:
                 additionalProperties:
                   anyOf:
