@@ -17,6 +17,7 @@
 package api
 
 import (
+	"slices"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
@@ -104,7 +105,45 @@ func (l *ignoredDevicesList) Set(deviceLists ...[]string) {
 	defer l.Unlock()
 	l.ignoredDevices = l.ignoredDevices[:0]
 	for _, devices := range deviceLists {
-		l.ignoredDevices = append(l.ignoredDevices, devices...)
+		for _, device := range devices {
+			if device == "" {
+				continue
+			}
+			if exists := slices.Contains(l.ignoredDevices, device); exists {
+				continue
+			}
+			l.ignoredDevices = append(l.ignoredDevices, device)
+		}
+	}
+}
+
+func (l *ignoredDevicesList) Append(devices ...string) {
+	l.Lock()
+	defer l.Unlock()
+	for _, device := range devices {
+		if device == "" {
+			continue
+		}
+		if exists := slices.Contains(l.ignoredDevices, device); exists {
+			continue
+		}
+		l.ignoredDevices = append(l.ignoredDevices, device)
+	}
+}
+
+func (l *ignoredDevicesList) AppendList(devicesLists ...[]string) {
+	l.Lock()
+	defer l.Unlock()
+	for _, devices := range devicesLists {
+		for _, device := range devices {
+			if device == "" {
+				continue
+			}
+			if exists := slices.Contains(l.ignoredDevices, device); exists {
+				continue
+			}
+			l.ignoredDevices = append(l.ignoredDevices, device)
+		}
 	}
 }
 
@@ -116,4 +155,12 @@ func (l *ignoredDevicesList) Range(f func(i int, device string) bool) {
 			break
 		}
 	}
+}
+
+func (l *ignoredDevicesList) List() []string {
+	l.RLock()
+	defer l.RUnlock()
+	devices := make([]string, len(l.ignoredDevices))
+	copy(devices, l.ignoredDevices)
+	return devices
 }
