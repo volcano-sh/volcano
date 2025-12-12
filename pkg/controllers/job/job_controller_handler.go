@@ -68,9 +68,7 @@ func (cc *jobcontroller) addJob(obj interface{}) {
 		klog.Errorf("Failed to add job <%s/%s>: %v in cache",
 			job.Namespace, job.Name, err)
 	}
-	key := jobhelpers.GetJobKeyByReq(&req)
-	queue := cc.getWorkerQueue(key)
-	queue.Add(req)
+	cc.addJobInQueue(req)
 }
 
 func (cc *jobcontroller) updateJob(oldObj, newObj interface{}) {
@@ -109,9 +107,7 @@ func (cc *jobcontroller) updateJob(oldObj, newObj interface{}) {
 		JobName:   newJob.Name,
 		Event:     bus.OutOfSyncEvent,
 	}
-	key := jobhelpers.GetJobKeyByReq(&req)
-	queue := cc.getWorkerQueue(key)
-	queue.Add(req)
+	cc.addJobInQueue(req)
 }
 
 func (cc *jobcontroller) deleteJob(obj interface{}) {
@@ -203,9 +199,7 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		klog.Errorf("Failed to add Pod <%s/%s>: %v to cache",
 			pod.Namespace, pod.Name, err)
 	}
-	key := jobhelpers.GetJobKeyByReq(&req)
-	queue := cc.getWorkerQueue(key)
-	queue.Add(req)
+	cc.addJobInQueue(req)
 }
 
 func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
@@ -318,9 +312,7 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		JobVersion: int32(dVersion),
 	}
 
-	key := jobhelpers.GetJobKeyByReq(&req)
-	queue := cc.getWorkerQueue(key)
-	queue.Add(req)
+	cc.addJobInQueue(req)
 }
 
 func (cc *jobcontroller) deletePod(obj interface{}) {
@@ -392,9 +384,7 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 			pod.Namespace, pod.Name, err)
 	}
 
-	key := jobhelpers.GetJobKeyByReq(&req)
-	queue := cc.getWorkerQueue(key)
-	queue.Add(req)
+	cc.addJobInQueue(req)
 }
 
 func (cc *jobcontroller) recordJobEvent(namespace, name string, event batch.JobEvent, message string) {
@@ -438,9 +428,7 @@ func (cc *jobcontroller) processNextCommand() bool {
 		Action:    bus.Action(cmd.Action),
 	}
 
-	key := jobhelpers.GetJobKeyByReq(&req)
-	queue := cc.getWorkerQueue(key)
-	queue.Add(req)
+	cc.addJobInQueue(req)
 
 	return true
 }
@@ -481,10 +469,14 @@ func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 		case scheduling.PodGroupUnknown:
 			req.Event = bus.JobUnknownEvent
 		}
-		key := jobhelpers.GetJobKeyByReq(&req)
-		queue := cc.getWorkerQueue(key)
-		queue.Add(req)
+		cc.addJobInQueue(req)
 	}
+}
+
+func (cc *jobcontroller) addJobInQueue(req apis.Request) {
+	key := jobhelpers.GetJobKeyByReq(&req)
+	queue := cc.getWorkerQueue(key)
+	queue.Add(req)
 }
 
 // TODO(k82cn): add handler for PodGroup unschedulable event.
