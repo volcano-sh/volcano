@@ -569,6 +569,16 @@ Add admission for hyperNode for two aspects validation
              highestTierAllowed: 1
          template:
            # pod template
+       - name: "task1"
+         replicas: 8
+         partitionPolicy:
+           totalPartitions: 4
+           partitionSize: 2
+           networkTopology:
+             mode: hard
+             highestTierAllowed: 1
+         template:
+           # pod template
    ```
 
    The PodGroup that needs to be created is as follows:
@@ -586,8 +596,21 @@ Add admission for hyperNode for two aspects validation
      subGroupPolicy:
        - name: "task0" # Taken from jobSpec.tasks[].name
          subGroupSize: 3 # Taken from jobSpec.tasks[].partitionPolicy.partitionSize
-         matchPolicy:
-           - labelKey: volcano.sh/task0-subgroup-id # Follow the format volcano.sh/<name>-subgroup-id
+         labelSelector: 
+           matchLabels: 
+             volcano.sh/task-spec: task0   # The label is automatically added to VCJob pods upon creation to indicate their task information.
+         matchLabelKeys:
+           - volcano.sh/partition-id
+         networkTopology: # Taken from jobSpec.tasks[].partitionPolicy.networkTopology
+           mode: hard
+           highestTierAllowed: 1
+       - name: "task1" # Taken from jobSpec.tasks[].name
+         subGroupSize: 2 # Taken from jobSpec.tasks[].partitionPolicy.partitionSize
+         labelSelector: 
+           matchLabels: 
+             volcano.sh/task-spec: task1   # The label is automatically added to VCJob pods upon creation to indicate their task information.
+         matchLabelKeys:
+           - volcano.sh/partition-id
          networkTopology: # Taken from jobSpec.tasks[].partitionPolicy.networkTopology
            mode: hard
            highestTierAllowed: 1
@@ -597,9 +620,9 @@ Add admission for hyperNode for two aspects validation
 
    The controller assigns a corresponding subgroup label to the Pod based on its index within the task. For example:
 
-   The labels for the Pods " network-topology-job-task0-<span style="color: red;">0</span>, network-topology-job-task0-<span style="color: red;">1</span>, network-topology-job-task0-<span style="color: red;"> 2</span> " are: **volcano.sh/task0-subgroup-id = <span style="color: red;">0</span>**
+   The labels for the Pods " network-topology-job-task0-<span style="color: red;">0</span>, network-topology-job-task0-<span style="color: red;">1</span>, network-topology-job-task0-<span style="color: red;"> 2</span> " are: **volcano.sh/partition-id = <span style="color: red;">0</span>**
 
-   The labels for the Pods " network-topology-job-task0-<span style="color: red;">3</span>, network-topology-job-task0-<span style="color: red;">4</span>, network-topology-job-task0-<span style="color: red;"> 5</span> " are: **volcano.sh/task0-subgroup-id = <span style="color: red;">1</span>**
+   The labels for the Pods " network-topology-job-task0-<span style="color: red;">3</span>, network-topology-job-task0-<span style="color: red;">4</span>, network-topology-job-task0-<span style="color: red;"> 5</span> " are: **volcano.sh/partition-id = <span style="color: red;">1</span>**
 
 ## Scheduler
 
@@ -662,7 +685,7 @@ type JobInfo struct {
 - If it matches a `subGroupPolicy`, the `SubJobID` format is: `<JobID>/<PolicyName>-<MatchValues>`
 
   - `PolicyName`: value of `subGroupPolicy.name`
-  - `MatchValues`: concatenated label values corresponding to keys listed in `subGroupPolicy.matchPolicy[].labelKey`
+  - `MatchValues`: concatenated label values corresponding to keys listed in `subGroupPolicy.matchLabelKeys`
 
   **Example：**  
   PodGroup's `subGroupPolicy`:
@@ -670,20 +693,23 @@ type JobInfo struct {
   ```yaml
   subGroupPolicy:
     - name: "task0"
-      matchPolicy:
-        - labelKey: volcano.sh/task0-subgroup-id
-        - labelKey: example.com/role
+      labelSelector: 
+        matchLabels: 
+          volcano.sh/task-spec: task0
+      matchLabelKeys:
+        - volcano.sh/partition-id
+        - example.com/role
   ```
 
   Task's labels:
 
   ```yaml
   labels:
-    volcano.sh/task0-subgroup-id: "123"
+    volcano.sh/partition-id: "12"
     example.com/role: worker
   ```
 
-  Resulting `SubJobID`: `<JobID>/task0-123-worker`
+  Resulting `SubJobID`: `<JobID>/task0-12-worker`
 
 #### SubJobInfo<a id="SubJobInfo"></a>
 

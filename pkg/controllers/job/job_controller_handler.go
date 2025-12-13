@@ -188,15 +188,15 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 	}
 
 	req := apis.Request{
-		Namespace:  pod.Namespace,
-		JobName:    jobName,
-		JobUid:     jobUid,
-		PodName:    pod.Name,
-		PodUID:     pod.UID,
-		TaskName:   taskName,
-		Partition:  getPodPartition(pod),
-		Event:      bus.PodPendingEvent,
-		JobVersion: int32(dVersion),
+		Namespace:   pod.Namespace,
+		JobName:     jobName,
+		JobUid:      jobUid,
+		PodName:     pod.Name,
+		PodUID:      pod.UID,
+		TaskName:    taskName,
+		PartitionID: apis.GetPartitionID(pod),
+		Event:       bus.PodPendingEvent,
+		JobVersion:  int32(dVersion),
 	}
 
 	if err := cc.cache.AddPod(pod); err != nil {
@@ -306,16 +306,16 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 	}
 
 	req := apis.Request{
-		Namespace:  newPod.Namespace,
-		JobName:    jobName,
-		JobUid:     jobUid,
-		TaskName:   taskName,
-		PodName:    newPod.Name,
-		PodUID:     newPod.UID,
-		Partition:  getPodPartition(newPod),
-		Event:      event,
-		ExitCode:   exitCode,
-		JobVersion: int32(dVersion),
+		Namespace:   newPod.Namespace,
+		JobName:     jobName,
+		JobUid:      jobUid,
+		TaskName:    taskName,
+		PodName:     newPod.Name,
+		PodUID:      newPod.UID,
+		PartitionID: apis.GetPartitionID(newPod),
+		Event:       event,
+		ExitCode:    exitCode,
+		JobVersion:  int32(dVersion),
 	}
 
 	key := jobhelpers.GetJobKeyByReq(&req)
@@ -376,15 +376,15 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 	}
 
 	req := apis.Request{
-		Namespace:  pod.Namespace,
-		JobName:    jobName,
-		JobUid:     jobUid,
-		TaskName:   taskName,
-		PodName:    pod.Name,
-		PodUID:     pod.UID,
-		Partition:  getPodPartition(pod),
-		Event:      bus.PodEvictedEvent,
-		JobVersion: int32(dVersion),
+		Namespace:   pod.Namespace,
+		JobName:     jobName,
+		JobUid:      jobUid,
+		TaskName:    taskName,
+		PodName:     pod.Name,
+		PodUID:      pod.UID,
+		PartitionID: apis.GetPartitionID(pod),
+		Event:       bus.PodEvictedEvent,
+		JobVersion:  int32(dVersion),
 	}
 
 	if err := cc.cache.DeletePod(pod); err != nil {
