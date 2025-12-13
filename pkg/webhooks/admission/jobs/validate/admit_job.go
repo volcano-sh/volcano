@@ -121,25 +121,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
-	if job.Spec.MinAvailable < 0 {
-		reviewResponse.Allowed = false
-		return "job 'minAvailable' must be >= 0."
-	}
-
-	if job.Spec.MaxRetry < 0 {
-		reviewResponse.Allowed = false
-		return "'maxRetry' cannot be less than zero."
-	}
-
-	if job.Spec.TTLSecondsAfterFinished != nil && *job.Spec.TTLSecondsAfterFinished < 0 {
-		reviewResponse.Allowed = false
-		return "'ttlSecondsAfterFinished' cannot be less than zero."
-	}
-
-	if len(job.Spec.Tasks) == 0 {
-		reviewResponse.Allowed = false
-		return "No task specified in job spec"
-	}
+	// Basic validations (MinAvailable, MaxRetry, TTLSecondsAfterFinished, Tasks array) are now enforced by CRD schema validation.
 
 	if _, ok := job.Spec.Plugins[controllerMpi.MPIPluginName]; ok {
 		mp := controllerMpi.NewInstance(job.Spec.Plugins[controllerMpi.MPIPluginName])
@@ -161,25 +143,9 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 			hasDependenciesBetweenTasks = true
 		}
 
-		if task.Replicas < 0 {
-			msg += fmt.Sprintf(" 'replicas' < 0 in task: %s, job: %s;", task.Name, job.Name)
-		}
-
-		if task.MinAvailable != nil {
-			if *task.MinAvailable < 0 {
-				msg += fmt.Sprintf(" 'minAvailable' < 0 in task: %s, job: %s;", task.Name, job.Name)
-			} else if *task.MinAvailable > task.Replicas {
-				msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s;", task.Name, job.Name)
-			}
-		}
-
+		// Basic task validations (Replicas, MinAvailable, Name format) are now enforced by CRD schema validation.
 		// count replicas
 		totalReplicas += task.Replicas
-
-		// validate task name
-		if errMsgs := validation.IsDNS1123Label(task.Name); len(errMsgs) > 0 {
-			msg += fmt.Sprintf(" %v;", errMsgs)
-		}
 
 		// duplicate task name
 		if _, found := taskNames[task.Name]; found {
@@ -196,7 +162,6 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		podName := jobhelpers.MakePodName(job.Name, task.Name, index)
 		msg += validateK8sPodNameLength(podName)
 		msg += validateTaskTemplate(task, job, index)
-		msg += validatePartitionPolicy(task, job)
 	}
 
 	msg += validateJobName(job)
@@ -269,30 +234,15 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 func validateJobUpdate(old, new *v1alpha1.Job) error {
 	var totalReplicas int32
 	for _, task := range new.Spec.Tasks {
-		if task.Replicas < 0 {
-			return fmt.Errorf("'replicas' must be >= 0 in task: %s", task.Name)
-		}
-
-		if task.MinAvailable != nil {
-			if *task.MinAvailable < 0 {
-				return fmt.Errorf("'minAvailable' must be >= 0 in task: %s", task.Name)
-			} else if *task.MinAvailable > task.Replicas {
-				return fmt.Errorf("'minAvailable' must be <= 'replicas' in task: %s", task.Name)
-			}
-		}
-		msg := validatePartitionPolicy(task, new)
-		if msg != "" {
-			return fmt.Errorf("%s", msg)
-		}
+		// Basic task validations (Replicas, MinAvailable, PartitionPolicy) are now enforced by CRD schema validation.
 
 		// count replicas
 		totalReplicas += task.Replicas
 	}
+	// job.Spec.MinAvailable >= 0 is now enforced by CRD schema validation.
+	// The validation that minAvailable <= sum of task replicas remains in webhook as it requires aggregating across array elements.
 	if new.Spec.MinAvailable > totalReplicas {
 		return fmt.Errorf("job 'minAvailable' must not be greater than total replicas")
-	}
-	if new.Spec.MinAvailable < 0 {
-		return fmt.Errorf("job 'minAvailable' must be >= 0")
 	}
 
 	if len(old.Spec.Tasks) != len(new.Spec.Tasks) {
@@ -327,21 +277,6 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	}
 
 	return nil
-}
-
-func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {
-	var msg string
-	if task.PartitionPolicy != nil {
-		if task.PartitionPolicy.TotalPartitions <= 0 {
-			msg += fmt.Sprintf("'TotalPartitions' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
-		} else if task.PartitionPolicy.PartitionSize <= 0 {
-			msg += fmt.Sprintf("'PartitionSize' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
-		} else if task.Replicas != task.PartitionPolicy.TotalPartitions*task.PartitionPolicy.PartitionSize {
-			msg += fmt.Sprintf("'Replicas' are not equal to TotalPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
-		}
-	}
-
-	return msg
 }
 
 func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) string {

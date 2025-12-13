@@ -67,6 +67,7 @@ spec:
                   if there's not enough resources to start all tasks, the scheduler
                   will not start anyone.
                 format: int32
+                minimum: 0
                 type: integer
               minResources:
                 additionalProperties:
@@ -85,9 +86,11 @@ spec:
                   format: int32
                   type: integer
                 description: |-
-                  MinTaskMember defines the minimal number of pods to run each task in the pod group;
+                  MinTaskMember defines the minimal number of pods to run for each task in the pod group;
                   if there's not enough resources to start each task, the scheduler
                   will not start anyone.
+                  SubGroupPolicy covers all capabilities of minTaskMember, while providing richer network topology and Gang scheduling management capabilities.
+                  Recommend using SubGroupPolicy to uniformly manage Gang scheduling for each Task group.
                 type: object
               networkTopology:
                 description: NetworkTopology defines the NetworkTopology config, this
@@ -97,11 +100,13 @@ spec:
                   highestTierAllowed:
                     description: HighestTierAllowed specifies the highest tier that
                       a job allowed to cross when scheduling.
+                    minimum: 0
                     type: integer
                   highestTierName:
                     description: |-
                       HighestTierName specifies the highest tier name that a job allowed to cross when scheduling.
                       HighestTierName and HighestTierAllowed cannot be set simultaneously.
+                    maxLength: 253
                     type: string
                   mode:
                     default: hard
@@ -119,38 +124,93 @@ spec:
                   name must be defined by creating a PriorityClass object with that name.
                   If not specified, the PodGroup priority will be default or zero if there is no
                   default.
+                maxLength: 253
                 type: string
               queue:
                 default: default
                 description: |-
                   Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
                   the PodGroup will not be scheduled. Defaults to `default` Queue with the lowest weight.
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               subGroupPolicy:
-                description: SubGroupPolicy defines policies for dividing all pods
-                  within the podGroup into multiple groups.
+                description: |-
+                  Compared with minTaskMember, it offers more comprehensive topology scheduling and Gang scheduling management capabilities.
+                  Concurrent use with minTaskMember is not recommended, and SubGroupPolicy is the long-term evolution direction.
                 items:
                   properties:
-                    matchPolicy:
+                    labelSelector:
                       description: |-
-                        MatchPolicy defines matching strategies for different groups, where pods with the same labelKey value are grouped together.
-                        The LabelKey in the list is unique.
-                      items:
-                        properties:
-                          labelKey:
-                            description: LabelKey specifies the label key used to
-                              group pods.
+                        LabelSelector is used to find matching pods.
+                        Pods that match this label selector are counted to determine the number of pods
+                        in their corresponding topology domain.
+                      properties:
+                        matchExpressions:
+                          description: matchExpressions is a list of label selector
+                            requirements. The requirements are ANDed.
+                          items:
+                            description: |-
+                              A label selector requirement is a selector that contains values, a key, and an operator that
+                              relates the key and values.
+                            properties:
+                              key:
+                                description: key is the label key that the selector
+                                  applies to.
+                                type: string
+                              operator:
+                                description: |-
+                                  operator represents a key's relationship to a set of values.
+                                  Valid operators are In, NotIn, Exists and DoesNotExist.
+                                type: string
+                              values:
+                                description: |-
+                                  values is an array of string values. If the operator is In or NotIn,
+                                  the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                  the values array must be empty. This array is replaced during a strategic
+                                  merge patch.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - key
+                            - operator
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        matchLabels:
+                          additionalProperties:
                             type: string
-                        type: object
+                          description: |-
+                            matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                            map is equivalent to an element of matchExpressions, whose key field is "key", the
+                            operator is "In", and the values array contains only "value". The requirements are ANDed.
+                          type: object
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    matchLabelKeys:
+                      description: |-
+                        MatchLabelKeys: A label-based grouping configuration field for Pods, defining filtering rules for grouping label keys
+                        Core function: Refine grouping of Pods that meet LabelSelector criteria by label attributes, with the following rules and constraints:
+                        1. Scope: Only applies to Pods matching the predefined LabelSelector
+                        2. Grouping rule: Specify one or more label keys; Pods containing the target label keys with exactly the same corresponding label values are grouped together
+                        3. Policy constraint: Pods in the same group follow a unified NetworkTopology policy to achieve group-level network behavior governance
+                      items:
+                        type: string
                       type: array
+                      x-kubernetes-list-type: atomic
                     minSubGroups:
                       default: 0
-                      description: MinSubGroups defines the minimum number of sub-affinity
-                        groups required.
+                      description: |-
+                        MinSubGroups: Minimum number of subgroups required to trigger scheduling. Scheduling is initiated only if cluster resources meet the requirements of at least this number of subgroups.
+                        Subgroup-level Gang Scheduling
                       format: int32
+                      minimum: 0
                       type: integer
                     name:
                       description: Name specifies the name of SubGroupPolicy
+                      maxLength: 253
                       type: string
                     networkTopology:
                       description: NetworkTopology defines the NetworkTopology config,
@@ -160,11 +220,13 @@ spec:
                         highestTierAllowed:
                           description: HighestTierAllowed specifies the highest tier
                             that a job allowed to cross when scheduling.
+                          minimum: 0
                           type: integer
                         highestTierName:
                           description: |-
                             HighestTierName specifies the highest tier name that a job allowed to cross when scheduling.
                             HighestTierName and HighestTierAllowed cannot be set simultaneously.
+                          maxLength: 253
                           type: string
                         mode:
                           default: hard
@@ -180,6 +242,7 @@ spec:
                         SubGroupSize defines the number of pods in each sub-affinity group.
                         Only when a subGroup of pods, with a size of "subGroupSize", can satisfy the network topology constraint then will the subGroup be scheduled.
                       format: int32
+                      minimum: 1
                       type: integer
                   type: object
                 type: array
@@ -222,17 +285,26 @@ spec:
               failed:
                 description: The number of pods which reached phase Failed.
                 format: int32
+                minimum: 0
                 type: integer
               phase:
                 description: Current phase of PodGroup.
+                enum:
+                - Pending
+                - Running
+                - Unknown
+                - Inqueue
+                - Completed
                 type: string
               running:
                 description: The number of actively running pods.
                 format: int32
+                minimum: 0
                 type: integer
               succeeded:
                 description: The number of pods which reached phase Succeeded.
                 format: int32
+                minimum: 0
                 type: integer
             type: object
         type: object

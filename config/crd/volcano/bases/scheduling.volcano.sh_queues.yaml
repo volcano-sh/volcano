@@ -90,6 +90,13 @@ spec:
                   x-kubernetes-int-or-string: true
                 description: ResourceList is a set of (resource name, quantity) pairs.
                 type: object
+              dequeueStrategy:
+                default: traverse
+                description: DequeueStrategy defines the dequeue strategy of queue
+                enum:
+                - fifo
+                - traverse
+                type: string
               deserved:
                 additionalProperties:
                   anyOf:
@@ -139,11 +146,14 @@ spec:
                 type: object
               parent:
                 description: Parent define the parent of queue
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               priority:
                 description: Priority define the priority of queue. Higher values
                   are prioritized for scheduling and considered later during reclamation.
                 format: int32
+                minimum: 0
                 type: integer
               reclaimable:
                 description: Reclaimable indicate whether the queue can be reclaimed
@@ -151,6 +161,7 @@ spec:
                 type: boolean
               type:
                 description: Type define the type of queue
+                maxLength: 253
                 type: string
               weight:
                 default: 1
@@ -174,14 +185,17 @@ spec:
               completed:
                 description: The number of `Completed` PodGroup in this queue.
                 format: int32
+                minimum: 0
                 type: integer
               inqueue:
                 description: The number of `Inqueue` PodGroup in this queue.
                 format: int32
+                minimum: 0
                 type: integer
               pending:
                 description: The number of 'Pending' PodGroup in this queue.
                 format: int32
+                minimum: 0
                 type: integer
               reservation:
                 description: Reservation is the profile of resource reservation for
@@ -206,13 +220,20 @@ spec:
               running:
                 description: The number of 'Running' PodGroup in this queue.
                 format: int32
+                minimum: 0
                 type: integer
               state:
                 description: State is state of queue
+                enum:
+                - Open
+                - Closed
+                - Closing
+                - Unknown
                 type: string
               unknown:
                 description: The number of 'Unknown' PodGroup in this queue.
                 format: int32
+                minimum: 0
                 type: integer
             type: object
         type: object
