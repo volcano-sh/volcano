@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -164,22 +163,17 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int, jobForwa
 		pod.Annotations[batch.JobForwardingKey] = "true"
 		pod.Labels[batch.JobForwardingKey] = "true"
 	}
-	if pg != nil && ts.PartitionPolicy != nil && pg.Spec.SubGroupPolicy != nil {
-		partitionSize := ts.PartitionPolicy.PartitionSize
-		taskName := ts.Name
-		for _, subGroupPolicy := range pg.Spec.SubGroupPolicy {
-			// The taskName in vcjob corresponds one-to-one with the name in subGroupPolicy.
-			if subGroupPolicy.Name != taskName {
-				continue
-			}
-			for _, matchPolicy := range subGroupPolicy.MatchPolicy {
-				labelKey := matchPolicy.LabelKey
-				id := strconv.Itoa(ix / int(partitionSize))
-				labelValue := fmt.Sprintf("%s_%s", strings.ReplaceAll(labelKey, "/", "_"), id)
-				pod.Labels[labelKey] = id
-				pod.Labels[batch.Partitionkey] = labelValue
-			}
+
+	// Assign partition labels
+	if ts.PartitionPolicy != nil {
+		var partitionID int
+		// Handle invalid partition size, default to partition 0
+		if ts.PartitionPolicy.PartitionSize <= 0 {
+			partitionID = 0
+		} else {
+			partitionID = ix / int(ts.PartitionPolicy.PartitionSize)
 		}
+		pod.Labels[batch.TaskPartitionID] = strconv.Itoa(partitionID)
 	}
 
 	return pod
@@ -192,7 +186,7 @@ func applyPolicies(job *batch.Job, req *apis.Request) (delayAct *delayAction) {
 		taskName:  req.TaskName,
 		podName:   req.PodName,
 		podUID:    req.PodUID,
-		partition: req.Partition,
+		partition: req.PartitionID,
 		// default action is sync job
 		action: v1alpha1.SyncJobAction,
 	}
@@ -474,11 +468,4 @@ func GetActionType(action v1alpha1.Action) ActionType {
 		return PartitionAction
 	}
 	return JobAction
-}
-
-func getPodPartition(pod *v1.Pod) string {
-	if value, found := pod.Labels["volcano.sh/partition-id"]; found {
-		return value
-	}
-	return ""
 }

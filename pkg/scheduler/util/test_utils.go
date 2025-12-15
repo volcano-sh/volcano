@@ -328,11 +328,11 @@ func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[st
 	}
 }
 
-func BuildSubGroupPolicy(name string, matchPolicy []string, mode string, highestTierAllowed int) schedulingv1beta1.SubGroupPolicySpec {
-	return BuildSubGroupPolicyWithSubGroupSize(name, matchPolicy, mode, highestTierAllowed, 1)
+func BuildSubGroupPolicy(name string, matchLabelKeys []string, mode string, highestTierAllowed int) schedulingv1beta1.SubGroupPolicySpec {
+	return BuildSubGroupPolicyWithSubGroupSize(name, matchLabelKeys, mode, highestTierAllowed, 1)
 }
 
-func BuildSubGroupPolicyWithSubGroupSize(name string, matchPolicy []string, mode string, highestTierAllowed int, subGroupSize int32) schedulingv1beta1.SubGroupPolicySpec {
+func BuildSubGroupPolicyWithSubGroupSize(name string, matchLabelKeys []string, mode string, highestTierAllowed int, subGroupSize int32) schedulingv1beta1.SubGroupPolicySpec {
 	subGroupPolicy := schedulingv1beta1.SubGroupPolicySpec{
 		Name: name,
 		NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
@@ -341,10 +341,7 @@ func BuildSubGroupPolicyWithSubGroupSize(name string, matchPolicy []string, mode
 		},
 		SubGroupSize: &subGroupSize,
 	}
-	subGroupPolicy.MatchPolicy = []schedulingv1beta1.MatchPolicySpec{}
-	for _, mp := range matchPolicy {
-		subGroupPolicy.MatchPolicy = append(subGroupPolicy.MatchPolicy, schedulingv1beta1.MatchPolicySpec{LabelKey: mp})
-	}
+	subGroupPolicy.MatchLabelKeys = matchLabelKeys
 	return subGroupPolicy
 }
 
