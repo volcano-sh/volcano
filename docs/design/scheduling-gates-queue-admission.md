@@ -1,5 +1,24 @@
 # Gate-Controlled Scheduling for Cluster Autoscalers Compatibility
 
+## Table of Contents
+
+- [Motivation](#motivation)
+- [Proposal](#proposal)
+  - [Goals](#goals)
+  - [Non-Goals](#non-goals)
+  - [High-Level Implementation](#high-level-implementation)
+    - [API Constant Definition](#api-constant-definition)
+    - [Changes to the Volcano MutatingAdmissionWebhook](#changes-to-the-volcano-mutatingadmissionwebhook)
+    - [Changes to the Volcano Scheduler](#changes-to-the-volcano-scheduler)
+      - [Queue Admission Checks](#queue-admission-checks)
+      - [Queue Allocation and Gate Removal](#queue-allocation-and-gate-removal)
+      - [Queue Capacity Accounting for Ungated Pods](#queue-capacity-accounting-for-ungated-pods)
+        - [Dynamic Reserved Calculation](#dynamic-reserved-calculation)
+        - [Cache Invalidation](#cache-invalidation)
+      - [Gate Removal During Successful Bind](#gate-removal-during-successful-bind)
+- [Conclusions](#conclusions)
+- [Related Issues](#related-issues)
+
 ## Motivation
 
 Cluster autoscalers such as [Cluster Autoscaler (CA)](https://github.com/kubernetes/autoscaler/tree/master) or
@@ -316,7 +335,7 @@ function (which invokes the capacity plugin) needs to account for:
 1. Pods with `AllocatedStatus` (bound, binding, running) toward queue capacity _(current behavior)_.
 2. **`Pending` pods that have had their gates removed** as "reserved" resources _(new behavior)_.
 
-**Dynamic Reserved Calculation**
+###### Dynamic Reserved Calculation
 
 Rather than modifying the `allocated` attribute (which semantically represents bound resources), we add a new helper
 method `queueAllocatableWithReserved` to the
@@ -397,7 +416,7 @@ func (cp *capacityPlugin) queueAllocatable(queue *api.QueueInfo, candidate *api.
 }
 ```
 
-**Cache Invalidation**
+###### Cache Invalidation
 
 The reserved resources cache must be invalidated when a task's gate is removed during a scheduling cycle. This ensures
 subsequent capacity checks see the updated state and account for the newly ungated pod in their reserved calculations.
