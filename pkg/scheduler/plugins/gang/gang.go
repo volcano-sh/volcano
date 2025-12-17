@@ -230,7 +230,9 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				unreadyTaskCount, len(job.Tasks), job.FitError())
 
 			unScheduleJobCount++
-			metrics.RegisterJobRetries(job.Name)
+			if !ssn.IsJobTerminated(job.UID) {
+				metrics.RegisterJobRetries(job.Name)
+			}
 
 			// TODO: If the Job is gang-unschedulable due to scheduling gates
 			// we need a new message and reason to tell users
@@ -263,7 +265,9 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 					job.Namespace, job.Name, err)
 			}
 		}
-		metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
+		if !ssn.IsJobTerminated(job.UID) {
+			metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
+		}
 		unreadyTaskCount = 0
 	}
 

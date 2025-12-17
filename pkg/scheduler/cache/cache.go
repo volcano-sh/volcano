@@ -1100,6 +1100,16 @@ func (sc *SchedulerCache) processCleanupJob() {
 	}
 }
 
+func (sc *SchedulerCache) IsJobTerminated(jobId schedulingapi.JobID) bool {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	job, exists := sc.Jobs[jobId]
+	if !exists || job == nil {
+		return true
+	}
+	return schedulingapi.JobTerminated(job)
+}
+
 func (sc *SchedulerCache) generateDeletedJobsKey(job *schedulingapi.JobInfo) string {
 	// Job UID is namespace + / +name, for example: theNs/theJob
 	// Job PgUID is derived from the Job PgUID, for example: d336abea-4f14-42c7-8a6b-092959a31407

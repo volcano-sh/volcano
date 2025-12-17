@@ -92,6 +92,9 @@ type Cache interface {
 
 	// SharedDRAManager returns the shared DRAManager
 	SharedDRAManager() framework.SharedDRAManager
+
+	// IsJobTerminated returns if the job was terminated
+	IsJobTerminated(jobId api.JobID) bool
 }
 
 // Binder interface for binding task and hostname

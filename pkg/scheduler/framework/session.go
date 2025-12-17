@@ -1058,3 +1058,7 @@ func (ssn *Session) String() string {
 
 	return msg
 }
+
+func (ssn *Session) IsJobTerminated(jobId api.JobID) bool {
+	return ssn.cache.IsJobTerminated(jobId)
+}
