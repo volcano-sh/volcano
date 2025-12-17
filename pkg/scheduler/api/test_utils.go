@@ -179,3 +179,12 @@ func BuildHyperNode(name string, tier int, members []MemberConfig) *topologyv1al
 
 	return hn
 }
+
+func BuildHyperNodeWithTierName(name string, tier int, tierName string, members []MemberConfig) *topologyv1alpha1.HyperNode {
+	hyperNode := BuildHyperNode(name, tier, members)
+	if hyperNode != nil {
+		hyperNode.Spec.TierName = tierName
+	}
+
+	return hyperNode
+}

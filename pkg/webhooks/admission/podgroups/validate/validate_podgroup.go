@@ -18,6 +18,7 @@ package validate
 
 import (
 	"fmt"
+	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
@@ -67,17 +68,18 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 		return util.ToAdmissionResponse(err)
 	}
 
+	var errMsg string
 	switch ar.Request.Operation {
 	case admissionv1.Create:
-		err = validatePodGroup(podgroup)
+		errMsg = validatePodGroup(podgroup)
 	default:
-		err = fmt.Errorf("unsupported operation %s", ar.Request.Operation)
+		errMsg = fmt.Sprintf("unsupported operation %s", ar.Request.Operation)
 	}
 
-	if err != nil {
+	if errMsg != "" {
 		return &admissionv1.AdmissionResponse{
 			Allowed: false,
-			Result:  &metav1.Status{Message: err.Error()},
+			Result:  &metav1.Status{Message: errMsg},
 		}
 	}
 
@@ -87,25 +89,44 @@ func Validate(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 }
 
 // validatePodGroup validates a PodGroup when it's being created
-func validatePodGroup(pg *schedulingv1beta1.PodGroup) error {
-	return checkQueueState(pg.Spec.Queue)
+func validatePodGroup(pg *schedulingv1beta1.PodGroup) string {
+	var errMsg string
+
+	errMsg += checkQueueState(pg.Spec.Queue)
+	errMsg += validateNetworkTopology(pg.Spec.NetworkTopology, pg.Spec.SubGroupPolicy)
+
+	return errMsg
 }
 
 // checkQueueState verifies if the queue exists and is in the open state
-func checkQueueState(queueName string) error {
+func checkQueueState(queueName string) string {
 	if queueName == "" {
-		return nil
+		return ""
 	}
 
 	queue, err := config.QueueLister.Get(queueName)
 	if err != nil {
-		return fmt.Errorf("unable to find queue: %v", err)
+		return fmt.Sprintf("unable to find queue: %s", err.Error())
 	}
 
 	if queue.Status.State != schedulingv1beta1.QueueStateOpen {
-		return fmt.Errorf("can only submit PodGroup to queue with state `Open`, "+
-			"queue `%s` status is `%s`", queue.Name, queue.Status.State)
+		return fmt.Sprintf("can only submit PodGroup to queue with state `Open`, queue `%s` status is `%s`. ",
+			queue.Name, queue.Status.State)
 	}
 
-	return nil
+	return ""
+}
+
+func validateNetworkTopology(networkTopology *schedulingv1beta1.NetworkTopologySpec, policies []schedulingv1beta1.SubGroupPolicySpec) string {
+	var errs []string
+	if networkTopology != nil && networkTopology.HighestTierAllowed != nil && networkTopology.HighestTierName != "" {
+		errs = append(errs, "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously.")
+	}
+	for _, policy := range policies {
+		if policy.NetworkTopology != nil && policy.NetworkTopology.HighestTierAllowed != nil && policy.NetworkTopology.HighestTierName != "" {
+			errs = append(errs, fmt.Sprintf("in subGroupPolicy '%s': must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously.", policy.Name))
+			break
+		}
+	}
+	return strings.Join(errs, " ")
 }

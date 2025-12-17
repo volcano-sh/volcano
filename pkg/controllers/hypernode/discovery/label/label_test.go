@@ -32,6 +32,7 @@ import (
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/controllers/hypernode/api"
+	"volcano.sh/volcano/pkg/controllers/hypernode/utils"
 )
 
 func TestNewLabelDiscoverer_start(t *testing.T) {
@@ -146,19 +147,6 @@ func getCfg() api.DiscoveryConfig {
 	}
 }
 
-func buildHyperNode(name string, tier int, members []topologyv1alpha1.MemberSpec, labels map[string]string) *topologyv1alpha1.HyperNode {
-	return &topologyv1alpha1.HyperNode{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   name,
-			Labels: labels,
-		},
-		Spec: topologyv1alpha1.HyperNodeSpec{
-			Tier:    tier,
-			Members: members,
-		},
-	}
-}
-
 func createNode(kubeClient clientset.Interface, nodes map[string]*corev1.Node) {
 	for _, node := range nodes {
 		kubeClient.CoreV1().Nodes().Create(context.TODO(), node, metav1.CreateOptions{})
@@ -167,7 +155,7 @@ func createNode(kubeClient clientset.Interface, nodes map[string]*corev1.Node) {
 
 func expectedHyperNodesForTest1() map[string]*topologyv1alpha1.HyperNode {
 	return map[string]*topologyv1alpha1.HyperNode{
-		"hypernode-topologya2-tier1-jcdfg": buildHyperNode("hypernode-topologya2-tier1-jcdfg", 1,
+		"hypernode-topologya2-tier1-jcdfg": utils.BuildHyperNodeWithTierName("hypernode-topologya2-tier1-jcdfg", 1, "volcano.sh_torA2-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeNode,
@@ -179,7 +167,7 @@ func expectedHyperNodesForTest1() map[string]*topologyv1alpha1.HyperNode {
 				},
 			}, map[string]string{api.NetworkTopologySourceLabelKey: "label",
 				"volcano.sh_torA2-1": "s0"}),
-		"hypernode-topologya2-tier1-jxcdr": buildHyperNode("hypernode-topologya2-tier1-jxcdr", 1,
+		"hypernode-topologya2-tier1-jxcdr": utils.BuildHyperNodeWithTierName("hypernode-topologya2-tier1-jxcdr", 1, "volcano.sh_torA2-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeNode,
@@ -191,7 +179,7 @@ func expectedHyperNodesForTest1() map[string]*topologyv1alpha1.HyperNode {
 				},
 			}, map[string]string{api.NetworkTopologySourceLabelKey: "label",
 				"volcano.sh_torA2-1": "s1"}),
-		"hypernode-topologya2-tier1-quksd": buildHyperNode("hypernode-topologya2-tier1-quksd", 1,
+		"hypernode-topologya2-tier1-quksd": utils.BuildHyperNodeWithTierName("hypernode-topologya2-tier1-quksd", 1, "volcano.sh_torA2-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeNode,
@@ -203,7 +191,7 @@ func expectedHyperNodesForTest1() map[string]*topologyv1alpha1.HyperNode {
 				},
 			}, map[string]string{api.NetworkTopologySourceLabelKey: "label",
 				"volcano.sh_torA2-1": "s2"}),
-		"hypernode-topologya2-tier1-akdhg": buildHyperNode("hypernode-topologya2-tier1-akdhg", 1,
+		"hypernode-topologya2-tier1-akdhg": utils.BuildHyperNodeWithTierName("hypernode-topologya2-tier1-akdhg", 1, "volcano.sh_torA2-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeNode,
@@ -215,7 +203,7 @@ func expectedHyperNodesForTest1() map[string]*topologyv1alpha1.HyperNode {
 				},
 			}, map[string]string{api.NetworkTopologySourceLabelKey: "label",
 				"volcano.sh_torA2-1": "s3"}),
-		"hypernode-topologya2-tier2-7hslk": buildHyperNode("hypernode-topologya2-tier2-7hslk", 2,
+		"hypernode-topologya2-tier2-7hslk": utils.BuildHyperNodeWithTierName("hypernode-topologya2-tier2-7hslk", 2, "volcano.sh_torA2-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeHyperNode,
@@ -227,7 +215,7 @@ func expectedHyperNodesForTest1() map[string]*topologyv1alpha1.HyperNode {
 				},
 			}, map[string]string{api.NetworkTopologySourceLabelKey: "label",
 				"volcano.sh/torA2-2": "s4"}),
-		"hypernode-topologya2-tier2-zmonf": buildHyperNode("hypernode-topologya2-tier2-zmonf", 2,
+		"hypernode-topologya2-tier2-zmonf": utils.BuildHyperNodeWithTierName("hypernode-topologya2-tier2-zmonf", 2, "volcano.sh_torA2-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeHyperNode,
@@ -321,7 +309,7 @@ func expectedNodeForTest1() map[string]*corev1.Node {
 
 func expectedHyperNodesForTest2() map[string]*topologyv1alpha1.HyperNode {
 	return map[string]*topologyv1alpha1.HyperNode{
-		"hypernode-topologya2-tier1-jcdfg": buildHyperNode("hypernode-topologya2-tier1-jcdfg", 1,
+		"hypernode-topologya2-tier1-jcdfg": utils.BuildHyperNodeWithTierName("hypernode-topologya2-tier1-jcdfg", 1, "volcano.sh_torA2-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeNode,
@@ -333,7 +321,7 @@ func expectedHyperNodesForTest2() map[string]*topologyv1alpha1.HyperNode {
 				},
 			}, map[string]string{api.NetworkTopologySourceLabelKey: "label",
 				"volcano.sh_torA2-1": "s0"}),
-		"hypernode-topologya2-tier1-cjain": buildHyperNode("hypernode-topologya2-tier1-cjain", 1,
+		"hypernode-topologya2-tier1-cjain": utils.BuildHyperNodeWithTierName("hypernode-topologya2-tier1-cjain", 1, "volcano.sh_torA2-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeNode,
@@ -345,7 +333,7 @@ func expectedHyperNodesForTest2() map[string]*topologyv1alpha1.HyperNode {
 				},
 			}, map[string]string{api.NetworkTopologySourceLabelKey: "label",
 				"volcano.sh_torA2-1": "s1"}),
-		"hypernode-topologya2-tier2-fanfn": buildHyperNode("hypernode-topologya2-tier2-fanfn", 2,
+		"hypernode-topologya2-tier2-fanfn": utils.BuildHyperNodeWithTierName("hypernode-topologya2-tier2-fanfn", 2, "volcano.sh_torA2-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeHyperNode,
@@ -395,7 +383,7 @@ func expectedNodeForTest2() map[string]*corev1.Node {
 
 func expectedHyperNodesForTest3() map[string]*topologyv1alpha1.HyperNode {
 	return map[string]*topologyv1alpha1.HyperNode{
-		"hypernode-topologya2-tier1-fanfn": buildHyperNode("hypernode-topologya2-tier1-fanfn", 1,
+		"hypernode-topologya2-tier1-fanfn": utils.BuildHyperNodeWithTierName("hypernode-topologya2-tier1-fanfn", 1, "volcano.sh_torA2-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeNode,
@@ -445,7 +433,7 @@ func expectedNodeForTest3() map[string]*corev1.Node {
 
 func getExistHyperNodesForTest4() map[string]*topologyv1alpha1.HyperNode {
 	return map[string]*topologyv1alpha1.HyperNode{
-		"hypernode-topologya2-tier1-mnsx6": buildHyperNode("hypernode-topologya2-tier1-mnsx6", 1,
+		"hypernode-topologya2-tier1-mnsx6": utils.BuildHyperNode("hypernode-topologya2-tier1-mnsx6", 1,
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeNode,
@@ -458,7 +446,7 @@ func getExistHyperNodesForTest4() map[string]*topologyv1alpha1.HyperNode {
 
 func expectedHyperNodesForTest4() map[string]*topologyv1alpha1.HyperNode {
 	return map[string]*topologyv1alpha1.HyperNode{
-		"hn-topologya3-s0": buildHyperNode("hn-topologya3-s0", 1,
+		"hn-topologya3-s0": utils.BuildHyperNodeWithTierName("hn-topologya3-s0", 1, "volcano.sh/torA3-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeNode,
@@ -484,7 +472,7 @@ func expectedNodeForTest4() map[string]*corev1.Node {
 
 func getExistHyperNodesForTest5() map[string]*topologyv1alpha1.HyperNode {
 	return map[string]*topologyv1alpha1.HyperNode{
-		"hypernode-topologya2-tier1-mnsx6": buildHyperNode("hypernode-topologya2-tier1-mnsx6", 1,
+		"hypernode-topologya2-tier1-mnsx6": utils.BuildHyperNodeWithTierName("hypernode-topologya2-tier1-mnsx6", 1, "volcano.sh/torA3-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeNode,
@@ -497,7 +485,7 @@ func getExistHyperNodesForTest5() map[string]*topologyv1alpha1.HyperNode {
 
 func expectedHyperNodesForTest5() map[string]*topologyv1alpha1.HyperNode {
 	return map[string]*topologyv1alpha1.HyperNode{
-		"hn-topologya3-s0": buildHyperNode("hn-topologya3-s0", 1,
+		"hn-topologya3-s0": utils.BuildHyperNodeWithTierName("hn-topologya3-s0", 1, "volcano.sh/torA3-1",
 			[]topologyv1alpha1.MemberSpec{
 				{
 					Type:     topologyv1alpha1.MemberTypeNode,
