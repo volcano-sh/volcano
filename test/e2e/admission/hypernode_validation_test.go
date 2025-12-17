@@ -217,7 +217,14 @@ var _ = ginkgo.Describe("HyperNode Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.TopologyV1alpha1().HyperNodes().Create(context.TODO(), hyperNode, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("member regexMatch pattern is invalid"))
+		// Accept both webhook error message and CRD validation error message
+		// CRD validation: "spec.members[0].selector.regexMatch.pattern in body should match '^...'"
+		// Webhook: "member regexMatch pattern is invalid"
+		errMsg := err.Error()
+		gomega.Expect(errMsg).To(gomega.Or(
+			gomega.ContainSubstring("member regexMatch pattern is invalid"),
+			gomega.ContainSubstring("regexMatch.pattern"),
+		))
 	})
 
 	ginkgo.It("Should reject HyperNode creation with no members", func() {
@@ -237,7 +244,14 @@ var _ = ginkgo.Describe("HyperNode Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.TopologyV1alpha1().HyperNodes().Create(context.TODO(), hyperNode, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("member must have at least one member"))
+		// Accept both webhook error message and CRD validation error message
+		// CRD validation: "spec.members in body should have at least 1 items"
+		// Webhook: "member must have at least one member"
+		errMsg := err.Error()
+		gomega.Expect(errMsg).To(gomega.Or(
+			gomega.ContainSubstring("member must have at least one member"),
+			gomega.ContainSubstring("members"),
+		))
 	})
 
 	ginkgo.It("Should reject HyperNode creation with invalid exactMatch name (invalid DNS name)", func() {
@@ -383,7 +397,14 @@ var _ = ginkgo.Describe("HyperNode Validating E2E Test", func() {
 
 		// We expect an error containing our validation message
 		gomega.Expect(updateErr).To(gomega.HaveOccurred())
-		gomega.Expect(updateErr.Error()).To(gomega.ContainSubstring("member must have at least one member"))
+		// Accept both webhook error message and CRD validation error message
+		// CRD validation: "spec.members in body should have at least 1 items"
+		// Webhook: "member must have at least one member"
+		errMsg := updateErr.Error()
+		gomega.Expect(errMsg).To(gomega.Or(
+			gomega.ContainSubstring("member must have at least one member"),
+			gomega.ContainSubstring("members"),
+		))
 
 		// Cleanup
 		err = testCtx.Vcclient.TopologyV1alpha1().HyperNodes().Delete(context.TODO(), hyperNodeName, metav1.DeleteOptions{})
