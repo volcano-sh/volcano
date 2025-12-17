@@ -469,6 +469,21 @@ func BuildQueueWithPriorityAndResourcesQuantity(qname string, priority int32, de
 	return queue
 }
 
+// BuildQueueWithPriorityAndResourcesQuantity return a queue with parents, deserved and capability resources quantity.
+func BuildQueueWithParents(name string, parent string, deserved v1.ResourceList, cap v1.ResourceList) *schedulingv1beta1.Queue {
+	queue := BuildQueueWithResourcesQuantity(name, deserved, cap)
+	queue.Spec.Parent = parent
+	return queue
+}
+
+// BuildQueueWithParentsAndGuarantee return a queue with parents, guarantee, deserved and capability resources quantity.
+func BuildQueueWithParentsAndGuarantee(name string, parent string, guarantee v1.ResourceList, deserved v1.ResourceList, cap v1.ResourceList) *schedulingv1beta1.Queue {
+	queue := BuildQueueWithResourcesQuantity(name, deserved, cap)
+	queue.Spec.Parent = parent
+	queue.Spec.Guarantee.Resource = guarantee
+	return queue
+}
+
 // ////// build in resource //////
 // BuildPriorityClass return pc
 func BuildPriorityClass(name string, value int32) *schedulingv1.PriorityClass {
