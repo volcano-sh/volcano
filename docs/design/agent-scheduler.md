@@ -64,7 +64,7 @@ The design of the scheduling queue is heavily inspired by and directly reference
 The scheduling queue manages the execution order of pods and consists of three components: **activeQ**, **backoffQ**, and **unschedulable pods pool**.
 
 - **ActiveQ**: Stores pods that are ready for immediate scheduling.
-- **BackoffQ**: Stores pods that have failed scheduling but are waiting for a backoff period to expire.
+- **BackoffQ**: Stores pods that are potentially schedulable (e.g., triggered by cluster events) but are waiting for a backoff period to expire. This prevents the scheduler from being overwhelmed by frequent retries, ensuring high scheduling throughput.
 - **Unschedulable Pods Pool**: Stores pods that have failed scheduling and are determined to be unschedulable under current cluster conditions.
 
 A key enhancement over the standard queue logic is the **Urgent Retry Mechanism** for binding conflicts. 
@@ -77,10 +77,14 @@ The workflow is as follows:
 
 1. When new unscheduled pending pods are watched, they are added to the **activeQ**, the pods will be popped from the **activeQ** and tried to be scheduled.
 2. If scheduling fails for the pod, it will be added to the **unschedulable pods pool**.
-3. When cluster events occur (such as node updates, pod deletions, etc.), the scheduler checks pods in the **unschedulable pods pool**, if the event makes a pod potentially schedulable, the pod is moved to either **backoffQ** or **activeQ**, depending on whether it is still within its backoff period.
+3. When cluster events occur (such as node updates, pod deletions, etc.), the scheduler checks pods in the **unschedulable pods pool**. If the event makes a pod potentially schedulable:
+    - If the pod is still within its backoff period, it is moved to the **backoffQ** to wait until the backoff time expires.
+    - If the backoff period has expired, it is moved directly to the **activeQ**.
 4. **On Binding Conflict**: The pod is annotated with a high-priority tag and immediately re-added to the **activeQ**'s head, 
 bypassing the backoff cycle to quickly retry scheduling.
 
+The workflow diagram is shown as follows:
+![](images/agent-scheduler/scheduling-queue-diagram.png)
 
 ## Snapshot maintenance
 Design of snapshot fast update mechanism and why. 
