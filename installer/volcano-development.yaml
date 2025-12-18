@@ -317,9 +317,11 @@ spec:
               maxRetry:
                 default: 3
                 format: int32
+                minimum: 0
                 type: integer
               minAvailable:
                 format: int32
+                minimum: 0
                 type: integer
               minSuccess:
                 format: int32
@@ -328,8 +330,11 @@ spec:
               networkTopology:
                 properties:
                   highestTierAllowed:
+                    minimum: 0
                     type: integer
                   highestTierName:
+                    maxLength: 253
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   mode:
                     default: hard
@@ -387,12 +392,18 @@ spec:
                   type: object
                 type: array
               priorityClassName:
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               queue:
+                default: default
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               runningEstimate:
                 type: string
               schedulerName:
+                maxLength: 63
                 type: string
               tasks:
                 items:
@@ -408,23 +419,34 @@ spec:
                       type: object
                     maxRetry:
                       format: int32
+                      minimum: 0
                       type: integer
                     minAvailable:
                       format: int32
+                      minimum: 0
                       type: integer
+                      x-kubernetes-validations:
+                      - message: minAvailable must not be greater than replicas
+                        rule: '!has(self.minAvailable) || self.minAvailable <= self.replicas'
                     name:
+                      maxLength: 63
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
                     partitionPolicy:
                       properties:
                         minPartitions:
                           default: 0
                           format: int32
+                          minimum: 0
                           type: integer
                         networkTopology:
                           properties:
                             highestTierAllowed:
+                              minimum: 0
                               type: integer
                             highestTierName:
+                              maxLength: 253
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                               type: string
                             mode:
                               default: hard
@@ -435,14 +457,21 @@ spec:
                           type: object
                         partitionSize:
                           format: int32
+                          minimum: 1
                           type: integer
                         totalPartitions:
                           format: int32
+                          minimum: 1
                           type: integer
                       required:
                       - partitionSize
                       - totalPartitions
                       type: object
+                      x-kubernetes-validations:
+                      - message: The product of totalPartitions and partitionSize
+                          must equal replicas
+                        rule: '!has(self.partitionPolicy) || self.partitionPolicy.totalPartitions
+                          * self.partitionPolicy.partitionSize == self.replicas'
                     policies:
                       items:
                         properties:
@@ -487,6 +516,7 @@ spec:
                       type: array
                     replicas:
                       format: int32
+                      minimum: 0
                       type: integer
                     template:
                       properties:
@@ -4305,14 +4335,18 @@ spec:
                       - single-numa-node
                       type: string
                   type: object
+                minItems: 1
                 type: array
               ttlSecondsAfterFinished:
                 format: int32
+                minimum: 0
                 type: integer
               volumes:
                 items:
                   properties:
                     mountPath:
+                      minLength: 1
+                      pattern: ^[^:]+$
                       type: string
                     volumeClaim:
                       properties:
@@ -4403,6 +4437,7 @@ spec:
                           type: string
                       type: object
                     volumeClaimName:
+                      maxLength: 253
                       type: string
                   required:
                   - mountPath
@@ -4429,18 +4464,23 @@ spec:
                 type: object
               failed:
                 format: int32
+                minimum: 0
                 type: integer
               minAvailable:
                 format: int32
+                minimum: 0
                 type: integer
               pending:
                 format: int32
+                minimum: 0
                 type: integer
               retryCount:
                 format: int32
+                minimum: 0
                 type: integer
               running:
                 format: int32
+                minimum: 0
                 type: integer
               runningDuration:
                 type: string
@@ -4452,12 +4492,24 @@ spec:
                   message:
                     type: string
                   phase:
+                    enum:
+                    - Pending
+                    - Aborting
+                    - Aborted
+                    - Running
+                    - Restarting
+                    - Completing
+                    - Completed
+                    - Terminating
+                    - Terminated
+                    - Failed
                     type: string
                   reason:
                     type: string
                 type: object
               succeeded:
                 format: int32
+                minimum: 0
                 type: integer
               taskStatusCount:
                 additionalProperties:
@@ -4471,12 +4523,15 @@ spec:
                 type: object
               terminating:
                 format: int32
+                minimum: 0
                 type: integer
               unknown:
                 format: int32
+                minimum: 0
                 type: integer
               version:
                 format: int32
+                minimum: 0
                 type: integer
             type: object
         type: object
@@ -4554,9 +4609,11 @@ spec:
                       maxRetry:
                         default: 3
                         format: int32
+                        minimum: 0
                         type: integer
                       minAvailable:
                         format: int32
+                        minimum: 0
                         type: integer
                       minSuccess:
                         format: int32
@@ -4565,8 +4622,11 @@ spec:
                       networkTopology:
                         properties:
                           highestTierAllowed:
+                            minimum: 0
                             type: integer
                           highestTierName:
+                            maxLength: 253
+                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                             type: string
                           mode:
                             default: hard
@@ -4624,12 +4684,18 @@ spec:
                           type: object
                         type: array
                       priorityClassName:
+                        maxLength: 253
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                         type: string
                       queue:
+                        default: default
+                        maxLength: 253
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                         type: string
                       runningEstimate:
                         type: string
                       schedulerName:
+                        maxLength: 63
                         type: string
                       tasks:
                         items:
@@ -4645,23 +4711,35 @@ spec:
                               type: object
                             maxRetry:
                               format: int32
+                              minimum: 0
                               type: integer
                             minAvailable:
                               format: int32
+                              minimum: 0
                               type: integer
+                              x-kubernetes-validations:
+                              - message: minAvailable must not be greater than replicas
+                                rule: '!has(self.minAvailable) || self.minAvailable
+                                  <= self.replicas'
                             name:
+                              maxLength: 63
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                               type: string
                             partitionPolicy:
                               properties:
                                 minPartitions:
                                   default: 0
                                   format: int32
+                                  minimum: 0
                                   type: integer
                                 networkTopology:
                                   properties:
                                     highestTierAllowed:
+                                      minimum: 0
                                       type: integer
                                     highestTierName:
+                                      maxLength: 253
+                                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                                       type: string
                                     mode:
                                       default: hard
@@ -4672,14 +4750,21 @@ spec:
                                   type: object
                                 partitionSize:
                                   format: int32
+                                  minimum: 1
                                   type: integer
                                 totalPartitions:
                                   format: int32
+                                  minimum: 1
                                   type: integer
                               required:
                               - partitionSize
                               - totalPartitions
                               type: object
+                              x-kubernetes-validations:
+                              - message: The product of totalPartitions and partitionSize
+                                  must equal replicas
+                                rule: '!has(self.partitionPolicy) || self.partitionPolicy.totalPartitions
+                                  * self.partitionPolicy.partitionSize == self.replicas'
                             policies:
                               items:
                                 properties:
@@ -4724,6 +4809,7 @@ spec:
                               type: array
                             replicas:
                               format: int32
+                              minimum: 0
                               type: integer
                             template:
                               properties:
@@ -8542,14 +8628,18 @@ spec:
                               - single-numa-node
                               type: string
                           type: object
+                        minItems: 1
                         type: array
                       ttlSecondsAfterFinished:
                         format: int32
+                        minimum: 0
                         type: integer
                       volumes:
                         items:
                           properties:
                             mountPath:
+                              minLength: 1
+                              pattern: ^[^:]+$
                               type: string
                             volumeClaim:
                               properties:
@@ -8640,6 +8730,7 @@ spec:
                                   type: string
                               type: object
                             volumeClaimName:
+                              maxLength: 253
                               type: string
                           required:
                           - mountPath
@@ -9273,6 +9364,7 @@ spec:
                   if there's not enough resources to start all tasks, the scheduler
                   will not start anyone.
                 format: int32
+                minimum: 0
                 type: integer
               minResources:
                 additionalProperties:
@@ -9305,11 +9397,13 @@ spec:
                   highestTierAllowed:
                     description: HighestTierAllowed specifies the highest tier that
                       a job allowed to cross when scheduling.
+                    minimum: 0
                     type: integer
                   highestTierName:
                     description: |-
                       HighestTierName specifies the highest tier name that a job allowed to cross when scheduling.
                       HighestTierName and HighestTierAllowed cannot be set simultaneously.
+                    maxLength: 253
                     type: string
                   mode:
                     default: hard
@@ -9327,12 +9421,15 @@ spec:
                   name must be defined by creating a PriorityClass object with that name.
                   If not specified, the PodGroup priority will be default or zero if there is no
                   default.
+                maxLength: 253
                 type: string
               queue:
                 default: default
                 description: |-
                   Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
                   the PodGroup will not be scheduled. Defaults to `default` Queue with the lowest weight.
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               subGroupPolicy:
                 description: |-
@@ -9406,9 +9503,11 @@ spec:
                         MinSubGroups: Minimum number of subgroups required to trigger scheduling. Scheduling is initiated only if cluster resources meet the requirements of at least this number of subgroups.
                         Subgroup-level Gang Scheduling
                       format: int32
+                      minimum: 0
                       type: integer
                     name:
                       description: Name specifies the name of SubGroupPolicy
+                      maxLength: 253
                       type: string
                     networkTopology:
                       description: NetworkTopology defines the NetworkTopology config,
@@ -9418,11 +9517,13 @@ spec:
                         highestTierAllowed:
                           description: HighestTierAllowed specifies the highest tier
                             that a job allowed to cross when scheduling.
+                          minimum: 0
                           type: integer
                         highestTierName:
                           description: |-
                             HighestTierName specifies the highest tier name that a job allowed to cross when scheduling.
                             HighestTierName and HighestTierAllowed cannot be set simultaneously.
+                          maxLength: 253
                           type: string
                         mode:
                           default: hard
@@ -9434,10 +9535,12 @@ spec:
                           type: string
                       type: object
                     subGroupSize:
+                      default: 1
                       description: |-
                         SubGroupSize defines the number of pods in each sub-affinity group.
                         Only when a subGroup of pods, with a size of "subGroupSize", can satisfy the network topology constraint then will the subGroup be scheduled.
                       format: int32
+                      minimum: 1
                       type: integer
                   type: object
                 type: array
@@ -9480,17 +9583,26 @@ spec:
               failed:
                 description: The number of pods which reached phase Failed.
                 format: int32
+                minimum: 0
                 type: integer
               phase:
                 description: Current phase of PodGroup.
+                enum:
+                - Pending
+                - Running
+                - Unknown
+                - Inqueue
+                - Completed
                 type: string
               running:
                 description: The number of actively running pods.
                 format: int32
+                minimum: 0
                 type: integer
               succeeded:
                 description: The number of pods which reached phase Succeeded.
                 format: int32
+                minimum: 0
                 type: integer
             type: object
         type: object
@@ -9646,11 +9758,14 @@ spec:
                 type: object
               parent:
                 description: Parent define the parent of queue
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               priority:
                 description: Priority define the priority of queue. Higher values
                   are prioritized for scheduling and considered later during reclamation.
                 format: int32
+                minimum: 0
                 type: integer
               reclaimable:
                 description: Reclaimable indicate whether the queue can be reclaimed
@@ -9658,6 +9773,7 @@ spec:
                 type: boolean
               type:
                 description: Type define the type of queue
+                maxLength: 253
                 type: string
               weight:
                 default: 1
@@ -9681,14 +9797,17 @@ spec:
               completed:
                 description: The number of `Completed` PodGroup in this queue.
                 format: int32
+                minimum: 0
                 type: integer
               inqueue:
                 description: The number of `Inqueue` PodGroup in this queue.
                 format: int32
+                minimum: 0
                 type: integer
               pending:
                 description: The number of 'Pending' PodGroup in this queue.
                 format: int32
+                minimum: 0
                 type: integer
               reservation:
                 description: Reservation is the profile of resource reservation for
@@ -9713,13 +9832,20 @@ spec:
               running:
                 description: The number of 'Running' PodGroup in this queue.
                 format: int32
+                minimum: 0
                 type: integer
               state:
                 description: State is state of queue
+                enum:
+                - Open
+                - Closed
+                - Closing
+                - Unknown
                 type: string
               unknown:
                 description: The number of 'Unknown' PodGroup in this queue.
                 format: int32
+                minimum: 0
                 type: integer
             type: object
         type: object
@@ -10349,9 +10475,11 @@ spec:
               maxRetry:
                 default: 3
                 format: int32
+                minimum: 0
                 type: integer
               minAvailable:
                 format: int32
+                minimum: 0
                 type: integer
               minSuccess:
                 format: int32
@@ -10360,8 +10488,11 @@ spec:
               networkTopology:
                 properties:
                   highestTierAllowed:
+                    minimum: 0
                     type: integer
                   highestTierName:
+                    maxLength: 253
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                   mode:
                     default: hard
@@ -10419,12 +10550,18 @@ spec:
                   type: object
                 type: array
               priorityClassName:
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               queue:
+                default: default
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               runningEstimate:
                 type: string
               schedulerName:
+                maxLength: 63
                 type: string
               tasks:
                 items:
@@ -10440,23 +10577,34 @@ spec:
                       type: object
                     maxRetry:
                       format: int32
+                      minimum: 0
                       type: integer
                     minAvailable:
                       format: int32
+                      minimum: 0
                       type: integer
+                      x-kubernetes-validations:
+                      - message: minAvailable must not be greater than replicas
+                        rule: '!has(self.minAvailable) || self.minAvailable <= self.replicas'
                     name:
+                      maxLength: 63
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
                     partitionPolicy:
                       properties:
                         minPartitions:
                           default: 0
                           format: int32
+                          minimum: 0
                           type: integer
                         networkTopology:
                           properties:
                             highestTierAllowed:
+                              minimum: 0
                               type: integer
                             highestTierName:
+                              maxLength: 253
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                               type: string
                             mode:
                               default: hard
@@ -10467,14 +10615,21 @@ spec:
                           type: object
                         partitionSize:
                           format: int32
+                          minimum: 1
                           type: integer
                         totalPartitions:
                           format: int32
+                          minimum: 1
                           type: integer
                       required:
                       - partitionSize
                       - totalPartitions
                       type: object
+                      x-kubernetes-validations:
+                      - message: The product of totalPartitions and partitionSize
+                          must equal replicas
+                        rule: '!has(self.partitionPolicy) || self.partitionPolicy.totalPartitions
+                          * self.partitionPolicy.partitionSize == self.replicas'
                     policies:
                       items:
                         properties:
@@ -10519,6 +10674,7 @@ spec:
                       type: array
                     replicas:
                       format: int32
+                      minimum: 0
                       type: integer
                     template:
                       properties:
@@ -14337,14 +14493,18 @@ spec:
                       - single-numa-node
                       type: string
                   type: object
+                minItems: 1
                 type: array
               ttlSecondsAfterFinished:
                 format: int32
+                minimum: 0
                 type: integer
               volumes:
                 items:
                   properties:
                     mountPath:
+                      minLength: 1
+                      pattern: ^[^:]+$
                       type: string
                     volumeClaim:
                       properties:
@@ -14435,6 +14595,7 @@ spec:
                           type: string
                       type: object
                     volumeClaimName:
+                      maxLength: 253
                       type: string
                   required:
                   - mountPath
@@ -14518,6 +14679,7 @@ spec:
                                     minimum: 0
                                     type: integer
                                   taskName:
+                                    maxLength: 253
                                     type: string
                                 type: object
                               type: array
@@ -14525,8 +14687,10 @@ spec:
                               items:
                                 properties:
                                   phase:
+                                    maxLength: 63
                                     type: string
                                   taskName:
+                                    maxLength: 253
                                     type: string
                                 type: object
                               type: array
@@ -14538,6 +14702,7 @@ spec:
                                     minimum: 0
                                     type: integer
                                   taskName:
+                                    maxLength: 253
                                     type: string
                                 required:
                                 - port
@@ -14559,9 +14724,11 @@ spec:
                             maxRetry:
                               default: 3
                               format: int32
+                              minimum: 0
                               type: integer
                             minAvailable:
                               format: int32
+                              minimum: 0
                               type: integer
                             minSuccess:
                               format: int32
@@ -14570,8 +14737,11 @@ spec:
                             networkTopology:
                               properties:
                                 highestTierAllowed:
+                                  minimum: 0
                                   type: integer
                                 highestTierName:
+                                  maxLength: 253
+                                  pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                                   type: string
                                 mode:
                                   default: hard
@@ -14629,12 +14799,18 @@ spec:
                                 type: object
                               type: array
                             priorityClassName:
+                              maxLength: 253
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                               type: string
                             queue:
+                              default: default
+                              maxLength: 253
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                               type: string
                             runningEstimate:
                               type: string
                             schedulerName:
+                              maxLength: 63
                               type: string
                             tasks:
                               items:
@@ -14650,23 +14826,36 @@ spec:
                                     type: object
                                   maxRetry:
                                     format: int32
+                                    minimum: 0
                                     type: integer
                                   minAvailable:
                                     format: int32
+                                    minimum: 0
                                     type: integer
+                                    x-kubernetes-validations:
+                                    - message: minAvailable must not be greater than
+                                        replicas
+                                      rule: '!has(self.minAvailable) || self.minAvailable
+                                        <= self.replicas'
                                   name:
+                                    maxLength: 63
+                                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                                     type: string
                                   partitionPolicy:
                                     properties:
                                       minPartitions:
                                         default: 0
                                         format: int32
+                                        minimum: 0
                                         type: integer
                                       networkTopology:
                                         properties:
                                           highestTierAllowed:
+                                            minimum: 0
                                             type: integer
                                           highestTierName:
+                                            maxLength: 253
+                                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                                             type: string
                                           mode:
                                             default: hard
@@ -14677,14 +14866,21 @@ spec:
                                         type: object
                                       partitionSize:
                                         format: int32
+                                        minimum: 1
                                         type: integer
                                       totalPartitions:
                                         format: int32
+                                        minimum: 1
                                         type: integer
                                     required:
                                     - partitionSize
                                     - totalPartitions
                                     type: object
+                                    x-kubernetes-validations:
+                                    - message: The product of totalPartitions and
+                                        partitionSize must equal replicas
+                                      rule: '!has(self.partitionPolicy) || self.partitionPolicy.totalPartitions
+                                        * self.partitionPolicy.partitionSize == self.replicas'
                                   policies:
                                     items:
                                       properties:
@@ -14729,6 +14925,7 @@ spec:
                                     type: array
                                   replicas:
                                     format: int32
+                                    minimum: 0
                                     type: integer
                                   template:
                                     properties:
@@ -18547,14 +18744,18 @@ spec:
                                     - single-numa-node
                                     type: string
                                 type: object
+                              minItems: 1
                               type: array
                             ttlSecondsAfterFinished:
                               format: int32
+                              minimum: 0
                               type: integer
                             volumes:
                               items:
                                 properties:
                                   mountPath:
+                                    minLength: 1
+                                    pattern: ^[^:]+$
                                     type: string
                                   volumeClaim:
                                     properties:
@@ -18645,6 +18846,7 @@ spec:
                                         type: string
                                     type: object
                                   volumeClaimName:
+                                    maxLength: 253
                                     type: string
                                 required:
                                 - mountPath
@@ -18704,6 +18906,7 @@ spec:
                       type: string
                     restartCount:
                       format: int32
+                      minimum: 0
                       type: integer
                     runningHistories:
                       items:
@@ -18736,6 +18939,12 @@ spec:
               state:
                 properties:
                   phase:
+                    enum:
+                    - Succeed
+                    - Terminating
+                    - Failed
+                    - Running
+                    - Pending
                     type: string
                 type: object
               terminatedJobs:

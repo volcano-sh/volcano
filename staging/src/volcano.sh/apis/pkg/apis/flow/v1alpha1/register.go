@@ -15,8 +15,8 @@ limitations under the License.
 */
 
 // Package v1alpha1 contains API Schema definitions for the flow v1alpha1 API group
-//+kubebuilder:object:generate=true
-//+groupName=flow.volcano.sh
+// +kubebuilder:object:generate=true
+// +groupName=flow.volcano.sh
 package v1alpha1
 
 import (

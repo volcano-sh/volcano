@@ -42,12 +42,16 @@ cd "${SCRIPT_ROOT}"
 # Configuration
 STAGING_DIR="${SCRIPT_ROOT}/staging/src/volcano.sh/apis"
 APIS_REPO_URL=${APIS_REPO_URL:-"https://github.com/volcano-sh/apis.git"}
-APIS_REPO_DIR=${APIS_REPO_DIR:-"/tmp/volcano-apis-sync"}
+# Use mktemp for secure temporary directory creation if not provided via environment
+# This prevents race conditions and security issues with fixed paths
+APIS_REPO_DIR=${APIS_REPO_DIR:-""}
 TARGET_BRANCH=${TARGET_BRANCH:-"master"}
 BRANCH_NAME=""
 PUSH=false
 FORCE=false
 COMMAND="sync"
+# Track if we created the temp directory ourselves (for cleanup)
+APIS_REPO_DIR_CREATED=false
 
 # Colors for output
 RED='\033[0;31m'
@@ -75,6 +79,11 @@ print_error() {
 # Cleanup function for error handling
 cleanup() {
     local exit_code=$?
+    # Clean up temporary directory if we created it
+    if [[ "${APIS_REPO_DIR_CREATED}" == "true" ]] && [[ -n "${APIS_REPO_DIR}" ]] && [[ -d "${APIS_REPO_DIR}" ]]; then
+        print_info "Cleaning up temporary directory: ${APIS_REPO_DIR}"
+        rm -rf "${APIS_REPO_DIR}"
+    fi
     if [[ ${exit_code} -ne 0 ]]; then
         print_error "Script failed with exit code ${exit_code}"
     fi
@@ -100,7 +109,7 @@ Options:
 
 Environment Variables:
     APIS_REPO_URL       URL of the apis repository (default: https://github.com/volcano-sh/apis.git)
-    APIS_REPO_DIR       Local directory for cloning (default: /tmp/volcano-apis-sync)
+    APIS_REPO_DIR       Local directory for cloning (default: auto-created via mktemp)
     TARGET_BRANCH       Target branch in apis repo (default: master)
 
 Examples:
@@ -142,7 +151,8 @@ do_init() {
     mkdir -p "${STAGING_DIR}"
     
     # Clone apis repo to temp directory
-    local TEMP_DIR="/tmp/volcano-apis-init-$$"
+    # Use mktemp for secure temporary directory creation
+    local TEMP_DIR=$(mktemp -d /tmp/volcano-apis-init.XXXXXX)
     print_info "Cloning apis repository (branch: ${TARGET_BRANCH})..."
     
     if ! git clone --depth 1 --branch "${TARGET_BRANCH}" "${APIS_REPO_URL}" "${TEMP_DIR}" 2>&1; then
@@ -201,11 +211,17 @@ do_sync() {
     print_info "Source commit: ${VOLCANO_SHA_SHORT} - ${VOLCANO_COMMIT_MSG}"
     print_info "Author: ${VOLCANO_AUTHOR} <${VOLCANO_EMAIL}>"
     
-    # Clone or update apis repository
-    print_info "Preparing apis repository..."
-    if [[ -d "${APIS_REPO_DIR}" ]]; then
-        print_info "Removing existing directory: ${APIS_REPO_DIR}"
-        rm -rf "${APIS_REPO_DIR}"
+    # Create temporary directory if not provided via environment variable
+    if [[ -z "${APIS_REPO_DIR}" ]]; then
+        APIS_REPO_DIR=$(mktemp -d /tmp/volcano-apis-sync.XXXXXX)
+        APIS_REPO_DIR_CREATED=true
+        print_info "Created temporary directory: ${APIS_REPO_DIR}"
+    else
+        # If directory was provided, ensure it doesn't exist or remove it
+        if [[ -d "${APIS_REPO_DIR}" ]]; then
+            print_info "Removing existing directory: ${APIS_REPO_DIR}"
+            rm -rf "${APIS_REPO_DIR}"
+        fi
     fi
     
     print_info "Cloning apis repository from ${APIS_REPO_URL}..."
@@ -256,10 +272,18 @@ Source: https://github.com/volcano-sh/volcano/commit/${VOLCANO_SHA}"
         git push origin "${BRANCH_NAME}"
         print_success "Changes pushed to origin/${BRANCH_NAME}"
         print_info "Create a PR at: https://github.com/volcano-sh/apis/compare/${TARGET_BRANCH}...${BRANCH_NAME}"
+        # If we created the temp directory and push succeeded, we can mark it for cleanup
+        # (cleanup will happen in trap handler)
     else
         print_success "Changes committed locally."
         print_info "To push changes, run:"
         echo "    cd ${APIS_REPO_DIR} && git push origin ${BRANCH_NAME}"
+        # If not pushing, keep the directory for user to manually push
+        # Only cleanup if we created it and user doesn't need it
+        if [[ "${APIS_REPO_DIR_CREATED}" == "true" ]]; then
+            print_info "Temporary directory preserved at: ${APIS_REPO_DIR}"
+            print_info "It will be cleaned up on script exit."
+        fi
     fi
     
     echo "SYNC_RESULT=success"

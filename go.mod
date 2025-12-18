@@ -52,7 +52,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.6.0
 	stathat.com/c/consistent v1.0.0
-	volcano.sh/apis v1.13.1
+	volcano.sh/apis v0.0.0
 )
 
 require (
@@ -178,7 +178,6 @@ require (
 )
 
 replace (
-
 	cloud.google.com/go => cloud.google.com/go v0.100.2
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc => go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.19.0
 	google.golang.org/grpc => google.golang.org/grpc v1.64.0
