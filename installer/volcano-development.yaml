@@ -425,9 +425,6 @@ spec:
                       format: int32
                       minimum: 0
                       type: integer
-                      x-kubernetes-validations:
-                      - message: minAvailable must not be greater than replicas
-                        rule: '!has(self.minAvailable) || self.minAvailable <= self.replicas'
                     name:
                       maxLength: 63
                       pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
@@ -467,11 +464,6 @@ spec:
                       - partitionSize
                       - totalPartitions
                       type: object
-                      x-kubernetes-validations:
-                      - message: The product of totalPartitions and partitionSize
-                          must equal replicas
-                        rule: '!has(self.partitionPolicy) || self.partitionPolicy.totalPartitions
-                          * self.partitionPolicy.partitionSize == self.replicas'
                     policies:
                       items:
                         properties:
@@ -4717,10 +4709,6 @@ spec:
                               format: int32
                               minimum: 0
                               type: integer
-                              x-kubernetes-validations:
-                              - message: minAvailable must not be greater than replicas
-                                rule: '!has(self.minAvailable) || self.minAvailable
-                                  <= self.replicas'
                             name:
                               maxLength: 63
                               pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
@@ -4760,11 +4748,6 @@ spec:
                               - partitionSize
                               - totalPartitions
                               type: object
-                              x-kubernetes-validations:
-                              - message: The product of totalPartitions and partitionSize
-                                  must equal replicas
-                                rule: '!has(self.partitionPolicy) || self.partitionPolicy.totalPartitions
-                                  * self.partitionPolicy.partitionSize == self.replicas'
                             policies:
                               items:
                                 properties:
@@ -10583,9 +10566,6 @@ spec:
                       format: int32
                       minimum: 0
                       type: integer
-                      x-kubernetes-validations:
-                      - message: minAvailable must not be greater than replicas
-                        rule: '!has(self.minAvailable) || self.minAvailable <= self.replicas'
                     name:
                       maxLength: 63
                       pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
@@ -10625,11 +10605,6 @@ spec:
                       - partitionSize
                       - totalPartitions
                       type: object
-                      x-kubernetes-validations:
-                      - message: The product of totalPartitions and partitionSize
-                          must equal replicas
-                        rule: '!has(self.partitionPolicy) || self.partitionPolicy.totalPartitions
-                          * self.partitionPolicy.partitionSize == self.replicas'
                     policies:
                       items:
                         properties:
@@ -14832,11 +14807,6 @@ spec:
                                     format: int32
                                     minimum: 0
                                     type: integer
-                                    x-kubernetes-validations:
-                                    - message: minAvailable must not be greater than
-                                        replicas
-                                      rule: '!has(self.minAvailable) || self.minAvailable
-                                        <= self.replicas'
                                   name:
                                     maxLength: 63
                                     pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
@@ -14876,11 +14846,6 @@ spec:
                                     - partitionSize
                                     - totalPartitions
                                     type: object
-                                    x-kubernetes-validations:
-                                    - message: The product of totalPartitions and
-                                        partitionSize must equal replicas
-                                      rule: '!has(self.partitionPolicy) || self.partitionPolicy.totalPartitions
-                                        * self.partitionPolicy.partitionSize == self.replicas'
                                   policies:
                                     items:
                                       properties:

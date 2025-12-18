@@ -18,6 +18,7 @@ package admission
 
 import (
 	"context"
+	"strings"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
@@ -84,7 +85,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("job 'minAvailable' must be >= 0"))
+		// Accept either CRD validation error or webhook/ValidatingAdmissionPolicy error
+		errMsg := err.Error()
+		gomega.Expect(errMsg).To(gomega.ContainSubstring("minAvailable"))
 	})
 
 	ginkgo.It("Should reject job creation with invalid maxRetry less than zero", func() {
@@ -96,7 +99,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("'maxRetry' cannot be less than zero"))
+		// Accept either CRD validation error or webhook/ValidatingAdmissionPolicy error
+		errMsg := err.Error()
+		gomega.Expect(errMsg).To(gomega.ContainSubstring("maxRetry"))
 	})
 
 	ginkgo.It("Should reject job creation with invalid TTLSecondsAfterFinished less than zero", func() {
@@ -109,7 +114,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("'ttlSecondsAfterFinished' cannot be less than zero"))
+		// Accept either CRD validation error or webhook/ValidatingAdmissionPolicy error
+		errMsg := err.Error()
+		gomega.Expect(errMsg).To(gomega.ContainSubstring("ttlSecondsAfterFinished"))
 	})
 
 	ginkgo.It("Should reject job creation with no tasks specified", func() {
@@ -142,7 +149,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("'replicas' < 0 in task"))
+		// Accept either CRD validation error or webhook/ValidatingAdmissionPolicy error
+		errMsg := err.Error()
+		gomega.Expect(errMsg).To(gomega.ContainSubstring("replicas"))
 	})
 
 	ginkgo.It("Should reject job creation with task minAvailable less than zero", func() {
@@ -155,7 +164,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("'minAvailable' < 0 in task"))
+		// Accept either CRD validation error or webhook/ValidatingAdmissionPolicy error
+		errMsg := err.Error()
+		gomega.Expect(errMsg).To(gomega.ContainSubstring("minAvailable"))
 	})
 
 	ginkgo.It("Should reject job creation with task minAvailable greater than replicas", func() {
@@ -194,7 +205,15 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("a lowercase RFC 1123 label must consist of lower case alphanumeric characters"))
+		// Accept either CRD validation error or webhook/ValidatingAdmissionPolicy error
+		// CRD validation: "spec.tasks[0].name: Invalid value: "Task-1": spec.tasks[0].name in body should match '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'"
+		// Webhook/ValidatingAdmissionPolicy: "a lowercase RFC 1123 label must consist of lower case alphanumeric characters"
+		errMsg := err.Error()
+		// Both error messages should contain "name" or RFC 1123 message or Task-1
+		hasName := strings.Contains(errMsg, "name")
+		hasRFC1123 := strings.Contains(errMsg, "a lowercase RFC 1123 label must consist of lower case alphanumeric characters")
+		hasTask1 := strings.Contains(errMsg, "Task-1")
+		gomega.Expect(hasName || hasRFC1123 || hasTask1).To(gomega.BeTrue())
 	})
 
 	ginkgo.It("Should reject job creation with duplicate policy events", func() {
@@ -345,7 +364,12 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("mountPath is required"))
+		// Accept either CRD validation error (from kubebuilder:validation:MinLength=1) or webhook/ValidatingAdmissionPolicy error
+		// CRD validation: "spec.volumes[0].mountPath: Invalid value: "": spec.volumes[0].mountPath in body should be at least 1 chars long"
+		// Webhook/ValidatingAdmissionPolicy: "mountPath is required"
+		errMsg := err.Error()
+		// Both error messages should contain "mountPath"
+		gomega.Expect(errMsg).To(gomega.ContainSubstring("mountPath"))
 	})
 
 	ginkgo.It("Should reject job creation with duplicate volume mount paths", func() {

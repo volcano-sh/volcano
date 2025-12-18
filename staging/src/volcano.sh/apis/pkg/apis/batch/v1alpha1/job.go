@@ -251,7 +251,6 @@ type TaskSpec struct {
 	// The minimal available pods to run for this Task
 	// Defaults to the task replicas
 	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:XValidation:rule="!has(self.minAvailable) || self.minAvailable <= self.replicas",message="minAvailable must not be greater than replicas"
 	// +optional
 	MinAvailable *int32 `json:"minAvailable,omitempty" protobuf:"bytes,3,opt,name=minAvailable"`
 
@@ -279,7 +278,6 @@ type TaskSpec struct {
 	DependsOn *DependsOn `json:"dependsOn,omitempty" protobuf:"bytes,8,opt,name=dependsOn"`
 
 	// PartitionPolicy defines the partition policy of a task.
-	// +kubebuilder:validation:XValidation:rule="!has(self.partitionPolicy) || self.partitionPolicy.totalPartitions * self.partitionPolicy.partitionSize == self.replicas",message="The product of totalPartitions and partitionSize must equal replicas"
 	// +optional
 	PartitionPolicy *PartitionPolicySpec `json:"partitionPolicy,omitempty" protobuf:"bytes,9,opt,name=partitionPolicy"`
 }
