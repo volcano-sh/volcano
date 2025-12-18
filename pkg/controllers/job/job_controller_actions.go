@@ -769,11 +769,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 		}
 		minTaskMember := map[string]int32{}
 		for _, task := range job.Spec.Tasks {
-			if task.MinAvailable != nil {
-				minTaskMember[task.Name] = *task.MinAvailable
-			} else {
-				minTaskMember[task.Name] = task.Replicas
-			}
+			minTaskMember[task.Name] = cc.getMinTaskMember(task)
 		}
 
 		pg := &scheduling.PodGroup{
@@ -835,6 +831,16 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	return err
 }
 
+func (cc *jobcontroller) getMinTaskMember(task batch.TaskSpec) int32 {
+	if task.MinAvailable != nil {
+		return *task.MinAvailable
+	}
+	if task.PartitionPolicy != nil && task.PartitionPolicy.MinPartitions != 0 && task.PartitionPolicy.PartitionSize != 0 {
+		return task.PartitionPolicy.MinPartitions * task.PartitionPolicy.PartitionSize
+	}
+	return task.Replicas
+}
+
 func (cc *jobcontroller) shouldUpdateExistingPodGroup(pg *scheduling.PodGroup, job *batch.Job) bool {
 	pgShouldUpdate := false
 	if pg.Spec.PriorityClassName != job.Spec.PriorityClassName {
@@ -855,10 +861,7 @@ func (cc *jobcontroller) shouldUpdateExistingPodGroup(pg *scheduling.PodGroup, j
 	}
 
 	for _, task := range job.Spec.Tasks {
-		cnt := task.Replicas
-		if task.MinAvailable != nil {
-			cnt = *task.MinAvailable
-		}
+		cnt := cc.getMinTaskMember(task)
 
 		if taskMember, ok := pg.Spec.MinTaskMember[task.Name]; !ok {
 			pgShouldUpdate = true

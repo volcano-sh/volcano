@@ -30,6 +30,7 @@ import (
 
 func TestNewSubJobInfo(t *testing.T) {
 	type args struct {
+		gid         SubJobGID
 		uid         SubJobID
 		job         JobID
 		policy      *scheduling.SubGroupPolicySpec
@@ -43,6 +44,7 @@ func TestNewSubJobInfo(t *testing.T) {
 		{
 			name: "All field provided",
 			args: args{
+				gid: "test-gid",
 				uid: "test-uid",
 				job: "test-job",
 				policy: &scheduling.SubGroupPolicySpec{
@@ -55,6 +57,7 @@ func TestNewSubJobInfo(t *testing.T) {
 				matchValues: []string{"1"},
 			},
 			want: &SubJobInfo{
+				GID:             "test-gid",
 				UID:             "test-uid",
 				Job:             "test-job",
 				MinAvailable:    4,
@@ -71,12 +74,14 @@ func TestNewSubJobInfo(t *testing.T) {
 		{
 			name: "No policy provided",
 			args: args{
+				gid:         "test-gid",
 				uid:         "test-uid",
 				job:         "test-job",
 				policy:      nil,
 				matchValues: []string{"1"},
 			},
 			want: &SubJobInfo{
+				GID:             "test-gid",
 				UID:             "test-uid",
 				Job:             "test-job",
 				MinAvailable:    1,
@@ -90,6 +95,7 @@ func TestNewSubJobInfo(t *testing.T) {
 		{
 			name: "No SubGroupSize provided",
 			args: args{
+				gid: "test-gid",
 				uid: "test-uid",
 				job: "test-job",
 				policy: &scheduling.SubGroupPolicySpec{
@@ -101,6 +107,7 @@ func TestNewSubJobInfo(t *testing.T) {
 				matchValues: []string{"1"},
 			},
 			want: &SubJobInfo{
+				GID:             "test-gid",
 				UID:             "test-uid",
 				Job:             "test-job",
 				MinAvailable:    1,
@@ -117,6 +124,7 @@ func TestNewSubJobInfo(t *testing.T) {
 		{
 			name: "No networkTopology provided",
 			args: args{
+				gid: "test-gid",
 				uid: "test-uid",
 				job: "test-job",
 				policy: &scheduling.SubGroupPolicySpec{
@@ -126,6 +134,7 @@ func TestNewSubJobInfo(t *testing.T) {
 				matchValues: []string{},
 			},
 			want: &SubJobInfo{
+				GID:             "test-gid",
 				UID:             "test-uid",
 				Job:             "test-job",
 				MinAvailable:    2,
@@ -138,8 +147,8 @@ func TestNewSubJobInfo(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewSubJobInfo(tt.args.uid, tt.args.job, tt.args.policy, tt.args.matchValues)
-			assert.Equalf(t, tt.want, got, "NewSubJobInfo(%v, %v, %v, %v)", tt.args.uid, tt.args.job, tt.args.policy, tt.args.matchValues)
+			got := NewSubJobInfo(tt.args.gid, tt.args.uid, tt.args.job, tt.args.policy, tt.args.matchValues)
+			assert.Equalf(t, tt.want, got, "NewSubJobInfo(%v, %v, %v, %v, %v)", tt.args.gid, tt.args.uid, tt.args.job, tt.args.policy, tt.args.matchValues)
 		})
 	}
 }

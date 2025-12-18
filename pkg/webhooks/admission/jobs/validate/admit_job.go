@@ -172,6 +172,9 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 			} else if *task.MinAvailable > task.Replicas {
 				msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s;", task.Name, job.Name)
 			}
+			if task.PartitionPolicy != nil && task.PartitionPolicy.MinPartitions != 0 {
+				msg += fmt.Sprintf("must not specify 'minAvailable' and 'partitionPolicy.minPartitions' simultaneously in task: %s, job: %s;", task.Name, job.Name)
+			}
 		}
 
 		// count replicas
