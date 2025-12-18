@@ -182,11 +182,6 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		return
 	}
 
-	if pod.DeletionTimestamp != nil {
-		cc.deletePod(pod)
-		return
-	}
-
 	req := apis.Request{
 		Namespace:   pod.Namespace,
 		JobName:     jobName,
@@ -230,11 +225,6 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 	}
 
 	if newPod.ResourceVersion == oldPod.ResourceVersion {
-		return
-	}
-
-	if newPod.DeletionTimestamp != nil {
-		cc.deletePod(newObj)
 		return
 	}
 
