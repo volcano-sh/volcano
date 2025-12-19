@@ -82,14 +82,13 @@ func AdmitHyperNode(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespon
 	}
 }
 
-// validateHyperNodeMemberSelector is to validate hypernode member selector.
-// Selector presence, mutual exclusivity, ExactMatch.Name format, and RegexMatch.Pattern required
-// validations are now enforced by CRD schema validation (XValidation).
-func validateHyperNodeMemberSelector(selector hypernodev1alpha1.MemberSelector, fldPath *field.Path) field.ErrorList {
+// validateHyperNodeRegexPattern validates regex pattern compilation.
+// Note: Other selector validations (mutual exclusivity, required fields, format) are now
+// enforced by CRD x-kubernetes-validations and VAP. This function only validates regex
+// pattern compilation, as VAP only does basic syntax checks.
+func validateHyperNodeRegexPattern(selector hypernodev1alpha1.MemberSelector, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
-
-	// Regex pattern compilation validation - this requires runtime validation and cannot be done by schema
-	if selector.RegexMatch != nil {
+	if selector.RegexMatch != nil && selector.RegexMatch.Pattern != "" {
 		if _, err := regexp.Compile(selector.RegexMatch.Pattern); err != nil {
 			err := field.Invalid(fldPath.Child("regexMatch").Child("pattern"),
 				selector.RegexMatch.Pattern, fmt.Sprintf("member regexMatch pattern is invalid: %v", err))
@@ -107,8 +106,10 @@ func validateHyperNode(hypernode *hypernodev1alpha1.HyperNode) error {
 		errs = append(errs, field.Invalid(resourcePath.Child("spec").Child("members"), hypernode.Spec.Members,
 			"member must have at least one member"))
 	}
+	// Note: selector validations (mutual exclusivity, required fields, format) are now enforced by CRD x-kubernetes-validations and VAP
 	for _, member := range hypernode.Spec.Members {
-		errs = append(errs, validateHyperNodeMemberSelector(member.Selector,
+		// Only validate regex pattern compilation, as VAP only does basic syntax checks
+		errs = append(errs, validateHyperNodeRegexPattern(member.Selector,
 			resourcePath.Child("spec").Child("members").Child("selector"))...)
 	}
 

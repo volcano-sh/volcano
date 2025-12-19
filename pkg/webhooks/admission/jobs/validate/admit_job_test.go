@@ -36,6 +36,7 @@ import (
 
 func TestValidateJobCreate(t *testing.T) {
 	var policyExitCode int32 = -1
+	var minAvailable int32 = 4
 	namespace := "test"
 	privileged := true
 	highestTierAllowed := 1
@@ -262,9 +263,68 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "unable to find job plugin: big_plugin",
 			ExpectErr:      true,
 		},
-		// Note: Basic field validations (TTL, MinAvailable, MaxRetry, Replicas, Tasks array)
-		// are now enforced by CRD schema validation and will be rejected at API server level.
-		// Note: Task name format validation is now enforced by CRD schema validation.
+		// Note: Test cases for the following validations have been removed:
+		// - TTLSecondsAfterFinished < 0
+		// - job.MinAvailable < 0
+		// - job.MaxRetry < 0
+		// - task.Replicas < 0
+		// - task.MinAvailable < 0
+		// - task name DNS1123 format
+		// These validations are now enforced by CRD schema validation and VAP (ValidatingAdmissionPolicy).
+		// no task specified in the job
+		{
+			Name: "no-task",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "no-task",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks:        []v1alpha1.TaskSpec{},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "No task specified in job spec",
+			ExpectErr:      true,
+		},
+		// replica set less than zero
+		{
+			Name: "replica-lessThanZero",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "replica-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: -1,
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "job 'minAvailable' should not be greater than total replicas in tasks",
+			ExpectErr:      true,
+		},
 		// Policy Event with exit code
 		{
 			Name: "job-policy-withExitCode",
@@ -983,8 +1043,126 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG)",
 			ExpectErr:      true,
 		},
-		// Note: PartitionPolicy validations (PartitionSize, TotalPartitions, Replicas relationship)
-		// are now enforced by CRD schema validation and will be rejected at API server level.
+		// task PartitionSize set less than zero
+		{
+			Name: "PartitionSize-lessThanZero",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "PartitionSize-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   -1,
+								TotalPartitions: 8,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "'PartitionSize' must be greater than 0 in task: task-1, job: PartitionSize-lessThanZero",
+			ExpectErr:      true,
+		},
+		// task TotalPartitions set less than zero
+		{
+			Name: "TotalPartitions-lessThanZero",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "TotalPartitions-lessThanZero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   8,
+								TotalPartitions: -1,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "'TotalPartitions' must be greater than 0 in task: task-1, job: TotalPartitions-lessThanZero",
+			ExpectErr:      true,
+		},
+		// task-with-invalid-PartitionPolicy: replicas not equal to TotalPartitions*PartitionSize
+		{
+			Name: "task-with-invalid-PartitionPolicy",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task-with-invalid-PartitionPolicy",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   3,
+								TotalPartitions: 2,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "'Replicas' are not equal to TotalPartitions*PartitionSize in task: task-1, job: task-with-invalid-PartitionPolicy",
+			ExpectErr:      true,
+		},
 		// task-with-valid-PartitionPolicy: replicas equal to TotalPartitions*PartitionSize
 		{
 			Name: "task-with-valid-PartitionPolicy",
@@ -1165,8 +1343,50 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously",
 			ExpectErr:      true,
 		},
-		// Note: The validation for PartitionPolicy.NetworkTopology (highestTierAllowed and highestTierName)
-		// is not implemented in the webhook. Only job.Spec.NetworkTopology is validated.
+		{
+			Name: "task-with-invalid-PartitionPolicy",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task-with-invalid-PartitionPolicy",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   4,
+								TotalPartitions: 2,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:               v1alpha1.HardNetworkTopologyMode,
+									HighestTierAllowed: &highestTierAllowed,
+									HighestTierName:    "volcano.sh/hypernode",
+								},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously",
+			ExpectErr:      true,
+		},
 		{
 			Name: "task-with-valid-PartitionPolicy-MinPartitions",
 			Job: v1alpha1.Job{
@@ -1207,9 +1427,47 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "",
 			ExpectErr:      false,
 		},
-		// Note: The validation for "minAvailable and partitionPolicy.minPartitions cannot be specified simultaneously"
-		// is now enforced by CRD schema validation and will be rejected at API server level.
-		// This test case has been removed as it would never reach the webhook.
+		{
+			Name: "task-with-invalid-PartitionPolicy-MinPartitions",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task-with-invalid-PartitionPolicy-MinPartitions",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							MinAvailable: &minAvailable,
+							Replicas:     8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   4,
+								TotalPartitions: 2,
+								MinPartitions:   1,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "must not specify 'minAvailable' and 'partitionPolicy.minPartitions' simultaneously in task: task-1, job: task-with-invalid-PartitionPolicy-MinPartitions;",
+			ExpectErr:      true,
+		},
 	}
 
 	defaultqueue := &schedulingv1beta2.Queue{
@@ -1493,8 +1751,8 @@ func TestValidateJobUpdate(t *testing.T) {
 			mutateSpec:     false,
 			expectErr:      false,
 		},
-		// Note: The validation for "minAvailable >= 0" is now enforced by CRD schema validation
-		// and will be rejected at API server level. This test case has been removed as it would never reach the webhook.
+		// Note: Test case for invalid minAvailable (< 0) has been removed.
+		// This validation is now enforced by CRD schema validation and VAP (ValidatingAdmissionPolicy).
 		{
 			name:           "invalid add task",
 			replicas:       4,

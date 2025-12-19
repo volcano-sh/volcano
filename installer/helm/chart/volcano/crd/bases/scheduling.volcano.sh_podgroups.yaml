@@ -66,6 +66,7 @@ spec:
                   if there's not enough resources to start all tasks, the scheduler
                   will not start anyone.
                 format: int32
+                minimum: 0
                 type: integer
               minResources:
                 additionalProperties:
@@ -98,11 +99,13 @@ spec:
                   highestTierAllowed:
                     description: HighestTierAllowed specifies the highest tier that
                       a job allowed to cross when scheduling.
+                    minimum: 0
                     type: integer
                   highestTierName:
                     description: |-
                       HighestTierName specifies the highest tier name that a job allowed to cross when scheduling.
                       HighestTierName and HighestTierAllowed cannot be set simultaneously.
+                    maxLength: 253
                     type: string
                   mode:
                     default: hard
@@ -120,12 +123,15 @@ spec:
                   name must be defined by creating a PriorityClass object with that name.
                   If not specified, the PodGroup priority will be default or zero if there is no
                   default.
+                maxLength: 253
                 type: string
               queue:
                 default: default
                 description: |-
                   Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
                   the PodGroup will not be scheduled. Defaults to `default` Queue with the lowest weight.
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               subGroupPolicy:
                 description: |-
@@ -199,9 +205,11 @@ spec:
                         MinSubGroups: Minimum number of subgroups required to trigger scheduling. Scheduling is initiated only if cluster resources meet the requirements of at least this number of subgroups.
                         Subgroup-level Gang Scheduling
                       format: int32
+                      minimum: 0
                       type: integer
                     name:
                       description: Name specifies the name of SubGroupPolicy
+                      maxLength: 253
                       type: string
                     networkTopology:
                       description: NetworkTopology defines the NetworkTopology config,
@@ -211,11 +219,13 @@ spec:
                         highestTierAllowed:
                           description: HighestTierAllowed specifies the highest tier
                             that a job allowed to cross when scheduling.
+                          minimum: 0
                           type: integer
                         highestTierName:
                           description: |-
                             HighestTierName specifies the highest tier name that a job allowed to cross when scheduling.
                             HighestTierName and HighestTierAllowed cannot be set simultaneously.
+                          maxLength: 253
                           type: string
                         mode:
                           default: hard
@@ -227,10 +237,12 @@ spec:
                           type: string
                       type: object
                     subGroupSize:
+                      default: 1
                       description: |-
                         SubGroupSize defines the number of pods in each sub-affinity group.
                         Only when a subGroup of pods, with a size of "subGroupSize", can satisfy the network topology constraint then will the subGroup be scheduled.
                       format: int32
+                      minimum: 1
                       type: integer
                   type: object
                 type: array
@@ -273,17 +285,26 @@ spec:
               failed:
                 description: The number of pods which reached phase Failed.
                 format: int32
+                minimum: 0
                 type: integer
               phase:
                 description: Current phase of PodGroup.
+                enum:
+                - Pending
+                - Running
+                - Unknown
+                - Inqueue
+                - Completed
                 type: string
               running:
                 description: The number of actively running pods.
                 format: int32
+                minimum: 0
                 type: integer
               succeeded:
                 description: The number of pods which reached phase Succeeded.
                 format: int32
+                minimum: 0
                 type: integer
             type: object
         type: object

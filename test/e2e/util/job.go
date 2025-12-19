@@ -222,9 +222,11 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			restartPolicy = task.RestartPolicy
 		}
 
+		// Note: maxRetry must be >= 0 per CRD schema validation.
+		// When task.MaxRetry is 0, keep it as 0 (no retry) instead of -1.
 		maxRetry := task.MaxRetry
-		if maxRetry == 0 {
-			maxRetry = -1
+		if maxRetry < 0 {
+			maxRetry = 0
 		}
 
 		ts := batchv1alpha1.TaskSpec{

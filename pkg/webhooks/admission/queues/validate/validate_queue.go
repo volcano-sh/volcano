@@ -115,7 +115,8 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 	errs := field.ErrorList{}
 	resourcePath := field.NewPath("requestBody")
 
-	// Basic validations (state, weight, priority, parent format) are now enforced by CRD schema validation.
+	errs = append(errs, validateStateOfQueue(queue.Status.State, resourcePath.Child("spec").Child("state"))...)
+	// Note: weight >= 1 validation is now enforced by CRD schema (minimum: 1)
 	errs = append(errs, validateResourceOfQueue(queue.Spec, resourcePath.Child("spec"))...)
 	errs = append(errs, validateHierarchicalAttributes(queue, resourcePath.Child("metadata").Child("annotations"))...)
 
@@ -181,6 +182,27 @@ func validateHierarchicalAttributes(queue *schedulingv1beta1.Queue, fldPath *fie
 		}
 	}
 	return errs
+}
+
+func validateStateOfQueue(value schedulingv1beta1.QueueState, fldPath *field.Path) field.ErrorList {
+	errs := field.ErrorList{}
+
+	if len(value) == 0 {
+		return errs
+	}
+
+	validQueueStates := []schedulingv1beta1.QueueState{
+		schedulingv1beta1.QueueStateOpen,
+		schedulingv1beta1.QueueStateClosed,
+	}
+
+	for _, validQueue := range validQueueStates {
+		if value == validQueue {
+			return errs
+		}
+	}
+
+	return append(errs, field.Invalid(fldPath, value, fmt.Sprintf("queue state must be in %v", validQueueStates)))
 }
 
 func validateResourceOfQueue(resource schedulingv1beta1.QueueSpec, fldPath *field.Path) field.ErrorList {

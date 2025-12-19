@@ -121,7 +121,14 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
-	// Basic validations (MinAvailable, MaxRetry, TTLSecondsAfterFinished, Tasks array) are now enforced by CRD schema validation.
+	// Note: Basic validations like minAvailable >= 0, maxRetry >= 0, TTLSecondsAfterFinished >= 0,
+	// task.Replicas >= 0, task.MinAvailable >= 0, task.MinAvailable <= task.Replicas,
+	// job.MinAvailable <= totalReplicas, duplicate task name, task name DNS1123 format,
+	// These validations have been removed from webhook to avoid duplication.
+	if len(job.Spec.Tasks) == 0 {
+		reviewResponse.Allowed = false
+		return "No task specified in job spec"
+	}
 
 	if _, ok := job.Spec.Plugins[controllerMpi.MPIPluginName]; ok {
 		mp := controllerMpi.NewInstance(job.Spec.Plugins[controllerMpi.MPIPluginName])
@@ -144,7 +151,16 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 			hasDependenciesBetweenTasks = true
 		}
 
-		// Basic task validations (Replicas, MinAvailable, Name format) are now enforced by CRD schema validation.
+		// Validate minAvailable and partitionPolicy.minPartitions mutual exclusivity
+		// This validation is not covered by CRD schema or VAP, so it remains in webhook.
+		if task.MinAvailable != nil {
+			if *task.MinAvailable > task.Replicas {
+				msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s;", task.Name, job.Name)
+			}
+			if task.PartitionPolicy != nil && task.PartitionPolicy.MinPartitions != 0 {
+				msg += fmt.Sprintf("must not specify 'minAvailable' and 'partitionPolicy.minPartitions' simultaneously in task: %s, job: %s;", task.Name, job.Name)
+			}
+		}
 		// count replicas
 		totalReplicas += task.Replicas
 
@@ -155,7 +171,6 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		} else {
 			taskNames[task.Name] = task.Name
 		}
-
 		if err := validatePolicies(task.Policies, field.NewPath("spec.tasks.policies")); err != nil {
 			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v;",
 				getValidEvents(), getValidActions())
@@ -171,7 +186,6 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	if totalReplicas < job.Spec.MinAvailable {
 		msg += " job 'minAvailable' should not be greater than total replicas in tasks;"
 	}
-
 	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
 		msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v;",
 			getValidEvents(), getValidActions())
@@ -236,7 +250,17 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 func validateJobUpdate(old, new *v1alpha1.Job) error {
 	var totalReplicas int32
 	for _, task := range new.Spec.Tasks {
-		// Basic task validations (Replicas, MinAvailable, PartitionPolicy) are now enforced by CRD schema validation.
+		if task.Replicas < 0 {
+			return fmt.Errorf("'replicas' must be >= 0 in task: %s", task.Name)
+		}
+
+		if task.MinAvailable != nil {
+			if *task.MinAvailable < 0 {
+				return fmt.Errorf("'minAvailable' must be >= 0 in task: %s", task.Name)
+			} else if *task.MinAvailable > task.Replicas {
+				return fmt.Errorf("'minAvailable' must be <= 'replicas' in task: %s", task.Name)
+			}
+		}
 		msg := validatePartitionPolicy(task, new)
 		if msg != "" {
 			return fmt.Errorf("%s", msg)
@@ -245,10 +269,15 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 		// count replicas
 		totalReplicas += task.Replicas
 	}
-	// job.Spec.MinAvailable >= 0 is now enforced by CRD schema validation.
-	// The validation that minAvailable <= sum of task replicas remains in webhook as it requires aggregating across array elements.
 	if new.Spec.MinAvailable > totalReplicas {
 		return fmt.Errorf("job 'minAvailable' must not be greater than total replicas")
+	}
+	if new.Spec.MinAvailable < 0 {
+		return fmt.Errorf("job 'minAvailable' must be >= 0")
+	}
+	networkTopology := new.Spec.NetworkTopology
+	if networkTopology != nil && networkTopology.HighestTierAllowed != nil && networkTopology.HighestTierName != "" {
+		return fmt.Errorf("must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously")
 	}
 
 	if len(old.Spec.Tasks) != len(new.Spec.Tasks) {
@@ -286,9 +315,19 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 }
 
 func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {
-	// PartitionPolicy validations (TotalPartitions, PartitionSize, Replicas relationship) are now enforced by CRD schema validation.
-	// This function is kept for potential future use but currently returns no errors.
-	return ""
+	var msg string
+	if task.PartitionPolicy != nil {
+		if task.PartitionPolicy.TotalPartitions <= 0 {
+			msg += fmt.Sprintf("'TotalPartitions' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
+		} else if task.PartitionPolicy.PartitionSize <= 0 {
+			msg += fmt.Sprintf("'PartitionSize' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
+		} else if task.Replicas != task.PartitionPolicy.TotalPartitions*task.PartitionPolicy.PartitionSize {
+			msg += fmt.Sprintf("'Replicas' are not equal to TotalPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
+		}
+		msg += validateNetworkTopology(task.PartitionPolicy.NetworkTopology)
+	}
+
+	return msg
 }
 
 func validateNetworkTopology(networkTopology *v1alpha1.NetworkTopologySpec) string {

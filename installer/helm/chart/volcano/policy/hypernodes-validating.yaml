@@ -43,7 +43,7 @@ spec:
         has(object.spec) && has(object.spec.members) && size(object.spec.members) > 0
       message: "member must have at least one member"
       reason: Invalid
-
+      
     # Validate that each member has at least one selector type
     - expression: |
         !has(object.spec) || !has(object.spec.members) || size(object.spec.members) == 0 ||
@@ -84,7 +84,6 @@ spec:
           .all(member, member.selector.regexMatch.pattern != "")
       message: "member regexMatch pattern is required"
       reason: Invalid
-
     # Basic regex pattern validation - check for common invalid patterns
     # Note: CEL doesn't have full regex compilation support, so we do basic checks
 
