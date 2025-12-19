@@ -45,9 +45,7 @@ func TestAddFlags(t *testing.T) {
 	utilfeature.DefaultMutableFeatureGate.AddFlag(fs)
 
 	args := []string{
-		"--schedule-period=5m",
 		"--resync-period=0",
-		"--priority-class=false",
 		"--cache-dumper=false",
 		"--leader-elect-lease-duration=60s",
 		"--leader-elect-renew-deadline=20s",
@@ -58,8 +56,8 @@ func TestAddFlags(t *testing.T) {
 
 	// This is a snapshot of expected options parsed by args.
 	expected := &ServerOption{
-		SchedulerNames: []string{agentSchedulerName},
-		ResyncPeriod:   0,
+		SchedulerName: agentSchedulerName,
+		ResyncPeriod:  0,
 		LeaderElection: config.LeaderElectionConfiguration{
 			LeaderElect:       true,
 			LeaseDuration:     metav1.Duration{Duration: 60 * time.Second},

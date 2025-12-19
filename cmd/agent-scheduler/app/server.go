@@ -22,14 +22,6 @@ import (
 	"fmt"
 	"os"
 
-	"volcano.sh/apis/pkg/apis/helpers"
-	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
-	scheduler "volcano.sh/volcano/pkg/agentscheduler"
-	"volcano.sh/volcano/pkg/agentscheduler/metrics"
-	"volcano.sh/volcano/pkg/kube"
-	"volcano.sh/volcano/pkg/signals"
-	commonutil "volcano.sh/volcano/pkg/util"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	clientset "k8s.io/client-go/kubernetes"
@@ -47,6 +39,14 @@ import (
 
 	// Register rest client metrics
 	_ "k8s.io/component-base/metrics/prometheus/restclient"
+
+	"volcano.sh/apis/pkg/apis/helpers"
+	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
+	scheduler "volcano.sh/volcano/pkg/agentscheduler"
+	"volcano.sh/volcano/pkg/agentscheduler/metrics"
+	"volcano.sh/volcano/pkg/kube"
+	"volcano.sh/volcano/pkg/signals"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 // Run the volcano scheduler.
@@ -94,7 +94,7 @@ func Run(opt *options.ServerOption) error {
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: leaderElectionClient.CoreV1().Events(opt.LeaderElection.ResourceNamespace)})
-	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(opt.SchedulerNames)})
+	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName([]string{opt.SchedulerName})})
 
 	hostname, err := os.Hostname()
 	if err != nil {

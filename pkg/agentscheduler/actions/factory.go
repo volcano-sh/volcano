@@ -3,7 +3,7 @@ Copyright 2019 The Kubernetes Authors.
 Copyright 2025 The Volcano Authors.
 
 Modifications made by Volcano authors:
-- Added enqueue and shuffle actions to extend scheduling capabilities
+- Added allocate actions to extend scheduling capabilities
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

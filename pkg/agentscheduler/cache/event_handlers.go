@@ -154,9 +154,8 @@ func (sc *SchedulerCache) AddPodToCache(obj interface{}) {
 	}
 
 	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-
 	err = sc.addPod(pod)
+	sc.Mutex.Unlock()
 	if err != nil {
 		klog.Errorf("Failed to add pod <%s/%s> into cache: %v",
 			pod.Namespace, pod.Name, err)

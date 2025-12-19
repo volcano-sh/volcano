@@ -23,17 +23,17 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// bindMethodMap Binder management
-var bindMethodMap Binder
+// binder Binder management
+var binder Binder
 
 // RegisterBindMethod register Bind Method
-func RegisterBindMethod(binder Binder) {
-	bindMethodMap = binder
+func RegisterBindMethod(b Binder) {
+	binder = b
 }
 
 // GetBindMethod get the registered Binder
 func GetBindMethod() Binder {
-	return bindMethodMap
+	return binder
 }
 
 // BinderRegistry is used to hold the registered binders, such as pre-binders, post-binders

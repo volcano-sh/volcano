@@ -107,7 +107,7 @@ func (alloc *Action) allocateTask(schedCtx *agentapi.SchedulingContext) error {
 		SchedCtx:       schedCtx,
 		BindContext:    alloc.CreateBindContext(schedCtx),
 	}
-	alloc.EnqueueSchedulerResultForTask(result)
+	alloc.SendResultToBinder(result)
 
 	return nil
 }
@@ -198,7 +198,7 @@ func (alloc *Action) CreateBindContext(schedCtx *agentapi.SchedulingContext) *ag
 	return bindContext
 }
 
-func (alloc *Action) EnqueueSchedulerResultForTask(result *agentapi.PodScheduleResult) {
+func (alloc *Action) SendResultToBinder(result *agentapi.PodScheduleResult) {
 	alloc.fwk.Cache.EnqueueScheduleResult(result)
 }
 

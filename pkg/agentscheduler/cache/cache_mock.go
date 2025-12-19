@@ -99,12 +99,11 @@ func getNodeWorkers() uint32 {
 func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 	msc := &SchedulerCache{
 		Nodes:              make(map[string]*schedulingapi.NodeInfo),
-		errTasks:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		nodeQueue:          workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		kubeClient:         fake.NewSimpleClientset(),
 		vcClient:           fakevcClient.NewSimpleClientset(),
 		restConfig:         nil,
-		schedulerNames:     []string{schedulerName},
+		schedulerName:      schedulerName,
 		nodeSelectorLabels: make(map[string]sets.Empty),
 		imageStates:        make(map[string]*imageState),
 

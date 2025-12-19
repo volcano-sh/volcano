@@ -61,7 +61,7 @@ type ServerOption struct {
 	CertData          []byte
 	KeyData           []byte
 	CaCertData        []byte
-	SchedulerNames    []string
+	SchedulerName     string
 	SchedulerConf     string
 	ResyncPeriod      time.Duration
 	// leaderElection defines the configuration of leader election.
@@ -117,7 +117,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", "", "Define the namespace of the lock object; it is volcano-system by default.")
 	fs.MarkDeprecated("lock-object-namespace", "This flag is deprecated and will be removed in a future release. Please use --leader-elect-resource-namespace instead.")
 	// volcano scheduler will ignore pods with scheduler names other than specified with the option
-	fs.StringArrayVar(&s.SchedulerNames, "scheduler-name", []string{agentSchedulerName}, "vc-agent-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
+	fs.StringVar(&s.SchedulerName, "scheduler-name", agentSchedulerName, "vc-agent-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
 	fs.DurationVar(&s.ResyncPeriod, "resync-period", defaultResyncPeriod, "The default resync period for k8s native informer factory")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
@@ -157,7 +157,6 @@ func (s *ServerOption) RegisterOptions() {
 	ServerOpts = s
 	//some package from scheduler pkg rely on options defined in scheduler pkg
 	voptions.ServerOpts = voptions.NewServerOption()
-	voptions.ServerOpts.EnableCSIStorage = s.EnableCSIStorage
 }
 
 // readCAFiles read data from ca file path

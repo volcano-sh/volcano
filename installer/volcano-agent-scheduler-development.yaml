@@ -176,7 +176,6 @@ spec:
             - --leader-elect=false
             - --kube-api-qps=2000
             - --kube-api-burst=2000
-            - --schedule-period=1s
             - --node-worker-threads=20
             - --worker-count=1
             - -v=3

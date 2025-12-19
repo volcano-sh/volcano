@@ -59,14 +59,11 @@ func (binder *ConflictAwareBinder) Run(stopCh <-chan struct{}) {
 
 func (binder *ConflictAwareBinder) processScheduleResult() {
 	for {
-		select {
-		case scheduleResult, ok := <-binder.BindCheckChannel:
-			if !ok {
-				return
-			}
-			binder.CheckAndBindPod(scheduleResult)
-		default:
+		scheduleResult, ok := <-binder.BindCheckChannel
+		if !ok {
+			return
 		}
+		binder.CheckAndBindPod(scheduleResult)
 		if len(binder.BindCheckChannel) == 0 {
 			break
 		}

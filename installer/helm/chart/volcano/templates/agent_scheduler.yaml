@@ -202,9 +202,6 @@ spec:
             {{- if .Values.custom.scheduler_kube_api_burst }}
             - --kube-api-burst={{.Values.custom.scheduler_kube_api_burst}}
             {{- end }}
-            {{- if .Values.custom.scheduler_schedule_period }}
-            - --schedule-period={{.Values.custom.scheduler_schedule_period}}
-            {{- end }}
             {{- if .Values.custom.scheduler_node_worker_threads }}
             - --node-worker-threads={{.Values.custom.scheduler_node_worker_threads}}
             {{- end }}

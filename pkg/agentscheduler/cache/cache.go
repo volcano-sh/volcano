@@ -20,13 +20,11 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -76,9 +74,11 @@ func init() {
 var _ Cache = &SchedulerCache{}
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerNames []string, nodeSelectors []string, nodeWorkers uint32, resyncPeriod time.Duration) Cache {
-	return newSchedulerCache(config, schedulerNames, nodeSelectors, nodeWorkers, resyncPeriod)
+func New(config *rest.Config, schedulerName string, nodeSelectors []string, nodeWorkers uint32, resyncPeriod time.Duration) Cache {
+	return newSchedulerCache(config, schedulerName, nodeSelectors, nodeWorkers, resyncPeriod)
 }
+
+//TODO: abstract common field and functions for volcano and agent scheduler, so each scheduler only depend on common part and customized part
 
 // SchedulerCache cache for the kube batch
 type SchedulerCache struct {
@@ -88,7 +88,7 @@ type SchedulerCache struct {
 	restConfig *rest.Config
 	vcClient   vcclient.Interface
 	// schedulerName is the name for volcano scheduler
-	schedulerNames     []string
+	schedulerName      string
 	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
@@ -106,7 +106,6 @@ type SchedulerCache struct {
 
 	taskCache *TaskCache
 
-	errTasks  workqueue.TypedRateLimitingInterface[string]
 	nodeQueue workqueue.TypedRateLimitingInterface[string]
 
 	informerFactory   informers.SharedInformerFactory
@@ -283,7 +282,7 @@ func (sc *SchedulerCache) setBatchBindParallel() {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerNames []string, nodeSelectors []string, nodeWorkers uint32, resyncPeriod time.Duration) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, schedulerName string, nodeSelectors []string, nodeWorkers uint32, resyncPeriod time.Duration) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -297,19 +296,13 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, nodeSelecto
 		panic(fmt.Sprintf("failed init eventClient, with err: %v", err))
 	}
 
-	errTaskRateLimiter := workqueue.NewTypedMaxOfRateLimiter[string](
-		workqueue.NewTypedItemExponentialFailureRateLimiter[string](5*time.Millisecond, 1000*time.Second),
-		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
-	)
-
 	sc := &SchedulerCache{
 		Nodes:              make(map[string]*schedulingapi.NodeInfo),
-		errTasks:           workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
 		nodeQueue:          workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		kubeClient:         kubeClient,
 		vcClient:           vcClient,
 		restConfig:         config,
-		schedulerNames:     schedulerNames,
+		schedulerName:      schedulerName,
 		nodeSelectorLabels: make(map[string]sets.Empty),
 		imageStates:        make(map[string]*imageState),
 
@@ -326,13 +319,13 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, nodeSelecto
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: eventClient.CoreV1().Events("")})
-	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName(sc.schedulerNames)})
+	sc.Recorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: commonutil.GenerateComponentName([]string{sc.schedulerName})})
 
 	// set concurrency configuration when binding
 	sc.setBatchBindParallel()
-	if bindMethodMap == nil {
+	if binder == nil {
 		klog.V(3).Info("no registered bind method, new a default one")
-		bindMethodMap = NewDefaultBinder(sc.kubeClient, sc.Recorder)
+		binder = NewDefaultBinder(sc.kubeClient, sc.Recorder)
 	}
 	sc.Binder = GetBindMethod()
 
@@ -352,9 +345,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, nodeSelecto
 	sc.cancel = cancel
 
 	queueingHintMapPerProfile := make(k8sschedulingqueue.QueueingHintMapPerProfile)
-	for _, schedulerName := range sc.schedulerNames {
-		queueingHintMapPerProfile[schedulerName] = buildQueueingHintMap()
-	}
+	queueingHintMapPerProfile[sc.schedulerName] = buildQueueingHintMap()
 	sc.schedulingQueue = k8sschedulingqueue.NewSchedulingQueue(
 		Less,
 		sc.informerFactory,
@@ -400,12 +391,6 @@ func (sc *SchedulerCache) addEventHandler() {
 	// `Namespace` informer is used by `InterPodAffinity` plugin,
 	// `SelectorSpread` and `PodTopologySpread` plugins uses the following four so far.
 	informerFactory.Core().V1().Namespaces().Informer()
-	informerFactory.Core().V1().Services().Informer()
-	if utilfeature.DefaultFeatureGate.Enabled(features.WorkLoadSupport) {
-		informerFactory.Core().V1().ReplicationControllers().Informer()
-		informerFactory.Apps().V1().ReplicaSets().Informer()
-		informerFactory.Apps().V1().StatefulSets().Informer()
-	}
 
 	// `PodDisruptionBudgets` informer is used by `Pdb` plugin
 	if utilfeature.DefaultFeatureGate.Enabled(features.PodDisruptionBudgetsSupport) {
@@ -487,7 +472,7 @@ func (sc *SchedulerCache) addEventHandler() {
 				switch v := obj.(type) {
 				case *v1.Pod:
 					// if the pod is not scheduled and scheduled by agent scheduler
-					if len(v.Spec.NodeName) == 0 && slices.Contains(sc.schedulerNames, v.Spec.SchedulerName) {
+					if len(v.Spec.NodeName) == 0 && sc.schedulerName == v.Spec.SchedulerName {
 						return true
 					}
 					return false
@@ -783,12 +768,6 @@ func (sc *SchedulerCache) AddBindTask(bindContext *agentapi.BindContext) error {
 	if err := sc.UpdateTaskStatus(task, schedulingapi.Binding); err != nil {
 		return err
 	}
-
-	err := task.SetPodResourceDecision()
-	if err != nil {
-		return fmt.Errorf("set task %v/%v resource decision failed, err %v", task.Namespace, task.Name, err)
-	}
-	task.NumaInfo = task.NumaInfo.Clone()
 
 	// Add task to the node.
 	if err := node.AddTask(task); err != nil {

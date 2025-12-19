@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
@@ -79,7 +78,7 @@ func NewAgentScheduler(config *rest.Config, opt *options.ServerOption) (*Schedul
 		}
 	}
 
-	cache := schedcache.New(config, opt.SchedulerNames, opt.NodeSelector, opt.NodeWorkerThreads, opt.ResyncPeriod)
+	cache := schedcache.New(config, opt.SchedulerName, opt.NodeSelector, opt.NodeWorkerThreads, opt.ResyncPeriod)
 	scheduler := &Scheduler{
 		schedulerConf:      opt.SchedulerConf,
 		fileWatcher:        watcher,
@@ -110,7 +109,16 @@ func (sched *Scheduler) Run(stopCh <-chan struct{}) {
 		worker := &Worker{}
 		worker.framework = framework.NewFramework(sched.actions, sched.tiers, sched.cache, sched.configurations)
 		index := i
-		go wait.Until(func() { worker.runOnce(index) }, 0, stopCh)
+		go func() {
+			for {
+				select {
+				case <-stopCh:
+					return
+				default:
+					worker.runOnce(index)
+				}
+			}
+		}()
 	}
 	if options.ServerOpts.EnableCacheDumper {
 		sched.dumper.ListenForSignal(stopCh)
@@ -245,7 +253,7 @@ func (sched *Scheduler) loadSchedulerConf() {
 	sched.tiers = tiers
 	sched.configurations = configurations
 	sched.metricsConf = metricsConf
-	sched.mutex.Unlock()
+	defer sched.mutex.Unlock()
 }
 
 func (sched *Scheduler) getSchedulerConf() (actions []string, plugins []string) {

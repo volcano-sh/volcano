@@ -38,9 +38,6 @@ import (
 	// Import default actions/plugins.
 	_ "volcano.sh/volcano/pkg/agentscheduler/actions"
 	_ "volcano.sh/volcano/pkg/agentscheduler/plugins"
-
-	// init assert
-	_ "volcano.sh/volcano/pkg/scheduler/util/assert"
 )
 
 var logFlushFreq = pflag.Duration("log-flush-frequency", 5*time.Second, "Maximum number of seconds between log flushes")
@@ -57,7 +54,7 @@ func main() {
 	utilfeature.DefaultMutableFeatureGate.AddFlag(fs)
 
 	commonutil.LeaderElectionDefault(&s.LeaderElection)
-	s.LeaderElection.ResourceName = commonutil.GenerateComponentName(s.SchedulerNames)
+	s.LeaderElection.ResourceName = commonutil.GenerateComponentName([]string{s.SchedulerName})
 	componentbaseoptions.BindLeaderElectionFlags(&s.LeaderElection, fs)
 	s.RegisterOptions()
 
