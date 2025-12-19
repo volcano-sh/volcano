@@ -15,7 +15,7 @@ on:
         default: ''
 
 env:
-  APIS_REPO: volcano-sh/apis
+  APIS_REPO: PersistentJZH/apis
 
 jobs:
   sync-apis:
