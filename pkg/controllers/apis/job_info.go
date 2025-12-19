@@ -229,6 +229,25 @@ func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 	return nil
 }
 
+// HasPod checks whether the given k8s pod exists in the JobInfo struct.
+func (ji *JobInfo) HasPod(pod *v1.Pod) bool {
+	taskName, found := pod.Annotations[batch.TaskSpecKey]
+	if !found {
+		return false
+	}
+	_, found = pod.Annotations[batch.JobVersion]
+	if !found {
+		return false
+	}
+
+	pods, found := ji.Pods[taskName]
+	if !found {
+		return false
+	}
+	_, found = pods[pod.Name]
+	return found
+}
+
 func GetPartitionID(pod *v1.Pod) string {
 	value, ok := pod.Labels[batch.TaskPartitionID]
 	if ok {

@@ -35,6 +35,9 @@ const (
 	PodNameFmt = "%s-%s-%d"
 	// persistentVolumeClaimFmt represents persistent volume claim name format
 	persistentVolumeClaimFmt = "%s-pvc-%s"
+	// OutOfSyncKey is the pod annotation indicates that the pod should be restarted.
+	// And vcjob events (e.g. PodFailed, PodEvicted) of the pod with the annotation will be ignored.
+	OutOfSyncKey = "volcano.sh/controller-out-of-sync"
 )
 
 // GetPodIndexUnderTask returns task Index.
@@ -170,4 +173,27 @@ func GetTaskReplicasUnderJob(taskName string, job *batch.Job) int32 {
 		}
 	}
 	return 0
+}
+
+// IsOutOfSyncPod checks whether the pod is marked as out-of-sync.
+func IsOutOfSyncPod(pod *v1.Pod) bool {
+	if pod.Annotations == nil {
+		return false
+	}
+	_, exists := pod.Annotations[OutOfSyncKey]
+	return exists
+}
+
+// OutOfSyncJSONPatch generates a JSON patch to mark the pod as out-of-sync with the given reason.
+func OutOfSyncJSONPatch() []byte {
+	return []byte(fmt.Sprintf(`[{"op":"add","path":"/metadata/annotations/%s","value":"true"}]`,
+		escapeJSONPointer(OutOfSyncKey)))
+}
+
+// escapeJSONPointer escapes a string for use in a JSON Pointer.
+// See RFC 6901 for details: https://datatracker.ietf.org/doc/html/rfc6901
+func escapeJSONPointer(s string) string {
+	s = strings.ReplaceAll(s, "~", "~0")
+	s = strings.ReplaceAll(s, "/", "~1")
+	return s
 }

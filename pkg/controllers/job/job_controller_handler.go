@@ -187,6 +187,11 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		return
 	}
 
+	event := bus.PodPendingEvent
+	if jobhelpers.IsOutOfSyncPod(pod) {
+		event = bus.OutOfSyncEvent
+	}
+
 	req := apis.Request{
 		Namespace:   pod.Namespace,
 		JobName:     jobName,
@@ -195,7 +200,7 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		PodUID:      pod.UID,
 		TaskName:    taskName,
 		PartitionID: apis.GetPartitionID(pod),
-		Event:       bus.PodPendingEvent,
+		Event:       event,
 		JobVersion:  int32(dVersion),
 	}
 
@@ -305,6 +310,10 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		}
 	}
 
+	if jobhelpers.IsOutOfSyncPod(newPod) {
+		event = bus.OutOfSyncEvent
+	}
+
 	req := apis.Request{
 		Namespace:   newPod.Namespace,
 		JobName:     jobName,
@@ -375,6 +384,11 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 		return
 	}
 
+	event := bus.PodEvictedEvent
+	if jobhelpers.IsOutOfSyncPod(pod) || !cc.cache.HasPod(pod) {
+		event = bus.OutOfSyncEvent
+	}
+
 	req := apis.Request{
 		Namespace:   pod.Namespace,
 		JobName:     jobName,
@@ -383,7 +397,7 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 		PodName:     pod.Name,
 		PodUID:      pod.UID,
 		PartitionID: apis.GetPartitionID(pod),
-		Event:       bus.PodEvictedEvent,
+		Event:       event,
 		JobVersion:  int32(dVersion),
 	}
 
