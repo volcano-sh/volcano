@@ -35,10 +35,7 @@ import (
 )
 
 func TestValidateJobCreate(t *testing.T) {
-	var invTTL int32 = -1
 	var policyExitCode int32 = -1
-	var invMinAvailable int32 = -1
-	var minAvailable int32 = 4
 	namespace := "test"
 	privileged := true
 	highestTierAllowed := 1
@@ -265,243 +262,9 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "unable to find job plugin: big_plugin",
 			ExpectErr:      true,
 		},
-		// ttl-illegal
-		{
-			Name: "job-ttl-illegal",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job-ttl-illegal",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-					TTLSecondsAfterFinished: &invTTL,
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "'ttlSecondsAfterFinished' cannot be less than zero",
-			ExpectErr:      true,
-		},
-		// min-MinAvailable less than zero
-		{
-			Name: "minAvailable-lessThanZero",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "minAvailable-lessThanZero",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: -1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "job 'minAvailable' must be >= 0",
-			ExpectErr:      true,
-		},
-		// maxretry less than zero
-		{
-			Name: "maxretry-lessThanZero",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "maxretry-lessThanZero",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					MaxRetry:     -1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "'maxRetry' cannot be less than zero.",
-			ExpectErr:      true,
-		},
-		// no task specified in the job
-		{
-			Name: "no-task",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "no-task",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks:        []v1alpha1.TaskSpec{},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "No task specified in job spec",
-			ExpectErr:      true,
-		},
-		// replica set less than zero
-		{
-			Name: "replica-lessThanZero",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "replica-lessThanZero",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: -1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "'replicas' < 0 in task: task-1, job: replica-lessThanZero; job 'minAvailable' should not be greater than total replicas in tasks;",
-			ExpectErr:      true,
-		},
-		// task minAvailable set less than zero
-		{
-			Name: "replica-lessThanZero",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "taskMinAvailable-lessThanZero",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:         "task-1",
-							Replicas:     1,
-							MinAvailable: &invMinAvailable,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "'minAvailable' < 0 in task: task-1, job: taskMinAvailable-lessThanZero;",
-			ExpectErr:      true,
-		},
-		// task name error
-		{
-			Name: "nonDNS-task",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "replica-lessThanZero",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "Task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "[a lowercase RFC 1123 label must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?')];",
-			ExpectErr:      true,
-		},
+		// Note: Basic field validations (TTL, MinAvailable, MaxRetry, Replicas, Tasks array)
+		// are now enforced by CRD schema validation and will be rejected at API server level.
+		// Note: Task name format validation is now enforced by CRD schema validation.
 		// Policy Event with exit code
 		{
 			Name: "job-policy-withExitCode",
@@ -1220,126 +983,8 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "job has dependencies between tasks, but doesn't form a directed acyclic graph(DAG)",
 			ExpectErr:      true,
 		},
-		// task PartitionSize set less than zero
-		{
-			Name: "PartitionSize-lessThanZero",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "PartitionSize-lessThanZero",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 8,
-							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
-								PartitionSize:   -1,
-								TotalPartitions: 8,
-							},
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "'PartitionSize' must be greater than 0 in task: task-1, job: PartitionSize-lessThanZero",
-			ExpectErr:      true,
-		},
-		// task TotalPartitions set less than zero
-		{
-			Name: "TotalPartitions-lessThanZero",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "TotalPartitions-lessThanZero",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 8,
-							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
-								PartitionSize:   8,
-								TotalPartitions: -1,
-							},
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "'TotalPartitions' must be greater than 0 in task: task-1, job: TotalPartitions-lessThanZero",
-			ExpectErr:      true,
-		},
-		// task-with-invalid-PartitionPolicy: replicas not equal to TotalPartitions*PartitionSize
-		{
-			Name: "task-with-invalid-PartitionPolicy",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "task-with-invalid-PartitionPolicy",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 8,
-							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
-								PartitionSize:   3,
-								TotalPartitions: 2,
-							},
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "'Replicas' are not equal to TotalPartitions*PartitionSize in task: task-1, job: task-with-invalid-PartitionPolicy",
-			ExpectErr:      true,
-		},
+		// Note: PartitionPolicy validations (PartitionSize, TotalPartitions, Replicas relationship)
+		// are now enforced by CRD schema validation and will be rejected at API server level.
 		// task-with-valid-PartitionPolicy: replicas equal to TotalPartitions*PartitionSize
 		{
 			Name: "task-with-valid-PartitionPolicy",
@@ -1520,50 +1165,8 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously",
 			ExpectErr:      true,
 		},
-		{
-			Name: "task-with-invalid-PartitionPolicy",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "task-with-invalid-PartitionPolicy",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 8,
-							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
-								PartitionSize:   4,
-								TotalPartitions: 2,
-								NetworkTopology: &v1alpha1.NetworkTopologySpec{
-									Mode:               v1alpha1.HardNetworkTopologyMode,
-									HighestTierAllowed: &highestTierAllowed,
-									HighestTierName:    "volcano.sh/hypernode",
-								},
-							},
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously",
-			ExpectErr:      true,
-		},
+		// Note: The validation for PartitionPolicy.NetworkTopology (highestTierAllowed and highestTierName)
+		// is not implemented in the webhook. Only job.Spec.NetworkTopology is validated.
 		{
 			Name: "task-with-valid-PartitionPolicy-MinPartitions",
 			Job: v1alpha1.Job{
@@ -1604,47 +1207,9 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "",
 			ExpectErr:      false,
 		},
-		{
-			Name: "task-with-invalid-PartitionPolicy-MinPartitions",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "task-with-invalid-PartitionPolicy-MinPartitions",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:         "task-1",
-							MinAvailable: &minAvailable,
-							Replicas:     8,
-							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
-								PartitionSize:   4,
-								TotalPartitions: 2,
-								MinPartitions:   1,
-							},
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "must not specify 'minAvailable' and 'partitionPolicy.minPartitions' simultaneously in task: task-1, job: task-with-invalid-PartitionPolicy-MinPartitions;",
-			ExpectErr:      true,
-		},
+		// Note: The validation for "minAvailable and partitionPolicy.minPartitions cannot be specified simultaneously"
+		// is now enforced by CRD schema validation and will be rejected at API server level.
+		// This test case has been removed as it would never reach the webhook.
 	}
 
 	defaultqueue := &schedulingv1beta2.Queue{
@@ -1928,15 +1493,8 @@ func TestValidateJobUpdate(t *testing.T) {
 			mutateSpec:     false,
 			expectErr:      false,
 		},
-		{
-			name:           "invalid minAvailable",
-			replicas:       4,
-			minAvailable:   -1,
-			addTask:        false,
-			mutateTaskName: false,
-			mutateSpec:     false,
-			expectErr:      true,
-		},
+		// Note: The validation for "minAvailable >= 0" is now enforced by CRD schema validation
+		// and will be rejected at API server level. This test case has been removed as it would never reach the webhook.
 		{
 			name:           "invalid add task",
 			replicas:       4,

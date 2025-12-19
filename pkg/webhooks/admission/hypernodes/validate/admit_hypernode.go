@@ -22,7 +22,6 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog/v2"
 
@@ -84,50 +83,14 @@ func AdmitHyperNode(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespon
 }
 
 // validateHyperNodeMemberSelector is to validate hypernode member selector.
+// Selector presence, mutual exclusivity, ExactMatch.Name format, and RegexMatch.Pattern required
+// validations are now enforced by CRD schema validation (XValidation).
 func validateHyperNodeMemberSelector(selector hypernodev1alpha1.MemberSelector, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
 
-	// Count active selectors for mutual exclusivity check
-	selectorCount := 0
-	if selector.ExactMatch != nil {
-		selectorCount++
-	}
+	// Regex pattern compilation validation - this requires runtime validation and cannot be done by schema
 	if selector.RegexMatch != nil {
-		selectorCount++
-	}
-	if selector.LabelMatch != nil {
-		selectorCount++
-	}
-
-	// Validate selector presence and mutual exclusivity
-	switch {
-	case selectorCount == 0:
-		errs = append(errs, field.Invalid(fldPath, selector,
-			"member selector must have one of exactMatch, regexMatch, or labelMatch"))
-		return errs
-	case selectorCount > 1:
-		errs = append(errs, field.Invalid(fldPath, selector,
-			"cannot specify more than one selector type (exactMatch, regexMatch, labelMatch)"))
-		return errs
-	}
-
-	if selector.ExactMatch != nil {
-		if selector.ExactMatch.Name == "" {
-			err := field.Invalid(fldPath.Child("exactMatch").Child("name"),
-				selector.ExactMatch.Name, "member exactMatch name is required")
-			errs = append(errs, err)
-		} else if errMsgs := validation.IsQualifiedName(selector.ExactMatch.Name); len(errMsgs) > 0 {
-			err := field.Invalid(fldPath.Child("exactMatch").Child("name"),
-				selector.ExactMatch.Name, fmt.Sprintf("member exactMatch validate failed %v", errMsgs))
-			errs = append(errs, err)
-		}
-	}
-	if selector.RegexMatch != nil {
-		if selector.RegexMatch.Pattern == "" {
-			err := field.Invalid(fldPath.Child("regexMatch").Child("pattern"),
-				selector.RegexMatch.Pattern, "member regexMatch pattern is required")
-			errs = append(errs, err)
-		} else if _, err := regexp.Compile(selector.RegexMatch.Pattern); err != nil {
+		if _, err := regexp.Compile(selector.RegexMatch.Pattern); err != nil {
 			err := field.Invalid(fldPath.Child("regexMatch").Child("pattern"),
 				selector.RegexMatch.Pattern, fmt.Sprintf("member regexMatch pattern is invalid: %v", err))
 			errs = append(errs, err)
