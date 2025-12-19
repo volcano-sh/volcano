@@ -1,3 +1,16 @@
+/*
+Copyright 2025 The Volcano Authors.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+	http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package sharding
 
 import (
@@ -12,6 +25,13 @@ import (
 	"k8s.io/klog/v2"
 )
 
+const (
+	NODE_SOURCE       = "node-controller"
+	NODE_ADD_EVENT    = "node-added"
+	NODE_UPDATE_EVENT = "node-updated"
+	NODE_DELETE_EVENT = "node-deleted"
+)
+
 // addNodeEvent handles node addition events
 func (sc *ShardingController) addNodeEvent(obj interface{}) {
 	node := sc.getNodeFromObject(obj)
@@ -20,7 +40,7 @@ func (sc *ShardingController) addNodeEvent(obj interface{}) {
 	}
 
 	klog.V(4).Infof("Node added: %s", node.Name)
-	sc.enqueueNodeEvent(node.Name, "node-added", "node-controller")
+	sc.enqueueNodeEvent(node.Name, NODE_ADD_EVENT, NODE_SOURCE)
 }
 
 // updateNodeEvent handles node update events
@@ -33,14 +53,14 @@ func (sc *ShardingController) updateNodeEvent(oldObj, newObj interface{}) {
 	oldNode := sc.getNodeFromObject(oldObj)
 	if oldNode == nil {
 		// Treat as add if old object not found
-		sc.enqueueNodeEvent(newNode.Name, "node-added", "node-controller")
+		sc.enqueueNodeEvent(newNode.Name, NODE_ADD_EVENT, NODE_SOURCE)
 		return
 	}
 
 	// Check if significant changes occurred
 	if sc.isNodeSignificantlyChanged(oldNode, newNode) {
 		klog.V(4).Infof("Node significantly updated: %s", newNode.Name)
-		sc.enqueueNodeEvent(newNode.Name, "node-updated", "node-controller")
+		sc.enqueueNodeEvent(newNode.Name, NODE_UPDATE_EVENT, NODE_SOURCE)
 	}
 }
 
@@ -59,7 +79,7 @@ func (sc *ShardingController) deleteNodeEvent(obj interface{}) {
 	sc.metricsMutex.Unlock()
 
 	// Trigger shard sync
-	sc.enqueueNodeEvent(node.Name, "node-deleted", "node-controller")
+	sc.enqueueNodeEvent(node.Name, NODE_DELETE_EVENT, NODE_SOURCE)
 }
 
 // getNodeFromObject safely extracts a Node from an object
