@@ -307,7 +307,7 @@ func (cc *jobcontroller) worker() {
 	}
 }
 
-func (cc *jobcontroller) getWorkerQueue(key string) workqueue.TypedRateLimitingInterface[any] {
+func (cc *jobcontroller) getWorkerQueue() workqueue.TypedRateLimitingInterface[any] {
 	return cc.queue
 }
 
@@ -466,7 +466,7 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 				jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
 			return
 		}
-		queue := cc.getWorkerQueue(delayAct.jobKey)
+		queue := cc.getWorkerQueue()
 
 		if err := st.Execute(GetStateAction(delayAct)); err != nil {
 			cc.handleJobError(queue, req, st, err, delayAct.action)
