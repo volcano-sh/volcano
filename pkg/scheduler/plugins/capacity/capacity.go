@@ -41,6 +41,9 @@ const (
 	// Using the name of the plugin will likely help us avoid collisions with other plugins.
 	capacityStateKey = PluginName
 	rootQueueID      = "root"
+
+	// Configuration keys
+	rootQueueAutoUpdateKey = "rootQueueAutoUpdate"
 )
 
 type capacityPlugin struct {
@@ -52,6 +55,12 @@ type capacityPlugin struct {
 	queueOpts map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
+	// rootQueueAutoUpdate controls whether to automatically update root queue resources
+	// to match the sum of children's resources. When true, root queue's capability,
+	// deserved, and guarantee will be automatically updated. When false, validation
+	// checks will be skipped for the root queue.
+	// Default: true
+	rootQueueAutoUpdate bool
 }
 
 type queueAttr struct {
@@ -76,12 +85,19 @@ type queueAttr struct {
 
 // New return capacityPlugin action
 func New(arguments framework.Arguments) framework.Plugin {
-	return &capacityPlugin{
-		totalResource:   api.EmptyResource(),
-		totalGuarantee:  api.EmptyResource(),
-		queueOpts:       map[api.QueueID]*queueAttr{},
-		pluginArguments: arguments,
+	cp := &capacityPlugin{
+		totalResource:       api.EmptyResource(),
+		totalGuarantee:      api.EmptyResource(),
+		queueOpts:           map[api.QueueID]*queueAttr{},
+		pluginArguments:     arguments,
+		rootQueueAutoUpdate: true, // Default to true for backward compatibility
 	}
+
+	// Read the rootQueueAutoUpdate configuration
+	arguments.GetBool(&cp.rootQueueAutoUpdate, rootQueueAutoUpdateKey)
+	klog.V(4).Infof("Capacity plugin initialized with rootQueueAutoUpdate=%v", cp.rootQueueAutoUpdate)
+
+	return cp
 }
 
 func (cp *capacityPlugin) Name() string {
@@ -743,6 +759,11 @@ func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.S
 func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 	totalGuarantee := api.EmptyResource()
 	totalDeserved := api.EmptyResource()
+
+	// Determine if validation should be skipped for root queue
+	isRootQueue := attr.name == cp.rootQueue
+	skipRootValidation := isRootQueue && !cp.rootQueueAutoUpdate
+
 	for _, childAttr := range attr.children {
 		totalDeserved.Add(childAttr.deserved)
 		totalGuarantee.Add(childAttr.guarantee)
@@ -767,19 +788,29 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 		}
 
 		// Check if the parent queue's capability is less than the child queue's capability
-		if attr.capability.LessPartly(childAttr.capability, api.Zero) {
-			klog.V(3).Infof("Child queue %s capability (%s) exceeds parent queue %s capability (%s). "+
-				"Child's effective capability will be limited by parent.",
-				childAttr.name, childAttr.capability, attr.name, attr.capability)
+		// Skip this validation for root queue when auto-update is disabled
+		if !skipRootValidation && attr.capability.LessPartly(childAttr.capability, api.Zero) {
+			klog.Warningf("queue <%s> capability <%s> is less than its child queue <%s> capability <%s>",
+				attr.name, attr.capability, childAttr.name, childAttr.capability)
 		}
 	}
 
 	if attr.name == cp.rootQueue {
-		if attr.guarantee.IsEmpty() {
-			attr.guarantee = totalGuarantee
-		}
-		if attr.deserved.IsEmpty() {
-			attr.deserved = totalDeserved
+		// Handle root queue resource management based on configuration
+		if cp.rootQueueAutoUpdate {
+			// Auto-update mode: Automatically update root queue resources to match children's sum
+			if attr.guarantee.IsEmpty() {
+				attr.guarantee = totalGuarantee
+				klog.V(4).Infof("Root queue guarantee auto-updated to <%v>", attr.guarantee)
+			}
+			if attr.deserved.IsEmpty() {
+				attr.deserved = totalDeserved
+				klog.V(4).Infof("Root queue deserved auto-updated to <%v>", attr.deserved)
+			}
+		} else {
+			// When auto-update is disabled, skip validation for root queue
+			// This allows root queue to have any configuration without strict validation
+			klog.V(4).Infof("Root queue auto-update disabled, skipping validation checks for root queue")
 		}
 		cp.totalGuarantee = attr.guarantee
 		cp.totalDeserved = attr.deserved
@@ -797,17 +828,15 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 	}
 
 	// Check if the parent queue's deserved resources are less than the total deserved resources of child queues
-	if attr.deserved.LessPartly(totalDeserved, api.Zero) {
-		klog.V(3).Infof("Sum of child queue deserved (%s) exceeds parent queue %s deserved (%s). "+
-			"This may affect resource distribution during scheduling.",
-			totalDeserved, attr.name, attr.deserved)
+	if !skipRootValidation && attr.deserved.LessPartly(totalDeserved, api.Zero) {
+		klog.Warningf("queue <%s> deserved resources <%s> are less than the sum of its child queues' deserved resources <%s>",
+			attr.name, attr.deserved, totalDeserved)
 	}
 
 	// Check if the parent queue's guarantee resources are less than the total guarantee resources of child queues
-	if attr.guarantee.LessPartly(totalGuarantee, api.Zero) {
-		klog.V(3).Infof("Sum of child queue guarantees (%s) exceeds parent queue %s guarantee (%s). "+
-			"Not all child guarantees can be satisfied simultaneously.",
-			totalGuarantee, attr.name, attr.guarantee)
+	if !skipRootValidation && attr.guarantee.LessPartly(totalGuarantee, api.Zero) {
+		klog.Warningf("queue <%s> guarantee resources <%s> are less than the sum of its child queues' guarantee resources <%s>",
+			attr.name, attr.guarantee, totalGuarantee)
 	}
 
 	// Recursively check child queues
