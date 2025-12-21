@@ -1030,7 +1030,13 @@ func (ssn *Session) RecordQueueEvent(queue *api.QueueInfo, eventType, reason, ms
 	if queue == nil || queue.Queue == nil {
 		return
 	}
-	ssn.recorder.Eventf(queue.Queue, eventType, reason, msg)
+
+	q := &vcv1beta1.Queue{}
+	if err := schedulingscheme.Scheme.Convert(queue.Queue, q, nil); err != nil {
+		klog.Errorf("Error while converting Queue to v1beta1.Queue with error: %v", err)
+		return
+	}
+	ssn.recorder.Eventf(q, eventType, reason, msg)
 }
 
 // SharedDRAManager returns the shared DRAManager from cache
