@@ -1139,8 +1139,8 @@ func (sc *SchedulerCache) parseErrTaskKey(key string) (*schedulingapi.TaskInfo, 
 	jobUID := key[:i]
 	taskUID := key[i+1:]
 
-	sc.Lock()
-	defer sc.Unlock()
+	sc.RLock()
+	defer sc.RUnlock()
 
 	job, found := sc.Jobs[schedulingapi.JobID(jobUID)]
 	if !found {
@@ -1383,8 +1383,8 @@ func (sc *SchedulerCache) BindTask() {
 
 // Snapshot returns the complete snapshot of the cluster from cache
 func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
-	sc.Lock()
-	defer sc.Unlock()
+	sc.RLock()
+	defer sc.RUnlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
 		Nodes:                make(map[string]*schedulingapi.NodeInfo),
@@ -1497,8 +1497,8 @@ func (sc *SchedulerCache) SharedDRAManager() k8sframework.SharedDRAManager {
 
 // String returns information about the cache in a string format
 func (sc *SchedulerCache) String() string {
-	sc.Lock()
-	defer sc.Unlock()
+	sc.RLock()
+	defer sc.RUnlock()
 
 	str := "Cache:\n"
 
@@ -1673,12 +1673,12 @@ func (sc *SchedulerCache) GetMetricsData() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel()
 	nodeMetricsMap := make(map[string]*source.NodeMetrics, len(sc.NodeList))
-	sc.Lock()
+	sc.RLock()
 
 	for _, nodeName := range sc.NodeList {
 		nodeMetricsMap[nodeName] = &source.NodeMetrics{}
 	}
-	sc.Unlock()
+	defer sc.Unlock()
 
 	err = client.NodesMetricsAvg(ctx, nodeMetricsMap)
 	if err != nil {
