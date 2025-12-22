@@ -87,8 +87,13 @@ The workflow diagram is shown as follows:
 ![](images/agent-scheduler/scheduling-queue-diagram.png)
 
 ## Snapshot maintenance
-Design of snapshot fast update mechanism and why. 
-TBD
+To improve the overall scheduling throughput of the Agent scheduler, we optimized the Cache and Snapshot data structures and algorithms.
+1. **Generation-based Incremental Updates**: Each node in the cache maintains a monotonically increasing generation number. When a node's state changes (pod addition/removal, resource updates), its generation is incremented and the node is moved to the head of a doubly linked list. During snapshot updates, only nodes with generation numbers greater than the snapshot's current generation are processed.Significantly reduces the number of nodes that need to be processed for each update.
+2. **Dual Data Structure for Efficient Updates**:
+- Doubly Linked List: Maintains nodes in recency order (most recently updated at head).
+- Hash Map: Provides O(1) node lookup by name.
+- Indexed Snapshot: Snapshot maintains maps for quick node position lookup.
+3. **Concurrent Access Support**: The read-write lock separation design supports multiple workers concurrently accessing and updating their individual snapshots. Each worker maintains an independent snapshot instance, avoiding contention during scheduling cycles.Significantly improves concurrency performance in multithreaded scenarios.
 
 ## Multi-Worker scheduling
 Single scheduling process has performance bottleneck when a large number of Pods need to be scheduled. To improve throughput of scheduling, multiple worker can be enabled to perform parallel scheduling. Worker count can be configured via startup parameter `agent_scheduler_worker_count=x`.
