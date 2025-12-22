@@ -9,6 +9,10 @@ on:
       - "v*.*.*"
 
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   docker:
     runs-on: ubuntu-latest
@@ -37,6 +41,9 @@ jobs:
         run: |
           echo "TAG=${{ github.ref_name }}" >> $GITHUB_ENV
           echo "RELEASE_VER=${{ github.ref_name }}" >> $GITHUB_ENV
+          # Downcase the repository owner for GHCR / Docker compatibility
+          OWNER="${{ github.repository_owner }}"
+          echo "REPO_OWNER=${OWNER,,}" >> $GITHUB_ENV
 
       - name: Update tag and release_ver
         if: ${{ github.ref_name == 'master' }}
@@ -63,9 +70,23 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Daily Release
+      - name: Daily Release to Docker Hub
         run: docker buildx create --use && make TAG=${{ env.TAG }} RELEASE_VER=${{ env.RELEASE_VER }} DOCKER_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} DOCKER_PASSWORD=${{ secrets.DOCKERHUB_TOKEN }} CC=/usr/local/musl/bin/musl-gcc DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry release
         working-directory: ./src/github.com/${{ github.repository }}
 
-      - name: Loginout DockerHub
-        run: docker logout
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Daily Release to GitHub Container Registry
+        run: make TAG=${{ env.TAG }} RELEASE_VER=${{ env.RELEASE_VER }} IMAGE_PREFIX=ghcr.io/${{ env.REPO_OWNER }} CC=/usr/local/musl/bin/musl-gcc DOCKER_PLATFORMS="linux/amd64,linux/arm64" BUILDX_OUTPUT_TYPE=registry release
+        working-directory: ./src/github.com/${{ github.repository }}
+
+      - name: Logout from registries
+        if: always()
+        run: |
+          docker logout
+          docker logout ghcr.io
