@@ -48,15 +48,18 @@ func isTerminated(status schedulingapi.TaskStatus) bool {
 func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 	if len(pi.NodeName) != 0 {
 		if _, found := sc.Nodes[pi.NodeName]; !found {
-			sc.Nodes[pi.NodeName] = schedulingapi.NewNodeInfo(nil)
-			sc.Nodes[pi.NodeName].Name = pi.NodeName
+			newNode := newNodeInfoListItem(schedulingapi.NewNodeInfo(nil))
+			sc.Nodes[pi.NodeName] = newNode
+			sc.Nodes[pi.NodeName].info.Name = pi.NodeName
 		}
 
 		node := sc.Nodes[pi.NodeName]
 		if !isTerminated(pi.Status) {
-			if err := node.AddTask(pi); err != nil {
+			if err := node.info.AddTask(pi); err != nil {
 				return err
 			}
+			sc.Nodes[pi.NodeName].info.Generation = nextGeneration()
+			sc.moveNodeToHead(pi.NodeName)
 		} else {
 			klog.V(4).Infof("Pod <%v/%v> is in status %s.", pi.Namespace, pi.Name, pi.Status.String())
 		}
@@ -119,7 +122,9 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 		if !isTerminated(ti.Status) {
 			node := sc.Nodes[ti.NodeName]
 			if node != nil {
-				nodeErr = node.RemoveTask(ti)
+				sc.Nodes[ti.NodeName].info.Generation = nextGeneration()
+				sc.moveNodeToHead(ti.NodeName)
+				nodeErr = node.info.RemoveTask(ti)
 			}
 		}
 	}
@@ -316,19 +321,21 @@ func (sc *SchedulerCache) AddOrUpdateNode(node *v1.Node) error {
 
 	var oldNode *v1.Node
 	if n, ok := sc.Nodes[node.Name]; ok {
-		oldNode = n.Node
+		oldNode = n.info.Node
 	}
 
 	if sc.Nodes[node.Name] != nil {
-		sc.Nodes[node.Name].SetNode(node)
+		sc.Nodes[node.Name].info.SetNode(node)
 		sc.removeNodeImageStates(node.Name)
-		// TODO The generation needs to be optimized to increment globally by one.
-		sc.Nodes[node.Name].Generation++
-		klog.V(5).Infof("Node %s added/updated, generation incremented to %d", node.Name, sc.Nodes[node.Name].Generation)
 	} else {
-		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
+		newNode := newNodeInfoListItem(schedulingapi.NewNodeInfo(node))
+		sc.Nodes[node.Name] = newNode
 	}
-	sc.addNodeImageStates(node, sc.Nodes[node.Name])
+	sc.Nodes[node.Name].info.Generation = nextGeneration()
+	sc.moveNodeToHead(node.Name)
+	klog.V(5).Infof("Node %s added/updated, generation incremented to %d", node.Name, sc.Nodes[node.Name].info.Generation)
+
+	sc.addNodeImageStates(node, sc.Nodes[node.Name].info)
 
 	var nodeExisted bool
 	for _, name := range sc.NodeList {
@@ -374,9 +381,10 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 		return fmt.Errorf("node <%s> does not exist", nodeName)
 	}
 
-	node := sc.Nodes[nodeName].Node
+	sc.Nodes[nodeName].info.Generation = nextGeneration()
+	node := sc.Nodes[nodeName].info.Node
 
-	numaInfo := sc.Nodes[nodeName].NumaInfo
+	numaInfo := sc.Nodes[nodeName].info.NumaInfo
 	if numaInfo != nil {
 		klog.V(3).Infof("delete numatopo <%s/%s>", numaInfo.Namespace, numaInfo.Name)
 		err := sc.vcClient.NodeinfoV1alpha1().Numatopologies().Delete(context.TODO(), numaInfo.Name, metav1.DeleteOptions{})

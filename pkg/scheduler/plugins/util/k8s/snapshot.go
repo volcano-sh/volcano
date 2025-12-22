@@ -28,6 +28,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
@@ -41,8 +42,15 @@ type Snapshot struct {
 	fwkInfo
 	volcanoInfo
 
-	// Generation is the snapshot Generation, used to identify whether the snapshot is stale.
-	Generation int64
+	// generation is the snapshot generation, used to identify whether the snapshot is stale.
+	generation int64
+
+	// nodeNameToIndex maps node name to index in both nodeInfoList for O(1) lookup
+	nodeNameToIndex map[string]int
+	// affinityNodeIndex maps node name to index in havePodsWithAffinityNodeInfoList
+	affinityNodeIndex map[string]int
+	// antiAffinityNodeIndex maps node name to index in havePodsWithRequiredAntiAffinityNodeInfoList
+	antiAffinityNodeIndex map[string]int
 }
 
 // fwkInfo holds snapshot information from the kube-scheduler framework.
@@ -72,12 +80,19 @@ var _ framework.SharedLister = &Snapshot{}
 func NewEmptySnapshot() *Snapshot {
 	return &Snapshot{
 		fwkInfo: fwkInfo{
-			nodeInfoMap: make(map[string]fwk.NodeInfo),
+			nodeInfoMap:                      make(map[string]fwk.NodeInfo),
+			nodeInfoList:                     make([]fwk.NodeInfo, 0),
+			havePodsWithAffinityNodeInfoList: make([]fwk.NodeInfo, 0),
+			havePodsWithRequiredAntiAffinityNodeInfoList: make([]fwk.NodeInfo, 0),
 		},
 		volcanoInfo: volcanoInfo{
 			nodeInfoMap:  make(map[string]*api.NodeInfo),
 			nodeInfoList: make([]*api.NodeInfo, 0),
 		},
+		generation:            0,
+		nodeNameToIndex:       make(map[string]int),
+		affinityNodeIndex:     make(map[string]int),
+		antiAffinityNodeIndex: make(map[string]int),
 	}
 }
 
@@ -106,8 +121,14 @@ func NewSnapshot(nodeInfoMap map[string]fwk.NodeInfo) *Snapshot {
 	return s
 }
 
-// AddOrUpdateNode adds or updates node information in both fwkInfo and volcanoInfo.
-func (s *Snapshot) AddOrUpdateNode(nodeInfo *api.NodeInfo) {
+func (s *Snapshot) AddOrUpdateNodes(nodes []*api.NodeInfo) {
+	for _, node := range nodes {
+		s.addOrUpdateNode(node)
+	}
+}
+
+// addOrUpdateNode adds or updates node information in both fwkInfo and volcanoInfo.
+func (s *Snapshot) addOrUpdateNode(nodeInfo *api.NodeInfo) {
 	// Create Volcano NodeInfo
 	volcanoNodeInfo := nodeInfo.Clone()
 	nodeName := volcanoNodeInfo.Node.Name
@@ -115,22 +136,23 @@ func (s *Snapshot) AddOrUpdateNode(nodeInfo *api.NodeInfo) {
 	fwkNodeInfo := framework.NewNodeInfo(volcanoNodeInfo.Pods()...)
 	fwkNodeInfo.SetNode(volcanoNodeInfo.Node)
 
-	// Update volcano node information
-	if _, exists := s.volcanoInfo.nodeInfoMap[nodeName]; !exists {
-		// New node, add to list
-		s.volcanoInfo.nodeInfoList = append(s.volcanoInfo.nodeInfoList, volcanoNodeInfo)
+	idx, exists := s.nodeNameToIndex[nodeName]
+	if exists {
+		// Update existing node in both lists
+		s.volcanoInfo.nodeInfoList[idx] = volcanoNodeInfo
+		s.fwkInfo.nodeInfoList[idx] = fwkNodeInfo
 	} else {
-		// Update existing node in list
-		for i, n := range s.volcanoInfo.nodeInfoList {
-			if n.Node.Name == nodeName {
-				s.volcanoInfo.nodeInfoList[i] = volcanoNodeInfo
-				break
-			}
-		}
+		// New node, add to both lists and update index
+		idx = len(s.fwkInfo.nodeInfoList)
+		s.nodeNameToIndex[nodeName] = idx
+		s.fwkInfo.nodeInfoList = append(s.fwkInfo.nodeInfoList, fwkNodeInfo)
+		s.volcanoInfo.nodeInfoList = append(s.volcanoInfo.nodeInfoList, volcanoNodeInfo)
 	}
+	// Update maps
 	s.volcanoInfo.nodeInfoMap[nodeName] = volcanoNodeInfo
+	s.fwkInfo.nodeInfoMap[nodeName] = fwkNodeInfo
 
-	// Update framework node information
+	// Check if node was in affinity lists
 	wasInAffinityList := false
 	wasInRequiredAntiAffinityList := false
 
@@ -144,105 +166,100 @@ func (s *Snapshot) AddOrUpdateNode(nodeInfo *api.NodeInfo) {
 		}
 	}
 
-	if _, exists := s.fwkInfo.nodeInfoMap[nodeName]; !exists {
-		// New node, add to list
-		s.fwkInfo.nodeInfoList = append(s.fwkInfo.nodeInfoList, fwkNodeInfo)
-	} else {
-		// Update existing node in list
-		for i, n := range s.fwkInfo.nodeInfoList {
-			if n.Node().Name == nodeName {
-				s.fwkInfo.nodeInfoList[i] = fwkNodeInfo
-				break
-			}
-		}
-	}
-	s.fwkInfo.nodeInfoMap[nodeName] = fwkNodeInfo
-
 	// Update affinity lists if needed
 	hasAffinityPods := len(fwkNodeInfo.GetPodsWithAffinity()) > 0
 	hasRequiredAntiAffinityPods := len(fwkNodeInfo.GetPodsWithRequiredAntiAffinity()) > 0
 
 	// Update havePodsWithAffinityNodeInfoList
-	s.updateAffinityList(&s.fwkInfo.havePodsWithAffinityNodeInfoList, nodeName, fwkNodeInfo,
-		wasInAffinityList, hasAffinityPods)
+	s.updateAffinityList(
+		&s.fwkInfo.havePodsWithAffinityNodeInfoList,
+		s.affinityNodeIndex,
+		nodeName, fwkNodeInfo, wasInAffinityList, hasAffinityPods,
+	)
 
 	// Update havePodsWithRequiredAntiAffinityNodeInfoList
-	s.updateAffinityList(&s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList, nodeName, fwkNodeInfo,
-		wasInRequiredAntiAffinityList, hasRequiredAntiAffinityPods)
+	s.updateAffinityList(
+		&s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList,
+		s.antiAffinityNodeIndex,
+		nodeName, fwkNodeInfo, wasInRequiredAntiAffinityList, hasRequiredAntiAffinityPods,
+	)
+	klog.V(5).Infof("Updated node %s in snapshot", nodeInfo.Name)
 }
 
 // DeleteNode removes node information from both fwkInfo and volcanoInfo.
 func (s *Snapshot) DeleteNode(nodeName string) {
-	// Remove from volcano map
-	delete(s.volcanoInfo.nodeInfoMap, nodeName)
-	// Remove from framework map
+	idx, exists := s.nodeNameToIndex[nodeName]
+	if !exists {
+		return
+	}
+	lastIdx := len(s.fwkInfo.nodeInfoList) - 1
+
+	if idx < lastIdx {
+		// Swap the node to be deleted with the last node.
+		lastNodeName := s.fwkInfo.nodeInfoList[lastIdx].Node().Name
+
+		// Swap fwkInfo.nodeInfoList
+		s.fwkInfo.nodeInfoList[idx] = s.fwkInfo.nodeInfoList[lastIdx]
+		s.fwkInfo.nodeInfoList = s.fwkInfo.nodeInfoList[:lastIdx]
+
+		// Swap volcanoInfo.nodeInfoList
+		s.volcanoInfo.nodeInfoList[idx] = s.volcanoInfo.nodeInfoList[lastIdx]
+		s.volcanoInfo.nodeInfoList = s.volcanoInfo.nodeInfoList[:lastIdx]
+
+		s.nodeNameToIndex[lastNodeName] = idx
+	} else {
+		s.fwkInfo.nodeInfoList = s.fwkInfo.nodeInfoList[:lastIdx]
+		s.volcanoInfo.nodeInfoList = s.volcanoInfo.nodeInfoList[:lastIdx]
+	}
+
+	delete(s.nodeNameToIndex, nodeName)
 	delete(s.fwkInfo.nodeInfoMap, nodeName)
+	delete(s.volcanoInfo.nodeInfoMap, nodeName)
 
-	// Remove from volcano list
-	for i, nodeInfo := range s.volcanoInfo.nodeInfoList {
-		// volcano list
-		if nodeInfo.Node.Name == nodeName {
-			s.volcanoInfo.nodeInfoList = append(s.volcanoInfo.nodeInfoList[:i], s.volcanoInfo.nodeInfoList[i+1:]...)
-			// framework list
-			if i < len(s.fwkInfo.nodeInfoList) && s.fwkInfo.nodeInfoList[i].Node().Name == nodeName {
-				s.fwkInfo.nodeInfoList = append(s.fwkInfo.nodeInfoList[:i], s.fwkInfo.nodeInfoList[i+1:]...)
-			} else {
-				// Fallback to scanning if order mismatch
-				for j, fwkNode := range s.fwkInfo.nodeInfoList {
-					if fwkNode.Node().Name == nodeName {
-						s.fwkInfo.nodeInfoList = append(s.fwkInfo.nodeInfoList[:j], s.fwkInfo.nodeInfoList[j+1:]...)
-						break
-					}
-				}
-			}
-			break
-		}
+	s.removeFromAffinityList(s.affinityNodeIndex, nodeName, &s.fwkInfo.havePodsWithAffinityNodeInfoList)
+	s.removeFromAffinityList(s.antiAffinityNodeIndex, nodeName, &s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList)
+}
+
+// removeFromAffinityList remove node from the affinity list.
+func (s *Snapshot) removeFromAffinityList(indexMap map[string]int, nodeName string, list *[]fwk.NodeInfo) {
+	idx, exists := indexMap[nodeName]
+	if !exists {
+		return
 	}
 
-	// Remove from havePodsWithAffinityNodeInfoList
-	for i, nodeInfo := range s.fwkInfo.havePodsWithAffinityNodeInfoList {
-		if nodeInfo.Node().Name == nodeName {
-			s.fwkInfo.havePodsWithAffinityNodeInfoList = append(
-				s.fwkInfo.havePodsWithAffinityNodeInfoList[:i],
-				s.fwkInfo.havePodsWithAffinityNodeInfoList[i+1:]...)
-			break
-		}
+	lastIdx := len(*list) - 1
+	if idx < lastIdx {
+		lastNodeName := (*list)[lastIdx].Node().Name
+		(*list)[idx] = (*list)[lastIdx]
+		*list = (*list)[:lastIdx]
+		indexMap[lastNodeName] = idx
+	} else {
+		*list = (*list)[:lastIdx]
 	}
 
-	// Remove from havePodsWithRequiredAntiAffinityNodeInfoList
-	for i, nodeInfo := range s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList {
-		if nodeInfo.Node().Name == nodeName {
-			s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList = append(
-				s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList[:i],
-				s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList[i+1:]...)
-			break
-		}
-	}
+	delete(indexMap, nodeName)
 }
 
 // RemoveDeletedNodesFromSnapshot removes nodes that are not in the cache from the snapshot
 func (s *Snapshot) RemoveDeletedNodesFromSnapshot(currentNodeNames map[string]bool) {
-	for nodeName := range s.volcanoInfo.nodeInfoMap {
+	nodesToDelete := make([]string, 0, len(s.nodeNameToIndex))
+	for nodeName := range s.nodeNameToIndex {
 		if !currentNodeNames[nodeName] {
-			s.DeleteNode(nodeName)
+			nodesToDelete = append(nodesToDelete, nodeName)
 		}
+	}
+	for _, nodeName := range nodesToDelete {
+		s.DeleteNode(nodeName)
 	}
 }
 
 // updateAffinityList updates an affinity list based on node changes
-func (s *Snapshot) updateAffinityList(list *[]fwk.NodeInfo, nodeName string, nodeInfo fwk.NodeInfo, wasInList, shouldBeInList bool) {
-	// Remove from list if it was there
+func (s *Snapshot) updateAffinityList(list *[]fwk.NodeInfo, indexMap map[string]int, nodeName string, nodeInfo fwk.NodeInfo, wasInList, shouldBeInList bool) {
 	if wasInList {
-		for i, n := range *list {
-			if n.Node().Name == nodeName {
-				*list = append((*list)[:i], (*list)[i+1:]...)
-				break
-			}
-		}
+		s.removeFromAffinityList(indexMap, nodeName, list)
 	}
-
-	// Add to list if it should be there
 	if shouldBeInList {
+		indexMap[nodeName] = len(*list)
 		*list = append(*list, nodeInfo)
 	}
 }
@@ -356,4 +373,12 @@ func (s *Snapshot) Get(nodeName string) (fwk.NodeInfo, error) {
 
 func (s *Snapshot) IsPVCUsedByPods(key string) bool {
 	panic("not implemented")
+}
+
+func (s *Snapshot) GetGeneration() int64 {
+	return s.generation
+}
+
+func (s *Snapshot) SetGeneration(currentGeneration int64) {
+	s.generation = currentGeneration
 }

@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -77,6 +78,8 @@ func init() {
 
 var _ Cache = &SchedulerCache{}
 
+var generation int64
+
 // New returns a Cache implementation.
 func New(config *rest.Config, opt *options.ServerOption) Cache {
 	return newSchedulerCache(config, opt)
@@ -106,8 +109,9 @@ type SchedulerCache struct {
 
 	Recorder record.EventRecorder
 
-	Nodes      map[string]*schedulingapi.NodeInfo // TODO: do we need to also add a seperate lock for Nodes cache?
-	NodeList   []string
+	Nodes    map[string]*nodeInfoListItem // TODO: do we need to also add a seperate lock for Nodes cache?
+	headNode *nodeInfoListItem
+	NodeList []string
 	NodeShards map[string]*schedulingapi.NodeShardInfo
 
 	taskCache *TaskCache
@@ -309,7 +313,7 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 	}
 
 	sc := &SchedulerCache{
-		Nodes:              make(map[string]*schedulingapi.NodeInfo),
+		Nodes:              make(map[string]*nodeInfoListItem),
 		nodeQueue:          workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		kubeClient:         kubeClient,
 		vcClient:           vcClient,
@@ -660,7 +664,7 @@ func (sc *SchedulerCache) UpdateSchedulerNumaInfo(AllocatedSets map[string]sched
 			continue
 		}
 
-		numaInfo := sc.Nodes[nodeName].NumaSchedulerInfo
+		numaInfo := sc.Nodes[nodeName].info.NumaSchedulerInfo
 		if numaInfo == nil {
 			continue
 		}
@@ -739,7 +743,7 @@ func (sc *SchedulerCache) resyncTask(schedCtx *agentapi.SchedulingContext) {
 	if !ok {
 		klog.Warningf("Node %s not found for task %s/%s during resync", task.NodeName, task.Namespace, task.Name)
 	} else {
-		if err := node.RemoveTask(task); err != nil {
+		if err := node.info.RemoveTask(task); err != nil {
 			klog.ErrorS(err, "Failed to remove task from node during resync",
 				"task", klog.KRef(task.Namespace, task.Name), "node", task.NodeName)
 		}
@@ -802,18 +806,21 @@ func (sc *SchedulerCache) AddBindTask(bindContext *agentapi.BindContext) error {
 	}
 
 	// Add task to the node.
-	if err := node.AddTask(task); err != nil {
+	if err := node.info.AddTask(task); err != nil {
 		// After failing to update task to a node we need to revert task status from Releasing,
 		// otherwise task might be stuck in the Releasing state indefinitely.
 		if err := sc.UpdateTaskStatus(task, originalStatus); err != nil {
 			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
 				"from %s to %s after failing to update Task on Node <%s>: %v",
-				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+				task.Namespace, task.Name, task.Status, originalStatus, node.info.Name, err)
 		}
 		return err
 	}
 	// bind generation after task is added to node, so next allocation on this node in newer generation must aware of this task
-	node.NextBindGeneration()
+	node.info.NextBindGeneration()
+	node.info.NextBindGeneration()
+	sc.Nodes[node.info.Name].info.Generation = nextGeneration()
+	sc.moveNodeToHead(node.info.Name)
 
 	sc.BindFlowChannel <- bindContext
 
@@ -929,52 +936,61 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 
 	copy(snapshot.NodeList, sc.NodeList)
 	for _, value := range sc.Nodes {
-		value.RefreshNumaSchedulerInfoByCrd()
+		value.info.RefreshNumaSchedulerInfoByCrd()
 	}
 
 	for _, value := range sc.Nodes {
-		if !value.Ready() {
+		if !value.info.Ready() {
 			continue
 		}
 
-		snapshot.Nodes[value.Name] = value.Clone()
+		snapshot.Nodes[value.info.Name] = value.info.Clone()
 	}
 	klog.V(3).InfoS("SnapShot for scheduling", "NodeNum", len(snapshot.Nodes))
 	return snapshot
 }
 
 func (sc *SchedulerCache) UpdateSnapshot(snapshot *k8sutil.Snapshot) error {
-	//TODO: update the passed-in snapshot with the latest cache info
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
 
 	klog.V(5).Infof("begin to update the snapshot ...")
 	klog.V(5).Infof("the snapshot is %v", snapshot)
 
-	// Record the names of nodes that exist in the cache for later deletion of nodes that do not exist in the snapshot.
+	snapshotGeneration := snapshot.GetGeneration()
+	// currentNodeNames record the names of nodes that exist in the cache for later deletion of nodes that do not exist in the snapshot.
 	currentNodeNames := make(map[string]bool)
-	for nodeName, nodeInfo := range sc.Nodes {
-		klog.V(5).Infof("current node name in cache is %s", nodeName)
-		currentNodeNames[nodeName] = true
-		if !nodeInfo.Ready() {
-			klog.V(5).Infof("Node (%s) is not ready, skip to update node snapshot", nodeName)
-			continue
-		}
-		// TODO Currently, all information is copied via Clone; subsequent updates will be incremental.
-		snapshot.AddOrUpdateNode(nodeInfo)
-		klog.V(5).Infof("Updated node %s in snapshot", nodeName)
+	var nodesToUpdate []*api.NodeInfo
+
+	for _, node := range sc.Nodes {
+		currentNodeNames[node.info.Name] = true
 	}
 
+	// Traverse the doubly linked list starting from the head, only processing nodes whose Generation is greater than the previous snapshot's Generation.
+	for node := sc.headNode; node != nil; node = node.next {
+		if node.info.Generation <= snapshotGeneration {
+			klog.V(2).Infof("Stop traversal at node %s, generation %d <= snapshot generation %d",
+				node.info.Name, node.info.Generation, snapshotGeneration)
+			break
+		}
+		klog.V(5).Infof("current node name need to update in cache is %s", node.info.Name)
+		nodesToUpdate = append(nodesToUpdate, node.info)
+	}
+
+	if len(nodesToUpdate) > 0 {
+		snapshot.AddOrUpdateNodes(nodesToUpdate)
+	}
+
+	if sc.headNode != nil {
+		snapshot.SetGeneration(sc.headNode.info.Generation)
+	}
 	// Remove deleted nodes and rebuild node lists in place
 	snapshot.RemoveDeletedNodesFromSnapshot(currentNodeNames)
-	// TODO The generation field in multi-work scenarios needs to be redesigned.
-	snapshot.Generation++
-	klog.V(4).Infof("Snapshot updated: generation=%d, total nodes=%d",
-		snapshot.Generation, len(snapshot.GetFwkNodeInfoMap()))
+	klog.V(2).Infof("Snapshot updated: generation=%d, total nodes num=%d, updated nodes num=%d",
+		snapshot.GetGeneration(), len(snapshot.GetFwkNodeInfoMap()), len(nodesToUpdate))
 
-	// TODO just for debugging code, will be removed in the future.
-	klog.V(5).Infof("Snapshot updated: node list len is %d, vc node list: %v, k8s node list: %v, vc node map: %v, k8s node map: %v",
-		len(snapshot.GetFwkNodeInfoList()), snapshot.GetFwkNodeInfoList(), snapshot.GetFwkNodeInfoList(), snapshot.GetVolcanoNodeInfoMap(), snapshot.GetFwkNodeInfoMap())
+	klog.V(5).Infof("Snapshot updated: node list len is %d,  vc node map: %v",
+		len(snapshot.GetFwkNodeInfoList()), snapshot.GetVolcanoNodeInfoMap())
 	return nil
 }
 
@@ -993,10 +1009,10 @@ func (sc *SchedulerCache) String() string {
 		str += "Nodes:\n"
 		for _, n := range sc.Nodes {
 			str += fmt.Sprintf("\t %s: idle(%v) used(%v) allocatable(%v) pods(%d)\n",
-				n.Name, n.Idle, n.Used, n.Allocatable, len(n.Tasks))
+				n.info.Name, n.info.Idle, n.info.Used, n.info.Allocatable, len(n.info.Tasks))
 
 			i := 0
-			for _, p := range n.Tasks {
+			for _, p := range n.info.Tasks {
 				str += fmt.Sprintf("\t\t %d: %v\n", i, p)
 				i++
 			}
@@ -1037,6 +1053,54 @@ func (sc *SchedulerCache) UpdateTaskStatus(task *api.TaskInfo, status api.TaskSt
 
 func (sc *SchedulerCache) EnqueueScheduleResult(scheduleResult *agentapi.PodScheduleResult) {
 	sc.ConflictAwareBinder.EnqueueScheduleResult(scheduleResult)
+}
+
+// nodeInfoListItem holds a NodeInfo pointer and acts as an item in a doubly
+// linked list. When a NodeInfo is updated, it goes to the head of the list.
+// The items closer to the head are the most recently updated items.
+type nodeInfoListItem struct {
+	info *schedulingapi.NodeInfo
+	next *nodeInfoListItem
+	prev *nodeInfoListItem
+}
+
+func nextGeneration() int64 {
+	return atomic.AddInt64(&generation, 1)
+}
+
+// moveNodeInfoToHead moves a NodeInfo to the head of "cache.nodes" doubly
+// linked list. The head is the most recently updated NodeInfo.
+// We assume cache lock is already acquired.
+func (sc *SchedulerCache) moveNodeToHead(name string) {
+	ni, ok := sc.Nodes[name]
+	if !ok {
+		klog.Errorf("No node info with given node name <%s> found in the cache", name)
+		return
+	}
+	// if the node info list item is already at the head, we are done.
+	if ni == sc.headNode {
+		return
+	}
+
+	if ni.prev != nil {
+		ni.prev.next = ni.next
+	}
+	if ni.next != nil {
+		ni.next.prev = ni.prev
+	}
+	if sc.headNode != nil {
+		sc.headNode.prev = ni
+	}
+	ni.next = sc.headNode
+	ni.prev = nil
+	sc.headNode = ni
+}
+
+// newNodeInfoListItem initializes a new nodeInfoListItem.
+func newNodeInfoListItem(node *schedulingapi.NodeInfo) *nodeInfoListItem {
+	return &nodeInfoListItem{
+		info: node,
+	}
 }
 
 func (sc *SchedulerCache) UpdateNodeShardStatus(shardName string, usedNodeInCache sets.Set[string]) error {
