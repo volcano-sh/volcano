@@ -28,17 +28,17 @@ import (
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
-
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
 
+	"volcano.sh/volcano/pkg/scheduler/api"
 	scheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
 // Framework is a K8S framework who mainly provides some methods
 // about snapshot and plugins such as predicates
 type Framework struct {
-	snapshot         framework.SharedLister
+	snapshot         *Snapshot
 	kubeClient       kubernetes.Interface
 	informerFactory  informers.SharedInformerFactory
 	sharedDRAManager framework.SharedDRAManager
@@ -52,6 +52,27 @@ type Option func(*Framework)
 func WithSharedDRAManager(sharedDRAManager framework.SharedDRAManager) Option {
 	return func(f *Framework) {
 		f.sharedDRAManager = sharedDRAManager
+	}
+}
+
+// WithSnapshotSharedLister sets the SharedLister of the snapshot.
+func WithSnapshotSharedLister(snapshot *Snapshot) Option {
+	return func(o *Framework) {
+		o.snapshot = snapshot
+	}
+}
+
+// WithClientSet sets clientSet for the scheduling frameworkImpl.
+func WithClientSet(clientSet kubernetes.Interface) Option {
+	return func(o *Framework) {
+		o.kubeClient = clientSet
+	}
+}
+
+// WithInformerFactory sets informer factory for the scheduling frameworkImpl.
+func WithInformerFactory(informerFactory informers.SharedInformerFactory) Option {
+	return func(o *Framework) {
+		o.informerFactory = informerFactory
 	}
 }
 
@@ -181,17 +202,28 @@ func (f *Framework) APIDispatcher() fwk.APIDispatcher {
 	return nil
 }
 
-// NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
-func NewFrameworkHandle(nodeMap map[string]fwk.NodeInfo, client kubernetes.Interface, informerFactory informers.SharedInformerFactory, opts ...Option) framework.Handle {
-	snapshot := NewSnapshot(nodeMap)
-	fw := &Framework{
-		snapshot:        snapshot,
-		kubeClient:      client,
-		informerFactory: informerFactory,
-	}
+// VolcanoNodeInfos returns a list of volcano NodeInfo.
+func (f *Framework) VolcanoNodeInfos() []*api.NodeInfo {
+	return f.snapshot.VolcanoNodeInfos()
+}
+
+// GetVolcanoNodeInfo returns the volcano NodeInfo of the given node name.
+func (f *Framework) GetVolcanoNodeInfo(nodeName string) (*api.NodeInfo, error) {
+	return f.snapshot.GetVolcanoNodeInfo(nodeName)
+}
+
+// NewFramework is the constructor of Framework
+func NewFramework(nodeMap map[string]fwk.NodeInfo, opts ...Option) *Framework {
+	fw := &Framework{}
 
 	for _, opt := range opts {
 		opt(fw)
+	}
+
+	// If no snapshot is provided, create a new one with the given nodeMap, it's mainly used in volcano batch scheduler(session scheduling).
+	if fw.snapshot == nil {
+		snapshot := NewSnapshot(nodeMap)
+		fw.snapshot = snapshot
 	}
 
 	return fw

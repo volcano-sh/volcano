@@ -1,9 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
-Copyright 2017-2025 The Volcano Authors.
-
-Modifications made by Volcano authors:
-- Added BindContextHandler interface for bind context extension setup
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,34 +19,44 @@ package framework
 import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
-	"volcano.sh/volcano/pkg/scheduler/cache"
+	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/conf"
 )
 
-// Action is the interface of scheduler action.
+// Action is the interface of agent scheduler action.
 type Action interface {
-	// The unique name of Action.
+	// Name returns the unique name of Action.
 	Name() string
+
+	// OnActionInit initializes the plugin. It is called once when the framework is created.
+	OnActionInit(configurations []conf.Configuration)
 
 	// Initialize initializes the allocator plugins.
 	Initialize()
 
-	// Execute allocates the cluster's resources into each queue.
-	Execute(ssn *Session)
+	// Execute allocates resources for the given task.
+	Execute(fwk *Framework, schedCtx *agentapi.SchedulingContext)
 
 	// UnInitialize un-initializes the allocator plugins.
 	UnInitialize()
 }
 
-// Plugin is the interface of scheduler plugin
+// Plugin is the interface of agent scheduler plugin
 type Plugin interface {
-	// The unique name of Plugin.
+	// Name returns the unique name of Plugin.
 	Name() string
 
-	OnSessionOpen(ssn *Session)
-	OnSessionClose(ssn *Session)
+	// OnPluginInit initializes the plugin. It is called once when the framework is created.
+	OnPluginInit(fwk *Framework)
+
+	// OnCycleStart is called at the beginning of a scheduling cycle.
+	OnCycleStart(fwk *Framework)
+
+	// OnCycleEnd is called at the end of a scheduling cycle.
+	OnCycleEnd(fwk *Framework)
 }
 
 type BindContextHandler interface {
 	// SetupBindContextExtension allows the plugin to set up extension information in the bind context
-	SetupBindContextExtension(state *k8sframework.CycleState, bindCtx *cache.BindContext)
+	SetupBindContextExtension(state *k8sframework.CycleState, bindCtx *agentapi.BindContext)
 }

@@ -37,6 +37,7 @@ const (
 	defaultCronJobWorkers      = 3
 	defaultMaxRequeueNum       = 15
 	defaultSchedulerName       = "volcano"
+	agentSchedulerName         = "agent-scheduler"
 	defaultHealthzAddress      = ":11251"
 	defaultListenAddress       = ":8081"
 	defaultLockObjectNamespace = "volcano-system"
