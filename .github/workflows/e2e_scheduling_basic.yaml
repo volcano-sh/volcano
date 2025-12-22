@@ -13,6 +13,17 @@ jobs:
     name: E2E about Basic Scheduling
     timeout-minutes: 50
     steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Install Go
         uses: actions/setup-go@v5
         with:
