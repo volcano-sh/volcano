@@ -30,7 +30,12 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"strconv"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/testing"
+	fakek8s "k8s.io/client-go/kubernetes/fake"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -141,11 +146,35 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, sc := range test.SCs {
 		kubeClient.StorageV1().StorageClasses().Create(context.Background(), sc, metav1.CreateOptions{})
 	}
+	fakeClient := kubeClient.(*fakek8s.Clientset)
+	fakeClient.PrependReactor("update", "persistentvolumes", func(action testing.Action) (bool, runtime.Object, error) {
+		updateAction := action.(testing.UpdateAction)
+		obj := updateAction.GetObject().(*v1.PersistentVolume)
+		currentRv, _ := strconv.Atoi(obj.ResourceVersion)
+		obj.ResourceVersion = strconv.Itoa(currentRv + 1)
+		return false, nil, nil
+	})
+	fakeClient.PrependReactor("update", "persistentvolumeclaims", func(action testing.Action) (bool, runtime.Object, error) {
+		updateAction := action.(testing.UpdateAction)
+		obj := updateAction.GetObject().(*v1.PersistentVolumeClaim)
+		currentRv, _ := strconv.Atoi(obj.ResourceVersion)
+		obj.ResourceVersion = strconv.Itoa(currentRv + 1)
+		return false, nil, nil
+	})
+
 	for _, pv := range test.PVs {
-		kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), pv, metav1.CreateOptions{})
+		pvCopy := pv.DeepCopy()
+		if pvCopy.UID == "" {
+			pvCopy.UID = types.UID(pvCopy.Name)
+		}
+		kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), pvCopy, metav1.CreateOptions{})
 	}
 	for _, pvc := range test.PVCs {
-		kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
+		pvcCopy := pvc.DeepCopy()
+		if pvcCopy.UID == "" {
+			pvcCopy.UID = types.UID(pvcCopy.Name)
+		}
+		kubeClient.CoreV1().PersistentVolumeClaims(pvcCopy.Namespace).Create(context.Background(), pvcCopy, metav1.CreateOptions{})
 	}
 	for _, dc := range test.DeviceClasses {
 		kubeClient.ResourceV1().DeviceClasses().Create(context.Background(), dc, metav1.CreateOptions{})
@@ -161,10 +190,12 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 
 	for _, node := range test.Nodes {
 		schedulerCache.AddOrUpdateNode(node)
+		kubeClient.CoreV1().Nodes().Create(context.Background(), node, metav1.CreateOptions{})
 	}
 	schedulerCache.IgnoredCSIProvisioners = test.IgnoreProvisioners
 	for _, pod := range test.Pods {
 		schedulerCache.AddPod(pod)
+		kubeClient.CoreV1().Pods(pod.Namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 	}
 	for _, pg := range test.PodGroups {
 		schedulerCache.AddPodGroupV1beta1(pg)
