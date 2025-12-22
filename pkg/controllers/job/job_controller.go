@@ -288,7 +288,7 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 	for i = 0; i < cc.workers; i++ {
 		go wait.Until(
 			func() {
-				cc.worker()
+				for cc.processNextReq() {}
 			},
 			time.Second,
 			stopCh)
@@ -300,15 +300,6 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 	go wait.Until(cc.processResyncTask, 0, stopCh)
 
 	klog.Infof("JobController is running ...... ")
-}
-
-func (cc *jobcontroller) worker() {
-	for cc.processNextReq() {
-	}
-}
-
-func (cc *jobcontroller) getWorkerQueue() workqueue.TypedRateLimitingInterface[any] {
-	return cc.queue
 }
 
 func (cc *jobcontroller) processNextReq() bool {
@@ -466,7 +457,7 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 				jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
 			return
 		}
-		queue := cc.getWorkerQueue()
+		queue := cc.queue
 
 		if err := st.Execute(GetStateAction(delayAct)); err != nil {
 			cc.handleJobError(queue, req, st, err, delayAct.action)
