@@ -374,7 +374,7 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 			ignored_list = append(ignored_list, devices.GetIgnoredDevices()...)
 		}
 	}
-	klog.V(5).Infof("ascend_ignored_list is %v", ignored_list)
+	klog.V(5).Infof("ignored_list is %v", ignored_list)
 	IgnoredDevicesList.AppendList(
 		ignored_list,
 	)
