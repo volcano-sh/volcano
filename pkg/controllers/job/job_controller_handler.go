@@ -67,7 +67,7 @@ func (cc *jobcontroller) addJob(obj interface{}) {
 		klog.Errorf("Failed to add job <%s/%s>: %v in cache",
 			job.Namespace, job.Name, err)
 	}
-	queue := cc.getWorkerQueue()
+	queue := cc.queue
 	queue.Add(req)
 }
 
@@ -107,7 +107,7 @@ func (cc *jobcontroller) updateJob(oldObj, newObj interface{}) {
 		JobName:   newJob.Name,
 		Event:     bus.OutOfSyncEvent,
 	}
-	queue := cc.getWorkerQueue()
+	queue := cc.queue
 	queue.Add(req)
 }
 
@@ -195,7 +195,7 @@ func (cc *jobcontroller) addPod(obj interface{}) {
 		klog.Errorf("Failed to add Pod <%s/%s>: %v to cache",
 			pod.Namespace, pod.Name, err)
 	}
-	queue := cc.getWorkerQueue()
+	queue := cc.queue
 	queue.Add(req)
 }
 
@@ -304,7 +304,7 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 		JobVersion:  int32(dVersion),
 	}
 
-	queue := cc.getWorkerQueue()
+	queue := cc.queue
 	queue.Add(req)
 }
 
@@ -377,7 +377,7 @@ func (cc *jobcontroller) deletePod(obj interface{}) {
 			pod.Namespace, pod.Name, err)
 	}
 
-	queue := cc.getWorkerQueue()
+	queue := cc.queue
 	queue.Add(req)
 }
 
@@ -422,7 +422,7 @@ func (cc *jobcontroller) processNextCommand() bool {
 		Action:    bus.Action(cmd.Action),
 	}
 
-	queue := cc.getWorkerQueue()
+	queue := cc.queue
 	queue.Add(req)
 
 	return true
@@ -464,7 +464,7 @@ func (cc *jobcontroller) updatePodGroup(oldObj, newObj interface{}) {
 		case scheduling.PodGroupUnknown:
 			req.Event = bus.JobUnknownEvent
 		}
-		queue := cc.getWorkerQueue()
+		queue := cc.queue
 		queue.Add(req)
 	}
 }
