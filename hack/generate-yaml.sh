@@ -34,6 +34,24 @@ export AGENT_YAML_FILENAME=volcano-agent-${VOLCANO_IMAGE_TAG}.yaml
 export CRD_VERSION=${CRD_VERSION:-v1}
 export ENABLE_VAP=${ENABLE_VAP:-false}
 export ENABLE_MAP=${ENABLE_MAP:-false}
+export IMAGE_PREFIX=${IMAGE_PREFIX:-volcanosh}
+
+# Split IMAGE_PREFIX into REGISTRY and IMAGE_REPOSITORY
+# Case 1: registry.com/repository -> REGISTRY=registry.com, IMAGE_REPOSITORY=repository
+# Case 2: repository (default "volcanosh") -> REGISTRY=docker.io, IMAGE_REPOSITORY=repository
+if [[ "${IMAGE_PREFIX}" == *"/"* ]]; then
+    # Assumes the first part before the first slash is the registry domain if it contains a dot or localhost or colon
+    if [[ "${IMAGE_PREFIX%%/*}" == *"."* ]] || [[ "${IMAGE_PREFIX%%/*}" == *"localhost"* ]] || [[ "${IMAGE_PREFIX%%/*}" == *":"* ]]; then
+        export IMAGE_REGISTRY="${IMAGE_PREFIX%%/*}"
+        export IMAGE_REPOSITORY="${IMAGE_PREFIX#*/}"
+    else
+        export IMAGE_REGISTRY="docker.io"
+        export IMAGE_REPOSITORY="${IMAGE_PREFIX}"
+    fi
+else
+    export IMAGE_REGISTRY="docker.io"
+    export IMAGE_REPOSITORY="${IMAGE_PREFIX}"
+fi
 
 case $CRD_VERSION in
   bases)
@@ -152,6 +170,11 @@ cat ${VK_ROOT}/installer/namespace.yaml > ${AGENT_SCHEDULER_DEPLOYMENT_YAML_FILE
 HELM_CMD="${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
       --set custom.vap_enable=${ENABLE_VAP} --set custom.map_enable=${ENABLE_MAP}\
+      --set basic.image_registry=${IMAGE_REGISTRY} \
+      --set basic.controller_image_name=${IMAGE_REPOSITORY}/vc-controller-manager \
+      --set basic.scheduler_image_name=${IMAGE_REPOSITORY}/vc-scheduler \
+      --set basic.admission_image_name=${IMAGE_REPOSITORY}/vc-webhook-manager \
+      --set basic.agent_image_name=${IMAGE_REPOSITORY}/vc-agent \
       -s templates/admission.yaml \
       -s templates/admission-init.yaml \
       -s templates/batch_v1alpha1_job.yaml \
@@ -195,6 +218,11 @@ ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespac
 # Agent
 ${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set custom.colocation_enable=true \
+      --set basic.image_registry=${IMAGE_REGISTRY} \
+      --set basic.controller_image_name=${IMAGE_REPOSITORY}/vc-controller-manager \
+      --set basic.scheduler_image_name=${IMAGE_REPOSITORY}/vc-scheduler \
+      --set basic.admission_image_name=${IMAGE_REPOSITORY}/vc-webhook-manager \
+      --set basic.agent_image_name=${IMAGE_REPOSITORY}/vc-agent \
       -s templates/agent.yaml \
       >> ${AGENT_DEPLOYMENT_YAML_FILENAME}
 
