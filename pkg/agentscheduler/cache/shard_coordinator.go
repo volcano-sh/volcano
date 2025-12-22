@@ -39,6 +39,7 @@ type ShardCoordinator struct {
 	lastSyncedRevision     int64 //revision in last synchronization to nodeshard cr
 	latestRevision         int64 //last revision of nodeshard cr change
 	cache                  Cache
+	updateChan             chan struct{} // channel for update notifications
 }
 
 type workerNodeShardState struct {
@@ -53,16 +54,23 @@ func NewShardCoordinator(cache Cache, workerCount int, schedulerName string, sha
 		workerStates[i] = &workerNodeShardState{}
 	}
 
-	return &ShardCoordinator{
+	sc := &ShardCoordinator{
 		schedulerShardName: schedulerName,
 		workerStates:       workerStates,
 		shardingEnabled:    shardingMode == util.HardShardingMode || shardingMode == util.SoftShardingMode,
 		cache:              cache,
+		updateChan:         make(chan struct{}, 100), // buffered channel to handle multiple update requests
 	}
+	return sc
 }
 
-// GetNodesForScheduling get nodes available to use for worker
-func (sc *ShardCoordinator) GetNodesForScheduling(workerIdx int) sets.Set[string] {
+func (sc *ShardCoordinator) Run(stopCh <-chan struct{}) {
+	// Start the update processing goroutine
+	go sc.processUpdates(stopCh)
+}
+
+// getNodesForScheduling get nodes available to use for worker
+func (sc *ShardCoordinator) getNodesForScheduling(workerIdx int) sets.Set[string] {
 	if workerIdx >= len(sc.workerStates) {
 		klog.Errorf("Worker %d does not exist, no nodes are returned", workerIdx)
 		return sets.Set[string]{}
@@ -75,7 +83,7 @@ func (sc *ShardCoordinator) GetNodesForScheduling(workerIdx int) sets.Set[string
 	sc.mutex.RLock()
 	defer sc.mutex.RUnlock()
 	latest := atomic.LoadInt64(&sc.latestRevision)
-	state.revisionInScheduing = latest
+	atomic.StoreInt64(&state.revisionInScheduing, latest)
 	if klog.V(5).Enabled() {
 		klog.V(5).Infof("Worker %d will schedule with nodes%v", workerIdx, sc.nodeToUse.UnsortedList())
 	}
@@ -117,32 +125,85 @@ func (sc *ShardCoordinator) RefreshNodeShards(nodeShards map[string]*api.NodeSha
 	}
 }
 
-func (sc *ShardCoordinator) tryUpdateNodeShardStatus() {
+// tryUpdateNodeShardStatus try to update status of nodeshard if no worker is using nodes in last revision of nodeshard
+func (sc *ShardCoordinator) tryUpdateNodeShardStatus() bool {
 	latest := atomic.LoadInt64(&sc.latestRevision)
 	//skip upate if status has been updated
 	if atomic.LoadInt64(&sc.lastSyncedRevision) >= latest {
-		return
+		klog.V(3).Info("last updated revision is new than revision in coordinator, skip nodeshard update")
+		return false
 	}
 
 	update := true
 	for index, state := range sc.workerStates {
 		//skip update if any worker is scheduling with nodes before this revision
-		if state != nil && state.revisionInScheduing > 0 && state.revisionInScheduing < latest {
+		p := &state.revisionInScheduing
+		if p == nil {
+			continue
+		}
+		revision := atomic.LoadInt64(p)
+		if state != nil && revision > 0 && revision < latest {
 			klog.V(3).Infof("Worker %d is scheduling with old nodes, skip nodeshard update", index)
 			update = false
 			break
 		}
 	}
 	if update {
-		if err := sc.cache.UpdateNodeShardStatus(sc.schedulerShardName, sc.nodeToUse); err == nil {
-			atomic.StoreInt64(&sc.lastSyncedRevision, latest)
+		// Send update notification to channel instead of calling directly
+		select {
+		case sc.updateChan <- struct{}{}:
+			klog.V(3).Info("Sent update notification to channel")
+		default:
+			klog.Error("Update channel is full, skipping notification")
+			update = false
 		}
+	}
+	return update
+}
+
+// processUpdates handles update notifications from the channel
+func (sc *ShardCoordinator) processUpdates(stopCh <-chan struct{}) {
+	maxBatch := 10
+	for {
+		select {
+		case <-sc.updateChan:
+			// Drain all pending updates from the channel
+			updateCount := 1
+			for len(sc.updateChan) > 0 && updateCount < maxBatch {
+				<-sc.updateChan
+				updateCount++
+			}
+			klog.V(3).Infof("Processing %d update nodeshard notifications", updateCount)
+
+			// Perform the actual update
+			sc.performUpdate()
+
+		case <-stopCh:
+			klog.V(3).Infof("Stopping update nodeshard processing goroutine")
+			return
+		}
+	}
+}
+
+// performUpdate executes the actual UpdateNodeShardStatus call
+func (sc *ShardCoordinator) performUpdate() {
+	latest := atomic.LoadInt64(&sc.latestRevision)
+	// Double-check if update is still needed
+	if atomic.LoadInt64(&sc.lastSyncedRevision) >= latest {
+		return
+	}
+
+	if err := sc.cache.UpdateNodeShardStatus(sc.schedulerShardName, sc.nodeToUse); err == nil {
+		atomic.StoreInt64(&sc.lastSyncedRevision, latest)
+		klog.V(3).Infof("Successfully updated NodeShard status")
+	} else {
+		klog.Errorf("Failed to update NodeShard status: %v", err)
 	}
 }
 
 func (sc *ShardCoordinator) OnWorkerStartSchedulingCycle(index int, schedCtx *agentapi.SchedulingContext) {
 	if schedCtx != nil {
-		schedCtx.NodesInShard = sc.GetNodesForScheduling(index)
+		schedCtx.NodesInShard = sc.getNodesForScheduling(index)
 	}
 }
 
@@ -157,9 +218,10 @@ func (sc *ShardCoordinator) OnWorkerEndSchedulingCycle(index int) {
 		klog.Errorf("Worker %d state should not be nil when end scheduling cycle", index)
 		return
 	}
-	//worker has pickup nodes in latest revisionInSchedulingCycle, avoid trying update when no revisionInSchedulingCycle changed
 	revisionInSchedulingCycle := state.revisionInScheduing
-	state.revisionInScheduing = 0 //end scheduling, clear revision
+	atomic.StoreInt64(&state.revisionInScheduing, 0) //end scheduling, clear revision
+
+	//worker has pickup nodes in latest revisionInSchedulingCycle, avoid trying update when no revisionInSchedulingCycle changed
 	if revisionInSchedulingCycle == latest {
 		return
 	}

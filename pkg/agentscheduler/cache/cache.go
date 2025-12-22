@@ -558,7 +558,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	ctx := context.TODO()
 	logger := klog.FromContext(ctx)
 	sc.schedulingQueue.Run(logger)
-
+	sc.ShardCoordinator.Run(stopCh)
 	sc.ConflictAwareBinder.Run(stopCh)
 
 	go func() {
@@ -1072,10 +1072,6 @@ func (sc *SchedulerCache) UpdateNodeShardStatus(shardName string, usedNodeInCach
 	}
 	klog.V(3).Infof("Updated NodeShard %s status", shardName)
 	return nil
-}
-
-func (sc *SchedulerCache) GetNodesForScheduling(workerIdx int) sets.Set[string] {
-	return sc.ShardCoordinator.GetNodesForScheduling(workerIdx)
 }
 
 // OnWorkerStartSchedulingCycle is called when scheduler worker start a new scheduling cycle
