@@ -90,6 +90,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`basic.admission_app_name`|Admission Controller App Name|`volcano-admission`|
 |`basic.controller_app_name`|Controller App Name|`volcano-controller`|
 |`basic.scheduler_app_name`|Scheduler App Name|`volcano-scheduler`|
+|`basic.healthz_port`| Pod Health port | `11251` |
 |`custom.metrics_enable`|Whether to Enable Metrics|`false`|
 |`custom.admission_enable`|Whether to Enable Admission|`true`|
 |`custom.admission_replicas`|The number of Admission pods to run|`1`|
