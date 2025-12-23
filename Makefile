@@ -102,7 +102,7 @@ vcctl: init
 image_bins: vc-scheduler vc-agent-scheduler vc-controller-manager vc-webhook-manager vc-agent
 
 images:
-	for name in controller-manager scheduler webhook-manager agent; do\
+	for name in controller-manager scheduler agent-scheduler webhook-manager agent; do\
 		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
 	done
 
