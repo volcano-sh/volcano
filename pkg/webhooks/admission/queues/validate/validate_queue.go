@@ -90,6 +90,20 @@ func AdmitQueues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse 
 
 		if ar.Request.Operation == admissionv1.Create || oldQueue.Spec.Parent != queue.Spec.Parent {
 			err = validateHierarchicalQueue(queue)
+			if err != nil {
+				break
+			}
+		}
+
+		// Validate all hierarchy resource constraints
+		// This includes:
+		// - Child's capability <= parent's capability
+		// - Sum of siblings' guarantee/deserved <= parent's limit
+		// - Parent's capability >= each child's capability
+		// - Sum of children's guarantee/deserved <= parent's limit
+		err = validateHierarchicalQueueResources(queue)
+		if err != nil {
+			break
 		}
 
 	case admissionv1.Delete:
@@ -316,4 +330,162 @@ func listQueueChild(parentQueueName string) ([]string, error) {
 	}
 
 	return childQueueNames, nil
+}
+
+// validateHierarchicalQueueResources validates all hierarchy resource constraints for a queue
+// This function performs all necessary checks in a single pass to minimize API calls
+func validateHierarchicalQueueResources(queue *schedulingv1beta1.Queue) error {
+	// List all queues once for all validations
+	queueList, err := config.QueueLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("failed to list queues: %v", err)
+	}
+
+	// Build a map for quick lookup
+	queueMap := make(map[string]*schedulingv1beta1.Queue)
+	for _, q := range queueList {
+		queueMap[q.Name] = q
+	}
+
+	// If this is a child queue, validate against parent
+	if queue.Spec.Parent != "" && queue.Spec.Parent != "root" {
+		parentQueue, exists := queueMap[queue.Spec.Parent]
+		if !exists {
+			return fmt.Errorf("parent queue %s not found", queue.Spec.Parent)
+		}
+
+		// Check child's capability <= parent's capability
+		if err := validateChildAgainstParent(queue, parentQueue); err != nil {
+			return err
+		}
+
+		// Check sum of all siblings' (including this queue) guarantee/deserved <= parent's limit
+		if err := validateSiblingsSum(queue, parentQueue, queueList); err != nil {
+			return err
+		}
+	}
+
+	// If this queue has children, validate all children constraints
+	children := getChildQueues(queue.Name, queueList)
+	if len(children) > 0 {
+		if err := validateChildrenConstraints(queue, children); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateChildAgainstParent validates that child queue's resources don't exceed parent's
+func validateChildAgainstParent(child, parent *schedulingv1beta1.Queue) error {
+	childCapability := api.NewResource(child.Spec.Capability)
+	parentCapability := api.NewResource(parent.Spec.Capability)
+
+	// Check if child's capability exceeds parent's capability in any dimension
+	if parentCapability.LessPartly(childCapability, api.Zero) {
+		return fmt.Errorf("queue %s capability (%s) exceeds parent queue %s capability (%s)",
+			child.Name, childCapability, parent.Name, parentCapability)
+	}
+
+	return nil
+}
+
+// validateSiblingsSum validates that sum of all sibling queues' resources don't exceed parent's limit
+func validateSiblingsSum(queue, parent *schedulingv1beta1.Queue, allQueues []*schedulingv1beta1.Queue) error {
+	// Accumulate resources from all sibling queues (including the queue being validated)
+	totalGuarantee := api.EmptyResource()
+	totalDeserved := api.EmptyResource()
+
+	for _, sibling := range allQueues {
+		if sibling.Spec.Parent != parent.Name {
+			continue
+		}
+		// Include this queue's new values if it's being updated
+		if sibling.Name == queue.Name {
+			totalGuarantee.Add(api.NewResource(queue.Spec.Guarantee.Resource))
+			totalDeserved.Add(api.NewResource(queue.Spec.Deserved))
+		} else {
+			totalGuarantee.Add(api.NewResource(sibling.Spec.Guarantee.Resource))
+			totalDeserved.Add(api.NewResource(sibling.Spec.Deserved))
+		}
+	}
+
+	// Validate guarantee sum
+	if err := validateResourceLimit(parent, totalGuarantee, "guarantee", parent.Spec.Guarantee.Resource); err != nil {
+		return fmt.Errorf("parent queue %s validation failed: %v", parent.Name, err)
+	}
+
+	// Validate deserved sum
+	if err := validateResourceLimit(parent, totalDeserved, "deserved", parent.Spec.Deserved); err != nil {
+		return fmt.Errorf("parent queue %s validation failed: %v", parent.Name, err)
+	}
+
+	return nil
+}
+
+// validateChildrenConstraints validates that parent's resources are sufficient for all children
+func validateChildrenConstraints(parent *schedulingv1beta1.Queue, children []*schedulingv1beta1.Queue) error {
+	parentCapability := api.NewResource(parent.Spec.Capability)
+	totalGuarantee := api.EmptyResource()
+	totalDeserved := api.EmptyResource()
+
+	for _, child := range children {
+		// Check parent's capability >= each child's capability
+		childCapability := api.NewResource(child.Spec.Capability)
+		if parentCapability.LessPartly(childCapability, api.Zero) {
+			return fmt.Errorf("queue %s capability (%s) is less than child queue %s capability (%s)",
+				parent.Name, parentCapability, child.Name, childCapability)
+		}
+
+		// Accumulate children's guarantee and deserved
+		totalGuarantee.Add(api.NewResource(child.Spec.Guarantee.Resource))
+		totalDeserved.Add(api.NewResource(child.Spec.Deserved))
+	}
+
+	// Check parent's guarantee >= sum of children's guarantee
+	if err := validateResourceLimit(parent, totalGuarantee, "guarantee", parent.Spec.Guarantee.Resource); err != nil {
+		return fmt.Errorf("queue %s validation failed: %v", parent.Name, err)
+	}
+
+	// Check parent's deserved >= sum of children's deserved
+	if err := validateResourceLimit(parent, totalDeserved, "deserved", parent.Spec.Deserved); err != nil {
+		return fmt.Errorf("queue %s validation failed: %v", parent.Name, err)
+	}
+
+	return nil
+}
+
+// getChildQueues returns all direct children of a queue
+func getChildQueues(parentName string, allQueues []*schedulingv1beta1.Queue) []*schedulingv1beta1.Queue {
+	children := make([]*schedulingv1beta1.Queue, 0)
+	for _, q := range allQueues {
+		if q.Spec.Parent == parentName {
+			children = append(children, q)
+		}
+	}
+	return children
+}
+
+// validateResourceLimit checks if children's sum exceeds parent's limit
+// It checks against parent's explicit limit first, then falls back to capability
+func validateResourceLimit(parent *schedulingv1beta1.Queue, childrenSum *api.Resource,
+	resourceType string, parentResource v1.ResourceList) error {
+
+	if len(parentResource) > 0 {
+		// Parent has explicit resource limit - check against it
+		parentLimit := api.NewResource(parentResource)
+		if parentLimit.LessPartly(childrenSum, api.Zero) {
+			return fmt.Errorf("sum of children's %s (%s) exceeds parent's %s limit (%s)",
+				resourceType, childrenSum, resourceType, parentLimit)
+		}
+	} else if len(parent.Spec.Capability) > 0 {
+		// Parent has no explicit limit but has capability - check against capability
+		parentCapability := api.NewResource(parent.Spec.Capability)
+		if parentCapability.LessPartly(childrenSum, api.Zero) {
+			return fmt.Errorf("sum of children's %s (%s) exceeds parent's capability (%s)",
+				resourceType, childrenSum, parentCapability)
+		}
+	}
+
+	return nil
 }
