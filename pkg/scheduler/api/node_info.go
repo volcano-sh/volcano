@@ -374,7 +374,11 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 			ignored_list = append(ignored_list, devices.GetIgnoredDevices()...)
 		}
 	}
-	IgnoredDevicesList.Set(ignored_list)
+	klog.V(5).Infof("ignored_list is %v", ignored_list)
+	IgnoredDevicesList.AppendList(
+		ignored_list,
+	)
+	klog.V(5).Infof("ignoredDevicesList is %v", IgnoredDevicesList.List())
 }
 
 // setNode sets kubernetes node object to nodeInfo object without assertion
