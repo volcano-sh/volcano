@@ -288,7 +288,8 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 	for i = 0; i < cc.workers; i++ {
 		go wait.Until(
 			func() {
-				for cc.processNextReq() {}
+				for cc.processNextReq() {
+				}
 			},
 			time.Second,
 			stopCh)
