@@ -170,11 +170,9 @@ spec:
             {{- end }}
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.controller_image_name}}:{{.Values.basic.image_tag_version}}
           livenessProbe:
-            {{- $probeCtx := dict "values" .Values.custom.controller_livenessProbe "scheme" "HTTP" "Values" .Values }}
-            {{- include "volcano.probe" $probeCtx | nindent 12 }}
+            {{- include "volcano.probe" (dict "port" ( .Values.basic.healthz_port | default 11251 ) "scheme" "HTTP" "values" .Values.custom.controller_livenessProbe) | nindent 12 }}
           readinessProbe:
-            {{- $probeCtx := dict "values" .Values.custom.controller_readinessProbe "scheme" "HTTP" "Values" .Values }}
-            {{- include "volcano.probe" $probeCtx | nindent 12 }}
+            {{- include "volcano.probe" (dict "port" ( .Values.basic.healthz_port | default 11251 ) "scheme" "HTTP" "values" .Values.custom.controller_readinessProbe) | nindent 12 }}
           args:
             - --logtostderr
             - --enable-healthz=true
