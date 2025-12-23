@@ -400,15 +400,14 @@ func validateSiblingsSum(queue, parent *schedulingv1beta1.Queue, allQueues []*sc
 		if sibling.Spec.Parent != parent.Name {
 			continue
 		}
-		// Include this queue's new values if it's being updated
-		if sibling.Name == queue.Name {
-			totalGuarantee.Add(api.NewResource(queue.Spec.Guarantee.Resource))
-			totalDeserved.Add(api.NewResource(queue.Spec.Deserved))
-		} else {
+		if sibling.Name != queue.Name {
 			totalGuarantee.Add(api.NewResource(sibling.Spec.Guarantee.Resource))
 			totalDeserved.Add(api.NewResource(sibling.Spec.Deserved))
 		}
 	}
+
+	totalGuarantee.Add(api.NewResource(queue.Spec.Guarantee.Resource))
+	totalDeserved.Add(api.NewResource(queue.Spec.Deserved))
 
 	// Validate guarantee sum
 	if err := validateResourceLimit(parent, totalGuarantee, "guarantee", parent.Spec.Guarantee.Resource); err != nil {
