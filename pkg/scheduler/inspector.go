@@ -14,12 +14,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
+	"volcano.sh/volcano/pkg/inspector"
+	"volcano.sh/volcano/pkg/inspector/mock-actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	sch "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	schedulerOptions "volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/inspector"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 )
@@ -171,7 +172,7 @@ func (si *ScheduleInspector) simulate(req *DryrunRequest) (res *inspector.Schedu
 	}()
 
 	ssn.UID = types.UID(req.UUID)
-	return inspector.Execute(ssn, jobs)
+	return allocate.Execute(ssn, jobs)
 }
 
 func GetPodQueue[T *corev1.Pod | corev1.Pod | corev1.PodTemplateSpec](pod T) string {

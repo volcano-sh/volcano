@@ -10,9 +10,9 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
 
-	"volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/inspector"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
+	"volcano.sh/volcano/pkg/inspector/mock-actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -228,7 +228,10 @@ func TestExecute(t *testing.T) {
 			jobs := make(map[api.JobID]*api.JobInfo)
 			jobInfo := newJobInfo(test.dryrun)
 			jobs[jobInfo.UID] = jobInfo
-			res := inspector.Execute(ssn, jobs)
+
+			ssn.Jobs = jobs
+
+			res := allocate.Execute(ssn, jobs)
 
 			nodes, err := res.AllocateNodes()
 
