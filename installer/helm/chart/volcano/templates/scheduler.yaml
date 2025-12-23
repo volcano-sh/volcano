@@ -198,20 +198,6 @@ spec:
           readinessProbe:
             {{- include "volcano.probe" (dict "port" ( .Values.basic.healthz_port | default 11251 ) "scheme" "HTTP" "values" .Values.custom.scheduler_readinessProbe) | nindent 12 }}
           {{- if .Values.custom.scheduler_resources }}
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 11251
-              scheme: HTTP
-            initialDelaySeconds: {{ .Values.custom.scheduler_livenessProbe.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.custom.scheduler_livenessProbe.periodSeconds | default 20 }}
-            timeoutSeconds: {{ .Values.custom.scheduler_livenessProbe.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.custom.scheduler_livenessProbe.failureThreshold | default 5 }}
-            successThreshold: {{ .Values.custom.scheduler_livenessProbe.successThreshold | default 1 }}
-          readinessProbe:
-            {{- $probeCtx := dict "values" .Values.custom.scheduler_readinessProbe "scheme" "HTTP" "Values" .Values }}
-            {{- include "volcano.probe" $probeCtx | nindent 12 }}
-          {{- if .Values.custom.scheduler_resources }}
           resources:
           {{- toYaml .Values.custom.scheduler_resources | nindent 12 }}
           {{- end }}
