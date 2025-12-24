@@ -49,43 +49,40 @@ func (sc *SchedulerCache) RefreshNodeShards() {
 	for shardName, shard := range sc.NodeShards {
 		if shardName == options.ServerOpts.ShardName {
 			nodeShardInfo = shard
-			// shardForSchedulerFound = true
 			break
 		}
 	}
 	if nodeShardInfo == nil {
 		klog.Errorf("Sharding is enabled but no shard is defined for this scheduler!")
-		// sc.schedulerNodeShardInfo = nil
 		return
 	}
-
-	if availableNodes := sc.getAvailableNodesFromShard(nodeShardInfo); !sc.InUseNodesInShard.Equal(availableNodes) {
-		sc.InUseNodesInShard = availableNodes
-		klog.V(3).Infof("Try to update nodeshard status after nodeshard refresh")
-		go sc.tryUpdateNodeShardStatus(nodeShardInfo.Name)
-	}
+	sc.InUseNodesInShard = sc.getAvailableNodesFromShard(nodeShardInfo)
+	klog.V(3).Infof("Try to update NodeShard status after NodeShard refresh")
+	go sc.tryUpdateNodeShardStatus(nodeShardInfo.Name)
 }
 
 func (sc *SchedulerCache) tryUpdateNodeShardStatus(nodeShardName string) {
 	sc.shardUpdateCoordinator.ShardUpdateMu.Lock()
+	defer sc.shardUpdateCoordinator.ShardUpdateMu.Unlock()
 
 	if sc.shardUpdateCoordinator.IsSessionRunning {
+		//An update is pending, just skip duplicate update request
+		if sc.shardUpdateCoordinator.ShardUpdatePending {
+			klog.V(3).Infof("Update status of NodeShard is already pending, skip this request")
+			return
+		}
 		sc.shardUpdateCoordinator.ShardUpdatePending = true
-		klog.V(3).Infof("Update status of nodeshard is pending because session is running")
-
+		klog.V(3).Infof("Update status of NodeShard is pending because session is running")
 		sc.shardUpdateCoordinator.ShardUpdateCond.Wait()
-
-		// when multiple update request are trying to acquire lock, only one request will do upatte
+		klog.V(3).Infof("Update status of NodeShard is resumed")
+		// when multiple update request are trying to acquire lock, only one request will do update
 		if sc.shardUpdateCoordinator.ShardUpdatePending && !sc.shardUpdateCoordinator.IsSessionRunning {
 			sc.UpdateNodeShardStatus(nodeShardName)
 			sc.shardUpdateCoordinator.ShardUpdatePending = false
 		}
-
-		sc.shardUpdateCoordinator.ShardUpdateMu.Unlock()
 		return
 	}
 	sc.UpdateNodeShardStatus(nodeShardName)
-	sc.shardUpdateCoordinator.ShardUpdateMu.Unlock()
 }
 
 // getAvailableNodesFromShard get available nodes based on desired nodes. Nodes are still being used in other shard should not be put into available nodes

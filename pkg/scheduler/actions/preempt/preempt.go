@@ -302,19 +302,19 @@ func (pmpt *Action) preempt(
 	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache, ssn.NodesInShard)
 
 	candidateNodes := util.GetPredicatedNodeByShard(predicateNodes, ssn.NodesInShard)
-	var result bool
+	var preemptSuccess bool
 	var err error
 	//try to preempt in order if multiple candidate Nodes group with priority exist
 	for _, nodes := range candidateNodes {
 		if pmpt.enableTopologyAwarePreemption {
-			if result, err = pmpt.topologyAwarePreempt(ssn, stmt, preemptor, filter, nodes); result {
+			if preemptSuccess, err = pmpt.topologyAwarePreempt(ssn, stmt, preemptor, filter, nodes); preemptSuccess {
 				break
 			}
-		} else if result, err = pmpt.normalPreempt(ssn, stmt, preemptor, filter, nodes); result {
+		} else if preemptSuccess, err = pmpt.normalPreempt(ssn, stmt, preemptor, filter, nodes); preemptSuccess {
 			break
 		}
 	}
-	return result, err
+	return preemptSuccess, err
 }
 
 func (pmpt *Action) normalPreempt(

@@ -33,6 +33,7 @@ import (
 
 const (
 	defaultSchedulerName   = "volcano"
+	defaultShardName       = "volcano"
 	defaultSchedulerPeriod = time.Second
 	defaultResyncPeriod    = 0
 	defaultQueue           = "default"
@@ -104,7 +105,7 @@ type ServerOption struct {
 	// config if the current scheduler config is invalid
 	DisableDefaultSchedulerConfig bool
 
-	//enable sheduling with shard
+	//enable scheduling with shard
 	ShardingMode string
 
 	//Shard name for this scheduler
@@ -168,8 +169,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
-	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling")
-	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultSchedulerName, "The name of shard used for this scheduler")
+	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, none(default)|hard|soft mode is supported")
+	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultShardName, "The name of shard used for this scheduler")
 }
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.

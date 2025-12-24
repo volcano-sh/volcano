@@ -26,7 +26,7 @@ import (
 // ShardID is UID type, serves as unique ID for each queue
 type ShardID types.UID
 
-// QueueInfo will have all details about queue
+// NodeShardInfo will have all details about node shard
 type NodeShardInfo struct {
 	Name         string
 	NodeDesired  sets.Set[string]
@@ -54,7 +54,7 @@ func NewNodeShardInfo(shard *nodeshardv1alpha1.NodeShard) *NodeShardInfo {
 	return shardInfo
 }
 
-// Clone is used to clone queueInfo object
+// Clone is used to clone nodeShardIndo object
 func (ns *NodeShardInfo) Clone() *NodeShardInfo {
 	return &NodeShardInfo{
 		Name:         ns.Name,

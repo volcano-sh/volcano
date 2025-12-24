@@ -43,11 +43,11 @@ type ShardCoordinator struct {
 }
 
 type workerNodeShardState struct {
-	//revisionInScheduing revision of the NodeShard being used in worker scheduling. revisionInScheduing < 0 means no nodes in scheduling cycle
-	revisionInScheduing int64
+	//revisionInScheduling revision of the NodeShard being used in worker scheduling. revisionInScheduling < 0 means no nodes in scheduling cycle
+	revisionInScheduling int64
 }
 
-func NewShardCoordinator(cache Cache, workerCount int, schedulerName string, shardingMode string) *ShardCoordinator {
+func NewShardCoordinator(cache Cache, workerCount int, shardName string, shardingMode string) *ShardCoordinator {
 	klog.V(3).Infof("Shard Coordinator is initialized")
 	workerStates := make([]*workerNodeShardState, workerCount)
 	for i := range workerCount {
@@ -55,7 +55,7 @@ func NewShardCoordinator(cache Cache, workerCount int, schedulerName string, sha
 	}
 
 	sc := &ShardCoordinator{
-		schedulerShardName: schedulerName,
+		schedulerShardName: shardName,
 		workerStates:       workerStates,
 		shardingEnabled:    shardingMode == util.HardShardingMode || shardingMode == util.SoftShardingMode,
 		cache:              cache,
@@ -83,10 +83,8 @@ func (sc *ShardCoordinator) getNodesForScheduling(workerIdx int) sets.Set[string
 	sc.mutex.RLock()
 	defer sc.mutex.RUnlock()
 	latest := atomic.LoadInt64(&sc.latestRevision)
-	atomic.StoreInt64(&state.revisionInScheduing, latest)
-	if klog.V(5).Enabled() {
-		klog.V(5).Infof("Worker %d will schedule with nodes%v", workerIdx, sc.nodeToUse.UnsortedList())
-	}
+	atomic.StoreInt64(&state.revisionInScheduling, latest)
+	klog.V(5).Infof("Worker %d will schedule with nodes%v", workerIdx, sc.nodeToUse.UnsortedList())
 	return sc.nodeToUse
 }
 
@@ -95,7 +93,16 @@ func (sc *ShardCoordinator) RefreshNodeShards(nodeShards map[string]*api.NodeSha
 	if !sc.shardingEnabled {
 		return
 	}
+	if sc.checkAndUpdateShards(nodeShards) {
+		klog.V(3).Infof("Try to update nodeshard status after nodeshard refresh")
+		sc.tryUpdateNodeShardStatus()
+	}
+}
+
+// checkAndUpdateShards update shard and node stored in ShardCoordinator and return is NodeShard need be updated because of the update.
+func (sc *ShardCoordinator) checkAndUpdateShards(nodeShards map[string]*api.NodeShardInfo) bool {
 	sc.mutex.Lock()
+	defer sc.mutex.Unlock()
 	sc.nodeShardInfos = nodeShards
 	shardForSchedulerFound := false
 	desiredNodesChanged := false
@@ -118,17 +125,13 @@ func (sc *ShardCoordinator) RefreshNodeShards(nodeShards map[string]*api.NodeSha
 		sc.nodeToUse = availableNodes
 		needUpdate = true
 	}
-	sc.mutex.Unlock()
-	if needUpdate {
-		klog.V(3).Infof("Try to update nodeshard status after nodeshard refresh")
-		sc.tryUpdateNodeShardStatus()
-	}
+	return needUpdate
 }
 
 // tryUpdateNodeShardStatus try to update status of nodeshard if no worker is using nodes in last revision of nodeshard
 func (sc *ShardCoordinator) tryUpdateNodeShardStatus() bool {
 	latest := atomic.LoadInt64(&sc.latestRevision)
-	//skip upate if status has been updated
+	//skip update if status has been updated
 	if atomic.LoadInt64(&sc.lastSyncedRevision) >= latest {
 		klog.V(3).Info("last updated revision is new than revision in coordinator, skip nodeshard update")
 		return false
@@ -137,7 +140,7 @@ func (sc *ShardCoordinator) tryUpdateNodeShardStatus() bool {
 	update := true
 	for index, state := range sc.workerStates {
 		//skip update if any worker is scheduling with nodes before this revision
-		p := &state.revisionInScheduing
+		p := &state.revisionInScheduling
 		if p == nil {
 			continue
 		}
@@ -218,8 +221,8 @@ func (sc *ShardCoordinator) OnWorkerEndSchedulingCycle(index int) {
 		klog.Errorf("Worker %d state should not be nil when end scheduling cycle", index)
 		return
 	}
-	revisionInSchedulingCycle := state.revisionInScheduing
-	atomic.StoreInt64(&state.revisionInScheduing, 0) //end scheduling, clear revision
+	revisionInSchedulingCycle := state.revisionInScheduling
+	atomic.StoreInt64(&state.revisionInScheduling, 0) //end scheduling, clear revision
 
 	//worker has pickup nodes in latest revisionInSchedulingCycle, avoid trying update when no revisionInSchedulingCycle changed
 	if revisionInSchedulingCycle == latest {

@@ -31,7 +31,8 @@ import (
 )
 
 const (
-	agentSchedulerName     = "agent-scheduler"
+	defaultSchedulerName   = "agent-scheduler"
+	defaultShardName       = "agent-scheduler"
 	defaultSchedulerPeriod = time.Second
 	defaultResyncPeriod    = 0
 	defaultQueue           = "default"
@@ -60,7 +61,7 @@ type ServerOption struct {
 	//Count of workers for scheduling
 	ScheduleWorkerCount uint32
 
-	//enable sheduling with shard
+	//enable scheduling with shard
 	ShardingMode string
 
 	//Shard name for this scheduler
@@ -90,7 +91,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", "", "Define the namespace of the lock object; it is volcano-system by default.")
 	fs.MarkDeprecated("lock-object-namespace", "This flag is deprecated and will be removed in a future release. Please use --leader-elect-resource-namespace instead.")
 	// volcano scheduler will ignore pods with scheduler names other than specified with the option
-	fs.StringVar(&s.SchedulerName, "scheduler-name", agentSchedulerName, "vc-agent-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
+	fs.StringVar(&s.SchedulerName, "scheduler-name", defaultSchedulerName, "vc-agent-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
 	fs.DurationVar(&s.ResyncPeriod, "resync-period", defaultResyncPeriod, "The default resync period for k8s native informer factory")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
@@ -118,8 +119,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 	fs.Uint32Var(&s.ScheduleWorkerCount, "scheduler-worker-count", defaultScheduleWorkerCount, "The flag indicates the number of worker threads for scheduling.")
-	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling")
-	fs.StringVar(&s.ShardName, "scheduler-sharding-name", agentSchedulerName, "The name of shard used for this scheduler")
+	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, none(default)|hard|soft mode is supported")
+	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultShardName, "The name of shard used for this scheduler")
 }
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.

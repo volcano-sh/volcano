@@ -197,7 +197,7 @@ func (alloc *Action) prioritizeNodes(task *api.TaskInfo, predicateNodes []*api.N
 			bestNodes = append(bestNodes, nodes[0])
 		case len(nodes) > 1: // If more than one node after predicate, using "the best" one
 			nodeScores := util.PrioritizeNodes(task, nodes, alloc.fwk.BatchNodeOrderFn, alloc.fwk.NodeOrderMapFn, alloc.fwk.NodeOrderReduceFn)
-			bestNodes, _ = util.SelectBestNodesAndScores(nodeScores, nodesInShard, shardingMode, alloc.candidateNodeCount)
+			bestNodes, _ = util.SelectBestNodesAndScores(nodeScores, alloc.candidateNodeCount)
 		}
 		if len(bestNodes) > 0 {
 			break

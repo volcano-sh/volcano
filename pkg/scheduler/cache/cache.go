@@ -61,6 +61,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -372,6 +373,10 @@ func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo
 		return err
 	}
 	return nil
+}
+
+func (su *defaultStatusUpdater) UpdateNodeShardStatus(nodeshard *nodeshardv1alpha1.NodeShard) (*nodeshardv1alpha1.NodeShard, error) {
+	return su.vcclient.ShardV1alpha1().NodeShards().UpdateStatus(context.Background(), nodeshard, metav1.UpdateOptions{})
 }
 
 type podgroupBinder struct {
@@ -1672,28 +1677,33 @@ func (sc *SchedulerCache) UpdateQueueStatus(queue *schedulingapi.QueueInfo) erro
 // UpdateNodeShardStatus update the status of nodeshard
 func (sc *SchedulerCache) UpdateNodeShardStatus(nodeShardName string) error {
 	klog.V(3).Infof("Update NodeShard %s status...", nodeShardName)
-
 	nodeShard, exist := sc.NodeShards[nodeShardName]
 	if !exist {
 		klog.Warningf("NodeShard %s does not exist in cache, skip status update", nodeShardName)
-	}
-
-	nodesInUse := sets.New(nodeShard.NodeShard.Status.NodesInUse...)
-	if sc.InUseNodesInShard.Equal(nodesInUse) {
-		// nodes to use is same as nodes in use recorded in nodeshard
 		return nil
 	}
 
+	oldNodesInUse := sets.New(nodeShard.NodeShard.Status.NodesInUse...)
+	oldNodesToRemove := sets.New(nodeShard.NodeShard.Status.NodesToRemove...)
+	oldNodesToAdd := sets.New(nodeShard.NodeShard.Status.NodesToAdd...)
+
 	// Create a deep copy to avoid modifying cache objects
+	sc.Mutex.Lock()
+	nodesInUse := sc.InUseNodesInShard
 	nodeShardCopy := nodeShard.NodeShard.DeepCopy()
+	sc.Mutex.Unlock()
 	desiredNodes := sets.New(nodeShardCopy.Spec.NodesDesired...)
-	nodesToRemove := sc.InUseNodesInShard.Difference(desiredNodes)
-	nodesToAdd := desiredNodes.Difference(sc.InUseNodesInShard)
-	nodeShardCopy.Status.NodesInUse = sc.InUseNodesInShard.UnsortedList()
+	nodesToRemove := nodesInUse.Difference(desiredNodes)
+	nodesToAdd := desiredNodes.Difference(nodesInUse)
+	if nodesInUse.Equal(oldNodesInUse) && nodesToRemove.Equal(oldNodesToRemove) && nodesToAdd.Equal(oldNodesToAdd) {
+		klog.V(3).Infof("Skip update NodeShard %s status, no change", nodeShard.Name)
+		return nil
+	}
+	nodeShardCopy.Status.NodesInUse = nodesInUse.UnsortedList()
 	nodeShardCopy.Status.NodesToRemove = nodesToRemove.UnsortedList()
 	nodeShardCopy.Status.NodesToAdd = nodesToAdd.UnsortedList()
 
-	_, err := sc.vcClient.ShardV1alpha1().NodeShards().UpdateStatus(context.Background(), nodeShardCopy, metav1.UpdateOptions{})
+	_, err := sc.StatusUpdater.UpdateNodeShardStatus(nodeShardCopy)
 	if err != nil {
 		klog.Errorf("Failed to update NodeShard %s status %v", nodeShard.Name, err)
 		return err

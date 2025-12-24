@@ -83,10 +83,10 @@ func TestAddFlags(t *testing.T) {
 	}
 	expected := &ServerOption{
 		ServerOption:        serverOptions,
-		SchedulerName:       agentSchedulerName,
+		SchedulerName:       defaultSchedulerName,
 		ScheduleWorkerCount: defaultScheduleWorkerCount,
 		ShardingMode:        commonutil.NoneShardingMode,
-		ShardName:           agentSchedulerName,
+		ShardName:           defaultSchedulerName,
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{
 		features.PodDisruptionBudgetsSupport: false,

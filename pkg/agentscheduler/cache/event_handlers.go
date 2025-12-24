@@ -475,7 +475,7 @@ func (sc *SchedulerCache) nodeCanAddCache(node *v1.Node) bool {
 	return false
 }
 
-// AddNode add node to scheduler cache
+// AddNodeShard add nodeshard to scheduler cache
 func (sc *SchedulerCache) AddNodeShard(obj interface{}) {
 	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
 	if !ok {
@@ -485,7 +485,7 @@ func (sc *SchedulerCache) AddNodeShard(obj interface{}) {
 	sc.addOrUpdateNodeShard(shard)
 }
 
-// UpdateNode update node to scheduler cache
+// UpdateNodeShard update nodeshard to scheduler cache
 func (sc *SchedulerCache) UpdateNodeShard(oldObj, newObj interface{}) {
 	newShard, ok := newObj.(*nodeshardv1alpha1.NodeShard)
 	if !ok {
@@ -495,7 +495,7 @@ func (sc *SchedulerCache) UpdateNodeShard(oldObj, newObj interface{}) {
 	sc.addOrUpdateNodeShard(newShard)
 }
 
-// DeleteNode delete node from scheduler cache
+// DeleteNode delete nodeshard from scheduler cache
 func (sc *SchedulerCache) DeleteNodeShard(obj interface{}) {
 	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
 	if !ok {

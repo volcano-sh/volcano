@@ -86,15 +86,15 @@ func TestGetNodesForScheduling_StateInitialization(t *testing.T) {
 	if coordinator.workerStates[1] == nil {
 		t.Error("Expected worker state to be initialized")
 	}
-	if coordinator.workerStates[1].revisionInScheduing != 5 {
-		t.Errorf("Expected worker revision to be 5, got %d", coordinator.workerStates[1].revisionInScheduing)
+	if coordinator.workerStates[1].revisionInScheduling != 5 {
+		t.Errorf("Expected worker revision to be 5, got %d", coordinator.workerStates[1].revisionInScheduling)
 	}
 
 	// Second call should update revision
 	coordinator.latestRevision = 10
 	coordinator.getNodesForScheduling(1)
-	if coordinator.workerStates[1].revisionInScheduing != 10 {
-		t.Errorf("Expected worker revision to be updated to 10, got %d", coordinator.workerStates[1].revisionInScheduing)
+	if coordinator.workerStates[1].revisionInScheduling != 10 {
+		t.Errorf("Expected worker revision to be updated to 10, got %d", coordinator.workerStates[1].revisionInScheduling)
 	}
 }
 
@@ -140,7 +140,7 @@ func TestRefreshNodeShards_Success(t *testing.T) {
 	// Initialize worker states and prevent status update by setting lastSyncedRevision high
 	for i := range coordinator.workerStates {
 		coordinator.workerStates[i] = &workerNodeShardState{
-			revisionInScheduing: 1, // Set to 1 so they appear up to date with latest revision
+			revisionInScheduling: 1, // Set to 1 so they appear up to date with latest revision
 		}
 	}
 	coordinator.lastSyncedRevision = 100 // Set high to prevent status update
@@ -187,9 +187,9 @@ func TestTryUpdateNodeShardStatus(t *testing.T) {
 			lastSyncedRevision: 5,
 			latestRevision:     5,
 			workerStates: []*workerNodeShardState{
-				{revisionInScheduing: 5},
-				{revisionInScheduing: 5},
-				{revisionInScheduing: 5},
+				{revisionInScheduling: 5},
+				{revisionInScheduling: 5},
+				{revisionInScheduling: 5},
 			},
 			expectUpdateAttempt: false,
 		},
@@ -198,9 +198,9 @@ func TestTryUpdateNodeShardStatus(t *testing.T) {
 			lastSyncedRevision: 6,
 			latestRevision:     5,
 			workerStates: []*workerNodeShardState{
-				{revisionInScheduing: 5},
-				{revisionInScheduing: 5},
-				{revisionInScheduing: 5},
+				{revisionInScheduling: 5},
+				{revisionInScheduling: 5},
+				{revisionInScheduling: 5},
 			},
 			expectUpdateAttempt: false,
 		},
@@ -209,9 +209,9 @@ func TestTryUpdateNodeShardStatus(t *testing.T) {
 			lastSyncedRevision: 4,
 			latestRevision:     5,
 			workerStates: []*workerNodeShardState{
-				{revisionInScheduing: 5}, // Up to date
-				{revisionInScheduing: 5}, // Up to date
-				{revisionInScheduing: 5}, // Up to date
+				{revisionInScheduling: 5}, // Up to date
+				{revisionInScheduling: 5}, // Up to date
+				{revisionInScheduling: 5}, // Up to date
 			},
 			expectUpdateAttempt: true,
 		},
@@ -220,9 +220,9 @@ func TestTryUpdateNodeShardStatus(t *testing.T) {
 			lastSyncedRevision: 0,
 			latestRevision:     5,
 			workerStates: []*workerNodeShardState{
-				{revisionInScheduing: 5}, // Up to date
-				{revisionInScheduing: 4}, // Actively scheduling old nodes (3 < 5 and > 0)
-				{revisionInScheduing: 5}, // Up to date
+				{revisionInScheduling: 5}, // Up to date
+				{revisionInScheduling: 4}, // Actively scheduling old nodes (3 < 5 and > 0)
+				{revisionInScheduling: 5}, // Up to date
 			},
 			expectUpdateAttempt: false,
 		},
@@ -231,9 +231,9 @@ func TestTryUpdateNodeShardStatus(t *testing.T) {
 			lastSyncedRevision: 0,
 			latestRevision:     5,
 			workerStates: []*workerNodeShardState{
-				{revisionInScheduing: 0}, // Finished scheduling
-				{revisionInScheduing: 0}, // Finished scheduling
-				{revisionInScheduing: 0}, // Finished scheduling
+				{revisionInScheduling: 0}, // Finished scheduling
+				{revisionInScheduling: 0}, // Finished scheduling
+				{revisionInScheduling: 0}, // Finished scheduling
 			},
 			expectUpdateAttempt: true,
 		},
@@ -268,7 +268,7 @@ func TestConcurrentWorkerSchedulingCycleUpdateRequests(t *testing.T) {
 	// Initialize worker states - all workers start with revision 0 (not scheduling)
 	for i := range coordinator.workerStates {
 		coordinator.workerStates[i] = &workerNodeShardState{
-			revisionInScheduing: 0,
+			revisionInScheduling: 0,
 		}
 	}
 
@@ -324,10 +324,10 @@ func TestConcurrentWorkerSchedulingCycleUpdateRequests(t *testing.T) {
 		t.Errorf("Expected %d update notifications, got %d", expectedUpdates, updateNotificationsReceived)
 	}
 
-	// Verify that all workers have finished scheduling (revisionInScheduing should be 0)
+	// Verify that all workers have finished scheduling (revisionInScheduling should be 0)
 	for i, state := range coordinator.workerStates {
-		if state.revisionInScheduing != 0 {
-			t.Errorf("Worker %d should have finished scheduling (revisionInScheduing=0), got %d", i, state.revisionInScheduing)
+		if state.revisionInScheduling != 0 {
+			t.Errorf("Worker %d should have finished scheduling (revisionInScheduling=0), got %d", i, state.revisionInScheduling)
 		}
 	}
 }
@@ -349,9 +349,9 @@ func TestConcurrentWorkerEndSchedulingCycleUpdateTriggering(t *testing.T) {
 		{
 			name: "worker finishes with old revision while others are up to date",
 			setupWorkerStates: func() {
-				coordinator.workerStates[0] = &workerNodeShardState{revisionInScheduing: 9}  // Old revision
-				coordinator.workerStates[1] = &workerNodeShardState{revisionInScheduing: 10} // Latest
-				coordinator.workerStates[2] = &workerNodeShardState{revisionInScheduing: 10} // Latest
+				coordinator.workerStates[0] = &workerNodeShardState{revisionInScheduling: 9}  // Old revision
+				coordinator.workerStates[1] = &workerNodeShardState{revisionInScheduling: 10} // Latest
+				coordinator.workerStates[2] = &workerNodeShardState{revisionInScheduling: 10} // Latest
 			},
 			workerToTest:          0,
 			expectUpdateTriggered: true,
@@ -360,9 +360,9 @@ func TestConcurrentWorkerEndSchedulingCycleUpdateTriggering(t *testing.T) {
 		{
 			name: "worker finishes with latest revision",
 			setupWorkerStates: func() {
-				coordinator.workerStates[0] = &workerNodeShardState{revisionInScheduing: 10} // Latest
-				coordinator.workerStates[1] = &workerNodeShardState{revisionInScheduing: 10} // Latest
-				coordinator.workerStates[2] = &workerNodeShardState{revisionInScheduing: 10} // Latest
+				coordinator.workerStates[0] = &workerNodeShardState{revisionInScheduling: 10} // Latest
+				coordinator.workerStates[1] = &workerNodeShardState{revisionInScheduling: 10} // Latest
+				coordinator.workerStates[2] = &workerNodeShardState{revisionInScheduling: 10} // Latest
 			},
 			workerToTest:          0,
 			expectUpdateTriggered: false,
@@ -371,9 +371,9 @@ func TestConcurrentWorkerEndSchedulingCycleUpdateTriggering(t *testing.T) {
 		{
 			name: "worker finishes while others are still scheduling old nodes",
 			setupWorkerStates: func() {
-				coordinator.workerStates[0] = &workerNodeShardState{revisionInScheduing: 9}  // Old revision
-				coordinator.workerStates[1] = &workerNodeShardState{revisionInScheduing: 9}  // Older than latest
-				coordinator.workerStates[2] = &workerNodeShardState{revisionInScheduing: 10} // Latest
+				coordinator.workerStates[0] = &workerNodeShardState{revisionInScheduling: 9}  // Old revision
+				coordinator.workerStates[1] = &workerNodeShardState{revisionInScheduling: 9}  // Older than latest
+				coordinator.workerStates[2] = &workerNodeShardState{revisionInScheduling: 10} // Latest
 			},
 			workerToTest:          0,
 			expectUpdateTriggered: false,
@@ -407,9 +407,9 @@ func TestConcurrentWorkerEndSchedulingCycleUpdateTriggering(t *testing.T) {
 			}
 
 			// Verify worker state is reset
-			if coordinator.workerStates[tt.workerToTest].revisionInScheduing != 0 {
-				t.Errorf("Expected worker %d revisionInScheduing to be reset to 0, got %d",
-					tt.workerToTest, coordinator.workerStates[tt.workerToTest].revisionInScheduing)
+			if coordinator.workerStates[tt.workerToTest].revisionInScheduling != 0 {
+				t.Errorf("Expected worker %d revisionInScheduling to be reset to 0, got %d",
+					tt.workerToTest, coordinator.workerStates[tt.workerToTest].revisionInScheduling)
 			}
 		})
 	}

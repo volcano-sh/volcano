@@ -134,6 +134,7 @@ type SchedulerCache struct {
 	// ConflictAwareBinder resolve confilct caused by multi workers parallel allocation
 	ConflictAwareBinder *ConflictAwareBinder
 
+	//ShardCoordinator keep sync of nodes that should be used based shards allocation, maintain the nodes in cache and in nodeshard cr
 	ShardCoordinator *ShardCoordinator
 
 	// schedulingQueue is used to store pods waiting to be scheduled
@@ -371,7 +372,9 @@ func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *Schedule
 	)
 
 	sc.ConflictAwareBinder = NewConflictAwareBinder(sc, sc.schedulingQueue)
-	sc.ShardCoordinator = NewShardCoordinator(sc, int(opt.ScheduleWorkerCount), opt.ShardName, opt.ShardingMode)
+	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
+		sc.ShardCoordinator = NewShardCoordinator(sc, int(opt.ScheduleWorkerCount), opt.ShardName, opt.ShardingMode)
+	}
 	return sc
 }
 
@@ -558,7 +561,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	ctx := context.TODO()
 	logger := klog.FromContext(ctx)
 	sc.schedulingQueue.Run(logger)
-	sc.ShardCoordinator.Run(stopCh)
+	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
+		sc.ShardCoordinator.Run(stopCh)
+	}
 	sc.ConflictAwareBinder.Run(stopCh)
 
 	go func() {
@@ -1058,6 +1063,7 @@ func (sc *SchedulerCache) UpdateNodeShardStatus(shardName string, usedNodeInCach
 	nodesToRemove := usedNodeInCache.Difference(desiredNodes)
 	nodesToAdd := desiredNodes.Difference(usedNodeInCache)
 	if usedNodeInCache.Equal(oldNodesInUse) && nodesToRemove.Equal(oldNodesToRemove) && nodesToAdd.Equal(oldNodesToAdd) {
+		klog.V(3).Infof("Skip update NodeShard %s status, no change", nodeShard.Name)
 		return nil
 	}
 
@@ -1076,10 +1082,14 @@ func (sc *SchedulerCache) UpdateNodeShardStatus(shardName string, usedNodeInCach
 
 // OnWorkerStartSchedulingCycle is called when scheduler worker start a new scheduling cycle
 func (sc *SchedulerCache) OnWorkerStartSchedulingCycle(index int, schedCtx *agentapi.SchedulingContext) {
-	sc.ShardCoordinator.OnWorkerStartSchedulingCycle(index, schedCtx)
+	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
+		sc.ShardCoordinator.OnWorkerStartSchedulingCycle(index, schedCtx)
+	}
 }
 
 // OnWorkerEndSchedulingCycle is called when scheduler worker end a scheduling cycle
 func (sc *SchedulerCache) OnWorkerEndSchedulingCycle(index int) {
-	sc.ShardCoordinator.OnWorkerEndSchedulingCycle(index)
+	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
+		sc.ShardCoordinator.OnWorkerEndSchedulingCycle(index)
+	}
 }

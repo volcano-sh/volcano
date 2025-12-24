@@ -31,6 +31,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
+	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -120,6 +121,7 @@ type StatusUpdater interface {
 	UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error)
 	UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error)
 	UpdateQueueStatus(queue *api.QueueInfo) error
+	UpdateNodeShardStatus(nodeshard *nodeshardv1alpha1.NodeShard) (*nodeshardv1alpha1.NodeShard, error)
 }
 
 // BatchBinder updates podgroup or job information
