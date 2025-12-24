@@ -28,6 +28,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingapi "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -1355,6 +1356,126 @@ func TestPodsToKill(t *testing.T) {
 					t.Errorf("Test case %d (%s): expected pod %s to exist, but got error %v", i, testcase.Name, podName, err)
 				} else if !shouldExist && err == nil {
 					t.Errorf("Test case %d (%s): expected pod %s to be deleted, but still exists", i, testcase.Name, podName)
+				}
+			}
+		})
+	}
+}
+
+func TestGetSubGroupPolicy(t *testing.T) {
+	highestTierAllowed := 1
+
+	testCases := []struct {
+		Name                 string
+		TaskSpec             v1alpha1.TaskSpec
+		ExpectedMinSubGroups *int32
+		ExpectedSubGroupSize *int32
+		Description          string
+	}{
+		{
+			Name: "SubGroupPolicy with MinPartitions set",
+			TaskSpec: v1alpha1.TaskSpec{
+				Name:     "task1",
+				Replicas: 6,
+				PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+					TotalPartitions: 2,
+					MinPartitions:   1,
+					PartitionSize:   3,
+					NetworkTopology: &v1alpha1.NetworkTopologySpec{
+						Mode:               v1alpha1.HardNetworkTopologyMode,
+						HighestTierAllowed: &highestTierAllowed,
+					},
+				},
+			},
+			ExpectedMinSubGroups: ptr.To(int32(1)),
+			ExpectedSubGroupSize: ptr.To(int32(3)),
+			Description:          "MinSubGroups should be set to MinPartitions when MinPartitions > 0",
+		},
+		{
+			Name: "SubGroupPolicy with MinPartitions equal to TotalPartitions",
+			TaskSpec: v1alpha1.TaskSpec{
+				Name:     "task1",
+				Replicas: 9,
+				PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+					TotalPartitions: 3,
+					MinPartitions:   3,
+					PartitionSize:   3,
+				},
+			},
+			ExpectedMinSubGroups: ptr.To(int32(3)),
+			ExpectedSubGroupSize: ptr.To(int32(3)),
+			Description:          "MinSubGroups should equal TotalPartitions when MinPartitions equals TotalPartitions",
+		},
+		{
+			Name: "SubGroupPolicy with MinPartitions not set",
+			TaskSpec: v1alpha1.TaskSpec{
+				Name:     "task1",
+				Replicas: 6,
+				PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+					TotalPartitions: 2,
+					MinPartitions:   0,
+					PartitionSize:   3,
+				},
+			},
+			ExpectedMinSubGroups: ptr.To(int32(0)),
+			ExpectedSubGroupSize: ptr.To(int32(3)),
+			Description:          "MinSubGroups should be nil when MinPartitions is 0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			result := getSubGroupPolicy(tc.TaskSpec)
+
+			// Check SubGroupSize
+			if tc.ExpectedSubGroupSize != nil {
+				if result.SubGroupSize == nil {
+					t.Errorf("%s: Expected SubGroupSize=%d, got nil",
+						tc.Description, *tc.ExpectedSubGroupSize)
+				} else if *result.SubGroupSize != *tc.ExpectedSubGroupSize {
+					t.Errorf("%s: Expected SubGroupSize=%d, got %d",
+						tc.Description,
+						*tc.ExpectedSubGroupSize,
+						*result.SubGroupSize)
+				}
+			}
+
+			// Check MinSubGroups
+			if tc.ExpectedMinSubGroups != nil {
+				if result.MinSubGroups == nil {
+					t.Errorf("%s: Expected MinSubGroups=%d, got nil",
+						tc.Description, *tc.ExpectedMinSubGroups)
+				} else if *result.MinSubGroups != *tc.ExpectedMinSubGroups {
+					t.Errorf("%s: Expected MinSubGroups=%d, got %d",
+						tc.Description,
+						*tc.ExpectedMinSubGroups,
+						*result.MinSubGroups)
+				}
+			} else {
+				if result.MinSubGroups != nil {
+					t.Errorf("%s: Expected MinSubGroups to be nil, got %d",
+						tc.Description, *result.MinSubGroups)
+				}
+			}
+
+			// Check LabelSelector
+			if result.LabelSelector == nil {
+				t.Errorf("%s: Expected LabelSelector to be set", tc.Description)
+			} else {
+				if result.LabelSelector.MatchLabels == nil {
+					t.Errorf("%s: Expected LabelSelector.MatchLabels to be set", tc.Description)
+				} else if result.LabelSelector.MatchLabels["volcano.sh/task-spec"] != tc.TaskSpec.Name {
+					t.Errorf("%s: Expected LabelSelector.MatchLabels['volcano.sh/task-spec']=%s, got %s",
+						tc.Description,
+						tc.TaskSpec.Name,
+						result.LabelSelector.MatchLabels["volcano.sh/task-spec"])
+				}
+			}
+
+			// Check NetworkTopology
+			if tc.TaskSpec.PartitionPolicy.NetworkTopology != nil {
+				if result.NetworkTopology == nil {
+					t.Errorf("%s: Expected NetworkTopology to be set", tc.Description)
 				}
 			}
 		})

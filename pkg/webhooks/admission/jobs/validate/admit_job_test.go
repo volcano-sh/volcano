@@ -1605,7 +1605,7 @@ func TestValidateJobCreate(t *testing.T) {
 			ExpectErr:      false,
 		},
 		{
-			Name: "task-with-invalid-PartitionPolicy-MinPartitions",
+			Name: "task-with-invalid-PartitionPolicy-MinPartitions-not-equal",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "task-with-invalid-PartitionPolicy-MinPartitions",
@@ -1620,8 +1620,8 @@ func TestValidateJobCreate(t *testing.T) {
 							MinAvailable: &minAvailable,
 							Replicas:     8,
 							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
-								PartitionSize:   4,
-								TotalPartitions: 2,
+								PartitionSize:   2,
+								TotalPartitions: 4,
 								MinPartitions:   1,
 							},
 							Template: v1.PodTemplateSpec{
@@ -1642,8 +1642,49 @@ func TestValidateJobCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "must not specify 'minAvailable' and 'partitionPolicy.minPartitions' simultaneously in task: task-1, job: task-with-invalid-PartitionPolicy-MinPartitions;",
+			ret:            "'MinAvailable' is not equal to MinPartitions*PartitionSize in task: task-1, job: task-with-invalid-PartitionPolicy-MinPartitions",
 			ExpectErr:      true,
+		},
+		{
+			Name: "task-with-valid-PartitionPolicy-MinPartitions-equal",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "task-with-valid-PartitionPolicy-MinPartitions-equal",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							MinAvailable: &minAvailable,
+							Replicas:     8,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								PartitionSize:   2,
+								TotalPartitions: 4,
+								MinPartitions:   2,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
 		},
 	}
 
