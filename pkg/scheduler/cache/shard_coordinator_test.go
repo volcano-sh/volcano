@@ -17,6 +17,7 @@ limitations under the License.
 package cache
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -35,6 +36,7 @@ import (
 type countingStatusUpdater struct {
 	updateNodeShardStatusCount int
 	lastUpdateShardName        string
+	mutex                      sync.Mutex
 }
 
 func (c *countingStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
@@ -50,6 +52,8 @@ func (c *countingStatusUpdater) UpdateQueueStatus(queue *api.QueueInfo) error {
 }
 
 func (c *countingStatusUpdater) UpdateNodeShardStatus(nodeshard *nodeshardv1alpha1.NodeShard) (*nodeshardv1alpha1.NodeShard, error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.updateNodeShardStatusCount++
 	c.lastUpdateShardName = nodeshard.Name
 	return nodeshard, nil // Return success without actual k8s call
@@ -192,7 +196,7 @@ func TestRefreshNodeShards_AvailableNodesCalculation(t *testing.T) {
 			}
 
 			// Set initial session state
-			sc.shardUpdateCoordinator.IsSessionRunning = tt.initialSessionState
+			sc.shardUpdateCoordinator.IsSessionRunning.Store(tt.initialSessionState)
 
 			// Make refresh calls - use multipleCalls as the actual call count
 			for i := 0; i < tt.multipleCalls; i++ {
@@ -204,10 +208,7 @@ func TestRefreshNodeShards_AvailableNodesCalculation(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 			if tt.initialSessionState {
 				// If session was running, simulate session end to trigger deferred updates
-				sc.shardUpdateCoordinator.ShardUpdateMu.Lock()
-				sc.shardUpdateCoordinator.IsSessionRunning = false
-				sc.shardUpdateCoordinator.ShardUpdateCond.Broadcast()
-				sc.shardUpdateCoordinator.ShardUpdateMu.Unlock()
+				sc.OnSessionClose()
 			}
 			// Give some time for goroutines to execute
 			time.Sleep(10 * time.Millisecond)
@@ -220,12 +221,11 @@ func TestRefreshNodeShards_AvailableNodesCalculation(t *testing.T) {
 			}
 
 			// Verify that pending flag is reset after processing
-			sc.shardUpdateCoordinator.ShardUpdateMu.Lock()
-			if sc.shardUpdateCoordinator.ShardUpdatePending {
+			if sc.shardUpdateCoordinator.ShardUpdatePending.Load() {
 				t.Errorf("%s: Expected ShardUpdatePending to be false after processing, but it was true", tt.description)
 			}
-			sc.shardUpdateCoordinator.ShardUpdateMu.Unlock()
 
+			countingUpdater.mutex.Lock()
 			// Verify UpdateNodeShardStatus call count using expectedUpdateCount from test case
 			if countingUpdater.updateNodeShardStatusCount != tt.expectedUpdateCount {
 				t.Errorf("%s: Expected UpdateNodeShardStatus to be called %d time(s), but was called %d time(s)",
@@ -237,6 +237,7 @@ func TestRefreshNodeShards_AvailableNodesCalculation(t *testing.T) {
 				t.Errorf("%s: Expected UpdateNodeShardStatus to be called with 'test-shard', but got '%s'",
 					tt.description, countingUpdater.lastUpdateShardName)
 			}
+			countingUpdater.mutex.Unlock()
 		})
 	}
 }

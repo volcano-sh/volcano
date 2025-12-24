@@ -17,27 +17,29 @@ limitations under the License.
 package cache
 
 import (
-	"sync"
+	"sync/atomic"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
+	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/util"
 )
 
 type ShardUpdateCoordinator struct {
-	ShardUpdateMu      sync.Mutex
-	ShardUpdateCond    *sync.Cond
-	IsSessionRunning   bool
-	ShardUpdatePending bool
+	IsSessionRunning   *atomic.Bool
+	ShardUpdatePending *atomic.Bool
+	SessionEndCh       chan struct{}
 }
 
 func NewShardUpdateCoordinator() *ShardUpdateCoordinator {
-	coordinator := &ShardUpdateCoordinator{}
-	coordinator.ShardUpdateCond = sync.NewCond(&coordinator.ShardUpdateMu)
-	return coordinator
+	return &ShardUpdateCoordinator{
+		IsSessionRunning:   new(atomic.Bool),
+		ShardUpdatePending: new(atomic.Bool),
+		SessionEndCh:       make(chan struct{}), // unbuffered channel for session end notification
+	}
 }
 
 // RefreshNodeShards update node shards cached in coordinator
@@ -62,27 +64,56 @@ func (sc *SchedulerCache) RefreshNodeShards() {
 }
 
 func (sc *SchedulerCache) tryUpdateNodeShardStatus(nodeShardName string) {
-	sc.shardUpdateCoordinator.ShardUpdateMu.Lock()
-	defer sc.shardUpdateCoordinator.ShardUpdateMu.Unlock()
-
-	if sc.shardUpdateCoordinator.IsSessionRunning {
-		//An update is pending, just skip duplicate update request
-		if sc.shardUpdateCoordinator.ShardUpdatePending {
+	if sc.shardUpdateCoordinator.IsSessionRunning.Load() {
+		// Try to set pending flag atomically - if already pending, skip this request
+		if !sc.shardUpdateCoordinator.ShardUpdatePending.CompareAndSwap(false, true) {
 			klog.V(3).Infof("Update status of NodeShard is already pending, skip this request")
 			return
 		}
-		sc.shardUpdateCoordinator.ShardUpdatePending = true
 		klog.V(3).Infof("Update status of NodeShard is pending because session is running")
-		sc.shardUpdateCoordinator.ShardUpdateCond.Wait()
+
+		// Wait for session to end
+		<-sc.shardUpdateCoordinator.SessionEndCh
 		klog.V(3).Infof("Update status of NodeShard is resumed")
-		// when multiple update request are trying to acquire lock, only one request will do update
-		if sc.shardUpdateCoordinator.ShardUpdatePending && !sc.shardUpdateCoordinator.IsSessionRunning {
+
+		// Double-check session has ended and we should still update
+		if !sc.shardUpdateCoordinator.IsSessionRunning.Load() {
 			sc.UpdateNodeShardStatus(nodeShardName)
-			sc.shardUpdateCoordinator.ShardUpdatePending = false
 		}
+		// Reset pending flag
+		sc.shardUpdateCoordinator.ShardUpdatePending.Store(false)
 		return
 	}
 	sc.UpdateNodeShardStatus(nodeShardName)
+}
+
+// generateNodeShardWithStatus generate nodeshard with updated status. return nil if no status change
+func (sc *SchedulerCache) generateNodeShardWithStatus(nodeShardName string) *nodeshardv1alpha1.NodeShard {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	nodeShard, exist := sc.NodeShards[nodeShardName]
+	if !exist {
+		klog.Warningf("NodeShard %s does not exist in cache, skip status generation", nodeShardName)
+		return nil
+	}
+
+	oldNodesInUse := sets.New(nodeShard.NodeShard.Status.NodesInUse...)
+	oldNodesToRemove := sets.New(nodeShard.NodeShard.Status.NodesToRemove...)
+	oldNodesToAdd := sets.New(nodeShard.NodeShard.Status.NodesToAdd...)
+	nodesInUse := sc.InUseNodesInShard
+	// Create a deep copy to avoid modifying cache objects
+	nodeShardCopy := nodeShard.NodeShard.DeepCopy()
+	desiredNodes := sets.New(nodeShardCopy.Spec.NodesDesired...)
+	nodesToRemove := nodesInUse.Difference(desiredNodes)
+	nodesToAdd := desiredNodes.Difference(nodesInUse)
+	if nodesInUse.Equal(oldNodesInUse) && nodesToRemove.Equal(oldNodesToRemove) && nodesToAdd.Equal(oldNodesToAdd) {
+		klog.V(3).Infof("No change for status of nodeshard %s status", nodeShard.Name)
+		return nil
+	}
+	nodeShardCopy.Status.NodesInUse = nodesInUse.UnsortedList()
+	nodeShardCopy.Status.NodesToRemove = nodesToRemove.UnsortedList()
+	nodeShardCopy.Status.NodesToAdd = nodesToAdd.UnsortedList()
+	return nodeShardCopy
 }
 
 // getAvailableNodesFromShard get available nodes based on desired nodes. Nodes are still being used in other shard should not be put into available nodes
@@ -94,4 +125,13 @@ func (sc *SchedulerCache) getAvailableNodesFromShard(nodeShardInfo *api.NodeShar
 		}
 	}
 	return nodes
+}
+
+func (sc *SchedulerCache) notifySessionEnd() {
+	// Notify shardUpdateCoordinator that session has ended
+	select {
+	case sc.shardUpdateCoordinator.SessionEndCh <- struct{}{}:
+	default:
+		// No shardUpdateCoordinator goroutine is waiting, which is fine
+	}
 }

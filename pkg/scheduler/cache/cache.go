@@ -1676,39 +1676,15 @@ func (sc *SchedulerCache) UpdateQueueStatus(queue *schedulingapi.QueueInfo) erro
 
 // UpdateNodeShardStatus update the status of nodeshard
 func (sc *SchedulerCache) UpdateNodeShardStatus(nodeShardName string) error {
-	klog.V(3).Infof("Update NodeShard %s status...", nodeShardName)
-	nodeShard, exist := sc.NodeShards[nodeShardName]
-	if !exist {
-		klog.Warningf("NodeShard %s does not exist in cache, skip status update", nodeShardName)
-		return nil
+	if nodeShard := sc.generateNodeShardWithStatus(nodeShardName); nodeShard != nil {
+		klog.V(3).Infof("Update NodeShard %s status...", nodeShardName)
+		_, err := sc.StatusUpdater.UpdateNodeShardStatus(nodeShard)
+		if err != nil {
+			klog.Errorf("Failed to update NodeShard %s status %v", nodeShard.Name, err)
+			return err
+		}
+		klog.V(3).Infof("Updated NodeShard %s status", nodeShard.Name)
 	}
-
-	oldNodesInUse := sets.New(nodeShard.NodeShard.Status.NodesInUse...)
-	oldNodesToRemove := sets.New(nodeShard.NodeShard.Status.NodesToRemove...)
-	oldNodesToAdd := sets.New(nodeShard.NodeShard.Status.NodesToAdd...)
-
-	// Create a deep copy to avoid modifying cache objects
-	sc.Mutex.Lock()
-	nodesInUse := sc.InUseNodesInShard
-	nodeShardCopy := nodeShard.NodeShard.DeepCopy()
-	sc.Mutex.Unlock()
-	desiredNodes := sets.New(nodeShardCopy.Spec.NodesDesired...)
-	nodesToRemove := nodesInUse.Difference(desiredNodes)
-	nodesToAdd := desiredNodes.Difference(nodesInUse)
-	if nodesInUse.Equal(oldNodesInUse) && nodesToRemove.Equal(oldNodesToRemove) && nodesToAdd.Equal(oldNodesToAdd) {
-		klog.V(3).Infof("Skip update NodeShard %s status, no change", nodeShard.Name)
-		return nil
-	}
-	nodeShardCopy.Status.NodesInUse = nodesInUse.UnsortedList()
-	nodeShardCopy.Status.NodesToRemove = nodesToRemove.UnsortedList()
-	nodeShardCopy.Status.NodesToAdd = nodesToAdd.UnsortedList()
-
-	_, err := sc.StatusUpdater.UpdateNodeShardStatus(nodeShardCopy)
-	if err != nil {
-		klog.Errorf("Failed to update NodeShard %s status %v", nodeShard.Name, err)
-		return err
-	}
-	klog.V(3).Infof("Updated NodeShard %s status", nodeShard.Name)
 	return nil
 }
 
@@ -1801,17 +1777,13 @@ func (sc *SchedulerCache) RegisterBinder(name string, binder interface{}) {
 
 func (sc *SchedulerCache) OnSessionOpen() {
 	if sc.shardUpdateCoordinator != nil {
-		sc.shardUpdateCoordinator.ShardUpdateMu.Lock()
-		sc.shardUpdateCoordinator.IsSessionRunning = true
-		sc.shardUpdateCoordinator.ShardUpdateMu.Unlock()
+		sc.shardUpdateCoordinator.IsSessionRunning.Store(true)
 	}
 }
 
 func (sc *SchedulerCache) OnSessionClose() {
 	if sc.shardUpdateCoordinator != nil {
-		sc.shardUpdateCoordinator.ShardUpdateMu.Lock()
-		sc.shardUpdateCoordinator.IsSessionRunning = false
-		sc.shardUpdateCoordinator.ShardUpdateCond.Broadcast()
-		sc.shardUpdateCoordinator.ShardUpdateMu.Unlock()
+		sc.shardUpdateCoordinator.IsSessionRunning.Store(false)
+		sc.notifySessionEnd()
 	}
 }
