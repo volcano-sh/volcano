@@ -1305,9 +1305,9 @@ func (ji *JobInfo) ContainsHardTopologyInSubJob() bool {
 	return false
 }
 
-// ContainsHardTopology returns whether the job and the subJobs in the job contain hard network topology
-func (ji *JobInfo) ContainsHardTopology() bool {
-	if hard, _ := ji.IsHardTopologyMode(); hard || ji.ContainsHardTopologyInSubJob() {
+// ContainsHardTopologyOrSubGroupPolicy returns whether the job contain hard network topology or subJob policy
+func (ji *JobInfo) ContainsHardTopologyOrSubGroupPolicy() bool {
+	if hard, _ := ji.IsHardTopologyMode(); hard || ji.ContainsSubJobPolicy() {
 		return true
 	}
 	return false
