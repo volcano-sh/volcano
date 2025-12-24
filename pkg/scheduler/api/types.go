@@ -1,5 +1,10 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added plugin status system with error codes and status validation mechanisms
+- Added extensive scheduler extension points for advanced scheduling capabilities
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +22,11 @@ limitations under the License.
 package api
 
 import (
+	"context"
+	"errors"
 	"strings"
 
+	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -165,8 +173,44 @@ type Status struct {
 }
 
 // String represents status string
-func (s Status) String() string {
+func (s *Status) String() string {
 	return s.Reason
+}
+
+// IsSuccess returns true if and only if "Status" is nil or Code is "Success".
+func (s *Status) IsSuccess() bool {
+	return s == nil || s.Code == Success
+}
+
+// IsWait returns true if and only if "Status" is nil or Code is "Wait".
+func (s *Status) IsWait() bool {
+	return s.Code == Wait
+}
+
+// IsSkip returns true if and only if "Status" is nil or Code is "Skip".
+func (s *Status) IsSkip() bool {
+	return s.Code == Skip
+}
+
+// AsError returns nil if the status is a success, a wait or a skip; otherwise returns an "error" object
+// with a concatenated message on reasons of the Status.
+func (s *Status) AsError() error {
+	if s.IsSuccess() || s.IsWait() || s.IsSkip() {
+		return nil
+	}
+
+	return errors.New(s.String())
+}
+
+// AsStatus wraps an error in a Status.
+func AsStatus(err error) *Status {
+	if err == nil {
+		return nil
+	}
+	return &Status{
+		Code:   Error,
+		Reason: err.Error(),
+	}
 }
 
 type StatusSets []*Status
@@ -238,21 +282,21 @@ func (s StatusSets) Reasons() []string {
 }
 
 // ConvertPredicateStatus return predicate status from k8sframework status
-func ConvertPredicateStatus(status *k8sframework.Status) *Status {
+func ConvertPredicateStatus(status *fwk.Status) *Status {
 	internalStatus := &Status{}
 	if status != nil {
 		internalStatus.Plugin = status.Plugin() // function didn't check whether Status is nil
 	}
 	switch status.Code() {
-	case k8sframework.Error:
+	case fwk.Error:
 		internalStatus.Code = Error
-	case k8sframework.Unschedulable:
+	case fwk.Unschedulable:
 		internalStatus.Code = Unschedulable
-	case k8sframework.UnschedulableAndUnresolvable:
+	case fwk.UnschedulableAndUnresolvable:
 		internalStatus.Code = UnschedulableAndUnresolvable
-	case k8sframework.Wait:
+	case fwk.Wait:
 		internalStatus.Code = Wait
-	case k8sframework.Skip:
+	case fwk.Skip:
 		internalStatus.Code = Skip
 	default:
 		internalStatus.Code = Success
@@ -289,7 +333,7 @@ type EvictableFn func(*TaskInfo, []*TaskInfo) ([]*TaskInfo, int)
 type NodeOrderFn func(*TaskInfo, *NodeInfo) (float64, error)
 
 // HyperNodeOrderFn is the func declaration used to score hyperNodes for job.
-type HyperNodeOrderFn func(*JobInfo, map[string][]*NodeInfo) (map[string]float64, error)
+type HyperNodeOrderFn func(*SubJobInfo, map[string][]*NodeInfo) (map[string]float64, error)
 
 // BatchNodeOrderFn is the func declaration used to get priority score for ALL nodes for a particular task.
 type BatchNodeOrderFn func(*TaskInfo, []*NodeInfo) (map[string]float64, error)
@@ -304,7 +348,7 @@ type NodeReduceFn func(*TaskInfo, k8sframework.NodeScoreList) error
 type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, error)
 
 // HyperNodeOrderMapFn is the func declaration used to get priority score of all plugins for a hyperNode for a particular job.
-type HyperNodeOrderMapFn func(*JobInfo, map[string][]*NodeInfo) (map[string]map[string]float64, error)
+type HyperNodeOrderMapFn func(*SubJobInfo, map[string][]*NodeInfo) (map[string]map[string]float64, error)
 
 // NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugin for a particular task.
 type NodeOrderReduceFn func(*TaskInfo, map[string]k8sframework.NodeScoreList) (map[string]float64, error)
@@ -320,3 +364,25 @@ type VictimTasksFn func([]*TaskInfo) []*TaskInfo
 
 // AllocatableFn is the func declaration used to check whether the task can be allocated
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool
+
+// SimulateRemoveTaskFn is the func declaration used to simulate the result of removing a task from a node.
+type SimulateRemoveTaskFn func(ctx context.Context, state fwk.CycleState, taskToSchedule *TaskInfo, taskInfoToRemove *TaskInfo, nodeInfo *NodeInfo) error
+
+// SimulateAddTaskFn is the func declaration used to simulate the result of adding a task to a node.
+type SimulateAddTaskFn func(ctx context.Context, state fwk.CycleState, taskToSchedule *TaskInfo, taskInfoToAdd *TaskInfo, nodeInfo *NodeInfo) error
+
+// Simulate the predicate check for a task on a node.
+// Plugins implement this function to verify if the task can be scheduled to the node while maintaining topology constraints
+type SimulatePredicateFn func(ctx context.Context, state fwk.CycleState, task *TaskInfo, nodeInfo *NodeInfo) error
+
+// Simulate the allocatable check for a node
+// Plugins implement this function to verify if the queue has enough resources to schedule the task while maintaining topology constraints
+type SimulateAllocatableFn func(ctx context.Context, state fwk.CycleState, queue *QueueInfo, task *TaskInfo) bool
+
+// HyperNodeGradientForJobFn group hyperNodes into several gradients,
+// and discard hyperNodes that unmatched the job topology requirements.
+type HyperNodeGradientForJobFn func(job *JobInfo, hyperNode *HyperNodeInfo) [][]*HyperNodeInfo
+
+// HyperNodeGradientForSubJobFn group hyperNodes into several gradients,
+// and discard hyperNodes that unmatched the subJob topology requirements.
+type HyperNodeGradientForSubJobFn func(subJob *SubJobInfo, hyperNode *HyperNodeInfo) [][]*HyperNodeInfo

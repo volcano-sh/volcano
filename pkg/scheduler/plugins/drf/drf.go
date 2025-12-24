@@ -1,5 +1,10 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added support for hierarchical DRF (HDRF) scheduling with tree-based resource allocation
+- Enhanced DRF plugin with namespace-aware resource sharing and metrics integration
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -200,7 +205,10 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		// Calculate the init share of Job
-		drf.updateJobShare(job.Namespace, job.Name, attr)
+		drf.updateShare(attr)
+		if !ssn.IsJobTerminated(job.UID) {
+			metrics.UpdateJobShare(job.Namespace, job.Name, attr.share)
+		}
 
 		drf.jobAttrs[job.UID] = attr
 
@@ -345,7 +353,10 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.allocated.Add(event.Task.Resreq)
 
 			job := ssn.Jobs[event.Task.Job]
-			drf.updateJobShare(job.Namespace, job.Name, attr)
+			drf.updateShare(attr)
+			if !ssn.IsJobTerminated(job.UID) {
+				metrics.UpdateJobShare(job.Namespace, job.Name, attr.share)
+			}
 
 			nsShare := -1.0
 			if hierarchyEnabled {
@@ -363,7 +374,10 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.allocated.Sub(event.Task.Resreq)
 
 			job := ssn.Jobs[event.Task.Job]
-			drf.updateJobShare(job.Namespace, job.Name, attr)
+			drf.updateShare(attr)
+			if !ssn.IsJobTerminated(job.UID) {
+				metrics.UpdateJobShare(job.Namespace, job.Name, attr.share)
+			}
 
 			nsShare := -1.0
 
@@ -482,11 +496,6 @@ func (drf *drfPlugin) UpdateHierarchicalShare(root *hierarchicalNode, totalAlloc
 	}
 	drf.buildHierarchy(root, job, attr, hierarchy, hierarchicalWeights)
 	drf.updateHierarchicalShare(root, demandingResources)
-}
-
-func (drf *drfPlugin) updateJobShare(jobNs, jobName string, attr *drfAttr) {
-	drf.updateShare(attr)
-	metrics.UpdateJobShare(jobNs, jobName, attr.share)
 }
 
 func (drf *drfPlugin) updateShare(attr *drfAttr) {

@@ -30,6 +30,7 @@ import (
 
 	"volcano.sh/volcano/cmd/agent/app/options"
 	"volcano.sh/volcano/pkg/agent/events"
+	"volcano.sh/volcano/pkg/agent/features"
 	"volcano.sh/volcano/pkg/agent/healthcheck"
 	"volcano.sh/volcano/pkg/agent/utils"
 	"volcano.sh/volcano/pkg/agent/utils/cgroup"
@@ -70,16 +71,22 @@ func Run(ctx context.Context, opts *options.VolcanoAgentOptions) error {
 	if sfsFsPath == "" {
 		sfsFsPath = utils.DefaultSysFsPath
 	}
-	cgroupManager := cgroup.NewCgroupManager("cgroupfs", path.Join(sfsFsPath, "cgroup"), conf.GenericConfiguration.KubeCgroupRoot)
+	cgroupDriver := cgroup.GetCgroupDriver()
+	cgroupManager := cgroup.NewCgroupManager(cgroupDriver, path.Join(sfsFsPath, "cgroup"), conf.GenericConfiguration.KubeCgroupRoot)
 	metricCollectorManager, err := metriccollect.NewMetricCollectorManager(conf, cgroupManager)
 	if err != nil {
 		return fmt.Errorf("failed to create metric collector manager: %v", err)
 	}
 
-	networkQoSMgr := networkqos.NewNetworkQoSManager(conf)
-	err = networkQoSMgr.Init()
-	if err != nil {
-		return fmt.Errorf("failed to init network qos: %v", err)
+	var networkQoSMgr networkqos.NetworkQoSManager
+	if conf.IsFeatureSupported(string(features.NetworkQoSFeature)) {
+		networkQoSMgr = networkqos.NewNetworkQoSManager(conf)
+		err = networkQoSMgr.Init()
+		if err != nil {
+			return fmt.Errorf("failed to init network qos: %v", err)
+		}
+	} else {
+		klog.InfoS("Network QoS feature is not enabled, skip initializing network QoS manager")
 	}
 
 	eventManager := events.NewEventManager(conf, metricCollectorManager, cgroupManager)

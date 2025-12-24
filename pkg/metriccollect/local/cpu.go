@@ -60,7 +60,8 @@ func (c *CPUResourceCollector) CollectLocalMetrics(metricInfo *LocalMetricInfo, 
 		return nil, err
 	}
 
-	podAllUsage, err := getMilliCPUUsage(cgroupPath)
+	cgroupVersion := c.cgroupManager.GetCgroupVersion()
+	podAllUsage, err := getMilliCPUUsage(cgroupPath, cgroupVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +74,7 @@ func (c *CPUResourceCollector) CollectLocalMetrics(metricInfo *LocalMetricInfo, 
 				return nil, err
 			}
 
-			count, err := getMilliCPUUsage(cgroupPath)
+			count, err := getMilliCPUUsage(cgroupPath, cgroupVersion)
 			if err != nil {
 				return nil, err
 			}
@@ -102,16 +103,38 @@ func (c *CPUResourceCollector) CollectLocalMetrics(metricInfo *LocalMetricInfo, 
 	return []*prompb.TimeSeries{&sample}, nil
 }
 
-func getMilliCPUUsage(cgroupRoot string) (int64, error) {
+func getMilliCPUUsage(cgroupRoot string, cgroupVersion string) (int64, error) {
 	startTime := time.Now().UnixNano()
-	cgroupsCPU := filepath.Join(cgroupRoot, cgroup.CPUUsageFile)
-	startUsage, err := file.ReadIntFromFile(cgroupsCPU)
+
+	var cpuUsageFile string
+	if cgroupVersion == cgroup.CgroupV2 {
+		cpuUsageFile = cgroup.CPUUsageFileV2
+	} else {
+		cpuUsageFile = cgroup.CPUUsageFile
+	}
+
+	cgroupsCPU := filepath.Join(cgroupRoot, cpuUsageFile)
+
+	var startUsage int64
+	var err error
+	if cgroupVersion == cgroup.CgroupV1 {
+		startUsage, err = file.ReadIntFromFile(cgroupsCPU)
+	} else {
+		startUsage, err = readCPUUsageV2(cgroupsCPU)
+	}
+
 	if err != nil {
 		return 0, err
 	}
 	time.Sleep(1 * time.Second)
 	endTime := time.Now().UnixNano()
-	endUsage, err := file.ReadIntFromFile(cgroupsCPU)
+
+	var endUsage int64
+	if cgroupVersion == cgroup.CgroupV1 {
+		endUsage, err = file.ReadIntFromFile(cgroupsCPU)
+	} else {
+		endUsage, err = readCPUUsageV2(cgroupsCPU)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -173,4 +196,34 @@ func nodeCPUUsage() (int64, error) {
 	cpuUsage := int64((totalTicks / (float64(endTime-startTime) / jiffies)) * 1000)
 	klog.V(4).InfoS("Node cpu usage", "value", cpuUsage)
 	return cpuUsage, nil
+}
+
+func readCPUUsageV2(filePath string) (int64, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return 0, err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+
+		if fields[0] == "usage_usec" {
+			value, err := strconv.ParseInt(fields[1], 10, 64)
+			if err != nil {
+				return 0, fmt.Errorf("failed to parse usage_usec value: %v", err)
+			}
+			return value * 1000, nil
+		}
+	}
+
+	return 0, fmt.Errorf("usage_usec field not found in cpu.stat file")
 }

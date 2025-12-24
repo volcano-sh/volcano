@@ -1,5 +1,10 @@
 /*
 Copyright 2017 The Kubernetes Authors.
+Copyright 2017-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Extended cache interface with enhanced binding, client access and metrics support
+- Added new interfaces for pre-binding, batch binding and status updating
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,7 +62,7 @@ type Cache interface {
 	RecordJobStatusEvent(job *api.JobInfo, updatePG bool)
 
 	// UpdateJobStatus puts job in backlog for a while.
-	UpdateJobStatus(job *api.JobInfo, updatePGStatus, updatePGAnnotations bool) (*api.JobInfo, error)
+	UpdateJobStatus(job *api.JobInfo, updatePGStatus, updatePGAnnotations, updateJobInfo bool) (*api.JobInfo, error)
 
 	// UpdateQueueStatus update queue status.
 	UpdateQueueStatus(queue *api.QueueInfo) error
@@ -87,6 +92,9 @@ type Cache interface {
 
 	// SharedDRAManager returns the shared DRAManager
 	SharedDRAManager() framework.SharedDRAManager
+
+	// IsJobTerminated returns if the job was terminated
+	IsJobTerminated(jobId api.JobID) bool
 }
 
 // Binder interface for binding task and hostname

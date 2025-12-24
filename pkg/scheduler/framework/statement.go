@@ -1,5 +1,11 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added comprehensive operation management with save/recover capabilities
+- Enhanced with Allocate/UnAllocate and UnPipeline operations
+- Added improved error handling and rollback support
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -433,16 +439,17 @@ func (s *Statement) Commit() {
 	}
 }
 
-func (s *Statement) SaveOperations() *Statement {
-	s.outputOperations("Save operations: ", 4)
-
+func SaveOperations(stmts ...*Statement) *Statement {
 	stmtTmp := &Statement{}
-	for _, op := range s.operations {
-		stmtTmp.operations = append(stmtTmp.operations, operation{
-			name:   op.name,
-			task:   op.task.Clone(),
-			reason: op.reason,
-		})
+	for _, stmt := range stmts {
+		stmt.outputOperations("Save operations: ", 4)
+		for _, op := range stmt.operations {
+			stmtTmp.operations = append(stmtTmp.operations, operation{
+				name:   op.name,
+				task:   op.task.Clone(),
+				reason: op.reason,
+			})
+		}
 	}
 	return stmtTmp
 }

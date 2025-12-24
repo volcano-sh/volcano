@@ -1,5 +1,11 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added hierarchical queue support with weight and hierarchy configuration
+- Enhanced queue management with reclaimable resource controls
+- Migrated to v1beta1 API from v1alpha1/v1alpha2 for improved stability
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

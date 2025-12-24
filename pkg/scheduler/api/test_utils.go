@@ -1,5 +1,9 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added additional test utility functions
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -174,4 +178,13 @@ func BuildHyperNode(name string, tier int, members []MemberConfig) *topologyv1al
 	}
 
 	return hn
+}
+
+func BuildHyperNodeWithTierName(name string, tier int, tierName string, members []MemberConfig) *topologyv1alpha1.HyperNode {
+	hyperNode := BuildHyperNode(name, tier, members)
+	if hyperNode != nil {
+		hyperNode.Spec.TierName = tierName
+	}
+
+	return hyperNode
 }

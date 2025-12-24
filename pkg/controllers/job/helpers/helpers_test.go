@@ -333,3 +333,278 @@ func contains(s []string, e string) bool {
 	}
 	return false
 }
+
+func TestGetTaskIndexOfPod(t *testing.T) {
+	testCases := []struct {
+		name      string
+		pod       *v1.Pod
+		expected  int
+		expectErr bool
+	}{
+		{
+			name: "valid task index should return correct value",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Labels: map[string]string{
+						"volcano.sh/task-index": "0",
+					},
+				},
+			},
+			expected:  0,
+			expectErr: false,
+		},
+		{
+			name: "missing task index label should return error",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "test-pod",
+					Labels: map[string]string{},
+				},
+			},
+			expected:  -1,
+			expectErr: true,
+		},
+		{
+			name: "invalid task index format should return error",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Labels: map[string]string{
+						"volcano.sh/task-index": "invalid",
+					},
+				},
+			},
+			expected:  -1,
+			expectErr: true,
+		},
+		{
+			name: "negative task index should be valid",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Labels: map[string]string{
+						"volcano.sh/task-index": "-1",
+					},
+				},
+			},
+			expected:  -1,
+			expectErr: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			taskIndex, err := GetTaskIndexOfPod(tc.pod)
+
+			if tc.expectErr {
+				if err == nil {
+					t.Errorf("expected error but got none")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+				if taskIndex != tc.expected {
+					t.Errorf("expected task index %d, got %d", tc.expected, taskIndex)
+				}
+			}
+		})
+	}
+}
+
+// TestGetTaskReplicasUnderJob tests the GetTaskReplicasUnderJob function
+func TestGetTaskReplicasUnderJob(t *testing.T) {
+	testCases := []struct {
+		name     string
+		taskName string
+		job      *batch.Job
+		expected int32
+	}{
+		{
+			name:     "should return correct replicas for existing task",
+			taskName: "task1",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: "default",
+				},
+				Spec: batch.JobSpec{
+					Tasks: []batch.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 3,
+							Template: v1.PodTemplateSpec{},
+						},
+						{
+							Name:     "task2",
+							Replicas: 5,
+							Template: v1.PodTemplateSpec{},
+						},
+					},
+				},
+			},
+			expected: 3,
+		},
+		{
+			name:     "should return correct replicas for task with zero replicas",
+			taskName: "task2",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: "default",
+				},
+				Spec: batch.JobSpec{
+					Tasks: []batch.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 3,
+							Template: v1.PodTemplateSpec{},
+						},
+						{
+							Name:     "task2",
+							Replicas: 0,
+							Template: v1.PodTemplateSpec{},
+						},
+					},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name:     "should return zero for non-existent task",
+			taskName: "non-existent-task",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: "default",
+				},
+				Spec: batch.JobSpec{
+					Tasks: []batch.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 3,
+							Template: v1.PodTemplateSpec{},
+						},
+					},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name:     "should return zero for empty task list",
+			taskName: "any-task",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: "default",
+				},
+				Spec: batch.JobSpec{
+					Tasks: []batch.TaskSpec{},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name:     "should return correct replicas for task with large replica count",
+			taskName: "large-task",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: "default",
+				},
+				Spec: batch.JobSpec{
+					Tasks: []batch.TaskSpec{
+						{
+							Name:     "large-task",
+							Replicas: 1000,
+							Template: v1.PodTemplateSpec{},
+						},
+					},
+				},
+			},
+			expected: 1000,
+		},
+		{
+			name:     "should return zero for case-sensitive task name mismatch",
+			taskName: "TASK1",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: "default",
+				},
+				Spec: batch.JobSpec{
+					Tasks: []batch.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 3,
+							Template: v1.PodTemplateSpec{},
+						},
+					},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name:     "should return correct replicas for task with special characters in name",
+			taskName: "task-with-dash",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: "default",
+				},
+				Spec: batch.JobSpec{
+					Tasks: []batch.TaskSpec{
+						{
+							Name:     "task-with-dash",
+							Replicas: 7,
+							Template: v1.PodTemplateSpec{},
+						},
+					},
+				},
+			},
+			expected: 7,
+		},
+		{
+			name:     "should return correct replicas for task in multi-task job",
+			taskName: "middle-task",
+			job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: "default",
+				},
+				Spec: batch.JobSpec{
+					Tasks: []batch.TaskSpec{
+						{
+							Name:     "first-task",
+							Replicas: 2,
+							Template: v1.PodTemplateSpec{},
+						},
+						{
+							Name:     "middle-task",
+							Replicas: 4,
+							Template: v1.PodTemplateSpec{},
+						},
+						{
+							Name:     "last-task",
+							Replicas: 6,
+							Template: v1.PodTemplateSpec{},
+						},
+					},
+				},
+			},
+			expected: 4,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := GetTaskReplicasUnderJob(tc.taskName, tc.job)
+
+			if result != tc.expected {
+				t.Errorf("expected replicas %d for task '%s', but got %d",
+					tc.expected, tc.taskName, result)
+			}
+		})
+	}
+}

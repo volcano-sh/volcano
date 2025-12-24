@@ -57,7 +57,10 @@ var (
 	HalfCPU    = v1.ResourceList{"cpu": resource.MustParse("500m")}
 	CPU1Mem1   = v1.ResourceList{"cpu": resource.MustParse("1000m"), "memory": resource.MustParse("1024Mi")}
 	CPU2Mem2   = v1.ResourceList{"cpu": resource.MustParse("2000m"), "memory": resource.MustParse("2048Mi")}
+	CPU3Mem3   = v1.ResourceList{"cpu": resource.MustParse("3000m"), "memory": resource.MustParse("3072Mi")}
 	CPU4Mem4   = v1.ResourceList{"cpu": resource.MustParse("4000m"), "memory": resource.MustParse("4096Mi")}
+	CPU5Mem5   = v1.ResourceList{"cpu": resource.MustParse("5000m"), "memory": resource.MustParse("5120Mi")}
+	CPU6Mem6   = v1.ResourceList{"cpu": resource.MustParse("6000m"), "memory": resource.MustParse("6144Mi")}
 )
 
 const (
@@ -71,15 +74,17 @@ const (
 	ExecuteAction                = "ExecuteAction"
 	DefaultQueue                 = "default"
 	NumStress                    = 10
+	DefaultStorageClass          = "standard"
 )
 
 const (
 	DefaultBusyBoxImage = "busybox"
-	DefaultNginxImage   = "nginx"
+	DefaultNginxImage   = "nginx:1.29.3-alpine"
 	DefaultMPIImage     = "volcanosh/example-mpi:0.0.3"
 	DefaultTFImage      = "volcanosh/dist-mnist-tf-example:0.0.1"
 	// "volcanosh/pytorch-mnist-v1beta1-9ee8fda-example:0.0.1" is from "docker.io/kubeflowkatib/pytorch-mnist:v1beta1-9ee8fda"
 	DefaultPytorchImage = "volcanosh/pytorch-mnist-v1beta1-9ee8fda-example:0.0.1"
+	DefaultRayImage     = "rayproject/ray:2.49.0"
 	LogTimeFormat       = "[ 2006/01/02 15:04:05.000 ]"
 )
 
@@ -179,13 +184,14 @@ func InitTestContext(o Options) *TestContext {
 	return ctx
 }
 
-func NamespaceNotExist(ctx *TestContext) wait.ConditionFunc {
+// New function returning ConditionWithContextFunc
+func NamespaceNotExist(ctx *TestContext) wait.ConditionWithContextFunc {
 	return NamespaceNotExistWithName(ctx, ctx.Namespace)
 }
 
-func NamespaceNotExistWithName(ctx *TestContext, name string) wait.ConditionFunc {
-	return func() (bool, error) {
-		_, err := ctx.Kubeclient.CoreV1().Namespaces().Get(context.TODO(), name, metav1.GetOptions{})
+func NamespaceNotExistWithName(ctx *TestContext, name string) wait.ConditionWithContextFunc {
+	return func(c context.Context) (bool, error) {
+		_, err := ctx.Kubeclient.CoreV1().Namespaces().Get(c, name, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return true, nil
 		}
@@ -205,8 +211,12 @@ func FileExist(name string) bool {
 func CleanupTestContext(ctx *TestContext) {
 	By("Cleaning up test context")
 
+	// Clean up hypernodes first
+	err := CleanupHyperNodes(ctx)
+	Expect(err).NotTo(HaveOccurred(), "failed to clean up hypernodes")
+
 	foreground := metav1.DeletePropagationForeground
-	err := ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
+	err = ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
 	})
 	Expect(err).NotTo(HaveOccurred(), "failed to delete namespace")
@@ -219,7 +229,7 @@ func CleanupTestContext(ctx *TestContext) {
 	}
 
 	// Wait for namespace deleted.
-	err = wait.Poll(100*time.Millisecond, FiveMinute, NamespaceNotExist(ctx))
+	err = wait.PollUntilContextTimeout(context.TODO(), 100*time.Millisecond, FiveMinute, false, NamespaceNotExist(ctx))
 	Expect(err).NotTo(HaveOccurred(), "failed to wait for namespace deleted")
 }
 

@@ -1,5 +1,11 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added preempt simulation support (AddSimulateAllocatableFn, AddSimulateAddTaskFn, AddSimulateRemoveTaskFn, etc.)
+- Enhanced queue management with guarantee/capability and realCapability calculation
+- Added job enqueue logic with queue state validation
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +23,14 @@ limitations under the License.
 package proportion
 
 import (
+	"context"
+	"fmt"
 	"math"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -32,7 +41,10 @@ import (
 )
 
 // PluginName indicates name of volcano scheduler plugin.
-const PluginName = "proportion"
+const (
+	PluginName         = "proportion"
+	proportionStateKey = "proportionState"
+)
 
 type proportionPlugin struct {
 	totalResource  *api.Resource
@@ -119,6 +131,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			realCapability := api.ExceededPart(pp.totalResource, pp.totalGuarantee).Add(attr.guarantee)
 			if attr.capability == nil {
+				attr.capability = api.EmptyResource()
 				attr.realCapability = realCapability
 			} else {
 				realCapability.MinDimensionResource(attr.capability, api.Infinity)
@@ -306,7 +319,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		attr := pp.queueOpts[queue.UID]
 		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
-		allocatable := futureUsed.LessEqualWithDimension(attr.deserved, candidate.Resreq)
+		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, candidate.Resreq)
 		if !allocatable {
 			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
@@ -318,10 +331,47 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddAllocatableFn(pp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		return queueAllocatable(queue, candidate)
 	})
+
+	ssn.AddSimulateAllocatableFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		state, err := getProportionState(cycleState)
+		if err != nil {
+			klog.Errorf("getProportionState error: %v", err)
+			return false
+		}
+		attr := state.queueAttrs[queue.UID]
+		if attr == nil {
+			klog.Errorf("queue %v not found", queue.Name)
+			return false
+		}
+
+		futureUsed := attr.allocated.Clone().Add(candidate.Resreq)
+		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, candidate.Resreq)
+		if !allocatable {
+			klog.V(3).Infof("Queue <%v>: deserved <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
+				queue.Name, attr.deserved, attr.allocated, candidate.Name, candidate.Resreq)
+		}
+
+		return allocatable
+	})
+
 	ssn.AddPreemptiveFn(pp.Name(), func(obj interface{}, candidate interface{}) bool {
 		queue := obj.(*api.QueueInfo)
 		task := candidate.(*api.TaskInfo)
 		return queueAllocatable(queue, task)
+	})
+
+	ssn.AddPrePredicateFn(pp.Name(), func(task *api.TaskInfo) error {
+		state := &proportionState{
+			queueAttrs: make(map[api.QueueID]*queueAttr),
+		}
+
+		for _, queue := range pp.queueOpts {
+			state.queueAttrs[queue.queueID] = queue.Clone()
+		}
+
+		ssn.GetCycleState(task.UID).Write(proportionStateKey, state)
+
+		return nil
 	})
 
 	ssn.AddJobEnqueueableFn(pp.Name(), func(obj interface{}) int {
@@ -352,7 +402,7 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		// The queue resource quota limit has not reached
 		r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
 
-		inqueue := r.LessEqualWithDimension(attr.realCapability, minReq)
+		inqueue, resourceNames := r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
 		klog.V(5).Infof("job %s inqueue %v", job.Name, inqueue)
 		if inqueue {
 			// deduct the resources of scheduling gated tasks in a job when calculating inqueued resources
@@ -360,8 +410,40 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			attr.inqueue.Add(job.DeductSchGatedResources(minReq))
 			return util.Permit
 		}
-		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), "queue resource quota insufficient")
+		ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), util.FormatResourceNames("queue resource quota insufficient", "insufficient", resourceNames))
 		return util.Reject
+	})
+
+	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+		state, err := getProportionState(cycleState)
+		if err != nil {
+			return fmt.Errorf("failed to get capacity state: %w", err)
+		}
+
+		job := ssn.Jobs[taskToAdd.Job]
+		attr := state.queueAttrs[job.Queue]
+		if attr == nil {
+			return fmt.Errorf("queue %s not found", job.Queue)
+		}
+		attr.allocated.Add(taskToAdd.Resreq)
+		updateQueueAttrShare(attr)
+		return nil
+	})
+
+	ssn.AddSimulateRemoveTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+		state, err := getProportionState(cycleState)
+		if err != nil {
+			return fmt.Errorf("failed to get capacity state: %w", err)
+		}
+
+		job := ssn.Jobs[taskToRemove.Job]
+		attr := state.queueAttrs[job.Queue]
+		if attr == nil {
+			return fmt.Errorf("queue %s not found", job.Queue)
+		}
+		attr.allocated.Sub(taskToRemove.Resreq)
+		updateQueueAttrShare(attr)
+		return nil
 	})
 
 	// Register event handlers.
@@ -398,6 +480,69 @@ func (pp *proportionPlugin) OnSessionClose(ssn *framework.Session) {
 }
 
 func (pp *proportionPlugin) updateShare(attr *queueAttr) {
+	updateQueueAttrShare(attr)
+	metrics.UpdateQueueShare(attr.name, attr.share)
+}
+
+type proportionState struct {
+	queueAttrs map[api.QueueID]*queueAttr
+}
+
+func (qa *queueAttr) Clone() *queueAttr {
+	if qa == nil {
+		return nil
+	}
+
+	// Clone basic attributes
+	return &queueAttr{
+		queueID: qa.queueID,
+		name:    qa.name,
+		weight:  qa.weight,
+		share:   qa.share,
+
+		deserved:       qa.deserved.Clone(),
+		allocated:      qa.allocated.Clone(),
+		request:        qa.request.Clone(),
+		elastic:        qa.elastic.Clone(),
+		inqueue:        qa.inqueue.Clone(),
+		capability:     qa.capability.Clone(),
+		realCapability: qa.realCapability.Clone(),
+		guarantee:      qa.guarantee.Clone(),
+	}
+}
+
+func (s *proportionState) Clone() fwk.StateData {
+	if s == nil {
+		return nil
+	}
+
+	newState := &proportionState{
+		queueAttrs: make(map[api.QueueID]*queueAttr, len(s.queueAttrs)),
+	}
+
+	// Clone all queue attributes
+	for qID, qa := range s.queueAttrs {
+		newState.queueAttrs[qID] = qa.Clone()
+	}
+
+	return newState
+}
+
+func getProportionState(cycleState fwk.CycleState) (*proportionState, error) {
+	c, err := cycleState.Read(proportionStateKey)
+	if err != nil {
+		// preFilterState doesn't exist, likely PreFilter wasn't invoked.
+		return nil, fmt.Errorf("error reading %q from cycleState: %w", proportionStateKey, err)
+	}
+
+	s, ok := c.(*proportionState)
+	if !ok {
+		return nil, fmt.Errorf("%+v  convert to proportion.state error", c)
+	}
+	return s, nil
+}
+
+func updateQueueAttrShare(attr *queueAttr) {
 	res := float64(0)
 
 	// TODO(k82cn): how to handle fragment issues?
@@ -409,5 +554,4 @@ func (pp *proportionPlugin) updateShare(attr *queueAttr) {
 	}
 
 	attr.share = res
-	metrics.UpdateQueueShare(attr.name, attr.share)
 }

@@ -1,5 +1,11 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Enhanced pod resource calculation with support for restartable init containers
+- Added pod preemptability support and revocable zone configuration
+- Added NUMA topology awareness and resource topology information extraction
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +27,10 @@ import (
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	helpers "k8s.io/component-helpers/resource"
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/features"
 
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
@@ -59,10 +68,29 @@ import (
 func GetPodResourceRequest(pod *v1.Pod) *Resource {
 	result := GetPodResourceWithoutInitContainers(pod)
 
+	inPlacePodVerticalScalingEnabled := utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling)
+	var initContainerStatuses map[string]*v1.ContainerStatus
+	if inPlacePodVerticalScalingEnabled {
+		initContainerStatuses = make(map[string]*v1.ContainerStatus, len(pod.Status.InitContainerStatuses))
+		for i := range pod.Status.InitContainerStatuses {
+			initContainerStatuses[pod.Status.InitContainerStatuses[i].Name] = &pod.Status.InitContainerStatuses[i]
+		}
+	}
+
 	restartableInitContainerReqs := EmptyResource()
 	initContainerReqs := EmptyResource()
 	for _, container := range pod.Spec.InitContainers {
-		containerReq := NewResource(container.Resources.Requests)
+		curcontainerReq := container.Resources.Requests
+		if inPlacePodVerticalScalingEnabled {
+			if container.RestartPolicy != nil && *container.RestartPolicy == v1.ContainerRestartPolicyAlways {
+				cs, found := initContainerStatuses[container.Name]
+				if found && cs.Resources != nil {
+					curcontainerReq = determineContainerReqs(pod, &container, cs)
+				}
+			}
+		}
+
+		containerReq := NewResource(curcontainerReq)
 
 		if container.RestartPolicy != nil && *container.RestartPolicy == v1.ContainerRestartPolicyAlways {
 			// Add the restartable container's req to the resulting cumulative container requests.
@@ -161,8 +189,26 @@ func GetPodTopologyInfo(pod *v1.Pod) *TopologyInfo {
 // init containers' resource request.
 func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 	result := EmptyResource()
+
+	inPlacePodVerticalScalingEnabled := utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling)
+
+	var containerStatuses map[string]*v1.ContainerStatus
+	if inPlacePodVerticalScalingEnabled {
+		containerStatuses = make(map[string]*v1.ContainerStatus, len(pod.Status.ContainerStatuses))
+		for i := range pod.Status.ContainerStatuses {
+			containerStatuses[pod.Status.ContainerStatuses[i].Name] = &pod.Status.ContainerStatuses[i]
+		}
+	}
+
 	for _, container := range pod.Spec.Containers {
-		result.Add(NewResource(container.Resources.Requests))
+		containerReqs := container.Resources.Requests
+		if inPlacePodVerticalScalingEnabled {
+			cs, found := containerStatuses[container.Name]
+			if found && cs.Resources != nil {
+				containerReqs = determineContainerReqs(pod, &container, cs)
+			}
+		}
+		result.Add(NewResource(containerReqs))
 	}
 
 	// if PodOverhead feature is supported, add overhead for running a pod
@@ -171,4 +217,36 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 	}
 
 	return result
+}
+
+// determineContainerReqs will return a copy of the container requests based on if resizing is feasible or not.
+func determineContainerReqs(pod *v1.Pod, container *v1.Container, cs *v1.ContainerStatus) v1.ResourceList {
+	if helpers.IsPodResizeInfeasible(pod) {
+		return maxFn(cs.Resources.Requests, cs.AllocatedResources)
+	}
+	return maxFn(container.Resources.Requests, cs.Resources.Requests, cs.AllocatedResources)
+}
+
+// max returns the result of max(a, b...) for each named resource and is only used if we can't
+// accumulate into an existing resource list
+func maxFn(a v1.ResourceList, b ...v1.ResourceList) v1.ResourceList {
+	var result v1.ResourceList
+	if a != nil {
+		result = a.DeepCopy()
+	} else {
+		result = v1.ResourceList{}
+	}
+	for _, other := range b {
+		maxResourceList(result, other)
+	}
+	return result
+}
+
+// maxResourceList sets list to the greater of list/newList for every resource in newList
+func maxResourceList(list, newList v1.ResourceList) {
+	for name, quantity := range newList {
+		if value, ok := list[name]; !ok || quantity.Cmp(value) > 0 {
+			list[name] = quantity.DeepCopy()
+		}
+	}
 }

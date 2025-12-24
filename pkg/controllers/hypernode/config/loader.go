@@ -32,7 +32,7 @@ type Loader interface {
 
 const (
 	NamespaceEnvKey    = "KUBE_POD_NAMESPACE"
-	ReleaseNameEnvKey  = "RELEASE_NAME"
+	ReleaseNameEnvKey  = "HELM_RELEASE_NAME"
 	DefaultReleaseName = "volcano"
 
 	DefaultNamespace = "volcano-system"

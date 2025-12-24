@@ -155,6 +155,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		}
 	}
 
+	msg += validateNetworkTopology(job.Spec.NetworkTopology)
 	hasDependenciesBetweenTasks := false
 	for index, task := range job.Spec.Tasks {
 		if task.DependsOn != nil {
@@ -170,6 +171,9 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 				msg += fmt.Sprintf(" 'minAvailable' < 0 in task: %s, job: %s;", task.Name, job.Name)
 			} else if *task.MinAvailable > task.Replicas {
 				msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s;", task.Name, job.Name)
+			}
+			if task.PartitionPolicy != nil && task.PartitionPolicy.MinPartitions != 0 {
+				msg += fmt.Sprintf("must not specify 'minAvailable' and 'partitionPolicy.minPartitions' simultaneously in task: %s, job: %s;", task.Name, job.Name)
 			}
 		}
 
@@ -196,6 +200,7 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		podName := jobhelpers.MakePodName(job.Name, task.Name, index)
 		msg += validateK8sPodNameLength(podName)
 		msg += validateTaskTemplate(task, job, index)
+		msg += validatePartitionPolicy(task, job)
 	}
 
 	msg += validateJobName(job)
@@ -279,6 +284,10 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 				return fmt.Errorf("'minAvailable' must be <= 'replicas' in task: %s", task.Name)
 			}
 		}
+		msg := validatePartitionPolicy(task, new)
+		if msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
 
 		// count replicas
 		totalReplicas += task.Replicas
@@ -288,6 +297,10 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	}
 	if new.Spec.MinAvailable < 0 {
 		return fmt.Errorf("job 'minAvailable' must be >= 0")
+	}
+	networkTopology := new.Spec.NetworkTopology
+	if networkTopology != nil && networkTopology.HighestTierAllowed != nil && networkTopology.HighestTierName != "" {
+		return fmt.Errorf("must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously")
 	}
 
 	if len(old.Spec.Tasks) != len(new.Spec.Tasks) {
@@ -324,6 +337,29 @@ func validateJobUpdate(old, new *v1alpha1.Job) error {
 	return nil
 }
 
+func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {
+	var msg string
+	if task.PartitionPolicy != nil {
+		if task.PartitionPolicy.TotalPartitions <= 0 {
+			msg += fmt.Sprintf("'TotalPartitions' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
+		} else if task.PartitionPolicy.PartitionSize <= 0 {
+			msg += fmt.Sprintf("'PartitionSize' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
+		} else if task.Replicas != task.PartitionPolicy.TotalPartitions*task.PartitionPolicy.PartitionSize {
+			msg += fmt.Sprintf("'Replicas' are not equal to TotalPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
+		}
+		msg += validateNetworkTopology(task.PartitionPolicy.NetworkTopology)
+	}
+
+	return msg
+}
+
+func validateNetworkTopology(networkTopology *v1alpha1.NetworkTopologySpec) string {
+	if networkTopology != nil && networkTopology.HighestTierAllowed != nil && networkTopology.HighestTierName != "" {
+		return "must not specify 'highestTierAllowed' and 'highestTierName' in networkTopology simultaneously"
+	}
+	return ""
+}
+
 func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) string {
 	var v1PodTemplate v1.PodTemplate
 	v1PodTemplate.Template = *task.Template.DeepCopy()
@@ -350,11 +386,7 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 	}
 
 	msg := validateTaskTopoPolicy(task, index)
-	if msg != "" {
-		return msg
-	}
-
-	return ""
+	return msg
 }
 
 func validateK8sPodNameLength(podName string) string {

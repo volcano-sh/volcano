@@ -216,10 +216,34 @@ func Test_reporter_Handle(t *testing.T) {
 				node, err := makeNode()
 				assert.NoError(t, err)
 				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{}
-				node.Status.Capacity[apis.ExtendResourceCPU] = *resource.NewQuantity(1000, resource.DecimalSI)
-				node.Status.Capacity[apis.ExtendResourceMemory] = *resource.NewQuantity(2000, resource.BinarySI)
-				node.Status.Allocatable[apis.ExtendResourceCPU] = *resource.NewQuantity(1000, resource.DecimalSI)
-				node.Status.Allocatable[apis.ExtendResourceMemory] = *resource.NewQuantity(2000, resource.BinarySI)
+				node.Status.Capacity[apis.GetExtendResourceCPU()] = *resource.NewQuantity(1000, resource.DecimalSI)
+				node.Status.Capacity[apis.GetExtendResourceMemory()] = *resource.NewQuantity(2000, resource.BinarySI)
+				node.Status.Allocatable[apis.GetExtendResourceCPU()] = *resource.NewQuantity(1000, resource.DecimalSI)
+				node.Status.Allocatable[apis.GetExtendResourceMemory()] = *resource.NewQuantity(2000, resource.BinarySI)
+				return node
+			},
+		},
+		{
+			name: "patch over subscription node to node status with custom resource name",
+			policy: func(cfg *config.Configuration, pods utilpod.ActivePods, evictor eviction.Eviction) policy.Interface {
+				apis.SetExtendResourceCPU("custom-cpu")
+				apis.SetExtendResourceMemory("custom-memory")
+				return extend.NewExtendResource(cfg, nil, evictor, nil, "")
+			},
+			getNodeFunc: makeNode,
+			event: framework.NodeResourceEvent{
+				MillCPU:     1000,
+				MemoryBytes: 2000,
+			},
+			wantErr: assert.NoError,
+			expectedNode: func() *v1.Node {
+				node, err := makeNode()
+				assert.NoError(t, err)
+				node.Status.Capacity = map[v1.ResourceName]resource.Quantity{}
+				node.Status.Capacity["custom-cpu"] = *resource.NewQuantity(1000, resource.DecimalSI)
+				node.Status.Capacity["custom-memory"] = *resource.NewQuantity(2000, resource.BinarySI)
+				node.Status.Allocatable["custom-cpu"] = *resource.NewQuantity(1000, resource.DecimalSI)
+				node.Status.Allocatable["custom-memory"] = *resource.NewQuantity(2000, resource.BinarySI)
 				return node
 			},
 		},

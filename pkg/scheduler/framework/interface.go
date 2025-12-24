@@ -1,5 +1,9 @@
 /*
 Copyright 2017 The Kubernetes Authors.
+Copyright 2017-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added BindContextHandler interface for bind context extension setup
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +21,8 @@ limitations under the License.
 package framework
 
 import (
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+
 	"volcano.sh/volcano/pkg/scheduler/cache"
 )
 
@@ -46,5 +52,5 @@ type Plugin interface {
 
 type BindContextHandler interface {
 	// SetupBindContextExtension allows the plugin to set up extension information in the bind context
-	SetupBindContextExtension(ssn *Session, bindCtx *cache.BindContext)
+	SetupBindContextExtension(state *k8sframework.CycleState, bindCtx *cache.BindContext)
 }

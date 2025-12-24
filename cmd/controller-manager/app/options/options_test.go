@@ -86,6 +86,7 @@ func TestAddFlags(t *testing.T) {
 		},
 		PrintVersion:            false,
 		WorkerThreads:           defaultWorkers,
+		WorkerThreadsForCronJob: defaultCronJobWorkers,
 		SchedulerNames:          []string{"volcano", "volcano2"},
 		MaxRequeueNum:           defaultMaxRequeueNum,
 		HealthzBindAddress:      ":11251",

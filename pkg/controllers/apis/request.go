@@ -27,18 +27,18 @@ import (
 
 // Request struct.
 type Request struct {
-	Namespace string
-	JobName   string
-	JobUid    types.UID
-	TaskName  string
-	QueueName string
-	PodName   string
-	PodUID    types.UID
-
-	Event      v1alpha1.Event
-	ExitCode   int32
-	Action     v1alpha1.Action
-	JobVersion int32
+	Namespace   string
+	JobName     string
+	JobUid      types.UID
+	TaskName    string
+	QueueName   string
+	PodName     string
+	PodUID      types.UID
+	PartitionID string
+	Event       v1alpha1.Event
+	ExitCode    int32
+	Action      v1alpha1.Action
+	JobVersion  int32
 }
 
 // String function returns the request in string format.

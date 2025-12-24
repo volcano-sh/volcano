@@ -66,7 +66,15 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 		return nil
 	}
 
-	resources := utilpod.CalculateExtendResources(podEvent.Pod)
+	var resources []utilpod.Resources
+	cgroupVersion := r.cgroupMgr.GetCgroupVersion()
+	switch cgroupVersion {
+	case cgroup.CgroupV1:
+		resources = utilpod.CalculateExtendResources(podEvent.Pod)
+	case cgroup.CgroupV2:
+		resources = utilpod.CalculateExtendResourcesV2(podEvent.Pod)
+	}
+
 	var errs []error
 	// set container and pod level cgroup.
 	for _, cr := range resources {
@@ -77,7 +85,23 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 		}
 
 		filePath := path.Join(cgroupPath, cr.ContainerID, cr.SubPath)
-		err = utils.UpdateFile(filePath, []byte(strconv.FormatInt(cr.Value, 10)))
+
+		if cgroupVersion == cgroup.CgroupV2 && cr.Value == -1 {
+			if cr.SubPath == cgroup.CPUQuotaTotalFileV2 {
+				// cpu.max: "max 100000"
+				err = utils.UpdateFile(filePath, []byte("max 100000"))
+			} else {
+				// memory.max: "max"
+				err = utils.UpdateFile(filePath, []byte("max"))
+			}
+		} else if cgroupVersion == cgroup.CgroupV2 && cr.SubPath == cgroup.CPUQuotaTotalFileV2 && cr.Value > 0 {
+			// For cgroup v2 cpu.max, we need to write "quota period" format
+			content := fmt.Sprintf("%d 100000", cr.Value)
+			err = utils.UpdateFile(filePath, []byte(content))
+		} else {
+			err = utils.UpdateFile(filePath, []byte(strconv.FormatInt(cr.Value, 10)))
+		}
+
 		if os.IsNotExist(err) {
 			klog.InfoS("Cgroup file not existed", "filePath", filePath)
 			continue

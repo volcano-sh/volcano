@@ -124,7 +124,7 @@ func TestFilterOutPreemptMayNotHelpNodes(t *testing.T) {
 					}
 
 					// check potential nodes
-					potentialNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(task)
+					potentialNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
 					want := test.want[task.UID]
 					got := make([]string, 0, len(potentialNodes))
 					for _, node := range potentialNodes {

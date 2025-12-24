@@ -55,6 +55,7 @@ type hyperNodeController struct {
 	hyperNodeInformer topologyinformerv1alpha1.HyperNodeInformer
 	hyperNodeLister   topologylisterv1alpha1.HyperNodeLister
 	hyperNodeQueue    workqueue.TypedRateLimitingInterface[string]
+	nodeLister        listersv1.NodeLister
 
 	configMapInformer coreinformers.ConfigMapInformer
 	configMapLister   listersv1.ConfigMapLister
@@ -113,6 +114,7 @@ func (hn *hyperNodeController) Initialize(opt *framework.ControllerOption) error
 	hn.hyperNodeInformer = hn.vcInformerFactory.Topology().V1alpha1().HyperNodes()
 	hn.hyperNodeLister = hn.hyperNodeInformer.Lister()
 	hn.hyperNodeQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
+	hn.nodeLister = hn.informerFactory.Core().V1().Nodes().Lister()
 
 	hn.setConfigMapNamespaceAndName()
 	hn.setupConfigMapInformer()
@@ -125,7 +127,7 @@ func (hn *hyperNodeController) Initialize(opt *framework.ControllerOption) error
 		hn.configMapName,
 	)
 
-	hn.discoveryManager = discovery.NewManager(configLoader, hn.configMapQueue, hn.kubeClient)
+	hn.discoveryManager = discovery.NewManager(configLoader, hn.configMapQueue, hn.kubeClient, hn.vcClient)
 
 	// Add event handlers for HyperNode
 	hn.hyperNodeInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -142,6 +144,7 @@ func (hn *hyperNodeController) watchDiscoveryResults() {
 	for result := range resultCh {
 		if result.HyperNodes != nil {
 			hn.reconcileTopology(result.Source, result.HyperNodes)
+			hn.discoveryManager.ResultSynced(result.Source)
 		}
 	}
 	klog.InfoS("Discovery result channel closed")

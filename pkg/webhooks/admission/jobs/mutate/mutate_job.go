@@ -29,6 +29,7 @@ import (
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/mpi"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/pytorch"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/ray"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/tensorflow"
 	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/webhooks/router"
@@ -201,7 +202,7 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string, job *v1alpha1.Job) *
 			tasks[index].Template.Spec.DNSPolicy = v1.DNSClusterFirstWithHostNet
 		}
 
-		if tasks[index].MinAvailable == nil {
+		if tasks[index].MinAvailable == nil && (tasks[index].PartitionPolicy == nil || tasks[index].PartitionPolicy.MinPartitions == 0) {
 			patched = true
 			minAvailable := tasks[index].Replicas
 			tasks[index].MinAvailable = &minAvailable
@@ -236,7 +237,8 @@ func patchDefaultPlugins(job *v1alpha1.Job) *patchOperation {
 	_, hasTf := job.Spec.Plugins[tensorflow.TFPluginName]
 	_, hasMPI := job.Spec.Plugins[mpi.MPIPluginName]
 	_, hasPytorch := job.Spec.Plugins[pytorch.PytorchPluginName]
-	if hasTf || hasMPI || hasPytorch {
+	_, hasRay := job.Spec.Plugins[ray.RayPluginName]
+	if hasTf || hasMPI || hasPytorch || hasRay {
 		if _, ok := plugins["svc"]; !ok {
 			plugins["svc"] = []string{}
 		}

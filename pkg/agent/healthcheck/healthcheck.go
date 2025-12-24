@@ -39,13 +39,15 @@ func NewHealthChecker(networkQoSMgr networkqos.NetworkQoSManager) HealthChecker 
 }
 
 func (c *healthChecker) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	if err := c.networkQoSMgr.HealthCheck(); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		if _, writeErr := w.Write([]byte(err.Error())); writeErr != nil {
-			klog.ErrorS(writeErr, "Failed to check network qos")
+	if c.networkQoSMgr != nil {
+		if err := c.networkQoSMgr.HealthCheck(); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			if _, writeErr := w.Write([]byte(err.Error())); writeErr != nil {
+				klog.ErrorS(writeErr, "Failed to check network qos")
+			}
+			klog.ErrorS(err, "Failed to check volcano-agent")
+			return
 		}
-		klog.ErrorS(err, "Failed to check volcano-agent")
-		return
 	}
 
 	w.WriteHeader(http.StatusOK)

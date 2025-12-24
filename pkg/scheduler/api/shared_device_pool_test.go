@@ -1,3 +1,19 @@
+/*
+Copyright 2024 The Volcano Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package api
 
 import (
@@ -40,15 +56,16 @@ func Test_ignoredDevicesList_Set_BasicUsage(t *testing.T) {
 
 func Test_ignoredDevicesList_Range_BasicUsage(t *testing.T) {
 	lst := ignoredDevicesList{}
-	lst.Set([]string{"volcano.sh/vgpu-memory", "volcano.sh/vgpu-memory-percentage", "volcano.sh/vgpu-cores"})
+	expected := []string{"volcano.sh/vgpu-memory", "volcano.sh/vgpu-memory-percentage", "volcano.sh/vgpu-cores"}
+	lst.Set(expected)
 
 	t.Run("read and copy values from the ignoredDevicesList", func(t *testing.T) {
-		ignoredDevices := make([]string, 0, len(lst.ignoredDevices))
+		var ignoredDevices []string
 		lst.Range(func(_ int, device string) bool {
 			ignoredDevices = append(ignoredDevices, device)
 			return true
 		})
-		assert.Equal(t, lst.ignoredDevices, ignoredDevices)
+		assert.Equal(t, expected, ignoredDevices)
 	})
 
 	t.Run("break iteration through the ignoredDevicesList", func(t *testing.T) {
@@ -123,4 +140,32 @@ func Test_ignoredDevicesList_NoRace(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func Test_ignoredDevicesList_Set_DeduplicateAndOrder(t *testing.T) {
+	lst := ignoredDevicesList{}
+	lst.Set(
+		[]string{"volcano.sh/vgpu-memory", "volcano.sh/vgpu-memory"},
+		[]string{"", "volcano.sh/vgpu-cores", "volcano.sh/vgpu-memory"},
+	)
+
+	assert.Equal(t, []string{"volcano.sh/vgpu-memory", "volcano.sh/vgpu-cores"}, lst.List())
+}
+
+func Test_ignoredDevicesList_Append_PreservesOrder(t *testing.T) {
+	lst := ignoredDevicesList{}
+	lst.Set([]string{"volcano.sh/vgpu-memory"})
+	lst.Append("volcano.sh/vgpu-memory", "volcano.sh/vgpu-cores", "")
+
+	assert.Equal(t, []string{"volcano.sh/vgpu-memory", "volcano.sh/vgpu-cores"}, lst.List())
+}
+
+func Test_ignoredDevicesList_List_ReturnsCopy(t *testing.T) {
+	lst := ignoredDevicesList{}
+	lst.Set([]string{"volcano.sh/vgpu-memory"})
+
+	copyList := lst.List()
+	copyList[0] = "changed"
+
+	assert.Equal(t, []string{"volcano.sh/vgpu-memory"}, lst.List())
 }

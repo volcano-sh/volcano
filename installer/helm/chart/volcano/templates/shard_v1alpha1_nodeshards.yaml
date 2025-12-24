@@ -1,0 +1,1 @@
+{{- tpl ($.Files.Get (printf "crd/%s/shard.volcano.sh_nodeshards.yaml" (include "crd_version" .))) . }}

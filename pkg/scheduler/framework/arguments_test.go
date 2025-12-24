@@ -1,5 +1,9 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added comprehensive test coverage for enhanced argument parsing functions
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -184,6 +188,63 @@ func TestGetArgOfActionFromConf(t *testing.T) {
 		arg := GetArgOfActionFromConf(c.configurations, c.action)
 		if false == equality.Semantic.DeepEqual(arg, c.expectedArguments) {
 			t.Errorf("index %d, case %s,expected %v, but got %v", index, c.name, c.expectedArguments, arg)
+		}
+	}
+}
+
+func TestArgumentsGetString(t *testing.T) {
+	key1 := "stringkey"
+
+	cases := []struct {
+		name        string
+		arg         Arguments
+		key         string
+		baseValue   string
+		expectValue string
+	}{
+		{
+			name: "key not exist",
+			arg: Arguments{
+				"anotherKey": "test",
+			},
+			key:         key1,
+			baseValue:   "test1",
+			expectValue: "test1",
+		},
+		{
+			name: "key exist",
+			arg: Arguments{
+				key1: "test1",
+			},
+			key:         key1,
+			baseValue:   "test",
+			expectValue: "test1",
+		},
+		{
+			name: "value of key invalid",
+			arg: Arguments{
+				key1: 0,
+			},
+			key:         key1,
+			baseValue:   "test",
+			expectValue: "test",
+		},
+		{
+			name: "value of key null",
+			arg: Arguments{
+				key1: nil,
+			},
+			key:         key1,
+			baseValue:   "test",
+			expectValue: "test",
+		},
+	}
+
+	for index, c := range cases {
+		baseValue := c.baseValue
+		c.arg.GetString(&baseValue, c.key)
+		if baseValue != c.expectValue {
+			t.Errorf("index %d, case %s, value should be %v, but not %v", index, c.name, c.expectValue, baseValue)
 		}
 	}
 }

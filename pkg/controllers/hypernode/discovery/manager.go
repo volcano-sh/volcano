@@ -28,9 +28,11 @@ import (
 	"k8s.io/klog/v2"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/controllers/hypernode/api"
 	"volcano.sh/volcano/pkg/controllers/hypernode/config"
 
+	_ "volcano.sh/volcano/pkg/controllers/hypernode/discovery/label"
 	_ "volcano.sh/volcano/pkg/controllers/hypernode/discovery/ufm"
 )
 
@@ -49,6 +51,9 @@ type Manager interface {
 	Stop()
 	// ResultChannel returns a channel for receiving discovery results
 	ResultChannel() <-chan Result
+
+	// ResultSynced every time the Result in ResultChannel are processed, this method must be called to notify network topology discover
+	ResultSynced(source string)
 }
 
 // manager manages network topology discovery processes
@@ -63,12 +68,13 @@ type manager struct {
 	stopCh      chan struct{}
 
 	kubeClient clientset.Interface
+	vcClient   vcclientset.Interface
 
 	resultCh chan Result
 }
 
 // NewManager create a new network topology discovery manager
-func NewManager(configLoader config.Loader, queue workqueue.TypedRateLimitingInterface[string], kubeClient clientset.Interface) Manager {
+func NewManager(configLoader config.Loader, queue workqueue.TypedRateLimitingInterface[string], kubeClient clientset.Interface, vcClient vcclientset.Interface) Manager {
 	return &manager{
 		configLoader: configLoader,
 		discoverers:  make(map[string]api.Discoverer),
@@ -76,6 +82,7 @@ func NewManager(configLoader config.Loader, queue workqueue.TypedRateLimitingInt
 		stopCh:       make(chan struct{}),
 		workQueue:    queue,
 		kubeClient:   kubeClient,
+		vcClient:     vcClient,
 	}
 }
 
@@ -105,6 +112,17 @@ func (m *manager) Stop() {
 	klog.InfoS("Network topology discovery manager stopped")
 }
 
+// ResultSynced every time the Result in ResultChannel are processed, this method must be called to notify network topology discover
+func (m *manager) ResultSynced(source string) {
+	discoverer, exists := m.discoverers[source]
+	if !exists {
+		klog.InfoS("No need to notice discoverer as it may not start yet", "source", source)
+		return
+	}
+	discoverer.ResultSynced()
+	klog.InfoS("notice discoverer Topology reconciliation completed", "source", source)
+}
+
 func (m *manager) ResultChannel() <-chan Result {
 	return m.resultCh
 }
@@ -120,7 +138,7 @@ func (m *manager) startSingleDiscoverer(source string) error {
 		return fmt.Errorf("configuration not found for network topology discovery source: %s", source)
 	}
 
-	discoverer, err := api.NewDiscoverer(*discoveryCfg, m.kubeClient)
+	discoverer, err := api.NewDiscoverer(*discoveryCfg, m.kubeClient, m.vcClient)
 	if err != nil {
 		return fmt.Errorf("failed to create discoverer: %v", err)
 	}

@@ -63,6 +63,10 @@ func UpdateHyperNode(vcClient vcclientset.Interface, lister v1alpha1.HyperNodeLi
 			current.Annotations[k] = v
 		}
 
+		_, err = vcClient.TopologyV1alpha1().HyperNodes().Update(context.Background(), current, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
 		_, err = vcClient.TopologyV1alpha1().HyperNodes().UpdateStatus(context.Background(), current, metav1.UpdateOptions{})
 		return err
 	})
@@ -88,6 +92,12 @@ func BuildHyperNode(name string, tier int, members []topologyv1alpha1.MemberSpec
 			Members: members,
 		},
 	}
+}
+
+func BuildHyperNodeWithTierName(name string, tier int, tierName string, members []topologyv1alpha1.MemberSpec, labels map[string]string) *topologyv1alpha1.HyperNode {
+	hyperNode := BuildHyperNode(name, tier, members, labels)
+	hyperNode.Spec.TierName = tierName
+	return hyperNode
 }
 
 // BuildMembers creates a list of topology member references

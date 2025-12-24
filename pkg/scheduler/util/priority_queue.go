@@ -1,5 +1,9 @@
 /*
 Copyright 2017 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added Clone() method for priority queue deep copying
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -67,15 +71,14 @@ func (q *PriorityQueue) Len() int {
 }
 
 func (q *PriorityQueue) Clone() *PriorityQueue {
+	items := make([]interface{}, len(q.queue.items), cap(q.queue.items))
+	copy(items, q.queue.items)
+
 	newPq := &PriorityQueue{
 		queue: priorityQueue{
-			items:  make([]interface{}, 0),
+			items:  items,
 			lessFn: q.queue.lessFn,
 		},
-	}
-
-	for _, it := range q.queue.items {
-		newPq.Push(it)
 	}
 	return newPq
 }
@@ -91,7 +94,7 @@ func (pq *priorityQueue) Less(i, j int) bool {
 	return pq.lessFn(pq.items[i], pq.items[j])
 }
 
-func (pq priorityQueue) Swap(i, j int) {
+func (pq *priorityQueue) Swap(i, j int) {
 	pq.items[i], pq.items[j] = pq.items[j], pq.items[i]
 }
 

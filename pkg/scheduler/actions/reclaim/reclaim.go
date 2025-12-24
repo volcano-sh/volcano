@@ -1,5 +1,11 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added job validation and preemption policy support
+- Enhanced victim selection with priority queue ordering
+- Added PrePredicate validation and node filtering
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -137,7 +143,7 @@ func (ra *Action) Execute(ssn *framework.Session) {
 
 		assigned := false
 		// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
-		totalNodes := ssn.GetUnschedulableAndUnresolvableNodesForTask(task)
+		totalNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
 		for _, n := range totalNodes {
 			// When filtering candidate nodes, need to consider the node statusSets instead of the err information.
 			// refer to kube-scheduler preemption code: https://github.com/kubernetes/kubernetes/blob/9d87fa215d9e8020abdc17132d1252536cd752d2/pkg/scheduler/framework/preemption/preemption.go#L422
@@ -186,7 +192,8 @@ func (ra *Action) Execute(ssn *framework.Session) {
 
 			resreq := task.InitResreq.Clone()
 			reclaimed := api.EmptyResource()
-
+			// The reclaimed resources should be added to the remaining available resources of the nodes to avoid over-reclaiming.
+			availableResources := n.FutureIdle()
 			// Reclaim victims for tasks.
 			for !victimsQueue.Empty() {
 				reclaimee := victimsQueue.Pop().(*api.TaskInfo)
@@ -198,16 +205,17 @@ func (ra *Action) Execute(ssn *framework.Session) {
 					continue
 				}
 				reclaimed.Add(reclaimee.Resreq)
+				availableResources.Add(reclaimee.Resreq)
 				// If reclaimed enough resources, break loop to avoid Sub panic.
-				if resreq.LessEqual(reclaimed, api.Zero) {
+				if resreq.LessEqual(availableResources, api.Zero) {
 					break
 				}
 			}
 
-			klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>.",
-				reclaimed, task.Namespace, task.Name, task.InitResreq)
+			klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v> node availableResources <%v>.",
+				reclaimed, task.Namespace, task.Name, task.InitResreq, availableResources)
 
-			if task.InitResreq.LessEqual(reclaimed, api.Zero) {
+			if task.InitResreq.LessEqual(availableResources, api.Zero) {
 				if err := ssn.Pipeline(task, n.Name); err != nil {
 					klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 						task.Namespace, task.Name, n.Name)

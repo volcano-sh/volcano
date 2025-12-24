@@ -1,5 +1,9 @@
 /*
 Copyright 2017 The Kubernetes Authors.
+Copyright 2017-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Extended cluster information tracking with additional resource management capabilities
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +32,7 @@ type ClusterInfo struct {
 	Nodes                     map[string]*NodeInfo
 	HyperNodes                HyperNodeInfoMap
 	HyperNodesSetByTier       map[int]sets.Set[string]
+	HyperNodeTierNameMap      HyperNodeTierNameMap
 	RealNodesSet              map[string]sets.Set[string]
 	HyperNodesReadyToSchedule bool
 	Queues                    map[QueueID]*QueueInfo

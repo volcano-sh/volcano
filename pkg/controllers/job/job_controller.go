@@ -75,6 +75,8 @@ type delayAction struct {
 	// The UID of the pod
 	podUID types.UID
 
+	partition string
+
 	// The event caused the action
 	event busv1alpha1.Event
 
@@ -552,6 +554,10 @@ func (cc *jobcontroller) cleanupDelayActions(currentDelayAction *delayAction) {
 				}
 				// For Pod level actions, only cancel delayed actions for the same pod
 				if actionType == PodAction && delayAct.podName != currentDelayAction.podName {
+					continue
+				}
+				// For partition group level actions, only cancel delayed actions for the same group
+				if actionType == PartitionAction && delayAct.partition != currentDelayAction.partition {
 					continue
 				}
 

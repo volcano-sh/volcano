@@ -1,5 +1,9 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2024 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added Err field to Event structure for error handling
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

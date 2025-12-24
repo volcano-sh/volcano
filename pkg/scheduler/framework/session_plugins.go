@@ -1,5 +1,9 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added additional plugin extension points
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +21,9 @@ limitations under the License.
 package framework
 
 import (
+	"context"
+
+	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -158,6 +165,47 @@ func (ssn *Session) AddVictimTasksFns(name string, fns []api.VictimTasksFn) {
 // AddJobStarvingFns add jobStarvingFns function
 func (ssn *Session) AddJobStarvingFns(name string, fn api.ValidateFn) {
 	ssn.jobStarvingFns[name] = fn
+}
+
+func (ssn *Session) AddSimulateAddTaskFn(name string, fn api.SimulateAddTaskFn) {
+	ssn.simulateAddTaskFns[name] = fn
+}
+
+func (ssn *Session) AddSimulateRemoveTaskFn(name string, fn api.SimulateRemoveTaskFn) {
+	ssn.simulateRemoveTaskFns[name] = fn
+}
+
+func (ssn *Session) AddSimulateAllocatableFn(name string, fn api.SimulateAllocatableFn) {
+	ssn.simulateAllocatableFns[name] = fn
+}
+
+func (ssn *Session) AddSimulatePredicateFn(name string, fn api.SimulatePredicateFn) {
+	ssn.simulatePredicateFns[name] = fn
+}
+
+// AddSubJobReadyFn add SubJobReady function
+func (ssn *Session) AddSubJobReadyFn(name string, vf api.ValidateFn) {
+	ssn.subJobReadyFns[name] = vf
+}
+
+// AddSubJobPipelinedFn add SubJobPipelined function
+func (ssn *Session) AddSubJobPipelinedFn(name string, vf api.VoteFn) {
+	ssn.subJobPipelinedFns[name] = vf
+}
+
+// AddSubJobOrderFn add SubJobOrderFn function
+func (ssn *Session) AddSubJobOrderFn(name string, fn api.CompareFn) {
+	ssn.subJobOrderFns[name] = fn
+}
+
+// AddHyperNodeGradientForJobFn add HyperNodeGradientForJobFn function
+func (ssn *Session) AddHyperNodeGradientForJobFn(name string, fn api.HyperNodeGradientForJobFn) {
+	ssn.hyperNodeGradientForJobFns[name] = fn
+}
+
+// AddHyperNodeGradientForSubJobFn add HyperNodeGradientForSubJobFn function
+func (ssn *Session) AddHyperNodeGradientForSubJobFn(name string, fn api.HyperNodeGradientForSubJobFn) {
+	ssn.hyperNodeGradientForSubJobFns[name] = fn
 }
 
 // Reclaimable invoke reclaimable function of the plugins
@@ -313,6 +361,64 @@ func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) b
 			if !af(queue, candidate) {
 				return false
 			}
+		}
+	}
+
+	return true
+}
+
+func (ssn *Session) SubJobReady(job *api.JobInfo, subJob *api.SubJobInfo) bool {
+	if !job.ContainsSubJobPolicy() {
+		return ssn.JobReady(job)
+	}
+
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledSubJobReady) {
+				continue
+			}
+			fn, found := ssn.subJobReadyFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			if !fn(subJob) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func (ssn *Session) SubJobPipelined(job *api.JobInfo, subJob *api.SubJobInfo) bool {
+	if !job.ContainsSubJobPolicy() {
+		return ssn.JobPipelined(job)
+	}
+
+	var hasFound bool
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledSubJobPipelined) {
+				continue
+			}
+			fn, found := ssn.subJobPipelinedFns[plugin.Name]
+			if !found {
+				continue
+			}
+
+			res := fn(subJob)
+			if res < 0 {
+				return false
+			}
+			if res > 0 {
+				hasFound = true
+			}
+		}
+		// if plugin exists that votes permit, meanwhile other plugin votes abstention,
+		// permit job to be pipelined, do not check next tier
+		if hasFound {
+			return true
 		}
 	}
 
@@ -526,6 +632,31 @@ func (ssn *Session) ReservedNodes() {
 	}
 }
 
+func (ssn *Session) SubJobOrderFn(l, r interface{}) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledSubJobOrder) {
+				continue
+			}
+			fn, found := ssn.subJobOrderFns[plugin.Name]
+			if !found {
+				continue
+			}
+			if j := fn(l, r); j != 0 {
+				return j < 0
+			}
+		}
+	}
+
+	// If no subJob order funcs, order subJob by MatchIndex and UID.
+	lv := l.(*api.SubJobInfo)
+	rv := r.(*api.SubJobInfo)
+	if lv.MatchIndex != rv.MatchIndex {
+		return lv.MatchIndex < rv.MatchIndex
+	}
+	return lv.UID < rv.UID
+}
+
 // JobOrderFn invoke joborder function of the plugins
 func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 	for _, tier := range ssn.Tiers {
@@ -670,6 +801,85 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 	return nil
 }
 
+// SimulateAllocatableFn invoke simulateAllocatableFn function of the plugins
+func (ssn *Session) SimulateAllocatableFn(ctx context.Context, state fwk.CycleState, queue *api.QueueInfo, task *api.TaskInfo) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledAllocatable) {
+				continue
+			}
+			caf, found := ssn.simulateAllocatableFns[plugin.Name]
+			if !found {
+				continue
+			}
+			if !caf(ctx, state, queue, task) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// SimulatePredicateFn invoke simulatePredicateFn function of the plugins
+func (ssn *Session) SimulatePredicateFn(ctx context.Context, state fwk.CycleState, task *api.TaskInfo, node *api.NodeInfo) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPredicate) {
+				continue
+			}
+			pfn, found := ssn.simulatePredicateFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(ctx, state, task, node)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// SimulateRemoveTaskFn invoke simulateRemoveTaskFn function of the plugins
+func (ssn *Session) SimulateRemoveTaskFn(ctx context.Context, state fwk.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPreemptable) && !isEnabled(plugin.EnabledAllocatable) {
+				continue
+			}
+			pfn, found := ssn.simulateRemoveTaskFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(ctx, state, taskToSchedule, taskToRemove, nodeInfo)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// SimulateAddTaskFn invoke simulateAddTaskFn function of the plugins
+func (ssn *Session) SimulateAddTaskFn(ctx context.Context, state fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledPreemptable) && !isEnabled(plugin.EnabledAllocatable) {
+				continue
+			}
+			pfn, found := ssn.simulateAddTaskFns[plugin.Name]
+			if !found {
+				continue
+			}
+			err := pfn(ctx, state, taskToSchedule, taskToAdd, nodeInfo)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // PrePredicateFn invoke predicate function of the plugins
 func (ssn *Session) PrePredicateFn(task *api.TaskInfo) error {
 	for _, tier := range ssn.Tiers {
@@ -790,7 +1000,7 @@ func (ssn *Session) NodeOrderMapFn(task *api.TaskInfo, node *api.NodeInfo) (map[
 }
 
 // HyperNodeOrderMapFn invoke hyperNode order function of the plugins
-func (ssn *Session) HyperNodeOrderMapFn(job *api.JobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]map[string]float64, error) {
+func (ssn *Session) HyperNodeOrderMapFn(subJob *api.SubJobInfo, hyperNodes map[string][]*api.NodeInfo) (map[string]map[string]float64, error) {
 	nodeGroupScore := make(map[string]map[string]float64)
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -801,7 +1011,7 @@ func (ssn *Session) HyperNodeOrderMapFn(job *api.JobInfo, hyperNodes map[string]
 			if !found {
 				continue
 			}
-			scoreTmp, err := pfn(job, hyperNodes)
+			scoreTmp, err := pfn(subJob, hyperNodes)
 			if err != nil {
 				return nodeGroupScore, err
 			}
@@ -833,6 +1043,48 @@ func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map
 		}
 	}
 	return nodeScoreMap, nil
+}
+
+// HyperNodeGradientForJobFn group hyperNodes into several gradients,
+// and discard hyperNodes that unmatched the job topology requirements.
+// The result is determined by the first plugin that registered this fn.
+func (ssn *Session) HyperNodeGradientForJobFn(job *api.JobInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledHyperNodeGradient) {
+				continue
+			}
+			fn, found := ssn.hyperNodeGradientForJobFns[plugin.Name]
+			if !found {
+				continue
+			}
+			return fn(job, hyperNode)
+		}
+	}
+
+	// If there is no hyperNode gradient functions, only the input hyperNode is returned.
+	return [][]*api.HyperNodeInfo{{hyperNode}}
+}
+
+// HyperNodeGradientForSubJobFn group hyperNodes into several gradients,
+// and discard hyperNodes that unmatched the subJob topology requirements.
+// The result is determined by the first plugin that registered this fn.
+func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledHyperNodeGradient) {
+				continue
+			}
+			fn, found := ssn.hyperNodeGradientForSubJobFns[plugin.Name]
+			if !found {
+				continue
+			}
+			return fn(subJob, hyperNode)
+		}
+	}
+
+	// If there is no hyperNode gradient functions, only the input hyperNode is returned.
+	return [][]*api.HyperNodeInfo{{hyperNode}}
 }
 
 // BuildVictimsPriorityQueue returns a priority queue with victims sorted by:

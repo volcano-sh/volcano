@@ -77,11 +77,11 @@ func updateNodeOverSoldStatus(res apis.Resource) Modifier {
 		for k, v := range res {
 			switch k {
 			case v1.ResourceCPU:
-				node.Status.Allocatable[apis.ExtendResourceCPU] = *resource.NewQuantity(v, resource.DecimalSI)
-				node.Status.Capacity[apis.ExtendResourceCPU] = *resource.NewQuantity(v, resource.DecimalSI)
+				node.Status.Allocatable[apis.GetExtendResourceCPU()] = *resource.NewQuantity(v, resource.DecimalSI)
+				node.Status.Capacity[apis.GetExtendResourceCPU()] = *resource.NewQuantity(v, resource.DecimalSI)
 			case v1.ResourceMemory:
-				node.Status.Allocatable[apis.ExtendResourceMemory] = *resource.NewQuantity(v, resource.BinarySI)
-				node.Status.Capacity[apis.ExtendResourceMemory] = *resource.NewQuantity(v, resource.BinarySI)
+				node.Status.Allocatable[apis.GetExtendResourceMemory()] = *resource.NewQuantity(v, resource.BinarySI)
+				node.Status.Capacity[apis.GetExtendResourceMemory()] = *resource.NewQuantity(v, resource.BinarySI)
 			default:
 				klog.ErrorS(nil, "Unsupported resource", "resType", k)
 			}
@@ -91,10 +91,10 @@ func updateNodeOverSoldStatus(res apis.Resource) Modifier {
 
 func deleteNodeOverSoldStatus() Modifier {
 	return func(node *v1.Node) {
-		delete(node.Status.Capacity, apis.ExtendResourceCPU)
-		delete(node.Status.Capacity, apis.ExtendResourceMemory)
-		delete(node.Status.Allocatable, apis.ExtendResourceCPU)
-		delete(node.Status.Allocatable, apis.ExtendResourceMemory)
+		delete(node.Status.Capacity, apis.GetExtendResourceCPU())
+		delete(node.Status.Capacity, apis.GetExtendResourceMemory())
+		delete(node.Status.Allocatable, apis.GetExtendResourceCPU())
+		delete(node.Status.Allocatable, apis.GetExtendResourceMemory())
 	}
 }
 
@@ -152,7 +152,7 @@ func UpdateNodeExtendResource(config *config.Configuration, res apis.Resource) e
 func needUpdate(curNode, newNode *v1.Node) bool {
 	return !equality.Semantic.DeepEqual(curNode.Annotations, newNode.Annotations) ||
 		!equality.Semantic.DeepEqual(curNode.Labels, newNode.Labels) ||
-		!equality.Semantic.DeepEqual(curNode.Status.Allocatable[apis.ExtendResourceCPU], newNode.Status.Allocatable[apis.ExtendResourceCPU]) ||
-		!equality.Semantic.DeepEqual(curNode.Status.Capacity[apis.ExtendResourceMemory], newNode.Status.Capacity[apis.ExtendResourceMemory]) ||
+		!equality.Semantic.DeepEqual(curNode.Status.Allocatable[apis.GetExtendResourceCPU()], newNode.Status.Allocatable[apis.GetExtendResourceCPU()]) ||
+		!equality.Semantic.DeepEqual(curNode.Status.Capacity[apis.GetExtendResourceMemory()], newNode.Status.Capacity[apis.GetExtendResourceMemory()]) ||
 		!equality.Semantic.DeepEqual(curNode.Spec.Taints, newNode.Spec.Taints)
 }

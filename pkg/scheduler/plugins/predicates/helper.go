@@ -17,6 +17,9 @@ limitations under the License.
 package predicates
 
 import (
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/kubernetes/pkg/features"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
@@ -29,11 +32,17 @@ const (
 	volumeBindingShapeKey          = "volumebinding.shape"
 	volumeBindingWeightKey         = "volumebinding.weight"
 	defaultBindTimeoutSeconds      = 600
+	draFilterTimeoutSecondsKey     = "dynamicresources.filterTimeoutSeconds"
+	defaultDRAFilterTimeout        = 10 * time.Second
 )
 
 type wrapVolumeBindingArgs struct {
 	Weight int
 	*kubeschedulerconfig.VolumeBindingArgs
+}
+
+type wrapDynamicResourcesArgs struct {
+	*kubeschedulerconfig.DynamicResourcesArgs
 }
 
 func defaultVolumeBindingArgs() *wrapVolumeBindingArgs {
@@ -44,16 +53,16 @@ func defaultVolumeBindingArgs() *wrapVolumeBindingArgs {
 		},
 	}
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority) {
+	if utilfeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring) {
 		// default shape setting if VolumeCapacityPriority is enabled
 		args.Shape = []kubeschedulerconfig.UtilizationShapePoint{
 			{
 				Utilization: 0,
-				Score:       0,
+				Score:       int32(kubeschedulerconfig.MaxCustomPriorityScore),
 			},
 			{
 				Utilization: 100,
-				Score:       int32(kubeschedulerconfig.MaxCustomPriorityScore),
+				Score:       0,
 			},
 		}
 	}
@@ -91,10 +100,34 @@ func setUpVolumeBindingArgs(vbArgs *wrapVolumeBindingArgs, rawArgs framework.Arg
 		vbArgs.BindTimeoutSeconds = timeout
 	}
 
-	if utilfeature.DefaultFeatureGate.Enabled(features.VolumeCapacityPriority) {
+	if utilfeature.DefaultFeatureGate.Enabled(features.StorageCapacityScoring) {
 		shape, _ := framework.Get[[]kubeschedulerconfig.UtilizationShapePoint](rawArgs, volumeBindingShapeKey)
 		if len(shape) != 0 {
 			vbArgs.Shape = shape
+		}
+	}
+}
+
+func defaultDynamicResourcesArgs() *wrapDynamicResourcesArgs {
+	return &wrapDynamicResourcesArgs{
+		DynamicResourcesArgs: &kubeschedulerconfig.DynamicResourcesArgs{
+			FilterTimeout: &metav1.Duration{Duration: defaultDRAFilterTimeout},
+		},
+	}
+}
+
+// setUp DynamicResourcesArg populates args from volcano framework arguments.
+//
+//	Supported override:
+//	 - dynamicresources.filterTimeoutSeconds: integer seconds (e.g., 15)
+func setUpDynamicResourcesArgs(dra *wrapDynamicResourcesArgs, rawArgs framework.Arguments) {
+	if rawArgs == nil {
+		return
+	}
+
+	if secs, ok := framework.Get[int](rawArgs, draFilterTimeoutSecondsKey); ok {
+		if secs >= 0 {
+			dra.FilterTimeout = &metav1.Duration{Duration: time.Duration(secs) * time.Second}
 		}
 	}
 }

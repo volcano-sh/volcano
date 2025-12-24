@@ -26,17 +26,19 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
 
+	"volcano.sh/volcano/pkg/scheduler/api"
 	scheduling "volcano.sh/volcano/pkg/scheduler/capabilities/volumebinding"
 )
 
 // Framework is a K8S framework who mainly provides some methods
 // about snapshot and plugins such as predicates
 type Framework struct {
-	snapshot         framework.SharedLister
+	snapshot         *Snapshot
 	kubeClient       kubernetes.Interface
 	informerFactory  informers.SharedInformerFactory
 	sharedDRAManager framework.SharedDRAManager
@@ -50,6 +52,27 @@ type Option func(*Framework)
 func WithSharedDRAManager(sharedDRAManager framework.SharedDRAManager) Option {
 	return func(f *Framework) {
 		f.sharedDRAManager = sharedDRAManager
+	}
+}
+
+// WithSnapshotSharedLister sets the SharedLister of the snapshot.
+func WithSnapshotSharedLister(snapshot *Snapshot) Option {
+	return func(o *Framework) {
+		o.snapshot = snapshot
+	}
+}
+
+// WithClientSet sets clientSet for the scheduling frameworkImpl.
+func WithClientSet(clientSet kubernetes.Interface) Option {
+	return func(o *Framework) {
+		o.kubeClient = clientSet
+	}
+}
+
+// WithInformerFactory sets informer factory for the scheduling frameworkImpl.
+func WithInformerFactory(informerFactory informers.SharedInformerFactory) Option {
+	return func(o *Framework) {
+		o.informerFactory = informerFactory
 	}
 }
 
@@ -107,7 +130,7 @@ func (f *Framework) EventRecorder() events.EventRecorder {
 	return nil
 }
 
-func (f *Framework) AddNominatedPod(logger klog.Logger, pod *framework.PodInfo, nominatingInfo *framework.NominatingInfo) {
+func (f *Framework) AddNominatedPod(logger klog.Logger, pod fwk.PodInfo, nominatingInfo *framework.NominatingInfo) {
 	panic("implement me")
 }
 
@@ -115,31 +138,31 @@ func (f *Framework) DeleteNominatedPodIfExists(pod *v1.Pod) {
 	panic("implement me")
 }
 
-func (f *Framework) UpdateNominatedPod(logger klog.Logger, oldPod *v1.Pod, newPodInfo *framework.PodInfo) {
+func (f *Framework) UpdateNominatedPod(logger klog.Logger, oldPod *v1.Pod, newPodInfo fwk.PodInfo) {
 	panic("implement me")
 }
 
-func (f *Framework) NominatedPodsForNode(nodeName string) []*framework.PodInfo {
+func (f *Framework) NominatedPodsForNode(nodeName string) []fwk.PodInfo {
 	panic("implement me")
 }
 
-func (f *Framework) RunPreScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeinfos []*framework.NodeInfo) *framework.Status {
+func (f *Framework) RunPreScorePlugins(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeinfos []fwk.NodeInfo) *fwk.Status {
 	panic("implement me")
 }
 
-func (f *Framework) RunScorePlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeinfos []*framework.NodeInfo) ([]framework.NodePluginScores, *framework.Status) {
+func (f *Framework) RunScorePlugins(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeinfos []fwk.NodeInfo) ([]framework.NodePluginScores, *fwk.Status) {
 	panic("implement me")
 }
 
-func (f *Framework) RunFilterPlugins(ctx context.Context, state *framework.CycleState, pod *v1.Pod, info *framework.NodeInfo) *framework.Status {
+func (f *Framework) RunFilterPlugins(ctx context.Context, state fwk.CycleState, pod *v1.Pod, info fwk.NodeInfo) *fwk.Status {
 	panic("implement me")
 }
 
-func (f *Framework) RunPreFilterExtensionAddPod(ctx context.Context, state *framework.CycleState, podToSchedule *v1.Pod, podInfoToAdd *framework.PodInfo, nodeInfo *framework.NodeInfo) *framework.Status {
+func (f *Framework) RunPreFilterExtensionAddPod(ctx context.Context, state fwk.CycleState, podToSchedule *v1.Pod, podInfoToAdd fwk.PodInfo, nodeInfo fwk.NodeInfo) *fwk.Status {
 	panic("implement me")
 }
 
-func (f *Framework) RunPreFilterExtensionRemovePod(ctx context.Context, state *framework.CycleState, podToSchedule *v1.Pod, podInfoToRemove *framework.PodInfo, nodeInfo *framework.NodeInfo) *framework.Status {
+func (f *Framework) RunPreFilterExtensionRemovePod(ctx context.Context, state fwk.CycleState, podToSchedule *v1.Pod, podInfoToRemove fwk.PodInfo, nodeInfo fwk.NodeInfo) *fwk.Status {
 	panic("implement me")
 }
 
@@ -151,7 +174,7 @@ func (f *Framework) KubeConfig() *rest.Config {
 	panic("implement me")
 }
 
-func (f *Framework) RunFilterPluginsWithNominatedPods(ctx context.Context, state *framework.CycleState, pod *v1.Pod, info *framework.NodeInfo) *framework.Status {
+func (f *Framework) RunFilterPluginsWithNominatedPods(ctx context.Context, state fwk.CycleState, pod *v1.Pod, info fwk.NodeInfo) *fwk.Status {
 	panic("implement me")
 }
 
@@ -171,17 +194,36 @@ func (f *Framework) SharedDRAManager() framework.SharedDRAManager {
 	return f.sharedDRAManager
 }
 
-// NewFrameworkHandle creates a FrameworkHandle interface, which is used by k8s plugins.
-func NewFrameworkHandle(nodeMap map[string]*framework.NodeInfo, client kubernetes.Interface, informerFactory informers.SharedInformerFactory, opts ...Option) framework.Handle {
-	snapshot := NewSnapshot(nodeMap)
-	fw := &Framework{
-		snapshot:        snapshot,
-		kubeClient:      client,
-		informerFactory: informerFactory,
-	}
+func (f *Framework) APICacher() framework.APICacher {
+	return nil
+}
+
+func (f *Framework) APIDispatcher() fwk.APIDispatcher {
+	return nil
+}
+
+// VolcanoNodeInfos returns a list of volcano NodeInfo.
+func (f *Framework) VolcanoNodeInfos() []*api.NodeInfo {
+	return f.snapshot.VolcanoNodeInfos()
+}
+
+// GetVolcanoNodeInfo returns the volcano NodeInfo of the given node name.
+func (f *Framework) GetVolcanoNodeInfo(nodeName string) (*api.NodeInfo, error) {
+	return f.snapshot.GetVolcanoNodeInfo(nodeName)
+}
+
+// NewFramework is the constructor of Framework
+func NewFramework(nodeMap map[string]fwk.NodeInfo, opts ...Option) *Framework {
+	fw := &Framework{}
 
 	for _, opt := range opts {
 		opt(fw)
+	}
+
+	// If no snapshot is provided, create a new one with the given nodeMap, it's mainly used in volcano batch scheduler(session scheduling).
+	if fw.snapshot == nil {
+		snapshot := NewSnapshot(nodeMap)
+		fw.snapshot = snapshot
 	}
 
 	return fw

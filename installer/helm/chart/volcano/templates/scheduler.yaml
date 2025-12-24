@@ -78,7 +78,7 @@ rules:
     resources: ["nodes"]
     verbs: ["get","list", "watch","update","patch"]
   - apiGroups: [ "storage.k8s.io" ]
-    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities", "volumeattachments"]
     verbs: [ "list", "watch" ]
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
@@ -91,7 +91,7 @@ rules:
     verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["queues/status"]
-    verbs: ["patch"]
+    verbs: ["update"]
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["list", "watch", "update"]
@@ -103,7 +103,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["get", "create", "delete", "update"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["apps"]
     resources: ["daemonsets", "replicasets", "statefulsets"]
     verbs: ["list", "watch", "get"]
@@ -119,6 +119,12 @@ rules:
   - apiGroups: ["resource.k8s.io"]
     resources: ["deviceclasses","resourceslices"]
     verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [ "resource.k8s.io" ]
+    resources: [ "devicetaintrules" ]
+    verbs: [ "get", "list", "watch" ]
+  - apiGroups: ["shard.volcano.sh"]
+    resources: ["nodeshards"]
+    verbs: ["list", "watch", "get", "update"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -223,11 +229,21 @@ spec:
             {{- if .Values.custom.scheduler_feature_gates }}
             - --feature-gates={{ .Values.custom.scheduler_feature_gates }}
             {{- end }}
+            {{- if .Values.custom.ignored_provisioners }}
+            - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
+            {{- end}}
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1
           env:
             - name: DEBUG_SOCKET_DIR
               value: /tmp/klog-socks
+            {{- if .Values.custom.go_memlimit_enable }}
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+                  divisor: "1"
+            {{- end }}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           volumeMounts:
             - name: scheduler-config

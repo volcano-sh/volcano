@@ -1,5 +1,10 @@
 /*
 Copyright 2018 The Kubernetes Authors.
+Copyright 2018-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Added Unix socket-based HTTP interface for runtime klog level adjustment and debugging
+- Improved default scheduler configuration with comprehensive action and plugin setup
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +28,6 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v2"
-	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -81,7 +85,7 @@ func UnmarshalSchedulerConf(confStr string) ([]framework.Action, []conf.Tier, []
 		if action, found := framework.GetAction(strings.TrimSpace(actionName)); found {
 			actions = append(actions, action)
 		} else {
-			klog.Errorf("Failed to find Action %s, ignore it", actionName)
+			return nil, nil, nil, nil, fmt.Errorf("failed to find Action %s", actionName)
 		}
 	}
 

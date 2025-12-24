@@ -60,15 +60,6 @@ var (
 	NodeLockEnable bool
 )
 
-type ContainerDeviceRequest struct {
-	Nums int32
-	// device type, like NVIDIA, MLU
-	Type             string
-	Memreq           uint
-	MemPercentagereq int32
-	Coresreq         uint
-}
-
 type ContainerDevice struct {
 	UUID string
 	// device type, like NVIDIA, MLU

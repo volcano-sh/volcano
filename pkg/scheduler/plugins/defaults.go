@@ -1,5 +1,10 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2025 The Volcano Authors.
+
+Modifications made by Volcano authors:
+- Refactored plugin configuration defaults with utility function for cleaner code structure
+- Extended plugin option defaults to support additional scheduling features
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,6 +46,10 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	setDefaultIfNil(&option.EnabledOverused)
 	setDefaultIfNil(&option.EnabledAllocatable)
 	setDefaultIfNil(&option.EnabledHyperNodeOrder)
+	setDefaultIfNil(&option.EnabledSubJobReady)
+	setDefaultIfNil(&option.EnabledSubJobPipelined)
+	setDefaultIfNil(&option.EnabledSubJobOrder)
+	setDefaultIfNil(&option.EnabledHyperNodeGradient)
 }
 
 func setDefaultIfNil(field **bool) {
