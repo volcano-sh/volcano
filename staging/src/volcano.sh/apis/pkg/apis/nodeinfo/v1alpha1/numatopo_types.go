@@ -26,22 +26,22 @@ import (
 // ResourceInfo is the sets about resource capacity and allocatable
 type ResourceInfo struct {
 	// +optional
-	Allocatable string `json:"allocatable,omitempty"`
+	Allocatable string `json:"allocatable,omitempty" protobuf:"bytes,1,opt,name=allocatable"`
 	// +optional
-	Capacity int `json:"capacity,omitempty"`
+	Capacity int `json:"capacity,omitempty" protobuf:"varint,2,opt,name=capacity"`
 }
 
 // CPUInfo is the cpu topology detail
 type CPUInfo struct {
 	// +kubebuilder:validation:Minimum=0
 	// +optional
-	NUMANodeID int `json:"numa,omitempty"`
+	NUMANodeID int `json:"numa,omitempty" protobuf:"varint,1,opt,name=numa"`
 	// +kubebuilder:validation:Minimum=0
 	// +optional
-	SocketID int `json:"socket,omitempty"`
+	SocketID int `json:"socket,omitempty" protobuf:"varint,2,opt,name=socket"`
 	// +kubebuilder:validation:Minimum=0
 	// +optional
-	CoreID int `json:"core,omitempty"`
+	CoreID int `json:"core,omitempty" protobuf:"varint,3,opt,name=core"`
 }
 
 // PolicyName is the policy name type
@@ -59,22 +59,22 @@ const (
 type NumatopoSpec struct {
 	// Specifies the policy of the manager
 	// +optional
-	Policies map[PolicyName]string `json:"policies,omitempty"`
+	Policies map[PolicyName]string `json:"policies,omitempty" protobuf:"bytes,1,rep,name=policies"`
 
 	// Specifies the reserved resource of the node
 	// Key is resource name
 	// +optional
-	ResReserved map[string]string `json:"resReserved,omitempty"`
+	ResReserved map[string]string `json:"resReserved,omitempty" protobuf:"bytes,2,rep,name=resReserved"`
 
 	// Specifies the numa info for the resource
 	// Key is resource name
 	// +optional
-	NumaResMap map[string]ResourceInfo `json:"numares,omitempty"`
+	NumaResMap map[string]ResourceInfo `json:"numares,omitempty" protobuf:"bytes,3,rep,name=numares"`
 
 	// Specifies the cpu topology info
 	// Key is cpu id
 	// +optional
-	CPUDetail map[string]CPUInfo `json:"cpuDetail,omitempty"`
+	CPUDetail map[string]CPUInfo `json:"cpuDetail,omitempty" protobuf:"bytes,4,rep,name=cpuDetail"`
 }
 
 // +genclient
@@ -86,10 +86,10 @@ type NumatopoSpec struct {
 // Numatopology is the Schema for the Numatopologies API
 type Numatopology struct {
 	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	// Specification of the numa information of the worker node
-	Spec NumatopoSpec `json:"spec,omitempty"`
+	Spec NumatopoSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
 }
 
 // +kubebuilder:object:root=true
@@ -98,6 +98,6 @@ type Numatopology struct {
 // NumatopologyList contains a list of Numatopology
 type NumatopologyList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Numatopology `json:"items"`
+	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+	Items           []Numatopology `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
