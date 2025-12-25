@@ -818,7 +818,6 @@ func (sc *SchedulerCache) AddBindTask(bindContext *agentapi.BindContext) error {
 	}
 	// bind generation after task is added to node, so next allocation on this node in newer generation must aware of this task
 	node.info.NextBindGeneration()
-	node.info.NextBindGeneration()
 	sc.Nodes[node.info.Name].info.Generation = nextGeneration()
 	sc.moveNodeToHead(node.info.Name)
 
@@ -988,9 +987,6 @@ func (sc *SchedulerCache) UpdateSnapshot(snapshot *k8sutil.Snapshot) error {
 	snapshot.RemoveDeletedNodesFromSnapshot(currentNodeNames)
 	klog.V(2).Infof("Snapshot updated: generation=%d, total nodes num=%d, updated nodes num=%d",
 		snapshot.GetGeneration(), len(snapshot.GetFwkNodeInfoMap()), len(nodesToUpdate))
-
-	klog.V(5).Infof("Snapshot updated: node list len is %d,  vc node map: %v",
-		len(snapshot.GetFwkNodeInfoList()), snapshot.GetVolcanoNodeInfoMap())
 	return nil
 }
 

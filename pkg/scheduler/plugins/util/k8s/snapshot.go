@@ -152,38 +152,11 @@ func (s *Snapshot) addOrUpdateNode(nodeInfo *api.NodeInfo) {
 	s.volcanoInfo.nodeInfoMap[nodeName] = volcanoNodeInfo
 	s.fwkInfo.nodeInfoMap[nodeName] = fwkNodeInfo
 
-	// Check if node was in affinity lists
-	wasInAffinityList := false
-	wasInRequiredAntiAffinityList := false
-
-	// Check if node was in affinity lists
-	if oldNodeInfo, exists := s.fwkInfo.nodeInfoMap[nodeName]; exists {
-		if len(oldNodeInfo.GetPodsWithAffinity()) > 0 {
-			wasInAffinityList = true
-		}
-		if len(oldNodeInfo.GetPodsWithRequiredAntiAffinity()) > 0 {
-			wasInRequiredAntiAffinityList = true
-		}
-	}
-
-	// Update affinity lists if needed
-	hasAffinityPods := len(fwkNodeInfo.GetPodsWithAffinity()) > 0
-	hasRequiredAntiAffinityPods := len(fwkNodeInfo.GetPodsWithRequiredAntiAffinity()) > 0
-
 	// Update havePodsWithAffinityNodeInfoList
-	s.updateAffinityList(
-		&s.fwkInfo.havePodsWithAffinityNodeInfoList,
-		s.affinityNodeIndex,
-		nodeName, fwkNodeInfo, wasInAffinityList, hasAffinityPods,
-	)
-
+	s.updateAffinityList(nodeName)
 	// Update havePodsWithRequiredAntiAffinityNodeInfoList
-	s.updateAffinityList(
-		&s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList,
-		s.antiAffinityNodeIndex,
-		nodeName, fwkNodeInfo, wasInRequiredAntiAffinityList, hasRequiredAntiAffinityPods,
-	)
-	klog.V(5).Infof("Updated node %s in snapshot", nodeInfo.Name)
+	s.updateRequiredAntiAffinity(nodeName)
+	klog.V(5).Infof("Updated node[%s] in snapshot, volcano node info: %v, k8s node info: %v", nodeInfo.Name, volcanoNodeInfo, fwkNodeInfo)
 }
 
 // DeleteNode removes node information from both fwkInfo and volcanoInfo.
@@ -216,12 +189,30 @@ func (s *Snapshot) DeleteNode(nodeName string) {
 	delete(s.fwkInfo.nodeInfoMap, nodeName)
 	delete(s.volcanoInfo.nodeInfoMap, nodeName)
 
-	s.removeFromAffinityList(s.affinityNodeIndex, nodeName, &s.fwkInfo.havePodsWithAffinityNodeInfoList)
-	s.removeFromAffinityList(s.antiAffinityNodeIndex, nodeName, &s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList)
+	s.removeNodeFromAffinityList(nodeName)
+	s.removeNodeFromAntiAffinityList(nodeName)
 }
 
 // removeFromAffinityList remove node from the affinity list.
-func (s *Snapshot) removeFromAffinityList(indexMap map[string]int, nodeName string, list *[]fwk.NodeInfo) {
+func (s *Snapshot) removeNodeFromAffinityList(nodeName string) {
+	utilSwapDelete(
+		s.affinityNodeIndex,
+		&s.fwkInfo.havePodsWithAffinityNodeInfoList,
+		nodeName,
+	)
+}
+
+// removeNodeFromAntiAffinityList remove node from the anti affinity list.
+func (s *Snapshot) removeNodeFromAntiAffinityList(nodeName string) {
+	utilSwapDelete(
+		s.antiAffinityNodeIndex,
+		&s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList,
+		nodeName,
+	)
+}
+
+// utilSwapDelete removes an element from list by indexMap with swap-delete semantics.
+func utilSwapDelete(indexMap map[string]int, list *[]fwk.NodeInfo, nodeName string) {
 	idx, exists := indexMap[nodeName]
 	if !exists {
 		return
@@ -231,12 +222,10 @@ func (s *Snapshot) removeFromAffinityList(indexMap map[string]int, nodeName stri
 	if idx < lastIdx {
 		lastNodeName := (*list)[lastIdx].Node().Name
 		(*list)[idx] = (*list)[lastIdx]
-		*list = (*list)[:lastIdx]
 		indexMap[lastNodeName] = idx
-	} else {
-		*list = (*list)[:lastIdx]
 	}
 
+	*list = (*list)[:lastIdx]
 	delete(indexMap, nodeName)
 }
 
@@ -254,13 +243,36 @@ func (s *Snapshot) RemoveDeletedNodesFromSnapshot(currentNodeNames map[string]bo
 }
 
 // updateAffinityList updates an affinity list based on node changes
-func (s *Snapshot) updateAffinityList(list *[]fwk.NodeInfo, indexMap map[string]int, nodeName string, nodeInfo fwk.NodeInfo, wasInList, shouldBeInList bool) {
-	if wasInList {
-		s.removeFromAffinityList(indexMap, nodeName, list)
+func (s *Snapshot) updateAffinityList(nodeName string) {
+	hasAffinity := len(s.fwkInfo.nodeInfoMap[nodeName].GetPodsWithAffinity()) > 0
+	_, exists := s.affinityNodeIndex[nodeName]
+
+	switch {
+	case hasAffinity && !exists:
+		idx := len(s.fwkInfo.havePodsWithAffinityNodeInfoList)
+		s.fwkInfo.havePodsWithAffinityNodeInfoList =
+			append(s.fwkInfo.havePodsWithAffinityNodeInfoList, s.fwkInfo.nodeInfoMap[nodeName])
+		s.affinityNodeIndex[nodeName] = idx
+
+	case !hasAffinity && exists:
+		s.removeNodeFromAffinityList(nodeName)
 	}
-	if shouldBeInList {
-		indexMap[nodeName] = len(*list)
-		*list = append(*list, nodeInfo)
+}
+
+// updateAffinityList updates an affinity list based on node changes
+func (s *Snapshot) updateRequiredAntiAffinity(nodeName string) {
+	hasRequiredAntiAffinity := len(s.fwkInfo.nodeInfoMap[nodeName].GetPodsWithRequiredAntiAffinity()) > 0
+	_, exists := s.antiAffinityNodeIndex[nodeName]
+
+	switch {
+	case hasRequiredAntiAffinity && !exists:
+		idx := len(s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList)
+		s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList =
+			append(s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList, s.fwkInfo.nodeInfoMap[nodeName])
+		s.antiAffinityNodeIndex[nodeName] = idx
+
+	case !hasRequiredAntiAffinity && exists:
+		s.removeNodeFromAntiAffinityList(nodeName)
 	}
 }
 
