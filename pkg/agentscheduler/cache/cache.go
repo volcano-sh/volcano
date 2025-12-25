@@ -1,5 +1,6 @@
 /*
- Copyright 2021 The Volcano Authors.
+ Copyright 2019 The Kubernetes Authors.
+ Copyright 2025 The Volcano Authors.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -12,6 +13,10 @@
  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  See the License for the specific language governing permissions and
  limitations under the License.
+
+This file includes code adapted from the Kubernetes scheduler cache
+implementation (https://github.com/kubernetes/kubernetes/blob/master/pkg/scheduler/framework/types.go),
+with modifications made by the Volcano Authors.
 */
 
 package cache
