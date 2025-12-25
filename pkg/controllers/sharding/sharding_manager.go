@@ -56,7 +56,6 @@ func (sm *ShardingManager) CalculateShardAssignments(
 		duration := time.Since(startTime)
 		klog.V(4).Infof("Calculated shard assignments in %v for %d nodes", duration, len(nodes))
 
-		// FIX: Add performance metrics
 		if duration > 1*time.Second {
 			klog.Warningf("Slow shard assignment calculation: %v for %d nodes", duration, len(nodes))
 		}
@@ -250,7 +249,7 @@ func (sm *ShardingManager) prioritizeNodes(
 		return infoI.CPUUtilization > infoJ.CPUUtilization
 	})
 
-	// combine results：prefer warmup node
+	// combine results: prefer warmup node
 	prioritized := make([]*corev1.Node, 0, len(nodes))
 
 	if config.ShardStrategy.PreferWarmupNodes {

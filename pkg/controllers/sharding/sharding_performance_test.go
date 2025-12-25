@@ -55,7 +55,6 @@ func TestLargeClusterPerformance(t *testing.T) {
 	// Setup controller with appropriate configs for performance testing
 	opt := &TestControllerOption{
 		InitialObjects: objects,
-		// FIX: Increase max nodes for performance testing
 		SchedulerConfigs: []SchedulerConfigSpec{
 			{
 				Name:              "volcano-scheduler",
@@ -64,7 +63,7 @@ func TestLargeClusterPerformance(t *testing.T) {
 				CPUUtilizationMax: 0.6,
 				PreferWarmupNodes: false,
 				MinNodes:          1,
-				MaxNodes:          50, // Increased from 10
+				MaxNodes:          50,
 			},
 			{
 				Name:              "agent-scheduler",
@@ -73,7 +72,7 @@ func TestLargeClusterPerformance(t *testing.T) {
 				CPUUtilizationMax: 1.0,
 				PreferWarmupNodes: true,
 				MinNodes:          1,
-				MaxNodes:          50, // Increased from 10
+				MaxNodes:          50,
 			},
 		},
 		ShardSyncPeriod: 10 * time.Second,
@@ -81,8 +80,8 @@ func TestLargeClusterPerformance(t *testing.T) {
 
 	startTime := time.Now()
 
-	testCtrl := NewTestShardingController(t, opt)
-	defer close(testCtrl.StopCh)
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
 
 	creationTime := time.Since(startTime)
 	t.Logf("Controller setup completed in %v", creationTime)
@@ -173,12 +172,11 @@ func TestEventPressure(t *testing.T) {
 
 	opt := &TestControllerOption{
 		InitialObjects: objects,
-		// FIX: Configure for better node assignment
 		SchedulerConfigs: []SchedulerConfigSpec{
 			{
 				Name:              "agent-scheduler",
 				Type:              "agent",
-				CPUUtilizationMin: 0.3, // Lower threshold for testing
+				CPUUtilizationMin: 0.3,
 				CPUUtilizationMax: 1.0,
 				PreferWarmupNodes: true,
 				MinNodes:          1,
@@ -197,8 +195,8 @@ func TestEventPressure(t *testing.T) {
 		ShardSyncPeriod: 5 * time.Second,
 	}
 
-	testCtrl := NewTestShardingController(t, opt)
-	defer close(testCtrl.StopCh)
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
 
 	controller := testCtrl.Controller
 
@@ -239,7 +237,7 @@ func TestEventPressure(t *testing.T) {
 
 	// Verify controller is still healthy
 	// Check if queues are manageable
-	mainQueueLen := controller.queue.Len()
+	mainQueueLen := controller.nodeShardQueue.Len()
 	nodeEventQueueLen := controller.nodeEventQueue.Len()
 
 	t.Logf("Queue lengths after pressure test - main: %d, node: %d", mainQueueLen, nodeEventQueueLen)

@@ -20,12 +20,12 @@ import (
 )
 
 const (
-	POD_SOURCE         = "pod-controller"
-	POD_ADD_EVENT      = "pod-added"
-	POD_SCHEDULE_EVENT = "pod-scheduled"
-	POD_REMOVE_EVENT   = "pod-removed"
-	POD_DELETE_EVENT   = "pod-deleted"
-	POD_CHANGE_EVENT   = "pod-changed"
+	podSource        = "pod-controller"
+	podAddEvent      = "pod-added"
+	podScheduleEvent = "pod-scheduled"
+	podRemoveEvent   = "pod-removed"
+	podDeleteEvent   = "pod-deleted"
+	podChangeEvent   = "pod-changed"
 )
 
 // addPod handles pod addition events
@@ -35,7 +35,7 @@ func (sc *ShardingController) addPod(obj interface{}) {
 		return
 	}
 
-	sc.enqueueNodeEvent(pod.Spec.NodeName, POD_ADD_EVENT, POD_SOURCE)
+	sc.enqueueNodeEvent(pod.Spec.NodeName, podAddEvent, podSource)
 }
 
 // updatePod handles pod update events
@@ -49,22 +49,22 @@ func (sc *ShardingController) updatePod(oldObj, newObj interface{}) {
 
 	// Pod scheduled to a node
 	if oldPod.Spec.NodeName == "" && newPod.Spec.NodeName != "" {
-		sc.enqueueNodeEvent(newPod.Spec.NodeName, POD_SCHEDULE_EVENT, POD_SOURCE)
+		sc.enqueueNodeEvent(newPod.Spec.NodeName, podScheduleEvent, podSource)
 		return
 	}
 
 	// Pod moved between nodes
 	if oldPod.Spec.NodeName != newPod.Spec.NodeName && newPod.Spec.NodeName != "" {
 		if oldPod.Spec.NodeName != "" {
-			sc.enqueueNodeEvent(oldPod.Spec.NodeName, POD_REMOVE_EVENT, POD_SOURCE)
+			sc.enqueueNodeEvent(oldPod.Spec.NodeName, podRemoveEvent, podSource)
 		}
-		sc.enqueueNodeEvent(newPod.Spec.NodeName, POD_ADD_EVENT, POD_SOURCE)
+		sc.enqueueNodeEvent(newPod.Spec.NodeName, podAddEvent, podSource)
 		return
 	}
 
 	// Resource requests changed
 	if sc.podResourcesChanged(oldPod, newPod) {
-		sc.enqueueNodeEvent(newPod.Spec.NodeName, POD_CHANGE_EVENT, POD_SOURCE)
+		sc.enqueueNodeEvent(newPod.Spec.NodeName, podChangeEvent, podSource)
 	}
 }
 
@@ -75,7 +75,7 @@ func (sc *ShardingController) deletePod(obj interface{}) {
 		return
 	}
 
-	sc.enqueueNodeEvent(pod.Spec.NodeName, POD_DELETE_EVENT, POD_SOURCE)
+	sc.enqueueNodeEvent(pod.Spec.NodeName, podDeleteEvent, podSource)
 }
 
 // podResourcesChanged checks if pod resource requests changed

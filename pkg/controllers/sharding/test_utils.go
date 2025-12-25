@@ -49,8 +49,8 @@ type TestControllerOption struct {
 	StopCh           chan struct{} // Add stop channel
 }
 
-// NewTestShardingController creates a new test controller with proper setup
-func NewTestShardingController(t *testing.T, opt *TestControllerOption) *TestShardingController {
+// newTestShardingController creates a new test controller with proper setup
+func newTestShardingController(t *testing.T, opt *TestControllerOption) *TestShardingController {
 	// Create controller
 	controller := &ShardingController{
 		shardSyncPeriod: defaultShardSyncPeriod,
@@ -107,11 +107,17 @@ func NewTestShardingController(t *testing.T, opt *TestControllerOption) *TestSha
 	}
 }
 
+func closeTestShardingController(controller *TestShardingController) {
+	close(controller.StopCh)
+}
+
 // WaitForNodeMetricsUpdate waits for node metrics to be updated
 func WaitForNodeMetricsUpdate(t *testing.T, controller *ShardingController, nodeName string, timeout time.Duration) {
 	start := time.Now()
 	for {
+		controller.metricsMutex.RLock()
 		metrics := controller.GetNodeMetrics(nodeName)
+		controller.metricsMutex.RUnlock()
 		if metrics != nil && !metrics.LastUpdated.IsZero() {
 			return
 		}
@@ -128,13 +134,13 @@ func WaitForNodeMetricsUpdate(t *testing.T, controller *ShardingController, node
 func WaitForQueueProcessing(controller *ShardingController, timeout time.Duration) error {
 	start := time.Now()
 	for {
-		if controller.queue.Len() == 0 && controller.nodeEventQueue.Len() == 0 {
+		if controller.nodeShardQueue.Len() == 0 && controller.nodeEventQueue.Len() == 0 {
 			return nil
 		}
 
 		if time.Since(start) > timeout {
 			return fmt.Errorf("timeout waiting for queue to empty, main queue: %d, node event queue: %d",
-				controller.queue.Len(), controller.nodeEventQueue.Len())
+				controller.nodeShardQueue.Len(), controller.nodeEventQueue.Len())
 		}
 
 		time.Sleep(10 * time.Millisecond)
@@ -146,7 +152,7 @@ func ForceSyncShards(t *testing.T, controller *ShardingController, timeout time.
 	controller.syncShards()
 	assert.NoError(t, WaitForQueueProcessing(controller, timeout), "queue should be processed within timeout")
 	// Clean up queue
-	for controller.queue.Len() > 0 {
+	for controller.nodeShardQueue.Len() > 0 {
 		controller.processNextItem()
 	}
 }
@@ -274,7 +280,7 @@ func CleanupController(testCtrl *TestShardingController) {
 	// First, process any remaining items in queues
 	if testCtrl.Controller != nil {
 		// Process main queue
-		for testCtrl.Controller.queue.Len() > 0 {
+		for testCtrl.Controller.nodeShardQueue.Len() > 0 {
 			testCtrl.Controller.processNextItem()
 		}
 		klog.Infof("Processed remaining items in main queue")

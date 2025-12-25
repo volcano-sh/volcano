@@ -26,10 +26,10 @@ import (
 )
 
 const (
-	NODE_SOURCE       = "node-controller"
-	NODE_ADD_EVENT    = "node-added"
-	NODE_UPDATE_EVENT = "node-updated"
-	NODE_DELETE_EVENT = "node-deleted"
+	nodeSource      = "node-controller"
+	nodeAddEvent    = "node-added"
+	nodeUpdateEvent = "node-updated"
+	nodeDeleteEvent = "node-deleted"
 )
 
 // addNodeEvent handles node addition events
@@ -40,7 +40,7 @@ func (sc *ShardingController) addNodeEvent(obj interface{}) {
 	}
 
 	klog.V(4).Infof("Node added: %s", node.Name)
-	sc.enqueueNodeEvent(node.Name, NODE_ADD_EVENT, NODE_SOURCE)
+	sc.enqueueNodeEvent(node.Name, nodeAddEvent, nodeSource)
 }
 
 // updateNodeEvent handles node update events
@@ -53,14 +53,14 @@ func (sc *ShardingController) updateNodeEvent(oldObj, newObj interface{}) {
 	oldNode := sc.getNodeFromObject(oldObj)
 	if oldNode == nil {
 		// Treat as add if old object not found
-		sc.enqueueNodeEvent(newNode.Name, NODE_ADD_EVENT, NODE_SOURCE)
+		sc.enqueueNodeEvent(newNode.Name, nodeAddEvent, nodeSource)
 		return
 	}
 
 	// Check if significant changes occurred
 	if sc.isNodeSignificantlyChanged(oldNode, newNode) {
 		klog.V(4).Infof("Node significantly updated: %s", newNode.Name)
-		sc.enqueueNodeEvent(newNode.Name, NODE_UPDATE_EVENT, NODE_SOURCE)
+		sc.enqueueNodeEvent(newNode.Name, nodeUpdateEvent, nodeSource)
 	}
 }
 
@@ -79,7 +79,7 @@ func (sc *ShardingController) deleteNodeEvent(obj interface{}) {
 	sc.metricsMutex.Unlock()
 
 	// Trigger shard sync
-	sc.enqueueNodeEvent(node.Name, NODE_DELETE_EVENT, NODE_SOURCE)
+	sc.enqueueNodeEvent(node.Name, nodeDeleteEvent, nodeSource)
 }
 
 // getNodeFromObject safely extracts a Node from an object
@@ -163,10 +163,6 @@ func (sc *ShardingController) processNodeEvent() bool {
 	// Process event with retry logic
 	if err := sc.processNodeEventWithRetry(nodeName, eventType, source, 3); err != nil {
 		klog.Errorf("Failed to process node event %s: %v", eventKey, err)
-		if sc.nodeEventQueue.NumRequeues(eventKey) < 3 {
-			sc.nodeEventQueue.AddRateLimited(eventKey)
-			return true
-		}
 		klog.Warningf("Dropping node event %s after 3 retries", eventKey)
 	}
 
@@ -194,16 +190,19 @@ func (sc *ShardingController) processNodeEventWithRetry(nodeName, eventType, sou
 		// Calculate metrics
 		metrics, err := sc.calculateNodeUtilization(nodeName)
 		if err != nil {
-			lastErr = fmt.Errorf("failed to calculate metrics for node %s (retry %d/%d): %v", nodeName, i+1, maxRetries, err)
+			lastErr = fmt.Errorf("failed to calculate metrics for node %s with eventType %s issued from %s (retry %d/%d): %v", nodeName, eventType, source, i+1, maxRetries, err)
 			time.Sleep(100 * time.Millisecond * time.Duration(i+1))
 			continue
 		}
 
 		// Update metrics cache
+		sc.metricsMutex.Lock()
+		isSignificantlyChanged := sc.isUtilizationSignificantlyChanged(nodeName, metrics)
 		sc.UpdateNodeMetrics(nodeName, metrics)
+		sc.metricsMutex.Unlock()
 
 		// Check if significant change
-		if sc.isUtilizationSignificantlyChanged(nodeName, metrics) {
+		if isSignificantlyChanged {
 			klog.V(4).Infof("Node %s utilization changed significantly, scheduling shard sync", nodeName)
 			// Schedule sync in background with delay
 			time.AfterFunc(200*time.Millisecond, func() {

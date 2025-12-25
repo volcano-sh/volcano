@@ -27,58 +27,12 @@ The Sharding Controller addresses these challenges by:
 7. **Backward Compatibility**: Work with existing Volcano deployment without disruption
 
 ## 3. Architecture Overview
-
-```mermaid
-graph TD
-    subgraph "Data Sources"
-        API[(Kubernetes API Server)] --> NodeInf[Node Informer]
-        API --> PodInf[Pod Informer]
-        API --> ShardInf[NodeShard Informer]
-        
-        PodInf -->|Index by node| NodeIndex[Node-to-Pod Index]
-    end
-    
-    subgraph "Event Processing"
-        NodeInf -->|Node Events| NodeQueue[Node Event Queue]
-        PodInf -->|Pod Events| NodeQueue
-        ShardInf -->|Shard Events| SyncQueue[Sync Queue]
-        
-        NodeQueue --> NodeProc[Node Event Processor]
-        SyncQueue --> SyncProc[Shard Sync Processor]
-        
-        NodeProc -->|Updates| MetricsCache[Node Metrics Cache]
-        SyncProc -->|Triggers| ShardingMgr[Sharding Manager]
-    end
-    
-    subgraph "Assignment Logic"
-        MetricsCache -->|Provides Metrics| ShardingMgr
-        Config[Scheduler Config] -->|Policies| ShardingMgr
-        
-        ShardingMgr -->|Computes| Assignments[Shard Assignments]
-    end
-    
-    subgraph "Output & Integration"
-        Assignments -->|Updates| NodeShards[NodeShard CRDs]
-        NodeShards --> Volcano[Volcano Scheduler]
-        NodeShards --> Agent[Agent Scheduler]
-    end
-    
-    subgraph "Control Plane"
-        Manager[Controller Manager] -->|Manages| NodeInf & PodInf & ShardInf
-        Manager -->|Starts| NodeProc & SyncProc & ShardingMgr
-        CLI[CLI Flags] -->|Configures| Manager
-    end
-    
-    %% Critical Data Flows
-    NodeProc -.->|Significant Changes| SyncProc
-    NodeIndex -->|Efficient Lookup| NodeProc
-    MetricsCache -.->|Cached Data| ShardingMgr
-```
+![shardingcontroller](./images/sharding-controller-design.png)
 
 The Sharding Controller follows a **controller pattern** with these key components:
 
 1. **Informer System**: Watches nodes, pods, and NodeShard CRDs
-2. **Node Metrics Calculator**: Computes resource utilization from pod requests
+2. **Node Metrics**: Computes resource utilization from pod requests
 3. **Sharding Manager**: Implements node assignment algorithms
 4. **Event Processor**: Handles cluster state changes efficiently
 5. **CRD Synchronizer**: Maintains NodeShard CRDs reflecting current assignments

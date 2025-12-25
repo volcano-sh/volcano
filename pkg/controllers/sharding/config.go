@@ -40,8 +40,8 @@ type ShardingControllerOptions struct {
 	EnableNodeEventTrigger bool
 }
 
-func NewShardingControllerOptions() *ShardingControllerOptions {
-	controllerOptions := &ShardingControllerOptions{
+func NewShardingControllerOptions() ShardingControllerOptions {
+	controllerOptions := ShardingControllerOptions{
 		// Default scheduler configs will be added by AddFlags
 		ShardSyncPeriod:        60 * time.Second,
 		EnableNodeEventTrigger: true,

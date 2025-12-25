@@ -34,8 +34,8 @@ func TestControllerInitialization(t *testing.T) {
 		},
 	}
 	klog.Info("Controller initialization test passed")
-	testCtrl := NewTestShardingController(t, opt)
-	defer close(testCtrl.StopCh)
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
 	klog.Info("Controller initialization test passed")
 	controller := testCtrl.Controller
 
@@ -45,14 +45,16 @@ func TestControllerInitialization(t *testing.T) {
 	assert.NotNil(t, controller.nodeLister, "nodeLister should be initialized")
 	assert.NotNil(t, controller.podLister, "podLister should be initialized")
 	assert.NotNil(t, controller.shardLister, "shardLister should be initialized")
-	assert.NotNil(t, controller.queue, "queue should be initialized")
+	assert.NotNil(t, controller.nodeShardQueue, "queue should be initialized")
 	assert.NotNil(t, controller.nodeEventQueue, "nodeEventQueue should be initialized")
 	assert.NotNil(t, controller.shardingManager, "shardingManager should be initialized")
 	assert.NotNil(t, controller.nodeMetricsCache, "nodeMetricsCache should be initialized")
 	assert.Equal(t, 2, len(controller.schedulerConfigs), "should have default scheduler configs")
 
 	// Verify node metrics cache
+	controller.metricsMutex.RLock()
 	metrics := controller.GetNodeMetrics("node-1")
+	controller.metricsMutex.RUnlock()
 	assert.NotNil(t, metrics, "node metrics should be calculated")
 	assert.Equal(t, "node-1", metrics.NodeName, "node name should match")
 	assert.False(t, metrics.LastUpdated.IsZero(), "last updated should be set")
@@ -75,8 +77,8 @@ func TestNodeMetricsCalculation(t *testing.T) {
 		ShardSyncPeriod: 2 * time.Second,
 	}
 
-	testCtrl := NewTestShardingController(t, opt)
-	defer close(testCtrl.StopCh)
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
 
 	controller := testCtrl.Controller
 
@@ -98,7 +100,9 @@ func TestNodeMetricsCalculation(t *testing.T) {
 	WaitForNodeMetricsUpdate(t, controller, "test-node", 2*time.Second)
 
 	// Get and verify metrics
+	controller.metricsMutex.RLock()
 	metrics := controller.GetNodeMetrics("test-node")
+	controller.metricsMutex.RUnlock()
 	assert.NotNil(t, metrics, "metrics should be calculated")
 
 	// CPU: (1000 + 2000 + 500) = 3500m / 8000m = 0.4375
@@ -138,8 +142,8 @@ func TestSchedulerConfigParsing(t *testing.T) {
 		SchedulerConfigs: customConfigs,
 	}
 
-	testCtrl := NewTestShardingController(t, opt)
-	defer close(testCtrl.StopCh)
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
 
 	controller := testCtrl.Controller
 	configs := controller.schedulerConfigs

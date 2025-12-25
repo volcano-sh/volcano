@@ -34,13 +34,15 @@ func TestPodEventsTriggerNodeMetricsUpdate(t *testing.T) {
 		ShardSyncPeriod: 2 * time.Second,
 	}
 
-	testCtrl := NewTestShardingController(t, opt)
-	defer close(testCtrl.StopCh)
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
 
 	controller := testCtrl.Controller
 
 	// Initial metrics (should be 0 since no pods)
+	controller.metricsMutex.RLock()
 	initialMetrics := controller.GetNodeMetrics("dynamic-node")
+	controller.metricsMutex.RUnlock()
 	assert.NotNil(t, initialMetrics, "initial metrics should exist")
 	assert.Equal(t, 0.0, initialMetrics.CPUUtilization, "initial CPU utilization should be 0")
 
@@ -68,7 +70,9 @@ func TestPodEventsTriggerNodeMetricsUpdate(t *testing.T) {
 	WaitForNodeMetricsUpdate(t, controller, "dynamic-node", 2*time.Second)
 
 	// Verify updated metrics (low utilization)
+	controller.metricsMutex.RLock()
 	lowUtilMetrics := controller.GetNodeMetrics("dynamic-node")
+	controller.metricsMutex.RUnlock()
 	assert.NotNil(t, lowUtilMetrics, "low utilization metrics should exist")
 	assert.InDelta(t, 0.1875, lowUtilMetrics.CPUUtilization, 0.01, "CPU utilization should be ~18.75% after adding low util pods")
 
@@ -95,7 +99,9 @@ func TestPodEventsTriggerNodeMetricsUpdate(t *testing.T) {
 	WaitForNodeMetricsUpdate(t, controller, "dynamic-node", 2*time.Second)
 
 	// Verify updated metrics (high utilization)
+	controller.metricsMutex.RLock()
 	highUtilMetrics := controller.GetNodeMetrics("dynamic-node")
+	controller.metricsMutex.RUnlock()
 	assert.NotNil(t, highUtilMetrics, "high utilization metrics should exist")
 	// Total: 1000+500+3000+2500 = 7000m / 8000m = 0.875
 	assert.InDelta(t, 0.875, highUtilMetrics.CPUUtilization, 0.01, "CPU utilization should be ~87.5% after adding high util pods")
@@ -112,8 +118,8 @@ func TestNodeAdditionAndDeletion(t *testing.T) {
 		ShardSyncPeriod:  2 * time.Second,
 	}
 
-	testCtrl := NewTestShardingController(t, opt)
-	defer close(testCtrl.StopCh)
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
 
 	controller := testCtrl.Controller
 

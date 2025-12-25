@@ -47,6 +47,7 @@ const (
 	nodeCountChangeThreshold    = 0.5
 	updateTimeoutThreshold      = 15 * time.Second
 	nodeUsageChangeThreshold    = 0.5
+	nodeRefreshPeriod           = 120 * time.Second
 )
 
 func init() {
@@ -75,7 +76,7 @@ type ShardingController struct {
 	nodeMetricsCache map[string]*NodeMetrics
 	metricsMutex     sync.RWMutex
 
-	queue          workqueue.TypedRateLimitingInterface[string]
+	nodeShardQueue workqueue.TypedRateLimitingInterface[string]
 	nodeEventQueue workqueue.TypedRateLimitingInterface[string]
 
 	shardingManager  *ShardingManager
@@ -97,9 +98,9 @@ func (sc *ShardingController) Name() string {
 
 // Initialize initializes the controller
 func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error {
-	klog.V(6).Infof("Initializing ShardingController...")
+	klog.V(2).Infof("Initializing ShardingController...")
 	sc.ctx = context.Background()
-	sc.controllerOptions = *NewShardingControllerOptions()
+	sc.controllerOptions = NewShardingControllerOptions()
 
 	sc.kubeClient = opt.KubeClient
 	sc.vcClient = opt.VolcanoClient
@@ -119,7 +120,7 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 	sc.initNodeIndices()
 
 	// Initialize queues
-	sc.queue = workqueue.NewTypedRateLimitingQueueWithConfig(
+	sc.nodeShardQueue = workqueue.NewTypedRateLimitingQueueWithConfig(
 		workqueue.DefaultTypedControllerRateLimiter[string](),
 		workqueue.TypedRateLimitingQueueConfig[string]{Name: controllerName},
 	)
@@ -132,9 +133,7 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 	// Initialize sharding manager
 	sc.assignmentCache = &AssignmentCache{
 		Assignments: make(map[string]*ShardAssignment),
-		// NodeStates:  make(map[string]*NodeState),
 	}
-	// sc.nodeStates = make(map[string]*NodeState)
 	sc.assignmentChangeChan = make(chan *AssignmentChangeEvent, 100)
 
 	// Parse scheduler configs from options
@@ -172,17 +171,17 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 
 // Run starts the controller
 func (sc *ShardingController) Run(stopCh <-chan struct{}) {
-	defer sc.queue.ShutDown()
+	defer sc.nodeShardQueue.ShutDown()
 	defer sc.nodeEventQueue.ShutDown()
 
 	klog.Infof("Starting sharding controller.")
 	defer klog.Infof("Shutting down sharding controller.")
 
-	// FIX 1: Start informer factories HERE
+	// Start informer factories
 	sc.kubeInformerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
 
-	// FIX 2: Add specific sync checks with detailed logging
+	// Add specific sync checks with detailed logging
 	klog.Infof("Waiting for cache synchronization...")
 	if !cache.WaitForCacheSync(
 		stopCh,
@@ -195,7 +194,7 @@ func (sc *ShardingController) Run(stopCh <-chan struct{}) {
 	klog.Infof("Cache synchronization completed successfully")
 
 	// Initialize node metrics
-	sc.initializeNodeMetrics()
+	sc.refreshNodeMetrics()
 
 	// Initial sync
 	sc.syncShards()
@@ -211,7 +210,7 @@ func (sc *ShardingController) Run(stopCh <-chan struct{}) {
 	go sc.assignmentChangeProcessor(stopCh)
 
 	// Start periodic metrics refresh
-	go wait.Until(sc.refreshNodeMetrics, 30*time.Second, stopCh)
+	go wait.Until(sc.refreshNodeMetrics, nodeRefreshPeriod, stopCh)
 
 	<-stopCh
 	klog.Infof("Shutting down %s", controllerName)
@@ -228,17 +227,17 @@ func (sc *ShardingController) refreshNodeMetrics() {
 	}
 
 	// Refresh metrics for nodes that haven't been updated recently
+	sc.metricsMutex.Lock()
+	defer sc.metricsMutex.Unlock()
 	for _, node := range nodes {
 		metrics := sc.GetNodeMetrics(node.Name)
 		if metrics == nil || time.Since(metrics.LastUpdated) > 2*time.Minute {
-			go func(nodeName string) {
-				newMetrics, err := sc.calculateNodeUtilization(nodeName)
-				if err != nil {
-					klog.Warningf("Failed to refresh metrics for node %s: %v", nodeName, err)
-					return
-				}
-				sc.updateNodeUtilization(nodeName, newMetrics)
-			}(node.Name)
+			newMetrics, err := sc.calculateNodeUtilization(node.Name)
+			if err != nil {
+				klog.Warningf("Failed to refresh metrics for node %s: %v", node.Name, err)
+				return
+			}
+			sc.updateNodeUtilization(node.Name, newMetrics)
 		}
 	}
 }
@@ -289,21 +288,21 @@ func (sc *ShardingController) worker() {
 
 // processNextItem processes a single item from the work queue
 func (sc *ShardingController) processNextItem() bool {
-	key, quit := sc.queue.Get()
+	key, quit := sc.nodeShardQueue.Get()
 	if quit {
 		return false
 	}
-	defer sc.queue.Done(key)
+	defer sc.nodeShardQueue.Done(key)
 
 	err := sc.syncHandler(key)
 	if err == nil {
-		sc.queue.Forget(key)
-	} else if sc.queue.NumRequeues(key) < 3 {
+		sc.nodeShardQueue.Forget(key)
+	} else if sc.nodeShardQueue.NumRequeues(key) < 3 {
 		klog.Errorf("Error syncing shard %v: %v", key, err)
-		sc.queue.AddRateLimited(key)
+		sc.nodeShardQueue.AddRateLimited(key)
 	} else {
 		klog.Errorf("Dropping shard %q out of the queue: %v", key, err)
-		sc.queue.Forget(key)
+		sc.nodeShardQueue.Forget(key)
 	}
 
 	return true
@@ -346,7 +345,7 @@ func (sc *ShardingController) syncShards() {
 	}()
 
 	// ensure all nodes states are updated
-	sc.ensureNodeStatesUpdated()
+	//sc.ensureNodeStatesUpdated()
 
 	// Get nodes from cache (not API server)
 	nodes, err := sc.listNodesFromCache()
@@ -379,46 +378,6 @@ func (sc *ShardingController) syncShards() {
 
 	klog.Infof("Global shard sync completed: %d schedulers, %d nodes",
 		len(newAssignments), len(nodes))
-}
-
-// ensureNodeStatesUpdated ensure all nodes states are up-to-date
-func (sc *ShardingController) ensureNodeStatesUpdated() {
-	// trigger re-computation if the time interval since the last update exceeds timeout threshold
-	sc.metricsMutex.RLock()
-	lastUpdateTime := time.Time{}
-	for _, nodeMetrics := range sc.nodeMetricsCache {
-		if nodeMetrics.LastUpdated.After(lastUpdateTime) {
-			lastUpdateTime = nodeMetrics.LastUpdated
-		}
-	}
-	sc.metricsMutex.RUnlock()
-
-	if time.Since(lastUpdateTime) > updateTimeoutThreshold {
-		klog.V(4).Infof("Node states stale, triggering update")
-		sc.updateAllNodeStates()
-	}
-}
-
-// updateAllNodeStates update all node states
-func (sc *ShardingController) updateAllNodeStates() {
-	nodes, err := sc.nodeLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("Failed to list nodes for state update: %v", err)
-		return
-	}
-
-	for _, node := range nodes {
-		// update node states asynchronously to avoid blocking
-		go func(nodeName string) {
-			util, err := sc.calculateNodeUtilization(nodeName)
-			if err != nil {
-				klog.Warningf("Failed to calculate utilization for node %s: %v", nodeName, err)
-				return
-			}
-
-			sc.updateNodeUtilization(nodeName, util)
-		}(node.Name)
-	}
 }
 
 // syncHandler handles synchronization of a single shard
@@ -679,7 +638,7 @@ func (sc *ShardingController) calculateAndApplyAssignment(schedulerName string) 
 
 // enqueueShard adds a shard to the work queue
 func (sc *ShardingController) enqueueShard(schedulerName string) {
-	sc.queue.Add(schedulerName)
+	sc.nodeShardQueue.Add(schedulerName)
 }
 
 // addShard handles shard addition events

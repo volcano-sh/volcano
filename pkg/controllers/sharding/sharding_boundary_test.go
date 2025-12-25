@@ -51,8 +51,8 @@ func TestBoundaryUtilization(t *testing.T) {
 		ShardSyncPeriod: 2 * time.Second,
 	}
 
-	testCtrl := NewTestShardingController(t, opt)
-	defer close(testCtrl.StopCh)
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
 
 	controller := testCtrl.Controller
 
@@ -137,8 +137,8 @@ func TestEmptyCluster(t *testing.T) {
 		ShardSyncPeriod:  2 * time.Second,
 	}
 
-	testCtrl := NewTestShardingController(t, opt)
-	defer close(testCtrl.StopCh)
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
 
 	controller := testCtrl.Controller
 
@@ -182,8 +182,8 @@ func TestMaxUtilization(t *testing.T) {
 		SchedulerConfigs: getDefaultTestSchedulerConfigs(),
 	}
 
-	testCtrl := NewTestShardingController(t, opt)
-	defer close(testCtrl.StopCh)
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
 
 	controller := testCtrl.Controller
 
@@ -216,7 +216,9 @@ func TestMaxUtilization(t *testing.T) {
 	WaitForNodeMetricsUpdate(t, controller, "over-node", 2*time.Second)
 
 	// Verify metrics - should be capped at 1.0
+	controller.metricsMutex.RLock()
 	metrics := controller.GetNodeMetrics("over-node")
+	controller.metricsMutex.RUnlock()
 	assert.NotNil(t, metrics)
 	assert.Equal(t, 1.0, metrics.CPUUtilization, "CPU utilization should be capped at 1.0")
 

@@ -15,7 +15,6 @@ package sharding
 
 import (
 	"fmt"
-	"math"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -40,19 +39,10 @@ func (sc *ShardingController) calculateNodeUtilization(nodeName string) (*NodeMe
 
 // updateNodeUtilization updates node metrics in cache
 func (sc *ShardingController) updateNodeUtilization(nodeName string, metrics *NodeMetrics) {
+	isSignificantlyChanged := sc.isUtilizationSignificantlyChanged(nodeName, metrics)
 	sc.UpdateNodeMetrics(nodeName, metrics)
-
-	// Log significant changes
-	if prevMetrics := sc.GetNodeMetrics(nodeName); prevMetrics != nil {
-		cpuChange := math.Abs(metrics.CPUUtilization - prevMetrics.CPUUtilization)
-		memChange := math.Abs(metrics.MemoryUtilization - prevMetrics.MemoryUtilization)
-
-		if cpuChange > 0.1 || memChange > 0.1 {
-			klog.Infof("Node %s utilization changed significantly: CPU %.2f->%.2f, Memory %.2f->%.2f",
-				nodeName, prevMetrics.CPUUtilization, metrics.CPUUtilization,
-				prevMetrics.MemoryUtilization, metrics.MemoryUtilization)
-			sc.enqueueNodeEvent(nodeName, "node-updated", "node-utilization-manager")
-		}
+	if isSignificantlyChanged {
+		sc.enqueueNodeEvent(nodeName, "node-updated", "node-utilization-manager")
 	}
 }
 
