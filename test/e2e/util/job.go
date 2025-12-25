@@ -126,6 +126,7 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 			Name:            name,
 			Replicas:        task.Rep,
 			Policies:        task.Policies,
+			MaxRetry:        task.MaxRetry,
 			PartitionPolicy: task.PartitionPolicy,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -222,10 +223,9 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			restartPolicy = task.RestartPolicy
 		}
 
+		// maxRetry: if 0, leave it as 0 (webhook will set default to 3)
+		// Previously used -1 to indicate "not set", but CRD validation requires >= 0
 		maxRetry := task.MaxRetry
-		if maxRetry == 0 {
-			maxRetry = -1
-		}
 
 		ts := batchv1alpha1.TaskSpec{
 			Name:            name,

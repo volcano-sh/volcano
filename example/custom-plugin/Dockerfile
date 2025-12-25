@@ -13,7 +13,8 @@ RUN wget http://musl.libc.org/releases/musl-latest.tar.gz && \
     ./configure && make && sudo make install
 
 COPY go.mod go.sum ./
-
+# Copy staging directory before go mod download since go.mod has replace directive
+COPY staging/ ./staging/
 RUN go mod download
 
 ADD . volcano

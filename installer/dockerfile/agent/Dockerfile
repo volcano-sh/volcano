@@ -18,6 +18,8 @@ ARG BWM_RPM_NAME
 FROM golang:1.24.0 AS builder
 WORKDIR /go/src/volcano.sh/
 COPY go.mod go.sum ./
+# Copy staging directory before go mod download since go.mod has replace directive
+COPY staging/ ./staging/
 RUN go mod download
 ADD . volcano
 RUN cd volcano && make vc-agent
