@@ -356,6 +356,10 @@ func (ads *AscendDevices) selectDevices(pod *v1.Pod, schedulePolicy string) (dev
 	usedDevs := make([]*AscendDevice, 0)
 	for _, req := range reqs {
 		klog.V(5).Infof("req %+v", req)
+		err := verifyReq(req, dupDevs[0])
+		if err != nil {
+			return nil, err
+		}
 		availableDevs := make([]*AscendDevice, 0)
 		for _, dev := range dupDevs {
 			selected := false
@@ -643,4 +647,15 @@ func CalScore(schedulePolicy string, dev_usage *devices.DeviceUsage, dev_info *d
 		score = float64(0)
 	}
 	return score
+}
+
+func verifyReq(req devices.ContainerDeviceRequest, dev *AscendDevice) error {
+	trimMem, _ := dev.trimMemory(int64(req.Memreq))
+	if req.Nums > 1 {
+		if trimMem != dev.config.MemoryAllocatable {
+			klog.V(5).Infof("VNPU does not support using partial memory when specifying multiple devices, req_nums %d, req_memreq %d", req.Nums, req.Memreq)
+			return errors.Errorf("vNPU does not support partial memory allocation when requesting multiple devices")
+		}
+	}
+	return nil
 }

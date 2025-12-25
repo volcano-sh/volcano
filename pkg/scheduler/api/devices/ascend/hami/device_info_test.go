@@ -332,3 +332,60 @@ func Test_fit(t *testing.T) {
 		})
 	}
 }
+
+func Test_verifyReq(t *testing.T) {
+	conf, err := yamlStringToConfig(config_yaml)
+	assert.Nil(t, err)
+	dev := AscendDevice{
+		config: conf.VNPUs[len(conf.VNPUs)-1],
+	}
+	tests := []struct {
+		name string
+		req  devices.ContainerDeviceRequest
+		pass bool
+	}{
+		{
+			"single_device_with_partial_memory_should_pass",
+			devices.ContainerDeviceRequest{
+				Nums:             1,
+				Type:             "Ascend910B2C",
+				Memreq:           1024,
+				MemPercentagereq: 100,
+				Coresreq:         0,
+			},
+			true,
+		},
+		{
+			"multiple_devices_with_partial_memory_should_fail",
+			devices.ContainerDeviceRequest{
+				Nums:             2,
+				Type:             "Ascend910B2C",
+				Memreq:           1024,
+				MemPercentagereq: 100,
+				Coresreq:         0,
+			},
+			false,
+		},
+		{
+			"multiple_devices_with_full_memory_should_pass",
+			devices.ContainerDeviceRequest{
+				Nums:             2,
+				Type:             "Ascend910B2C",
+				Memreq:           21527,
+				MemPercentagereq: 100,
+				Coresreq:         0,
+			},
+			true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := verifyReq(tt.req, &dev)
+			if tt.pass {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+			}
+		})
+	}
+}

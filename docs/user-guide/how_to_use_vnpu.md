@@ -291,3 +291,12 @@ The supported Ascend chips and their `ResourceNames` are shown in the following 
 | 910B4 | huawei.com/Ascend910B4 | huawei.com/Ascend910B4-memory |
 | 910B4-1 | huawei.com/Ascend910B4-1 | huawei.com/Ascend910B4-1-memory |
 | 310P3 | huawei.com/Ascend310P | huawei.com/Ascend310P-memory |
+
+#### Hami vNPU scene memory allocation restrictions
+
+- When a Pod requests a single vNPU device, the memory can be configured to any value, and the memory request of the job will automatically align with the closest sharding strategy
+  - Example: Single card memory is 65536, virtualization templates are 1/4 (16384), 1/2 (32768)
+    - Pod requests 1 vNPU device and requests 1024 memory, so the actual allocated memory is 16384
+    - Pod requests 1 vNPU device with a requested memory of 20480, resulting in an actual allocated memory of 32768
+
+- When a Pod requests multiple vNPU devices, the memory resource request can be left unspecified or filled with the maximum value, The memory allocated to Pod is the actual memory of the entire card
