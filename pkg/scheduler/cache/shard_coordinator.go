@@ -17,8 +17,10 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"sync/atomic"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
@@ -64,27 +66,44 @@ func (sc *SchedulerCache) RefreshNodeShards() {
 }
 
 func (sc *SchedulerCache) tryUpdateNodeShardStatus(nodeShardName string) {
-	if sc.shardUpdateCoordinator.IsSessionRunning.Load() {
-		// Try to set pending flag atomically - if already pending, skip this request
-		if !sc.shardUpdateCoordinator.ShardUpdatePending.CompareAndSwap(false, true) {
-			klog.V(3).Infof("Update status of NodeShard is already pending, skip this request")
+	coordinator := sc.shardUpdateCoordinator
+	if coordinator != nil {
+		if coordinator.IsSessionRunning.Load() {
+			// Try to set pending flag atomically - if already pending, skip this request
+			if !coordinator.ShardUpdatePending.CompareAndSwap(false, true) {
+				klog.V(3).Infof("Update status of NodeShard is already pending, skip this request")
+				return
+			}
+			klog.V(3).Infof("Update status of NodeShard is pending because session is running")
+
+			// Wait for session to end
+			<-coordinator.SessionEndCh
+			klog.V(3).Infof("Update status of NodeShard is resumed")
+
+			// Double-check session has ended and we should still update
+			if !coordinator.IsSessionRunning.Load() {
+				sc.UpdateNodeShardStatus(nodeShardName)
+			}
+			// Reset pending flag
+			coordinator.ShardUpdatePending.Store(false)
 			return
 		}
-		klog.V(3).Infof("Update status of NodeShard is pending because session is running")
-
-		// Wait for session to end
-		<-sc.shardUpdateCoordinator.SessionEndCh
-		klog.V(3).Infof("Update status of NodeShard is resumed")
-
-		// Double-check session has ended and we should still update
-		if !sc.shardUpdateCoordinator.IsSessionRunning.Load() {
-			sc.UpdateNodeShardStatus(nodeShardName)
-		}
-		// Reset pending flag
-		sc.shardUpdateCoordinator.ShardUpdatePending.Store(false)
-		return
+		sc.UpdateNodeShardStatus(nodeShardName)
 	}
-	sc.UpdateNodeShardStatus(nodeShardName)
+}
+
+// UpdateNodeShardStatus update the status of nodeshard
+func (sc *SchedulerCache) UpdateNodeShardStatus(nodeShardName string) error {
+	if nodeShard := sc.generateNodeShardWithStatus(nodeShardName); nodeShard != nil {
+		klog.V(3).Infof("Update NodeShard %s status...", nodeShardName)
+		_, err := sc.StatusUpdater.UpdateNodeShardStatus(nodeShard)
+		if err != nil {
+			klog.Errorf("Failed to update NodeShard %s status %v", nodeShard.Name, err)
+			return err
+		}
+		klog.V(3).Infof("Updated NodeShard %s status", nodeShard.Name)
+	}
+	return nil
 }
 
 // generateNodeShardWithStatus generate nodeshard with updated status. return nil if no status change
@@ -134,4 +153,8 @@ func (sc *SchedulerCache) notifySessionEnd() {
 	default:
 		// No shardUpdateCoordinator goroutine is waiting, which is fine
 	}
+}
+
+func (su *defaultStatusUpdater) UpdateNodeShardStatus(nodeshard *nodeshardv1alpha1.NodeShard) (*nodeshardv1alpha1.NodeShard, error) {
+	return su.vcclient.ShardV1alpha1().NodeShards().UpdateStatus(context.Background(), nodeshard, metav1.UpdateOptions{})
 }

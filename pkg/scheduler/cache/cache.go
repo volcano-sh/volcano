@@ -61,7 +61,6 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
@@ -75,6 +74,7 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
+	"volcano.sh/volcano/pkg/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -149,7 +149,8 @@ type SchedulerCache struct {
 	defaultPriority      int32
 	CSINodesStatus       map[string]*schedulingapi.CSINodeStatusInfo
 	HyperNodesInfo       *schedulingapi.HyperNodesInfo
-	InUseNodesInShard    sets.Set[string]
+	// InUseNodesInShard cached the nodes that are immediatly available for current shard (desiredNodes of this shard - inUseNodes in other shards)
+	InUseNodesInShard sets.Set[string]
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
@@ -375,10 +376,6 @@ func (su *defaultStatusUpdater) UpdateQueueStatus(queue *schedulingapi.QueueInfo
 	return nil
 }
 
-func (su *defaultStatusUpdater) UpdateNodeShardStatus(nodeshard *nodeshardv1alpha1.NodeShard) (*nodeshardv1alpha1.NodeShard, error) {
-	return su.vcclient.ShardV1alpha1().NodeShards().UpdateStatus(context.Background(), nodeshard, metav1.UpdateOptions{})
-}
-
 type podgroupBinder struct {
 	kubeclient kubernetes.Interface
 	vcclient   vcclient.Interface
@@ -532,29 +529,32 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	)
 
 	sc := &SchedulerCache{
-		Jobs:                   make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Nodes:                  make(map[string]*schedulingapi.NodeInfo),
-		Queues:                 make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		PriorityClasses:        make(map[string]*schedulingv1.PriorityClass),
-		errTasks:               workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
-		nodeQueue:              workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		DeletedJobs:            workqueue.NewTypedRateLimitingQueue[string](deletedJobsRateLimiter),
-		hyperNodesQueue:        workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		kubeClient:             kubeClient,
-		vcClient:               vcClient,
-		restConfig:             config,
-		defaultQueue:           defaultQueue,
-		schedulerNames:         schedulerNames,
-		nodeSelectorLabels:     make(map[string]sets.Empty),
-		NamespaceCollection:    make(map[string]*schedulingapi.NamespaceCollection),
-		CSINodesStatus:         make(map[string]*schedulingapi.CSINodeStatusInfo),
-		imageStates:            make(map[string]*imageState),
-		InUseNodesInShard:      sets.Set[string]{},
-		shardUpdateCoordinator: NewShardUpdateCoordinator(),
-		NodeShards:             make(map[string]*schedulingapi.NodeShardInfo),
+		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Nodes:               make(map[string]*schedulingapi.NodeInfo),
+		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
+		errTasks:            workqueue.NewTypedRateLimitingQueue[string](errTaskRateLimiter),
+		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[string](deletedJobsRateLimiter),
+		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		kubeClient:          kubeClient,
+		vcClient:            vcClient,
+		restConfig:          config,
+		defaultQueue:        defaultQueue,
+		schedulerNames:      schedulerNames,
+		nodeSelectorLabels:  make(map[string]sets.Empty),
+		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
+		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
+		imageStates:         make(map[string]*imageState),
+		InUseNodesInShard:   sets.Set[string]{},
+		NodeShards:          make(map[string]*schedulingapi.NodeShardInfo),
 
 		NodeList:    []string{},
 		nodeWorkers: nodeWorkers,
+	}
+
+	if options.ServerOpts.ShardingMode == util.HardShardingMode || options.ServerOpts.ShardingMode == util.SoftShardingMode {
+		sc.shardUpdateCoordinator = NewShardUpdateCoordinator()
 	}
 
 	sc.resyncPeriod = resyncPeriod
@@ -1672,20 +1672,6 @@ func (sc *SchedulerCache) updateJobInfo(job *schedulingapi.JobInfo) {
 // UpdateQueueStatus update the status of queue.
 func (sc *SchedulerCache) UpdateQueueStatus(queue *schedulingapi.QueueInfo) error {
 	return sc.StatusUpdater.UpdateQueueStatus(queue)
-}
-
-// UpdateNodeShardStatus update the status of nodeshard
-func (sc *SchedulerCache) UpdateNodeShardStatus(nodeShardName string) error {
-	if nodeShard := sc.generateNodeShardWithStatus(nodeShardName); nodeShard != nil {
-		klog.V(3).Infof("Update NodeShard %s status...", nodeShardName)
-		_, err := sc.StatusUpdater.UpdateNodeShardStatus(nodeShard)
-		if err != nil {
-			klog.Errorf("Failed to update NodeShard %s status %v", nodeShard.Name, err)
-			return err
-		}
-		klog.V(3).Infof("Updated NodeShard %s status", nodeShard.Name)
-	}
-	return nil
 }
 
 func (sc *SchedulerCache) recordPodGroupEvent(podGroup *schedulingapi.PodGroup, eventType, reason, msg string) {

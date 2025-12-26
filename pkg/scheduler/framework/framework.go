@@ -32,7 +32,6 @@ import (
 
 // OpenSession start the session
 func OpenSession(cache cache.Cache, tiers []conf.Tier, configurations []conf.Configuration) *Session {
-	cache.OnSessionOpen()
 	ssn := openSession(cache)
 	ssn.Tiers = tiers
 	ssn.Configurations = configurations

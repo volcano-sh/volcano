@@ -164,6 +164,7 @@ type Session struct {
 }
 
 func openSession(cache cache.Cache) *Session {
+	cache.OnSessionOpen()
 	ssn := &Session{
 		UID:             uuid.NewUUID(),
 		kubeClient:      cache.Client(),
@@ -604,6 +605,8 @@ func closeSession(ssn *Session) {
 	ssn.clusterOrderFns = nil
 	ssn.NodeList = nil
 	ssn.TotalResource = nil
+
+	ssn.cache.OnSessionClose()
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }

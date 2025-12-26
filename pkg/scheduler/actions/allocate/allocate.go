@@ -736,11 +736,11 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 		}
 	}
 
-	//To allocate to nodes with enough resource and nodes within shard of this scheduler first, allocation of Pod follow below order:
-	//1. Node with IDLE resource in shard for this scheduler
-	//2. Node with IDLE resource in shard for other scheduler  (empty if sharding mode is not soft)
-	//3. Node with Future IDLE resource in shard for this scheduler
-	//4. Node with Future IDLE resource in shard for other scheduler (empty if sharding mode is not soft)
+	// To allocate to nodes with enough resource and nodes within shard of this scheduler first, allocation of Pod follow below order:
+	// 1. Node with IDLE resource in shard for this scheduler
+	// 2. Node with IDLE resource in shard for other scheduler  (empty if sharding mode is not soft)
+	// 3. Node with Future IDLE resource in shard for this scheduler
+	// 4. Node with Future IDLE resource in shard for other scheduler (empty if sharding mode is not soft)
 	candidateNodes = append(candidateNodes, idleCandidateNodes)
 	candidateNodes = append(candidateNodes, idleCandidateNodesInOtherShards)
 	candidateNodes = append(candidateNodes, futureIdleCandidateNodes)
