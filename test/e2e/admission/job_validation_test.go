@@ -84,7 +84,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("job 'minAvailable' must be >= 0"))
+		// Note: minAvailable validation is now enforced by CRD schema validation
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("spec.minAvailable"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("should be greater than or equal to 0"))
 	})
 
 	ginkgo.It("Should reject job creation with invalid maxRetry less than zero", func() {
@@ -96,7 +98,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("'maxRetry' cannot be less than zero"))
+		// Note: maxRetry validation is now enforced by CRD schema validation
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("spec.maxRetry"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("should be greater than or equal to 0"))
 	})
 
 	ginkgo.It("Should reject job creation with invalid TTLSecondsAfterFinished less than zero", func() {
@@ -109,7 +113,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("'ttlSecondsAfterFinished' cannot be less than zero"))
+		// Note: ttlSecondsAfterFinished validation is now enforced by CRD schema validation
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("spec.ttlSecondsAfterFinished"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("should be greater than or equal to 0"))
 	})
 
 	ginkgo.It("Should reject job creation with no tasks specified", func() {
@@ -142,7 +148,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("'replicas' < 0 in task"))
+		// Note: Task replicas validation is now enforced by CRD schema validation
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("spec.tasks[0].replicas"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("should be greater than or equal to 0"))
 	})
 
 	ginkgo.It("Should reject job creation with task minAvailable less than zero", func() {
@@ -155,7 +163,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("'minAvailable' < 0 in task"))
+		// Note: Task minAvailable validation is now enforced by CRD schema validation
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("spec.tasks[0].minAvailable"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("should be greater than or equal to 0"))
 	})
 
 	ginkgo.It("Should reject job creation with task minAvailable greater than replicas", func() {
@@ -194,7 +204,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("a lowercase RFC 1123 label must consist of lower case alphanumeric characters"))
+		// Note: Task name format validation is now enforced by CRD schema validation
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("spec.tasks[0].name"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("should match"))
 	})
 
 	ginkgo.It("Should reject job creation with duplicate policy events", func() {
@@ -345,7 +357,9 @@ var _ = ginkgo.Describe("Job Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("mountPath is required"))
+		// Note: Volume mountPath validation is now enforced by CRD schema validation
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("spec.volumes[0].mountPath"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("should be at least 1 chars long"))
 	})
 
 	ginkgo.It("Should reject job creation with duplicate volume mount paths", func() {

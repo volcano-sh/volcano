@@ -121,21 +121,10 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	taskNames := map[string]string{}
 	var totalReplicas int32
 
-	if job.Spec.MinAvailable < 0 {
-		reviewResponse.Allowed = false
-		return "job 'minAvailable' must be >= 0."
-	}
-
-	if job.Spec.MaxRetry < 0 {
-		reviewResponse.Allowed = false
-		return "'maxRetry' cannot be less than zero."
-	}
-
-	if job.Spec.TTLSecondsAfterFinished != nil && *job.Spec.TTLSecondsAfterFinished < 0 {
-		reviewResponse.Allowed = false
-		return "'ttlSecondsAfterFinished' cannot be less than zero."
-	}
-
+	// Note: Basic validations like minAvailable >= 0, maxRetry >= 0, TTLSecondsAfterFinished >= 0,
+	// task.Replicas >= 0, task.MinAvailable >= 0, task.MinAvailable <= task.Replicas,
+	// job.MinAvailable <= totalReplicas, duplicate task name, task name DNS1123 format,
+	// These validations have been removed from webhook to avoid duplication.
 	if len(job.Spec.Tasks) == 0 {
 		reviewResponse.Allowed = false
 		return "No task specified in job spec"
@@ -162,28 +151,18 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 			hasDependenciesBetweenTasks = true
 		}
 
-		if task.Replicas < 0 {
-			msg += fmt.Sprintf(" 'replicas' < 0 in task: %s, job: %s;", task.Name, job.Name)
-		}
-
+		// Validate minAvailable and partitionPolicy.minPartitions mutual exclusivity
+		// This validation is not covered by CRD schema or VAP, so it remains in webhook.
 		if task.MinAvailable != nil {
-			if *task.MinAvailable < 0 {
-				msg += fmt.Sprintf(" 'minAvailable' < 0 in task: %s, job: %s;", task.Name, job.Name)
-			} else if *task.MinAvailable > task.Replicas {
+			if *task.MinAvailable > task.Replicas {
 				msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s;", task.Name, job.Name)
 			}
 			if task.PartitionPolicy != nil && task.PartitionPolicy.MinPartitions != 0 {
 				msg += fmt.Sprintf("must not specify 'minAvailable' and 'partitionPolicy.minPartitions' simultaneously in task: %s, job: %s;", task.Name, job.Name)
 			}
 		}
-
 		// count replicas
 		totalReplicas += task.Replicas
-
-		// validate task name
-		if errMsgs := validation.IsDNS1123Label(task.Name); len(errMsgs) > 0 {
-			msg += fmt.Sprintf(" %v;", errMsgs)
-		}
 
 		// duplicate task name
 		if _, found := taskNames[task.Name]; found {
@@ -192,7 +171,6 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 		} else {
 			taskNames[task.Name] = task.Name
 		}
-
 		if err := validatePolicies(task.Policies, field.NewPath("spec.tasks.policies")); err != nil {
 			msg += err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v;",
 				getValidEvents(), getValidActions())
@@ -208,7 +186,6 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	if totalReplicas < job.Spec.MinAvailable {
 		msg += " job 'minAvailable' should not be greater than total replicas in tasks;"
 	}
-
 	if err := validatePolicies(job.Spec.Policies, field.NewPath("spec.policies")); err != nil {
 		msg = msg + err.Error() + fmt.Sprintf(" valid events are %v, valid actions are %v;",
 			getValidEvents(), getValidActions())

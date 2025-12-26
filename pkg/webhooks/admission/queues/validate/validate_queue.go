@@ -116,7 +116,7 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 	resourcePath := field.NewPath("requestBody")
 
 	errs = append(errs, validateStateOfQueue(queue.Status.State, resourcePath.Child("spec").Child("state"))...)
-	errs = append(errs, validateWeightOfQueue(queue.Spec.Weight, resourcePath.Child("spec").Child("weight"))...)
+	// Note: weight >= 1 validation is now enforced by CRD schema (minimum: 1)
 	errs = append(errs, validateResourceOfQueue(queue.Spec, resourcePath.Child("spec"))...)
 	errs = append(errs, validateHierarchicalAttributes(queue, resourcePath.Child("metadata").Child("annotations"))...)
 
@@ -203,14 +203,6 @@ func validateStateOfQueue(value schedulingv1beta1.QueueState, fldPath *field.Pat
 	}
 
 	return append(errs, field.Invalid(fldPath, value, fmt.Sprintf("queue state must be in %v", validQueueStates)))
-}
-
-func validateWeightOfQueue(value int32, fldPath *field.Path) field.ErrorList {
-	errs := field.ErrorList{}
-	if value > 0 {
-		return errs
-	}
-	return append(errs, field.Invalid(fldPath, value, "queue weight must be a positive integer"))
 }
 
 func validateResourceOfQueue(resource schedulingv1beta1.QueueSpec, fldPath *field.Path) field.ErrorList {

@@ -155,7 +155,9 @@ var _ = ginkgo.Describe("HyperNode Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.TopologyV1alpha1().HyperNodes().Create(context.TODO(), hyperNode, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("member exactMatch name is required"))
+		// Note: HyperNode exactMatch name validation is now enforced by CRD schema validation
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("spec.members[0].selector.exactMatch.name"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("should be at least 1 chars long"))
 	})
 
 	ginkgo.It("Should reject HyperNode creation with empty regexMatch pattern", func() {
@@ -184,7 +186,9 @@ var _ = ginkgo.Describe("HyperNode Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.TopologyV1alpha1().HyperNodes().Create(context.TODO(), hyperNode, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("member regexMatch pattern is required"))
+		// Note: HyperNode regexMatch pattern validation is now enforced by CRD schema validation
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("spec.members[0].selector.regexMatch.pattern"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("should be at least 1 chars long"))
 	})
 
 	ginkgo.It("Should reject HyperNode creation with invalid regex pattern", func() {
@@ -262,7 +266,9 @@ var _ = ginkgo.Describe("HyperNode Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.TopologyV1alpha1().HyperNodes().Create(context.TODO(), hyperNode, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("member exactMatch validate failed"))
+		// Note: HyperNode exactMatch name format validation is now enforced by CRD schema validation
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("spec.members[0].selector.exactMatch.name"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("should match"))
 	})
 
 	ginkgo.It("Should allow HyperNode update with valid changes", func() {

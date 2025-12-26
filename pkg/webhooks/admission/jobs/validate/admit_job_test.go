@@ -35,9 +35,7 @@ import (
 )
 
 func TestValidateJobCreate(t *testing.T) {
-	var invTTL int32 = -1
 	var policyExitCode int32 = -1
-	var invMinAvailable int32 = -1
 	var minAvailable int32 = 4
 	namespace := "test"
 	privileged := true
@@ -265,116 +263,14 @@ func TestValidateJobCreate(t *testing.T) {
 			ret:            "unable to find job plugin: big_plugin",
 			ExpectErr:      true,
 		},
-		// ttl-illegal
-		{
-			Name: "job-ttl-illegal",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "job-ttl-illegal",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-					TTLSecondsAfterFinished: &invTTL,
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
-			ret:            "'ttlSecondsAfterFinished' cannot be less than zero",
-			ExpectErr:      true,
-		},
-		// min-MinAvailable less than zero
-		{
-			Name: "minAvailable-lessThanZero",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "minAvailable-lessThanZero",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: -1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "job 'minAvailable' must be >= 0",
-			ExpectErr:      true,
-		},
-		// maxretry less than zero
-		{
-			Name: "maxretry-lessThanZero",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "maxretry-lessThanZero",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					MaxRetry:     -1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "'maxRetry' cannot be less than zero.",
-			ExpectErr:      true,
-		},
+		// Note: Test cases for the following validations have been removed:
+		// - TTLSecondsAfterFinished < 0
+		// - job.MinAvailable < 0
+		// - job.MaxRetry < 0
+		// - task.Replicas < 0
+		// - task.MinAvailable < 0
+		// - task name DNS1123 format
+		// These validations are now enforced by CRD schema validation and VAP (ValidatingAdmissionPolicy).
 		// no task specified in the job
 		{
 			Name: "no-task",
@@ -426,80 +322,7 @@ func TestValidateJobCreate(t *testing.T) {
 				},
 			},
 			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "'replicas' < 0 in task: task-1, job: replica-lessThanZero; job 'minAvailable' should not be greater than total replicas in tasks;",
-			ExpectErr:      true,
-		},
-		// task minAvailable set less than zero
-		{
-			Name: "replica-lessThanZero",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "taskMinAvailable-lessThanZero",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:         "task-1",
-							Replicas:     1,
-							MinAvailable: &invMinAvailable,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "'minAvailable' < 0 in task: task-1, job: taskMinAvailable-lessThanZero;",
-			ExpectErr:      true,
-		},
-		// task name error
-		{
-			Name: "nonDNS-task",
-			Job: v1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "replica-lessThanZero",
-					Namespace: namespace,
-				},
-				Spec: v1alpha1.JobSpec{
-					MinAvailable: 1,
-					Queue:        "default",
-					Tasks: []v1alpha1.TaskSpec{
-						{
-							Name:     "Task-1",
-							Replicas: 1,
-							Template: v1.PodTemplateSpec{
-								ObjectMeta: metav1.ObjectMeta{
-									Labels: map[string]string{"name": "test"},
-								},
-								Spec: v1.PodSpec{
-									Containers: []v1.Container{
-										{
-											Name:  "fake-name",
-											Image: "busybox:1.24",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
-			ret:            "[a lowercase RFC 1123 label must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?')];",
+			ret:            "job 'minAvailable' should not be greater than total replicas in tasks",
 			ExpectErr:      true,
 		},
 		// Policy Event with exit code
@@ -1928,15 +1751,8 @@ func TestValidateJobUpdate(t *testing.T) {
 			mutateSpec:     false,
 			expectErr:      false,
 		},
-		{
-			name:           "invalid minAvailable",
-			replicas:       4,
-			minAvailable:   -1,
-			addTask:        false,
-			mutateTaskName: false,
-			mutateSpec:     false,
-			expectErr:      true,
-		},
+		// Note: Test case for invalid minAvailable (< 0) has been removed.
+		// This validation is now enforced by CRD schema validation and VAP (ValidatingAdmissionPolicy).
 		{
 			name:           "invalid add task",
 			replicas:       4,
