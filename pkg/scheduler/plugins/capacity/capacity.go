@@ -217,7 +217,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			return util.Permit
 		}
 
-		if !cp.checkJobEnqueueableHierarchically(ssn, queue, job) {
+		if !cp.jobEnqueueable(ssn, queue, job) {
 			return util.Reject
 		}
 
@@ -886,36 +886,69 @@ func (cp *capacityPlugin) checkQueueAllocatableHierarchically(ssn *framework.Ses
 	return true
 }
 
-func (cp *capacityPlugin) jobEnqueueable(queue *api.QueueInfo, job *api.JobInfo) (bool, []string) {
+func (cp *capacityPlugin) jobEnqueueable(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo) bool {
 	attr := cp.queueOpts[queue.UID]
 	minReq := job.GetMinResources()
+	var inqueue bool
+	var resourceNames []string
+	var enqueueFailReason string
 
-	klog.V(5).Infof("job %s min resource <%s>, queue %s capability <%s> allocated <%s> inqueue <%s> elastic <%s>",
-		job.Name, minReq.String(), queue.Name, attr.realCapability.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String())
-	// The queue resource quota limit has not reached
+	// Incoming job and queue parameters
 	r := minReq.Clone().Add(attr.allocated).Add(attr.inqueue).Sub(attr.elastic)
+	klog.V(5).Infof("job %s min resource <%s>, queue %s has realCapability <%s>, deserved <%s>, guaranteed <%s>, allocated <%s>, inqueue <%s>, elastic <%s>.",
+		job.Name, minReq.String(), attr.name, attr.realCapability.String(), attr.deserved.String(),
+		attr.guarantee.String(), attr.allocated.String(), attr.inqueue.String(), attr.elastic.String())
 
-	return r.LessEqualWithDimensionAndResourcesName(attr.realCapability, minReq)
-}
-
-func (cp *capacityPlugin) checkJobEnqueueableHierarchically(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo) bool {
-	// If hierarchical queue is not enabled, list will only contain the queue itself.
-	list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
-	// Check whether the job can be enqueued to the queue and all its ancestors.
-	for i := len(list) - 1; i >= 0; i-- {
-		if inqueue, resourceNames := cp.jobEnqueueable(ssn.Queues[list[i]], job); !inqueue {
-			// If log level is 5, print the information of all queues from leaf to ancestor.
-			if klog.V(5).Enabled() {
-				for j := i - 1; j >= 0; j-- {
-					cp.jobEnqueueable(ssn.Queues[list[j]], job)
-				}
+	// Separating Queue structures where guarantees are defined
+	if !cp.totalGuarantee.IsEmpty() {
+		// Below guarantee we should always enqueue
+		if !attr.guarantee.IsEmpty() {
+			if inqueue, resourceNames = r.LessEqualPartlyWithDimensionZeroFiltered(attr.guarantee, minReq); inqueue {
+				return true
 			}
+			enqueueFailReason += fmt.Sprintf("Queue %s resource guaranteed quota is insufficient on dimensions: %v. ", attr.name, resourceNames)
+		}
+	} else {
+		if !attr.deserved.IsEmpty() {
+			// Below deserved we should always enqueue
+			if inqueue, resourceNames = r.LessEqualPartlyWithDimensionZeroFiltered(attr.deserved, minReq); inqueue {
+				return true
+			}
+			enqueueFailReason += fmt.Sprintf("Queue %s resource deserved quota is insufficient on dimensions: %v. ", attr.name, resourceNames)
+		}
+	}
+	// checkCapabilityAndRecordEvent checks if the job can be enqueued based on the queue's real capability.
+	// It logs and records an event on failure.
+	checkCapabilityAndRecordEvent := func(queueAttr *queueAttr, r *api.Resource) bool {
+		if inqueue, resourceNames := r.LessEqualWithDimensionAndResourcesName(queueAttr.realCapability, minReq); !inqueue {
+			enqueueFailReason += fmt.Sprintf("Queue %s resource realCapability: <%s> is insufficient on dimensions: %v.",
+				queueAttr.name, queueAttr.realCapability.String(), resourceNames)
+			klog.V(5).Info(enqueueFailReason)
+			ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), enqueueFailReason)
+			return false
+		}
+		return true
+	}
 
-			ssn.RecordPodGroupEvent(job.PodGroup, v1.EventTypeNormal, string(scheduling.PodGroupUnschedulableType), util.FormatResourceNames("queue resource quota insufficient", "insufficient", resourceNames))
+	// Check real capability for the current queue
+	// Otherwise if this passes, we shall check the ancestors as well
+	if !checkCapabilityAndRecordEvent(attr, r) {
+		return false
+	}
+
+	// If hierarchical queue is not enabled, the list will be empty
+	ancestors := cp.queueOpts[queue.UID].ancestors
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		queueToCheck := ssn.Queues[ancestors[i]]
+		queueToCheckAttr := cp.queueOpts[queueToCheck.UID]
+		rAncestor := minReq.Clone().Add(queueToCheckAttr.allocated).Add(queueToCheckAttr.inqueue).Sub(queueToCheckAttr.elastic)
+		klog.V(5).Infof("Queue %s has realCapability <%s>, allocated <%s>, inqueue <%s>, elastic <%s>.",
+			queueToCheckAttr.name, queueToCheckAttr.realCapability.String(), queueToCheckAttr.allocated.String(),
+			queueToCheckAttr.inqueue.String(), queueToCheckAttr.elastic.String())
+		if !checkCapabilityAndRecordEvent(queueToCheckAttr, rAncestor) {
 			return false
 		}
 	}
-
 	return true
 }
 
