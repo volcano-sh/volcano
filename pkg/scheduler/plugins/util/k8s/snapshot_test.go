@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
@@ -102,6 +103,186 @@ func TestSnapshot(t *testing.T) {
 			nodeInfos, err := snapshot.NodeInfos().List()
 			if !reflect.DeepEqual(tc.expectedNodeInfos, nodeInfos) || err != nil {
 				t.Fatalf("unexpected NodeInfos list value\ngot:  %+v\nwant: %+v\nerr: %v", nodeInfos, tc.expectedNodeInfos, err)
+			}
+		})
+	}
+}
+
+func TestSnapshot_AddOrUpdateNodes(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func() (*Snapshot, []*api.NodeInfo)
+		wantErr     bool
+		checkResult func(*Snapshot) bool
+	}{
+		{
+			name: "add new node",
+			setup: func() (*Snapshot, []*api.NodeInfo) {
+				snapshot := NewEmptySnapshot()
+				node := &api.NodeInfo{
+					Name: "node-1",
+					Node: &v1.Node{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "node-1",
+						},
+					},
+				}
+				return snapshot, []*api.NodeInfo{node}
+			},
+			wantErr: false,
+			checkResult: func(s *Snapshot) bool {
+				return len(s.GetFwkNodeInfoList()) == 1 &&
+					s.GetFwkNodeInfoList()[0].Node().Name == "node-1" &&
+					len(s.GetVolcanoNodeInfoList()) == 1 &&
+					s.GetVolcanoNodeInfoList()[0].Name == "node-1"
+			},
+		},
+		{
+			name: "update existing node",
+			setup: func() (*Snapshot, []*api.NodeInfo) {
+				snapshot := NewEmptySnapshot()
+				// Add initial node
+				node1 := &api.NodeInfo{
+					Name: "node-1",
+					Node: &v1.Node{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "node-1",
+						},
+					},
+				}
+				snapshot.addOrUpdateNode(node1)
+
+				// Update node with pods
+				node1Updated := &api.NodeInfo{
+					Name: "node-1",
+					Node: &v1.Node{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "node-1",
+						},
+					},
+				}
+				pod := &v1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pod-1",
+						Namespace: "default",
+					},
+				}
+				ti := api.NewTaskInfo(pod)
+				err := node1Updated.AddTask(ti)
+				if err != nil {
+					return nil, nil
+				}
+
+				return snapshot, []*api.NodeInfo{node1Updated}
+			},
+			wantErr: false,
+			checkResult: func(s *Snapshot) bool {
+				if len(s.volcanoInfo.nodeInfoList) != 1 {
+					return false
+				}
+				nodeInfo, err := s.GetVolcanoNodeInfo("node-1")
+				if err != nil {
+					return false
+				}
+				return len(nodeInfo.Pods()) == 1
+			},
+		},
+		{
+			name: "add multiple nodes",
+			setup: func() (*Snapshot, []*api.NodeInfo) {
+				snapshot := NewEmptySnapshot()
+				nodes := []*api.NodeInfo{
+					{
+						Name: "node-1",
+						Node: &v1.Node{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "node-1",
+							},
+						},
+					},
+					{
+						Name: "node-2",
+						Node: &v1.Node{
+							ObjectMeta: metav1.ObjectMeta{
+								Name: "node-2",
+							},
+						},
+					},
+				}
+				return snapshot, nodes
+			},
+			wantErr: false,
+			checkResult: func(s *Snapshot) bool {
+				return len(s.GetFwkNodeInfoList()) == 2 &&
+					len(s.GetVolcanoNodeInfoList()) == 2 &&
+					s.nodeNameToIndex["node-1"] == 0 &&
+					s.nodeNameToIndex["node-2"] == 1
+			},
+		},
+		{
+			name: "node with pods having affinity",
+			setup: func() (*Snapshot, []*api.NodeInfo) {
+				snapshot := NewEmptySnapshot()
+
+				// Create a pod with affinity
+				pod := &v1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "pod-with-affinity",
+						Namespace: "default",
+					},
+					Spec: v1.PodSpec{
+						Affinity: &v1.Affinity{
+							NodeAffinity: &v1.NodeAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+									NodeSelectorTerms: []v1.NodeSelectorTerm{
+										{
+											MatchExpressions: []v1.NodeSelectorRequirement{
+												{
+													Key:      "kubernetes.io/hostname",
+													Operator: v1.NodeSelectorOpIn,
+													Values:   []string{"node-1"},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				node := &api.NodeInfo{
+					Name: "node-1",
+					Node: &v1.Node{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "node-1",
+						},
+					},
+				}
+				ti := api.NewTaskInfo(pod)
+				err := node.AddTask(ti)
+				if err != nil {
+					return nil, nil
+				}
+
+				return snapshot, []*api.NodeInfo{node}
+			},
+			wantErr: false,
+			checkResult: func(s *Snapshot) bool {
+				return len(s.havePodsWithAffinityNodeInfoList) == 1 &&
+					s.havePodsWithAffinityNodeInfoList[0].Node().Name == "node-1"
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			snapshot, nodes := tt.setup()
+
+			snapshot.AddOrUpdateNodes(nodes)
+
+			if !tt.checkResult(snapshot) {
+				t.Errorf("AddOrUpdateNodes() = unexpected result")
 			}
 		})
 	}
