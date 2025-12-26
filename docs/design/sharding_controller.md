@@ -184,8 +184,11 @@ Unlike complex scoring systems, we use utilization-based filtering:
    - CPU utilization range [Min, Max];
    - Warmup node preference: true or false
    - Min/Max node constraints;
-2. Filter nodes matching criteria
-3. Prioritize warmup nodes when preferred
+2. Filter nodes matching utilization constraints;
+3. Prioritize warmup nodes and then non-warmup nodes; warmup node set and non-warmup node set are all sorted based on utilization level from high to low; Whether a node is a warmup node is indicated by the node labels field "node.volcano.sh/warmup";
+```python
+IsWarmupNode: node.Labels["node.volcano.sh/warmup"] == "true" // warmup node, otherwise non-warmup node
+```
 4. Select nodes within constraints
 
 
