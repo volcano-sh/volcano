@@ -46,7 +46,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.APIS_REPO }}
-          token: ${{ secrets.APIS_REPO_TOKEN }}
           ref: ${{ steps.vars.outputs.target_branch }}
           path: apis-repo
           fetch-depth: 0
@@ -55,8 +54,6 @@ jobs:
         id: sync
         env:
           APIS_REPO_DIR: ${{ github.workspace }}/apis-repo
-          APIS_REPO_URL: https://x-access-token:${{ secrets.APIS_REPO_TOKEN }}@github.com/${{ env.APIS_REPO }}.git
-          APIS_REPO: ${{ env.APIS_REPO }}
         run: |
           # Run sync script to sync files
           # The script only syncs files, letting peter-evans/create-pull-request handle PR creation
