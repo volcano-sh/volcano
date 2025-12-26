@@ -189,8 +189,8 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 		actx.jobsByQueue[job.Queue].Push(job)
 		actx.jobWorksheet[job.UID] = worksheet
 
-		// job without any hard network topology policy use actx.tasksNoHardTopology
-		if !job.ContainsHardTopology() {
+		// job without any hard network topology policy and without SubGroupPolicy use actx.tasksNoHardTopology
+		if !needNetworkTopologyAwareScheduling(job) {
 			if subJobWorksheet, exist := worksheet.subJobWorksheets[job.DefaultSubJobID()]; exist {
 				actx.tasksNoHardTopology[job.UID] = subJobWorksheet.tasks
 			}
@@ -296,10 +296,11 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 
 		job := jobs.Pop().(*api.JobInfo)
 		updateJobTier(ssn.HyperNodeTierNameMap, job)
-		if job.ContainsHardTopology() {
+
+		if needNetworkTopologyAwareScheduling(job) {
 			jobWorksheet := actx.jobWorksheet[job.UID]
 
-			klog.V(3).InfoS("Try to allocate resource for job contains hard topology", "queue", queue.Name, "job", job.UID,
+			klog.V(3).InfoS("Try to allocate resource for job with SubGroupPolicy or hard topology", "queue", queue.Name, "job", job.UID,
 				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
@@ -799,6 +800,14 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
 	return alloc.session.PredicateForAllocateAction(task, node)
+}
+
+// needNetworkTopologyAwareScheduling returns whether the job need network topology aware scheduling.
+func needNetworkTopologyAwareScheduling(ji *api.JobInfo) bool {
+	if hard, _ := ji.IsHardTopologyMode(); hard || ji.ContainsSubJobPolicy() {
+		return true
+	}
+	return false
 }
 
 func (alloc *Action) UnInitialize() {}
