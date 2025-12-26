@@ -823,6 +823,31 @@ func (r *Resource) setDefaultValue(leftResource, rightResource *Resource, defaul
 	}
 }
 
+// SubFloorZero returns max(r - idle, 0) but only for resource dimensions requested by r.
+// This avoids negative remaining (e.g. pods) and naturally handles any scalar resources.
+func (r *Resource) SubFloorZero(idle *Resource) *Resource {
+	if r == nil {
+		return EmptyResource()
+	}
+	out := r.Clone()
+	if idle != nil {
+		out.SubWithoutAssert(idle)
+	}
+
+	if out.MilliCPU < 0 {
+		out.MilliCPU = 0
+	}
+	if out.Memory < 0 {
+		out.Memory = 0
+	}
+	for k, v := range out.ScalarResources {
+		if v < 0 {
+			out.ScalarResources[k] = 0
+		}
+	}
+	return out
+}
+
 // ParseResourceList parses the given configuration map into an API
 // ResourceList or returns an error.
 func ParseResourceList(m map[string]string) (v1.ResourceList, error) {
