@@ -290,8 +290,6 @@ On controller restart:
 - **Workload-Aware Sharding**: Base assignments on actual workload patterns
 - **Integration with Kubernetes Scheduling Framework**: Contribute sharding logic upstream
 
-The work that needs to be done in short term is tracked with 3 issues: #4877, #4878, #4879
-
 ## 12. Conclusion
 
 The Sharding Controller provides a scalable, efficient solution for partitioning Kubernetes clusters between different scheduler types. By dynamically assigning nodes based on resource utilization and warmup status, it enables Volcano to effectively support both traditional batch workloads and emerging Agentic AI workloads. The design emphasizes performance, resilience, and configurability while maintaining compatibility with existing Volcano architecture.
@@ -299,7 +297,7 @@ The Sharding Controller provides a scalable, efficient solution for partitioning
 This controller represents a significant step toward Volcano's vision of becoming the unified scheduling platform for all AI/ML workloads, from training jobs to inference serving to autonomous agent orchestration.
 
 ## TODO
-* add configmap to support online modification of scheduler configurations for sharding controller.
+The remaining tasks are tracked with 3 issues: #4877, #4878, #4879
 
 ## 13. References
 1. [Volcano Architecture](https://github.com/volcano-sh/volcano)
