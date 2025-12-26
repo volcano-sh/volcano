@@ -4,34 +4,34 @@
 
 ### 1.1 Problem Statement
 As Volcano evolves to support diverse scheduling workloads, particularly Agentic AI workloads with dynamic, short-lived tasks, the existing single scheduler architecture faces significant challenges:
-- **Resource Fragmentation**: Agentic AI workloads can utilize fragmented resources that traditional batch workloads cannot
-- **Specialized Scheduling Requirements**: Agentic AI workloads require low-latency scheduling decisions with stateful context
-- **Scheduler Contention**: Single scheduler becomes a bottleneck for mixed workload types
-- **Resource Utilization**: Static resource allocation leads to inefficient cluster utilization
+- **Resource Fragmentation**: Different types of schedulers have different resource utilization patterns. For example, Agentic AI workloads can utilize fragmented resources that traditional batch workloads cannot;
+- **Specialized Scheduling Requirements**: Agentic AI workloads require low-latency scheduling decisions with stateful context; 
+- **Scheduler Contention**: Single scheduler becomes a bottleneck for mixed workload types; Different types of workloads have different requirements on the scheduling performance; For example, more than 10 thousands of sandboxes have to be launched per second for agentic workloads; Therefore, multiple schedulers have to work in parallel to meet the requirements of agentic workload scheduling; Without resource sharding, a single global resource view for all schedulers causes a high probability of scheduling conflicts as the number of schedulers increases;
+- **Resource Utilization**: Static resource allocation leads to inefficient cluster utilization; The resource utilization of nodes in clusters are always fluctuating, a static sharding of cluster resources may cause either performance degradation on high utilization nodes or resource wastage on low utilization nodes;
 
 ### 1.2 Motivation
-The Sharding Controller addresses these challenges by:
+The Sharding Controller is proposed to addresses these challenges by:
 - **Specialized Scheduling**: Enabling dedicated schedulers for different workload types (Agentic AI vs traditional batch)
-- **Resource Optimization**: Dynamically partitioning cluster resources based on utilization patterns
-- **Scalability**: Eliminating the single scheduler bottleneck for large clusters
-- **Workload Isolation**: Preventing resource contention between different workload types
+- **Resource Optimization**: Dynamically partitioning cluster resources based on allocation/utilization patterns; Different workload schedulers have different resource specifications according to the utilization patterns of corresponding workloads; Some schedulers prefer 
+- **Scalability**: Decoupling the resource supply from the resource scheduling; The sharding controller is responsible for dynamically partitioning the cluster resource into different shards according to schedulers' specifications of resource requirements. Finally, it assigns the partitioned resource shards (a group of nodes) to each scheduler. The schedulers can then schedule tasks on selected nodes, thus eliminating the single scheduler bottleneck for large clusters;
+- **Workload Isolation**: Preventing resource contention between different workload types; Each scheduler's shard has no shared nodes with other shards, thus avoid scheduling conflicts of different schedulers in the cluster;
 
 ## 2. Design Goals
 
-1. **Resource-Aware Partitioning**: Dynamically partition nodes based on real-time resource utilization
-2. **Minimal API Server Load**: Use informer caches instead of direct API calls
-3. **Event-Driven Updates**: React to cluster state changes efficiently
-4. **Scalability**: Support clusters with 1000+ nodes with sub-second latency
+1. **Resource-Aware Partitioning**: Dynamically partition nodes based on real-time resource allocation/utilization;
+2. **Minimal API Server Load**: Use informer caches instead of direct API calls, reducing pressure on API servers;
+3. **Event-Driven Updates**: React to cluster state changes efficiently, such as pod events(add, delete, update) and node events (add, delete, update);
+4. **Scalability**: Support clusters with millions of nodes with multiple schedulers;
 5. **Resilience**: Recover gracefully from failures and restarts
-6. **Configurability**: Allow runtime configuration of scheduling policies
+6. **Configurability**: Allow runtime configuration of scheduler shards, and hyper-parameters of sharding strategies;
 7. **Backward Compatibility**: Work with existing Volcano deployment without disruption
 
 ## 3. Architecture Overview
-![shardingcontroller](./images/sharding-controller-design.png)
+![sharding-controller](./images/sharding-controller-design.png)
 
 The Sharding Controller follows a **controller pattern** with these key components:
 
-1. **Informer System**: Watches nodes, pods, and NodeShard CRDs
+1. **Informer System**: Watches nodes, pods, and NodeShard CRDs;
 2. **Node Metrics**: Computes resource utilization from pod requests
 3. **Sharding Manager**: Implements node assignment algorithms
 4. **Event Processor**: Handles cluster state changes efficiently
@@ -40,10 +40,10 @@ The Sharding Controller follows a **controller pattern** with these key componen
 ## 4. Core Components
 
 ### 4.1 Informer System
-- **Node Informer**: Watches node additions, updates, and deletions
-- **Pod Informer**: Watches pod events to calculate node utilization
+- **Node Informer**: Watches node additions, deletions, and updates (e.g., node utilization changes);  
+- **Pod Informer**: Watches pod additions, deletions, and updates events to calculate node utilization changes; (TODO: but after careful consideration, pod events are frequent and we may not consider all of them)
 - **NodeShard Informer**: Watches NodeShard CRDs for current assignments
-- **Indexers**: Optimized indexes for node-to-pod lookups
+- **Indexers**: Optimized indexes for node-to-pod lookups;
 
 ```go
 // Node index function for efficient pod lookups
@@ -78,9 +78,8 @@ type NodeMetrics struct {
 **Node Event Processing Flow**
 ```mermaid
 graph LR
-    A[Pod Added/Updated/Deleted] --> B{Is Node Significant?}
-    B -->|Yes| C[Recalculate Node Metrics]
-    B -->|No| D[Ignore Event]
+    A[Pod Added/Updated/Deleted] --> B{Trigger Node Event}
+    B -->C[Recalculate Node Metrics]
     C --> E{Utilization Changed > UtilizationThreshold?}
     E -->|Yes| F[Schedule Shard Sync]
     E -->|No| G[Update Cache Only]
@@ -93,21 +92,17 @@ graph LR
 ### 4.3 Sharding Manager
 The core logic that implements node assignment strategies:
 
-```go
-type SchedulerConfig struct {
-    Name          string
-    Type          string // "volcano" or "agent"
-    ShardStrategy ShardStrategy
-}
+**Scheduler Configurations**
 
-type ShardStrategy struct {
-    CPUUtilizationRange struct {
-        Min float64
-        Max float64
-    }
-    PreferWarmupNodes bool
-    MinNodes          int
-    MaxNodes          int
+```go
+type SchedulerConfigSpec struct {
+	Name              string   // Scheduler name
+	Type              string   // Workload type
+	CPUUtilizationMin float64  // Minimum CPU utilization threshold
+	CPUUtilizationMax float64  // Maximum CPU utilization threshold
+	PreferWarmupNodes bool    // Whether to prefer warmup nodes
+	MinNodes          int 	// Minimum number of nodes
+	MaxNodes          int	// Maximum number of nodes
 }
 ```
 
@@ -120,8 +115,8 @@ type ShardStrategy struct {
 ### 4.4 Event Processing System
 A two-queue system for efficient event handling:
 
-1. **Main Queue**: Processes NodeShard updates and sync events
-2. **Node Event Queue**: Handles node and pod events for metrics updates
+1. **Main Queue**: Processes NodeShard updates and sync events;
+2. **Node Event Queue**: Handles node and pod events for metrics updates;
 
 ```go
 // Event processing workflow
@@ -143,7 +138,7 @@ func (sc *ShardingController) worker() {
 ### 5.1 Node/Pod Events
 1. Pod added/updated/deleted on a node
 2. Controller detects event and updates node metrics
-3. If utilization changes significantly (>10%), trigger shard sync
+3. If utilization changes significantly (default: 50%), trigger shard sync
 4. Sharding Manager recalculates assignments
 5. NodeShard CRDs are updated with new assignments
 
@@ -178,19 +173,21 @@ cpuUtilization := totalCPURequest / nodeCPUCapacity
 ### 6.3 Update Strategy
 - **Event-Driven**: Update metrics when pod events occur
 - **Periodic Refresh**: Full metrics refresh every 30 seconds
-- **Significant Change Detection**: Only trigger shard sync when utilization changes >10%
+- **Significant Change Detection**: Only trigger shard sync when utilization changes is larger than a specified threshold (default: 50%)
 
 ## 7. Shard Assignment Algorithm
 
-### 7.1 Hard Filtering Approach
-Unlike complex scoring systems, we use hard filtering:
-1. For each scheduler, define:
-   - CPU utilization range [Min, Max]
-   - Warmup node preference
-   - Min/Max node constraints
+### 7.1 Utilization-based Filtering Approach
+![sharding-controller](./images/sharding-process.png)
+Unlike complex scoring systems, we use utilization-based filtering:
+1. For each scheduler, its shard assignments should consider nodes with following constraints:
+   - CPU utilization range [Min, Max];
+   - Warmup node preference: true or false
+   - Min/Max node constraints;
 2. Filter nodes matching criteria
 3. Prioritize warmup nodes when preferred
 4. Select nodes within constraints
+
 
 ### 7.2 Example Configuration
 ```yaml
@@ -292,6 +289,8 @@ On controller restart:
 - **Cross-Cluster Sharding**: Assign nodes across multiple clusters
 - **Workload-Aware Sharding**: Base assignments on actual workload patterns
 - **Integration with Kubernetes Scheduling Framework**: Contribute sharding logic upstream
+
+The work that needs to be done in short term is tracked with 3 issues: #4877, #4878, #4879
 
 ## 12. Conclusion
 

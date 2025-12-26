@@ -24,13 +24,13 @@ import (
 )
 
 type SchedulerConfigSpec struct {
-	Name              string
-	Type              string
-	CPUUtilizationMin float64
-	CPUUtilizationMax float64
-	PreferWarmupNodes bool
-	MinNodes          int
-	MaxNodes          int
+	Name              string   // Scheduler name
+	Type              string   // Workload type
+	CPUUtilizationMin float64  // Minimum CPU utilization threshold
+	CPUUtilizationMax float64  // Maximum CPU utilization threshold
+	PreferWarmupNodes bool    // Whether to prefer warmup nodes
+	MinNodes          int 	// Minimum number of nodes
+	MaxNodes          int	// Maximum number of nodes
 }
 
 type ShardingControllerOptions struct {
