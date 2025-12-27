@@ -138,3 +138,28 @@ When job A performs reclaim or preempt actions, the system should first consider
 - The current design does not support scheduling jobs/podgroups to non-leaf queues. Only leaf queues can directly schedule and allocate resources to jobs/podgroups.
 - The current design does not consider the queue migration issues related to hierarchical queue management in order to avoid manual operation and maintenance.
 - When introducing a paused scheduling state for queues, optimize the management of the hierarchical queue structure under this state. For example, if a parent queue is paused for scheduling, it will cause its child queues to be paused as well. When resuming the parent queue, provide the capability to automatically resume the child queues in conjunction.
+
+## Cluster-autoscalers and the root queue
+By default, the root queue’s resource limits are set to the actual cluster resources, ignoring any user-configured capability values.
+This behavior can be overridden by setting the overwriteRootQueueRealCapability plugin argument to true.
+
+Example configuration:
+```
+actions: "enqueue, reclaim, allocate"
+tiers:
+- plugins:
+  - name: priority
+  - name: gang
+    enablePreemptable: false
+  - name: conformance
+- plugins:
+  - name: drf
+    enablePreemptable: false
+  - name: predicates
+  - name: capacity
+    enableHierarchy: true
+    arguments:
+      overwriteRootQueueRealCapability: true
+```
+
+When this feature is enabled, cluster-autoscalers can scale up correctly, and the root queue’s user-defined capability is propagated to child queues, overriding the default behavior.
