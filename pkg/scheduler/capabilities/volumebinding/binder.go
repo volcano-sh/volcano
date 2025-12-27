@@ -658,7 +658,8 @@ func (b *volumeBinder) checkBindings(logger klog.Logger, pod *v1.Pod, bindings [
 
 		// Check if pv.ClaimRef got dropped by unbindVolume()
 		if pv.Spec.ClaimRef == nil || pv.Spec.ClaimRef.UID == "" {
-			return false, fmt.Errorf("ClaimRef got reset for pv %q", pv.Name)
+			klog.V(2).InfoS("ClaimRef got reset for pv, waiting for sync", "pv", pv.Name)
+			return false, nil
 		}
 
 		// Check if pvc is fully bound
