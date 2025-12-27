@@ -101,7 +101,7 @@ func New(config *rest.Config, schedulerNames []string, defaultQueue string, node
 
 // SchedulerCache cache for the kube batch
 type SchedulerCache struct {
-	sync.Mutex
+	sync.RWMutex
 
 	kubeClient   kubernetes.Interface
 	restConfig   *rest.Config
@@ -850,8 +850,8 @@ func (sc *SchedulerCache) findJobAndTask(taskInfo *schedulingapi.TaskInfo) (*sch
 //
 // If error occurs both task and job are guaranteed to be in the original state.
 func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.Lock()
+	defer sc.Unlock()
 
 	job, task, err := sc.findJobAndTask(taskInfo)
 	if err != nil {
@@ -977,8 +977,8 @@ func (sc *SchedulerCache) SetSharedInformerFactory(factory informers.SharedInfor
 
 // UpdateSchedulerNumaInfo used to update scheduler node cache NumaSchedulerInfo
 func (sc *SchedulerCache) UpdateSchedulerNumaInfo(AllocatedSets map[string]schedulingapi.ResNumaSets) error {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.Lock()
+	defer sc.Unlock()
 
 	for nodeName, sets := range AllocatedSets {
 		if _, found := sc.Nodes[nodeName]; !found {
@@ -1072,8 +1072,8 @@ func (sc *SchedulerCache) processCleanupJob() {
 		return
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.Lock()
+	defer sc.Unlock()
 
 	currJob, found := sc.Jobs[schedulingapi.JobID(jobUID)]
 	if !found {
@@ -1148,8 +1148,8 @@ func (sc *SchedulerCache) parseErrTaskKey(key string) (*schedulingapi.TaskInfo, 
 	jobUID := key[:i]
 	taskUID := key[i+1:]
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RLock()
+	defer sc.RUnlock()
 
 	job, found := sc.Jobs[schedulingapi.JobID(jobUID)]
 	if !found {
@@ -1255,8 +1255,8 @@ func (sc *SchedulerCache) processSyncHyperNode() {
 // AddBindTask add task to be bind to a cache which consumes by go runtime
 func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	klog.V(5).Infof("add bind task %v/%v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name)
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.Lock()
+	defer sc.Unlock()
 	job, task, err := sc.findJobAndTask(bindContext.TaskInfo)
 	if err != nil {
 		return err
@@ -1392,8 +1392,8 @@ func (sc *SchedulerCache) BindTask() {
 
 // Snapshot returns the complete snapshot of the cluster from cache
 func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RLock()
+	defer sc.RUnlock()
 
 	snapshot := &schedulingapi.ClusterInfo{
 		Nodes:                make(map[string]*schedulingapi.NodeInfo),
@@ -1506,8 +1506,8 @@ func (sc *SchedulerCache) SharedDRAManager() k8sframework.SharedDRAManager {
 
 // String returns information about the cache in a string format
 func (sc *SchedulerCache) String() string {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.RLock()
+	defer sc.RUnlock()
 
 	str := "Cache:\n"
 
@@ -1622,8 +1622,8 @@ func (sc *SchedulerCache) UpdateJobStatus(job *schedulingapi.JobInfo, updatePGSt
 }
 
 func (sc *SchedulerCache) updateJobAnnotations(job *schedulingapi.JobInfo) {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.Lock()
+	defer sc.Unlock()
 
 	if jobInCache, ok := sc.Jobs[job.UID]; ok {
 		jobInCache.PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode] = job.PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode]
@@ -1631,8 +1631,8 @@ func (sc *SchedulerCache) updateJobAnnotations(job *schedulingapi.JobInfo) {
 }
 
 func (sc *SchedulerCache) updateJobInfo(job *schedulingapi.JobInfo) {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.Lock()
+	defer sc.Unlock()
 
 	if jobInCache, ok := sc.Jobs[job.UID]; ok {
 		jobInCache.AllocatedHyperNode = job.AllocatedHyperNode
@@ -1682,12 +1682,12 @@ func (sc *SchedulerCache) GetMetricsData() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel()
 	nodeMetricsMap := make(map[string]*source.NodeMetrics, len(sc.NodeList))
-	sc.Mutex.Lock()
+	sc.RLock()
 
 	for _, nodeName := range sc.NodeList {
 		nodeMetricsMap[nodeName] = &source.NodeMetrics{}
 	}
-	sc.Mutex.Unlock()
+	defer sc.Unlock()
 
 	err = client.NodesMetricsAvg(ctx, nodeMetricsMap)
 	if err != nil {
@@ -1699,8 +1699,8 @@ func (sc *SchedulerCache) GetMetricsData() {
 }
 
 func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*source.NodeMetrics) {
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
+	sc.Lock()
+	defer sc.Unlock()
 
 	for nodeName, nodeMetric := range usageInfo {
 		nodeUsage := &schedulingapi.NodeUsage{
