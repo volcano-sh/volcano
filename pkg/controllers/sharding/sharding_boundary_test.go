@@ -105,15 +105,21 @@ func TestBoundaryUtilization(t *testing.T) {
 	WaitForNodeMetricsUpdate(t, controller, "node-just-above-0.5", 2*time.Second)
 
 	// Verify metrics
+	controller.metricsMutex.RLock()
 	exactlyMetrics := controller.GetNodeMetrics("node-exactly-0.5")
+	controller.metricsMutex.RUnlock()
 	assert.NotNil(t, exactlyMetrics)
 	assert.InDelta(t, 0.5, exactlyMetrics.CPUUtilization, 0.01, "exactly 50% node")
 
+	controller.metricsMutex.RLock()
 	belowMetrics := controller.GetNodeMetrics("node-just-below-0.5")
+	controller.metricsMutex.RUnlock()
 	assert.NotNil(t, belowMetrics)
 	assert.True(t, belowMetrics.CPUUtilization < 0.5, "below 50% node")
 
+	controller.metricsMutex.RLock()
 	aboveMetrics := controller.GetNodeMetrics("node-just-above-0.5")
+	controller.metricsMutex.RUnlock()
 	assert.NotNil(t, aboveMetrics)
 	assert.True(t, aboveMetrics.CPUUtilization > 0.5, "above 50% node")
 
