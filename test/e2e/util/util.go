@@ -18,6 +18,7 @@ package util
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -38,7 +39,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
+	"sigs.k8s.io/yaml"
 
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
@@ -380,4 +384,162 @@ func GetPodList(ctx context.Context, c clientset.Interface, namespace string, ls
 	podList, err := c.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
 	Expect(err).NotTo(HaveOccurred())
 	return podList
+}
+
+// DumpTestContextIfFailed is a helper function to be used in JustAfterEach hooks
+// It checks if the test failed and dumps the context if needed
+func DumpTestContextIfFailed(ctx *TestContext, specReport SpecReport) {
+	if !specReport.Failed() || ctx == nil {
+		return
+	}
+
+	By("Dumping test context for failed test")
+	DumpTestContext(ctx)
+}
+
+// DumpTestContext collects and dumps all relevant Kubernetes resources
+// for a given namespace when a test fails. This provides complete cluster
+// state snapshots for debugging test failures.
+func DumpTestContext(ctx *TestContext) {
+	artifactsPath := os.Getenv("ARTIFACTS_PATH")
+	if artifactsPath == "" {
+		artifactsPath = "./_artifacts"
+	}
+
+	// Create directory structure: test-context/{namespace}/
+	nsPath := filepath.Join(artifactsPath, "test-context", ctx.Namespace)
+	if err := os.MkdirAll(nsPath, 0755); err != nil {
+		klog.Errorf("Failed to create artifacts directory: %v", err)
+		return
+	}
+
+	klog.Infof("Dumping test context for namespace %s to %s", ctx.Namespace, nsPath)
+
+	resourceDumpers := map[string]func() error{
+		"pods":            func() error { return dumpPods(ctx, nsPath) },
+		"podgroups":       func() error { return dumpPodGroups(ctx, nsPath) },
+		"queues":          func() error { return dumpQueues(ctx, nsPath) },
+		"priorityclasses": func() error { return dumpPriorityClasses(ctx, nsPath) },
+		"VC jobs":         func() error { return dumpVCJobs(ctx, nsPath) },
+		"VC cronjobs":     func() error { return dumpVCronJobs(ctx, nsPath) },
+		"K8s jobs":        func() error { return dumpK8sJobs(ctx, nsPath) },
+		"K8s cronjobs":    func() error { return dumpK8sCronJobs(ctx, nsPath) },
+		"deployments":     func() error { return dumpDeployments(ctx, nsPath) },
+		"statefulsets":    func() error { return dumpStatefulSets(ctx, nsPath) },
+	}
+
+	for name, dumper := range resourceDumpers {
+		if err := dumper(); err != nil {
+			klog.Errorf("Failed to dump %s: %v", name, err)
+		}
+	}
+
+	klog.Infof("Finished dumping test context for namespace %s", ctx.Namespace)
+}
+
+// dumpPods dumps all pods in the namespace
+func dumpPods(ctx *TestContext, path string) error {
+	pods, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list pods: %v", err)
+	}
+	return writeResourceToFile(pods, filepath.Join(path, "pods.yaml"))
+}
+
+// dumpPodGroups dumps all podgroups in the namespace
+func dumpPodGroups(ctx *TestContext, path string) error {
+	pgs, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list podgroups: %v", err)
+	}
+	return writeResourceToFile(pgs, filepath.Join(path, "podgroups.yaml"))
+}
+
+// dumpQueues dumps all queues (cluster-scoped resource)
+func dumpQueues(ctx *TestContext, path string) error {
+	var queues *schedulingv1beta1.QueueList
+	var err error
+	queues, err = ctx.Vcclient.SchedulingV1beta1().Queues().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list queues: %v", err)
+	}
+	return writeResourceToFile(queues, filepath.Join(path, "queues.yaml"))
+}
+
+// dumpPriorityClasses dumps all priority classes (cluster-scoped resource)
+func dumpPriorityClasses(ctx *TestContext, path string) error {
+	pcs, err := ctx.Kubeclient.SchedulingV1().PriorityClasses().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list priority classes: %v", err)
+	}
+	return writeResourceToFile(pcs, filepath.Join(path, "priorityclasses.yaml"))
+}
+
+// dumpVCJobs dumps all Volcano Jobs in the namespace
+func dumpVCJobs(ctx *TestContext, path string) error {
+	jobs, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list VC jobs: %v", err)
+	}
+	return writeResourceToFile(jobs, filepath.Join(path, "vcjobs.yaml"))
+}
+
+// dumpVCronJobs dumps all Volcano CronJobs in the namespace
+func dumpVCronJobs(ctx *TestContext, path string) error {
+	cronjobs, err := ctx.Vcclient.BatchV1alpha1().CronJobs(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list VC cronjobs: %v", err)
+	}
+	return writeResourceToFile(cronjobs, filepath.Join(path, "vcronjobs.yaml"))
+}
+
+// dumpK8sJobs dumps all standard Kubernetes Jobs in the namespace
+func dumpK8sJobs(ctx *TestContext, path string) error {
+	jobs, err := ctx.Kubeclient.BatchV1().Jobs(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list K8s jobs: %v", err)
+	}
+	return writeResourceToFile(jobs, filepath.Join(path, "k8s-jobs.yaml"))
+}
+
+// dumpK8sCronJobs dumps all standard Kubernetes CronJobs in the namespace
+func dumpK8sCronJobs(ctx *TestContext, path string) error {
+	cronjobs, err := ctx.Kubeclient.BatchV1().CronJobs(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list K8s cronjobs: %v", err)
+	}
+	return writeResourceToFile(cronjobs, filepath.Join(path, "k8s-cronjobs.yaml"))
+}
+
+// dumpDeployments dumps all deployments in the namespace
+func dumpDeployments(ctx *TestContext, path string) error {
+	deployments, err := ctx.Kubeclient.AppsV1().Deployments(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list deployments: %v", err)
+	}
+	return writeResourceToFile(deployments, filepath.Join(path, "deployments.yaml"))
+}
+
+// dumpStatefulSets dumps all statefulsets in the namespace
+func dumpStatefulSets(ctx *TestContext, path string) error {
+	statefulsets, err := ctx.Kubeclient.AppsV1().StatefulSets(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list statefulsets: %v", err)
+	}
+	return writeResourceToFile(statefulsets, filepath.Join(path, "statefulsets.yaml"))
+}
+
+// writeResourceToFile writes a Kubernetes resource to a YAML file
+func writeResourceToFile(obj any, filePath string) error {
+	data, err := yaml.Marshal(obj)
+	if err != nil {
+		return fmt.Errorf("failed to marshal resource: %v", err)
+	}
+
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file %s: %v", filePath, err)
+	}
+
+	klog.V(4).Infof("Dumped resource to %s", filePath)
+	return nil
 }
