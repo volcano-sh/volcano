@@ -202,10 +202,15 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string, job *v1alpha1.Job) *
 			tasks[index].Template.Spec.DNSPolicy = v1.DNSClusterFirstWithHostNet
 		}
 
-		if tasks[index].MinAvailable == nil && (tasks[index].PartitionPolicy == nil || tasks[index].PartitionPolicy.MinPartitions == 0) {
+		if tasks[index].MinAvailable == nil {
 			patched = true
-			minAvailable := tasks[index].Replicas
-			tasks[index].MinAvailable = &minAvailable
+			if tasks[index].PartitionPolicy != nil {
+				minAvailable := tasks[index].PartitionPolicy.MinPartitions * tasks[index].PartitionPolicy.PartitionSize
+				tasks[index].MinAvailable = &minAvailable
+			} else {
+				minAvailable := tasks[index].Replicas
+				tasks[index].MinAvailable = &minAvailable
+			}
 		}
 
 		if tasks[index].MaxRetry == 0 {
