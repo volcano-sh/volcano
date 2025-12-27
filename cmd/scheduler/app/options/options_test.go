@@ -84,6 +84,8 @@ func TestAddFlags(t *testing.T) {
 		NodeWorkerThreads:             defaultNodeWorkers,
 		CacheDumpFileDir:              "/tmp",
 		DisableDefaultSchedulerConfig: false,
+		ShardingMode:                  commonutil.NoneShardingMode,
+		ShardName:                     defaultSchedulerName,
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{
 		features.PodDisruptionBudgetsSupport: false,

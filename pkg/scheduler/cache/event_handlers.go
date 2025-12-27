@@ -52,6 +52,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
@@ -1403,4 +1404,51 @@ func (sc *SchedulerCache) updateHyperNode(hn *topologyv1alpha1.HyperNode) error 
 // It clears current hyperNode and update ancestors' cache.
 func (sc *SchedulerCache) deleteHyperNode(name string) error {
 	return sc.HyperNodesInfo.DeleteHyperNode(name)
+}
+
+// AddNodeShard add nodeshard to scheduler cache
+func (sc *SchedulerCache) AddNodeShard(obj interface{}) {
+	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert to *nodeshardv1alpha1.NodeShard: %v", obj)
+		return
+	}
+	sc.addOrUpdateNodeShard(shard)
+}
+
+// UpdateNodeShard update nodeshard to scheduler cache
+func (sc *SchedulerCache) UpdateNodeShard(oldObj, newObj interface{}) {
+	newShard, ok := newObj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert newObj to *nodeshardv1alpha1.NodeShard: %v", newObj)
+		return
+	}
+	sc.addOrUpdateNodeShard(newShard)
+}
+
+// DeleteNodeShard delete nodeshard from scheduler cache
+func (sc *SchedulerCache) DeleteNodeShard(obj interface{}) {
+	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert to *nodeshardv1alpha1.NodeShard: %v", obj)
+		return
+	}
+	sc.deleteNodeShard(shard.Name)
+}
+
+func (sc *SchedulerCache) addOrUpdateNodeShard(shard *nodeshardv1alpha1.NodeShard) {
+	shardInfo := schedulingapi.NewNodeShardInfo(shard)
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	sc.NodeShards[shard.Name] = shardInfo
+	sc.RefreshNodeShards()
+}
+
+func (sc *SchedulerCache) deleteNodeShard(name string) {
+	if _, ok := sc.NodeShards[name]; ok {
+		sc.Mutex.Lock()
+		defer sc.Mutex.Unlock()
+		delete(sc.NodeShards, name)
+		sc.RefreshNodeShards()
+	}
 }

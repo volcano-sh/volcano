@@ -185,7 +185,8 @@ Sharding coordinator watch NodeShard changes and caculate available nodes for sc
 - If the NodeShard changes while workers are actively scheduling, the coordinator cannot immediately update NodesInUse/NodesToRemove/NodesToAdd field, because the nodes currently used by workers may include other nodes. Once a worker completes a scheduling cycle, and if no other workers are scheduling or all workers have started using the nodes calculated by the coordinator after change, the coordinator updates NodesInUse/NodesToRemove/NodesToAdd field with the newly computed available nodes.
 
 #### Shard Coordinator in Volcano Scheduler
-Sharding coordinator watch NodeShard changes and calculate available nodes for scheduler. Coordinator updates the NodesInUse/NodesToRemove/NodesToAdd fields of the NodeShard immediately if no session is running. If there is session running, coordinator will update these fields after session closed.
+Sharding coordinator watch NodeShard changes and calculate available nodes for scheduler. Coordinator updates the NodesInUse/NodesToRemove/NodesToAdd fields of the NodeShard immediately if no session is running. If there is session running, to avoid difference between nodes in NodeShard and Nodes in Session, coordinator block updating until session close. After session is closed, updating flow will be waked up.
+![](images/agent-scheduler/volcano-shard-sync.png)
 
 
 ## Agent Scheduler Configuration

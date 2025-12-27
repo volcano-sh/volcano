@@ -33,6 +33,9 @@ import (
 const (
 	defaultSchedulerName       = "volcano"
 	defaultLockObjectNamespace = "volcano-system"
+	HardShardingMode           = "hard"
+	SoftShardingMode           = "soft"
+	NoneShardingMode           = "none"
 )
 
 var (

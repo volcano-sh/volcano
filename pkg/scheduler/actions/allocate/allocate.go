@@ -26,11 +26,13 @@ import (
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 type allocateContext struct {
@@ -598,13 +600,13 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 		// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
 		if len(task.Pod.Status.NominatedNodeName) > 0 {
 			if nominatedNodeInfo, ok := ssn.Nodes[task.Pod.Status.NominatedNodeName]; ok && task.InitResreq.LessEqual(nominatedNodeInfo.FutureIdle(), api.Zero) {
-				predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache)
+				predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
 			}
 		}
 
 		// If the nominated node is not found or the nominated node is not suitable for the task, we need to find a suitable node for the task from all nodes.
 		if len(predicateNodes) == 0 {
-			predicateNodes, fitErrors = ph.PredicateNodes(task, nodes, alloc.predicate, alloc.enablePredicateErrorCache)
+			predicateNodes, fitErrors = ph.PredicateNodes(task, nodes, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
 		}
 
 		if len(predicateNodes) == 0 {
@@ -709,21 +711,40 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 	// - The second gradient node: the node list whose sum of node idle resources and future idle meets the task resource request;
 	// Score the first gradient node first. If the first gradient node meets the requirements, ignore the second gradient node list,
 	// otherwise, score the second gradient node and select the appropriate node.
+	shardingMode := options.ServerOpts.ShardingMode
 	var candidateNodes [][]*api.NodeInfo
 	var idleCandidateNodes []*api.NodeInfo
 	var futureIdleCandidateNodes []*api.NodeInfo
+	var idleCandidateNodesInOtherShards []*api.NodeInfo
+	var futureIdleCandidateNodesInOtherShards []*api.NodeInfo
 	for _, n := range predicateNodes {
 		if task.InitResreq.LessEqual(n.Idle, api.Zero) {
-			idleCandidateNodes = append(idleCandidateNodes, n)
+			if shardingMode == commonutil.SoftShardingMode && !ssn.NodesInShard.Has(n.Name) {
+				idleCandidateNodesInOtherShards = append(idleCandidateNodesInOtherShards, n)
+			} else {
+				idleCandidateNodes = append(idleCandidateNodes, n)
+			}
 		} else if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
-			futureIdleCandidateNodes = append(futureIdleCandidateNodes, n)
+			if shardingMode == commonutil.SoftShardingMode && !ssn.NodesInShard.Has(n.Name) {
+				futureIdleCandidateNodesInOtherShards = append(futureIdleCandidateNodesInOtherShards, n)
+			} else {
+				futureIdleCandidateNodes = append(futureIdleCandidateNodes, n)
+			}
 		} else {
 			klog.V(5).Infof("Predicate filtered node %v, idle: %v and future idle: %v do not meet the requirements of task: %v",
 				n.Name, n.Idle, n.FutureIdle(), task.Name)
 		}
 	}
+
+	// To allocate to nodes with enough resource and nodes within shard of this scheduler first, allocation of Pod follow below order:
+	// 1. Node with IDLE resource in shard for this scheduler
+	// 2. Node with IDLE resource in shard for other scheduler  (empty if sharding mode is not soft)
+	// 3. Node with Future IDLE resource in shard for this scheduler
+	// 4. Node with Future IDLE resource in shard for other scheduler (empty if sharding mode is not soft)
 	candidateNodes = append(candidateNodes, idleCandidateNodes)
+	candidateNodes = append(candidateNodes, idleCandidateNodesInOtherShards)
 	candidateNodes = append(candidateNodes, futureIdleCandidateNodes)
+	candidateNodes = append(candidateNodes, futureIdleCandidateNodesInOtherShards)
 
 	var bestNode *api.NodeInfo
 	var higestScore float64
