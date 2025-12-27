@@ -509,15 +509,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
 		}
 
-		if cp.queueOpts[lv.UID].share == cp.queueOpts[rv.UID].share {
-			return 0
-		}
-
-		if cp.queueOpts[lv.UID].share < cp.queueOpts[rv.UID].share {
-			return -1
-		}
-
-		return 1
+		return cp.compareShareWithDeserved(cp.queueOpts[lv.UID], cp.queueOpts[rv.UID])
 	})
 }
 
@@ -650,14 +642,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		} else if !lvLeaf && rvLeaf {
 			return 1
 		} else if !lvLeaf && !rvLeaf {
-			if cp.queueOpts[lv.UID].share == cp.queueOpts[rv.UID].share {
-				return 0
-			}
-
-			if cp.queueOpts[lv.UID].share < cp.queueOpts[rv.UID].share {
-				return -1
-			}
-			return 1
+			return cp.compareShareWithDeserved(cp.queueOpts[lv.UID], cp.queueOpts[rv.UID])
 		}
 
 		lvAttr := cp.queueOpts[lv.UID]
@@ -672,15 +657,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			rvParentID = rvAttr.ancestors[level+1]
 		}
 
-		if cp.queueOpts[lvParentID].share == cp.queueOpts[rvParentID].share {
-			return 0
-		}
-
-		if cp.queueOpts[lvParentID].share < cp.queueOpts[rvParentID].share {
-			return -1
-		}
-
-		return 1
+		return cp.compareShareWithDeserved(cp.queueOpts[lvParentID], cp.queueOpts[rvParentID])
 	})
 
 	ssn.AddVictimQueueOrderFn(cp.Name(), func(l, r, preemptor interface{}) int {
@@ -843,6 +820,28 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 	return nil
 }
 
+// compareShareWithDeserved compares two queueAttr by share; when shares are equal,
+// queues with non-empty deserved are prioritized over best-effort queues.
+// Returns negative if l should come before r.
+func (cp *capacityPlugin) compareShareWithDeserved(lattr, rattr *queueAttr) int {
+	if lattr.share == rattr.share {
+		lHasDeserved := !lattr.deserved.IsEmpty()
+		rHasDeserved := !rattr.deserved.IsEmpty()
+		if lHasDeserved == rHasDeserved {
+			return 0
+		}
+		if lHasDeserved {
+			return -1
+		}
+		return 1
+	}
+
+	if lattr.share < rattr.share {
+		return -1
+	}
+	return 1
+}
+
 func (cp *capacityPlugin) updateShare(attr *queueAttr) {
 	updateQueueAttrShare(attr)
 	metrics.UpdateQueueShare(attr.name, attr.share)
@@ -1001,6 +1000,25 @@ func (s *capacityState) Clone() fwk.StateData {
 
 func updateQueueAttrShare(attr *queueAttr) {
 	res := float64(0)
+
+	// If no deserved is configured for this queue, treat it as a best-effort queue.
+	// Best-effort queues should have lowest scheduling priority: only when all queues
+	// with deserved (i.e., resource guarantee) have share >= 1, best-effort queues
+	// are scheduled. To ensure this, set share = 1 for ALL best-effort queues no matter
+	// how many resources (allocated or requesting), so that they are always scheduled
+	// after any queue with deserved whose share < 1.
+	//
+	// When share values are equal, QueueOrderFn uses tie-breaking logic to prioritize
+	// queues with deserved over best-effort queues. This further prevents reclaim thrashing.
+	//
+	// The semantics here are:
+	//   - no deserved (best-effort) -> share = 1 (always goes after share<1)
+	//   - with deserved, share < 1 -> prioritized
+	//   - with deserved, share >= 1 -> equal priority with best-effort
+	if attr.deserved.IsEmpty() {
+		attr.share = 1
+		return
+	}
 
 	for _, rn := range attr.deserved.ResourceNames() {
 		res = max(res, helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn)))
