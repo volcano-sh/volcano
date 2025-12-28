@@ -30,6 +30,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+
 	"volcano.sh/volcano/pkg/controllers/util"
 )
 
@@ -140,11 +141,11 @@ func getHyperNodeEventSource(source string) []string {
 func mergeTolerations(orig, defaults []v1.Toleration) []v1.Toleration {
 	exists := map[string]bool{}
 	for _, t := range orig {
-		key := tolerationKey(t)
+		key := generateTolerationKey(t)
 		exists[key] = true
 	}
 	for _, t := range defaults {
-		key := tolerationKey(t)
+		key := generateTolerationKey(t)
 		if !exists[key] {
 			orig = append(orig, t)
 			exists[key] = true
@@ -154,7 +155,7 @@ func mergeTolerations(orig, defaults []v1.Toleration) []v1.Toleration {
 }
 
 // generateTolerationKey generates a unique key for a toleration.
-func tolerationKey(t v1.Toleration) string {
+func generateTolerationKey(t v1.Toleration) string {
 	seconds := int64(0)
 	if t.TolerationSeconds != nil {
 		seconds = *t.TolerationSeconds
@@ -172,7 +173,6 @@ func isInitiated(rc *scheduling.Reservation) bool {
 	if rc.Status.State.Phase == "" || rc.Status.State.Phase == scheduling.ReservationPending {
 		return false
 	}
-
 	return true
 }
 

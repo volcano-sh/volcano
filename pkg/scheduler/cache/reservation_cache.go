@@ -401,7 +401,7 @@ func calculateReservationState(pending, available, succeeded, failed int32) sche
 	case succeeded == total && total > 0:
 		phase = scheduling.ReservationSucceeded
 		reason = "AllSucceeded"
-		message = fmt.Sprintf("Reservation succeeded: all %d task(s) have be allocated", total)
+		message = fmt.Sprintf("Reservation succeeded: all %d task(s) have been allocated", total)
 
 	case available == total && total > 0:
 		phase = scheduling.ReservationAvailable

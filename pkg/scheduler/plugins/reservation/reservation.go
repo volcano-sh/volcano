@@ -44,7 +44,7 @@ type bindContextExtension struct {
 }
 
 // New function returns prioritizePlugin object
-func New(aruguments framework.Arguments) framework.Plugin {
+func New(arguments framework.Arguments) framework.Plugin {
 	return &reservationPlugin{}
 }
 
