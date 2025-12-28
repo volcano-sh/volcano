@@ -24,18 +24,38 @@ spec:
     name: v1beta1
     schema:
       openAPIV3Schema:
+        description: Queue is a queue of PodGroup.
         properties:
           apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
           spec:
+            description: |-
+              Specification of the desired behavior of the queue.
+              More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status
             properties:
               affinity:
+                description: If specified, the pod owned by the queue will be scheduled
+                  with constraint
                 properties:
                   nodeGroupAffinity:
+                    description: Describes nodegroup affinity scheduling rules for
+                      the queue(e.g. putting pods of the queue in the nodes of the
+                      nodegroup)
                     properties:
                       preferredDuringSchedulingIgnoredDuringExecution:
                         items:
@@ -47,6 +67,9 @@ spec:
                         type: array
                     type: object
                   nodeGroupAntiAffinity:
+                    description: Describes nodegroup anti-affinity scheduling rules
+                      for the queue(e.g. avoid putting pods of the queue in the nodes
+                      of the nodegroup).
                     properties:
                       preferredDuringSchedulingIgnoredDuringExecution:
                         items:
@@ -65,9 +88,11 @@ spec:
                   - type: string
                   pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                   x-kubernetes-int-or-string: true
+                description: ResourceList is a set of (resource name, quantity) pairs.
                 type: object
               dequeueStrategy:
                 default: traverse
+                description: DequeueStrategy defines the dequeue strategy of queue
                 enum:
                 - fifo
                 - traverse
@@ -79,9 +104,14 @@ spec:
                   - type: string
                   pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                   x-kubernetes-int-or-string: true
+                description: The amount of resources configured by the user. This
+                  part of resource can be shared with other queues and reclaimed back.
                 type: object
               extendClusters:
+                description: extendCluster indicate the jobs in this Queue will be
+                  dispatched to these clusters.
                 items:
+                  description: CluterSpec represents the template of Cluster
                   properties:
                     capacity:
                       additionalProperties:
@@ -90,6 +120,8 @@ spec:
                         - type: string
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
+                      description: ResourceList is a set of (resource name, quantity)
+                        pairs.
                       type: object
                     name:
                       type: string
@@ -99,6 +131,7 @@ spec:
                   type: object
                 type: array
               guarantee:
+                description: Guarantee indicate configuration about resource reservation
                 properties:
                   resource:
                     additionalProperties:
@@ -107,19 +140,27 @@ spec:
                       - type: string
                       pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       x-kubernetes-int-or-string: true
+                    description: The amount of cluster resource reserved for queue.
+                      Just set either `percentage` or `resource`
                     type: object
                 type: object
               parent:
+                description: Parent define the parent of queue
                 maxLength: 253
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               priority:
+                description: Priority define the priority of queue. Higher values
+                  are prioritized for scheduling and considered later during reclamation.
                 format: int32
                 minimum: 0
                 type: integer
               reclaimable:
+                description: Reclaimable indicate whether the queue can be reclaimed
+                  by other queue
                 type: boolean
               type:
+                description: Type define the type of queue
                 maxLength: 253
                 type: string
               weight:
@@ -130,6 +171,7 @@ spec:
                 type: integer
             type: object
           status:
+            description: The status of queue.
             properties:
               allocated:
                 additionalProperties:
@@ -138,22 +180,29 @@ spec:
                   - type: string
                   pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                   x-kubernetes-int-or-string: true
+                description: Allocated is allocated resources in queue
                 type: object
               completed:
+                description: The number of `Completed` PodGroup in this queue.
                 format: int32
                 minimum: 0
                 type: integer
               inqueue:
+                description: The number of `Inqueue` PodGroup in this queue.
                 format: int32
                 minimum: 0
                 type: integer
               pending:
+                description: The number of 'Pending' PodGroup in this queue.
                 format: int32
                 minimum: 0
                 type: integer
               reservation:
+                description: Reservation is the profile of resource reservation for
+                  queue
                 properties:
                   nodes:
+                    description: Nodes are Locked nodes for queue
                     items:
                       type: string
                     type: array
@@ -164,13 +213,17 @@ spec:
                       - type: string
                       pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                       x-kubernetes-int-or-string: true
+                    description: Resource is a list of total idle resource in locked
+                      nodes.
                     type: object
                 type: object
               running:
+                description: The number of 'Running' PodGroup in this queue.
                 format: int32
                 minimum: 0
                 type: integer
               state:
+                description: State is state of queue
                 enum:
                 - Open
                 - Closed
@@ -178,6 +231,7 @@ spec:
                 - Unknown
                 type: string
               unknown:
+                description: The number of 'Unknown' PodGroup in this queue.
                 format: int32
                 minimum: 0
                 type: integer
