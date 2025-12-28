@@ -132,7 +132,7 @@ spec:
             type: File
       initContainers:
         - name: volcano-agent-init
-          image: docker.io/volcanosh/vc-agent:ed142087608f230ed0bfef2a2a2a9ea21d9f5a23
+          image: docker.io/volcanosh/vc-agent:latest
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -163,7 +163,7 @@ spec:
           imagePullPolicy: Always
       containers:
         - name: volcano-agent
-          image: docker.io/volcanosh/vc-agent:ed142087608f230ed0bfef2a2a2a9ea21d9f5a23
+          image: docker.io/volcanosh/vc-agent:latest
           securityContext:
             capabilities:
               add:

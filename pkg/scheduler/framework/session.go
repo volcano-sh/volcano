@@ -50,6 +50,7 @@ import (
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -1069,12 +1070,10 @@ func (ssn *Session) IsJobTerminated(jobId api.JobID) bool {
 }
 
 func (ssn *Session) MatchReservationForPod(job *api.JobInfo) {
-	klog.V(3).Infof("MatchReservationForPod job <%v/%v>", job.Namespace, job.Name)
-	klog.V(5).Infof("[Debug]: %+v, tasks: %+v", job, job.Tasks)
-	reservationName := job.GetReservationName()
-	if reservationName != "" {
+	if !job.IsUseReservation() {
 		return
 	}
+	klog.V(4).Infof("match reservation for job <%v/%v>", job.Namespace, job.Name)
 
 	// try match a reservation for the job
 	if len(job.Tasks) != 1 {
@@ -1101,26 +1100,24 @@ func (ssn *Session) MatchReservationForPod(job *api.JobInfo) {
 }
 
 func (ssn *Session) CheckReservationAvailable(job *api.JobInfo) bool {
-	reservationName := job.GetReservationName()
-	// not using reservation, return true
-	if reservationName == "" {
+	if !job.IsUseReservation() {
 		return true
 	}
+	reservationName := job.GetReservationName()
 	reservationInfo, ok := ssn.cache.GetReservationCache().GetReservationByName(reservationName)
-
-	reservation := reservationInfo.Reservation
 	if !ok {
-		klog.V(4).Infof("Reservation %s is not available for job <%s/%s>", reservationName, job.Namespace, job.Name)
+		klog.V(3).Infof("Reservation %s is not available for job <%s/%s>", reservationName, job.Namespace, job.Name)
 		return false
 	}
 
+	reservation := reservationInfo.Reservation
 	owner := reservation.Status.CurrentOwner
 	if owner.Name == job.Name && owner.Namespace == job.Namespace {
 		return true
 	}
 
 	if reservation.Status.State.Phase != scheduling.ReservationAvailable {
-		klog.V(4).Infof("Reservation %s is not in available phase for job <%s/%s>", reservationName, job.Namespace, job.Name)
+		klog.V(3).Infof("Reservation %s is not in available phase for job <%s/%s>", reservationName, job.Namespace, job.Name)
 		return false
 	}
 
@@ -1128,12 +1125,12 @@ func (ssn *Session) CheckReservationAvailable(job *api.JobInfo) bool {
 }
 
 func (ssn *Session) CheckReservationOwners(job *api.JobInfo) bool {
-	reservationName := job.GetReservationName()
-	if reservationName == "" {
+	if !job.IsUseReservation() {
 		return true
 	}
-	reservationInfo, ok := ssn.cache.GetReservationCache().GetReservationByName(reservationName)
 
+	reservationName := job.GetReservationName()
+	reservationInfo, ok := ssn.cache.GetReservationCache().GetReservationByName(reservationName)
 	if !ok {
 		return false
 	}
@@ -1187,10 +1184,11 @@ func (ssn *Session) CheckReservationOwners(job *api.JobInfo) bool {
 }
 
 func (ssn *Session) CheckReservationMatch(job *api.JobInfo) bool {
-	reservationName := job.GetReservationName()
-	if reservationName == "" {
+	if !job.IsUseReservation() {
 		return true
 	}
+
+	reservationName := job.GetReservationName()
 	reservationInfo, ok := ssn.cache.GetReservationCache().GetReservationByName(reservationName)
 
 	if !ok {
@@ -1226,8 +1224,6 @@ func (ssn *Session) CheckReservationMatch(job *api.JobInfo) bool {
 			if resvTask.Pod == nil || task.Pod == nil {
 				continue
 			}
-			klog.Infof("[debug] task pod: %+v", task.Pod.Spec)
-			klog.Infof("[debug] resv pod: %+v", resvTask.Pod.Spec)
 			if helpers.IsPodSpecMatch(&task.Pod.Spec, &resvTask.Pod.Spec) {
 				matched[task] = resvTask
 				used[resvTask] = true
@@ -1244,8 +1240,6 @@ func (ssn *Session) CheckReservationMatch(job *api.JobInfo) bool {
 	for jobTask, resvTask := range matched {
 		jobTask.ReservationTaskInfo = resvTask
 	}
-	klog.V(1).Infof("[debug]: matched: %v", matched)
-	klog.V(1).Infof("[debug]: used: %v", used)
 	return true
 }
 

@@ -1435,9 +1435,20 @@ func (sc *SchedulerCache) addReservation(reservation *scheduling.Reservation) {
 		return
 	}
 
-	if isInitiated(reservation) {
-		klog.V(3).Infof("Reservation <%s/%s> is already initiated", reservation.Namespace, reservation.Name)
+	// Skip terminal state reservations (Succeeded or Failed)
+	if reservation.Status.State.Phase == scheduling.ReservationSucceeded ||
+		reservation.Status.State.Phase == scheduling.ReservationFailed {
+		klog.V(3).Infof("Reservation <%s/%s> is in terminal state %s, skip",
+			reservation.Namespace, reservation.Name, reservation.Status.State.Phase)
 		return
+	}
+
+	// For Waiting/Available state (restart recovery scenario), reset status to re-schedule
+	if reservation.Status.State.Phase == scheduling.ReservationWaiting ||
+		reservation.Status.State.Phase == scheduling.ReservationAvailable {
+		klog.V(3).Infof("Reservation <%s/%s> was in state %s, resetting to Pending for re-scheduling after restart",
+			reservation.Namespace, reservation.Name, reservation.Status.State.Phase)
+		reservation.Status.State.Phase = ""
 	}
 
 	if _, err := sc.initiateReservation(reservation); err != nil {
@@ -1458,31 +1469,31 @@ func (sc *SchedulerCache) addReservation(reservation *scheduling.Reservation) {
 		for i := 0; i < int(ts.Replicas); i++ {
 			newPod := createReservationPod(reservation, tc, i)
 			pi, err := sc.NewTaskInfo(newPod)
-			pi.ReservationNodeNames = ts.ReservationNodeNames
-			pi.Status = schedulingapi.Pending
-			klog.V(5).Infof("Created TaskInfo: %+v", pi)
 			if err != nil {
 				klog.Errorf("Failed to create task in cache for reservation pod<%s/%s>: %v",
 					newPod.Namespace, newPod.Name, err)
 				return
 			}
+			pi.ReservationNodeNames = ts.ReservationNodeNames
+			pi.Status = schedulingapi.Pending
+			klog.V(3).Infof("Created TaskInfo: %+v", pi)
 			err = sc.addTask(pi)
 			if err != nil {
 				klog.Errorf("Failed to add taskInfo for pod <%s/%s> into cache: %v",
 					newPod.Namespace, newPod.Name, err)
 				return
 			}
-			klog.V(4).Infof("Added TaskInfo:%v for pod %s/%s to scheduler cache", pi, newPod.Namespace, newPod.Name)
+			klog.V(3).Infof("Added TaskInfo:%v for pod %s/%s to scheduler cache", pi, newPod.Namespace, newPod.Name)
 		}
 	}
-	klog.V(5).Infof("Job Tasks: %v", job.Tasks)
+	klog.V(3).Infof("Job Tasks: %v", job.Tasks)
 
 	// Create ReservationInfo
 	reservationInfo := schedulingapi.NewReservationInfo(jobId, job, reservation)
 
 	// Add ReservationInfo into Reservation Cache
 	sc.ReservationCache.AddReservation(reservationInfo)
-	klog.V(4).Infof("Added ReservationInfo %s/%s to ReservationCache, UID: %s", reservation.Namespace, reservation.Name, reservationInfo.Reservation.UID)
+	klog.V(3).Infof("Added ReservationInfo %s/%s to ReservationCache, UID: %s", reservation.Namespace, reservation.Name, reservationInfo.Reservation.UID)
 }
 
 func (sc *SchedulerCache) deleteReservation(ss *scheduling.Reservation) {

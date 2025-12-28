@@ -67,6 +67,11 @@ func (rp *reservationPlugin) OnSessionOpen(ssn *framework.Session) {
 				Message: fmt.Sprintf("Failed to convert <%v> to *JobInfo", obj),
 			}
 		}
+		// only check job which uses reservation
+		if !job.IsUseReservation() {
+			return nil
+		}
+
 		ssn.MatchReservationForPod(job)
 
 		if valid := ssn.CheckReservationAvailable(job); !valid {
@@ -104,7 +109,6 @@ func (rp *reservationPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddJobValidFn(rp.Name(), validJobFn)
 
 	bestNodeFn := func(task *api.TaskInfo, scores map[float64][]*api.NodeInfo) *api.NodeInfo {
-		klog.V(5).Infof("[debug]: enter reservation best node function for task %s/%s", task.Namespace, task.Name)
 		if !task.IsReservationTask() {
 			return nil
 		}
@@ -124,12 +128,11 @@ func (rp *reservationPlugin) OnSessionOpen(ssn *framework.Session) {
 		// match reservation node names specified in given order with available nodes
 		for _, reserved := range reservationNodeNames {
 			if _, ok := nodeSet[reserved]; ok {
-				klog.V(5).Infof("[debug]: Found reservation node %s for task %s/%s", reserved, task.Namespace, task.Name)
+				klog.V(4).Infof("Found reserved node %s for task %s/%s", reserved, task.Namespace, task.Name)
 				return ssn.Nodes[reserved]
 			}
 		}
 
-		klog.V(5).Infof("[debug]: None of the specified reserved nodes are available for task %s/%s, falling back to scheduler default decision", task.Namespace, task.Name)
 		return nil
 	}
 	ssn.AddBestNodeFn(rp.Name(), bestNodeFn)
@@ -146,6 +149,7 @@ func (rp *reservationPlugin) PostBind(ctx context.Context, bindCtx *cache.BindCo
 
 	if err := rp.session.Cache().SyncBindToReservationTask(task); err != nil {
 		klog.Errorf("Failed to sync task %s to reservation task, err: %v", task.Name, err)
+		return err
 	}
 
 	return nil
@@ -153,7 +157,6 @@ func (rp *reservationPlugin) PostBind(ctx context.Context, bindCtx *cache.BindCo
 
 func (rp *reservationPlugin) PreBind(ctx context.Context, bindCtx *cache.BindContext) error {
 	taskInfo := bindCtx.TaskInfo
-
 	if !taskInfo.IsReservationTask() {
 		return nil
 	}
@@ -166,6 +169,7 @@ func (rp *reservationPlugin) PreBind(ctx context.Context, bindCtx *cache.BindCon
 	if err := job.UpdateTaskStatus(task, api.Bound); err != nil {
 		return err
 	}
+
 	bindCtx.SkipBind = true
 	rp.session.Cache().GetReservationCache().SyncReservation(task, job)
 	return nil

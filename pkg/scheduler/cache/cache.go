@@ -149,13 +149,13 @@ type SchedulerCache struct {
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
-	errTasks        workqueue.TypedRateLimitingInterface[string]
-	nodeQueue       workqueue.TypedRateLimitingInterface[string]
-	DeletedJobs     workqueue.TypedRateLimitingInterface[string]
-	hyperNodesQueue workqueue.TypedRateLimitingInterface[string]
+	errTasks            workqueue.TypedRateLimitingInterface[string]
+	nodeQueue           workqueue.TypedRateLimitingInterface[string]
+	DeletedJobs         workqueue.TypedRateLimitingInterface[string]
+	hyperNodesQueue     workqueue.TypedRateLimitingInterface[string]
 	DeletedReservations workqueue.TypedRateLimitingInterface[*schedulingapi.ReservationInfo]
-	informerFactory   informers.SharedInformerFactory
-	vcInformerFactory vcinformer.SharedInformerFactory
+	informerFactory     informers.SharedInformerFactory
+	vcInformerFactory   vcinformer.SharedInformerFactory
 
 	BindFlowChannel chan *BindContext
 	bindCache       []*BindContext
@@ -1451,7 +1451,7 @@ func (sc *SchedulerCache) executePostBind(ctx context.Context, bindContext *Bind
 
 // BindTask do k8s binding with a goroutine
 func (sc *SchedulerCache) BindTask() {
-	klog.V(5).Infof("batch bind task count %d", sc.batchNum)
+	klog.V(3).Infof("batch bind task count %d", sc.batchNum)
 	tmpBindCache := make([]*BindContext, len(sc.bindCache))
 	copy(tmpBindCache, sc.bindCache)
 
@@ -1875,7 +1875,7 @@ func (sc *SchedulerCache) filterNeedSkipBindContexts(contexts []*BindContext) []
 		if !bindCtx.SkipBind {
 			contextsToBind = append(contextsToBind, bindCtx)
 		} else {
-			klog.V(4).Infof("Task %s: %s skip bind", bindCtx.TaskInfo.Namespace, bindCtx.TaskInfo.Name)
+			klog.V(3).Infof("Task %s: %s skip bind", bindCtx.TaskInfo.Namespace, bindCtx.TaskInfo.Name)
 		}
 	}
 

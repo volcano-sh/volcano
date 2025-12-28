@@ -49,7 +49,7 @@ func (reserve *Action) Execute(ssn *framework.Session) {
 		}
 
 		if vr := ssn.JobValid(job); vr != nil && !vr.Pass {
-			klog.V(4).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
+			klog.V(3).Infof("Job <%s/%s> Queue <%s> skip allocate, reason: %v, message %v", job.Namespace, job.Name, job.Queue, vr.Reason, vr.Message)
 			continue
 		}
 
@@ -67,8 +67,8 @@ func (reserve *Action) Execute(ssn *framework.Session) {
 		for !pendingTasks.Empty() {
 			actualTask := pendingTasks.Pop().(*api.TaskInfo)
 
-			if job.TaskHasFitErrors(actualTask) {
-				klog.V(5).Infof("Task %s with role spec %s has already predicated failed, skip", actualTask.Name, actualTask.TaskRole)
+			if job.TaskHasFitErrors(job.DefaultSubJobID(), actualTask) {
+				klog.V(3).Infof("Task %s with role spec %s has already predicated failed, skip", actualTask.Name, actualTask.TaskRole)
 				continue
 			}
 
@@ -100,15 +100,15 @@ func (reserve *Action) Execute(ssn *framework.Session) {
 				continue
 			}
 
-			if err := stmt.UnAllocate(reservationTask); err != nil {
-				klog.Errorf("Failed to unAllocate reservation task %v from node %v, err: %v", reservationTask.UID, reservedNode.Name, err)
+			if err := stmt.UnAllocateForReservationTask(reservationTask); err != nil {
+				klog.Errorf("Failed to release reservation task %v resources from node %v, err: %v", reservationTask.UID, reservedNode.Name, err)
 				continue
 			}
 
 			if err := stmt.Allocate(actualTask, reservedNode); err != nil {
 				klog.Errorf("Failed to allocate actual task %v to its reserved node %v, err: %v", actualTask.UID, reservedNode.Name, err)
 			} else {
-				klog.V(4).Infof("Allocated actual task <%s/%s> to node <%s>, effectively replacing the reservation.", actualTask.Namespace, actualTask.Name, reservedNode.Name)
+				klog.V(3).Infof("Allocated actual task <%s/%s> to node <%s>, effectively replacing the reservation.", actualTask.Namespace, actualTask.Name, reservedNode.Name)
 				metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 				metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
 			}
