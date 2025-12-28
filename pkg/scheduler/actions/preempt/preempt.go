@@ -29,6 +29,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -57,7 +58,29 @@ const (
 	MinCandidateNodesPercentageKey = "minCandidateNodesPercentage"
 	MinCandidateNodesAbsoluteKey   = "minCandidateNodesAbsolute"
 	MaxCandidateNodesAbsoluteKey   = "maxCandidateNodesAbsolute"
+	GangPreemptionModeKey          = "gangPreemptionMode"
 )
+
+type GangPreemptionMode uint8
+
+const (
+	GPModeOff GangPreemptionMode = iota
+	GPModeMinimal
+	GPModeAtomic
+)
+
+func (m GangPreemptionMode) String() string {
+	switch m {
+	case GPModeOff:
+		return "off"
+	case GPModeMinimal:
+		return "minimal"
+	case GPModeAtomic:
+		return "atomic"
+	default:
+		return fmt.Sprintf("unknown(%d)", int(m))
+	}
+}
 
 type Action struct {
 	ssn *framework.Session
@@ -70,6 +93,8 @@ type Action struct {
 	minCandidateNodesPercentage   int
 	minCandidateNodesAbsolute     int
 	maxCandidateNodesAbsolute     int
+
+	gpMode GangPreemptionMode
 }
 
 func New() *Action {
@@ -80,6 +105,7 @@ func New() *Action {
 		minCandidateNodesPercentage:   10,
 		minCandidateNodesAbsolute:     1,
 		maxCandidateNodesAbsolute:     100,
+		gpMode:                        GPModeOff,
 	}
 }
 
@@ -97,7 +123,24 @@ func (pmpt *Action) parseArguments(ssn *framework.Session) {
 	arguments.GetInt(&pmpt.minCandidateNodesPercentage, MinCandidateNodesPercentageKey)
 	arguments.GetInt(&pmpt.minCandidateNodesAbsolute, MinCandidateNodesAbsoluteKey)
 	arguments.GetInt(&pmpt.maxCandidateNodesAbsolute, MaxCandidateNodesAbsoluteKey)
+	var gpModeStr string
+	arguments.GetString(&gpModeStr, GangPreemptionModeKey)
+	pmpt.gpMode = parseGPMode(gpModeStr)
 	pmpt.ssn = ssn
+}
+
+func parseGPMode(s string) GangPreemptionMode {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "off", "disabled":
+		return GPModeOff
+	case "minimal":
+		return GPModeMinimal
+	case "atomic":
+		return GPModeAtomic
+	default:
+		klog.V(3).Infof("Unrecognized Gang Preemption Mode, defaulting to `disabled`")
+		return GPModeOff
+	}
 }
 
 func (pmpt *Action) Execute(ssn *framework.Session) {
@@ -304,7 +347,9 @@ func (pmpt *Action) preempt(
 	if pmpt.enableTopologyAwarePreemption {
 		return pmpt.topologyAwarePreempt(ssn, stmt, preemptor, filter, predicateNodes)
 	}
-
+	if pmpt.gpMode != GPModeOff {
+		return pmpt.gangPreempt(ssn, stmt, preemptor, filter, predicateNodes)
+	}
 	return pmpt.normalPreempt(ssn, stmt, preemptor, filter, predicateNodes)
 }
 
@@ -405,6 +450,269 @@ func (pmpt *Action) normalPreempt(
 	}
 
 	return assigned, nil
+}
+
+func (pmpt *Action) gangPreempt(
+	ssn *framework.Session,
+	stmt *framework.Statement,
+	preemptor *api.TaskInfo,
+	filter func(*api.TaskInfo) bool,
+	predicateNodes []*api.NodeInfo,
+) (bool, error) {
+	klog.V(4).Infof("Running Gang Preemption with mode: %s", pmpt.gpMode)
+	preemptorJob, found := ssn.Jobs[preemptor.Job]
+	if !found {
+		return false, fmt.Errorf("not found Job %s in Session", preemptor.Job)
+	}
+	currentQueue := ssn.Queues[preemptorJob.Queue]
+	var preemptees []*api.TaskInfo
+	for _, node := range predicateNodes {
+		for _, task := range node.Tasks {
+			if filter == nil {
+				preemptees = append(preemptees, task.Clone())
+			} else if filter(task) {
+				preemptees = append(preemptees, task.Clone())
+			}
+		}
+	}
+	preemptees = ssn.Preemptable(preemptor, preemptees)
+	nodeJobPreempteesMap := util.GroupTasksByNodeJob(preemptees, preemptorJob.UID)
+	// Node order comes into play to keep results deterministic when there is a tie for best fitting gang
+	nodeScores := util.PrioritizeNodes(preemptor, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+	selectedNodes := util.SortNodes(nodeScores)
+	preempteeJobIds, targetNode := pmpt.findBestPreemptionTarget(ssn, selectedNodes, nodeJobPreempteesMap, preemptor)
+	if targetNode == nil {
+		klog.V(3).Infof("No suitable target nodes for preemptor: <%s/%s>", preemptor.Namespace, preemptor.Name)
+		return false, nil
+	}
+	if preempteeJobIds == nil {
+		klog.V(3).Infof("<%s/%s> can fit on node %s without preemption.", preemptor.Namespace, preemptor.Name, targetNode.Name)
+	}
+
+	preempted := api.EmptyResource()
+	var victims []*api.TaskInfo
+	for _, jid := range preempteeJobIds {
+		var vics []*api.TaskInfo
+		if pmpt.gpMode == GPModeMinimal {
+			vics = nodeJobPreempteesMap[targetNode.Name][jid]
+		} else {
+			for _, t := range ssn.Jobs[jid].Tasks {
+				vics = append(vics, t)
+			}
+		}
+		victims = append(victims, vics...)
+	}
+
+	if pmpt.gpMode == GPModeMinimal {
+		// If we are evicting minimal tasks, preempt the lower priority ones first.
+		vq := ssn.BuildVictimsPriorityQueue(victims, preemptor)
+		victims = victims[:0]
+		for vq.Len() > 0 {
+			victims = append(victims, vq.Pop().(*api.TaskInfo))
+		}
+	}
+
+	for _, preemptee := range victims {
+		metrics.RegisterPreemptionAttempts()
+		klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
+			preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
+		if err := stmt.Evict(preemptee, "preempt"); err != nil {
+			klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
+				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
+			continue
+		}
+		preempted.Add(preemptee.Resreq)
+		if pmpt.gpMode == GPModeMinimal && preemptor.InitResreq.LessEqual(targetNode.FutureIdle(), api.Zero) {
+			break
+		}
+	}
+	assigned := false
+	// If this check fails, it implies some Evictions failed.
+	// Since we are optimizing for gangs per node we should try again in next session
+	if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(targetNode.FutureIdle(), api.Zero) {
+		if err := stmt.Pipeline(preemptor, targetNode.Name, !preempted.IsEmpty()); err != nil {
+			klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
+				preemptor.Namespace, preemptor.Name, targetNode.Name)
+			if rollbackErr := stmt.UnPipeline(preemptor); rollbackErr != nil {
+				klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
+					preemptor.UID, targetNode.Name, ssn.UID, rollbackErr)
+			}
+		}
+
+		// Ignore pipeline error, will be corrected in next scheduling loop.
+		assigned = true
+	}
+	return assigned, nil
+}
+
+// Returns the node and the minimal-count set of victim jobs on that node.
+// If no preemption is needed: jobs == nil, node != nil.
+// If impossible on all nodes: jobs == nil, node == nil.
+// when currentQueueAllocatable == false, we drive selection by QUEUE deficit
+func (pmpt *Action) findBestPreemptionTarget(
+	ssn *framework.Session,
+	selectedNodes []*api.NodeInfo,
+	nodeJobPreempteesMap map[string]map[api.JobID][]*api.TaskInfo,
+	preemptor *api.TaskInfo,
+) (jobs []api.JobID, node *api.NodeInfo) {
+	preemptorJob := ssn.Jobs[preemptor.Job]
+	currentQueue := ssn.Queues[preemptorJob.Queue]
+	currentQueueAllocatable := ssn.Allocatable(currentQueue, preemptor)
+	// Restrict victim jobs to same queue only when queue is currently not allocatable.
+	allowJob := func(j api.JobID) bool {
+		if currentQueueAllocatable {
+			return true
+		}
+		ji, ok := ssn.Jobs[j]
+		return ok && ji.Queue == currentQueue.UID
+	}
+
+	// Node deficit: how much we still need to free on the node for preemptor to fit.
+	nodeNeed := func(n *api.NodeInfo) *api.Resource {
+		return preemptor.InitResreq.Clone().SubFloorZero(n.FutureIdle())
+	}
+
+	// Queue deficit: how much we must evict from the current queue (hard-cap model):
+	// need = max(Allocated + preemptor - Capability, 0)
+	queueNeed := func() *api.Resource {
+		capRL := currentQueue.Queue.Spec.Capability
+		usedRL := currentQueue.Queue.Status.Allocated
+
+		capRes := api.NewResource(capRL)
+		usedRes := api.NewResource(usedRL)
+
+		need := usedRes.Clone()
+		need.Add(preemptor.InitResreq)
+		need.SubFloorZero(capRes) // max(used + preemptor - cap, 0)
+		return need
+	}
+
+	// "Need" depends on mode:
+	// - normal: nodeNeed(node)
+	// - queue-overused: queueNeed() (node-independent)
+	needForNode := func(n *api.NodeInfo) *api.Resource {
+		if currentQueueAllocatable {
+			return nodeNeed(n)
+		}
+		return queueNeed()
+	}
+
+	// In queue-overused mode, "fits on node" is NOT sufficient (queue is the blocker).
+	noPreemptionOK := func(n *api.NodeInfo) bool {
+		if !currentQueueAllocatable {
+			return false
+		}
+		return nodeNeed(n).LessEqual(api.EmptyResource(), api.Zero)
+	}
+
+	// ---- Phase 1: try best single-job victim (minimal overage) ----
+	var (
+		bestSingleOver *api.Resource
+		bestSingleJob  api.JobID
+		bestSingleNode *api.NodeInfo
+	)
+
+	for _, n := range selectedNodes {
+		if noPreemptionOK(n) {
+			return nil, n
+		}
+
+		remainingPreemptorReq := needForNode(n)
+		jobsMap := nodeJobPreempteesMap[n.Name]
+		for j, jtasks := range jobsMap {
+			if !allowJob(j) {
+				continue
+			}
+
+			sum := api.EmptyResource()
+			for _, t := range jtasks {
+				sum.Add(t.Resreq)
+			}
+
+			// Feasible if this single job can cover the "need".
+			if !remainingPreemptorReq.LessEqual(sum, api.Zero) {
+				continue
+			}
+
+			diff := sum.Sub(remainingPreemptorReq) // overage/waste
+			if bestSingleOver == nil || !bestSingleOver.LessEqual(diff, api.Zero) {
+				bestSingleOver = diff
+				bestSingleJob = j
+				bestSingleNode = n
+			}
+		}
+	}
+
+	if bestSingleOver != nil {
+		return []api.JobID{bestSingleJob}, bestSingleNode
+	}
+
+	// ---- Phase 2: greedy, largest first fit Jobs per node, minimal Job count combo per node ----
+	type combo struct {
+		node    *api.NodeInfo
+		jobs    []api.JobID
+		overage *api.Resource
+	}
+	var best *combo
+
+	for _, n := range selectedNodes {
+		remainingPreemptorReq := needForNode(n)
+
+		// Build candidates: per-job sum on this node
+		type jr struct {
+			id  api.JobID
+			res *api.Resource
+		}
+		var cand []jr
+
+		jobsMap := nodeJobPreempteesMap[n.Name]
+		for j, jtasks := range jobsMap {
+			if !allowJob(j) {
+				continue
+			}
+			sum := api.EmptyResource()
+			for _, t := range jtasks {
+				sum.Add(t.Resreq)
+			}
+			cand = append(cand, jr{id: j, res: sum})
+		}
+
+		// Sort descending by resource (largest first).
+		// We need not-less-equal sort because number of pods in ScalarResources can be same (like 0).
+		sort.Slice(cand, func(i, j int) bool {
+			return !cand[i].res.LessEqual(cand[j].res, api.Zero)
+		})
+
+		acc := api.EmptyResource()
+		var picked []api.JobID
+		for _, c := range cand {
+			if remainingPreemptorReq.LessEqual(acc, api.Zero) {
+				break
+			}
+			picked = append(picked, c.id)
+			acc.Add(c.res)
+		}
+
+		if !remainingPreemptorReq.LessEqual(acc, api.Zero) {
+			continue
+		}
+
+		over := acc.Clone()
+		over.Sub(remainingPreemptorReq)
+
+		// Prefer minimal job count; tie-break by least overage.
+		if best == nil ||
+			len(picked) < len(best.jobs) ||
+			(len(picked) == len(best.jobs) && over.Less(best.overage, api.Zero)) {
+			cp := append([]api.JobID(nil), picked...)
+			best = &combo{node: n, jobs: cp, overage: over}
+		}
+	}
+
+	if best != nil {
+		return best.jobs, best.node
+	}
+	return nil, nil
 }
 
 func (pmpt *Action) taskEligibleToPreempt(preemptor *api.TaskInfo) error {

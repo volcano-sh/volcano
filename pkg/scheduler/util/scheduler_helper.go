@@ -363,3 +363,30 @@ func FindJobTaskNumOfHyperNode(hyperNodeName string, tasks api.TasksMap, hyperNo
 	}
 	return taskCount
 }
+
+// This helper can evolve to support skipping specific tasks or nodes.
+// For now, we only need to exclude a single job ID, so we keep the API simple.
+func GroupTasksByNodeJob(
+	tasks []*api.TaskInfo,
+	skipJobID api.JobID,
+) map[string]map[api.JobID][]*api.TaskInfo {
+	nodeJobTasks := make(map[string]map[api.JobID][]*api.TaskInfo)
+
+	for _, t := range tasks {
+		jobID := t.Job
+		if jobID == skipJobID {
+			continue
+		}
+
+		node := t.NodeName
+		jobMap, ok := nodeJobTasks[node]
+		if !ok {
+			jobMap = make(map[api.JobID][]*api.TaskInfo)
+			nodeJobTasks[node] = jobMap
+		}
+
+		jobMap[jobID] = append(jobMap[jobID], t)
+	}
+
+	return nodeJobTasks
+}
