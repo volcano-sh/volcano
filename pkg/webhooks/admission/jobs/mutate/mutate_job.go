@@ -202,7 +202,7 @@ func mutateSpec(tasks []v1alpha1.TaskSpec, basePath string, job *v1alpha1.Job) *
 			tasks[index].Template.Spec.DNSPolicy = v1.DNSClusterFirstWithHostNet
 		}
 
-		if tasks[index].MinAvailable == nil {
+		if tasks[index].MinAvailable == nil && (tasks[index].PartitionPolicy == nil || tasks[index].PartitionPolicy.MinPartitions == 0) {
 			patched = true
 			minAvailable := tasks[index].Replicas
 			tasks[index].MinAvailable = &minAvailable

@@ -1,0 +1,9 @@
+{{- if .Values.custom.map_enable }}
+{{ .Files.Get "policy/jobs-mutating.yaml" }}
+---
+{{ .Files.Get "policy/queues-mutating.yaml" }}
+---
+{{ .Files.Get "policy/podgroups-mutating.yaml" }}
+---
+{{ .Files.Get "policy/pods-mutating.yaml" }}
+{{- end }}

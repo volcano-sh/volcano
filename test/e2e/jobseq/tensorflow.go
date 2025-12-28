@@ -32,9 +32,15 @@ import (
 )
 
 var _ = Describe("TensorFlow E2E Test", func() {
+	var testCtx *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
+	})
+
 	It("Will Start in pending state and goes through other phases to get complete phase", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		jobName := "tensorflow-dist-mnist"
 
@@ -118,10 +124,10 @@ var _ = Describe("TensorFlow E2E Test", func() {
 			},
 		}
 
-		created, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+		created, err := testCtx.Vcclient.BatchV1alpha1().Jobs(testCtx.Namespace).Create(context.TODO(), job, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
-		err = e2eutil.WaitJobStates(ctx, created, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed}, e2eutil.FiveMinute)
+		err = e2eutil.WaitJobStates(testCtx, created, []vcbatch.JobPhase{vcbatch.Pending, vcbatch.Running, vcbatch.Completed}, e2eutil.FiveMinute)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

@@ -29,6 +29,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	v1 "k8s.io/api/core/v1"
@@ -44,8 +45,8 @@ import (
 	"k8s.io/component-helpers/storage/ephemeral"
 	storagehelpers "k8s.io/component-helpers/storage/volume"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpumanager/topology"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
 	volumeutil "k8s.io/kubernetes/pkg/volume/util"
 	"k8s.io/utils/cpuset"
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
@@ -74,8 +75,8 @@ func isTerminated(status schedulingapi.TaskStatus) bool {
 func (sc *SchedulerCache) getOrCreateJob(pi *schedulingapi.TaskInfo) *schedulingapi.JobInfo {
 	if len(pi.Job) == 0 {
 		if !slices.Contains(sc.schedulerNames, pi.Pod.Spec.SchedulerName) {
-			klog.V(4).Infof("Pod %s/%s will not scheduled by %#v, skip creating PodGroup and Job for it",
-				pi.Pod.Namespace, pi.Pod.Name, sc.schedulerNames)
+			klog.V(4).Infof("Pod %s/%s is not scheduled by %s, skip creating PodGroup and Job for it in cache.",
+				pi.Pod.Namespace, pi.Pod.Name, strings.Join(sc.schedulerNames, ","))
 		}
 		return nil
 	}
@@ -297,7 +298,7 @@ func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
 
 func (sc *SchedulerCache) updateTask(oldTask, newTask *schedulingapi.TaskInfo) error {
 	if err := sc.deleteTask(oldTask); err != nil {
-		klog.Warningf("Failed to delete task: %v", err)
+		klog.Warningf("Failed to delete task from cache: %v", err)
 	}
 
 	return sc.addTask(newTask)
@@ -327,7 +328,7 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 	if err := sc.deletePod(oldPod); err != nil {
 		return err
 	}
-	//when delete pod, the ownerreference of pod will be set nil,just as orphan pod
+	//when delete pod, the ownerreference of pod will be set nil, just as orphan pod
 	if len(utils.GetController(newPod)) == 0 {
 		newPod.OwnerReferences = oldPod.OwnerReferences
 	}
@@ -335,27 +336,33 @@ func (sc *SchedulerCache) updatePod(oldPod, newPod *v1.Pod) error {
 }
 
 func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
-	var jobErr, nodeErr, numaErr error
+	var jobErr, nodeErr error
 
 	if len(ti.Job) != 0 {
 		if job, found := sc.Jobs[ti.Job]; found {
 			jobErr = job.DeleteTaskInfo(ti)
 		} else {
-			klog.Warningf("Failed to find Job <%v> for Task <%v/%v>", ti.Job, ti.Namespace, ti.Name)
+			klog.Warningf("Failed to find Job <%v> for Task <%v/%v> in cache.", ti.Job, ti.Namespace, ti.Name)
 		}
-	} else { // should not run into here; record error so that easy to debug
-		jobErr = fmt.Errorf("task %s/%s has null jobID", ti.Namespace, ti.Name)
+	} else {
+		klog.V(4).Infof("Task <%s/%s> has null jobID in cache.", ti.Namespace, ti.Name)
 	}
 
 	if len(ti.NodeName) != 0 {
-		node := sc.Nodes[ti.NodeName]
-		if node != nil {
-			nodeErr = node.RemoveTask(ti)
+		// We don't need to delete tasks from the Nodes cache that are already terminated.
+		// These tasks will be cleaned up during the UpdatePod -> updatePod -> deletePod -> deleteTask sequence,
+		// and will not be re-added with node.AddTask when updatePod -> addPod -> addTask occurs.
+		// This covers the case when taskStatus changes from Releasing to Failed or Succeeded.
+		if !isTerminated(ti.Status) {
+			node := sc.Nodes[ti.NodeName]
+			if node != nil {
+				nodeErr = node.RemoveTask(ti)
+			}
 		}
 	}
 
 	if jobErr != nil || nodeErr != nil {
-		return schedulingapi.MergeErrors(jobErr, nodeErr, numaErr)
+		return schedulingapi.MergeErrors(jobErr, nodeErr)
 	}
 
 	return nil
@@ -372,8 +379,9 @@ func (sc *SchedulerCache) deletePod(pod *v1.Pod) error {
 			task = t
 		}
 	}
+
 	if err := sc.deleteTask(task); err != nil {
-		klog.Warningf("Failed to delete task: %v", err)
+		klog.Warningf("Failed to delete task from cache: %v", err)
 	}
 
 	// If job was terminated, delete it.
@@ -462,7 +470,7 @@ func (sc *SchedulerCache) DeletePod(obj interface{}) {
 // addNodeImageStates adds states of the images on given node to the given nodeInfo and update the imageStates in
 // scheduler cache. This function assumes the lock to scheduler cache has been acquired.
 func (sc *SchedulerCache) addNodeImageStates(node *v1.Node, nodeInfo *schedulingapi.NodeInfo) {
-	newSum := make(map[string]*framework.ImageStateSummary)
+	newSum := make(map[string]*fwk.ImageStateSummary)
 
 	for _, image := range node.Status.Images {
 		for _, name := range image.Names {

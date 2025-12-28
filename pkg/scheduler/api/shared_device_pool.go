@@ -17,11 +17,14 @@
 package api
 
 import (
+	"slices"
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/hami"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
@@ -76,10 +79,18 @@ type Devices interface {
 // make sure GPUDevices implements Devices interface
 var _ Devices = new(gpushare.GPUDevices)
 var _ Devices = new(vgpu.GPUDevices)
+var _ Devices = new(vnpu.NPUDevices)
+var _ Devices = new(hami.AscendDevices)
 
-var RegisteredDevices = []string{
-	gpushare.DeviceName,
-	vgpu.DeviceName,
+var RegisteredDevices = []string{}
+
+func RegisterDevice(deviceName string) {
+	for _, name := range RegisteredDevices {
+		if name == deviceName {
+			return
+		}
+	}
+	RegisteredDevices = append(RegisteredDevices, deviceName)
 }
 
 var IgnoredDevicesList = ignoredDevicesList{}
@@ -94,7 +105,45 @@ func (l *ignoredDevicesList) Set(deviceLists ...[]string) {
 	defer l.Unlock()
 	l.ignoredDevices = l.ignoredDevices[:0]
 	for _, devices := range deviceLists {
-		l.ignoredDevices = append(l.ignoredDevices, devices...)
+		for _, device := range devices {
+			if device == "" {
+				continue
+			}
+			if exists := slices.Contains(l.ignoredDevices, device); exists {
+				continue
+			}
+			l.ignoredDevices = append(l.ignoredDevices, device)
+		}
+	}
+}
+
+func (l *ignoredDevicesList) Append(devices ...string) {
+	l.Lock()
+	defer l.Unlock()
+	for _, device := range devices {
+		if device == "" {
+			continue
+		}
+		if exists := slices.Contains(l.ignoredDevices, device); exists {
+			continue
+		}
+		l.ignoredDevices = append(l.ignoredDevices, device)
+	}
+}
+
+func (l *ignoredDevicesList) AppendList(devicesLists ...[]string) {
+	l.Lock()
+	defer l.Unlock()
+	for _, devices := range devicesLists {
+		for _, device := range devices {
+			if device == "" {
+				continue
+			}
+			if exists := slices.Contains(l.ignoredDevices, device); exists {
+				continue
+			}
+			l.ignoredDevices = append(l.ignoredDevices, device)
+		}
 	}
 }
 
@@ -106,4 +155,12 @@ func (l *ignoredDevicesList) Range(f func(i int, device string) bool) {
 			break
 		}
 	}
+}
+
+func (l *ignoredDevicesList) List() []string {
+	l.RLock()
+	defer l.RUnlock()
+	devices := make([]string, len(l.ignoredDevices))
+	copy(devices, l.ignoredDevices)
+	return devices
 }

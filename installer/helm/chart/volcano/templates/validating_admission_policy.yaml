@@ -1,0 +1,13 @@
+{{- if .Values.custom.vap_enable }}
+{{ .Files.Get "policy/jobs-validating.yaml" }}
+---
+{{ .Files.Get "policy/queues-validating.yaml" }}
+---
+{{ .Files.Get "policy/podgroups-validating.yaml" }}
+---
+{{ .Files.Get "policy/pods-validating.yaml" }}
+---
+{{ .Files.Get "policy/hypernodes-validating.yaml" }}
+---
+{{ .Files.Get "policy/jobflows-validating.yaml" }}
+{{- end }}

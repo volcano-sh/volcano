@@ -25,12 +25,14 @@ import (
 	"sync"
 
 	v1 "k8s.io/api/core/v1"
-	resourcev1beta1 "k8s.io/api/resource/v1beta1"
+	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	fwk "k8s.io/kube-scheduler/framework"
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -181,40 +183,46 @@ func BuildPV(name, scName string, capacity v1.ResourceList) *v1.PersistentVolume
 	}
 }
 
-func BuildDeviceRequest(name, deviceClassName string, selectors []resourcev1beta1.DeviceSelector,
-	allocationMode *resourcev1beta1.DeviceAllocationMode, count *int64) resourcev1beta1.DeviceRequest {
-	deviceRequest := resourcev1beta1.DeviceRequest{
-		Name:            name,
+func BuildDeviceRequest(name, deviceClassName string, selectors []resourcev1.DeviceSelector,
+	allocationMode *resourcev1.DeviceAllocationMode, count *int64) resourcev1.DeviceRequest {
+	exactCount := int64(1)
+	if count != nil {
+		exactCount = *count
+	}
+
+	// Default to ExactCount mode if not specified
+	defaultMode := resourcev1.DeviceAllocationModeExactCount
+	mode := defaultMode
+	if allocationMode != nil {
+		mode = *allocationMode
+	}
+
+	exactRequest := &resourcev1.ExactDeviceRequest{
 		DeviceClassName: deviceClassName,
-		AllocationMode:  resourcev1beta1.DeviceAllocationModeExactCount,
-		Count:           1,
+		Count:           exactCount,
+		AllocationMode:  mode,
 	}
 
 	if selectors != nil {
-		deviceRequest.Selectors = selectors
+		exactRequest.Selectors = selectors
 	}
 
-	if allocationMode != nil {
-		deviceRequest.AllocationMode = *allocationMode
+	return resourcev1.DeviceRequest{
+		Name:    name,
+		Exactly: exactRequest,
 	}
-
-	if allocationMode != nil && *allocationMode == resourcev1beta1.DeviceAllocationModeExactCount && count != nil {
-		deviceRequest.Count = *count
-	}
-
-	return deviceRequest
 }
 
-func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1beta1.DeviceRequest,
-	constraints []resourcev1beta1.DeviceConstraint, config []resourcev1beta1.DeviceClaimConfiguration) *resourcev1beta1.ResourceClaim {
-	rc := &resourcev1beta1.ResourceClaim{
+func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1.DeviceRequest,
+	constraints []resourcev1.DeviceConstraint, config []resourcev1.DeviceClaimConfiguration) *resourcev1.ResourceClaim {
+	rc := &resourcev1.ResourceClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:       namespace,
 			Name:            name,
 			ResourceVersion: "1",
 		},
-		Spec: resourcev1beta1.ResourceClaimSpec{
-			Devices: resourcev1beta1.DeviceClaim{
+		Spec: resourcev1.ResourceClaimSpec{
+			Devices: resourcev1.DeviceClaim{
 				Requests: deviceRequests,
 			},
 		},
@@ -231,12 +239,12 @@ func BuildResourceClaim(namespace, name string, deviceRequests []resourcev1beta1
 	return rc
 }
 
-func BuildDeviceClass(name string, selectors []resourcev1beta1.DeviceSelector, config []resourcev1beta1.DeviceClassConfiguration) *resourcev1beta1.DeviceClass {
-	dc := &resourcev1beta1.DeviceClass{
+func BuildDeviceClass(name string, selectors []resourcev1.DeviceSelector, config []resourcev1.DeviceClassConfiguration) *resourcev1.DeviceClass {
+	dc := &resourcev1.DeviceClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: resourcev1beta1.DeviceClassSpec{
+		Spec: resourcev1.DeviceClassSpec{
 			Selectors: selectors,
 		},
 	}
@@ -248,24 +256,22 @@ func BuildDeviceClass(name string, selectors []resourcev1beta1.DeviceSelector, c
 	return dc
 }
 
-func BuildDevice(name string, attributes map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceAttribute,
-	capacity map[resourcev1beta1.QualifiedName]resourcev1beta1.DeviceCapacity) resourcev1beta1.Device {
-	return resourcev1beta1.Device{
-		Name: name,
-		Basic: &resourcev1beta1.BasicDevice{
-			Attributes: attributes,
-			Capacity:   capacity,
-		},
+func BuildDevice(name string, attributes map[resourcev1.QualifiedName]resourcev1.DeviceAttribute,
+	capacity map[resourcev1.QualifiedName]resourcev1.DeviceCapacity) resourcev1.Device {
+	return resourcev1.Device{
+		Name:       name,
+		Attributes: attributes,
+		Capacity:   capacity,
 	}
 }
 
-func BuildResourceSlice(name, driver, nodeName string, pool resourcev1beta1.ResourcePool, devices []resourcev1beta1.Device) *resourcev1beta1.ResourceSlice {
-	return &resourcev1beta1.ResourceSlice{
+func BuildResourceSlice(name, driver, nodeName string, pool resourcev1.ResourcePool, devices []resourcev1.Device) *resourcev1.ResourceSlice {
+	return &resourcev1.ResourceSlice{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: resourcev1beta1.ResourceSliceSpec{
-			NodeName: nodeName,
+		Spec: resourcev1.ResourceSliceSpec{
+			NodeName: &nodeName,
 			Driver:   driver,
 			Pool:     pool,
 			Devices:  devices,
@@ -322,6 +328,35 @@ func BuildPodGroup(name, ns, queue string, minMember int32, taskMinMember map[st
 	}
 }
 
+func BuildSubGroupPolicy(name string, matchLabelKeys []string, mode string, highestTierAllowed int) schedulingv1beta1.SubGroupPolicySpec {
+	return BuildSubGroupPolicyWithSubGroupSize(name, matchLabelKeys, mode, highestTierAllowed, 1)
+}
+
+func BuildSubGroupPolicyWithSubGroupSize(name string, matchLabelKeys []string, mode string, highestTierAllowed int, subGroupSize int32) schedulingv1beta1.SubGroupPolicySpec {
+	return BuildSubGroupPolicyWithMinSubGroups(name, matchLabelKeys, mode, highestTierAllowed, subGroupSize, 0)
+}
+
+func BuildSubGroupPolicyWithMinSubGroups(name string, matchLabelKeys []string, mode string, highestTierAllowed int, subGroupSize, minSubGroups int32) schedulingv1beta1.SubGroupPolicySpec {
+	subGroupPolicy := schedulingv1beta1.SubGroupPolicySpec{
+		Name: name,
+		NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
+			Mode:               schedulingv1beta1.NetworkTopologyMode(mode),
+			HighestTierAllowed: &highestTierAllowed,
+		},
+		SubGroupSize: &subGroupSize,
+		MinSubGroups: &minSubGroups,
+	}
+	subGroupPolicy.MatchLabelKeys = matchLabelKeys
+	return subGroupPolicy
+}
+
+// BuildPodGroupWithSubGroupPolicy builds podGroup with NetworkTopology and SubGroupPolicy.
+func BuildPodGroupWithSubGroupPolicy(name, ns, hyperNodeName, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode string, highestTierAllowed int, subGroupPolicy []schedulingv1beta1.SubGroupPolicySpec) *schedulingv1beta1.PodGroup {
+	pg := BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue, minMember, taskMinMember, status, mode, highestTierAllowed)
+	pg.Spec.SubGroupPolicy = subGroupPolicy
+	return pg
+}
+
 // BuildPodGroupWithNetWorkTopologies builds podGroup with NetWorkTopologies.
 func BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode string, highestTierAllowed int) *schedulingv1beta1.PodGroup {
 	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
@@ -329,6 +364,17 @@ func BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue string, m
 	pg.Spec.NetworkTopology = &schedulingv1beta1.NetworkTopologySpec{
 		Mode:               schedulingv1beta1.NetworkTopologyMode(mode),
 		HighestTierAllowed: &highestTierAllowed,
+	}
+	return pg
+}
+
+// BuildPodGroupUsingNetWorkTopologiesWithTierName builds podGroup using NetWorkTopologies with highestTierName.
+func BuildPodGroupUsingNetWorkTopologiesWithTierName(name, ns, hyperNodeName, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode, highestTierName string) *schedulingv1beta1.PodGroup {
+	pg := BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
+	pg.Annotations = map[string]string{api.JobAllocatedHyperNode: hyperNodeName}
+	pg.Spec.NetworkTopology = &schedulingv1beta1.NetworkTopologySpec{
+		Mode:            schedulingv1beta1.NetworkTopologyMode(mode),
+		HighestTierName: highestTierName,
 	}
 	return pg
 }
@@ -659,4 +705,12 @@ func (q *QueueWrapper) Affinity(affinity *schedulingv1beta1.Affinity) *QueueWrap
 // Obj returns the raw Queue object.
 func (q *QueueWrapper) Obj() *schedulingv1beta1.Queue {
 	return q.Queue
+}
+
+func ConvertNodeInfoSliceToInterface(m map[string]*k8sframework.NodeInfo) map[string]fwk.NodeInfo {
+	out := make(map[string]fwk.NodeInfo, len(m))
+	for k, v := range m {
+		out[k] = v.Snapshot()
+	}
+	return out
 }

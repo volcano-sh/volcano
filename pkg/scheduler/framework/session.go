@@ -25,6 +25,8 @@ package framework
 import (
 	"context"
 	"fmt"
+	"maps"
+	"math"
 	"sort"
 	"sync"
 
@@ -40,18 +42,28 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingscheme "volcano.sh/apis/pkg/apis/scheduling/scheme"
 	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
-
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api/helpers"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
+)
+
+const (
+	// ClusterTopHyperNode is the common root for all HyperNodes in the snapshot.
+	// During the session open phase, a virtual cluster-level top-tier HyperNode is created in the snapshot, simplifying subsequent scheduling logic.
+	// Its Tier value is set to the maximum existing Tier + 1 among real HyperNodes. This is recalculated every time a session opens.
+	// If no real HyperNodes exist in the cluster, this virtual top-tier HyperNode will still exist with Tier = 1 and will encompass all Nodes in the cluster.
+	ClusterTopHyperNode = "<cluster-top-hypernode>"
 )
 
 // Session information for the current session
@@ -70,7 +82,9 @@ type Session struct {
 	TotalDeserved  *api.Resource
 	// PodGroupOldState contains podgroup status and annotations during schedule
 	// This should not be mutated after initiated
-	api.PodGroupOldState
+	PodGroupOldState *api.PodGroupOldState
+	// DirtyJobs include the jobs that need to flush to SchedulerCache on session close
+	DirtyJobs sets.Set[api.JobID]
 
 	Jobs           map[api.JobID]*api.JobInfo
 	Nodes          map[string]*api.NodeInfo
@@ -81,14 +95,15 @@ type Session struct {
 
 	// NodeMap is like Nodes except that it uses k8s NodeInfo api and should only
 	// be used in k8s compatible api scenarios such as in predicates and nodeorder plugins.
-	NodeMap   map[string]*k8sframework.NodeInfo
+	NodeMap   map[string]fwk.NodeInfo
 	PodLister *PodLister
 
 	Tiers          []conf.Tier
 	Configurations []conf.Configuration
 	NodeList       []*api.NodeInfo
 	// HyperNodes stores the HyperNodeInfo of each HyperNode
-	HyperNodes api.HyperNodeInfoMap
+	HyperNodes           api.HyperNodeInfoMap
+	HyperNodeTierNameMap api.HyperNodeTierNameMap
 	// HyperNodesSetByTier contains a set of hyperNodes by tier from down to top, nodes under the same hyperNode
 	// have the same topology domain, e.g., nodes under the same switch or tor, jobs allocated in the same
 	// hyperNode can gain a better performance, the lower the tier of hyperNode, the better performance.
@@ -96,6 +111,7 @@ type Session struct {
 	HyperNodesTiers     []int
 	// RealNodesList maps hyperNode Name -> nodes under the hyperNode.
 	RealNodesList             map[string][]*api.NodeInfo
+	RealNodesSet              map[string]sets.Set[string]
 	HyperNodesReadyToSchedule bool
 
 	plugins             map[string]Plugin
@@ -118,21 +134,26 @@ type Session struct {
 	overusedFns         map[string]api.ValidateFn
 	// preemptiveFns means whether current queue can reclaim from other queue,
 	// while reclaimableFns means whether current queue's resources can be reclaimed.
-	preemptiveFns          map[string]api.ValidateWithCandidateFn
-	allocatableFns         map[string]api.AllocatableFn
-	jobReadyFns            map[string]api.ValidateFn
-	jobPipelinedFns        map[string]api.VoteFn
-	jobValidFns            map[string]api.ValidateExFn
-	jobEnqueueableFns      map[string]api.VoteFn
-	jobEnqueuedFns         map[string]api.JobEnqueuedFn
-	targetJobFns           map[string]api.TargetJobFn
-	reservedNodesFns       map[string]api.ReservedNodesFn
-	victimTasksFns         map[string][]api.VictimTasksFn
-	jobStarvingFns         map[string]api.ValidateFn
-	simulateRemoveTaskFns  map[string]api.SimulateRemoveTaskFn
-	simulateAddTaskFns     map[string]api.SimulateAddTaskFn
-	simulatePredicateFns   map[string]api.SimulatePredicateFn
-	simulateAllocatableFns map[string]api.SimulateAllocatableFn
+	preemptiveFns                 map[string]api.ValidateWithCandidateFn
+	allocatableFns                map[string]api.AllocatableFn
+	jobReadyFns                   map[string]api.ValidateFn
+	jobPipelinedFns               map[string]api.VoteFn
+	jobValidFns                   map[string]api.ValidateExFn
+	jobEnqueueableFns             map[string]api.VoteFn
+	jobEnqueuedFns                map[string]api.JobEnqueuedFn
+	targetJobFns                  map[string]api.TargetJobFn
+	reservedNodesFns              map[string]api.ReservedNodesFn
+	victimTasksFns                map[string][]api.VictimTasksFn
+	jobStarvingFns                map[string]api.ValidateFn
+	simulateRemoveTaskFns         map[string]api.SimulateRemoveTaskFn
+	simulateAddTaskFns            map[string]api.SimulateAddTaskFn
+	simulatePredicateFns          map[string]api.SimulatePredicateFn
+	simulateAllocatableFns        map[string]api.SimulateAllocatableFn
+	subJobReadyFns                map[string]api.ValidateFn
+	subJobPipelinedFns            map[string]api.VoteFn
+	subJobOrderFns                map[string]api.CompareFn
+	hyperNodeGradientForJobFns    map[string]api.HyperNodeGradientForJobFn
+	hyperNodeGradientForSubJobFns map[string]api.HyperNodeGradientForSubJobFn
 
 	// cycleStatesMap is used to temporarily store the scheduling status of each pod, its life cycle is same as Session.
 	// Because state needs to be passed between different extension points (not only used in PreFilter and Filter),
@@ -155,48 +176,54 @@ func openSession(cache cache.Cache) *Session {
 		TotalResource:  api.EmptyResource(),
 		TotalGuarantee: api.EmptyResource(),
 		TotalDeserved:  api.EmptyResource(),
-		PodGroupOldState: api.PodGroupOldState{
+		PodGroupOldState: &api.PodGroupOldState{
 			Status:      map[api.JobID]scheduling.PodGroupStatus{},
 			Annotations: map[api.JobID]map[string]string{},
 		},
+		DirtyJobs:      sets.New[api.JobID](),
 		Jobs:           map[api.JobID]*api.JobInfo{},
 		Nodes:          map[string]*api.NodeInfo{},
 		CSINodesStatus: map[string]*api.CSINodeStatusInfo{},
 		RevocableNodes: map[string]*api.NodeInfo{},
 		Queues:         map[api.QueueID]*api.QueueInfo{},
 
-		plugins:                map[string]Plugin{},
-		jobOrderFns:            map[string]api.CompareFn{},
-		queueOrderFns:          map[string]api.CompareFn{},
-		victimQueueOrderFns:    map[string]api.VictimCompareFn{},
-		taskOrderFns:           map[string]api.CompareFn{},
-		clusterOrderFns:        map[string]api.CompareFn{},
-		predicateFns:           map[string]api.PredicateFn{},
-		prePredicateFns:        map[string]api.PrePredicateFn{},
-		bestNodeFns:            map[string]api.BestNodeFn{},
-		nodeOrderFns:           map[string]api.NodeOrderFn{},
-		batchNodeOrderFns:      map[string]api.BatchNodeOrderFn{},
-		nodeMapFns:             map[string]api.NodeMapFn{},
-		nodeReduceFns:          map[string]api.NodeReduceFn{},
-		hyperNodeOrderFns:      map[string]api.HyperNodeOrderFn{},
-		preemptableFns:         map[string]api.EvictableFn{},
-		reclaimableFns:         map[string]api.EvictableFn{},
-		overusedFns:            map[string]api.ValidateFn{},
-		preemptiveFns:          map[string]api.ValidateWithCandidateFn{},
-		allocatableFns:         map[string]api.AllocatableFn{},
-		jobReadyFns:            map[string]api.ValidateFn{},
-		jobPipelinedFns:        map[string]api.VoteFn{},
-		jobValidFns:            map[string]api.ValidateExFn{},
-		jobEnqueueableFns:      map[string]api.VoteFn{},
-		jobEnqueuedFns:         map[string]api.JobEnqueuedFn{},
-		targetJobFns:           map[string]api.TargetJobFn{},
-		reservedNodesFns:       map[string]api.ReservedNodesFn{},
-		victimTasksFns:         map[string][]api.VictimTasksFn{},
-		jobStarvingFns:         map[string]api.ValidateFn{},
-		simulateRemoveTaskFns:  map[string]api.SimulateRemoveTaskFn{},
-		simulateAddTaskFns:     map[string]api.SimulateAddTaskFn{},
-		simulatePredicateFns:   map[string]api.SimulatePredicateFn{},
-		simulateAllocatableFns: map[string]api.SimulateAllocatableFn{},
+		plugins:                       map[string]Plugin{},
+		jobOrderFns:                   map[string]api.CompareFn{},
+		queueOrderFns:                 map[string]api.CompareFn{},
+		victimQueueOrderFns:           map[string]api.VictimCompareFn{},
+		taskOrderFns:                  map[string]api.CompareFn{},
+		clusterOrderFns:               map[string]api.CompareFn{},
+		predicateFns:                  map[string]api.PredicateFn{},
+		prePredicateFns:               map[string]api.PrePredicateFn{},
+		bestNodeFns:                   map[string]api.BestNodeFn{},
+		nodeOrderFns:                  map[string]api.NodeOrderFn{},
+		batchNodeOrderFns:             map[string]api.BatchNodeOrderFn{},
+		nodeMapFns:                    map[string]api.NodeMapFn{},
+		nodeReduceFns:                 map[string]api.NodeReduceFn{},
+		hyperNodeOrderFns:             map[string]api.HyperNodeOrderFn{},
+		preemptableFns:                map[string]api.EvictableFn{},
+		reclaimableFns:                map[string]api.EvictableFn{},
+		overusedFns:                   map[string]api.ValidateFn{},
+		preemptiveFns:                 map[string]api.ValidateWithCandidateFn{},
+		allocatableFns:                map[string]api.AllocatableFn{},
+		jobReadyFns:                   map[string]api.ValidateFn{},
+		jobPipelinedFns:               map[string]api.VoteFn{},
+		jobValidFns:                   map[string]api.ValidateExFn{},
+		jobEnqueueableFns:             map[string]api.VoteFn{},
+		jobEnqueuedFns:                map[string]api.JobEnqueuedFn{},
+		targetJobFns:                  map[string]api.TargetJobFn{},
+		reservedNodesFns:              map[string]api.ReservedNodesFn{},
+		victimTasksFns:                map[string][]api.VictimTasksFn{},
+		jobStarvingFns:                map[string]api.ValidateFn{},
+		simulateRemoveTaskFns:         map[string]api.SimulateRemoveTaskFn{},
+		simulateAddTaskFns:            map[string]api.SimulateAddTaskFn{},
+		simulatePredicateFns:          map[string]api.SimulatePredicateFn{},
+		simulateAllocatableFns:        map[string]api.SimulateAllocatableFn{},
+		subJobReadyFns:                map[string]api.ValidateFn{},
+		subJobPipelinedFns:            map[string]api.VoteFn{},
+		subJobOrderFns:                map[string]api.CompareFn{},
+		hyperNodeGradientForJobFns:    map[string]api.HyperNodeGradientForJobFn{},
+		hyperNodeGradientForSubJobFns: map[string]api.HyperNodeGradientForSubJobFn{},
 	}
 
 	snapshot := cache.Snapshot()
@@ -205,15 +232,37 @@ func openSession(cache cache.Cache) *Session {
 	for _, job := range ssn.Jobs {
 		if job.PodGroup != nil {
 			ssn.PodGroupOldState.Status[job.UID] = *job.PodGroup.Status.DeepCopy()
-			ssn.PodGroupOldState.Annotations[job.UID] = job.PodGroup.GetAnnotations()
+			ssn.PodGroupOldState.Annotations[job.UID] = maps.Clone(job.PodGroup.GetAnnotations())
 		}
 	}
 	ssn.NodeList = util.GetNodeList(snapshot.Nodes, snapshot.NodeList)
+
 	ssn.HyperNodes = snapshot.HyperNodes
 	ssn.HyperNodesSetByTier = snapshot.HyperNodesSetByTier
-	ssn.parseHyperNodesTiers()
-	ssn.RealNodesList = util.GetRealNodesListByHyperNode(snapshot.RealNodesSet, snapshot.Nodes)
+	ssn.HyperNodeTierNameMap = snapshot.HyperNodeTierNameMap
+	ssn.RealNodesList, ssn.RealNodesSet = util.GetRealNodesByHyperNode(snapshot.RealNodesSet, snapshot.Nodes)
 	ssn.HyperNodesReadyToSchedule = snapshot.HyperNodesReadyToSchedule
+	ssn.addClusterTopHyperNode(ssn.NodeList)
+	ssn.parseHyperNodesTiers()
+
+	if ssn.HyperNodesReadyToSchedule {
+		// hyperNodes in ssn has ClusterTopHyperNode
+		hyperNodeSet := sets.New[string]()
+		for hn := range ssn.HyperNodes {
+			hyperNodeSet.Insert(hn)
+		}
+		for _, job := range ssn.Jobs {
+			ssn.removeInvalidAllocatedHyperNode(job, ssn.HyperNodes)
+			ssn.recoverAllocatedHyperNode(job, hyperNodeSet, ssn.HyperNodes, ssn.RealNodesSet)
+		}
+	}
+
+	if klog.V(5).Enabled() {
+		for _, hn := range ssn.HyperNodes {
+			klog.InfoS("hyperNode in session", "name", hn.Name, "tier", hn.Tier(), "parent", hn.Parent, "children", hn.Children)
+		}
+	}
+
 	ssn.Nodes = snapshot.Nodes
 	ssn.CSINodesStatus = snapshot.CSINodesStatus
 	ssn.RevocableNodes = snapshot.RevocableNodes
@@ -224,10 +273,190 @@ func openSession(cache cache.Cache) *Session {
 		ssn.TotalResource.Add(n.Allocatable)
 	}
 
-	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues",
-		ssn.UID, len(ssn.Jobs), len(ssn.Queues))
+	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues. HyperNodesReadyToSchedule: %v",
+		ssn.UID, len(ssn.Jobs), len(ssn.Queues), ssn.HyperNodesReadyToSchedule)
 
 	return ssn
+}
+
+// addClusterTopHyperNode adds a virtual top hyperNode of all hyperNodes in the cluster into the session
+func (ssn *Session) addClusterTopHyperNode(nodes []*api.NodeInfo) {
+	topTier := 1
+	for tier := range ssn.HyperNodesSetByTier {
+		if tier >= topTier {
+			topTier = tier + 1 // topTier should be greater than the highest tier of real hyperNodes
+		}
+	}
+
+	topHn := &topologyv1alpha1.HyperNode{}
+	topHn.Name = ClusterTopHyperNode
+	topHn.Spec.Tier = topTier
+	topHni := api.NewHyperNodeInfo(topHn)
+
+	for _, hni := range ssn.HyperNodes {
+		if hni.Parent != "" {
+			continue
+		}
+		hni.Parent = topHn.Name
+		topHni.Children.Insert(hni.Name)
+	}
+
+	ssn.HyperNodes[topHni.Name] = topHni
+	ssn.HyperNodesSetByTier[topHni.Tier()] = sets.New(topHni.Name)
+	ssn.RealNodesList[topHni.Name] = nodes
+	ssn.RealNodesSet[topHni.Name] = sets.New[string]()
+	for _, node := range nodes {
+		ssn.RealNodesSet[topHni.Name].Insert(node.Name)
+	}
+}
+
+// removeInvalidAllocatedHyperNode removes the non-existent allocated hyperNode for job and subJobs in the job.
+// The allocated hyperNode will also be removed if there is no allocated task in the job or subJob.
+func (ssn *Session) removeInvalidAllocatedHyperNode(job *api.JobInfo, hyperNodes api.HyperNodeInfoMap) {
+	// remove job AllocatedHyperNode if invalid
+	if job.AllocatedHyperNode != "" {
+		remove := false
+		var reason string
+		if _, found := hyperNodes[job.AllocatedHyperNode]; !found {
+			remove = true
+			reason = "allocated hyperNode not exist"
+		}
+		if job.AllocatedTaskNum() == 0 {
+			remove = true
+			reason = "there is no allocated task in the job"
+		}
+		if remove {
+			job.AllocatedHyperNode = ""
+			ssn.MarkJobDirty(job.UID)
+			klog.V(3).InfoS("remove allocated hyperNode for job", "job", job.UID, "AllocatedHyperNode", job.AllocatedHyperNode, "reason", reason)
+		}
+	}
+
+	// remove subJob AllocatedHyperNode if invalid
+	for _, subJob := range job.SubJobs {
+		if subJob.AllocatedHyperNode != "" {
+			remove := false
+			var reason string
+			if _, found := hyperNodes[subJob.AllocatedHyperNode]; !found {
+				remove = true
+				reason = "allocated hyperNode not exist"
+			}
+			if subJob.AllocatedTaskNum() == 0 {
+				remove = true
+				reason = "there is no allocated task in the subJob"
+			}
+			if remove {
+				subJob.AllocatedHyperNode = ""
+				ssn.MarkJobDirty(subJob.Job)
+				klog.V(3).InfoS("remove allocated hyperNode for subJob", "subJob", subJob.UID, "AllocatedHyperNode", subJob.AllocatedHyperNode, "reason", reason)
+			}
+		}
+	}
+}
+
+// recoverAllocatedHyperNode recover the allocated hyperNode for the job and subJobs in the job with empty AllocatedHyperNode field.
+// When the scheduler reboot, the allocated hyperNode of job will be lost.
+// We recover this information through the nodes that tasks are running on.
+func (ssn *Session) recoverAllocatedHyperNode(job *api.JobInfo, hyperNodeSet sets.Set[string], hyperNodes api.HyperNodeInfoMap, nodesByHyperNode map[string]sets.Set[string]) {
+	if !job.ContainsNetworkTopology() {
+		return
+	}
+
+	subJobUpdated := false
+
+	// update subJob AllocatedHyperNode based on allocated nodes
+	for _, subJob := range job.SubJobs {
+		if !subJob.WithNetworkTopology() || subJob.AllocatedHyperNode != "" {
+			continue
+		}
+
+		// pick up allocated tasks in the subJob
+		allocatedTasks := make([]*api.TaskInfo, 0, subJob.AllocatedTaskNum())
+		for status, tasks := range subJob.TaskStatusIndex {
+			if !api.AllocatedStatus(status) {
+				continue
+			}
+			for _, task := range tasks {
+				allocatedTasks = append(allocatedTasks, task)
+			}
+		}
+
+		// find the allocated hyperNode through the nodes that tasks are running on
+		var subJobAllocatedHyperNode sets.Set[string]
+		for _, task := range allocatedTasks {
+			if task.NodeName == "" {
+				klog.Warningf("task %s/%s in allocated status %s with empty nodeName", task.Namespace, task.Name, task.Status)
+				continue
+			}
+
+			// For the first task, we search among all the hyperNodes.
+			// For the other tasks, we search from the hyperNodes that previous tasks were allocated to.
+			var search sets.Set[string]
+			if subJobAllocatedHyperNode == nil {
+				search = hyperNodeSet
+			} else {
+				search = subJobAllocatedHyperNode
+			}
+
+			taskAllocatedHyperNode := sets.New[string]()
+			for hn := range search {
+				if nodes, found := nodesByHyperNode[hn]; found && nodes.Has(task.NodeName) {
+					taskAllocatedHyperNode.Insert(hn)
+				}
+			}
+			klog.V(4).Infof("find allocated hyperNode %v for task %s/%s by node %s", taskAllocatedHyperNode, task.Namespace, task.Name, task.NodeName)
+
+			subJobAllocatedHyperNode = taskAllocatedHyperNode
+			if subJobAllocatedHyperNode.Len() == 0 {
+				klog.Errorf("failed to find allocated hyperNode for subJob %s by allocated nodes", subJob.UID)
+				break
+			}
+		}
+		minimumHyperNode := getMinimumHyperNode(subJobAllocatedHyperNode, nodesByHyperNode)
+
+		if subJob.AllocatedHyperNode != minimumHyperNode {
+			subJobUpdated = true
+			subJob.AllocatedHyperNode = minimumHyperNode
+			ssn.MarkJobDirty(subJob.Job)
+			klog.V(3).InfoS("update subJob allocated hyperNode", "subJob", subJob.UID, "AllocatedHyperNode", minimumHyperNode)
+		}
+	}
+
+	// update job AllocatedHyperNode based on subJob allocated hyperNode
+	if job.AllocatedHyperNode == "" || subJobUpdated {
+		var lca string
+		for _, subJob := range job.SubJobs {
+			if subJob.AllocatedHyperNode == "" {
+				continue
+			}
+			lca = hyperNodes.GetLCAHyperNode(lca, subJob.AllocatedHyperNode)
+			if lca == "" {
+				klog.Errorf("failed to find allocated hyperNode for job %s by subJob allocated hyperNodes", job.UID)
+				break
+			}
+		}
+		if job.AllocatedHyperNode != lca {
+			job.AllocatedHyperNode = lca
+			ssn.MarkJobDirty(job.UID)
+			klog.V(3).InfoS("update job allocated hyperNode", "job", job.UID, "AllocatedHyperNode", lca)
+		}
+	}
+}
+
+func getMinimumHyperNode(hyperNodes sets.Set[string], nodesByHyperNode map[string]sets.Set[string]) string {
+	if hyperNodes == nil || hyperNodes.Len() == 0 {
+		return ""
+	}
+
+	minimumNodeSize := math.MaxInt
+	minimumHyperNode := ClusterTopHyperNode
+	for name := range hyperNodes {
+		if nodes, found := nodesByHyperNode[name]; found && nodes.Len() < minimumNodeSize {
+			minimumNodeSize = nodes.Len()
+			minimumHyperNode = name
+		}
+	}
+	return minimumHyperNode
 }
 
 func (ssn *Session) parseHyperNodesTiers() {
@@ -641,7 +870,8 @@ func (ssn *Session) CreateBindContext(task *api.TaskInfo) *cache.BindContext {
 	for _, plugin := range ssn.plugins {
 		// If the plugin implements the BindContextHandler interface, call the SetupBindContextExtension method.
 		if handler, ok := plugin.(BindContextHandler); ok {
-			handler.SetupBindContextExtension(ssn, bindContext)
+			state := ssn.GetCycleState(task.UID)
+			handler.SetupBindContextExtension(state, bindContext)
 		}
 	}
 
@@ -815,6 +1045,10 @@ func (ssn *Session) HierarchyEnabled(pluginName string) bool {
 	return false
 }
 
+func (ssn *Session) MarkJobDirty(jobID api.JobID) {
+	ssn.DirtyJobs.Insert(jobID)
+}
+
 // String return nodes and jobs information in the session
 func (ssn *Session) String() string {
 	msg := fmt.Sprintf("Session %v: \n", ssn.UID)
@@ -828,6 +1062,10 @@ func (ssn *Session) String() string {
 	}
 
 	return msg
+}
+
+func (ssn *Session) IsJobTerminated(jobId api.JobID) bool {
+	return ssn.cache.IsJobTerminated(jobId)
 }
 
 func (ssn *Session) MatchReservationForPod(job *api.JobInfo) {

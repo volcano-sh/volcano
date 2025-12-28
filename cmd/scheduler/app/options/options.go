@@ -93,6 +93,10 @@ type ServerOption struct {
 	// not be counted in pod pvc resource request and node.Allocatable, because the spec.drivers of csinode resource
 	// is always null, these provisioners usually are host path csi controllers like rancher.io/local-path and hostpath.csi.k8s.io.
 	IgnoredCSIProvisioners []string
+
+	// DisableDefaultSchedulerConfig indicates if the scheduler should fallback to default
+	// config if the current scheduler config is invalid
+	DisableDefaultSchedulerConfig bool
 }
 
 // DecryptFunc is custom function to parse ca file
@@ -151,6 +155,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
+	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
 }
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.

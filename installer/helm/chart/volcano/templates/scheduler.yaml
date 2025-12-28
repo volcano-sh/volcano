@@ -109,7 +109,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["get", "create", "delete", "update"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["apps"]
     resources: ["daemonsets", "replicasets", "statefulsets"]
     verbs: ["list", "watch", "get"]
@@ -128,6 +128,9 @@ rules:
   - apiGroups: [ "resource.k8s.io" ]
     resources: [ "devicetaintrules" ]
     verbs: [ "get", "list", "watch" ]
+  - apiGroups: ["shard.volcano.sh"]
+    resources: ["nodeshards"]
+    verbs: ["list", "watch", "get", "update"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -240,6 +243,13 @@ spec:
           env:
             - name: DEBUG_SOCKET_DIR
               value: /tmp/klog-socks
+            {{- if .Values.custom.go_memlimit_enable }}
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+                  divisor: "1"
+            {{- end }}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           volumeMounts:
             - name: scheduler-config

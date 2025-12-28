@@ -43,7 +43,7 @@ func MakePodName(jobName string, taskName string, index int) string {
 	return fmt.Sprintf(jobhelpers.PodNameFmt, jobName, taskName, index)
 }
 
-func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy batch.NumaPolicy, ix int, jobForwarding bool) *v1.Pod {
+func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int, jobForwarding bool, pg *schedulingv2.PodGroup, ts *batch.TaskSpec) *v1.Pod {
 	templateCopy := template.DeepCopy()
 
 	pod := &v1.Pod{
@@ -118,8 +118,8 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 	pod.Annotations[batch.PodTemplateKey] = fmt.Sprintf("%s-%s", job.Name, template.Name)
 	pod.Annotations[batch.JobRetryCountKey] = strconv.Itoa(int(job.Status.RetryCount))
 
-	if topologyPolicy != "" {
-		pod.Annotations[schedulingv2.NumaPolicyKey] = string(topologyPolicy)
+	if ts.TopologyPolicy != "" {
+		pod.Annotations[schedulingv2.NumaPolicyKey] = string(ts.TopologyPolicy)
 	}
 
 	if len(job.Annotations) > 0 {
@@ -164,16 +164,29 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, topologyPolicy b
 		pod.Labels[batch.JobForwardingKey] = "true"
 	}
 
+	// Assign partition labels
+	if ts.PartitionPolicy != nil {
+		var partitionID int
+		// Handle invalid partition size, default to partition 0
+		if ts.PartitionPolicy.PartitionSize <= 0 {
+			partitionID = 0
+		} else {
+			partitionID = ix / int(ts.PartitionPolicy.PartitionSize)
+		}
+		pod.Labels[batch.TaskPartitionID] = strconv.Itoa(partitionID)
+	}
+
 	return pod
 }
 
 func applyPolicies(job *batch.Job, req *apis.Request) (delayAct *delayAction) {
 	delayAct = &delayAction{
-		jobKey:   jobcache.JobKeyByReq(req),
-		event:    req.Event,
-		taskName: req.TaskName,
-		podName:  req.PodName,
-		podUID:   req.PodUID,
+		jobKey:    jobcache.JobKeyByReq(req),
+		event:     req.Event,
+		taskName:  req.TaskName,
+		podName:   req.PodName,
+		podUID:    req.PodUID,
+		partition: req.PartitionID,
 		// default action is sync job
 		action: v1alpha1.SyncJobAction,
 	}
@@ -423,6 +436,8 @@ func GetStateAction(delayAct *delayAction) state.Action {
 		action.Target = state.Target{TaskName: delayAct.taskName, Type: state.TargetTypeTask}
 	} else if delayAct.action == v1alpha1.RestartPodAction {
 		action.Target = state.Target{TaskName: delayAct.taskName, PodName: delayAct.podName, Type: state.TargetTypePod}
+	} else if delayAct.action == v1alpha1.RestartPartitionAction {
+		action.Target = state.Target{TaskName: delayAct.taskName, PodName: delayAct.podName, PartitionName: delayAct.partition, Type: state.TargetTypePartition}
 	}
 
 	return action
@@ -434,6 +449,7 @@ const (
 	JobAction ActionType = iota
 	TaskAction
 	PodAction
+	PartitionAction
 )
 
 func GetActionType(action v1alpha1.Action) ActionType {
@@ -448,6 +464,8 @@ func GetActionType(action v1alpha1.Action) ActionType {
 		return TaskAction
 	case v1alpha1.RestartPodAction:
 		return PodAction
+	case v1alpha1.RestartPartitionAction:
+		return PartitionAction
 	}
 	return JobAction
 }

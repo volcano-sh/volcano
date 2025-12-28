@@ -17,18 +17,25 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"math"
 	"os"
 	"strconv"
 
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	resourceslicetracker "k8s.io/dynamic-resource-allocation/resourceslice/tracker"
+	"k8s.io/klog/v2"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
+	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
+	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 
 	fakevcClient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
-
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -116,7 +123,7 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
 		errTasks:            workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[*schedulingapi.JobInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.JobInfo]()),
+		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		DeletedReservations: workqueue.NewTypedRateLimitingQueue[*schedulingapi.ReservationInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.ReservationInfo]()),
 
@@ -132,6 +139,7 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 
 		NodeList:       []string{},
 		binderRegistry: NewBinderRegistry(),
+		resyncPeriod:   0,
 	}
 	if options.ServerOpts != nil && len(options.ServerOpts.NodeSelector) > 0 {
 		msc.updateNodeSelectors(options.ServerOpts.NodeSelector)
@@ -139,5 +147,41 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 	msc.setBatchBindParallel()
 	msc.nodeWorkers = getNodeWorkers()
 	msc.ReservationCache = newReservationCache(msc.vcClient)
+	msc.initMockInformers()
+
 	return msc
+}
+
+// initMockInformers initializes the informer factory and DRA manager for mock cache
+func (sc *SchedulerCache) initMockInformers() {
+	// Initialize informer factory with fake client
+	informerFactory := informers.NewSharedInformerFactory(sc.kubeClient, sc.resyncPeriod)
+	sc.informerFactory = informerFactory
+
+	// Create node informer
+	sc.nodeInformer = informerFactory.Core().V1().Nodes()
+
+	// Initialize DRA manager if feature is enabled
+	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
+		ctx := context.TODO()
+		logger := klog.FromContext(ctx)
+		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
+		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+		resourceSliceTrackerOpts := resourceslicetracker.Options{
+			EnableDeviceTaints: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
+			SliceInformer:      informerFactory.Resource().V1().ResourceSlices(),
+			KubeClient:         sc.kubeClient,
+		}
+		// If device taints are disabled, the additional informers are not needed and
+		// the tracker turns into a simple wrapper around the slice informer.
+		if resourceSliceTrackerOpts.EnableDeviceTaints {
+			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
+			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
+		}
+		resourceSliceTracker, err := resourceslicetracker.StartTracker(ctx, resourceSliceTrackerOpts)
+		if err != nil {
+			klog.V(3).Infof("couldn't start resource slice tracker: %v", err)
+		}
+		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, resourceSliceTracker, informerFactory)
+	}
 }

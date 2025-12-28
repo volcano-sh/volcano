@@ -28,9 +28,24 @@ import (
 )
 
 var _ = Describe("Ray Plugin E2E Test", func() {
+	var testCtx *e2eutil.TestContext
+
+	BeforeEach(func() {
+		By("Prune images before test")
+		PruneUnusedImagesOnAllNodes(e2eutil.KubeClient)
+	})
+	AfterEach(func() {
+		By("Prune images after test")
+		PruneUnusedImagesOnAllNodes(e2eutil.KubeClient)
+	})
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
+	})
+
 	It("Will Start in pending state and  get running phase", func() {
-		ctx := e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		slot := e2eutil.OneCPU
 
@@ -65,17 +80,17 @@ var _ = Describe("Ray Plugin E2E Test", func() {
 			},
 		}
 
-		job := e2eutil.CreateJob(ctx, spec)
+		job := e2eutil.CreateJob(testCtx, spec)
 
 		By("checking if Service for ray job is created")
 		Eventually(func() error {
-			_, err := ctx.Kubeclient.CoreV1().
+			_, err := testCtx.Kubeclient.CoreV1().
 				Services(job.Namespace).
 				Get(context.TODO(), job.Name, metav1.GetOptions{})
 			return err
 		}, "60s", "2s").Should(Succeed())
 
-		err := e2eutil.WaitJobPhases(ctx, job, []vcbatch.JobPhase{
+		err := e2eutil.WaitJobPhases(testCtx, job, []vcbatch.JobPhase{
 			vcbatch.Pending, vcbatch.Running})
 		Expect(err).NotTo(HaveOccurred())
 	})

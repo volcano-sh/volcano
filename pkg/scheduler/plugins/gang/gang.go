@@ -72,6 +72,14 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
+		if valid := job.CheckSubJobValid(); !valid {
+			return &api.ValidateResult{
+				Pass:    false,
+				Reason:  v1beta1.NotEnoughPodsOfTaskReason,
+				Message: "Not enough valid subGroups of each task for gang-scheduling",
+			}
+		}
+
 		vtn := job.ValidTaskNum()
 		if vtn < job.MinAvailable {
 			return &api.ValidateResult{
@@ -138,24 +146,63 @@ func (gp *gangPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		return 0
 	}
-
 	ssn.AddJobOrderFn(gp.Name(), jobOrderFn)
+
+	subJobOrderFn := func(l, r interface{}) int {
+		lv := l.(*api.SubJobInfo)
+		rv := r.(*api.SubJobInfo)
+
+		lReady := lv.IsReady()
+		rReady := rv.IsReady()
+
+		klog.V(4).Infof("Gang SubJobOrderFn: <%v> is ready: %t, <%v> is ready: %t",
+			lv.UID, lReady, rv.UID, rReady)
+
+		if lReady && rReady {
+			return 0
+		}
+
+		if lReady {
+			return 1
+		}
+
+		if rReady {
+			return -1
+		}
+
+		return 0
+	}
+	ssn.AddSubJobOrderFn(gp.Name(), subJobOrderFn)
+
 	ssn.AddJobReadyFn(gp.Name(), func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
-		if ji.CheckTaskReady() && ji.IsReady() {
+		if ji.CheckTaskReady() && ji.CheckSubJobReady() && ji.IsReady() {
 			return true
 		}
 		return false
 	})
 
+	ssn.AddSubJobReadyFn(gp.Name(), func(obj interface{}) bool {
+		sji := obj.(*api.SubJobInfo)
+		return sji.IsReady()
+	})
+
 	pipelinedFn := func(obj interface{}) int {
 		ji := obj.(*api.JobInfo)
-		if ji.CheckTaskPipelined() && ji.IsPipelined() {
+		if ji.CheckTaskPipelined() && ji.CheckSubJobPipelined() && ji.IsPipelined() {
 			return util.Permit
 		}
 		return util.Reject
 	}
 	ssn.AddJobPipelinedFn(gp.Name(), pipelinedFn)
+
+	ssn.AddSubJobPipelinedFn(gp.Name(), func(obj interface{}) int {
+		sji := obj.(*api.SubJobInfo)
+		if sji.IsPipelined() {
+			return util.Permit
+		}
+		return util.Reject
+	})
 
 	jobStarvingFn := func(obj interface{}) bool {
 		ji := obj.(*api.JobInfo)
@@ -191,7 +238,9 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 				unreadyTaskCount, len(job.Tasks), job.FitError())
 
 			unScheduleJobCount++
-			metrics.RegisterJobRetries(job.Name)
+			if !ssn.IsJobTerminated(job.UID) {
+				metrics.RegisterJobRetries(job.Name)
+			}
 
 			// TODO: If the Job is gang-unschedulable due to scheduling gates
 			// we need a new message and reason to tell users
@@ -224,7 +273,9 @@ func (gp *gangPlugin) OnSessionClose(ssn *framework.Session) {
 					job.Namespace, job.Name, err)
 			}
 		}
-		metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
+		if !ssn.IsJobTerminated(job.UID) {
+			metrics.UpdateUnscheduleTaskCount(job.Name, int(unreadyTaskCount))
+		}
 		unreadyTaskCount = 0
 	}
 

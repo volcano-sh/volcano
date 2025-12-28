@@ -49,46 +49,9 @@ func TestValidateHyperNode(t *testing.T) {
 			},
 			ExpectErr: false,
 		},
-		{
-			Name: "validate invalid hypernode with empty exactMatch",
-			HyperNode: hypernodev1alpha1.HyperNode{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "hypernode-1",
-				},
-				Spec: hypernodev1alpha1.HyperNodeSpec{
-					Members: []hypernodev1alpha1.MemberSpec{
-						{
-							Type: hypernodev1alpha1.MemberTypeNode,
-							Selector: hypernodev1alpha1.MemberSelector{
-								ExactMatch: &hypernodev1alpha1.ExactMatch{Name: ""},
-							},
-						},
-					},
-				},
-			},
-			ExpectErr: true,
-		},
-		{
-			Name: "validate invalid hypernode with empty regexMatch",
-			HyperNode: hypernodev1alpha1.HyperNode{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "hypernode-1",
-				},
-				Spec: hypernodev1alpha1.HyperNodeSpec{
-					Members: []hypernodev1alpha1.MemberSpec{
-						{
-							Type: hypernodev1alpha1.MemberTypeNode,
-							Selector: hypernodev1alpha1.MemberSelector{
-								RegexMatch: &hypernodev1alpha1.RegexMatch{
-									Pattern: "",
-								},
-							},
-						},
-					},
-				},
-			},
-			ExpectErr: true,
-		},
+		// Note: empty exactMatch.name and regexMatch.pattern validations are now enforced by
+		// CRD schema (required fields and minLength: 1) and VAP. These test cases are removed
+		// as the validation happens before the webhook is called.
 		{
 			Name: "validate invalid hypernode with invalid regexMatch",
 			HyperNode: hypernodev1alpha1.HyperNode{
@@ -110,55 +73,9 @@ func TestValidateHyperNode(t *testing.T) {
 			},
 			ExpectErr: true,
 		},
-		{
-			Name: "validate invalid hypernode with both regexMatch and exactMatch",
-			HyperNode: hypernodev1alpha1.HyperNode{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "hypernode-1",
-				},
-				Spec: hypernodev1alpha1.HyperNodeSpec{
-					Members: []hypernodev1alpha1.MemberSpec{
-						{
-							Type: hypernodev1alpha1.MemberTypeNode,
-							Selector: hypernodev1alpha1.MemberSelector{
-								RegexMatch: &hypernodev1alpha1.RegexMatch{
-									Pattern: "node.*",
-								},
-								ExactMatch: &hypernodev1alpha1.ExactMatch{Name: "node-1"},
-							},
-						},
-					},
-				},
-			},
-			ExpectErr: true,
-		},
-		{
-			Name: "validate invalid hypernode with neither regexMatch nor exactMatch",
-			HyperNode: hypernodev1alpha1.HyperNode{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "hypernode-1",
-				},
-				Spec: hypernodev1alpha1.HyperNodeSpec{
-					Members: []hypernodev1alpha1.MemberSpec{
-						{
-							Type:     hypernodev1alpha1.MemberTypeNode,
-							Selector: hypernodev1alpha1.MemberSelector{},
-						},
-					},
-				},
-			},
-			ExpectErr: true,
-		},
-		{
-			Name: "validate none members",
-			HyperNode: hypernodev1alpha1.HyperNode{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "hypernode-1",
-				},
-				Spec: hypernodev1alpha1.HyperNodeSpec{},
-			},
-			ExpectErr: true,
-		},
+		// Note: selector mutual exclusivity and members minItems validations are now enforced by
+		// CRD x-kubernetes-validations and VAP. These test cases are removed as the validation
+		// happens before the webhook is called.
 		{
 			Name: "validate valid hypernode with labelMatch",
 			HyperNode: hypernodev1alpha1.HyperNode{
@@ -182,30 +99,8 @@ func TestValidateHyperNode(t *testing.T) {
 			},
 			ExpectErr: false,
 		},
-		{
-			Name: "validate invalid hypernode with labelMatch and exactMatch",
-			HyperNode: hypernodev1alpha1.HyperNode{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "hypernode-multiple-selectors",
-				},
-				Spec: hypernodev1alpha1.HyperNodeSpec{
-					Members: []hypernodev1alpha1.MemberSpec{
-						{
-							Type: hypernodev1alpha1.MemberTypeNode,
-							Selector: hypernodev1alpha1.MemberSelector{
-								LabelMatch: &metav1.LabelSelector{
-									MatchLabels: map[string]string{
-										"topology-rack": "rack1",
-									},
-								},
-								ExactMatch: &hypernodev1alpha1.ExactMatch{Name: "node-1"},
-							},
-						},
-					},
-				},
-			},
-			ExpectErr: true,
-		},
+		// Note: selector mutual exclusivity validation is now enforced by CRD x-kubernetes-validations
+		// and VAP. This test case is removed as the validation happens before the webhook is called.
 	}
 
 	for _, testCase := range testCases {

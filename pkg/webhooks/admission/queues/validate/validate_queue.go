@@ -116,7 +116,7 @@ func validateQueue(queue *schedulingv1beta1.Queue) error {
 	resourcePath := field.NewPath("requestBody")
 
 	errs = append(errs, validateStateOfQueue(queue.Status.State, resourcePath.Child("spec").Child("state"))...)
-	errs = append(errs, validateWeightOfQueue(queue.Spec.Weight, resourcePath.Child("spec").Child("weight"))...)
+	// Note: weight >= 1 validation is now enforced by CRD schema (minimum: 1)
 	errs = append(errs, validateResourceOfQueue(queue.Spec, resourcePath.Child("spec"))...)
 	errs = append(errs, validateHierarchicalAttributes(queue, resourcePath.Child("metadata").Child("annotations"))...)
 
@@ -205,14 +205,6 @@ func validateStateOfQueue(value schedulingv1beta1.QueueState, fldPath *field.Pat
 	return append(errs, field.Invalid(fldPath, value, fmt.Sprintf("queue state must be in %v", validQueueStates)))
 }
 
-func validateWeightOfQueue(value int32, fldPath *field.Path) field.ErrorList {
-	errs := field.ErrorList{}
-	if value > 0 {
-		return errs
-	}
-	return append(errs, field.Invalid(fldPath, value, "queue weight must be a positive integer"))
-}
-
 func validateResourceOfQueue(resource schedulingv1beta1.QueueSpec, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
 	capabilityResource := api.NewResource(resource.Capability)
@@ -273,6 +265,12 @@ func validateHierarchicalQueue(queue *schedulingv1beta1.Queue) error {
 	if queue.Spec.Parent == "" || queue.Spec.Parent == "root" {
 		return nil
 	}
+
+	// Prevent a queue from using its own name as the parent
+	if queue.Spec.Parent == queue.Name {
+		return fmt.Errorf("queue %s cannot use itself as parent", queue.Name)
+	}
+
 	parentQueue, err := config.QueueLister.Get(queue.Spec.Parent)
 	if err != nil {
 		return fmt.Errorf("failed to get parent queue of queue %s: %v", queue.Name, err)

@@ -80,11 +80,12 @@ func TestFitError(t *testing.T) {
 
 func TestFitErrors(t *testing.T) {
 	tests := []struct {
-		node   string
-		fitStr string
-		err    error
-		fiterr *FitError
-		want   string // expected error string
+		node      string
+		fitStr    string
+		hyperNode string
+		err       error
+		fiterr    *FitError
+		want      string // expected error string
 		// nodes that are not helpful for preempting, which has a code of UnschedulableAndUnresolvable
 		filterNodes map[string]sets.Empty
 	}{
@@ -112,10 +113,28 @@ func TestFitErrors(t *testing.T) {
 			// only node2 has UnschedulableAndUnresolvable
 			filterNodes: map[string]sets.Empty{"node2": {}},
 		},
+		{
+			hyperNode: "hyperNode1",
+			node:      "node1",
+			err:       errors.New(NodePodNumberExceeded),
+			want:      "In hyperNode hyperNode1: 0/1 nodes are unavailable: 1 node(s) pod number exceeded.",
+			// no node has UnschedulableAndUnresolvable
+			filterNodes: map[string]sets.Empty{},
+		},
+		{
+			hyperNode: "hyperNode1",
+			node:      "node1",
+			fitStr:    "fit failed",
+			err:       errors.New(NodePodNumberExceeded),
+			want:      "In hyperNode hyperNode1: fit failed: 1 node(s) pod number exceeded.",
+			// no node has UnschedulableAndUnresolvable
+			filterNodes: map[string]sets.Empty{},
+		},
 	}
 	for _, test := range tests {
 		fitErrs := NewFitErrors()
 		fitErrs.SetError(test.fitStr)
+		fitErrs.SetHyperNode(test.hyperNode)
 		if test.err != nil {
 			fitErrs.SetNodeError(test.node, test.err)
 		}

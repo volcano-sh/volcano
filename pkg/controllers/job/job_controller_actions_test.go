@@ -568,23 +568,173 @@ func TestCreatePVCFunc(t *testing.T) {
 
 func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 	namespace := "test"
+	highestTierAllowed := 1
 
 	testcases := []struct {
-		Name      string
-		Job       *v1alpha1.Job
-		ExpextVal error
+		Name                string
+		Job                 *v1alpha1.Job
+		ExpectMinTaskMember map[string]int32
+		ExpextVal           error
 	}{
 		{
 			Name: "CreatePodGroup success Case",
 			Job: &v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:       namespace,
-					Name:            "job1",
-					ResourceVersion: "100",
-					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+					Namespace: namespace,
+					Name:      "job1",
+					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Volumes: []v1alpha1.VolumeSpec{
+						{
+							VolumeClaimName: "vc1",
+							VolumeClaim: &v1.PersistentVolumeClaimSpec{
+								VolumeName: "v1",
+							},
+						},
+						{
+							VolumeClaimName: "vc2",
+						},
+					},
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:               "hard",
+									HighestTierAllowed: &highestTierAllowed,
+								},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 			},
-			ExpextVal: nil,
+			ExpectMinTaskMember: map[string]int32{"task1": 6},
+			ExpextVal:           nil,
+		},
+		{
+			Name: "CreatePodGroup success Case with MinPartitions",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "job3",
+					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Volumes: []v1alpha1.VolumeSpec{
+						{
+							VolumeClaimName: "vc1",
+							VolumeClaim: &v1.PersistentVolumeClaimSpec{
+								VolumeName: "v1",
+							},
+						},
+						{
+							VolumeClaimName: "vc2",
+						},
+					},
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								MinPartitions:   1,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:               "hard",
+									HighestTierAllowed: &highestTierAllowed,
+								},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ExpectMinTaskMember: map[string]int32{"task1": 3},
+			ExpextVal:           nil,
+		},
+		{
+			Name: "CreatePodGroup success Case with highestTierName",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "job2",
+					UID:       "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					SchedulerName: "volcano",
+					Volumes: []v1alpha1.VolumeSpec{
+						{
+							VolumeClaimName: "vc1",
+							VolumeClaim: &v1.PersistentVolumeClaimSpec{
+								VolumeName: "v1",
+							},
+						},
+						{
+							VolumeClaimName: "vc2",
+						},
+					},
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:            "hard",
+									HighestTierName: "volcano.sh/hypernode",
+								},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:      "pods",
+									Namespace: namespace,
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name: "Containers",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			ExpectMinTaskMember: map[string]int32{"task1": 6},
+			ExpextVal:           nil,
 		},
 	}
 
@@ -598,9 +748,12 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 			}
 
 			pgName := testcase.Job.Name + "-" + string(testcase.Job.UID)
-			_, err = fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
+			pg, err := fakeController.vcClient.SchedulingV1beta1().PodGroups(namespace).Get(context.TODO(), pgName, metav1.GetOptions{})
 			if err != nil {
 				t.Error("Expected PodGroup to get created, but not created")
+			}
+			if !reflect.DeepEqual(pg.Spec.MinTaskMember, testcase.ExpectMinTaskMember) {
+				t.Errorf("Expected PodGroup.Spec.MinTaskMember to be created to: %v, but got: %v", testcase.ExpectMinTaskMember, pg.Spec.MinTaskMember)
 			}
 		})
 
@@ -609,12 +762,14 @@ func TestCreatePodGroupIfNotExistFunc(t *testing.T) {
 
 func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 	namespace := "test"
+	highestTierAllowed := 1
 
 	testcases := []struct {
-		Name      string
-		PodGroup  *schedulingapi.PodGroup
-		Job       *v1alpha1.Job
-		ExpectVal error
+		Name                string
+		PodGroup            *schedulingapi.PodGroup
+		Job                 *v1alpha1.Job
+		ExpectMinTaskMember map[string]int32
+		ExpectVal           error
 	}{
 		{
 			Name: "UpdatePodGroup success Case",
@@ -638,7 +793,8 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 					PriorityClassName: "new",
 				},
 			},
-			ExpectVal: nil,
+			ExpectMinTaskMember: map[string]int32{},
+			ExpectVal:           nil,
 		},
 		{
 			Name: "UpdatePodGroup compatibility with version lt 1.5 success Case",
@@ -662,7 +818,126 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 					MinResources: &v1.ResourceList{},
 				},
 			},
-			ExpectVal: nil,
+			ExpectMinTaskMember: map[string]int32{},
+			ExpectVal:           nil,
+		},
+		{
+			Name: "UpdatePodGroup compatibility with PartitionPolicy",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:       namespace,
+					Name:            "job3",
+					ResourceVersion: "100",
+					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					PriorityClassName: "new",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:               "hard",
+									HighestTierAllowed: &highestTierAllowed,
+								},
+							},
+						},
+					},
+				},
+			},
+			PodGroup: &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "job3",
+				},
+				Spec: schedulingapi.PodGroupSpec{
+					MinResources: &v1.ResourceList{},
+				},
+			},
+			ExpectMinTaskMember: map[string]int32{"task1": 6},
+			ExpectVal:           nil,
+		},
+		{
+			Name: "UpdatePodGroup compatibility with PartitionPolicy having MinPartitions",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:       namespace,
+					Name:            "job4",
+					ResourceVersion: "100",
+					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					PriorityClassName: "new",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								MinPartitions:   1,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:               "hard",
+									HighestTierAllowed: &highestTierAllowed,
+								},
+							},
+						},
+					},
+				},
+			},
+			PodGroup: &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "job4",
+				},
+				Spec: schedulingapi.PodGroupSpec{
+					MinResources: &v1.ResourceList{},
+				},
+			},
+			ExpectMinTaskMember: map[string]int32{"task1": 3},
+			ExpectVal:           nil,
+		},
+		{
+			Name: "UpdatePodGroup compatibility with highestTierName",
+			Job: &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:       namespace,
+					Name:            "job4",
+					ResourceVersion: "100",
+					UID:             "e7f18111-1cec-11ea-b688-fa163ec79500",
+				},
+				Spec: v1alpha1.JobSpec{
+					PriorityClassName: "new",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task1",
+							Replicas: 6,
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions: 2,
+								PartitionSize:   3,
+								NetworkTopology: &v1alpha1.NetworkTopologySpec{
+									Mode:            "hard",
+									HighestTierName: "volcano.sh/hypernode",
+								},
+							},
+						},
+					},
+				},
+			},
+			PodGroup: &schedulingapi.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace,
+					Name:      "job4",
+				},
+				Spec: schedulingapi.PodGroupSpec{
+					MinResources: &v1.ResourceList{},
+				},
+			},
+			ExpectMinTaskMember: map[string]int32{"task1": 6},
+			ExpectVal:           nil,
 		},
 	}
 
@@ -686,7 +961,9 @@ func TestUpdatePodGroupIfJobUpdateFunc(t *testing.T) {
 			if pg.Spec.PriorityClassName != testcase.Job.Spec.PriorityClassName {
 				t.Errorf("Expected PodGroup.Spec.PriorityClassName to be updated to: %s, but got: %s", testcase.Job.Spec.PriorityClassName, pg.Spec.PriorityClassName)
 			}
-
+			if !reflect.DeepEqual(pg.Spec.MinTaskMember, testcase.ExpectMinTaskMember) {
+				t.Errorf("Expected PodGroup.Spec.MinTaskMember to be updated: %v, but got: %v", testcase.ExpectMinTaskMember, pg.Spec.MinTaskMember)
+			}
 		})
 
 	}

@@ -20,7 +20,11 @@ import (
 	"context"
 	"fmt"
 
+	. "github.com/onsi/gomega"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/klog/v2"
 
 	batchv1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
@@ -69,6 +73,51 @@ func VerifyPodScheduling(ctx *TestContext, job *batchv1alpha1.Job, expectedNodes
 	}
 
 	return nil
+}
+
+// VerifyHyperNodeScheduling verifies if pods are scheduled according to topology requirements
+func VerifyHyperNodeScheduling(ctx *TestContext, expectHyperNode string, expectPodNum int) error {
+	hyperNodes, err := ctx.Vcclient.TopologyV1alpha1().HyperNodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list hypernodes: %v", err)
+	}
+
+	for _, hyperNode := range hyperNodes.Items {
+		if hyperNode.Name == expectHyperNode {
+			hyperNodePodNum := 0
+			for _, node := range GetNodesOfHyperNode(ctx, &hyperNode, make([]string, 0)) {
+				pods, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), metav1.ListOptions{
+					FieldSelector: fields.OneTermEqualSelector("spec.nodeName", node).String(),
+				})
+				Expect(err).NotTo(HaveOccurred(), "failed to get pods for hypernode %s", hyperNode.Name)
+				hyperNodePodNum += len(pods.Items)
+			}
+
+			if hyperNodePodNum != expectPodNum {
+				return fmt.Errorf("hyperNode %v is expected to schedule %v pods, but actually schedules %v pods",
+					hyperNode.Name, expectPodNum, hyperNodePodNum)
+			}
+		}
+	}
+
+	return nil
+}
+
+// GetNodesOfHyperNode returns the list of nodes within the hyperNode
+func GetNodesOfHyperNode(ctx *TestContext, hyperNode *topologyv1alpha1.HyperNode, nodeList []string) []string {
+	for _, member := range hyperNode.Spec.Members {
+		switch member.Type {
+		case topologyv1alpha1.MemberTypeNode:
+			nodeList = append(nodeList, member.Selector.ExactMatch.Name)
+		case topologyv1alpha1.MemberTypeHyperNode:
+			subHyperNode, err := ctx.Vcclient.TopologyV1alpha1().HyperNodes().Get(context.TODO(), member.Selector.ExactMatch.Name, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred(), "failed to get hypernode %s", member.Selector.ExactMatch.Name)
+			nodeList = GetNodesOfHyperNode(ctx, subHyperNode, nodeList)
+		default:
+			klog.ErrorS(nil, "Unsupported member type", "type", member.Type)
+		}
+	}
+	return nodeList
 }
 
 // CleanupHyperNodes deletes all hypernode resources in the cluster

@@ -55,6 +55,7 @@ type TaskSpec struct {
 	Taskpriority          string
 	MaxRetry              int32
 	SchGates              []v1.PodSchedulingGate
+	PartitionPolicy       *batchv1alpha1.PartitionPolicySpec
 }
 
 type JobSpec struct {
@@ -122,9 +123,10 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 		}
 
 		ts := batchv1alpha1.TaskSpec{
-			Name:     name,
-			Replicas: task.Rep,
-			Policies: task.Policies,
+			Name:            name,
+			Replicas:        task.Rep,
+			Policies:        task.Policies,
+			PartitionPolicy: task.PartitionPolicy,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   name,
@@ -220,16 +222,19 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			restartPolicy = task.RestartPolicy
 		}
 
+		// Note: maxRetry must be >= 0 per CRD schema validation.
+		// When task.MaxRetry is 0, keep it as 0 (no retry) instead of -1.
 		maxRetry := task.MaxRetry
-		if maxRetry == 0 {
-			maxRetry = -1
+		if maxRetry < 0 {
+			maxRetry = 0
 		}
 
 		ts := batchv1alpha1.TaskSpec{
-			Name:     name,
-			Replicas: task.Rep,
-			Policies: task.Policies,
-			MaxRetry: maxRetry,
+			Name:            name,
+			Replicas:        task.Rep,
+			Policies:        task.Policies,
+			MaxRetry:        maxRetry,
+			PartitionPolicy: task.PartitionPolicy,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   name,
@@ -593,7 +598,7 @@ func WaitPodPhaseRunningMoreThanNum(ctx *TestContext, namespace string, num int)
 
 func waitJobPhaseExpect(ctx *TestContext, job *batchv1alpha1.Job, state batchv1alpha1.JobPhase, waitTime time.Duration) error {
 	var additionalError error
-	err := wait.Poll(100*time.Millisecond, FiveMinute, func() (bool, error) {
+	err := wait.Poll(100*time.Millisecond, waitTime, func() (bool, error) {
 		job, err := ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		expected := job.Status.State.Phase == state

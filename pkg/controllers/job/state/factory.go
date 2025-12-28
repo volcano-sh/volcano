@@ -60,14 +60,16 @@ var (
 type TargetType string
 
 const (
-	TargetTypeTask TargetType = "task"
-	TargetTypePod  TargetType = "pod"
+	TargetTypeTask      TargetType = "task"
+	TargetTypePod       TargetType = "pod"
+	TargetTypePartition TargetType = "partition"
 )
 
 type Target struct {
-	TaskName string
-	PodName  string
-	Type     TargetType
+	TaskName      string
+	PodName       string
+	PartitionName string
+	Type          TargetType
 }
 
 type Action struct {
