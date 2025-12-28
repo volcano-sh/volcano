@@ -21,10 +21,8 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/actions/allocate"
 	"volcano.sh/volcano/pkg/scheduler/actions/enqueue"
@@ -397,13 +395,14 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	// podgroup
 	pg1 := util.BuildPodGroup("pg1", "ns1", "q11", 1, nil, schedulingv1beta1.PodGroupInqueue)
 	// queue
-	root := buildQueueWithParents("root", "", nil, nil)
-	root1 := buildQueueWithParents("root", "", nil, api.BuildResourceList("16", "16Gi"))
-	root2 := buildQueueWithParents("root", "", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}, {Name: "rdma", Value: "1000"}}...), nil)
-	queue1 := buildQueueWithParents("q1", "root", nil, api.BuildResourceList("4", "4Gi"))
-	queue2 := buildQueueWithParents("q2", "root", nil, api.BuildResourceList("4", "4Gi"))
-	queue11 := buildQueueWithParents("q11", "q1", nil, api.BuildResourceList("1", "1Gi"))
-	queue12 := buildQueueWithParents("q12", "q1", nil, api.BuildResourceList("3", "3Gi"))
+	root := util.BuildQueueWithParents("root", "", nil, nil)
+	root1 := util.BuildQueueWithParents("root", "", nil, api.BuildResourceList("16", "16Gi"))
+	root2 := util.BuildQueueWithParents("root", "", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}, {Name: "rdma", Value: "1000"}}...), nil)
+	root3 := util.BuildQueueWithParents("root", "", api.BuildResourceList("32", "32Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "10"}, {Name: "rdma", Value: "1000"}}...), nil)
+	queue1 := util.BuildQueueWithParents("q1", "root", nil, api.BuildResourceList("4", "4Gi"))
+	queue2 := util.BuildQueueWithParents("q2", "root", nil, api.BuildResourceList("4", "4Gi"))
+	queue11 := util.BuildQueueWithParents("q11", "q1", nil, api.BuildResourceList("1", "1Gi"))
+	queue12 := util.BuildQueueWithParents("q12", "q1", nil, api.BuildResourceList("3", "3Gi"))
 
 	// resources for test case 1
 	// pod
@@ -418,11 +417,11 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	// podgroup
 	pg3 := util.BuildPodGroup("pg3", "ns1", "q31", 2, nil, schedulingv1beta1.PodGroupInqueue)
 	// queue
-	queue3 := buildQueueWithParents("q3", "root", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
-	queue4 := buildQueueWithParents("q4", "root", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "1"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
-	queue31 := buildQueueWithParents("q31", "q3", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
-	queue32 := buildQueueWithParents("q32", "q3", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
-	queue33 := buildQueueWithParents("q33", "q3", api.BuildResourceList("0", "0Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
+	queue3 := util.BuildQueueWithParents("q3", "root", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
+	queue4 := util.BuildQueueWithParents("q4", "root", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "1"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
+	queue31 := util.BuildQueueWithParents("q31", "q3", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
+	queue32 := util.BuildQueueWithParents("q32", "q3", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
+	queue33 := util.BuildQueueWithParents("q33", "q3", api.BuildResourceList("0", "0Gi", []api.ScalarResource{{Name: "pods", Value: "2"}}...), api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "4"}}...))
 
 	// resources for test case 3
 	// pod
@@ -442,8 +441,8 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 
 	// resources for test case 5
 	// queue
-	queue5 := buildQueueWithParents("q5", "root", nil, api.BuildResourceList("", "4Gi", []api.ScalarResource{}...))
-	queue51 := buildQueueWithParents("q51", "q5", nil, api.BuildResourceList("", "2Gi", []api.ScalarResource{}...))
+	queue5 := util.BuildQueueWithParents("q5", "root", nil, api.BuildResourceList("", "4Gi", []api.ScalarResource{}...))
+	queue51 := util.BuildQueueWithParents("q51", "q5", nil, api.BuildResourceList("", "2Gi", []api.ScalarResource{}...))
 	// podgroup
 	pg9 := util.BuildPodGroup("pg9", "ns1", "q51", 1, nil, schedulingv1beta1.PodGroupRunning)
 	// pod
@@ -451,37 +450,25 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 
 	// resources for test case 6
 	// queue
-	queue6 := buildQueueWithParents("q6", "root", nil, api.BuildResourceList("2", "4Gi", []api.ScalarResource{}...))
+	queue6 := util.BuildQueueWithParents("q6", "root", nil, api.BuildResourceList("2", "4Gi", []api.ScalarResource{}...))
 	// sub queue 61 and 62's capability is not specified, should be inherited from parent queue
-	queue61 := buildQueueWithParents("q61", "q6", nil, nil)
-	queue62 := buildQueueWithParents("q62", "q6", nil, nil)
+	queue61 := util.BuildQueueWithParents("q61", "q6", nil, nil)
+	queue62 := util.BuildQueueWithParents("q62", "q6", nil, nil)
 	// podgroup
 	pg10 := util.BuildPodGroupWithMinResources("pg10", "ns1", "q61", 1, nil, api.BuildResourceList("2", "4Gi"), schedulingv1beta1.PodGroupPending)
 	pg11 := util.BuildPodGroupWithMinResources("pg11", "ns1", "q62", 1, nil, api.BuildResourceList("2", "4Gi"), schedulingv1beta1.PodGroupPending)
 
 	// resources for test case 7
 	// queue
-	queue7 := buildQueueWithParents("q7", "root", nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
+	queue7 := util.BuildQueueWithParents("q7", "root", nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
 	// the sum of sub queue 71 and 72's guarantee exceeds the capacity of queue7, but should not panic
-	queue71 := buildQueueWithParents("q71", "q7", nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
-	queue72 := buildQueueWithParents("q72", "q7", nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
-	queue71.Spec.Guarantee = schedulingv1beta1.Guarantee{
-		Resource: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("4"),
-			corev1.ResourceMemory: resource.MustParse("3Gi"),
-		},
-	}
-	queue72.Spec.Guarantee = schedulingv1beta1.Guarantee{
-		Resource: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("4"),
-			corev1.ResourceMemory: resource.MustParse("3Gi"),
-		},
-	}
+	queue71 := util.BuildQueueWithParentsAndGuarantee("q71", "q7", api.BuildResourceList("4", "3Gi", []api.ScalarResource{}...), nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
+	queue72 := util.BuildQueueWithParentsAndGuarantee("q72", "q7", api.BuildResourceList("4", "3Gi", []api.ScalarResource{}...), nil, api.BuildResourceList("6", "4Gi", []api.ScalarResource{}...))
 
 	// resources for test case 8
-	queue8 := buildQueueWithParents("q8", "root", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}}...), nil)
-	queue81 := buildQueueWithParents("q81", "q8", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), nil)
-	queue82 := buildQueueWithParents("q82", "q8", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), nil)
+	queue8 := util.BuildQueueWithParents("q8", "root", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}}...), nil)
+	queue81 := util.BuildQueueWithParents("q81", "q8", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), nil)
+	queue82 := util.BuildQueueWithParents("q82", "q8", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), nil)
 	// node
 	gpuNode := util.BuildNode("n-gpu", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}, {Name: "pods", Value: "10"}}...), map[string]string{})
 	// podgroup
@@ -490,8 +477,8 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	p12 := util.BuildPod("ns1", "p12", "", corev1.PodPending, api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg12", make(map[string]string), make(map[string]string))
 
 	// resources for test case 9
-	queue9 := buildQueueWithParents("q9", "root", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}, {Name: "hugepages-1Gi", Value: "0"}}...), nil)
-	queue91 := buildQueueWithParents("q91", "q9", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}, {Name: "hugepages-1Gi", Value: "0"}}...), nil)
+	queue9 := util.BuildQueueWithParents("q9", "root", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}, {Name: "hugepages-1Gi", Value: "0"}}...), nil)
+	queue91 := util.BuildQueueWithParents("q91", "q9", api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}, {Name: "hugepages-1Gi", Value: "0"}}...), nil)
 	// node
 	n2 := util.BuildNode("n2", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "8"}, {Name: "pods", Value: "10"}, {Name: "hugepages-1Gi", Value: "0"}}...), map[string]string{})
 	// podgroup
@@ -499,13 +486,13 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	// pod
 	p13 := util.BuildPod("ns1", "p13", "", corev1.PodPending, api.BuildResourceList("2", "2Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg13", make(map[string]string), make(map[string]string))
 	// queue
-	queue10 := buildQueueWithParents("q10", "root", nil, api.BuildResourceList("10", "4Gi", []api.ScalarResource{}...))
+	queue10 := util.BuildQueueWithParents("q10", "root", nil, api.BuildResourceList("10", "4Gi", []api.ScalarResource{}...))
 
 	// resources for test case 11
 	// queue
-	case11_queue1 := buildQueueWithParents("case11_queue1", "root", nil, nil)
-	case11_queue11 := buildQueueWithParents("case11_queue11", "case11_queue1", nil, api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...))
-	case11_queue12 := buildQueueWithParents("case11_queue12", "case11_queue1", nil, api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...))
+	case11_queue1 := util.BuildQueueWithParents("case11_queue1", "root", nil, nil)
+	case11_queue11 := util.BuildQueueWithParents("case11_queue11", "case11_queue1", nil, api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...))
+	case11_queue12 := util.BuildQueueWithParents("case11_queue12", "case11_queue1", nil, api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...))
 
 	// podgroup
 	pg14 := util.BuildPodGroup("pg14", "ns1", "case11_queue11", 1, nil, schedulingv1beta1.PodGroupInqueue)
@@ -517,9 +504,9 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 
 	// resources for test case 12
 	// queue
-	case12_queue1 := buildQueueWithParents("case12_queue1", "root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}}...), nil)
-	case12_queue11 := buildQueueWithParents("case12_queue11", "case12_queue1", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}}...), nil)
-	case12_queue12 := buildQueueWithParents("case12_queue12", "case12_queue1", nil, nil)
+	case12_queue1 := util.BuildQueueWithParents("case12_queue1", "root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}}...), nil)
+	case12_queue11 := util.BuildQueueWithParents("case12_queue11", "case12_queue1", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}}...), nil)
+	case12_queue12 := util.BuildQueueWithParents("case12_queue12", "case12_queue1", nil, nil)
 
 	// node
 	n3 := util.BuildNode("n3", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1001"}, {Name: "pods", Value: "11"}}...), map[string]string{})
@@ -533,6 +520,44 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	p16 := util.BuildPod("ns1", "p16", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}, {Name: "rdma/hca", Value: "1"}}...), "pg16", make(map[string]string), map[string]string{})
 	p17 := util.BuildPod("ns1", "p17", "n3", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}, {Name: "rdma/hca", Value: "1"}}...), "pg17", make(map[string]string), map[string]string{})
 	p18 := util.BuildPod("ns1", "p18", "n3", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}, {Name: "rdma/hca", Value: "1"}}...), "pg18", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, map[string]string{})
+
+	// case 13 - allow enqueue below guarantee
+	// queue
+	case13_queue1 := util.BuildQueueWithParentsAndGuarantee("case13_queue1", "root", api.BuildResourceList("32", "32Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "10"}}...), nil, nil)
+	case13_queue11 := util.BuildQueueWithParentsAndGuarantee("case13_queue11", "case13_queue1", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}}...), nil, nil)
+	case13_queue12 := util.BuildQueueWithParentsAndGuarantee("case13_queue12", "case13_queue1", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}}...), nil, nil)
+
+	// podgroup
+	pg19 := util.BuildPodGroupWithMinResources("pg19", "ns1", "case13_queue11", 1, nil, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), schedulingv1beta1.PodGroupPending)
+	pg20 := util.BuildPodGroupWithMinResources("pg20", "ns1", "case13_queue12", 1, nil, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), schedulingv1beta1.PodGroupRunning)
+
+	// pod
+	p19 := util.BuildPod("ns1", "p19", "", corev1.PodPending, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), "pg19", make(map[string]string), map[string]string{})
+	p20 := util.BuildPod("ns1", "p20", "n3", corev1.PodRunning, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), "pg20", make(map[string]string), map[string]string{})
+
+	// case 14 - not allow to enqueue above guarantee when cluster is full (reusing case13 queues)
+	case14_queue := util.BuildQueueWithParentsAndGuarantee("case14_queue", "case13_queue1", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}}...), nil, nil)
+	pg21 := util.BuildPodGroupWithMinResources("pg21", "ns1", "case14_queue", 1, nil, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), schedulingv1beta1.PodGroupPending)
+	p21 := util.BuildPod("ns1", "p21", "", corev1.PodPending, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), "pg21", make(map[string]string), map[string]string{})
+
+	// case 15 - allow enqueue below deserved no guarantee on the cluster
+	// queue
+	case15_queue1 := util.BuildQueueWithParents("case15_queue1", "root", api.BuildResourceList("32", "32Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "10"}}...), nil)
+	case15_queue11 := util.BuildQueueWithParents("case15_queue11", "case15_queue1", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}}...), nil)
+	case15_queue12 := util.BuildQueueWithParents("case15_queue12", "case15_queue1", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}}...), nil)
+
+	// podgroup
+	pg22 := util.BuildPodGroupWithMinResources("pg22", "ns1", "case15_queue11", 1, nil, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), schedulingv1beta1.PodGroupPending)
+	pg23 := util.BuildPodGroupWithMinResources("pg23", "ns1", "case15_queue12", 1, nil, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), schedulingv1beta1.PodGroupRunning)
+
+	// pod
+	p22 := util.BuildPod("ns1", "p22", "", corev1.PodPending, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), "pg22", make(map[string]string), map[string]string{})
+	p23 := util.BuildPod("ns1", "p23", "n3", corev1.PodRunning, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), "pg23", make(map[string]string), map[string]string{})
+
+	// case 16 - not allow to enqueue above deserved when cluster is full and no guarantee on the cluster (reusing case15 queues)
+	case16_queue := util.BuildQueueWithParents("case16_queue", "case15_queue1", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}}...), nil)
+	pg24 := util.BuildPodGroupWithMinResources("pg24", "ns1", "case16_queue", 1, nil, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), schedulingv1beta1.PodGroupPending)
+	p24 := util.BuildPod("ns1", "p24", "", corev1.PodPending, api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1"}}...), "pg24", make(map[string]string), map[string]string{})
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -678,6 +703,54 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			ExpectEvicted:  []string{"ns1/p17"},
 			ExpectEvictNum: 1,
 		},
+		{
+			Name:      "case13: allow enqueue below guarantee",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p19, p20},
+			Nodes:     []*corev1.Node{n3},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg19, pg20},
+			Queues:    []*schedulingv1beta1.Queue{root3, case13_queue1, case13_queue11, case13_queue12},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"ns1/pg19": scheduling.PodGroupInqueue,
+				"ns1/pg20": scheduling.PodGroupRunning,
+			},
+		},
+		{
+			Name:      "case14: not allow to enqueue above guarantee when cluster is full",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p20, p21},
+			Nodes:     []*corev1.Node{n3},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg20, pg21},
+			Queues:    []*schedulingv1beta1.Queue{root3, case13_queue1, case14_queue, case13_queue12},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"ns1/pg20": scheduling.PodGroupRunning,
+				"ns1/pg21": scheduling.PodGroupPending,
+			},
+		},
+		{
+			Name:      "case15: allow enqueue below deserved when no guarantee on the cluster",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p22, p23},
+			Nodes:     []*corev1.Node{n3},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg22, pg23},
+			Queues:    []*schedulingv1beta1.Queue{root3, case15_queue1, case15_queue11, case15_queue12},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"ns1/pg22": scheduling.PodGroupInqueue,
+				"ns1/pg23": scheduling.PodGroupRunning,
+			},
+		},
+		{
+			Name:      "case16: not allow to enqueue above deserved when cluster is full and no guarantee on the cluster",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p23, p24},
+			Nodes:     []*corev1.Node{n3},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg23, pg24},
+			Queues:    []*schedulingv1beta1.Queue{root3, case15_queue1, case16_queue, case15_queue12},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"ns1/pg23": scheduling.PodGroupRunning,
+				"ns1/pg24": scheduling.PodGroupPending,
+			},
+		},
 	}
 
 	tiers := []conf.Tier{
@@ -713,10 +786,4 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			}
 		})
 	}
-}
-
-func buildQueueWithParents(name string, parent string, deserved corev1.ResourceList, cap corev1.ResourceList) *schedulingv1beta1.Queue {
-	queue := util.BuildQueueWithResourcesQuantity(name, deserved, cap)
-	queue.Spec.Parent = parent
-	return queue
 }

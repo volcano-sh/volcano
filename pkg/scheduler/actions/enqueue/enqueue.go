@@ -91,7 +91,8 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 		job := jobs.Pop().(*api.JobInfo)
-
+		klog.V(5).Infof("Try to enqueue Job <%s/%s>, minresources <%v> into Queue <%s>",
+			job.Namespace, job.Name, job.GetMinResources().String(), queue.Name)
 		if job.PodGroup.Spec.MinResources == nil || ssn.JobEnqueueable(job) {
 			ssn.JobEnqueued(job)
 			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
