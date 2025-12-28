@@ -30,9 +30,11 @@ spec:
               maxRetry:
                 default: 3
                 format: int32
+                minimum: 0
                 type: integer
               minAvailable:
                 format: int32
+                minimum: 0
                 type: integer
               minSuccess:
                 format: int32
@@ -41,8 +43,12 @@ spec:
               networkTopology:
                 properties:
                   highestTierAllowed:
-                    default: 1
+                    minimum: 0
                     type: integer
+                  highestTierName:
+                    maxLength: 253
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                    type: string
                   mode:
                     default: hard
                     enum:
@@ -99,12 +105,18 @@ spec:
                   type: object
                 type: array
               priorityClassName:
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               queue:
+                default: default
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               runningEstimate:
                 type: string
               schedulerName:
+                maxLength: 63
                 type: string
               tasks:
                 items:
@@ -120,12 +132,51 @@ spec:
                       type: object
                     maxRetry:
                       format: int32
+                      minimum: 0
                       type: integer
                     minAvailable:
                       format: int32
+                      minimum: 0
                       type: integer
                     name:
+                      maxLength: 63
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
+                    partitionPolicy:
+                      properties:
+                        minPartitions:
+                          default: 0
+                          format: int32
+                          minimum: 0
+                          type: integer
+                        networkTopology:
+                          properties:
+                            highestTierAllowed:
+                              minimum: 0
+                              type: integer
+                            highestTierName:
+                              maxLength: 253
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                              type: string
+                            mode:
+                              default: hard
+                              enum:
+                              - hard
+                              - soft
+                              type: string
+                          type: object
+                        partitionSize:
+                          format: int32
+                          minimum: 1
+                          type: integer
+                        totalPartitions:
+                          format: int32
+                          minimum: 1
+                          type: integer
+                      required:
+                      - partitionSize
+                      - totalPartitions
+                      type: object
                     policies:
                       items:
                         properties:
@@ -170,6 +221,7 @@ spec:
                       type: array
                     replicas:
                       format: int32
+                      minimum: 0
                       type: integer
                     reservationNodeNames:
                       items:
@@ -3851,14 +3903,18 @@ spec:
                       - single-numa-node
                       type: string
                   type: object
+                minItems: 1
                 type: array
               ttlSecondsAfterFinished:
                 format: int32
+                minimum: 0
                 type: integer
               volumes:
                 items:
                   properties:
                     mountPath:
+                      minLength: 1
+                      pattern: ^[^:]+$
                       type: string
                     volumeClaim:
                       properties:
@@ -3949,6 +4005,7 @@ spec:
                           type: string
                       type: object
                     volumeClaimName:
+                      maxLength: 253
                       type: string
                   required:
                   - mountPath

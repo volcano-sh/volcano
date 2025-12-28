@@ -47,6 +47,7 @@ spec:
             properties:
               minMember:
                 format: int32
+                minimum: 0
                 type: integer
               minResources:
                 additionalProperties:
@@ -64,8 +65,11 @@ spec:
               networkTopology:
                 properties:
                   highestTierAllowed:
-                    default: 1
+                    minimum: 0
                     type: integer
+                  highestTierName:
+                    maxLength: 253
+                    type: string
                   mode:
                     default: hard
                     enum:
@@ -74,10 +78,77 @@ spec:
                     type: string
                 type: object
               priorityClassName:
+                maxLength: 253
                 type: string
               queue:
                 default: default
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
+              subGroupPolicy:
+                items:
+                  properties:
+                    labelSelector:
+                      properties:
+                        matchExpressions:
+                          items:
+                            properties:
+                              key:
+                                type: string
+                              operator:
+                                type: string
+                              values:
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - key
+                            - operator
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    matchLabelKeys:
+                      items:
+                        type: string
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    minSubGroups:
+                      default: 0
+                      format: int32
+                      minimum: 0
+                      type: integer
+                    name:
+                      maxLength: 253
+                      type: string
+                    networkTopology:
+                      properties:
+                        highestTierAllowed:
+                          minimum: 0
+                          type: integer
+                        highestTierName:
+                          maxLength: 253
+                          type: string
+                        mode:
+                          default: hard
+                          enum:
+                          - hard
+                          - soft
+                          type: string
+                      type: object
+                    subGroupSize:
+                      default: 1
+                      format: int32
+                      minimum: 1
+                      type: integer
+                  type: object
+                type: array
             type: object
           status:
             properties:
@@ -101,14 +172,23 @@ spec:
                 type: array
               failed:
                 format: int32
+                minimum: 0
                 type: integer
               phase:
+                enum:
+                - Pending
+                - Running
+                - Unknown
+                - Inqueue
+                - Completed
                 type: string
               running:
                 format: int32
+                minimum: 0
                 type: integer
               succeeded:
                 format: int32
+                minimum: 0
                 type: integer
             type: object
         type: object

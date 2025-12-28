@@ -154,7 +154,7 @@ spec:
             - --port=8443
             - -v=4
             - 2>&1
-          image: docker.io/volcanosh/vc-webhook-manager:latest
+          image: docker.io/volcanosh/vc-webhook-manager:ed142087608f230ed0bfef2a2a2a9ea21d9f5a23
           imagePullPolicy: Always
           name: admission
           volumeMounts:
@@ -252,7 +252,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: main
-          image: docker.io/volcanosh/vc-webhook-manager:latest
+          image: docker.io/volcanosh/vc-webhook-manager:ed142087608f230ed0bfef2a2a2a9ea21d9f5a23
           imagePullPolicy: Always
           command: ["./gen-admission-secret.sh", "--service", "volcano-admission-service", "--namespace",
                     "volcano-system", "--secret", "volcano-admission-secret"]
@@ -4528,6 +4528,10 @@ spec:
                             replicas:
                               format: int32
                               type: integer
+                            reservationNodeNames:
+                              items:
+                                type: string
+                              type: array
                             template:
                               properties:
                                 metadata:
@@ -8580,7 +8584,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-controllers
-          image: docker.io/volcanosh/vc-controller-manager:latest
+          image: docker.io/volcanosh/vc-controller-manager:ed142087608f230ed0bfef2a2a2a9ea21d9f5a23
           args:
             - --logtostderr
             - --enable-healthz=true
@@ -8798,7 +8802,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-scheduler
-          image: docker.io/volcanosh/vc-scheduler:latest
+          image: docker.io/volcanosh/vc-scheduler:ed142087608f230ed0bfef2a2a2a9ea21d9f5a23
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
@@ -17765,6 +17769,10 @@ spec:
                                   replicas:
                                     format: int32
                                     type: integer
+                                  reservationNodeNames:
+                                    items:
+                                      type: string
+                                    type: array
                                   template:
                                     properties:
                                       metadata:

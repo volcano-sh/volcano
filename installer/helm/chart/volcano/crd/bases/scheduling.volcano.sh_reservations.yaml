@@ -110,12 +110,51 @@ spec:
                       type: object
                     maxRetry:
                       format: int32
+                      minimum: 0
                       type: integer
                     minAvailable:
                       format: int32
+                      minimum: 0
                       type: integer
                     name:
+                      maxLength: 63
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
+                    partitionPolicy:
+                      properties:
+                        minPartitions:
+                          default: 0
+                          format: int32
+                          minimum: 0
+                          type: integer
+                        networkTopology:
+                          properties:
+                            highestTierAllowed:
+                              minimum: 0
+                              type: integer
+                            highestTierName:
+                              maxLength: 253
+                              pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                              type: string
+                            mode:
+                              default: hard
+                              enum:
+                              - hard
+                              - soft
+                              type: string
+                          type: object
+                        partitionSize:
+                          format: int32
+                          minimum: 1
+                          type: integer
+                        totalPartitions:
+                          format: int32
+                          minimum: 1
+                          type: integer
+                      required:
+                      - partitionSize
+                      - totalPartitions
+                      type: object
                     policies:
                       items:
                         properties:
@@ -160,6 +199,7 @@ spec:
                       type: array
                     replicas:
                       format: int32
+                      minimum: 0
                       type: integer
                     reservationNodeNames:
                       items:

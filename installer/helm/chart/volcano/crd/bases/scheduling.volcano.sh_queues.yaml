@@ -65,6 +65,12 @@ spec:
                   pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                   x-kubernetes-int-or-string: true
                 type: object
+              dequeueStrategy:
+                default: traverse
+                enum:
+                - fifo
+                - traverse
+                type: string
               deserved:
                 additionalProperties:
                   anyOf:
@@ -103,13 +109,17 @@ spec:
                     type: object
                 type: object
               parent:
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                 type: string
               priority:
                 format: int32
+                minimum: 0
                 type: integer
               reclaimable:
                 type: boolean
               type:
+                maxLength: 253
                 type: string
               weight:
                 default: 1
@@ -130,12 +140,15 @@ spec:
                 type: object
               completed:
                 format: int32
+                minimum: 0
                 type: integer
               inqueue:
                 format: int32
+                minimum: 0
                 type: integer
               pending:
                 format: int32
+                minimum: 0
                 type: integer
               reservation:
                 properties:
@@ -154,11 +167,18 @@ spec:
                 type: object
               running:
                 format: int32
+                minimum: 0
                 type: integer
               state:
+                enum:
+                - Open
+                - Closed
+                - Closing
+                - Unknown
                 type: string
               unknown:
                 format: int32
+                minimum: 0
                 type: integer
             type: object
         type: object
