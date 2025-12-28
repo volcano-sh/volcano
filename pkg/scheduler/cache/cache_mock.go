@@ -125,6 +125,8 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		DeletedReservations: workqueue.NewTypedRateLimitingQueue[*schedulingapi.ReservationInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.ReservationInfo]()),
+
 		kubeClient:          fake.NewSimpleClientset(),
 		vcClient:            fakevcClient.NewSimpleClientset(),
 		restConfig:          nil,
@@ -144,6 +146,7 @@ func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 	}
 	msc.setBatchBindParallel()
 	msc.nodeWorkers = getNodeWorkers()
+	msc.ReservationCache = newReservationCache(msc.vcClient)
 	msc.initMockInformers()
 
 	return msc
