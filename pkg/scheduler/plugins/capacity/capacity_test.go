@@ -720,3 +720,155 @@ func buildQueueWithParents(name string, parent string, deserved corev1.ResourceL
 	queue.Spec.Parent = parent
 	return queue
 }
+
+func Test_updateQueueAttrShare(t *testing.T) {
+	tests := []struct {
+		name      string
+		deserved  *api.Resource
+		allocated *api.Resource
+		request   *api.Resource
+		wantShare float64
+	}{
+		// Test cases for queues without deserved (best-effort queues)
+		{
+			name:      "best-effort queue with allocated resources",
+			deserved:  api.EmptyResource(),
+			allocated: api.NewResource(api.BuildResourceList("1", "1Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.0,
+		},
+		{
+			name:      "best-effort queue with pending requests only (no allocated)",
+			deserved:  api.EmptyResource(),
+			allocated: api.EmptyResource(),
+			request:   api.NewResource(api.BuildResourceList("1", "1Gi")),
+			wantShare: 1.0, // new logic: always share=1 for best-effort
+		},
+		{
+			name:      "best-effort queue with both allocated and request",
+			deserved:  api.EmptyResource(),
+			allocated: api.NewResource(api.BuildResourceList("1", "1Gi")),
+			request:   api.NewResource(api.BuildResourceList("0.5", "0.5Gi")),
+			wantShare: 1.0, // allocated is checked, so share = 1
+		},
+		{
+			name:      "best-effort queue completely idle",
+			deserved:  api.EmptyResource(),
+			allocated: api.EmptyResource(),
+			request:   api.EmptyResource(),
+			wantShare: 1.0,
+		},
+		// Test cases for queues with deserved
+		{
+			name:      "queue with deserved but no allocated",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.EmptyResource(),
+			request:   api.EmptyResource(),
+			wantShare: 0.0,
+		},
+		{
+			name:      "queue with deserved, allocated < deserved (CPU dimension)",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("1", "1Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 0.5, // 1/2 = 0.5
+		},
+		{
+			name:      "queue with deserved, allocated = deserved",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("2", "2Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.0, // 2/2 = 1.0
+		},
+		{
+			name:      "queue with deserved, allocated > deserved (CPU dimension)",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("3", "2Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.5, // 3/2 = 1.5
+		},
+		{
+			name:      "queue with deserved, memory is dominant resource",
+			deserved:  api.NewResource(api.BuildResourceList("2", "4Gi")),
+			allocated: api.NewResource(api.BuildResourceList("1", "3Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 0.75, // max(1/2=0.5, 3/4=0.75) = 0.75
+		},
+		{
+			name:      "queue with deserved, CPU is dominant resource",
+			deserved:  api.NewResource(api.BuildResourceList("2", "4Gi")),
+			allocated: api.NewResource(api.BuildResourceList("1.5", "2Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 0.75, // max(1.5/2=0.75, 2/4=0.5) = 0.75
+		},
+		{
+			name:      "queue with deserved, allocated exceeds on both dimensions",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("3", "3Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.5, // max(3/2=1.5, 3/2=1.5) = 1.5
+		},
+		{
+			name:      "queue with deserved, request should not affect share calculation",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("1", "1Gi")),
+			request:   api.NewResource(api.BuildResourceList("1", "1Gi")),
+			wantShare: 0.5, // Only allocated/deserved matters, request is ignored
+		},
+		// Edge cases
+		{
+			name:      "queue with deserved but zero values",
+			deserved:  api.NewResource(api.BuildResourceList("0", "0Gi")),
+			allocated: api.NewResource(api.BuildResourceList("1", "1Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.0, // When deserved is 0 and allocated > 0, share = 1 (from helpers.Share)
+		},
+		{
+			name:      "queue with deserved, allocated is zero",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("0", "0Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 0.0, // 0/2 = 0
+		},
+		{
+			name:      "best-effort queue with only CPU allocated",
+			deserved:  api.EmptyResource(),
+			allocated: api.NewResource(api.BuildResourceList("1", "0Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.0,
+		},
+		{
+			name:      "best-effort queue with only memory allocated",
+			deserved:  api.EmptyResource(),
+			allocated: api.NewResource(api.BuildResourceList("0", "1Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.0,
+		},
+		{
+			name:      "best-effort queue with only CPU request (no allocated)",
+			deserved:  api.EmptyResource(),
+			allocated: api.EmptyResource(),
+			request:   api.NewResource(api.BuildResourceList("1", "0Gi")),
+			wantShare: 1.0, // always 1.0 for best-effort queues
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attr := &queueAttr{
+				queueID:   "test-queue",
+				name:      "test-queue",
+				deserved:  tt.deserved,
+				allocated: tt.allocated,
+				request:   tt.request,
+				share:     0.0, // Initialize to 0
+			}
+
+			updateQueueAttrShare(attr)
+
+			if attr.share != tt.wantShare {
+				t.Errorf("updateQueueAttrShare() share = %v, want %v", attr.share, tt.wantShare)
+			}
+		})
+	}
+}
