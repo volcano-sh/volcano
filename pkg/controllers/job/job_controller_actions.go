@@ -1083,6 +1083,7 @@ func getSubGroupPolicy(taskSpec batch.TaskSpec) scheduling.SubGroupPolicySpec {
 	subGroupPolicy := scheduling.SubGroupPolicySpec{
 		Name:         taskSpec.Name,
 		SubGroupSize: &taskSpec.PartitionPolicy.PartitionSize,
+		MinSubGroups: &taskSpec.PartitionPolicy.MinPartitions,
 	}
 
 	// Set LabelSelector
