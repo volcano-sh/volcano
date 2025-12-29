@@ -75,7 +75,7 @@ func GetQueue(ctx context.Context) error {
 	}
 
 	if supportsFieldSelector {
-		// Use fieldSelector for k8s v1.31+ where CustomResourceFieldSelectors is enabled by default
+		// Use fieldSelector for k8s >= v1.31 where CustomResourceFieldSelectors is enabled by default
 		fieldSelector := fmt.Sprintf("spec.queue=%s", getQueueFlags.Name)
 		pgList, err = queueClient.SchedulingV1beta1().PodGroups("").List(ctx, metav1.ListOptions{
 			FieldSelector: fieldSelector,
