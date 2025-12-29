@@ -114,9 +114,9 @@ type SchedulerCache struct {
 
 	Recorder record.EventRecorder
 
-	Nodes    map[string]*nodeInfoListItem // TODO: do we need to also add a seperate lock for Nodes cache?
-	headNode *nodeInfoListItem
-	NodeList []string
+	Nodes      map[string]*nodeInfoListItem // TODO: do we need to also add a seperate lock for Nodes cache?
+	headNode   *nodeInfoListItem
+	NodeList   []string
 	NodeShards map[string]*schedulingapi.NodeShardInfo
 
 	taskCache *TaskCache
