@@ -40,3 +40,24 @@ import (
 4. Submit a PR to the main Volcano repository
 
 5. After merge, changes will be automatically synced to [volcano-sh/apis](https://github.com/volcano-sh/apis)
+
+### Repository Structure
+
+**This staging directory contains only the API code.** Repository-specific files are maintained separately:
+
+- **Maintained in staging (synced to apis repo):**
+  - `pkg/` - API definitions and generated code
+  - `hack/` - Code generation scripts
+  - `go.mod`, `go.sum` - Go module files
+  - `README.md` - Basic documentation
+  - Community files: `code_of_conduct.md`, `community-membership.md`, `contribute.md`
+
+- **Maintained only in [volcano-sh/apis](https://github.com/volcano-sh/apis) repo:**
+  - `.github/` - GitHub workflows, issue templates
+  - `.gitignore` - Repository-specific ignore patterns
+  - `GOVERNANCE.md` - Governance documentation
+  - `OWNERS` - Maintainer list
+  - `SECURITY.md` - Security policy
+  - `LICENSE` - License file
+
+This separation ensures that repository governance and configuration remain independent between the main Volcano repository and the standalone APIs repository.

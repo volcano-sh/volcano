@@ -147,11 +147,17 @@ do_init() {
         exit 1
     fi
     
-    # Copy contents to staging directory (excluding .git and .github)
+    # Copy contents to staging directory, excluding repository-specific files
+    # These files should remain in the apis repo and not be copied to staging
     print_info "Copying to staging directory..."
     rsync -av --delete \
         --exclude='.git' \
         --exclude='.github' \
+        --exclude='.gitignore' \
+        --exclude='GOVERNANCE.md' \
+        --exclude='OWNERS' \
+        --exclude='SECURITY.md' \
+        --exclude='LICENSE' \
         "${TEMP_DIR}/" "${STAGING_DIR}/"
     
     # Clean up temp directory
@@ -213,12 +219,20 @@ do_sync() {
     fi
     
     # Sync files
-    # Exclude .github because it contains repo-specific configs (issue templates, workflows)
-    # that should remain in the apis repo
+    # Exclude repository-specific files that should be maintained in the apis repo:
+    # - .github: repo-specific configs (issue templates, workflows)
+    # - .gitignore: repo-specific ignore patterns
+    # - GOVERNANCE.md, OWNERS, SECURITY.md: repo-specific governance docs
+    # - LICENSE: should be maintained in the apis repo
     print_info "Syncing staging directory to apis repo..."
     rsync -av --delete \
         --exclude='.git' \
         --exclude='.github' \
+        --exclude='.gitignore' \
+        --exclude='GOVERNANCE.md' \
+        --exclude='OWNERS' \
+        --exclude='SECURITY.md' \
+        --exclude='LICENSE' \
         "${STAGING_DIR}/" "${APIS_REPO_DIR}/"
     
     # Check for changes after syncing

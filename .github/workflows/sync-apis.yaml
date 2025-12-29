@@ -29,6 +29,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Set up variables
         id: vars
         run: |
@@ -41,6 +47,18 @@ jobs:
             echo "sha=$(git rev-parse HEAD)"
             echo "commit_msg=$(git log -1 --pretty=format:'%s')"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Verify staging APIs generated code
+        run: |
+          echo "::group::Verifying staging APIs generated code is up to date"
+          cd staging/src/volcano.sh/apis
+          if ! bash hack/verify-codegen.sh; then
+            echo "::error::Staging APIs generated code is out of date"
+            echo "Please run: cd staging/src/volcano.sh/apis && bash hack/update-codegen.sh"
+            exit 1
+          fi
+          echo "✅ Staging APIs generated code is up to date"
+          echo "::endgroup::"
 
       - name: Checkout apis repository
         uses: actions/checkout@v4
@@ -122,6 +140,9 @@ jobs:
             echo "|------|-------|"
             echo "| Source | \`volcano-sh/volcano@${{ steps.vars.outputs.sha_short }}\` |"
             echo "| Target | \`${{ env.APIS_REPO }}:${{ steps.vars.outputs.target_branch }}\` |"
+            echo ""
+            echo "### Pre-sync Checks"
+            echo "- ✅ Verified staging APIs generated code is up to date"
             echo ""
             if [ "${{ steps.sync.outputs.has_changes }}" == "true" ]; then
               echo "### ✅ Result: Changes synced and PR created"
