@@ -35,6 +35,7 @@ import (
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
@@ -609,6 +610,12 @@ func (ftsu *FakeStatusUpdater) UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, 
 func (ftsu *FakeStatusUpdater) UpdateQueueStatus(queue *api.QueueInfo) error {
 	// do nothing here
 	return nil
+}
+
+// UpdateNodeShardStatus do fake empty update for node shard status
+func (ftsu *FakeStatusUpdater) UpdateNodeShardStatus(nodeshard *nodeshardv1alpha1.NodeShard) (*nodeshardv1alpha1.NodeShard, error) {
+	// do nothing here
+	return nodeshard, nil
 }
 
 // QueueWrapper wraps a schedulingv1beta1.Queue for fluent construction.

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -53,12 +54,15 @@ import (
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/apis/pkg/client/clientset/versioned/scheme"
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
-	"volcano.sh/volcano/cmd/scheduler/app/options"
+	shardinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/shard/v1alpha1"
+	shardv1alpha1 "volcano.sh/apis/pkg/client/listers/shard/v1alpha1"
+	"volcano.sh/volcano/cmd/agent-scheduler/app/options"
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/features"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	k8sutil "volcano.sh/volcano/pkg/scheduler/plugins/util/k8s"
+	"volcano.sh/volcano/pkg/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
@@ -74,8 +78,8 @@ func init() {
 var _ Cache = &SchedulerCache{}
 
 // New returns a Cache implementation.
-func New(config *rest.Config, schedulerName string, nodeSelectors []string, nodeWorkers uint32, resyncPeriod time.Duration) Cache {
-	return newSchedulerCache(config, schedulerName, nodeSelectors, nodeWorkers, resyncPeriod)
+func New(config *rest.Config, opt *options.ServerOption) Cache {
+	return newSchedulerCache(config, opt)
 }
 
 //TODO: abstract common field and functions for volcano and agent scheduler, so each scheduler only depend on common part and customized part
@@ -92,17 +96,19 @@ type SchedulerCache struct {
 	nodeSelectorLabels map[string]sets.Empty
 	metricsConf        map[string]string
 
-	resyncPeriod time.Duration
-	podInformer  infov1.PodInformer
-	nodeInformer infov1.NodeInformer
-
-	Binder        Binder
-	StatusUpdater StatusUpdater
+	resyncPeriod      time.Duration
+	podInformer       infov1.PodInformer
+	nodeInformer      infov1.NodeInformer
+	nodeShardInformer shardinformerv1alpha1.NodeShardInformer
+	nodeShardLister   shardv1alpha1.NodeShardLister
+	Binder            Binder
+	StatusUpdater     StatusUpdater
 
 	Recorder record.EventRecorder
 
-	Nodes    map[string]*schedulingapi.NodeInfo // TODO: do we need to also add a seperate lock for Nodes cache?
-	NodeList []string
+	Nodes      map[string]*schedulingapi.NodeInfo // TODO: do we need to also add a seperate lock for Nodes cache?
+	NodeList   []string
+	NodeShards map[string]*schedulingapi.NodeShardInfo
 
 	taskCache *TaskCache
 
@@ -125,7 +131,11 @@ type SchedulerCache struct {
 	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
 	sharedDRAManager k8sframework.SharedDRAManager
 
+	// ConflictAwareBinder resolve confilct caused by multi workers parallel allocation
 	ConflictAwareBinder *ConflictAwareBinder
+
+	//ShardCoordinator keep sync of nodes that should be used based shards allocation, maintain the nodes in cache and in nodeshard cr
+	ShardCoordinator *ShardCoordinator
 
 	// schedulingQueue is used to store pods waiting to be scheduled
 	schedulingQueue k8sschedulingqueue.SchedulingQueue
@@ -133,6 +143,8 @@ type SchedulerCache struct {
 	// cancel is used to stop all goroutines started by scheduler cache,
 	// currently is only needed to cancel the scheduling queues' metrics async recorder
 	cancel context.CancelFunc
+
+	shardingMode string
 }
 
 // TaskCache encapsulates the task map with a seperate lock
@@ -282,7 +294,7 @@ func (sc *SchedulerCache) setBatchBindParallel() {
 	}
 }
 
-func newSchedulerCache(config *rest.Config, schedulerName string, nodeSelectors []string, nodeWorkers uint32, resyncPeriod time.Duration) *SchedulerCache {
+func newSchedulerCache(config *rest.Config, opt *options.ServerOption) *SchedulerCache {
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(fmt.Sprintf("failed init kubeClient, with err: %v", err))
@@ -302,19 +314,21 @@ func newSchedulerCache(config *rest.Config, schedulerName string, nodeSelectors 
 		kubeClient:         kubeClient,
 		vcClient:           vcClient,
 		restConfig:         config,
-		schedulerName:      schedulerName,
+		schedulerName:      opt.SchedulerName,
 		nodeSelectorLabels: make(map[string]sets.Empty),
 		imageStates:        make(map[string]*imageState),
 
-		NodeList:    []string{},
-		nodeWorkers: nodeWorkers,
-		taskCache:   NewTaskCache(),
+		NodeList:     []string{},
+		NodeShards:   make(map[string]*schedulingapi.NodeShardInfo),
+		nodeWorkers:  opt.NodeWorkerThreads,
+		taskCache:    NewTaskCache(),
+		shardingMode: opt.ShardingMode,
 	}
 
-	sc.resyncPeriod = resyncPeriod
+	sc.resyncPeriod = opt.ResyncPeriod
 
-	if len(nodeSelectors) > 0 {
-		sc.updateNodeSelectors(nodeSelectors)
+	if len(opt.NodeSelector) > 0 {
+		sc.updateNodeSelectors(opt.NodeSelector)
 	}
 	// Prepare event clients.
 	broadcaster := record.NewBroadcaster()
@@ -358,7 +372,9 @@ func newSchedulerCache(config *rest.Config, schedulerName string, nodeSelectors 
 	)
 
 	sc.ConflictAwareBinder = NewConflictAwareBinder(sc, sc.schedulingQueue)
-
+	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
+		sc.ShardCoordinator = NewShardCoordinator(sc, int(opt.ScheduleWorkerCount), opt.ShardName, opt.ShardingMode)
+	}
 	return sc
 }
 
@@ -402,7 +418,7 @@ func (sc *SchedulerCache) addEventHandler() {
 	informerFactory.Core().V1().PersistentVolumes().Informer()
 	informerFactory.Storage().V1().StorageClasses().Informer()
 	informerFactory.Storage().V1().CSINodes().Informer()
-	if options.ServerOpts.EnableCSIStorage {
+	if options.ServerOpts != nil && options.ServerOpts.EnableCSIStorage {
 		informerFactory.Storage().V1().CSIDrivers().Informer()
 		informerFactory.Storage().V1beta1().CSIStorageCapacities().Informer()
 	}
@@ -497,6 +513,15 @@ func (sc *SchedulerCache) addEventHandler() {
 
 	vcinformers := vcinformer.NewSharedInformerFactory(sc.vcClient, sc.resyncPeriod)
 	sc.vcInformerFactory = vcinformers
+	if sc.shardingMode == util.HardShardingMode || sc.shardingMode == util.SoftShardingMode {
+		sc.nodeShardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
+		sc.nodeShardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddNodeShard,
+			UpdateFunc: sc.UpdateNodeShard,
+			DeleteFunc: sc.DeleteNodeShard,
+		})
+		sc.nodeShardLister = sc.vcInformerFactory.Shard().V1alpha1().NodeShards().Lister()
+	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
 		ctx := context.TODO()
@@ -536,7 +561,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	ctx := context.TODO()
 	logger := klog.FromContext(ctx)
 	sc.schedulingQueue.Run(logger)
-
+	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
+		sc.ShardCoordinator.Run(stopCh)
+	}
 	sc.ConflictAwareBinder.Run(stopCh)
 
 	go func() {
@@ -606,6 +633,11 @@ func (sc *SchedulerCache) ClientConfig() *rest.Config {
 // SharedInformerFactory returns the scheduler SharedInformerFactory
 func (sc *SchedulerCache) SharedInformerFactory() informers.SharedInformerFactory {
 	return sc.informerFactory
+}
+
+// VCSharedInformerFactory returns the scheduler VC SharedInformerFactory
+func (sc *SchedulerCache) VCSharedInformerFactory() vcinformer.SharedInformerFactory {
+	return sc.vcInformerFactory
 }
 
 // SchedulingQueue returns the scheduling queue instance in the cache
@@ -1005,4 +1037,59 @@ func (sc *SchedulerCache) UpdateTaskStatus(task *api.TaskInfo, status api.TaskSt
 
 func (sc *SchedulerCache) EnqueueScheduleResult(scheduleResult *agentapi.PodScheduleResult) {
 	sc.ConflictAwareBinder.EnqueueScheduleResult(scheduleResult)
+}
+
+func (sc *SchedulerCache) UpdateNodeShardStatus(shardName string, usedNodeInCache sets.Set[string]) error {
+	klog.V(3).Infof("Update NodeShard %s status...", shardName)
+	nodeShard, err := sc.nodeShardLister.Get(shardName)
+	if err != nil {
+		// Check if the error happens because the HyperNode is deleted
+		if errors.IsNotFound(err) {
+			klog.Infof("NodeShard %s has been deleted, no status update needed", shardName)
+			return nil
+		}
+		klog.Error(err, "Failed to get NodeShard", "name", shardName)
+		return err
+	}
+
+	oldNodesInUse := sets.New(nodeShard.Status.NodesInUse...)
+	oldNodesToRemove := sets.New(nodeShard.Status.NodesToRemove...)
+	oldNodesToAdd := sets.New(nodeShard.Status.NodesToAdd...)
+
+	// Create a deep copy to avoid modifying cache objects
+	nodeShardCopy := nodeShard.DeepCopy()
+	desiredNodes := sets.New(nodeShard.Spec.NodesDesired...)
+
+	nodesToRemove := usedNodeInCache.Difference(desiredNodes)
+	nodesToAdd := desiredNodes.Difference(usedNodeInCache)
+	if usedNodeInCache.Equal(oldNodesInUse) && nodesToRemove.Equal(oldNodesToRemove) && nodesToAdd.Equal(oldNodesToAdd) {
+		klog.V(3).Infof("Skip update NodeShard %s status, no change", nodeShard.Name)
+		return nil
+	}
+
+	nodeShardCopy.Status.NodesInUse = usedNodeInCache.UnsortedList()
+	nodeShardCopy.Status.NodesToRemove = nodesToRemove.UnsortedList()
+	nodeShardCopy.Status.NodesToAdd = nodesToAdd.UnsortedList()
+
+	_, err = sc.vcClient.ShardV1alpha1().NodeShards().UpdateStatus(context.Background(), nodeShardCopy, metav1.UpdateOptions{})
+	if err != nil {
+		klog.Errorf("Failed to update NodeShard %s status %v", shardName, err)
+		return err
+	}
+	klog.V(3).Infof("Updated NodeShard %s status", shardName)
+	return nil
+}
+
+// OnWorkerStartSchedulingCycle is called when scheduler worker start a new scheduling cycle
+func (sc *SchedulerCache) OnWorkerStartSchedulingCycle(index int, schedCtx *agentapi.SchedulingContext) {
+	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
+		sc.ShardCoordinator.OnWorkerStartSchedulingCycle(index, schedCtx)
+	}
+}
+
+// OnWorkerEndSchedulingCycle is called when scheduler worker end a scheduling cycle
+func (sc *SchedulerCache) OnWorkerEndSchedulingCycle(index int) {
+	if options.ServerOpts.ShardingMode != util.NoneShardingMode {
+		sc.ShardCoordinator.OnWorkerEndSchedulingCycle(index)
+	}
 }

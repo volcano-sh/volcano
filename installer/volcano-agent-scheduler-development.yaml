@@ -101,7 +101,10 @@ rules:
     verbs: ["get", "list", "watch", "create"]
   - apiGroups: ["shard.volcano.sh"]
     resources: ["nodeshards"]
-    verbs: ["list", "watch", "get", "update"]
+    verbs: ["list", "watch", "get"]
+  - apiGroups: ["shard.volcano.sh"]
+    resources: ["nodeshards/status"]
+    verbs: ["update"]
 ---
 # Source: volcano/templates/agent_scheduler.yaml
 kind: ClusterRoleBinding
@@ -177,7 +180,7 @@ spec:
             - --kube-api-qps=2000
             - --kube-api-burst=2000
             - --node-worker-threads=20
-            - --worker-count=1
+            - --scheduler-worker-count=1
             - -v=3
             - 2>&1
           env:

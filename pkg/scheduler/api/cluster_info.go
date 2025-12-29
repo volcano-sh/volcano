@@ -40,6 +40,7 @@ type ClusterInfo struct {
 	RevocableNodes            map[string]*NodeInfo
 	NodeList                  []string
 	CSINodesStatus            map[string]*CSINodeStatusInfo
+	NodesInShard              sets.Set[string]
 }
 
 func (ci ClusterInfo) String() string {

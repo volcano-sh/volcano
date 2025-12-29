@@ -18,6 +18,7 @@ package api
 
 import (
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -30,6 +31,8 @@ type SchedulingContext struct {
 	Task *api.TaskInfo
 	// QueuedPodInfo is the original pod info from the scheduling queue
 	QueuedPodInfo *framework.QueuedPodInfo
+	// NodesInShard is the nodes in shard of current scheduler
+	NodesInShard sets.Set[string]
 }
 
 type BindContext struct {

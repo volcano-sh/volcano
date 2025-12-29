@@ -48,6 +48,7 @@ func NewCustomMockSchedulerCache(schedulerName string,
 	PodGroupBinder BatchBinder,
 	recorder record.EventRecorder,
 ) *SchedulerCache {
+	options.Default() // init options first because cache may reference server opts in options
 	msc := newMockSchedulerCache(schedulerName)
 	// add all events handlers
 	msc.addEventHandler()
@@ -65,6 +66,7 @@ func NewCustomMockSchedulerCache(schedulerName string,
 // Notes that default events recorder's buffer only has a length 100;
 // when use it do performance test, should use a &FakeRecorder{} without length limit to avoid block
 func NewDefaultMockSchedulerCache(schedulerName string) *SchedulerCache {
+	options.Default() // init options first because cache may reference server opts in options
 	msc := newMockSchedulerCache(schedulerName)
 	// add all events handlers
 	msc.addEventHandler()
@@ -117,23 +119,26 @@ func getNodeWorkers() uint32 {
 // newMockSchedulerCache init the mock scheduler cache structure
 func newMockSchedulerCache(schedulerName string) *SchedulerCache {
 	msc := &SchedulerCache{
-		Jobs:                make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
-		Nodes:               make(map[string]*schedulingapi.NodeInfo),
-		Queues:              make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
-		PriorityClasses:     make(map[string]*schedulingv1.PriorityClass),
-		errTasks:            workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
-		kubeClient:          fake.NewSimpleClientset(),
-		vcClient:            fakevcClient.NewSimpleClientset(),
-		restConfig:          nil,
-		defaultQueue:        "default",
-		schedulerNames:      []string{schedulerName},
-		nodeSelectorLabels:  make(map[string]sets.Empty),
-		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
-		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
-		imageStates:         make(map[string]*imageState),
+		Jobs:                   make(map[schedulingapi.JobID]*schedulingapi.JobInfo),
+		Nodes:                  make(map[string]*schedulingapi.NodeInfo),
+		Queues:                 make(map[schedulingapi.QueueID]*schedulingapi.QueueInfo),
+		PriorityClasses:        make(map[string]*schedulingv1.PriorityClass),
+		errTasks:               workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		nodeQueue:              workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		DeletedJobs:            workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		hyperNodesQueue:        workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		kubeClient:             fake.NewSimpleClientset(),
+		vcClient:               fakevcClient.NewSimpleClientset(),
+		restConfig:             nil,
+		defaultQueue:           "default",
+		schedulerNames:         []string{schedulerName},
+		nodeSelectorLabels:     make(map[string]sets.Empty),
+		NamespaceCollection:    make(map[string]*schedulingapi.NamespaceCollection),
+		CSINodesStatus:         make(map[string]*schedulingapi.CSINodeStatusInfo),
+		imageStates:            make(map[string]*imageState),
+		InUseNodesInShard:      sets.Set[string]{},
+		shardUpdateCoordinator: NewShardUpdateCoordinator(),
+		NodeShards:             make(map[string]*schedulingapi.NodeShardInfo),
 
 		NodeList:       []string{},
 		binderRegistry: NewBinderRegistry(),
