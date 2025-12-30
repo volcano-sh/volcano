@@ -60,6 +60,7 @@ func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 			}
 			sc.Nodes[pi.NodeName].info.Generation = nextGeneration()
 			sc.moveNodeToHead(pi.NodeName)
+			klog.V(5).Infof("Node %s updated by add task, generation incremented to %d", pi.NodeName, sc.Nodes[pi.NodeName].info.Generation)
 		} else {
 			klog.V(4).Infof("Pod <%v/%v> is in status %s.", pi.Namespace, pi.Name, pi.Status.String())
 		}
@@ -124,6 +125,7 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 			if node != nil {
 				sc.Nodes[ti.NodeName].info.Generation = nextGeneration()
 				sc.moveNodeToHead(ti.NodeName)
+				klog.V(5).Infof("Node %s updated by delete task, generation incremented to %d", ti.NodeName, sc.Nodes[ti.NodeName].info.Generation)
 				nodeErr = node.info.RemoveTask(ti)
 			}
 		}
@@ -382,6 +384,7 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 	}
 
 	sc.Nodes[nodeName].info.Generation = nextGeneration()
+	klog.V(5).Infof("Node %s deleted, generation incremented to %d", nodeName, sc.Nodes[nodeName].info.Generation)
 	node := sc.Nodes[nodeName].info.Node
 
 	numaInfo := sc.Nodes[nodeName].info.NumaInfo
