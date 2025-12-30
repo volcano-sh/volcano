@@ -183,16 +183,20 @@ func (ni *NodeInfo) RefreshNumaSchedulerInfoByCrd() {
 	}
 
 	tmp := ni.NumaInfo.DeepCopy()
-	if ni.NumaChgFlag == NumaInfoMoreFlag {
+	if ni.NumaSchedulerInfo == nil || ni.NumaChgFlag == NumaInfoMoreFlag {
 		ni.NumaSchedulerInfo = tmp
 	} else if ni.NumaChgFlag == NumaInfoLessFlag {
 		numaResMap := ni.NumaSchedulerInfo.NumaResMap
 		for resName, resInfo := range tmp.NumaResMap {
-			klog.V(5).Infof("resource %s Allocatable : current %v new %v on node %s",
-				resName, numaResMap[resName], resInfo, ni.Name)
-			if numaResMap[resName].Allocatable.Size() >= resInfo.Allocatable.Size() {
-				numaResMap[resName].Allocatable = resInfo.Allocatable.Clone()
-				numaResMap[resName].Capacity = resInfo.Capacity
+			if resourceInfo, ok := numaResMap[resName]; ok {
+				klog.V(5).Infof("resource %s Allocatable : current %v new %v on node %s",
+					resName, resourceInfo, resInfo, ni.Name)
+				if resourceInfo.Allocatable.Size() >= resInfo.Allocatable.Size() {
+					resourceInfo.Allocatable = resInfo.Allocatable.Clone()
+					resourceInfo.Capacity = resInfo.Capacity
+				}
+			} else {
+				numaResMap[resName] = resInfo
 			}
 		}
 	}
