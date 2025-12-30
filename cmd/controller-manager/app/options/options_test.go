@@ -19,6 +19,7 @@ package options
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,7 +105,7 @@ func TestAddFlags(t *testing.T) {
 		WorkerThreadsForPG:    5,
 		WorkerThreadsForQueue: 5,
 		WorkerThreadsForGC:    1,
-		Controllers:           []string{"*"},
+		Controllers:           strings.Split("*,-sharding-controller", ","),
 	}
 	expectedFeatureGates := map[featuregate.Feature]bool{features.ResourceTopology: false}
 
@@ -143,6 +144,27 @@ func TestCheckControllers(t *testing.T) {
 			expectErr: nil,
 		},
 		{
+			name: "normal case: use * at the last place when combined with other inputs",
+			serverOption: &ServerOption{
+				Controllers: []string{"-sharding-controller", "*"},
+			},
+			expectErr: nil,
+		},
+		{
+			name: "normal case: use * at the first place when combined with other input",
+			serverOption: &ServerOption{
+				Controllers: []string{"*", "-job-controller"},
+			},
+			expectErr: nil,
+		},
+		{
+			name: "normal case: use * at the middle place when combined with other input",
+			serverOption: &ServerOption{
+				Controllers: []string{"-sharding-controller", "*", "-job-controller"},
+			},
+			expectErr: nil,
+		},
+		{
 			name: "fail case: use duplicate job-controller",
 			serverOption: &ServerOption{
 				Controllers: []string{"+gc-controller", "+job-controller", "-job-controller"},
@@ -155,13 +177,6 @@ func TestCheckControllers(t *testing.T) {
 				Controllers: []string{"+job-controller", "job-controller"},
 			},
 			expectErr: fmt.Errorf("controllers option %s cannot have both '-' and '+' prefixes", "job-controller"),
-		},
-		{
-			name: "fail case: use * but combined with other input",
-			serverOption: &ServerOption{
-				Controllers: []string{"*", "+job-controller"},
-			},
-			expectErr: fmt.Errorf("wildcard '*' cannot be combined with other input"),
 		},
 	}
 
