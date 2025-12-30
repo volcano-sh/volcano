@@ -294,12 +294,6 @@ func CleanupController(testCtrl *TestShardingController) {
 			testCtrl.Controller.nodeEventQueue.Done(key)
 		}
 		klog.Infof("Processed remaining items in queues")
-		// Close assignment change channel if not nil
-		if testCtrl.Controller.assignmentChangeChan != nil {
-			close(testCtrl.Controller.assignmentChangeChan)
-			testCtrl.Controller.assignmentChangeChan = nil
-		}
-		klog.Infof("Closed assignment change channel")
 	}
 
 	// Close stop channel if exists

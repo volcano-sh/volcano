@@ -42,12 +42,10 @@ import (
 
 const (
 	controllerName              = "sharding-controller"
-	defaultShardSyncPeriod      = 60 * time.Second
+	defaultShardSyncPeriod      = 120 * time.Second
 	maxAssignmentCacheRetention = 5 * time.Minute
-	nodeCountChangeThreshold    = 0.5
-	updateTimeoutThreshold      = 15 * time.Second
 	nodeUsageChangeThreshold    = 0.5
-	nodeRefreshPeriod           = 120 * time.Second
+	nodeRefreshPeriod           = 80 * time.Second
 )
 
 func init() {
@@ -86,9 +84,6 @@ type ShardingController struct {
 	// assignment cache
 	assignmentCache *AssignmentCache
 	cacheMutex      sync.Mutex
-
-	// Event channels
-	assignmentChangeChan chan *AssignmentChangeEvent
 }
 
 // Return the name of the controller
@@ -134,7 +129,6 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 	sc.assignmentCache = &AssignmentCache{
 		Assignments: make(map[string]*ShardAssignment),
 	}
-	sc.assignmentChangeChan = make(chan *AssignmentChangeEvent, 100)
 
 	// Parse scheduler configs from options
 	sc.parseSchedulerConfigsFromOptions()
@@ -205,9 +199,6 @@ func (sc *ShardingController) Run(stopCh <-chan struct{}) {
 
 	// Start periodic sync
 	go wait.Until(sc.syncShards, sc.shardSyncPeriod, stopCh)
-
-	// Start assignment change processor
-	go sc.assignmentChangeProcessor(stopCh)
 
 	// Start periodic metrics refresh
 	go wait.Until(sc.refreshNodeMetrics, nodeRefreshPeriod, stopCh)
@@ -308,33 +299,6 @@ func (sc *ShardingController) processNextItem() bool {
 	return true
 }
 
-// assignmentChangeProcessor processes assignment changes
-func (sc *ShardingController) assignmentChangeProcessor(stopCh <-chan struct{}) {
-	for {
-		select {
-		case event := <-sc.assignmentChangeChan:
-			sc.processAssignmentChange(event)
-		case <-stopCh:
-			return
-		}
-	}
-}
-
-// processAssignmentChange processes an assignment change event
-func (sc *ShardingController) processAssignmentChange(event *AssignmentChangeEvent) {
-	klog.V(4).Infof("Processing assignment change for %s: %d -> %d nodes",
-		event.SchedulerName, len(event.OldNodes), len(event.NewNodes))
-
-	// Log significant changes
-	if len(event.OldNodes) > 0 {
-		changePercent := float64(abs(len(event.NewNodes)-len(event.OldNodes))) / float64(len(event.OldNodes))
-		if changePercent > nodeCountChangeThreshold {
-			klog.Infof("Significant node change for %s: %.0f%% (%d -> %d nodes)",
-				event.SchedulerName, changePercent*100, len(event.OldNodes), len(event.NewNodes))
-		}
-	}
-}
-
 // syncShards performs global shard assignment calculation
 func (sc *ShardingController) syncShards() {
 	klog.Infof("Starting global shard synchronization")
@@ -343,9 +307,6 @@ func (sc *ShardingController) syncShards() {
 		duration := time.Since(startTime)
 		klog.V(3).Infof("Completed global shard synchronization in %v", duration)
 	}()
-
-	// ensure all nodes states are updated
-	//sc.ensureNodeStatesUpdated()
 
 	// Get nodes from cache (not API server)
 	nodes, err := sc.listNodesFromCache()
@@ -503,16 +464,7 @@ func (sc *ShardingController) applyAssignment(schedulerName string, assignment *
 		return fmt.Errorf("failed to update shard %s: %v", schedulerName, err)
 	}
 
-	// Publish change event
-	sc.assignmentChangeChan <- &AssignmentChangeEvent{
-		SchedulerName: schedulerName,
-		OldNodes:      shard.Spec.NodesDesired,
-		NewNodes:      assignment.NodesDesired,
-		NodesToAdd:    nodesToAdd,
-		NodesToRemove: nodesToRemove,
-		Version:       assignment.Version,
-		Timestamp:     time.Now(),
-	}
+	klog.V(6).Infof("Assignment changed for %s: %d -> %d nodes", schedulerName, len(shard.Spec.NodesDesired), len(assignment.NodesDesired))
 
 	klog.V(6).Infof("Updated shard %s with %d nodes", schedulerName, len(assignment.NodesDesired))
 	return nil

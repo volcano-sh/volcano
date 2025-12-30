@@ -44,7 +44,7 @@ const (
 	defaultPodGroupWorkers     = 5
 	defaultQueueWorkers        = 5
 	defaultGCWorkers           = 1
-	defaultControllers         = "-sharding-controller,*"
+	defaultControllers         = "*,-sharding-controller"
 )
 
 // ServerOption is the main context object for the controllers.
@@ -157,12 +157,9 @@ func (s *ServerOption) CheckOptionOrDie() error {
 // checkControllers checks the controllers option and returns error if it's invalid
 func (s *ServerOption) checkControllers() error {
 	existenceMap := make(map[string]bool)
-	for idx, c := range s.Controllers {
+	for _, c := range s.Controllers {
 		if c == "*" {
-			// wildcard '*' is not allowed to be combined with other input
-			if len(s.Controllers) > 1 && idx != len(s.Controllers)-1 {
-				return fmt.Errorf("wildcard '*' can only be placed at the final position when combined with other input")
-			}
+			continue
 		} else {
 			if strings.HasPrefix(c, "-") || strings.HasPrefix(c, "+") {
 				if existenceMap[c[1:]] {

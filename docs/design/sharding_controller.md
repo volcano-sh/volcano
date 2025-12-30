@@ -18,13 +18,13 @@ The Sharding Controller is proposed to addresses these challenges by:
 
 ## 2. Design Goals
 
-1. **Resource-Aware Partitioning**: Dynamically partition nodes based on real-time resource allocation/utilization;
+1. **Resource-Aware Partitioning**: Dynamically partition nodes based on real-time resource allocation/utilization; Currently we only support CPU utilization and will support multi-dimensional resources in the future;
 2. **Minimal API Server Load**: Use informer caches instead of direct API calls, reducing pressure on API servers;
 3. **Event-Driven Updates**: React to cluster state changes efficiently, such as pod events(add, delete, update) and node events (add, delete, update);
 4. **Scalability**: Support clusters with millions of nodes with multiple schedulers;
-5. **Resilience**: Recover gracefully from failures and restarts
+5. **Resilience**: Recover gracefully from failures and restarts;
 6. **Configurability**: Allow runtime configuration of scheduler shards, and hyper-parameters of sharding strategies;
-7. **Backward Compatibility**: Work with existing Volcano deployment without disruption
+7. **Backward Compatibility**: Work with existing Volcano deployment without disruption;
 
 ## 3. Architecture Overview
 ![sharding-controller](./images/sharding-controller-design.png)
@@ -93,7 +93,7 @@ graph LR
 The core logic that implements node assignment strategies:
 
 **Scheduler Configurations**
-
+In the scheduler configuration, we currently we only support CPU utilization and will support multi-dimensional resources in the future
 ```go
 type SchedulerConfigSpec struct {
 	Name              string   // Scheduler name
@@ -181,7 +181,7 @@ cpuUtilization := totalCPURequest / nodeCPUCapacity
 ![sharding-controller](./images/sharding-process.png)
 Unlike complex scoring systems, we use utilization-based filtering:
 1. For each scheduler, its shard assignments should consider nodes with following constraints:
-   - CPU utilization range [Min, Max];
+   - CPU utilization range [Min, Max]; (currently we only support CPU utilization and will support multi-dimensional resources in the future)
    - Warmup node preference: true or false
    - Min/Max node constraints;
 2. Filter nodes matching utilization constraints;
