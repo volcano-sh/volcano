@@ -21,7 +21,7 @@ maintainers.
 
 Every Maintainer is listed in the
 [MAINTAINERS](https://github.com/volcano-sh/volcano/blob/master/MAINTAINERS.md)
-file, with their Github handle.
+file, with their GitHub handle.
 
 ## Becoming a Maintainer
 
@@ -39,7 +39,7 @@ or adhere to the [Code of Conduct](https://github.com/cncf/foundation/blob/maste
 ## Decision making process
 
 Decisions are built on consensus between maintainers.
-Proposals and ideas can either be submitted for agreement via a github issue or PR.
+Proposals and ideas can either be submitted for agreement via a GitHub issue or PR.
 
 In general, we prefer that technical issues and maintainer membership are amicably worked out between the persons involved.
 If a dispute cannot be decided independently, get a third-party maintainer (e.g. a mutual contact with some background
@@ -50,9 +50,9 @@ Decision making process should be transparent to adhere to
 the principles of Volcano project.
 
 All proposals, ideas, and decisions by maintainers or the project lead
-should either be part of a github issue or PR.
+should either be part of a GitHub issue or PR.
 
-## Github Project Administration
+## GitHub Project Administration
 
 The __volcano__ GitHub project maintainers team reflects the list of Maintainers.
 
