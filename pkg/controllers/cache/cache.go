@@ -250,6 +250,23 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 	return nil
 }
 
+func (jc *jobCache) HasPod(pod *v1.Pod) bool {
+	jc.Lock()
+	defer jc.Unlock()
+
+	key, err := jobKeyOfPod(pod)
+	if err != nil {
+		return false
+	}
+
+	job, found := jc.jobs[key]
+	if !found {
+		return false
+	}
+
+	return job.HasPod(pod)
+}
+
 func (jc *jobCache) Run(stopCh <-chan struct{}) {
 	wait.Until(jc.worker, 0, stopCh)
 }

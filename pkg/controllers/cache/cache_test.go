@@ -703,6 +703,59 @@ func TestJobCache_UpdatePod(t *testing.T) {
 	}
 }
 
+func TestJobCache_HasPod(t *testing.T) {
+	namespace := "test"
+
+	jobCache := New()
+
+	job := &v1alpha1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "job1",
+			Namespace: namespace,
+		},
+		Status: v1alpha1.JobStatus{
+			State: v1alpha1.JobState{
+				Phase: v1alpha1.Running,
+			},
+		},
+	}
+
+	err := jobCache.Add(job)
+	if err != nil {
+		t.Errorf("Expected not to occur while adding job, but got error: %s", err)
+	}
+
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod1",
+			Namespace: namespace,
+			Annotations: map[string]string{
+				v1alpha1.JobNameKey:  "job1",
+				v1alpha1.TaskSpecKey: "task1",
+				v1alpha1.JobVersion:  "1",
+			},
+		},
+		Status: v1.PodStatus{
+			Phase: v1.PodRunning,
+		},
+	}
+
+	hasPod := jobCache.HasPod(pod)
+	if hasPod {
+		t.Errorf("Expected HasPod to be false, but got true")
+	}
+
+	err = jobCache.AddPod(pod)
+	if err != nil {
+		t.Errorf("Expected not to occur while adding pod, but got error: %s", err)
+	}
+
+	hasPod = jobCache.HasPod(pod)
+	if !hasPod {
+		t.Errorf("Expected HasPod to be true, but got false")
+	}
+}
+
 func TestJobCache_TaskCompleted(t *testing.T) {
 	namespace := "test"
 
