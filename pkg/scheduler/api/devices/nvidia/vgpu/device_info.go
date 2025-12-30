@@ -179,6 +179,34 @@ func (gs *GPUDevices) addResource(annotations map[string]string, pod *v1.Pod) {
 	}
 }
 
+func (gs *GPUDevices) addToPodMap(annotations map[string]string, pod *v1.Pod) {
+	ids, ok := annotations[AssignedIDsAnnotations]
+	if !ok {
+		klog.Errorf("pod %s has no annotation volcano.sh/devices-to-allocate", pod.Name)
+		return
+	}
+	podDev := decodePodDevices(ids)
+	for _, val := range podDev {
+		for _, deviceused := range val {
+			for _, gsdevice := range gs.Device {
+				if strings.Contains(deviceused.UUID, gsdevice.UUID) {
+					podUID := string(pod.UID)
+					_, ok := gsdevice.PodMap[podUID]
+					if !ok {
+						gsdevice.PodMap[podUID] = &GPUUsage{
+							UsedMem:  0,
+							UsedCore: 0,
+						}
+					}
+
+					gsdevice.PodMap[podUID].UsedMem += deviceused.Usedmem
+					gsdevice.PodMap[podUID].UsedCore += deviceused.Usedcores
+				}
+			}
+		}
+	}
+}
+
 // SubResource frees the gpu hold by the pod
 func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 	if gs == nil {
@@ -254,7 +282,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 		annotations[DeviceBindPhase] = "allocating"
 		annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
 		// To avoid that the pod allocated info updating latency, add it first
-		gs.addResource(annotations, pod)
+		gs.addToPodMap(annotations, pod)
 		err = patchPodAnnotations(kubeClient, pod, annotations)
 		if err != nil {
 			return err
