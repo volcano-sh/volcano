@@ -133,6 +133,9 @@ spec:
            {{- with .Values.custom.agent_supported_features }}
            --supported-features={{ . }} \
            {{- end }}
+           {{- with .Values.custom.agent_kube_cgroup_root }}
+           --kube-cgroup-root={{ . }} \
+           {{- end }}
            {{- with .Values.custom.agent_extend_resource_cpu_name }}
            --extend-resource-cpu-name={{ . }} \
            {{- end }}
