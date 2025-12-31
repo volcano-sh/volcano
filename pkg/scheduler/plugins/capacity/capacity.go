@@ -41,6 +41,8 @@ const (
 	// Using the name of the plugin will likely help us avoid collisions with other plugins.
 	capacityStateKey = PluginName
 	rootQueueID      = "root"
+
+	overwriteRootQueueRealCapability = "overwriteRootQueueRealCapability"
 )
 
 type capacityPlugin struct {
@@ -51,7 +53,8 @@ type capacityPlugin struct {
 
 	queueOpts map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
-	pluginArguments framework.Arguments
+	pluginArguments                  framework.Arguments
+	overwriteRootQueueRealCapability bool
 }
 
 type queueAttr struct {
@@ -76,12 +79,17 @@ type queueAttr struct {
 
 // New return capacityPlugin action
 func New(arguments framework.Arguments) framework.Plugin {
-	return &capacityPlugin{
-		totalResource:   api.EmptyResource(),
-		totalGuarantee:  api.EmptyResource(),
-		queueOpts:       map[api.QueueID]*queueAttr{},
-		pluginArguments: arguments,
+	cp := &capacityPlugin{
+		totalResource:                    api.EmptyResource(),
+		totalGuarantee:                   api.EmptyResource(),
+		queueOpts:                        map[api.QueueID]*queueAttr{},
+		pluginArguments:                  arguments,
+		overwriteRootQueueRealCapability: false,
 	}
+
+	arguments.GetBool(&cp.overwriteRootQueueRealCapability, overwriteRootQueueRealCapability)
+
+	return cp
 }
 
 func (cp *capacityPlugin) Name() string {
@@ -595,7 +603,18 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	if rootQueueAttr.deserved.IsEmpty() {
 		rootQueueAttr.deserved = cp.totalResource
 	}
-	rootQueueAttr.realCapability = cp.totalResource
+
+	// If overwriteRootQueueRealCapability is true and the user has explicitly configured the root queue's
+	// capability, use that value. Otherwise, default to the total cluster resources as the root queue's realCapability.
+	// This allows cluster-autoscalers to work correctly by respecting user overrides.
+	if cp.overwriteRootQueueRealCapability {
+		rootQueueAttr.realCapability = rootQueueAttr.capability.Clone()
+		klog.V(4).Infof("Root queue realCapability: <%v> (user override); cluster resources: <%v>",
+			rootQueueAttr.realCapability, cp.totalResource)
+	} else {
+		rootQueueAttr.realCapability = cp.totalResource.Clone()
+	}
+
 	// Check the hierarchical structure of queues
 	err := cp.checkHierarchicalQueue(rootQueueAttr)
 	if err != nil {

@@ -262,6 +262,7 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 			},
 		},
 	}
+
 	for i, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			test.RegisterSession(tiers, nil)
@@ -328,7 +329,7 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 	}
 	tests := []uthelper.TestCommonStruct{
 		{
-			Name:           "case0: memory exceed derserved, job only request cpu can be enqueued and allocated",
+			Name:           "case0: memory exceeds deserved, job only requests cpu can be enqueued and allocated",
 			Plugins:        plugins,
 			Pods:           []*corev1.Pod{p1, p2, p3},
 			Nodes:          []*corev1.Node{n1, n2},
@@ -338,7 +339,7 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 			ExpectBindMap:  map[string]string{"ns1/pod3": "n1"},
 		},
 		{
-			Name:           "case1: cpu exceed derserved, job only request memory can be enqueued and allocated",
+			Name:           "case1: cpu exceeds deserved, job only requests memory can be enqueued and allocated",
 			Plugins:        plugins,
 			Pods:           []*corev1.Pod{p1, p2, p4},
 			Nodes:          []*corev1.Node{n1, n2},
@@ -358,7 +359,7 @@ func TestEnqueueAndAllocatable(t *testing.T) {
 			ExpectBindMap:  map[string]string{},
 		},
 		{
-			Name:           "case4: queue with non-open state, can not enqueue",
+			Name:           "case4: queue with non-open state can not enqueue",
 			Plugins:        plugins,
 			Pods:           []*corev1.Pod{p6},
 			Nodes:          []*corev1.Node{n1, n2},
@@ -534,6 +535,32 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	p17 := util.BuildPod("ns1", "p17", "n3", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}, {Name: "rdma/hca", Value: "1"}}...), "pg17", make(map[string]string), map[string]string{})
 	p18 := util.BuildPod("ns1", "p18", "n3", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}, {Name: "rdma/hca", Value: "1"}}...), "pg18", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, map[string]string{})
 
+	// root queue realCapability tests
+	arguments := framework.Arguments{
+		"overwriteRootQueueRealCapability": true,
+	}
+	pluginsWithOverwriteRootQueueRealCapability := map[string]framework.PluginBuilder{
+		PluginName: func(args framework.Arguments) framework.Plugin {
+			return New(arguments)
+		},
+		predicates.PluginName: predicates.New,
+		gang.PluginName:       gang.New,
+	}
+	// expect to enqueue pods over cluster limits when override is enabled, otherwise not
+	// nodes
+	n1_realCapabilityTest := util.BuildNode("n1", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "11"}}...), map[string]string{})
+	// queues
+	root1_realCapabilityTest := buildQueueWithParents("root", "", nil, api.BuildResourceList("16", "16Gi"))
+	queue1_realCapabilityTest := buildQueueWithParents("q1", "root", nil, nil)
+
+	// pod uses the whole node
+	p1_realCapabilityTest := util.BuildPod("ns1", "p1", "n1", corev1.PodRunning, api.BuildResourceList("8", "8Gi"), "pg1", make(map[string]string), map[string]string{})
+	p2_realCapabilityTest := util.BuildPod("ns1", "p2", "", corev1.PodPending, api.BuildResourceList("8", "8Gi"), "pg2", make(map[string]string), map[string]string{})
+
+	// podgroup
+	pg1_realCapabilityTest := util.BuildPodGroupWithMinResources("pg1", "ns1", "q1", 1, nil, api.BuildResourceList("8", "8Gi"), schedulingv1beta1.PodGroupRunning)
+	pg2_realCapabilityTest := util.BuildPodGroupWithMinResources("pg2", "ns1", "q1", 1, nil, api.BuildResourceList("8", "8Gi"), schedulingv1beta1.PodGroupPending)
+
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name:      "case0: Pod allocatable when queue is leaf queue",
@@ -677,6 +704,30 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			},
 			ExpectEvicted:  []string{"ns1/p17"},
 			ExpectEvictNum: 1,
+		},
+		{
+			Name:      "root queue realCapability: not allow pods to enqueue over cluster limits when overwriteRootQueueRealCapability is false",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p1_realCapabilityTest, p2_realCapabilityTest},
+			Nodes:     []*corev1.Node{n1_realCapabilityTest},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg1_realCapabilityTest, pg2_realCapabilityTest},
+			Queues:    []*schedulingv1beta1.Queue{root1_realCapabilityTest, queue1_realCapabilityTest},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"ns1/pg1": scheduling.PodGroupRunning,
+				"ns1/pg2": scheduling.PodGroupPending,
+			},
+		},
+		{
+			Name:      "root queue realCapability: allow pods to enqueue over cluster limits when overwriteRootQueueRealCapability is true",
+			Plugins:   pluginsWithOverwriteRootQueueRealCapability,
+			Pods:      []*corev1.Pod{p1_realCapabilityTest, p2_realCapabilityTest},
+			Nodes:     []*corev1.Node{n1_realCapabilityTest},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg1_realCapabilityTest, pg2_realCapabilityTest},
+			Queues:    []*schedulingv1beta1.Queue{root1_realCapabilityTest, queue1_realCapabilityTest},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"ns1/pg1": scheduling.PodGroupRunning,
+				"ns1/pg2": scheduling.PodGroupInqueue,
+			},
 		},
 	}
 
