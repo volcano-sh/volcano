@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
@@ -29,11 +30,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/client-go/tools/cache"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	volcanoversioned "volcano.sh/apis/pkg/client/clientset/versioned"
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
+	schedulingv1beta1informers "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
@@ -857,7 +862,7 @@ func TestAdmitQueues(t *testing.T) {
 			},
 		},
 		{
-			Name: "Create queue with guarantee resource",
+			Name: "Create queue with guarantee but no deserved should be rejected",
 			AR: admissionv1.AdmissionReview{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "AdmissionReview",
@@ -882,7 +887,16 @@ func TestAdmitQueues(t *testing.T) {
 				},
 			},
 			reviewResponse: &admissionv1.AdmissionResponse{
-				Allowed: true,
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("guarantee"),
+						api.NewResource(
+							v1.ResourceList{
+								v1.ResourceCPU:    resource.MustParse("1"),
+								v1.ResourceMemory: resource.MustParse("1Gi"),
+							}).String(),
+						"guarantee should less equal than deserved").Error(),
+				},
 			},
 		},
 		{
@@ -1216,8 +1230,11 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 
 	config.VolcanoClient = fakeclient.NewSimpleClientset()
 	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
-	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
-	config.QueueLister = queueInformer.Lister()
+
+	// Setup queue informer with parent index
+	queueInformer := setupQueueInformerWithIndex(informerFactory)
+	config.QueueInformer = queueInformer
+	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
 
 	stopCh := make(chan struct{})
 	informerFactory.Start(stopCh)
@@ -1356,6 +1373,371 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 	selfReferencingQueueJSON, err := json.Marshal(selfReferencingQueue)
 	if err != nil {
 		t.Errorf("Marshal self-referencing queue failed for %v.", err)
+	}
+
+	// Test queues with negative resource values
+	queueWithNegativeCapability := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "queue-negative-capability",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU: resource.MustParse("-10"),
+			},
+		},
+	}
+	queueWithNegativeCapabilityJSON, err := json.Marshal(queueWithNegativeCapability)
+	if err != nil {
+		t.Errorf("Marshal queue with negative capability failed for %v.", err)
+	}
+
+	queueWithNegativeDeserved := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "queue-negative-deserved",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+			Weight: 1,
+			Deserved: v1.ResourceList{
+				v1.ResourceCPU: resource.MustParse("-5"),
+			},
+		},
+	}
+	queueWithNegativeDeservedJSON, err := json.Marshal(queueWithNegativeDeserved)
+	if err != nil {
+		t.Errorf("Marshal queue with negative deserved failed for %v.", err)
+	}
+
+	queueWithNegativeGuarantee := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "queue-negative-guarantee",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+			Weight: 1,
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{
+					v1.ResourceCPU: resource.MustParse("-2"),
+				},
+			},
+		},
+	}
+	queueWithNegativeGuaranteeJSON, err := json.Marshal(queueWithNegativeGuarantee)
+	if err != nil {
+		t.Errorf("Marshal queue with negative guarantee failed for %v.", err)
+	}
+
+	// Create parent queue for resource validation tests
+	parentQueueForResourceTest := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "parent-queue-resource-test",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("10"),
+				v1.ResourceMemory: resource.MustParse("20Gi"),
+			},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("8"),
+					v1.ResourceMemory: resource.MustParse("16Gi"),
+				},
+			},
+		},
+	}
+
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &parentQueueForResourceTest, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create parent queue for resource test failed for %v.", err)
+	}
+
+	// Create a sibling queue for resource validation tests
+	siblingQueueForResourceTest := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "sibling-queue-resource-test",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "parent-queue-resource-test",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("3"),
+				v1.ResourceMemory: resource.MustParse("6Gi"),
+			},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("2"),
+					v1.ResourceMemory: resource.MustParse("4Gi"),
+				},
+			},
+		},
+	}
+
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &siblingQueueForResourceTest, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create sibling queue for resource test failed for %v.", err)
+	}
+
+	// Test queue objects
+	childCapabilityExceedsParent := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "child-capability-exceeds-parent",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "parent-queue-resource-test",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("20"),
+				v1.ResourceMemory: resource.MustParse("40Gi"),
+			},
+		},
+	}
+	childCapabilityExceedsParentJSON, err := json.Marshal(childCapabilityExceedsParent)
+	if err != nil {
+		t.Errorf("Marshal child capability exceeds parent failed for %v.", err)
+	}
+
+	siblingsGuaranteeExceedsParent := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "siblings-guarantee-exceeds",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "parent-queue-resource-test",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("7"),
+				v1.ResourceMemory: resource.MustParse("14Gi"),
+			},
+			Deserved: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("7"),
+				v1.ResourceMemory: resource.MustParse("14Gi"),
+			},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("7"),
+					v1.ResourceMemory: resource.MustParse("14Gi"),
+				},
+			},
+		},
+	}
+	siblingsGuaranteeExceedsParentJSON, err := json.Marshal(siblingsGuaranteeExceedsParent)
+	if err != nil {
+		t.Errorf("Marshal siblings guarantee exceeds parent failed for %v.", err)
+	}
+
+	// Create another parent queue with smaller capability for testing parent's capability validation
+	parentQueueSmallCapability := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "parent-queue-small-capability",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("5"),
+				v1.ResourceMemory: resource.MustParse("10Gi"),
+			},
+		},
+	}
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &parentQueueSmallCapability, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create parent queue with small capability failed for %v.", err)
+	}
+
+	// Create a child queue with larger capability than parent
+	childQueueLargerCapability := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "child-queue-larger-capability",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "parent-queue-small-capability",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("10"),
+				v1.ResourceMemory: resource.MustParse("20Gi"),
+			},
+		},
+	}
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &childQueueLargerCapability, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create child queue with larger capability failed for %v.", err)
+	}
+
+	// Create a queue that will be updated to have capability less than its children
+	parentQueueToUpdate := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "parent-queue-to-update",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("20"),
+				v1.ResourceMemory: resource.MustParse("40Gi"),
+			},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("15"),
+					v1.ResourceMemory: resource.MustParse("30Gi"),
+				},
+			},
+		},
+	}
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &parentQueueToUpdate, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create parent queue to update failed for %v.", err)
+	}
+
+	// Create child queues under parentQueueToUpdate
+	childQueueA := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "child-queue-a",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "parent-queue-to-update",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("12"),
+				v1.ResourceMemory: resource.MustParse("24Gi"),
+			},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("8"),
+					v1.ResourceMemory: resource.MustParse("16Gi"),
+				},
+			},
+		},
+	}
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &childQueueA, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create child queue A failed for %v.", err)
+	}
+
+	childQueueBForUpdate := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "child-queue-b-for-update",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "parent-queue-to-update",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("8"),
+				v1.ResourceMemory: resource.MustParse("16Gi"),
+			},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("5"),
+					v1.ResourceMemory: resource.MustParse("10Gi"),
+				},
+			},
+		},
+	}
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &childQueueBForUpdate, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create child queue B for update failed for %v.", err)
+	}
+
+	parentQueueUpdatedSmallerCapability := parentQueueToUpdate.DeepCopy()
+	parentQueueUpdatedSmallerCapability.Spec.Capability = v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse("10"),
+		v1.ResourceMemory: resource.MustParse("20Gi"),
+	}
+	parentQueueUpdatedSmallerCapability.Spec.Deserved = v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse("10"),
+		v1.ResourceMemory: resource.MustParse("20Gi"),
+	}
+	parentQueueUpdatedSmallerCapability.Spec.Guarantee = schedulingv1beta1.Guarantee{
+		Resource: v1.ResourceList{
+			v1.ResourceCPU:    resource.MustParse("8"),
+			v1.ResourceMemory: resource.MustParse("16Gi"),
+		},
+	}
+	parentQueueUpdatedSmallerCapabilityJSON, err := json.Marshal(parentQueueUpdatedSmallerCapability)
+	if err != nil {
+		t.Errorf("Marshal parent queue updated smaller capability failed for %v.", err)
+	}
+
+	// Update the parent queue to have smaller guarantee than sum of children's guarantee
+	// Keep capability >= all children's capability, but guarantee < sum of children's guarantee
+	parentQueueUpdatedSmallerGuarantee := parentQueueToUpdate.DeepCopy()
+	parentQueueUpdatedSmallerGuarantee.Spec.Capability = v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse("20"), // Still >= child-queue-a (12)
+		v1.ResourceMemory: resource.MustParse("40Gi"),
+	}
+	parentQueueUpdatedSmallerGuarantee.Spec.Deserved = v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse("20"),
+		v1.ResourceMemory: resource.MustParse("40Gi"),
+	}
+	parentQueueUpdatedSmallerGuarantee.Spec.Guarantee = schedulingv1beta1.Guarantee{
+		Resource: v1.ResourceList{
+			v1.ResourceCPU:    resource.MustParse("10"),   // < 8 + 5 = 13
+			v1.ResourceMemory: resource.MustParse("20Gi"), // < 16 + 10 = 26
+		},
+	}
+	parentQueueUpdatedSmallerGuaranteeJSON, err := json.Marshal(parentQueueUpdatedSmallerGuarantee)
+	if err != nil {
+		t.Errorf("Marshal parent queue updated smaller guarantee failed for %v.", err)
+	}
+
+	parentQueueToUpdateOldJSON, err := json.Marshal(parentQueueToUpdate)
+	if err != nil {
+		t.Errorf("Marshal parent queue to update old failed for %v.", err)
+	}
+
+	// Test queue with parent="" (empty parent)
+	// This queue should still validate child constraints when updated
+	parentQueueEmptyParent := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "parent-queue-empty-parent",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "", // Empty parent (equivalent to root)
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("100"),
+				v1.ResourceMemory: resource.MustParse("100Gi"),
+			},
+		},
+	}
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &parentQueueEmptyParent, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create parent queue with empty parent failed for %v.", err)
+	}
+
+	childQueueOfEmptyParent := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "child-of-empty-parent",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "parent-queue-empty-parent",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("50"),
+				v1.ResourceMemory: resource.MustParse("50Gi"),
+			},
+		},
+	}
+	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &childQueueOfEmptyParent, metav1.CreateOptions{})
+	if err != nil {
+		t.Errorf("Create child queue of empty parent failed for %v.", err)
+	}
+
+	// Update parent queue to have capability less than children (should FAIL)
+	updatedParentEmptyParent := parentQueueEmptyParent.DeepCopy()
+	updatedParentEmptyParent.Spec.Capability = v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse("30"),
+		v1.ResourceMemory: resource.MustParse("30Gi"),
+	}
+	updatedParentEmptyParentJSON, err := json.Marshal(updatedParentEmptyParent)
+	if err != nil {
+		t.Errorf("Marshal updated parent queue with empty parent failed for %v.", err)
+	}
+	parentQueueEmptyParentJSON, err := json.Marshal(parentQueueEmptyParent)
+	if err != nil {
+		t.Errorf("Marshal original parent queue with empty parent failed for %v.", err)
 	}
 
 	testCases := []struct {
@@ -1546,6 +1928,271 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 				Allowed: true,
 			},
 		},
+		{
+			Name: "Child capability exceeds parent capability",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "child-capability-exceeds-parent",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: childCapabilityExceedsParentJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "queue child-capability-exceeds-parent capability (cpu 20000.00, memory 42949672960.00) exceeds parent queue parent-queue-resource-test capability (cpu 10000.00, memory 21474836480.00)",
+				},
+			},
+		},
+		{
+			Name: "Siblings guarantee sum exceeds parent guarantee",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "siblings-guarantee-exceeds",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: siblingsGuaranteeExceedsParentJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "parent queue parent-queue-resource-test validation failed: sum of children's guarantee (cpu 9000.00, memory 19327352832.00) exceeds parent's guarantee limit (cpu 8000.00, memory 17179869184.00)",
+				},
+			},
+		},
+		{
+			Name: "Parent capability less than child capability on UPDATE",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "parent-queue-to-update",
+					Operation: "UPDATE",
+					OldObject: runtime.RawExtension{
+						Raw: parentQueueToUpdateOldJSON,
+					},
+					Object: runtime.RawExtension{
+						Raw: parentQueueUpdatedSmallerCapabilityJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "queue parent-queue-to-update capability (cpu 10000.00, memory 21474836480.00) is less than child queue child-queue-a capability (cpu 12000.00, memory 25769803776.00)",
+				},
+			},
+		},
+		{
+			Name: "Sum of children's guarantee exceeds parent guarantee on UPDATE",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "parent-queue-to-update",
+					Operation: "UPDATE",
+					OldObject: runtime.RawExtension{
+						Raw: parentQueueToUpdateOldJSON,
+					},
+					Object: runtime.RawExtension{
+						Raw: parentQueueUpdatedSmallerGuaranteeJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "queue parent-queue-to-update validation failed: sum of children's guarantee (cpu 13000.00, memory 27917287424.00) exceeds parent's guarantee limit (cpu 10000.00, memory 21474836480.00)",
+				},
+			},
+		},
+		{
+			Name: "Update queue with empty parent - should validate child constraints",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "parent-queue-empty-parent",
+					Operation: "UPDATE",
+					OldObject: runtime.RawExtension{
+						Raw: parentQueueEmptyParentJSON,
+					},
+					Object: runtime.RawExtension{
+						Raw: updatedParentEmptyParentJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "queue parent-queue-empty-parent capability (cpu 30000.00, memory 32212254720.00) is less than child queue child-of-empty-parent capability (cpu 50000.00, memory 53687091200.00)",
+				},
+			},
+		},
+		{
+			Name: "Queue with negative capability should be rejected",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "queue-negative-capability",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: queueWithNegativeCapabilityJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "[requestBody.spec.capability.cpu: Invalid value: \"-10\": must be greater than or equal to 0, requestBody.spec.deserved: Invalid value: \"cpu 0.00, memory 0.00\": deserved should less equal than capability]",
+				},
+			},
+		},
+		{
+			Name: "Queue with negative deserved should be rejected",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "queue-negative-deserved",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: queueWithNegativeDeservedJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "requestBody.spec.deserved.cpu: Invalid value: \"-5\": must be greater than or equal to 0",
+				},
+			},
+		},
+		{
+			Name: "Queue with negative guarantee should be rejected",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "queue-negative-guarantee",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: queueWithNegativeGuaranteeJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "requestBody.spec.guarantee.resource.cpu: Invalid value: \"-2\": must be greater than or equal to 0",
+				},
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -1558,4 +2205,20 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 		})
 	}
 	close(stopCh)
+}
+
+// setupQueueInformerWithIndex creates a queue informer with parent index for testing
+func setupQueueInformerWithIndex(factory informers.SharedInformerFactory) cache.SharedIndexInformer {
+	queueInformer := factory.InformerFor(&schedulingv1beta1.Queue{},
+		func(c volcanoversioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+			return schedulingv1beta1informers.NewQueueInformer(
+				c,
+				resyncPeriod,
+				cache.Indexers{
+					cache.NamespaceIndex:        cache.MetaNamespaceIndexFunc,
+					router.QueueParentIndexName: router.QueueParentIndexFunc,
+				},
+			)
+		})
+	return queueInformer
 }

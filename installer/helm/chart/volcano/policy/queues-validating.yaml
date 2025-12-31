@@ -83,18 +83,19 @@ spec:
       message: "guarantee should less equal than capability"
       reason: Invalid
     # Validate guarantee <= deserved (guarantee should less equal than deserved)
+    # When guarantee is set, deserved must also be set
     - expression: |
-        !has(object.spec) || !has(object.spec.deserved) || !has(object.spec.guarantee) ||
-        !has(object.spec.guarantee.resource) || size(object.spec.deserved) == 0 ||
-        size(object.spec.guarantee.resource) == 0 ||
-        object.spec.deserved.all(resourceName,
-          !(resourceName in object.spec.guarantee.resource) ||
-          quantity(object.spec.deserved[resourceName]).compareTo(quantity(object.spec.guarantee.resource[resourceName])) >= 0
-        ) &&
-        object.spec.guarantee.resource.all(resourceName,
-          resourceName in object.spec.deserved &&
-          quantity(object.spec.guarantee.resource[resourceName]).compareTo(quantity(object.spec.deserved[resourceName])) <= 0
-        )
+        !has(object.spec) || !has(object.spec.guarantee) ||
+        !has(object.spec.guarantee.resource) || size(object.spec.guarantee.resource) == 0 ||
+        (has(object.spec.deserved) && size(object.spec.deserved) > 0 &&
+         object.spec.deserved.all(resourceName,
+           !(resourceName in object.spec.guarantee.resource) ||
+           quantity(object.spec.deserved[resourceName]).compareTo(quantity(object.spec.guarantee.resource[resourceName])) >= 0
+         ) &&
+         object.spec.guarantee.resource.all(resourceName,
+           resourceName in object.spec.deserved &&
+           quantity(object.spec.guarantee.resource[resourceName]).compareTo(quantity(object.spec.deserved[resourceName])) <= 0
+         ))
       message: "guarantee should less equal than deserved"
       reason: Invalid
     # Validate hierarchical attributes - path and weights length must match

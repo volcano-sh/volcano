@@ -20,6 +20,7 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
 	"volcano.sh/apis/pkg/client/clientset/versioned"
@@ -35,6 +36,7 @@ type AdmissionServiceConfig struct {
 	KubeClient     kubernetes.Interface
 	VolcanoClient  versioned.Interface
 	QueueLister    schedulinglister.QueueLister
+	QueueInformer  cache.SharedIndexInformer
 	Recorder       record.EventRecorder
 	ConfigData     *config.AdmissionConfiguration
 }

@@ -34,6 +34,7 @@ type QueueSpec struct {
 	Name              string
 	Weight            int32
 	GuaranteeResource v1.ResourceList
+	DeservedResource  v1.ResourceList
 }
 
 func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
@@ -49,6 +50,15 @@ func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
 		}
 		if len(queueSpec.GuaranteeResource) != 0 {
 			queue.Spec.Guarantee.Resource = queueSpec.GuaranteeResource
+			// When guarantee is set, deserved must also be set
+			if len(queueSpec.DeservedResource) != 0 {
+				queue.Spec.Deserved = queueSpec.DeservedResource
+			} else {
+				// Default: deserved = guarantee if not explicitly set
+				queue.Spec.Deserved = queueSpec.GuaranteeResource
+			}
+		} else if len(queueSpec.DeservedResource) != 0 {
+			queue.Spec.Deserved = queueSpec.DeservedResource
 		}
 		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", queueSpec.Name)
