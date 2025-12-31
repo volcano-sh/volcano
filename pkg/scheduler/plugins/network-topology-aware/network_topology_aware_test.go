@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
@@ -141,6 +142,108 @@ func TestNew(t *testing.T) {
 			assert.Equal(t, tt.expectedPlugin.normalPodConfig, ntap.normalPodConfig, "the normalPodConfig should be initialized properly")
 			assert.Equal(t, tt.expectedPlugin.hyperNodesTier, ntap.hyperNodesTier, "the hyperNodesTier should be initialized properly")
 			assert.Equal(t, tt.expectedPlugin.hyperNodeResourceCache, ntap.hyperNodeResourceCache, "the hyperNodeResourceCache should be initialized properly")
+		})
+	}
+}
+
+func TestInitHyperNodeResourceCache(t *testing.T) {
+	tests := []struct {
+		name             string
+		nodeNumber       int
+		hyperNodeNumbers []int
+		arguments        framework.Arguments
+		expectedCache    map[string]map[corev1.ResourceName]*resourceStatus
+	}{
+		{
+			name:             "init hypernode resource status cache",
+			nodeNumber:       2000,
+			hyperNodeNumbers: []int{200, 40, 5, 1},
+			arguments: framework.Arguments{
+				"hypernode.binpack.resources": "example.com/foo",
+			},
+			expectedCache: map[string]map[corev1.ResourceName]*resourceStatus{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plugin := networkTopologyAwarePlugin{
+				pluginArguments:        tt.arguments,
+				weight:                 getPriorityWeight(tt.arguments),
+				normalPodConfig:        getNormalPodConfig(tt.arguments),
+				hyperNodesTier:         &hyperNodesTier{},
+				hyperNodeResourceCache: make(map[string]map[corev1.ResourceName]*resourceStatus),
+			}
+			ssn := &framework.Session{}
+
+			nodes := make(map[string]*api.NodeInfo)
+			for i := 0; i < tt.nodeNumber; i++ {
+				nodes[fmt.Sprintf("node-%d", i)] = &api.NodeInfo{
+					Name: fmt.Sprintf("node-%d", i),
+					Allocatable: &api.Resource{
+						MilliCPU: 10,
+						Memory:   10,
+						ScalarResources: map[corev1.ResourceName]float64{
+							"pods":            10,
+							"example.com/foo": 10,
+						},
+					},
+					Used: &api.Resource{
+						MilliCPU: 5,
+						Memory:   5,
+						ScalarResources: map[corev1.ResourceName]float64{
+							"pods":            5,
+							"example.com/foo": 5,
+						},
+					},
+				}
+			}
+			ssn.Nodes = nodes
+
+			hyperNodes := make(map[string]*api.HyperNodeInfo)
+			hyperNodesSetByTier := make(map[int]sets.Set[string])
+			for tier := 1; tier <= len(tt.hyperNodeNumbers); tier++ {
+				hyperNodeSet := make(sets.Set[string])
+				for index := 0; index < tt.hyperNodeNumbers[tier-1]; index++ {
+					hyperNode := fmt.Sprintf("hypernode-tier-%d-index-%d", tier, index)
+					hyperNodes[hyperNode] = &api.HyperNodeInfo{}
+					hyperNodeSet.Insert(hyperNode)
+
+					tt.expectedCache[hyperNode] = make(map[corev1.ResourceName]*resourceStatus)
+					for _, resource := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory, corev1.ResourceName("example.com/foo")} {
+						tt.expectedCache[hyperNode][resource] = &resourceStatus{
+							allocatable: float64(tt.nodeNumber/tt.hyperNodeNumbers[tier-1]) * 10,
+							used:        float64(tt.nodeNumber/tt.hyperNodeNumbers[tier-1]) * 5,
+						}
+					}
+				}
+				hyperNodesSetByTier[tier] = hyperNodeSet
+			}
+			ssn.HyperNodes = hyperNodes
+			ssn.HyperNodesSetByTier = hyperNodesSetByTier
+
+			realNodeSet := make(map[string]sets.Set[string])
+			for tier := 1; tier <= len(tt.hyperNodeNumbers); tier++ {
+				for hyperNodeIndex := 0; hyperNodeIndex < tt.hyperNodeNumbers[tier-1]; hyperNodeIndex++ {
+					realNodeSet[fmt.Sprintf("hypernode-tier-%d-index-%d", tier, hyperNodeIndex)] = make(sets.Set[string])
+				}
+				for i := 0; i < tt.nodeNumber; i++ {
+					realNodeSet[fmt.Sprintf("hypernode-tier-%d-index-%d", tier, i%tt.hyperNodeNumbers[tier-1])].Insert(fmt.Sprintf("node-%d", i))
+				}
+			}
+			ssn.RealNodesSet = realNodeSet
+
+			start := time.Now()
+			plugin.initHyperNodeResourceCache(ssn)
+			elapsed := time.Since(start)
+
+			for hyperNode := range plugin.hyperNodeResourceCache {
+				for _, resource := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory, corev1.ResourceName("example.com/foo")} {
+					assert.Equal(t, tt.expectedCache[hyperNode][resource].allocatable, plugin.hyperNodeResourceCache[hyperNode][resource].allocatable)
+					assert.Equal(t, tt.expectedCache[hyperNode][resource].used, plugin.hyperNodeResourceCache[hyperNode][resource].used)
+				}
+			}
+			fmt.Printf("The time cost for initializing the hypernode resource status cache is %v.\n", elapsed)
 		})
 	}
 }
