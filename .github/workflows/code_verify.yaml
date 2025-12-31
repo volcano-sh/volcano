@@ -51,3 +51,16 @@ jobs:
           make TAG=${{ env.TAG }} verify-generated-yaml
           sudo make unit-test
         working-directory: ./src/github.com/${{ github.repository }}
+
+      - name: Verify staging APIs generated code
+        run: |
+          echo "::group::Verifying staging APIs generated code"
+          cd staging/src/volcano.sh/apis
+          if ! bash hack/verify-codegen.sh; then
+            echo "::error::Staging APIs generated code is out of date"
+            echo "Please run: cd staging/src/volcano.sh/apis && bash hack/update-codegen.sh"
+            exit 1
+          fi
+          echo "Staging APIs generated code is up to date"
+          echo "::endgroup::"
+        working-directory: ./src/github.com/${{ github.repository }}

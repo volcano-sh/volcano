@@ -126,6 +126,7 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 			Name:            name,
 			Replicas:        task.Rep,
 			Policies:        task.Policies,
+			MaxRetry:        task.MaxRetry,
 			PartitionPolicy: task.PartitionPolicy,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
