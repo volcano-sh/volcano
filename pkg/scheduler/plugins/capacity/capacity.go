@@ -596,13 +596,9 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		rootQueueAttr.deserved = cp.totalResource
 	}
 	rootQueueAttr.realCapability = cp.totalResource
-	// Check the hierarchical structure of queues
-	err := cp.checkHierarchicalQueue(rootQueueAttr)
-	if err != nil {
-		klog.Errorf("Failed to check queue's hierarchical structure, error: %v", err)
-		return false
-	}
-	klog.V(4).Infof("Successfully checked queue's hierarchical structure.")
+	// checkHierarchicalQueue only logs warnings and never returns errors
+	// to avoid aborting the entire scheduling cycle due to configuration issues
+	cp.checkHierarchicalQueue(rootQueueAttr)
 
 	// update session attributes
 	ssn.TotalGuarantee = cp.totalGuarantee
@@ -744,7 +740,7 @@ func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.S
 	return nil
 }
 
-func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
+func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 	totalGuarantee := api.EmptyResource()
 	totalDeserved := api.EmptyResource()
 	for _, childAttr := range attr.children {
@@ -772,8 +768,9 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 
 		// Check if the parent queue's capability is less than the child queue's capability
 		if attr.capability.LessPartly(childAttr.capability, api.Zero) {
-			return fmt.Errorf("queue <%s> capability <%s> is less than its child queue <%s> capability <%s>",
-				attr.name, attr.capability, childAttr.name, childAttr.capability)
+			klog.V(3).Infof("Child queue %s capability (%s) exceeds parent queue %s capability (%s). "+
+				"Child's effective capability will be limited by parent.",
+				childAttr.name, childAttr.capability, attr.name, attr.capability)
 		}
 	}
 
@@ -801,23 +798,22 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 
 	// Check if the parent queue's deserved resources are less than the total deserved resources of child queues
 	if attr.deserved.LessPartly(totalDeserved, api.Zero) {
-		return fmt.Errorf("queue <%s> deserved resources <%s> are less than the sum of its child queues' deserved resources <%s>",
-			attr.name, attr.deserved, totalDeserved)
+		klog.V(3).Infof("Sum of child queue deserved (%s) exceeds parent queue %s deserved (%s). "+
+			"This may affect resource distribution during scheduling.",
+			totalDeserved, attr.name, attr.deserved)
 	}
 
 	// Check if the parent queue's guarantee resources are less than the total guarantee resources of child queues
 	if attr.guarantee.LessPartly(totalGuarantee, api.Zero) {
-		return fmt.Errorf("queue <%s> guarantee resources <%s> are less than the sum of its child queues' guarantee resources <%s>",
-			attr.name, attr.guarantee, totalGuarantee)
+		klog.V(3).Infof("Sum of child queue guarantees (%s) exceeds parent queue %s guarantee (%s). "+
+			"Not all child guarantees can be satisfied simultaneously.",
+			totalGuarantee, attr.name, attr.guarantee)
 	}
 
+	// Recursively check child queues
 	for _, childAttr := range attr.children {
-		err := cp.checkHierarchicalQueue(childAttr)
-		if err != nil {
-			return err
-		}
+		cp.checkHierarchicalQueue(childAttr)
 	}
-	return nil
 }
 
 // compareShareWithDeserved compares two queueAttr by share; when shares are equal,
