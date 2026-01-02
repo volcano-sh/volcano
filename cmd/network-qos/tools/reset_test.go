@@ -32,6 +32,7 @@ import (
 	"volcano.sh/volcano/pkg/networkqos/api"
 	"volcano.sh/volcano/pkg/networkqos/throttling"
 	mockthrottling "volcano.sh/volcano/pkg/networkqos/throttling/mocks"
+	"volcano.sh/volcano/pkg/networkqos/utils"
 )
 
 func TestResetCmdRun(t *testing.T) {
@@ -133,10 +134,13 @@ func TestResetCmdRun(t *testing.T) {
 	}
 
 	exitCalled := false
-	resetPatch := gomonkey.NewPatches()
-	resetPatch.ApplyFunc(os.Exit, func(code int) {
+	originalOsExit := utils.OsExit
+	utils.OsExit = func(code int) {
 		exitCalled = true
-	})
+	}
+	defer func() {
+		utils.OsExit = originalOsExit
+	}()
 
 	for _, tc := range testCases {
 		exitCalled = false
