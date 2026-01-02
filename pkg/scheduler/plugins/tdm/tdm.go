@@ -44,9 +44,9 @@ const (
 
 type tdmPlugin struct {
 	revocableZone map[string]string
-	evictPeriod time.Duration
-	mu         sync.Mutex
-	lastEvictAt time.Time
+	evictPeriod   time.Duration
+	mu            sync.Mutex
+	lastEvictAt   time.Time
 }
 
 /*
