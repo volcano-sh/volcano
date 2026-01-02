@@ -29,6 +29,9 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// OsExit is a mockable version of os.Exit
+var OsExit = os.Exit
+
 const (
 	Kbps = 1000
 	Mbps = 1000 * 1000
@@ -143,5 +146,5 @@ func Error(errOut io.Writer, cmd *cobra.Command, err error) {
 	fmt.Fprintf(errOut, "execute command[%s] failed, error:%v\n", cmd.Name(), err)
 	klog.ErrorS(err, "Network QoS command called failed", "command", cmd.Name())
 	klog.Flush()
-	os.Exit(1)
+	OsExit(1)
 }
