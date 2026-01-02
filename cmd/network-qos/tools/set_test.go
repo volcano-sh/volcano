@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
@@ -31,6 +30,7 @@ import (
 	"volcano.sh/volcano/pkg/networkqos/api"
 	"volcano.sh/volcano/pkg/networkqos/throttling"
 	mockthrottling "volcano.sh/volcano/pkg/networkqos/throttling/mocks"
+	"volcano.sh/volcano/pkg/networkqos/utils"
 )
 
 func TestSetCmdRun(t *testing.T) {
@@ -109,11 +109,13 @@ func TestSetCmdRun(t *testing.T) {
 	}
 
 	exitCalled := false
-	setPatch := gomonkey.NewPatches()
-	setPatch.ApplyFunc(os.Exit, func(code int) {
+	originalOsExit := utils.OsExit
+	utils.OsExit = func(code int) {
 		exitCalled = true
-	})
-	defer setPatch.Reset()
+	}
+	defer func() {
+		utils.OsExit = originalOsExit
+	}()
 
 	for _, tc := range testCases {
 		exitCalled = false
