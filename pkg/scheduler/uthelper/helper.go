@@ -176,6 +176,45 @@ func (test *TestCommonStruct) waitForCacheSyncPolling(schedulerCache *cache.Sche
 				return false, nil
 			}
 		}
+
+		for _, sc := range test.SCs {
+			_, err := schedulerCache.SharedInformerFactory().Storage().V1().StorageClasses().Lister().Get(sc.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+		for _, pv := range test.PVs {
+			_, err := schedulerCache.SharedInformerFactory().Core().V1().PersistentVolumes().Lister().Get(pv.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+		for _, pvc := range test.PVCs {
+			_, err := schedulerCache.SharedInformerFactory().Core().V1().PersistentVolumeClaims().Lister().PersistentVolumeClaims(pvc.Namespace).Get(pvc.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+
+		for _, dc := range test.DeviceClasses {
+			_, err := schedulerCache.SharedInformerFactory().Resource().V1().DeviceClasses().Lister().Get(dc.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+		for _, rc := range test.ResourceClaims {
+			_, err := schedulerCache.SharedInformerFactory().Resource().V1().ResourceClaims().Lister().ResourceClaims(rc.Namespace).Get(rc.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+		for _, rs := range test.ResourceSlices {
+			_, err := schedulerCache.SharedInformerFactory().Resource().V1().ResourceSlices().Lister().Get(rs.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+
 		return true, nil
 	})
 
@@ -209,11 +248,52 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	// Create scheduler cache with self-defined binder and evictor
 	schedulerCache := cache.NewCustomMockSchedulerCache("utmock-scheduler", binder, evictor, test.stsUpdator, nil, nil)
 
+	// Set configuration before Run
+	schedulerCache.IgnoredCSIProvisioners = test.IgnoreProvisioners
+
+	// Initialize HyperNodesInfo
+	ready := new(atomic.Bool)
+	ready.Store(true)
+	for _, hni := range test.HyperNodesMap {
+		if hni.HyperNode == nil {
+			continue
+		}
+		for _, member := range hni.HyperNode.Spec.Members {
+			if member.Type != topologyv1alpha1.MemberTypeHyperNode {
+				continue
+			}
+			if member.Selector.ExactMatch == nil { // todo support other selector method
+				continue
+			}
+			child := member.Selector.ExactMatch.Name
+			hni.Children.Insert(child)
+			if childInfo, found := test.HyperNodesMap[child]; found {
+				childInfo.Parent = hni.Name
+			}
+		}
+	}
+	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
+
+	// Start the cache informers early to pick up resource creations
+	schedulerCache.Run(test.stop)
+
 	// Initial provisioning resources
 	kubeClient := schedulerCache.Client()
 	for _, sc := range test.SCs {
 		kubeClient.StorageV1().StorageClasses().Create(context.Background(), sc, metav1.CreateOptions{})
 	}
+
+	// Wait for StorageClasses to be synced in the cache
+	wait.PollImmediate(10*time.Millisecond, 1*time.Second, func() (bool, error) {
+		for _, sc := range test.SCs {
+			_, err := schedulerCache.SharedInformerFactory().Storage().V1().StorageClasses().Lister().Get(sc.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+
 	fakeClient := kubeClient.(*fakek8s.Clientset)
 	fakeClient.PrependReactor("update", "persistentvolumes", func(action testing.Action) (bool, runtime.Object, error) {
 		updateAction := action.(testing.UpdateAction)
@@ -269,7 +349,6 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, rs := range test.ResourceSlices {
 		kubeClient.ResourceV1().ResourceSlices().Create(context.Background(), rs, metav1.CreateOptions{})
 	}
-	// Move schedulerCache.Run to the end to avoid races during initialization
 
 	for _, node := range test.Nodes {
 		n, err := kubeClient.CoreV1().Nodes().Create(context.Background(), node.DeepCopy(), metav1.CreateOptions{})
@@ -282,7 +361,6 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 			fmt.Printf("Error updating status of Node %s: %v\n", node.Name, err)
 		}
 	}
-	schedulerCache.IgnoredCSIProvisioners = test.IgnoreProvisioners
 	for _, pod := range test.Pods {
 		pCopy := pod.DeepCopy()
 		if pCopy.Spec.SchedulerName == "" {
@@ -313,30 +391,6 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, rq := range test.ResourceQuotas {
 		schedulerCache.AddResourceQuota(rq)
 	}
-	ready := new(atomic.Bool)
-	ready.Store(true)
-	for _, hni := range test.HyperNodesMap {
-		if hni.HyperNode == nil {
-			continue
-		}
-		for _, member := range hni.HyperNode.Spec.Members {
-			if member.Type != topologyv1alpha1.MemberTypeHyperNode {
-				continue
-			}
-			if member.Selector.ExactMatch == nil { // todo support other selector method
-				continue
-			}
-			child := member.Selector.ExactMatch.Name
-			hni.Children.Insert(child)
-			if childInfo, found := test.HyperNodesMap[child]; found {
-				childInfo.Parent = hni.Name
-			}
-		}
-	}
-	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
-
-	// Now that everything is initialized, start the cache
-	schedulerCache.Run(test.stop)
 
 	return schedulerCache
 }
