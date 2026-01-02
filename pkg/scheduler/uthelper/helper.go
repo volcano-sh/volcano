@@ -274,27 +274,14 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	}
 	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
 
-	// Start the cache informers early to pick up resource creations
-	schedulerCache.Run(test.stop)
-
 	// Initial provisioning resources
 	kubeClient := schedulerCache.Client()
 	for _, sc := range test.SCs {
 		kubeClient.StorageV1().StorageClasses().Create(context.Background(), sc, metav1.CreateOptions{})
 	}
 
-	// Wait for StorageClasses to be synced in the cache
-	wait.PollImmediate(10*time.Millisecond, 1*time.Second, func() (bool, error) {
-		for _, sc := range test.SCs {
-			_, err := schedulerCache.SharedInformerFactory().Storage().V1().StorageClasses().Lister().Get(sc.Name)
-			if err != nil {
-				return false, nil
-			}
-		}
-		return true, nil
-	})
-
 	fakeClient := kubeClient.(*fakek8s.Clientset)
+
 	fakeClient.PrependReactor("update", "persistentvolumes", func(action testing.Action) (bool, runtime.Object, error) {
 		updateAction := action.(testing.UpdateAction)
 		obj := updateAction.GetObject().(*v1.PersistentVolume).DeepCopy()
@@ -391,6 +378,12 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, rq := range test.ResourceQuotas {
 		schedulerCache.AddResourceQuota(rq)
 	}
+
+	// Now that everything is initialized in the fake client, start the cache.
+	// This uses List to populate the cache initially, which is more efficient
+	// and avoids overflowing the Watch channel (panic: channel full).
+	schedulerCache.Run(test.stop)
+	schedulerCache.WaitForCacheSync(test.stop)
 
 	return schedulerCache
 }
