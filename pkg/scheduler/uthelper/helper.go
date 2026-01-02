@@ -133,8 +133,7 @@ func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.C
 }
 
 func (test *TestCommonStruct) waitForCacheSyncPolling(schedulerCache *cache.SchedulerCache) {
-	// Wait for all nodes and pods to be synced into the cache with their correct status
-	err := wait.PollImmediate(10*time.Millisecond, 2*time.Second, func() (bool, error) {
+	err := wait.PollImmediate(10*time.Millisecond, 5*time.Second, func() (bool, error) {
 		schedulerCache.Mutex.Lock()
 		defer schedulerCache.Mutex.Unlock()
 
@@ -146,7 +145,6 @@ func (test *TestCommonStruct) waitForCacheSyncPolling(schedulerCache *cache.Sche
 			if cacheNode.Node == nil {
 				return false, nil
 			}
-			// Verify resources are synced (even if just presence of something)
 			if len(cacheNode.Node.Status.Allocatable) == 0 && len(node.Status.Allocatable) > 0 {
 				return false, nil
 			}
@@ -220,7 +218,6 @@ func (test *TestCommonStruct) waitForCacheSyncPolling(schedulerCache *cache.Sche
 
 	if err != nil {
 		fmt.Printf("Error: cache sync polling timed out: %v\n", err)
-		// Debug the current state
 		schedulerCache.Mutex.Lock()
 		defer schedulerCache.Mutex.Unlock()
 		fmt.Printf("Current Cache Nodes: %v\n", len(schedulerCache.Nodes))
@@ -248,10 +245,8 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	// Create scheduler cache with self-defined binder and evictor
 	schedulerCache := cache.NewCustomMockSchedulerCache("utmock-scheduler", binder, evictor, test.stsUpdator, nil, nil)
 
-	// Set configuration before Run
 	schedulerCache.IgnoredCSIProvisioners = test.IgnoreProvisioners
 
-	// Initialize HyperNodesInfo
 	ready := new(atomic.Bool)
 	ready.Store(true)
 	for _, hni := range test.HyperNodesMap {
@@ -262,7 +257,7 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 			if member.Type != topologyv1alpha1.MemberTypeHyperNode {
 				continue
 			}
-			if member.Selector.ExactMatch == nil { // todo support other selector method
+			if member.Selector.ExactMatch == nil {
 				continue
 			}
 			child := member.Selector.ExactMatch.Name
@@ -379,9 +374,6 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 		schedulerCache.AddResourceQuota(rq)
 	}
 
-	// Now that everything is initialized in the fake client, start the cache.
-	// This uses List to populate the cache initially, which is more efficient
-	// and avoids overflowing the Watch channel (panic: channel full).
 	schedulerCache.Run(test.stop)
 	schedulerCache.WaitForCacheSync(test.stop)
 

@@ -29,7 +29,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// OsExit is a mockable version of os.Exit
 var OsExit = os.Exit
 
 const (

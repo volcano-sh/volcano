@@ -36,7 +36,6 @@ import (
 )
 
 func TestResourcesHandle_Handle(t *testing.T) {
-	// Set environment variable to force cgroup v1 detection
 	os.Setenv("VOLCANO_TEST_CGROUP_VERSION", "v1")
 	defer os.Unsetenv("VOLCANO_TEST_CGROUP_VERSION")
 
