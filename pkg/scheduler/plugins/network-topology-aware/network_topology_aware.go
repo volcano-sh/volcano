@@ -245,7 +245,7 @@ func (nta *networkTopologyAwarePlugin) String() string {
 		}
 	}
 	msg = append(msg, fmt.Sprintf("%s[%t]", HyperNodeBinPackNormalPodEnable, nta.normalPodConfig.hyperNodeBinPackingEnable),
-		fmt.Sprintf("%s[%f]", HyperNodeBinPackNormalPodFading, nta.normalPodConfig.hyperNodeBinPackingFading))
+		fmt.Sprintf("%s[%g]", HyperNodeBinPackNormalPodFading, nta.normalPodConfig.hyperNodeBinPackingFading))
 
 	return strings.Join(msg, ", ")
 }
@@ -301,12 +301,10 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 			node := task.NodeName
 			for hyperNode := range ssn.HyperNodes {
 				if ssn.RealNodesSet[hyperNode].Has(node) {
-					if _, foundHyperNode := nta.hyperNodeResourceCache[hyperNode]; foundHyperNode {
-						for _, resource := range task.Resreq.ResourceNames() {
-							if _, foundResource := nta.hyperNodeResourceCache[hyperNode][resource]; foundResource {
-								nta.hyperNodeResourceCache[hyperNode][resource].used += task.Resreq.Get(resource)
-							}
-						}
+					nta.hyperNodeResourceCache[hyperNode][corev1.ResourceCPU].used += task.Resreq.Get(corev1.ResourceCPU)
+					nta.hyperNodeResourceCache[hyperNode][corev1.ResourceMemory].used += task.Resreq.Get(corev1.ResourceMemory)
+					for resource := range nta.weight.HyperNodeBinPackingResources {
+						nta.hyperNodeResourceCache[hyperNode][resource].used += task.Resreq.Get(resource)
 					}
 				}
 			}
@@ -316,12 +314,10 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 			node := task.NodeName
 			for hyperNode := range ssn.HyperNodes {
 				if ssn.RealNodesSet[hyperNode].Has(node) {
-					if _, foundHyperNode := nta.hyperNodeResourceCache[hyperNode]; foundHyperNode {
-						for _, resource := range task.Resreq.ResourceNames() {
-							if _, foundResource := nta.hyperNodeResourceCache[hyperNode][resource]; foundResource {
-								nta.hyperNodeResourceCache[hyperNode][resource].used -= task.Resreq.Get(resource)
-							}
-						}
+					nta.hyperNodeResourceCache[hyperNode][corev1.ResourceCPU].used -= task.Resreq.Get(corev1.ResourceCPU)
+					nta.hyperNodeResourceCache[hyperNode][corev1.ResourceMemory].used -= task.Resreq.Get(corev1.ResourceMemory)
+					for resource := range nta.weight.HyperNodeBinPackingResources {
+						nta.hyperNodeResourceCache[hyperNode][resource].used -= task.Resreq.Get(resource)
 					}
 				}
 			}
