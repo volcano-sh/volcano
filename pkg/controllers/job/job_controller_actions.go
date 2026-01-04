@@ -1095,8 +1095,28 @@ func getSubGroupPolicy(taskSpec batch.TaskSpec) scheduling.SubGroupPolicySpec {
 		}
 	}
 
-	// Set MatchLabelKey
-	subGroupPolicy.MatchLabelKeys = []string{batch.TaskPartitionID}
+	// Set MatchLabelKeys based on ExpectedPartitions, use dual-level labels
+	// - Level 0: TaskPartitionGroupID (for grouping partitions)
+	// - Level 1: TaskPartitionID (for individual partitions, leaf nodes)
+	// If ExpectedPartitions only have single element or not set, use single-level label
+	if len(taskSpec.PartitionPolicy.ExpectedPartitions) > 1 {
+		subGroupPolicy.MatchLabelKeys = []string{batch.TaskPartitionGroupID, batch.TaskPartitionID}
+		// Build MinAvailableSubGroup, The first dimension is level, and the second dimension is
+		// the match index matched at this level, which in this case is partition group id.
+		// The value is the minAvailable of the sub job at the level where match index is located.
+		partitionGroupLen := len(taskSpec.PartitionPolicy.ExpectedPartitions)
+		// TaskPartitionGroupId is top level, so level is 0.
+		subGroupPolicy.MinAvailableSubGroup = make([][]int32, 1)
+		subGroupPolicy.MinAvailableSubGroup[0] = make([]int32, partitionGroupLen)
+		start := int32(0)
+		for partitionGroupId, expected := range taskSpec.PartitionPolicy.ExpectedPartitions {
+			subGroupPolicy.MinAvailableSubGroup[0][partitionGroupId] = (expected - start) * taskSpec.PartitionPolicy.PartitionSize
+			start = expected
+		}
+	} else {
+		// Single-level SubJob structure
+		subGroupPolicy.MatchLabelKeys = []string{batch.TaskPartitionID}
+	}
 
 	// set NetworkTopology
 	if taskSpec.PartitionPolicy.NetworkTopology != nil {

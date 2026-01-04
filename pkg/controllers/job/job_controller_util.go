@@ -174,9 +174,28 @@ func createJobPod(job *batch.Job, template *v1.PodTemplateSpec, ix int, jobForwa
 			partitionID = ix / int(ts.PartitionPolicy.PartitionSize)
 		}
 		pod.Labels[batch.TaskPartitionID] = strconv.Itoa(partitionID)
+
+		// Assign TaskPartitionGroupID based on ExpectedPartitions
+		if len(ts.PartitionPolicy.ExpectedPartitions) > 1 {
+			partitionGroupID := getPartitionGroupID(partitionID, ts.PartitionPolicy.ExpectedPartitions)
+			pod.Labels[batch.TaskPartitionGroupID] = strconv.Itoa(partitionGroupID)
+		}
 	}
 
 	return pod
+}
+
+// getPartitionGroupID determines which partition group a partition belongs to.
+// Note: Webhook validation guarantees len(expectedPartitions) > 0 and partitionID < expectedPartitions[last]
+func getPartitionGroupID(partitionID int, expectedPartitions []int32) int {
+	var groupID int
+	for i, expectedCount := range expectedPartitions {
+		if int32(partitionID) < expectedCount {
+			groupID = i
+			break
+		}
+	}
+	return groupID
 }
 
 func applyPolicies(job *batch.Job, req *apis.Request) (delayAct *delayAction) {

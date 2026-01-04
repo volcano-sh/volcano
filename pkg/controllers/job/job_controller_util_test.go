@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
+	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
@@ -1459,5 +1460,203 @@ func TestCalcPGMinResources(t *testing.T) {
 			t.Fatalf("case %d: expected %v got %v", i, tt.ExpectValue, gotMin)
 		}
 
+	}
+}
+
+func TestGetPartitionGroupID(t *testing.T) {
+	tests := []struct {
+		name               string
+		partitionID        int
+		expectedPartitions []int32
+		expectedGroupID    int
+	}{
+		{
+			name:               "ExpectedPartitions [1, 2, 4], partitionID 0",
+			partitionID:        0,
+			expectedPartitions: []int32{1, 2, 4},
+			expectedGroupID:    0,
+		},
+		{
+			name:               "ExpectedPartitions [1, 2, 4], partitionID 1",
+			partitionID:        1,
+			expectedPartitions: []int32{1, 2, 4},
+			expectedGroupID:    1,
+		},
+		{
+			name:               "ExpectedPartitions [1, 2, 4], partitionID 2",
+			partitionID:        2,
+			expectedPartitions: []int32{1, 2, 4},
+			expectedGroupID:    2,
+		},
+		{
+			name:               "ExpectedPartitions [1, 2, 4], partitionID 3",
+			partitionID:        3,
+			expectedPartitions: []int32{1, 2, 4},
+			expectedGroupID:    2,
+		},
+		{
+			name:               "ExpectedPartitions [2, 4, 8], partitionID 0",
+			partitionID:        0,
+			expectedPartitions: []int32{2, 4, 8},
+			expectedGroupID:    0,
+		},
+		{
+			name:               "ExpectedPartitions [2, 4, 8], partitionID 5",
+			partitionID:        5,
+			expectedPartitions: []int32{2, 4, 8},
+			expectedGroupID:    2,
+		},
+		{
+			name:               "Single element [4], partitionID 2",
+			partitionID:        2,
+			expectedPartitions: []int32{4},
+			expectedGroupID:    0,
+		},
+		{
+			name:               "ExpectedPartitions [1], partitionID 0",
+			partitionID:        0,
+			expectedPartitions: []int32{1},
+			expectedGroupID:    0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groupID := getPartitionGroupID(tt.partitionID, tt.expectedPartitions)
+
+			if groupID != tt.expectedGroupID {
+				t.Errorf("Expected groupID %d, got %d", tt.expectedGroupID, groupID)
+			}
+		})
+	}
+}
+
+func TestCreateJobPod_PartitionLabels(t *testing.T) {
+	tests := []struct {
+		name                     string
+		partitionPolicy          *v1alpha1.PartitionPolicySpec
+		podIndex                 int
+		expectedPartitionID      string
+		shouldHaveGroupID        bool
+		expectedPartitionGroupID string
+	}{
+		{
+			name: "No ExpectedPartitions, only TaskPartitionID",
+			partitionPolicy: &v1alpha1.PartitionPolicySpec{
+				TotalPartitions:    4,
+				PartitionSize:      2,
+				MinPartitions:      2,
+				ExpectedPartitions: nil,
+			},
+			podIndex:            2,
+			expectedPartitionID: "1",
+			shouldHaveGroupID:   false,
+		},
+		{
+			name: "ExpectedPartitions [1], only sets TaskPartitionID",
+			partitionPolicy: &v1alpha1.PartitionPolicySpec{
+				TotalPartitions:    2,
+				PartitionSize:      2,
+				MinPartitions:      1,
+				ExpectedPartitions: []int32{1},
+			},
+			podIndex:            0,
+			expectedPartitionID: "0",
+			shouldHaveGroupID:   false,
+		},
+		{
+			name: "ExpectedPartitions [1, 2, 4], pod in group 0 partition 0",
+			partitionPolicy: &v1alpha1.PartitionPolicySpec{
+				TotalPartitions:    4,
+				PartitionSize:      2,
+				MinPartitions:      1,
+				ExpectedPartitions: []int32{1, 2, 4},
+			},
+			podIndex:                 0,
+			expectedPartitionID:      "0",
+			shouldHaveGroupID:        true,
+			expectedPartitionGroupID: "0",
+		},
+		{
+			name: "ExpectedPartitions [1, 2, 4], pod in group 1 partition 1",
+			partitionPolicy: &v1alpha1.PartitionPolicySpec{
+				TotalPartitions:    4,
+				PartitionSize:      2,
+				MinPartitions:      1,
+				ExpectedPartitions: []int32{1, 2, 4},
+			},
+			podIndex:                 2,
+			expectedPartitionID:      "1",
+			shouldHaveGroupID:        true,
+			expectedPartitionGroupID: "1",
+		},
+		{
+			name: "ExpectedPartitions [1, 2, 4], pod in group 2 partition 2",
+			partitionPolicy: &v1alpha1.PartitionPolicySpec{
+				TotalPartitions:    4,
+				PartitionSize:      2,
+				MinPartitions:      1,
+				ExpectedPartitions: []int32{1, 2, 4},
+			},
+			podIndex:                 4,
+			expectedPartitionID:      "2",
+			shouldHaveGroupID:        true,
+			expectedPartitionGroupID: "2",
+		},
+		{
+			name: "ExpectedPartitions [1, 2, 4], pod in group 2 partition 3",
+			partitionPolicy: &v1alpha1.PartitionPolicySpec{
+				TotalPartitions:    4,
+				PartitionSize:      2,
+				MinPartitions:      1,
+				ExpectedPartitions: []int32{1, 2, 4},
+			},
+			podIndex:                 7,
+			expectedPartitionID:      "3",
+			shouldHaveGroupID:        true,
+			expectedPartitionGroupID: "2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			job := &v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-job",
+					Namespace: "default",
+					UID:       uuid.NewUUID(),
+				},
+			}
+
+			template := &v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-task"},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{{Name: "test", Image: "busybox"}},
+				},
+			}
+
+			ts := &v1alpha1.TaskSpec{
+				Name:            "test-task",
+				PartitionPolicy: tt.partitionPolicy,
+			}
+
+			pod := createJobPod(job, template, tt.podIndex, false, nil, ts)
+
+			if pod.Labels[batch.TaskPartitionID] != tt.expectedPartitionID {
+				t.Errorf("Expected TaskPartitionID %s, got %s",
+					tt.expectedPartitionID, pod.Labels[batch.TaskPartitionID])
+			}
+
+			if tt.shouldHaveGroupID {
+				if pod.Labels[batch.TaskPartitionGroupID] != tt.expectedPartitionGroupID {
+					t.Errorf("Expected TaskPartitionGroupID %s, got %s",
+						tt.expectedPartitionGroupID, pod.Labels[batch.TaskPartitionGroupID])
+				}
+			} else {
+				if _, exists := pod.Labels[batch.TaskPartitionGroupID]; exists {
+					t.Errorf("TaskPartitionGroupID should not be set when ExpectedPartitions length <= 1")
+				}
+			}
+		})
 	}
 }

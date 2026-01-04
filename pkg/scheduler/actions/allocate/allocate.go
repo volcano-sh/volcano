@@ -71,24 +71,52 @@ func (w *JobWorksheet) Clone() *JobWorksheet {
 }
 
 type SubJobWorksheet struct {
-	tasks *util.PriorityQueue // queue of *api.TaskInfo
+	isLeaf           bool                              // flag to indicate if this is a leaf node
+	subJobs          *util.PriorityQueue               // queue of *api.SubJobInfo, for non-leaf nodes to track child subJobs
+	subJobWorksheets map[api.SubJobID]*SubJobWorksheet // child worksheets, only for non-leaf nodes
+	tasks            *util.PriorityQueue               // queue of *api.TaskInfo, only for leaf nodes
 }
 
 func (w *SubJobWorksheet) ShallowCopyFrom(another *SubJobWorksheet) {
 	if another == nil {
 		return
 	}
+	w.subJobWorksheets = another.subJobWorksheets
 	w.tasks = another.tasks
+	w.subJobs = another.subJobs
+	w.isLeaf = another.isLeaf
 }
 
 func (w *SubJobWorksheet) Empty() bool {
-	return w.tasks == nil || w.tasks.Empty()
+	// For leaf nodes, check if tasks is empty
+	if w.isLeaf {
+		return w.tasks == nil || w.tasks.Empty()
+	}
+	// For non-leaf nodes, check if subJobs queue is empty
+	return w.subJobs == nil || w.subJobs.Empty()
 }
 
 func (w *SubJobWorksheet) Clone() *SubJobWorksheet {
-	return &SubJobWorksheet{
-		tasks: w.tasks.Clone(),
+	cloned := &SubJobWorksheet{
+		isLeaf: w.isLeaf,
 	}
+
+	if w.tasks != nil {
+		cloned.tasks = w.tasks.Clone()
+	}
+
+	if w.subJobs != nil {
+		cloned.subJobs = w.subJobs.Clone()
+	}
+
+	if w.subJobWorksheets != nil {
+		cloned.subJobWorksheets = make(map[api.SubJobID]*SubJobWorksheet)
+		for id, child := range w.subJobWorksheets {
+			cloned.subJobWorksheets[id] = child.Clone()
+		}
+	}
+
+	return cloned
 }
 
 type Action struct {
@@ -202,6 +230,25 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 	return actx
 }
 
+// countReadyLeafSubJobs recursively counts the number of ready leaf SubJobs under a given SubJob
+func (alloc *Action) countReadyLeafSubJobs(job *api.JobInfo, subJob *api.SubJobInfo) int32 {
+	ssn := alloc.session
+	// For leaf SubJob, check if it's ready
+	if subJob.IsLeaf {
+		if ssn.SubJobReady(job, subJob) {
+			return 1
+		}
+		return 0
+	}
+
+	// For non-leaf SubJob, recursively count ready leaf SubJobs in children
+	count := int32(0)
+	for _, child := range subJob.Children {
+		count += alloc.countReadyLeafSubJobs(job, child)
+	}
+	return count
+}
+
 func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 	ssn := alloc.session
 
@@ -209,8 +256,8 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 	subJobCountMap := map[api.SubJobGID]int32{}
 	for _, subJob := range job.SubJobs {
 		if ssn.SubJobReady(job, subJob) {
-			// Record the number of subJobs that have been satisfied in subGroupPolicy
-			subJobCountMap[subJob.GID]++
+			// Record the number of leaf SubJobs that have been satisfied in subGroupPolicy
+			subJobCountMap[subJob.GID] += alloc.countReadyLeafSubJobs(job, subJob)
 		} else {
 			// Filter out subJobs that are already ready.
 			subJobs = append(subJobs, subJob)
@@ -227,7 +274,13 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 	for _, subJob := range subJobs {
 		if subJobCountMap[subJob.GID] < job.MinSubJobs[subJob.GID] {
 			requireSubJobs.Insert(subJob.UID)
-			subJobCountMap[subJob.GID]++
+			// Add the minimum number of leaf SubJobs that need to be ready for this SubJob
+			// If MinLeafSubJobs is 0, default to 1 as at least one leaf subJob needs to be allocated
+			minLeafSubJobs := subJob.MinLeafSubJobs
+			if minLeafSubJobs <= 0 {
+				minLeafSubJobs = 1
+			}
+			subJobCountMap[subJob.GID] += minLeafSubJobs
 		}
 	}
 	jWorksheet := &JobWorksheet{
@@ -246,8 +299,26 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 	}
 
 	for subJobID, subJob := range job.SubJobs {
+		sjWorksheet := alloc.organizeSubJobWorksheet(subJob)
+
+		if !sjWorksheet.Empty() {
+			jWorksheet.subJobs.Push(subJob)
+			jWorksheet.subJobWorksheets[subJobID] = sjWorksheet
+		}
+	}
+
+	return jWorksheet
+}
+
+// organizeSubJobWorksheet recursively creates SubJobWorksheet for a SubJob and its children
+func (alloc *Action) organizeSubJobWorksheet(subJob *api.SubJobInfo) *SubJobWorksheet {
+	ssn := alloc.session
+
+	// For leaf SubJob, create worksheet with tasks
+	if subJob.IsLeaf {
 		sjWorksheet := &SubJobWorksheet{
-			tasks: util.NewPriorityQueue(ssn.TaskOrderFn),
+			tasks:  util.NewPriorityQueue(ssn.TaskOrderFn),
+			isLeaf: true,
 		}
 
 		for _, task := range subJob.TaskStatusIndex[api.Pending] {
@@ -265,13 +336,25 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 			sjWorksheet.tasks.Push(task)
 		}
 
-		if !sjWorksheet.Empty() {
-			jWorksheet.subJobs.Push(subJob)
-			jWorksheet.subJobWorksheets[subJobID] = sjWorksheet
+		return sjWorksheet
+	}
+
+	// For non-leaf SubJob, recursively create worksheets for children
+	sjWorksheet := &SubJobWorksheet{
+		subJobWorksheets: make(map[api.SubJobID]*SubJobWorksheet),
+		subJobs:          util.NewPriorityQueue(ssn.SubJobOrderFn),
+		isLeaf:           false,
+	}
+
+	for childID, childSubJob := range subJob.Children {
+		childWorksheet := alloc.organizeSubJobWorksheet(childSubJob)
+		if !childWorksheet.Empty() {
+			sjWorksheet.subJobWorksheets[childID] = childWorksheet
+			sjWorksheet.subJobs.Push(childSubJob)
 		}
 	}
 
-	return jWorksheet
+	return sjWorksheet
 }
 
 func (alloc *Action) allocateResources(actx *allocateContext) {
@@ -408,7 +491,7 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 			continue // try next gradient
 		}
 
-		bestHyperNode, err := alloc.selectBestHyperNodeForJob(subJobsAllocationScores, job)
+		bestHyperNode, _, err := alloc.selectBestHyperNode(subJobsAllocationScores)
 		if err != nil {
 			klog.ErrorS(err, "Cannot find best hyper node for job", "job", job.UID, "gradient", gradient)
 			return nil
@@ -436,16 +519,119 @@ func (alloc *Action) allocateForJob(job *api.JobInfo, jobWorksheet *JobWorksheet
 }
 
 func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *SubJobWorksheet, hyperNodeForJob *api.HyperNodeInfo) (*framework.Statement, float64) {
-	ssn := alloc.session
-	job := ssn.Jobs[subJob.Job]
-
 	if subJobWorksheet == nil || subJobWorksheet.Empty() {
 		klog.V(4).InfoS("Empty subJob worksheet", "job", subJob.Job, "subJob", subJob.UID)
 		return nil, 0
 	}
 
-	klog.V(3).InfoS("Try to allocate resource for subJob", "job", subJob.Job,
-		"subJob", subJob.UID, "allocatedHyperNode", subJob.AllocatedHyperNode, "taskNum", subJobWorksheet.tasks.Len())
+	// If subJob is a leaf node, directly allocate resources for tasks
+	if subJob.IsLeaf {
+		return alloc.allocateForLeafSubJob(subJob, subJobWorksheet, hyperNodeForJob)
+	}
+
+	ssn := alloc.session
+	job := ssn.Jobs[subJob.Job]
+	// TODO: recorder should support sub jobs
+	// alloc.recorder.SnapshotSubJobStatus(subJob, subJobWorksheet)
+
+	hyperNodeGradients := ssn.HyperNodeGradientForSubJobFn(subJob, hyperNodeForJob)
+	for gradient, hyperNodes := range hyperNodeGradients {
+		stmtBackup := make(map[string]*framework.Statement)         // backup the statement after the subJob is allocated to a hyperNode
+		subJobWorksheetsBackup := make(map[string]*SubJobWorksheet) // backup the subJob worksheet after the subJob is allocated to a hyperNode
+		subJobsAllocationScores := make(map[string]float64)         // save the subJobs allocation score of the subJob allocated to a hyperNode
+
+		for _, hyperNode := range hyperNodes {
+			var stmtList []*framework.Statement
+			var totalScore float64
+
+			// Clone subJobWorksheet and reset subJob's fit err to make sure it's a clean cache when every time filter a hyperNode and do not affect each other between hyperNodes.
+			job.ResetSubJobFitErr(subJob.UID)
+			subJobWorksheetCopy := subJobWorksheet.Clone()
+			klog.V(3).InfoS("Try to allocate resource for non-leaf subJob in hyperNode", "subJob", subJob.UID, "hyperNode", hyperNode.Name)
+
+			// Get child subJobs from worksheet queue (already sorted and filtered)
+			for !subJobWorksheetCopy.subJobs.Empty() {
+				childSubJob := subJobWorksheetCopy.subJobs.Pop().(*api.SubJobInfo)
+				childWorksheet := subJobWorksheetCopy.subJobWorksheets[childSubJob.UID]
+
+				childStmt, childScore := alloc.allocateForSubJob(childSubJob, childWorksheet, hyperNode)
+
+				if childStmt != nil && len(childStmt.Operations()) > 0 {
+					stmtList = append(stmtList, childStmt)
+					totalScore += childScore
+					// push back when subJob is ready and remain pending task
+					if !childWorksheet.Empty() {
+						subJobWorksheetCopy.subJobs.Push(childSubJob)
+					}
+					if ssn.SubJobReady(job, subJob) {
+						break
+					}
+				}
+			}
+			// TODO: recorder should support sub jobs
+			// alloc.recorder.RecoverSubJobStatus(subJob.Children)
+
+			// Merge all statements from children
+			mergedStmt := framework.SaveOperations(stmtList...)
+			if len(mergedStmt.Operations()) == 0 {
+				continue // skip recording this empty solution
+			}
+
+			if ssn.SubJobReady(job, subJob) {
+				stmtBackup[hyperNode.Name] = mergedStmt                      // backup successful solution
+				subJobWorksheetsBackup[hyperNode.Name] = subJobWorksheetCopy // backup remains subJobs
+				subJobsAllocationScores[hyperNode.Name] = totalScore         // save the subJobs allocation score of the subJob
+			}
+
+			// dry run in every hyperNode
+			for _, stmt := range stmtList {
+				stmt.Discard()
+			}
+		}
+
+		if len(subJobsAllocationScores) == 0 {
+			klog.V(5).InfoS("Find solution for non-leaf subJob fail", "subJob", subJob.UID, "gradient", gradient)
+			continue // try next gradient
+		}
+
+		// select the best solution
+		bestHyperNode, bestScore, err := alloc.selectBestHyperNode(subJobsAllocationScores)
+		if err != nil {
+			klog.ErrorS(err, "Cannot find best hyper node for non-leaf subJob", "subJob", subJob.UID, "gradient", gradient)
+			return nil, 0
+		}
+
+		// recover the stmt and update subJob's allocatedHyperNode field
+		bestStmt := stmtBackup[bestHyperNode]
+		finalStmt := framework.NewStatement(ssn)
+		if err = finalStmt.RecoverOperations(bestStmt); err != nil {
+			klog.ErrorS(err, "Failed to recover operations", "subJob", subJob.UID, "hyperNode", bestHyperNode)
+			return nil, 0
+		}
+		newAllocatedHyperNode := ssn.HyperNodes.GetLCAHyperNode(subJob.AllocatedHyperNode, bestHyperNode)
+		subJob.AllocatedHyperNode = newAllocatedHyperNode
+
+		// inherit the remains worksheet after allocate to the best hyperNode
+		subJobWorksheet.ShallowCopyFrom(subJobWorksheetsBackup[bestHyperNode])
+
+		// TODO: recorder should support sub jobs
+		//alloc.recorder.SaveSubJobDecision(subJob.Job, hyperNodeForJob.Name, subJob.UID, newAllocatedHyperNode)
+		klog.V(3).InfoS("Allocate non-leaf subJob to hyperNode success", "subJob", subJob.UID,
+			"hyperNode", bestHyperNode, "score", bestScore, "newAllocatedHyperNode", newAllocatedHyperNode)
+
+		return finalStmt, bestScore
+	}
+
+	klog.V(5).InfoS("Cannot find any solution for non-leaf subJob", "subJob", subJob.UID)
+	return nil, 0
+}
+
+// allocateForLeafSubJob allocates resources for a leaf subJob (contains tasks directly)
+func (alloc *Action) allocateForLeafSubJob(subJob *api.SubJobInfo, subJobWorksheet *SubJobWorksheet, hyperNodeForJob *api.HyperNodeInfo) (*framework.Statement, float64) {
+	ssn := alloc.session
+	job := ssn.Jobs[subJob.Job]
+
+	klog.V(3).InfoS("SubJob is leaf node, allocate tasks directly", "subJob", subJob.UID, "taskNum", subJobWorksheet.tasks.Len())
 
 	hyperNodeGradients := ssn.HyperNodeGradientForSubJobFn(subJob, hyperNodeForJob)
 	for gradient, hyperNodes := range hyperNodeGradients {
@@ -474,7 +660,7 @@ func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *
 		}
 
 		// select the best solution
-		bestHyperNode, bestScore, err := alloc.selectBestHyperNodeForSubJob(stmtBackup, subJob)
+		bestHyperNode, bestScore, err := alloc.selectBestHyperNodeForLeafSubJob(stmtBackup, subJob)
 		if err != nil {
 			klog.ErrorS(err, "Cannot find best hyper node for subJob", "subJob", subJob.UID, "gradient", gradient)
 			return nil, 0
@@ -500,13 +686,13 @@ func (alloc *Action) allocateForSubJob(subJob *api.SubJobInfo, subJobWorksheet *
 		return finalStmt, bestScore
 	}
 
-	klog.V(5).InfoS("Cannot find any solution for subJob", "subJob", subJob.UID)
+	klog.V(5).InfoS("Cannot find any solution for leaf subJob", "subJob", subJob.UID)
 	return nil, 0
 }
 
-// selectBestHyperNodeForJob return the best hyperNode for the job,
+// selectBestHyperNode return the best hyperNode and score for the job or sub job.
 // it will score and select the best hyperNode among all available hyperNodes.
-func (alloc *Action) selectBestHyperNodeForJob(subJobsAllocationScores map[string]float64, job *api.JobInfo) (string, error) {
+func (alloc *Action) selectBestHyperNode(subJobsAllocationScores map[string]float64) (string, float64, error) {
 	highestScore := math.Inf(-1)
 	bestHyperNode := ""
 	for hyperNode, score := range subJobsAllocationScores {
@@ -517,15 +703,15 @@ func (alloc *Action) selectBestHyperNodeForJob(subJobsAllocationScores map[strin
 	}
 
 	if bestHyperNode == "" {
-		return "", fmt.Errorf("no solution found for job %s", job.UID)
+		return "", 0, fmt.Errorf("no solution found for job or sub job")
 	}
 
-	return bestHyperNode, nil
+	return bestHyperNode, highestScore, nil
 }
 
-// selectBestHyperNodeForSubJob return the best hyperNode for the subJob,
+// selectBestHyperNodeForLeafSubJob return the best hyperNode for the leaf subJob,
 // it will score and select the best hyperNode among all available hyperNodes.
-func (alloc *Action) selectBestHyperNodeForSubJob(stmts map[string]*framework.Statement, subJob *api.SubJobInfo) (string, float64, error) {
+func (alloc *Action) selectBestHyperNodeForLeafSubJob(stmts map[string]*framework.Statement, subJob *api.SubJobInfo) (string, float64, error) {
 	if len(stmts) <= 0 {
 		return "", 0, fmt.Errorf("no solution found for subJob %s", subJob.UID)
 	}

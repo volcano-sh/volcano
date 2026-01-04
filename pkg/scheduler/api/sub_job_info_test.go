@@ -65,6 +65,8 @@ func TestNewSubJobInfo(t *testing.T) {
 				Tasks:           make(map[TaskID]*TaskInfo),
 				TaskStatusIndex: make(map[TaskStatus]TasksMap),
 				taskPriorities:  make(map[int32]sets.Set[TaskID]),
+				Children:        make(map[SubJobID]*SubJobInfo),
+				IsLeaf:          true,
 				networkTopology: &scheduling.NetworkTopologySpec{
 					Mode:               scheduling.HardNetworkTopologyMode,
 					HighestTierAllowed: ptr.To(1),
@@ -89,6 +91,8 @@ func TestNewSubJobInfo(t *testing.T) {
 				Tasks:           make(map[TaskID]*TaskInfo),
 				TaskStatusIndex: make(map[TaskStatus]TasksMap),
 				taskPriorities:  make(map[int32]sets.Set[TaskID]),
+				Children:        make(map[SubJobID]*SubJobInfo),
+				IsLeaf:          true,
 				networkTopology: nil,
 			},
 		},
@@ -115,6 +119,8 @@ func TestNewSubJobInfo(t *testing.T) {
 				Tasks:           make(map[TaskID]*TaskInfo),
 				TaskStatusIndex: make(map[TaskStatus]TasksMap),
 				taskPriorities:  make(map[int32]sets.Set[TaskID]),
+				Children:        make(map[SubJobID]*SubJobInfo),
+				IsLeaf:          true,
 				networkTopology: &scheduling.NetworkTopologySpec{
 					Mode:               scheduling.HardNetworkTopologyMode,
 					HighestTierAllowed: ptr.To(1),
@@ -141,6 +147,8 @@ func TestNewSubJobInfo(t *testing.T) {
 				Tasks:           make(map[TaskID]*TaskInfo),
 				TaskStatusIndex: make(map[TaskStatus]TasksMap),
 				taskPriorities:  make(map[int32]sets.Set[TaskID]),
+				Children:        make(map[SubJobID]*SubJobInfo),
+				IsLeaf:          true,
 				networkTopology: nil,
 			},
 		},
@@ -525,9 +533,11 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 		sji      *SubJobInfo
 		expected bool
 	}{
+		// Leaf node test cases
 		{
 			name: "All tasks are pipelined",
 			sji: &SubJobInfo{
+				IsLeaf:       true,
 				MinAvailable: 3,
 				Tasks: map[TaskID]*TaskInfo{
 					"task1": {},
@@ -547,6 +557,7 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 		{
 			name: "Some tasks are ready and some are pipelined",
 			sji: &SubJobInfo{
+				IsLeaf:       true,
 				MinAvailable: 6,
 				Tasks: map[TaskID]*TaskInfo{
 					"task1": {},
@@ -570,6 +581,7 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 		{
 			name: "Some tasks are pending best-effort and some are pipelined",
 			sji: &SubJobInfo{
+				IsLeaf:       true,
 				MinAvailable: 3,
 				Tasks: map[TaskID]*TaskInfo{
 					"task1": {},
@@ -577,10 +589,9 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 					"task3": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: true},
+					Pending: {
+						"task1": &TaskInfo{BestEffort: true},
+						"task2": &TaskInfo{BestEffort: true},
 					},
 					Pipelined: {"task3": &TaskInfo{}},
 				},
@@ -590,6 +601,7 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 		{
 			name: "Some tasks are ready, some tasks are pending best-effort and some are pipelined",
 			sji: &SubJobInfo{
+				IsLeaf:       true,
 				MinAvailable: 8,
 				Tasks: map[TaskID]*TaskInfo{
 					"task1": {},
@@ -602,10 +614,9 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 					"task8": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: true},
+					Pending: {
+						"task1": &TaskInfo{BestEffort: true},
+						"task2": &TaskInfo{BestEffort: true},
 					},
 					Allocated: {"task3": &TaskInfo{}},
 					Pipelined: {"task4": &TaskInfo{}},
@@ -620,6 +631,7 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 		{
 			name: "Some tasks are pending not best-effort",
 			sji: &SubJobInfo{
+				IsLeaf:       true,
 				MinAvailable: 8,
 				Tasks: map[TaskID]*TaskInfo{
 					"task1": {},
@@ -632,10 +644,9 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 					"task8": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: false},
+					Pending: {
+						"task1": &TaskInfo{BestEffort: true},
+						"task2": &TaskInfo{BestEffort: false},
 					},
 					Allocated: {"task3": &TaskInfo{}},
 					Pipelined: {"task4": &TaskInfo{}},
@@ -650,6 +661,7 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 		{
 			name: "Some tasks are failed",
 			sji: &SubJobInfo{
+				IsLeaf:       true,
 				MinAvailable: 8,
 				Tasks: map[TaskID]*TaskInfo{
 					"task1": {},
@@ -662,10 +674,9 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 					"task8": {},
 				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: true},
+					Pending: {
+						"task1": &TaskInfo{BestEffort: true},
+						"task2": &TaskInfo{BestEffort: true},
 					},
 					Allocated: {"task3": &TaskInfo{}},
 					Pipelined: {"task4": &TaskInfo{}},
@@ -680,6 +691,7 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 		{
 			name: "Some tasks are unknown",
 			sji: &SubJobInfo{
+				IsLeaf:       true,
 				MinAvailable: 3,
 				Tasks: map[TaskID]*TaskInfo{
 					"task1": {},
@@ -697,7 +709,204 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 			},
 			expected: false,
 		},
+		// Multi-level test cases
+		{
+			name: "Non-leaf: 2 children with pipelined tasks meet MinAvailable",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 7,
+				Children: map[SubJobID]*SubJobInfo{
+					"child1": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Pipelined: {"task1": &TaskInfo{}},
+							Bound:     {"task2": &TaskInfo{}},
+							Running:   {"task3": &TaskInfo{}},
+						},
+					},
+					"child2": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Pipelined: {"task4": &TaskInfo{}, "task5": &TaskInfo{}},
+							Allocated: {"task6": &TaskInfo{}},
+							Succeeded: {"task7": &TaskInfo{}},
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Non-leaf: 2 children with all task types meet MinAvailable",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 9,
+				Children: map[SubJobID]*SubJobInfo{
+					"child1": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Pipelined: {"task1": &TaskInfo{}},
+							Bound:     {"task2": &TaskInfo{}},
+							Pending:   {"task3": &TaskInfo{BestEffort: true}},
+						},
+					},
+					"child2": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Pipelined: {"task4": &TaskInfo{}, "task5": &TaskInfo{}},
+							Running:   {"task6": &TaskInfo{}},
+							Succeeded: {"task7": &TaskInfo{}},
+							Pending:   {"task8": &TaskInfo{BestEffort: true}, "task9": &TaskInfo{BestEffort: true}},
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Non-leaf: 2 children with non-best-effort pending do not meet",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 6,
+				Children: map[SubJobID]*SubJobInfo{
+					"child1": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Pipelined: {"task1": &TaskInfo{}},
+							Bound:     {"task2": &TaskInfo{}},
+							Pending:   {"task3": &TaskInfo{BestEffort: false}},
+						},
+					},
+					"child2": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Pipelined: {"task4": &TaskInfo{}},
+							Running:   {"task5": &TaskInfo{}},
+							Failed:    {"task6": &TaskInfo{}},
+						},
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "Three-level: Deep nesting with pipelined tasks meets MinAvailable",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 9,
+				Children: map[SubJobID]*SubJobInfo{
+					"group1": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition1": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Pipelined: {"task1": &TaskInfo{}, "task2": &TaskInfo{}},
+									Bound:     {"task3": &TaskInfo{}},
+								},
+							},
+							"partition2": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Pipelined: {"task4": &TaskInfo{}},
+									Running:   {"task5": &TaskInfo{}},
+								},
+							},
+						},
+					},
+					"group2": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition3": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Pipelined: {"task6": &TaskInfo{}, "task7": &TaskInfo{}},
+									Succeeded: {"task8": &TaskInfo{}},
+									Running:   {"task9": &TaskInfo{}},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Three-level: Deep nesting with all task types meets MinAvailable",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 12,
+				Children: map[SubJobID]*SubJobInfo{
+					"group1": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition1": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Pipelined: {"task1": &TaskInfo{}, "task2": &TaskInfo{}},
+									Bound:     {"task3": &TaskInfo{}},
+									Pending:   {"task4": &TaskInfo{BestEffort: true}},
+								},
+							},
+							"partition2": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Pipelined: {"task5": &TaskInfo{}},
+									Running:   {"task6": &TaskInfo{}},
+									Pending:   {"task7": &TaskInfo{BestEffort: true}},
+								},
+							},
+						},
+					},
+					"group2": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition3": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Pipelined: {"task8": &TaskInfo{}, "task9": &TaskInfo{}},
+									Succeeded: {"task10": &TaskInfo{}},
+									Running:   {"task11": &TaskInfo{}},
+									Pending:   {"task12": &TaskInfo{BestEffort: true}},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Three-level: Deep nesting does not meet MinAvailable",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 10,
+				Children: map[SubJobID]*SubJobInfo{
+					"level1": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"level2": {
+								IsLeaf: false,
+								Children: map[SubJobID]*SubJobInfo{
+									"level3": {
+										IsLeaf: true,
+										TaskStatusIndex: map[TaskStatus]TasksMap{
+											Pipelined: {"task1": &TaskInfo{}},
+											Bound:     {"task2": &TaskInfo{}},
+											Running:   {"task3": &TaskInfo{}},
+											Pending:   {"task4": &TaskInfo{BestEffort: false}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: false,
+		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.sji.IsPipelined()
@@ -712,17 +921,15 @@ func TestSubJobInfo_IsReady(t *testing.T) {
 		sji      *SubJobInfo
 		expected bool
 	}{
+		// Leaf node test cases
 		{
-			name: "All tasks are pipelined",
+			name: "Leaf: All tasks are pending (not best-effort)",
 			sji: &SubJobInfo{
+				IsLeaf:       true,
 				MinAvailable: 3,
-				Tasks: map[TaskID]*TaskInfo{
-					"task1": {},
-					"task2": {},
-					"task3": {},
-				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{},
+					Pending: {
+						"task1": &TaskInfo{},
 						"task2": &TaskInfo{},
 						"task3": &TaskInfo{},
 					},
@@ -731,39 +938,41 @@ func TestSubJobInfo_IsReady(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "All tasks are pending bestEffort",
+			name: "Leaf: All tasks are pending best-effort",
 			sji: &SubJobInfo{
+				IsLeaf:       true,
 				MinAvailable: 2,
-				Tasks: map[TaskID]*TaskInfo{
-					"task1": {},
-					"task2": {},
-				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: true},
+					Pending: {
+						"task1": &TaskInfo{BestEffort: true},
+						"task2": &TaskInfo{BestEffort: true},
 					},
 				},
 			},
 			expected: true,
 		},
 		{
-			name: "Some tasks are pending best-effort and some are waiting",
+			name: "Leaf: Ready tasks meet MinAvailable",
 			sji: &SubJobInfo{
-				MinAvailable: 6,
-				Tasks: map[TaskID]*TaskInfo{
-					"task1": {},
-					"task2": {},
-					"task3": {},
-					"task4": {},
-					"task5": {},
-					"task6": {},
-				},
+				IsLeaf:       true,
+				MinAvailable: 5,
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-					},
+					Allocated: {"task1": &TaskInfo{}},
+					Binding:   {"task2": &TaskInfo{}},
+					Bound:     {"task3": &TaskInfo{}},
+					Running:   {"task4": &TaskInfo{}},
+					Succeeded: {"task5": &TaskInfo{}},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Leaf: Ready + best-effort tasks meet MinAvailable",
+			sji: &SubJobInfo{
+				IsLeaf:       true,
+				MinAvailable: 6,
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Pending:   {"task1": &TaskInfo{BestEffort: true}},
 					Allocated: {"task2": &TaskInfo{}},
 					Binding:   {"task3": &TaskInfo{}},
 					Bound:     {"task4": &TaskInfo{}},
@@ -774,42 +983,221 @@ func TestSubJobInfo_IsReady(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "Some tasks are failed",
+			name: "Leaf: Ready + best-effort tasks do not meet MinAvailable",
 			sji: &SubJobInfo{
-				MinAvailable: 1,
-				Tasks: map[TaskID]*TaskInfo{
-					"task1": {},
-				},
-				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Failed: {"task1": &TaskInfo{}},
-				},
-			},
-			expected: false,
-		},
-		{
-			name: "Some tasks are pending not best-effort",
-			sji: &SubJobInfo{
+				IsLeaf:       true,
 				MinAvailable: 7,
-				Tasks: map[TaskID]*TaskInfo{
-					"task1": {},
-					"task2": {},
-					"task3": {},
-					"task4": {},
-					"task5": {},
-					"task6": {},
-					"task7": {},
-				},
 				TaskStatusIndex: map[TaskStatus]TasksMap{
-					Pending: {"task1": &TaskInfo{
-						BestEffort: true},
-						"task2": &TaskInfo{
-							BestEffort: false},
+					Pending: {
+						"task1": &TaskInfo{BestEffort: true},
+						"task2": &TaskInfo{BestEffort: false},
 					},
 					Allocated: {"task3": &TaskInfo{}},
 					Binding:   {"task4": &TaskInfo{}},
 					Bound:     {"task5": &TaskInfo{}},
 					Running:   {"task6": &TaskInfo{}},
 					Succeeded: {"task7": &TaskInfo{}},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "Leaf: Some tasks failed, not ready",
+			sji: &SubJobInfo{
+				IsLeaf:       true,
+				MinAvailable: 1,
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Failed: {"task1": &TaskInfo{}},
+				},
+			},
+			expected: false,
+		},
+
+		// Multi-level test cases
+		{
+			name: "Non-leaf: 2 children meet MinAvailable",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 5,
+				Children: map[SubJobID]*SubJobInfo{
+					"child1": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Bound:   {"task1": &TaskInfo{}},
+							Running: {"task2": &TaskInfo{}},
+						},
+					},
+					"child2": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Allocated: {"task3": &TaskInfo{}},
+							Binding:   {"task4": &TaskInfo{}},
+							Succeeded: {"task5": &TaskInfo{}},
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Non-leaf: 2 children with best-effort tasks meet MinAvailable",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 6,
+				Children: map[SubJobID]*SubJobInfo{
+					"child1": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Bound:   {"task1": &TaskInfo{}},
+							Running: {"task2": &TaskInfo{}},
+							Pending: {"task3": &TaskInfo{BestEffort: true}},
+						},
+					},
+					"child2": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Allocated: {"task4": &TaskInfo{}},
+							Succeeded: {"task5": &TaskInfo{}},
+							Pending:   {"task6": &TaskInfo{BestEffort: true}},
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Non-leaf: 2 children do not meet MinAvailable",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 6,
+				Children: map[SubJobID]*SubJobInfo{
+					"child1": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Bound:   {"task1": &TaskInfo{}},
+							Pending: {"task2": &TaskInfo{BestEffort: false}},
+						},
+					},
+					"child2": {
+						IsLeaf: true,
+						TaskStatusIndex: map[TaskStatus]TasksMap{
+							Running: {"task3": &TaskInfo{}},
+							Failed:  {"task4": &TaskInfo{}},
+						},
+					},
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "Three-level: Deep nesting meets MinAvailable",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 6,
+				Children: map[SubJobID]*SubJobInfo{
+					"group1": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition1": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Bound:   {"task1": &TaskInfo{}},
+									Running: {"task2": &TaskInfo{}},
+								},
+							},
+							"partition2": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Allocated: {"task3": &TaskInfo{}},
+									Binding:   {"task4": &TaskInfo{}},
+								},
+							},
+						},
+					},
+					"group2": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition3": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Succeeded: {"task5": &TaskInfo{}},
+									Running:   {"task6": &TaskInfo{}},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Three-level: Deep nesting with best-effort tasks",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 8,
+				Children: map[SubJobID]*SubJobInfo{
+					"group1": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition1": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Bound:   {"task1": &TaskInfo{}},
+									Running: {"task2": &TaskInfo{}},
+									Pending: {"task3": &TaskInfo{BestEffort: true}},
+								},
+							},
+							"partition2": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Allocated: {"task4": &TaskInfo{}},
+									Binding:   {"task5": &TaskInfo{}},
+								},
+							},
+						},
+					},
+					"group2": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition3": {
+								IsLeaf: true,
+								TaskStatusIndex: map[TaskStatus]TasksMap{
+									Succeeded: {"task6": &TaskInfo{}},
+									Running:   {"task7": &TaskInfo{}},
+									Pending:   {"task8": &TaskInfo{BestEffort: true}},
+								},
+							},
+						},
+					},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "Three-level: Deep nesting does not meet MinAvailable",
+			sji: &SubJobInfo{
+				IsLeaf:       false,
+				MinAvailable: 10,
+				Children: map[SubJobID]*SubJobInfo{
+					"level1": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"level2": {
+								IsLeaf: false,
+								Children: map[SubJobID]*SubJobInfo{
+									"level3": {
+										IsLeaf: true,
+										TaskStatusIndex: map[TaskStatus]TasksMap{
+											Bound:     {"task1": &TaskInfo{}},
+											Running:   {"task2": &TaskInfo{}},
+											Allocated: {"task3": &TaskInfo{}},
+											Pending:   {"task4": &TaskInfo{BestEffort: false}},
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 			expected: false,
@@ -858,4 +1246,105 @@ func TestSubJobInfo_getTaskHighestPriority(t *testing.T) {
 		},
 	}
 	assert.Equal(t, int32(0), sji.getTaskHighestPriority(), "Expected -1 when taskPriorities has multiple negative elements")
+}
+
+func TestSubJobInfo_LeafSubJobCount(t *testing.T) {
+	tests := []struct {
+		name     string
+		subJob   *SubJobInfo
+		expected int32
+	}{
+		{
+			name: "Leaf node returns 1",
+			subJob: &SubJobInfo{
+				IsLeaf:   true,
+				Children: map[SubJobID]*SubJobInfo{},
+			},
+			expected: 1,
+		},
+		{
+			name: "Non-leaf node with 2 leaf children",
+			subJob: &SubJobInfo{
+				IsLeaf: false,
+				Children: map[SubJobID]*SubJobInfo{
+					"child1": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+					"child2": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+				},
+			},
+			expected: 2,
+		},
+		{
+			name: "Non-leaf node with 3 leaf children",
+			subJob: &SubJobInfo{
+				IsLeaf: false,
+				Children: map[SubJobID]*SubJobInfo{
+					"child1": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+					"child2": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+					"child3": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+				},
+			},
+			expected: 3,
+		},
+		{
+			name: "Multi-level structure: 2 groups, each with 2 partitions",
+			subJob: &SubJobInfo{
+				IsLeaf: false,
+				Children: map[SubJobID]*SubJobInfo{
+					"group0": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition0": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+							"partition1": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+						},
+					},
+					"group1": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition2": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+							"partition3": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+						},
+					},
+				},
+			},
+			expected: 4,
+		},
+		{
+			name: "Multi-level structure: 2 groups with different partition counts",
+			subJob: &SubJobInfo{
+				IsLeaf: false,
+				Children: map[SubJobID]*SubJobInfo{
+					"group0": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition0": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+						},
+					},
+					"group1": {
+						IsLeaf: false,
+						Children: map[SubJobID]*SubJobInfo{
+							"partition1": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+							"partition2": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+							"partition3": {IsLeaf: true, Children: map[SubJobID]*SubJobInfo{}},
+						},
+					},
+				},
+			},
+			expected: 4,
+		},
+		{
+			name: "Empty non-leaf node returns 0",
+			subJob: &SubJobInfo{
+				IsLeaf:   false,
+				Children: map[SubJobID]*SubJobInfo{},
+			},
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.subJob.LeafSubJobCount()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

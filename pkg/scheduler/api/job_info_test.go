@@ -29,7 +29,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv2 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
@@ -115,6 +114,8 @@ func TestAddTaskInfo(t *testing.T) {
 								case01Task4.UID: sets.Empty{},
 							},
 						},
+						Children: make(map[SubJobID]*SubJobInfo),
+						IsLeaf:   true,
 					},
 				},
 				TaskToSubJob: map[TaskID]SubJobID{
@@ -211,6 +212,8 @@ func TestDeleteTaskInfo(t *testing.T) {
 								case01Task3.UID: sets.Empty{},
 							},
 						},
+						Children: make(map[SubJobID]*SubJobInfo),
+						IsLeaf:   true,
 					},
 				},
 				TaskToSubJob: map[TaskID]SubJobID{
@@ -269,6 +272,8 @@ func TestDeleteTaskInfo(t *testing.T) {
 								case02Task3.UID: sets.Empty{},
 							},
 						},
+						Children: make(map[SubJobID]*SubJobInfo),
+						IsLeaf:   true,
 					},
 				},
 				TaskToSubJob: map[TaskID]SubJobID{
@@ -717,4 +722,93 @@ func TestParseMinMemberInfoChanged(t *testing.T) {
 			assert.Equal(t, tt.expectedTaskMinAvailableTotal, jobInfo.TaskMinAvailableTotal)
 		})
 	}
+}
+
+// TestAddTaskInfoWithMultiLevelSubJob tests multi-level SubJob structure creation when adding tasks
+func TestAddTaskInfoWithMultiLevelSubJob(t *testing.T) {
+	owner := buildOwnerReference("multi-level-job")
+	pod0 := buildPod("c1", "p0", "", v1.PodPending, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner},
+		map[string]string{
+			"volcano.sh/task-partition-group-id": "0",
+			"volcano.sh/task-partition-id":       "0",
+		})
+	pod1 := buildPod("c1", "p1", "", v1.PodPending, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner},
+		map[string]string{
+			"volcano.sh/task-partition-group-id": "0",
+			"volcano.sh/task-partition-id":       "0",
+		})
+	pod2 := buildPod("c1", "p2", "", v1.PodPending, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner},
+		map[string]string{
+			"volcano.sh/task-partition-group-id": "0",
+			"volcano.sh/task-partition-id":       "1",
+		})
+	pod3 := buildPod("c1", "p3", "", v1.PodPending, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner},
+		map[string]string{
+			"volcano.sh/task-partition-group-id": "0",
+			"volcano.sh/task-partition-id":       "1",
+		})
+	pod4 := buildPod("c1", "p4", "", v1.PodPending, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner},
+		map[string]string{
+			"volcano.sh/task-partition-group-id": "1",
+			"volcano.sh/task-partition-id":       "2",
+		})
+	pod5 := buildPod("c1", "p5", "", v1.PodPending, BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner},
+		map[string]string{
+			"volcano.sh/task-partition-group-id": "1",
+			"volcano.sh/task-partition-id":       "2",
+		})
+
+	uid := JobID("multi-level-job")
+	job := NewJobInfo(uid)
+	job.Budget = &DisruptionBudget{}
+	subGroupSize := int32(2)
+
+	// Create PodGroup with SubGroupPolicy to enable multi-level SubJob
+	pg := &PodGroup{
+		PodGroup: scheduling.PodGroup{
+			Spec: scheduling.PodGroupSpec{
+				SubGroupPolicy: []scheduling.SubGroupPolicySpec{
+					{
+						Name:                 "partition-policy",
+						MatchLabelKeys:       []string{"volcano.sh/task-partition-group-id", "volcano.sh/task-partition-id"},
+						SubGroupSize:         &subGroupSize,
+						MinAvailableSubGroup: [][]int32{{6, 4}},
+					},
+				},
+			},
+		},
+	}
+	job.SetPodGroup(pg)
+
+	pods := []*v1.Pod{pod0, pod1, pod2, pod3, pod4, pod5}
+	for _, pod := range pods {
+		pi := NewTaskInfo(pod)
+		job.AddTaskInfo(pi)
+	}
+
+	// The top level SubJobs should have two subJob which represent partition-group-ids 0 and 1
+	assert.Equal(t, 2, len(job.SubJobs), "Should have 2 top-level SubJobs")
+	assert.Contains(t, job.SubJobs, SubJobID("multi-level-job/partition-policy-0"), "Should contain SubJob for group 0")
+	assert.Contains(t, job.SubJobs, SubJobID("multi-level-job/partition-policy-1"), "Should contain SubJob for group 1")
+
+	// The first top-level SubJob (partition-group-id 0) should have two children representing partition-ids 0 and 1
+	subJob0 := job.SubJobs[SubJobID("multi-level-job/partition-policy-0")]
+	assert.Equal(t, int32(6), subJob0.MinAvailable)
+	assert.Equal(t, int32(3), subJob0.MinLeafSubJobs, "subJob0 MinLeafSubJobs should be MinAvailable/SubGroupSize")
+	assert.Equal(t, 2, len(subJob0.Children), "subJob0 should have 2 SubJobs")
+	assert.Contains(t, subJob0.Children, SubJobID("multi-level-job/partition-policy-0-0"), "Should contain SubJob for group 0")
+	assert.Contains(t, subJob0.Children, SubJobID("multi-level-job/partition-policy-0-1"), "Should contain SubJob for group 1")
+	subJob0Partition0 := subJob0.Children[SubJobID("multi-level-job/partition-policy-0-0")]
+	subJob0Partition1 := subJob0.Children[SubJobID("multi-level-job/partition-policy-0-1")]
+	assert.Equal(t, subGroupSize, subJob0Partition0.MinAvailable)
+	assert.Equal(t, subGroupSize, subJob0Partition1.MinAvailable)
+
+	// The second top-level SubJob (partition-group-id 1) should have one child representing partition-id 2
+	subJob1 := job.SubJobs[SubJobID("multi-level-job/partition-policy-1")]
+	assert.Equal(t, int32(4), subJob1.MinAvailable)
+	assert.Equal(t, int32(2), subJob1.MinLeafSubJobs, "subJob1 MinLeafSubJobs should be MinAvailable/SubGroupSize")
+	assert.Equal(t, 1, len(subJob1.Children), "subJob1 should have 1 SubJobs")
+	assert.Contains(t, subJob1.Children, SubJobID("multi-level-job/partition-policy-1-2"), "Should contain SubJob for group 2")
+	subJob1Partition2 := subJob1.Children[SubJobID("multi-level-job/partition-policy-1-2")]
+	assert.Equal(t, subGroupSize, subJob1Partition2.MinAvailable)
 }

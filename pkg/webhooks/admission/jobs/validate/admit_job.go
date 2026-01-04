@@ -323,6 +323,26 @@ func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {
 		} else if task.MinAvailable != nil && task.PartitionPolicy.MinPartitions*task.PartitionPolicy.PartitionSize != *task.MinAvailable {
 			msg += fmt.Sprintf("'MinAvailable' is not equal to MinPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
 		}
+
+		if len(task.PartitionPolicy.ExpectedPartitions) > 0 {
+			if task.PartitionPolicy.ExpectedPartitions[0] <= 0 {
+				msg += fmt.Sprintf("'ExpectedPartitions[0]' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
+			}
+			if task.PartitionPolicy.ExpectedPartitions[0] != task.PartitionPolicy.MinPartitions {
+				msg += fmt.Sprintf("'ExpectedPartitions[0]' must equal 'MinPartitions' in task: %s, job: %s", task.Name, job.Name)
+			}
+			lastIndex := len(task.PartitionPolicy.ExpectedPartitions) - 1
+			if task.PartitionPolicy.ExpectedPartitions[lastIndex] != task.PartitionPolicy.TotalPartitions {
+				msg += fmt.Sprintf("'ExpectedPartitions[last]' must equal 'TotalPartitions' in task: %s, job: %s", task.Name, job.Name)
+			}
+			for i := 1; i < len(task.PartitionPolicy.ExpectedPartitions); i++ {
+				if task.PartitionPolicy.ExpectedPartitions[i] <= task.PartitionPolicy.ExpectedPartitions[i-1] {
+					msg += fmt.Sprintf("'ExpectedPartitions' must be monotonically increasing in task: %s, job: %s", task.Name, job.Name)
+					break
+				}
+			}
+		}
+
 		msg += validateNetworkTopology(task.PartitionPolicy.NetworkTopology)
 	}
 

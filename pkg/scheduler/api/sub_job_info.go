@@ -53,6 +53,11 @@ type SubJobInfo struct {
 	AllocatedHyperNode string
 
 	networkTopology *scheduling.NetworkTopologySpec
+
+	// For nested SubJob structure
+	Children       map[SubJobID]*SubJobInfo // Child SubJobs (empty if this is a leaf SubJob)
+	IsLeaf         bool                     // Whether this is a leaf node (has tasks directly instead of children)
+	MinLeafSubJobs int32                    // Minimum number of leaf SubJobs that need to be ready
 }
 
 func NewSubJobInfo(gid SubJobGID, uid SubJobID, job JobID, policy *scheduling.SubGroupPolicySpec, matchValues []string) *SubJobInfo {
@@ -64,6 +69,8 @@ func NewSubJobInfo(gid SubJobGID, uid SubJobID, job JobID, policy *scheduling.Su
 		Tasks:           make(map[TaskID]*TaskInfo),
 		TaskStatusIndex: make(map[TaskStatus]TasksMap),
 		taskPriorities:  make(map[int32]sets.Set[TaskID]),
+		Children:        make(map[SubJobID]*SubJobInfo),
+		IsLeaf:          true,
 	}
 	if policy != nil {
 		if policy.SubGroupSize != nil {
@@ -223,29 +230,58 @@ func (sji *SubJobInfo) IsPipelined() bool {
 
 // ReadyTaskNum returns the number of tasks that are ready or that is best-effort.
 func (sji *SubJobInfo) ReadyTaskNum() int32 {
-	occupied := 0
-	occupied += len(sji.TaskStatusIndex[Bound])
-	occupied += len(sji.TaskStatusIndex[Binding])
-	occupied += len(sji.TaskStatusIndex[Running])
-	occupied += len(sji.TaskStatusIndex[Allocated])
-	occupied += len(sji.TaskStatusIndex[Succeeded])
+	// For leaf SubJobs, count tasks directly
+	if sji.IsLeaf {
+		occupied := 0
+		occupied += len(sji.TaskStatusIndex[Bound])
+		occupied += len(sji.TaskStatusIndex[Binding])
+		occupied += len(sji.TaskStatusIndex[Running])
+		occupied += len(sji.TaskStatusIndex[Allocated])
+		occupied += len(sji.TaskStatusIndex[Succeeded])
+		return int32(occupied)
+	}
 
-	return int32(occupied)
+	// For non-leaf SubJobs, recursively sum all children's ready tasks
+	totalReady := int32(0)
+	for _, child := range sji.Children {
+		totalReady += child.ReadyTaskNum()
+	}
+	return totalReady
 }
 
 func (sji *SubJobInfo) PendingBestEffortTaskNum() int32 {
-	count := 0
-	for _, task := range sji.TaskStatusIndex[Pending] {
-		if task.BestEffort {
-			count++
+	// For leaf SubJobs, count best-effort pending tasks directly
+	if sji.IsLeaf {
+		count := 0
+		for _, task := range sji.TaskStatusIndex[Pending] {
+			if task.BestEffort {
+				count++
+			}
 		}
+		return int32(count)
 	}
-	return int32(count)
+
+	// For non-leaf SubJobs, recursively sum all children's best-effort pending tasks
+	totalBestEffort := int32(0)
+	for _, child := range sji.Children {
+		totalBestEffort += child.PendingBestEffortTaskNum()
+	}
+	return totalBestEffort
 }
 
 // WaitingTaskNum returns the number of tasks that are pipelined.
 func (sji *SubJobInfo) WaitingTaskNum() int32 {
-	return int32(len(sji.TaskStatusIndex[Pipelined]))
+	// For leaf SubJobs, count pipelined tasks directly
+	if sji.IsLeaf {
+		return int32(len(sji.TaskStatusIndex[Pipelined]))
+	}
+
+	// For non-leaf SubJobs, recursively sum all children's waiting tasks
+	totalWaiting := int32(0)
+	for _, child := range sji.Children {
+		totalWaiting += child.WaitingTaskNum()
+	}
+	return totalWaiting
 }
 
 func (sji *SubJobInfo) AllocatedTaskNum() int32 {
@@ -260,4 +296,16 @@ func (sji *SubJobInfo) AllocatedTaskNum() int32 {
 
 func (sji *SubJobInfo) CloneStatusFrom(source *SubJobInfo) {
 	sji.AllocatedHyperNode = source.AllocatedHyperNode
+}
+
+func (sji *SubJobInfo) LeafSubJobCount() int32 {
+	count := int32(0)
+	if sji.IsLeaf {
+		return 1
+	} else {
+		for _, child := range sji.Children {
+			count += child.LeafSubJobCount()
+		}
+	}
+	return count
 }
