@@ -80,7 +80,8 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 	for _, cr := range resources {
 		cgroupPath, err := r.cgroupMgr.GetPodCgroupPath(podEvent.QoSClass, cr.CgroupSubSystem, podEvent.UID)
 		if err != nil {
-			klog.ErrorS(err, "Failed to get pod cgroup", "pod", klog.KObj(podEvent.Pod), "subSystem", cr.CgroupSubSystem)
+			klog.ErrorS(err, "Failed to get pod cgroup", "subsystem", cr.CgroupSubSystem, "container", cr.ContainerID,
+				"file", cr.SubPath, "pod", klog.KObj(podEvent.Pod))
 			errs = append(errs, err)
 		}
 
@@ -109,10 +110,12 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 
 		if err != nil {
 			errs = append(errs, err)
-			klog.ErrorS(err, "Failed to set cgroup", "path", filePath, "pod", klog.KObj(podEvent.Pod))
+			klog.ErrorS(err, "Failed to set cgroup", "subsystem", cr.CgroupSubSystem, "container", cr.ContainerID,
+				"file", cr.SubPath, "pod", klog.KObj(podEvent.Pod))
 			continue
 		}
-		klog.InfoS("Successfully set cpu and memory cgroup", "path", filePath, "pod", klog.KObj(podEvent.Pod))
+		klog.InfoS("Successfully set cgroup", "subsystem", cr.CgroupSubSystem, "container", cr.ContainerID,
+			"file", cr.SubPath, "value", cr.Value, "pod", klog.KObj(podEvent.Pod))
 	}
 	return utilerrors.NewAggregate(errs)
 }
