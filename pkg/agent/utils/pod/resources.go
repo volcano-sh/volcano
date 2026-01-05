@@ -19,7 +19,6 @@ package pod
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -116,12 +115,9 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 func findContainerIDByName(pod *v1.Pod, name string) string {
 	for _, status := range pod.Status.ContainerStatuses {
 		if status.Name == name {
-			parts := strings.Split(status.ContainerID, "://")
-			if len(parts) != 2 {
-				klog.ErrorS(nil, "Failed to get container id", "name", name)
-				return ""
-			}
-			return parts[1]
+			// Return the full container ID with runtime prefix (e.g., "containerd://xxx")
+			// This is needed for BuildContainerCgroupName to identify the runtime type
+			return status.ContainerID
 		}
 	}
 	return ""

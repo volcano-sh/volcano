@@ -85,7 +85,15 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 			errs = append(errs, err)
 		}
 
-		filePath := path.Join(cgroupPath, cr.ContainerID, cr.SubPath)
+		var filePath string
+		if cr.ContainerID == "" {
+			// Pod-level: file is directly under pod cgroup directory
+			filePath = path.Join(cgroupPath, cr.SubPath)
+		} else {
+			// Container-level: file is under container subdirectory
+			containerCgroupName := r.cgroupMgr.BuildContainerCgroupName(cr.ContainerID)
+			filePath = path.Join(cgroupPath, containerCgroupName, cr.SubPath)
+		}
 
 		if cgroupVersion == cgroup.CgroupV2 && cr.Value == -1 {
 			if cr.SubPath == cgroup.CPUQuotaTotalFileV2 {
