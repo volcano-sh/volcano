@@ -54,6 +54,8 @@ type Resources struct {
 func CalculateExtendResources(pod *v1.Pod) []Resources {
 	containerRes := []Resources{}
 	cpuSharesTotal, cpuLimitsTotal, memoryLimitsTotal := int64(0), int64(0), int64(0)
+	// track if requests were applied for each resource.
+	cpuRequestsDeclared := true
 	// track if limits were applied for each resource.
 	cpuLimitsDeclared := true
 	memoryLimitsDeclared := true
@@ -66,6 +68,8 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 			cpuShares := int64(milliCPUToShares(cpuReq.Value()))
 			containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, ContainerID: id, SubPath: cgroup.CPUShareFileName, Value: cpuShares})
 			cpuSharesTotal += cpuShares
+		} else {
+			cpuRequestsDeclared = false
 		}
 
 		// set cpu quota.
@@ -88,19 +92,17 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 		}
 	}
 
-	// set pod level cgroup, container id="".
-	if cpuSharesTotal == 0 {
-		cpuSharesTotal = minShares
-	}
-
 	// pod didn't request any extend resources, skip setting cgroup.
-	if cpuLimitsTotal == 0 && !cpuLimitsDeclared && !memoryLimitsDeclared {
+	if len(containerRes) == 0 {
 		return containerRes
 	}
 
-	containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUShareFileName, Value: cpuSharesTotal})
+	// If a container does not apply for oversold CPU, the pod level should not set totalShares and should still use the kubelet setting, only adjusts the CPU share at the container level
+	if cpuRequestsDeclared {
+		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUShareFileName, Value: cpuSharesTotal})
+	}
 
-	// pod level should not set limit when exits one container has no cpu limit.
+	// pod level should not set limit when exists one container has no cpu limit.
 	if cpuLimitsDeclared {
 		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUQuotaTotalFile, Value: cpuLimitsTotal})
 	}
@@ -160,6 +162,7 @@ func milliCPUToShares(milliCPU int64) uint64 {
 func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 	containerRes := []Resources{}
 	cpuWeightTotal, cpuMaxTotal, memoryMaxTotal := int64(0), int64(0), int64(0)
+	cpuRequestsDeclared := true
 	cpuLimitsDeclared := true
 	memoryLimitsDeclared := true
 
@@ -175,6 +178,8 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 				Value:           cpuWeight,
 			})
 			cpuWeightTotal += cpuWeight
+		} else {
+			cpuRequestsDeclared = false
 		}
 
 		cpuLimits, ok := c.Resources.Limits[apis.GetExtendResourceCPU()]
@@ -258,15 +263,19 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 			memoryLimitsDeclared = false
 		}
 	}
-	if cpuWeightTotal == 0 {
-		cpuWeightTotal = 100
+
+	// pod didn't request any extend resources, skip setting cgroup.
+	if len(containerRes) == 0 {
+		return containerRes
 	}
 
-	containerRes = append(containerRes, Resources{
-		CgroupSubSystem: cgroup.CgroupCpuSubsystem,
-		SubPath:         cgroup.CPUWeightFileV2,
-		Value:           cpuWeightTotal,
-	})
+	if cpuRequestsDeclared {
+		containerRes = append(containerRes, Resources{
+			CgroupSubSystem: cgroup.CgroupCpuSubsystem,
+			SubPath:         cgroup.CPUWeightFileV2,
+			Value:           cpuWeightTotal,
+		})
+	}
 
 	if cpuLimitsDeclared {
 		if cpuMaxTotal == 0 {
