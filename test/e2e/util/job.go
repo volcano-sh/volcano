@@ -48,6 +48,7 @@ type TaskSpec struct {
 	Limit                 v1.ResourceList
 	Affinity              *v1.Affinity
 	Labels                map[string]string
+	Annotations           map[string]string
 	Policies              []batchv1alpha1.LifecyclePolicy
 	RestartPolicy         v1.RestartPolicy
 	Tolerations           []v1.Toleration
@@ -76,6 +77,7 @@ type JobSpec struct {
 	MaxRetry int32
 	// network topology mode hard or soft
 	NetworkTopology *batchv1alpha1.NetworkTopologySpec
+	Annotations     map[string]string
 }
 
 func Namespace(context *TestContext, job *JobSpec) string {
@@ -196,8 +198,9 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 
 	job := &batchv1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobSpec.Name,
-			Namespace: ns,
+			Name:        jobSpec.Name,
+			Namespace:   ns,
+			Annotations: jobSpec.Annotations,
 		},
 		Spec: batchv1alpha1.JobSpec{
 			SchedulerName:           "volcano",
@@ -238,8 +241,9 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 			PartitionPolicy: task.PartitionPolicy,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:   name,
-					Labels: task.Labels,
+					Name:        name,
+					Labels:      task.Labels,
+					Annotations: task.Annotations,
 				},
 				Spec: v1.PodSpec{
 					RestartPolicy:     restartPolicy,
@@ -868,4 +872,33 @@ func RemovePodSchGates(ctx *TestContext, targetJob *batchv1alpha1.Job) error {
 func DeleteJob(ctx *TestContext, job *batchv1alpha1.Job) {
 	err := ctx.Vcclient.BatchV1alpha1().Jobs(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to delete job %s", job.Name)
+}
+
+func CheckJobSchedulingFailed(ctx *TestContext, job *batchv1alpha1.Job) {
+	// Check job status
+	jobUpdated, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "Failed to get job status")
+	fmt.Printf("Job %s current status: %s, Running: %d, Pending: %d\n",
+		jobUpdated.Status.State, jobUpdated.Status.Running, jobUpdated.Status.Pending)
+
+	// Verify job status: should have no running pods due to exceeding quota
+	Expect(jobUpdated.Status.Running).To(Equal(int32(0)), "Job should not have running pods because it exceeded queue quota")
+
+	// Check pods associated with job
+	pods, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("volcano.sh/job-name=%s", job.Name),
+	})
+	Expect(err).NotTo(HaveOccurred(), "Failed to get pod list for job")
+
+	// Print pod status information
+	for _, pod := range pods.Items {
+		fmt.Printf("Pod %s of job status: %s\n", pod.Name, pod.Status.Phase)
+	}
+
+	// Verify pod status: job pods should be in Pending state (cannot be scheduled)
+	for _, pod := range pods.Items {
+		Expect(pod.Status.Phase).To(Equal(v1.PodPending), "Job pods should be in Pending state due to insufficient resource quota")
+	}
+
+	fmt.Printf("Job %s validation completed - correctly failed to schedule due to quota limit\n", job.Name)
 }
