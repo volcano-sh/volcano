@@ -29,12 +29,13 @@ type VolcanoAgentConfig struct {
 	NodesConfig []NodesConfig `json:"nodesConfig,omitempty"`
 }
 
-// NodeLabelConfig does not support getting from configmap
+// NodeLabelConfig provides global defaults for node colocation/oversubscription.
+// These values can be overridden by node labels (volcano.sh/colocation and volcano.sh/oversubscription).
 type NodeLabelConfig struct {
-	// NodeColocationEnable enables node colocation or not.
-	NodeColocationEnable *bool
-	// NodeColocationEnable enables node oversubscription or not.
-	NodeOverSubscriptionEnable *bool
+	// NodeColocationEnable enables node colocation globally. Can be overridden by node label.
+	NodeColocationEnable *bool `json:"nodeColocationEnable,omitempty"`
+	// NodeOverSubscriptionEnable enables node oversubscription globally. Can be overridden by node label.
+	NodeOverSubscriptionEnable *bool `json:"nodeOverSubscriptionEnable,omitempty"`
 }
 
 type NodesConfig struct {
@@ -44,8 +45,8 @@ type NodesConfig struct {
 }
 
 type ColocationConfig struct {
-	// got from node labels
-	NodeLabelConfig *NodeLabelConfig `json:"-"`
+	// NodeLabelConfig provides global defaults, can be overridden by node labels
+	NodeLabelConfig *NodeLabelConfig `json:"nodeLabelConfig,omitempty"`
 
 	// cpu qos related config.
 	CPUQosConfig *CPUQos `json:"cpuQosConfig,omitempty" configKey:"CPUQoS"`

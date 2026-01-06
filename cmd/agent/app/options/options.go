@@ -22,6 +22,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"volcano.sh/volcano/pkg/agent/features"
 	"volcano.sh/volcano/pkg/config"
 )
 
@@ -30,6 +31,12 @@ const (
 
 	defaultOverSubscriptionRatio = 60
 )
+
+var defaultSupportedFeatures = []string{
+	string(features.OverSubscriptionFeature),
+	string(features.EvictionFeature),
+	string(features.ResourcesFeature),
+}
 
 type VolcanoAgentOptions struct {
 	// HealthzAddress is the health check server address
@@ -75,7 +82,7 @@ func NewVolcanoAgentOptions() *VolcanoAgentOptions {
 }
 
 func (options *VolcanoAgentOptions) AddFlags(c *cobra.Command) {
-	c.Flags().StringSliceVar(&options.SupportedFeatures, "supported-features", []string{"*"}, "List of supported features. '*' supports all on-by-default features, 'foo' feature named 'foo' is supported"+
+	c.Flags().StringSliceVar(&options.SupportedFeatures, "supported-features", defaultSupportedFeatures, "List of supported features. '*' supports all on-by-default features, 'foo' feature named 'foo' is supported"+
 		"'-foo' feature named 'foo' is not supported.")
 	c.Flags().StringVar(&options.HealthzAddress, "healthz-address", "", "defines the health check address")
 	c.Flags().IntVar(&options.HealthzPort, "healthz-port", serverPort, "defines the health check port")

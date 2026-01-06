@@ -26,9 +26,9 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
+	utilnode "volcano.sh/volcano/pkg/agent/utils/node"
 
 	"volcano.sh/volcano/pkg/agent/config/api"
-	utilnode "volcano.sh/volcano/pkg/agent/utils/node"
 )
 
 const (
@@ -58,15 +58,25 @@ const (
 	DefaultCfg = `
 {
     "globalConfig":{
-        "cpuBurstConfig":{
-            "enable":true
+        "nodeLabelConfig":{
+            "nodeColocationEnable":true,
+            "nodeOverSubscriptionEnable":false
         },
+        "cpuBurstConfig":{
+            "enable":false
+        },
+		"cpuQosConfig":{
+			"enable":false
+		},
+		"memoryQosConfig":{
+			"enable":false
+		},
         "networkQosConfig":{
-            "enable":true,
+            "enable":false,
             "onlineBandwidthWatermarkPercent":80,
             "offlineLowBandwidthPercent":10,
             "offlineHighBandwidthPercent":40,
-            "qosCheckInterval": 10000000
+            "qosCheckInterval":10000000
         },
         "overSubscriptionConfig":{
             "enable":true,
@@ -87,14 +97,18 @@ const (
 func DefaultColocationConfig() *api.ColocationConfig {
 	return &api.ColocationConfig{
 		NodeLabelConfig: &api.NodeLabelConfig{
-			NodeColocationEnable:       utilpointer.Bool(false),
+			// Open colocation by default globally, however, fine-grained features such as CPU QoS and CPU burst need to be manually enabled,
+			// which depends on the OS type and kernel version.
+			NodeColocationEnable:       utilpointer.Bool(true),
 			NodeOverSubscriptionEnable: utilpointer.Bool(false),
 		},
-		CPUQosConfig:    &api.CPUQos{Enable: utilpointer.Bool(true)},
-		CPUBurstConfig:  &api.CPUBurst{Enable: utilpointer.Bool(true)},
-		MemoryQosConfig: &api.MemoryQos{Enable: utilpointer.Bool(true)},
+		// CPU/Memory/Network Qos are disabled by default, these features needs custom operating system.
+		// CPU burst is also disabled by default, CPU burst currently is integrated into Linux kernel, but requiring Linux kernel version >= 5.14.
+		CPUQosConfig:    &api.CPUQos{Enable: utilpointer.Bool(false)},
+		CPUBurstConfig:  &api.CPUBurst{Enable: utilpointer.Bool(false)},
+		MemoryQosConfig: &api.MemoryQos{Enable: utilpointer.Bool(false)},
 		NetworkQosConfig: &api.NetworkQos{
-			Enable:                          utilpointer.Bool(true),
+			Enable:                          utilpointer.Bool(false),
 			OnlineBandwidthWatermarkPercent: utilpointer.Int(DefaultOnlineBandwidthWatermarkPercent),
 			OfflineLowBandwidthPercent:      utilpointer.Int(DefaultOfflineLowBandwidthPercent),
 			OfflineHighBandwidthPercent:     utilpointer.Int(DefaultOfflineHighBandwidthPercent),
