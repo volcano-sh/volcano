@@ -333,6 +333,31 @@ func TestAddPodFunc(t *testing.T) {
 			},
 			ExpectedValue: 1,
 		},
+		{
+			// This case ensures a pod that is already terminating (has DeletionTimestamp)
+			// is still added to the job cache correctly.
+			Name: "AddPod Success when pod is terminating",
+			Job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+			},
+			pods: []*v1.Pod{
+				func() *v1.Pod {
+					p := buildPod(namespace, "pod1", v1.PodPending, nil)
+					now := metav1.Now()
+					p.DeletionTimestamp = &now
+					return p
+				}(),
+			},
+			Annotation: map[string]string{
+				batch.JobNameKey:  "job1",
+				batch.JobVersion:  "0",
+				batch.TaskSpecKey: "task1",
+			},
+			ExpectedValue: 1,
+		},
 	}
 
 	for i, testcase := range testcases {
@@ -407,6 +432,30 @@ func TestUpdatePodFunc(t *testing.T) {
 				batch.TaskSpecKey: "task1",
 			},
 			ExpectedValue: v1.PodFailed,
+		},
+		{
+			// This case verifies that when the updated pod has a DeletionTimestamp
+			// (terminating), it remains in the job cache instead of being removed.
+			Name: "UpdatePod keeps terminating pod in cache",
+			Job: &batch.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job1",
+					Namespace: namespace,
+				},
+			},
+			oldPod: buildPod(namespace, "pod1", v1.PodRunning, nil),
+			newPod: func() *v1.Pod {
+				p := buildPod(namespace, "pod1", v1.PodRunning, nil)
+				now := metav1.Now()
+				p.DeletionTimestamp = &now
+				return p
+			}(),
+			Annotation: map[string]string{
+				batch.JobNameKey:  "job1",
+				batch.JobVersion:  "0",
+				batch.TaskSpecKey: "task1",
+			},
+			ExpectedValue: v1.PodRunning,
 		},
 	}
 
