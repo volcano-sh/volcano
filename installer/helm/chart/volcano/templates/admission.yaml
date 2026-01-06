@@ -63,6 +63,11 @@ rules:
   - apiGroups: ["scheduling.incubator.k8s.io", "scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["get", "list", "watch"]
+  {{- if .Values.custom.enabled_admissions | regexMatch "/podgroups/mutate" }}
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  {{- end }}
 
 ---
 kind: ClusterRoleBinding
