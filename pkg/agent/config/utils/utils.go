@@ -26,9 +26,9 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 	utilpointer "k8s.io/utils/pointer"
-	utilnode "volcano.sh/volcano/pkg/agent/utils/node"
 
 	"volcano.sh/volcano/pkg/agent/config/api"
+	utilnode "volcano.sh/volcano/pkg/agent/utils/node"
 )
 
 const (
@@ -102,7 +102,7 @@ func DefaultColocationConfig() *api.ColocationConfig {
 			NodeColocationEnable:       utilpointer.Bool(true),
 			NodeOverSubscriptionEnable: utilpointer.Bool(false),
 		},
-		// CPU/Memory/Network Qos are disabled by default, these features needs custom operating system.
+		// CPU/Memory/Network Qos are disabled by default, these features need a custom operating system.
 		// CPU burst is also disabled by default, CPU burst currently is integrated into Linux kernel, but requiring Linux kernel version >= 5.14.
 		CPUQosConfig:    &api.CPUQos{Enable: utilpointer.Bool(false)},
 		CPUBurstConfig:  &api.CPUBurst{Enable: utilpointer.Bool(false)},

@@ -17,6 +17,7 @@ limitations under the License.
 package config
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -250,13 +251,9 @@ func (m *ConfigManager) getAgentPod() (*corev1.Pod, error) {
 
 // formatJSON formats JSON string with proper indentation for better readability
 func formatJSON(jsonStr string) (string, error) {
-	var obj interface{}
-	if err := json.Unmarshal([]byte(jsonStr), &obj); err != nil {
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, []byte(jsonStr), "", "  "); err != nil {
 		return "", err
 	}
-	formatted, err := json.MarshalIndent(obj, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	return string(formatted), nil
+	return buf.String(), nil
 }
