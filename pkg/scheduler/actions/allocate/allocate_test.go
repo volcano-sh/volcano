@@ -5142,6 +5142,35 @@ func TestAllocateWithPartitionPolicyNetworkTopology(t *testing.T) {
 			ExpectBindsNum:   2,
 			MinimalBindCheck: true,
 		},
+		{
+			Name: "no hard network topology at job level but has SubJobPolicy, can allocate job successfully",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", 3, nil, schedulingv1.PodGroupInqueue, "", 0,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicy("task1", []string{"volcano.sh/task-spec"}, "soft", 0),
+					}),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "master"}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("s0-n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s0-n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("s1-n3", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("s0", "s1")},
+			HyperNodes: map[string]sets.Set[string]{
+				"s0": sets.New[string]("s0-n1", "s0-n2"),
+				"s1": sets.New[string]("s1-n3"),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum:   3,
+			MinimalBindCheck: true,
+		},
 	}
 
 	trueValue := true
