@@ -175,9 +175,13 @@ func (ra *Action) Execute(ssn *framework.Session) {
 func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Statement, task *api.TaskInfo, job *api.JobInfo) {
 	totalNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(task)
 	predicateHelper := util.NewPredicateHelper()
-	predicateNodes, _ := predicateHelper.PredicateNodes(task, totalNodes, ssn.PredicateForPreemptAction, ra.enablePredicateErrorCache)
-
-	for _, n := range predicateNodes {
+	predicateNodes, _ := predicateHelper.PredicateNodes(task, totalNodes, ssn.PredicateForPreemptAction, ra.enablePredicateErrorCache, ssn.NodesInShard)
+	predicateNodesByShard := util.GetPredicatedNodeByShard(predicateNodes, ssn.NodesInShard)
+	var predicateNodesByShardFlattened []*api.NodeInfo
+	for _, nodes := range predicateNodesByShard {
+		predicateNodesByShardFlattened = append(predicateNodesByShardFlattened, nodes...)
+	}
+	for _, n := range predicateNodesByShardFlattened {
 		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.", task.Namespace, task.Name, n.Name)
 
 		var reclaimees []*api.TaskInfo
