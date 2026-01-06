@@ -50,7 +50,7 @@ custom:
   ignored_provisioners: ~
 # Override the configuration for agent.
 # For example:
-# agent_supported_features: "OverSubscription\,Eviction\,Resources"
+# agent_supported_features: "OverSubscription,Eviction,Resources"
 # agent_extend_resource_cpu_name: "example.com/cpu"
 # agent_extend_resource_memory_name: "example.com/memory"
   agent_supported_features: ~
