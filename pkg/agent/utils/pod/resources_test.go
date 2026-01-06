@@ -105,11 +105,6 @@ func TestCalculateExtendResources(t *testing.T) {
 				// pod
 				{
 					CgroupSubSystem: "cpu",
-					SubPath:         "cpu.shares",
-					Value:           512,
-				},
-				{
-					CgroupSubSystem: "cpu",
 					SubPath:         "cpu.cfs_quota_us",
 					Value:           101000,
 				},

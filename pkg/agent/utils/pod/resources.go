@@ -96,7 +96,8 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 		return containerRes
 	}
 
-	// If a container does not apply for oversold CPU, the pod level should not set totalShares and should still use the kubelet setting, only adjusts the CPU share at the container level
+	// If any container does not apply for request oversold CPU, the pod level should not set totalShares and should still use the kubelet setting,
+	// only adjusting the CPU share at the container level.
 	if cpuRequestsDeclared {
 		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUShareFileName, Value: cpuSharesTotal})
 	}
@@ -105,7 +106,7 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 	if cpuLimitsDeclared {
 		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUQuotaTotalFile, Value: cpuLimitsTotal})
 	}
-	// pod level should not set limit when exits one container has no memory limit.
+	// pod level should not set limit when exists one container has no memory limit.
 	if memoryLimitsDeclared {
 		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, SubPath: cgroup.MemoryLimitFile, Value: memoryLimitsTotal})
 	}

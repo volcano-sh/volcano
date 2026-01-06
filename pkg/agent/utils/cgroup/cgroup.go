@@ -509,7 +509,7 @@ func (c *CgroupManagerImpl) GetPodCgroupPath(qos corev1.PodQOSClass, cgroupSubsy
 func (c *CgroupManagerImpl) BuildContainerCgroupName(containerID string) string {
 	// Parse runtime type and ID from "runtime://id" format
 	var runtime, id string
-	parts := strings.Split(containerID, "://")
+	parts := strings.SplitN(containerID, "://", 2)
 	if len(parts) == 2 {
 		runtime = parts[0]
 		id = parts[1]
