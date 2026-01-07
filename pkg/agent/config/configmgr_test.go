@@ -131,6 +131,8 @@ func defaultCfg() *api.VolcanoAgentConfig {
 			EvictingMemoryHighWatermark: utilpointer.Int(utils.DefaultEvictingMemoryHighWatermark),
 			EvictingCPULowWatermark:     utilpointer.Int(utils.DefaultEvictingCPULowWatermark),
 			EvictingMemoryLowWatermark:  utilpointer.Int(utils.DefaultEvictingMemoryLowWatermark),
+			MonitorInterval:             utilpointer.Int(utils.DefaultMonitorInterval),
+			HighUsageCountLimit:         utilpointer.Int(utils.DefaultHighUsageCountLimit),
 		},
 	}}
 }
