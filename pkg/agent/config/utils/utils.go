@@ -52,8 +52,8 @@ const (
 	DefaultEvictingMemoryHighWatermark = 60
 	DefaultEvictingCPULowWatermark     = 30
 	DefaultEvictingMemoryLowWatermark  = 30
-	DefaultMonitorInterval             = 10 
-	DefaultHighUsageCountLimit         = 6  
+	DefaultMonitorInterval             = 10
+	DefaultHighUsageCountLimit         = 6
 )
 
 const (

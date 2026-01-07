@@ -92,12 +92,12 @@ func (m *monitor) Run(stop <-chan struct{}) {
 func (m *monitor) runWithDynamicInterval(f func(), stop <-chan struct{}) {
 	ticker := time.NewTicker(m.getMonitorInterval())
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-stop:
 			return
-		case <-ticker.C: 
+		case <-ticker.C:
 			f()
 			newInterval := m.getMonitorInterval()
 			ticker.Reset(newInterval)
