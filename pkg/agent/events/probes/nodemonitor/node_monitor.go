@@ -90,7 +90,8 @@ func (m *monitor) Run(stop <-chan struct{}) {
 }
 
 func (m *monitor) runWithDynamicInterval(f func(), stop <-chan struct{}) {
-	ticker := time.NewTicker(m.getMonitorInterval())
+	currentInterval := m.getMonitorInterval()
+	ticker := time.NewTicker(currentInterval)
 	defer ticker.Stop()
 
 	for {
@@ -100,7 +101,10 @@ func (m *monitor) runWithDynamicInterval(f func(), stop <-chan struct{}) {
 		case <-ticker.C:
 			f()
 			newInterval := m.getMonitorInterval()
-			ticker.Reset(newInterval)
+			if newInterval != currentInterval {
+				ticker.Reset(newInterval)
+				currentInterval = newInterval
+			}
 		}
 	}
 }
@@ -115,14 +119,15 @@ func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 	m.cfgLock.Lock()
 	utils.SetEvictionWatermark(cfg, m.lowWatermark, m.highWatermark)
 
-	// Update monitor interval if configured
-	if cfg.EvictingConfig != nil && cfg.EvictingConfig.MonitorInterval != nil {
-		m.monitorInterval = time.Duration(*cfg.EvictingConfig.MonitorInterval) * time.Second
-	}
-
-	// Update high usage count limit if configured
-	if cfg.EvictingConfig != nil && cfg.EvictingConfig.HighUsageCountLimit != nil {
-		m.highUsageCountLimit = *cfg.EvictingConfig.HighUsageCountLimit
+	if cfg.EvictingConfig != nil {
+		//Update monitor interval if configured
+		if cfg.EvictingConfig.MonitorInterval != nil {
+			m.monitorInterval = time.Duration(*cfg.EvictingConfig.MonitorInterval) * time.Second
+		}
+		//Update high usage count limit if configured
+		if cfg.EvictingConfig.HighUsageCountLimit != nil {
+			m.highUsageCountLimit = *cfg.EvictingConfig.HighUsageCountLimit
+		}
 	}
 
 	m.cfgLock.Unlock()
@@ -229,12 +234,12 @@ func (m *monitor) isLowResourceUsageOnce(node *v1.Node, usage apis.Resource, res
 }
 
 func (m *monitor) nodeHasPressure(resName v1.ResourceName) bool {
-	m.Lock()
-	defer m.Unlock()
-
 	m.cfgLock.RLock()
 	limit := m.highUsageCountLimit
 	m.cfgLock.RUnlock()
+
+	m.Lock()
+	defer m.Unlock()
 
 	return m.highUsageCountByResName[resName] >= limit
 }
