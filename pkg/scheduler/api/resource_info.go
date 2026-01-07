@@ -24,6 +24,7 @@ package api
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 
@@ -213,6 +214,17 @@ var ignoredScalarResources = sets.NewString(string(v1.ResourcePods))
 
 func IsIgnoredScalarResource(name v1.ResourceName) bool {
 	return ignoredScalarResources.Has(string(name))
+}
+
+// FilteredIgnoredScalarResources returns a new ResourceNameList excluding any resource names present in ignoredScalarResources.
+func (r ResourceNameList) FilteredIgnoredScalarResources() ResourceNameList {
+	filtered := ResourceNameList{}
+	for _, name := range r {
+		if !ignoredScalarResources.Has(string(name)) {
+			filtered = append(filtered, name)
+		}
+	}
+	return filtered
 }
 
 // IsEmpty returns false if any kind of resource other than IgnoredResources is not less than min value, otherwise returns true
@@ -493,9 +505,9 @@ func (r *Resource) LessEqualWithDimensionAndResourcesName(rr *Resource, req *Res
 }
 
 // LessEqualWithResourcesName returns true, []string{} only on condition that all dimensions of resources in r are less than or equal with that of rr,
-// Otherwise returns false and err string ,which show what resources are insufficient.
+// Otherwise returns false and a slice of string, which shows what resources are insufficient.
 // @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
-// this function is the same as LessEqual , and it will be merged to LessEqual in the future
+// this function is the same as LessEqual, and it will be merged to LessEqual in the future
 func (r *Resource) LessEqualWithResourcesName(rr *Resource, defaultValue DimensionDefaultValue) (bool, []string) {
 	resources := []string{}
 	lessEqualFunc := func(l, r, diff float64) bool {
@@ -604,10 +616,7 @@ func (r *Resource) LessEqualPartly(rr *Resource, defaultValue DimensionDefaultVa
 // if req is nil then return is false and an empty slice
 func (r *Resource) LessEqualPartlyWithDimension(rr *Resource, req *Resource) (bool, []string) {
 	lessEqualFunc := func(l, r, diff float64) bool {
-		if l < r || math.Abs(l-r) < diff {
-			return true
-		}
-		return false
+		return l < r || math.Abs(l-r) < diff
 	}
 
 	resources := []string{}
@@ -668,14 +677,8 @@ func (r *Resource) LessEqualPartlyWithDimensionZeroFiltered(rr *Resource, req *R
 	if req.ScalarResources != nil {
 		filteredReq.ScalarResources = make(map[v1.ResourceName]float64)
 		for name, quant := range req.ScalarResources {
-			rQuant := float64(0)
-			rrQuant := float64(0)
-			if r.ScalarResources != nil {
-				rQuant = r.ScalarResources[name]
-			}
-			if rr.ScalarResources != nil {
-				rrQuant = rr.ScalarResources[name]
-			}
+			rQuant := r.Get(name)
+			rrQuant := rr.Get(name)
 			if quant > 0 && !(rQuant < minResource && rrQuant < minResource) {
 				filteredReq.ScalarResources[name] = quant
 			}
@@ -704,6 +707,160 @@ func (r *Resource) Equal(rr *Resource, defaultValue DimensionDefaultValue) bool 
 		}
 	}
 	return true
+}
+
+// GreaterPartly returns true if there exists any dimension whose resource amount in r is greater than that in rr.
+// Otherwise returns false.
+// @param defaultValue "default value for resource dimension not defined in ScalarResources. Its value can only be one of 'Zero' and 'Infinity'"
+// @returns true and a slice of resource names that are exceeding else false and an empty slice.
+func (r *Resource) GreaterPartly(rr *Resource, defaultValue DimensionDefaultValue) (bool, []string) {
+	ok, resources := r.LessEqualWithResourcesName(rr, defaultValue)
+	return !ok, resources
+}
+
+// GreaterPartlyWithDimension returns true if there exists any dimension
+// whose resource amount in r is greater than that in rr along the requested dimensions in req.
+// Will return true and a slice of resource names that are exceeding
+//
+// The main difference between GreaterPartlyWithDimension and GreaterPartlyWithRelevantDimensions is that the latter
+// will filter out standard dimensions (MilliCPU, Memory) where rr is zero or less than minResource and
+// only considers scalar dimensions greater than 0 in req and present in rr:
+// For example:
+//
+//	r: <gpu 2> rr: <> req: <gpu 1>
+//	  r.GreaterPartlyWithDimension(rr, req) => (true, [gpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr doesn't have gpu resource
+//	r: <cpu 4> rr: <cpu 0> req: <cpu 2>
+//	  r.GreaterPartlyWithDimension(rr, req) => (true, [cpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr has zero cpu resource
+//
+// But these cases are the same:
+//
+//	r: <gpu 2> rr: <gpu 0> req: <gpu 1>
+//	  r.GreaterPartlyWithDimension(rr, req) => (true, [gpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (true, [gpu]) since rr has gpu resource defined (even if zero)
+//	r: <cpu 4> rr: <cpu 0.1> req: <cpu 2>
+//	  r.GreaterPartlyWithDimension(rr, req) => (true, [cpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (true, [cpu]) since rr has cpu resource greater than minResource
+//	r: <cpu 4, memory 8192, gpu 2> rr: <cpu 2, memory 8192, gpu 1>
+//	  req: <cpu 0, memory 0, gpu 1> => return (true, [gpu])
+//	  req: <cpu 2, memory 0, gpu 1> => return (true, [cpu, gpu])
+//	  req: <cpu 0, memory 4096, gpu 0> => return (false, [])
+//
+// The functions are not interchangeable and should be used based on specific comparison needs.
+// As a remark they don't differ in the handling of r and req, only in the handling of rr.
+//
+// @param rr is the Resource to compare against. If nil, treated as EmptyResource().
+// @param req is the Resource item with the dimensions to be compared on.
+// @returns true and a slice of resource names that are exceeding else false and an empty slice.
+// If req is nil then return is false and an empty slice.
+func (r *Resource) GreaterPartlyWithDimension(rr *Resource, req *Resource) (bool, []string) {
+	greaterFunc := func(l, r float64) bool {
+		return l > r
+	}
+
+	resources := []string{}
+
+	if req == nil {
+		return false, resources
+	}
+	if rr == nil {
+		rr = EmptyResource()
+	}
+
+	// CPU
+	if req.MilliCPU > 0 {
+		if greaterFunc(r.MilliCPU, rr.MilliCPU) {
+			resources = append(resources, "cpu")
+		}
+	}
+	// Memory
+	if req.Memory > 0 {
+		if greaterFunc(r.Memory, rr.Memory) {
+			resources = append(resources, "memory")
+		}
+	}
+	// Scalar resources
+	for name, quant := range req.ScalarResources {
+		if IsIgnoredScalarResource(name) {
+			continue
+		}
+		if quant > 0 && greaterFunc(r.Get(name), rr.Get(name)) {
+			resources = append(resources, string(name))
+		}
+	}
+	return len(resources) > 0, resources
+}
+
+// GreaterPartlyWithRelevantDimensions compares resource dimensions in req between r and rr,
+// but ignores any standard dimensions (MilliCPU, Memory) where rr is zero or less than minResource.
+// For scalar resources, only dimensions present in both req and rr are considered.
+// This is useful for reclaim scenarios, where you want to check if r exceeds rr
+// only in dimensions that rr actually possesses (i.e., "infinity-type" comparison).
+//
+// The main difference between GreaterPartlyWithDimension and GreaterPartlyWithRelevantDimensions is that the latter
+// will filter out standard dimensions (MilliCPU, Memory) where rr is zero or less than minResource and
+// only considers scalar dimensions greater than 0 in req and present in rr:
+// For example:
+//
+//	r: <gpu 2> rr: <> req: <gpu 1>
+//	  r.GreaterPartlyWithDimension(rr, req) => (true, [gpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr doesn't have gpu resource
+//	r: <cpu 4> rr: <cpu 0> req: <cpu 2>
+//	  r.GreaterPartlyWithDimension(rr, req) => (true, [cpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr has zero cpu resource
+//
+// But these cases are the same:
+//
+//	r: <gpu 2> rr: <gpu 0> req: <gpu 1>
+//	  r.GreaterPartlyWithDimension(rr, req) => (true, [gpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (true, [gpu]) since rr has gpu resource defined (even if zero)
+//	r: <cpu 4> rr: <cpu 0.1> req: <cpu 2>
+//	  r.GreaterPartlyWithDimension(rr, req) => (true, [cpu])
+//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (true, [cpu]) since rr has cpu resource greater than minResource
+//	r: <cpu 4, memory 8192, gpu 2> rr: <cpu 2, memory 8192, gpu 1>
+//	  req: <cpu 0, memory 0, gpu 1> => return (true, [gpu])
+//	  req: <cpu 2, memory 0, gpu 1> => return (true, [cpu, gpu])
+//	  req: <cpu 0, memory 4096, gpu 0> => return (false, [])
+//
+// The functions are not interchangeable and should be used based on specific comparison needs.
+// As a remark they don't differ in the handling of r and req, only in the handling of rr.
+//
+// @param rr is the Resource to compare against. If nil, treated as EmptyResource().
+// @param req is the Resource item with the dimensions to be compared on.
+// @returns true and a slice of resource names that are exceeding else false and an empty slice.
+// If req is nil then return is false and an empty slice.
+func (r *Resource) GreaterPartlyWithRelevantDimensions(rr *Resource, req *Resource) (bool, []string) {
+	if req == nil {
+		return false, []string{}
+	}
+	if rr == nil {
+		rr = EmptyResource()
+	}
+	filteredReq := &Resource{}
+
+	// CPU
+	if req.MilliCPU > 0 && !(rr.MilliCPU < minResource) {
+		filteredReq.MilliCPU = req.MilliCPU
+	}
+
+	// Memory
+	if req.Memory > 0 && !(rr.Memory < minResource) {
+		filteredReq.Memory = req.Memory
+	}
+
+	// Scalar resources
+	if req.ScalarResources != nil {
+		filteredReq.ScalarResources = make(map[v1.ResourceName]float64)
+		for name, quant := range req.ScalarResources {
+			_, ok := rr.ScalarResources[name]
+			if quant > 0 && ok {
+				filteredReq.ScalarResources[name] = quant
+			}
+		}
+	}
+
+	return r.GreaterPartlyWithDimension(rr, filteredReq)
 }
 
 // Diff calculate the difference between two resource object
@@ -866,13 +1023,7 @@ type ResourceNameList []v1.ResourceName
 // Contains judges whether rr is subset of r
 func (r ResourceNameList) Contains(rr ResourceNameList) bool {
 	for _, rrName := range ([]v1.ResourceName)(rr) {
-		isResourceExist := false
-		for _, rName := range ([]v1.ResourceName)(r) {
-			if rName == rrName {
-				isResourceExist = true
-				break
-			}
-		}
+		isResourceExist := slices.Contains(([]v1.ResourceName)(r), rrName)
 		if !isResourceExist {
 			return false
 		}
@@ -882,6 +1033,31 @@ func (r ResourceNameList) Contains(rr ResourceNameList) bool {
 
 func IsCountQuota(name v1.ResourceName) bool {
 	return strings.HasPrefix(string(name), "count/")
+}
+
+// Intersection returns the not zero resource names that exist in both resources
+func Intersection(r1, r2 *Resource) ResourceNameList {
+	intersection := ResourceNameList{}
+	r1Names := r1.ResourceNames()
+	r2Names := r2.ResourceNames()
+	nameSet := map[v1.ResourceName]struct{}{}
+	for _, name := range r1Names {
+		nameSet[name] = struct{}{}
+	}
+	for _, name := range r2Names {
+		if _, exists := nameSet[name]; exists {
+			// r1Names and r2Names are from Resource.ResourceNames(), which already filtered the zero resources
+			intersection = append(intersection, name)
+		}
+	}
+	return intersection
+}
+
+// IntersectionWithIgnoredScalarResources returns the not zero resource names that exist in both resources,
+// while ignoring the resources specified in ignoredScalarResources
+func IntersectionWithIgnoredScalarResources(r1, r2 *Resource) ResourceNameList {
+	intersection := Intersection(r1, r2)
+	return intersection.FilteredIgnoredScalarResources()
 }
 
 // ExceededPart returns the partly resource in left which exceed right
