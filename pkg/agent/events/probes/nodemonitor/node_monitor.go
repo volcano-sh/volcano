@@ -45,10 +45,6 @@ func init() {
 	probes.RegisterEventProbeFunc(string(framework.NodeMonitorEventName), NewMonitor)
 }
 
-const (
-	highUsageCountLimit = 6
-)
-
 type monitor struct {
 	sync.Mutex
 	*config.Configuration
@@ -62,6 +58,8 @@ type monitor struct {
 	getNodeFunc             utilnode.ActiveNode
 	getPodsFunc             utilpod.ActivePods
 	usageGetter             resourceusage.Getter
+	monitorInterval         time.Duration
+	highUsageCountLimit     int
 }
 
 func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, workQueue workqueue.RateLimitingInterface) framework.Probe {
@@ -75,6 +73,8 @@ func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollector
 		highWatermark:           make(apis.Watermark),
 		highUsageCountByResName: make(map[v1.ResourceName]int),
 		usageGetter:             resourceusage.NewUsageGetter(mgr, local.CollectorName),
+		monitorInterval:         10 * time.Second,
+		highUsageCountLimit:     6,
 	}
 }
 
@@ -84,13 +84,47 @@ func (m *monitor) ProbeName() string {
 
 func (m *monitor) Run(stop <-chan struct{}) {
 	klog.InfoS("Started nodePressure probe")
-	go wait.Until(m.utilizationMonitoring, 10*time.Second, stop)
-	go wait.Until(m.detect, 10*time.Second, stop)
+
+	go m.runWithDynamicInterval(m.utilizationMonitoring, stop)
+	go m.runWithDynamicInterval(m.detect, stop)
+}
+
+func (m *monitor) runWithDynamicInterval(f func(), stop <-chan struct{}) {
+	ticker := time.NewTicker(m.getMonitorInterval())
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C: 
+			f()
+			newInterval := m.getMonitorInterval()
+			ticker.Reset(newInterval)
+		}
+	}
+}
+
+func (m *monitor) getMonitorInterval() time.Duration {
+	m.cfgLock.RLock()
+	defer m.cfgLock.RUnlock()
+	return m.monitorInterval
 }
 
 func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 	m.cfgLock.Lock()
 	utils.SetEvictionWatermark(cfg, m.lowWatermark, m.highWatermark)
+
+	// Update monitor interval if configured
+	if cfg.EvictingConfig != nil && cfg.EvictingConfig.MonitorInterval != nil {
+		m.monitorInterval = time.Duration(*cfg.EvictingConfig.MonitorInterval) * time.Second
+	}
+
+	// Update high usage count limit if configured
+	if cfg.EvictingConfig != nil && cfg.EvictingConfig.HighUsageCountLimit != nil {
+		m.highUsageCountLimit = *cfg.EvictingConfig.HighUsageCountLimit
+	}
+
 	m.cfgLock.Unlock()
 
 	m.Lock()
@@ -198,5 +232,9 @@ func (m *monitor) nodeHasPressure(resName v1.ResourceName) bool {
 	m.Lock()
 	defer m.Unlock()
 
-	return m.highUsageCountByResName[resName] >= highUsageCountLimit
+	m.cfgLock.RLock()
+	limit := m.highUsageCountLimit
+	m.cfgLock.RUnlock()
+
+	return m.highUsageCountByResName[resName] >= limit
 }
