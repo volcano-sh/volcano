@@ -106,8 +106,27 @@ images:
 		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
 	done
 
+# Define a reusable build function for individual component images
+define build_component_image
+	docker buildx build -t "${IMAGE_PREFIX}/vc-$(1):$(TAG)" . \
+		-f ./installer/dockerfile/$(1)/Dockerfile \
+		--output=type=${BUILDX_OUTPUT_TYPE} \
+		--platform ${DOCKER_PLATFORMS} \
+		--build-arg APK_MIRROR=${APK_MIRROR} \
+		--build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}
+endef
+
+vc-controller-manager-image:
+	$(call build_component_image,controller-manager)
+
+vc-scheduler-image:
+	$(call build_component_image,scheduler)
+
+vc-webhook-manager-image:
+	$(call build_component_image,webhook-manager)
+
 vc-agent-image:
-	docker buildx build -t "${IMAGE_PREFIX}/vc-agent:$(TAG)" . -f ./installer/dockerfile/agent/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}
+	$(call build_component_image,agent)
 
 generate-code:
 	./hack/update-gencode.sh
