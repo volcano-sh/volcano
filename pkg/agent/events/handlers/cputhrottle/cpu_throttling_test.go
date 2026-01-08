@@ -50,6 +50,7 @@ func TestCPUThrottleHandler_Handle(t *testing.T) {
 			},
 			validate: func(t *testing.T, handler *CPUThrottleHandler, quotaFile string) {
 				content, err := os.ReadFile(quotaFile)
+
 				assert.NoError(t, err)
 				assert.Equal(t, "50000", strings.TrimSpace(string(content))[0])
 				handler.mutex.RLock()
@@ -71,6 +72,7 @@ func TestCPUThrottleHandler_Handle(t *testing.T) {
 			},
 			validate: func(t *testing.T, handler *CPUThrottleHandler, quotaFile string) {
 				content, err := os.ReadFile(quotaFile)
+				t.Logf("content: %s", content)
 				assert.NoError(t, err)
 				assert.Equal(t, "-1", strings.TrimSpace(string(content))[0])
 				handler.mutex.RLock()
