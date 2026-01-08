@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/util/workqueue"
@@ -153,70 +154,60 @@ func Test_monitor_detect(t *testing.T) {
 
 func Test_monitor_detectCPUThrottling(t *testing.T) {
 	tests := []struct {
-		name                     string
-		cpuThrottlingThreshold   int
-		cpuProtectionWatermark   int
-		cpuThrottlingActive      bool
-		cpuUsage                 int64
-		expectedEventCount       int
-		expectedEventAction      string
-		expectedThrottlingActive bool
+		name                   string
+		cpuThrottlingThreshold int
+		pods                   []*v1.Pod
+		expectedEventCount     int
+		expectedQuotaMilli     int64
 	}{
 		{
-			name:                     "start throttling when usage exceeds threshold",
-			cpuThrottlingThreshold:   80,
-			cpuProtectionWatermark:   60,
-			cpuThrottlingActive:      false,
-			cpuUsage:                 85,
-			expectedEventCount:       1,
-			expectedEventAction:      "start",
-			expectedThrottlingActive: true,
+			name:                   "emit quota with no online pods",
+			cpuThrottlingThreshold: 80,
+			pods:                   []*v1.Pod{},
+			expectedEventCount:     1,
+			expectedQuotaMilli:     800,
 		},
 		{
-			name:                     "continue throttling when usage still above threshold",
-			cpuThrottlingThreshold:   80,
-			cpuProtectionWatermark:   60,
-			cpuThrottlingActive:      true,
-			cpuUsage:                 85,
-			expectedEventCount:       1,
-			expectedEventAction:      "continue",
-			expectedThrottlingActive: true,
+			name:                   "subtract online pod requests from quota",
+			cpuThrottlingThreshold: 80,
+			pods: []*v1.Pod{
+				buildPod("online-1", "100m", "LS"),
+				buildPod("online-2", "200m", "LS"),
+			},
+			expectedEventCount: 1,
+			expectedQuotaMilli: 500,
 		},
 		{
-			name:                     "stop throttling when usage drops below protection watermark",
-			cpuThrottlingThreshold:   80,
-			cpuProtectionWatermark:   60,
-			cpuThrottlingActive:      true,
-			cpuUsage:                 55,
-			expectedEventCount:       1,
-			expectedEventAction:      "stop",
-			expectedThrottlingActive: false,
+			name:                   "ignore best effort pod requests",
+			cpuThrottlingThreshold: 80,
+			pods: []*v1.Pod{
+				buildPod("online-1", "100m", "LS"),
+				buildPod("be-1", "200m", "BE"),
+			},
+			expectedEventCount: 1,
+			expectedQuotaMilli: 700,
 		},
 		{
-			name:                     "no action when usage below threshold and throttling inactive",
-			cpuThrottlingThreshold:   80,
-			cpuProtectionWatermark:   60,
-			cpuThrottlingActive:      false,
-			cpuUsage:                 75,
-			expectedEventCount:       0,
-			expectedEventAction:      "",
-			expectedThrottlingActive: false,
+			name:                   "quota floored at zero when online requests exceed allowance",
+			cpuThrottlingThreshold: 50,
+			pods: []*v1.Pod{
+				buildPod("online-1", "600m", "LS"),
+				buildPod("online-2", "200m", "LS"),
+			},
+			expectedEventCount: 1,
+			expectedQuotaMilli: 0,
 		},
 		{
-			name:                     "no action when usage above watermark and throttling active",
-			cpuThrottlingThreshold:   80,
-			cpuProtectionWatermark:   60,
-			cpuThrottlingActive:      true,
-			cpuUsage:                 70,
-			expectedEventCount:       0,
-			expectedEventAction:      "",
-			expectedThrottlingActive: true,
+			name:                   "skip when throttling disabled",
+			cpuThrottlingThreshold: 0,
+			pods:                   []*v1.Pod{},
+			expectedEventCount:     0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fakeNode, err := makeNode()
+			fakeNode, err := makeNodeWithAllocatable("1000m")
 			assert.NoError(t, err)
 			fakeClient := fakeclientset.NewSimpleClientset(fakeNode)
 			cfg := &config.Configuration{GenericConfiguration: &config.VolcanoAgentConfiguration{
@@ -233,37 +224,67 @@ func Test_monitor_detectCPUThrottling(t *testing.T) {
 				Configuration:          cfg,
 				Interface:              extend.NewExtendResource(cfg, nil, nil, nil, ""),
 				cpuThrottlingThreshold: tt.cpuThrottlingThreshold,
-				cpuProtectionWatermark: tt.cpuProtectionWatermark,
-				cpuThrottlingActive:    tt.cpuThrottlingActive,
-				getNodeFunc:            makeNode,
-				getPodsFunc: func() ([]*v1.Pod, error) {
-					return []*v1.Pod{}, nil
+				getNodeFunc: func() (*v1.Node, error) {
+					return fakeNode, nil
 				},
-				usageGetter:             resourceusage.NewFakeResourceGetter(0, 0, tt.cpuUsage, tt.cpuUsage),
+				getPodsFunc: func() ([]*v1.Pod, error) {
+					return tt.pods, nil
+				},
 				highUsageCountByResName: make(map[v1.ResourceName]int),
 				lowWatermark:            map[v1.ResourceName]int{v1.ResourceCPU: 30, v1.ResourceMemory: 30},
 			}
 
-			m.detect()
+			m.detectCPUThrottling()
 
-			// Check event count
 			assert.Equal(t, tt.expectedEventCount, queue.Len(), "unexpected event count")
 
-			// Check event details if expected
 			if tt.expectedEventCount > 0 {
 				key, shutdown := queue.Get()
 				assert.False(t, shutdown, "queue should not be shutdown")
 
 				event, ok := key.(framework.NodeCPUThrottleEvent)
 				assert.True(t, ok, "event should be NodeCPUThrottleEvent")
-				assert.Equal(t, tt.expectedEventAction, event.Action, "unexpected event action")
 				assert.Equal(t, v1.ResourceCPU, event.Resource, "unexpected event resource")
-				assert.Equal(t, tt.cpuUsage, event.Usage, "unexpected event usage")
+				assert.Equal(t, tt.expectedQuotaMilli, event.CPUQuotaMilli, "unexpected event quota")
 				assert.True(t, time.Since(event.TimeStamp) < time.Second, "event timestamp should be recent")
 			}
-
-			// Check throttling state
-			assert.Equal(t, tt.expectedThrottlingActive, m.cpuThrottlingActive, "unexpected throttling state")
 		})
 	}
+}
+
+func makeNodeWithAllocatable(cpu string) (*v1.Node, error) {
+	node, err := makeNode()
+	if err != nil {
+		return nil, err
+	}
+	node.Status.Allocatable = v1.ResourceList{
+		v1.ResourceCPU: resource.MustParse(cpu),
+	}
+	return node, nil
+}
+
+func buildPod(name, cpuRequest, qosLevel string) *v1.Pod {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Annotations: map[string]string{
+				apis.PodQosLevelKey: qosLevel,
+			},
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name: "contrainer-1",
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{},
+					},
+				},
+			},
+		},
+	}
+
+	if cpuRequest != "" {
+		pod.Spec.Containers[0].Resources.Requests[v1.ResourceCPU] = resource.MustParse(cpuRequest)
+	}
+	return pod
 }

@@ -149,12 +149,6 @@ func SetCPUThrottlingConfig(cfg *api.ColocationConfig) (throttlingThreshold, pro
 		throttlingThreshold = defaultCPUThrottlingThreshold
 	}
 
-	if cfg.CPUThrottlingConfig.CPUProtectionWatermark != nil {
-		protectionWatermark = *cfg.CPUThrottlingConfig.CPUProtectionWatermark
-	} else {
-		protectionWatermark = defaultCPUProtectionWatermark
-	}
-
 	klog.InfoS("Successfully set CPU QoS config",
 		"throttlingThreshold", throttlingThreshold,
 		"protectionWatermark", protectionWatermark)
