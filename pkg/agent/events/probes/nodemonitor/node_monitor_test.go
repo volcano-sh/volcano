@@ -185,7 +185,7 @@ func Test_monitor_detectCPUThrottling(t *testing.T) {
 				buildPod("be-1", "100m", "BE"),
 			},
 			expectedEventCount: 1,
-			expectedQuotaMilli: 0,
+			expectedQuotaMilli: 50,
 		},
 		{
 			name:                   "skip when throttling disabled",
