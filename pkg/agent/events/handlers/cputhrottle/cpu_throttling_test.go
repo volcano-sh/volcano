@@ -52,7 +52,7 @@ func TestCPUThrottleHandler_Handle(t *testing.T) {
 				content, err := os.ReadFile(quotaFile)
 
 				assert.NoError(t, err)
-				assert.Equal(t, "50000", strings.TrimSpace(string(content))[0])
+				assert.Equal(t, "50000", strings.Trim(string(content), " ")[0])
 				handler.mutex.RLock()
 				assert.True(t, handler.throttlingActive)
 				handler.mutex.RUnlock()
@@ -72,9 +72,8 @@ func TestCPUThrottleHandler_Handle(t *testing.T) {
 			},
 			validate: func(t *testing.T, handler *CPUThrottleHandler, quotaFile string) {
 				content, err := os.ReadFile(quotaFile)
-				t.Logf("content: %s", content)
 				assert.NoError(t, err)
-				assert.Equal(t, "-1", strings.TrimSpace(string(content))[0])
+				assert.Equal(t, "-1", strings.Trim(string(content), " ")[0])
 				handler.mutex.RLock()
 				assert.True(t, handler.throttlingActive)
 				handler.mutex.RUnlock()
