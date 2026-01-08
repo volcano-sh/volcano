@@ -29,14 +29,16 @@ Firstly set the proportion binding in volcano-scheduler.conf:
 actions: "enqueue, allocate, backfill"
 tiers:
 - plugins:
-  - name: predicates
+  - name: resource-strategy-fit
     arguments:
-      predicate.ProportionalEnable: true
-      predicate.resources: nvidia.com/gpu,nvidia.com/v100-sxm2-16gb
-      predicate.resources.nvidia.com/gpu.cpu: 8
-      predicate.resources.nvidia.com/gpu.memory: 8
-      predicate.resources.nvidia.com/v100-sxm2-16gb.cpu: 16
-      predicate.resources.nvidia.com/v100-sxm2-16gb.memory: 16
+      proportional:
+        enable: true
+        resources: nvidia.com/gpu,nvidia.com/v100-sxm2-16gb
+        resourceProportion:
+          nvidia.com/gpu.cpu: 8
+          nvidia.com/gpu.memory: 8
+          nvidia.com/v100-sxm2-16gb.cpu: 16
+          nvidia.com/v100-sxm2-16gb.memory: 16
 ```
 
 The proportion is GPU:CPU:MEMORY=1:8:8, and let the test scenario just as above:
@@ -50,8 +52,8 @@ Job | Pod | Resource | Node | NodeAllocatable | NodeIdle
 default/single-1000-0 | single-1000-0 | cpu 8, memory 8G, nvidia.com/gpu 0 | nodeC0-0 | cpu 74, memory 128G, nvidia.com/gpu 8 | cpu 66, memory 120G, nvidia.com/gpu 8 |
 default/single-1000-1 | single-1000-1 | cpu 8, memory 8G, nvidia.com/gpu 0 | - | - | - |
 
-After job single-1000-0 is scheduled, the Idel resouce is 8GPUs, 66CPUs, 120G memory. During the predicate phase, this plugin caculates the resource left if job single-1000-1 is scheduled`(node.Idel.CPU - task.Resreq.CPU < node.Idel.GPU * cpuRatio ||
-node.Idel.Memory - task.Resreq.Memory < node.Idel.GPU * memoryRatio)`; the result is 8GPUs, 58CPUs, 112G memory, that unsatisfies the 1:8:8 proportion. Therefore nodeC0-0 is removed from the predicateNodes, and NodeIdle remains 8GPUs, 66CPUs, 120G memory. 
+After job single-1000-0 is scheduled, the Idle resource is 8GPUs, 66CPUs, 120G memory. During the predicate phase, this plugin calculates the resource left if job single-1000-1 is scheduled `(node.Idle.CPU - task.Resreq.CPU < node.Idle.GPU * cpuRatio ||
+node.Idle.Memory - task.Resreq.Memory < node.Idle.GPU * memoryRatio)` ; the result is 8GPUs, 58CPUs, 112G memory, that unsatisfied the 1:8:8 proportion. Therefore, nodeC0-0 is removed from the predicateNodes, and NodeIdle remains 8GPUs, 66CPUs, 120G memory.
 
 
 

@@ -79,7 +79,7 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicateFunc, backfill.enablePredicateErrorCache)
+		predicateNodes, fitErrors := ph.PredicateNodes(task, ssn.NodeList, predicateFunc, backfill.enablePredicateErrorCache, ssn.NodesInShard)
 		if len(predicateNodes) == 0 {
 			job.NodesFitErrors[task.UID] = fitErrors
 			continue
@@ -87,10 +87,16 @@ func (backfill *Action) Execute(ssn *framework.Session) {
 
 		node := predicateNodes[0]
 		if len(predicateNodes) > 1 {
-			nodeScores := util.PrioritizeNodes(task, predicateNodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
-			node = ssn.BestNodeFn(task, nodeScores)
-			if node == nil {
-				node, _ = util.SelectBestNodeAndScore(nodeScores)
+			candidateNodes := util.GetPredicatedNodeByShard(predicateNodes, ssn.NodesInShard)
+			for _, nodes := range candidateNodes {
+				nodeScores := util.PrioritizeNodes(task, nodes, ssn.BatchNodeOrderFn, ssn.NodeOrderMapFn, ssn.NodeOrderReduceFn)
+				node = ssn.BestNodeFn(task, nodeScores)
+				if node == nil {
+					node, _ = util.SelectBestNodeAndScore(nodeScores)
+				}
+				if node != nil {
+					break
+				}
 			}
 		}
 

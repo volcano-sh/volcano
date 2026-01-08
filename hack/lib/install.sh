@@ -26,9 +26,10 @@ function kind-up-cluster {
 
   echo
   echo "Loading docker images into kind cluster"
-  kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}"
-  kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG} "${CLUSTER_CONTEXT[@]}"
-  kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG} "${CLUSTER_CONTEXT[@]}"
+  # only need to load images into control-plane node because volcano components are deployed on control-plane node.
+  kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
+  kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG}          "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
+  kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG}    "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
 }
 
 # check if the required images exist
@@ -69,7 +70,7 @@ function check-kind {
   which kind >/dev/null 2>&1
   if [[ $? -ne 0 ]]; then
     echo "Installing kind ..."
-    GOOS=${OS} go install sigs.k8s.io/kind@v0.29.0
+    GOOS=${OS} go install sigs.k8s.io/kind@v0.30.0
   else
     echo -n "Found kind, version: " && kind version
   fi

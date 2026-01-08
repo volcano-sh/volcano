@@ -134,3 +134,69 @@ func TestVgpuScore(t *testing.T) {
 		t.Errorf("score failed expected %f, get %f", float64(4000*100)/float64(30000), score)
 	}
 }
+
+func Test_FilterNode(t *testing.T) {
+
+	gpuNode1 := vgpu.GPUDevices{
+		Name:   "node1",
+		Device: make(map[int]*vgpu.GPUDevice),
+	}
+	gpuNode1.Device[0] = vgpu.NewGPUDevice(0, 30000)
+	gpuNode1.Device[0].Type = "NVIDIA"
+	gpuNode1.Device[0].Number = 10
+
+	gpuNode1.Device[1] = vgpu.NewGPUDevice(0, 20000)
+	gpuNode1.Device[1].Type = "NVIDIA"
+	gpuNode1.Device[1].Number = 10
+
+	gpuNode1.Device[2] = vgpu.NewGPUDevice(0, 30000)
+	gpuNode1.Device[2].Type = "NVIDIA"
+	gpuNode1.Device[2].Number = 10
+
+	var ok bool
+	gpuNode1.Sharing, ok = vgpu.GetSharingHandler("hami-core")
+	if !ok {
+		t.Errorf("get shring handler failed")
+	}
+
+	gpunumber := v1.ResourceName("volcano.sh/vgpu-number")
+	gpuvcore := v1.ResourceName("volcano.sh/vgpu-cores")
+
+	vgpu.VGPUEnable = true
+
+	p1 := util.BuildPod("ns", "p1", "", v1.PodPending, api.BuildResourceList("2", "10Gi"), "pg1", make(map[string]string), make(map[string]string))
+	addResource(p1.Spec.Containers[0].Resources.Requests, gpunumber, "3")
+	addResource(p1.Spec.Containers[0].Resources.Requests, gpuvcore, "100")
+	p1.Spec.Containers[0].Resources.Limits = make(v1.ResourceList)
+	addResource(p1.Spec.Containers[0].Resources.Limits, gpunumber, "3")
+	addResource(p1.Spec.Containers[0].Resources.Limits, gpuvcore, "100")
+
+	tests := []struct {
+		Name     string
+		Devices  *vgpu.GPUDevices
+		Pod      *v1.Pod
+		HasError bool
+	}{
+		{
+			Name:     "case0, should allocated 3 card with diff memory for pod",
+			Devices:  &gpuNode1,
+			Pod:      p1,
+			HasError: false,
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			_, _, e := test.Devices.FilterNode(test.Pod, "binpack")
+			if test.HasError {
+				if e == nil {
+					t.Errorf("case %d(%s) should have error", i, test.Name)
+				}
+			} else {
+				if e != nil {
+					t.Errorf("case %d(%s) should not have error, error=%v", i, test.Name, e)
+				}
+			}
+		})
+	}
+}

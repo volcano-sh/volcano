@@ -1,14 +1,21 @@
 # Distributed Framework Plugins
 
-  - [Motivation](#motivation)
-  - [Goals](#goals)
-  - [Design](#design)
-    - [Introduction of ML Distributed Pattern](#introduction-of-ml-distributed-pattern)
-    - [Implementation](#implementation)
-      - [Tensorflow Plugin](#tensorflow-plugin)
-      - [Other Framework](#other-framework)
-      - [Task Launch Sequence](#task-launch-sequence)
-      - [Webhook](#webhook)
+- [Distributed Framework Plugins](#distributed-framework-plugins)
+	- [Motivation](#motivation)
+	- [Goals](#goals)
+	- [Design](#design)
+		- [Introduction of ML Distributed Pattern](#introduction-of-ml-distributed-pattern)
+		- [Implementation](#implementation)
+			- [Tensorflow Plugin](#tensorflow-plugin)
+			- [Pytorch Plugin](#pytorch-plugin)
+			- [Ray Plugin](#ray-plugin)
+				- [Overview](#overview)
+				- [How the Ray Plugin works](#how-the-ray-plugin-works)
+			- [Other Framework](#other-framework)
+			- [Task Launch Sequence](#task-launch-sequence)
+				- [Using InitContainer](#using-initcontainer)
+				- [Alternatives Considered](#alternatives-considered)
+			- [Webhook](#webhook)
 ## Motivation
 
 Volcano is widely used in machine learning, but sometimes it is quite complicated for users to set configs.
@@ -45,13 +52,14 @@ If we can add more in-tree plugins for distributed ML job, which lets Volcano kn
 
 Here is a summary of distributed training pattern in various ML frameworks, including the node topology, environment variables, file and entrypoint for distributed training.
 
-| Framework                         | Topology                                                     | Environment Variables                                        | File                                           | Entrypoint                                                   |
-| --------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | ---------------------------------------------- | ------------------------------------------------------------ |
-| Tensorflow                        | **PS mode**: Chief + Evaluator + Worker + PS<br />**All-Reduce mode**: multiple workers | `TF_CONFIG`: tensorflow cluster spec                         | none                                           | `python TRAINING_SCRIPT.py (--arg1 ... train script args...)` |
-| Pytorch (Official recommendation) | Master + Worker                                              | `PET_MASTER_ADDR`: master address<br/>`PET_MASTER_PORT`: master port<br />`PET_NNODES`: node number<br/>`PET_NPROC_PER_NODE`: process number in every node<br/>`PET_NODE_RANK`: current node index | none                                           | `python -m torch.distributed.run TRAINING_SCRIPT.py (--arg1 ... train script args...)` |
-| Pytorch (custom)                  | Master + Worker                                              | `MASTER_ADDR`: master address<br/>`MASTER_PORT`: master port<br />`WORLD_SIZE`: node number<br/>`RANK`: current node index | none                                           | `python TRAINING_SCRIPT.py (--arg1 ... train script args...)` |
-| MXNet                             | Scheduler + Worker + PS                                      | `DMLC_PS_ROOT_URI`: scheduler address<br />`DMLC_PS_ROOT_PORT`: scheduler port<br/>`DMLC_NUM_SERVER`: parameter server number <br/>`DMLC_NUM_WORKER`: worker number<br/>`DMLC_ROLE`: current node role | none                                           | `python TRAINING_SCRIPT.py (--arg1 ... train script args...)` |
-| MPI                               | Master + Worker                                              | `OMPI_MCA_orte_default_hostfile`: default host file path<br /> | hostfile: with every node name and slot number | **master node**: `mpirun --hostfile HOSTFILE (-H HOSTS)  python TRAINING_SCRIPT.py (--arg1 ... train script args...)`<br />**worker node**: `/usr/sbin/sshd -D` |
+| Framework                         | Topology                                                                                | Environment Variables                                                                                                                                                                                  | File                                           | Entrypoint                                                                                                                                                                                                                                                                               |
+| --------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tensorflow                        | **PS mode**: Chief + Evaluator + Worker + PS<br />**All-Reduce mode**: multiple workers | `TF_CONFIG`: tensorflow cluster spec                                                                                                                                                                   | none                                           | `python TRAINING_SCRIPT.py (--arg1 ... train script args...)`                                                                                                                                                                                                                            |
+| Pytorch (Official recommendation) | Master + Worker                                                                         | `PET_MASTER_ADDR`: master address<br/>`PET_MASTER_PORT`: master port<br />`PET_NNODES`: node number<br/>`PET_NPROC_PER_NODE`: process number in every node<br/>`PET_NODE_RANK`: current node index     | none                                           | `python -m torch.distributed.run TRAINING_SCRIPT.py (--arg1 ... train script args...)`                                                                                                                                                                                                   |
+| Pytorch (custom)                  | Master + Worker                                                                         | `MASTER_ADDR`: master address<br/>`MASTER_PORT`: master port<br />`WORLD_SIZE`: node number<br/>`RANK`: current node index                                                                             | none                                           | `python TRAINING_SCRIPT.py (--arg1 ... train script args...)`                                                                                                                                                                                                                            |
+| MXNet                             | Scheduler + Worker + PS                                                                 | `DMLC_PS_ROOT_URI`: scheduler address<br />`DMLC_PS_ROOT_PORT`: scheduler port<br/>`DMLC_NUM_SERVER`: parameter server number <br/>`DMLC_NUM_WORKER`: worker number<br/>`DMLC_ROLE`: current node role | none                                           | `python TRAINING_SCRIPT.py (--arg1 ... train script args...)`                                                                                                                                                                                                                            |
+| MPI                               | Master + Worker                                                                         | `OMPI_MCA_orte_default_hostfile`: default host file path<br />                                                                                                                                         | hostfile: with every node name and slot number | **master node**: `mpirun --hostfile HOSTFILE (-H HOSTS)  python TRAINING_SCRIPT.py (--arg1 ... train script args...)`<br />**worker node**: `/usr/sbin/sshd -D`                                                                                                                          |
+| Ray                               | Head + Worker                                                                           | none                                                                                                                                                                                                   | none                                           | *Ray plugin automatically set entrypoints*<br />**head node**: `ray start --head --block --dashboard-host=0.0.0.0 --port=<GCS_PORT> --dashboard-port=<DASHBOARD_PORT> --ray-client-server-port=<CLIENT_PORT>`<br />**worker node**: `ray start --block --address=<HEAD_ADDR>:<GCS_PORT>` |
 
 ### Implementation
 
@@ -223,6 +231,194 @@ The main environment variables are:
 * `MASTER_PORT`: master port
 * `WORLD_SIZE`: total node number
 * `RANK`: current node index
+
+#### Ray Plugin
+The Ray Plugin enables users to run distributed Ray clusters using Volcano with minimal configuration.
+It automatically configures head and worker tasks, sets up entrypoints, opens necessary ports, and creates a Kubernetes service to expose these ports.
+```yaml
+spec:
+  plugins:
+    ray: ["--head=head", "--worker=worker"]
+    svc: []
+```
+
+##### Overview
+Deploying the following YAML will create a Ray cluster.
+```yaml
+--- # with ray plugin
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: ray-cluster-job
+spec:
+  minAvailable: 3
+  schedulerName: volcano
+  plugins:
+    ray: []
+    svc: []
+  policies:
+    - event: PodEvicted
+      action: RestartJob
+  queue: default
+  tasks:
+    - replicas: 1
+      name: head
+      template:
+        spec:
+          containers:
+            - name: head
+              image: rayproject/ray:latest-py311-cpu
+              resources: {}
+          restartPolicy: OnFailure
+    - replicas: 2
+      name: worker
+      template:
+        spec:
+          containers:
+            - name: worker
+              image: rayproject/ray:latest-py311-cpu
+              resources: {}
+          restartPolicy: OnFailure
+```
+
+Ray cluster architecture deployed via the Ray Plugin
+
+![ray cluster](images/ray_plugin_cluster_architecture.png)
+
+##### How the Ray Plugin works
+In the implementation of `rayPlugin`, these arguments will be parsed.
+```go
+type rayPlugin struct {
+	Clientset           pluginsinterface.PluginClientset
+	headName            string
+	headContainerName   string
+	workerName          string
+	workerContainerName string
+	port                int
+	dashboardPort       int
+	clientPort          int
+}
+
+func (rp *rayPlugin) addFlags() {
+	flagSet := flag.NewFlagSet(rp.Name(), flag.ContinueOnError)
+	flagSet.StringVar(&rp.headName, "head", DefaultHead, "name of head node in ray cluster")
+	flagSet.StringVar(&rp.headContainerName, "headContainer", DefaultHeadContainer, "The container name in a head task pod")
+	flagSet.StringVar(&rp.workerName, "worker", DefaultWorker, "name of worker node in ray cluster")
+	flagSet.StringVar(&rp.workerContainerName, "workerContainer", DefaultWorkerContainer, "The container name in a worker task pod")
+	flagSet.IntVar(&rp.port, "port", DefaultPort, "The port for GCS")
+	flagSet.IntVar(&rp.dashboardPort, "dashboardPort", DefaultDashboardPort, "The port for the Ray dashboard")
+	flagSet.IntVar(&rp.clientPort, "clientPort", DefaultClientPort, "The port for the Ray client server")
+	if err := flagSet.Parse(rp.rayArguments); err != nil {
+		klog.Errorf("plugin %s flagset parse failed, err: %v", rp.Name(), err)
+	}
+}
+```
+
+When the `VolcanoJob` is created, the `OnJobAdd` method also creates a `Service` for the head node.
+```go
+func (rp *rayPlugin) OnJobAdd(job *batch.Job) error {
+	if job.Status.ControlledResources["plugin-"+rp.Name()] == rp.Name() {
+		return nil
+	}
+
+	// When the Volcano Job is created, also create a Service for the head node
+	if err := rp.createServiceIfNotExist(job); err != nil {
+		return err
+	}
+
+	job.Status.ControlledResources["plugin-"+rp.Name()] = rp.Name()
+	return nil
+}
+```
+
+Then the ray plugin configures the `command`s of head and worker nodes in method `OnPodCreate`.
+These `command`s are related to a cluster connection and ports.
+```go
+func (rp *rayPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
+	...
+
+	for i, c := range pod.Spec.Containers {
+		if taskSpec == rp.headName && c.Name == rp.headContainerName {
+
+			rp.openHeadContainerPort(&pod.Spec.Containers[i], i, pod)
+
+			var headCommand []string
+			headCommand = append(headCommand, "sh")
+			headCommand = append(headCommand, "-c")
+			headCommand = append(headCommand, fmt.Sprintf("ray start --head --block --dashboard-host=0.0.0.0 --port=%v --dashboard-port=%v --ray-client-server-port=%v", rp.port, rp.dashboardPort, rp.clientPort))
+			pod.Spec.Containers[i].Command = headCommand
+		}
+
+		if taskSpec == rp.workerName && c.Name == rp.workerContainerName {
+
+			headAddr := rp.generateHeadAddr(job.Spec.Tasks[headIndex], job.Name)
+			headEndpoint := fmt.Sprintf("%v:%v", headAddr, rp.port)
+			var workerCommand []string
+			workerCommand = append(workerCommand, "sh")
+			workerCommand = append(workerCommand, "-c")
+			workerCommand = append(workerCommand, fmt.Sprintf("ray start --block --address=%v", headEndpoint))
+			pod.Spec.Containers[i].Command = workerCommand
+		}
+	}
+
+	...
+}
+```
+
+It also configures the head container `port`s to be exposed, including `GCS`, `Ray Dashboard`, and `Client Server`.
+```go
+func (rp *rayPlugin) openHeadContainerPort(c *v1.Container, index int, pod *v1.Pod) {
+	...
+	
+	// This code adds a ray GCS port
+	if !hasPort {
+		port := v1.ContainerPort{
+			Name:          GcsPortName,
+			ContainerPort: int32(rp.port),
+		}
+		pod.Spec.Containers[index].Ports = append(pod.Spec.Containers[index].Ports, port)
+	}
+
+	// This code adds a ray dashboard Port
+	if !hasDashboardPort {
+		dashboardPort := v1.ContainerPort{
+			Name:          DashboardPortName,
+			ContainerPort: int32(rp.dashboardPort),
+		}
+		pod.Spec.Containers[index].Ports = append(pod.Spec.Containers[index].Ports, dashboardPort)
+	}
+
+	// This code adds a ray client server port
+	if !hasClientPort {
+		clientPort := v1.ContainerPort{
+			Name:          ClientServerPortName,
+			ContainerPort: int32(rp.clientPort),
+		}
+		pod.Spec.Containers[index].Ports = append(pod.Spec.Containers[index].Ports, clientPort)
+	}
+
+}
+```
+When the method `OnJobDelete` is called, the head node `Service` is deleted
+```go
+func (rp *rayPlugin) OnJobDelete(job *batch.Job) error {
+	if job.Status.ControlledResources["plugin-"+rp.Name()] != rp.Name() {
+		return nil
+	}
+
+	// When OnJobDelete is called, the head node Service is deleted
+	if err := rp.Clientset.KubeClients.CoreV1().Services(job.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{}); err != nil {
+		if !apierrors.IsNotFound(err) {
+			klog.Errorf("Failed to delete Service of Job %v/%v: %v", job.Namespace, job.Name, err)
+			return err
+		}
+	}
+	delete(job.Status.ControlledResources, "plugin-"+rp.Name())
+	return nil
+}
+```
+
+
 
 #### Other Framework
 

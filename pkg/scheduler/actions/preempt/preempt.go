@@ -38,8 +38,9 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	k8sutil "k8s.io/kubernetes/pkg/scheduler/util"
+
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
@@ -130,19 +131,28 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 		}
 
 		// check job if starving for more resources.
-		if ssn.JobStarving(job) {
-			if _, found := preemptorsMap[job.Queue]; !found {
-				preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+		if !ssn.JobStarving(job) {
+			continue
+		}
+
+		// TODO: Currently, jobs containing networkTopology do not support preemption. Related issue: https://github.com/volcano-sh/volcano/issues/4374
+		if job.ContainsNetworkTopology() {
+			klog.V(3).Infof("Job <%s/%s> Queue <%s> skip preemption, reason: jobs containing networkTopology do not support preemption",
+				job.Namespace, job.Name, job.Queue)
+			continue
+		}
+
+		if _, found := preemptorsMap[job.Queue]; !found {
+			preemptorsMap[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+		}
+		preemptorsMap[job.Queue].Push(job)
+		underRequest = append(underRequest, job)
+		preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
+		for _, task := range job.TaskStatusIndex[api.Pending] {
+			if task.SchGated {
+				continue
 			}
-			preemptorsMap[job.Queue].Push(job)
-			underRequest = append(underRequest, job)
-			preemptorTasks[job.UID] = util.NewPriorityQueue(ssn.TaskOrderFn)
-			for _, task := range job.TaskStatusIndex[api.Pending] {
-				if task.SchGated {
-					continue
-				}
-				preemptorTasks[job.UID].Push(task)
-			}
+			preemptorTasks[job.UID].Push(task)
 		}
 	}
 
@@ -289,13 +299,22 @@ func (pmpt *Action) preempt(
 
 	// we should filter out those nodes that are UnschedulableAndUnresolvable status got in allocate action
 	allNodes := ssn.FilterOutUnschedulableAndUnresolvableNodesForTask(preemptor)
-	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache)
+	predicateNodes, _ := predicateHelper.PredicateNodes(preemptor, allNodes, ssn.PredicateForPreemptAction, pmpt.enablePredicateErrorCache, ssn.NodesInShard)
 
-	if pmpt.enableTopologyAwarePreemption {
-		return pmpt.topologyAwarePreempt(ssn, stmt, preemptor, filter, predicateNodes)
+	candidateNodes := util.GetPredicatedNodeByShard(predicateNodes, ssn.NodesInShard)
+	var preemptSuccess bool
+	var err error
+	//try to preempt in order if multiple candidate Nodes group with priority exist
+	for _, nodes := range candidateNodes {
+		if pmpt.enableTopologyAwarePreemption {
+			if preemptSuccess, err = pmpt.topologyAwarePreempt(ssn, stmt, preemptor, filter, nodes); preemptSuccess {
+				break
+			}
+		} else if preemptSuccess, err = pmpt.normalPreempt(ssn, stmt, preemptor, filter, nodes); preemptSuccess {
+			break
+		}
 	}
-
-	return pmpt.normalPreempt(ssn, stmt, preemptor, filter, predicateNodes)
+	return preemptSuccess, err
 }
 
 func (pmpt *Action) normalPreempt(
@@ -671,7 +690,7 @@ func (cl *candidateList) get() []*candidate {
 // for "pod" to be scheduled.
 func SelectVictimsOnNode(
 	ctx context.Context,
-	state *k8sframework.CycleState,
+	state fwk.CycleState,
 	preemptor *api.TaskInfo,
 	currentQueue *api.QueueInfo,
 	nodeInfo *api.NodeInfo,

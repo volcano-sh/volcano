@@ -43,8 +43,6 @@ func (f HAMICoreFactory) AddPod(gd *GPUDevice, mem uint, core uint, podUID strin
 			UsedMem:  0,
 			UsedCore: 0,
 		}
-	} else {
-		return nil
 	}
 	gd.UsedNum++
 	gd.UsedMem += mem

@@ -199,6 +199,35 @@ func (gs *GPUDevices) addResource(annotations map[string]string, pod *v1.Pod) {
 					} else {
 						klog.ErrorS(err, "add resource failed")
 					}
+					break
+				}
+			}
+		}
+	}
+}
+
+func (gs *GPUDevices) addToPodMap(annotations map[string]string, pod *v1.Pod) {
+	ids, ok := annotations[AssignedIDsAnnotations]
+	if !ok {
+		klog.Errorf("pod %s has no annotation volcano.sh/devices-to-allocate", pod.Name)
+		return
+	}
+	podDev := decodePodDevices(ids)
+	for _, val := range podDev {
+		for _, deviceused := range val {
+			for _, gsdevice := range gs.Device {
+				if strings.Contains(deviceused.UUID, gsdevice.UUID) {
+					podUID := string(pod.UID)
+					_, ok := gsdevice.PodMap[podUID]
+					if !ok {
+						gsdevice.PodMap[podUID] = &GPUUsage{
+							UsedMem:  0,
+							UsedCore: 0,
+						}
+					}
+
+					gsdevice.PodMap[podUID].UsedMem += deviceused.Usedmem
+					gsdevice.PodMap[podUID].UsedCore += deviceused.Usedcores
 				}
 			}
 		}
@@ -222,8 +251,10 @@ func (gs *GPUDevices) SubResource(pod *v1.Pod) {
 					err := gs.Sharing.SubPod(gsdevice, uint(deviceused.Usedmem), uint(deviceused.Usedcores), string(pod.UID), deviceused.UUID)
 					if err != nil {
 						klog.ErrorS(err, "sub resource failed")
+					} else {
+						gs.SubPodMetrics(index, string(pod.UID), pod.Name)
 					}
-					gs.SubPodMetrics(index, string(pod.UID), pod.Name)
+					break
 				}
 			}
 		}
@@ -280,7 +311,7 @@ func (gs *GPUDevices) Allocate(kubeClient kubernetes.Interface, pod *v1.Pod) err
 		annotations[DeviceBindPhase] = "allocating"
 		annotations[BindTimeAnnotations] = strconv.FormatInt(time.Now().Unix(), 10)
 		// To avoid that the pod allocated info updating latency, add it first
-		gs.addResource(annotations, pod)
+		gs.addToPodMap(annotations, pod)
 		err = patchPodAnnotations(kubeClient, pod, annotations)
 		if err != nil {
 			return err

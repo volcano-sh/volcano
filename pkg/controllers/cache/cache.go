@@ -141,6 +141,7 @@ func (jc *jobCache) Add(job *v1alpha1.Job) error {
 		Job:  job,
 		Pods: make(map[string]map[string]*v1.Pod),
 	}
+	jc.jobs[key].SetJob(job)
 
 	return nil
 }
@@ -169,7 +170,7 @@ func (jc *jobCache) Update(obj *v1alpha1.Job) error {
 			return fmt.Errorf("job <%v> has too old resource version: %d (%d)", key, newResourceVersion, oldResourceVersion)
 		}
 	}
-	job.Job = obj
+	job.SetJob(obj)
 	return nil
 }
 
@@ -247,6 +248,23 @@ func (jc *jobCache) DeletePod(pod *v1.Pod) error {
 	}
 
 	return nil
+}
+
+func (jc *jobCache) HasPod(pod *v1.Pod) bool {
+	jc.Lock()
+	defer jc.Unlock()
+
+	key, err := jobKeyOfPod(pod)
+	if err != nil {
+		return false
+	}
+
+	job, found := jc.jobs[key]
+	if !found {
+		return false
+	}
+
+	return job.HasPod(pod)
 }
 
 func (jc *jobCache) Run(stopCh <-chan struct{}) {

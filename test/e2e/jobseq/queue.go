@@ -31,35 +31,40 @@ import (
 )
 
 var _ = Describe("Queue E2E Test", func() {
+	var testCtx *e2eutil.TestContext
+
+	JustAfterEach(func() {
+		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
+	})
 	It("Queue Command Close And Open With State Check", func() {
 		q1 := "queue-command-close"
 		defaultQueue := "default"
-		ctx := e2eutil.InitTestContext(e2eutil.Options{
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1},
 		})
-		defer e2eutil.CleanupTestContext(ctx)
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("Close queue command check")
-		err := util.CreateQueueCommand(ctx.Vcclient, defaultQueue, q1, busv1alpha1.CloseQueueAction)
+		err := util.CreateQueueCommand(testCtx.Vcclient, defaultQueue, q1, busv1alpha1.CloseQueueAction)
 		if err != nil {
 			Expect(err).NotTo(HaveOccurred(), "Error send close queue command")
 		}
 
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			queue, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
 			return queue.Status.State == schedulingv1beta1.QueueStateClosed, nil
 		})
 		Expect(err).NotTo(HaveOccurred(), "Wait for closed queue %s failed", q1)
 
 		By("Open queue command check")
-		err = util.CreateQueueCommand(ctx.Vcclient, defaultQueue, q1, busv1alpha1.OpenQueueAction)
+		err = util.CreateQueueCommand(testCtx.Vcclient, defaultQueue, q1, busv1alpha1.OpenQueueAction)
 		if err != nil {
 			Expect(err).NotTo(HaveOccurred(), "Error send open queue command")
 		}
 
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			queue, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
 			return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
 		})
@@ -73,7 +78,7 @@ var _ = Describe("Queue E2E Test", func() {
 		q11 := "queue11"
 		defaultQueue := "default"
 		rootQueue := "root"
-		ctx := e2eutil.InitTestContext(e2eutil.Options{
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{
 			Queues: []string{q1, q2, q11},
 			QueueParent: map[string]string{
 				q1:  rootQueue,
@@ -81,43 +86,43 @@ var _ = Describe("Queue E2E Test", func() {
 				q11: q1,
 			},
 		})
-		ctx.Queues = []string{q11, q1, q2}
-		defer e2eutil.CleanupTestContext(ctx)
+		testCtx.Queues = []string{q11, q1, q2}
+		defer e2eutil.CleanupTestContext(testCtx)
 
 		By("Close queue with child queues")
-		err := util.CreateQueueCommand(ctx.Vcclient, defaultQueue, q1, busv1alpha1.CloseQueueAction)
+		err := util.CreateQueueCommand(testCtx.Vcclient, defaultQueue, q1, busv1alpha1.CloseQueueAction)
 		if err != nil {
 			Expect(err).NotTo(HaveOccurred(), "Error send close queue command")
 		}
 
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q11, metav1.GetOptions{})
+			queue, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q11, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q11)
 			return queue.Status.State == schedulingv1beta1.QueueStateClosed, nil
 		})
 		Expect(err).NotTo(HaveOccurred(), "Wait for closed queue %s failed", q11)
 
 		By("Open queue with closed parent queue")
-		err = util.CreateQueueCommand(ctx.Vcclient, defaultQueue, q11, busv1alpha1.OpenQueueAction)
+		err = util.CreateQueueCommand(testCtx.Vcclient, defaultQueue, q11, busv1alpha1.OpenQueueAction)
 		if err != nil {
 			Expect(err).NotTo(HaveOccurred(), "Error send open queue command")
 		}
 
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q11, metav1.GetOptions{})
+			queue, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q11, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q11)
 			return queue.Status.State == schedulingv1beta1.QueueStateClosed, nil
 		})
 		Expect(err).NotTo(HaveOccurred(), "Wait for reopen queue %s failed", q11)
 
 		By("Open queue with open parent queue")
-		err = util.CreateQueueCommand(ctx.Vcclient, defaultQueue, q1, busv1alpha1.OpenQueueAction)
+		err = util.CreateQueueCommand(testCtx.Vcclient, defaultQueue, q1, busv1alpha1.OpenQueueAction)
 		if err != nil {
 			Expect(err).NotTo(HaveOccurred(), "Error send open queue command")
 		}
 
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
-			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
+			queue, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q1, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred(), "Get queue %s failed", q1)
 			return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
 		})

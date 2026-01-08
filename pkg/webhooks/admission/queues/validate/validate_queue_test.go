@@ -138,32 +138,8 @@ func TestAdmitQueues(t *testing.T) {
 		t.Errorf("Marshal queue for delete with closed state failed for %v.", err)
 	}
 
-	weightNotSet := schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "weight-not-set",
-		},
-		Spec: schedulingv1beta1.QueueSpec{},
-	}
-
-	weightNotSetJSON, err := json.Marshal(weightNotSet)
-	if err != nil {
-		t.Errorf("Marshal queue with no weight failed for %v.", err)
-	}
-
-	negativeWeight := schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "negative-weight",
-		},
-		Spec: schedulingv1beta1.QueueSpec{
-			Weight: -1,
-		},
-	}
-
-	negativeWeightJSON, err := json.Marshal(negativeWeight)
-	if err != nil {
-		t.Errorf("Marshal queue with negative weight failed for %v.", err)
-	}
-
+	// Note: weight validation test cases removed as validation is now enforced by CRD schema.
+	// However, we still need positiveWeightForUpdate for test setup.
 	positiveWeightForUpdate := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "positive-weight-for-update",
@@ -171,25 +147,6 @@ func TestAdmitQueues(t *testing.T) {
 		Spec: schedulingv1beta1.QueueSpec{
 			Weight: 1,
 		},
-	}
-	positiveWeightForUpdateJSON, err := json.Marshal(positiveWeightForUpdate)
-	if err != nil {
-		t.Errorf("Marshal queue with positive weight failed for %v.", err)
-	}
-
-	negativeWeightForUpdate := schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "positive-weight-for-update",
-		},
-		Spec: schedulingv1beta1.QueueSpec{
-			Weight: -1,
-		},
-	}
-
-	negativeWeightForUpdateJSON, err := json.Marshal(negativeWeightForUpdate)
-	if err != nil {
-		t.Errorf("Marshal queue with negative weight failed for %v.", err)
-
 	}
 
 	resourceNotSet := schedulingv1beta1.Queue{
@@ -838,108 +795,9 @@ func TestAdmitQueues(t *testing.T) {
 			reviewResponse: util.ToAdmissionResponse(fmt.Errorf("invalid operation `%s`, "+
 				"expect operation to be `CREATE`, `UPDATE` or `DELETE`", "Invalid")),
 		},
-		{
-			Name: "Create queue without weight",
-			AR: admissionv1.AdmissionReview{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "AdmissionReview",
-					APIVersion: "admission.k8s.io/v1beta1",
-				},
-				Request: &admissionv1.AdmissionRequest{
-					Kind: metav1.GroupVersionKind{
-						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
-						Kind:    "Queue",
-					},
-					Resource: metav1.GroupVersionResource{
-						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
-						Resource: "queues",
-					},
-					Name:      "weight-not-set",
-					Operation: "CREATE",
-					Object: runtime.RawExtension{
-						Raw: weightNotSetJSON,
-					},
-				},
-			},
-			reviewResponse: &admissionv1.AdmissionResponse{
-				Allowed: false,
-				Result: &metav1.Status{
-					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
-						0, "queue weight must be a positive integer").Error(),
-				},
-			},
-		},
-		{
-			Name: "Create queue with negative weight",
-			AR: admissionv1.AdmissionReview{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "AdmissionReview",
-					APIVersion: "admission.k8s.io/v1beta1",
-				},
-				Request: &admissionv1.AdmissionRequest{
-					Kind: metav1.GroupVersionKind{
-						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
-						Kind:    "Queue",
-					},
-					Resource: metav1.GroupVersionResource{
-						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
-						Resource: "queues",
-					},
-					Name:      "negative-weight",
-					Operation: "CREATE",
-					Object: runtime.RawExtension{
-						Raw: negativeWeightJSON,
-					},
-				},
-			},
-			reviewResponse: &admissionv1.AdmissionResponse{
-				Allowed: false,
-				Result: &metav1.Status{
-					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
-						-1, "queue weight must be a positive integer").Error(),
-				},
-			},
-		},
-		{
-			Name: "Update queue with negative weight",
-			AR: admissionv1.AdmissionReview{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "AdmissionReview",
-					APIVersion: "admission.k8s.io/v1beta1",
-				},
-				Request: &admissionv1.AdmissionRequest{
-					Kind: metav1.GroupVersionKind{
-						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
-						Kind:    "Queue",
-					},
-					Resource: metav1.GroupVersionResource{
-						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
-						Resource: "queues",
-					},
-					Name:      "positive-weight-for-update",
-					Operation: "UPDATE",
-					OldObject: runtime.RawExtension{
-						Raw: positiveWeightForUpdateJSON,
-					},
-					Object: runtime.RawExtension{
-						Raw: negativeWeightForUpdateJSON,
-					},
-				},
-			},
-			reviewResponse: &admissionv1.AdmissionResponse{
-				Allowed: false,
-				Result: &metav1.Status{
-					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("weight"),
-						-1, "queue weight must be a positive integer").Error(),
-				},
-			},
-		},
+		// Note: weight validation (weight >= 1) is now enforced by CRD schema (minimum: 1).
+		// These test cases are removed as the validation happens before the webhook is called.
+		// In a real environment, CRD validation would reject these requests before they reach the webhook.
 		{
 			Name: "Create queue without resource",
 			AR: admissionv1.AdmissionReview{
@@ -1485,11 +1343,58 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 		t.Errorf("Create queue failed for %v.", err)
 	}
 
+	selfReferencingQueue := schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "self-referencing-queue",
+		},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "self-referencing-queue",
+			Weight: 1,
+		},
+	}
+
+	selfReferencingQueueJSON, err := json.Marshal(selfReferencingQueue)
+	if err != nil {
+		t.Errorf("Marshal self-referencing queue failed for %v.", err)
+	}
+
 	testCases := []struct {
 		Name           string
 		AR             admissionv1.AdmissionReview
 		reviewResponse *admissionv1.AdmissionResponse
 	}{
+		{
+			Name: "Queue cannot use itself as parent",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "self-referencing-queue",
+					Operation: "CREATE",
+					Object: runtime.RawExtension{
+						Raw: selfReferencingQueueJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "queue self-referencing-queue cannot use itself as parent",
+				},
+			},
+		},
 		{
 			Name: "Parent Queue has jobs",
 			AR: admissionv1.AdmissionReview{

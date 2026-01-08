@@ -1,0 +1,177 @@
+name: Sync APIs to apis repository
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'staging/src/volcano.sh/apis/**'
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Target branch in apis repo (default: same as source branch)'
+        required: false
+        default: ''
+
+env:
+  APIS_REPO: volcano-sh/apis
+
+jobs:
+  sync-apis:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout volcano repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up variables
+        id: vars
+        run: |
+          SOURCE_BRANCH="${GITHUB_REF_NAME}"
+          TARGET_BRANCH="${{ github.event.inputs.target_branch || github.ref_name }}"
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s')
+          COMMIT_BODY=$(git log -1 --pretty=format:'%b')
+          FULL_COMMIT="${COMMIT_MSG}${COMMIT_BODY}"
+          
+          # Extract PR number from commit message (handles patterns like #123, Merge pull request #123, etc.)
+          PR_NUMBER=""
+          if echo "${FULL_COMMIT}" | grep -oE '#[0-9]+' | head -1 | grep -oE '[0-9]+' > /tmp/pr_num.txt; then
+            PR_NUMBER=$(cat /tmp/pr_num.txt)
+          fi
+          
+          {
+            echo "source_branch=${SOURCE_BRANCH}"
+            echo "target_branch=${TARGET_BRANCH}"
+            echo "sha_short=$(git rev-parse --short HEAD)"
+            echo "sha=$(git rev-parse HEAD)"
+            echo "commit_msg=${COMMIT_MSG}"
+            echo "pr_number=${PR_NUMBER}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify staging APIs generated code
+        run: |
+          echo "::group::Verifying staging APIs generated code is up to date"
+          cd staging/src/volcano.sh/apis
+          if ! bash hack/verify-codegen.sh; then
+            echo "::error::Staging APIs generated code is out of date"
+            echo "Please run: cd staging/src/volcano.sh/apis && bash hack/update-codegen.sh"
+            exit 1
+          fi
+          echo "✅ Staging APIs generated code is up to date"
+          echo "::endgroup::"
+
+      - name: Checkout apis repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.APIS_REPO }}
+          ref: ${{ steps.vars.outputs.target_branch }}
+          path: apis-repo
+          fetch-depth: 0
+
+      - name: Sync APIs
+        id: sync
+        env:
+          APIS_REPO_DIR: ${{ github.workspace }}/apis-repo
+        run: |
+          # Run sync script to sync files
+          # The script only syncs files, letting peter-evans/create-pull-request handle PR creation
+          if ./hack/sync-apis.sh sync \
+            --target-branch "${{ steps.vars.outputs.target_branch }}" 2>&1 | tee /tmp/sync-output.log; then
+            # Check for sync result
+            if grep -q "SYNC_RESULT=success" /tmp/sync-output.log; then
+              echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            elif grep -q "SYNC_RESULT=no_changes" /tmp/sync-output.log; then
+              echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "has_changes=unknown" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "::error::Sync script failed"
+            exit 1
+          fi
+
+      - name: Prepare PR body
+        id: pr_body
+        if: steps.sync.outputs.has_changes == 'true'
+        run: |
+          if [ -n "${{ steps.vars.outputs.pr_number }}" ]; then
+            PR_ROW="| PR | [#${{ steps.vars.outputs.pr_number }}](https://github.com/volcano-sh/volcano/pull/${{ steps.vars.outputs.pr_number }}) |"
+          else
+            PR_ROW="| PR | N/A |"
+          fi
+          echo "pr_row=${PR_ROW}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Pull Request
+        if: steps.sync.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.APIS_REPO_TOKEN }}
+          repository: ${{ env.APIS_REPO }}
+          path: apis-repo
+          commit-message: |
+            Sync from volcano-sh/volcano@${{ steps.vars.outputs.sha_short }}
+
+            Original commit: ${{ steps.vars.outputs.commit_msg }}
+
+            Automated sync from staging directory.
+            Source: https://github.com/volcano-sh/volcano/commit/${{ steps.vars.outputs.sha }}
+
+            Signed-off-by: Volcano Bot <noreply@github.com>
+          title: "Sync APIs from volcano-sh/volcano@${{ steps.vars.outputs.sha_short }}"
+          body: |
+            ## Automated API Sync
+
+            This PR was automatically created to sync API changes from the main volcano repository.
+
+            ### Source Information
+            | Item | Value |
+            |------|-------|
+            | Repository | volcano-sh/volcano |
+            | Branch | `${{ steps.vars.outputs.source_branch }}` |
+            | Commit | [`${{ steps.vars.outputs.sha_short }}`](https://github.com/volcano-sh/volcano/commit/${{ steps.vars.outputs.sha }}) |
+            ${{ steps.pr_body.outputs.pr_row }}
+
+            ### Triggered by
+            | Item | Value |
+            |------|-------|
+            | Actor | @${{ github.actor }} |
+            | Event | `${{ github.event_name }}` |
+            | Run | [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |
+
+            ---
+            > 🤖 This PR was generated by [sync-apis workflow](https://github.com/${{ github.repository }}/blob/${{ steps.vars.outputs.source_branch }}/.github/workflows/sync-apis.yaml)
+          branch: "sync-${{ steps.vars.outputs.sha_short }}"
+          base: ${{ steps.vars.outputs.target_branch }}
+          delete-branch: true
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## 🔄 Sync APIs Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Source | \`volcano-sh/volcano@${{ steps.vars.outputs.sha_short }}\` |"
+            echo "| Target | \`${{ env.APIS_REPO }}:${{ steps.vars.outputs.target_branch }}\` |"
+            echo ""
+            echo "### Pre-sync Checks"
+            echo "- ✅ Verified staging APIs generated code is up to date"
+            echo ""
+            if [ "${{ steps.sync.outputs.has_changes }}" == "true" ]; then
+              echo "### ✅ Result: Changes synced and PR created"
+            else
+              echo "### ℹ️ Result: No changes to sync"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

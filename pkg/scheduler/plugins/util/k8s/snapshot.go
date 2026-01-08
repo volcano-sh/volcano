@@ -1,5 +1,6 @@
 /*
 Copyright 2019 The Kubernetes Authors.
+Copyright 2025 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +17,9 @@ limitations under the License.
 
 // Copied from https://github.com/kubernetes/kubernetes/blob/v1.18.3/pkg/scheduler/internal/cache/snapshot.go
 // as internal package is not allowed to import
+// Modifications by Volcano Authors:
+// 1. Added Volcano's own NodeInfo (`api.NodeInfo`) to the snapshot.
+// 2. Added methods to retrieve Volcano's NodeInfo.
 
 package k8s
 
@@ -24,23 +28,50 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
+	"volcano.sh/volcano/pkg/scheduler/api"
 	scheduler "volcano.sh/volcano/pkg/scheduler/framework"
 )
 
 // Snapshot is a snapshot of cache NodeInfo and NodeTree order. The scheduler takes a
 // snapshot at the beginning of each scheduling cycle and uses it for its operations in that cycle.
 type Snapshot struct {
+	fwkInfo
+	volcanoInfo
+
+	// generation is the snapshot generation, used to identify whether the snapshot is stale.
+	generation int64
+
+	// nodeNameToIndex maps node name to index in both nodeInfoList for O(1) lookup
+	nodeNameToIndex map[string]int
+	// affinityNodeIndex maps node name to index in havePodsWithAffinityNodeInfoList
+	affinityNodeIndex map[string]int
+	// antiAffinityNodeIndex maps node name to index in havePodsWithRequiredAntiAffinityNodeInfoList
+	antiAffinityNodeIndex map[string]int
+}
+
+// fwkInfo holds snapshot information from the kube-scheduler framework.
+type fwkInfo struct {
 	// nodeInfoMap a map of node name to a snapshot of its NodeInfo.
-	nodeInfoMap map[string]*framework.NodeInfo
+	nodeInfoMap map[string]fwk.NodeInfo
 	// nodeInfoList is the list of nodes as ordered in the cache's nodeTree.
-	nodeInfoList []*framework.NodeInfo
+	nodeInfoList []fwk.NodeInfo
 	// havePodsWithAffinityNodeInfoList is the list of nodes with at least one pod declaring affinity terms.
-	havePodsWithAffinityNodeInfoList []*framework.NodeInfo
+	havePodsWithAffinityNodeInfoList []fwk.NodeInfo
 	// havePodsWithRequiredAntiAffinityNodeInfoList is the list of nodes with at least one pod declaring
 	// required anti-affinity terms.
-	havePodsWithRequiredAntiAffinityNodeInfoList []*framework.NodeInfo
+	havePodsWithRequiredAntiAffinityNodeInfoList []fwk.NodeInfo
+}
+
+// volcanoInfo holds snapshot information for Volcano.
+type volcanoInfo struct {
+	// volcanoNodeInfoMap a map of node name to a snapshot of its volcano NodeInfo.
+	nodeInfoMap map[string]*api.NodeInfo
+	// volcanoNodeInfoList is the list of volcano nodes
+	nodeInfoList []*api.NodeInfo
 }
 
 var _ framework.SharedLister = &Snapshot{}
@@ -48,37 +79,206 @@ var _ framework.SharedLister = &Snapshot{}
 // NewEmptySnapshot initializes a Snapshot struct and returns it.
 func NewEmptySnapshot() *Snapshot {
 	return &Snapshot{
-		nodeInfoMap: make(map[string]*framework.NodeInfo),
+		fwkInfo: fwkInfo{
+			nodeInfoMap:                      make(map[string]fwk.NodeInfo),
+			nodeInfoList:                     make([]fwk.NodeInfo, 0),
+			havePodsWithAffinityNodeInfoList: make([]fwk.NodeInfo, 0),
+			havePodsWithRequiredAntiAffinityNodeInfoList: make([]fwk.NodeInfo, 0),
+		},
+		volcanoInfo: volcanoInfo{
+			nodeInfoMap:  make(map[string]*api.NodeInfo),
+			nodeInfoList: make([]*api.NodeInfo, 0),
+		},
+		generation:            0,
+		nodeNameToIndex:       make(map[string]int),
+		affinityNodeIndex:     make(map[string]int),
+		antiAffinityNodeIndex: make(map[string]int),
 	}
 }
 
-// NewSnapshot initializes a Snapshot struct and returns it.
-func NewSnapshot(nodeInfoMap map[string]*framework.NodeInfo) *Snapshot {
-	nodeInfoList := make([]*framework.NodeInfo, 0, len(nodeInfoMap))
-	havePodsWithAffinityNodeInfoList := make([]*framework.NodeInfo, 0, len(nodeInfoMap))
-	havePodsWithRequiredAntiAffinityNodeInfoList := make([]*framework.NodeInfo, 0, len(nodeInfoMap))
+// NewSnapshot initializes a Snapshot struct and returns it. It's only used in batch scheduler(session scheduling) now.
+// For agent scheduler(fast path scheduling), it needs to use NewEmptySnapshot and update the snapshot from cache incrementally.
+func NewSnapshot(nodeInfoMap map[string]fwk.NodeInfo) *Snapshot {
+	nodeInfoList := make([]fwk.NodeInfo, 0, len(nodeInfoMap))
+	havePodsWithAffinityNodeInfoList := make([]fwk.NodeInfo, 0, len(nodeInfoMap))
+	havePodsWithRequiredAntiAffinityNodeInfoList := make([]fwk.NodeInfo, 0, len(nodeInfoMap))
 	for _, v := range nodeInfoMap {
 		nodeInfoList = append(nodeInfoList, v)
-		if len(v.PodsWithAffinity) > 0 {
+		if len(v.GetPodsWithAffinity()) > 0 {
 			havePodsWithAffinityNodeInfoList = append(havePodsWithAffinityNodeInfoList, v)
 		}
-		if len(v.PodsWithRequiredAntiAffinity) > 0 {
+		if len(v.GetPodsWithRequiredAntiAffinity()) > 0 {
 			havePodsWithRequiredAntiAffinityNodeInfoList = append(havePodsWithRequiredAntiAffinityNodeInfoList, v)
 		}
 	}
 
 	s := NewEmptySnapshot()
-	s.nodeInfoMap = nodeInfoMap
-	s.nodeInfoList = nodeInfoList
-	s.havePodsWithAffinityNodeInfoList = havePodsWithAffinityNodeInfoList
-	s.havePodsWithRequiredAntiAffinityNodeInfoList = havePodsWithRequiredAntiAffinityNodeInfoList
+	s.fwkInfo.nodeInfoMap = nodeInfoMap
+	s.fwkInfo.nodeInfoList = nodeInfoList
+	s.fwkInfo.havePodsWithAffinityNodeInfoList = havePodsWithAffinityNodeInfoList
+	s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList = havePodsWithRequiredAntiAffinityNodeInfoList
 
 	return s
 }
 
+func (s *Snapshot) AddOrUpdateNodes(nodes []*api.NodeInfo) {
+	for _, node := range nodes {
+		s.addOrUpdateNode(node)
+	}
+}
+
+// addOrUpdateNode adds or updates node information in both fwkInfo and volcanoInfo.
+func (s *Snapshot) addOrUpdateNode(nodeInfo *api.NodeInfo) {
+	// Create Volcano NodeInfo
+	volcanoNodeInfo := nodeInfo.Clone()
+	nodeName := volcanoNodeInfo.Node.Name
+	// Create k8s NodeInfo from vcNodeInfo
+	fwkNodeInfo := framework.NewNodeInfo(volcanoNodeInfo.Pods()...)
+	fwkNodeInfo.SetNode(volcanoNodeInfo.Node)
+
+	idx, exists := s.nodeNameToIndex[nodeName]
+	if exists {
+		// Update existing node in both lists
+		s.volcanoInfo.nodeInfoList[idx] = volcanoNodeInfo
+		s.fwkInfo.nodeInfoList[idx] = fwkNodeInfo
+	} else {
+		// New node, add to both lists and update index
+		idx = len(s.fwkInfo.nodeInfoList)
+		s.nodeNameToIndex[nodeName] = idx
+		s.fwkInfo.nodeInfoList = append(s.fwkInfo.nodeInfoList, fwkNodeInfo)
+		s.volcanoInfo.nodeInfoList = append(s.volcanoInfo.nodeInfoList, volcanoNodeInfo)
+	}
+	// Update maps
+	s.volcanoInfo.nodeInfoMap[nodeName] = volcanoNodeInfo
+	s.fwkInfo.nodeInfoMap[nodeName] = fwkNodeInfo
+
+	// Update havePodsWithAffinityNodeInfoList
+	s.updateAffinityList(nodeName)
+	// Update havePodsWithRequiredAntiAffinityNodeInfoList
+	s.updateRequiredAntiAffinity(nodeName)
+	klog.V(5).Infof("Updated node[%s] in snapshot, volcano node info: %v, k8s node info: %v", nodeInfo.Name, volcanoNodeInfo, fwkNodeInfo)
+}
+
+// DeleteNode removes node information from both fwkInfo and volcanoInfo.
+func (s *Snapshot) DeleteNode(nodeName string) {
+	idx, exists := s.nodeNameToIndex[nodeName]
+	if !exists {
+		return
+	}
+	lastIdx := len(s.fwkInfo.nodeInfoList) - 1
+
+	if idx < lastIdx {
+		// Swap the node to be deleted with the last node.
+		lastNodeName := s.fwkInfo.nodeInfoList[lastIdx].Node().Name
+
+		// Swap fwkInfo.nodeInfoList
+		s.fwkInfo.nodeInfoList[idx] = s.fwkInfo.nodeInfoList[lastIdx]
+		s.fwkInfo.nodeInfoList = s.fwkInfo.nodeInfoList[:lastIdx]
+
+		// Swap volcanoInfo.nodeInfoList
+		s.volcanoInfo.nodeInfoList[idx] = s.volcanoInfo.nodeInfoList[lastIdx]
+		s.volcanoInfo.nodeInfoList = s.volcanoInfo.nodeInfoList[:lastIdx]
+
+		s.nodeNameToIndex[lastNodeName] = idx
+	} else {
+		s.fwkInfo.nodeInfoList = s.fwkInfo.nodeInfoList[:lastIdx]
+		s.volcanoInfo.nodeInfoList = s.volcanoInfo.nodeInfoList[:lastIdx]
+	}
+
+	delete(s.nodeNameToIndex, nodeName)
+	delete(s.fwkInfo.nodeInfoMap, nodeName)
+	delete(s.volcanoInfo.nodeInfoMap, nodeName)
+
+	s.removeNodeFromAffinityList(nodeName)
+	s.removeNodeFromAntiAffinityList(nodeName)
+}
+
+// removeFromAffinityList remove node from the affinity list.
+func (s *Snapshot) removeNodeFromAffinityList(nodeName string) {
+	utilSwapDelete(
+		s.affinityNodeIndex,
+		&s.fwkInfo.havePodsWithAffinityNodeInfoList,
+		nodeName,
+	)
+}
+
+// removeNodeFromAntiAffinityList remove node from the anti affinity list.
+func (s *Snapshot) removeNodeFromAntiAffinityList(nodeName string) {
+	utilSwapDelete(
+		s.antiAffinityNodeIndex,
+		&s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList,
+		nodeName,
+	)
+}
+
+// utilSwapDelete removes an element from list by indexMap with swap-delete semantics.
+func utilSwapDelete(indexMap map[string]int, list *[]fwk.NodeInfo, nodeName string) {
+	idx, exists := indexMap[nodeName]
+	if !exists {
+		return
+	}
+
+	lastIdx := len(*list) - 1
+	if idx < lastIdx {
+		lastNodeName := (*list)[lastIdx].Node().Name
+		(*list)[idx] = (*list)[lastIdx]
+		indexMap[lastNodeName] = idx
+	}
+
+	*list = (*list)[:lastIdx]
+	delete(indexMap, nodeName)
+}
+
+// RemoveDeletedNodesFromSnapshot removes nodes that are not in the cache from the snapshot
+func (s *Snapshot) RemoveDeletedNodesFromSnapshot(currentNodeNames map[string]bool) {
+	nodesToDelete := make([]string, 0, len(s.nodeNameToIndex))
+	for nodeName := range s.nodeNameToIndex {
+		if !currentNodeNames[nodeName] {
+			nodesToDelete = append(nodesToDelete, nodeName)
+		}
+	}
+	for _, nodeName := range nodesToDelete {
+		s.DeleteNode(nodeName)
+	}
+}
+
+// updateAffinityList updates an affinity list based on node changes
+func (s *Snapshot) updateAffinityList(nodeName string) {
+	hasAffinity := len(s.fwkInfo.nodeInfoMap[nodeName].GetPodsWithAffinity()) > 0
+	_, exists := s.affinityNodeIndex[nodeName]
+
+	switch {
+	case hasAffinity && !exists:
+		idx := len(s.fwkInfo.havePodsWithAffinityNodeInfoList)
+		s.fwkInfo.havePodsWithAffinityNodeInfoList =
+			append(s.fwkInfo.havePodsWithAffinityNodeInfoList, s.fwkInfo.nodeInfoMap[nodeName])
+		s.affinityNodeIndex[nodeName] = idx
+
+	case !hasAffinity && exists:
+		s.removeNodeFromAffinityList(nodeName)
+	}
+}
+
+// updateAffinityList updates an affinity list based on node changes
+func (s *Snapshot) updateRequiredAntiAffinity(nodeName string) {
+	hasRequiredAntiAffinity := len(s.fwkInfo.nodeInfoMap[nodeName].GetPodsWithRequiredAntiAffinity()) > 0
+	_, exists := s.antiAffinityNodeIndex[nodeName]
+
+	switch {
+	case hasRequiredAntiAffinity && !exists:
+		idx := len(s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList)
+		s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList =
+			append(s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList, s.fwkInfo.nodeInfoMap[nodeName])
+		s.antiAffinityNodeIndex[nodeName] = idx
+
+	case !hasRequiredAntiAffinity && exists:
+		s.removeNodeFromAntiAffinityList(nodeName)
+	}
+}
+
 // Pods returns a PodLister
 func (s *Snapshot) Pods() scheduler.PodsLister {
-	return podLister(s.nodeInfoList)
+	return podLister(s.fwkInfo.nodeInfoList)
 }
 
 // NodeInfos returns a NodeInfoLister.
@@ -91,7 +291,48 @@ func (s *Snapshot) StorageInfos() framework.StorageInfoLister {
 	return s
 }
 
-type podLister []*framework.NodeInfo
+// VolcanoNodeInfos returns a list of volcano NodeInfo.
+func (s *Snapshot) GetK8sNodeInfo(nodeName string) (fwk.NodeInfo, error) {
+	if v, ok := s.fwkInfo.nodeInfoMap[nodeName]; ok {
+		return v, nil
+	}
+	return nil, fmt.Errorf("nodeinfo not found for node name %q", nodeName)
+}
+
+// VolcanoNodeInfos returns a list of volcano NodeInfo.
+func (s *Snapshot) VolcanoNodeInfos() []*api.NodeInfo {
+	return s.volcanoInfo.nodeInfoList
+}
+
+// GetVolcanoNodeInfo returns the volcano NodeInfo of the given node name.
+func (s *Snapshot) GetVolcanoNodeInfo(nodeName string) (*api.NodeInfo, error) {
+	if v, ok := s.volcanoInfo.nodeInfoMap[nodeName]; ok {
+		return v, nil
+	}
+	return nil, fmt.Errorf("nodeinfo not found for node name %q", nodeName)
+}
+
+// GetFwkNodeInfoMap returns internal fwk nodeInfoMap
+func (s *Snapshot) GetFwkNodeInfoMap() map[string]fwk.NodeInfo {
+	return s.fwkInfo.nodeInfoMap
+}
+
+// GetVolcanoNodeInfoMap returns internal volcano nodeInfoMap
+func (s *Snapshot) GetVolcanoNodeInfoMap() map[string]*api.NodeInfo {
+	return s.volcanoInfo.nodeInfoMap
+}
+
+// GetFwkNodeInfoList returns internal fwk nodeInfoList
+func (s *Snapshot) GetFwkNodeInfoList() []fwk.NodeInfo {
+	return s.fwkInfo.nodeInfoList
+}
+
+// GetVolcanoNodeInfoList returns internal volcano nodeInfoList
+func (s *Snapshot) GetVolcanoNodeInfoList() []*api.NodeInfo {
+	return s.volcanoInfo.nodeInfoList
+}
+
+type podLister []fwk.NodeInfo
 
 // List returns the list of pods in the snapshot.
 func (p podLister) List(selector labels.Selector) ([]*v1.Pod, error) {
@@ -106,13 +347,13 @@ func (p podLister) FilteredList(filter scheduler.PodFilter, selector labels.Sele
 	// pre-allocating capacity.
 	maxSize := 0
 	for _, n := range p {
-		maxSize += len(n.Pods)
+		maxSize += len(n.GetPods())
 	}
 	pods := make([]*v1.Pod, 0, maxSize)
 	for _, n := range p {
-		for _, pod := range n.Pods {
-			if filter(pod.Pod) && selector.Matches(labels.Set(pod.Pod.Labels)) {
-				pods = append(pods, pod.Pod)
+		for _, pod := range n.GetPods() {
+			if filter(pod.GetPod()) && selector.Matches(labels.Set(pod.GetPod().Labels)) {
+				pods = append(pods, pod.GetPod())
 			}
 		}
 	}
@@ -120,23 +361,23 @@ func (p podLister) FilteredList(filter scheduler.PodFilter, selector labels.Sele
 }
 
 // List returns the list of nodes in the snapshot.
-func (s *Snapshot) List() ([]*framework.NodeInfo, error) {
-	return s.nodeInfoList, nil
+func (s *Snapshot) List() ([]fwk.NodeInfo, error) {
+	return s.fwkInfo.nodeInfoList, nil
 }
 
 // HavePodsWithAffinityList returns the list of nodes with at least one pods with inter-pod affinity
-func (s *Snapshot) HavePodsWithAffinityList() ([]*framework.NodeInfo, error) {
-	return s.havePodsWithAffinityNodeInfoList, nil
+func (s *Snapshot) HavePodsWithAffinityList() ([]fwk.NodeInfo, error) {
+	return s.fwkInfo.havePodsWithAffinityNodeInfoList, nil
 }
 
 // HavePodsWithRequiredAntiAffinityList returns the list of NodeInfos of nodes with pods with required anti-affinity terms.
-func (s *Snapshot) HavePodsWithRequiredAntiAffinityList() ([]*framework.NodeInfo, error) {
-	return s.havePodsWithRequiredAntiAffinityNodeInfoList, nil
+func (s *Snapshot) HavePodsWithRequiredAntiAffinityList() ([]fwk.NodeInfo, error) {
+	return s.fwkInfo.havePodsWithRequiredAntiAffinityNodeInfoList, nil
 }
 
 // Get returns the NodeInfo of the given node name.
-func (s *Snapshot) Get(nodeName string) (*framework.NodeInfo, error) {
-	if v, ok := s.nodeInfoMap[nodeName]; ok && v.Node() != nil {
+func (s *Snapshot) Get(nodeName string) (fwk.NodeInfo, error) {
+	if v, ok := s.fwkInfo.nodeInfoMap[nodeName]; ok && v.Node() != nil {
 		return v, nil
 	}
 	return nil, fmt.Errorf("nodeinfo not found for node name %q", nodeName)
@@ -144,4 +385,12 @@ func (s *Snapshot) Get(nodeName string) (*framework.NodeInfo, error) {
 
 func (s *Snapshot) IsPVCUsedByPods(key string) bool {
 	panic("not implemented")
+}
+
+func (s *Snapshot) GetGeneration() int64 {
+	return s.generation
+}
+
+func (s *Snapshot) SetGeneration(currentGeneration int64) {
+	s.generation = currentGeneration
 }

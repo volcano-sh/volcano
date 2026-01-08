@@ -31,6 +31,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
+	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -62,7 +63,7 @@ type Cache interface {
 	RecordJobStatusEvent(job *api.JobInfo, updatePG bool)
 
 	// UpdateJobStatus puts job in backlog for a while.
-	UpdateJobStatus(job *api.JobInfo, updatePGStatus, updatePGAnnotations bool) (*api.JobInfo, error)
+	UpdateJobStatus(job *api.JobInfo, updatePGStatus, updatePGAnnotations, updateJobInfo bool) (*api.JobInfo, error)
 
 	// UpdateQueueStatus update queue status.
 	UpdateQueueStatus(queue *api.QueueInfo) error
@@ -92,6 +93,17 @@ type Cache interface {
 
 	// SharedDRAManager returns the shared DRAManager
 	SharedDRAManager() framework.SharedDRAManager
+
+	// IsJobTerminated returns if the job was terminated
+	IsJobTerminated(jobId api.JobID) bool
+	//UpdateNodeShardStatus update status in nodeshard
+	UpdateNodeShardStatus(nodeShardName string) error
+
+	//OnSessionOpen is called before session open
+	OnSessionOpen()
+
+	//OnSessionClose is called after session close
+	OnSessionClose()
 }
 
 // Binder interface for binding task and hostname
@@ -109,6 +121,7 @@ type StatusUpdater interface {
 	UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error)
 	UpdatePodGroup(pg *api.PodGroup) (*api.PodGroup, error)
 	UpdateQueueStatus(queue *api.QueueInfo) error
+	UpdateNodeShardStatus(nodeshard *nodeshardv1alpha1.NodeShard) (*nodeshardv1alpha1.NodeShard, error)
 }
 
 // BatchBinder updates podgroup or job information

@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/client-go/informers/core/v1"
@@ -88,21 +89,31 @@ func (c *CPUBurstHandle) Handle(event interface{}) error {
 
 	quotaBurstTime := getCPUBurstTime(pod)
 	podBurstTime := int64(0)
-	err = filepath.WalkDir(cgroupPath, walkFunc(cgroupPath, quotaBurstTime, &podBurstTime))
+	err = filepath.WalkDir(cgroupPath, walkFunc(cgroupPath, c.cgroupMgr.GetCgroupVersion(), quotaBurstTime, &podBurstTime))
 	if err != nil {
 		return fmt.Errorf("failed to set container cpu quota burst time, err: %v", err)
 	}
 
 	// last set pod cgroup cpu quota burst.
-	podQuotaTotalFile := filepath.Join(cgroupPath, cgroup.CPUQuotaTotalFile)
-	value, err := file.ReadIntFromFile(podQuotaTotalFile)
+	var podQuotaTotalFile string
+	if c.cgroupMgr.GetCgroupVersion() == cgroup.CgroupV2 {
+		podQuotaTotalFile = filepath.Join(cgroupPath, cgroup.CPUQuotaTotalFileV2)
+	} else {
+		podQuotaTotalFile = filepath.Join(cgroupPath, cgroup.CPUQuotaTotalFile)
+	}
+	value, err := readCPUQuota(podQuotaTotalFile, c.cgroupMgr.GetCgroupVersion())
 	if err != nil {
 		return fmt.Errorf("failed to get pod cpu total quota time, err: %v,path: %s", err, podQuotaTotalFile)
 	}
 	if value == fixedQuotaValue {
 		return nil
 	}
-	podQuotaBurstFile := filepath.Join(cgroupPath, cgroup.CPUQuotaBurstFile)
+	var podQuotaBurstFile string
+	if c.cgroupMgr.GetCgroupVersion() == cgroup.CgroupV2 {
+		podQuotaBurstFile = filepath.Join(cgroupPath, cgroup.CPUQuotaBurstFileV2)
+	} else {
+		podQuotaBurstFile = filepath.Join(cgroupPath, cgroup.CPUQuotaBurstFile)
+	}
 	err = utils.UpdateFile(podQuotaBurstFile, []byte(strconv.FormatInt(podBurstTime, 10)))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -116,7 +127,7 @@ func (c *CPUBurstHandle) Handle(event interface{}) error {
 	return nil
 }
 
-func walkFunc(cgroupPath string, quotaBurstTime int64, podBurstTime *int64) fs.WalkDirFunc {
+func walkFunc(cgroupPath, cgroupVersion string, quotaBurstTime int64, podBurstTime *int64) fs.WalkDirFunc {
 	return func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -128,8 +139,16 @@ func walkFunc(cgroupPath string, quotaBurstTime int64, podBurstTime *int64) fs.W
 		if d == nil || !d.IsDir() {
 			return nil
 		}
-		quotaTotalFile := filepath.Join(path, cgroup.CPUQuotaTotalFile)
-		quotaTotal, err := file.ReadIntFromFile(quotaTotalFile)
+
+		var quotaTotalFile, quotaBurstFile string
+		if cgroupVersion == cgroup.CgroupV2 {
+			quotaTotalFile = filepath.Join(path, cgroup.CPUQuotaTotalFileV2)
+			quotaBurstFile = filepath.Join(path, cgroup.CPUQuotaBurstFileV2)
+		} else {
+			quotaTotalFile = filepath.Join(path, cgroup.CPUQuotaTotalFile)
+			quotaBurstFile = filepath.Join(path, cgroup.CPUQuotaBurstFile)
+		}
+		quotaTotal, err := readCPUQuota(quotaTotalFile, cgroupVersion)
 		if err != nil {
 			return fmt.Errorf("failed to get container cpu total quota time, err: %v, path: %s", err, quotaTotalFile)
 		}
@@ -146,7 +165,6 @@ func walkFunc(cgroupPath string, quotaBurstTime int64, podBurstTime *int64) fs.W
 			actualBurst = quotaTotal
 		}
 		*podBurstTime += actualBurst
-		quotaBurstFile := filepath.Join(path, cgroup.CPUQuotaBurstFile)
 		err = utils.UpdateFile(quotaBurstFile, []byte(strconv.FormatInt(actualBurst, 10)))
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -174,4 +192,39 @@ func getCPUBurstTime(pod *corev1.Pod) int64 {
 	}
 	quotaBurstTime = int64(value)
 	return quotaBurstTime
+}
+
+// readCPUQuota reads CPU quota value from cgroup v1 or v2 file
+func readCPUQuota(filePath, cgroupVersion string) (int64, error) {
+	if cgroupVersion == cgroup.CgroupV2 {
+		return readCPUQuotaV2(filePath)
+	}
+	return file.ReadIntFromFile(filePath)
+}
+
+// readCPUQuotaV2 reads quota value from cgroup v2 cpu.max file
+func readCPUQuotaV2(filePath string) (int64, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return 0, err
+	}
+
+	content := strings.TrimSpace(string(data))
+	fields := strings.Fields(content)
+
+	if len(fields) < 1 {
+		return 0, errors.New("cpu.max file is empty or malformed")
+	}
+
+	// Handle "max period" format (unlimited)
+	if fields[0] == "max" {
+		return -1, nil
+	}
+
+	// Handle "quota period" format
+	quota, err := strconv.ParseInt(fields[0], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return quota, nil
 }

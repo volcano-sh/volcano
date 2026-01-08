@@ -22,8 +22,9 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
@@ -71,8 +72,9 @@ func TestNodeInfo_AddPod(t *testing.T) {
 				Others: map[string]interface{}{
 					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node),
 					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node),
+					vnpu.DeviceName:     vnpu.NewNPUDevices("n1", case01Node),
 				},
-				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 		},
 		{
@@ -95,16 +97,20 @@ func TestNodeInfo_AddPod(t *testing.T) {
 					"c2/p1": NewTaskInfo(case02Pod1),
 				},
 				Others: map[string]interface{}{
-					gpushare.DeviceName: gpushare.NewGPUDevices("n2", case01Node),
-					vgpu.DeviceName:     vgpu.NewGPUDevices("n2", case01Node),
+					gpushare.DeviceName: gpushare.NewGPUDevices("n2", case02Node),
+					vgpu.DeviceName:     vgpu.NewGPUDevices("n2", case02Node),
+					vnpu.DeviceName:     vnpu.NewNPUDevices("n2", case02Node),
 				},
-				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 			expectedFailure: false,
 		},
 	}
 
 	for i, test := range tests {
+		gpushare.GpuSharingEnable = true
+		vgpu.VGPUEnable = true
+		vnpu.AscendMindClusterVNPUEnable = true
 		ni := NewNodeInfo(test.node)
 		for _, pod := range test.pods {
 			pi := NewTaskInfo(pod)
@@ -162,8 +168,9 @@ func TestNodeInfo_RemovePod(t *testing.T) {
 				Others: map[string]interface{}{
 					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node),
 					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node),
+					vnpu.DeviceName:     vnpu.NewNPUDevices("n1", case01Node),
 				},
-				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 		},
 	}
@@ -229,8 +236,9 @@ func TestNodeInfo_SetNode(t *testing.T) {
 				Others: map[string]interface{}{
 					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node1),
 					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node1),
+					vnpu.DeviceName:     vnpu.NewNPUDevices("n1", case01Node1),
 				},
-				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 			expected2: &NodeInfo{
 				Name:                     "n1",
@@ -252,8 +260,9 @@ func TestNodeInfo_SetNode(t *testing.T) {
 				Others: map[string]interface{}{
 					gpushare.DeviceName: gpushare.NewGPUDevices("n1", case01Node1),
 					vgpu.DeviceName:     vgpu.NewGPUDevices("n1", case01Node1),
+					vnpu.DeviceName:     vnpu.NewNPUDevices("n1", case01Node1),
 				},
-				ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+				ImageStates: make(map[string]*fwk.ImageStateSummary),
 			},
 		},
 	}

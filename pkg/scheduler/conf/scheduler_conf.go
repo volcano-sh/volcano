@@ -94,6 +94,14 @@ type PluginOption struct {
 	EnabledAllocatable *bool `yaml:"enabledAllocatable"`
 	// EnabledHyperNodeOrder defines whether hyperNode is enabled
 	EnabledHyperNodeOrder *bool `yaml:"enabledHyperNodeOrder"`
+	// EnabledSubJobReady defines whether subJobReadyFn is enabled
+	EnabledSubJobReady *bool `yaml:"enabledSubJobReady"`
+	// EnabledSubJobPipelined defines whether subJobPipelinedFn is enabled
+	EnabledSubJobPipelined *bool `yaml:"enabledSubJobPipelined"`
+	// EnabledSubJobOrder defines whether subJobOrderFn is enabled
+	EnabledSubJobOrder *bool `yaml:"enabledSubJobOrder"`
+	// EnabledHyperNodeGradient defines whether hyperNodeGradientFn is enabled
+	EnabledHyperNodeGradient *bool `yaml:"enabledHyperNodeGradient"`
 	// Arguments defines the different arguments that can be given to different plugins
 	Arguments map[string]interface{} `yaml:"arguments"`
 }

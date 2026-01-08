@@ -52,12 +52,13 @@ type Scheduler struct {
 	schedulePeriod time.Duration
 	once           sync.Once
 
-	mutex          sync.Mutex
-	actions        []framework.Action
-	plugins        []conf.Tier
-	configurations []conf.Configuration
-	metricsConf    map[string]string
-	dumper         schedcache.Dumper
+	mutex              sync.Mutex
+	actions            []framework.Action
+	plugins            []conf.Tier
+	configurations     []conf.Configuration
+	metricsConf        map[string]string
+	dumper             schedcache.Dumper
+	disableDefaultConf bool
 }
 
 // NewScheduler returns a Scheduler
@@ -74,11 +75,12 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 
 	cache := schedcache.New(config, opt.SchedulerNames, opt.DefaultQueue, opt.NodeSelector, opt.NodeWorkerThreads, opt.IgnoredCSIProvisioners, opt.ResyncPeriod)
 	scheduler := &Scheduler{
-		schedulerConf:  opt.SchedulerConf,
-		fileWatcher:    watcher,
-		cache:          cache,
-		schedulePeriod: opt.SchedulePeriod,
-		dumper:         schedcache.Dumper{Cache: cache, RootDir: opt.CacheDumpFileDir},
+		schedulerConf:      opt.SchedulerConf,
+		fileWatcher:        watcher,
+		cache:              cache,
+		schedulePeriod:     opt.SchedulePeriod,
+		dumper:             schedcache.Dumper{Cache: cache, RootDir: opt.CacheDumpFileDir},
+		disableDefaultConf: opt.DisableDefaultSchedulerConfig,
 	}
 
 	return scheduler, nil
@@ -136,22 +138,30 @@ func (pc *Scheduler) loadSchedulerConf() {
 	klog.V(4).Infof("Start loadSchedulerConf ...")
 	defer func() {
 		actions, plugins := pc.getSchedulerConf()
-		klog.V(2).Infof("Successfully loaded Scheduler conf, actions: %v, plugins: %v", actions, plugins)
+		klog.V(2).Infof("Finished loading scheduler config. Final state: actions=%v, plugins=%v", actions, plugins)
 	}()
 
+	if pc.disableDefaultConf && len(pc.schedulerConf) == 0 {
+		klog.Fatalf("No --scheduler-conf path provided and default configuration fallback is disabled")
+	}
+
 	var err error
-	pc.once.Do(func() {
-		pc.actions, pc.plugins, pc.configurations, pc.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
-		if err != nil {
-			klog.Errorf("unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
-			panic("invalid default configuration")
-		}
-	})
+	if !pc.disableDefaultConf {
+		pc.once.Do(func() {
+			pc.actions, pc.plugins, pc.configurations, pc.metricsConf, err = UnmarshalSchedulerConf(DefaultSchedulerConf)
+			if err != nil {
+				klog.Fatalf("Invalid default configuration: unmarshal Scheduler config %s failed: %v", DefaultSchedulerConf, err)
+			}
+		})
+	}
 
 	var config string
 	if len(pc.schedulerConf) != 0 {
 		confData, err := os.ReadFile(pc.schedulerConf)
 		if err != nil {
+			if pc.disableDefaultConf {
+				klog.Fatalf("Failed to read scheduler config and default configuration fallback is disabled")
+			}
 			klog.Errorf("Failed to read the Scheduler config in '%s', using previous configuration: %v",
 				pc.schedulerConf, err)
 			return
@@ -161,6 +171,9 @@ func (pc *Scheduler) loadSchedulerConf() {
 
 	actions, plugins, configurations, metricsConf, err := UnmarshalSchedulerConf(config)
 	if err != nil {
+		if pc.disableDefaultConf {
+			klog.Fatalf("Invalid scheduler configuration and default configuration fallback is disabled")
+		}
 		klog.Errorf("Scheduler config %s is invalid: %v", config, err)
 		return
 	}

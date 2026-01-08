@@ -94,6 +94,12 @@ func BuildHyperNode(name string, tier int, members []topologyv1alpha1.MemberSpec
 	}
 }
 
+func BuildHyperNodeWithTierName(name string, tier int, tierName string, members []topologyv1alpha1.MemberSpec, labels map[string]string) *topologyv1alpha1.HyperNode {
+	hyperNode := BuildHyperNode(name, tier, members, labels)
+	hyperNode.Spec.TierName = tierName
+	return hyperNode
+}
+
 // BuildMembers creates a list of topology member references
 func BuildMembers(names []string, memberType topologyv1alpha1.MemberType) []topologyv1alpha1.MemberSpec {
 	members := make([]topologyv1alpha1.MemberSpec, 0, len(names))

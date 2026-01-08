@@ -127,7 +127,8 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 	queue8 := util.BuildQueueWithPriorityAndResourcesQuantity("q8", 1, nil, api.BuildResourceList("2", "4Gi"))
 	queue9 := util.BuildQueueWithPriorityAndResourcesQuantity("q9", 10, nil, api.BuildResourceList("2", "4Gi"))
 
-	// case5: p16 + p17 in queue10 will exceed queue's deserved, is not preemptive
+	// case5:
+	// p16 + p17 in equals queue10 deserved on cpu dimension
 	p16 := util.BuildPod("ns1", "p16", "n1", corev1.PodRunning, api.BuildResourceList("1", "3Gi"), "pg16", make(map[string]string), nil)
 	p17 := util.BuildPod("ns1", "p17", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg17", make(map[string]string), nil)
 	p18 := util.BuildPod("ns1", "p18", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg18", make(map[string]string), nil)
@@ -138,6 +139,18 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 	// queue
 	queue10 := util.BuildQueueWithResourcesQuantity("q10", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("4", "4Gi"))
 	queue11 := util.BuildQueueWithResourcesQuantity("q11", api.BuildResourceList("0", "0Gi"), api.BuildResourceList("2", "2Gi"))
+
+	// case6: p19 + p20 in queue12 will exceed queue's deserved
+	p19 := util.BuildPod("ns1", "p19", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg19", make(map[string]string), nil)
+	p20 := util.BuildPod("ns1", "p20", "", corev1.PodPending, api.BuildResourceList("1", "2Gi"), "pg20", make(map[string]string), nil)
+	p21 := util.BuildPod("ns1", "p21", "n1", corev1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg21", make(map[string]string), nil)
+	// podgroup
+	pg19 := util.BuildPodGroup("pg19", "ns1", "q12", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg20 := util.BuildPodGroup("pg20", "ns1", "q12", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg21 := util.BuildPodGroup("pg21", "ns1", "q13", 1, nil, schedulingv1beta1.PodGroupRunning)
+	// queue
+	queue12 := util.BuildQueueWithResourcesQuantity("q12", api.BuildResourceList("1", "2Gi"), api.BuildResourceList("4", "4Gi"))
+	queue13 := util.BuildQueueWithResourcesQuantity("q13", api.BuildResourceList("0", "0Gi"), api.BuildResourceList("2", "2Gi"))
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -201,12 +214,27 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 			ExpectBindsNum: 1,
 		},
 		{
-			Name:            "case5: Can not reclaim from other queues when allocated + req > deserved",
+			Name:      "case5: Can reclaim from other queues when allocated + req <= deserved on one dimension",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p16, p17, p18},
+			Nodes:     []*corev1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg16, pg17, pg18},
+			Queues:    []*schedulingv1beta1.Queue{queue10, queue11},
+			ExpectPipeLined: map[string][]string{
+				"ns1/pg17": {"n1"},
+			},
+			ExpectEvicted: []string{
+				"ns1/p18",
+			},
+			ExpectEvictNum: 1,
+		},
+		{
+			Name:            "case6: Can not reclaim from other queues when allocated + req > deserved",
 			Plugins:         plugins,
-			Pods:            []*corev1.Pod{p16, p17, p18},
+			Pods:            []*corev1.Pod{p19, p20, p21},
 			Nodes:           []*corev1.Node{n1},
-			PodGroups:       []*schedulingv1beta1.PodGroup{pg16, pg17, pg18},
-			Queues:          []*schedulingv1beta1.Queue{queue10, queue11},
+			PodGroups:       []*schedulingv1beta1.PodGroup{pg19, pg20, pg21},
+			Queues:          []*schedulingv1beta1.Queue{queue12, queue13},
 			ExpectPipeLined: map[string][]string{},
 			ExpectEvicted:   []string{},
 			ExpectEvictNum:  0,
@@ -371,6 +399,7 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	// queue
 	root := buildQueueWithParents("root", "", nil, nil)
 	root1 := buildQueueWithParents("root", "", nil, api.BuildResourceList("16", "16Gi"))
+	root2 := buildQueueWithParents("root", "", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "4"}, {Name: "rdma", Value: "1000"}}...), nil)
 	queue1 := buildQueueWithParents("q1", "root", nil, api.BuildResourceList("4", "4Gi"))
 	queue2 := buildQueueWithParents("q2", "root", nil, api.BuildResourceList("4", "4Gi"))
 	queue11 := buildQueueWithParents("q11", "q1", nil, api.BuildResourceList("1", "1Gi"))
@@ -485,6 +514,25 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 	// pod
 	p14 := util.BuildPod("ns1", "p14", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), "pg14", make(map[string]string), map[string]string{})
 	p15 := util.BuildPod("ns1", "p15", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}}...), "pg15", make(map[string]string), map[string]string{})
+
+	// resources for test case 12
+	// queue
+	case12_queue1 := buildQueueWithParents("case12_queue1", "root", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}}...), nil)
+	case12_queue11 := buildQueueWithParents("case12_queue11", "case12_queue1", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}}...), nil)
+	case12_queue12 := buildQueueWithParents("case12_queue12", "case12_queue1", nil, nil)
+
+	// node
+	n3 := util.BuildNode("n3", api.BuildResourceList("16", "16Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "5"}, {Name: "rdma/hca", Value: "1001"}, {Name: "pods", Value: "11"}}...), map[string]string{})
+
+	// podgroup
+	pg16 := util.BuildPodGroup("pg16", "ns1", "case12_queue11", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg17 := util.BuildPodGroup("pg17", "ns1", "case12_queue12", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg18 := util.BuildPodGroup("pg18", "ns1", "case12_queue12", 1, nil, schedulingv1beta1.PodGroupRunning)
+
+	// pod
+	p16 := util.BuildPod("ns1", "p16", "", corev1.PodPending, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}, {Name: "rdma/hca", Value: "1"}}...), "pg16", make(map[string]string), map[string]string{})
+	p17 := util.BuildPod("ns1", "p17", "n3", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}, {Name: "rdma/hca", Value: "1"}}...), "pg17", make(map[string]string), map[string]string{})
+	p18 := util.BuildPod("ns1", "p18", "n3", corev1.PodRunning, api.BuildResourceList("1", "1Gi", []api.ScalarResource{{Name: "nvidia.com/a100", Value: "2"}, {Name: "rdma/hca", Value: "1"}}...), "pg18", map[string]string{schedulingv1beta1.PodPreemptable: "false"}, map[string]string{})
 
 	tests := []uthelper.TestCommonStruct{
 		{
@@ -617,6 +665,19 @@ func Test_capacityPlugin_OnSessionOpenWithHierarchy(t *testing.T) {
 			},
 			ExpectBindsNum: 2,
 		},
+		{
+			Name:      "case12: Can reclaim from other queues when allocated <= deserved on a single scalar dimension",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p16, p17, p18},
+			Nodes:     []*corev1.Node{n3},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg16, pg17, pg18},
+			Queues:    []*schedulingv1beta1.Queue{root2, case12_queue1, case12_queue11, case12_queue12},
+			ExpectPipeLined: map[string][]string{
+				"ns1/pg16": {"n3"},
+			},
+			ExpectEvicted:  []string{"ns1/p17"},
+			ExpectEvictNum: 1,
+		},
 	}
 
 	tiers := []conf.Tier{
@@ -658,4 +719,156 @@ func buildQueueWithParents(name string, parent string, deserved corev1.ResourceL
 	queue := util.BuildQueueWithResourcesQuantity(name, deserved, cap)
 	queue.Spec.Parent = parent
 	return queue
+}
+
+func Test_updateQueueAttrShare(t *testing.T) {
+	tests := []struct {
+		name      string
+		deserved  *api.Resource
+		allocated *api.Resource
+		request   *api.Resource
+		wantShare float64
+	}{
+		// Test cases for queues without deserved (best-effort queues)
+		{
+			name:      "best-effort queue with allocated resources",
+			deserved:  api.EmptyResource(),
+			allocated: api.NewResource(api.BuildResourceList("1", "1Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.0,
+		},
+		{
+			name:      "best-effort queue with pending requests only (no allocated)",
+			deserved:  api.EmptyResource(),
+			allocated: api.EmptyResource(),
+			request:   api.NewResource(api.BuildResourceList("1", "1Gi")),
+			wantShare: 1.0, // new logic: always share=1 for best-effort
+		},
+		{
+			name:      "best-effort queue with both allocated and request",
+			deserved:  api.EmptyResource(),
+			allocated: api.NewResource(api.BuildResourceList("1", "1Gi")),
+			request:   api.NewResource(api.BuildResourceList("0.5", "0.5Gi")),
+			wantShare: 1.0, // allocated is checked, so share = 1
+		},
+		{
+			name:      "best-effort queue completely idle",
+			deserved:  api.EmptyResource(),
+			allocated: api.EmptyResource(),
+			request:   api.EmptyResource(),
+			wantShare: 1.0,
+		},
+		// Test cases for queues with deserved
+		{
+			name:      "queue with deserved but no allocated",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.EmptyResource(),
+			request:   api.EmptyResource(),
+			wantShare: 0.0,
+		},
+		{
+			name:      "queue with deserved, allocated < deserved (CPU dimension)",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("1", "1Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 0.5, // 1/2 = 0.5
+		},
+		{
+			name:      "queue with deserved, allocated = deserved",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("2", "2Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.0, // 2/2 = 1.0
+		},
+		{
+			name:      "queue with deserved, allocated > deserved (CPU dimension)",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("3", "2Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.5, // 3/2 = 1.5
+		},
+		{
+			name:      "queue with deserved, memory is dominant resource",
+			deserved:  api.NewResource(api.BuildResourceList("2", "4Gi")),
+			allocated: api.NewResource(api.BuildResourceList("1", "3Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 0.75, // max(1/2=0.5, 3/4=0.75) = 0.75
+		},
+		{
+			name:      "queue with deserved, CPU is dominant resource",
+			deserved:  api.NewResource(api.BuildResourceList("2", "4Gi")),
+			allocated: api.NewResource(api.BuildResourceList("1.5", "2Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 0.75, // max(1.5/2=0.75, 2/4=0.5) = 0.75
+		},
+		{
+			name:      "queue with deserved, allocated exceeds on both dimensions",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("3", "3Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.5, // max(3/2=1.5, 3/2=1.5) = 1.5
+		},
+		{
+			name:      "queue with deserved, request should not affect share calculation",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("1", "1Gi")),
+			request:   api.NewResource(api.BuildResourceList("1", "1Gi")),
+			wantShare: 0.5, // Only allocated/deserved matters, request is ignored
+		},
+		// Edge cases
+		{
+			name:      "queue with deserved but zero values",
+			deserved:  api.NewResource(api.BuildResourceList("0", "0Gi")),
+			allocated: api.NewResource(api.BuildResourceList("1", "1Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.0, // When deserved is 0 and allocated > 0, share = 1 (from helpers.Share)
+		},
+		{
+			name:      "queue with deserved, allocated is zero",
+			deserved:  api.NewResource(api.BuildResourceList("2", "2Gi")),
+			allocated: api.NewResource(api.BuildResourceList("0", "0Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 0.0, // 0/2 = 0
+		},
+		{
+			name:      "best-effort queue with only CPU allocated",
+			deserved:  api.EmptyResource(),
+			allocated: api.NewResource(api.BuildResourceList("1", "0Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.0,
+		},
+		{
+			name:      "best-effort queue with only memory allocated",
+			deserved:  api.EmptyResource(),
+			allocated: api.NewResource(api.BuildResourceList("0", "1Gi")),
+			request:   api.EmptyResource(),
+			wantShare: 1.0,
+		},
+		{
+			name:      "best-effort queue with only CPU request (no allocated)",
+			deserved:  api.EmptyResource(),
+			allocated: api.EmptyResource(),
+			request:   api.NewResource(api.BuildResourceList("1", "0Gi")),
+			wantShare: 1.0, // always 1.0 for best-effort queues
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attr := &queueAttr{
+				queueID:   "test-queue",
+				name:      "test-queue",
+				deserved:  tt.deserved,
+				allocated: tt.allocated,
+				request:   tt.request,
+				share:     0.0, // Initialize to 0
+			}
+
+			updateQueueAttrShare(attr)
+
+			if attr.share != tt.wantShare {
+				t.Errorf("updateQueueAttrShare() share = %v, want %v", attr.share, tt.wantShare)
+			}
+		})
+	}
 }

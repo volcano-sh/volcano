@@ -22,7 +22,6 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	whv1 "k8s.io/api/admissionregistration/v1"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/klog/v2"
 
@@ -83,51 +82,14 @@ func AdmitHyperNode(ar admissionv1.AdmissionReview) *admissionv1.AdmissionRespon
 	}
 }
 
-// validateHyperNodeMemberSelector is to validate hypernode member selector.
-func validateHyperNodeMemberSelector(selector hypernodev1alpha1.MemberSelector, fldPath *field.Path) field.ErrorList {
+// validateHyperNodeRegexPattern validates regex pattern compilation.
+// Note: Other selector validations (mutual exclusivity, required fields, format) are now
+// enforced by CRD x-kubernetes-validations and VAP. This function only validates regex
+// pattern compilation, as VAP only does basic syntax checks.
+func validateHyperNodeRegexPattern(selector hypernodev1alpha1.MemberSelector, fldPath *field.Path) field.ErrorList {
 	errs := field.ErrorList{}
-
-	// Count active selectors for mutual exclusivity check
-	selectorCount := 0
-	if selector.ExactMatch != nil {
-		selectorCount++
-	}
-	if selector.RegexMatch != nil {
-		selectorCount++
-	}
-	if selector.LabelMatch != nil {
-		selectorCount++
-	}
-
-	// Validate selector presence and mutual exclusivity
-	switch {
-	case selectorCount == 0:
-		errs = append(errs, field.Invalid(fldPath, selector,
-			"member selector must have one of exactMatch, regexMatch, or labelMatch"))
-		return errs
-	case selectorCount > 1:
-		errs = append(errs, field.Invalid(fldPath, selector,
-			"cannot specify more than one selector type (exactMatch, regexMatch, labelMatch)"))
-		return errs
-	}
-
-	if selector.ExactMatch != nil {
-		if selector.ExactMatch.Name == "" {
-			err := field.Invalid(fldPath.Child("exactMatch").Child("name"),
-				selector.ExactMatch.Name, "member exactMatch name is required")
-			errs = append(errs, err)
-		} else if errMsgs := validation.IsQualifiedName(selector.ExactMatch.Name); len(errMsgs) > 0 {
-			err := field.Invalid(fldPath.Child("exactMatch").Child("name"),
-				selector.ExactMatch.Name, fmt.Sprintf("member exactMatch validate failed %v", errMsgs))
-			errs = append(errs, err)
-		}
-	}
-	if selector.RegexMatch != nil {
-		if selector.RegexMatch.Pattern == "" {
-			err := field.Invalid(fldPath.Child("regexMatch").Child("pattern"),
-				selector.RegexMatch.Pattern, "member regexMatch pattern is required")
-			errs = append(errs, err)
-		} else if _, err := regexp.Compile(selector.RegexMatch.Pattern); err != nil {
+	if selector.RegexMatch != nil && selector.RegexMatch.Pattern != "" {
+		if _, err := regexp.Compile(selector.RegexMatch.Pattern); err != nil {
 			err := field.Invalid(fldPath.Child("regexMatch").Child("pattern"),
 				selector.RegexMatch.Pattern, fmt.Sprintf("member regexMatch pattern is invalid: %v", err))
 			errs = append(errs, err)
@@ -144,8 +106,10 @@ func validateHyperNode(hypernode *hypernodev1alpha1.HyperNode) error {
 		errs = append(errs, field.Invalid(resourcePath.Child("spec").Child("members"), hypernode.Spec.Members,
 			"member must have at least one member"))
 	}
+	// Note: selector validations (mutual exclusivity, required fields, format) are now enforced by CRD x-kubernetes-validations and VAP
 	for _, member := range hypernode.Spec.Members {
-		errs = append(errs, validateHyperNodeMemberSelector(member.Selector,
+		// Only validate regex pattern compilation, as VAP only does basic syntax checks
+		errs = append(errs, validateHyperNodeRegexPattern(member.Selector,
 			resourcePath.Child("spec").Child("members").Child("selector"))...)
 	}
 

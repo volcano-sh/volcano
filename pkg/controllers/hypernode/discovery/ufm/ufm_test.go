@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
+	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/controllers/hypernode/api"
 )
 
@@ -172,6 +173,7 @@ func TestUfmDiscoverer_Start(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			fakeClient := fake.NewSimpleClientset()
+			fakeVcClient := vcclientset.NewSimpleClientset()
 			if tc.secretExists {
 				secret := &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
@@ -197,7 +199,7 @@ func TestUfmDiscoverer_Start(t *testing.T) {
 				tc.config.Config["endpoint"] = serverBaseURL
 			}
 
-			u := NewUFMDiscoverer(tc.config, fakeClient)
+			u := NewUFMDiscoverer(tc.config, fakeClient, fakeVcClient)
 			outputCh, err := u.Start()
 			if tc.expectedError {
 				assert.Error(t, err)

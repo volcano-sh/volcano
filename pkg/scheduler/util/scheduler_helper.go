@@ -137,12 +137,9 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 }
 
 // PrioritizeHyperNodes returns a map whose key is hyperNode's score and value are corresponding hyperNodes
-// it accumulates two parts score:
-// 1.node level scores of each hyperNode in NodeOrder extension.
-// 2.hyperNode level scores scored in HyperNodeOrder extension.
-func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeScoresInHyperNode map[string]float64, job *api.JobInfo, fn api.HyperNodeOrderMapFn) (map[float64][]string, error) {
+func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, subJob *api.SubJobInfo, fn api.HyperNodeOrderMapFn) (map[float64][]string, error) {
 	hyperNodesScoreMap := make(map[string]float64)
-	mapScores, err := fn(job, candidateHyperNodes)
+	mapScores, err := fn(subJob, candidateHyperNodes)
 	if err != nil {
 		return nil, err
 	}
@@ -150,15 +147,9 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeSc
 	// plugin scores of hyperNode.
 	for pluginName, scores := range mapScores {
 		for hyperNode, score := range scores {
-			klog.V(5).InfoS("Add plugin score at hypeNode", "jobName", job.UID, "pluginName", pluginName, "hyperNodeName", hyperNode, "score", score)
+			klog.V(5).InfoS("Add plugin score at hypeNode", "subJob", subJob.UID, "pluginName", pluginName, "hyperNodeName", hyperNode, "score", score)
 			hyperNodesScoreMap[hyperNode] += score
 		}
-	}
-
-	// accumulate node scores in NodeOrder and hyperNode score itself as the final score of each hyperNode.
-	for hyperNodeName, score := range nodeScoresInHyperNode {
-		klog.V(5).InfoS("Add node level scores to final hyperNode score", "jobName", job.UID, "hyperNodeName", hyperNodeName, "score", score)
-		hyperNodesScoreMap[hyperNodeName] += score
 	}
 
 	hyperNodeScores := make(map[float64][]string)
@@ -176,7 +167,7 @@ func PrioritizeHyperNodes(candidateHyperNodes map[string][]*api.NodeInfo, nodeSc
 		}
 	}
 
-	klog.V(5).InfoS("Prioritize hyperNode score map for job", "jobName", job.UID, "scoreMap", hyperNodeScoreMap)
+	klog.V(5).InfoS("Prioritize hyperNode score map for subJob", "subJob", subJob.UID, "scoreMap", hyperNodeScoreMap)
 	return hyperNodeScores, nil
 }
 
@@ -213,8 +204,8 @@ func SelectBestNodeAndScore(nodeScores map[float64][]*api.NodeInfo) (*api.NodeIn
 	return bestNodes[rand.Intn(len(bestNodes))], maxScore
 }
 
-// SelectBestHyperNode return the best hyperNode name whose score is highest, pick one randomly if there are many hyperNodes with same score.
-func SelectBestHyperNode(hyperNodeScores map[float64][]string) string {
+// SelectBestHyperNodeAndScore return the best hyperNode name whose score is highest, pick one randomly if there are many hyperNodes with same score.
+func SelectBestHyperNodeAndScore(hyperNodeScores map[float64][]string) (string, float64) {
 	var bestHyperNodes []string
 	var maxScore = math.Inf(-1)
 	for score, hyperNodes := range hyperNodeScores {
@@ -225,10 +216,43 @@ func SelectBestHyperNode(hyperNodeScores map[float64][]string) string {
 	}
 
 	if len(bestHyperNodes) == 0 {
-		return ""
+		return "", 0
 	}
 
-	return bestHyperNodes[rand.Intn(len(bestHyperNodes))]
+	return bestHyperNodes[rand.Intn(len(bestHyperNodes))], maxScore
+}
+
+// SelectBestNodesAndScores returns the best N node whose score is highest N score, pick one randomly if there are many nodes with same score.
+func SelectBestNodesAndScores(nodeScores map[float64][]*api.NodeInfo, count int) ([]*api.NodeInfo, []float64) {
+	bestNodes := []*api.NodeInfo{}
+	scores := []float64{}
+	if count <= 0 || len(nodeScores) == 0 {
+		return bestNodes, scores
+	}
+	allScores := make([]float64, 0, len(nodeScores))
+	for score := range nodeScores {
+		allScores = append(allScores, score)
+	}
+	sort.Sort(sort.Reverse(sort.Float64Slice(allScores)))
+
+	selecteNodeCount := 0
+	for _, score := range allScores {
+		nodes := nodeScores[score]
+		if len(nodes)+selecteNodeCount > count {
+			rand.Shuffle(len(nodes), func(i, j int) {
+				nodes[i], nodes[j] = nodes[j], nodes[i]
+			})
+		}
+		for _, node := range nodes {
+			bestNodes = append(bestNodes, node)
+			scores = append(scores, score)
+			selecteNodeCount++
+			if len(nodes) == count {
+				return nodes, scores
+			}
+		}
+	}
+	return bestNodes, scores
 }
 
 // GetNodeList returns values of the map 'nodes'
@@ -242,18 +266,21 @@ func GetNodeList(nodes map[string]*api.NodeInfo, nodeList []string) []*api.NodeI
 	return result
 }
 
-// GetRealNodesListByHyperNode returns values of the map 'hyperNodes'.
-func GetRealNodesListByHyperNode(hyperNodes map[string]sets.Set[string], allNodes map[string]*api.NodeInfo) map[string][]*api.NodeInfo {
-	result := make(map[string][]*api.NodeInfo)
+// GetRealNodesByHyperNode returns values of the map 'hyperNodes'.
+func GetRealNodesByHyperNode(hyperNodes map[string]sets.Set[string], allNodes map[string]*api.NodeInfo) (map[string][]*api.NodeInfo, map[string]sets.Set[string]) {
+	resultList := make(map[string][]*api.NodeInfo)
+	resultSet := make(map[string]sets.Set[string])
 	for hyperNodeName, nodes := range hyperNodes {
-		result[hyperNodeName] = make([]*api.NodeInfo, 0, len(nodes))
+		resultList[hyperNodeName] = make([]*api.NodeInfo, 0, len(nodes))
+		resultSet[hyperNodeName] = make(sets.Set[string], len(nodes))
 		for node := range nodes {
 			if ni, ok := allNodes[node]; ok {
-				result[hyperNodeName] = append(result[hyperNodeName], ni)
+				resultList[hyperNodeName] = append(resultList[hyperNodeName], ni)
+				resultSet[hyperNodeName].Insert(ni.Name)
 			}
 		}
 	}
-	return result
+	return resultList, resultSet
 }
 
 // ValidateVictims returns an error if the resources of the victims can't satisfy the preemptor
@@ -322,11 +349,11 @@ func FindHyperNodeForNode(nodeName string, hyperNodes map[string][]*api.NodeInfo
 	return ""
 }
 
-// FindJobTaskNumOfHyperNode find out the number of tasks in the job that belong to the hyperNode.
-func FindJobTaskNumOfHyperNode(hyperNodeName string, job *api.JobInfo, hyperNodes map[string][]*api.NodeInfo) int {
+// FindJobTaskNumOfHyperNode find out the number of tasks that belong to the hyperNode.
+func FindJobTaskNumOfHyperNode(hyperNodeName string, tasks api.TasksMap, hyperNodes map[string][]*api.NodeInfo) int {
 	nodes := hyperNodes[hyperNodeName]
 	taskCount := 0
-	for _, task := range job.Tasks {
+	for _, task := range tasks {
 		for _, node := range nodes {
 			if node.Name == task.NodeName {
 				taskCount++

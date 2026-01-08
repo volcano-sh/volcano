@@ -19,15 +19,17 @@ package api
 import (
 	"fmt"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/hami"
+	"volcano.sh/volcano/pkg/scheduler/api/devices/ascend/mindcluster/ascend310p/vnpu"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/gpushare"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/nvidia/vgpu"
 )
@@ -88,7 +90,13 @@ type NodeInfo struct {
 	// ImageStates holds the entry of an image if and only if this image is on the node. The entry can be used for
 	// checking an image's existence and advanced usage (e.g., image locality scheduling policy) based on the image
 	// state information.
-	ImageStates map[string]*k8sframework.ImageStateSummary
+	ImageStates map[string]*fwk.ImageStateSummary
+
+	// Generation is incremented every time the cache is updated (node add/update/delete)
+	Generation int64
+
+	// BindGeneration is used to check conflict before binding
+	BindGeneration int64
 }
 
 // PodGroupOldState records podgroup old state
@@ -156,7 +164,7 @@ func NewNodeInfo(node *v1.Node) *NodeInfo {
 		Tasks:                    make(map[TaskID]*TaskInfo),
 
 		Others:      make(map[string]interface{}),
-		ImageStates: make(map[string]*k8sframework.ImageStateSummary),
+		ImageStates: make(map[string]*fwk.ImageStateSummary),
 	}
 
 	nodeInfo.setOversubscription(node)
@@ -183,16 +191,20 @@ func (ni *NodeInfo) RefreshNumaSchedulerInfoByCrd() {
 	}
 
 	tmp := ni.NumaInfo.DeepCopy()
-	if ni.NumaChgFlag == NumaInfoMoreFlag {
+	if ni.NumaSchedulerInfo == nil || ni.NumaChgFlag == NumaInfoMoreFlag {
 		ni.NumaSchedulerInfo = tmp
 	} else if ni.NumaChgFlag == NumaInfoLessFlag {
 		numaResMap := ni.NumaSchedulerInfo.NumaResMap
 		for resName, resInfo := range tmp.NumaResMap {
-			klog.V(5).Infof("resource %s Allocatable : current %v new %v on node %s",
-				resName, numaResMap[resName], resInfo, ni.Name)
-			if numaResMap[resName].Allocatable.Size() >= resInfo.Allocatable.Size() {
-				numaResMap[resName].Allocatable = resInfo.Allocatable.Clone()
-				numaResMap[resName].Capacity = resInfo.Capacity
+			if resourceInfo, ok := numaResMap[resName]; ok {
+				klog.V(5).Infof("resource %s Allocatable : current %v new %v on node %s",
+					resName, resourceInfo, resInfo, ni.Name)
+				if resourceInfo.Allocatable.Size() >= resInfo.Allocatable.Size() {
+					resourceInfo.Allocatable = resInfo.Allocatable.Clone()
+					resourceInfo.Capacity = resInfo.Capacity
+				}
+			} else {
+				numaResMap[resName] = resInfo
 			}
 		}
 	}
@@ -228,6 +240,7 @@ func (ni *NodeInfo) Clone() *NodeInfo {
 
 	res.Others = ni.CloneOthers()
 	res.ImageStates = ni.CloneImageSummary()
+	res.BindGeneration = ni.BindGeneration
 	return res
 }
 
@@ -346,13 +359,30 @@ func (ni *NodeInfo) setNodeOthersResource(node *v1.Node) {
 		klog.Warningf("received argument of nil node, no need to set other resources for %s", ni.Name)
 		return
 	}
-
-	ni.Others[gpushare.DeviceName] = gpushare.NewGPUDevices(ni.Name, node)
-	ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
-	IgnoredDevicesList.Set(
-		ni.Others[gpushare.DeviceName].(Devices).GetIgnoredDevices(),
-		ni.Others[vgpu.DeviceName].(Devices).GetIgnoredDevices(),
+	ignored_list := []string{}
+	if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
+		ni.Others[gpushare.DeviceName] = gpushare.NewGPUDevices(ni.Name, node)
+		ignored_list = append(ignored_list, gpushare.NewGPUDevices(ni.Name, node).GetIgnoredDevices()...)
+	}
+	if vgpu.VGPUEnable {
+		ni.Others[vgpu.DeviceName] = vgpu.NewGPUDevices(ni.Name, node)
+		ignored_list = append(ignored_list, vgpu.NewGPUDevices(ni.Name, node).GetIgnoredDevices()...)
+	}
+	if vnpu.AscendMindClusterVNPUEnable {
+		ni.Others[vnpu.DeviceName] = vnpu.NewNPUDevices(ni.Name, node)
+		ignored_list = append(ignored_list, vnpu.NewNPUDevices(ni.Name, node).GetIgnoredDevices()...)
+	}
+	if hami.AscendHAMiVNPUEnable {
+		for deviceName, devices := range hami.NewAscendDevices(ni.Name, node) {
+			ni.Others[deviceName] = devices
+			ignored_list = append(ignored_list, devices.GetIgnoredDevices()...)
+		}
+	}
+	klog.V(5).Infof("ignored_list is %v", ignored_list)
+	IgnoredDevicesList.AppendList(
+		ignored_list,
 	)
+	klog.V(5).Infof("ignoredDevicesList is %v", IgnoredDevicesList.List())
 }
 
 // setNode sets kubernetes node object to nodeInfo object without assertion
@@ -501,17 +531,69 @@ func (ni *NodeInfo) addResource(pod *v1.Pod) {
 
 	// Add an if judgment condition to fix the panic.
 	if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
-		ni.Others[gpushare.DeviceName].(Devices).AddResource(pod)
+		if other, exists := ni.Others[gpushare.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.AddResource(pod)
+			}
+		}
 	}
-	ni.Others[vgpu.DeviceName].(Devices).AddResource(pod)
+	if vgpu.VGPUEnable {
+		if other, exists := ni.Others[vgpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.AddResource(pod)
+			}
+		}
+	}
+	if vnpu.AscendMindClusterVNPUEnable {
+		if other, exists := ni.Others[vnpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.AddResource(pod)
+			}
+		}
+	}
+	if hami.AscendHAMiVNPUEnable {
+		for _, name := range hami.GetAscendDeviceNames() {
+			if other, exists := ni.Others[name]; exists {
+				if devices, ok := other.(Devices); ok {
+					devices.AddResource(pod)
+				}
+			}
+		}
+	}
 }
 
 // subResource is used to subtract sharable devices
 func (ni *NodeInfo) subResource(pod *v1.Pod) {
 	if gpushare.GpuSharingEnable || gpushare.GpuNumberEnable {
-		ni.Others[gpushare.DeviceName].(Devices).SubResource(pod)
+		if other, exists := ni.Others[gpushare.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.SubResource(pod)
+			}
+		}
 	}
-	ni.Others[vgpu.DeviceName].(Devices).SubResource(pod)
+	if vgpu.VGPUEnable {
+		if other, exists := ni.Others[vgpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.SubResource(pod)
+			}
+		}
+	}
+	if vnpu.AscendMindClusterVNPUEnable {
+		if other, exists := ni.Others[vnpu.DeviceName]; exists {
+			if devices, ok := other.(Devices); ok {
+				devices.SubResource(pod)
+			}
+		}
+	}
+	if hami.AscendHAMiVNPUEnable {
+		for _, name := range hami.GetAscendDeviceNames() {
+			if other, exists := ni.Others[name]; exists {
+				if devices, ok := other.(Devices); ok {
+					devices.SubResource(pod)
+				}
+			}
+		}
+	}
 }
 
 // UpdateTask is used to update a task in nodeInfo object.
@@ -556,10 +638,10 @@ func (ni *NodeInfo) Pods() (pods []*v1.Pod) {
 }
 
 // CloneImageSummary Clone Image State
-func (ni *NodeInfo) CloneImageSummary() map[string]*k8sframework.ImageStateSummary {
-	nodeImageStates := make(map[string]*k8sframework.ImageStateSummary)
+func (ni *NodeInfo) CloneImageSummary() map[string]*fwk.ImageStateSummary {
+	nodeImageStates := make(map[string]*fwk.ImageStateSummary)
 	for imageName, summary := range ni.ImageStates {
-		newImageSummary := &k8sframework.ImageStateSummary{
+		newImageSummary := &fwk.ImageStateSummary{
 			Size:     summary.Size,
 			NumNodes: summary.NumNodes,
 		}
@@ -575,6 +657,10 @@ func (ni *NodeInfo) CloneOthers() map[string]interface{} {
 		others[k] = v
 	}
 	return others
+}
+
+func (ni *NodeInfo) NextBindGeneration() {
+	atomic.AddInt64(&ni.BindGeneration, 1)
 }
 
 // Clone clone csi node status info

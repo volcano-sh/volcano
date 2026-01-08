@@ -23,3 +23,14 @@ body:
       label: Additional context
       description: |
         Add any other context about the feature request here.
+
+  - type: checkboxes
+    attributes:
+      label: Documentation Updates
+      description: |
+        Please confirm if documentation updates are needed for this enhancement.
+      options:
+        - label: This feature requires design or user documentation changes.
+          required: false
+        - label: If documentation changes are required, I will ensure the relevant documents are updated and published to the Volcano official website (https://volcano.sh) via the [volcano-sh/website](https://github.com/volcano-sh/website) repository.
+          required: false

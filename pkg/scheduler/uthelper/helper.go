@@ -25,7 +25,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	resourcev1beta1 "k8s.io/api/resource/v1beta1"
+	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -34,6 +34,7 @@ import (
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
@@ -67,6 +68,7 @@ type TestCommonStruct struct {
 	HyperNodesSetByTier       map[int]sets.Set[string]
 	HyperNodes                map[string]sets.Set[string]
 	HyperNodesMap             map[string]*api.HyperNodeInfo
+	HyperNodesTierNameMap     api.HyperNodeTierNameMap
 	RealNodesList             map[string][]*api.NodeInfo
 	HyperNodesReadyToSchedule bool
 	PodGroups                 []*vcapisv1.PodGroup
@@ -79,9 +81,9 @@ type TestCommonStruct struct {
 	PVCs               []*v1.PersistentVolumeClaim
 	SCs                []*storagev1.StorageClass
 	// DRA related resources
-	ResourceSlices []*resourcev1beta1.ResourceSlice
-	DeviceClasses  []*resourcev1beta1.DeviceClass
-	ResourceClaims []*resourcev1beta1.ResourceClaim
+	ResourceSlices []*resourcev1.ResourceSlice
+	DeviceClasses  []*resourcev1.DeviceClass
+	ResourceClaims []*resourcev1.ResourceClaim
 	// ExpectBindMap the expected bind results.
 	// bind results: ns/podName -> nodeName
 	ExpectBindMap map[string]string
@@ -146,13 +148,13 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 		kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
 	}
 	for _, dc := range test.DeviceClasses {
-		kubeClient.ResourceV1beta1().DeviceClasses().Create(context.Background(), dc, metav1.CreateOptions{})
+		kubeClient.ResourceV1().DeviceClasses().Create(context.Background(), dc, metav1.CreateOptions{})
 	}
 	for _, rc := range test.ResourceClaims {
-		kubeClient.ResourceV1beta1().ResourceClaims(rc.Namespace).Create(context.Background(), rc, metav1.CreateOptions{})
+		kubeClient.ResourceV1().ResourceClaims(rc.Namespace).Create(context.Background(), rc, metav1.CreateOptions{})
 	}
 	for _, rs := range test.ResourceSlices {
-		kubeClient.ResourceV1beta1().ResourceSlices().Create(context.Background(), rs, metav1.CreateOptions{})
+		kubeClient.ResourceV1().ResourceSlices().Create(context.Background(), rs, metav1.CreateOptions{})
 	}
 	// need to immediately run the cache to make sure the resources are added
 	schedulerCache.Run(test.stop)
@@ -178,6 +180,24 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	}
 	ready := new(atomic.Bool)
 	ready.Store(true)
+	for _, hni := range test.HyperNodesMap {
+		if hni.HyperNode == nil {
+			continue
+		}
+		for _, member := range hni.HyperNode.Spec.Members {
+			if member.Type != topologyv1alpha1.MemberTypeHyperNode {
+				continue
+			}
+			if member.Selector.ExactMatch == nil { // todo support other selector method
+				continue
+			}
+			child := member.Selector.ExactMatch.Name
+			hni.Children.Insert(child)
+			if childInfo, found := test.HyperNodesMap[child]; found {
+				childInfo.Parent = hni.Name
+			}
+		}
+	}
 	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
 
 	return schedulerCache

@@ -37,6 +37,7 @@ import (
 
 	vcbatch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	vcclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
 	"volcano.sh/volcano/pkg/controllers/framework"
@@ -582,7 +583,7 @@ func Test_createOrUpdateNormalPodPG(t *testing.T) {
 
 		sts, err = c.kubeClient.AppsV1().StatefulSets(namespace).Create(context.TODO(), sts, metav1.CreateOptions{})
 		if err != nil {
-			t.Errorf("Case 1 failed when creating sts for %v", err)
+			t.Errorf("Case 1 failed when creating sts for %v: %v", sts, err)
 		}
 
 		expectedPodGroup := &scheduling.PodGroup{
@@ -721,7 +722,7 @@ func Test_createOrUpdateNormalPodPG(t *testing.T) {
 
 		sts, err = c.kubeClient.AppsV1().StatefulSets(namespace).Create(context.TODO(), sts, metav1.CreateOptions{})
 		if err != nil {
-			t.Errorf("Case 2 failed when creating sts for %v", err)
+			t.Errorf("Case 2 failed when creating sts for %v: %v", sts, err)
 		}
 
 		existingPodGroup := &scheduling.PodGroup{
@@ -752,7 +753,7 @@ func Test_createOrUpdateNormalPodPG(t *testing.T) {
 
 		existingPodGroup, err = c.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), existingPodGroup, metav1.CreateOptions{})
 		if err != nil {
-			t.Errorf("Case 2 failed when creating podGroup for %v", err)
+			t.Errorf("Case 2 failed when creating podGroup for %v: %v", existingPodGroup, err)
 		}
 
 		expectedPodGroup := &scheduling.PodGroup{
@@ -1117,5 +1118,300 @@ func Test_pgcontroller_updateExistingPodGroup(t *testing.T) {
 		if !isUpdated {
 			t.Error("expected isUpdated true, got false")
 		}
+	})
+}
+
+func TestBuildPodGroupFromPodWithNetworkTopology(t *testing.T) {
+	namespace := "test"
+
+	testCases := []struct {
+		name                    string
+		pod                     *v1.Pod
+		expectedNetworkTopology *scheduling.NetworkTopologySpec
+	}{
+		{
+			name: "Pod with NetworkTopology annotations - hard mode with tier",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: namespace,
+					Annotations: map[string]string{
+						topologyv1alpha1.NetworkTopologyModeAnnotationKey:        "hard",
+						topologyv1alpha1.NetworkTopologyHighestTierAnnotationKey: "2",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "test-container",
+							Image: "test-image",
+						},
+					},
+				},
+			},
+			expectedNetworkTopology: &scheduling.NetworkTopologySpec{
+				Mode:               scheduling.HardNetworkTopologyMode,
+				HighestTierAllowed: ptr.To(2),
+			},
+		},
+		{
+			name: "Pod with NetworkTopology annotations - soft mode only",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: namespace,
+					Annotations: map[string]string{
+						topologyv1alpha1.NetworkTopologyModeAnnotationKey: "soft",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "test-container",
+							Image: "test-image",
+						},
+					},
+				},
+			},
+			expectedNetworkTopology: &scheduling.NetworkTopologySpec{
+				Mode:               scheduling.SoftNetworkTopologyMode,
+				HighestTierAllowed: nil,
+			},
+		},
+		{
+			name: "Pod with tier annotation only - should default to hard mode",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: namespace,
+					Annotations: map[string]string{
+						topologyv1alpha1.NetworkTopologyHighestTierAnnotationKey: "1",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "test-container",
+							Image: "test-image",
+						},
+					},
+				},
+			},
+			expectedNetworkTopology: &scheduling.NetworkTopologySpec{
+				Mode:               scheduling.HardNetworkTopologyMode,
+				HighestTierAllowed: ptr.To(1),
+			},
+		},
+		{
+			name: "Pod without NetworkTopology annotations",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: namespace,
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "test-container",
+							Image: "test-image",
+						},
+					},
+				},
+			},
+			expectedNetworkTopology: nil,
+		},
+		{
+			name: "Pod with invalid mode annotation - should default to hard",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: namespace,
+					Annotations: map[string]string{
+						topologyv1alpha1.NetworkTopologyModeAnnotationKey:        "invalid",
+						topologyv1alpha1.NetworkTopologyHighestTierAnnotationKey: "3",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Name:  "test-container",
+							Image: "test-image",
+						},
+					},
+				},
+			},
+			expectedNetworkTopology: &scheduling.NetworkTopologySpec{
+				Mode:               scheduling.HardNetworkTopologyMode,
+				HighestTierAllowed: ptr.To(3),
+			},
+		},
+	}
+
+	controller := newFakeController()
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			pgName := "test-podgroup"
+			podGroup := controller.buildPodGroupFromPod(testCase.pod, pgName)
+
+			assert.NotNil(t, podGroup)
+			assert.Equal(t, pgName, podGroup.Name)
+			assert.Equal(t, namespace, podGroup.Namespace)
+			assert.Equal(t, testCase.expectedNetworkTopology, podGroup.Spec.NetworkTopology)
+		})
+	}
+}
+
+func TestNoPodGroupCreatedForWhenKubeGroupNameAnnotationExists(t *testing.T) {
+	setup := func(t *testing.T) (*pgcontroller, string, string) {
+		c := newFakeController()
+		namespace := "test"
+		pgName := "existing-pg"
+		podGroup := &scheduling.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pgName,
+				Namespace: namespace,
+			},
+			Spec: scheduling.PodGroupSpec{
+				MinMember: 1,
+			},
+		}
+		_, err := c.vcClient.SchedulingV1beta1().PodGroups(namespace).Create(context.TODO(), podGroup, metav1.CreateOptions{})
+		assert.NoError(t, err)
+		return c, namespace, pgName
+	}
+
+	t.Run("Replicaset shall not create new podgroup", func(t *testing.T) {
+		c, namespace, pgName := setup(t)
+		podName := "rs-pod-with-pg-annotation"
+		rsUID := types.UID("rs-uid-123")
+
+		rs := &appsv1.ReplicaSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rs1",
+				Namespace: namespace,
+				UID:       rsUID,
+			},
+			Spec: appsv1.ReplicaSetSpec{
+				Replicas: ptr.To[int32](1),
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "rs1"},
+				},
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						SchedulerName: "volcano",
+					},
+				},
+			},
+		}
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName,
+				Namespace: namespace,
+				Annotations: map[string]string{
+					scheduling.KubeGroupNameAnnotationKey: pgName,
+				},
+				Labels: map[string]string{"app": "rs1"},
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "apps/v1",
+						Kind:       "ReplicaSet",
+						Name:       "rs1",
+						UID:        rsUID,
+						Controller: ptr.To(true),
+					},
+				},
+			},
+			Spec: v1.PodSpec{
+				SchedulerName: "volcano",
+			},
+		}
+		_, err := c.kubeClient.AppsV1().ReplicaSets(namespace).Create(context.TODO(), rs, metav1.CreateOptions{})
+		assert.NoError(t, err)
+		c.addReplicaSet(rs)
+		_, err = c.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		assert.NoError(t, err)
+		c.podInformer.Informer().GetIndexer().Add(pod)
+		c.addPod(pod)
+		c.processNextReq()
+		c.updateReplicaSet(rs, rs)
+		pgList, err := c.vcClient.SchedulingV1beta1().PodGroups(namespace).List(context.TODO(), metav1.ListOptions{})
+		assert.NoError(t, err)
+		names := make([]string, 0, len(pgList.Items))
+		for _, pg := range pgList.Items {
+			names = append(names, pg.Name)
+		}
+		assert.Equal(t, 1, len(pgList.Items), "Expected 1 PodGroup, found %d: %v", len(pgList.Items), names)
+	})
+
+	t.Run("StatefulSet shall not create new podgroup", func(t *testing.T) {
+		c, namespace, pgName := setup(t)
+		podName := "sts-pod-with-pg-annotation"
+		stsUID := types.UID("sts-uid-123")
+
+		// The important part here is that the pod shall contain the controllerRevisionHashLabelKey label
+		// matching the StatefulSet's UpdateRevision to simulate that it is created by a StatefulSet controller.
+		sts := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sts1",
+				Namespace: namespace,
+				UID:       stsUID,
+			},
+			Spec: appsv1.StatefulSetSpec{
+				Replicas: ptr.To[int32](1),
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "sts1"},
+				},
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{
+						SchedulerName: "volcano",
+					},
+				},
+			},
+			Status: appsv1.StatefulSetStatus{
+				UpdateRevision: "test-revision",
+			},
+		}
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName,
+				Namespace: namespace,
+				Annotations: map[string]string{
+					scheduling.KubeGroupNameAnnotationKey: pgName,
+				},
+				Labels: map[string]string{
+					"app":                          "sts1",
+					controllerRevisionHashLabelKey: "test-revision",
+				},
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: "apps/v1",
+						Kind:       "StatefulSet",
+						Name:       "sts1",
+						UID:        stsUID,
+						Controller: ptr.To(true),
+					},
+				},
+			},
+			Spec: v1.PodSpec{
+				SchedulerName: "volcano",
+			},
+		}
+		_, err := c.kubeClient.AppsV1().StatefulSets(namespace).Create(context.TODO(), sts, metav1.CreateOptions{})
+		assert.NoError(t, err)
+		c.addStatefulSet(sts)
+		_, err = c.kubeClient.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+		assert.NoError(t, err)
+		c.podInformer.Informer().GetIndexer().Add(pod)
+		c.addPod(pod)
+		c.processNextReq()
+		c.updateStatefulSet(sts, sts)
+		pgList, err := c.vcClient.SchedulingV1beta1().PodGroups(namespace).List(context.TODO(), metav1.ListOptions{})
+		assert.NoError(t, err)
+		names := make([]string, 0, len(pgList.Items))
+		for _, pg := range pgList.Items {
+			names = append(names, pg.Name)
+		}
+		assert.Equal(t, 1, len(pgList.Items), "Expected 1 PodGroup, found %d: %v", len(pgList.Items), names)
 	})
 }

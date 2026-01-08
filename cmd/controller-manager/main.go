@@ -32,6 +32,7 @@ import (
 
 	"volcano.sh/volcano/cmd/controller-manager/app"
 	"volcano.sh/volcano/cmd/controller-manager/app/options"
+	_ "volcano.sh/volcano/pkg/controllers/cronjob"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	_ "volcano.sh/volcano/pkg/controllers/garbagecollector"
 	_ "volcano.sh/volcano/pkg/controllers/hypernode"
@@ -40,6 +41,7 @@ import (
 	_ "volcano.sh/volcano/pkg/controllers/jobtemplate"
 	_ "volcano.sh/volcano/pkg/controllers/podgroup"
 	_ "volcano.sh/volcano/pkg/controllers/queue"
+	_ "volcano.sh/volcano/pkg/controllers/sharding"
 	commonutil "volcano.sh/volcano/pkg/util"
 	"volcano.sh/volcano/pkg/version"
 )

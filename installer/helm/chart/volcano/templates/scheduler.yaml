@@ -103,7 +103,7 @@ rules:
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["get", "create", "delete", "update"]
+    verbs: ["get", "list", "watch", "create", "delete", "update"]
   - apiGroups: ["apps"]
     resources: ["daemonsets", "replicasets", "statefulsets"]
     verbs: ["list", "watch", "get"]
@@ -122,6 +122,12 @@ rules:
   - apiGroups: [ "resource.k8s.io" ]
     resources: [ "devicetaintrules" ]
     verbs: [ "get", "list", "watch" ]
+  - apiGroups: ["shard.volcano.sh"]
+    resources: ["nodeshards"]
+    verbs: ["list", "watch", "get"]
+  - apiGroups: ["shard.volcano.sh"]
+    resources: ["nodeshards/status"]
+    verbs: ["update"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -229,11 +235,21 @@ spec:
             {{- if .Values.custom.ignored_provisioners }}
             - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
             {{- end}}
+            {{- if .Values.custom.scheduler_sharding_mode }}
+            - --scheduler-sharding-mode={{.Values.custom.scheduler_sharding_mode}}
+            {{- end}}
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1
           env:
             - name: DEBUG_SOCKET_DIR
               value: /tmp/klog-socks
+            {{- if .Values.custom.go_memlimit_enable }}
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
+                  divisor: "1"
+            {{- end }}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           volumeMounts:
             - name: scheduler-config

@@ -23,7 +23,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 
@@ -88,26 +88,13 @@ func (cp *capacityPlugin) Name() string {
 	return PluginName
 }
 
-// HierarchyEnabled returns if hierarchy is enabled
-func (cp *capacityPlugin) HierarchyEnabled(ssn *framework.Session) bool {
-	for _, tier := range ssn.Tiers {
-		for _, plugin := range tier.Plugins {
-			if plugin.Name != PluginName {
-				continue
-			}
-			return plugin.EnabledHierarchy != nil && *plugin.EnabledHierarchy
-		}
-	}
-	return false
-}
-
 func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Prepare scheduling data for this session.
 	cp.totalResource.Add(ssn.TotalResource)
 
 	klog.V(4).Infof("The total resource is <%v>", cp.totalResource)
 
-	hierarchyEnabled := cp.HierarchyEnabled(ssn)
+	hierarchyEnabled := ssn.HierarchyEnabled(cp.Name())
 	readyToSchedule := true
 	if hierarchyEnabled {
 		readyToSchedule = cp.buildHierarchicalQueueAttrs(ssn)
@@ -154,23 +141,31 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		queue := obj.(*api.QueueInfo)
 		task := candidate.(*api.TaskInfo)
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, can not reclaim for <%s>.", queue.Name, queue.Queue.Status.State, task.Name)
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, can not reclaim for <%s>.",
+				queue.Name, queue.Queue.Status.State, task.Name)
 			return false
 		}
-		attr := cp.queueOpts[queue.UID]
 
+		attr := cp.queueOpts[queue.UID]
 		futureUsed := attr.allocated.Clone().Add(task.Resreq)
-		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, task.Resreq)
-		overused := !allocatable
-		metrics.UpdateQueueOverused(attr.name, overused)
-		if overused {
-			klog.V(3).Infof("Queue <%v> can not reclaim, deserved <%v>, allocated <%v>, share <%v>, requested <%v>",
-				queue.Name, attr.deserved, attr.allocated, attr.share, task.Resreq)
+
+		// If there is a single dimension whose deserved is greater than allocated, current task can reclaim by preempt others.
+		isPreemptive, resourceNames := futureUsed.LessEqualPartlyWithDimensionZeroFiltered(attr.deserved, task.Resreq)
+		if isPreemptive {
+			klog.V(3).Infof("Queue <%v> can reclaim on resource dimensions: %v. "+
+				"The futureUsed: %v, deserved: %v, allocated: %v, task requested: %v",
+				queue.Name, resourceNames, futureUsed, attr.deserved, attr.allocated, task.Resreq)
+		} else {
+			klog.V(3).Infof("Queue <%v> can not reclaim, futureUsed: %v, deserved: %v, requested: %v",
+				queue.Name, futureUsed, attr.deserved, task.Resreq)
 		}
+
+		overused := !isPreemptive
+		metrics.UpdateQueueOverused(attr.name, overused)
 
 		// PreemptiveFn is the opposite of OverusedFn in proportion plugin cause as long as there is a one-dimensional
 		// resource whose deserved is greater than allocated, current task can reclaim by preempt others.
-		return !overused
+		return isPreemptive
 	})
 
 	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
@@ -206,7 +201,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		queue := ssn.Queues[queueID]
 		// If the queue is not open, do not enqueue
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+			klog.V(3).Infof("Queue <%s> current state: %s, is not open state, reject job <%s/%s>.",
+				queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
 			return util.Reject
 		}
 		// If no capability is set, always enqueue the job.
@@ -252,7 +248,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return nil
 	})
 
-	ssn.AddSimulateAddTaskFn(cp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	ssn.AddSimulateAddTaskFn(cp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 		state, err := getCapacityState(cycleState)
 		if err != nil {
 			return fmt.Errorf("failed to get capacity state: %w", err)
@@ -274,7 +270,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return nil
 	})
 
-	ssn.AddSimulateRemoveTaskFn(cp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
+	ssn.AddSimulateRemoveTaskFn(cp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToRemove *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 		state, err := getCapacityState(cycleState)
 		if err != nil {
 			return fmt.Errorf("failed to get capacity state: %w", err)
@@ -295,7 +291,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return nil
 	})
 
-	ssn.AddSimulateAllocatableFn(cp.Name(), func(ctx context.Context, cycleState *k8sframework.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+	ssn.AddSimulateAllocatableFn(cp.Name(), func(ctx context.Context, cycleState fwk.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		state, err := getCapacityState(cycleState)
 		if err != nil {
 			return false
@@ -513,15 +509,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
 		}
 
-		if cp.queueOpts[lv.UID].share == cp.queueOpts[rv.UID].share {
-			return 0
-		}
-
-		if cp.queueOpts[lv.UID].share < cp.queueOpts[rv.UID].share {
-			return -1
-		}
-
-		return 1
+		return cp.compareShareWithDeserved(cp.queueOpts[lv.UID], cp.queueOpts[rv.UID])
 	})
 }
 
@@ -538,7 +526,8 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 
 		attr := cp.newQueueAttr(queue)
 		cp.queueOpts[queue.UID] = attr
-		err := cp.updateAncestors(queue, ssn)
+		visited := make(map[api.QueueID]struct{})
+		err := cp.updateAncestors(queue, ssn, visited)
 		if err != nil {
 			klog.Errorf("Failed to update Queue <%s> attributes, error: %v", queue.Name, err)
 			return false
@@ -653,14 +642,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		} else if !lvLeaf && rvLeaf {
 			return 1
 		} else if !lvLeaf && !rvLeaf {
-			if cp.queueOpts[lv.UID].share == cp.queueOpts[rv.UID].share {
-				return 0
-			}
-
-			if cp.queueOpts[lv.UID].share < cp.queueOpts[rv.UID].share {
-				return -1
-			}
-			return 1
+			return cp.compareShareWithDeserved(cp.queueOpts[lv.UID], cp.queueOpts[rv.UID])
 		}
 
 		lvAttr := cp.queueOpts[lv.UID]
@@ -675,15 +657,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			rvParentID = rvAttr.ancestors[level+1]
 		}
 
-		if cp.queueOpts[lvParentID].share == cp.queueOpts[rvParentID].share {
-			return 0
-		}
-
-		if cp.queueOpts[lvParentID].share < cp.queueOpts[rvParentID].share {
-			return -1
-		}
-
-		return 1
+		return cp.compareShareWithDeserved(cp.queueOpts[lvParentID], cp.queueOpts[rvParentID])
 	})
 
 	ssn.AddVictimQueueOrderFn(cp.Name(), func(l, r, preemptor interface{}) int {
@@ -715,13 +689,14 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 		ancestors: make([]api.QueueID, 0),
 		children:  make(map[api.QueueID]*queueAttr),
 
-		deserved:   api.NewResource(queue.Queue.Spec.Deserved),
-		allocated:  api.EmptyResource(),
-		request:    api.EmptyResource(),
-		elastic:    api.EmptyResource(),
-		inqueue:    api.EmptyResource(),
-		guarantee:  api.EmptyResource(),
-		capability: api.EmptyResource(),
+		deserved:       api.NewResource(queue.Queue.Spec.Deserved),
+		allocated:      api.EmptyResource(),
+		request:        api.EmptyResource(),
+		elastic:        api.EmptyResource(),
+		inqueue:        api.EmptyResource(),
+		guarantee:      api.EmptyResource(),
+		capability:     api.EmptyResource(),
+		realCapability: api.EmptyResource(),
 	}
 	if len(queue.Queue.Spec.Capability) != 0 {
 		attr.capability = api.NewResource(queue.Queue.Spec.Capability)
@@ -734,10 +709,17 @@ func (cp *capacityPlugin) newQueueAttr(queue *api.QueueInfo) *queueAttr {
 	return attr
 }
 
-func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.Session) error {
+func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.Session, visited map[api.QueueID]struct{}) error {
 	if queue.Name == cp.rootQueue {
 		return nil
 	}
+
+	// Check for cycles in queue hierarchy
+	if _, exist := visited[queue.UID]; exist {
+		return fmt.Errorf("cycle detected in queue hierarchy for queue %s", queue.Name)
+	}
+	visited[queue.UID] = struct{}{}
+	defer delete(visited, queue.UID)
 
 	parent := cp.rootQueue
 	if queue.Queue.Spec.Parent != "" {
@@ -751,7 +733,7 @@ func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.S
 	if _, found := cp.queueOpts[parentInfo.UID]; !found {
 		parentAttr := cp.newQueueAttr(parentInfo)
 		cp.queueOpts[parentAttr.queueID] = parentAttr
-		err := cp.updateAncestors(parentInfo, ssn)
+		err := cp.updateAncestors(parentInfo, ssn, visited)
 		if err != nil {
 			return err
 		}
@@ -835,8 +817,29 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 			return err
 		}
 	}
-
 	return nil
+}
+
+// compareShareWithDeserved compares two queueAttr by share; when shares are equal,
+// queues with non-empty deserved are prioritized over best-effort queues.
+// Returns negative if l should come before r.
+func (cp *capacityPlugin) compareShareWithDeserved(lattr, rattr *queueAttr) int {
+	if lattr.share == rattr.share {
+		lHasDeserved := !lattr.deserved.IsEmpty()
+		rHasDeserved := !rattr.deserved.IsEmpty()
+		if lHasDeserved == rHasDeserved {
+			return 0
+		}
+		if lHasDeserved {
+			return -1
+		}
+		return 1
+	}
+
+	if lattr.share < rattr.share {
+		return -1
+	}
+	return 1
 }
 
 func (cp *capacityPlugin) updateShare(attr *queueAttr) {
@@ -929,7 +932,7 @@ func getQueueLevel(l *queueAttr, r *queueAttr) int {
 	return level
 }
 
-func getCapacityState(cycleState *k8sframework.CycleState) (*capacityState, error) {
+func getCapacityState(cycleState fwk.CycleState) (*capacityState, error) {
 	c, err := cycleState.Read(capacityStateKey)
 	if err != nil {
 		// preFilterState doesn't exist, likely PreFilter wasn't invoked.
@@ -979,7 +982,7 @@ func (qa *queueAttr) Clone() *queueAttr {
 	return cloned
 }
 
-func (s *capacityState) Clone() k8sframework.StateData {
+func (s *capacityState) Clone() fwk.StateData {
 	if s == nil {
 		return nil
 	}
@@ -997,6 +1000,25 @@ func (s *capacityState) Clone() k8sframework.StateData {
 
 func updateQueueAttrShare(attr *queueAttr) {
 	res := float64(0)
+
+	// If no deserved is configured for this queue, treat it as a best-effort queue.
+	// Best-effort queues should have lowest scheduling priority: only when all queues
+	// with deserved (i.e., resource guarantee) have share >= 1, best-effort queues
+	// are scheduled. To ensure this, set share = 1 for ALL best-effort queues no matter
+	// how many resources (allocated or requesting), so that they are always scheduled
+	// after any queue with deserved whose share < 1.
+	//
+	// When share values are equal, QueueOrderFn uses tie-breaking logic to prioritize
+	// queues with deserved over best-effort queues. This further prevents reclaim thrashing.
+	//
+	// The semantics here are:
+	//   - no deserved (best-effort) -> share = 1 (always goes after share<1)
+	//   - with deserved, share < 1 -> prioritized
+	//   - with deserved, share >= 1 -> equal priority with best-effort
+	if attr.deserved.IsEmpty() {
+		attr.share = 1
+		return
+	}
 
 	for _, rn := range attr.deserved.ResourceNames() {
 		res = max(res, helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn)))

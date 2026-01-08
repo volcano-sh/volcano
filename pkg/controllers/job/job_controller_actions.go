@@ -28,12 +28,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	"volcano.sh/apis/pkg/apis/helpers"
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
-
 	"volcano.sh/volcano/pkg/controllers/apis"
 	jobhelpers "volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/controllers/job/state"
@@ -65,12 +65,17 @@ func (cc *jobcontroller) generateRelatedPodGroupName(job *batch.Job) string {
 }
 
 func (cc *jobcontroller) killTarget(jobInfo *apis.JobInfo, target state.Target, updateStatus state.UpdateStatusFn) error {
-	if target.Type == state.TargetTypeTask {
+	switch target.Type {
+	case state.TargetTypeTask:
 		klog.V(3).Infof("Killing task <%s> of Job <%s/%s>, current version %d", target.TaskName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
 		defer klog.V(3).Infof("Finished task <%s> of Job <%s/%s> killing, current version %d", target.TaskName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
-	} else if target.Type == state.TargetTypePod {
+	case state.TargetTypePod:
 		klog.V(3).Infof("Killing pod <%s> of Job <%s/%s>, current version %d", target.PodName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
 		defer klog.V(3).Infof("Finished pod <%s> of Job <%s/%s> killing, current version %d", target.PodName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
+	case state.TargetTypePartition:
+		klog.V(3).Infof("Killing partition <%s> partition of Job <%s/%s>, current version %d", target.PartitionName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
+		defer klog.V(3).Infof("Finished partition <%s> of Job <%s/%s> killing, current version %d", target.PartitionName, jobInfo.Namespace, jobInfo.Name, jobInfo.Job.Status.Version)
+	default:
 	}
 	return cc.killPods(jobInfo, nil, &target, updateStatus)
 }
@@ -99,16 +104,43 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 	podsToKill := make(map[string]*v1.Pod)
 
 	if target != nil {
-		if target.Type == state.TargetTypeTask {
+		switch target.Type {
+		case state.TargetTypeTask:
 			if targetPods, found := jobInfo.Pods[target.TaskName]; found {
 				podsToKill = targetPods
 			}
-		} else if target.Type == state.TargetTypePod {
+		case state.TargetTypePod:
 			if targetPods, found := jobInfo.Pods[target.TaskName]; found {
 				if pod, found := targetPods[target.PodName]; found {
 					podsToKill[target.PodName] = pod
 				}
 			}
+		case state.TargetTypePartition:
+			partitionInfo, found := jobInfo.Partitions[target.TaskName]
+			if !found || partitionInfo == nil || partitionInfo.Partition == nil {
+				klog.Infof("Job <%s/%s> has not partition group in task %s, skip management process.",
+					job.Namespace, job.Name, target.TaskName)
+				return nil
+			}
+			podsInPartition, found := partitionInfo.Partition[target.PartitionName]
+			if !found || podsInPartition == nil {
+				klog.Infof("Job <%s/%s> has not partition group %s in task %s, skip management process.",
+					job.Namespace, job.Name, target.PartitionName, target.TaskName)
+				return nil
+			}
+			if targetPods, found := jobInfo.Pods[target.TaskName]; found {
+				for _, pod := range podsInPartition {
+					if pod, found := targetPods[pod.Name]; found {
+						podsToKill[pod.Name] = pod
+					}
+				}
+			}
+			if len(podsToKill) == 0 {
+				klog.Infof("Job <%s/%s> has not partition group in task %s, skip management process.",
+					job.Namespace, job.Name, target.TaskName)
+				return nil
+			}
+		default:
 		}
 		total += len(podsToKill)
 	} else {
@@ -144,6 +176,20 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 		}
 	}
 
+	for podName, pod := range podsToKill {
+		_, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Patch(context.TODO(), pod.Name, types.JSONPatchType,
+			jobhelpers.OutOfSyncJSONPatch(), metav1.PatchOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			// record the error, and then collect the pod info like retained pod
+			errs = append(errs, err)
+			// If we fail to patch the pod, we should not delete it,
+			// as it would cause the restart loop. The action will be retried.
+			delete(podsToKill, podName)
+		} else {
+			klog.V(3).InfoS("Marked Pod as out-of-sync", "Pod", klog.KObj(pod), "UID", pod.UID)
+		}
+	}
+
 	for _, pod := range podsToKill {
 		if pod.DeletionTimestamp != nil {
 			klog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
@@ -153,10 +199,11 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 
 		err := cc.deleteJobPod(job.Name, pod)
 		if err == nil {
+			klog.V(3).InfoS("Deleted Pod of Job", "Job", klog.KObj(job), "Pod", klog.KObj(pod), "UID", pod.UID)
 			terminating++
 			continue
 		}
-		// record the err, and then collect the pod info like retained pod
+		// record the error, and then collect the pod info like retained pod
 		errs = append(errs, err)
 		cc.resyncTask(pod)
 
@@ -421,7 +468,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 		for i := 0; i < int(ts.Replicas); i++ {
 			podName := fmt.Sprintf(jobhelpers.PodNameFmt, job.Name, name, i)
 			if pod, found := pods[podName]; !found {
-				newPod := createJobPod(job, tc, ts.TopologyPolicy, i, jobForwarding)
+				newPod := createJobPod(job, tc, i, jobForwarding, pg, &ts)
 				if err := cc.pluginOnPodCreate(job, newPod); err != nil {
 					return err
 				}
@@ -435,13 +482,17 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 					continue
 				}
 
+				if jobhelpers.IsOutOfSyncPod(pod) {
+					podToDelete = append(podToDelete, pod) // delete out-of-sync pods
+				}
+
 				classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
 				calcPodStatus(pod, taskStatusCount)
 			}
 		}
 		podToCreate[ts.Name] = podToCreateEachTask
 		for _, pod := range pods {
-			podToDelete = append(podToDelete, pod)
+			podToDelete = append(podToDelete, pod) // delete pods excceeding desired replicas
 		}
 	}
 
@@ -478,8 +529,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 					} else {
 						classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
 						calcPodStatus(newPod, taskStatusCount)
-						klog.V(5).Infof("Created Task <%s> of Job <%s/%s>",
-							pod.Name, job.Namespace, job.Name)
+						klog.V(5).InfoS("Created Pod for Job", "Job", klog.KObj(job), "Pod", klog.KObj(pod), "err", err)
 					}
 				}(pod)
 			}
@@ -510,8 +560,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 				appendError(&deletionErrs, err)
 				cc.resyncTask(pod)
 			} else {
-				klog.V(3).Infof("Deleted Task <%s> of Job <%s/%s>",
-					pod.Name, job.Namespace, job.Name)
+				klog.V(3).InfoS("Deleted Pod of Job", "Job", klog.KObj(job), "Pod", klog.KObj(pod), "UID", pod.UID)
 				atomic.AddInt32(&terminating, 1)
 			}
 		}(pod)
@@ -738,11 +787,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 		}
 		minTaskMember := map[string]int32{}
 		for _, task := range job.Spec.Tasks {
-			if task.MinAvailable != nil {
-				minTaskMember[task.Name] = *task.MinAvailable
-			} else {
-				minTaskMember[task.Name] = task.Replicas
-			}
+			minTaskMember[task.Name] = cc.getMinTaskMember(task)
 		}
 
 		pg := &scheduling.PodGroup{
@@ -770,9 +815,13 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 			}
 			if job.Spec.NetworkTopology.HighestTierAllowed != nil {
 				nt.HighestTierAllowed = job.Spec.NetworkTopology.HighestTierAllowed
+			} else if job.Spec.NetworkTopology.HighestTierName != "" {
+				nt.HighestTierName = job.Spec.NetworkTopology.HighestTierName
 			}
 			pg.Spec.NetworkTopology = nt
 		}
+		// Adding PgSubGroupPolicy Information for PodGroup
+		setPgSubGroupPolicy(pg, job.Spec.Tasks)
 
 		if _, err = cc.vcClient.SchedulingV1beta1().PodGroups(job.Namespace).Create(context.TODO(), pg, metav1.CreateOptions{}); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
@@ -787,6 +836,7 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 	podGroupToUpdate := pg.DeepCopy()
 
 	pgShouldUpdate := cc.shouldUpdateExistingPodGroup(podGroupToUpdate, job)
+
 	if !pgShouldUpdate {
 		return nil
 	}
@@ -797,6 +847,16 @@ func (cc *jobcontroller) createOrUpdatePodGroup(job *batch.Job) error {
 			job.Namespace, job.Name, err)
 	}
 	return err
+}
+
+func (cc *jobcontroller) getMinTaskMember(task batch.TaskSpec) int32 {
+	if task.MinAvailable != nil {
+		return *task.MinAvailable
+	}
+	if task.PartitionPolicy != nil && task.PartitionPolicy.MinPartitions != 0 && task.PartitionPolicy.PartitionSize != 0 {
+		return task.PartitionPolicy.MinPartitions * task.PartitionPolicy.PartitionSize
+	}
+	return task.Replicas
 }
 
 func (cc *jobcontroller) shouldUpdateExistingPodGroup(pg *scheduling.PodGroup, job *batch.Job) bool {
@@ -819,10 +879,7 @@ func (cc *jobcontroller) shouldUpdateExistingPodGroup(pg *scheduling.PodGroup, j
 	}
 
 	for _, task := range job.Spec.Tasks {
-		cnt := task.Replicas
-		if task.MinAvailable != nil {
-			cnt = *task.MinAvailable
-		}
+		cnt := cc.getMinTaskMember(task)
 
 		if taskMember, ok := pg.Spec.MinTaskMember[task.Name]; !ok {
 			pgShouldUpdate = true
@@ -835,6 +892,9 @@ func (cc *jobcontroller) shouldUpdateExistingPodGroup(pg *scheduling.PodGroup, j
 			pgShouldUpdate = true
 			pg.Spec.MinTaskMember[task.Name] = cnt
 		}
+	}
+	if updatePgSubGroupPolicy(pg, job.Spec.Tasks) {
+		pgShouldUpdate = true
 	}
 
 	return pgShouldUpdate
@@ -992,4 +1052,78 @@ func newCondition(status batch.JobPhase, lastTransitionTime *metav1.Time) batch.
 		Status:             status,
 		LastTransitionTime: lastTransitionTime,
 	}
+}
+
+func setPgSubGroupPolicy(pg *scheduling.PodGroup, tasks []batch.TaskSpec) {
+	pg.Spec.SubGroupPolicy = make([]scheduling.SubGroupPolicySpec, 0)
+	for _, taskSpec := range tasks {
+		if taskSpec.PartitionPolicy == nil {
+			continue
+		}
+		subGroupPolicy := getSubGroupPolicy(taskSpec)
+		pg.Spec.SubGroupPolicy = append(pg.Spec.SubGroupPolicy, subGroupPolicy)
+	}
+}
+
+func updatePgSubGroupPolicy(pg *scheduling.PodGroup, tasks []batch.TaskSpec) bool {
+	subGroupPolicyShouldUpdate := false
+
+	// Record the old SubGroupPolicy.
+	oldSubGroupPolicyMap := make(map[string]scheduling.SubGroupPolicySpec)
+	for _, subGroupPolicy := range pg.Spec.SubGroupPolicy {
+		oldSubGroupPolicyMap[subGroupPolicy.Name] = subGroupPolicy
+	}
+	newSubGroupPolicyList := make([]scheduling.SubGroupPolicySpec, 0)
+	for _, taskSpec := range tasks {
+		if taskSpec.PartitionPolicy == nil {
+			if _, ok := oldSubGroupPolicyMap[taskSpec.Name]; ok {
+				subGroupPolicyShouldUpdate = true
+			}
+			continue
+		}
+
+		newSubGroupPolicy := getSubGroupPolicy(taskSpec)
+		newSubGroupPolicyList = append(newSubGroupPolicyList, newSubGroupPolicy)
+		// compare the new subGroupPolicy and old subGroupPolicy
+		if !equality.Semantic.DeepEqual(newSubGroupPolicy, oldSubGroupPolicyMap[taskSpec.Name]) {
+			subGroupPolicyShouldUpdate = true
+		}
+	}
+
+	// update subGroupPolicy
+	if subGroupPolicyShouldUpdate {
+		pg.Spec.SubGroupPolicy = newSubGroupPolicyList
+	}
+	return subGroupPolicyShouldUpdate
+}
+
+func getSubGroupPolicy(taskSpec batch.TaskSpec) scheduling.SubGroupPolicySpec {
+	subGroupPolicy := scheduling.SubGroupPolicySpec{
+		Name:         taskSpec.Name,
+		SubGroupSize: &taskSpec.PartitionPolicy.PartitionSize,
+		MinSubGroups: &taskSpec.PartitionPolicy.MinPartitions,
+	}
+
+	// Set LabelSelector
+	if taskSpec.PartitionPolicy != nil {
+		subGroupPolicy.LabelSelector = &metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				batch.TaskSpecKey: taskSpec.Name,
+			},
+		}
+	}
+
+	// Set MatchLabelKey
+	subGroupPolicy.MatchLabelKeys = []string{batch.TaskPartitionID}
+
+	// set NetworkTopology
+	if taskSpec.PartitionPolicy.NetworkTopology != nil {
+		nt := &scheduling.NetworkTopologySpec{
+			Mode:               scheduling.NetworkTopologyMode(taskSpec.PartitionPolicy.NetworkTopology.Mode),
+			HighestTierAllowed: taskSpec.PartitionPolicy.NetworkTopology.HighestTierAllowed,
+			HighestTierName:    taskSpec.PartitionPolicy.NetworkTopology.HighestTierName,
+		}
+		subGroupPolicy.NetworkTopology = nt
+	}
+	return subGroupPolicy
 }

@@ -31,6 +31,14 @@ type JobInfo struct {
 
 	Job  *batch.Job
 	Pods map[string]map[string]*v1.Pod
+	// Partitions taskName:PartitionInfo
+	Partitions map[string]*PartitionInfo
+}
+
+type PartitionInfo struct {
+	// Partition partitionID:{podName:pod}
+	Partition       map[string]map[string]*v1.Pod
+	NetworkTopology *batch.NetworkTopologySpec
 }
 
 // Clone function clones the k8s pod values to the JobInfo struct.
@@ -40,13 +48,30 @@ func (ji *JobInfo) Clone() *JobInfo {
 		Name:      ji.Name,
 		Job:       ji.Job,
 
-		Pods: make(map[string]map[string]*v1.Pod, len(ji.Pods)),
+		Pods:       make(map[string]map[string]*v1.Pod, len(ji.Pods)),
+		Partitions: make(map[string]*PartitionInfo, len(ji.Partitions)),
 	}
 
 	for key, pods := range ji.Pods {
 		job.Pods[key] = make(map[string]*v1.Pod, len(pods))
 		for pn, pod := range pods {
 			job.Pods[key][pn] = pod
+		}
+	}
+
+	for taskName, partitionInfo := range ji.Partitions {
+		job.Partitions[taskName] = &PartitionInfo{}
+		partition := make(map[string]map[string]*v1.Pod, len(partitionInfo.Partition))
+		for partitionID, pods := range partitionInfo.Partition {
+			group := make(map[string]*v1.Pod, len(pods))
+			for podName, pod := range pods {
+				group[podName] = pod
+			}
+			partition[partitionID] = group
+		}
+		job.Partitions[taskName].Partition = partition
+		if partitionInfo.NetworkTopology != nil {
+			job.Partitions[taskName].NetworkTopology = partitionInfo.NetworkTopology.DeepCopy()
 		}
 	}
 
@@ -58,6 +83,35 @@ func (ji *JobInfo) SetJob(job *batch.Job) {
 	ji.Name = job.Name
 	ji.Namespace = job.Namespace
 	ji.Job = job
+	ji.Partitions = make(map[string]*PartitionInfo)
+	for _, taskSpec := range job.Spec.Tasks {
+		if taskSpec.PartitionPolicy == nil {
+			continue
+		}
+		ji.Partitions[taskSpec.Name] = &PartitionInfo{}
+		ji.Partitions[taskSpec.Name].Partition = make(map[string]map[string]*v1.Pod)
+		if taskSpec.PartitionPolicy.NetworkTopology != nil {
+			nt := &batch.NetworkTopologySpec{
+				Mode:               taskSpec.PartitionPolicy.NetworkTopology.Mode,
+				HighestTierAllowed: taskSpec.PartitionPolicy.NetworkTopology.HighestTierAllowed,
+			}
+			ji.Partitions[taskSpec.Name].NetworkTopology = nt
+		}
+	}
+	for taskName, podMap := range ji.Pods {
+		for _, pod := range podMap {
+			if partitionInfo, found := ji.Partitions[taskName]; found {
+				partitionID := GetPartitionID(pod)
+				if partitionID == "" {
+					continue
+				}
+				if _, found := partitionInfo.Partition[partitionID]; !found {
+					partitionInfo.Partition[partitionID] = make(map[string]*v1.Pod)
+				}
+				partitionInfo.Partition[partitionID][pod.Name] = pod
+			}
+		}
+	}
 }
 
 // AddPod adds the k8s pod object values to the Pods field
@@ -82,6 +136,19 @@ func (ji *JobInfo) AddPod(pod *v1.Pod) error {
 		return fmt.Errorf("duplicated pod")
 	}
 	ji.Pods[taskName][pod.Name] = pod
+
+	if ji.Partitions != nil {
+		if partitionInfo, found := ji.Partitions[taskName]; found {
+			partitionID := GetPartitionID(pod)
+			if partitionID == "" {
+				return nil
+			}
+			if _, found := partitionInfo.Partition[partitionID]; !found {
+				partitionInfo.Partition[partitionID] = make(map[string]*v1.Pod)
+			}
+			partitionInfo.Partition[partitionID][pod.Name] = pod
+		}
+	}
 
 	return nil
 }
@@ -108,6 +175,19 @@ func (ji *JobInfo) UpdatePod(pod *v1.Pod) error {
 	}
 	ji.Pods[taskName][pod.Name] = pod
 
+	if ji.Partitions != nil {
+		if partitionInfo, found := ji.Partitions[taskName]; found {
+			partitionID := GetPartitionID(pod)
+			if partitionID == "" {
+				return nil
+			}
+			if _, found := partitionInfo.Partition[partitionID]; found {
+				if _, found := partitionInfo.Partition[partitionID][pod.Name]; found {
+					partitionInfo.Partition[partitionID][pod.Name] = pod
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -131,5 +211,47 @@ func (ji *JobInfo) DeletePod(pod *v1.Pod) error {
 		}
 	}
 
+	if ji.Partitions != nil {
+		if partitionInfo, found := ji.Partitions[taskName]; found {
+			partitionID := GetPartitionID(pod)
+			if partitionID == "" {
+				return nil
+			}
+			if _, found := partitionInfo.Partition[partitionID]; found {
+				delete(partitionInfo.Partition[partitionID], pod.Name)
+				if len(partitionInfo.Partition[partitionID]) == 0 {
+					delete(partitionInfo.Partition, partitionID)
+				}
+			}
+		}
+	}
+
 	return nil
+}
+
+// HasPod checks whether the given k8s pod exists in the JobInfo struct.
+func (ji *JobInfo) HasPod(pod *v1.Pod) bool {
+	taskName, found := pod.Annotations[batch.TaskSpecKey]
+	if !found {
+		return false
+	}
+	_, found = pod.Annotations[batch.JobVersion]
+	if !found {
+		return false
+	}
+
+	pods, found := ji.Pods[taskName]
+	if !found {
+		return false
+	}
+	_, found = pods[pod.Name]
+	return found
+}
+
+func GetPartitionID(pod *v1.Pod) string {
+	value, ok := pod.Labels[batch.TaskPartitionID]
+	if ok {
+		return value
+	}
+	return ""
 }

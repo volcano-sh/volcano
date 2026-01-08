@@ -21,6 +21,8 @@ limitations under the License.
 package framework
 
 import (
+	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+
 	"volcano.sh/volcano/pkg/scheduler/cache"
 )
 
@@ -50,5 +52,5 @@ type Plugin interface {
 
 type BindContextHandler interface {
 	// SetupBindContextExtension allows the plugin to set up extension information in the bind context
-	SetupBindContextExtension(ssn *Session, bindCtx *cache.BindContext)
+	SetupBindContextExtension(state *k8sframework.CycleState, bindCtx *cache.BindContext)
 }

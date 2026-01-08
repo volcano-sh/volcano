@@ -18,6 +18,8 @@
 
 export VK_ROOT=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
 export VC_BIN=${VK_ROOT}/${BIN_DIR}/${BIN_OSARCH}
+export TAG=${TAG:-$(git -C "${VK_ROOT}" rev-parse --verify HEAD 2>/dev/null || echo "latest")}
+export IMAGE_PREFIX=${IMAGE_PREFIX:-volcanosh}
 export LOG_LEVEL=3
 export CLEANUP_CLUSTER=${CLEANUP_CLUSTER:-1}
 export E2E_TYPE=${E2E_TYPE:-"ALL"}
@@ -98,6 +100,98 @@ function install-volcano {
   echo "Ensure create namespace"
   kubectl apply -f installer/namespace.yaml
 
+case ${E2E_TYPE} in
+"ADMISSION_POLICY")
+  echo "Install volcano chart with crd version $crd_version and VAP/MAP enabled"
+  cat <<EOF | helm install ${CLUSTER_NAME} installer/helm/chart/volcano \
+  --namespace ${NAMESPACE} \
+  --kubeconfig ${KUBECONFIG} \
+  --values - \
+  --wait
+basic:
+  image_pull_policy: IfNotPresent
+  image_tag_version: ${TAG}
+  scheduler_config_file: config/volcano-scheduler-ci.conf
+  crd_version: ${crd_version}
+
+custom:
+  scheduler_log_level: 5
+  admission_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  controller_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  scheduler_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  default_ns:
+    node-role.kubernetes.io/control-plane: ""
+  scheduler_feature_gates: ${FEATURE_GATES}
+  enabled_admissions: ""
+  vap_enable: true
+  map_enable: true
+  ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
+EOF
+  ;;
+"ADMISSION_WEBHOOK")
+  echo "Install volcano chart with crd version $crd_version and all webhook"
+  cat <<EOF | helm install ${CLUSTER_NAME} installer/helm/chart/volcano \
+  --namespace ${NAMESPACE} \
+  --kubeconfig ${KUBECONFIG} \
+  --values - \
+  --wait
+basic:
+  image_pull_policy: IfNotPresent
+  image_tag_version: ${TAG}
+  scheduler_config_file: config/volcano-scheduler-ci.conf
+  crd_version: ${crd_version}
+
+custom:
+  scheduler_log_level: 5
+  admission_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  controller_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  scheduler_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  default_ns:
+    node-role.kubernetes.io/control-plane: ""
+  scheduler_feature_gates: ${FEATURE_GATES}
+  enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
+  vap_enable: false
+  map_enable: false
+  ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
+EOF
+  ;;
+*)
   echo "Install volcano chart with crd version $crd_version"
   cat <<EOF | helm install ${CLUSTER_NAME} installer/helm/chart/volcano \
   --namespace ${NAMESPACE} \
@@ -136,8 +230,11 @@ custom:
   default_ns:
     node-role.kubernetes.io/control-plane: ""
   scheduler_feature_gates: ${FEATURE_GATES}
+  enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
   ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
+  ;;
+esac
 }
 
 function uninstall-volcano {
@@ -203,7 +300,9 @@ case ${E2E_TYPE} in
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingbase/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/schedulingaction/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/vcctl/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/cronjob/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress --focus="DRA E2E Test" ./test/e2e/dra/
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/admission/
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/hypernode/
     ;;
 "JOBP")
@@ -234,11 +333,23 @@ case ${E2E_TYPE} in
     echo "Running dra e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress --focus="DRA E2E Test" ./test/e2e/dra/
     ;;
+"ADMISSION_POLICY")
+    echo "Running admission policy e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/admission/
+    ;;
+"ADMISSION_WEBHOOK")
+    echo "Running admission webhook e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/admission/
+    ;;
 "HYPERNODE")
     echo "Creating 8 kwok nodes for 3-tier topology"
     install-kwok-nodes 8
     echo "Running hypernode e2e suite..."
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -r --slow-spec-threshold='30s' --progress ./test/e2e/hypernode/
+    ;;
+"CRONJOB")  
+    echo "Running cronjob e2e suite..."  
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/cronjob/  
     ;;
 esac
 
