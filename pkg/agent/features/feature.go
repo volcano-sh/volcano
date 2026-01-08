@@ -26,4 +26,5 @@ const (
 	OverSubscriptionFeature Feature = "OverSubscription"
 	EvictionFeature         Feature = "Eviction"
 	ResourcesFeature        Feature = "Resources"
+	CPUThrottleFeature      Feature = "CPUThrottle"
 )
