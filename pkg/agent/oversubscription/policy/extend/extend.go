@@ -126,7 +126,7 @@ func (e *extendResource) CalOverSubscriptionResources() {
 	}
 
 	includeGuaranteedPods := utilpod.IncludeGuaranteedPods()
-	currentUsage := e.usageGetter.UsagesByValue(includeGuaranteedPods)
+	currentUsage := e.usageGetter.UsagesByValue(includeGuaranteedPods, true)
 	overSubscriptionRes := make(apis.Resource)
 
 	for _, resType := range apis.OverSubscriptionResourceTypes {

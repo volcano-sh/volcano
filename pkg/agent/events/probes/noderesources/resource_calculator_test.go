@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/client-go/util/workqueue"
 	utilpointer "k8s.io/utils/pointer"
 
 	"volcano.sh/volcano/pkg/agent/apis"
@@ -80,7 +79,6 @@ func Test_historicalUsageCalculator_utilizationMonitoring(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		usages      workqueue.RateLimitingInterface
 		getPodsFunc utilpod.ActivePods
 		getNodeFunc utilnode.ActiveNode
 		prepare     func()
@@ -88,7 +86,6 @@ func Test_historicalUsageCalculator_utilizationMonitoring(t *testing.T) {
 	}{
 		{
 			name:        "calculate using extend cpu&memory && cpu manager policy none",
-			usages:      workqueue.NewNamedRateLimitingQueue(nil, "calculator"),
 			getNodeFunc: makeNode,
 			prepare: func() {
 				err = os.Setenv("KUBELET_ROOT_DIR", dir)
@@ -108,7 +105,6 @@ func Test_historicalUsageCalculator_utilizationMonitoring(t *testing.T) {
 		},
 		{
 			name:        "calculate using extend cpu&memory && cpu manager policy static",
-			usages:      workqueue.NewNamedRateLimitingQueue(nil, "calculator"),
 			getNodeFunc: makeNode,
 			prepare: func() {
 				err = os.Setenv("KUBELET_ROOT_DIR", dir)
@@ -141,7 +137,6 @@ func Test_historicalUsageCalculator_utilizationMonitoring(t *testing.T) {
 			r := &historicalUsageCalculator{
 				// fake collector: cpu:1000m, memory:2000byte
 				Interface:   extend.NewExtendResource(cfg, mgr, nil, sqQueue, fakecollector.CollectorName),
-				usages:      tt.usages,
 				queue:       sqQueue,
 				getNodeFunc: tt.getNodeFunc,
 			}
@@ -218,15 +213,17 @@ func Test_historicalUsageCalculator_preProcess(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			factory := &framework.EventQueueFactory{Queues: map[string]*framework.EventQueue{}}
 			r := &historicalUsageCalculator{
-				Interface:     extend.NewExtendResource(cfg, nil, nil, queue, ""),
-				queue:         queue,
-				usages:        workqueue.NewNamedRateLimitingQueue(nil, ""),
-				getNodeFunc:   tt.getNodeFunc,
-				resourceTypes: sets.NewString("cpu", "memory"),
+				Interface:         extend.NewExtendResource(cfg, nil, nil, queue, ""),
+				queue:             queue,
+				eventQueueFactory: factory,
+				getNodeFunc:       tt.getNodeFunc,
+				resourceTypes:     sets.NewString("cpu", "memory"),
 			}
 			r.preProcess()
-			usages, shutdown := r.usages.Get()
+			eventQueue := factory.EventQueue(string(framework.NodeResourcesEventName)).GetQueue()
+			usages, shutdown := eventQueue.Get()
 			if shutdown {
 				t.Errorf("queue shutdown")
 			}

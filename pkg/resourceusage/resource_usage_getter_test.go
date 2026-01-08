@@ -39,11 +39,13 @@ func Test_getter_UsagesByValue(t *testing.T) {
 		name                  string
 		collector             *metriccollect.MetricCollectorManager
 		includeGuaranteedPods bool
+		includeBestEffortPods bool
 		want                  Resource
 	}{
 		{
 			name:                  "include guaranteed pods",
 			includeGuaranteedPods: true,
+			includeBestEffortPods: true,
 			collector:             collector,
 			want: map[v1.ResourceName]int64{
 				v1.ResourceCPU:    int64(1000),
@@ -53,6 +55,17 @@ func Test_getter_UsagesByValue(t *testing.T) {
 		{
 			name:                  "not include guaranteed pods",
 			includeGuaranteedPods: false,
+			includeBestEffortPods: true,
+			collector:             collector,
+			want: map[v1.ResourceName]int64{
+				v1.ResourceCPU:    int64(1000),
+				v1.ResourceMemory: int64(2000),
+			},
+		},
+		{
+			name:                  "not include best effort pods",
+			includeGuaranteedPods: true,
+			includeBestEffortPods: false,
 			collector:             collector,
 			want: map[v1.ResourceName]int64{
 				v1.ResourceCPU:    int64(1000),
@@ -67,7 +80,7 @@ func Test_getter_UsagesByValue(t *testing.T) {
 				collectorName: fakecollector.CollectorName,
 				collector:     tt.collector,
 			}
-			if got := g.UsagesByValue(tt.includeGuaranteedPods); !reflect.DeepEqual(got, tt.want) {
+			if got := g.UsagesByValue(tt.includeGuaranteedPods, tt.includeBestEffortPods); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("UsagesByValue() = %v, want %v", got, tt.want)
 			}
 		})

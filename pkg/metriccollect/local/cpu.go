@@ -67,8 +67,17 @@ func (c *CPUResourceCollector) CollectLocalMetrics(metricInfo *LocalMetricInfo, 
 	}
 
 	finalUsage := int64(0)
-	if !metricInfo.IncludeGuaranteedPods {
-		for _, qos := range []corev1.PodQOSClass{corev1.PodQOSBurstable, corev1.PodQOSBestEffort} {
+	if metricInfo.IncludeGuaranteedPods && metricInfo.IncludeBestEffortPods {
+		finalUsage = podAllUsage
+	} else {
+		qosClasses := []corev1.PodQOSClass{corev1.PodQOSBurstable}
+		if metricInfo.IncludeGuaranteedPods {
+			qosClasses = append(qosClasses, corev1.PodQOSGuaranteed)
+		}
+		if metricInfo.IncludeBestEffortPods {
+			qosClasses = append(qosClasses, corev1.PodQOSBestEffort)
+		}
+		for _, qos := range qosClasses {
 			cgroupPath, err = c.cgroupManager.GetQoSCgroupPath(qos, cgroup.CgroupCpuSubsystem)
 			if err != nil {
 				return nil, err
@@ -80,8 +89,6 @@ func (c *CPUResourceCollector) CollectLocalMetrics(metricInfo *LocalMetricInfo, 
 			}
 			finalUsage += count
 		}
-	} else {
-		finalUsage = podAllUsage
 	}
 
 	if metricInfo.IncludeSystemUsed {
