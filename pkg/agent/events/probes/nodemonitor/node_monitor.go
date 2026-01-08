@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"volcano.sh/volcano/pkg/agent/apis/extension"
 
 	"volcano.sh/volcano/pkg/agent/apis"
 	"volcano.sh/volcano/pkg/agent/config/api"
@@ -91,6 +92,7 @@ func (m *monitor) Run(stop <-chan struct{}) {
 	klog.InfoS("Started nodePressure probe")
 	go wait.Until(m.utilizationMonitoring, 10*time.Second, stop)
 	go wait.Until(m.detect, 10*time.Second, stop)
+	go wait.Until(m.detectCPUThrottling, 10*time.Second, stop)
 }
 
 func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
@@ -166,8 +168,6 @@ func (m *monitor) detect() {
 		}
 	}
 
-	m.detectCPUThrottling(nodeCopy)
-
 	// Only remove eviction annotation when all resources are low usage.
 	if !allResourcesAreLowUsage {
 		return
@@ -213,82 +213,68 @@ func (m *monitor) nodeHasPressure(resName v1.ResourceName) bool {
 	return m.highUsageCountByResName[resName] >= highUsageCountLimit
 }
 
-func (m *monitor) detectCPUThrottling(node *v1.Node) {
+func (m *monitor) detectCPUThrottling() {
 	m.cfgLock.RLock()
 	throttlingThreshold := m.cpuThrottlingThreshold
-	protectionWatermark := m.cpuProtectionWatermark
 	m.cfgLock.RUnlock()
 
-	if throttlingThreshold == 0 || protectionWatermark == 0 {
+	if throttlingThreshold == 0 {
 		return
 	}
 
-	usage := m.usageGetter.UsagesByPercentage(node)
-	cpuUsage := usage[v1.ResourceCPU]
+	node, err := m.getNodeFunc()
+	if err != nil {
+		klog.ErrorS(err, "CPU Throttling: Failed to get node")
+		return
+	}
+	nodeCopy := node.DeepCopy()
 
-	klog.V(4).InfoS("CPU throttling detection",
-		"usage", cpuUsage,
-		"throttlingThreshold", throttlingThreshold,
-		"protectionWatermark", protectionWatermark,
-		"active", m.cpuThrottlingActive)
+	totalCPU := nodeCopy.Status.Allocatable[v1.ResourceCPU]
+	totalMilli := totalCPU.MilliValue()
 
-	// 启动限流：CPU使用率超过阈值且当前未激活限流
-	if !m.cpuThrottlingActive && cpuUsage >= int64(throttlingThreshold) {
-		m.cpuThrottlingActive = true
+	pods, err := m.getPodsFunc()
+	if err != nil {
+		klog.ErrorS(err, "CPU Throttling: Failed to get pods")
+	}
+
+	var onlineRequestMilli int64
+	for _, pod := range pods {
+		if extension.GetQosLevel(pod) < 0 {
+			continue
+		}
+		onlineRequestMilli += getPodCPURequestMilli(pod)
+	}
+
+	allowedMilli := totalMilli * int64(throttlingThreshold) / 100
+	availableBEMilli := allowedMilli - onlineRequestMilli
+	if availableBEMilli < 0 {
+		availableBEMilli = 0
+	}
+	if availableBEMilli < totalMilli/10 {
 		event := framework.NodeCPUThrottleEvent{
 			TimeStamp: time.Now(),
 			Resource:  v1.ResourceCPU,
 			Action:    "start",
-			Usage:     cpuUsage,
+			Usage:     availableBEMilli,
 		}
 		m.queue.Add(event)
-		klog.InfoS("CPU throttling started",
-			"usage", cpuUsage,
-			"throttlingThreshold", throttlingThreshold)
-		return
-	}
-
-	// 持续限流：已激活限流且CPU使用率仍然超过阈值
-	if m.cpuThrottlingActive && cpuUsage >= int64(throttlingThreshold) {
-		event := framework.NodeCPUThrottleEvent{
-			TimeStamp: time.Now(),
-			Resource:  v1.ResourceCPU,
-			Action:    "continue", // 新增continue动作
-			Usage:     cpuUsage,
-		}
-		m.queue.Add(event)
-		klog.V(2).InfoS("CPU throttling continued",
-			"usage", cpuUsage,
-			"throttlingThreshold", throttlingThreshold)
-		return
-	}
-
-	if m.cpuThrottlingActive && cpuUsage <= int64(protectionWatermark) {
-		m.cpuThrottlingActive = false
+	} else {
 		event := framework.NodeCPUThrottleEvent{
 			TimeStamp: time.Now(),
 			Resource:  v1.ResourceCPU,
 			Action:    "stop",
-			Usage:     cpuUsage,
+			Usage:     availableBEMilli,
 		}
 		m.queue.Add(event)
-		klog.InfoS("CPU throttling stopped",
-			"usage", cpuUsage,
-			"protectionWatermark", protectionWatermark)
-		return
 	}
-
-	return
 }
 
-func (m *monitor) IsCPUThrottlingActive() bool {
-	m.cfgLock.RLock()
-	defer m.cfgLock.RUnlock()
-	return m.cpuThrottlingActive
-}
-
-func (m *monitor) GetCPUThrottlingConfig() (threshold, watermark int) {
-	m.cfgLock.RLock()
-	defer m.cfgLock.RUnlock()
-	return m.cpuThrottlingThreshold, m.cpuProtectionWatermark
+func getPodCPURequestMilli(pod *v1.Pod) int64 {
+	var total int64
+	for _, container := range pod.Spec.Containers {
+		if qty, ok := container.Resources.Requests[v1.ResourceCPU]; ok {
+			total += qty.MilliValue()
+		}
+	}
+	return total
 }
