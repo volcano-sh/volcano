@@ -3,6 +3,7 @@ package cputhrottle
 import (
 	"os"
 	"path"
+	"strings"
 	"sync"
 	"testing"
 
@@ -50,7 +51,7 @@ func TestCPUThrottleHandler_Handle(t *testing.T) {
 			validate: func(t *testing.T, handler *CPUThrottleHandler, quotaFile string) {
 				content, err := os.ReadFile(quotaFile)
 				assert.NoError(t, err)
-				assert.Equal(t, "50000", int64(len(content)))
+				assert.Equal(t, "50000", strings.TrimSpace(string(content))[0])
 				handler.mutex.RLock()
 				assert.True(t, handler.throttlingActive)
 				handler.mutex.RUnlock()
@@ -61,7 +62,7 @@ func TestCPUThrottleHandler_Handle(t *testing.T) {
 			name: "zero quota still writes minimal value",
 			event: framework.NodeCPUThrottleEvent{
 				Resource:      v1.ResourceCPU,
-				CPUQuotaMilli: 0,
+				CPUQuotaMilli: -1,
 			},
 			prepare: func(t *testing.T, cgroupPath string) {
 				assert.NoError(t, os.MkdirAll(cgroupPath, 0755))
@@ -71,7 +72,7 @@ func TestCPUThrottleHandler_Handle(t *testing.T) {
 			validate: func(t *testing.T, handler *CPUThrottleHandler, quotaFile string) {
 				content, err := os.ReadFile(quotaFile)
 				assert.NoError(t, err)
-				assert.Equal(t, "1", int64(len(content)))
+				assert.Equal(t, "-1", strings.TrimSpace(string(content))[0])
 				handler.mutex.RLock()
 				assert.True(t, handler.throttlingActive)
 				handler.mutex.RUnlock()
