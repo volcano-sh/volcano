@@ -25,6 +25,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
@@ -66,8 +67,17 @@ func Run(config *options.Config) error {
 	vClient := getVolcanoClient(restConfig)
 	kubeClient := getKubeClient(restConfig)
 	factory := informers.NewSharedInformerFactory(vClient, 0)
-	queueInformer := factory.Scheduling().V1beta1().Queues()
-	queueLister := queueInformer.Lister()
+
+	// Get the queue informer and add parent index for efficient child queue lookups
+	queueInformerFactory := factory.Scheduling().V1beta1().Queues()
+	queueInformer := queueInformerFactory.Informer()
+	if err := queueInformer.AddIndexers(cache.Indexers{
+		router.QueueParentIndexName: router.QueueParentIndexFunc,
+	}); err != nil {
+		return fmt.Errorf("failed to add queue parent indexer: %v", err)
+	}
+
+	queueLister := queueInformerFactory.Lister()
 
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
@@ -77,6 +87,7 @@ func Run(config *options.Config) error {
 			service.Config.VolcanoClient = vClient
 			service.Config.KubeClient = kubeClient
 			service.Config.QueueLister = queueLister
+			service.Config.QueueInformer = queueInformer
 			service.Config.SchedulerNames = config.SchedulerNames
 			service.Config.Recorder = recorder
 			service.Config.ConfigData = admissionConf

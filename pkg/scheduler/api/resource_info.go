@@ -24,6 +24,7 @@ package api
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -158,8 +159,14 @@ func (r *Resource) Clone() *Resource {
 // String returns resource details in string format
 func (r *Resource) String() string {
 	str := fmt.Sprintf("cpu %0.2f, memory %0.2f", r.MilliCPU, r.Memory)
-	for rName, rQuant := range r.ScalarResources {
-		str = fmt.Sprintf("%s, %s %0.2f", str, rName, rQuant)
+	// Sort scalar resource names to ensure consistent string output
+	var resourceNames []string
+	for rName := range r.ScalarResources {
+		resourceNames = append(resourceNames, string(rName))
+	}
+	sort.Strings(resourceNames)
+	for _, rName := range resourceNames {
+		str = fmt.Sprintf("%s, %s %0.2f", str, rName, r.ScalarResources[v1.ResourceName(rName)])
 	}
 	return str
 }
