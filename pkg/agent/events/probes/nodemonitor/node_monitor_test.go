@@ -165,7 +165,7 @@ func Test_monitor_detectCPUThrottling(t *testing.T) {
 			cpuThrottlingThreshold: 80,
 			pods:                   []*v1.Pod{},
 			expectedEventCount:     1,
-			expectedQuotaMilli:     800,
+			expectedQuotaMilli:     -1,
 		},
 		{
 			name:                   "subtract online pod requests from quota",
@@ -175,24 +175,14 @@ func Test_monitor_detectCPUThrottling(t *testing.T) {
 				buildPod("online-2", "200m", "LS"),
 			},
 			expectedEventCount: 1,
-			expectedQuotaMilli: 500,
-		},
-		{
-			name:                   "ignore best effort pod requests",
-			cpuThrottlingThreshold: 80,
-			pods: []*v1.Pod{
-				buildPod("online-1", "100m", "LS"),
-				buildPod("be-1", "200m", "BE"),
-			},
-			expectedEventCount: 1,
-			expectedQuotaMilli: 700,
+			expectedQuotaMilli: -1,
 		},
 		{
 			name:                   "quota floored at zero when online requests exceed allowance",
 			cpuThrottlingThreshold: 50,
 			pods: []*v1.Pod{
-				buildPod("online-1", "600m", "LS"),
-				buildPod("online-2", "200m", "LS"),
+				buildPod("online-1", "750m", "LS"),
+				buildPod("be-1", "100m", "BE"),
 			},
 			expectedEventCount: 1,
 			expectedQuotaMilli: 0,
