@@ -159,15 +159,6 @@ func (c *CPUThrottling) Validate() []error {
 		(*c.CPUThrottlingThreshold <= 0 || *c.CPUThrottlingThreshold > 100) {
 		errs = append(errs, errors.New(IllegalCPUThrottlingThreshold))
 	}
-	if c.CPUProtectionWatermark != nil &&
-		(*c.CPUProtectionWatermark <= 0 || *c.CPUProtectionWatermark > 100) {
-		errs = append(errs, errors.New(IllegalCPUProtectionWatermark))
-	}
-	if c.CPUThrottlingThreshold != nil &&
-		c.CPUProtectionWatermark != nil &&
-		*c.CPUProtectionWatermark > *c.CPUThrottlingThreshold {
-		errs = append(errs, errors.New(CPUProtectionWatermarkHigherThanThrottlingThreshold))
-	}
 
 	return errs
 }

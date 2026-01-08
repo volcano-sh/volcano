@@ -52,10 +52,6 @@ const (
 	DefaultEvictingMemoryHighWatermark = 60
 	DefaultEvictingCPULowWatermark     = 30
 	DefaultEvictingMemoryLowWatermark  = 30
-
-	// CPU QoS config
-	DefaultCPUThrottlingThreshold = 80
-	DefaultCPUProtectionWatermark = 30
 )
 
 const (

@@ -57,8 +57,7 @@ type NodeMonitorEvent struct {
 }
 
 type NodeCPUThrottleEvent struct {
-	TimeStamp time.Time
-	Resource  corev1.ResourceName
-	Action    string
-	Usage     int64
+	TimeStamp     time.Time
+	Resource      corev1.ResourceName
+	CPUQuotaMilli int64
 }

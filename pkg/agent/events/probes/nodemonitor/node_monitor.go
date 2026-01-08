@@ -49,6 +49,7 @@ func init() {
 
 const (
 	highUsageCountLimit = 6
+	unlimitedQuota      = -1
 )
 
 type monitor struct {
@@ -250,20 +251,21 @@ func (m *monitor) detectCPUThrottling() {
 	if availableBEMilli < 0 {
 		availableBEMilli = 0
 	}
-	if availableBEMilli < totalMilli/10 {
+
+	// CPU throttling is applied when the available quota of Best Effort pods is less
+	// than 10% of the throttling threshold
+	if availableBEMilli < allowedMilli/10 {
 		event := framework.NodeCPUThrottleEvent{
-			TimeStamp: time.Now(),
-			Resource:  v1.ResourceCPU,
-			Action:    "start",
-			Usage:     availableBEMilli,
+			TimeStamp:     time.Now(),
+			Resource:      v1.ResourceCPU,
+			CPUQuotaMilli: availableBEMilli,
 		}
 		m.queue.Add(event)
 	} else {
 		event := framework.NodeCPUThrottleEvent{
-			TimeStamp: time.Now(),
-			Resource:  v1.ResourceCPU,
-			Action:    "stop",
-			Usage:     availableBEMilli,
+			TimeStamp:     time.Now(),
+			Resource:      v1.ResourceCPU,
+			CPUQuotaMilli: unlimitedQuota,
 		}
 		m.queue.Add(event)
 	}

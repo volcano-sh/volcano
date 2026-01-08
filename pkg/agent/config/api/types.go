@@ -119,10 +119,4 @@ type CPUThrottling struct {
 	Enable *bool `json:"enable,omitempty"`
 	// CPUThrottlingThreshold defines the threshold percent of CPU usage when CPU throttling should begin.
 	CPUThrottlingThreshold *int `json:"cpuThrottlingThreshold,omitempty"`
-	// CPUProtectionWatermark defines the watermark percent of CPU usage below which CPU throttling should stop.
-	CPUProtectionWatermark *int `json:"cpuProtectionWatermark,omitempty"`
-	// CPUThrottlingStepPercent defines the throttling step percent of pod's CPU usage when CPU throttling event happen.
-	CPUThrottlingStepPercent *int `json:"cpuThrottlingStepPercent,omitempty"`
-	// CPUMinQuotaPercent defines the min quota percent of pod's CPU usage when CPU throttling event happen.
-	CPUMinQuotaPercent *int `json:"cpuMinQuotaPercent,omitempty"`
 }

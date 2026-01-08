@@ -1,23 +1,27 @@
 package cputhrottle
 
 import (
-	"errors"
 	"fmt"
+	"os"
+	"path"
+	"strconv"
+	"sync"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	"os"
-	"sync"
-	"volcano.sh/volcano/pkg/agent/apis/extension"
+
 	"volcano.sh/volcano/pkg/agent/config/api"
 	"volcano.sh/volcano/pkg/agent/events/framework"
 	"volcano.sh/volcano/pkg/agent/events/handlers"
 	"volcano.sh/volcano/pkg/agent/events/handlers/base"
 	"volcano.sh/volcano/pkg/agent/features"
+	"volcano.sh/volcano/pkg/agent/utils"
 	"volcano.sh/volcano/pkg/agent/utils/cgroup"
-	utilpod "volcano.sh/volcano/pkg/agent/utils/pod"
 	"volcano.sh/volcano/pkg/config"
 	"volcano.sh/volcano/pkg/metriccollect"
 )
+
+const unlimitedQuota = -1
 
 func init() {
 	handlers.RegisterEventHandleFunc(string(framework.NodeCPUThrottleEventName), NewCPUThrottleHandler)
@@ -25,12 +29,11 @@ func init() {
 
 type CPUThrottleHandler struct {
 	*base.BaseHandle
-	cgroupMgr   cgroup.CgroupManager
-	getPodsFunc utilpod.ActivePods
+	cgroupMgr cgroup.CgroupManager
 
 	// Record Pod throttled status
 	mutex            sync.RWMutex
-	throttlingActive map[string]bool
+	throttlingActive bool
 
 	throttleStepPercent int
 	minCPUQuotaPercent  int
@@ -43,10 +46,9 @@ func NewCPUThrottleHandler(config *config.Configuration, mgr *metriccollect.Metr
 			Name:   string(features.CPUThrottleFeature),
 			Config: config,
 		},
-		cgroupMgr:   cgroupMgr,
-		getPodsFunc: config.GetActivePods,
+		cgroupMgr: cgroupMgr,
 
-		throttlingActive: make(map[string]bool),
+		throttlingActive: false,
 
 		throttleStepPercent: ThrottleStepPercent,
 		minCPUQuotaPercent:  MinCPUQuotaPercent,
@@ -63,101 +65,64 @@ func (h *CPUThrottleHandler) Handle(event interface{}) error {
 		return nil
 	}
 
-	pods, err := h.getPodsFunc()
-
-	if err != nil {
-		return fmt.Errorf("failed to get active pods: %v", err)
-	}
+	quota := h.quotaFromMilliCPU(cpuEvent.CPUQuotaMilli)
 
 	klog.InfoS("Handling CPU throttling event",
-		"action", cpuEvent.Action,
-		"usage", cpuEvent.Usage,
-		"podCount", len(pods))
+		"cpuQuotaMilli", cpuEvent.CPUQuotaMilli,
+		"quota", quota)
 
-	switch cpuEvent.Action {
-	case "start", "continue":
-		return h.stepThrottleCPU(pods)
-	case "stop":
-		return h.stopCPUThrottle(pods)
-	default:
-		return fmt.Errorf("unknown cpu throttle action: %v", cpuEvent.Action)
-	}
+	return h.applyBEQuota(quota)
 }
 
-func (h *CPUThrottleHandler) stepThrottleCPU(pods []*v1.Pod) error {
+func (h *CPUThrottleHandler) applyBEQuota(quota int64) error {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	for _, pod := range pods {
-		qosLevel := extension.GetQosLevel(pod)
-		if qosLevel >= 0 {
-			continue
+	h.throttlingActive = quota > 0
+
+	filePath, err := h.writeBEQuota(quota)
+	if err != nil {
+		if os.IsNotExist(err) {
+			klog.InfoS("Cgroup file not existed", "cgroupFile", filePath)
 		}
-
-		podUID := string(pod.UID)
-
-		currentQuota, err := h.getCurrentCPUQuota(pod)
-		if err != nil {
-			klog.ErrorS(err, "Failed to get current CPU quota", "pod", pod.Name)
-			continue
-		}
-
-		newQuota := h.calculateSteppedQuota(pod, currentQuota)
-
-		if newQuota == currentQuota {
-			continue
-		}
-
-		// Apply the calculated cpu quota for this pod
-		if filePath, err := h.applyCPUQuota(pod, newQuota); err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				klog.InfoS("Cgroup file not existed", "cgroupFile", filePath)
-			}
-			klog.ErrorS(err, "Failed to apply CPU quota", "pod", pod.Name, "quota", newQuota)
-			continue
-		}
-
-		h.throttlingActive[podUID] = true
-
-		klog.InfoS("Applied stepped CPU throttling",
-			"pod", pod.Name,
-			"currentQuota", currentQuota,
-			"newQuota", newQuota)
+		return fmt.Errorf("failed to apply BE root cpu quota: %w", err)
 	}
 
+	klog.InfoS("Applied BE root CPU quota", "quota", quota, "cgroupFile", filePath)
 	return nil
 }
 
-func (h *CPUThrottleHandler) stopCPUThrottle(pods []*v1.Pod) error {
-	h.mutex.Lock()
-	defer h.mutex.Unlock()
-
-	for _, pod := range pods {
-		qosLevel := extension.GetQosLevel(pod)
-		if qosLevel >= 0 {
-			continue
-		}
-
-		podUID := string(pod.UID)
-
-		originalQuota := h.getDefaultCPUQuota(pod)
-
-		if filePath, err := h.applyCPUQuota(pod, originalQuota); err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				klog.InfoS("Cgroup file not existed", "cgroupFile", filePath)
-			}
-			klog.ErrorS(err, "Failed to recover CPU quota", "pod", pod.Name, "quota", originalQuota)
-			continue
-		}
-
-		delete(h.throttlingActive, podUID)
-
-		klog.InfoS("Recovered CPU throttling",
-			"pod", pod.Name,
-			"originalQuota", originalQuota)
+func (h *CPUThrottleHandler) quotaFromMilliCPU(milliCPU int64) int64 {
+	if milliCPU <= 0 {
+		return 1
 	}
 
-	return nil
+	return milliCPU * CPUPeriod / 1000
+}
+
+func (h *CPUThrottleHandler) writeBEQuota(quota int64) (string, error) {
+	cgroupPath, err := h.cgroupMgr.GetQoSCgroupPath(v1.PodQOSBestEffort, cgroup.CgroupCpuSubsystem)
+	if err != nil {
+		return "", err
+	}
+
+	quotaFile := cgroup.CPUQuotaTotalFile
+	quotaValue := strconv.FormatInt(quota, 10)
+	if h.cgroupMgr.GetCgroupVersion() == cgroup.CgroupV2 {
+		quotaFile = cgroup.CPUQuotaTotalFileV2
+		if quota == unlimitedQuota {
+			quotaValue = "max"
+		} else {
+			quotaValue = fmt.Sprintf("%d %d", quota, CPUPeriod)
+		}
+	}
+
+	filePath := path.Join(cgroupPath, quotaFile)
+	if err := utils.UpdatePodCgroup(filePath, []byte(quotaValue)); err != nil {
+		return filePath, err
+	}
+
+	return filePath, nil
 }
 
 func (h *CPUThrottleHandler) RefreshCfg(cfg *api.ColocationConfig) error {
@@ -174,60 +139,18 @@ func (h *CPUThrottleHandler) RefreshCfg(cfg *api.ColocationConfig) error {
 		return h.recoverAllThrottledPods()
 	}
 
-	if cfg.CPUThrottlingConfig != nil {
-		if cfg.CPUThrottlingConfig.CPUThrottlingStepPercent != nil &&
-			*cfg.CPUThrottlingConfig.CPUThrottlingStepPercent > 0 &&
-			*cfg.CPUThrottlingConfig.CPUThrottlingStepPercent <= 100 {
-			oldStep := h.throttleStepPercent
-			h.throttleStepPercent = *cfg.CPUThrottlingConfig.CPUThrottlingStepPercent
-			klog.InfoS("Updated throttle step percentage",
-				"oldStep", oldStep,
-				"newValue", h.throttleStepPercent)
-		}
-
-		if cfg.CPUThrottlingConfig.CPUMinQuotaPercent != nil &&
-			*cfg.CPUThrottlingConfig.CPUMinQuotaPercent > 0 &&
-			*cfg.CPUThrottlingConfig.CPUMinQuotaPercent <= 100 {
-			oldQuota := h.minCPUQuotaPercent
-			h.minCPUQuotaPercent = *cfg.CPUThrottlingConfig.CPUMinQuotaPercent
-			klog.InfoS("Updated minCPU quota percentage",
-				"oldQuota", oldQuota,
-				"newValue", h.minCPUQuotaPercent)
-		}
-	}
 	return nil
 }
 
 func (h *CPUThrottleHandler) recoverAllThrottledPods() error {
-	if len(h.throttlingActive) == 0 {
+	if !h.throttlingActive {
 		return nil
 	}
 
-	pods, err := h.getPodsFunc()
-	if err != nil {
-		return fmt.Errorf("failed to get active pods for recovery: %v", err)
+	if err := h.applyBEQuota(unlimitedQuota); err != nil {
+		return err
 	}
 
-	var recoveredCount int
-	for _, pod := range pods {
-		podUID := string(pod.UID)
-		if h.throttlingActive[podUID] {
-			originalQuota := h.getDefaultCPUQuota(pod)
-			if filePath, err := h.applyCPUQuota(pod, originalQuota); err != nil {
-				if errors.Is(err, os.ErrNotExist) {
-					klog.InfoS("Cgroup file not existed", "cgroupFile", filePath)
-				}
-				klog.ErrorS(err, "Failed to recover CPU quota", "pod", pod.Name, "quota", originalQuota)
-				continue
-			}
-			delete(h.throttlingActive, podUID)
-			recoveredCount++
-			klog.InfoS("Recovered CPU throttling due to feature disable",
-				"pod", pod.Name,
-				"restoredQuota", originalQuota)
-		}
-	}
-
-	klog.InfoS("Recovered all throttled pods due to feature disable", "count", recoveredCount)
+	klog.InfoS("Recovered BE root CPU quota due to feature disable")
 	return nil
 }
