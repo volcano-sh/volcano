@@ -119,10 +119,10 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			reclaimable := false
 
 			// If reclaimee doesn't have intersecting resource dimensions with reclaimer we can skip it.
-			reclaimerIntersecting := len(api.IntersectionWithIgnoredScalarResources(reclaimee.Resreq, reclaimer.Resreq)) > 0
+			reclaimerIntersecting := len(api.IntersectionWithIgnoredScalarResources(reclaimee.Resreq, reclaimer.InitResreq)) > 0
 			if !reclaimerIntersecting {
 				klog.V(5).Infof("Reclaimee <%s/%s>: <%v> does not have intersecting resource dimensions with reclaimer <%s/%s>: <%v>, skip it.",
-					reclaimee.Namespace, reclaimee.Name, reclaimee.Resreq, reclaimer.Namespace, reclaimer.Name, reclaimer.Resreq)
+					reclaimee.Namespace, reclaimee.Name, reclaimee.Resreq, reclaimer.Namespace, reclaimer.Name, reclaimer.InitResreq)
 				continue
 			}
 

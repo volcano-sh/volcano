@@ -152,6 +152,57 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 	queue12 := util.BuildQueueWithResourcesQuantity("q12", api.BuildResourceList("1", "2Gi"), api.BuildResourceList("4", "4Gi"))
 	queue13 := util.BuildQueueWithResourcesQuantity("q13", api.BuildResourceList("0", "0Gi"), api.BuildResourceList("2", "2Gi"))
 
+	// case7: allocated not containing scalar dimensions present in deserved shall not be reclaimed (p22 shouldn't be reclaimed)
+	// Simulating: https://github.com/volcano-sh/volcano/issues/4918 Bug 2
+	n7 := util.BuildNode("n7", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "4"}, {Name: "pods", Value: "10"}}...), nil)
+	p22 := util.BuildPod("ns1", "p22", "n7", corev1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg22", nil, nil)
+	// p23 is a valid reclaim candidate since it has gpu request, and p22 + p23 satisfies p25's request on all dimensions
+	p23 := util.BuildPod("ns1", "p23", "n7", corev1.PodRunning, api.BuildResourceList("0", "0Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg23", nil, nil)
+	// with p24 we will max out the used cluster resources on CPU dimension
+	p24 := util.BuildPod("ns1", "p24", "n7", corev1.PodRunning, api.BuildResourceList("2", "1Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg24", nil, nil)
+	// p25 can reclaim on Memory and GPU dimensions, but not on CPU dimension
+	p25 := util.BuildPod("ns1", "p25", "", corev1.PodPending, api.BuildResourceList("2", "3Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg25", nil, nil)
+	pg22 := util.BuildPodGroup("pg22", "ns1", "queue14", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg23 := util.BuildPodGroup("pg23", "ns1", "queue15", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg24 := util.BuildPodGroup("pg24", "ns1", "queue16", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg25 := util.BuildPodGroup("pg25", "ns1", "queue16", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	queue14 := util.BuildQueueWithResourcesQuantity("queue14", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "2"}}...), nil)
+	queue15 := util.BuildQueueWithResourcesQuantity("queue15", nil, nil)
+	queue16 := util.BuildQueueWithResourcesQuantity("queue16", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "2"}}...), nil)
+
+	// case8: we should evict on the appropriate dimensions of reclaimer only
+	// p30 shall evict p28 only (we have only one gpu on the cluster after all)
+	// Simulating: https://github.com/volcano-sh/volcano/issues/4918
+	//	- Bug 1 reclaimer dimensions considered properly
+	//	  Before the fixes both p26 and p28 were victims
+	//	- Also Enhancement 1 is verified as p28 is an immediate victim
+	n8 := util.BuildNode("n8", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}, {Name: "pods", Value: "10"}}...), nil)
+	p26 := util.BuildPod("ns1", "p26", "n8", corev1.PodRunning, api.BuildResourceList("0", "4Gi"), "pg26", nil, nil)
+	p27 := util.BuildPod("ns1", "p27", "n8", corev1.PodRunning, api.BuildResourceList("1", "0Gi"), "pg27", nil, nil)
+	p28 := util.BuildPod("ns1", "p28", "n8", corev1.PodRunning, api.BuildResourceList("0", "0Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg28", nil, nil)
+	pg26 := util.BuildPodGroup("pg26", "ns1", "queue17", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg27 := util.BuildPodGroup("pg27", "ns1", "queue17", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg28 := util.BuildPodGroup("pg28", "ns1", "queue17", 1, nil, schedulingv1beta1.PodGroupRunning)
+	queue17 := util.BuildQueueWithResourcesQuantity("queue17", api.BuildResourceList("2", "2Gi"), nil)
+	p29 := util.BuildPod("ns1", "p29", "n8", corev1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg29", nil, nil)
+	pg29 := util.BuildPodGroup("pg29", "ns1", "queue18", 1, nil, schedulingv1beta1.PodGroupRunning)
+	p30 := util.BuildPod("ns1", "p30", "", corev1.PodPending, api.BuildResourceList("1", "0Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg30", nil, nil)
+	pg30 := util.BuildPodGroup("pg30", "ns1", "queue18", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	queue18 := util.BuildQueueWithResourcesQuantity("queue18", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), nil)
+
+	// case9: reclaimee has intersecting scalar dimensions with deserved shouldn't be reclaimed on cpu/memory
+	// Simulating: https://github.com/volcano-sh/volcano/issues/4918
+	//   - Bug 3/Enhancement 3 scalar only queues supported properly
+	//     p31 used up all the cpu resources on the cluster alone,
+	//     but uses only 1 gpu below it's queues deserved ergo should not be reclaimed
+	//     p32 requests cpu and memory below deserved, but it shall not reclaim p31
+	p31 := util.BuildPod("ns1", "p31", "n8", corev1.PodRunning, api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg31", nil, nil)
+	pg31 := util.BuildPodGroup("pg31", "ns1", "queue19", 1, nil, schedulingv1beta1.PodGroupRunning)
+	queue19 := util.BuildQueueWithResourcesQuantity("queue19", api.BuildResourceList("", "", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), nil)
+	p32 := util.BuildPod("ns1", "p32", "", corev1.PodPending, api.BuildResourceList("1", "1Gi"), "pg32", nil, nil)
+	pg32 := util.BuildPodGroup("pg32", "ns1", "queue20", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	queue20 := util.BuildQueueWithResourcesQuantity("queue20", api.BuildResourceList("2", "2Gi"), nil)
+
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name:      "case0: Pod allocatable when queue has not exceed capability",
@@ -235,6 +286,41 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 			Nodes:           []*corev1.Node{n1},
 			PodGroups:       []*schedulingv1beta1.PodGroup{pg19, pg20, pg21},
 			Queues:          []*schedulingv1beta1.Queue{queue12, queue13},
+			ExpectPipeLined: map[string][]string{},
+			ExpectEvicted:   []string{},
+			ExpectEvictNum:  0,
+		},
+		{
+			Name:            "case7: allocated does not contain scalar dimension (GPU), deserved does; should not reclaim",
+			Plugins:         plugins,
+			Pods:            []*corev1.Pod{p22, p23, p24, p25},
+			Nodes:           []*corev1.Node{n7},
+			PodGroups:       []*schedulingv1beta1.PodGroup{pg22, pg23, pg24, pg25},
+			Queues:          []*schedulingv1beta1.Queue{queue14, queue15, queue16},
+			ExpectPipeLined: map[string][]string{},
+			ExpectEvicted:   []string{},
+			ExpectEvictNum:  0,
+		},
+		{
+			Name:      "case8: reclaimer dimensions are considered properly while evicting reclaimees",
+			Plugins:   plugins,
+			Pods:      []*corev1.Pod{p26, p27, p28, p29, p30},
+			Nodes:     []*corev1.Node{n8},
+			PodGroups: []*schedulingv1beta1.PodGroup{pg26, pg27, pg28, pg29, pg30},
+			Queues:    []*schedulingv1beta1.Queue{queue17, queue18},
+			ExpectPipeLined: map[string][]string{
+				"ns1/pg30": {"n8"},
+			},
+			ExpectEvicted:  []string{"ns1/p28"},
+			ExpectEvictNum: 1,
+		},
+		{
+			Name:            "case9: reclaimee has intersecting scalar dimensions with deserved shouldn't be reclaimed on cpu/memory",
+			Plugins:         plugins,
+			Pods:            []*corev1.Pod{p31, p32},
+			Nodes:           []*corev1.Node{n8},
+			PodGroups:       []*schedulingv1beta1.PodGroup{pg31, pg32},
+			Queues:          []*schedulingv1beta1.Queue{queue19, queue20},
 			ExpectPipeLined: map[string][]string{},
 			ExpectEvicted:   []string{},
 			ExpectEvictNum:  0,
