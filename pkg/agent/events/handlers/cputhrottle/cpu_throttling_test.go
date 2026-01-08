@@ -50,9 +50,10 @@ func TestCPUThrottleHandler_Handle(t *testing.T) {
 			},
 			validate: func(t *testing.T, handler *CPUThrottleHandler, quotaFile string) {
 				content, err := os.ReadFile(quotaFile)
-
 				assert.NoError(t, err)
-				assert.Equal(t, "50000", strings.Trim(string(content), " ")[0])
+				fields := strings.Fields(string(content))
+				assert.NotEmpty(t, fields)
+				assert.Equal(t, "50000", fields[0])
 				handler.mutex.RLock()
 				assert.True(t, handler.throttlingActive)
 				handler.mutex.RUnlock()
@@ -60,7 +61,7 @@ func TestCPUThrottleHandler_Handle(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "zero quota still writes minimal value",
+			name: "apply unlimited quota to BE root cgroup",
 			event: framework.NodeCPUThrottleEvent{
 				Resource:      v1.ResourceCPU,
 				CPUQuotaMilli: -1,
@@ -73,7 +74,9 @@ func TestCPUThrottleHandler_Handle(t *testing.T) {
 			validate: func(t *testing.T, handler *CPUThrottleHandler, quotaFile string) {
 				content, err := os.ReadFile(quotaFile)
 				assert.NoError(t, err)
-				assert.Equal(t, "-1", strings.Trim(string(content), " ")[0])
+				fields := strings.Fields(string(content))
+				assert.NotEmpty(t, fields)
+				assert.Equal(t, "-1", fields[0])
 				handler.mutex.RLock()
 				assert.True(t, handler.throttlingActive)
 				handler.mutex.RUnlock()

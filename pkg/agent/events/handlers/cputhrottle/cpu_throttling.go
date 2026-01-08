@@ -94,7 +94,7 @@ func (h *CPUThrottleHandler) applyBEQuota(quota int64) error {
 
 func (h *CPUThrottleHandler) quotaFromMilliCPU(milliCPU int64) int64 {
 	if milliCPU <= 0 {
-		return 1
+		return -1
 	}
 
 	return milliCPU * CPUPeriod / 1000
