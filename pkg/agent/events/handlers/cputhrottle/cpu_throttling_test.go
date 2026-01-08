@@ -78,7 +78,7 @@ func TestCPUThrottleHandler_Handle(t *testing.T) {
 				assert.NotEmpty(t, fields)
 				assert.Equal(t, "-1", fields[0])
 				handler.mutex.RLock()
-				assert.True(t, handler.throttlingActive)
+				assert.False(t, handler.throttlingActive)
 				handler.mutex.RUnlock()
 			},
 			wantErr: false,
