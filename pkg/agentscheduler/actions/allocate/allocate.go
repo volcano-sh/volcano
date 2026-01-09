@@ -87,7 +87,27 @@ func (alloc *Action) allocateTask(schedCtx *agentapi.SchedulingContext) error {
 
 	nodes := alloc.fwk.VolcanoNodeInfos()
 
-	// TODO: check is pod allocatable
+	// checking if the pod is allocatable
+	allocatableOK := false
+	preCheckFitErrs := api.NewFitErrors()
+	for _, n := range nodes {
+		if task.InitResreq.LessEqual(n.Allocatable, api.Zero) {
+			allocatableOK = true
+			break
+		}
+	}
+	if !allocatableOK {
+		for _, n := range nodes {
+			ok, resources := task.InitResreq.LessEqualWithResourcesName(n.Allocatable, api.Zero)
+			if !ok {
+				status := &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)}
+				preCheckFitErrs.SetNodeError(n.Name, api.NewFitErrWithStatus(task, n, status))
+			} else {
+				preCheckFitErrs.SetNodeError(n.Name, api.NewFitError(task, n, api.AllNodeUnavailableMsg))
+			}
+		}
+		return preCheckFitErrs
+	}
 	klog.V(3).Infof("There are <%d> nodes for task <%v/%v>", len(nodes), task.Namespace, task.Name)
 
 	if err := alloc.fwk.PrePredicateFn(task); err != nil {
