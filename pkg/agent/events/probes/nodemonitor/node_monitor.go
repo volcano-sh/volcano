@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+	"volcano.sh/volcano/pkg/agent/apis/extension"
 
 	"volcano.sh/volcano/pkg/agent/apis"
 	"volcano.sh/volcano/pkg/agent/config/api"
@@ -43,10 +44,12 @@ import (
 
 func init() {
 	probes.RegisterEventProbeFunc(string(framework.NodeMonitorEventName), NewMonitor)
+	probes.RegisterEventProbeFunc(string(framework.NodeCPUThrottleEventName), NewMonitor)
 }
 
 const (
 	highUsageCountLimit = 6
+	unlimitedQuota      = -1
 )
 
 type monitor struct {
@@ -62,6 +65,9 @@ type monitor struct {
 	getNodeFunc             utilnode.ActiveNode
 	getPodsFunc             utilpod.ActivePods
 	usageGetter             resourceusage.Getter
+	cpuThrottlingThreshold  int
+	cpuProtectionWatermark  int
+	cpuThrottlingActive     bool
 }
 
 func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, workQueue workqueue.RateLimitingInterface) framework.Probe {
@@ -75,6 +81,7 @@ func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollector
 		highWatermark:           make(apis.Watermark),
 		highUsageCountByResName: make(map[v1.ResourceName]int),
 		usageGetter:             resourceusage.NewUsageGetter(mgr, local.CollectorName),
+		cpuThrottlingActive:     false,
 	}
 }
 
@@ -86,11 +93,15 @@ func (m *monitor) Run(stop <-chan struct{}) {
 	klog.InfoS("Started nodePressure probe")
 	go wait.Until(m.utilizationMonitoring, 10*time.Second, stop)
 	go wait.Until(m.detect, 10*time.Second, stop)
+	go wait.Until(m.detectCPUThrottling, 10*time.Second, stop)
 }
 
 func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 	m.cfgLock.Lock()
 	utils.SetEvictionWatermark(cfg, m.lowWatermark, m.highWatermark)
+	if cfg.CPUThrottlingConfig != nil && cfg.CPUThrottlingConfig.Enable != nil && *cfg.CPUThrottlingConfig.Enable {
+		m.cpuThrottlingThreshold, m.cpuProtectionWatermark = utils.SetCPUThrottlingConfig(cfg)
+	}
 	m.cfgLock.Unlock()
 
 	m.Lock()
@@ -98,6 +109,8 @@ func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 	// reset historical statistics
 	// TODO: make this more fine-grained, only when new setting is a higher watermark should we reset.
 	m.highUsageCountByResName = map[v1.ResourceName]int{}
+
+	m.cpuThrottlingActive = false
 	return nil
 }
 
@@ -199,4 +212,71 @@ func (m *monitor) nodeHasPressure(resName v1.ResourceName) bool {
 	defer m.Unlock()
 
 	return m.highUsageCountByResName[resName] >= highUsageCountLimit
+}
+
+func (m *monitor) detectCPUThrottling() {
+	m.cfgLock.RLock()
+	throttlingThreshold := m.cpuThrottlingThreshold
+	m.cfgLock.RUnlock()
+
+	if throttlingThreshold == 0 {
+		return
+	}
+
+	node, err := m.getNodeFunc()
+	if err != nil {
+		klog.ErrorS(err, "CPU Throttling: Failed to get node")
+		return
+	}
+	nodeCopy := node.DeepCopy()
+
+	totalCPU := nodeCopy.Status.Allocatable[v1.ResourceCPU]
+	totalMilli := totalCPU.MilliValue()
+
+	pods, err := m.getPodsFunc()
+	if err != nil {
+		klog.ErrorS(err, "CPU Throttling: Failed to get pods")
+	}
+
+	var onlineRequestMilli int64
+	for _, pod := range pods {
+		if extension.GetQosLevel(pod) < 0 {
+			continue
+		}
+		onlineRequestMilli += getPodCPURequestMilli(pod)
+	}
+
+	allowedMilli := totalMilli * int64(throttlingThreshold) / 100
+	availableBEMilli := allowedMilli - onlineRequestMilli
+	if availableBEMilli < 0 {
+		availableBEMilli = 0
+	}
+
+	// CPU throttling is applied when the available quota of Best Effort pods is less
+	// than 10% of the throttling threshold
+	if availableBEMilli < allowedMilli/10 {
+		event := framework.NodeCPUThrottleEvent{
+			TimeStamp:     time.Now(),
+			Resource:      v1.ResourceCPU,
+			CPUQuotaMilli: availableBEMilli,
+		}
+		m.queue.Add(event)
+	} else {
+		event := framework.NodeCPUThrottleEvent{
+			TimeStamp:     time.Now(),
+			Resource:      v1.ResourceCPU,
+			CPUQuotaMilli: unlimitedQuota,
+		}
+		m.queue.Add(event)
+	}
+}
+
+func getPodCPURequestMilli(pod *v1.Pod) int64 {
+	var total int64
+	for _, container := range pod.Spec.Containers {
+		if qty, ok := container.Resources.Requests[v1.ResourceCPU]; ok {
+			total += qty.MilliValue()
+		}
+	}
+	return total
 }
