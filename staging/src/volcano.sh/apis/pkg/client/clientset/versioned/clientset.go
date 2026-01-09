@@ -32,6 +32,7 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/scheduling/v1beta1"
 	shardv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/shard/v1alpha1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/topology/v1alpha1"
+	trainingv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/training/v1alpha1"
 )
 
 type Interface interface {
@@ -44,6 +45,7 @@ type Interface interface {
 	SchedulingV1beta1() schedulingv1beta1.SchedulingV1beta1Interface
 	ShardV1alpha1() shardv1alpha1.ShardV1alpha1Interface
 	TopologyV1alpha1() topologyv1alpha1.TopologyV1alpha1Interface
+	TrainingV1alpha1() trainingv1alpha1.TrainingV1alpha1Interface
 }
 
 // Clientset contains the clients for groups.
@@ -57,6 +59,7 @@ type Clientset struct {
 	schedulingV1beta1      *schedulingv1beta1.SchedulingV1beta1Client
 	shardV1alpha1          *shardv1alpha1.ShardV1alpha1Client
 	topologyV1alpha1       *topologyv1alpha1.TopologyV1alpha1Client
+	trainingV1alpha1       *trainingv1alpha1.TrainingV1alpha1Client
 }
 
 // BatchV1alpha1 retrieves the BatchV1alpha1Client
@@ -97,6 +100,11 @@ func (c *Clientset) ShardV1alpha1() shardv1alpha1.ShardV1alpha1Interface {
 // TopologyV1alpha1 retrieves the TopologyV1alpha1Client
 func (c *Clientset) TopologyV1alpha1() topologyv1alpha1.TopologyV1alpha1Interface {
 	return c.topologyV1alpha1
+}
+
+// TrainingV1alpha1 retrieves the TrainingV1alpha1Client
+func (c *Clientset) TrainingV1alpha1() trainingv1alpha1.TrainingV1alpha1Interface {
+	return c.trainingV1alpha1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -175,6 +183,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+	cs.trainingV1alpha1, err = trainingv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 
 	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
@@ -204,6 +216,7 @@ func New(c rest.Interface) *Clientset {
 	cs.schedulingV1beta1 = schedulingv1beta1.New(c)
 	cs.shardV1alpha1 = shardv1alpha1.New(c)
 	cs.topologyV1alpha1 = topologyv1alpha1.New(c)
+	cs.trainingV1alpha1 = trainingv1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

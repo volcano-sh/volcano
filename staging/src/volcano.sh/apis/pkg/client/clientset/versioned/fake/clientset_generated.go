@@ -42,6 +42,8 @@ import (
 	fakeshardv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/shard/v1alpha1/fake"
 	topologyv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/topology/v1alpha1"
 	faketopologyv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/topology/v1alpha1/fake"
+	trainingv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/training/v1alpha1"
+	faketrainingv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/training/v1alpha1/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
@@ -176,4 +178,9 @@ func (c *Clientset) ShardV1alpha1() shardv1alpha1.ShardV1alpha1Interface {
 // TopologyV1alpha1 retrieves the TopologyV1alpha1Client
 func (c *Clientset) TopologyV1alpha1() topologyv1alpha1.TopologyV1alpha1Interface {
 	return &faketopologyv1alpha1.FakeTopologyV1alpha1{Fake: &c.Fake}
+}
+
+// TrainingV1alpha1 retrieves the TrainingV1alpha1Client
+func (c *Clientset) TrainingV1alpha1() trainingv1alpha1.TrainingV1alpha1Interface {
+	return &faketrainingv1alpha1.FakeTrainingV1alpha1{Fake: &c.Fake}
 }

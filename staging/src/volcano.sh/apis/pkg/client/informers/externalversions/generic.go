@@ -30,6 +30,7 @@ import (
 	v1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	shardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
+	trainingv1alpha1 "volcano.sh/apis/pkg/apis/training/v1alpha1"
 )
 
 // GenericInformer is type of SharedIndexInformer which will locate and delegate to other
@@ -97,6 +98,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		// Group=topology.volcano.sh, Version=v1alpha1
 	case topologyv1alpha1.SchemeGroupVersion.WithResource("hypernodes"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Topology().V1alpha1().HyperNodes().Informer()}, nil
+
+		// Group=training.volcano.sh, Version=v1alpha1
+	case trainingv1alpha1.SchemeGroupVersion.WithResource("hyperjobs"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Training().V1alpha1().HyperJobs().Informer()}, nil
 
 	}
 

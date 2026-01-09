@@ -36,6 +36,7 @@ import (
 	scheduling "volcano.sh/apis/pkg/client/informers/externalversions/scheduling"
 	shard "volcano.sh/apis/pkg/client/informers/externalversions/shard"
 	topology "volcano.sh/apis/pkg/client/informers/externalversions/topology"
+	training "volcano.sh/apis/pkg/client/informers/externalversions/training"
 )
 
 // SharedInformerOption defines the functional option type for SharedInformerFactory.
@@ -268,6 +269,7 @@ type SharedInformerFactory interface {
 	Scheduling() scheduling.Interface
 	Shard() shard.Interface
 	Topology() topology.Interface
+	Training() training.Interface
 }
 
 func (f *sharedInformerFactory) Batch() batch.Interface {
@@ -300,4 +302,8 @@ func (f *sharedInformerFactory) Shard() shard.Interface {
 
 func (f *sharedInformerFactory) Topology() topology.Interface {
 	return topology.New(f, f.namespace, f.tweakListOptions)
+}
+
+func (f *sharedInformerFactory) Training() training.Interface {
+	return training.New(f, f.namespace, f.tweakListOptions)
 }

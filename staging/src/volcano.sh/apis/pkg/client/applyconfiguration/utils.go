@@ -29,6 +29,7 @@ import (
 	v1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	shardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
+	trainingv1alpha1 "volcano.sh/apis/pkg/apis/training/v1alpha1"
 	batchv1alpha1 "volcano.sh/apis/pkg/client/applyconfiguration/batch/v1alpha1"
 	applyconfigurationbusv1alpha1 "volcano.sh/apis/pkg/client/applyconfiguration/bus/v1alpha1"
 	applyconfigurationdatadependencyv1alpha1 "volcano.sh/apis/pkg/client/applyconfiguration/datadependency/v1alpha1"
@@ -38,6 +39,7 @@ import (
 	schedulingv1beta1 "volcano.sh/apis/pkg/client/applyconfiguration/scheduling/v1beta1"
 	applyconfigurationshardv1alpha1 "volcano.sh/apis/pkg/client/applyconfiguration/shard/v1alpha1"
 	applyconfigurationtopologyv1alpha1 "volcano.sh/apis/pkg/client/applyconfiguration/topology/v1alpha1"
+	applyconfigurationtrainingv1alpha1 "volcano.sh/apis/pkg/client/applyconfiguration/training/v1alpha1"
 )
 
 // ForKind returns an apply configuration type for the given GroupVersionKind, or nil if no
@@ -199,6 +201,20 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &applyconfigurationtopologyv1alpha1.MemberSpecApplyConfiguration{}
 	case topologyv1alpha1.SchemeGroupVersion.WithKind("RegexMatch"):
 		return &applyconfigurationtopologyv1alpha1.RegexMatchApplyConfiguration{}
+
+		// Group=training.volcano.sh, Version=v1alpha1
+	case trainingv1alpha1.SchemeGroupVersion.WithKind("HyperJob"):
+		return &applyconfigurationtrainingv1alpha1.HyperJobApplyConfiguration{}
+	case trainingv1alpha1.SchemeGroupVersion.WithKind("HyperJobSpec"):
+		return &applyconfigurationtrainingv1alpha1.HyperJobSpecApplyConfiguration{}
+	case trainingv1alpha1.SchemeGroupVersion.WithKind("HyperJobStatus"):
+		return &applyconfigurationtrainingv1alpha1.HyperJobStatusApplyConfiguration{}
+	case trainingv1alpha1.SchemeGroupVersion.WithKind("ReplicatedJob"):
+		return &applyconfigurationtrainingv1alpha1.ReplicatedJobApplyConfiguration{}
+	case trainingv1alpha1.SchemeGroupVersion.WithKind("ReplicatedJobStatus"):
+		return &applyconfigurationtrainingv1alpha1.ReplicatedJobStatusApplyConfiguration{}
+	case trainingv1alpha1.SchemeGroupVersion.WithKind("SplitPolicy"):
+		return &applyconfigurationtrainingv1alpha1.SplitPolicyApplyConfiguration{}
 
 	}
 	return nil
