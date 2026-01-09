@@ -19,6 +19,7 @@ package tdm
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -41,7 +42,12 @@ const (
 	defaultPodEvictNum       = 1
 )
 
-var lastEvictAt time.Time
+type tdmPlugin struct {
+	revocableZone map[string]string
+	evictPeriod   time.Duration
+	mu            sync.Mutex
+	lastEvictAt   time.Time
+}
 
 /*
    actions: "enqueue, reclaim, allocate, preempt"
@@ -53,13 +59,6 @@ var lastEvictAt time.Time
          tdm.revocable-zone.rz2: 12:00-14:00
          tdm.evict.period: 1m
 */
-
-type tdmPlugin struct {
-	revocableZone map[string]string
-	// evictPeriod
-	// default 1m
-	evictPeriod time.Duration
-}
 
 // New function returns prioritizePlugin object
 func New(args framework.Arguments) framework.Plugin {
@@ -78,7 +77,7 @@ func New(args framework.Arguments) framework.Plugin {
 		}
 	}
 
-	return &tdmPlugin{revocableZone, evictPeriod}
+	return &tdmPlugin{revocableZone: revocableZone, evictPeriod: evictPeriod}
 }
 
 func (tp *tdmPlugin) Name() string {
@@ -234,10 +233,16 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 	}
 
 	victimsFn := func([]*api.TaskInfo) []*api.TaskInfo {
-		if lastEvictAt.Add(tp.evictPeriod).After(time.Now()) {
-			klog.V(4).Infof("TDM next evict time at %v", lastEvictAt)
+		now := time.Now()
+
+		tp.mu.Lock()
+		if tp.lastEvictAt.Add(tp.evictPeriod).After(now) {
+			klog.V(4).Infof("TDM next evict time at %v", tp.lastEvictAt)
+			tp.mu.Unlock()
 			return nil
 		}
+		tp.lastEvictAt = now
+		tp.mu.Unlock()
 
 		klog.V(4).Infof("TDM start to find victims")
 
@@ -254,9 +259,6 @@ func (tp *tdmPlugin) OnSessionOpen(ssn *framework.Session) {
 				}
 			}
 		}
-
-		// need to consider concurrency?
-		lastEvictAt = time.Now()
 
 		klog.V(4).Infof("TDM got %v victims", len(victims))
 
@@ -312,6 +314,9 @@ func (tp *tdmPlugin) maxVictims(job *api.JobInfo, victims []*api.TaskInfo) []*ap
 	klog.V(3).Infof("Job <%s/%s> max evict:%v, potential victims number:%v, max victims number:%v",
 		job.Namespace, job.Name, maxPodEvictNum, len(victims), targetNum)
 
+	if targetNum <= 0 {
+		return nil
+	}
 	return victims[:targetNum]
 }
 

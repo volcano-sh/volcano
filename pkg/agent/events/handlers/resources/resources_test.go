@@ -36,6 +36,9 @@ import (
 )
 
 func TestResourcesHandle_Handle(t *testing.T) {
+	os.Setenv("VOLCANO_TEST_CGROUP_VERSION", "v1")
+	defer os.Unsetenv("VOLCANO_TEST_CGROUP_VERSION")
+
 	tmpDir := t.TempDir()
 	containerID1 := "65a6099d"
 	containerID2 := "13b017b7"
@@ -321,7 +324,7 @@ func prepare(t *testing.T, tmpDir, podUID, containerID1, containerID2 string) {
 		for _, ss := range subSystems {
 			podDir := path.Join(tmpDir, ss, "kubepods", "burstable", "pod"+podUID)
 			containerDir := path.Join(podDir, c)
-			err := os.MkdirAll(containerDir, 0644)
+			err := os.MkdirAll(containerDir, 0755)
 			assert.NoError(t, err)
 			for _, cgrouPath := range cgroupPaths {
 				// create pod level cgroup.
