@@ -50,14 +50,14 @@ func TestNew(t *testing.T) {
 			arguments: framework.Arguments{},
 			expectedPlugin: &networkTopologyAwarePlugin{
 				weight: &priorityWeight{
-					GlobalWeight:                 1,
-					HyperNodeBinPackingCPU:       1,
-					HyperNodeBinPackingMemory:    1,
+					GlobalWeight:                 DefaultWeight,
+					HyperNodeBinPackingCPU:       DefaultWeight,
+					HyperNodeBinPackingMemory:    DefaultWeight,
 					HyperNodeBinPackingResources: map[corev1.ResourceName]int{},
 				},
 				normalPodConfig: &normalPodConfig{
-					hyperNodeBinPackingEnable: true,
-					hyperNodeBinPackingFading: 0.8,
+					hyperNodeBinPackingEnable: DefaultNormalPodEnable,
+					hyperNodeBinPackingFading: DefaultNormalPodFading,
 				},
 				hyperNodesTier:         &hyperNodesTier{},
 				hyperNodeResourceCache: make(map[string]*resourceStatus),
@@ -106,17 +106,17 @@ func TestNew(t *testing.T) {
 			},
 			expectedPlugin: &networkTopologyAwarePlugin{
 				weight: &priorityWeight{
-					GlobalWeight:              1,
-					HyperNodeBinPackingCPU:    1,
-					HyperNodeBinPackingMemory: 1,
+					GlobalWeight:              DefaultWeight,
+					HyperNodeBinPackingCPU:    DefaultWeight,
+					HyperNodeBinPackingMemory: DefaultWeight,
 					HyperNodeBinPackingResources: map[corev1.ResourceName]int{
-						"nvidia.com/gpuxxx": 1,
-						"example.com/foo":   1,
+						"nvidia.com/gpuxxx": DefaultWeight,
+						"example.com/foo":   DefaultWeight,
 					},
 				},
 				normalPodConfig: &normalPodConfig{
-					hyperNodeBinPackingEnable: true,
-					hyperNodeBinPackingFading: 0.8,
+					hyperNodeBinPackingEnable: DefaultNormalPodEnable,
+					hyperNodeBinPackingFading: DefaultNormalPodFading,
 				},
 				hyperNodesTier:         &hyperNodesTier{},
 				hyperNodeResourceCache: make(map[string]*resourceStatus),

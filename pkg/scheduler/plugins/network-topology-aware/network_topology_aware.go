@@ -52,6 +52,15 @@ const (
 	HyperNodeBinPackNormalPodFading = "hypernode.binpack.normal-pod.fading"
 )
 
+const (
+	// DefaultWeight is the default value of the weight of this plugin and the resources
+	DefaultWeight = 1
+	// DefaultNormalPodEnable is the default value of hypernode.binpack.normal-pod.enable
+	DefaultNormalPodEnable = true
+	// DefaultNormalPodFading is the default value of hypernode.binpack.normal-pod.fading
+	DefaultNormalPodFading = 0.8
+)
+
 type networkTopologyAwarePlugin struct {
 	// Arguments given for the plugin
 	pluginArguments framework.Arguments
@@ -143,28 +152,27 @@ func (nta *networkTopologyAwarePlugin) Name() string {
 }
 
 func getPriorityWeight(args framework.Arguments) *priorityWeight {
-	// Values are initialized to 1.
 	weight := priorityWeight{
-		GlobalWeight:                 1,
-		HyperNodeBinPackingCPU:       1,
-		HyperNodeBinPackingMemory:    1,
+		GlobalWeight:                 DefaultWeight,
+		HyperNodeBinPackingCPU:       DefaultWeight,
+		HyperNodeBinPackingMemory:    DefaultWeight,
 		HyperNodeBinPackingResources: make(map[corev1.ResourceName]int),
 	}
 
 	// Checks whether binpack.weight is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.GlobalWeight, NetworkTopologyWeight)
 	if weight.GlobalWeight < 0 {
-		weight.GlobalWeight = 1
+		weight.GlobalWeight = DefaultWeight
 	}
 	// Checks whether binpack.cpu is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.HyperNodeBinPackingCPU, HyperNodeBinPackCPU)
 	if weight.HyperNodeBinPackingCPU < 0 {
-		weight.HyperNodeBinPackingCPU = 1
+		weight.HyperNodeBinPackingCPU = DefaultWeight
 	}
 	// Checks whether binpack.memory is provided or not, if given, modifies the value in weight struct.
 	args.GetInt(&weight.HyperNodeBinPackingMemory, HyperNodeBinPackMemory)
 	if weight.HyperNodeBinPackingMemory < 0 {
-		weight.HyperNodeBinPackingMemory = 1
+		weight.HyperNodeBinPackingMemory = DefaultWeight
 	}
 
 	resourcesStr, ok := args[HyperNodeBinPackResources].(string)
@@ -181,10 +189,10 @@ func getPriorityWeight(args framework.Arguments) *priorityWeight {
 
 		// binpack.resources.[ResourceName]
 		resourceKey := HyperNodeBinPackResourcesPrefix + resource
-		resourceWeight := 1
+		resourceWeight := DefaultWeight
 		args.GetInt(&resourceWeight, resourceKey)
 		if resourceWeight < 0 {
-			resourceWeight = 1
+			resourceWeight = DefaultWeight
 		}
 		weight.HyperNodeBinPackingResources[corev1.ResourceName(resource)] = resourceWeight
 	}
@@ -193,16 +201,15 @@ func getPriorityWeight(args framework.Arguments) *priorityWeight {
 }
 
 func getNormalPodConfig(args framework.Arguments) *normalPodConfig {
-	// default values are respectively true and 0.8
 	config := normalPodConfig{
-		hyperNodeBinPackingEnable: true,
-		hyperNodeBinPackingFading: 0.8,
+		hyperNodeBinPackingEnable: DefaultNormalPodEnable,
+		hyperNodeBinPackingFading: DefaultNormalPodFading,
 	}
 	args.GetBool(&config.hyperNodeBinPackingEnable, HyperNodeBinPackNormalPodEnable)
 	args.GetFloat64(&config.hyperNodeBinPackingFading, HyperNodeBinPackNormalPodFading)
 	// config.hyperNodeBinPackingFading could be 0, which implies only the hypernodes of tier 1 affect the pod binpacking scores
 	if config.hyperNodeBinPackingFading < 0 {
-		config.hyperNodeBinPackingFading = 0.8
+		config.hyperNodeBinPackingFading = DefaultNormalPodFading
 	}
 	return &config
 }
