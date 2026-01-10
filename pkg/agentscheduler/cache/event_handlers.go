@@ -36,6 +36,7 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	schedutil "k8s.io/kubernetes/pkg/scheduler/util"
 
+	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -47,15 +48,19 @@ func isTerminated(status schedulingapi.TaskStatus) bool {
 func (sc *SchedulerCache) addTask(pi *schedulingapi.TaskInfo) error {
 	if len(pi.NodeName) != 0 {
 		if _, found := sc.Nodes[pi.NodeName]; !found {
-			sc.Nodes[pi.NodeName] = schedulingapi.NewNodeInfo(nil)
-			sc.Nodes[pi.NodeName].Name = pi.NodeName
+			newNode := newNodeInfoListItem(schedulingapi.NewNodeInfo(nil))
+			sc.Nodes[pi.NodeName] = newNode
+			sc.Nodes[pi.NodeName].info.Name = pi.NodeName
 		}
 
 		node := sc.Nodes[pi.NodeName]
 		if !isTerminated(pi.Status) {
-			if err := node.AddTask(pi); err != nil {
+			if err := node.info.AddTask(pi); err != nil {
 				return err
 			}
+			sc.Nodes[pi.NodeName].info.Generation = nextGeneration()
+			sc.moveNodeToHead(pi.NodeName)
+			klog.V(5).Infof("Node %s updated by add task, generation incremented to %d", pi.NodeName, sc.Nodes[pi.NodeName].info.Generation)
 		} else {
 			klog.V(4).Infof("Pod <%v/%v> is in status %s.", pi.Namespace, pi.Name, pi.Status.String())
 		}
@@ -118,7 +123,10 @@ func (sc *SchedulerCache) deleteTask(ti *schedulingapi.TaskInfo) error {
 		if !isTerminated(ti.Status) {
 			node := sc.Nodes[ti.NodeName]
 			if node != nil {
-				nodeErr = node.RemoveTask(ti)
+				sc.Nodes[ti.NodeName].info.Generation = nextGeneration()
+				sc.moveNodeToHead(ti.NodeName)
+				klog.V(5).Infof("Node %s updated by delete task, generation incremented to %d", ti.NodeName, sc.Nodes[ti.NodeName].info.Generation)
+				nodeErr = node.info.RemoveTask(ti)
 			}
 		}
 	}
@@ -315,19 +323,21 @@ func (sc *SchedulerCache) AddOrUpdateNode(node *v1.Node) error {
 
 	var oldNode *v1.Node
 	if n, ok := sc.Nodes[node.Name]; ok {
-		oldNode = n.Node
+		oldNode = n.info.Node
 	}
 
 	if sc.Nodes[node.Name] != nil {
-		sc.Nodes[node.Name].SetNode(node)
+		sc.Nodes[node.Name].info.SetNode(node)
 		sc.removeNodeImageStates(node.Name)
-		// TODO The generation needs to be optimized to increment globally by one.
-		sc.Nodes[node.Name].Generation++
-		klog.V(5).Infof("Node %s added/updated, generation incremented to %d", node.Name, sc.Nodes[node.Name].Generation)
 	} else {
-		sc.Nodes[node.Name] = schedulingapi.NewNodeInfo(node)
+		newNode := newNodeInfoListItem(schedulingapi.NewNodeInfo(node))
+		sc.Nodes[node.Name] = newNode
 	}
-	sc.addNodeImageStates(node, sc.Nodes[node.Name])
+	sc.Nodes[node.Name].info.Generation = nextGeneration()
+	sc.moveNodeToHead(node.Name)
+	klog.V(5).Infof("Node %s added/updated, generation incremented to %d", node.Name, sc.Nodes[node.Name].info.Generation)
+
+	sc.addNodeImageStates(node, sc.Nodes[node.Name].info)
 
 	var nodeExisted bool
 	for _, name := range sc.NodeList {
@@ -373,9 +383,11 @@ func (sc *SchedulerCache) RemoveNode(nodeName string) error {
 		return fmt.Errorf("node <%s> does not exist", nodeName)
 	}
 
-	node := sc.Nodes[nodeName].Node
+	sc.Nodes[nodeName].info.Generation = nextGeneration()
+	klog.V(5).Infof("Node %s deleted, generation incremented to %d", nodeName, sc.Nodes[nodeName].info.Generation)
+	node := sc.Nodes[nodeName].info.Node
 
-	numaInfo := sc.Nodes[nodeName].NumaInfo
+	numaInfo := sc.Nodes[nodeName].info.NumaInfo
 	if numaInfo != nil {
 		klog.V(3).Infof("delete numatopo <%s/%s>", numaInfo.Namespace, numaInfo.Name)
 		err := sc.vcClient.NodeinfoV1alpha1().Numatopologies().Delete(context.TODO(), numaInfo.Name, metav1.DeleteOptions{})
@@ -472,4 +484,51 @@ func (sc *SchedulerCache) nodeCanAddCache(node *v1.Node) bool {
 	}
 	klog.Infof("node %s ignore add/update/delete into schedulerCache", node.Name)
 	return false
+}
+
+// AddNodeShard add nodeshard to scheduler cache
+func (sc *SchedulerCache) AddNodeShard(obj interface{}) {
+	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert to *nodeshardv1alpha1.NodeShard: %v", obj)
+		return
+	}
+	sc.addOrUpdateNodeShard(shard)
+}
+
+// UpdateNodeShard update nodeshard to scheduler cache
+func (sc *SchedulerCache) UpdateNodeShard(oldObj, newObj interface{}) {
+	newShard, ok := newObj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert newObj to *nodeshardv1alpha1.NodeShard: %v", newObj)
+		return
+	}
+	sc.addOrUpdateNodeShard(newShard)
+}
+
+// DeleteNode delete nodeshard from scheduler cache
+func (sc *SchedulerCache) DeleteNodeShard(obj interface{}) {
+	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert to *nodeshardv1alpha1.NodeShard: %v", obj)
+		return
+	}
+	sc.deleteNodeShard(shard.Name)
+}
+
+func (sc *SchedulerCache) addOrUpdateNodeShard(shard *nodeshardv1alpha1.NodeShard) {
+	shardInfo := schedulingapi.NewNodeShardInfo(shard)
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	sc.NodeShards[shard.Name] = shardInfo
+	sc.ShardCoordinator.RefreshNodeShards(sc.NodeShards)
+}
+
+func (sc *SchedulerCache) deleteNodeShard(name string) {
+	if _, ok := sc.NodeShards[name]; ok {
+		sc.Mutex.Lock()
+		defer sc.Mutex.Unlock()
+		delete(sc.NodeShards, name)
+		sc.ShardCoordinator.RefreshNodeShards(sc.NodeShards)
+	}
 }

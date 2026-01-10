@@ -52,6 +52,18 @@ func TestIsControllerEnabled(t *testing.T) {
 			isEnable:          true,
 		},
 		{
+			name:              "all controller should be enabled except job controller",
+			gotControllerName: "job-controller",
+			inputControllers:  []string{"*, -job-controller"},
+			isEnable:          false,
+		},
+		{
+			name:              "all controller should be enabled except job controller",
+			gotControllerName: "sharding-controller",
+			inputControllers:  []string{"-sharding-controller, *, -job-controller"},
+			isEnable:          false,
+		},
+		{
 			name:              "gc-controller should be disable, input allow jobtemplate-controller, jobflow-controller, pg-controller, queue-controller",
 			gotControllerName: "gc-controller",
 			inputControllers:  []string{"-gc-controller", "+jobtemplate-controller", "+jobflow-controller", "+pg-controller", "+queue-controller"},

@@ -509,15 +509,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			return int(rv.Queue.Spec.Priority) - int(lv.Queue.Spec.Priority)
 		}
 
-		if cp.queueOpts[lv.UID].share == cp.queueOpts[rv.UID].share {
-			return 0
-		}
-
-		if cp.queueOpts[lv.UID].share < cp.queueOpts[rv.UID].share {
-			return -1
-		}
-
-		return 1
+		return cp.compareShareWithDeserved(cp.queueOpts[lv.UID], cp.queueOpts[rv.UID])
 	})
 }
 
@@ -604,13 +596,9 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		rootQueueAttr.deserved = cp.totalResource
 	}
 	rootQueueAttr.realCapability = cp.totalResource
-	// Check the hierarchical structure of queues
-	err := cp.checkHierarchicalQueue(rootQueueAttr)
-	if err != nil {
-		klog.Errorf("Failed to check queue's hierarchical structure, error: %v", err)
-		return false
-	}
-	klog.V(4).Infof("Successfully checked queue's hierarchical structure.")
+	// checkHierarchicalQueue only logs warnings and never returns errors
+	// to avoid aborting the entire scheduling cycle due to configuration issues
+	cp.checkHierarchicalQueue(rootQueueAttr)
 
 	// update session attributes
 	ssn.TotalGuarantee = cp.totalGuarantee
@@ -650,14 +638,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		} else if !lvLeaf && rvLeaf {
 			return 1
 		} else if !lvLeaf && !rvLeaf {
-			if cp.queueOpts[lv.UID].share == cp.queueOpts[rv.UID].share {
-				return 0
-			}
-
-			if cp.queueOpts[lv.UID].share < cp.queueOpts[rv.UID].share {
-				return -1
-			}
-			return 1
+			return cp.compareShareWithDeserved(cp.queueOpts[lv.UID], cp.queueOpts[rv.UID])
 		}
 
 		lvAttr := cp.queueOpts[lv.UID]
@@ -672,15 +653,7 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			rvParentID = rvAttr.ancestors[level+1]
 		}
 
-		if cp.queueOpts[lvParentID].share == cp.queueOpts[rvParentID].share {
-			return 0
-		}
-
-		if cp.queueOpts[lvParentID].share < cp.queueOpts[rvParentID].share {
-			return -1
-		}
-
-		return 1
+		return cp.compareShareWithDeserved(cp.queueOpts[lvParentID], cp.queueOpts[rvParentID])
 	})
 
 	ssn.AddVictimQueueOrderFn(cp.Name(), func(l, r, preemptor interface{}) int {
@@ -767,7 +740,7 @@ func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.S
 	return nil
 }
 
-func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
+func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 	totalGuarantee := api.EmptyResource()
 	totalDeserved := api.EmptyResource()
 	for _, childAttr := range attr.children {
@@ -795,8 +768,9 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 
 		// Check if the parent queue's capability is less than the child queue's capability
 		if attr.capability.LessPartly(childAttr.capability, api.Zero) {
-			return fmt.Errorf("queue <%s> capability <%s> is less than its child queue <%s> capability <%s>",
-				attr.name, attr.capability, childAttr.name, childAttr.capability)
+			klog.V(3).Infof("Child queue %s capability (%s) exceeds parent queue %s capability (%s). "+
+				"Child's effective capability will be limited by parent.",
+				childAttr.name, childAttr.capability, attr.name, attr.capability)
 		}
 	}
 
@@ -824,23 +798,44 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 
 	// Check if the parent queue's deserved resources are less than the total deserved resources of child queues
 	if attr.deserved.LessPartly(totalDeserved, api.Zero) {
-		return fmt.Errorf("queue <%s> deserved resources <%s> are less than the sum of its child queues' deserved resources <%s>",
-			attr.name, attr.deserved, totalDeserved)
+		klog.V(3).Infof("Sum of child queue deserved (%s) exceeds parent queue %s deserved (%s). "+
+			"This may affect resource distribution during scheduling.",
+			totalDeserved, attr.name, attr.deserved)
 	}
 
 	// Check if the parent queue's guarantee resources are less than the total guarantee resources of child queues
 	if attr.guarantee.LessPartly(totalGuarantee, api.Zero) {
-		return fmt.Errorf("queue <%s> guarantee resources <%s> are less than the sum of its child queues' guarantee resources <%s>",
-			attr.name, attr.guarantee, totalGuarantee)
+		klog.V(3).Infof("Sum of child queue guarantees (%s) exceeds parent queue %s guarantee (%s). "+
+			"Not all child guarantees can be satisfied simultaneously.",
+			totalGuarantee, attr.name, attr.guarantee)
 	}
 
+	// Recursively check child queues
 	for _, childAttr := range attr.children {
-		err := cp.checkHierarchicalQueue(childAttr)
-		if err != nil {
-			return err
-		}
+		cp.checkHierarchicalQueue(childAttr)
 	}
-	return nil
+}
+
+// compareShareWithDeserved compares two queueAttr by share; when shares are equal,
+// queues with non-empty deserved are prioritized over best-effort queues.
+// Returns negative if l should come before r.
+func (cp *capacityPlugin) compareShareWithDeserved(lattr, rattr *queueAttr) int {
+	if lattr.share == rattr.share {
+		lHasDeserved := !lattr.deserved.IsEmpty()
+		rHasDeserved := !rattr.deserved.IsEmpty()
+		if lHasDeserved == rHasDeserved {
+			return 0
+		}
+		if lHasDeserved {
+			return -1
+		}
+		return 1
+	}
+
+	if lattr.share < rattr.share {
+		return -1
+	}
+	return 1
 }
 
 func (cp *capacityPlugin) updateShare(attr *queueAttr) {
@@ -1001,6 +996,25 @@ func (s *capacityState) Clone() fwk.StateData {
 
 func updateQueueAttrShare(attr *queueAttr) {
 	res := float64(0)
+
+	// If no deserved is configured for this queue, treat it as a best-effort queue.
+	// Best-effort queues should have lowest scheduling priority: only when all queues
+	// with deserved (i.e., resource guarantee) have share >= 1, best-effort queues
+	// are scheduled. To ensure this, set share = 1 for ALL best-effort queues no matter
+	// how many resources (allocated or requesting), so that they are always scheduled
+	// after any queue with deserved whose share < 1.
+	//
+	// When share values are equal, QueueOrderFn uses tie-breaking logic to prioritize
+	// queues with deserved over best-effort queues. This further prevents reclaim thrashing.
+	//
+	// The semantics here are:
+	//   - no deserved (best-effort) -> share = 1 (always goes after share<1)
+	//   - with deserved, share < 1 -> prioritized
+	//   - with deserved, share >= 1 -> equal priority with best-effort
+	if attr.deserved.IsEmpty() {
+		attr.share = 1
+		return
+	}
 
 	for _, rn := range attr.deserved.ResourceNames() {
 		res = max(res, helpers.Share(attr.allocated.Get(rn), attr.deserved.Get(rn)))

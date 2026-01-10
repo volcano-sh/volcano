@@ -24,15 +24,15 @@ import (
 
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/component-base/config"
 	componentbaseconfigvalidation "k8s.io/component-base/config/validation"
 
 	voptions "volcano.sh/volcano/cmd/scheduler/app/options"
-	"volcano.sh/volcano/pkg/kube"
+	"volcano.sh/volcano/pkg/util"
 )
 
 const (
-	agentSchedulerName     = "agent-scheduler"
+	defaultSchedulerName   = "agent-scheduler"
+	defaultShardName       = "agent-scheduler"
 	defaultSchedulerPeriod = time.Second
 	defaultResyncPeriod    = 0
 	defaultQueue           = "default"
@@ -54,44 +54,18 @@ const (
 
 // ServerOption is the main context object for the controller manager.
 type ServerOption struct {
-	KubeClientOptions kube.ClientOptions
-	CertFile          string
-	KeyFile           string
-	CaCertFile        string
-	CertData          []byte
-	KeyData           []byte
-	CaCertData        []byte
-	SchedulerName     string
-	SchedulerConf     string
-	ResyncPeriod      time.Duration
-	// leaderElection defines the configuration of leader election.
-	LeaderElection config.LeaderElectionConfiguration
-	// Deprecated: use ResourceNamespace instead.
-	LockObjectNamespace string
-	PrintVersion        bool
-	EnableMetrics       bool
-	ListenAddress       string
-	EnableCSIStorage    bool
-	EnableHealthz       bool
-	// HealthzBindAddress is the IP address and port for the health check server to serve on
-	// defaulting to :11251
-	HealthzBindAddress string
-	// Parameters for scheduling tuning: the number of feasible nodes to find and score
-	MinNodesToFind             int32
-	MinPercentageOfNodesToFind int32
-	PercentageOfNodesToFind    int32
+	*voptions.ServerOption
 
-	NodeSelector      []string
-	CacheDumpFileDir  string
-	EnableCacheDumper bool
-	NodeWorkerThreads uint32
-
-	// DisableDefaultSchedulerConfig indicates if the scheduler should fallback to default
-	// config if the current scheduler config is invalid
-	DisableDefaultSchedulerConfig bool
+	SchedulerName string
 
 	//Count of workers for scheduling
 	ScheduleWorkerCount uint32
+
+	//enable scheduling with shard
+	ShardingMode string
+
+	//Shard name for this scheduler
+	ShardName string
 }
 
 // DecryptFunc is custom function to parse ca file
@@ -102,7 +76,7 @@ var ServerOpts *ServerOption
 
 // NewServerOption creates a new CMServer with a default config.
 func NewServerOption() *ServerOption {
-	return &ServerOption{}
+	return &ServerOption{ServerOption: &voptions.ServerOption{}}
 }
 
 // AddFlags adds flags for a specific CMServer to the specified FlagSet.
@@ -117,7 +91,7 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.LockObjectNamespace, "lock-object-namespace", "", "Define the namespace of the lock object; it is volcano-system by default.")
 	fs.MarkDeprecated("lock-object-namespace", "This flag is deprecated and will be removed in a future release. Please use --leader-elect-resource-namespace instead.")
 	// volcano scheduler will ignore pods with scheduler names other than specified with the option
-	fs.StringVar(&s.SchedulerName, "scheduler-name", agentSchedulerName, "vc-agent-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
+	fs.StringVar(&s.SchedulerName, "scheduler-name", defaultSchedulerName, "vc-agent-scheduler will handle pods whose .spec.SchedulerName is same as scheduler-name")
 	fs.StringVar(&s.SchedulerConf, "scheduler-conf", "", "The absolute path of scheduler configuration file")
 	fs.DurationVar(&s.ResyncPeriod, "resync-period", defaultResyncPeriod, "The default resync period for k8s native informer factory")
 	fs.BoolVar(&s.PrintVersion, "version", false, "Show version and quit")
@@ -144,7 +118,9 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&s.CacheDumpFileDir, "cache-dump-dir", "/tmp", "The target dir where the json file put at when dump cache info to json file")
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
-	fs.Uint32Var(&s.ScheduleWorkerCount, "worker-count", defaultScheduleWorkerCount, "The flag indicates the number of worker threads for scheduling.")
+	fs.Uint32Var(&s.ScheduleWorkerCount, "scheduler-worker-count", defaultScheduleWorkerCount, "The flag indicates the number of worker threads scheduling in parallel")
+	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, the mode could be none(default, schedule pod without shard)|hard(schedule pod within nodes in shard)|soft(chedule pod within nodes in shard in priority)")
+	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultShardName, "The name of shard used for this scheduler, scheduler schedule pods based on nodes in shard if sharding mode is hard/soft")
 }
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.
@@ -156,7 +132,7 @@ func (s *ServerOption) CheckOptionOrDie() error {
 func (s *ServerOption) RegisterOptions() {
 	ServerOpts = s
 	//some package from scheduler pkg rely on options defined in scheduler pkg
-	voptions.ServerOpts = voptions.NewServerOption()
+	voptions.ServerOpts = ServerOpts.ServerOption
 }
 
 // readCAFiles read data from ca file path

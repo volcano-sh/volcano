@@ -157,9 +157,6 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 			if *task.MinAvailable > task.Replicas {
 				msg += fmt.Sprintf(" 'minAvailable' is greater than 'replicas' in task: %s, job: %s;", task.Name, job.Name)
 			}
-			if task.PartitionPolicy != nil && task.PartitionPolicy.MinPartitions != 0 {
-				msg += fmt.Sprintf("must not specify 'minAvailable' and 'partitionPolicy.minPartitions' simultaneously in task: %s, job: %s;", task.Name, job.Name)
-			}
 		}
 		// count replicas
 		totalReplicas += task.Replicas
@@ -323,6 +320,8 @@ func validatePartitionPolicy(task v1alpha1.TaskSpec, job *v1alpha1.Job) string {
 			msg += fmt.Sprintf("'PartitionSize' must be greater than 0 in task: %s, job: %s", task.Name, job.Name)
 		} else if task.Replicas != task.PartitionPolicy.TotalPartitions*task.PartitionPolicy.PartitionSize {
 			msg += fmt.Sprintf("'Replicas' are not equal to TotalPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
+		} else if task.MinAvailable != nil && task.PartitionPolicy.MinPartitions*task.PartitionPolicy.PartitionSize != *task.MinAvailable {
+			msg += fmt.Sprintf("'MinAvailable' is not equal to MinPartitions*PartitionSize in task: %s, job: %s", task.Name, job.Name)
 		}
 		msg += validateNetworkTopology(task.PartitionPolicy.NetworkTopology)
 	}

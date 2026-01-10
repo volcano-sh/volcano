@@ -19,6 +19,7 @@ package options
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -27,10 +28,12 @@ import (
 	componentbaseconfigvalidation "k8s.io/component-base/config/validation"
 
 	"volcano.sh/volcano/pkg/kube"
+	"volcano.sh/volcano/pkg/util"
 )
 
 const (
 	defaultSchedulerName   = "volcano"
+	defaultShardName       = "volcano"
 	defaultSchedulerPeriod = time.Second
 	defaultResyncPeriod    = 0
 	defaultQueue           = "default"
@@ -47,6 +50,10 @@ const (
 	defaultPercentageOfNodesToFind    = 0
 	defaultLockObjectNamespace        = "volcano-system"
 	defaultNodeWorkers                = 20
+)
+
+var (
+	once sync.Once
 )
 
 // ServerOption is the main context object for the controller manager.
@@ -97,6 +104,12 @@ type ServerOption struct {
 	// DisableDefaultSchedulerConfig indicates if the scheduler should fallback to default
 	// config if the current scheduler config is invalid
 	DisableDefaultSchedulerConfig bool
+
+	//enable scheduling with shard
+	ShardingMode string
+
+	//Shard name for this scheduler
+	ShardName string
 }
 
 // DecryptFunc is custom function to parse ca file
@@ -156,6 +169,8 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet) {
 	fs.Uint32Var(&s.NodeWorkerThreads, "node-worker-threads", defaultNodeWorkers, "The number of threads syncing node operations.")
 	fs.StringSliceVar(&s.IgnoredCSIProvisioners, "ignored-provisioners", nil, "The provisioners that will be ignored during pod pvc request computation and preemption.")
 	fs.BoolVar(&s.DisableDefaultSchedulerConfig, "disable-default-scheduler-config", false, "The flag indicates whether the scheduler should avoid using the default configuration if the provided scheduler configuration is invalid.")
+	fs.StringVar(&s.ShardingMode, "scheduler-sharding-mode", util.NoneShardingMode, "The node sharding mode for scheduling, none(default)|hard|soft mode is supported")
+	fs.StringVar(&s.ShardName, "scheduler-sharding-name", defaultShardName, "The name of shard used for this scheduler")
 }
 
 // CheckOptionOrDie check leader election flag when LeaderElection is enabled.
@@ -206,8 +221,10 @@ func (s *ServerOption) ParseCAFiles(decryptFunc DecryptFunc) error {
 
 // Default new and registry a default one
 func Default() *ServerOption {
-	s := NewServerOption()
-	s.AddFlags(pflag.CommandLine)
-	s.RegisterOptions()
-	return s
+	once.Do(func() {
+		s := NewServerOption()
+		s.AddFlags(pflag.CommandLine)
+		s.RegisterOptions()
+	})
+	return ServerOpts
 }

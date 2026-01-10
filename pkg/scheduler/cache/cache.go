@@ -66,6 +66,7 @@ import (
 	vcinformer "volcano.sh/apis/pkg/client/informers/externalversions"
 	cpuinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/nodeinfo/v1alpha1"
 	vcinformerv1 "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
+	shardinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/shard/v1alpha1"
 	topologyinformerv1alpha1 "volcano.sh/apis/pkg/client/informers/externalversions/topology/v1alpha1"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
@@ -73,6 +74,7 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
+	"volcano.sh/volcano/pkg/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -129,6 +131,7 @@ type SchedulerCache struct {
 	csiDriverInformer          storagev1.CSIDriverInformer
 	csiStorageCapacityInformer storagev1beta1.CSIStorageCapacityInformer
 	cpuInformer                cpuinformerv1.NumatopologyInformer
+	nodeShardInformer          shardinformerv1alpha1.NodeShardInformer
 
 	Binder         Binder
 	Evictor        Evictor
@@ -140,12 +143,15 @@ type SchedulerCache struct {
 	Jobs                 map[schedulingapi.JobID]*schedulingapi.JobInfo
 	Nodes                map[string]*schedulingapi.NodeInfo
 	Queues               map[schedulingapi.QueueID]*schedulingapi.QueueInfo
+	NodeShards           map[string]*schedulingapi.NodeShardInfo
 	PriorityClasses      map[string]*schedulingv1.PriorityClass
 	NodeList             []string
 	defaultPriorityClass *schedulingv1.PriorityClass
 	defaultPriority      int32
 	CSINodesStatus       map[string]*schedulingapi.CSINodeStatusInfo
 	HyperNodesInfo       *schedulingapi.HyperNodesInfo
+	// InUseNodesInShard cached the nodes that are immediatly available for current shard (desiredNodes of this shard - inUseNodes in other shards)
+	InUseNodesInShard sets.Set[string]
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
@@ -179,6 +185,8 @@ type SchedulerCache struct {
 
 	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
 	sharedDRAManager k8sframework.SharedDRAManager
+
+	shardUpdateCoordinator *ShardUpdateCoordinator
 
 	ReservationCache *ReservationCache
 }
@@ -552,9 +560,15 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		NamespaceCollection: make(map[string]*schedulingapi.NamespaceCollection),
 		CSINodesStatus:      make(map[string]*schedulingapi.CSINodeStatusInfo),
 		imageStates:         make(map[string]*imageState),
+		InUseNodesInShard:   sets.Set[string]{},
+		NodeShards:          make(map[string]*schedulingapi.NodeShardInfo),
 
 		NodeList:    []string{},
 		nodeWorkers: nodeWorkers,
+	}
+
+	if options.ServerOpts.ShardingMode == util.HardShardingMode || options.ServerOpts.ShardingMode == util.SoftShardingMode {
+		sc.shardUpdateCoordinator = NewShardUpdateCoordinator()
 	}
 
 	sc.resyncPeriod = resyncPeriod
@@ -792,6 +806,15 @@ func (sc *SchedulerCache) addEventHandler() {
 		UpdateFunc: sc.UpdateHyperNode,
 		DeleteFunc: sc.DeleteHyperNode,
 	})
+
+	if options.ServerOpts.ShardingMode == commonutil.HardShardingMode || options.ServerOpts.ShardingMode == commonutil.SoftShardingMode {
+		sc.nodeShardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
+		sc.nodeShardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    sc.AddNodeShard,
+			UpdateFunc: sc.UpdateNodeShard,
+			DeleteFunc: sc.DeleteNodeShard,
+		})
+	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) {
 		ctx := context.TODO()
@@ -1451,7 +1474,7 @@ func (sc *SchedulerCache) executePostBind(ctx context.Context, bindContext *Bind
 
 // BindTask do k8s binding with a goroutine
 func (sc *SchedulerCache) BindTask() {
-	klog.V(3).Infof("batch bind task count %d", sc.batchNum)
+	klog.V(5).Infof("batch bind task count %d", sc.batchNum)
 	tmpBindCache := make([]*BindContext, len(sc.bindCache))
 	copy(tmpBindCache, sc.bindCache)
 
@@ -1490,9 +1513,11 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 		RevocableNodes:       make(map[string]*schedulingapi.NodeInfo),
 		NodeList:             make([]string, len(sc.NodeList)),
 		CSINodesStatus:       make(map[string]*schedulingapi.CSINodeStatusInfo),
+		NodesInShard:         sets.Set[string]{},
 	}
 
 	copy(snapshot.NodeList, sc.NodeList)
+	snapshot.NodesInShard = sc.InUseNodesInShard.Clone()
 	for _, value := range sc.Nodes {
 		value.RefreshNumaSchedulerInfoByCrd()
 	}
@@ -1880,4 +1905,17 @@ func (sc *SchedulerCache) filterNeedSkipBindContexts(contexts []*BindContext) []
 	}
 
 	return contextsToBind
+}
+
+func (sc *SchedulerCache) OnSessionOpen() {
+	if sc.shardUpdateCoordinator != nil {
+		sc.shardUpdateCoordinator.IsSessionRunning.Store(true)
+	}
+}
+
+func (sc *SchedulerCache) OnSessionClose() {
+	if sc.shardUpdateCoordinator != nil {
+		sc.shardUpdateCoordinator.IsSessionRunning.Store(false)
+		sc.notifySessionEnd()
+	}
 }

@@ -66,4 +66,5 @@ func CloseSession(ssn *Session) {
 	}
 
 	closeSession(ssn)
+	ssn.cache.OnSessionClose()
 }

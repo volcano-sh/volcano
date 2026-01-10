@@ -109,7 +109,10 @@ rules:
     verbs: ["get", "list", "watch", "create"]
   - apiGroups: ["shard.volcano.sh"]
     resources: ["nodeshards"]
-    verbs: ["list", "watch", "get", "update"]
+    verbs: ["list", "watch", "get"]
+  - apiGroups: ["shard.volcano.sh"]
+    resources: ["nodeshards/status"]
+    verbs: ["update"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -214,7 +217,13 @@ spec:
             {{- if .Values.custom.ignored_provisioners }}
             - --ignored-provisioners={{ .Values.custom.ignored_provisioners}}
             {{- end}}
-            - --worker-count={{.Values.custom.agent_scheduler_worker_count}}
+            - --scheduler-worker-count={{.Values.custom.agent_scheduler_worker_count}}
+            {{- if .Values.custom.agent_scheduler_sharding_mode }}
+            - --scheduler-sharding-mode={{.Values.custom.agent_scheduler_sharding_mode}}
+            {{- end}}
+            {{- if .Values.custom.agent_scheduler_sharding_name }}
+            - --scheduler-sharding-name={{.Values.custom.agent_scheduler_sharding_name}}
+            {{- end }}
             - -v={{.Values.custom.scheduler_log_level}}
             - 2>&1
           env:

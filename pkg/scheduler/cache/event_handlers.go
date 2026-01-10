@@ -56,6 +56,7 @@ import (
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/apis/pkg/apis/scheduling/scheme"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
 
@@ -846,14 +847,24 @@ func (sc *SchedulerCache) AddPodGroupV1beta1(obj interface{}) {
 		return
 	}
 
-	podgroup := &scheduling.PodGroup{}
-	if err := scheme.Scheme.Convert(ss, podgroup, nil); err != nil {
+	podgroup := scheduling.PodGroup{}
+	if err := scheme.Scheme.Convert(ss, &podgroup, nil); err != nil {
 		klog.Errorf("Failed to convert podgroup from %T to %T", ss, podgroup)
 		return
 	}
+	if podgroup.GetAnnotations() == nil {
+		podgroup.SetAnnotations(map[string]string{})
+	}
+	pg := &schedulingapi.PodGroup{PodGroup: podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
+	klog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", ss.Name, ss.Spec)
+
 	sc.Mutex.Lock()
 	defer sc.Mutex.Unlock()
-	sc.addPodGroup(podgroup)
+
+	if err := sc.setPodGroup(pg); err != nil {
+		klog.Errorf("Failed to add PodGroup %s into cache: %v", ss.Name, err)
+		return
+	}
 }
 
 // UpdatePodGroupV1beta1 add podgroup to scheduler cache
@@ -917,19 +928,6 @@ func (sc *SchedulerCache) DeletePodGroupV1beta1(obj interface{}) {
 
 	if err := sc.deletePodGroup(jobID); err != nil {
 		klog.Errorf("Failed to delete podgroup %s from cache: %v", ss.Name, err)
-		return
-	}
-}
-
-func (sc *SchedulerCache) addPodGroup(podgroup *scheduling.PodGroup) {
-	if podgroup.GetAnnotations() == nil {
-		podgroup.SetAnnotations(map[string]string{})
-	}
-	pg := &schedulingapi.PodGroup{PodGroup: *podgroup, Version: schedulingapi.PodGroupVersionV1Beta1}
-	klog.V(4).Infof("Add PodGroup(%s) into cache, spec(%#v)", podgroup.Name, podgroup.Spec)
-
-	if err := sc.setPodGroup(pg); err != nil {
-		klog.Errorf("Failed to add PodGroup %s into cache: %v", podgroup.Name, err)
 		return
 	}
 }
@@ -1773,7 +1771,60 @@ func (sc *SchedulerCache) createReservationPodGroup(reservation *scheduling.Rese
 			MinResources:  &minReq,
 		},
 	}
-	sc.addPodGroup(pg)
 
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	_pg := &schedulingapi.PodGroup{PodGroup: *pg, Version: schedulingapi.PodGroupVersionV1Beta1}
+	if err := sc.setPodGroup(_pg); err != nil {
+		klog.Errorf("Failed to add PodGroup %s into cache: %v", _pg.Name, err)
+		return err
+	}
 	return nil
+}
+
+// AddNodeShard add nodeshard to scheduler cache
+func (sc *SchedulerCache) AddNodeShard(obj interface{}) {
+	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert to *nodeshardv1alpha1.NodeShard: %v", obj)
+		return
+	}
+	sc.addOrUpdateNodeShard(shard)
+}
+
+// UpdateNodeShard update nodeshard to scheduler cache
+func (sc *SchedulerCache) UpdateNodeShard(oldObj, newObj interface{}) {
+	newShard, ok := newObj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert newObj to *nodeshardv1alpha1.NodeShard: %v", newObj)
+		return
+	}
+	sc.addOrUpdateNodeShard(newShard)
+}
+
+// DeleteNodeShard delete nodeshard from scheduler cache
+func (sc *SchedulerCache) DeleteNodeShard(obj interface{}) {
+	shard, ok := obj.(*nodeshardv1alpha1.NodeShard)
+	if !ok {
+		klog.Errorf("Cannot convert to *nodeshardv1alpha1.NodeShard: %v", obj)
+		return
+	}
+	sc.deleteNodeShard(shard.Name)
+}
+
+func (sc *SchedulerCache) addOrUpdateNodeShard(shard *nodeshardv1alpha1.NodeShard) {
+	shardInfo := schedulingapi.NewNodeShardInfo(shard)
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+	sc.NodeShards[shard.Name] = shardInfo
+	sc.RefreshNodeShards()
+}
+
+func (sc *SchedulerCache) deleteNodeShard(name string) {
+	if _, ok := sc.NodeShards[name]; ok {
+		sc.Mutex.Lock()
+		defer sc.Mutex.Unlock()
+		delete(sc.NodeShards, name)
+		sc.RefreshNodeShards()
+	}
 }

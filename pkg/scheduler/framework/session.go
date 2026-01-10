@@ -162,9 +162,12 @@ type Session struct {
 	// the state needs to be temporarily stored in cycleStatesMap when an extension point is executed.
 	// The key is task's UID, value is the CycleState.
 	cycleStatesMap sync.Map
+
+	NodesInShard sets.Set[string]
 }
 
 func openSession(cache cache.Cache) *Session {
+	cache.OnSessionOpen()
 	ssn := &Session{
 		UID:             uuid.NewUUID(),
 		kubeClient:      cache.Client(),
@@ -273,6 +276,8 @@ func openSession(cache cache.Cache) *Session {
 	for _, n := range ssn.Nodes {
 		ssn.TotalResource.Add(n.Allocatable)
 	}
+
+	ssn.NodesInShard = snapshot.NodesInShard
 
 	klog.V(3).Infof("Open Session %v with <%d> Job and <%d> Queues. HyperNodesReadyToSchedule: %v",
 		ssn.UID, len(ssn.Jobs), len(ssn.Queues), ssn.HyperNodesReadyToSchedule)
@@ -603,6 +608,8 @@ func closeSession(ssn *Session) {
 	ssn.clusterOrderFns = nil
 	ssn.NodeList = nil
 	ssn.TotalResource = nil
+
+	ssn.cache.OnSessionClose()
 
 	klog.V(3).Infof("Close Session %v", ssn.UID)
 }

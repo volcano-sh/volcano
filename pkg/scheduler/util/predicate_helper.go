@@ -22,14 +22,17 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/util"
 )
 
 type PredicateHelper interface {
-	PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool) ([]*api.NodeInfo, *api.FitErrors)
+	PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool, nodesInShard sets.Set[string]) ([]*api.NodeInfo, *api.FitErrors)
 }
 
 type predicateHelper struct {
@@ -37,7 +40,7 @@ type predicateHelper struct {
 }
 
 // PredicateNodes returns the specified number of nodes that fit a task
-func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool) ([]*api.NodeInfo, *api.FitErrors) {
+func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeInfo, fn api.PredicateFn, enableErrorCache bool, nodesInShard sets.Set[string]) ([]*api.NodeInfo, *api.FitErrors) {
 	var errorLock sync.RWMutex
 	fe := api.NewFitErrors()
 
@@ -92,6 +95,17 @@ func (ph *predicateHelper) PredicateNodes(task *api.TaskInfo, nodes []*api.NodeI
 			}
 		}
 
+		if options.ServerOpts.ShardingMode == util.HardShardingMode && !nodesInShard.Has(node.Name) {
+			klog.V(3).Infof("Predicates failed: node %s is not in scheduler shard", node.Name)
+			err := fmt.Errorf("node isn't in scheduler node shard")
+			errorLock.Lock()
+			nodeErrorCache[node.Name] = err
+			ph.taskPredicateErrorCache[taskGroupid] = nodeErrorCache
+			fe.SetNodeError(node.Name, err)
+			errorLock.Unlock()
+			return
+		}
+
 		// TODO (k82cn): Enable eCache for performance improvement.
 		if err := fn(task, node); err != nil {
 			klog.V(3).Infof("Predicates failed: %v", err)
@@ -128,4 +142,22 @@ func taskGroupID(task *api.TaskInfo) string {
 
 func NewPredicateHelper() PredicateHelper {
 	return &predicateHelper{taskPredicateErrorCache: map[string]map[string]error{}}
+}
+
+// GetPredicatedNodeByShard return predicateNodes by shard
+func GetPredicatedNodeByShard(predicateNodes []*api.NodeInfo, nodesInShard sets.Set[string]) [2][]*api.NodeInfo {
+	var candidateNodes [2][]*api.NodeInfo
+	var candidateNodesInShard []*api.NodeInfo
+	var candidateNodesInOtherShards []*api.NodeInfo
+	shardingMode := options.ServerOpts.ShardingMode
+	for _, node := range predicateNodes {
+		if shardingMode == util.SoftShardingMode && nodesInShard != nil && !nodesInShard.Has(node.Name) {
+			candidateNodesInOtherShards = append(candidateNodesInOtherShards, node)
+		} else {
+			candidateNodesInShard = append(candidateNodesInShard, node)
+		}
+	}
+	candidateNodes[0] = candidateNodesInShard
+	candidateNodes[1] = candidateNodesInOtherShards
+	return candidateNodes
 }

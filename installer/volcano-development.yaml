@@ -8937,7 +8937,7 @@ rules:
     resources: [ "nodes" ]
     verbs: [ "list", "watch" ]
   - apiGroups: ["shard.volcano.sh"]
-    resources: ["nodeshards"]
+    resources: ["nodeshards", "nodeshards/status"]
     verbs: ["list", "watch", "get", "create", "delete", "update", "patch"]
 ---
 # Source: volcano/templates/controllers.yaml
@@ -9159,7 +9159,10 @@ rules:
     verbs: [ "get", "list", "watch" ]
   - apiGroups: ["shard.volcano.sh"]
     resources: ["nodeshards"]
-    verbs: ["list", "watch", "get", "update"]
+    verbs: ["list", "watch", "get"]
+  - apiGroups: ["shard.volcano.sh"]
+    resources: ["nodeshards/status"]
+    verbs: ["update"]
 ---
 # Source: volcano/templates/scheduler.yaml
 kind: ClusterRoleBinding
