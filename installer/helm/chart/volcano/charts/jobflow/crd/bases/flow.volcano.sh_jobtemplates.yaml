@@ -223,10 +223,6 @@ spec:
                       format: int32
                       minimum: 0
                       type: integer
-                    reservationNodeNames:
-                      items:
-                        type: string
-                      type: array
                     template:
                       properties:
                         metadata:
