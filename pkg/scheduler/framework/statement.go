@@ -388,6 +388,29 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 	return nil
 }
 
+// UnAllocateForReservationTask releases resources from node but keeps task status unchanged.
+// This is used for reservation resource handover, where the task status will be updated
+// to Succeeded later in PostBind via SyncBindToReservationTask.
+func (s *Statement) UnAllocateForReservationTask(task *api.TaskInfo) error {
+	// Only remove from node, don't change task status
+	if node, found := s.ssn.Nodes[task.NodeName]; found {
+		klog.V(3).Infof("Remove reservation Task <%v> from node <%v>", task.Name, task.NodeName)
+		if err := node.RemoveTask(task); err != nil {
+			klog.Errorf("Failed to remove reservation Task <%v> from node <%v>: %s",
+				task.Name, task.NodeName, err.Error())
+		}
+	}
+
+	for _, eh := range s.ssn.eventHandlers {
+		if eh.DeallocateFunc != nil {
+			eh.DeallocateFunc(&Event{Task: task})
+		}
+	}
+	task.NodeName = ""
+	task.JobAllocatedHyperNode = ""
+	return nil
+}
+
 // Discard operation for evict, pipeline and allocate
 func (s *Statement) Discard() {
 	klog.V(3).Info("Discarding operations ...")
