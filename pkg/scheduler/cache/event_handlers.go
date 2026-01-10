@@ -1772,11 +1772,9 @@ func (sc *SchedulerCache) createReservationPodGroup(reservation *scheduling.Rese
 		},
 	}
 
-	sc.Mutex.Lock()
-	defer sc.Mutex.Unlock()
-	_pg := &schedulingapi.PodGroup{PodGroup: *pg, Version: schedulingapi.PodGroupVersionV1Beta1}
-	if err := sc.setPodGroup(_pg); err != nil {
-		klog.Errorf("Failed to add PodGroup %s into cache: %v", _pg.Name, err)
+	podGroup := &schedulingapi.PodGroup{PodGroup: *pg, Version: schedulingapi.PodGroupVersionV1Beta1}
+	if err := sc.setPodGroup(podGroup); err != nil {
+		klog.Errorf("Failed to add PodGroup %s into cache: %v", podGroup.Name, err)
 		return err
 	}
 	return nil
