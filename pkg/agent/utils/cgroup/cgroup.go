@@ -99,6 +99,8 @@ type CgroupManager interface {
 	GetQoSCgroupPath(qos corev1.PodQOSClass, cgroupSubsystem CgroupSubsystem) (string, error)
 	GetPodCgroupPath(qos corev1.PodQOSClass, cgroupSubsystem CgroupSubsystem, podUID types.UID) (string, error)
 	GetCgroupVersion() string
+	// BuildContainerCgroupName converts a container ID to the cgroup directory name
+	BuildContainerCgroupName(containerID string) string
 }
 
 type CgroupManagerImpl struct {
@@ -499,6 +501,41 @@ func (c *CgroupManagerImpl) GetPodCgroupPath(qos corev1.PodQOSClass, cgroupSubsy
 	}
 
 	return c.buildCgroupPath(cgroupSubsystem, cgroupPath), nil
+}
+
+// BuildContainerCgroupName converts a container ID (with runtime prefix) to the cgroup directory name
+// For cgroupfs driver: returns the pure container ID
+// For systemd driver: returns formatted scope name (e.g., "cri-containerd-{id}.scope")
+func (c *CgroupManagerImpl) BuildContainerCgroupName(containerID string) string {
+	// Parse runtime type and ID from "runtime://id" format
+	var runtime, id string
+	parts := strings.SplitN(containerID, "://", 2)
+	if len(parts) == 2 {
+		runtime = parts[0]
+		id = parts[1]
+	} else {
+		// If no runtime prefix, assume it's already a pure ID
+		id = containerID
+		runtime = ""
+	}
+
+	// For cgroupfs driver, return pure container ID
+	if c.cgroupDriver == CgroupDriverCgroupfs {
+		return id
+	}
+
+	// For systemd driver, format as scope name based on runtime
+	switch runtime {
+	case "containerd":
+		return fmt.Sprintf("cri-containerd-%s.scope", id)
+	case "docker":
+		return fmt.Sprintf("docker-%s.scope", id)
+	case "cri-o":
+		return fmt.Sprintf("crio-%s.scope", id)
+	default:
+		// Fallback: for unknown runtime, return pure container ID
+		return id
+	}
 }
 
 // buildCgroupPath constructs the final cgroup path based on cgroup version

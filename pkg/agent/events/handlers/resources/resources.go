@@ -80,11 +80,20 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 	for _, cr := range resources {
 		cgroupPath, err := r.cgroupMgr.GetPodCgroupPath(podEvent.QoSClass, cr.CgroupSubSystem, podEvent.UID)
 		if err != nil {
-			klog.ErrorS(err, "Failed to get pod cgroup", "pod", klog.KObj(podEvent.Pod), "subSystem", cr.CgroupSubSystem)
+			klog.ErrorS(err, "Failed to get pod cgroup", "subsystem", cr.CgroupSubSystem, "container", cr.ContainerID,
+				"file", cr.SubPath, "pod", klog.KObj(podEvent.Pod))
 			errs = append(errs, err)
 		}
 
-		filePath := path.Join(cgroupPath, cr.ContainerID, cr.SubPath)
+		var filePath string
+		if cr.ContainerID == "" {
+			// Pod-level: file is directly under pod cgroup directory
+			filePath = path.Join(cgroupPath, cr.SubPath)
+		} else {
+			// Container-level: file is under container subdirectory
+			containerCgroupName := r.cgroupMgr.BuildContainerCgroupName(cr.ContainerID)
+			filePath = path.Join(cgroupPath, containerCgroupName, cr.SubPath)
+		}
 
 		if cgroupVersion == cgroup.CgroupV2 && cr.Value == -1 {
 			if cr.SubPath == cgroup.CPUQuotaTotalFileV2 {
@@ -109,10 +118,12 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 
 		if err != nil {
 			errs = append(errs, err)
-			klog.ErrorS(err, "Failed to set cgroup", "path", filePath, "pod", klog.KObj(podEvent.Pod))
+			klog.ErrorS(err, "Failed to set cgroup", "subsystem", cr.CgroupSubSystem, "container", cr.ContainerID,
+				"file", cr.SubPath, "pod", klog.KObj(podEvent.Pod))
 			continue
 		}
-		klog.InfoS("Successfully set cpu and memory cgroup", "path", filePath, "pod", klog.KObj(podEvent.Pod))
+		klog.InfoS("Successfully set cgroup", "subsystem", cr.CgroupSubSystem, "container", cr.ContainerID,
+			"file", cr.SubPath, "value", cr.Value, "pod", klog.KObj(podEvent.Pod))
 	}
 	return utilerrors.NewAggregate(errs)
 }

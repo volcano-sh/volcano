@@ -77,13 +77,13 @@ func TestCalculateExtendResources(t *testing.T) {
 				// container-1
 				{
 					CgroupSubSystem: "cpu",
-					ContainerID:     "111",
+					ContainerID:     "containerd://111",
 					SubPath:         "cpu.shares",
 					Value:           512,
 				},
 				{
 					CgroupSubSystem: "cpu",
-					ContainerID:     "111",
+					ContainerID:     "containerd://111",
 					SubPath:         "cpu.cfs_quota_us",
 					Value:           1000,
 				},
@@ -91,23 +91,18 @@ func TestCalculateExtendResources(t *testing.T) {
 				// container-2
 				{
 					CgroupSubSystem: "cpu",
-					ContainerID:     "222",
+					ContainerID:     "docker://222",
 					SubPath:         "cpu.cfs_quota_us",
 					Value:           100000,
 				},
 				{
 					CgroupSubSystem: "memory",
-					ContainerID:     "222",
+					ContainerID:     "docker://222",
 					SubPath:         "memory.limit_in_bytes",
 					Value:           200,
 				},
 
 				// pod
-				{
-					CgroupSubSystem: "cpu",
-					SubPath:         "cpu.shares",
-					Value:           512,
-				},
 				{
 					CgroupSubSystem: "cpu",
 					SubPath:         "cpu.cfs_quota_us",
