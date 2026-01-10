@@ -87,13 +87,13 @@ func (rp *reservationPlugin) OnSessionOpen(ssn *framework.Session) {
 				Pass:   false,
 				Reason: v1beta1.ReservationOwnerNotMatchReason,
 				Message: fmt.Sprintf(
-					"Reservation specified by job <%s/%s> is not owned by the job (ownership mismatch by ownerObject  or label selectors)",
+					"Reservation specified by job <%s/%s> is not owned by the job (ownership mismatch by ownerObject or label selectors)",
 					job.Namespace, job.Name,
 				),
 			}
 		}
 
-		if specMatched := ssn.CheckReservationMatch(job); !specMatched {
+		if specMatched := ssn.MatchAndBindReservationTasks(job); !specMatched {
 			return &api.ValidateResult{
 				Pass:   false,
 				Reason: v1beta1.ReservationSpecNotMatchReason,
@@ -184,10 +184,15 @@ func (rp *reservationPlugin) PreBindRollBack(ctx context.Context, bindCtx *cache
 
 	job, task, err := rp.session.Cache().FindJobAndTask(taskInfo)
 	if err != nil {
+		klog.Errorf("PreBindRollBack: failed to find job and task for %s: %v", taskInfo.Name, err)
+		return
+	}
+	// Rollback task status to Allocated
+	if err := job.UpdateTaskStatus(task, api.Allocated); err != nil {
+		klog.Errorf("Failed to rollback status for reservation task %s, err: %v", task.Name, err)
 		return
 	}
 	rp.session.Cache().GetReservationCache().SyncReservation(task, job)
-	return
 }
 
 func (rp *reservationPlugin) OnSessionClose(ssn *framework.Session) {}

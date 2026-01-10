@@ -53,9 +53,6 @@ func (reserve *Action) Execute(ssn *framework.Session) {
 			continue
 		}
 
-		jobs := util.NewPriorityQueue(ssn.JobOrderFn)
-		jobs.Push(job)
-
 		klog.V(3).Infof("Attempting to swap reservation for actual tasks in job <%s/%s>", job.Namespace, job.Name)
 		stmt := framework.NewStatement(ssn)
 
@@ -114,7 +111,6 @@ func (reserve *Action) Execute(ssn *framework.Session) {
 			}
 
 			if ssn.JobReady(job) && !pendingTasks.Empty() {
-				jobs.Push(job)
 				klog.V(3).Infof("Job <%s/%s> is ready, but still has pending tasks. Pipelining.", job.Namespace, job.Name)
 				break
 			}

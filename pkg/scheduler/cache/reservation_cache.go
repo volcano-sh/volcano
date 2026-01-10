@@ -200,7 +200,9 @@ func (rc *ReservationCache) syncReservation(reservation *schedulerapi.Reservatio
 	}
 
 	// sync cache
+	rc.Lock()
 	reservation.Reservation = newReservation
+	rc.Unlock()
 	return nil
 }
 
@@ -275,13 +277,19 @@ func (rc *ReservationCache) getReservationByTask(task *schedulerapi.TaskInfo) (*
 }
 
 func (rc *ReservationCache) ScanExpiredReservations(now time.Time, onExpired func(*schedulerapi.ReservationInfo)) {
+	// Collect expired reservations under read lock
+	var expired []*schedulerapi.ReservationInfo
 	rc.RLock()
-	defer rc.RUnlock()
-
 	for _, reservation := range rc.reservations {
 		if isReservationNeedExpiration(reservation, now) {
-			onExpired(reservation)
+			expired = append(expired, reservation)
 		}
+	}
+	rc.RUnlock()
+
+	// Call callback outside of lock to avoid deadlock
+	for _, reservation := range expired {
+		onExpired(reservation)
 	}
 }
 

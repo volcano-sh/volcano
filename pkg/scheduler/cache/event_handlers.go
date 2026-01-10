@@ -1392,8 +1392,7 @@ func (sc *SchedulerCache) AddReservationV1beta1(obj interface{}) {
 
 // UpdateReservationV1beta1 update reservation to scheduler cache
 func (sc *SchedulerCache) UpdateReservationV1beta1(oldObj, newObj interface{}) {
-	// TODO
-	klog.V(3).Infof("Update Reservation, ignore. Not support now.")
+	klog.V(4).Infof("UpdateReservationV1beta1: ignore update event, reservation is managed internally")
 	return
 }
 
@@ -1411,7 +1410,7 @@ func (sc *SchedulerCache) DeleteReservationV1beta1(obj interface{}) {
 			return
 		}
 	default:
-		klog.Errorf("Cannot convert to Numatopo: %v", t)
+		klog.Errorf("Cannot convert to Reservation: %v", t)
 		return
 	}
 
@@ -1431,7 +1430,7 @@ func (sc *SchedulerCache) DeleteReservationV1beta1(obj interface{}) {
 func (sc *SchedulerCache) addReservation(reservation *scheduling.Reservation) {
 	_, err := sc.getQueueByName(reservation.Spec.Queue)
 	if err != nil {
-		klog.Errorf(err.Error())
+		klog.Errorf("Failed to get queue for reservation: %v", err)
 		return
 	}
 
@@ -1452,7 +1451,7 @@ func (sc *SchedulerCache) addReservation(reservation *scheduling.Reservation) {
 	}
 
 	if _, err := sc.initiateReservation(reservation); err != nil {
-		klog.Errorf(err.Error())
+		klog.Errorf("Failed to initiate reservation: %v", err)
 		return
 	}
 

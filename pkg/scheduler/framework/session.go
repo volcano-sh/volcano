@@ -1069,14 +1069,20 @@ func (ssn *Session) IsJobTerminated(jobId api.JobID) bool {
 	return ssn.cache.IsJobTerminated(jobId)
 }
 
+// MatchReservationForPod matches a reservation for single-pod jobs.
+// This is designed for scenarios like rescheduling where a pod needs to use
+// a pre-allocated reservation. Multi-task jobs should use the standard
+// reservation matching flow via MatchAndBindReservationTasks.
 func (ssn *Session) MatchReservationForPod(job *api.JobInfo) {
 	if !job.IsUseReservation() {
 		return
 	}
 	klog.V(4).Infof("match reservation for job <%v/%v>", job.Namespace, job.Name)
 
-	// try match a reservation for the job
+	// Only support single-task jobs for pod-level reservation matching
 	if len(job.Tasks) != 1 {
+		klog.V(4).Infof("MatchReservationForPod: job %s/%s has %d tasks, use MatchAndBindReservationTasks instead",
+			job.Namespace, job.Name, len(job.Tasks))
 		return
 	}
 
@@ -1149,7 +1155,10 @@ func (ssn *Session) CheckReservationOwners(job *api.JobInfo) bool {
 
 			if pg.OwnerReferences != nil {
 				for _, ownerRef := range pg.OwnerReferences {
-					if owner.Object.Name == ownerRef.Name {
+					// Match by Name, and optionally by Kind and APIVersion if specified
+					if owner.Object.Name == ownerRef.Name &&
+						(owner.Object.Kind == "" || owner.Object.Kind == ownerRef.Kind) &&
+						(owner.Object.APIVersion == "" || owner.Object.APIVersion == ownerRef.APIVersion) {
 						return true
 					}
 				}
@@ -1183,7 +1192,9 @@ func (ssn *Session) CheckReservationOwners(job *api.JobInfo) bool {
 	return false
 }
 
-func (ssn *Session) CheckReservationMatch(job *api.JobInfo) bool {
+// MatchAndBindReservationTasks matches job tasks to reservation tasks and binds them.
+// Note: This function has a side effect of setting ReservationTaskInfo on matched tasks.
+func (ssn *Session) MatchAndBindReservationTasks(job *api.JobInfo) bool {
 	if !job.IsUseReservation() {
 		return true
 	}
