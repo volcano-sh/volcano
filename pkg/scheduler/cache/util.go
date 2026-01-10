@@ -24,10 +24,14 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	quotav1 "k8s.io/apiserver/pkg/quota/v1"
 	"k8s.io/klog/v2"
 	"stathat.com/c/consistent"
+	"volcano.sh/apis/pkg/apis/scheduling"
+	"volcano.sh/apis/pkg/apis/scheduling/scheme"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 
-	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/controllers/util"
 )
 
 type hyperNodeEventSource string
@@ -81,7 +85,7 @@ func responsibleForNode(nodeName string, mySchedulerPodName string, c *consisten
 }
 
 // responsibleForPodGroup returns true if Job which PodGroup belongs is assigned to current scheduler in multi-schedulers scenario
-func responsibleForPodGroup(pg *scheduling.PodGroup, mySchedulerPodName string, c *consistent.Consistent) bool {
+func responsibleForPodGroup(pg *schedulingv1beta1.PodGroup, mySchedulerPodName string, c *consistent.Consistent) bool {
 	if c != nil {
 		var key string
 		if len(pg.OwnerReferences) != 0 {
@@ -131,4 +135,68 @@ func getHyperNodeEventSource(source string) []string {
 		return nil
 	}
 	return parts
+}
+
+// mergeTolerations merges the original tolerations with the default tolerations.
+func mergeTolerations(orig, defaults []v1.Toleration) []v1.Toleration {
+	exists := map[string]bool{}
+	for _, t := range orig {
+		key := generateTolerationKey(t)
+		exists[key] = true
+	}
+	for _, t := range defaults {
+		key := generateTolerationKey(t)
+		if !exists[key] {
+			orig = append(orig, t)
+			exists[key] = true
+		}
+	}
+	return orig
+}
+
+// generateTolerationKey generates a unique key for a toleration.
+func generateTolerationKey(t v1.Toleration) string {
+	seconds := int64(0)
+	if t.TolerationSeconds != nil {
+		seconds = *t.TolerationSeconds
+	}
+	return fmt.Sprintf("%s/%s/%s/%d", t.Key, t.Operator, t.Effect, seconds)
+}
+
+// intPtr converts an int to a pointer to an int64.
+func intPtr(i int) *int64 {
+	v := int64(i)
+	return &v
+}
+
+func isInitiated(rc *scheduling.Reservation) bool {
+	if rc.Status.State.Phase == "" || rc.Status.State.Phase == scheduling.ReservationPending {
+		return false
+	}
+	return true
+}
+
+func calculateAllocatable(reservation *scheduling.Reservation) v1.ResourceList {
+	tasks := reservation.Spec.Tasks
+	total := v1.ResourceList{}
+	for _, task := range tasks {
+		total = quotav1.Add(total, util.CalTaskRequests(&v1.Pod{Spec: task.Template.Spec}, task.Replicas))
+	}
+	return total
+}
+
+func generateReservationPodGroupName(reservation *scheduling.Reservation) string {
+	return fmt.Sprintf("%s-%s", reservation.Name, string(reservation.UID))
+}
+
+func ConvertToInternalReservation(reservationV1beta1 *schedulingv1beta1.Reservation) (*scheduling.Reservation, error) {
+	reservation := &scheduling.Reservation{}
+	err := scheme.Scheme.Convert(reservationV1beta1, reservation, nil)
+	return reservation, err
+}
+
+func ConvertToV1beta1Reservation(reservation *scheduling.Reservation) (*schedulingv1beta1.Reservation, error) {
+	reservationV1beta1 := &schedulingv1beta1.Reservation{}
+	err := scheme.Scheme.Convert(reservation, reservationV1beta1, nil)
+	return reservationV1beta1, err
 }

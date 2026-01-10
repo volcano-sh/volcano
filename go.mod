@@ -52,6 +52,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.0
 	sigs.k8s.io/yaml v1.6.0
 	stathat.com/c/consistent v1.0.0
+	//volcano.sh/apis v1.12.3-0.20250922071132-1aeba4dd588f
 	volcano.sh/apis v0.0.0
 )
 
@@ -213,7 +214,7 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.1
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.34.1
 	k8s.io/sample-controller => k8s.io/sample-controller v0.34.1
-	// Use local staging directory for APIs development
-	// This allows API changes to be made and reviewed in the same PR as implementation changes
-	volcano.sh/apis => ./staging/src/volcano.sh/apis
 )
+
+// replace volcano.sh/apis => ../volcano-apis
+replace volcano.sh/apis => github.com/LegGasai/apis v0.0.0-20251228060403-bbce8ddfec23
