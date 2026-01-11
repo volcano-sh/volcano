@@ -64,6 +64,9 @@ type ColocationConfig struct {
 
 	// Evicting related config.
 	EvictingConfig *Evicting `json:"evictingConfig,omitempty" configKey:"Evicting"`
+
+	// NodeMonitor related config.
+	NodeMonitor *NodeMonitor `json:"nodeMonitor,omitempty" configKey:"NodeMonitor"`
 }
 
 type CPUQos struct {
@@ -110,4 +113,12 @@ type Evicting struct {
 	EvictingCPULowWatermark *int `json:"evictingCPULowWatermark,omitempty"`
 	// EvictingMemoryLowWatermark defines the low watermark percent of memory usage when the node could recover schedule pods.
 	EvictingMemoryLowWatermark *int `json:"evictingMemoryLowWatermark,omitempty"`
+}
+type NodeMonitor struct {
+	// How often utilization is collected (seconds)
+	UtilizationIntervalSeconds *int `json:"utilizationIntervalSeconds,omitempty"`
+	// How often eviction detection runs (seconds)
+	DetectIntervalSeconds *int `json:"detectIntervalSeconds,omitempty"`
+	// Consecutive high-usage count required before eviction
+	HighUsageCountLimit *int `json:"highUsageCountLimit,omitempty"`
 }
