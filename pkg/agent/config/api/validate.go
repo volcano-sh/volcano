@@ -7,6 +7,10 @@ import (
 )
 
 var (
+	IllegalUtilizationIntervalSecondsMsg = "utilizationIntervalSeconds must be positive"
+	IllegalDetectIntervalSecondsMsg      = "detectIntervalSeconds must be positive"
+	IllegalHighUsageCountLimitMsg        = "highUsageCountLimit must be positive"
+
 	IllegalQoSCheckIntervalMsg                = "qosCheckInterval must be a positive number"
 	IllegalOnlineBandwidthWatermarkPercentMsg = "onlineBandwidthWatermarkPercent must be a positive number between 1 and 1000"
 	IllegalOfflineHighBandwidthPercentMsg     = "offlineHighBandwidthPercent must be a positive number between 1 and 1000"
@@ -115,13 +119,13 @@ func (n *NodeMonitor) Validate() []error {
 
 	var errs []error
 	if n.UtilizationIntervalSeconds != nil && *n.UtilizationIntervalSeconds <= 0 {
-		errs = append(errs, errors.New("utilizationIntervalSeconds must be positive"))
+		errs = append(errs, errors.New(IllegalUtilizationIntervalSecondsMsg))
 	}
 	if n.DetectIntervalSeconds != nil && *n.DetectIntervalSeconds <= 0 {
-		errs = append(errs, errors.New("detectIntervalSeconds must be positive"))
+		errs = append(errs, errors.New(IllegalDetectIntervalSecondsMsg))
 	}
 	if n.HighUsageCountLimit != nil && *n.HighUsageCountLimit <= 0 {
-		errs = append(errs, errors.New("highUsageCountLimit must be positive"))
+		errs = append(errs, errors.New(IllegalHighUsageCountLimitMsg))
 	}
 	return errs
 }
