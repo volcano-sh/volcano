@@ -29,7 +29,6 @@ This metrics describe internal state of volcano.
 
 | **Metric Name**                        | **Metric Type** | **Labels**                                                        | **Description**                               |
 |----------------------------------------|-----------------|-------------------------------------------------------------------|-----------------------------------------------|
-| `schedule_attempts_total`              | Counter         | `result`=&lt;result&gt;                                           | The number of attempts to schedule pods       |
 | `pod_preemption_victims`               | Gauge           | None                                                              | The number of selected preemption victims     |
 | `total_preemption_attempts`            | Counter         | None                                                              | Total preemption attempts in the cluster      |
 | `unschedule_task_count`                | Gauge           | `job_id`=&lt;job_id&gt;                                           | The number of tasks failed to schedule        |

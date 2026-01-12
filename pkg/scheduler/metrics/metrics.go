@@ -109,14 +109,6 @@ var (
 		},
 	)
 
-	scheduleAttempts = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Subsystem: VolcanoSubSystemName,
-			Name:      "schedule_attempts_total",
-			Help:      "Number of attempts to schedule pods, by the result. 'unschedulable' means a pod could not be scheduled, while 'error' means an internal scheduler problem.",
-		}, []string{"result"},
-	)
-
 	preemptionVictims = promauto.NewGauge(
 		prometheus.GaugeOpts{
 			Subsystem: VolcanoSubSystemName,
@@ -197,11 +189,6 @@ func UpdateE2eSchedulingLastTimeByJob(jobName string, queue string, namespace st
 // UpdateTaskScheduleDuration updates single task scheduling latency
 func UpdateTaskScheduleDuration(duration time.Duration) {
 	taskSchedulingLatency.Observe(DurationInMilliseconds(duration))
-}
-
-// UpdatePodScheduleStatus update pod schedule decision, could be Success, Failure, Error
-func UpdatePodScheduleStatus(label string, count int) {
-	scheduleAttempts.WithLabelValues(label).Add(float64(count))
 }
 
 // UpdatePreemptionVictimsCount updates count of preemption victims
