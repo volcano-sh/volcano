@@ -68,6 +68,7 @@ type monitor struct {
 	cpuThrottlingThreshold  int
 	cpuProtectionWatermark  int
 	cpuThrottlingActive     bool
+	lastCPUQuotaMilli       int64
 }
 
 func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, workQueue workqueue.RateLimitingInterface) framework.Probe {
@@ -82,6 +83,7 @@ func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollector
 		highUsageCountByResName: make(map[v1.ResourceName]int),
 		usageGetter:             resourceusage.NewUsageGetter(mgr, local.CollectorName),
 		cpuThrottlingActive:     false,
+		lastCPUQuotaMilli:       -1,
 	}
 }
 
@@ -252,22 +254,22 @@ func (m *monitor) detectCPUThrottling() {
 		availableBEMilli = 0
 	}
 
-	// CPU throttling is applied when the available quota of Best Effort pods is less
-	// than 10% of the throttling threshold
-	if availableBEMilli < allowedMilli/10 {
-		event := framework.NodeCPUThrottleEvent{
-			TimeStamp:     time.Now(),
-			Resource:      v1.ResourceCPU,
-			CPUQuotaMilli: availableBEMilli,
+	lastQuota := m.lastCPUQuotaMilli
+	if lastQuota < 0 {
+		m.sendNodeCPUThrottleEvent(availableBEMilli)
+	} else if lastQuota == 0 {
+		if availableBEMilli != 0 {
+			m.sendNodeCPUThrottleEvent(availableBEMilli)
 		}
-		m.queue.Add(event)
 	} else {
-		event := framework.NodeCPUThrottleEvent{
-			TimeStamp:     time.Now(),
-			Resource:      v1.ResourceCPU,
-			CPUQuotaMilli: unlimitedQuota,
+		diff := availableBEMilli - lastQuota
+		if diff < 0 {
+			diff = -diff
 		}
-		m.queue.Add(event)
+		//TODO: Need to make percentage configurable
+		if diff*100*1 >= lastQuota {
+			m.sendNodeCPUThrottleEvent(availableBEMilli)
+		}
 	}
 }
 
@@ -279,4 +281,14 @@ func getPodCPURequestMilli(pod *v1.Pod) int64 {
 		}
 	}
 	return total
+}
+
+func (m *monitor) sendNodeCPUThrottleEvent(quota int64) {
+	event := framework.NodeCPUThrottleEvent{
+		TimeStamp:     time.Now(),
+		Resource:      v1.ResourceCPU,
+		CPUQuotaMilli: quota,
+	}
+	m.queue.Add(event)
+	m.lastCPUQuotaMilli = quota
 }

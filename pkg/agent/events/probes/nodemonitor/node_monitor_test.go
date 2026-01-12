@@ -128,7 +128,7 @@ func Test_monitor_detect(t *testing.T) {
 				getPodsFunc:             tt.getPodsFunc,
 				usageGetter:             tt.usageGetter,
 			}
-			m.detect()
+			m.detectEviction()
 			assert.Equalf(t, tt.expectedLen, queue.Len(), "detect()")
 			if queue.Len() != 0 {
 				key, shutdown := queue.Get()
@@ -175,7 +175,7 @@ func Test_monitor_detectCPUThrottling(t *testing.T) {
 				buildPod("online-2", "200m", "LS"),
 			},
 			expectedEventCount: 1,
-			expectedQuotaMilli: -1,
+			expectedQuotaMilli: 500,
 		},
 		{
 			name:                   "quota floored at zero when online requests exceed allowance",
