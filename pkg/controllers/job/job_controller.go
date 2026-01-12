@@ -444,29 +444,10 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 			return
 		}
 
-		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, execute it", req.Namespace, req.JobName, delayAct.action)
+		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, re-enqueue it", req.Namespace, req.JobName, delayAct.action)
 
-		jobInfo, err := cc.cache.Get(delayAct.jobKey)
-		if err != nil {
-			klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
-			return
-		}
-
-		st := state.NewState(jobInfo)
-		if st == nil {
-			klog.Errorf("Invalid state <%s> of Job <%v/%v>",
-				jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
-			return
-		}
-		queue := cc.queue
-
-		if err := st.Execute(GetStateAction(delayAct)); err != nil {
-			cc.handleJobError(queue, req, st, err, delayAct.action)
-		}
-
-		queue.Forget(req)
-
-		cc.cleanupDelayActions(delayAct)
+		req.Action = delayAct.action
+		cc.queue.Add(req)
 	}()
 }
 
