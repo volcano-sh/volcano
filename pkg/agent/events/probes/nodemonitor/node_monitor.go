@@ -92,7 +92,7 @@ func (m *monitor) ProbeName() string {
 func (m *monitor) Run(stop <-chan struct{}) {
 	klog.InfoS("Started nodePressure probe")
 	go wait.Until(m.utilizationMonitoring, 10*time.Second, stop)
-	go wait.Until(m.detect, 10*time.Second, stop)
+	go wait.Until(m.detectEviction, 10*time.Second, stop)
 	go wait.Until(m.detectCPUThrottling, 10*time.Second, stop)
 }
 
@@ -137,7 +137,7 @@ func (m *monitor) utilizationMonitoring() {
 	}
 }
 
-func (m *monitor) detect() {
+func (m *monitor) detectEviction() {
 	node, err := m.getNodeFunc()
 	if err != nil {
 		klog.ErrorS(err, "Eviction: failed to get node")
