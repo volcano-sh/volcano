@@ -1156,7 +1156,7 @@ func (sc *SchedulerCache) resyncTask(task *schedulingapi.TaskInfo) {
 }
 
 func (sc *SchedulerCache) retryResyncTask(task *schedulingapi.TaskInfo) {
-	klog.V(3).Infof("Retry to resync task <%v:%v/%v>", task.UID, task.Namespace, task.Name)
+	klog.V(5).Infof("Retry to resync task <%s:%s/%s>", task.UID, task.Namespace, task.Name)
 	key := sc.generateErrTaskKey(task)
 	sc.errTasks.AddRateLimited(key)
 }
