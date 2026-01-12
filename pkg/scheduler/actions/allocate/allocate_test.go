@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
@@ -35,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
+	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/utils/ptr"
 
@@ -5180,5 +5182,171 @@ func TestAllocateWithPartitionPolicyNetworkTopology(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// BenchmarkHyperNodeGradientFnPerformance tests the performance optimization
+// of hyperNodeGradientFn with SubGroup policy in large-scale cluster scenarios.
+func BenchmarkHyperNodeGradientFnPerformance(b *testing.B) {
+	plugins := map[string]framework.PluginBuilder{
+		drf.PluginName:                  drf.New,
+		proportion.PluginName:           proportion.New,
+		predicates.PluginName:           predicates.New,
+		nodeorder.PluginName:            nodeorder.New,
+		gang.PluginName:                 gang.New,
+		networktopologyaware.PluginName: networktopologyaware.New,
+	}
+
+	const numNodes = 1000
+	const nodesPerHyperNode = 10
+	const numTier1HyperNodes = numNodes / nodesPerHyperNode
+	const numPods = 1000
+	const podsPerSubGroup = 10
+	const numSubGroups = numPods / podsPerSubGroup
+	const nodeCPU, nodeMemory = "4", "8Gi"
+	const podCPU, podMemory = "4", "8Gi"
+
+	// Build 1000 nodes
+	nodes := make([]*v1.Node, 0, numNodes)
+	for i := 0; i < numNodes; i++ {
+		nodes = append(nodes, util.BuildNode(fmt.Sprintf("n-%d", i),
+			api.BuildResourceList(nodeCPU, nodeMemory, []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil))
+	}
+
+	// Build HyperNodes
+	hyperNodesMap := make(map[string]*api.HyperNodeInfo)
+	hyperNodes := make(map[string]sets.Set[string])
+
+	tier1Set := sets.New[string]()
+	tier2Nodes := sets.New[string]()
+
+	for i := 0; i < numTier1HyperNodes; i++ {
+		hnName := fmt.Sprintf("hn-tier1-%d", i)
+		tier1Set.Insert(hnName)
+		nodeSet := sets.New[string]()
+		members := make([]api.MemberConfig, 0, nodesPerHyperNode)
+
+		for j := 0; j < nodesPerHyperNode; j++ {
+			nodeName := fmt.Sprintf("n-%d", i*nodesPerHyperNode+j)
+			nodeSet.Insert(nodeName)
+
+			tier2Nodes.Insert(nodeName)
+			members = append(members, api.MemberConfig{Name: nodeName, Type: topologyv1alpha1.MemberTypeNode, Selector: "exact"})
+		}
+		hyperNodes[hnName] = nodeSet
+		hyperNodesMap[hnName] = api.NewHyperNodeInfo(
+			api.BuildHyperNode(hnName, 1, members),
+		)
+	}
+
+	//build tier 2 hypernodes
+	tier2Members := make([]api.MemberConfig, 0, numTier1HyperNodes)
+	for i := 0; i < numTier1HyperNodes; i++ {
+		tier2Members = append(tier2Members, api.MemberConfig{Name: fmt.Sprintf("hn-tier1-%d", i), Type: topologyv1alpha1.MemberTypeHyperNode, Selector: "exact"})
+	}
+	hyperNodesMap["hn-tier2-0"] = api.NewHyperNodeInfo(api.BuildHyperNode("hn-tier2-0", 2, tier2Members))
+	hyperNodes["hn-tier2-0"] = tier2Nodes
+
+	// Build 1000 pods with 100 SubGroups
+	pods := make([]*v1.Pod, 0, numPods)
+	for i := 0; i < numPods; i++ {
+		pods = append(pods, util.BuildPod("c1",
+			fmt.Sprintf("p%d", i),
+			"",
+			v1.PodPending,
+			api.BuildResourceList(podCPU, podMemory),
+			"pg1",
+			map[string]string{"volcano.sh/task-spec": fmt.Sprintf("subgroup-%d", i/10)},
+			nil),
+		)
+	}
+
+	// Build PodGroup with MinResources set to total job resource requirement
+	pg := util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", numPods, nil, schedulingv1.PodGroupInqueue, "hard", 2,
+		[]schedulingv1.SubGroupPolicySpec{
+			util.BuildSubGroupPolicyWithMinSubGroups("task1", []string{"volcano.sh/task-spec"}, "hard", 1, podsPerSubGroup, numSubGroups),
+		})
+	// Set MinResources = 1000 pods × (4 CPU, 8Gi) = (4000 CPU, 8000Gi)
+	// This enables HyperNode pre-filtering: Tier-1 (40 CPU) < MinResources (4000 CPU) -> filtered out
+	pg.Spec.MinResources = &v1.ResourceList{
+		v1.ResourceCPU:    resource.MustParse("4000"),
+		v1.ResourceMemory: resource.MustParse("8000Gi"),
+	}
+
+	test := uthelper.TestCommonStruct{
+		Name:                "performance test: 1000 pods with 100 SubGroups on 1000 nodes",
+		PodGroups:           []*schedulingv1.PodGroup{pg},
+		Pods:                pods,
+		Nodes:               nodes,
+		HyperNodesSetByTier: map[int]sets.Set[string]{1: tier1Set, 2: sets.New[string]("hn-tier2-0")},
+		HyperNodesMap:       hyperNodesMap,
+		HyperNodes:          hyperNodes,
+		Queues:              []*schedulingv1.Queue{util.BuildQueue("q1", 1, nil)},
+		Plugins:             plugins,
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:                gang.PluginName,
+					EnabledJobOrder:     &trueValue,
+					EnabledJobReady:     &trueValue,
+					EnabledJobPipelined: &trueValue,
+					EnabledJobStarving:  &trueValue,
+					EnabledSubJobReady:  &trueValue,
+					EnabledSubJobOrder:  &trueValue,
+				},
+				{
+					Name:               drf.PluginName,
+					EnabledPreemptable: &trueValue,
+					EnabledJobOrder:    &trueValue,
+				},
+				{
+					Name:               proportion.PluginName,
+					EnabledQueueOrder:  &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledAllocatable: &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:             nodeorder.PluginName,
+					EnabledNodeOrder: &trueValue,
+				},
+				{
+					Name:                     networktopologyaware.PluginName,
+					EnabledNodeOrder:         &trueValue,
+					EnabledHyperNodeOrder:    &trueValue,
+					EnabledHyperNodeGradient: &trueValue,
+				},
+			},
+		},
+	}
+
+	ssn := test.RegisterSession(tiers, nil)
+	defer test.Close()
+
+	startTime := time.Now()
+	test.Run([]framework.Action{New()})
+	duration := time.Since(startTime)
+
+	klog.Infof("=== Performance Test Results ===")
+	klog.Infof("Scheduling %d pods (%d SubGroups) on %d nodes took: %v", numPods, numSubGroups, numNodes, duration)
+	klog.Infof("\n=== HyperNode Parameters ===")
+	klog.Infof("Tier-1: %d HyperNodes (each %d nodes, %d CPU)", numTier1HyperNodes, nodesPerHyperNode, nodesPerHyperNode*4)
+	klog.Infof("Tier-2: 1 HyperNode (%d nodes, %d CPU)", numNodes, numNodes*4)
+	klog.Infof("Job: %d pods × %s CPU = %d CPU total", numPods, podCPU, numPods*4)
+
+	for _, job := range ssn.Jobs {
+		topHyperNode := ssn.HyperNodes[framework.ClusterTopHyperNode]
+		gradient := ssn.HyperNodeGradientForJobFn(job, topHyperNode)
+		klog.Infof("\nGradient for Job %s: %d tiers", job.UID, len(gradient))
+		for tierIdx, tierHNs := range gradient {
+			klog.Infof("  Tier %d: %d hyperNodes", tierIdx+1, len(tierHNs))
+		}
 	}
 }

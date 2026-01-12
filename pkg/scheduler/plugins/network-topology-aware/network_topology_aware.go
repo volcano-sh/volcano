@@ -82,6 +82,8 @@ type hyperNodesTier struct {
 type resourceStatus struct {
 	allocatable *api.Resource
 	used        *api.Resource
+	idle        *api.Resource
+	futureIdle  *api.Resource
 }
 
 func (h *hyperNodesTier) init(hyperNodesSetByTier []int) {
@@ -101,10 +103,14 @@ func (nta *networkTopologyAwarePlugin) initHyperNodeResourceCache(ssn *framework
 		nta.hyperNodeResourceCache[hyperNode] = &resourceStatus{
 			allocatable: api.EmptyResource(),
 			used:        api.EmptyResource(),
+			idle:        api.EmptyResource(),
+			futureIdle:  api.EmptyResource(),
 		}
 		for node := range ssn.RealNodesSet[hyperNode] {
 			nta.hyperNodeResourceCache[hyperNode].allocatable.Add(ssn.Nodes[node].Allocatable)
 			nta.hyperNodeResourceCache[hyperNode].used.Add(ssn.Nodes[node].Used)
+			nta.hyperNodeResourceCache[hyperNode].idle.Add(ssn.Nodes[node].Idle)
+			nta.hyperNodeResourceCache[hyperNode].futureIdle.Add(ssn.Nodes[node].FutureIdle())
 		}
 	}
 }
@@ -264,7 +270,8 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 
 	ssn.AddHyperNodeGradientForJobFn(nta.Name(), func(job *api.JobInfo, hyperNode *api.HyperNodeInfo) [][]*api.HyperNodeInfo {
 		if hardMode, highestAllowedTier := job.IsHardTopologyMode(); hardMode {
-			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, job.AllocatedHyperNode)
+			jobMinResource := job.GetMinResources()
+			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, job.AllocatedHyperNode, jobMinResource)
 			if err != nil {
 				klog.ErrorS(err, "build hyperNode gradient fail", "job", job.UID, "hyperNode", hyperNode.Name,
 					"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", job.AllocatedHyperNode)
@@ -280,7 +287,8 @@ func (nta *networkTopologyAwarePlugin) OnSessionOpen(ssn *framework.Session) {
 			return [][]*api.HyperNodeInfo{{hyperNode}} // it is unnecessary to try child hyperNode when there is no actual subJob
 		}
 		if hardMode, highestAllowedTier := subJob.IsHardTopologyMode(); hardMode {
-			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, subJob.AllocatedHyperNode)
+			subJobMinResource := subJob.GetMinResources()
+			result, err := nta.hyperNodeGradientFn(ssn, hyperNode, highestAllowedTier, subJob.AllocatedHyperNode, subJobMinResource)
 			if err != nil {
 				klog.ErrorS(err, "build hyperNode gradient fail", "subJob", subJob.UID, "hyperNode", hyperNode.Name,
 					"highestAllowedTier", highestAllowedTier, "allocatedHyperNode", subJob.AllocatedHyperNode)
@@ -512,7 +520,8 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFnForNetworkAwarePods(ssn *
 	return nodeScores, nil
 }
 
-func (nta *networkTopologyAwarePlugin) hyperNodeGradientFn(ssn *framework.Session, hyperNode *api.HyperNodeInfo, highestAllowedTier int, allocatedHyperNode string) ([][]*api.HyperNodeInfo, error) {
+// minResource is the minimum required resource for the job/subjob to be scheduled.
+func (nta *networkTopologyAwarePlugin) hyperNodeGradientFn(ssn *framework.Session, hyperNode *api.HyperNodeInfo, highestAllowedTier int, allocatedHyperNode string, minResource *api.Resource) ([][]*api.HyperNodeInfo, error) {
 	enqueued := set.New[string]()
 	var processQueue []*api.HyperNodeInfo
 
@@ -531,7 +540,15 @@ func (nta *networkTopologyAwarePlugin) hyperNodeGradientFn(ssn *framework.Sessio
 		processQueue = processQueue[1:]
 
 		if current.Tier() <= highestAllowedTier {
-			eligibleHyperNodes[current.Tier()] = append(eligibleHyperNodes[current.Tier()], current)
+			if minResource != nil {
+				hnResourceStatus := nta.hyperNodeResourceCache[current.Name]
+				if hnResourceStatus != nil {
+					if minResource.LessEqual(hnResourceStatus.idle, api.Zero) ||
+						minResource.LessEqual(hnResourceStatus.futureIdle, api.Zero) {
+						eligibleHyperNodes[current.Tier()] = append(eligibleHyperNodes[current.Tier()], current)
+					}
+				}
+			}
 		}
 
 		// push children hyperNode into queue

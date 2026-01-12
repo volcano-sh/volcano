@@ -261,3 +261,14 @@ func (sji *SubJobInfo) AllocatedTaskNum() int32 {
 func (sji *SubJobInfo) CloneStatusFrom(source *SubJobInfo) {
 	sji.AllocatedHyperNode = source.AllocatedHyperNode
 }
+
+// GetMinResources The current sub job is constrained to gang scheduling,
+// so the minimum required resource of a sub job can be considered as
+// the total initResReq of each task in the sub job.
+func (sji *SubJobInfo) GetMinResources() *Resource {
+	totalResource := EmptyResource()
+	for _, task := range sji.Tasks {
+		totalResource.Add(task.InitResreq)
+	}
+	return totalResource
+}
