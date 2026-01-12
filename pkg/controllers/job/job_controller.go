@@ -149,9 +149,6 @@ type jobcontroller struct {
 	// delayActionMap stores delayed actions for jobs, where outer map key is job key (namespace/name),
 	// inner map key is pod name, and value is the delayed action to be performed
 	delayActionMap map[string]map[string]*delayAction
-
-	jobMutex     map[string]*sync.Mutex
-	jobMutexLock sync.Mutex
 }
 
 func (cc *jobcontroller) Name() string {
@@ -259,7 +256,6 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.queueSynced = cc.queueInformer.Informer().HasSynced
 
 	cc.delayActionMap = make(map[string]map[string]*delayAction)
-	cc.jobMutex = make(map[string]*sync.Mutex)
 
 	// Register actions
 	state.SyncJob = cc.syncJob
@@ -318,16 +314,6 @@ func (cc *jobcontroller) processNextReq() bool {
 	defer cc.queue.Done(req)
 
 	key := jobcache.JobKeyByReq(&req)
-
-	cc.jobMutexLock.Lock()
-	if _, ok := cc.jobMutex[key]; !ok {
-		cc.jobMutex[key] = &sync.Mutex{}
-	}
-	mu := cc.jobMutex[key]
-	cc.jobMutexLock.Unlock()
-
-	mu.Lock()
-	defer mu.Unlock()
 
 	klog.V(3).Infof("Try to handle request <%v>", req)
 
