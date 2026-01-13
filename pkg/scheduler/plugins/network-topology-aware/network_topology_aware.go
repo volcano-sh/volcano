@@ -540,13 +540,16 @@ func (nta *networkTopologyAwarePlugin) hyperNodeGradientFn(ssn *framework.Sessio
 		processQueue = processQueue[1:]
 
 		if current.Tier() <= highestAllowedTier {
-			if minResource != nil {
-				hnResourceStatus := nta.hyperNodeResourceCache[current.Name]
-				if hnResourceStatus != nil {
-					if minResource.LessEqual(hnResourceStatus.idle, api.Zero) ||
-						minResource.LessEqual(hnResourceStatus.futureIdle, api.Zero) {
-						eligibleHyperNodes[current.Tier()] = append(eligibleHyperNodes[current.Tier()], current)
-					}
+			if minResource == nil {
+				eligibleHyperNodes[current.Tier()] = append(eligibleHyperNodes[current.Tier()], current)
+			} else {
+				hnResourceStatus, found := nta.hyperNodeResourceCache[current.Name]
+				if !found {
+					klog.Warningf("Resource status for hypernode %s not found in cache, skipping pre-filtering for it.", current.Name)
+					eligibleHyperNodes[current.Tier()] = append(eligibleHyperNodes[current.Tier()], current)
+				} else if minResource.LessEqual(hnResourceStatus.idle, api.Zero) ||
+					minResource.LessEqual(hnResourceStatus.futureIdle, api.Zero) {
+					eligibleHyperNodes[current.Tier()] = append(eligibleHyperNodes[current.Tier()], current)
 				}
 			}
 		}

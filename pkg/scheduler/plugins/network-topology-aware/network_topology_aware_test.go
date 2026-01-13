@@ -3389,6 +3389,36 @@ func TestHyperNodeGradientPreFiltering(t *testing.T) {
 			},
 			expectTier1Selected: false,
 		},
+		{
+			name:               "Job - minResource nil",
+			isSubJob:           false,
+			highestAllowedTier: 2,
+			minResource:        nil,
+			idleResource: &api.Resource{
+				MilliCPU: 5000,
+				Memory:   10 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 5000,
+				Memory:   10 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: true,
+		},
+		{
+			name:               "SubJob - minResource nil",
+			isSubJob:           true,
+			highestAllowedTier: 1,
+			minResource:        nil,
+			idleResource: &api.Resource{
+				MilliCPU: 5000,
+				Memory:   10 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 5000,
+				Memory:   10 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: true,
+		},
 	}
 
 	for _, tt := range tests {
