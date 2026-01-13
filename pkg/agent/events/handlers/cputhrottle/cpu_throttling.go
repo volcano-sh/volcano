@@ -149,21 +149,11 @@ func (h *CPUThrottleHandler) RefreshCfg(cfg *api.ColocationConfig) error {
 
 	if !isActive {
 		klog.InfoS("CPU throttle feature disabled, recovering all throttled pods")
-		return h.recoverAllThrottledPods()
+		if err = h.applyBEQuota(unlimitedQuota); err != nil {
+			return err
+		}
+		klog.InfoS("Recovered BE root CPU quota due to feature disabled")
 	}
 
-	return nil
-}
-
-func (h *CPUThrottleHandler) recoverAllThrottledPods() error {
-	if !h.throttlingActive {
-		return nil
-	}
-
-	if err := h.applyBEQuota(unlimitedQuota); err != nil {
-		return err
-	}
-
-	klog.InfoS("Recovered BE root CPU quota due to feature disable")
 	return nil
 }

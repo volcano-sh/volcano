@@ -53,7 +53,7 @@ const (
 	evictionSubResourceName = "pods/eviction"
 
 	defaultCPUThrottlingThreshold = 80
-	defaultCPUProtectionWatermark = 30
+	defaultCPUJitterLimitPercent  = 1
 )
 
 func UpdateFile(path string, content []byte) error {
@@ -142,17 +142,19 @@ func SetEvictionWatermark(cfg *api.ColocationConfig, lowWatermark apis.Watermark
 }
 
 // SetCPUThrottlingConfig set CPU QoS configuration from colocation config.
-func SetCPUThrottlingConfig(cfg *api.ColocationConfig) (throttlingThreshold, protectionWatermark int) {
+func SetCPUThrottlingConfig(cfg *api.ColocationConfig) (throttlingThreshold, jitterPercent int) {
 	if cfg.CPUThrottlingConfig.CPUThrottlingThreshold != nil {
 		throttlingThreshold = *cfg.CPUThrottlingConfig.CPUThrottlingThreshold
+		jitterPercent = *cfg.CPUThrottlingConfig.CPUJitterLimitPercent
 	} else {
 		throttlingThreshold = defaultCPUThrottlingThreshold
+		jitterPercent = defaultCPUJitterLimitPercent
 	}
 
 	klog.InfoS("Successfully set CPU QoS config",
 		"throttlingThreshold", throttlingThreshold,
-		"protectionWatermark", protectionWatermark)
-	return throttlingThreshold, protectionWatermark
+		"cpuJitterLimitPercent", jitterPercent)
+	return throttlingThreshold, jitterPercent
 }
 
 func GetCPUManagerPolicy() string {

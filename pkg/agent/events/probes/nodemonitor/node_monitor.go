@@ -24,8 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"volcano.sh/volcano/pkg/agent/apis/extension"
-
 	"volcano.sh/volcano/pkg/agent/apis"
 	"volcano.sh/volcano/pkg/agent/config/api"
 	"volcano.sh/volcano/pkg/agent/events/framework"
@@ -44,12 +42,10 @@ import (
 
 func init() {
 	probes.RegisterEventProbeFunc(string(framework.NodeMonitorEventName), NewMonitor)
-	probes.RegisterEventProbeFunc(string(framework.NodeCPUThrottleEventName), NewMonitor)
 }
 
 const (
 	highUsageCountLimit = 6
-	unlimitedQuota      = -1
 )
 
 type monitor struct {
@@ -65,10 +61,6 @@ type monitor struct {
 	getNodeFunc             utilnode.ActiveNode
 	getPodsFunc             utilpod.ActivePods
 	usageGetter             resourceusage.Getter
-	cpuThrottlingThreshold  int
-	cpuProtectionWatermark  int
-	cpuThrottlingActive     bool
-	lastCPUQuotaMilli       int64
 }
 
 func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, workQueue workqueue.RateLimitingInterface) framework.Probe {
@@ -82,8 +74,6 @@ func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollector
 		highWatermark:           make(apis.Watermark),
 		highUsageCountByResName: make(map[v1.ResourceName]int),
 		usageGetter:             resourceusage.NewUsageGetter(mgr, local.CollectorName),
-		cpuThrottlingActive:     false,
-		lastCPUQuotaMilli:       -1,
 	}
 }
 
@@ -95,15 +85,11 @@ func (m *monitor) Run(stop <-chan struct{}) {
 	klog.InfoS("Started nodePressure probe")
 	go wait.Until(m.utilizationMonitoring, 10*time.Second, stop)
 	go wait.Until(m.detectEviction, 10*time.Second, stop)
-	go wait.Until(m.detectCPUThrottling, 10*time.Second, stop)
 }
 
 func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 	m.cfgLock.Lock()
 	utils.SetEvictionWatermark(cfg, m.lowWatermark, m.highWatermark)
-	if cfg.CPUThrottlingConfig != nil && cfg.CPUThrottlingConfig.Enable != nil && *cfg.CPUThrottlingConfig.Enable {
-		m.cpuThrottlingThreshold, m.cpuProtectionWatermark = utils.SetCPUThrottlingConfig(cfg)
-	}
 	m.cfgLock.Unlock()
 
 	m.Lock()
@@ -111,8 +97,6 @@ func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 	// reset historical statistics
 	// TODO: make this more fine-grained, only when new setting is a higher watermark should we reset.
 	m.highUsageCountByResName = map[v1.ResourceName]int{}
-
-	m.cpuThrottlingActive = false
 	return nil
 }
 
@@ -214,84 +198,4 @@ func (m *monitor) nodeHasPressure(resName v1.ResourceName) bool {
 	defer m.Unlock()
 
 	return m.highUsageCountByResName[resName] >= highUsageCountLimit
-}
-
-func (m *monitor) detectCPUThrottling() {
-	m.cfgLock.RLock()
-	throttlingThreshold := m.cpuThrottlingThreshold
-	m.cfgLock.RUnlock()
-
-	if throttlingThreshold == 0 {
-		return
-	}
-
-	node, err := m.getNodeFunc()
-	if err != nil {
-		klog.ErrorS(err, "CPU Throttling: Failed to get node")
-		return
-	}
-	nodeCopy := node.DeepCopy()
-
-	totalCPU := nodeCopy.Status.Allocatable[v1.ResourceCPU]
-	totalMilli := totalCPU.MilliValue()
-
-	pods, err := m.getPodsFunc()
-	if err != nil {
-		klog.ErrorS(err, "CPU Throttling: Failed to get pods")
-	}
-
-	//TODO: GetQosLevel only retrieves the QoS level annotated by Volcano. We should also consider the regular pod.
-	var onlineRequestMilli int64
-	for _, pod := range pods {
-		if extension.GetQosLevel(pod) < 0 {
-			continue
-		}
-		onlineRequestMilli += getPodCPURequestMilli(pod)
-	}
-
-	// availableBEMilli represents the CPU quota available to the Best Effort pod defined by Volcano.
-	// The calculation is the allocatable Quota of current node minus the CPU requests of the non-BE pods.
-	allowedMilli := totalMilli * int64(throttlingThreshold) / 100
-	availableBEMilli := allowedMilli - onlineRequestMilli
-	if availableBEMilli < 0 {
-		availableBEMilli = 0
-	}
-
-	lastQuota := m.lastCPUQuotaMilli
-	if lastQuota < 0 {
-		m.sendNodeCPUThrottleEvent(availableBEMilli)
-	} else if lastQuota == 0 {
-		if availableBEMilli != 0 {
-			m.sendNodeCPUThrottleEvent(availableBEMilli)
-		}
-	} else {
-		diff := availableBEMilli - lastQuota
-		if diff < 0 {
-			diff = -diff
-		}
-		//TODO: Need to make percentage configurable
-		if diff*100*1 >= lastQuota {
-			m.sendNodeCPUThrottleEvent(availableBEMilli)
-		}
-	}
-}
-
-func getPodCPURequestMilli(pod *v1.Pod) int64 {
-	var total int64
-	for _, container := range pod.Spec.Containers {
-		if qty, ok := container.Resources.Requests[v1.ResourceCPU]; ok {
-			total += qty.MilliValue()
-		}
-	}
-	return total
-}
-
-func (m *monitor) sendNodeCPUThrottleEvent(quota int64) {
-	event := framework.NodeCPUThrottleEvent{
-		TimeStamp:     time.Now(),
-		Resource:      v1.ResourceCPU,
-		CPUQuotaMilli: quota,
-	}
-	m.queue.Add(event)
-	m.lastCPUQuotaMilli = quota
 }

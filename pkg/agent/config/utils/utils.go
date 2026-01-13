@@ -112,6 +112,9 @@ func DefaultColocationConfig() *api.ColocationConfig {
 			EvictingCPULowWatermark:     utilpointer.Int(DefaultEvictingCPULowWatermark),
 			EvictingMemoryLowWatermark:  utilpointer.Int(DefaultEvictingMemoryLowWatermark),
 		},
+		CPUThrottlingConfig: &api.CPUThrottling{
+			Enable: utilpointer.Bool(false),
+		},
 	}
 }
 

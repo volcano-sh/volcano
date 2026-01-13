@@ -31,6 +31,7 @@ import (
 
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/cpuburst"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/cpuqos"
+	_ "volcano.sh/volcano/pkg/agent/events/handlers/cputhrottle"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/eviction"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/memoryqos"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/networkqos"
