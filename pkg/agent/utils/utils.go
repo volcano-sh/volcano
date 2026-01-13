@@ -150,6 +150,9 @@ func SetCPUThrottlingConfig(cfg *api.ColocationConfig) (throttlingThreshold, jit
 		throttlingThreshold = defaultCPUThrottlingThreshold
 		jitterPercent = defaultCPUJitterLimitPercent
 	}
+	if jitterPercent < 1 {
+		jitterPercent = defaultCPUJitterLimitPercent
+	}
 
 	klog.InfoS("Successfully set CPU QoS config",
 		"throttlingThreshold", throttlingThreshold,

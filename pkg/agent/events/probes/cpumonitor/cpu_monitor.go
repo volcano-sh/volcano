@@ -53,11 +53,13 @@ type cpuQuotaMonitor struct {
 
 func NewCPUQuotaMonitor(cfg *config.Configuration, _ *metriccollect.MetricCollectorManager, workQueue workqueue.RateLimitingInterface) framework.Probe {
 	return &cpuQuotaMonitor{
-		Configuration:     cfg,
-		queue:             workQueue,
-		getNodeFunc:       cfg.GetNode,
-		getPodsFunc:       cfg.GetActivePods,
-		lastCPUQuotaMilli: -1,
+		Configuration:          cfg,
+		queue:                  workQueue,
+		getNodeFunc:            cfg.GetNode,
+		getPodsFunc:            cfg.GetActivePods,
+		lastCPUQuotaMilli:      -1,
+		cpuJitterLimitPercent:  1,
+		cpuThrottlingThreshold: 80,
 	}
 }
 

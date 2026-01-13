@@ -36,6 +36,7 @@ func Test_monitor_detectCPUThrottling(t *testing.T) {
 		name                   string
 		cpuThrottlingThreshold int
 		cpuJitterLimitPercent  int
+		initCPUQuotaMilli      int64
 		pods                   []*v1.Pod
 		expectedEventCount     int
 		expectedQuotaMilli     int64
@@ -44,6 +45,7 @@ func Test_monitor_detectCPUThrottling(t *testing.T) {
 			name:                   "emit quota with no online pods",
 			cpuThrottlingThreshold: 80,
 			cpuJitterLimitPercent:  1,
+			initCPUQuotaMilli:      -1,
 			pods:                   []*v1.Pod{},
 			expectedEventCount:     1,
 			expectedQuotaMilli:     -1,
@@ -52,6 +54,7 @@ func Test_monitor_detectCPUThrottling(t *testing.T) {
 			name:                   "subtract online pod requests from quota",
 			cpuThrottlingThreshold: 80,
 			cpuJitterLimitPercent:  1,
+			initCPUQuotaMilli:      -1,
 			pods: []*v1.Pod{
 				buildPod("online-1", "100m", "LS"),
 				buildPod("online-2", "200m", "LS"),
@@ -61,13 +64,25 @@ func Test_monitor_detectCPUThrottling(t *testing.T) {
 		},
 		{
 			name:                   "quota floored at zero when online requests exceed allowance",
-			cpuThrottlingThreshold: 50,
+			cpuThrottlingThreshold: 80,
+			cpuJitterLimitPercent:  1,
+			initCPUQuotaMilli:      -1,
 			pods: []*v1.Pod{
 				buildPod("online-1", "750m", "LS"),
 				buildPod("be-1", "100m", "BE"),
 			},
 			expectedEventCount: 1,
 			expectedQuotaMilli: 50,
+		},
+		{
+			name:                   "skip emit when quota change within jitter limit",
+			cpuThrottlingThreshold: 80,
+			cpuJitterLimitPercent:  10,
+			initCPUQuotaMilli:      500,
+			pods: []*v1.Pod{
+				buildPod("online-1", "280m", "LS"),
+			},
+			expectedEventCount: 0,
 		},
 		{
 			name:                   "skip when throttling disabled",
@@ -103,6 +118,7 @@ func Test_monitor_detectCPUThrottling(t *testing.T) {
 				},
 				cpuJitterLimitPercent: tt.cpuJitterLimitPercent,
 			}
+			m.lastCPUQuotaMilli = tt.initCPUQuotaMilli
 
 			m.detectCPUQuota()
 
