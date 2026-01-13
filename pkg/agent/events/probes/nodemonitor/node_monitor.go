@@ -240,6 +240,7 @@ func (m *monitor) detectCPUThrottling() {
 		klog.ErrorS(err, "CPU Throttling: Failed to get pods")
 	}
 
+	//TODO: GetQosLevel only retrieves the QoS level annotated by Volcano. We should also consider the regular pod.
 	var onlineRequestMilli int64
 	for _, pod := range pods {
 		if extension.GetQosLevel(pod) < 0 {
@@ -248,6 +249,8 @@ func (m *monitor) detectCPUThrottling() {
 		onlineRequestMilli += getPodCPURequestMilli(pod)
 	}
 
+	// availableBEMilli represents the CPU quota available to the Best Effort pod defined by Volcano.
+	// The calculation is the allocatable Quota of current node minus the CPU requests of the non-BE pods.
 	allowedMilli := totalMilli * int64(throttlingThreshold) / 100
 	availableBEMilli := allowedMilli - onlineRequestMilli
 	if availableBEMilli < 0 {
