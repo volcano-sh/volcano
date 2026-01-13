@@ -48,7 +48,7 @@ func Test_monitor_detectCPUThrottling(t *testing.T) {
 			initCPUQuotaMilli:      -1,
 			pods:                   []*v1.Pod{},
 			expectedEventCount:     1,
-			expectedQuotaMilli:     -1,
+			expectedQuotaMilli:     800,
 		},
 		{
 			name:                   "subtract online pod requests from quota",
