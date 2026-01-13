@@ -43,7 +43,7 @@ func (ps *restartingState) restartingUpdateStatus(status *vcbatch.JobStatus) boo
 		total += task.Replicas
 	}
 
-	if total-status.Terminating >= status.MinAvailable {
+	if status.Terminating == 0 && total >= status.MinAvailable {
 		status.State.Phase = vcbatch.Pending
 		return true
 	}
