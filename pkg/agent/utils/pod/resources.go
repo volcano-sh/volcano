@@ -19,7 +19,6 @@ package pod
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -54,8 +53,6 @@ type Resources struct {
 func CalculateExtendResources(pod *v1.Pod) []Resources {
 	containerRes := []Resources{}
 	cpuSharesTotal, cpuLimitsTotal, memoryLimitsTotal := int64(0), int64(0), int64(0)
-	// track if requests were applied for each resource.
-	cpuRequestsDeclared := true
 	// track if limits were applied for each resource.
 	cpuLimitsDeclared := true
 	memoryLimitsDeclared := true
@@ -68,8 +65,6 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 			cpuShares := int64(milliCPUToShares(cpuReq.Value()))
 			containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, ContainerID: id, SubPath: cgroup.CPUShareFileName, Value: cpuShares})
 			cpuSharesTotal += cpuShares
-		} else {
-			cpuRequestsDeclared = false
 		}
 
 		// set cpu quota.
@@ -97,16 +92,18 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 		return containerRes
 	}
 
-	// If a container does not apply for oversold CPU, the pod level should not set totalShares and should still use the kubelet setting, only adjusts the CPU share at the container level
-	if cpuRequestsDeclared {
-		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUShareFileName, Value: cpuSharesTotal})
+	if cpuSharesTotal == 0 {
+		// Align with min cpu share value in kubelet.
+		cpuSharesTotal = minShares
 	}
+
+	containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUShareFileName, Value: cpuSharesTotal})
 
 	// pod level should not set limit when exists one container has no cpu limit.
 	if cpuLimitsDeclared {
 		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUQuotaTotalFile, Value: cpuLimitsTotal})
 	}
-	// pod level should not set limit when exits one container has no memory limit.
+	// pod level should not set limit when exists one container has no memory limit.
 	if memoryLimitsDeclared {
 		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, SubPath: cgroup.MemoryLimitFile, Value: memoryLimitsTotal})
 	}
@@ -116,12 +113,9 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 func findContainerIDByName(pod *v1.Pod, name string) string {
 	for _, status := range pod.Status.ContainerStatuses {
 		if status.Name == name {
-			parts := strings.Split(status.ContainerID, "://")
-			if len(parts) != 2 {
-				klog.ErrorS(nil, "Failed to get container id", "name", name)
-				return ""
-			}
-			return parts[1]
+			// Return the full container ID with runtime prefix (e.g., "containerd://xxx")
+			// This is needed for BuildContainerCgroupName to identify the runtime type
+			return status.ContainerID
 		}
 	}
 	return ""
@@ -162,7 +156,6 @@ func milliCPUToShares(milliCPU int64) uint64 {
 func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 	containerRes := []Resources{}
 	cpuWeightTotal, cpuMaxTotal, memoryMaxTotal := int64(0), int64(0), int64(0)
-	cpuRequestsDeclared := true
 	cpuLimitsDeclared := true
 	memoryLimitsDeclared := true
 
@@ -178,8 +171,6 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 				Value:           cpuWeight,
 			})
 			cpuWeightTotal += cpuWeight
-		} else {
-			cpuRequestsDeclared = false
 		}
 
 		cpuLimits, ok := c.Resources.Limits[apis.GetExtendResourceCPU()]
@@ -269,13 +260,16 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 		return containerRes
 	}
 
-	if cpuRequestsDeclared {
-		containerRes = append(containerRes, Resources{
-			CgroupSubSystem: cgroup.CgroupCpuSubsystem,
-			SubPath:         cgroup.CPUWeightFileV2,
-			Value:           cpuWeightTotal,
-		})
+	if cpuWeightTotal == 0 {
+		// Align with min cpu share value in kubelet.
+		cpuWeightTotal = 100
 	}
+
+	containerRes = append(containerRes, Resources{
+		CgroupSubSystem: cgroup.CgroupCpuSubsystem,
+		SubPath:         cgroup.CPUWeightFileV2,
+		Value:           cpuWeightTotal,
+	})
 
 	if cpuLimitsDeclared {
 		if cpuMaxTotal == 0 {
