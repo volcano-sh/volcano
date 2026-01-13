@@ -1152,6 +1152,12 @@ func (sc *SchedulerCache) parseDeletedJobsKey(key string) (jobUID string, jobPgU
 
 func (sc *SchedulerCache) resyncTask(task *schedulingapi.TaskInfo) {
 	key := sc.generateErrTaskKey(task)
+	sc.errTasks.Add(key)
+}
+
+func (sc *SchedulerCache) retryResyncTask(task *schedulingapi.TaskInfo) {
+	klog.V(5).Infof("Retry to resync task <%s:%s/%s>", task.UID, task.Namespace, task.Name)
+	key := sc.generateErrTaskKey(task)
 	sc.errTasks.AddRateLimited(key)
 }
 
@@ -1207,7 +1213,7 @@ func (sc *SchedulerCache) processResyncTask() {
 	reSynced := false
 	if err := sc.syncTask(task); err != nil {
 		klog.ErrorS(err, "Failed to sync task, retry it", "namespace", task.Namespace, "name", task.Name)
-		sc.resyncTask(task)
+		sc.retryResyncTask(task)
 		reSynced = true
 	} else {
 		klog.V(4).Infof("Successfully synced task <%s/%s>", task.Namespace, task.Name)
