@@ -446,12 +446,6 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 
 		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, re-enqueue it", req.Namespace, req.JobName, delayAct.action)
 
-		cc.delayActionMapLock.Lock()
-		if m, exists := cc.delayActionMap[delayAct.jobKey]; exists {
-			delete(m, req.PodName)
-		}
-		cc.delayActionMapLock.Unlock()
-
 		req.Action = delayAct.action
 		cc.queue.Add(req)
 	}()
