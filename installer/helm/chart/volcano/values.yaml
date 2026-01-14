@@ -13,6 +13,7 @@ basic:
   image_tag_version: "latest"
   admission_port: 8443
   image_registry: "docker.io"
+  healthz_port: 11251
 custom:
   go_memlimit_enable: false
   metrics_enable: false
@@ -260,6 +261,35 @@ custom:
 
   # Specify feature gates for components
   scheduler_feature_gates: ~
+
+  # Example probe configuration:
+# livenessProbe:
+#   httpGet:
+#     path: /healthz
+#     port: 11251
+#     scheme: HTTPS
+#   initialDelaySeconds: 10
+#   periodSeconds: 20
+#   timeoutSeconds: 5
+#   failureThreshold: 3
+#   successThreshold: 1
+#
+# readinessProbe:
+#   httpGet:
+#     path: /healthz
+#     port: 11251
+#     scheme: HTTPS
+#   initialDelaySeconds: 10
+#   periodSeconds: 20
+#   timeoutSeconds: 5
+#   failureThreshold: 3
+#   successThreshold: 1
+  controller_readinessProbe: {}
+  controller_livenessProbe: {}
+  scheduler_readinessProbe: {}
+  scheduler_livenessProbe: {}
+  admission_readinessProbe: {}
+  admission_livenessProbe: {}
 
 # Specify options for scheduler sharding
   agent_scheduler_sharding_mode: ~

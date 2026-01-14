@@ -90,6 +90,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`basic.admission_app_name`|Admission Controller App Name|`volcano-admission`|
 |`basic.controller_app_name`|Controller App Name|`volcano-controller`|
 |`basic.scheduler_app_name`|Scheduler App Name|`volcano-scheduler`|
+|`basic.healthz_port`| Pod Health port | `11251` |
 |`custom.metrics_enable`|Whether to Enable Metrics|`false`|
 |`custom.admission_enable`|Whether to Enable Admission|`true`|
 |`custom.admission_replicas`|The number of Admission pods to run|`1`|
@@ -133,6 +134,36 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.scheduler_log_level`|Settings log print level for Scheduler|`3`|
 |`custom.scheduler_plugins_dir`| Settings dir for the Scheduler to load custom plugins|``|
 |`custom.webhooks_namespace_selector_expressions`|Additional namespace selector expressions for Volcano admission webhooks|`~`|
+|`custom.admission_livenessProbe.initialDelaySeconds`|Time to wait before starting liveness checks|`10`|
+|`custom.admission_livenessProbe.periodSeconds`|How often the liveness probe runs|`20`|
+|`custom.admission_livenessProbe.timeoutSeconds`|Max time the liveness probe waits before timing out|`5`|
+|`custom.admission_livenessProbe.failureThreshold`|Number of failed checks before the container is restarted|`3`|
+|`custom.admission_livenessProbe.successThreshold`|Number of successes required to mark container healthy|`1`|
+|`custom.admission_readinessProbe.initialDelaySeconds`|Delay before starting readiness checks|`10`|
+|`custom.admission_readinessProbe.periodSeconds`|How often the readiness probe runs|`20`|
+|`custom.admission_readinessProbe.timeoutSeconds`|Max time the readiness probe waits before timing out|`5`|
+|`custom.admission_readinessProbe.failureThreshold`|Number of failed checks before marking container not ready|`3`|
+|`custom.admission_readinessProbe.successThreshold`|Successes required to mark container ready|`1`|
+|`custom.controller_livenessProbe.initialDelaySeconds`|Time to wait before starting liveness checks|`10`|
+|`custom.controller_livenessProbe.periodSeconds`|How often the liveness probe runs|`20`|
+|`custom.controller_livenessProbe.timeoutSeconds`|Max time the liveness probe waits before timing out|`5`|
+|`custom.controller_livenessProbe.failureThreshold`|Number of failed checks before the container is restarted|`3`|
+|`custom.controller_livenessProbe.successThreshold`|Number of successes required to mark container healthy|`1`|
+|`custom.controller_readinessProbe.initialDelaySeconds`|Delay before starting readiness checks|`10`|
+|`custom.controller_readinessProbe.periodSeconds`|How often the readiness probe runs|`20`|
+|`custom.controller_readinessProbe.timeoutSeconds`|Max time the readiness probe waits before timing out|`5`|
+|`custom.controller_readinessProbe.failureThreshold`|Number of failed checks before marking container not ready|`3`|
+|`custom.controller_readinessProbe.successThreshold`|Successes required to mark container ready|`1`|
+|`custom.scheduler_livenessProbe.initialDelaySeconds`|Time to wait before starting liveness checks|`10`|
+|`custom.scheduler_livenessProbe.periodSeconds`|How often the liveness probe runs|`20`|
+|`custom.scheduler_livenessProbe.timeoutSeconds`|Max time the liveness probe waits before timing out|`5`|
+|`custom.scheduler_livenessProbe.failureThreshold`|Number of failed checks before the container is restarted|`3`|
+|`custom.scheduler_livenessProbe.successThreshold`|Number of successes required to mark container healthy|`1`|
+|`custom.scheduler_readinessProbe.initialDelaySeconds`|Delay before starting readiness checks|`10`|
+|`custom.scheduler_readinessProbe.periodSeconds`|How often the readiness probe runs|`20`|
+|`custom.scheduler_readinessProbe.timeoutSeconds`|Max time the readiness probe waits before timing out|`5`|
+|`custom.scheduler_readinessProbe.failureThreshold`|Number of failed checks before marking container not ready|`3`|
+|`custom.scheduler_readinessProbe.successThreshold`|Successes required to mark container ready|`1`|
 |`service.ipFamilyPolicy`|Settings service the family policy|``|
 |`service.ipFamilies`|Settings service the address families|`[]`|
 
