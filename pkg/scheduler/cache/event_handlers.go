@@ -264,7 +264,7 @@ func (sc *SchedulerCache) addPod(pod *v1.Pod) error {
 }
 
 func (sc *SchedulerCache) syncTask(oldTask *schedulingapi.TaskInfo) error {
-	newPod, err := sc.podInformer.Lister().Pods(oldTask.Namespace).Get(oldTask.Name)
+	newPod, err := sc.kubeClient.CoreV1().Pods(oldTask.Namespace).Get(context.TODO(), oldTask.Name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			sc.Mutex.Lock()
