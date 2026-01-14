@@ -1,55 +1,21 @@
-{{/*
-Define apiVersion for CRD.
-bases stands for v1.
+﻿{{/*
+A reusable template to generate a Kubernetes liveness or readiness probe configuration.
+Context MUST be a dict with:
+  "values" - the custom probe values for that component/probe (may be nil/empty)
+  "scheme" - HTTP or HTTPS
+  "port"   - the healthz port to probe
+Example call:
+{{ include "volcano.probe" (dict "values" .Values.custom.admission_liveness_probe "scheme" "HTTPS" "port" .Values.basic.healthz_port) }}
 */}}
-{{- define "crd_version" -}} 
-{{- if .Capabilities.APIVersions.Has "apiextensions.k8s.io/v1" -}}
-bases
-{{- else -}}
-{{- fail "Volcano requires the apiextensions.k8s.io/v1 CustomResourceDefinition API; the deprecated v1beta1 CRD installation path is not supported" -}}
-{{- end -}}
-{{- end -}}
-
-{{/* Validate and return the HyperNode controller deployment mode. */}}
-{{- define "hypernodeControllerMode" -}}
-{{- $mode := .Values.custom.hypernode_controller_mode | default "controller-manager" -}}
-{{- if not (has $mode (list "controller-manager" "standalone" "disabled")) -}}
-{{- fail (printf "custom.hypernode_controller_mode must be one of controller-manager, standalone, or disabled; got %q" $mode) -}}
-{{- end -}}
-{{- if and (eq $mode "standalone") (lt (int .Values.custom.hypernode_controller_replicas) 1) -}}
-{{- fail "custom.hypernode_controller_replicas must be at least 1 in standalone mode; use disabled mode to stop HyperNode reconciliation" -}}
-{{- end -}}
-{{- $mode -}}
-{{- end -}}
-
-{{/* Add NamespaceQueue admission only when the chart feature is enabled. */}}
-{{- define "volcano.enabledAdmissions" -}}
-{{- $configured := .admissions | default "" -}}
-{{- $admissions := splitList "," $configured -}}
-{{- if and .namespaceQueueEnabled (not (has "/namespacequeues/validate" $admissions)) -}}
-{{- $admissions = append $admissions "/namespacequeues/validate" -}}
-{{- end -}}
-{{- join "," $admissions -}}
-{{- end -}}
-
-{{/*
-Merge the NamespaceQueue feature gate into a component's existing gates.
-The chart-level switch takes precedence over an explicitly configured
-NamespaceQueue value while preserving all unrelated gates.
-*/}}
-{{- define "volcano.featureGates" -}}
-{{- $configured := .gates | default "" -}}
-{{- if .namespaceQueueEnabled -}}
-{{- $merged := list -}}
-{{- range $gate := splitList "," $configured -}}
-{{- $gate = trim $gate -}}
-{{- if and $gate (not (hasPrefix "NamespaceQueue=" $gate)) -}}
-{{- $merged = append $merged $gate -}}
-{{- end -}}
-{{- end -}}
-{{- $merged = append $merged "NamespaceQueue=true" -}}
-{{- join "," $merged -}}
-{{- else -}}
-{{- $configured -}}
-{{- end -}}
+{{- define "volcano.probe" -}}
+{{- $values := .values | default dict -}}
+httpGet:
+  path: /healthz
+  port: {{ .port }}
+  scheme: {{ .scheme }}
+initialDelaySeconds: {{ $values.initialDelaySeconds | default 10 }}
+periodSeconds: {{ $values.periodSeconds | default 20 }}
+timeoutSeconds: {{ $values.timeoutSeconds | default 5 }}
+failureThreshold: {{ $values.failureThreshold | default 3 }}
+successThreshold: {{ $values.successThreshold | default 1 }}
 {{- end -}}
