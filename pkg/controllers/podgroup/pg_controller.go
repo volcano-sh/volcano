@@ -69,6 +69,18 @@ type pgcontroller struct {
 
 	// To determine whether inherit owner's annotations for pods when create podgroup
 	inheritOwnerAnnotations bool
+
+	// To determine whether inherit annotations of pods when create podgroup
+	inheritPodAnnotations bool
+
+	// To determine whether inherit labels of pods when create podgroup
+	inheritPodLabels bool
+
+	// Annotations prefixes which will be inherited to PodGroup
+	inheritAnnotationPrefixes []string
+
+	// Labels prefixes which will be inherited to PodGroup
+	inheritLabelsPrefixes []string
 }
 
 func (pg *pgcontroller) Name() string {
@@ -85,7 +97,17 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	pg.schedulerNames = make([]string, len(opt.SchedulerNames))
 	copy(pg.schedulerNames, opt.SchedulerNames)
+
 	pg.inheritOwnerAnnotations = opt.InheritOwnerAnnotations
+	pg.inheritPodAnnotations = opt.InheritPodAnnotations
+	pg.inheritPodLabels = opt.InheritPodLabels
+	pg.inheritAnnotationPrefixes = make([]string, len(opt.InheritAnnotationPrefixes))
+	copy(pg.inheritAnnotationPrefixes, opt.InheritAnnotationPrefixes)
+	pg.inheritLabelsPrefixes = make([]string, len(opt.InheritLabelsPrefixes))
+	copy(pg.inheritLabelsPrefixes, opt.InheritLabelsPrefixes)
+
+	klog.Infof("Podgroup Controller inheritOwnerAnnotations: %v, inheritPodAnnotations: %v, inheritPodLabels: %v, inheritAnnotationPrefixes: %v, inheritLabelsPrefixes: %v",
+		pg.inheritOwnerAnnotations, pg.inheritPodAnnotations, pg.inheritPodLabels, pg.inheritAnnotationPrefixes, pg.inheritLabelsPrefixes)
 
 	pg.informerFactory = opt.SharedInformerFactory
 	pg.podInformer = opt.SharedInformerFactory.Core().V1().Pods()

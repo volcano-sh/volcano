@@ -824,6 +824,10 @@ func Test_pgcontroller_buildPodGroupFromPod(t *testing.T) {
 	t.Run("Scenario 1: Do not inherit upper resource annotations", func(t *testing.T) {
 		c := newFakeController()
 		c.inheritOwnerAnnotations = false
+		c.inheritPodLabels = true
+		c.inheritPodAnnotations = true
+		c.inheritLabelsPrefixes = []string{scheduling.AnnotationPrefix}
+		c.inheritAnnotationPrefixes = []string{scheduling.AnnotationPrefix}
 
 		// Create test pod with annotations and labels
 		pod := &v1.Pod{
@@ -905,6 +909,8 @@ func Test_pgcontroller_buildPodGroupFromPod(t *testing.T) {
 	t.Run("Scenario 2: Inherit upper resource annotations", func(t *testing.T) {
 		c := newFakeController()
 		c.inheritOwnerAnnotations = true
+		c.inheritPodAnnotations = true
+		c.inheritAnnotationPrefixes = []string{scheduling.AnnotationPrefix}
 		ownerUID := types.UID("owner-uid")
 
 		// Create upper ReplicaSet with annotations
@@ -1053,6 +1059,115 @@ func Test_pgcontroller_buildPodGroupFromPod(t *testing.T) {
 		// Verify no JDBMinAvailable annotation
 		if _, ok := resultPG.Annotations[scheduling.JDBMinAvailable]; ok {
 			t.Error("unexpected JDBMinAvailable annotation")
+		}
+	})
+
+	// Scenario 4: Inherit upper annotations with super-block
+	t.Run("Scenario 4: Inherit upper annotations with super-block", func(t *testing.T) {
+		c := newFakeController()
+		superBlockKey := "super-block"
+		c.inheritOwnerAnnotations = true
+		c.inheritAnnotationPrefixes = []string{scheduling.AnnotationPrefix, superBlockKey}
+		ownerUID := types.UID("owner-uid-3")
+
+		// Create upper ReplicaSet with JDBMaxUnavailable annotation
+		rs := &appsv1.ReplicaSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rs-owner-3",
+				Namespace: podNamespace,
+				UID:       ownerUID,
+				Annotations: map[string]string{
+					superBlockKey: "8",
+				},
+			},
+			Spec: appsv1.ReplicaSetSpec{
+				Replicas: &replicas,
+				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test3"}},
+				Template: v1.PodTemplateSpec{
+					Spec: v1.PodSpec{Containers: []v1.Container{{
+						Name: "test-container",
+						Resources: v1.ResourceRequirements{
+							Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")},
+						},
+					}}},
+				},
+			},
+		}
+		if _, err := c.kubeClient.AppsV1().ReplicaSets(podNamespace).Create(context.TODO(), rs, metav1.CreateOptions{}); err != nil {
+			t.Fatalf("failed to create ReplicaSet: %v", err)
+		}
+
+		// Create pod with OwnerReference to ReplicaSet
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName + "-3",
+				Namespace: podNamespace,
+				UID:       types.UID("pod-uid-3"),
+				OwnerReferences: []metav1.OwnerReference{{
+					APIVersion: "apps/v1",
+					Kind:       "ReplicaSet",
+					Name:       "rs-owner-3",
+					UID:        ownerUID,
+					Controller: &isController,
+				}},
+			},
+			Spec: v1.PodSpec{Containers: []v1.Container{{
+				Name: "test-container",
+				Resources: v1.ResourceRequirements{
+					Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")},
+				},
+			}}},
+		}
+
+		// Execute test function
+		resultPG := c.buildPodGroupFromPod(pod, pgName)
+
+		// Verify super-block is inherited
+		if resultPG.Annotations[superBlockKey] != "8" {
+			t.Errorf("expected %v '8', got %s", superBlockKey, resultPG.Annotations[superBlockKey])
+		}
+	})
+
+	// Scenario 5: Inherit pod specific annotations labels
+	t.Run("Scenario 5: Inherit pod specific annotations labels", func(t *testing.T) {
+		c := newFakeController()
+		testGroupName := "test-group/"
+		c.inheritPodAnnotations = true
+		c.inheritPodLabels = true
+		c.inheritAnnotationPrefixes = []string{testGroupName}
+		c.inheritLabelsPrefixes = []string{testGroupName}
+
+		// Create pod with OwnerReference to ReplicaSet
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName + "-3",
+				Namespace: podNamespace,
+				UID:       types.UID("pod-uid-3"),
+				Annotations: map[string]string{
+					testGroupName + "anno": "annotation-value",
+				},
+				Labels: map[string]string{
+					testGroupName + "label": "label-value",
+				},
+			},
+			Spec: v1.PodSpec{Containers: []v1.Container{{
+				Name: "test-container",
+				Resources: v1.ResourceRequirements{
+					Requests: v1.ResourceList{v1.ResourceCPU: resource.MustParse("1")},
+				},
+			}}},
+		}
+
+		// Execute test function
+		resultPG := c.buildPodGroupFromPod(pod, pgName)
+
+		// Verify annotation is inherited
+		if resultPG.Annotations[testGroupName+"anno"] != "annotation-value" {
+			t.Errorf("expected annotation %v 'annotation-value', got %s", testGroupName+"anno", resultPG.Annotations[testGroupName+"anno"])
+		}
+		// Verify labesl is inherited
+		if resultPG.Labels[testGroupName+"label"] != "label-value" {
+			t.Errorf("expected labels %v 'label-value', got %s", testGroupName+"label", resultPG.Labels[testGroupName+"label"])
 		}
 	})
 }
