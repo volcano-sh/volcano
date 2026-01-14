@@ -27,6 +27,7 @@ import (
 	"k8s.io/component-base/config"
 	componentbaseconfigvalidation "k8s.io/component-base/config/validation"
 
+	podgroup "volcano.sh/volcano/pkg/controllers/podgroup/options"
 	"volcano.sh/volcano/pkg/kube"
 )
 
@@ -77,8 +78,10 @@ type ServerOption struct {
 	EnableHealthz      bool
 	EnableMetrics      bool
 	ListenAddress      string
-	// To determine whether inherit owner's annotations for pods when create podgroup
-	InheritOwnerAnnotations bool
+
+	// PodGroupOptions holds podgroup controller specific options.
+	PodGroupOptions podgroup.Options
+
 	// WorkerThreadsForPG is the number of threads syncing podgroup operations
 	// The larger the number, the faster the podgroup processing, but requires more CPU load.
 	WorkerThreadsForPG uint32
@@ -127,12 +130,15 @@ func (s *ServerOption) AddFlags(fs *pflag.FlagSet, knownControllers []string) {
 	fs.BoolVar(&s.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.BoolVar(&s.EnableMetrics, "enable-metrics", false, "Enable the metrics function; it is false by default")
 	fs.StringVar(&s.ListenAddress, "listen-address", defaultListenAddress, "The address to listen on for HTTP requests.")
-	fs.BoolVar(&s.InheritOwnerAnnotations, "inherit-owner-annotations", true, "Enable inherit owner annotations for pods when create podgroup; it is enabled by default")
+
 	fs.Uint32Var(&s.WorkerThreadsForPG, "worker-threads-for-podgroup", defaultPodGroupWorkers, "The number of threads syncing podgroup operations. The larger the number, the faster the podgroup processing, but requires more CPU load.")
 	fs.Uint32Var(&s.WorkerThreadsForGC, "worker-threads-for-gc", defaultGCWorkers, "The number of threads for recycling jobs. The larger the number, the faster the job recycling, but requires more CPU load.")
 	fs.Uint32Var(&s.WorkerThreadsForQueue, "worker-threads-for-queue", defaultQueueWorkers, "The number of threads syncing queue operations. The larger the number, the faster the queue processing, but requires more CPU load.")
 	fs.StringSliceVar(&s.Controllers, "controllers", strings.Split(defaultControllers, ","), fmt.Sprintf("Specify controller gates. Use '*' for all controllers, all knownController: %s ,and we can use "+
 		"'-' to disable controllers, e.g. \"-job-controller,-queue-controller\" to disable job and queue controllers.", knownControllers))
+
+	// PodGroup controller flags (inherit annotations/labels behavior) are defined and maintained in pkg/controllers/podgroup/options.
+	podgroup.AddFlags(fs, &s.PodGroupOptions)
 }
 
 // CheckOptionOrDie checks all options and returns all errors if they are invalid.
