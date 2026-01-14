@@ -51,8 +51,7 @@ type CPUThrottleHandler struct {
 	cgroupMgr cgroup.CgroupManager
 
 	// Record Pod throttled status
-	mutex            sync.RWMutex
-	throttlingActive bool
+	mutex sync.RWMutex
 }
 
 func NewCPUThrottleHandler(config *config.Configuration, mgr *metriccollect.MetricCollectorManager,
@@ -63,8 +62,6 @@ func NewCPUThrottleHandler(config *config.Configuration, mgr *metriccollect.Metr
 			Config: config,
 		},
 		cgroupMgr: cgroupMgr,
-
-		throttlingActive: false,
 	}
 }
 
@@ -91,7 +88,8 @@ func (h *CPUThrottleHandler) applyBEQuota(quota int64) error {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	h.throttlingActive = quota > 0
+	// DEBUG print
+	klog.InfoS("CPU throttle handler: applying BE quota")
 
 	filePath, err := h.writeBEQuota(quota)
 	if err != nil {
@@ -131,6 +129,10 @@ func (h *CPUThrottleHandler) writeBEQuota(quota int64) (string, error) {
 	}
 
 	filePath := path.Join(cgroupPath, quotaFile)
+	// DEBUG print
+	klog.InfoS("CPU throttling handler: writing BE quota",
+		"cgroupPath", cgroupPath,
+		"quotaValue", quotaValue)
 	if err := utils.UpdatePodCgroup(filePath, []byte(quotaValue)); err != nil {
 		return filePath, err
 	}

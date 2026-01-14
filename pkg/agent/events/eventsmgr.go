@@ -37,6 +37,7 @@ import (
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/networkqos"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/oversubscription"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/resources"
+	_ "volcano.sh/volcano/pkg/agent/events/probes/cpumonitor"
 	_ "volcano.sh/volcano/pkg/agent/events/probes/nodemonitor"
 	_ "volcano.sh/volcano/pkg/agent/events/probes/noderesources"
 	_ "volcano.sh/volcano/pkg/agent/events/probes/pods"

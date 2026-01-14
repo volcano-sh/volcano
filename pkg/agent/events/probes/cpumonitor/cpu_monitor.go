@@ -109,6 +109,12 @@ func (m *cpuQuotaMonitor) detectCPUQuota() {
 	if err != nil {
 		klog.ErrorS(err, "CPU Quota Monitor: Failed to get pods")
 	}
+	// DEBUG print
+	klog.InfoS("CPU Quota Monitor: collected mode and pods data",
+		"node", nodeCopy.Name,
+		"allocatableMilliCPU", totalMilli,
+		"podCount", len(pods),
+		"throttlingThreshold", throttlingThreshold)
 
 	//TODO: GetQosLevel only retrieves the QoS level annotated by Volcano. We should also consider the regular pod.
 	var onlineRequestMilli int64
@@ -126,6 +132,13 @@ func (m *cpuQuotaMonitor) detectCPUQuota() {
 	if availableBEMilli < 0 {
 		availableBEMilli = 0
 	}
+	// DEBUG print
+	klog.InfoS("CPU Quota Monitor: computed BE quota",
+		"allowedMilliCPU", allowedMilli,
+		"onlineRequestMilliCPU", onlineRequestMilli,
+		"availableBEMilliCPU", availableBEMilli,
+		"lastCPUQuotaMilli", m.lastCPUQuotaMilli,
+		"jitterLimitPercent", m.cpuJitterLimitPercent)
 
 	lastQuota := m.lastCPUQuotaMilli
 	if lastQuota < 0 {
@@ -161,6 +174,9 @@ func (m *cpuQuotaMonitor) sendNodeCPUThrottleEvent(quota int64) {
 		Resource:      v1.ResourceCPU,
 		CPUQuotaMilli: quota,
 	}
+	// DEBUG print
+	klog.InfoS("CPU Quota Monitor: emitting node CPU throttle event",
+		"cpuQuotaMilli", quota)
 	m.queue.Add(event)
 	m.lastCPUQuotaMilli = quota
 }
