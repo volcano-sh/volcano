@@ -155,6 +155,7 @@ spec:
             {{- end }}
             - --enable-root-queue-protection={{ .Values.custom.admission_root_queue_protection_enable }}
             - --enable-healthz=true
+            - --healthz-address=:{{ .Values.basic.healthz_port }}
             - --logtostderr
             - --port={{.Values.basic.admission_port}}
             - -v={{.Values.custom.admission_log_level}}
@@ -162,6 +163,14 @@ spec:
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.admission_image_name}}:{{ .Values.basic.admission_image_tag_version | default .Values.basic.image_tag_version }}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           name: admission
+            {{- if .Values.custom.admission_liveness_probe }}
+          livenessProbe:
+            {{- include "volcano.probe" (dict "port" .Values.basic.healthz_port "scheme" "HTTPS" "values" .Values.custom.admission_liveness_probe) | nindent 12 }}
+            {{- end }}
+            {{- if .Values.custom.admission_readiness_probe }}
+          readinessProbe:
+            {{- include "volcano.probe" (dict "port" .Values.basic.healthz_port "scheme" "HTTPS" "values" .Values.custom.admission_readiness_probe) | nindent 12 }}
+            {{- end }}
           {{- if .Values.custom.admission_resources }}
           resources:
           {{- toYaml .Values.custom.admission_resources | nindent 12 }}

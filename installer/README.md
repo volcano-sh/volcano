@@ -92,6 +92,7 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`basic.admission_app_name`|Admission Controller App Name|`volcano-admission`|
 |`basic.controller_app_name`|Controller App Name|`volcano-controller`|
 |`basic.scheduler_app_name`|Scheduler App Name|`volcano-scheduler`|
+|`basic.healthz_port`| Pod Health port | `11251` |
 |`custom.metrics_enable`|Whether to Enable Metrics|`false`|
 |`custom.admission_enable`|Whether to Enable Admission|`true`|
 |`custom.admission_replicas`|The number of Admission pods to run|`1`|
@@ -149,6 +150,12 @@ The following are the list configurable parameters of Volcano Chart and their de
 |`custom.scheduler_log_level`|Settings log print level for Scheduler|`3`|
 |`custom.scheduler_plugins_dir`| Settings dir for the Scheduler to load custom plugins|``|
 |`custom.webhooks_namespace_selector_expressions`|Additional namespace selector expressions for Volcano admission webhooks|`~`|
+|`custom.admission_liveness_probe`|Liveness probe for the Admission controller; set to `~` to disable|`{"initialDelaySeconds":10,"periodSeconds":20,"timeoutSeconds":5,"failureThreshold":3,"successThreshold":1}`|
+|`custom.admission_readiness_probe`|Readiness probe for the Admission controller; disabled by default (raise `custom.admission_replicas` before enabling), set to `~` to disable|`~`|
+|`custom.controller_liveness_probe`|Liveness probe for the Controller; set to `~` to disable|`{"initialDelaySeconds":10,"periodSeconds":20,"timeoutSeconds":5,"failureThreshold":3,"successThreshold":1}`|
+|`custom.controller_readiness_probe`|Readiness probe for the Controller; set to `~` to disable|`{"initialDelaySeconds":10,"periodSeconds":20,"timeoutSeconds":5,"failureThreshold":3,"successThreshold":1}`|
+|`custom.scheduler_liveness_probe`|Liveness probe for the Scheduler; set to `~` to disable|`{"initialDelaySeconds":10,"periodSeconds":20,"timeoutSeconds":5,"failureThreshold":3,"successThreshold":1}`|
+|`custom.scheduler_readiness_probe`|Readiness probe for the Scheduler; set to `~` to disable|`{"initialDelaySeconds":10,"periodSeconds":20,"timeoutSeconds":5,"failureThreshold":3,"successThreshold":1}`|
 |`service.ipFamilyPolicy`|Settings service the family policy|``|
 |`service.ipFamilies`|Settings service the address families|`[]`|
 

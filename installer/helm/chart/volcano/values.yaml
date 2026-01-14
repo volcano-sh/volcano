@@ -23,6 +23,10 @@ basic:
   agent_image_tag_version: ""
   admission_port: 8443
   image_registry: "docker.io"
+  # Port the admission, controller and scheduler components serve the /healthz
+  # endpoint on. It is passed to the components via --healthz-address and used
+  # by their liveness/readiness probes.
+  healthz_port: 11251
 custom:
   go_memlimit_enable: false
   metrics_enable: false
@@ -357,6 +361,46 @@ custom:
 #     enableNodeEventTrigger: true
   sharding_configmap_enable: true
   sharding_configmap_data: ~
+
+# Liveness and readiness probes for the admission, controller and scheduler
+# components. Each probe can be tuned here, or disabled entirely by setting the
+# whole block to ~ (e.g. custom.admission_readiness_probe: ~).
+#
+# The admission service fronts all webhooks with failurePolicy: Fail and the
+# chart runs a single admission replica by default, so a failing readiness
+# probe would remove the only webhook endpoint. It is therefore disabled by
+# default; enable it (and raise custom.admission_replicas) if you want it.
+  admission_liveness_probe:
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  admission_readiness_probe: ~
+  controller_liveness_probe:
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  controller_readiness_probe:
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  scheduler_liveness_probe:
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  scheduler_readiness_probe:
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
 
 service:
   # @param service.ipFamilyPolicy [string], support SingleStack, PreferDualStack and RequireDualStack

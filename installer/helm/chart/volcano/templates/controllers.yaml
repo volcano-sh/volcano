@@ -182,9 +182,18 @@ spec:
             {{- toYaml .Values.custom.controller_resources | nindent 14 }}
             {{- end }}
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.controller_image_name}}:{{ .Values.basic.controller_image_tag_version | default .Values.basic.image_tag_version }}
+            {{- if .Values.custom.controller_liveness_probe }}
+          livenessProbe:
+            {{- include "volcano.probe" (dict "port" .Values.basic.healthz_port "scheme" "HTTP" "values" .Values.custom.controller_liveness_probe) | nindent 12 }}
+            {{- end }}
+            {{- if .Values.custom.controller_readiness_probe }}
+          readinessProbe:
+            {{- include "volcano.probe" (dict "port" .Values.basic.healthz_port "scheme" "HTTP" "values" .Values.custom.controller_readiness_probe) | nindent 12 }}
+            {{- end }}
           args:
             - --logtostderr
             - --enable-healthz=true
+            - --healthz-address=:{{ .Values.basic.healthz_port }}
               {{- if .Values.custom.controller_metrics_enable }}
             - --enable-metrics=true
               {{- end }}
