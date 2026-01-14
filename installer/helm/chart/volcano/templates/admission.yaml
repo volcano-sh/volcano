@@ -153,6 +153,10 @@ spec:
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.admission_image_name}}:{{.Values.basic.image_tag_version}}
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           name: admission
+          livenessProbe:
+            {{- include "volcano.probe" (dict "port" ( .Values.basic.healthz_port | default 11251 ) "scheme" "HTTPS" "values" .Values.custom.admission_livenessProbe) | nindent 12 }}
+          readinessProbe:
+            {{- include "volcano.probe" (dict "port" ( .Values.basic.healthz_port | default 11251 ) "scheme" "HTTPS" "values" .Values.custom.admission_readinessProbe) | nindent 12 }}
           {{- if .Values.custom.admission_resources }}
           resources:
           {{- toYaml .Values.custom.admission_resources | nindent 12 }}
