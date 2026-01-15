@@ -17,6 +17,7 @@ limitations under the License.
 package tc
 
 import (
+	"sync"
 	"time"
 )
 
@@ -24,29 +25,42 @@ const (
 	CmdTimeout = 5 * time.Second
 )
 
-//go:generate mockgen -destination  ./mocks/mock_tc.go -package mocks -source tc.go
+//go:generate mockgen -destination ./mocks/mock_tc.go -package mocks -source tc.go
 
 // just support linux, related bug: https://github.com/vishvananda/netns/issues/23
 
+// TC defines traffic control operations
 type TC interface {
-	PreAddFilter(netns, ifName string) (bool, error)
-	AddFilter(netns, ifName string) error
-	RemoveFilter(netns, ifName string) error
+	PreAddFilter(netns string, ifName string) (bool, error)
+	AddFilter(netns string, ifName string) error
+	RemoveFilter(netns string, ifName string) error
 }
 
-var _ TC = &TCCmd{}
-
+// TCCmd is the concrete implementation of TC
 type TCCmd struct{}
 
-var tcCmd TC
+// Compile-time check to ensure TCCmd implements TC
+var _ TC = (*TCCmd)(nil)
 
+// singleton instance
+var (
+	tcCmd TC
+	once  sync.Once
+)
+
+// GetTCCmd returns the singleton TC implementation
 func GetTCCmd() TC {
-	if tcCmd == nil {
+	once.Do(func() {
 		tcCmd = &TCCmd{}
-	}
+	})
 	return tcCmd
 }
 
+// SetTcCmd allows overriding the TC implementation (used in tests)
 func SetTcCmd(tc TC) {
 	tcCmd = tc
 }
+
+//
+// ---- TCCmd method implementations are platform-specific (tc_linux.go or tc_unspecified.go) ----
+//
