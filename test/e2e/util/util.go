@@ -219,6 +219,10 @@ func CleanupTestContext(ctx *TestContext) {
 	err := CleanupHyperNodes(ctx)
 	Expect(err).NotTo(HaveOccurred(), "failed to clean up hypernodes")
 
+	// Clean up nodeshards
+	err = CleanupNodeShards(ctx)
+	Expect(err).NotTo(HaveOccurred(), "failed to clean up nodeshards")
+
 	foreground := metav1.DeletePropagationForeground
 	err = ctx.Kubeclient.CoreV1().Namespaces().Delete(context.TODO(), ctx.Namespace, metav1.DeleteOptions{
 		PropagationPolicy: &foreground,
