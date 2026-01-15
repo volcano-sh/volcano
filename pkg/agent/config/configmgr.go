@@ -223,14 +223,16 @@ func (m *ConfigManager) process(changedQueue workqueue.RateLimitingInterface) bo
 }
 
 func (m *ConfigManager) notifyListeners() error {
-	config, err := m.source.GetLatestConfig()
+	cfg, err := m.source.GetLatestConfig()
 	if err != nil {
 		return err
 	}
 
+	klog.InfoS("Applying config", "config", cfg)
+
 	var errs []error
 	for _, listener := range m.listeners {
-		if syncErr := listener.SyncConfig(config); syncErr != nil {
+		if syncErr := listener.SyncConfig(cfg); syncErr != nil {
 			errs = append(errs, syncErr)
 		}
 	}

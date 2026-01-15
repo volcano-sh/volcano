@@ -22,6 +22,7 @@ const (
 	CPUQoSFeature           Feature = "CPUQoS"
 	CPUBurstFeature         Feature = "CPUBurst"
 	MemoryQoSFeature        Feature = "MemoryQoS"
+	MemoryQoSV2Feature      Feature = "MemoryQoSV2"
 	NetworkQoSFeature       Feature = "NetworkQoS"
 	OverSubscriptionFeature Feature = "OverSubscription"
 	EvictionFeature         Feature = "Eviction"

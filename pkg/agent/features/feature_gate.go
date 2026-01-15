@@ -71,6 +71,12 @@ func (f *featureGate) Enabled(key Feature, c *api.ColocationConfig) (bool, error
 		}
 		return (nodeColocationEnabled || nodeOverSubscriptionEnabled) && *c.MemoryQosConfig.Enable, nil
 
+	case MemoryQoSV2Feature:
+		if c.MemoryQosV2Config == nil || c.MemoryQosV2Config.Enable == nil {
+			return false, fmt.Errorf("nil memory qos v2 config")
+		}
+		return (nodeColocationEnabled || nodeOverSubscriptionEnabled) && *c.MemoryQosV2Config.Enable, nil
+
 	case NetworkQoSFeature:
 		if c.NetworkQosConfig == nil || c.NetworkQosConfig.Enable == nil {
 			return false, fmt.Errorf("nil memory qos config")
