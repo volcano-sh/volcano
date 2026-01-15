@@ -91,6 +91,14 @@ func (f *FitErrors) SetNodeError(nodeName string, err error) {
 	f.nodes[nodeName] = fe
 }
 
+// Nodes returns the FitError on each node
+func (f *FitErrors) Nodes() map[string]*FitError {
+	if f == nil {
+		return nil
+	}
+	return f.nodes
+}
+
 // GetUnschedulableAndUnresolvableNodes returns the set of nodes that has no help from preempting pods from it
 func (f *FitErrors) GetUnschedulableAndUnresolvableNodes() map[string]sets.Empty {
 	ret := make(map[string]sets.Empty)
