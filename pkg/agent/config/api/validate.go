@@ -34,6 +34,8 @@ var (
 	IllegalEvictingMemoryLowWatermark                            = "evictingMemoryLowWatermark must be a positive number"
 	EvictingCPULowWatermarkHigherThanHighWatermark               = "cpu evicting low watermark is higher than high watermark"
 	EvictingMemoryLowWatermarkHigherThanHighWatermark            = "memory evicting low watermark is higher than high watermark"
+	IllegalEvictingHighUsageCountLimit                           = "evictingHighUsageCountLimit must be a positive number"
+	IllegalEvictingInterval                                      = "evictingInterval must be a positive number"
 	IllegalOverSubscriptionTypes                                 = "overSubscriptionType(%s) is not supported, only supports cpu/memory"
 )
 
@@ -125,6 +127,12 @@ func (e *Evicting) Validate() []error {
 	}
 	if e.EvictingMemoryLowWatermark != nil && e.EvictingMemoryHighWatermark != nil && (*e.EvictingMemoryLowWatermark > *e.EvictingMemoryHighWatermark) {
 		errs = append(errs, errors.New(EvictingMemoryLowWatermarkHigherThanHighWatermark))
+	}
+	if e.EvictingHighUsageCountLimit != nil && *e.EvictingHighUsageCountLimit <= 0 {
+		errs = append(errs, errors.New(IllegalEvictingHighUsageCountLimit))
+	}
+	if e.EvictingInterval != nil && *e.EvictingInterval <= 0 {
+		errs = append(errs, errors.New(IllegalEvictingInterval))
 	}
 	return errs
 }

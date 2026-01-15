@@ -64,6 +64,7 @@ func Test_monitor_detect(t *testing.T) {
 		getNodeFunc             utilnode.ActiveNode
 		getPodsFunc             utilpod.ActivePods
 		usageGetter             resourceusage.Getter
+		highUsageCountLimit     int
 		expectedNode            func() *v1.Node
 		expectedRes             v1.ResourceName
 		expectedLen             int
@@ -78,9 +79,25 @@ func Test_monitor_detect(t *testing.T) {
 			policy: func(cfg *config.Configuration, pods utilpod.ActivePods, evictor eviction.Eviction) policy.Interface {
 				return extend.NewExtendResource(cfg, nil, evictor, nil, "")
 			},
-			usageGetter: resourceusage.NewFakeResourceGetter(0, 0, 60, 60),
-			expectedRes: v1.ResourceCPU,
-			expectedLen: 1,
+			usageGetter:         resourceusage.NewFakeResourceGetter(0, 0, 60, 60),
+			highUsageCountLimit: 6,
+			expectedRes:         v1.ResourceCPU,
+			expectedLen:         1,
+		},
+		{
+			name:                    "cpu in high usage with higher configurable limit",
+			highUsageCountByResName: map[v1.ResourceName]int{v1.ResourceCPU: 6},
+			getNodeFunc:             makeNode,
+			getPodsFunc: func() ([]*v1.Pod, error) {
+				return []*v1.Pod{}, nil
+			},
+			policy: func(cfg *config.Configuration, pods utilpod.ActivePods, evictor eviction.Eviction) policy.Interface {
+				return extend.NewExtendResource(cfg, nil, evictor, nil, "")
+			},
+			usageGetter:         resourceusage.NewFakeResourceGetter(0, 0, 60, 60),
+			highUsageCountLimit: 10,
+			expectedRes:         v1.ResourceCPU,
+			expectedLen:         0,
 		},
 		{
 			name:                    "remove taint when use extend resource",
@@ -92,8 +109,9 @@ func Test_monitor_detect(t *testing.T) {
 			policy: func(cfg *config.Configuration, pods utilpod.ActivePods, evictor eviction.Eviction) policy.Interface {
 				return extend.NewExtendResource(cfg, nil, evictor, nil, "")
 			},
-			usageGetter: resourceusage.NewFakeResourceGetter(0, 0, 20, 20),
-			expectedRes: v1.ResourceCPU,
+			usageGetter:         resourceusage.NewFakeResourceGetter(0, 0, 20, 20),
+			highUsageCountLimit: 6,
+			expectedRes:         v1.ResourceCPU,
 			expectedNode: func() *v1.Node {
 				node, err := makeNode()
 				assert.NoError(t, err)
@@ -125,6 +143,7 @@ func Test_monitor_detect(t *testing.T) {
 				getNodeFunc:             tt.getNodeFunc,
 				getPodsFunc:             tt.getPodsFunc,
 				usageGetter:             tt.usageGetter,
+				highUsageCountLimit:     tt.highUsageCountLimit,
 			}
 			m.detect()
 			assert.Equalf(t, tt.expectedLen, queue.Len(), "detect()")
