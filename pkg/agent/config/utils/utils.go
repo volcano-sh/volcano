@@ -90,7 +90,9 @@ func DefaultColocationConfig() *api.ColocationConfig {
 			NodeColocationEnable:       utilpointer.Bool(false),
 			NodeOverSubscriptionEnable: utilpointer.Bool(false),
 		},
-		CPUQosConfig:    &api.CPUQos{Enable: utilpointer.Bool(true)},
+		CPUQosConfig: &api.CPUQos{
+			Enable: utilpointer.Bool(true),
+		},
 		CPUBurstConfig:  &api.CPUBurst{Enable: utilpointer.Bool(true)},
 		MemoryQosConfig: &api.MemoryQos{Enable: utilpointer.Bool(true)},
 		NetworkQosConfig: &api.NetworkQos{
@@ -109,6 +111,9 @@ func DefaultColocationConfig() *api.ColocationConfig {
 			EvictingMemoryHighWatermark: utilpointer.Int(DefaultEvictingMemoryHighWatermark),
 			EvictingCPULowWatermark:     utilpointer.Int(DefaultEvictingCPULowWatermark),
 			EvictingMemoryLowWatermark:  utilpointer.Int(DefaultEvictingMemoryLowWatermark),
+		},
+		CPUThrottlingConfig: &api.CPUThrottling{
+			Enable: utilpointer.Bool(false),
 		},
 	}
 }

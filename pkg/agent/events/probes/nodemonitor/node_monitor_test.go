@@ -126,7 +126,7 @@ func Test_monitor_detect(t *testing.T) {
 				getPodsFunc:             tt.getPodsFunc,
 				usageGetter:             tt.usageGetter,
 			}
-			m.detect()
+			m.detectEviction()
 			assert.Equalf(t, tt.expectedLen, queue.Len(), "detect()")
 			if queue.Len() != 0 {
 				key, shutdown := queue.Get()

@@ -64,6 +64,9 @@ type ColocationConfig struct {
 
 	// Evicting related config.
 	EvictingConfig *Evicting `json:"evictingConfig,omitempty" configKey:"Evicting"`
+
+	// cpuThrottling related config
+	CPUThrottlingConfig *CPUThrottling `json:"cpuThrottlingConfig,omitempty" configKey:"CPUThrottling"`
 }
 
 type CPUQos struct {
@@ -110,4 +113,13 @@ type Evicting struct {
 	EvictingCPULowWatermark *int `json:"evictingCPULowWatermark,omitempty"`
 	// EvictingMemoryLowWatermark defines the low watermark percent of memory usage when the node could recover schedule pods.
 	EvictingMemoryLowWatermark *int `json:"evictingMemoryLowWatermark,omitempty"`
+}
+
+type CPUThrottling struct {
+	Enable *bool `json:"enable,omitempty"`
+	// CPUThrottlingThreshold defines the threshold percent of CPU usage when CPU throttling should begin.
+	CPUThrottlingThreshold *int `json:"cpuThrottlingThreshold,omitempty"`
+	// CPUJitterLimitPercent defines the percentage range of allowed CPU usage variation.
+	// Within this range, CPU throttle modifications for BestEffort pods will not be triggered.
+	CPUJitterLimitPercent *int `json:"cpuJitterLimitPercent,omitempty"`
 }
