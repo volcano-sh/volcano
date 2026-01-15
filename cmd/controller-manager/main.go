@@ -32,6 +32,7 @@ import (
 
 	"volcano.sh/volcano/cmd/controller-manager/app"
 	"volcano.sh/volcano/cmd/controller-manager/app/options"
+	_ "volcano.sh/volcano/pkg/controllers/colocationconfig"
 	_ "volcano.sh/volcano/pkg/controllers/cronjob"
 	"volcano.sh/volcano/pkg/controllers/framework"
 	_ "volcano.sh/volcano/pkg/controllers/garbagecollector"
