@@ -133,14 +133,9 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	if _, ok := job.Spec.Plugins[controllerMpi.MPIPluginName]; ok {
 		mp := controllerMpi.NewInstance(job.Spec.Plugins[controllerMpi.MPIPluginName])
 		masterIndex := jobhelpers.GetTaskIndexUnderJob(mp.GetMasterName(), job)
-		workerIndex := jobhelpers.GetTaskIndexUnderJob(mp.GetWorkerName(), job)
 		if masterIndex == -1 {
 			reviewResponse.Allowed = false
 			return "The specified mpi master task was not found"
-		}
-		if workerIndex == -1 {
-			reviewResponse.Allowed = false
-			return "The specified mpi worker task was not found"
 		}
 	}
 
