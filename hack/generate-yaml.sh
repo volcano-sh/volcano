@@ -127,6 +127,7 @@ tail -n +2 ${VOLCANO_CRD_DIR}/bases/batch.volcano.sh_cronjobs.yaml > ${HELM_VOLC
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/bus.volcano.sh_commands.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/bus.volcano.sh_commands.yaml
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_podgroups.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_podgroups.yaml
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_queues.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_queues.yaml
+tail -n +2 ${VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_reservations.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_reservations.yaml
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/nodeinfo.volcano.sh_numatopologies.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/nodeinfo.volcano.sh_numatopologies.yaml
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/topology.volcano.sh_hypernodes.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/topology.volcano.sh_hypernodes.yaml
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/shard.volcano.sh_nodeshards.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/shard.volcano.sh_nodeshards.yaml
@@ -184,6 +185,7 @@ HELM_CMD="${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano 
       -s templates/scheduler.yaml \
       -s templates/scheduling_v1beta1_podgroup.yaml \
       -s templates/scheduling_v1beta1_queue.yaml \
+      -s templates/scheduling_v1beta1_reservation.yaml \
       -s templates/nodeinfo_v1alpha1_numatopologies.yaml \
       -s templates/topology_v1alpha1_hypernodes.yaml \
       -s templates/shard_v1alpha1_nodeshards.yaml \
