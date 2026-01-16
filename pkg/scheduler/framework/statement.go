@@ -44,6 +44,19 @@ const (
 	Allocate
 )
 
+func (o Operation) String() string {
+	switch o {
+	case Evict:
+		return "evict"
+	case Pipeline:
+		return "pipeline"
+	case Allocate:
+		return "allocate"
+	default:
+		return "Unknown"
+	}
+}
+
 type operation struct {
 	name   Operation
 	task   *api.TaskInfo
@@ -419,22 +432,26 @@ func (s *Statement) Commit() {
 	klog.V(3).Info("Committing operations ...")
 	for _, op := range s.operations {
 		op.task.ClearLastTxContext()
+		var err error
 		switch op.name {
 		case Evict:
-			err := s.evict(op.task, op.reason)
-			if err != nil {
+			if err = s.evict(op.task, op.reason); err != nil {
 				klog.Errorf("Failed to evict task: %s", err.Error())
 			}
 		case Pipeline:
 			s.pipeline(op.task)
 		case Allocate:
-			err := s.allocate(op.task)
-			if err != nil {
+			if err = s.allocate(op.task); err != nil {
 				if e := s.unallocate(op.task); e != nil {
 					klog.Errorf("Failed to unallocate task <%v/%v>: %v.", op.task.Namespace, op.task.Name, e)
 				}
 				klog.Errorf("Failed to allocate task <%v/%v>: %v.", op.task.Namespace, op.task.Name, err)
 			}
+		}
+		if err != nil {
+			metrics.IncTaskOperationErr(op.name.String())
+		} else {
+			metrics.IncTaskOperationSuccess(op.name.String())
 		}
 	}
 }
