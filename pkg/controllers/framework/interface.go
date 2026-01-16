@@ -36,10 +36,15 @@ type ControllerOption struct {
 	CronJobWorkerNum        uint32
 	MaxRequeueNum           int
 
-	InheritOwnerAnnotations bool
-	WorkerThreadsForPG      uint32
-	WorkerThreadsForQueue   uint32
-	WorkerThreadsForGC      uint32
+	InheritOwnerAnnotations   bool
+	InheritPodAnnotations     bool
+	InheritPodLabels          bool
+	InheritAnnotationPrefixes []string
+	InheritLabelsPrefixes     []string
+
+	WorkerThreadsForPG    uint32
+	WorkerThreadsForQueue uint32
+	WorkerThreadsForGC    uint32
 
 	// Config holds the common attributes that can be passed to a Kubernetes client
 	// and controllers registered by the users can use it.

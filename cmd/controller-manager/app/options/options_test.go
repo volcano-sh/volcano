@@ -93,6 +93,14 @@ func TestAddFlags(t *testing.T) {
 		HealthzBindAddress:      ":11251",
 		ListenAddress:           defaultListenAddress,
 		InheritOwnerAnnotations: true,
+		InheritPodAnnotations:   true,
+		InheritPodLabels:        true,
+		InheritAnnotationPrefixes: []string{
+			"volcano.sh",
+		},
+		InheritLabelPrefixes: []string{
+			"volcano.sh",
+		},
 		LeaderElection: config.LeaderElectionConfiguration{
 			LeaderElect:       true,
 			LeaseDuration:     metav1.Duration{Duration: 60 * time.Second},
