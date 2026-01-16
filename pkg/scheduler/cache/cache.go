@@ -120,6 +120,7 @@ type SchedulerCache struct {
 	hyperNodeInformer          topologyinformerv1alpha1.HyperNodeInformer
 	podGroupInformerV1beta1    vcinformerv1.PodGroupInformer
 	queueInformerV1beta1       vcinformerv1.QueueInformer
+	reservationInformerV1beta1 vcinformerv1.ReservationInformer
 	pvInformer                 infov1.PersistentVolumeInformer
 	pvcInformer                infov1.PersistentVolumeClaimInformer
 	scInformer                 storagev1.StorageClassInformer
@@ -154,13 +155,13 @@ type SchedulerCache struct {
 
 	NamespaceCollection map[string]*schedulingapi.NamespaceCollection
 
-	errTasks        workqueue.TypedRateLimitingInterface[string]
-	nodeQueue       workqueue.TypedRateLimitingInterface[string]
-	DeletedJobs     workqueue.TypedRateLimitingInterface[string]
-	hyperNodesQueue workqueue.TypedRateLimitingInterface[string]
-
-	informerFactory   informers.SharedInformerFactory
-	vcInformerFactory vcinformer.SharedInformerFactory
+	errTasks            workqueue.TypedRateLimitingInterface[string]
+	nodeQueue           workqueue.TypedRateLimitingInterface[string]
+	DeletedJobs         workqueue.TypedRateLimitingInterface[string]
+	hyperNodesQueue     workqueue.TypedRateLimitingInterface[string]
+	DeletedReservations workqueue.TypedRateLimitingInterface[*schedulingapi.ReservationInfo]
+	informerFactory     informers.SharedInformerFactory
+	vcInformerFactory   vcinformer.SharedInformerFactory
 
 	BindFlowChannel chan *BindContext
 	bindCache       []*BindContext
@@ -186,6 +187,12 @@ type SchedulerCache struct {
 	sharedDRAManager k8sframework.SharedDRAManager
 
 	shardUpdateCoordinator *ShardUpdateCoordinator
+
+	ReservationCache *ReservationCache
+}
+
+func (sc *SchedulerCache) GetReservationCache() *ReservationCache {
+	return sc.ReservationCache
 }
 
 type multiSchedulerInfo struct {
@@ -206,6 +213,7 @@ type BindContext struct {
 	TaskInfo *schedulingapi.TaskInfo
 	// Extensions stores extra bind context information of each plugin
 	Extensions map[string]BindContextExtension
+	SkipBind   bool
 }
 
 // DefaultBinder with kube client and event recorder
@@ -339,6 +347,11 @@ func (su *defaultStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
 
 // UpdatePodGroup will Update PodGroup
 func (su *defaultStatusUpdater) UpdatePodGroup(pg *schedulingapi.PodGroup) (*schedulingapi.PodGroup, error) {
+	if pg.Annotations != nil && pg.Annotations[vcv1beta1.VolcanoGroupReservationOnlyAnnotationKey] == "true" {
+		klog.V(4).Infof("Skip updating reservation-only PodGroup %s/%s", pg.Namespace, pg.Name)
+		return pg, nil
+	}
+
 	podgroup := &vcv1beta1.PodGroup{}
 	if err := schedulingscheme.Scheme.Convert(&pg.PodGroup, podgroup, nil); err != nil {
 		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
@@ -537,6 +550,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		nodeQueue:           workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
 		DeletedJobs:         workqueue.NewTypedRateLimitingQueue[string](deletedJobsRateLimiter),
 		hyperNodesQueue:     workqueue.NewTypedRateLimitingQueue[string](workqueue.DefaultTypedControllerRateLimiter[string]()),
+		DeletedReservations: workqueue.NewTypedRateLimitingQueue[*schedulingapi.ReservationInfo](workqueue.DefaultTypedControllerRateLimiter[*schedulingapi.ReservationInfo]()),
 		kubeClient:          kubeClient,
 		vcClient:            vcClient,
 		restConfig:          config,
@@ -595,6 +609,8 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		kubeclient: sc.kubeClient,
 		vcclient:   sc.vcClient,
 	}
+
+	sc.ReservationCache = newReservationCache(sc.vcClient)
 
 	sc.binderRegistry = NewBinderRegistry()
 
@@ -767,6 +783,14 @@ func (sc *SchedulerCache) addEventHandler() {
 		DeleteFunc: sc.DeleteQueueV1beta1,
 	})
 
+	// create informer(v1beta1) for Reservation information
+	sc.reservationInformerV1beta1 = vcinformers.Scheduling().V1beta1().Reservations()
+	sc.reservationInformerV1beta1.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    sc.AddReservationV1beta1,
+		UpdateFunc: sc.UpdateReservationV1beta1,
+		DeleteFunc: sc.DeleteReservationV1beta1,
+	})
+
 	if utilfeature.DefaultFeatureGate.Enabled(features.ResourceTopology) {
 		sc.cpuInformer = vcinformers.Nodeinfo().V1alpha1().Numatopologies()
 		sc.cpuInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -821,6 +845,7 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	sc.informerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
 	sc.WaitForCacheSync(stopCh)
+	sc.ReservationCache.Run(stopCh)
 	for i := 0; i < int(sc.nodeWorkers); i++ {
 		go wait.Until(sc.runNodeWorker, 0, stopCh)
 	}
@@ -834,6 +859,9 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	// Cleanup jobs.
 	go wait.Until(sc.processCleanupJob, 0, stopCh)
 
+	// Cleanup reservations.
+	go wait.Until(sc.processCleanupReservation, 0, stopCh)
+
 	go wait.Until(sc.processBindTask, time.Millisecond*20, stopCh)
 
 	// Get metrics data
@@ -844,6 +872,8 @@ func (sc *SchedulerCache) Run(stopCh <-chan struct{}) {
 	}
 	klog.V(3).Infof("The interval for querying metrics data is %v", interval)
 	go wait.Until(sc.GetMetricsData, interval, stopCh)
+
+	go wait.Until(sc.gcExpiredReservationsOnce, time.Millisecond*20, stopCh)
 }
 
 // WaitForCacheSync sync the cache with the api server
@@ -945,6 +975,9 @@ func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext,
 
 	for _, bindContext := range bindContexts {
 		if reason, ok := errMsg[bindContext.TaskInfo.UID]; !ok {
+			if err := sc.executePostBind(ctx, bindContext); err != nil {
+				klog.Errorf("Failed to execute postBind for task %s/%s, err: %v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name, err)
+			}
 			sc.Recorder.Eventf(bindContext.TaskInfo.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name, bindContext.TaskInfo.NodeName)
 		} else {
 			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", bindContext.TaskInfo.NodeName, reason)
@@ -1352,6 +1385,37 @@ func (sc *SchedulerCache) processBindTask() {
 	sc.BindTask()
 }
 
+func (sc *SchedulerCache) SyncBindToReservationTask(task *schedulingapi.TaskInfo) error {
+	return sc.syncBindToReservationTask(task)
+}
+
+func (sc *SchedulerCache) syncBindToReservationTask(taskInfo *schedulingapi.TaskInfo) error {
+	klog.V(1).Infof("sync bind to reservation task %v/%v", taskInfo.Namespace, taskInfo.Name)
+	reservationTask := taskInfo.ReservationTaskInfo
+	reservationJobId := reservationTask.Job
+	reservationJob, ok := sc.Jobs[reservationJobId]
+	if !ok {
+		return fmt.Errorf("failed to find reservation job %s for reservation task %s", reservationJobId, reservationTask.UID)
+	}
+
+	if err := reservationJob.UpdateTaskStatus(reservationTask, schedulingapi.Succeeded); err != nil {
+		return err
+	}
+
+	jobId := taskInfo.Job
+	job, ok := sc.Jobs[jobId]
+	if !ok {
+		return fmt.Errorf("failed to find job %s", jobId)
+	}
+
+	if err := sc.ReservationCache.AllocateJobToReservation(reservationTask, job); err != nil {
+		return err
+	}
+
+	sc.ReservationCache.SyncReservation(reservationTask, reservationJob)
+	return nil
+}
+
 // executePreBind executes PreBind for one bindContext
 func (sc *SchedulerCache) executePreBind(ctx context.Context, bindContext *BindContext, preBinders map[string]PreBinder) error {
 	executedPreBinders := make([]PreBinder, 0, len(preBinders))
@@ -1396,6 +1460,24 @@ func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*B
 	return successfulBindContexts
 }
 
+// executePostBinds executes PostBind for one bindContext
+func (sc *SchedulerCache) executePostBind(ctx context.Context, bindContext *BindContext) error {
+	sc.binderRegistry.mu.RLock()
+	defer sc.binderRegistry.mu.RUnlock()
+
+	for _, postBinder := range sc.binderRegistry.postBinders {
+		if postBinder != nil {
+			if err := postBinder.PostBind(ctx, bindContext); err != nil {
+				klog.Errorf("PostBind failed for task %s/%s: %v",
+					bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name, err)
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // BindTask do k8s binding with a goroutine
 func (sc *SchedulerCache) BindTask() {
 	klog.V(5).Infof("batch bind task count %d", sc.batchNum)
@@ -1411,7 +1493,8 @@ func (sc *SchedulerCache) BindTask() {
 
 		preBinders := sc.binderRegistry.getRegisteredPreBinders()
 		successfulPreBindContexts := sc.executePreBinds(cancelCtx, bindContexts, preBinders)
-		sc.Bind(ctx, successfulPreBindContexts, preBinders)
+		needBindContexts := sc.filterNeedSkipBindContexts(successfulPreBindContexts)
+		sc.Bind(ctx, needBindContexts, preBinders)
 	}(tmpBindCache)
 
 	// The slice here needs to point to a new underlying array, otherwise bindCache may not be able to trigger garbage collection immediately
@@ -1765,6 +1848,69 @@ func (sc *SchedulerCache) RegisterBinder(name string, binder interface{}) {
 		sc.binderRegistry = NewBinderRegistry()
 	}
 	sc.binderRegistry.Register(name, binder)
+}
+
+func (sc *SchedulerCache) cleanReservation(reservation *schedulingapi.ReservationInfo) {
+	rs := reservation.Reservation
+	klog.V(3).Infof("Try to delete Reservation <%v:%v/%v>", rs.UID, rs.Namespace, rs.Name)
+
+	sc.DeletedReservations.Add(reservation)
+}
+
+func (sc *SchedulerCache) retryCleanReservation(reservation *schedulingapi.ReservationInfo) {
+	rs := reservation.Reservation
+	klog.V(3).Infof("Retry to delete Reservation <%v:%v/%v>", rs.UID, rs.Namespace, rs.Name)
+
+	sc.DeletedReservations.AddRateLimited(reservation)
+}
+
+func (sc *SchedulerCache) processCleanupReservation() {
+	reservation, shutdown := sc.DeletedReservations.Get()
+	if shutdown {
+		return
+	}
+
+	defer sc.DeletedReservations.Done(reservation)
+
+	if !isReservationNeedExpiration(reservation, time.Now()) {
+		klog.V(4).Infof("Reservation %s not expired or no need to clean yet, skipping", reservation.Reservation.Name)
+		sc.DeletedReservations.Forget(reservation)
+		return
+	}
+
+	err := sc.gcReservation(reservation)
+	if err != nil {
+		klog.Errorf("Failed to GC reservation %s: %v, and will retry...", reservation.Reservation.Name, err)
+		sc.retryCleanReservation(reservation)
+	} else {
+		sc.DeletedReservations.Forget(reservation)
+	}
+}
+
+func (sc *SchedulerCache) gcExpiredReservationsOnce() {
+	now := time.Now()
+	sc.ReservationCache.ScanExpiredReservations(now, func(reservation *schedulingapi.ReservationInfo) {
+		klog.V(4).Infof("Reservation %s expired, enqueuing for deletion", reservation.Reservation.Name)
+		sc.DeletedReservations.Add(reservation)
+	})
+}
+
+func (sc *SchedulerCache) FindJobAndTask(task *schedulingapi.TaskInfo) (*schedulingapi.JobInfo, *schedulingapi.TaskInfo, error) {
+	return sc.findJobAndTask(task)
+}
+
+func (sc *SchedulerCache) filterNeedSkipBindContexts(contexts []*BindContext) []*BindContext {
+	contextsToBind := make([]*BindContext, 0, len(contexts))
+
+	for _, bindCtx := range contexts {
+		if !bindCtx.SkipBind {
+			contextsToBind = append(contextsToBind, bindCtx)
+		} else {
+			klog.V(3).Infof("Task %s: %s skip bind", bindCtx.TaskInfo.Namespace, bindCtx.TaskInfo.Name)
+		}
+	}
+
+	return contextsToBind
 }
 
 func (sc *SchedulerCache) OnSessionOpen() {
