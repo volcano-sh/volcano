@@ -17,6 +17,7 @@ limitations under the License.
 package metrics
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -148,7 +149,33 @@ var (
 			Help:      "Number of jobs could not be scheduled",
 		},
 	)
+
+	taskOperationCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      "total_task_operation_count",
+			Help:      "Total task operation count",
+		}, []string{"operation", "result"},
+	)
 )
+
+func RegisterCacheTaskCountFunc(status string, function func() float64) {
+	promauto.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Subsystem: VolcanoSubSystemName,
+			Name:      fmt.Sprintf("task_%s_count", status),
+			Help:      fmt.Sprintf("Number of %s tasks in the cache", status),
+		}, function,
+	)
+}
+
+func IncTaskOperationSuccess(operation string) {
+	taskOperationCount.WithLabelValues(operation, "success").Inc()
+}
+
+func IncTaskOperationErr(operation string) {
+	taskOperationCount.WithLabelValues(operation, "failed").Inc()
+}
 
 // InitKubeSchedulerRelatedMetrics is used to init metrics global variables in k8s.io/kubernetes/pkg/scheduler/metrics/metrics.go.
 // We don't use InitMetrics() to init all global variables because currently only "Goroutines" is required when calling kube-scheduler

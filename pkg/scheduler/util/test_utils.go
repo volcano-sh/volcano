@@ -23,6 +23,7 @@ package util
 import (
 	"fmt"
 	"sync"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	v1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
@@ -542,6 +543,7 @@ func (fb *FakeBinder) Bind(kubeClient kubernetes.Interface, tasks []*api.TaskInf
 		key := fmt.Sprintf("%v/%v", p.Namespace, p.Name)
 		fb.binds[key] = p.NodeName
 		fb.Channel <- key // need to wait binding pod because Bind process is asynchronous
+		metrics.IncTaskOperationSuccess("bind")
 	}
 
 	return nil

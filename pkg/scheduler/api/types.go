@@ -67,6 +67,21 @@ const (
 	Unknown
 )
 
+func AllTaskStatus() []TaskStatus {
+	return []TaskStatus{
+		Pending,
+		Allocated,
+		Pipelined,
+		Binding,
+		Bound,
+		Running,
+		Releasing,
+		Succeeded,
+		Failed,
+		Unknown,
+	}
+}
+
 func (ts TaskStatus) String() string {
 	switch ts {
 	case Pending:
