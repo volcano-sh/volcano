@@ -45,10 +45,6 @@ func init() {
 	probes.RegisterEventProbeFunc(string(framework.NodeMonitorEventName), NewMonitor)
 }
 
-const (
-	highUsageCountLimit = 6
-)
-
 type monitor struct {
 	sync.Mutex
 	*config.Configuration
@@ -58,10 +54,16 @@ type monitor struct {
 	lowWatermark  apis.Watermark
 	highWatermark apis.Watermark
 	// highUsageCountByResName is used to record whether resources usage are high.
+
 	highUsageCountByResName map[v1.ResourceName]int
-	getNodeFunc             utilnode.ActiveNode
-	getPodsFunc             utilpod.ActivePods
-	usageGetter             resourceusage.Getter
+	// If resource usage is high for a period of time, we consider the node is under pressure.
+	highUsageCountLimit int
+	utilizationInterval time.Duration
+	detectInterval      time.Duration
+
+	getNodeFunc utilnode.ActiveNode
+	getPodsFunc utilpod.ActivePods
+	usageGetter resourceusage.Getter
 }
 
 func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, workQueue workqueue.RateLimitingInterface) framework.Probe {
@@ -74,6 +76,9 @@ func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollector
 		lowWatermark:            make(apis.Watermark),
 		highWatermark:           make(apis.Watermark),
 		highUsageCountByResName: make(map[v1.ResourceName]int),
+		highUsageCountLimit:     6,
+		utilizationInterval:     10 * time.Second,
+		detectInterval:          10 * time.Second,
 		usageGetter:             resourceusage.NewUsageGetter(mgr, local.CollectorName),
 	}
 }
@@ -84,8 +89,36 @@ func (m *monitor) ProbeName() string {
 
 func (m *monitor) Run(stop <-chan struct{}) {
 	klog.InfoS("Started nodePressure probe")
-	go wait.Until(m.utilizationMonitoring, 10*time.Second, stop)
-	go wait.Until(m.detect, 10*time.Second, stop)
+
+	go func() {
+		for {
+			m.Lock()
+			interval := m.utilizationInterval
+			m.Unlock()
+
+			select {
+			case <-time.After(interval):
+				m.utilizationMonitoring()
+			case <-stop:
+				return
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			m.Lock()
+			interval := m.detectInterval
+			m.Unlock()
+
+			select {
+			case <-time.After(interval):
+				m.detect()
+			case <-stop:
+				return
+			}
+		}
+	}()
 }
 
 func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
@@ -95,9 +128,24 @@ func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 
 	m.Lock()
 	defer m.Unlock()
+
 	// reset historical statistics
-	// TODO: make this more fine-grained, only when new setting is a higher watermark should we reset.
 	m.highUsageCountByResName = map[v1.ResourceName]int{}
+
+	if cfg != nil && cfg.NodeMonitor != nil {
+		if cfg.NodeMonitor.HighUsageCountLimit != nil {
+			m.highUsageCountLimit = *cfg.NodeMonitor.HighUsageCountLimit
+		}
+		if cfg.NodeMonitor.UtilizationIntervalSeconds != nil {
+			m.utilizationInterval =
+				time.Duration(*cfg.NodeMonitor.UtilizationIntervalSeconds) * time.Second
+		}
+		if cfg.NodeMonitor.DetectIntervalSeconds != nil {
+			m.detectInterval =
+				time.Duration(*cfg.NodeMonitor.DetectIntervalSeconds) * time.Second
+		}
+	}
+
 	return nil
 }
 
@@ -198,5 +246,5 @@ func (m *monitor) nodeHasPressure(resName v1.ResourceName) bool {
 	m.Lock()
 	defer m.Unlock()
 
-	return m.highUsageCountByResName[resName] >= highUsageCountLimit
+	return m.highUsageCountByResName[resName] >= m.highUsageCountLimit
 }
