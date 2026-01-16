@@ -120,11 +120,16 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			allocated := allocations[job.Queue]
 
 			exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
-			// When scalar resource not specified in deserved such as "pods", we should skip it and consider it as infinity,
-			// so the following first condition will be true and the current queue will not be reclaimed.
-			if allocated.LessEqual(attr.deserved, api.Infinity) || !attr.guarantee.LessEqual(exceptReclaimee, api.Zero) {
+			// The `api.Infinity` parameter ensures that for any scalar resource present in `allocated` but not defined in `deserved` (e.g., "pods"),
+			// the check is skipped, effectively treating `deserved` as infinite for that resource. This prevents such resources from causing a reclaim.
+			// Skip reclaim in two cases:
+			// 1. Current allocated <= deserved (queue not over-quota yet)
+			// 2. Evicting would cause allocated < deserved in any reclaimer's requested dimension
+			reclaimable, _ := attr.deserved.LessEqualWithDimensionAndResourcesName(exceptReclaimee, reclaimer.Resreq)
+			if allocated.LessEqual(attr.deserved, api.Infinity) || !reclaimable {
 				continue
 			}
+
 			allocated.Sub(reclaimee.Resreq)
 			victims = append(victims, reclaimee)
 		}
