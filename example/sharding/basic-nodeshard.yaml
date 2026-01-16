@@ -1,0 +1,33 @@
+---
+# Basic NodeShard Example
+# This example shows how to create a simple NodeShard for a single scheduler
+
+apiVersion: shard.volcano.sh/v1alpha1
+kind: NodeShard
+metadata:
+  name: volcano
+  labels:
+    app: volcano
+    component: sharding
+spec:
+  # List of nodes that should be assigned to this shard
+  # Replace with actual node names from your cluster
+  nodesDesired:
+    - node1
+    - node2
+    - node3
+
+---
+# To use this NodeShard, configure your Volcano scheduler with:
+#   --scheduler-sharding-mode=soft
+#   --scheduler-sharding-name=volcano
+#
+# Apply this manifest:
+#   kubectl apply -f basic-nodeshard.yaml
+#
+# Verify the NodeShard:
+#   kubectl get nodeshard volcano
+#   kubectl describe nodeshard volcano
+#
+# Check the status to see which nodes are in use:
+#   kubectl get nodeshard volcano -o jsonpath='{.status.nodesInUse}'

@@ -1,0 +1,206 @@
+---
+# Agent + Volcano Sharding Example
+# Complete setup for Agentic AI workloads alongside batch workloads
+
+# NodeShard for Agent Scheduler (high-utilization nodes)
+apiVersion: shard.volcano.sh/v1alpha1
+kind: NodeShard
+metadata:
+  name: agent-scheduler
+  labels:
+    scheduler: agent
+    workload-type: agentic-ai
+spec:
+  # Nodes with high CPU utilization or marked as warmup nodes
+  # These will be used for latency-sensitive Agentic AI workloads
+  nodesDesired:
+    - agent-node-1
+    - agent-node-2
+    - warmup-node-1
+
+---
+# NodeShard for Volcano Scheduler (low-utilization nodes)
+apiVersion: shard.volcano.sh/v1alpha1
+kind: NodeShard
+metadata:
+  name: volcano
+  labels:
+    scheduler: volcano
+    workload-type: batch
+spec:
+  # Nodes with lower CPU utilization
+  # These will be used for traditional batch workloads
+  nodesDesired:
+    - batch-node-1
+    - batch-node-2
+    - batch-node-3
+    - batch-node-4
+
+---
+# Agent Scheduler Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-scheduler
+  namespace: volcano-system
+  labels:
+    app: volcano
+    component: agent-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: volcano
+      component: agent-scheduler
+  template:
+    metadata:
+      labels:
+        app: volcano
+        component: agent-scheduler
+    spec:
+      serviceAccountName: volcano-scheduler
+      containers:
+      - name: agent-scheduler
+        image: volcanosh/vc-agent-scheduler:latest
+        args:
+        - --logtostderr
+        - --scheduler-sharding-mode=hard
+        - --scheduler-sharding-name=agent-scheduler
+        - --agent-scheduler-worker-count=10
+        - --enable-metrics=true
+        - -v=3
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+
+---
+# Volcano Scheduler Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: volcano-scheduler
+  namespace: volcano-system
+  labels:
+    app: volcano
+    component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: volcano
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: volcano
+        component: scheduler
+    spec:
+      serviceAccountName: volcano-scheduler
+      containers:
+      - name: volcano-scheduler
+        image: volcanosh/vc-scheduler:latest
+        args:
+        - --logtostderr
+        - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
+        - --scheduler-sharding-mode=hard
+        - --scheduler-sharding-name=volcano
+        - --enable-metrics=true
+        - -v=3
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: scheduler-config
+          mountPath: /volcano.scheduler
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+      volumes:
+      - name: scheduler-config
+        configMap:
+          name: volcano-scheduler-configmap
+
+---
+# Sample Agent Pod (uses agent-scheduler)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sample-agent-pod
+  namespace: default
+  labels:
+    workload-type: agent
+spec:
+  schedulerName: agent-scheduler
+  containers:
+  - name: agent-app
+    image: nginx:latest
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+
+---
+# Sample Batch Job (uses volcano scheduler)
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: sample-batch-job
+  namespace: default
+spec:
+  schedulerName: volcano
+  minAvailable: 1
+  tasks:
+  - name: worker
+    replicas: 3
+    template:
+      spec:
+        containers:
+        - name: batch-worker
+          image: alpine:latest
+          command: ["/bin/sh", "-c", "echo 'Processing batch job'; sleep 60"]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "256Mi"
+        restartPolicy: OnFailure
+
+---
+# Usage Instructions:
+#
+# 1. Label warmup nodes (optional):
+#    kubectl label node warmup-node-1 node.volcano.sh/warmup=true
+#
+# 2. Replace node names with actual nodes from your cluster:
+#    kubectl get nodes -o name
+#
+# 3. Apply this manifest:
+#    kubectl apply -f agent-volcano-sharding.yaml
+#
+# 4. Verify schedulers are running:
+#    kubectl get pods -n volcano-system
+#
+# 5. Check NodeShard status:
+#    kubectl get nodeshards
+#    kubectl describe nodeshard agent-scheduler
+#    kubectl describe nodeshard volcano
+#
+# 6. Deploy sample workloads:
+#    # Agent pod will be scheduled by agent-scheduler to agent nodes
+#    kubectl get pod sample-agent-pod -o wide
+#    
+#    # Batch job will be scheduled by volcano to batch nodes
+#    kubectl get pods -l volcano.sh/job-name=sample-batch-job -o wide
+#
+# 7. Monitor scheduling:
+#    kubectl logs -n volcano-system deployment/agent-scheduler --tail=50
+#    kubectl logs -n volcano-system deployment/volcano-scheduler --tail=50

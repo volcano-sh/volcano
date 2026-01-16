@@ -397,7 +397,6 @@ func IsCgroupsV2(unifiedMountpoint string) bool {
 			isUnified = false
 			return
 		}
-		isUnified = st.Type == unix.CGROUP2_SUPER_MAGIC
 	})
 	return isUnified
 }

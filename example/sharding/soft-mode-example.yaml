@@ -1,0 +1,124 @@
+---
+# Soft Sharding Mode Example
+# Demonstrates flexible scheduling with shard preference and fallback
+
+# NodeShard for Volcano Scheduler
+apiVersion: shard.volcano.sh/v1alpha1
+kind: NodeShard
+metadata:
+  name: volcano
+  labels:
+    scheduler: volcano
+    mode: soft
+spec:
+  # Preferred nodes for this scheduler
+  # In soft mode, scheduler can use other nodes if these are full
+  nodesDesired:
+    - preferred-node-1
+    - preferred-node-2
+    - preferred-node-3
+
+---
+# Volcano Scheduler with Soft Sharding Mode
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: volcano-scheduler
+  namespace: volcano-system
+  labels:
+    app: volcano
+    component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: volcano
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: volcano
+        component: scheduler
+    spec:
+      serviceAccountName: volcano-scheduler
+      containers:
+      - name: volcano-scheduler
+        image: volcanosh/vc-scheduler:latest
+        args:
+        - --logtostderr
+        - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
+        # Soft mode: prefer shard nodes but can use others
+        - --scheduler-sharding-mode=soft
+        - --scheduler-sharding-name=volcano
+        - -v=3
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: scheduler-config
+          mountPath: /volcano.scheduler
+      volumes:
+      - name: scheduler-config
+        configMap:
+          name: volcano-scheduler-configmap
+
+---
+# Sample Job that will prefer shard nodes
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: flexible-batch-job
+  namespace: default
+spec:
+  schedulerName: volcano
+  minAvailable: 2
+  tasks:
+  - name: worker
+    replicas: 5
+    template:
+      spec:
+        containers:
+        - name: worker
+          image: alpine:latest
+          command: ["/bin/sh", "-c", "echo 'Running on node:' $(hostname); sleep 300"]
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+        restartPolicy: OnFailure
+
+---
+# Usage:
+#
+# 1. Replace node names with actual nodes:
+#    kubectl get nodes -o name
+#
+# 2. Apply this manifest:
+#    kubectl apply -f soft-mode-example.yaml
+#
+# 3. Verify scheduler is using soft mode:
+#    kubectl logs -n volcano-system deployment/volcano-scheduler | grep "sharding-mode"
+#
+# 4. Deploy the sample job:
+#    kubectl apply -f soft-mode-example.yaml
+#
+# 5. Check where pods are scheduled:
+#    kubectl get pods -l volcano.sh/job-name=flexible-batch-job -o wide
+#
+#    Expected behavior:
+#    - Pods will be scheduled to preferred-node-1, preferred-node-2, preferred-node-3 first
+#    - If those nodes are full, pods will be scheduled to other available nodes
+#    - This provides flexibility while still preferring the shard nodes
+#
+# 6. Monitor scheduling decisions:
+#    kubectl logs -n volcano-system deployment/volcano-scheduler --tail=100 | grep -i shard
+#
+# Benefits of Soft Mode:
+# - Graceful fallback when shard nodes are at capacity
+# - Better resource utilization across the cluster
+# - Reduced pod pending time
+# - Suitable for non-critical workload isolation
+#
+# When to use Soft Mode:
+# - Development/testing environments
+# - When strict isolation is not required
+# - When you want to maximize cluster utilization
+# - When occasional scheduling conflicts are acceptable
