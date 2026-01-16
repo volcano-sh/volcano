@@ -19,7 +19,6 @@ package job
 import (
 	"context"
 	"fmt"
-	"hash/fnv"
 	"sync"
 	"time"
 
@@ -136,7 +135,7 @@ type jobcontroller struct {
 	queueSynced func() bool
 
 	// queue that need to sync up
-	queueList    []workqueue.TypedRateLimitingInterface[any]
+	queue        workqueue.TypedRateLimitingInterface[any]
 	commandQueue workqueue.TypedRateLimitingInterface[any]
 	cache        jobcache.Cache
 	// Job Event recorder
@@ -170,7 +169,7 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
 	cc.informerFactory = sharedInformers
-	cc.queueList = make([]workqueue.TypedRateLimitingInterface[any], workers)
+	cc.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	cc.commandQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	cc.cache = jobcache.New()
 	cc.errTasks = newRateLimitingQueue()
@@ -179,11 +178,6 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	cc.maxRequeueNum = opt.MaxRequeueNum
 	if cc.maxRequeueNum < 0 {
 		cc.maxRequeueNum = -1
-	}
-
-	var i uint32
-	for i = 0; i < workers; i++ {
-		cc.queueList[i] = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	}
 
 	factory := opt.VCSharedInformerFactory
@@ -292,14 +286,13 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 	go wait.Until(cc.handleCommands, 0, stopCh)
 	var i uint32
 	for i = 0; i < cc.workers; i++ {
-		go func(num uint32) {
-			wait.Until(
-				func() {
-					cc.worker(num)
-				},
-				time.Second,
-				stopCh)
-		}(i)
+		go wait.Until(
+			func() {
+				for cc.processNextReq() {
+				}
+			},
+			time.Second,
+			stopCh)
 	}
 
 	go cc.cache.Run(stopCh)
@@ -310,48 +303,17 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 	klog.Infof("JobController is running ...... ")
 }
 
-func (cc *jobcontroller) worker(i uint32) {
-	klog.Infof("worker %d start ...... ", i)
-
-	for cc.processNextReq(i) {
-	}
-}
-
-func (cc *jobcontroller) belongsToThisRoutine(key string, count uint32) bool {
-	val := cc.genHash(key)
-	return val%cc.workers == count
-}
-
-func (cc *jobcontroller) getWorkerQueue(key string) workqueue.TypedRateLimitingInterface[any] {
-	val := cc.genHash(key)
-	queue := cc.queueList[val%cc.workers]
-	return queue
-}
-
-func (cc *jobcontroller) genHash(key string) uint32 {
-	hashVal := fnv.New32()
-	hashVal.Write([]byte(key))
-	return hashVal.Sum32()
-}
-
-func (cc *jobcontroller) processNextReq(count uint32) bool {
-	queue := cc.queueList[count]
-	obj, shutdown := queue.Get()
+func (cc *jobcontroller) processNextReq() bool {
+	obj, shutdown := cc.queue.Get()
 	if shutdown {
 		klog.Errorf("Fail to pop item from queue")
 		return false
 	}
 
 	req := obj.(apis.Request)
-	defer queue.Done(req)
+	defer cc.queue.Done(req)
 
 	key := jobcache.JobKeyByReq(&req)
-	if !cc.belongsToThisRoutine(key, count) {
-		klog.Errorf("should not occur The job does not belongs to this routine key:%s, worker:%d...... ", key, count)
-		queueLocal := cc.getWorkerQueue(key)
-		queueLocal.Add(req)
-		return true
-	}
 
 	klog.V(3).Infof("Try to handle request <%v>", req)
 
@@ -393,12 +355,12 @@ func (cc *jobcontroller) processNextReq(count uint32) bool {
 	action := GetStateAction(delayAct)
 
 	if err := st.Execute(action); err != nil {
-		cc.handleJobError(queue, req, st, err, delayAct.action)
+		cc.handleJobError(cc.queue, req, st, err, delayAct.action)
 		return true
 	}
 
 	// If no error, forget it.
-	queue.Forget(req)
+	cc.queue.Forget(req)
 
 	// If the action is not an internal action, cancel all delayed actions
 	if !isInternalAction(delayAct.action) {
@@ -482,29 +444,10 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 			return
 		}
 
-		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, execute it", req.Namespace, req.JobName, delayAct.action)
+		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, re-enqueue it", req.Namespace, req.JobName, delayAct.action)
 
-		jobInfo, err := cc.cache.Get(delayAct.jobKey)
-		if err != nil {
-			klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
-			return
-		}
-
-		st := state.NewState(jobInfo)
-		if st == nil {
-			klog.Errorf("Invalid state <%s> of Job <%v/%v>",
-				jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
-			return
-		}
-		queue := cc.getWorkerQueue(delayAct.jobKey)
-
-		if err := st.Execute(GetStateAction(delayAct)); err != nil {
-			cc.handleJobError(queue, req, st, err, delayAct.action)
-		}
-
-		queue.Forget(req)
-
-		cc.cleanupDelayActions(delayAct)
+		req.Action = delayAct.action
+		cc.queue.Add(req)
 	}()
 }
 
