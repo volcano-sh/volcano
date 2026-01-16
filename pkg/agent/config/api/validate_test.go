@@ -57,6 +57,8 @@ func TestColocationConfigValidate(t *testing.T) {
 					EvictingMemoryHighWatermark: utilpointer.Int(20),
 					EvictingCPULowWatermark:     utilpointer.Int(10),
 					EvictingMemoryLowWatermark:  utilpointer.Int(10),
+					EvictingHighUsageCountLimit: utilpointer.Int(6),
+					EvictingInterval:            utilpointer.Int(10),
 				},
 			},
 		},
@@ -139,6 +141,16 @@ func TestColocationConfigValidate(t *testing.T) {
 				},
 			},
 			expectedErr: []error{errors.New(EvictingCPULowWatermarkHigherThanHighWatermark), errors.New(EvictingMemoryLowWatermarkHigherThanHighWatermark)},
+		},
+		{
+			name: "illegal EvictingConfig && negative parameters for new fields",
+			colocationCfg: &ColocationConfig{
+				EvictingConfig: &Evicting{
+					EvictingHighUsageCountLimit: utilpointer.Int(-1),
+					EvictingInterval:            utilpointer.Int(-1),
+				},
+			},
+			expectedErr: []error{errors.New(IllegalEvictingHighUsageCountLimit), errors.New(IllegalEvictingInterval)},
 		},
 	}
 

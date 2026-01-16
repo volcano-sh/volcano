@@ -45,10 +45,6 @@ func init() {
 	probes.RegisterEventProbeFunc(string(framework.NodeMonitorEventName), NewMonitor)
 }
 
-const (
-	highUsageCountLimit = 6
-)
-
 type monitor struct {
 	sync.Mutex
 	*config.Configuration
@@ -62,6 +58,8 @@ type monitor struct {
 	getNodeFunc             utilnode.ActiveNode
 	getPodsFunc             utilpod.ActivePods
 	usageGetter             resourceusage.Getter
+	highUsageCountLimit     int
+	evictingInterval        time.Duration
 }
 
 func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, workQueue workqueue.RateLimitingInterface) framework.Probe {
@@ -75,6 +73,8 @@ func NewMonitor(config *config.Configuration, mgr *metriccollect.MetricCollector
 		highWatermark:           make(apis.Watermark),
 		highUsageCountByResName: make(map[v1.ResourceName]int),
 		usageGetter:             resourceusage.NewUsageGetter(mgr, local.CollectorName),
+		highUsageCountLimit:     6,
+		evictingInterval:        10 * time.Second,
 	}
 }
 
@@ -84,13 +84,21 @@ func (m *monitor) ProbeName() string {
 
 func (m *monitor) Run(stop <-chan struct{}) {
 	klog.InfoS("Started nodePressure probe")
-	go wait.Until(m.utilizationMonitoring, 10*time.Second, stop)
-	go wait.Until(m.detect, 10*time.Second, stop)
+	go wait.Until(m.utilizationMonitoring, m.evictingInterval, stop)
+	go wait.Until(m.detect, m.evictingInterval, stop)
 }
 
 func (m *monitor) RefreshCfg(cfg *api.ColocationConfig) error {
 	m.cfgLock.Lock()
 	utils.SetEvictionWatermark(cfg, m.lowWatermark, m.highWatermark)
+	if cfg.EvictingConfig != nil {
+		if cfg.EvictingConfig.EvictingHighUsageCountLimit != nil {
+			m.highUsageCountLimit = *cfg.EvictingConfig.EvictingHighUsageCountLimit
+		}
+		if cfg.EvictingConfig.EvictingInterval != nil {
+			m.evictingInterval = time.Duration(*cfg.EvictingConfig.EvictingInterval) * time.Second
+		}
+	}
 	m.cfgLock.Unlock()
 
 	m.Lock()
@@ -198,5 +206,5 @@ func (m *monitor) nodeHasPressure(resName v1.ResourceName) bool {
 	m.Lock()
 	defer m.Unlock()
 
-	return m.highUsageCountByResName[resName] >= highUsageCountLimit
+	return m.highUsageCountByResName[resName] >= m.highUsageCountLimit
 }
