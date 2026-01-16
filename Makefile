@@ -140,7 +140,8 @@ manifests: controller-gen
 		./staging/src/volcano.sh/apis/pkg/apis/bus/v1alpha1; \
 		./staging/src/volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1; \
 		./staging/src/volcano.sh/apis/pkg/apis/topology/v1alpha1; \
-		./staging/src/volcano.sh/apis/pkg/apis/shard/v1alpha1" \
+		./staging/src/volcano.sh/apis/pkg/apis/shard/v1alpha1; \
+		./staging/src/volcano.sh/apis/pkg/apis/config/v1alpha1" \
 		output:crd:artifacts:config=config/crd/volcano/bases
 	# generate volcano job crd yaml without description to avoid yaml size limit when using `kubectl apply`
 	$(CONTROLLER_GEN) $(CRD_OPTIONS_EXCLUDE_DESCRIPTION) \
