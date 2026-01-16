@@ -41,10 +41,10 @@ type HyperJobSpec struct {
 	ReplicatedJobs []ReplicatedJob `json:"replicatedJobs,omitempty" protobuf:"bytes,1,opt,name=replicatedJobs"`
 	// MinAvailable is the minimal available volcano jobs to run the hyperjob.
 	// +optional
-	MinAvailable *int32 `json:"minAvailable,omitempty" protobuf:"bytes,2,opt,name=minAvailable"`
+	MinAvailable *int32 `json:"minAvailable,omitempty" protobuf:"varint,2,opt,name=minAvailable"`
 	// MaxDomains is the maximum number of domains to split the hyperjob, used in multi-cluster splitting.
 	// +optional
-	MaxDomains *int32 `json:"maxDomains,omitempty" protobuf:"bytes,3,opt,name=maxDomains"`
+	MaxDomains *int32 `json:"maxDomains,omitempty" protobuf:"varint,3,opt,name=maxDomains"`
 	// Plugins specifies the plugins to be enabled for the hyperjob.
 	// Key is the plugin name, and value is the list of arguments for the plugin.
 	Plugins map[string][]string `json:"plugins,omitempty" protobuf:"bytes,4,opt,name=plugins"`
@@ -59,7 +59,7 @@ type ReplicatedJob struct {
 	SplitPolicy *SplitPolicy `json:"splitPolicy,omitempty" protobuf:"bytes,3,opt,name=splitPolicy"`
 	// Replicas is the number of replicated volcano jobs.
 	// +kubebuilder:default=1
-	Replicas int32 `json:"replicas,omitempty" protobuf:"bytes,4,opt,name=replicas"`
+	Replicas int32 `json:"replicas,omitempty" protobuf:"varint,4,opt,name=replicas"`
 	// ClusterNames is the list of cluster names to which the replicated jobs prefer to be scheduled.
 	ClusterNames []string `json:"clusterNames,omitempty" protobuf:"bytes,5,opt,name=clusterNames"`
 }
@@ -69,7 +69,7 @@ type SplitPolicy struct {
 	// +kubebuilder:validation:Enum=static;auto
 	Mode SplitMode `json:"mode,omitempty" protobuf:"bytes,1,opt,name=mode"`
 	// Accelerators is the number of accelerators to split.
-	Accelerators *int `json:"accelerators,omitempty" protobuf:"bytes,2,opt,name=accelerators"`
+	Accelerators *int `json:"accelerators,omitempty" protobuf:"varint,2,opt,name=accelerators"`
 	// AcceleratorType is the type of the accelerator. Such as nvidia.com/gpu, amd.com/gpu, etc.
 	AcceleratorType *string `json:"acceleratorType,omitempty" protobuf:"bytes,3,opt,name=acceleratorType"`
 }
@@ -92,7 +92,7 @@ type HyperJobStatus struct {
 	ReplicatedJobsStatus []ReplicatedJobStatus `json:"replicatedJobsStatus,omitempty" protobuf:"bytes,2,opt,name=replicatedJobsStatus"`
 	// SplitCount represents the total number of volcano jobs this hyperjob is split into by the controller.
 	// +optional
-	SplitCount *int32 `json:"splitCount,omitempty" protobuf:"bytes,3,opt,name=splitCount"`
+	SplitCount *int32 `json:"splitCount,omitempty" protobuf:"varint,3,opt,name=splitCount"`
 	// The generation observed by the controller.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty" protobuf:"varint,4,opt,name=observedGeneration"`
