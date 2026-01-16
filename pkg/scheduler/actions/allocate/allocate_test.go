@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
@@ -2645,6 +2646,7 @@ func TestAllocateWithPVC(t *testing.T) {
 		t.Run(test.Name, func(t *testing.T) {
 			predicates.ResetVolumeBindingPluginForTest()
 			test.Plugins = plugins
+			test.CacheSyncTimeout = 5 * time.Second
 			test.RegisterSession(tiers, nil)
 			defer test.Close()
 			action := New()

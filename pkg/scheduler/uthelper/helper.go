@@ -37,6 +37,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	fakek8s "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/testing"
+	kcache "k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -113,6 +115,10 @@ type TestCommonStruct struct {
 	// MinimalBindCheck true will only check both bind num, false by default.
 	MinimalBindCheck bool
 
+	// CacheSyncTimeout is the timeout for waiting for storage cache sync.
+	// If not set, defaults to 3 seconds.
+	CacheSyncTimeout time.Duration
+
 	// fake interface instance when check results need
 	stop       chan struct{}
 	binder     cache.Binder
@@ -133,7 +139,8 @@ func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.C
 }
 
 func (test *TestCommonStruct) waitForCacheSyncPolling(schedulerCache *cache.SchedulerCache) {
-	err := wait.PollImmediate(10*time.Millisecond, 5*time.Second, func() (bool, error) {
+	// Wait for all nodes and pods to be synced into the cache with their correct status
+	err := wait.PollImmediate(10*time.Millisecond, 2*time.Second, func() (bool, error) {
 		schedulerCache.Mutex.Lock()
 		defer schedulerCache.Mutex.Unlock()
 
@@ -377,7 +384,54 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	schedulerCache.Run(test.stop)
 	schedulerCache.WaitForCacheSync(test.stop)
 
+	// Wait for storage resource cache synchronization
+	if len(test.PVs) > 0 || len(test.PVCs) > 0 || len(test.SCs) > 0 {
+		timeout := test.CacheSyncTimeout
+		if timeout == 0 {
+			timeout = 3 * time.Second
+		}
+
+		if err := test.waitForStorageCacheSync(schedulerCache, timeout); err != nil {
+			klog.V(2).InfoS("Storage cache sync incomplete", "timeout", timeout, "err", err)
+		}
+	}
+
 	return schedulerCache
+}
+
+// waitForStorageCacheSync waits for storage-related informers to sync
+func (test *TestCommonStruct) waitForStorageCacheSync(sc *cache.SchedulerCache, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	informerFactory := sc.SharedInformerFactory()
+
+	// Wait for informers to complete initial sync
+	kcache.WaitForCacheSync(ctx.Done(),
+		informerFactory.Core().V1().PersistentVolumes().Informer().HasSynced,
+		informerFactory.Core().V1().PersistentVolumeClaims().Informer().HasSynced,
+		informerFactory.Storage().V1().StorageClasses().Informer().HasSynced)
+
+	// Verify our specific test resources are visible in cache
+	return wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, timeout, false,
+		func(ctx context.Context) (bool, error) {
+			pvLister := informerFactory.Core().V1().PersistentVolumes().Lister()
+			pvcLister := informerFactory.Core().V1().PersistentVolumeClaims().Lister()
+
+			for _, pv := range test.PVs {
+				if _, err := pvLister.Get(pv.Name); err != nil {
+					klog.V(4).InfoS("PV not yet in cache", "pv", pv.Name)
+					return false, nil
+				}
+			}
+			for _, pvc := range test.PVCs {
+				if _, err := pvcLister.PersistentVolumeClaims(pvc.Namespace).Get(pvc.Name); err != nil {
+					klog.V(4).InfoS("PVC not yet in cache", "pvc", pvc.Namespace+"/"+pvc.Name)
+					return false, nil
+				}
+			}
+			return true, nil
+		})
 }
 
 // Run choose to run passed in actions; if no actions provided, will panic
