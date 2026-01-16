@@ -218,6 +218,7 @@ type DefaultBinder struct {
 func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) map[schedulingapi.TaskID]string {
 	errMsg := make(map[schedulingapi.TaskID]string)
 	for _, task := range tasks {
+		now := time.Now()
 		p := task.Pod
 		if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
 			&v1.Binding{
@@ -230,7 +231,9 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 			metav1.CreateOptions{}); err != nil {
 			klog.Errorf("Failed to bind pod <%v/%v> to node %s : %#v", p.Namespace, p.Name, task.NodeName, err)
 			errMsg[task.UID] = err.Error()
+			metrics.UpdateTaskOperationErrLatency("bind", metrics.Duration(now))
 		} else {
+			metrics.UpdateTaskOperationSuccessLatency("bind", metrics.Duration(now))
 			metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time)) // update metrics as soon as pod is bind
 		}
 	}
@@ -601,6 +604,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 	// add all events handlers
 	sc.addEventHandler()
 	sc.HyperNodesInfo = schedulingapi.NewHyperNodesInfo(sc.nodeInformer.Lister())
+	sc.registerCacheMetrics()
 	return sc
 }
 
@@ -1727,6 +1731,25 @@ func (sc *SchedulerCache) GetMetricsData() {
 	}
 
 	sc.setMetricsData(nodeMetricsMap)
+}
+
+func (sc *SchedulerCache) registerCacheMetrics() {
+	for _, status := range schedulingapi.AllTaskStatus() {
+		currentStatus := status
+		statusName := strings.ToLower(currentStatus.String())
+		metrics.RegisterCacheTaskCountFunc(strings.ToLower(statusName), func() float64 {
+			sc.Mutex.Lock()
+			defer sc.Mutex.Unlock()
+
+			count := 0
+			for _, job := range sc.Jobs {
+				if taskMap, found := job.TaskStatusIndex[currentStatus]; found {
+					count += len(taskMap)
+				}
+			}
+			return float64(count)
+		})
+	}
 }
 
 func (sc *SchedulerCache) setMetricsData(usageInfo map[string]*source.NodeMetrics) {

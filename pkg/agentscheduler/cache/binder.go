@@ -24,7 +24,6 @@ import (
 
 	agentapi "volcano.sh/volcano/pkg/agentscheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/api"
-	"volcano.sh/volcano/pkg/scheduler/metrics"
 	k8sschedulingqueue "volcano.sh/volcano/third_party/kubernetes/pkg/scheduler/backend/queue"
 )
 
@@ -118,7 +117,6 @@ func (binder *ConflictAwareBinder) CheckAndBindPod(scheduleResult *agentapi.PodS
 	binder.recordsMutex.Lock()
 	defer binder.recordsMutex.Unlock()
 	binder.nodeBindRecords[node.Name] = nodeBindGeneration
-	metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
 }
 
 // FindNonConflictingNode return node if version of candidate node is newer than the version of node used in last bind
