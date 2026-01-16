@@ -210,6 +210,22 @@ func (cc *jobcontroller) killPods(jobInfo *apis.JobInfo, podRetainPhase state.Ph
 		classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
 		calcPodStatus(pod, taskStatusCount)
 	}
+	// update the status for the pods which are not going to be killed
+	for _, pods := range jobInfo.Pods {
+		for _, pod := range pods {
+			_, isPodGoingToBeKilled := podsToKill[pod.Name]
+			if !isPodGoingToBeKilled {
+				if pod.DeletionTimestamp != nil {
+					klog.Infof("Pod <%s/%s> is terminating", pod.Namespace, pod.Name)
+					terminating++
+					continue
+				}
+
+				classifyAndAddUpPodBaseOnPhase(pod, &pending, &running, &succeeded, &failed, &unknown)
+				calcPodStatus(pod, taskStatusCount)
+			}
+		}
+	}
 
 	if len(errs) != 0 {
 		klog.Errorf("failed to kill pods for job %s/%s, with err %+v", job.Namespace, job.Name, errs)
