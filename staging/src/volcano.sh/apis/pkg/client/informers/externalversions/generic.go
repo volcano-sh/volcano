@@ -24,6 +24,7 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 	v1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	configv1alpha1 "volcano.sh/apis/pkg/apis/config/v1alpha1"
 	datadependencyv1alpha1 "volcano.sh/apis/pkg/apis/datadependency/v1alpha1"
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
@@ -68,6 +69,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		// Group=bus.volcano.sh, Version=v1alpha1
 	case busv1alpha1.SchemeGroupVersion.WithResource("commands"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Bus().V1alpha1().Commands().Informer()}, nil
+
+		// Group=config.volcano.sh, Version=v1alpha1
+	case configv1alpha1.SchemeGroupVersion.WithResource("colocationconfigurations"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Config().V1alpha1().ColocationConfigurations().Informer()}, nil
 
 		// Group=datadependency.volcano.sh, Version=v1alpha1
 	case datadependencyv1alpha1.SchemeGroupVersion.WithResource("datasources"):

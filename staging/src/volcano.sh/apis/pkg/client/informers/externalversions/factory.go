@@ -29,6 +29,7 @@ import (
 	versioned "volcano.sh/apis/pkg/client/clientset/versioned"
 	batch "volcano.sh/apis/pkg/client/informers/externalversions/batch"
 	bus "volcano.sh/apis/pkg/client/informers/externalversions/bus"
+	config "volcano.sh/apis/pkg/client/informers/externalversions/config"
 	datadependency "volcano.sh/apis/pkg/client/informers/externalversions/datadependency"
 	flow "volcano.sh/apis/pkg/client/informers/externalversions/flow"
 	internalinterfaces "volcano.sh/apis/pkg/client/informers/externalversions/internalinterfaces"
@@ -263,6 +264,7 @@ type SharedInformerFactory interface {
 
 	Batch() batch.Interface
 	Bus() bus.Interface
+	Config() config.Interface
 	Datadependency() datadependency.Interface
 	Flow() flow.Interface
 	Nodeinfo() nodeinfo.Interface
@@ -278,6 +280,10 @@ func (f *sharedInformerFactory) Batch() batch.Interface {
 
 func (f *sharedInformerFactory) Bus() bus.Interface {
 	return bus.New(f, f.namespace, f.tweakListOptions)
+}
+
+func (f *sharedInformerFactory) Config() config.Interface {
+	return config.New(f, f.namespace, f.tweakListOptions)
 }
 
 func (f *sharedInformerFactory) Datadependency() datadependency.Interface {
