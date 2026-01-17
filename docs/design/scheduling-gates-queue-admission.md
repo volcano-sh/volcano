@@ -14,9 +14,9 @@
       - [Queue Allocation and Gate Removal](#queue-allocation-and-gate-removal)
       - [Queue Capacity Accounting for Ungated Pods](#queue-capacity-accounting-for-ungated-pods)
         - [Dynamic Reserved Calculation](#dynamic-reserved-calculation)
+        - [Capacity Check with Reserved Resources](#capacity-check-with-reserved-resources)
         - [Cache Initialization](#cache-initialization)
         - [Cache Updates During Allocation](#cache-updates-during-allocation)
-        - [Capacity Check with Reserved Resources](#capacity-check-with-reserved-resources)
       - [Gate Removal During Successful Bind](#gate-removal-during-successful-bind)
 - [Conclusions](#conclusions)
 - [Related Issues](#related-issues)
@@ -53,7 +53,7 @@ simply waiting for queue admission (refer to
 
 ### How Volcano Currently Sets Unschedulable
 
-> Note: Every mention of Volcano in this document refers to the latest
+> Note: Every mention of Volcano in this document refers to the
 > [v1.13.0 release](https://github.com/volcano-sh/volcano/releases/tag/v1.13.0).
 
 Volcano sets the `Unschedulable` condition on pods through its cache event recording mechanism in
@@ -103,6 +103,12 @@ to be used throughout the implementation:
 const QueueAllocationGateKey = GroupName + "/queue-allocation-gate"
 ```
 
+Besides, helper functions `api.HasOnlyVolcanoSchedulingGate()` and `api.HasQueueAllocationGateAnnotation()`, mentioned
+throughout the document, are used to identify pods that participate in this gate management mechanism. These functions
+can be defined in
+[`pkg/scheduler/api/helpers.go`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/api/helpers.go) to
+avoid code duplication and maintain consistency across the codebase.
+
 #### Changes to the Volcano `MutatingAdmissionWebhook`
 
 Volcano's `MutatingAdmissionWebhook` must be extended to detect Pods annotated with
@@ -143,12 +149,6 @@ func patchSchedulingGates(pod *v1.Pod) *patchOperation {
     }
 }
 ```
-
-> **Note**: The helper functions `api.HasOnlyVolcanoSchedulingGate()` and `api.HasQueueAllocationGateAnnotation()`
-> mentioned throughout the document can later be defined in
-> [`pkg/scheduler/api/helpers.go`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/api/helpers.go). The
-> first checks for the existence of the `schedulingv1beta1.QueueAllocationGateKey` `schedulingGate` entry, and the
-> second checks whether the pod has the opt-in annotation set to `"true"`.
 
 **`schedulingGates` Field Immutability**
 
@@ -227,18 +227,11 @@ func (alloc *Action) allocateResourcesForTasks(...) {
         task := tasks.Pop().(*api.TaskInfo)
 
         // Check queue capacity (enhanced to account for reserved ungated pods)
-        // See "Queue Capacity Accounting for Ungated Pods" section for details
+        // The capacity plugin's AddAllocatableFn sets task.RemoveGateDuringBind=true
+        // and adds task to reserved cache if it passes capacity checks
         if !ssn.Allocatable(queue, task) {
             // ...
             continue
-        }
-
-        // Queue has capacity - mark task for gate removal during bind
-        if task.SchGated && api.HasOnlyVolcanoSchedulingGate(task.Pod) {
-            task.RemoveGateDuringBind = true
-            // Add to reserved cache immediately after passing capacity check
-            // See "Queue Capacity Accounting for Ungated Pods" section for details
-            ssn.AddTaskToCapacityReservedCache(job.Queue, task)
         }
 
         // Skip tasks with external (non-Volcano) scheduling gates
@@ -291,7 +284,7 @@ func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo, queueID api.Queue
 }
 ```
 
-To support asynchronous gate removal, the `Action` struct must be **enhanced with channels and worker management
+To support asynchronous gate removal, the `Action` struct must be **enhanced with channels** and **worker management
 fields**:
 
 ```go
@@ -394,8 +387,7 @@ method `queueAllocatableWithReserved` to the
 new method extends the existing
 [`queueAllocatable`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/plugins/capacity/capacity.go#L843)
 function by tracking reserved tasks in a per-task cache that is rebuilt at the start of each scheduling cycle and
-updated incrementally during allocation (see
-[Capacity Check with Reserved Resources](#capacity-check-with-reserved-resources) for implementation details).
+updated incrementally during allocation.
 
 The capacity plugin struct is extended with the reserved task cache:
 
@@ -403,103 +395,23 @@ The capacity plugin struct is extended with the reserved task cache:
 type capacityPlugin struct {
     // ... existing fields ...
 
-    // queueReservedTasks tracks tasks that passed capacity checks but cannot be scheduled
+    // queueGateReservedTasks tracks tasks that passed capacity checks but cannot be scheduled
     // These tasks reserve queue capacity to prevent other tasks from consuming it
     // Rebuilt fresh at the start of each scheduling cycle in OnSessionOpen
-    queueReservedTasks map[api.QueueID]map[api.TaskID]*api.TaskInfo
+    queueGateReservedTasks map[api.QueueID]map[api.TaskID]*api.TaskInfo
 }
 ```
-
-###### Cache Initialization
-
-The cache is rebuilt at the start of each scheduling cycle in
-[`OnSessionOpen`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/plugins/capacity/capacity.go#L91):
-
-```go
-func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
-    // Rebuild reserved cache for this scheduling cycle
-    cp.buildQueueReservedTasksCache(ssn)
-
-    // ... rest of capacity plugin initialization ...
-}
-
-func (cp *capacityPlugin) buildQueueReservedTasksCache(ssn *framework.Session) {
-    // Initialize the cache for this session
-    cp.queueReservedTasks = make(map[api.QueueID]map[api.TaskID]*api.TaskInfo)
-
-    // Scan all pending tasks and rebuild cache
-    for _, job := range ssn.Jobs {
-        for _, task := range job.TaskStatusIndex[api.Pending] {
-            // Tasks that passed capacity have: NO gate + HAS annotation + Pending status
-            if !task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
-                if cp.queueReservedTasks[job.Queue] == nil {
-                    cp.queueReservedTasks[job.Queue] = make(map[api.TaskID]*api.TaskInfo)
-                }
-                cp.queueReservedTasks[job.Queue][task.UID] = task
-            }
-        }
-    }
-}
-```
-
-###### Cache Updates During Allocation
-
-The cache is also updated incrementally during the scheduling session in the `allocateResourcesForTasks` method (as
-previously mentioned in the [Queue Allocation and Gate Removal](#queue-allocation-and-gate-removal) section):
-
-```go
-// In allocateResourcesForTasks - after ssn.Allocatable(queue, task) returns true
-if task.SchGated && api.HasOnlyVolcanoSchedulingGate(task.Pod) {
-    task.RemoveGateDuringBind = true
-    // Add to reserved cache immediately after passing capacity check
-    ssn.AddTaskToCapacityReservedCache(job.Queue, task)
-}
-```
-
-When a task is **successfully bound to a node** in
-[`allocateResourcesForTask`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/allocate/allocate.go#L544),
-one removes the task from the reserved cache:
-
-```go
-func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *api.TaskInfo, node *api.NodeInfo, job *api.JobInfo) error {
-    // Check if node has idle resources
-    if task.InitResreq.LessEqual(node.Idle, api.Zero) {
-        // Attempt to bind task to node
-        if err = stmt.Allocate(task, node); err != nil {
-            // Bind failed - rollback
-            stmt.UnAllocate(task)
-        } else {
-            // Task successfully allocated - remove from reserved cache
-            alloc.session.RemoveTaskFromCapacityReservedCache(job.Queue, task.UID)
-            // ... metrics updates ...
-        }
-        return err
-    }
-
-    // ...
-}
-```
-
-This incremental update ensures that:
-
-- Tasks passing capacity checks in the current scheduling session are immediately tracked.
-- Successfully allocated tasks stop reserving capacity for new candidates.
-- The reserved cache remains accurate throughout the scheduling session.
-
-> **Note**: The `AddTaskToCapacityReservedCache(...)` and `RemoveTaskFromCapacityReservedCache(...)` methods can be
-> implemented in the capacity plugin and exposed through the Session interface for use by the allocate action. These
-> methods simply add or remove tasks from the `queueReservedTasks` map.
 
 ###### Capacity Check with Reserved Resources
 
-A new method `queueAllocatableWithReserved` performs capacity checks including reserved resources:
+The `queueAllocatableWithReserved` method performs capacity checks including reserved resources:
 
 ```go
 func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidate *api.TaskInfo, queue *api.QueueInfo) bool {
     // Calculate total reserved resources directly from cache
     reserved := api.EmptyResource()
-    if queueCache := cp.queueReservedTasks[queue.UID]; queueCache != nil {
-        for _, task := range queueCache {
+    if queueGateReserved := cp.queueGateReservedTasks[queue.UID]; queueGateReserved != nil {
+        for _, task := range queueGateReserved {
             if task.UID != candidate.UID {
                 // Skip candidate to avoid double-counting (it will be added in futureUsed below)
                 reserved.Add(task.Resreq)
@@ -515,9 +427,10 @@ func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidat
 }
 ```
 
-And the existing
+The existing
 [`queueAllocatable`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/plugins/capacity/capacity.go#L838)
-method is modified to call the new helper:
+method is modified to call this new helper, enhancing the checks performed during the allocation process by including
+reserved resources:
 
 ```go
 func (cp *capacityPlugin) queueAllocatable(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
@@ -526,8 +439,143 @@ func (cp *capacityPlugin) queueAllocatable(queue *api.QueueInfo, candidate *api.
 }
 ```
 
-The previous method `queueAllocatable` enhances the checks performed during the allocation process by including reserved
-resources.
+###### Cache Initialization
+
+The cache is rebuilt at the start of each scheduling cycle in
+[`OnSessionOpen`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/plugins/capacity/capacity.go#L91):
+
+```go
+func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
+    // Rebuild reserved cache for this scheduling cycle
+    cp.buildQueueReservedTasksCache(ssn)
+
+    // Register reservation cleanup function
+    // This is further described in the
+    // "Removing Tasks from Reserved Cache" section below.
+    // ssn.AddReservationCleanupFn(cp.Name(), ...)
+
+    // ... rest of capacity plugin initialization ...
+}
+
+func (cp *capacityPlugin) buildQueueReservedTasksCache(ssn *framework.Session) {
+    // Initialize the cache for this session
+    cp.queueGateReservedTasks = make(map[api.QueueID]map[api.TaskID]*api.TaskInfo)
+
+    // Scan all pending tasks and rebuild cache
+    for _, job := range ssn.Jobs {
+        for _, task := range job.TaskStatusIndex[api.Pending] {
+            // Tasks that passed capacity have: NO gate + HAS annotation + Pending status
+            if !task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
+                if cp.queueGateReservedTasks[job.Queue] == nil {
+                    cp.queueGateReservedTasks[job.Queue] = make(map[api.TaskID]*api.TaskInfo)
+                }
+                cp.queueGateReservedTasks[job.Queue][task.UID] = task
+            }
+        }
+    }
+}
+```
+
+###### Cache Updates During Allocation
+
+The cache is updated incrementally during the scheduling session through two mechanisms: **adding tasks when they pass
+capacity checks** and **removing tasks before statement commit**.
+
+**Adding Tasks to Reserved Cache**
+
+When a task passes the capacity check, the capacity plugin adds it to the reserved cache directly within its
+`AddAllocatableFn` callback registered in `OnSessionOpen()`:
+
+```go
+// In capacity plugin's OnSessionOpen
+ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+    // ... queue state checks ...
+
+    allocatable := cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
+
+    // If queue has capacity and task has volcano gate, add to reserved cache
+    if allocatable && candidate.SchGated && api.HasOnlyVolcanoSchedulingGate(candidate.Pod) {
+        // Mark task to have gate removed during bind
+        candidate.RemoveGateDuringBind = true
+        // Add to reserved cache immediately after passing capacity check
+        cp.addTaskToReservedCache(queue.UID, candidate)
+    }
+
+    return allocatable
+})
+```
+
+**Removing Tasks from Reserved Cache**
+
+The capacity plugin registers a **reservation cleanup function** during `OnSessionOpen()` that removes tasks from the
+reserved cache before statement commit:
+
+```go
+// In capacity plugin's OnSessionOpen
+ssn.AddReservationCleanupFn(cp.Name(), func(stmt *framework.Statement) {
+    for _, op := range stmt.Operations() {
+        if op.Name() == framework.Allocate {
+            task := op.Task()
+            cp.removeTaskFromReservedCache(task.UID)
+        }
+    }
+})
+```
+
+The `allocate` action calls the `CleanupReservations` method, which executes all registered reservation cleanup
+functions, before
+[committing the statement](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/actions/allocate/allocate.go#L208):
+
+```go
+// In allocateResources() of allocate action
+if stmt != nil {
+    // Clean up reservations for successfully allocated tasks
+    // This invokes all registered ReservationCleanupFn functions
+    ssn.CleanupReservations(stmt)
+    stmt.Commit()
+}
+```
+
+This approach ensures that tasks are only removed from the reserved cache if the allocation is actually committed,
+preventing issues with gang scheduling where statements may be discarded. The capacity plugin owns all its reservation
+logic internally through private methods (`addTaskToReservedCache` and `removeTaskFromReservedCache`), maintaining
+proper encapsulation and avoiding tight coupling with the framework layer:
+
+```go
+// In capacity plugin's addTaskToReservedCache
+func (cp *capacityPlugin) addTaskToReservedCache(queueID api.QueueID, task *api.TaskInfo) {
+    if cp.queueGateReservedTasks[queueID] == nil {
+        cp.queueGateReservedTasks[queueID] = make(map[api.TaskID]*api.TaskInfo)
+    }
+    cp.queueGateReservedTasks[queueID][task.UID] = task
+}
+
+// In capacity plugin's removeTaskFromReservedCache
+func (cp *capacityPlugin) removeTaskFromReservedCache(taskID api.TaskID) {
+    for queueID, tasks := range cp.queueGateReservedTasks {
+        if _, exists := tasks[taskID]; exists {
+            delete(tasks, taskID)
+            // Clean up empty queue entries
+            if len(tasks) == 0 {
+                delete(cp.queueGateReservedTasks, queueID)
+            }
+            return
+        }
+    }
+}
+```
+
+The reservation cleanup mechanism follows the standard Volcano plugin extension point pattern, similar to
+[`AddAllocatableFn`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/framework/session_plugins.go#L130)
+and
+[`AddPreemptiveFn`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/framework/session_plugins.go#L125).
+The `ReservationCleanupFn` type can be defined in
+[`pkg/scheduler/framework/statement.go`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/framework/statement.go)
+and allows any plugin to register cleanup logic that runs before statement commit. This design makes the architecture
+extensible, enabling other plugins like
+[`proportion`](https://github.com/volcano-sh/volcano/tree/v1.13.0/pkg/scheduler/plugins/proportion) or
+[`tdm`](https://github.com/volcano-sh/volcano/tree/v1.13.0/pkg/scheduler/plugins/tdm) to implement similar reservation
+cleanup logic in the future without modifying the framework.
 
 ##### Gate Removal During Successful Bind
 
