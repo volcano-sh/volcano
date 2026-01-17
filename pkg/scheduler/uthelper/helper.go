@@ -158,19 +158,18 @@ func (test *TestCommonStruct) waitForCacheSyncPolling(schedulerCache *cache.Sche
 		}
 
 		for _, pod := range test.Pods {
-			pCopy := pod.DeepCopy()
-			if pCopy.UID == "" {
-				pCopy.UID = types.UID(pCopy.Namespace + "/" + pCopy.Name)
+			if pod.UID == "" {
+				pod.UID = types.UID(pod.Namespace + "/" + pod.Name)
 			}
-			ti := schedulingapi.NewTaskInfo(pCopy)
+			ti := schedulingapi.NewTaskInfo(pod)
 			job, ok := schedulerCache.Jobs[ti.Job]
 			if !ok {
 				return false, nil
 			}
 			found := false
 			for _, t := range job.Tasks {
-				if t.Name == pCopy.Name && t.Namespace == pCopy.Namespace {
-					if pCopy.Status.Phase == v1.PodRunning && t.Status != schedulingapi.Running {
+				if t.Name == pod.Name && t.Namespace == pod.Namespace {
+					if pod.Status.Phase == v1.PodRunning && t.Status != schedulingapi.Running {
 						return false, nil
 					}
 					found = true
@@ -350,24 +349,6 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 			fmt.Printf("Error updating status of Node %s: %v\n", node.Name, err)
 		}
 	}
-	for _, pod := range test.Pods {
-		pCopy := pod.DeepCopy()
-		if pCopy.Spec.SchedulerName == "" {
-			pCopy.Spec.SchedulerName = "utmock-scheduler"
-		}
-		if pCopy.UID == "" {
-			pCopy.UID = types.UID(pCopy.Namespace + "/" + pCopy.Name)
-		}
-		p, err := kubeClient.CoreV1().Pods(pCopy.Namespace).Create(context.Background(), pCopy, metav1.CreateOptions{})
-		if err != nil {
-			fmt.Printf("Error creating Pod %s: %v\n", pCopy.Name, err)
-		}
-		p.Status = pCopy.Status
-		_, err = kubeClient.CoreV1().Pods(pCopy.Namespace).UpdateStatus(context.Background(), p, metav1.UpdateOptions{})
-		if err != nil {
-			fmt.Printf("Error updating status of Pod %s: %v\n", pCopy.Name, err)
-		}
-	}
 	for _, pg := range test.PodGroups {
 		schedulerCache.AddPodGroupV1beta1(pg)
 	}
@@ -393,6 +374,24 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 
 		if err := test.waitForStorageCacheSync(schedulerCache, timeout); err != nil {
 			klog.V(2).InfoS("Storage cache sync incomplete", "timeout", timeout, "err", err)
+		}
+	}
+
+	for _, pod := range test.Pods {
+		if pod.Spec.SchedulerName == "" {
+			pod.Spec.SchedulerName = "utmock-scheduler"
+		}
+		if pod.UID == "" {
+			pod.UID = types.UID(pod.Namespace + "/" + pod.Name)
+		}
+		p, err := kubeClient.CoreV1().Pods(pod.Namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+		if err != nil {
+			fmt.Printf("Error creating Pod %s: %v\n", pod.Name, err)
+		}
+		p.Status = pod.Status
+		_, err = kubeClient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.Background(), p, metav1.UpdateOptions{})
+		if err != nil {
+			fmt.Printf("Error updating status of Pod %s: %v\n", pod.Name, err)
 		}
 	}
 
