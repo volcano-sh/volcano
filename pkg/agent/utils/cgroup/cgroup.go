@@ -46,6 +46,7 @@ const (
 	CgroupMemorySubsystem CgroupSubsystem = "memory"
 	CgroupCpuSubsystem    CgroupSubsystem = "cpu"
 	CgroupNetCLSSubsystem CgroupSubsystem = "net_cls"
+	CgroupBlkioSubsystem  CgroupSubsystem = "blkio"
 
 	CgroupKubeRoot string = "kubepods"
 
@@ -67,6 +68,13 @@ const (
 
 	CPUShareFileName string = "cpu.shares"
 
+	// Blkio cgroup files (v1)
+	BlkioWeightFileV1 string = "blkio.weight"
+	BlkioThrottleReadBpsFileV1   string = "blkio.throttle.read_bps_device"
+	BlkioThrottleWriteBpsFileV1  string = "blkio.throttle.write_bps_device"
+	BlkioThrottleReadIopsFileV1  string = "blkio.throttle.read_iops_device"
+	BlkioThrottleWriteIopsFileV1 string = "blkio.throttle.write_iops_device"
+
 	// Cgroupv2 specific files
 	CPUWeightFileV2 string = "cpu.weight"
 	CPUUsageFileV2  string = "cpu.stat"
@@ -80,6 +88,13 @@ const (
 	MemoryLowFileV2   string = "memory.low"
 	MemoryMinFileV2   string = "memory.min"
 	MemoryMaxFileV2   string = "memory.max"
+
+	// Blkio cgroup files (v2)
+	BlkioWeightFileV2          string = "io.weight"
+	BlkioMaxReadBpsFileV2      string = "io.max"
+	BlkioMaxWriteBpsFileV2     string = "io.max"
+	BlkioMaxReadIopsFileV2     string = "io.max"
+	BlkioMaxWriteIopsFileV2    string = "io.max"
 
 	// Cgroup version constants
 	CgroupV1 string = "v1"

@@ -44,6 +44,9 @@ const (
 	// NetworkBandwidthRateAnnotationKey is the annotation key of network bandwidth rate, unit Mbps.
 	NetworkBandwidthRateAnnotationKey = "volcano.sh/network-bandwidth-rate"
 
+	// BlkioWeightAnnotationKey is the annotation key for blkio weight.
+	BlkioWeightAnnotationKey = "volcano.sh/blkio-weight"
+
 	// Deprecated:This is used to be compatible with old api.
 	// PodEvictedOverSubscriptionCPUHighWaterMarkKey define the high watermark of cpu usage when evicting offline pods
 	PodEvictedOverSubscriptionCPUHighWaterMarkKey = "volcano.sh/oversubscription-evicting-cpu-high-watermark"
