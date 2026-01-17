@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -30,7 +31,14 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/wait"
+	fakek8s "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/testing"
+	kcache "k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -107,6 +115,10 @@ type TestCommonStruct struct {
 	// MinimalBindCheck true will only check both bind num, false by default.
 	MinimalBindCheck bool
 
+	// CacheSyncTimeout is the timeout for waiting for storage cache sync.
+	// If not set, defaults to 3 seconds.
+	CacheSyncTimeout time.Duration
+
 	// fake interface instance when check results need
 	stop       chan struct{}
 	binder     cache.Binder
@@ -120,9 +132,112 @@ var _ Interface = &TestCommonStruct{}
 // RegisterSession open session with tiers and configuration, and mock schedulerCache with self-defined FakeBinder and FakeEvictor
 func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session {
 	schedulerCache := test.createSchedulerCache()
+	test.waitForCacheSyncPolling(schedulerCache)
 	RegisterPlugins(test.Plugins)
 	test.ssn = framework.OpenSession(schedulerCache, tiers, config)
 	return test.ssn
+}
+
+func (test *TestCommonStruct) waitForCacheSyncPolling(schedulerCache *cache.SchedulerCache) {
+	// Wait for all nodes and pods to be synced into the cache with their correct status
+	err := wait.PollImmediate(10*time.Millisecond, 2*time.Second, func() (bool, error) {
+		schedulerCache.Mutex.Lock()
+		defer schedulerCache.Mutex.Unlock()
+
+		for _, node := range test.Nodes {
+			cacheNode, ok := schedulerCache.Nodes[node.Name]
+			if !ok {
+				return false, nil
+			}
+			if cacheNode.Node == nil {
+				return false, nil
+			}
+			if len(cacheNode.Node.Status.Allocatable) == 0 && len(node.Status.Allocatable) > 0 {
+				return false, nil
+			}
+		}
+
+		for _, pod := range test.Pods {
+			if pod.UID == "" {
+				pod.UID = types.UID(pod.Namespace + "/" + pod.Name)
+			}
+			ti := schedulingapi.NewTaskInfo(pod)
+			job, ok := schedulerCache.Jobs[ti.Job]
+			if !ok {
+				return false, nil
+			}
+			found := false
+			for _, t := range job.Tasks {
+				if t.Name == pod.Name && t.Namespace == pod.Namespace {
+					if pod.Status.Phase == v1.PodRunning && t.Status != schedulingapi.Running {
+						return false, nil
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false, nil
+			}
+		}
+
+		for _, sc := range test.SCs {
+			_, err := schedulerCache.SharedInformerFactory().Storage().V1().StorageClasses().Lister().Get(sc.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+		for _, pv := range test.PVs {
+			_, err := schedulerCache.SharedInformerFactory().Core().V1().PersistentVolumes().Lister().Get(pv.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+		for _, pvc := range test.PVCs {
+			_, err := schedulerCache.SharedInformerFactory().Core().V1().PersistentVolumeClaims().Lister().PersistentVolumeClaims(pvc.Namespace).Get(pvc.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+
+		for _, dc := range test.DeviceClasses {
+			_, err := schedulerCache.SharedInformerFactory().Resource().V1().DeviceClasses().Lister().Get(dc.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+		for _, rc := range test.ResourceClaims {
+			_, err := schedulerCache.SharedInformerFactory().Resource().V1().ResourceClaims().Lister().ResourceClaims(rc.Namespace).Get(rc.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+		for _, rs := range test.ResourceSlices {
+			_, err := schedulerCache.SharedInformerFactory().Resource().V1().ResourceSlices().Lister().Get(rs.Name)
+			if err != nil {
+				return false, nil
+			}
+		}
+
+		return true, nil
+	})
+
+	if err != nil {
+		fmt.Printf("Error: cache sync polling timed out: %v\n", err)
+		schedulerCache.Mutex.Lock()
+		defer schedulerCache.Mutex.Unlock()
+		fmt.Printf("Current Cache Nodes: %v\n", len(schedulerCache.Nodes))
+		for name, n := range schedulerCache.Nodes {
+			fmt.Printf("Node %s: object=%v\n", name, n.Node != nil)
+		}
+		fmt.Printf("Current Cache Jobs: %v\n", len(schedulerCache.Jobs))
+		for id, j := range schedulerCache.Jobs {
+			fmt.Printf("Job %s: tasks=%d\n", id, len(j.Tasks))
+			for _, t := range j.Tasks {
+				fmt.Printf("  Task %s: status=%v\n", t.Name, t.Status)
+			}
+		}
+	}
 }
 
 // createSchedulerCache create scheduler cache
@@ -136,16 +251,82 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	// Create scheduler cache with self-defined binder and evictor
 	schedulerCache := cache.NewCustomMockSchedulerCache("utmock-scheduler", binder, evictor, test.stsUpdator, nil, nil)
 
+	schedulerCache.IgnoredCSIProvisioners = test.IgnoreProvisioners
+
+	ready := new(atomic.Bool)
+	ready.Store(true)
+	for _, hni := range test.HyperNodesMap {
+		if hni.HyperNode == nil {
+			continue
+		}
+		for _, member := range hni.HyperNode.Spec.Members {
+			if member.Type != topologyv1alpha1.MemberTypeHyperNode {
+				continue
+			}
+			if member.Selector.ExactMatch == nil {
+				continue
+			}
+			child := member.Selector.ExactMatch.Name
+			hni.Children.Insert(child)
+			if childInfo, found := test.HyperNodesMap[child]; found {
+				childInfo.Parent = hni.Name
+			}
+		}
+	}
+	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
+
 	// Initial provisioning resources
 	kubeClient := schedulerCache.Client()
 	for _, sc := range test.SCs {
 		kubeClient.StorageV1().StorageClasses().Create(context.Background(), sc, metav1.CreateOptions{})
 	}
+
+	fakeClient := kubeClient.(*fakek8s.Clientset)
+
+	fakeClient.PrependReactor("update", "persistentvolumes", func(action testing.Action) (bool, runtime.Object, error) {
+		updateAction := action.(testing.UpdateAction)
+		obj := updateAction.GetObject().(*v1.PersistentVolume).DeepCopy()
+		currentRv, _ := strconv.Atoi(obj.ResourceVersion)
+		obj.ResourceVersion = strconv.Itoa(currentRv + 1)
+		return true, obj, nil
+	})
+	fakeClient.PrependReactor("update", "persistentvolumeclaims", func(action testing.Action) (bool, runtime.Object, error) {
+		updateAction := action.(testing.UpdateAction)
+		obj := updateAction.GetObject().(*v1.PersistentVolumeClaim).DeepCopy()
+		currentRv, _ := strconv.Atoi(obj.ResourceVersion)
+		obj.ResourceVersion = strconv.Itoa(currentRv + 1)
+		return true, obj, nil
+	})
+
 	for _, pv := range test.PVs {
-		kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), pv, metav1.CreateOptions{})
+		pvCopy := pv.DeepCopy()
+		if pvCopy.UID == "" {
+			pvCopy.UID = types.UID(pvCopy.Name)
+		}
+		p, err := kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), pvCopy, metav1.CreateOptions{})
+		if err != nil {
+			fmt.Printf("Error creating PV %s: %v\n", pvCopy.Name, err)
+		}
+		p.Status = pvCopy.Status
+		_, err = kubeClient.CoreV1().PersistentVolumes().UpdateStatus(context.Background(), p, metav1.UpdateOptions{})
+		if err != nil {
+			fmt.Printf("Error updating status of PV %s: %v\n", pvCopy.Name, err)
+		}
 	}
 	for _, pvc := range test.PVCs {
-		kubeClient.CoreV1().PersistentVolumeClaims(pvc.Namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
+		pvcCopy := pvc.DeepCopy()
+		if pvcCopy.UID == "" {
+			pvcCopy.UID = types.UID(pvcCopy.Name)
+		}
+		p, err := kubeClient.CoreV1().PersistentVolumeClaims(pvcCopy.Namespace).Create(context.Background(), pvcCopy, metav1.CreateOptions{})
+		if err != nil {
+			fmt.Printf("Error creating PVC %s: %v\n", pvcCopy.Name, err)
+		}
+		p.Status = pvcCopy.Status
+		_, err = kubeClient.CoreV1().PersistentVolumeClaims(pvcCopy.Namespace).UpdateStatus(context.Background(), p, metav1.UpdateOptions{})
+		if err != nil {
+			fmt.Printf("Error updating status of PVC %s: %v\n", pvcCopy.Name, err)
+		}
 	}
 	for _, dc := range test.DeviceClasses {
 		kubeClient.ResourceV1().DeviceClasses().Create(context.Background(), dc, metav1.CreateOptions{})
@@ -156,15 +337,17 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, rs := range test.ResourceSlices {
 		kubeClient.ResourceV1().ResourceSlices().Create(context.Background(), rs, metav1.CreateOptions{})
 	}
-	// need to immediately run the cache to make sure the resources are added
-	schedulerCache.Run(test.stop)
 
 	for _, node := range test.Nodes {
-		schedulerCache.AddOrUpdateNode(node)
-	}
-	schedulerCache.IgnoredCSIProvisioners = test.IgnoreProvisioners
-	for _, pod := range test.Pods {
-		schedulerCache.AddPod(pod)
+		n, err := kubeClient.CoreV1().Nodes().Create(context.Background(), node.DeepCopy(), metav1.CreateOptions{})
+		if err != nil {
+			fmt.Printf("Error creating Node %s: %v\n", node.Name, err)
+		}
+		n.Status = node.Status
+		_, err = kubeClient.CoreV1().Nodes().UpdateStatus(context.Background(), n, metav1.UpdateOptions{})
+		if err != nil {
+			fmt.Printf("Error updating status of Node %s: %v\n", node.Name, err)
+		}
 	}
 	for _, pg := range test.PodGroups {
 		schedulerCache.AddPodGroupV1beta1(pg)
@@ -178,29 +361,76 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	for _, rq := range test.ResourceQuotas {
 		schedulerCache.AddResourceQuota(rq)
 	}
-	ready := new(atomic.Bool)
-	ready.Store(true)
-	for _, hni := range test.HyperNodesMap {
-		if hni.HyperNode == nil {
-			continue
+
+	schedulerCache.Run(test.stop)
+	schedulerCache.WaitForCacheSync(test.stop)
+
+	// Wait for storage resource cache synchronization
+	if len(test.PVs) > 0 || len(test.PVCs) > 0 || len(test.SCs) > 0 {
+		timeout := test.CacheSyncTimeout
+		if timeout == 0 {
+			timeout = 3 * time.Second
 		}
-		for _, member := range hni.HyperNode.Spec.Members {
-			if member.Type != topologyv1alpha1.MemberTypeHyperNode {
-				continue
-			}
-			if member.Selector.ExactMatch == nil { // todo support other selector method
-				continue
-			}
-			child := member.Selector.ExactMatch.Name
-			hni.Children.Insert(child)
-			if childInfo, found := test.HyperNodesMap[child]; found {
-				childInfo.Parent = hni.Name
-			}
+
+		if err := test.waitForStorageCacheSync(schedulerCache, timeout); err != nil {
+			klog.V(2).InfoS("Storage cache sync incomplete", "timeout", timeout, "err", err)
 		}
 	}
-	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
+
+	for _, pod := range test.Pods {
+		if pod.Spec.SchedulerName == "" {
+			pod.Spec.SchedulerName = "utmock-scheduler"
+		}
+		if pod.UID == "" {
+			pod.UID = types.UID(pod.Namespace + "/" + pod.Name)
+		}
+		p, err := kubeClient.CoreV1().Pods(pod.Namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+		if err != nil {
+			fmt.Printf("Error creating Pod %s: %v\n", pod.Name, err)
+		}
+		p.Status = pod.Status
+		_, err = kubeClient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.Background(), p, metav1.UpdateOptions{})
+		if err != nil {
+			fmt.Printf("Error updating status of Pod %s: %v\n", pod.Name, err)
+		}
+	}
 
 	return schedulerCache
+}
+
+// waitForStorageCacheSync waits for storage-related informers to sync
+func (test *TestCommonStruct) waitForStorageCacheSync(sc *cache.SchedulerCache, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	informerFactory := sc.SharedInformerFactory()
+
+	// Wait for informers to complete initial sync
+	kcache.WaitForCacheSync(ctx.Done(),
+		informerFactory.Core().V1().PersistentVolumes().Informer().HasSynced,
+		informerFactory.Core().V1().PersistentVolumeClaims().Informer().HasSynced,
+		informerFactory.Storage().V1().StorageClasses().Informer().HasSynced)
+
+	// Verify our specific test resources are visible in cache
+	return wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, timeout, false,
+		func(ctx context.Context) (bool, error) {
+			pvLister := informerFactory.Core().V1().PersistentVolumes().Lister()
+			pvcLister := informerFactory.Core().V1().PersistentVolumeClaims().Lister()
+
+			for _, pv := range test.PVs {
+				if _, err := pvLister.Get(pv.Name); err != nil {
+					klog.V(4).InfoS("PV not yet in cache", "pv", pv.Name)
+					return false, nil
+				}
+			}
+			for _, pvc := range test.PVCs {
+				if _, err := pvcLister.PersistentVolumeClaims(pvc.Namespace).Get(pvc.Name); err != nil {
+					klog.V(4).InfoS("PVC not yet in cache", "pvc", pvc.Namespace+"/"+pvc.Name)
+					return false, nil
+				}
+			}
+			return true, nil
+		})
 }
 
 // Run choose to run passed in actions; if no actions provided, will panic
