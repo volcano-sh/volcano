@@ -19,7 +19,6 @@ package pods
 import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/agent/apis/extension"
@@ -35,18 +34,18 @@ func init() {
 }
 
 type PodProbe struct {
-	queue workqueue.RateLimitingInterface
+	eventQueueFactory *framework.EventQueueFactory
 }
 
-func NewPodProbe(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, queue workqueue.RateLimitingInterface) framework.Probe {
+func NewPodProbe(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, eventQueueFactory *framework.EventQueueFactory) framework.Probe {
 	podHandler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { enqueuePod(obj, queue) },
-		UpdateFunc: func(oldObj, newObj interface{}) { enqueuePod(newObj, queue) },
+		AddFunc:    func(obj interface{}) { enqueuePod(obj, eventQueueFactory) },
+		UpdateFunc: func(oldObj, newObj interface{}) { enqueuePod(newObj, eventQueueFactory) },
 		DeleteFunc: func(obj interface{}) {},
 	}
 	config.InformerFactory.K8SInformerFactory.Core().V1().Pods().Informer().AddEventHandler(podHandler)
 	return &PodProbe{
-		queue: queue,
+		eventQueueFactory: eventQueueFactory,
 	}
 }
 
@@ -63,7 +62,7 @@ func (p *PodProbe) RefreshCfg(cfg *api.ColocationConfig) error {
 	return nil
 }
 
-func enqueuePod(obj interface{}, queue workqueue.RateLimitingInterface) {
+func enqueuePod(obj interface{}, eventQueueFactory *framework.EventQueueFactory) {
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		klog.ErrorS(nil, "Pod phase invoked with an invalid data struct", "obj", obj)
@@ -80,7 +79,8 @@ func enqueuePod(obj interface{}, queue workqueue.RateLimitingInterface) {
 				Pod:      pod,
 			}
 			klog.V(5).InfoS("Receive pod event", "pod", klog.KObj(pod))
-			queue.Add(podEvent)
+			eventQueue := eventQueueFactory.EventQueue(string(framework.PodEventName)).GetQueue()
+			eventQueue.Add(podEvent)
 		}
 	}
 }

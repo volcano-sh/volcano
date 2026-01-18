@@ -34,7 +34,7 @@ type Resource map[v1.ResourceName]int64
 // Getter is used to get cpu/memory usage of current node.
 type Getter interface {
 	// UsagesByValue return absolute resource usage of node
-	UsagesByValue(includeGuaranteedPods bool) Resource
+	UsagesByValue(includeGuaranteedPods bool, includeBestEffortPods bool) Resource
 	// UsagesByPercentage return resource usage percentage of node
 	UsagesByPercentage(node *v1.Node) Resource
 }
@@ -55,14 +55,14 @@ func NewUsageGetter(mgr *metriccollect.MetricCollectorManager, collectorName str
 }
 
 // UsagesByValue return absolute resource usage of node
-func (g *getter) UsagesByValue(includeGuaranteedPods bool) Resource {
-	return g.commonUsage(includeGuaranteedPods)
+func (g *getter) UsagesByValue(includeGuaranteedPods, includeBestEffortPods bool) Resource {
+	return g.commonUsage(includeGuaranteedPods, includeBestEffortPods)
 }
 
 // UsagesByPercentage return resource usage percentage of node
 func (g *getter) UsagesByPercentage(node *v1.Node) Resource {
 	res := make(Resource)
-	usage := g.commonUsage(true)
+	usage := g.commonUsage(true, true)
 
 	cpuAllocatable := node.Status.Allocatable[v1.ResourceCPU]
 	memoryAllocatable := node.Status.Allocatable[v1.ResourceMemory]
@@ -93,7 +93,7 @@ func (g *getter) convertMetric(metric []*prompb.TimeSeries) int64 {
 	return ret
 }
 
-func (g *getter) commonUsage(includeGuaranteedPods bool) Resource {
+func (g *getter) commonUsage(includeGuaranteedPods, includeBestEffortPods bool) Resource {
 	res := make(Resource)
 	c, err := g.collector.GetPluginByName(g.collectorName)
 	if err != nil {
@@ -103,7 +103,7 @@ func (g *getter) commonUsage(includeGuaranteedPods bool) Resource {
 
 	includeSystemUsed := g.collector.Config.GenericConfiguration.IncludeSystemUsage
 	metricInfos := map[v1.ResourceName]*local.LocalMetricInfo{
-		v1.ResourceCPU:    {ResourceType: "cpu", IncludeGuaranteedPods: includeGuaranteedPods, IncludeSystemUsed: includeSystemUsed},
+		v1.ResourceCPU:    {ResourceType: "cpu", IncludeGuaranteedPods: includeGuaranteedPods, IncludeBestEffortPods: includeBestEffortPods, IncludeSystemUsed: includeSystemUsed},
 		v1.ResourceMemory: {ResourceType: "memory", IncludeSystemUsed: includeSystemUsed},
 	}
 

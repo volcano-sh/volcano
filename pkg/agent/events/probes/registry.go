@@ -19,8 +19,6 @@ package probes
 import (
 	"sync"
 
-	"k8s.io/client-go/util/workqueue"
-
 	"volcano.sh/volcano/pkg/agent/events/framework"
 	"volcano.sh/volcano/pkg/config"
 	"volcano.sh/volcano/pkg/metriccollect"
@@ -29,7 +27,7 @@ import (
 var probeFuncs = map[string][]NewEventProbeFunc{}
 var mutex sync.Mutex
 
-type NewEventProbeFunc = func(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, queue workqueue.RateLimitingInterface) framework.Probe
+type NewEventProbeFunc = func(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, eventQueueFactory *framework.EventQueueFactory) framework.Probe
 
 func RegisterEventProbeFunc(eventName string, f NewEventProbeFunc) {
 	mutex.Lock()

@@ -34,7 +34,7 @@ func NewFakeResourceGetter(cpuUsageByValue, memoryUsageByValue, cpuUsageByPercen
 	}
 }
 
-func (f *fakeResourceGetter) UsagesByValue(_ bool) Resource {
+func (f *fakeResourceGetter) UsagesByValue(_ bool, _ bool) Resource {
 	return map[v1.ResourceName]int64{
 		v1.ResourceCPU:    f.cpuUsageByValue,
 		v1.ResourceMemory: f.memoryUsageByValue,
