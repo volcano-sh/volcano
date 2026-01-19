@@ -119,6 +119,8 @@ jobs:
           token: ${{ secrets.APIS_REPO_TOKEN }}
           repository: ${{ env.APIS_REPO }}
           path: apis-repo
+          author: Volcano Bot <volcano-bot@users.noreply.github.com>
+          committer: Volcano Bot <volcano-bot@users.noreply.github.com>
           commit-message: |
             Sync from volcano-sh/volcano@${{ steps.vars.outputs.sha_short }}
 
@@ -127,7 +129,7 @@ jobs:
             Automated sync from staging directory.
             Source: https://github.com/volcano-sh/volcano/commit/${{ steps.vars.outputs.sha }}
 
-            Signed-off-by: Volcano Bot <noreply@github.com>
+            Signed-off-by: Volcano Bot <volcano-bot@users.noreply.github.com>
           title: "Sync APIs from volcano-sh/volcano@${{ steps.vars.outputs.sha_short }}"
           body: |
             ## Automated API Sync
