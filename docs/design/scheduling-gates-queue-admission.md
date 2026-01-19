@@ -449,10 +449,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
     // Rebuild reserved cache for this scheduling cycle
     cp.buildQueueReservedTasksCache(ssn)
 
-    // Register reservation cleanup function
-    // This is further described in the
-    // "Removing Tasks from Reserved Cache" section below.
-    // ssn.AddReservationCleanupFn(cp.Name(), ...)
+    ssn.AddCleanupReservationsFn(cp.Name(), ...)
 
     // ... rest of capacity plugin initialization ...
 }
@@ -512,7 +509,8 @@ reserved cache before statement commit:
 
 ```go
 // In capacity plugin's OnSessionOpen
-ssn.AddReservationCleanupFn(cp.Name(), func(stmt *framework.Statement) {
+ssn.AddCleanupReservationsFn(cp.Name(), func(obj interface{}) {
+    stmt := obj.(*framework.Statement)
     for _, op := range stmt.Operations() {
         if op.Name() == framework.Allocate {
             task := op.Task()
@@ -530,7 +528,7 @@ functions, before
 // In allocateResources() of allocate action
 if stmt != nil {
     // Clean up reservations for successfully allocated tasks
-    // This invokes all registered ReservationCleanupFn functions
+    // This invokes all registered CleanupReservationsFn functions
     ssn.CleanupReservations(stmt)
     stmt.Commit()
 }
@@ -569,8 +567,8 @@ The reservation cleanup mechanism follows the standard Volcano plugin extension 
 [`AddAllocatableFn`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/framework/session_plugins.go#L130)
 and
 [`AddPreemptiveFn`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/framework/session_plugins.go#L125).
-The `ReservationCleanupFn` type can be defined in
-[`pkg/scheduler/framework/statement.go`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/framework/statement.go)
+The `CleanupReservationsFn` type can be defined in
+[`pkg/scheduler/api/types.go`](https://github.com/volcano-sh/volcano/blob/v1.13.0/pkg/scheduler/api/types.go)
 and allows any plugin to register cleanup logic that runs before statement commit. This design makes the architecture
 extensible, enabling other plugins like
 [`proportion`](https://github.com/volcano-sh/volcano/tree/v1.13.0/pkg/scheduler/plugins/proportion) or
