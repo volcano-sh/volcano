@@ -51,6 +51,10 @@ const (
 
 	evictionKind            = "Eviction"
 	evictionSubResourceName = "pods/eviction"
+
+	defaultCPUThrottlingThreshold = 80
+	defaultCPUJitterLimitPercent  = 1
+	defaultCPURecoverLimitPercent = 10
 )
 
 func UpdateFile(path string, content []byte) error {
@@ -136,6 +140,38 @@ func SetEvictionWatermark(cfg *api.ColocationConfig, lowWatermark apis.Watermark
 		"cpuHighWatermark", *cfg.EvictingConfig.EvictingCPUHighWatermark,
 		"memoryLowWatermark", *cfg.EvictingConfig.EvictingMemoryLowWatermark,
 		"memoryHighWatermark", *cfg.EvictingConfig.EvictingMemoryHighWatermark)
+}
+
+func SetCPUThrottlingConfig(cfg *api.ColocationConfig) (throttlingThreshold, jitterPercent, recoverPercent int) {
+	if cfg.CPUThrottlingConfig.CPUThrottlingThreshold != nil {
+		throttlingThreshold = *cfg.CPUThrottlingConfig.CPUThrottlingThreshold
+		if cfg.CPUThrottlingConfig.CPUJitterLimitPercent != nil {
+			jitterPercent = *cfg.CPUThrottlingConfig.CPUJitterLimitPercent
+		} else {
+			jitterPercent = defaultCPUJitterLimitPercent
+		}
+
+		if cfg.CPUThrottlingConfig.CPURecoverLimitPercent != nil {
+			recoverPercent = *cfg.CPUThrottlingConfig.CPURecoverLimitPercent
+		} else {
+			recoverPercent = defaultCPURecoverLimitPercent
+		}
+	} else {
+		throttlingThreshold = defaultCPUThrottlingThreshold
+		jitterPercent = defaultCPUJitterLimitPercent
+	}
+	if jitterPercent < 1 {
+		jitterPercent = defaultCPUJitterLimitPercent
+	}
+
+	if recoverPercent < 1 {
+		recoverPercent = defaultCPURecoverLimitPercent
+	}
+
+	klog.InfoS("Successfully set CPU QoS config",
+		"throttlingThreshold", throttlingThreshold,
+		"cpuJitterLimitPercent", jitterPercent)
+	return throttlingThreshold, jitterPercent, recoverPercent
 }
 
 func GetCPUManagerPolicy() string {
