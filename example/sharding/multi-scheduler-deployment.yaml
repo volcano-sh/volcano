@@ -1,0 +1,127 @@
+---
+# Multi-Scheduler Deployment with Sharding
+# This example demonstrates running two schedulers with separate node shards
+
+# NodeShard for Volcano Scheduler (batch workloads)
+apiVersion: shard.volcano.sh/v1alpha1
+kind: NodeShard
+metadata:
+  name: volcano
+  labels:
+    scheduler: volcano
+    workload-type: batch
+spec:
+  nodesDesired:
+    - batch-node-1
+    - batch-node-2
+    - batch-node-3
+
+---
+# NodeShard for Agent Scheduler (Agentic AI workloads)
+apiVersion: shard.volcano.sh/v1alpha1
+kind: NodeShard
+metadata:
+  name: agent-scheduler
+  labels:
+    scheduler: agent
+    workload-type: agent
+spec:
+  nodesDesired:
+    - agent-node-1
+    - agent-node-2
+    - agent-node-3
+
+---
+# Volcano Scheduler Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: volcano-scheduler
+  namespace: volcano-system
+  labels:
+    app: volcano
+    component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: volcano
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: volcano
+        component: scheduler
+    spec:
+      serviceAccountName: volcano-scheduler
+      containers:
+      - name: volcano-scheduler
+        image: volcanosh/vc-scheduler:latest
+        args:
+        - --logtostderr
+        - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
+        - --scheduler-sharding-mode=hard
+        - --scheduler-sharding-name=volcano
+        - -v=3
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: scheduler-config
+          mountPath: /volcano.scheduler
+      volumes:
+      - name: scheduler-config
+        configMap:
+          name: volcano-scheduler-configmap
+
+---
+# Agent Scheduler Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-scheduler
+  namespace: volcano-system
+  labels:
+    app: volcano
+    component: agent-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: volcano
+      component: agent-scheduler
+  template:
+    metadata:
+      labels:
+        app: volcano
+        component: agent-scheduler
+    spec:
+      serviceAccountName: volcano-scheduler
+      containers:
+      - name: agent-scheduler
+        image: volcanosh/vc-agent-scheduler:latest
+        args:
+        - --logtostderr
+        - --scheduler-sharding-mode=hard
+        - --scheduler-sharding-name=agent-scheduler
+        - --agent-scheduler-worker-count=10
+        - -v=3
+        imagePullPolicy: IfNotPresent
+
+---
+# Usage:
+# 1. Replace node names with actual nodes from your cluster:
+#    kubectl get nodes -o name
+#
+# 2. Apply this manifest:
+#    kubectl apply -f multi-scheduler-deployment.yaml
+#
+# 3. Verify both schedulers are running:
+#    kubectl get pods -n volcano-system
+#
+# 4. Check NodeShard status:
+#    kubectl get nodeshards
+#    kubectl describe nodeshard volcano
+#    kubectl describe nodeshard agent-scheduler
+#
+# 5. Deploy workloads with specific schedulers:
+#    For batch jobs: spec.schedulerName: volcano
+#    For agent workloads: spec.schedulerName: agent-scheduler

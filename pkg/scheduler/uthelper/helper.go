@@ -113,6 +113,8 @@ type TestCommonStruct struct {
 	evictor    cache.Evictor
 	stsUpdator cache.StatusUpdater
 	ssn        *framework.Session // store opened session
+
+	NodesInShard sets.Set[string]
 }
 
 var _ Interface = &TestCommonStruct{}
@@ -199,6 +201,7 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 		}
 	}
 	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
+	schedulerCache.InUseNodesInShard = test.NodesInShard
 
 	return schedulerCache
 }

@@ -104,6 +104,163 @@ stops executing the `jobEnqueueableFn` registered in the following plugins and r
 registered in `overcommit` returns a value belows `0`, `jobEnqueueableFn`, which is called in `enqueue` action, will return
 `false` and never call the `jobEnqueueableFn` registered in the `proportion` plugin.
 
+## Sharding Configuration
+
+Volcano supports node sharding to enable multiple schedulers to work on different subsets of cluster nodes. This feature is particularly useful for:
+- Running specialized schedulers for different workload types (e.g., Agentic AI vs batch workloads)
+- Eliminating single-scheduler bottlenecks in large clusters
+- Providing workload isolation and preventing scheduling conflicts
+
+### Sharding Mode
+
+Configure the sharding mode using the `--scheduler-sharding-mode` flag:
+
+```bash
+--scheduler-sharding-mode=<mode>
+```
+
+**Available Modes:**
+
+| Mode | Behavior | Use Case |
+|------|----------|----------|
+| `none` | No sharding (default) | Single scheduler deployment |
+| `soft` | Prefers shard nodes, can use others | Flexible scheduling with fallback |
+| `hard` | Only uses shard nodes | Strict workload isolation |
+
+**Example Deployment with Sharding:**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: volcano-scheduler
+  namespace: volcano-system
+spec:
+  template:
+    spec:
+      containers:
+      - name: volcano-scheduler
+        image: volcanosh/vc-scheduler:latest
+        args:
+        - --scheduler-sharding-mode=soft
+        - --scheduler-sharding-name=volcano
+        - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
+```
+
+### Shard Name
+
+Specify which NodeShard the scheduler should use:
+
+```bash
+--scheduler-sharding-name=<shard-name>
+```
+
+The scheduler will watch for a NodeShard resource with the matching name. If not specified, defaults to the scheduler name.
+
+### NodeShard Resource
+
+Create a NodeShard to define which nodes belong to the scheduler:
+
+```yaml
+apiVersion: shard.volcano.sh/v1alpha1
+kind: NodeShard
+metadata:
+  name: volcano
+spec:
+  nodesDesired:
+    - node1
+    - node2
+    - node3
+```
+
+The scheduler will synchronize with this NodeShard and schedule pods only on the specified nodes (in `hard` mode) or prefer these nodes (in `soft` mode).
+
+### Sharding Behavior
+
+**Soft Mode (`--scheduler-sharding-mode=soft`):**
+- Scheduler is aware of all cluster nodes
+- Preferentially schedules pods to nodes in its shard
+- Falls back to other nodes if shard nodes don't meet requirements
+- Kubelet handles any scheduling conflicts
+- Recommended for most use cases
+
+**Hard Mode (`--scheduler-sharding-mode=hard`):**
+- Scheduler only considers nodes in its shard
+- Prevents scheduling conflicts with other schedulers
+- Provides strict workload isolation
+- May reduce scheduling flexibility
+- Recommended for production multi-scheduler deployments
+
+### Multi-Scheduler Setup
+
+When running multiple schedulers with sharding:
+
+1. Create separate NodeShards for each scheduler:
+
+```yaml
+---
+apiVersion: shard.volcano.sh/v1alpha1
+kind: NodeShard
+metadata:
+  name: volcano
+spec:
+  nodesDesired:
+    - batch-node-1
+    - batch-node-2
+---
+apiVersion: shard.volcano.sh/v1alpha1
+kind: NodeShard
+metadata:
+  name: agent-scheduler
+spec:
+  nodesDesired:
+    - agent-node-1
+    - agent-node-2
+```
+
+2. Configure each scheduler with its shard name:
+
+```yaml
+# Volcano scheduler
+args:
+  - --scheduler-sharding-mode=hard
+  - --scheduler-sharding-name=volcano
+
+# Agent scheduler  
+args:
+  - --scheduler-sharding-mode=hard
+  - --scheduler-sharding-name=agent-scheduler
+```
+
+3. Ensure NodeShards don't have overlapping nodes to avoid conflicts
+
+### Monitoring Sharding
+
+Check NodeShard status to see which nodes are in use:
+
+```bash
+# List all NodeShards
+kubectl get nodeshards
+
+# View detailed status
+kubectl get nodeshard volcano -o yaml
+```
+
+NodeShard status fields:
+- `nodesInUse`: Nodes currently in the scheduler's cache
+- `nodesToAdd`: Nodes waiting to be added (used by other schedulers)
+- `nodesToRemove`: Nodes being released from the scheduler
+
+### Best Practices
+
+1. **Start with soft mode** for flexibility, move to hard mode for strict isolation
+2. **Ensure non-overlapping shards** when using hard mode with multiple schedulers
+3. **Monitor NodeShard status** regularly to verify correct node assignments
+4. **Use meaningful shard names** that reflect the workload type (e.g., `ml-training`, `batch-jobs`)
+5. **Consider node capacity** when defining shards to ensure sufficient resources
+
+For more details, see the [Sharding Controller User Guide](how_to_use_sharding_controller.md).
+
 ## FAQ
 * How can I decide which plugins should be grouped into a tier? How many tiers should I set for my business?
 > In most scenarios, users should not concern about how to divide plugins to different tiers. It's OK to configure all

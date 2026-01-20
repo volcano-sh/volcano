@@ -54,6 +54,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
+	commonutil "volcano.sh/volcano/pkg/util"
 )
 
 func TestMain(m *testing.M) {
@@ -2709,7 +2710,7 @@ func TestAllocateWithDRA(t *testing.T) {
 			DeviceClasses: []*resourcev1.DeviceClass{
 				util.BuildDeviceClass("gpu.example.com", []resourcev1.DeviceSelector{
 					{CEL: &resourcev1.CELDeviceSelector{
-						Expression: fmt.Sprintf(`device.driver == 'gpu.example.com'`),
+						Expression: "device.driver == 'gpu.example.com'",
 					}},
 				}, nil),
 			},
@@ -5175,6 +5176,151 @@ func TestAllocateWithPartitionPolicyNetworkTopology(t *testing.T) {
 			test.Plugins = plugins
 			test.RegisterSession(tiers, nil)
 			defer test.Close()
+			test.Run([]framework.Action{New()})
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestAllocateWithSharding(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		drf.PluginName:        drf.New,
+		proportion.PluginName: proportion.New,
+		predicates.PluginName: predicates.New,
+		nodeorder.PluginName:  nodeorder.New,
+		gang.PluginName:       gang.New,
+	}
+
+	tests := []struct {
+		uthelper.TestCommonStruct
+		shardingMode string
+	}{
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "Hard Sharding: only schedule to nodes in shard",
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", nil, nil),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil), // in shard
+					util.BuildNode("n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil), // out of shard
+				},
+				NodesInShard: sets.New("n1"),
+				Queues: []*schedulingv1.Queue{
+					util.BuildQueue("c1", 1, nil),
+				},
+				ExpectBindMap: map[string]string{
+					"c1/p1": "n1",
+				},
+				ExpectBindsNum: 1,
+			},
+			shardingMode: commonutil.HardShardingMode,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "Hard Sharding: do not schedule to nodes out of shard when in-shard nodes are full",
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("3", "1G"), "pg1", nil, nil),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil), // in shard, but too small
+					util.BuildNode("n2", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil), // out of shard, fits but should not be used
+				},
+				NodesInShard: sets.New("n1"),
+				Queues: []*schedulingv1.Queue{
+					util.BuildQueue("c1", 1, nil),
+				},
+				ExpectBindMap:  map[string]string{},
+				ExpectBindsNum: 0,
+			},
+			shardingMode: commonutil.HardShardingMode,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "Soft Sharding: prefer nodes in shard",
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1", nil, nil),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil), // in shard
+					util.BuildNode("n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil), // out of shard
+				},
+				NodesInShard: sets.New("n1"),
+				Queues: []*schedulingv1.Queue{
+					util.BuildQueue("c1", 1, nil),
+				},
+				ExpectBindMap: map[string]string{
+					"c1/p1": "n1",
+				},
+				ExpectBindsNum: 1,
+			},
+			shardingMode: commonutil.SoftShardingMode,
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "Soft Sharding: schedule to nodes out of shard if in-shard nodes are full",
+				PodGroups: []*schedulingv1.PodGroup{
+					util.BuildPodGroup("pg1", "c1", "c1", 1, nil, schedulingv1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("3", "1G"), "pg1", nil, nil),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil), // in shard, too small
+					util.BuildNode("n2", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil), // out of shard, fits
+				},
+				NodesInShard: sets.New("n1"),
+				Queues: []*schedulingv1.Queue{
+					util.BuildQueue("c1", 1, nil),
+				},
+				ExpectBindMap: map[string]string{
+					"c1/p1": "n2",
+				},
+				ExpectBindsNum: 1,
+			},
+			shardingMode: commonutil.SoftShardingMode,
+		},
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:             nodeorder.PluginName,
+					EnabledNodeOrder: &trueValue,
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.Plugins = plugins
+			originalShardingMode := options.ServerOpts.ShardingMode
+			options.ServerOpts.ShardingMode = test.shardingMode
+			defer func() {
+				options.ServerOpts.ShardingMode = originalShardingMode
+			}()
+
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+
 			test.Run([]framework.Action{New()})
 			if err := test.CheckAll(i); err != nil {
 				t.Fatal(err)
