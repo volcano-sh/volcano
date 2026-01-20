@@ -575,12 +575,16 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		}
 		attr.elastic.Add(job.GetElasticResources())
 
+		allocatedDelta := attr.allocated.Clone().Sub(oldAllocated)
+		requestDelta := attr.request.Clone().Sub(oldRequest)
+		inqueueDelta := attr.inqueue.Clone().Sub(oldInqueue)
+		elasticDelta := attr.elastic.Clone().Sub(oldElastic)
 		for _, ancestor := range attr.ancestors {
 			ancestorAttr := cp.queueOpts[ancestor]
-			ancestorAttr.allocated.Add(attr.allocated.Clone().Sub(oldAllocated))
-			ancestorAttr.request.Add(attr.request.Clone().Sub(oldRequest))
-			ancestorAttr.inqueue.Add(attr.inqueue.Clone().Sub(oldInqueue))
-			ancestorAttr.elastic.Add(attr.elastic.Clone().Sub(oldElastic))
+			ancestorAttr.allocated.Add(allocatedDelta)
+			ancestorAttr.request.Add(requestDelta)
+			ancestorAttr.inqueue.Add(inqueueDelta)
+			ancestorAttr.elastic.Add(elasticDelta)
 		}
 
 		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
