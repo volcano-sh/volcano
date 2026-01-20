@@ -99,6 +99,15 @@ As shown in the diagram below, suppose there are two Tier 1 HyperNodes in the cl
 - Without HyperNode-level bin packing, the scheduling result might be that partition 0 is scheduled to HyperNode0, and partition 1 is scheduled to HyperNode1.
 - With HyperNode-Level bin packing, both partition 0 and 1 will be prioritized for scheduling to HyperNode0. In this case, HyperNode1 can be used as a fully idle HyperNode for other tasks.
 
+Furthermore, for workloads without network topology constraints, the scheduler will prioritize scheduling them to nodes with higher hypernode-level resource utilization (where each tier of hypernodes will be considered), in order to reduce the hypernode-level resource fragmentation.
+
+For example, as shown in the figure below, there is a cluster consisting of 8 nodes and 7 hypernodes. Currently, the resources of node0, node2 and node4 are occupied by existing tasks, while those of the other nodes are idle. Then, at this point, a user submits a volcano job with two independent pods to this cluster.
+
+![hypernode-binpack-normal-pods.png](../images/network-topology/hypernode-binpack-normal-pods.png)
+
+- Without HyperNode-level bin packing, the scheduler may assign these two pods to node1 and node6, or node3 and node7, making the hypernode-level resource fragmentation more severe.
+- With HyperNode-level bin packing, the scheduler will prefer to assign them to node1 and node3, leaving node5, node6 and node7 together for other larger network-topology-constrained workloads.
+
 ## 3 User Guide
 
 ### 3.1 Installing Volcano
@@ -139,6 +148,8 @@ data:
           hypernode.binpack.resources: nvidia.com/gpu, example.com/foo # Custom resource names to be considered by the bin packing strategy
           hypernode.binpack.resources.nvidia.com/gpu: 2                # HyperNode-Level bin packing weight for "nvidia.com/gpu" resources
           hypernode.binpack.resources.example.com/foo: 3               # HyperNode-Level bin packing weight for "example.com/foo" resources
+          hypernode.binpack.normal-pod.enable: true                    # Whether or not to enable HyperNode-level bin packing for normal pods
+          hypernode.binpack.normal-pod.fading: 0.8                     # Parameter to control the weights of hypernodes of different tiers, i.e., the weights of hypernodes of tier `i` are math.Pow(fading, i-1) 
 ```
 
 ### 3.2 Building Network Topology
@@ -251,3 +262,38 @@ Based on the following network topology, this chapter will demonstrate how workl
    network-topology-job-t0-7   1/1     Running   0          5s    192.168.0.17   node7
    ```
    In this example, the entire Job is scheduled to HyperNode2 (Node0~Node7). The first partition (Pod0~Pod3) is scheduled to HyperNode0 (Node0~Node3), the second partitions (Pod4~Pod7) is scheduled to HyperNode1 (Node4~Node7), and each partition satisfies its own network topology constraints.
+
+#### 3.3.3 Deploying Using Volcano Job Without Network Topology Constraints
+
+1. Create a Volcano job with two independent pods, where each Pod requests the full CPU resources of one node. Example follows:
+   ```yaml
+   apiVersion: batch.volcano.sh/v1alpha1
+   kind: Job
+   metadata:
+     name: network-topology-job
+     namespace: default
+   spec:
+     schedulerName: volcano
+     minAvailable: 2
+     tasks:
+       - name: t0
+         replicas: 2
+         template:
+           spec:
+             containers:
+               - name: c0
+                 image: nginx:latest
+                 resources:
+                   requests:
+                     cpu: "4"
+                   limits:
+                     cpu: "4"
+   ```
+2. The scheduling result is as follows:
+   ```shell
+   $ kubectl get pod -owide
+   NAME                        READY   STATUS    RESTARTS   AGE   IP             NODE
+   network-topology-job-t0-0   1/1     Running   0          5s    192.168.0.10   node0
+   network-topology-job-t0-1   1/1     Running   0          5s    192.168.0.11   node1
+   ```
+   Since the resources are all idle, the first pod, i.e., network-topology-job-t0-0, will be scheduled to any node. It is node0 in this example. Then, the second pod, i.e., network-topology-job-t0-1, must be scheduled to node1, node2 or node3. It is node1 in this example. This is because the resource utilization of HyperNode0 is currently higher than HyperNode1.
