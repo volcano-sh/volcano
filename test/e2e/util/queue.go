@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
@@ -101,8 +102,36 @@ func CreateQueues(ctx *TestContext) {
 // DeleteQueue deletes Queue with the specified name
 func DeleteQueue(ctx *TestContext, q string) {
 	foreground := metav1.DeletePropagationForeground
+
+	jobs, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		Expect(err).NotTo(HaveOccurred(), "failed to list vcjobs")
+	}
+
+	for _, job := range jobs.Items {
+		if job.Spec.Queue == q {
+			//Delete all VcJobs in the queue
+			err = ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Delete(context.TODO(), job.Name, metav1.DeleteOptions{
+				PropagationPolicy: &foreground,
+			})
+			Expect(err).NotTo(HaveOccurred(), "failed to delete vcjob %s in queue %s", job.Name, q)
+
+			// Wait until the job is deleted
+			delErr := wait.Poll(100*time.Millisecond, TwoMinute, func() (bool, error) {
+				_, err := ctx.Vcclient.BatchV1alpha1().Jobs(ctx.Namespace).Get(context.TODO(), job.Name, metav1.GetOptions{})
+				if errors.IsNotFound(err) {
+					return true, nil
+				}
+				if err != nil {
+					return false, err
+				}
+				return false, nil
+			})
+			Expect(delErr).NotTo(HaveOccurred(), "failed waiting vcjob %s deleted", job.Name)
+		}
+	}
+
 	var queue *schedulingv1beta1.Queue
-	var err error
 	retryErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		queue, err = ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 		if err != nil {
@@ -116,7 +145,7 @@ func DeleteQueue(ctx *TestContext, q string) {
 		return nil
 	})
 	Expect(retryErr).NotTo(HaveOccurred(), "failed to update status of queue %s", q)
-	err = wait.Poll(100*time.Millisecond, FiveMinute, queueClosed(ctx, q))
+	err = wait.Poll(100*time.Millisecond, FiveMinute, queueClosedAndNoPod(ctx, q))
 	Expect(err).NotTo(HaveOccurred(), "failed to wait queue %s closed", q)
 
 	err = ctx.Vcclient.SchedulingV1beta1().Queues().Delete(context.TODO(), q,
@@ -160,8 +189,8 @@ func WaitQueueStatus(condition func() (bool, error)) error {
 	return wait.Poll(100*time.Millisecond, TenMinute, condition)
 }
 
-// queueClosed returns whether the Queue is closed
-func queueClosed(ctx *TestContext, name string) wait.ConditionFunc {
+// queueClosedAndNoPod returns whether the Queue is closed
+func queueClosedAndNoPod(ctx *TestContext, name string) wait.ConditionFunc {
 	return func() (bool, error) {
 		queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
@@ -169,6 +198,10 @@ func queueClosed(ctx *TestContext, name string) wait.ConditionFunc {
 		}
 
 		if queue.Status.State != schedulingv1beta1.QueueStateClosed {
+			return false, nil
+		}
+
+		if allocated, ok := queue.Status.Allocated[v1.ResourcePods]; ok && !allocated.IsZero() {
 			return false, nil
 		}
 
