@@ -300,7 +300,10 @@ The Sharding Controller provides a scalable, efficient solution for partitioning
 This controller represents a significant step toward Volcano's vision of becoming the unified scheduling platform for all AI/ML workloads, from training jobs to inference serving to autonomous agent orchestration.
 
 ## TODO
-The remaining tasks are tracked with 3 issues: #4877, #4878, #4879
+The remaining tasks are tracked with the following issues:
+- [#4877](https://github.com/volcano-sh/volcano/issues/4877)
+- [#4878](https://github.com/volcano-sh/volcano/issues/4878)
+- [#4879](https://github.com/volcano-sh/volcano/issues/4879)
 
 ## 13. References
 1. [Volcano Architecture](https://github.com/volcano-sh/volcano)
