@@ -98,6 +98,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	readyToSchedule := true
 	if hierarchyEnabled {
 		readyToSchedule = cp.buildHierarchicalQueueAttrs(ssn)
+		klog.V(4).Infof("Hierarchy is enabled in capacity plugin")
 	} else {
 		cp.buildQueueAttrs(ssn)
 	}
@@ -113,22 +114,52 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, reclaimee := range reclaimees {
 			job := ssn.Jobs[reclaimee.Job]
 			attr := cp.queueOpts[job.Queue]
+			klog.V(5).Infof("[capacity] Considering reclaimee <%s/%s> from queue <%s> for reclaimer <%s/%s>.",
+				reclaimee.Namespace, reclaimee.Name, attr.queueID, reclaimer.Namespace, reclaimer.Name)
 
+			// If reclaimee doesn't have intersecting resource dimensions with reclaimer we can skip it.
+			if skip, reason := cp.shouldSkipReclaimee(reclaimee, reclaimer); skip {
+				klog.V(5).Infof("%s, skip it.", reason)
+				continue
+			}
+
+			// allocations maps each queue to its current allocated resources (cloned) and 'allocated' points to this resource object.
+			// As victims (reclaimees) are selected, their resource requests are subtracted from the corresponding queue's allocation via this pointer.
+			// This ensures that subsequent victim selection for the same queue uses the updated allocation state.
 			if _, found := allocations[job.Queue]; !found {
 				allocations[job.Queue] = attr.allocated.Clone()
 			}
 			allocated := allocations[job.Queue]
 
-			exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
-			// When scalar resource not specified in deserved such as "pods", we should skip it and consider it as infinity,
-			// so the following first condition will be true and the current queue will not be reclaimed.
-			if allocated.LessEqual(attr.deserved, api.Infinity) || !attr.guarantee.LessEqual(exceptReclaimee, api.Zero) {
+			// Check guarantee
+			if satisfies, _ := cp.checkGuaranteeConstraint(allocated, reclaimee, attr.guarantee); !satisfies {
 				continue
 			}
-			allocated.Sub(reclaimee.Resreq)
-			victims = append(victims, reclaimee)
+
+			// If the reclaimee has no intersecting resource dimensions with deserved, it is a victim.
+			if isVictim, reason := cp.isImmediateVictim(reclaimee, attr.deserved); isVictim {
+				allocated.Sub(reclaimee.Resreq)
+				victims = append(victims, reclaimee)
+				klog.V(5).Infof("%s. It's a victim. Current victims: %+v.", reason, victims)
+				continue
+			}
+
+			// Check deserved
+			if exceeds, dims, reason := cp.checkDeservedExceedance(
+				allocated, attr.deserved, reclaimee, reclaimer, attr.name); !exceeds {
+				klog.V(5).Infof("%s", reason)
+				continue
+			} else {
+				klog.V(5).Infof("[capacity] Reclaimee <%s/%s> is a victim from queue <%s> for reclaimer <%s/%s>. "+
+					"Allocated: <%v>, Deserved: <%v>, Reclaimee Resreq: <%v>, Reclaimable on dimensions: %v.",
+					reclaimee.Namespace, reclaimee.Name, attr.queueID, reclaimer.Namespace, reclaimer.Name,
+					allocated, attr.deserved, reclaimee.Resreq, dims)
+				allocated.Sub(reclaimee.Resreq)
+				victims = append(victims, reclaimee)
+				klog.V(5).Infof("[capacity] Current victims: %+v.", victims)
+			}
 		}
-		klog.V(4).Infof("Victims from capacity plugin, victims=%+v reclaimer=%s", victims, reclaimer)
+		klog.V(4).Infof("[capacity] Victims from capacity plugin: victims=%+v reclaimer=%s.", victims, reclaimer)
 		return victims, util.Permit
 	})
 
@@ -1025,4 +1056,65 @@ func updateQueueAttrShare(attr *queueAttr) {
 	}
 
 	attr.share = res
+}
+
+// shouldSkipReclaimee checks if a reclaimee should be skipped based on whether it has
+// intersecting resource dimensions with the reclaimer. Returns true if should skip, with a reason message.
+func (cp *capacityPlugin) shouldSkipReclaimee(reclaimee, reclaimer *api.TaskInfo) (bool, string) {
+	reclaimerIntersecting := len(api.IntersectionWithIgnoredScalarResources(reclaimee.Resreq, reclaimer.InitResreq)) > 0
+	if !reclaimerIntersecting {
+		return true, fmt.Sprintf("[capacity] Reclaimee <%s/%s>: <%v> does not have intersecting resource dimensions with reclaimer <%s/%s>: <%v>",
+			reclaimee.Namespace, reclaimee.Name, reclaimee.Resreq, reclaimer.Namespace, reclaimer.Name, reclaimer.InitResreq)
+	}
+	return false, ""
+}
+
+// checkGuaranteeConstraint checks if removing the reclaimee would violate the queue's guarantee.
+// Returns true if the guarantee constraint is satisfied (i.e., reclaim is allowed).
+func (cp *capacityPlugin) checkGuaranteeConstraint(
+	allocated *api.Resource,
+	reclaimee *api.TaskInfo,
+	guarantee *api.Resource,
+) (bool, *api.Resource) {
+	exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
+	reclaimable := guarantee.LessEqual(exceptReclaimee, api.Zero)
+	return reclaimable, exceptReclaimee
+}
+
+// isImmediateVictim checks if a reclaimee is an immediate victim because it has no
+// intersecting resource dimensions with the queue's deserved resources.
+// Returns true if it's an immediate victim, with a reason message.
+func (cp *capacityPlugin) isImmediateVictim(
+	reclaimee *api.TaskInfo,
+	deserved *api.Resource,
+) (bool, string) {
+	deservedIntersecting := len(api.Intersection(reclaimee.Resreq, deserved)) > 0
+	if !deservedIntersecting {
+		return true, fmt.Sprintf("[capacity] No intersection between deserved: <%v> and reclaimee <%s/%s>: <%v>",
+			deserved, reclaimee.Namespace, reclaimee.Name, reclaimee.Resreq)
+	}
+	return false, ""
+}
+
+// checkDeservedExceedance checks if the queue's allocated resources exceed its deserved resources
+// on dimensions relevant to the reclaimee, making the reclaimee a valid victim.
+// Returns true if exceeds, along with the relevant dimensions and a reason message.
+func (cp *capacityPlugin) checkDeservedExceedance(
+	allocated *api.Resource,
+	deserved *api.Resource,
+	reclaimee *api.TaskInfo,
+	reclaimer *api.TaskInfo,
+	queueName string,
+) (bool, []string, string) {
+	reclaimable, dims := allocated.GreaterPartlyWithRelevantDimensions(deserved, reclaimee.Resreq)
+	if !reclaimable {
+		reason := fmt.Sprintf(
+			"[capacity] Queue <%v> allocated resources are not greater than deserved on any relevant dimension of reclaimee. "+
+				"Hence reclaimee <%s/%s> cannot be reclaimed for reclaimer <%s/%s>. "+
+				"Deserved: <%v>, Allocated: <%v>, Reclaimee Resreq: <%v>",
+			queueName, reclaimee.Namespace, reclaimee.Name, reclaimer.Namespace, reclaimer.Name, deserved, allocated, reclaimee.Resreq,
+		)
+		return false, nil, reason
+	}
+	return true, dims, ""
 }

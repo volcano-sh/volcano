@@ -724,12 +724,13 @@ func (r *Resource) GreaterPartly(rr *Resource, defaultValue DimensionDefaultValu
 //
 // The main difference between GreaterPartlyWithDimension and GreaterPartlyWithRelevantDimensions is that the latter
 // will filter out standard dimensions (MilliCPU, Memory) where rr is zero or less than minResource and
-// only considers scalar dimensions greater than 0 in req and present in rr:
+// only considers scalar dimensions greater than 0 in req and present in rr.
+//
 // For example:
 //
 //	r: <gpu 2> rr: <> req: <gpu 1>
 //	  r.GreaterPartlyWithDimension(rr, req) => (true, [gpu])
-//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr doesn't have gpu resource
+//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr does not have gpu resource
 //	r: <cpu 4> rr: <cpu 0> req: <cpu 2>
 //	  r.GreaterPartlyWithDimension(rr, req) => (true, [cpu])
 //	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr has zero cpu resource
@@ -800,12 +801,13 @@ func (r *Resource) GreaterPartlyWithDimension(rr *Resource, req *Resource) (bool
 //
 // The main difference between GreaterPartlyWithDimension and GreaterPartlyWithRelevantDimensions is that the latter
 // will filter out standard dimensions (MilliCPU, Memory) where rr is zero or less than minResource and
-// only considers scalar dimensions greater than 0 in req and present in rr:
+// only considers scalar dimensions greater than 0 in req and present in rr.
+//
 // For example:
 //
 //	r: <gpu 2> rr: <> req: <gpu 1>
 //	  r.GreaterPartlyWithDimension(rr, req) => (true, [gpu])
-//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr doesn't have gpu resource
+//	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr does not have gpu resource
 //	r: <cpu 4> rr: <cpu 0> req: <cpu 2>
 //	  r.GreaterPartlyWithDimension(rr, req) => (true, [cpu])
 //	  r.GreaterPartlyWithRelevantDimensions(rr, req) => (false, []) since rr has zero cpu resource
