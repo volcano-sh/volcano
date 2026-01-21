@@ -35,6 +35,7 @@ import (
 
 const (
 	DefaultCandidateNodeCount = 3
+	CandidateNodeCountKey     = "candidateNodeCount"
 )
 
 type Action struct {
@@ -65,6 +66,7 @@ func (alloc *Action) Initialize() {}
 func (alloc *Action) parseArguments(configurations []conf.Configuration) {
 	arguments := vfwk.GetArgOfActionFromConf(configurations, alloc.Name())
 	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+	arguments.GetInt(&alloc.candidateNodeCount, CandidateNodeCountKey)
 }
 
 func (alloc *Action) Execute(fwk *framework.Framework, schedCtx *agentapi.SchedulingContext) {
