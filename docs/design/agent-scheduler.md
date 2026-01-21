@@ -19,7 +19,7 @@ Enable collaboration and resource management between schedulers through shard-ba
 ### Architecture Overview
 An independent Agent scheduler is introduced to identify and make fast scheduling for Agent workloads. The scheduler improves the scheduling rate of individual Pods through optimized scheduling strategies and in-time Pod scheduling. It further increases overall scheduling throughput by leveraging parallel scheduling with multiple workers.
 
-When Agent workloads coexist with other workloads, the sharding controller dynamically divides nodes into shards based on defined policies like resource threshold, node type, etc. Each scheduler obtains schedulable nodes through shard synchronization and selects or prioritizes the corresponding nodes for scheduling. This enables multiple schedulers to perform parallel scheduling of different workloads based on different shards. Refer to the [sharding controller design and shard strategy](shard-controller.md) for details.   
+When Agent workloads coexist with other workloads, the sharding controller dynamically divides nodes into shards based on defined policies like resource threshold, node type, etc. Each scheduler obtains schedulable nodes through shard synchronization and selects or prioritizes the corresponding nodes for scheduling. This enables multiple schedulers to perform parallel scheduling of different workloads based on different shards. Refer to the [sharding controller design and shard strategy](sharding_controller.md) for details.   
 ![](images/agent-scheduler/overview.png)
 
 **Sharding Controller:** Dynamically assigns cluster nodes to different shards based on cluster nodes resource status and sharding strategy.
