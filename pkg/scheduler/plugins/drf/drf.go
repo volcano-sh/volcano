@@ -227,6 +227,11 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		latt := drf.jobAttrs[preemptor.Job]
+		if latt == nil {
+			klog.Warningf("[drf] Skip preemption: preemptor job <%s> not found in jobAttrs (orphaned task from deleted PodGroup)",
+				preemptor.Job)
+			return nil, util.Permit
+		}
 		lalloc := latt.allocated.Clone().Add(preemptor.Resreq)
 		_, ls := drf.calculateShare(lalloc, drf.totalResource)
 
@@ -235,6 +240,11 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, preemptee := range preemptees {
 			if _, found := allocations[preemptee.Job]; !found {
 				ratt := drf.jobAttrs[preemptee.Job]
+				if ratt == nil {
+					klog.Warningf("[drf] Skip preemptee <%s/%s>: job <%s> not found in jobAttrs (orphaned task from deleted PodGroup)",
+						preemptee.Namespace, preemptee.Name, preemptee.Job)
+					continue
+				}
 				allocations[preemptee.Job] = ratt.allocated.Clone()
 			}
 			ralloc := allocations[preemptee.Job].Sub(preemptee.Resreq)
@@ -245,7 +255,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		klog.V(4).Infof("Victims from DRF plugins are %+v", victims)
+		klog.V(4).Infof("[drf] Victims from DRF preemptable plugin are %+v", victims)
 
 		return victims, util.Permit
 	}
@@ -275,9 +285,24 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			//  update reclaimer hdrf
 			ljob := ssn.Jobs[reclaimer.Job]
+			if ljob == nil {
+				klog.Warningf("[drf] Skip reclaim: reclaimer job <%s> not found in session (orphaned task from deleted PodGroup)",
+					reclaimer.Job)
+				return nil, util.Permit
+			}
 			lqueue := ssn.Queues[ljob.Queue]
+			if lqueue == nil {
+				klog.V(4).Infof("[drf] Skip reclaim: reclaimer queue <%s> not found in session",
+					ljob.Queue)
+				return nil, util.Permit
+			}
 			ljob = ljob.Clone()
 			attr := drf.jobAttrs[ljob.UID]
+			if attr == nil {
+				klog.V(4).Infof("[drf] Skip reclaim: reclaimer job <%s> not found in jobAttrs",
+					ljob.UID)
+				return nil, util.Permit
+			}
 			lattr := &drfAttr{
 				allocated: attr.allocated.Clone(),
 			}
@@ -288,12 +313,28 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			for _, preemptee := range reclaimees {
 				rjob := ssn.Jobs[preemptee.Job]
+				if rjob == nil {
+					klog.Warningf("[drf] Skip reclaimee <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+						preemptee.Namespace, preemptee.Name, preemptee.Job)
+					continue
+				}
 				rqueue := ssn.Queues[rjob.Queue]
+				if rqueue == nil {
+					klog.V(4).Infof("[drf] Skip reclaimee <%s/%s>: queue <%s> not found in session",
+						preemptee.Namespace, preemptee.Name, rjob.Queue)
+					continue
+				}
 
 				// update hdrf of reclaimee job
 				totalAllocated.Sub(preemptee.Resreq)
 				rjob = rjob.Clone()
 				attr := drf.jobAttrs[rjob.UID]
+				if attr == nil {
+					klog.V(4).Infof("[drf] Skip reclaimee <%s/%s>: job <%s> not found in jobAttrs",
+						preemptee.Namespace, preemptee.Name, rjob.UID)
+					totalAllocated.Add(preemptee.Resreq)
+					continue
+				}
 				rattr := &drfAttr{
 					allocated: attr.allocated.Clone(),
 				}
@@ -319,7 +360,7 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 				}
 			}
 
-			klog.V(4).Infof("Victims from HDRF plugins are %+v", victims)
+			klog.V(4).Infof("[drf] Victims from HDRF plugin are %+v", victims)
 
 			return victims, util.Permit
 		}
@@ -349,21 +390,18 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Register event handlers.
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			// Handle orphaned tasks whose jobs were deleted after session snapshot.
-			// This can occur during rapid PodGroup deletion or controller restarts.
-			attr, attrFound := drf.jobAttrs[event.Task.Job]
-			if !attrFound {
-				klog.V(4).Infof("DRF AllocateFunc: job <%s> not found in jobAttrs, skipping orphaned task <%s/%s>",
-					event.Task.Job, event.Task.Namespace, event.Task.Name)
+			job := ssn.Jobs[event.Task.Job]
+			if job == nil {
+				klog.Warningf("[drf] Skip allocate event for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+					event.Task.Namespace, event.Task.Name, event.Task.Job)
 				return
 			}
-			job, jobFound := ssn.Jobs[event.Task.Job]
-			if !jobFound {
-				klog.V(4).Infof("DRF AllocateFunc: job <%s> not found in session, skipping orphaned task <%s/%s>",
-					event.Task.Job, event.Task.Namespace, event.Task.Name)
+			attr := drf.jobAttrs[event.Task.Job]
+			if attr == nil {
+				klog.Warningf("[drf] Skip allocate event for task <%s/%s>: job <%s> not found in jobAttrs",
+					event.Task.Namespace, event.Task.Name, event.Task.Job)
 				return
 			}
-
 			attr.allocated.Add(event.Task.Resreq)
 			drf.updateShare(attr)
 			if !ssn.IsJobTerminated(job.UID) {
@@ -372,35 +410,29 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			nsShare := -1.0
 			if hierarchyEnabled {
-				queue, queueFound := ssn.Queues[job.Queue]
-				if !queueFound {
-					klog.V(4).Infof("DRF AllocateFunc: queue <%s> not found for job <%s/%s>, skipping hierarchy update",
-						job.Queue, job.Namespace, job.Name)
-				} else {
+				queue := ssn.Queues[job.Queue]
+				if queue != nil {
 					drf.totalAllocated.Add(event.Task.Resreq)
 					drf.UpdateHierarchicalShare(drf.hierarchicalRoot, drf.totalAllocated, job, attr, queue.Hierarchy, queue.Weights)
 				}
 			}
 
-			klog.V(4).Infof("DRF AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>, namespace share <%v>",
+			klog.V(4).Infof("[drf] AllocateFunc: task <%v/%v>, resreq <%v>, share <%v>, namespace share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share, nsShare)
 		},
 		DeallocateFunc: func(event *framework.Event) {
-			// Handle orphaned tasks whose jobs were deleted after session snapshot.
-			// This can occur during rapid PodGroup deletion or controller restarts.
-			attr, attrFound := drf.jobAttrs[event.Task.Job]
-			if !attrFound {
-				klog.V(4).Infof("DRF DeallocateFunc: job <%s> not found in jobAttrs, skipping orphaned task <%s/%s>",
-					event.Task.Job, event.Task.Namespace, event.Task.Name)
+			job := ssn.Jobs[event.Task.Job]
+			if job == nil {
+				klog.Warningf("[drf] Skip deallocate event for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+					event.Task.Namespace, event.Task.Name, event.Task.Job)
 				return
 			}
-			job, jobFound := ssn.Jobs[event.Task.Job]
-			if !jobFound {
-				klog.V(4).Infof("DRF DeallocateFunc: job <%s> not found in session, skipping orphaned task <%s/%s>",
-					event.Task.Job, event.Task.Namespace, event.Task.Name)
+			attr := drf.jobAttrs[event.Task.Job]
+			if attr == nil {
+				klog.Warningf("[drf] Skip deallocate event for task <%s/%s>: job <%s> not found in jobAttrs",
+					event.Task.Namespace, event.Task.Name, event.Task.Job)
 				return
 			}
-
 			attr.allocated.Sub(event.Task.Resreq)
 			drf.updateShare(attr)
 			if !ssn.IsJobTerminated(job.UID) {
@@ -409,17 +441,14 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			nsShare := -1.0
 			if hierarchyEnabled {
-				queue, queueFound := ssn.Queues[job.Queue]
-				if !queueFound {
-					klog.V(4).Infof("DRF DeallocateFunc: queue <%s> not found for job <%s/%s>, skipping hierarchy update",
-						job.Queue, job.Namespace, job.Name)
-				} else {
+				queue := ssn.Queues[job.Queue]
+				if queue != nil {
 					drf.totalAllocated.Sub(event.Task.Resreq)
 					drf.UpdateHierarchicalShare(drf.hierarchicalRoot, drf.totalAllocated, job, attr, queue.Hierarchy, queue.Weights)
 				}
 			}
 
-			klog.V(4).Infof("DRF DeallocateFunc: task <%v/%v>, resreq <%v>,  share <%v>, namespace share <%v>",
+			klog.V(4).Infof("[drf] DeallocateFunc: task <%v/%v>, resreq <%v>, share <%v>, namespace share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share, nsShare)
 		},
 	})

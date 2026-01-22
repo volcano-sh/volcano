@@ -19,6 +19,7 @@ package nodegroup
 import (
 	"container/list"
 	"errors"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -260,22 +261,32 @@ func (np *nodeGroupPlugin) OnSessionOpen(ssn *framework.Session) {
 			return score, nil
 		}
 		job := ssn.Jobs[task.Job]
+		if job == nil {
+			klog.Warningf("[nodegroup] Skip node scoring for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+				task.Namespace, task.Name, task.Job)
+			return score, nil
+		}
 		attr := np.queueAttrs[job.Queue]
 		if attr != nil && attr.affinity != nil {
 			score = attr.affinity.score(group)
 		}
 
-		klog.V(4).Infof("task <%s>/<%s> queue %s on node %s of nodegroup %s, score %v", task.Namespace, task.Name, job.Queue, node.Name, group, score)
+		klog.V(4).Infof("[nodegroup] task <%s>/<%s> queue %s on node %s of nodegroup %s, score %v", task.Namespace, task.Name, job.Queue, node.Name, group, score)
 		return score, nil
 	}
 	ssn.AddNodeOrderFn(np.Name(), nodeOrderFn)
 
 	predicateFn := func(task *api.TaskInfo, node *api.NodeInfo) error {
 		job := ssn.Jobs[task.Job]
+		if job == nil {
+			klog.Warningf("[nodegroup] Skip predicate for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+				task.Namespace, task.Name, task.Job)
+			return fmt.Errorf("job %s not found in session", task.Job)
+		}
 		attr := np.queueAttrs[job.Queue]
 
 		// Check if the queue has any node group affinity rules
-		unsetAffinity := attr.affinity == nil ||
+		unsetAffinity := attr == nil || attr.affinity == nil ||
 			(attr.affinity.queueGroupAffinityRequired.Len() == 0 &&
 				attr.affinity.queueGroupAffinityPreferred.Len() == 0 &&
 				attr.affinity.queueGroupAntiAffinityRequired.Len() == 0 &&

@@ -424,7 +424,26 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFn(ssn *framework.Session, 
 	var err error
 
 	job := ssn.Jobs[task.Job]
-	subJob := job.SubJobs[job.TaskToSubJob[task.UID]]
+	if job == nil {
+		klog.Warningf("[network-topology-aware] Skip batch node ordering for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+			task.Namespace, task.Name, task.Job)
+		return make(map[string]float64), nil
+	}
+
+	subJobID, found := job.TaskToSubJob[task.UID]
+	if !found {
+		klog.V(4).Infof("[network-topology-aware] Skip batch node ordering for task <%s/%s>: task not mapped to any subJob",
+			task.Namespace, task.Name)
+		return nta.batchNodeOrderFnForNormalPods(ssn, task, nodes)
+	}
+
+	subJob, found := job.SubJobs[subJobID]
+	if !found || subJob == nil {
+		klog.V(4).Infof("[network-topology-aware] Skip batch node ordering for task <%s/%s>: subJob <%s> not found in job",
+			task.Namespace, task.Name, subJobID)
+		return nta.batchNodeOrderFnForNormalPods(ssn, task, nodes)
+	}
+
 	if subJob.WithNetworkTopology() {
 		nodeScores, err = nta.batchNodeOrderFnForNetworkAwarePods(ssn, task, subJob, nodes)
 	} else {
