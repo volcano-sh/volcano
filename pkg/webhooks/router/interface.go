@@ -32,13 +32,14 @@ import (
 type AdmitFunc func(admissionv1.AdmissionReview) *admissionv1.AdmissionResponse
 
 type AdmissionServiceConfig struct {
-	SchedulerNames []string
-	KubeClient     kubernetes.Interface
-	VolcanoClient  versioned.Interface
-	QueueLister    schedulinglister.QueueLister
-	QueueInformer  cache.SharedIndexInformer
-	Recorder       record.EventRecorder
-	ConfigData     *config.AdmissionConfiguration
+	SchedulerNames                []string
+	KubeClient                    kubernetes.Interface
+	VolcanoClient                 versioned.Interface
+	QueueLister                   schedulinglister.QueueLister
+	QueueInformer                 cache.SharedIndexInformer
+	Recorder                      record.EventRecorder
+	ConfigData                    *config.AdmissionConfiguration
+	EnableQueueAllocatedPodsCheck bool
 }
 
 type AdmissionService struct {

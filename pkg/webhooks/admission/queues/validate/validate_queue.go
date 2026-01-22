@@ -310,9 +310,12 @@ func validateQueueDeleting(queueName string) error {
 		return err
 	}
 
-	if allocated, ok := queue.Status.Allocated[v1.ResourcePods]; ok && !allocated.IsZero() {
-		return fmt.Errorf("queue %s cannot be deleted because it has allocated Pods: %d",
-			queue.Name, allocated.Value())
+	// Only check allocated pods if the flag is enabled
+	if config.EnableQueueAllocatedPodsCheck {
+		if allocated, ok := queue.Status.Allocated[v1.ResourcePods]; ok && !allocated.IsZero() {
+			return fmt.Errorf("queue %s cannot be deleted because it has allocated Pods: %d",
+				queue.Name, allocated.Value())
+		}
 	}
 
 	childQueueNames, err := listQueueChild(queueName)

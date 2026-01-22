@@ -59,6 +59,9 @@ type Config struct {
 	// HealthzBindAddress is the IP address and port for the health check server to serve on
 	// defaulting to :11251
 	HealthzBindAddress string
+
+	// EnableQueueAllocatedPodsCheck if true, queue deletion will be rejected when the queue has allocated pods
+	EnableQueueAllocatedPodsCheck bool
 }
 
 type DecryptFunc func(c *Config) error
@@ -92,6 +95,7 @@ func (c *Config) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&c.EnableHealthz, "enable-healthz", false, "Enable the health check; it is false by default")
 	fs.StringVar(&c.HealthzBindAddress, "healthz-address", defaultHealthzAddress, "The address to listen on for the health check server.")
 	fs.DurationVar(&c.GracefulShutdownTime, "graceful-shutdown-time", defaultGracefulShutdownTime, "The duration to wait during graceful shutdown before forcing termination.")
+	fs.BoolVar(&c.EnableQueueAllocatedPodsCheck, "enable-queue-allocated-pods-check", false, "If true, queue deletion will be rejected when the queue has allocated pods.")
 }
 
 // CheckPortOrDie check valid port range.

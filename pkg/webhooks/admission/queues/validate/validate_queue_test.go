@@ -1091,6 +1091,10 @@ func TestAdmitQueues(t *testing.T) {
 }
 
 func TestAdmitHierarchicalQueues(t *testing.T) {
+	config.EnableQueueAllocatedPodsCheck = true
+	defer func() {
+		config.EnableQueueAllocatedPodsCheck = false
+	}()
 	parentQueueWithJobs := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "parent-queue-with-jobs",
