@@ -1033,7 +1033,7 @@ func (ssn *Session) RecordPodGroupEvent(podGroup *api.PodGroup, eventType, reaso
 }
 
 // SharedDRAManager returns the shared DRAManager from cache
-func (ssn *Session) SharedDRAManager() k8sframework.SharedDRAManager {
+func (ssn *Session) SharedDRAManager() fwk.SharedDRAManager {
 	return ssn.cache.SharedDRAManager()
 }
 

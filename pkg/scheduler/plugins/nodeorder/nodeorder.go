@@ -70,13 +70,13 @@ type NodeOrderPlugin struct {
 	// Arguments given for the plugin
 	pluginArguments       framework.Arguments
 	weight                priorityWeight
-	Handle                k8sframework.Handle
+	Handle                fwk.Handle
 	ScorePlugins          map[string]nodescore.BaseScorePlugin
 	NodeOrderScorePlugins map[string]ScorePluginWithWeight
 }
 
 type ScorePluginWithWeight struct {
-	plugin k8sframework.ScorePlugin
+	plugin fwk.ScorePlugin
 	weight int
 }
 
