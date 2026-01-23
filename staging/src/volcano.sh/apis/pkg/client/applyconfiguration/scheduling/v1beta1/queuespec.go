@@ -24,17 +24,28 @@ import (
 
 // QueueSpecApplyConfiguration represents a declarative configuration of the QueueSpec type for use
 // with apply.
+//
+// QueueSpec represents the template of Queue.
 type QueueSpecApplyConfiguration struct {
-	Weight          *int32                             `json:"weight,omitempty"`
-	Capability      *v1.ResourceList                   `json:"capability,omitempty"`
-	Reclaimable     *bool                              `json:"reclaimable,omitempty"`
-	ExtendClusters  []ClusterApplyConfiguration        `json:"extendClusters,omitempty"`
-	Guarantee       *GuaranteeApplyConfiguration       `json:"guarantee,omitempty"`
-	Affinity        *AffinityApplyConfiguration        `json:"affinity,omitempty"`
-	Type            *string                            `json:"type,omitempty"`
-	Parent          *string                            `json:"parent,omitempty"`
-	Deserved        *v1.ResourceList                   `json:"deserved,omitempty"`
-	Priority        *int32                             `json:"priority,omitempty"`
+	Weight     *int32           `json:"weight,omitempty"`
+	Capability *v1.ResourceList `json:"capability,omitempty"`
+	// Reclaimable indicate whether the queue can be reclaimed by other queue
+	Reclaimable *bool `json:"reclaimable,omitempty"`
+	// extendCluster indicate the jobs in this Queue will be dispatched to these clusters.
+	ExtendClusters []ClusterApplyConfiguration `json:"extendClusters,omitempty"`
+	// Guarantee indicate configuration about resource reservation
+	Guarantee *GuaranteeApplyConfiguration `json:"guarantee,omitempty"`
+	// If specified, the pod owned by the queue will be scheduled with constraint
+	Affinity *AffinityApplyConfiguration `json:"affinity,omitempty"`
+	// Type define the type of queue
+	Type *string `json:"type,omitempty"`
+	// Parent define the parent of queue
+	Parent *string `json:"parent,omitempty"`
+	// The amount of resources configured by the user. This part of resource can be shared with other queues and reclaimed back.
+	Deserved *v1.ResourceList `json:"deserved,omitempty"`
+	// Priority define the priority of queue. Higher values are prioritized for scheduling and considered later during reclamation.
+	Priority *int32 `json:"priority,omitempty"`
+	// DequeueStrategy defines the dequeue strategy of queue
 	DequeueStrategy *schedulingv1beta1.DequeueStrategy `json:"dequeueStrategy,omitempty"`
 }
 

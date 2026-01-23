@@ -19,7 +19,10 @@ package v1alpha1
 
 // JobTemplateStatusApplyConfiguration represents a declarative configuration of the JobTemplateStatus type for use
 // with apply.
+//
+// JobTemplateStatus defines the observed state of JobTemplate
 type JobTemplateStatusApplyConfiguration struct {
+	// JobDependsOnList is the list of jobs that this job depends on
 	JobDependsOnList []string `json:"jobDependsOnList,omitempty"`
 }
 

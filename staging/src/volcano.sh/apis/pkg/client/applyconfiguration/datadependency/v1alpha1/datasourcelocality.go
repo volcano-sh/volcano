@@ -19,7 +19,12 @@ package v1alpha1
 
 // DataSourceLocalityApplyConfiguration represents a declarative configuration of the DataSourceLocality type for use
 // with apply.
+//
+// DataSourceLocality specifies the cached location information of the data source.
 type DataSourceLocalityApplyConfiguration struct {
+	// ClusterNames is a list of cluster names where the cached data source information indicates availability.
+	// This provides a simple and direct way to specify cached data source location
+	// without interfering with user-defined ResourceBinding cluster affinity.
 	ClusterNames []string `json:"clusterNames,omitempty"`
 }
 

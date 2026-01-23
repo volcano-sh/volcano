@@ -23,11 +23,17 @@ import (
 
 // NodeShardStatusApplyConfiguration represents a declarative configuration of the NodeShardStatus type for use
 // with apply.
+//
+// NodeShardStatus represents the current state of a NodeShard.
 type NodeShardStatusApplyConfiguration struct {
+	// LastUpdateTime is the last time the status was updated.
 	LastUpdateTime *v1.Time `json:"lastUpdateTime,omitempty"`
-	NodesInUse     []string `json:"nodesInUse,omitempty"`
-	NodesToRemove  []string `json:"nodesToRemove,omitempty"`
-	NodesToAdd     []string `json:"nodesToAdd,omitempty"`
+	// NodesInUse is the list of nodes currently in use by the NodeShard.
+	NodesInUse []string `json:"nodesInUse,omitempty"`
+	// NodesToRemove is the list of nodes preparing to be removed from the NodeShard.
+	NodesToRemove []string `json:"nodesToRemove,omitempty"`
+	// NodesToAdd is the list of nodes preparing to be added to the NodeShard.
+	NodesToAdd []string `json:"nodesToAdd,omitempty"`
 }
 
 // NodeShardStatusApplyConfiguration constructs a declarative configuration of the NodeShardStatus type for use with
