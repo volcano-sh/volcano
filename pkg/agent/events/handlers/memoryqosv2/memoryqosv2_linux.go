@@ -23,11 +23,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 
 	configv1alpha1 "volcano.sh/apis/pkg/apis/config/v1alpha1"
+	"volcano.sh/volcano/pkg/agent/apis"
+	"volcano.sh/volcano/pkg/agent/apis/extension"
 	"volcano.sh/volcano/pkg/agent/events/framework"
 	"volcano.sh/volcano/pkg/agent/events/handlers"
 	"volcano.sh/volcano/pkg/agent/events/handlers/base"
@@ -113,7 +116,7 @@ func (h *MemoryQoSV2Handle) Handle(event interface{}) error {
 
 		memoryHigh, supported := memorySubsystem.High()
 		if supported {
-			quantity := container.Resources.Limits[corev1.ResourceMemory]
+			quantity := getMemoryQuantity(container.Resources.Limits, podEvent.QoSLevel)
 			value := func() int64 {
 				if quantity.IsZero() || cfg.HighRatio >= 100 {
 					return cgroup.MemoryUnlimited
@@ -129,7 +132,7 @@ func (h *MemoryQoSV2Handle) Handle(event interface{}) error {
 
 		memoryLow, supported := memorySubsystem.Low()
 		if supported {
-			quantity := container.Resources.Requests[corev1.ResourceMemory]
+			quantity := getMemoryQuantity(container.Resources.Requests, podEvent.QoSLevel)
 			value := quantity.Value() * int64(cfg.LowRatio) / 100
 			err = memoryLow.Set(containerCgroup, value)
 			if err != nil {
@@ -140,7 +143,7 @@ func (h *MemoryQoSV2Handle) Handle(event interface{}) error {
 
 		memoryMin, supported := memorySubsystem.Min()
 		if supported {
-			quantity := container.Resources.Requests[corev1.ResourceMemory]
+			quantity := getMemoryQuantity(container.Resources.Requests, podEvent.QoSLevel)
 			value := quantity.Value() * int64(cfg.MinRatio) / 100
 			err = memoryMin.Set(containerCgroup, value)
 			if err != nil {
@@ -152,6 +155,18 @@ func (h *MemoryQoSV2Handle) Handle(event interface{}) error {
 
 	klog.InfoS("Successfully set memory qos to cgroup file", "pod", klog.KObj(pod), "config", cfg)
 	return nil
+}
+
+// getMemoryQuantity returns the memory quantity from the provided resource list based on the QoS level.
+// If the QoS level allows extended resources, it returns the extended memory resource if exists.
+// Otherwise, it returns the standard memory resource.
+func getMemoryQuantity(resources corev1.ResourceList, qosLevel int64) resource.Quantity {
+	if extension.AllowedUseExtRes(qosLevel) {
+		if quantity, exists := resources[apis.GetExtendResourceMemory()]; exists {
+			return quantity
+		}
+	}
+	return resources[corev1.ResourceMemory]
 }
 
 // parseColocationConfig decodes the colocation configuration string into a MemoryQos struct.

@@ -25,6 +25,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/volcano/pkg/agent/apis/extension"
 	"volcano.sh/volcano/pkg/agent/events/framework"
 	"volcano.sh/volcano/pkg/agent/events/handlers"
 	"volcano.sh/volcano/pkg/agent/events/handlers/base"
@@ -62,7 +63,7 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 		return fmt.Errorf("illegal pod event")
 	}
 
-	if !allowedUseExtRes(podEvent.QoSLevel) {
+	if !extension.AllowedUseExtRes(podEvent.QoSLevel) {
 		return nil
 	}
 
@@ -126,10 +127,4 @@ func (r *ResourcesHandle) Handle(event interface{}) error {
 			"file", cr.SubPath, "value", cr.Value, "pod", klog.KObj(podEvent.Pod))
 	}
 	return utilerrors.NewAggregate(errs)
-}
-
-// allowedUseExtRes defines what qos levels can use extension resources,
-// currently only qos level QosLevelLS and QosLevelBE can use.
-func allowedUseExtRes(qosLevel int64) bool {
-	return qosLevel <= 1
 }
