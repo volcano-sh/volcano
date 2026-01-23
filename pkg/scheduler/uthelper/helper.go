@@ -31,12 +31,9 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
-	fakek8s "k8s.io/client-go/kubernetes/fake"
-	ktesting "k8s.io/client-go/testing"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	vcapisv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -132,26 +129,55 @@ var _ Interface = &TestCommonStruct{}
 
 // RegisterSession open session with tiers and configuration, and mock schedulerCache with self-defined FakeBinder and FakeEvictor
 func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session {
-	test.cache = test.createSchedulerCache()
-	test.waitForCacheSyncPolling(test.cache)
+	test.initInfrastructure()
 	RegisterPlugins(test.Plugins)
 	test.tiers = tiers
 	test.configurations = config
-	test.ssn = framework.OpenSession(test.cache, tiers, config)
 
-	time.Sleep(200 * time.Millisecond)
+	_ = framework.OpenSession(test.cache, tiers, config)
+	test.addTestData()
+	test.waitForCacheSyncPolling(test.cache)
+	test.ssn = framework.OpenSession(test.cache, tiers, config)
 
 	return test.ssn
 }
 
 func (test *TestCommonStruct) waitForCacheSyncPolling(schedulerCache *cache.SchedulerCache) {
 	// Wait for all nodes and pods to be synced into the cache with their correct status
-	timeout := 2 * time.Second
+	timeout := 3 * time.Second
 	if test.CacheSyncTimeout > 0 {
 		timeout = test.CacheSyncTimeout
 	}
 
-	err := wait.PollImmediate(10*time.Millisecond, timeout, func() (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	err := wait.PollUntilContextTimeout(ctx, 10*time.Millisecond, timeout, true, func(ctx context.Context) (bool, error) {
+		// First wait for the underlying shared informers to report synced state.
+		informerFactory := schedulerCache.SharedInformerFactory()
+
+		if !informerFactory.Core().V1().Nodes().Informer().HasSynced() {
+			return false, nil
+		}
+		if len(test.PVs) > 0 && !informerFactory.Core().V1().PersistentVolumes().Informer().HasSynced() {
+			return false, nil
+		}
+		if len(test.PVCs) > 0 && !informerFactory.Core().V1().PersistentVolumeClaims().Informer().HasSynced() {
+			return false, nil
+		}
+		if len(test.SCs) > 0 && !informerFactory.Storage().V1().StorageClasses().Informer().HasSynced() {
+			return false, nil
+		}
+		if len(test.DeviceClasses) > 0 && !informerFactory.Resource().V1().DeviceClasses().Informer().HasSynced() {
+			return false, nil
+		}
+		if len(test.ResourceClaims) > 0 && !informerFactory.Resource().V1().ResourceClaims().Informer().HasSynced() {
+			return false, nil
+		}
+		if len(test.ResourceSlices) > 0 && !informerFactory.Resource().V1().ResourceSlices().Informer().HasSynced() {
+			return false, nil
+		}
+
 		schedulerCache.Mutex.Lock()
 		defer schedulerCache.Mutex.Unlock()
 
@@ -255,18 +281,18 @@ func (test *TestCommonStruct) waitForCacheSyncPolling(schedulerCache *cache.Sche
 	}
 }
 
-// createSchedulerCache create scheduler cache
-func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
+// initInfrastructure initializes the mock infrastructure (client, cache, informers)
+func (test *TestCommonStruct) initInfrastructure() {
 	binder := util.NewFakeBinder(0)
 	evictor := util.NewFakeEvictor(0)
 	test.stsUpdator = &util.FakeStatusUpdater{}
 	test.binder = binder
 	test.evictor = evictor
 	test.stop = make(chan struct{})
-	// Create scheduler cache with self-defined binder and evictor
-	schedulerCache := cache.NewCustomMockSchedulerCache("utmock-scheduler", binder, evictor, test.stsUpdator, nil, nil)
 
-	schedulerCache.IgnoredCSIProvisioners = test.IgnoreProvisioners
+	// Create scheduler cache with self-defined binder and evictor
+	test.cache = cache.NewCustomMockSchedulerCache("utmock-scheduler", binder, evictor, test.stsUpdator, nil, nil)
+	test.cache.IgnoredCSIProvisioners = test.IgnoreProvisioners
 
 	ready := new(atomic.Bool)
 	ready.Store(true)
@@ -288,24 +314,19 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 			}
 		}
 	}
-	schedulerCache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
+	test.cache.HyperNodesInfo = schedulingapi.NewHyperNodesInfoWithCache(test.HyperNodesMap, test.HyperNodesSetByTier, test.HyperNodes, ready)
 
-	// Initial provisioning resources
-	kubeClient := schedulerCache.Client()
+	// Start informers
+	test.cache.Run(test.stop)
+	test.cache.WaitForCacheSync(test.stop)
+}
+
+// addTestData populates the mock infrastructure with test data
+func (test *TestCommonStruct) addTestData() {
+	kubeClient := test.cache.Client()
 	for _, sc := range test.SCs {
 		kubeClient.StorageV1().StorageClasses().Create(context.Background(), sc, metav1.CreateOptions{})
 	}
-
-	fakeClient := kubeClient.(*fakek8s.Clientset)
-
-	fakeClient.PrependReactor("update", "persistentvolumes", func(action ktesting.Action) (bool, runtime.Object, error) {
-		updateAction := action.(ktesting.UpdateAction)
-		return true, updateAction.GetObject().(*v1.PersistentVolume).DeepCopy(), nil
-	})
-	fakeClient.PrependReactor("update", "persistentvolumeclaims", func(action ktesting.Action) (bool, runtime.Object, error) {
-		updateAction := action.(ktesting.UpdateAction)
-		return true, updateAction.GetObject().(*v1.PersistentVolumeClaim).DeepCopy(), nil
-	})
 
 	for _, pv := range test.PVs {
 		pvCopy := pv.DeepCopy()
@@ -383,20 +404,17 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 		}
 	}
 	for _, pg := range test.PodGroups {
-		schedulerCache.AddPodGroupV1beta1(pg)
+		test.cache.AddPodGroupV1beta1(pg)
 	}
 	for _, queue := range test.Queues {
-		schedulerCache.AddQueueV1beta1(queue)
+		test.cache.AddQueueV1beta1(queue)
 	}
 	for _, pc := range test.PriClass {
-		schedulerCache.AddPriorityClass(pc)
+		test.cache.AddPriorityClass(pc)
 	}
 	for _, rq := range test.ResourceQuotas {
-		schedulerCache.AddResourceQuota(rq)
+		test.cache.AddResourceQuota(rq)
 	}
-
-	schedulerCache.Run(test.stop)
-	schedulerCache.WaitForCacheSync(test.stop)
 
 	for _, pod := range test.Pods {
 		if pod.Spec.SchedulerName == "" {
@@ -423,8 +441,6 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 			}
 		}
 	}
-
-	return schedulerCache
 }
 
 // Run choose to run passed in actions; if no actions provided, will panic
