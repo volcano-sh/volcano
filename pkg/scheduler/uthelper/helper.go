@@ -115,14 +115,12 @@ type TestCommonStruct struct {
 	CacheSyncTimeout time.Duration
 	T                *testing.T
 
-	ssn            *framework.Session // store opened session
-	cache          *cache.SchedulerCache
-	tiers          []conf.Tier
-	configurations []conf.Configuration
-	stop           chan struct{}
-	binder         cache.Binder
-	evictor        cache.Evictor
-	stsUpdator     cache.StatusUpdater
+	ssn        *framework.Session // store opened session
+	cache      *cache.SchedulerCache
+	stop       chan struct{}
+	binder     cache.Binder
+	evictor    cache.Evictor
+	stsUpdator cache.StatusUpdater
 }
 
 var _ Interface = &TestCommonStruct{}
@@ -131,10 +129,6 @@ var _ Interface = &TestCommonStruct{}
 func (test *TestCommonStruct) RegisterSession(tiers []conf.Tier, config []conf.Configuration) *framework.Session {
 	test.initInfrastructure()
 	RegisterPlugins(test.Plugins)
-	test.tiers = tiers
-	test.configurations = config
-
-	_ = framework.OpenSession(test.cache, tiers, config)
 	test.addTestData()
 	test.waitForCacheSyncPolling(test.cache)
 	test.ssn = framework.OpenSession(test.cache, tiers, config)
@@ -156,26 +150,26 @@ func (test *TestCommonStruct) waitForCacheSyncPolling(schedulerCache *cache.Sche
 		// First wait for the underlying shared informers to report synced state.
 		informerFactory := schedulerCache.SharedInformerFactory()
 
-		if !informerFactory.Core().V1().Nodes().Informer().HasSynced() {
-			return false, nil
+		type informerCheck struct {
+			name      string
+			hasSynced func() bool
+			required  bool
 		}
-		if len(test.PVs) > 0 && !informerFactory.Core().V1().PersistentVolumes().Informer().HasSynced() {
-			return false, nil
+
+		checks := []informerCheck{
+			{"Nodes", informerFactory.Core().V1().Nodes().Informer().HasSynced, true},
+			{"PersistentVolumes", informerFactory.Core().V1().PersistentVolumes().Informer().HasSynced, len(test.PVs) > 0},
+			{"PersistentVolumeClaims", informerFactory.Core().V1().PersistentVolumeClaims().Informer().HasSynced, len(test.PVCs) > 0},
+			{"StorageClasses", informerFactory.Storage().V1().StorageClasses().Informer().HasSynced, len(test.SCs) > 0},
+			{"DeviceClasses", informerFactory.Resource().V1().DeviceClasses().Informer().HasSynced, len(test.DeviceClasses) > 0},
+			{"ResourceClaims", informerFactory.Resource().V1().ResourceClaims().Informer().HasSynced, len(test.ResourceClaims) > 0},
+			{"ResourceSlices", informerFactory.Resource().V1().ResourceSlices().Informer().HasSynced, len(test.ResourceSlices) > 0},
 		}
-		if len(test.PVCs) > 0 && !informerFactory.Core().V1().PersistentVolumeClaims().Informer().HasSynced() {
-			return false, nil
-		}
-		if len(test.SCs) > 0 && !informerFactory.Storage().V1().StorageClasses().Informer().HasSynced() {
-			return false, nil
-		}
-		if len(test.DeviceClasses) > 0 && !informerFactory.Resource().V1().DeviceClasses().Informer().HasSynced() {
-			return false, nil
-		}
-		if len(test.ResourceClaims) > 0 && !informerFactory.Resource().V1().ResourceClaims().Informer().HasSynced() {
-			return false, nil
-		}
-		if len(test.ResourceSlices) > 0 && !informerFactory.Resource().V1().ResourceSlices().Informer().HasSynced() {
-			return false, nil
+
+		for _, check := range checks {
+			if check.required && !check.hasSynced() {
+				return false, nil
+			}
 		}
 
 		schedulerCache.Mutex.Lock()
@@ -219,39 +213,33 @@ func (test *TestCommonStruct) waitForCacheSyncPolling(schedulerCache *cache.Sche
 		}
 
 		for _, sc := range test.SCs {
-			_, err := schedulerCache.SharedInformerFactory().Storage().V1().StorageClasses().Lister().Get(sc.Name)
-			if err != nil {
+			if _, err := informerFactory.Storage().V1().StorageClasses().Lister().Get(sc.Name); err != nil {
 				return false, nil
 			}
 		}
 		for _, pv := range test.PVs {
-			_, err := schedulerCache.SharedInformerFactory().Core().V1().PersistentVolumes().Lister().Get(pv.Name)
-			if err != nil {
+			if _, err := informerFactory.Core().V1().PersistentVolumes().Lister().Get(pv.Name); err != nil {
 				return false, nil
 			}
 		}
 		for _, pvc := range test.PVCs {
-			_, err := schedulerCache.SharedInformerFactory().Core().V1().PersistentVolumeClaims().Lister().PersistentVolumeClaims(pvc.Namespace).Get(pvc.Name)
-			if err != nil {
+			if _, err := informerFactory.Core().V1().PersistentVolumeClaims().Lister().PersistentVolumeClaims(pvc.Namespace).Get(pvc.Name); err != nil {
 				return false, nil
 			}
 		}
 
 		for _, dc := range test.DeviceClasses {
-			_, err := schedulerCache.SharedInformerFactory().Resource().V1().DeviceClasses().Lister().Get(dc.Name)
-			if err != nil {
+			if _, err := informerFactory.Resource().V1().DeviceClasses().Lister().Get(dc.Name); err != nil {
 				return false, nil
 			}
 		}
 		for _, rc := range test.ResourceClaims {
-			_, err := schedulerCache.SharedInformerFactory().Resource().V1().ResourceClaims().Lister().ResourceClaims(rc.Namespace).Get(rc.Name)
-			if err != nil {
+			if _, err := informerFactory.Resource().V1().ResourceClaims().Lister().ResourceClaims(rc.Namespace).Get(rc.Name); err != nil {
 				return false, nil
 			}
 		}
 		for _, rs := range test.ResourceSlices {
-			_, err := schedulerCache.SharedInformerFactory().Resource().V1().ResourceSlices().Lister().Get(rs.Name)
-			if err != nil {
+			if _, err := informerFactory.Resource().V1().ResourceSlices().Lister().Get(rs.Name); err != nil {
 				return false, nil
 			}
 		}
