@@ -22,7 +22,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
 
 	"k8s.io/klog/v2"
-	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -178,7 +178,7 @@ func (up *usagePlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 		memoryScore := (100 - memoryUsage) / 100 * float64(up.memoryWeight)
 		score = (cpuScore + memoryScore) / float64(up.cpuWeight+up.memoryWeight)
-		score *= float64(k8sFramework.MaxNodeScore * int64(up.usageWeight))
+		score *= float64(fwk.MaxNodeScore * int64(up.usageWeight))
 		klog.V(4).Infof("Node %s score for task %s is %f.", node.Name, task.Name, score)
 		return score, nil
 	}

@@ -52,7 +52,6 @@ import (
 	fwk "k8s.io/kube-scheduler/framework"
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	kubefeatures "k8s.io/kubernetes/pkg/features"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/dynamicresources"
 	"k8s.io/kubernetes/pkg/scheduler/util/assumecache"
 	"stathat.com/c/consistent"
@@ -183,7 +182,7 @@ type SchedulerCache struct {
 	binderRegistry *BinderRegistry
 
 	// sharedDRAManager is used in DRA plugin, contains resourceClaimTracker, resourceSliceLister and deviceClassLister
-	sharedDRAManager k8sframework.SharedDRAManager
+	sharedDRAManager fwk.SharedDRAManager
 
 	shardUpdateCoordinator *ShardUpdateCoordinator
 }
@@ -798,13 +797,13 @@ func (sc *SchedulerCache) addEventHandler() {
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
 		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
-			EnableDeviceTaints: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
-			SliceInformer:      informerFactory.Resource().V1().ResourceSlices(),
-			KubeClient:         sc.kubeClient,
+			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
+			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
+			KubeClient:             sc.kubeClient,
 		}
 		// If device taints are disabled, the additional informers are not needed and
 		// the tracker turns into a simple wrapper around the slice informer.
-		if resourceSliceTrackerOpts.EnableDeviceTaints {
+		if resourceSliceTrackerOpts.EnableDeviceTaintRules {
 			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
 			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
 		}
@@ -1532,7 +1531,7 @@ func (sc *SchedulerCache) Snapshot() *schedulingapi.ClusterInfo {
 	return snapshot
 }
 
-func (sc *SchedulerCache) SharedDRAManager() k8sframework.SharedDRAManager {
+func (sc *SchedulerCache) SharedDRAManager() fwk.SharedDRAManager {
 	return sc.sharedDRAManager
 }
 
