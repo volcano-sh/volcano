@@ -34,47 +34,103 @@ import (
 	configv1alpha1 "volcano.sh/apis/pkg/apis/config/v1alpha1"
 )
 
-func (c *colocationConfigController) podHandler(obj interface{}) {
-	var pod *corev1.Pod
+func parseObjToPod(obj interface{}) (*corev1.Pod, error) {
 	switch t := obj.(type) {
 	case *corev1.Pod:
-		pod = t
+		return t, nil
 	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		pod, ok = t.Obj.(*corev1.Pod)
+		cfg, ok := t.Obj.(*corev1.Pod)
 		if !ok {
-			klog.ErrorS(nil, "Failed to get Pod from DeletedFinalStateUnknown", "obj", t.Obj)
-			return
+			return nil, fmt.Errorf("unknown type from tombstone: %T", t.Obj)
 		}
+		return cfg, nil
 	default:
-		klog.ErrorS(nil, "Unknown type", "obj", obj)
+		return nil, fmt.Errorf("unknown type: %T", t)
+	}
+}
+
+func (c *colocationConfigController) podHandler(obj interface{}) {
+	pod, err := parseObjToPod(obj)
+	if err != nil {
+		klog.ErrorS(err, "Failed to parse obj to Pod", "obj", obj)
 		return
 	}
 
-	if key, err := cache.MetaNamespaceKeyFunc(pod); err != nil {
+	c.enqueuePod(pod)
+}
+
+func (c *colocationConfigController) podUpdateHandler(oldObj, newObj interface{}) {
+	oldPod, err := parseObjToPod(oldObj)
+	if err != nil {
+		klog.ErrorS(err, "Failed to parse oldObj to Pod", "obj", oldObj)
+		return
+	}
+	newPod, err := parseObjToPod(newObj)
+	if err != nil {
+		klog.ErrorS(err, "Failed to parse newObj to Pod", "obj", newObj)
+		return
+	}
+
+	if !equality.Semantic.DeepEqual(oldPod.ObjectMeta.Labels, newPod.ObjectMeta.Labels) {
+		c.enqueuePod(newPod)
+	}
+}
+
+func (c *colocationConfigController) enqueuePod(pod *corev1.Pod) {
+	key, err := cache.MetaNamespaceKeyFunc(pod)
+	if err != nil {
 		klog.ErrorS(err, "Failed to get key for pod", "pod", pod)
 	} else {
 		c.podQueue.AddAfter(key, time.Second)
 	}
 }
 
-func (c *colocationConfigController) colocationConfigurationHandler(obj interface{}) {
-	var cfg *configv1alpha1.ColocationConfiguration
+func parseObjToColocationConfiguration(obj interface{}) (*configv1alpha1.ColocationConfiguration, error) {
 	switch t := obj.(type) {
 	case *configv1alpha1.ColocationConfiguration:
-		cfg = t
+		return t, nil
 	case cache.DeletedFinalStateUnknown:
-		var ok bool
-		cfg, ok = t.Obj.(*configv1alpha1.ColocationConfiguration)
+		cfg, ok := t.Obj.(*configv1alpha1.ColocationConfiguration)
 		if !ok {
-			klog.ErrorS(nil, "Failed to get ColocationConfiguration from DeletedFinalStateUnknown", "obj", t.Obj)
-			return
+			return nil, fmt.Errorf("unknown type from tombstone: %T", t.Obj)
 		}
+		return cfg, nil
 	default:
-		klog.ErrorS(nil, "Unknown type", "obj", obj)
+		return nil, fmt.Errorf("unknown type: %T", t)
+	}
+}
+
+func (c *colocationConfigController) colocationConfigurationHandler(obj interface{}) {
+	cfg, err := parseObjToColocationConfiguration(obj)
+	if err != nil {
+		klog.ErrorS(err, "Failed to parse obj to ColocationConfiguration", "obj", obj)
 		return
 	}
 
+	c.enqueueRelatedPods(cfg)
+}
+
+func (c *colocationConfigController) colocationConfigurationUpdateHandler(oldObj, newObj interface{}) {
+	oldCfg, err := parseObjToColocationConfiguration(oldObj)
+	if err != nil {
+		klog.ErrorS(err, "Failed to parse oldObj to ColocationConfiguration", "obj", oldObj)
+		return
+	}
+	newCfg, err := parseObjToColocationConfiguration(newObj)
+	if err != nil {
+		klog.ErrorS(err, "Failed to parse newObj to ColocationConfiguration", "obj", newObj)
+		return
+	}
+
+	if !equality.Semantic.DeepEqual(oldCfg.Spec.Selector, newCfg.Spec.Selector) {
+		c.enqueueRelatedPods(oldCfg)
+	}
+	if !equality.Semantic.DeepEqual(oldCfg.Spec, newCfg.Spec) {
+		c.enqueueRelatedPods(newCfg)
+	}
+}
+
+func (c *colocationConfigController) enqueueRelatedPods(cfg *configv1alpha1.ColocationConfiguration) {
 	selector, err := metav1.LabelSelectorAsSelector(cfg.Spec.Selector)
 	if err != nil {
 		klog.ErrorS(err, "Failed to convert LabelSelector to Selector", "selector", cfg.Spec.Selector)

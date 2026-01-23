@@ -67,20 +67,15 @@ func (c *colocationConfigController) Initialize(opt *framework.ControllerOption)
 	podInformer := c.informerFactory.Core().V1().Pods()
 	c.podLister = podInformer.Lister()
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: c.podHandler,
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			c.podHandler(newObj) // TODO: check whether the matched colocation config name has changed
-		},
+		AddFunc:    c.podHandler,
+		UpdateFunc: c.podUpdateHandler,
 	})
 
 	coloConfigInformer := c.vcInformerFactory.Config().V1alpha1().ColocationConfigurations()
 	c.coloConfigLister = coloConfigInformer.Lister()
 	coloConfigInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: c.colocationConfigurationHandler,
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			c.colocationConfigurationHandler(oldObj) // TODO: check whether the selector has changed
-			c.colocationConfigurationHandler(newObj) // TODO: check whether the spec has changed
-		},
+		AddFunc:    c.colocationConfigurationHandler,
+		UpdateFunc: c.colocationConfigurationUpdateHandler,
 		DeleteFunc: c.colocationConfigurationHandler,
 	})
 
