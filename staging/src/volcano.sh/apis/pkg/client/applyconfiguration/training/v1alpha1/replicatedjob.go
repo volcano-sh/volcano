@@ -24,11 +24,16 @@ import (
 // ReplicatedJobApplyConfiguration represents a declarative configuration of the ReplicatedJob type for use
 // with apply.
 type ReplicatedJobApplyConfiguration struct {
-	Name         *string                                  `json:"name,omitempty"`
+	Name *string `json:"name,omitempty"`
+	// TemplateSpec is the spec of the volcano job that will be replicated.
 	TemplateSpec *batchv1alpha1.JobSpecApplyConfiguration `json:"templateSpec,omitempty"`
-	SplitPolicy  *SplitPolicyApplyConfiguration           `json:"splitPolicy,omitempty"`
-	Replicas     *int32                                   `json:"replicas,omitempty"`
-	ClusterNames []string                                 `json:"clusterNames,omitempty"`
+	// SplitPolicy is used in multi-cluster splitting to specify the splitting strategy,
+	// including the number and types of accelerators that need to be split
+	SplitPolicy *SplitPolicyApplyConfiguration `json:"splitPolicy,omitempty"`
+	// Replicas is the number of replicated volcano jobs.
+	Replicas *int32 `json:"replicas,omitempty"`
+	// ClusterNames is the list of cluster names to which the replicated jobs prefer to be scheduled.
+	ClusterNames []string `json:"clusterNames,omitempty"`
 }
 
 // ReplicatedJobApplyConfiguration constructs a declarative configuration of the ReplicatedJob type for use with

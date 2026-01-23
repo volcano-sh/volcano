@@ -19,7 +19,10 @@ package v1alpha1
 
 // RegexMatchApplyConfiguration represents a declarative configuration of the RegexMatch type for use
 // with apply.
+//
+// RegexMatch represents the criteria for regex-based matching.
 type RegexMatchApplyConfiguration struct {
+	// Pattern defines the regex pattern to match node names.
 	Pattern *string `json:"pattern,omitempty"`
 }
 

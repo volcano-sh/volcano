@@ -24,12 +24,26 @@ import (
 // SubGroupPolicySpecApplyConfiguration represents a declarative configuration of the SubGroupPolicySpec type for use
 // with apply.
 type SubGroupPolicySpecApplyConfiguration struct {
-	Name            *string                                `json:"name,omitempty"`
+	// Name specifies the name of SubGroupPolicy
+	Name *string `json:"name,omitempty"`
+	// NetworkTopology defines the NetworkTopology config, this field works in conjunction with network topology feature and hyperNode CRD.
 	NetworkTopology *NetworkTopologySpecApplyConfiguration `json:"networkTopology,omitempty"`
-	SubGroupSize    *int32                                 `json:"subGroupSize,omitempty"`
-	MinSubGroups    *int32                                 `json:"minSubGroups,omitempty"`
-	LabelSelector   *v1.LabelSelectorApplyConfiguration    `json:"labelSelector,omitempty"`
-	MatchLabelKeys  []string                               `json:"matchLabelKeys,omitempty"`
+	// SubGroupSize defines the number of pods in each sub-affinity group.
+	// Only when a subGroup of pods, with a size of "subGroupSize", can satisfy the network topology constraint then will the subGroup be scheduled.
+	SubGroupSize *int32 `json:"subGroupSize,omitempty"`
+	// MinSubGroups: Minimum number of subgroups required to trigger scheduling. Scheduling is initiated only if cluster resources meet the requirements of at least this number of subgroups.
+	// Subgroup-level Gang Scheduling
+	MinSubGroups *int32 `json:"minSubGroups,omitempty"`
+	// LabelSelector is used to find matching pods.
+	// Pods that match this label selector are counted to determine the number of pods
+	// in their corresponding topology domain.
+	LabelSelector *v1.LabelSelectorApplyConfiguration `json:"labelSelector,omitempty"`
+	// MatchLabelKeys: A label-based grouping configuration field for Pods, defining filtering rules for grouping label keys
+	// Core function: Refine grouping of Pods that meet LabelSelector criteria by label attributes, with the following rules and constraints:
+	// 1. Scope: Only applies to Pods matching the predefined LabelSelector
+	// 2. Grouping rule: Specify one or more label keys; Pods containing the target label keys with exactly the same corresponding label values are grouped together
+	// 3. Policy constraint: Pods in the same group follow a unified NetworkTopology policy to achieve group-level network behavior governance
+	MatchLabelKeys []string `json:"matchLabelKeys,omitempty"`
 }
 
 // SubGroupPolicySpecApplyConfiguration constructs a declarative configuration of the SubGroupPolicySpec type for use with

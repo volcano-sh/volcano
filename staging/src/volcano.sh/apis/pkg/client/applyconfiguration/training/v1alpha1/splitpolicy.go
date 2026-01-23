@@ -24,9 +24,12 @@ import (
 // SplitPolicyApplyConfiguration represents a declarative configuration of the SplitPolicy type for use
 // with apply.
 type SplitPolicyApplyConfiguration struct {
-	Mode            *trainingv1alpha1.SplitMode `json:"mode,omitempty"`
-	Accelerators    *int                        `json:"accelerators,omitempty"`
-	AcceleratorType *string                     `json:"acceleratorType,omitempty"`
+	// Mode is the mode of the split policy.
+	Mode *trainingv1alpha1.SplitMode `json:"mode,omitempty"`
+	// Accelerators is the number of accelerators to split.
+	Accelerators *int `json:"accelerators,omitempty"`
+	// AcceleratorType is the type of the accelerator. Such as nvidia.com/gpu, amd.com/gpu, etc.
+	AcceleratorType *string `json:"acceleratorType,omitempty"`
 }
 
 // SplitPolicyApplyConfiguration constructs a declarative configuration of the SplitPolicy type for use with

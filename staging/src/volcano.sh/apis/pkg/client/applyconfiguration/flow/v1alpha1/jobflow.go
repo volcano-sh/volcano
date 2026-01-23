@@ -25,6 +25,8 @@ import (
 
 // JobFlowApplyConfiguration represents a declarative configuration of the JobFlow type for use
 // with apply.
+//
+// JobFlow is the Schema for the jobflows API
 type JobFlowApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -42,6 +44,7 @@ func JobFlow(name, namespace string) *JobFlowApplyConfiguration {
 	b.WithAPIVersion("flow.volcano.sh/v1alpha1")
 	return b
 }
+
 func (b JobFlowApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

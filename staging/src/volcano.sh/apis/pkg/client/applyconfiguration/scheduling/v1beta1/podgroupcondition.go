@@ -25,13 +25,21 @@ import (
 
 // PodGroupConditionApplyConfiguration represents a declarative configuration of the PodGroupCondition type for use
 // with apply.
+//
+// PodGroupCondition contains details for the current state of this pod group.
 type PodGroupConditionApplyConfiguration struct {
-	Type               *schedulingv1beta1.PodGroupConditionType `json:"type,omitempty"`
-	Status             *v1.ConditionStatus                      `json:"status,omitempty"`
-	TransitionID       *string                                  `json:"transitionID,omitempty"`
-	LastTransitionTime *metav1.Time                             `json:"lastTransitionTime,omitempty"`
-	Reason             *string                                  `json:"reason,omitempty"`
-	Message            *string                                  `json:"message,omitempty"`
+	// Type is the type of the condition
+	Type *schedulingv1beta1.PodGroupConditionType `json:"type,omitempty"`
+	// Status is the status of the condition.
+	Status *v1.ConditionStatus `json:"status,omitempty"`
+	// The ID of condition transition.
+	TransitionID *string `json:"transitionID,omitempty"`
+	// Last time the phase transitioned from another to current phase.
+	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty"`
+	// Unique, one-word, CamelCase reason for the phase's last transition.
+	Reason *string `json:"reason,omitempty"`
+	// Human-readable message indicating details about last transition.
+	Message *string `json:"message,omitempty"`
 }
 
 // PodGroupConditionApplyConfiguration constructs a declarative configuration of the PodGroupCondition type for use with

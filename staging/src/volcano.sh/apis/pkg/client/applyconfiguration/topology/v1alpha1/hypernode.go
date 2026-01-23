@@ -25,11 +25,15 @@ import (
 
 // HyperNodeApplyConfiguration represents a declarative configuration of the HyperNode type for use
 // with apply.
+//
+// HyperNode represents a collection of nodes sharing similar network topology or performance characteristics.
 type HyperNodeApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Spec                             *HyperNodeSpecApplyConfiguration   `json:"spec,omitempty"`
-	Status                           *HyperNodeStatusApplyConfiguration `json:"status,omitempty"`
+	// Spec defines the desired configuration of the HyperNode.
+	Spec *HyperNodeSpecApplyConfiguration `json:"spec,omitempty"`
+	// Status provides the current state of the HyperNode.
+	Status *HyperNodeStatusApplyConfiguration `json:"status,omitempty"`
 }
 
 // HyperNode constructs a declarative configuration of the HyperNode type for use with
@@ -41,6 +45,7 @@ func HyperNode(name string) *HyperNodeApplyConfiguration {
 	b.WithAPIVersion("topology.volcano.sh/v1alpha1")
 	return b
 }
+
 func (b HyperNodeApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

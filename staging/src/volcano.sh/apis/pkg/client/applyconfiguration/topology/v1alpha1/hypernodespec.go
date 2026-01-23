@@ -19,10 +19,15 @@ package v1alpha1
 
 // HyperNodeSpecApplyConfiguration represents a declarative configuration of the HyperNodeSpec type for use
 // with apply.
+//
+// HyperNodeSpec defines the desired state of a HyperNode.
 type HyperNodeSpecApplyConfiguration struct {
-	Tier     *int                           `json:"tier,omitempty"`
-	TierName *string                        `json:"tierName,omitempty"`
-	Members  []MemberSpecApplyConfiguration `json:"members,omitempty"`
+	// Tier categorizes the performance level of the HyperNode.
+	Tier *int `json:"tier,omitempty"`
+	// TierName represents the level name of the HyperNode.
+	TierName *string `json:"tierName,omitempty"`
+	// Members defines a list of node groups or individual nodes included in the HyperNode.
+	Members []MemberSpecApplyConfiguration `json:"members,omitempty"`
 }
 
 // HyperNodeSpecApplyConfiguration constructs a declarative configuration of the HyperNodeSpec type for use with

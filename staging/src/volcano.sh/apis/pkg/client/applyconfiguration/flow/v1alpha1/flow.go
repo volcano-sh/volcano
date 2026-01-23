@@ -19,6 +19,8 @@ package v1alpha1
 
 // FlowApplyConfiguration represents a declarative configuration of the Flow type for use
 // with apply.
+//
+// Flow defines the dependent of jobs
 type FlowApplyConfiguration struct {
 	Name      *string                      `json:"name,omitempty"`
 	DependsOn *DependsOnApplyConfiguration `json:"dependsOn,omitempty"`

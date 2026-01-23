@@ -24,12 +24,26 @@ import (
 
 // LifecyclePolicyApplyConfiguration represents a declarative configuration of the LifecyclePolicy type for use
 // with apply.
+//
+// LifecyclePolicy specifies the lifecycle and error handling of task and job.
 type LifecyclePolicyApplyConfiguration struct {
-	Action   *busv1alpha1.Action `json:"action,omitempty"`
-	Event    *busv1alpha1.Event  `json:"event,omitempty"`
-	Events   []busv1alpha1.Event `json:"events,omitempty"`
-	ExitCode *int32              `json:"exitCode,omitempty"`
-	Timeout  *v1.Duration        `json:"timeout,omitempty"`
+	// The action that will be taken to the PodGroup according to Event.
+	// One of "Restart", "None".
+	// Default to None.
+	Action *busv1alpha1.Action `json:"action,omitempty"`
+	// The Event recorded by scheduler; the controller takes actions
+	// according to this Event.
+	Event *busv1alpha1.Event `json:"event,omitempty"`
+	// The Events recorded by scheduler; the controller takes actions
+	// according to this Events.
+	Events []busv1alpha1.Event `json:"events,omitempty"`
+	// The exit code of the pod container, controller will take action
+	// according to this code.
+	// Note: only one of `Event` or `ExitCode` can be specified.
+	ExitCode *int32 `json:"exitCode,omitempty"`
+	// Timeout is the grace period for controller to take actions.
+	// Default to nil (take action immediately).
+	Timeout *v1.Duration `json:"timeout,omitempty"`
 }
 
 // LifecyclePolicyApplyConfiguration constructs a declarative configuration of the LifecyclePolicy type for use with

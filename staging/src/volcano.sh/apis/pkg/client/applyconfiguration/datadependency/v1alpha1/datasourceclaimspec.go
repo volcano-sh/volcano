@@ -19,12 +19,22 @@ package v1alpha1
 
 // DataSourceClaimSpecApplyConfiguration represents a declarative configuration of the DataSourceClaimSpec type for use
 // with apply.
+//
+// DataSourceClaimSpec defines the desired state of DataSourceClaim.
 type DataSourceClaimSpecApplyConfiguration struct {
-	System         *string                        `json:"system,omitempty"`
-	DataSourceType *string                        `json:"dataSourceType,omitempty"`
-	DataSourceName *string                        `json:"dataSourceName,omitempty"`
-	Workload       *WorkloadRefApplyConfiguration `json:"workload,omitempty"`
-	Attributes     map[string]string              `json:"attributes,omitempty"`
+	// System is the required underlying data system of the data source.
+	System *string `json:"system,omitempty"`
+	// DataSourceType is the required category of the data source within the system.
+	DataSourceType *string `json:"dataSourceType,omitempty"`
+	// DataSourceName specifies the logical name of the cached data source to claim.
+	// It will be matched against DataSource's spec.name field.
+	DataSourceName *string `json:"dataSourceName,omitempty"`
+	// Workload specifies the workload that this claim is associated with.
+	// This enables the controller to precisely identify and manage the workload
+	// using Dynamic Client without requiring complex selectors or UIDs.
+	Workload *WorkloadRefApplyConfiguration `json:"workload,omitempty"`
+	// Attributes provides extra, non-identifying metadata.
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 // DataSourceClaimSpecApplyConfiguration constructs a declarative configuration of the DataSourceClaimSpec type for use with

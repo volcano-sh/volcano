@@ -23,7 +23,10 @@ import (
 
 // GuaranteeApplyConfiguration represents a declarative configuration of the Guarantee type for use
 // with apply.
+//
+// Guarantee represents configuration of queue resource reservation
 type GuaranteeApplyConfiguration struct {
+	// The amount of cluster resource reserved for queue. Just set either `percentage` or `resource`
 	Resource *v1.ResourceList `json:"resource,omitempty"`
 }
 

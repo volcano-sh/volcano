@@ -25,10 +25,13 @@ import (
 
 // NumatopologyApplyConfiguration represents a declarative configuration of the Numatopology type for use
 // with apply.
+//
+// Numatopology is the Schema for the Numatopologies API
 type NumatopologyApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Spec                             *NumatopoSpecApplyConfiguration `json:"spec,omitempty"`
+	// Specification of the numa information of the worker node
+	Spec *NumatopoSpecApplyConfiguration `json:"spec,omitempty"`
 }
 
 // Numatopology constructs a declarative configuration of the Numatopology type for use with
@@ -40,6 +43,7 @@ func Numatopology(name string) *NumatopologyApplyConfiguration {
 	b.WithAPIVersion("nodeinfo.volcano.sh/v1alpha1")
 	return b
 }
+
 func (b NumatopologyApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

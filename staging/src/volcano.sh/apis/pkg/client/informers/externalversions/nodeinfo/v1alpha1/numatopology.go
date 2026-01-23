@@ -55,7 +55,7 @@ func NewNumatopologyInformer(client versioned.Interface, resyncPeriod time.Durat
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredNumatopologyInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
-		&cache.ListWatch{
+		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
@@ -80,7 +80,7 @@ func NewFilteredNumatopologyInformer(client versioned.Interface, resyncPeriod ti
 				}
 				return client.NodeinfoV1alpha1().Numatopologies().Watch(ctx, options)
 			},
-		},
+		}, client),
 		&apisnodeinfov1alpha1.Numatopology{},
 		resyncPeriod,
 		indexers,
