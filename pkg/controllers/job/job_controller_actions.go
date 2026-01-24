@@ -519,17 +519,23 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 				go func(pod *v1.Pod) {
 					defer waitCreationGroup.Done()
 					newPod, err := cc.kubeClient.CoreV1().Pods(pod.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
-					if err != nil && !apierrors.IsAlreadyExists(err) {
-						// Failed to create Pod, waitCreationGroup a moment and then create it again
-						// This is to ensure all podsMap under the same Job created
-						// So gang-scheduling could schedule the Job successfully
-						klog.Errorf("Failed to create pod %s for Job %s, err %#v",
-							pod.Name, job.Name, err)
-						appendError(&creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
+					if err != nil {
+						if apierrors.IsAlreadyExists(err) {
+							// Pod already exists - this can happen during controller restart or race conditions.
+							// Skip counting here; the pod will be properly counted when the informer cache syncs.
+							klog.V(4).Infof("Pod %s for Job %s already exists, skipping", pod.Name, job.Name)
+						} else {
+							// Failed to create Pod. The error will be collected and the sync will be retried.
+							//This is to ensure all pods for the same Job are created
+							// so that gang-scheduling can schedule the Job successfully.
+							klog.Errorf("Failed to create pod %s for Job %s, err %#v",
+								pod.Name, job.Name, err)
+							appendError(&creationErrs, fmt.Errorf("failed to create pod %s, err: %#v", pod.Name, err))
+						}
 					} else {
 						classifyAndAddUpPodBaseOnPhase(newPod, &pending, &running, &succeeded, &failed, &unknown)
 						calcPodStatus(newPod, taskStatusCount)
-						klog.V(5).InfoS("Created Pod for Job", "Job", klog.KObj(job), "Pod", klog.KObj(pod), "err", err)
+						klog.V(5).InfoS("Created Pod for Job", "Job", klog.KObj(job), "Pod", klog.KObj(pod))
 					}
 				}(pod)
 			}
