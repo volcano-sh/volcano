@@ -134,7 +134,7 @@ type jobcontroller struct {
 	queueLister schedulinglisters.QueueLister
 	queueSynced func() bool
 
-	// queue that need to sync up
+	// Single shared queue for all workers
 	queue        workqueue.TypedRateLimitingInterface[any]
 	commandQueue workqueue.TypedRateLimitingInterface[any]
 	cache        jobcache.Cache
@@ -169,6 +169,8 @@ func (cc *jobcontroller) Initialize(opt *framework.ControllerOption) error {
 	recorder := eventBroadcaster.NewRecorder(vcscheme.Scheme, v1.EventSource{Component: "vc-controller-manager"})
 
 	cc.informerFactory = sharedInformers
+
+	// Create single shared queue instead of multiple queues
 	cc.queue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	cc.commandQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[any]())
 	cc.cache = jobcache.New()
@@ -284,15 +286,18 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 	}
 
 	go wait.Until(cc.handleCommands, 0, stopCh)
+
+	// Start multiple workers, all reading from the same queue
 	var i uint32
 	for i = 0; i < cc.workers; i++ {
-		go wait.Until(
-			func() {
-				for cc.processNextReq() {
-				}
-			},
-			time.Second,
-			stopCh)
+		go func(num uint32) {
+			wait.Until(
+				func() {
+					cc.worker(num)
+				},
+				time.Second,
+				stopCh)
+		}(i)
 	}
 
 	go cc.cache.Run(stopCh)
@@ -303,7 +308,15 @@ func (cc *jobcontroller) Run(stopCh <-chan struct{}) {
 	klog.Infof("JobController is running ...... ")
 }
 
-func (cc *jobcontroller) processNextReq() bool {
+func (cc *jobcontroller) worker(i uint32) {
+	klog.Infof("worker %d start ...... ", i)
+
+	for cc.processNextReq(i) {
+	}
+}
+
+func (cc *jobcontroller) processNextReq(count uint32) bool {
+	// All workers read from the same shared queue
 	obj, shutdown := cc.queue.Get()
 	if shutdown {
 		klog.Errorf("Fail to pop item from queue")
@@ -404,7 +417,8 @@ func (cc *jobcontroller) CleanPodDelayActionsIfNeed(req apis.Request) {
 				}
 
 				if shouldCancel {
-					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> of Job <%s>", delayAct.action, req.PodName, req.Event, delayAct.jobKey)
+					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> of Job <%s>",
+						delayAct.action, req.PodName, req.Event, delayAct.jobKey)
 					delayAct.cancel()
 					delete(taskMap, req.PodName)
 				}
@@ -440,14 +454,33 @@ func (cc *jobcontroller) AddDelayActionForJob(req apis.Request, delayAct *delayA
 	go func() {
 		<-ctx.Done()
 		if ctx.Err() == context.Canceled {
-			klog.V(4).Infof("Job<%s/%s>'s delayed action %s is canceled", req.Namespace, req.JobName, delayAct.action)
+			klog.V(4).Infof("Job<%s/%s>'s delayed action %s is canceled",
+				req.Namespace, req.JobName, delayAct.action)
 			return
 		}
 
-		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, re-enqueue it", req.Namespace, req.JobName, delayAct.action)
+		klog.V(4).Infof("Job<%s/%s>'s delayed action %s is expired, execute it",
+			req.Namespace, req.JobName, delayAct.action)
 
-		req.Action = delayAct.action
-		cc.queue.Add(req)
+		jobInfo, err := cc.cache.Get(delayAct.jobKey)
+		if err != nil {
+			klog.Errorf("Failed to get job by <%v> from cache: %v", req, err)
+			return
+		}
+
+		st := state.NewState(jobInfo)
+		if st == nil {
+			klog.Errorf("Invalid state <%s> of Job <%v/%v>",
+				jobInfo.Job.Status.State, jobInfo.Job.Namespace, jobInfo.Job.Name)
+			return
+		}
+
+		if err := st.Execute(GetStateAction(delayAct)); err != nil {
+			cc.handleJobError(cc.queue, req, st, err, delayAct.action)
+		}
+
+		cc.queue.Forget(req)
+		cc.cleanupDelayActions(delayAct)
 	}()
 }
 
@@ -461,10 +494,12 @@ func (cc *jobcontroller) handleJobError(queue workqueue.TypedRateLimitingInterfa
 
 	cc.recordJobEvent(req.Namespace, req.JobName, batchv1alpha1.ExecuteAction,
 		fmt.Sprintf("Job failed on action %s for retry limit reached", action))
-	klog.Warningf("Terminating Job <%s/%s> and releasing resources", req.Namespace, req.JobName)
+	klog.Warningf("Terminating Job <%s/%s> and releasing resources",
+		req.Namespace, req.JobName)
 
 	if err = st.Execute(state.Action{Action: busv1alpha1.TerminateJobAction}); err != nil {
-		klog.Errorf("Failed to terminate Job<%s/%s>: %v", req.Namespace, req.JobName, err)
+		klog.Errorf("Failed to terminate Job<%s/%s>: %v",
+			req.Namespace, req.JobName, err)
 	}
 	klog.Warningf("Dropping job<%s/%s> out of the queue: %v because max retries has reached",
 		req.Namespace, req.JobName, err)
@@ -505,7 +540,8 @@ func (cc *jobcontroller) cleanupDelayActions(currentDelayAction *delayAction) {
 				}
 
 				if delayAct.cancel != nil {
-					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> and action <%s> of Job <%s>", delayAct.action, delayAct.podName, currentDelayAction.event, currentDelayAction.action, delayAct.jobKey)
+					klog.V(3).Infof("Cancel delayed action <%v> for pod <%s> because of event <%s> and action <%s> of Job <%s>",
+						delayAct.action, delayAct.podName, currentDelayAction.event, currentDelayAction.action, delayAct.jobKey)
 					delayAct.cancel()
 				}
 				delete(m, delayAct.podName)

@@ -180,8 +180,7 @@ func TestJobAddFunc(t *testing.T) {
 			if job == nil || err != nil {
 				t.Errorf("Error while Adding Job in case %d with error %s", i, err)
 			}
-			queue := controller.queue
-			len := queue.Len()
+			len := controller.queue.Len()
 			if testcase.ExpectValue != len {
 				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len)
 			}
@@ -614,8 +613,7 @@ func TestUpdatePodGroupFunc(t *testing.T) {
 		t.Run(testcase.Name, func(t *testing.T) {
 			controller := newController()
 			controller.updatePodGroup(testcase.oldPodGroup, testcase.newPodGroup)
-			queue := controller.queue
-			len := queue.Len()
+			len := controller.queue.Len()
 			if testcase.ExpectValue != len {
 				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, len)
 			}
