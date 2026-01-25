@@ -161,7 +161,8 @@ func WaitNodeNotInShard(ctx *TestContext, shardName, nodeName string) error {
 		func(c context.Context) (bool, error) {
 			nodeShard, err := GetNodeShard(ctx, shardName)
 			if err != nil {
-				return false, err
+				// Return false, nil to continue polling on transient errors
+				return false, nil
 			}
 			for _, n := range nodeShard.Spec.NodesDesired {
 				if n == nodeName {

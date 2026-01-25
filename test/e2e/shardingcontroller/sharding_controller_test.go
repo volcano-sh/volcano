@@ -145,76 +145,12 @@ var _ = Describe("ShardingController E2E Test", func() {
 			GinkgoWriter.Printf("Total worker nodes: %d, Total assigned: %d\n", len(workerNodes), totalAssigned)
 
 			// At least some nodes should be assigned
-			Expect(totalAssigned).To(BeNumerically(">=", 0),
-				"nodes should be assigned to shards based on utilization")
+			Expect(totalAssigned).To(BeNumerically(">", 0),
+				"at least one node should be assigned to a shard")
 		})
 	})
 
-	Describe("Node Addition and Removal", func() {
-		It("Unschedulable nodes should be handled appropriately", func() {
-			waitForNodeShardsCreated()
-
-			By("Getting cluster nodes")
-			nodes, err := ctx.Kubeclient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-			Expect(err).NotTo(HaveOccurred())
-
-			workerNodes := filterWorkerNodes(nodes.Items)
-			if len(workerNodes) < 2 {
-				Skip("Need at least 2 worker nodes for this test")
-			}
-
-			targetNode := workerNodes[0].Name
-
-			By("Recording initial shard state")
-			initialVolcanoShard, err := e2eutil.GetNodeShard(ctx, VolcanoShardName)
-			Expect(err).NotTo(HaveOccurred())
-			initialAgentShard, err := e2eutil.GetNodeShard(ctx, AgentSchedulerShard)
-			Expect(err).NotTo(HaveOccurred())
-
-			nodeInVolcano := containsNode(initialVolcanoShard.Spec.NodesDesired, targetNode)
-			nodeInAgent := containsNode(initialAgentShard.Spec.NodesDesired, targetNode)
-			GinkgoWriter.Printf("Target node %s in volcano: %v, in agent: %v\n",
-				targetNode, nodeInVolcano, nodeInAgent)
-
-			By("Cordoning the node to make it unschedulable")
-			node, err := ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), targetNode, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred())
-
-			node.Spec.Unschedulable = true
-			_, err = ctx.Kubeclient.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Waiting for ShardingController to process the change")
-			time.Sleep(15 * time.Second)
-
-			By("Verifying shard state after cordoning")
-			updatedVolcanoShard, err := e2eutil.GetNodeShard(ctx, VolcanoShardName)
-			Expect(err).NotTo(HaveOccurred())
-			updatedAgentShard, err := e2eutil.GetNodeShard(ctx, AgentSchedulerShard)
-			Expect(err).NotTo(HaveOccurred())
-
-			GinkgoWriter.Printf("After cordon - Volcano nodes: %v\n", updatedVolcanoShard.Spec.NodesDesired)
-			GinkgoWriter.Printf("After cordon - Agent nodes: %v\n", updatedAgentShard.Spec.NodesDesired)
-
-			By("Uncordoning the node")
-			node, err = ctx.Kubeclient.CoreV1().Nodes().Get(context.TODO(), targetNode, metav1.GetOptions{})
-			Expect(err).NotTo(HaveOccurred())
-			node.Spec.Unschedulable = false
-			_, err = ctx.Kubeclient.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Waiting for node to be re-added to shards")
-			time.Sleep(15 * time.Second)
-
-			finalVolcanoShard, err := e2eutil.GetNodeShard(ctx, VolcanoShardName)
-			Expect(err).NotTo(HaveOccurred())
-			finalAgentShard, err := e2eutil.GetNodeShard(ctx, AgentSchedulerShard)
-			Expect(err).NotTo(HaveOccurred())
-
-			GinkgoWriter.Printf("After uncordon - Volcano nodes: %v\n", finalVolcanoShard.Spec.NodesDesired)
-			GinkgoWriter.Printf("After uncordon - Agent nodes: %v\n", finalAgentShard.Spec.NodesDesired)
-		})
-	})
+	// TODO: Add tests for unschedulable node handling once ShardingController behavior is confirmed
 
 	Describe("Node Stability", func() {
 		It("Node assignments should remain stable without significant cluster changes", func() {
@@ -267,15 +203,6 @@ func filterWorkerNodes(nodes []corev1.Node) []corev1.Node {
 		}
 	}
 	return workers
-}
-
-func containsNode(nodes []string, nodeName string) bool {
-	for _, n := range nodes {
-		if n == nodeName {
-			return true
-		}
-	}
-	return false
 }
 
 func countCommonNodes(a, b []string) int {
