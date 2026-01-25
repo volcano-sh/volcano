@@ -526,7 +526,7 @@ func (cc *jobcontroller) syncJob(jobInfo *apis.JobInfo, updateStatus state.Updat
 							klog.V(4).Infof("Pod %s for Job %s already exists, skipping", pod.Name, job.Name)
 						} else {
 							// Failed to create Pod. The error will be collected and the sync will be retried.
-							//This is to ensure all pods for the same Job are created
+							// This is to ensure all pods for the same Job are created
 							// so that gang-scheduling can schedule the Job successfully.
 							klog.Errorf("Failed to create pod %s for Job %s, err %#v",
 								pod.Name, job.Name, err)
