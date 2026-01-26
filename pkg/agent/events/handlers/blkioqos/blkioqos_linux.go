@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,10 +23,8 @@ import (
 	"path"
 	"strconv"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
-	"volcano.sh/volcano/pkg/agent/apis"
 	"volcano.sh/volcano/pkg/agent/events/framework"
 	"volcano.sh/volcano/pkg/agent/events/handlers"
 	"volcano.sh/volcano/pkg/agent/events/handlers/base"
@@ -62,8 +60,7 @@ func (h *BlkioQoSHandle) Handle(event interface{}) error {
 		return fmt.Errorf("illegal pod event")
 	}
 
-	// Get blkio weight from pod annotation or ConfigMap default
-	blkioWeight := h.getBlkioWeight(podEvent.Pod)
+	blkioWeight := ParseBlkioWeight(podEvent.Pod)
 	if blkioWeight == 0 {
 		klog.V(4).InfoS("No blkio weight specified for pod, skipping blkio QoS", "pod", klog.KObj(podEvent.Pod))
 		return nil
@@ -111,30 +108,4 @@ func (h *BlkioQoSHandle) Handle(event interface{}) error {
 	klog.InfoS("Successfully set blkio weight to cgroup file", "weight", weightValue, "cgroupFile", weightFile, "pod", klog.KObj(podEvent.Pod))
 
 	return nil
-}
-
-// getBlkioWeight returns the blkio weight from pod annotation
-// Returns 0 if no weight is specified (which means blkio QoS should be skipped)
-func (h *BlkioQoSHandle) getBlkioWeight(pod *corev1.Pod) int64 {
-	if pod == nil || pod.Annotations == nil {
-		return 0
-	}
-
-	weightStr, found := pod.Annotations[apis.BlkioWeightAnnotationKey]
-	if !found || weightStr == "" {
-		return 0
-	}
-
-	weight, err := strconv.ParseInt(weightStr, 10, 64)
-	if err != nil {
-		klog.Warningf("Invalid blkio-weight annotation value '%s' for pod %s/%s: %v", weightStr, pod.Namespace, pod.Name, err)
-		return 0
-	}
-
-	if weight <= 0 {
-		klog.Warningf("Invalid blkio-weight annotation value '%s' for pod %s/%s: must be positive", weightStr, pod.Namespace, pod.Name)
-		return 0
-	}
-
-	return weight
 }
