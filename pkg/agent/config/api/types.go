@@ -100,9 +100,9 @@ type NetworkQos struct {
 type BlkioQos struct {
 	// Enable BlkioQos or not.
 	Enable *bool `json:"enable,omitempty"`
-	// DefaultBlkioWeight is the default blkio weight to use if not specified in pod annotations.
+	// BlkioWeight is the default blkio weight to use if not specified in pod annotations.
 	// Range: 10-1000 for cgroup v1, 1-10000 for cgroup v2
-	DefaultBlkioWeight *int `json:"defaultBlkioWeight,omitempty"`
+	BlkioWeight *int `json:"blkioWeight,omitempty"`
 }
 
 type OverSubscription struct {
