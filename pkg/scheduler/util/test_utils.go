@@ -150,6 +150,27 @@ func BuildPodWithPVC(namespace, name, nodename string, p v1.PodPhase, req v1.Res
 	}
 }
 
+// BuildPodWithAffinity builds a pod object with affinity
+func BuildPodWithAffinity(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, affinity *v1.Affinity) *v1.Pod {
+	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
+	pod.Spec.Affinity = affinity
+	return pod
+}
+
+// BuildPodWithTolerations builds a pod object with tolerations
+func BuildPodWithTolerations(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, tolerations []v1.Toleration) *v1.Pod {
+	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
+	pod.Spec.Tolerations = tolerations
+	return pod
+}
+
+// BuildPodWithTopologySpreadConstraints builds a pod object with topology spread constraints
+func BuildPodWithTopologySpreadConstraints(namespace, name, nodeName string, p v1.PodPhase, req v1.ResourceList, groupName string, labels map[string]string, selector map[string]string, constraints []v1.TopologySpreadConstraint) *v1.Pod {
+	pod := BuildPod(namespace, name, nodeName, p, req, groupName, labels, selector)
+	pod.Spec.TopologySpreadConstraints = constraints
+	return pod
+}
+
 // BuildPVC builds a PVC with specified storageclass and required resources
 func BuildPVC(namespace, name string, req v1.ResourceList, scName string) *v1.PersistentVolumeClaim {
 	return &v1.PersistentVolumeClaim{
