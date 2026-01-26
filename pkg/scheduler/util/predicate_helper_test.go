@@ -155,6 +155,8 @@ func TestPredicateNodes(t *testing.T) {
 			},
 			nodes: []*api.NodeInfo{
 				{Name: "node1"},
+				{Name: "node2"},
+				{Name: "node3"},
 			},
 			nodesInShard:     sets.New[string]("node1"),
 			shardingMode:     commonutil.HardShardingMode,
@@ -162,7 +164,12 @@ func TestPredicateNodes(t *testing.T) {
 			predicateFn:      func(*api.TaskInfo, *api.NodeInfo) error { return nil },
 			expectedNodes:    []string{"node1"},
 			expectedErr:      "",
-			expectedErrCache: map[string]map[string]string{},
+			expectedErrCache: map[string]map[string]string{
+				"job1/worker": {
+					"node2": "node isn't in scheduler node shard",
+					"node3": "node isn't in scheduler node shard",
+				},
+			},
 		},
 	}
 
