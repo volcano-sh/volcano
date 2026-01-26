@@ -77,6 +77,12 @@ func (f *featureGate) Enabled(key Feature, c *api.ColocationConfig) (bool, error
 		}
 		return (nodeColocationEnabled || nodeOverSubscriptionEnabled) && *c.NetworkQosConfig.Enable, nil
 
+	case BlkioQoSFeature:
+		if c.BlkioQosConfig == nil || c.BlkioQosConfig.Enable == nil {
+			return false, fmt.Errorf("nil blkio qos config")
+		}
+		return (nodeColocationEnabled || nodeOverSubscriptionEnabled) && *c.BlkioQosConfig.Enable, nil
+
 	case OverSubscriptionFeature:
 		if c.OverSubscriptionConfig == nil || c.OverSubscriptionConfig.Enable == nil {
 			return false, fmt.Errorf("nil overSubscription config")

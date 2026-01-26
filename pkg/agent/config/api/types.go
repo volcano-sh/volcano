@@ -60,6 +60,9 @@ type ColocationConfig struct {
 	// network qos related config.
 	NetworkQosConfig *NetworkQos `json:"networkQosConfig,omitempty" configKey:"NetworkQoS"`
 
+	// blkio qos related config.
+	BlkioQosConfig *BlkioQos `json:"blkioQosConfig,omitempty" configKey:"BlkioQoS"`
+
 	// overSubscription related config.
 	OverSubscriptionConfig *OverSubscription `json:"overSubscriptionConfig,omitempty" configKey:"OverSubscription"`
 
@@ -96,6 +99,14 @@ type NetworkQos struct {
 	OfflineHighBandwidthPercent *int `json:"offlineHighBandwidthPercent,omitempty"`
 	// QoSCheckInterval presents the network Qos checkout interval
 	QoSCheckInterval *int `json:"qosCheckInterval,omitempty"`
+}
+
+type BlkioQos struct {
+	// Enable BlkioQos or not.
+	Enable *bool `json:"enable,omitempty"`
+	// BlkioWeight is the default blkio weight to use if not specified in pod annotations.
+	// Range: 10-1000 for cgroup v1, 1-10000 for cgroup v2
+	BlkioWeight *int `json:"blkioWeight,omitempty"`
 }
 
 type OverSubscription struct {

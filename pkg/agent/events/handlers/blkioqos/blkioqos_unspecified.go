@@ -1,5 +1,8 @@
+//go:build !linux
+// +build !linux
+
 /*
-Copyright 2024 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,18 +17,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package features
+package blkioqos
 
-type Feature string
-
-const (
-	CPUQoSFeature           Feature = "CPUQoS"
-	CPUBurstFeature         Feature = "CPUBurst"
-	MemoryQoSFeature        Feature = "MemoryQoS"
-	NetworkQoSFeature       Feature = "NetworkQoS"
-	BlkioQoSFeature         Feature = "BlkioQoS"
-	OverSubscriptionFeature Feature = "OverSubscription"
-	EvictionFeature         Feature = "Eviction"
-	ResourcesFeature        Feature = "Resources"
-	CPUThrottleFeature      Feature = "CPUThrottle"
-)
+// Stub for non-Linux. BLKIO cgroup is Linux-only; real impl is in blkioqos_linux.go.
+// This file exists so the package builds on macOS/Windows (e.g. `go test` succeeds).

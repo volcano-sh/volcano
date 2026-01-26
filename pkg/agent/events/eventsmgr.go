@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Volcano Authors.
+Copyright 2026 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ import (
 	"volcano.sh/volcano/pkg/config"
 	"volcano.sh/volcano/pkg/metriccollect"
 
+	_ "volcano.sh/volcano/pkg/agent/events/handlers/blkioqos"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/cpuburst"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/cpuqos"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/cputhrottle"
