@@ -90,11 +90,8 @@ const (
 	MemoryMaxFileV2   string = "memory.max"
 
 	// Blkio cgroup files (v2)
-	BlkioWeightFileV2          string = "io.weight"
-	BlkioMaxReadBpsFileV2      string = "io.max"
-	BlkioMaxWriteBpsFileV2     string = "io.max"
-	BlkioMaxReadIopsFileV2     string = "io.max"
-	BlkioMaxWriteIopsFileV2    string = "io.max"
+	BlkioWeightFileV2 string = "io.weight"
+	BlkioMaxFileV2 string = "io.max"
 
 	// Cgroup version constants
 	CgroupV1 string = "v1"
