@@ -1102,7 +1102,18 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor
 		rvJob, rvJobFound := ssn.Jobs[rv.Job]
 		preemptorJob, preemptorJobFound := ssn.Jobs[preemptor.Job]
 
-		if lvJobFound && rvJobFound && preemptorJobFound && lvJob.Queue != rvJob.Queue {
+		// Handle orphaned tasks from deleted PodGroups.
+		// Tasks with missing jobs should be prioritized for eviction (sorted first in victims queue).
+		if !lvJobFound || !rvJobFound {
+			if !lvJobFound && !rvJobFound {
+				// Both jobs missing: fall back to task creation time
+				return lv.Pod.CreationTimestamp.Before(&rv.Pod.CreationTimestamp)
+			}
+			// Task with missing job should be evicted first (has higher priority as victim)
+			return !lvJobFound
+		}
+
+		if preemptorJobFound && lvJob.Queue != rvJob.Queue {
 			return ssn.VictimQueueOrderFn(ssn.Queues[lvJob.Queue], ssn.Queues[rvJob.Queue], ssn.Queues[preemptorJob.Queue])
 		}
 
