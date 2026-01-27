@@ -1310,14 +1310,6 @@ func (ji *JobInfo) ContainsHardTopologyInSubJob() bool {
 	return false
 }
 
-// ContainsHardTopology returns whether the job and the subJobs in the job contain hard network topology
-func (ji *JobInfo) ContainsHardTopology() bool {
-	if hard, _ := ji.IsHardTopologyMode(); hard || ji.ContainsHardTopologyInSubJob() {
-		return true
-	}
-	return false
-}
-
 // ContainsNetworkTopologyInSubJob returns whether the subJobs in the job contain network topology
 func (ji *JobInfo) ContainsNetworkTopologyInSubJob() bool {
 	if ji.PodGroup == nil {
