@@ -68,6 +68,7 @@ func (f *EventQueueFactory) SyncConfig(cfg *api.ColocationConfig) error {
 			if syncErr := handler.RefreshCfg(cfg); syncErr != nil {
 				errs = append(errs, syncErr)
 			}
+			klog.InfoS("Refresh handler config finished", "handler", handler.HandleName(), "active", handler.IsActive())
 		}
 		for _, probe := range queue.Probes {
 			if syncErr := probe.RefreshCfg(cfg); syncErr != nil {

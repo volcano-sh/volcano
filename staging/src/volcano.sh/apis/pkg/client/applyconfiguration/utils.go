@@ -23,6 +23,7 @@ import (
 	managedfields "k8s.io/apimachinery/pkg/util/managedfields"
 	v1alpha1 "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
+	configv1alpha1 "volcano.sh/apis/pkg/apis/config/v1alpha1"
 	datadependencyv1alpha1 "volcano.sh/apis/pkg/apis/datadependency/v1alpha1"
 	flowv1alpha1 "volcano.sh/apis/pkg/apis/flow/v1alpha1"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1"
@@ -32,6 +33,7 @@ import (
 	trainingv1alpha1 "volcano.sh/apis/pkg/apis/training/v1alpha1"
 	batchv1alpha1 "volcano.sh/apis/pkg/client/applyconfiguration/batch/v1alpha1"
 	applyconfigurationbusv1alpha1 "volcano.sh/apis/pkg/client/applyconfiguration/bus/v1alpha1"
+	applyconfigurationconfigv1alpha1 "volcano.sh/apis/pkg/client/applyconfiguration/config/v1alpha1"
 	applyconfigurationdatadependencyv1alpha1 "volcano.sh/apis/pkg/client/applyconfiguration/datadependency/v1alpha1"
 	applyconfigurationflowv1alpha1 "volcano.sh/apis/pkg/client/applyconfiguration/flow/v1alpha1"
 	internal "volcano.sh/apis/pkg/client/applyconfiguration/internal"
@@ -83,6 +85,18 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		// Group=bus.volcano.sh, Version=v1alpha1
 	case busv1alpha1.SchemeGroupVersion.WithKind("Command"):
 		return &applyconfigurationbusv1alpha1.CommandApplyConfiguration{}
+
+		// Group=config.volcano.sh, Version=v1alpha1
+	case configv1alpha1.SchemeGroupVersion.WithKind("ColocationConfiguration"):
+		return &applyconfigurationconfigv1alpha1.ColocationConfigurationApplyConfiguration{}
+	case configv1alpha1.SchemeGroupVersion.WithKind("ColocationConfigurationSpec"):
+		return &applyconfigurationconfigv1alpha1.ColocationConfigurationSpecApplyConfiguration{}
+	case configv1alpha1.SchemeGroupVersion.WithKind("ColocationConfigurationStatus"):
+		return &applyconfigurationconfigv1alpha1.ColocationConfigurationStatusApplyConfiguration{}
+	case configv1alpha1.SchemeGroupVersion.WithKind("Configuration"):
+		return &applyconfigurationconfigv1alpha1.ConfigurationApplyConfiguration{}
+	case configv1alpha1.SchemeGroupVersion.WithKind("MemoryQos"):
+		return &applyconfigurationconfigv1alpha1.MemoryQosApplyConfiguration{}
 
 		// Group=datadependency.volcano.sh, Version=v1alpha1
 	case datadependencyv1alpha1.SchemeGroupVersion.WithKind("DataSource"):

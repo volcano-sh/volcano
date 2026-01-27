@@ -60,3 +60,9 @@ func NormalizeQosLevel(qosLevel int64) int64 {
 	}
 	return 0
 }
+
+// AllowedUseExtRes defines what qos levels can use extension resources,
+// currently only qos level QosLevelLS and QosLevelBE can use.
+func AllowedUseExtRes(qosLevel int64) bool {
+	return qosLevel <= 1
+}

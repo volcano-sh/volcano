@@ -130,6 +130,7 @@ tail -n +2 ${VOLCANO_CRD_DIR}/bases/scheduling.volcano.sh_queues.yaml > ${HELM_V
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/nodeinfo.volcano.sh_numatopologies.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/nodeinfo.volcano.sh_numatopologies.yaml
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/topology.volcano.sh_hypernodes.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/topology.volcano.sh_hypernodes.yaml
 tail -n +2 ${VOLCANO_CRD_DIR}/bases/shard.volcano.sh_nodeshards.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/shard.volcano.sh_nodeshards.yaml
+tail -n +2 ${VOLCANO_CRD_DIR}/bases/config.volcano.sh_colocationconfigurations.yaml > ${HELM_VOLCANO_CRD_DIR}/bases/config.volcano.sh_colocationconfigurations.yaml
 
 # sync jobflow bases
 tail -n +2 ${JOBFLOW_CRD_DIR}/bases/flow.volcano.sh_jobflows.yaml > ${HELM_JOBFLOW_CRD_DIR}/bases/flow.volcano.sh_jobflows.yaml
@@ -187,6 +188,7 @@ HELM_CMD="${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano 
       -s templates/nodeinfo_v1alpha1_numatopologies.yaml \
       -s templates/topology_v1alpha1_hypernodes.yaml \
       -s templates/shard_v1alpha1_nodeshards.yaml \
+      -s templates/config_v1alpha1_colocationconfigurations.yaml \
       -s templates/webhooks.yaml"
 
 # Add VAP and MAP templates if enabled
