@@ -20,6 +20,7 @@ package v1alpha1
 // ConfigurationApplyConfiguration represents a declarative configuration of the Configuration type for use
 // with apply.
 type ConfigurationApplyConfiguration struct {
+	// MemoryQos defines the memory QoS configuration
 	MemoryQos *MemoryQosApplyConfiguration `json:"memoryQos,omitempty"`
 }
 
