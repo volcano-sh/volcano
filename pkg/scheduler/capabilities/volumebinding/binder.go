@@ -257,7 +257,6 @@ func NewVolumeBinder(
 	storageClassInformer storageinformers.StorageClassInformer,
 	capacityCheck *CapacityCheck,
 	bindTimeout time.Duration) (SchedulerVolumeBinder, error) {
-
 	pvcCache, err1 := NewPVCAssumeCache(logger, pvcInformer.Informer())
 	pvCache, err2 := NewPVAssumeCache(logger, pvInformer.Informer())
 	if err := errors.Join(err1, err2); err != nil {
