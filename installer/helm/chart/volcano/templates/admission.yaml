@@ -154,9 +154,9 @@ spec:
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
           name: admission
           livenessProbe:
-            {{- include "volcano.probe" (dict "port" ( .Values.basic.healthz_port | default 11251 ) "scheme" "HTTPS" "values" .Values.custom.admission_livenessProbe) | nindent 12 }}
+            {{- include "volcano.liveness.probe" (dict "port" ( .Values.basic.healthz_port | default 11251 ) "scheme" "HTTPS" "values" .Values.custom.admission_livenessProbe) | nindent 12 }}
           readinessProbe:
-            {{- include "volcano.probe" (dict "port" ( .Values.basic.healthz_port | default 11251 ) "scheme" "HTTPS" "values" .Values.custom.admission_readinessProbe) | nindent 12 }}
+            {{- include "volcano.readiness.probe" (dict "port" ( .Values.basic.healthz_port | default 11251 ) "scheme" "HTTPS" "values" .Values.custom.admission_readinessProbe) | nindent 12 }}
           {{- if .Values.custom.admission_resources }}
           resources:
           {{- toYaml .Values.custom.admission_resources | nindent 12 }}

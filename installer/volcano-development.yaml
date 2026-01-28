@@ -162,10 +162,10 @@ spec:
               path: /healthz
               port: 11251
               scheme: HTTPS
-            initialDelaySeconds: 10
-            periodSeconds: 20
+            initialDelaySeconds: 30
+            periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 5
             successThreshold: 1
           readinessProbe:
             httpGet:
@@ -173,9 +173,9 @@ spec:
               port: 11251
               scheme: HTTPS
             initialDelaySeconds: 10
-            periodSeconds: 20
+            periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 5
             successThreshold: 1
           volumeMounts:
             - mountPath: /admission.local.config/certificates
@@ -9061,10 +9061,10 @@ spec:
               path: /healthz
               port: 11251
               scheme: HTTP
-            initialDelaySeconds: 10
-            periodSeconds: 20
+            initialDelaySeconds: 30
+            periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 5
             successThreshold: 1
           readinessProbe:
             httpGet:
@@ -9072,9 +9072,9 @@ spec:
               port: 11251
               scheme: HTTP
             initialDelaySeconds: 10
-            periodSeconds: 20
+            periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 5
             successThreshold: 1
           args:
             - --logtostderr
@@ -9298,10 +9298,10 @@ spec:
               path: /healthz
               port: 11251
               scheme: HTTP
-            initialDelaySeconds: 10
-            periodSeconds: 20
+            initialDelaySeconds: 30
+            periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 5
             successThreshold: 1
           readinessProbe:
             httpGet:
@@ -9309,9 +9309,9 @@ spec:
               port: 11251
               scheme: HTTP
             initialDelaySeconds: 10
-            periodSeconds: 20
+            periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 5
             successThreshold: 1
           args:
             - --logtostderr
