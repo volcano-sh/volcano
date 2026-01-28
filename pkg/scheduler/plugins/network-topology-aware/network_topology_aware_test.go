@@ -3175,6 +3175,15 @@ func Test_initHyperNodeResourceCache(t *testing.T) {
 							"example.com/foo": 5,
 						},
 					},
+					Idle: &api.Resource{
+						MilliCPU: 50000,
+						Memory:   4000,
+						ScalarResources: map[corev1.ResourceName]float64{
+							"example.com/foo": 5,
+						},
+					},
+					Releasing: api.EmptyResource(),
+					Pipelined: api.EmptyResource(),
 				}
 			}
 			ssn.Nodes = nodes
@@ -3294,6 +3303,15 @@ func Test_batchNodeOrderFnForNormalPods(t *testing.T) {
 							"example.com/foo": 5,
 						},
 					},
+					Idle: &api.Resource{
+						MilliCPU: 50000,
+						Memory:   4000,
+						ScalarResources: map[corev1.ResourceName]float64{
+							"example.com/foo": 5,
+						},
+					},
+					Releasing: api.EmptyResource(),
+					Pipelined: api.EmptyResource(),
 				}
 				tt.expectedScores[node.Name] = 0.515375
 				nodes[fmt.Sprintf("node-%d", i)] = &node
@@ -3362,6 +3380,315 @@ func Test_batchNodeOrderFnForNormalPods(t *testing.T) {
 			}
 
 			fmt.Printf("The time cost for invoking the batchNodeOrderFnForNormalPods function is %v.\n", elapsed)
+		})
+	}
+}
+
+// TestHyperNodeGradientPreFiltering tests the pre-filtering logic in hyperNodeGradientFn.
+// It verifies that HyperNodes are correctly filtered based on idle and futureIdle resources.
+func TestHyperNodeGradientPreFiltering(t *testing.T) {
+	const (
+		nodeCount       = 1000
+		nodesPerTier1HN = 10
+		tier1HNCount    = 100
+		// Single node resources: 4 CPU (4000m), 8Gi Memory
+		nodeCPU    = 4000
+		nodeMemory = 8 * 1024 * 1024 * 1024 // 8Gi in bytes
+	)
+
+	tests := []struct {
+		name                string
+		isSubJob            bool
+		highestAllowedTier  int
+		minResource         *api.Resource
+		idleResource        *api.Resource
+		futureIdleResource  *api.Resource
+		expectTier1Selected bool
+	}{
+		// Job scenarios (highestAllowedTier = 2)
+		{
+			name:               "Job - idle sufficient, futureIdle sufficient",
+			isSubJob:           false,
+			highestAllowedTier: 2,
+			minResource: &api.Resource{
+				MilliCPU: 20000,
+				Memory:   40 * 1024 * 1024 * 1024,
+			},
+			idleResource: &api.Resource{
+				MilliCPU: 30000,
+				Memory:   60 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 35000,
+				Memory:   70 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: true,
+		},
+		{
+			name:               "Job - idle sufficient, futureIdle insufficient",
+			isSubJob:           false,
+			highestAllowedTier: 2,
+			minResource: &api.Resource{
+				MilliCPU: 20000,
+				Memory:   40 * 1024 * 1024 * 1024,
+			},
+			idleResource: &api.Resource{
+				MilliCPU: 30000,
+				Memory:   60 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 15000,
+				Memory:   30 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: true,
+		},
+		{
+			name:               "Job - idle insufficient, futureIdle sufficient",
+			isSubJob:           false,
+			highestAllowedTier: 2,
+			minResource: &api.Resource{
+				MilliCPU: 20000,
+				Memory:   40 * 1024 * 1024 * 1024,
+			},
+			idleResource: &api.Resource{
+				MilliCPU: 15000,
+				Memory:   30 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 30000,
+				Memory:   60 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: true,
+		},
+		{
+			name:               "Job - idle insufficient, futureIdle insufficient",
+			isSubJob:           false,
+			highestAllowedTier: 2,
+			minResource: &api.Resource{
+				MilliCPU: 20000,
+				Memory:   40 * 1024 * 1024 * 1024,
+			},
+			idleResource: &api.Resource{
+				MilliCPU: 15000,
+				Memory:   30 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 15000,
+				Memory:   30 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: false,
+		},
+		// SubJob scenarios (highestAllowedTier = 1)
+		{
+			name:               "SubJob - idle sufficient, futureIdle sufficient",
+			isSubJob:           true,
+			highestAllowedTier: 1,
+			minResource: &api.Resource{
+				MilliCPU: 10000,
+				Memory:   20 * 1024 * 1024 * 1024,
+			},
+			idleResource: &api.Resource{
+				MilliCPU: 20000,
+				Memory:   40 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 25000,
+				Memory:   50 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: true,
+		},
+		{
+			name:               "SubJob - idle sufficient, futureIdle insufficient",
+			isSubJob:           true,
+			highestAllowedTier: 1,
+			minResource: &api.Resource{
+				MilliCPU: 10000,
+				Memory:   20 * 1024 * 1024 * 1024,
+			},
+			idleResource: &api.Resource{
+				MilliCPU: 20000,
+				Memory:   40 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 5000,
+				Memory:   10 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: true,
+		},
+		{
+			name:               "SubJob - idle insufficient, futureIdle sufficient",
+			isSubJob:           true,
+			highestAllowedTier: 1,
+			minResource: &api.Resource{
+				MilliCPU: 10000,
+				Memory:   20 * 1024 * 1024 * 1024,
+			},
+			idleResource: &api.Resource{
+				MilliCPU: 5000,
+				Memory:   10 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 20000,
+				Memory:   40 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: true,
+		},
+		{
+			name:               "SubJob - idle insufficient, futureIdle insufficient",
+			isSubJob:           true,
+			highestAllowedTier: 1,
+			minResource: &api.Resource{
+				MilliCPU: 10000,
+				Memory:   20 * 1024 * 1024 * 1024,
+			},
+			idleResource: &api.Resource{
+				MilliCPU: 5000,
+				Memory:   10 * 1024 * 1024 * 1024,
+			},
+			futureIdleResource: &api.Resource{
+				MilliCPU: 5000,
+				Memory:   10 * 1024 * 1024 * 1024,
+			},
+			expectTier1Selected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build plugin
+			plugin := &networkTopologyAwarePlugin{
+				pluginArguments:        framework.Arguments{},
+				weight:                 getPriorityWeight(framework.Arguments{}),
+				normalPodConfig:        getNormalPodConfig(framework.Arguments{}),
+				hyperNodesTier:         &hyperNodesTier{minTier: 1, maxTier: 2},
+				hyperNodeResourceCache: make(map[string]*resourceStatus),
+			}
+
+			// Build 1000 nodes
+			nodes := make(map[string]*api.NodeInfo)
+			for i := 0; i < nodeCount; i++ {
+				nodeName := fmt.Sprintf("node-%d", i)
+				nodes[nodeName] = &api.NodeInfo{
+					Name: nodeName,
+					Allocatable: &api.Resource{
+						MilliCPU: nodeCPU,
+						Memory:   nodeMemory,
+					},
+					Used:      api.EmptyResource(),
+					Releasing: api.EmptyResource(),
+					Pipelined: api.EmptyResource(),
+					Idle: &api.Resource{
+						MilliCPU: nodeCPU,
+						Memory:   nodeMemory,
+					},
+				}
+			}
+
+			// Build HyperNodes topology
+			hyperNodesMap := make(map[string]*api.HyperNodeInfo)
+			realNodesSet := make(map[string]sets.Set[string])
+			hyperNodesSetByTier := map[int]sets.Set[string]{
+				1: sets.New[string](),
+				2: sets.New[string](),
+			}
+
+			// Build tier-1 HyperNodes
+			tier1Children := make([]api.MemberConfig, 0, tier1HNCount)
+			for i := 0; i < tier1HNCount; i++ {
+				hnName := fmt.Sprintf("hn-1-%d", i)
+				hyperNodesSetByTier[1].Insert(hnName)
+				tier1Children = append(tier1Children, api.MemberConfig{
+					Name:     hnName,
+					Type:     topologyv1alpha1.MemberTypeHyperNode,
+					Selector: "exact",
+				})
+
+				nodeMembers := make([]api.MemberConfig, 0, nodesPerTier1HN)
+				nodeSet := sets.New[string]()
+				for j := 0; j < nodesPerTier1HN; j++ {
+					nodeName := fmt.Sprintf("node-%d", i*nodesPerTier1HN+j)
+					nodeMembers = append(nodeMembers, api.MemberConfig{
+						Name:     nodeName,
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					})
+					nodeSet.Insert(nodeName)
+				}
+				realNodesSet[hnName] = nodeSet
+				hyperNodesMap[hnName] = api.NewHyperNodeInfo(api.BuildHyperNode(hnName, 1, nodeMembers))
+			}
+
+			// Build tier-2 HyperNode
+			tier2HNName := "hn-2-0"
+			hyperNodesSetByTier[2].Insert(tier2HNName)
+			hyperNodesMap[tier2HNName] = api.NewHyperNodeInfo(api.BuildHyperNode(tier2HNName, 2, tier1Children))
+			// Set Children for tier-2 HyperNode
+			for i := 0; i < tier1HNCount; i++ {
+				hyperNodesMap[tier2HNName].Children.Insert(fmt.Sprintf("hn-1-%d", i))
+			}
+			allNodes := sets.New[string]()
+			for i := 0; i < nodeCount; i++ {
+				allNodes.Insert(fmt.Sprintf("node-%d", i))
+			}
+			realNodesSet[tier2HNName] = allNodes
+
+			// Build session
+			ssn := &framework.Session{
+				Nodes:               nodes,
+				HyperNodes:          hyperNodesMap,
+				RealNodesSet:        realNodesSet,
+				HyperNodesSetByTier: hyperNodesSetByTier,
+				HyperNodesTiers:     []int{1, 2},
+			}
+
+			// Initialize hyperNodeResourceCache
+			plugin.initHyperNodeResourceCache(ssn)
+
+			// Override resource status for the first tier-1 HyperNode
+			testHN := "hn-1-0"
+			plugin.hyperNodeResourceCache[testHN].idle = tt.idleResource
+			plugin.hyperNodeResourceCache[testHN].futureIdle = tt.futureIdleResource
+
+			// Call hyperNodeGradientFn
+			result, err := plugin.hyperNodeGradientFn(
+				ssn,
+				hyperNodesMap[tier2HNName],
+				tt.highestAllowedTier,
+				"",
+				tt.minResource,
+			)
+
+			assert.NoError(t, err)
+
+			// Check if the test HyperNode is in the result
+			found := false
+			for _, tierHNs := range result {
+				for _, hn := range tierHNs {
+					if hn.Name == testHN {
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
+
+			if tt.expectTier1Selected {
+				assert.True(t, found, "expected HyperNode %s to be selected, but it was filtered", testHN)
+			} else {
+				assert.False(t, found, "expected HyperNode %s to be filtered, but it was selected", testHN)
+			}
+
+			// Verify gradient is sorted by tier (ascending)
+			if len(result) > 1 {
+				for i := 0; i < len(result)-1; i++ {
+					if len(result[i]) > 0 && len(result[i+1]) > 0 {
+						assert.LessOrEqual(t, result[i][0].Tier(), result[i+1][0].Tier(),
+							"gradient should be sorted by tier in ascending order")
+					}
+				}
+			}
 		})
 	}
 }
