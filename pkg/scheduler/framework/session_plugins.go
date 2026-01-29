@@ -1121,7 +1121,11 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor
 			return !lvJobFound
 		}
 
-		if preemptorJobFound && lvJob.Queue != rvJob.Queue {
+		if !preemptorJobFound {
+			return !ssn.JobOrderFn(lvJob, rvJob)
+		}
+
+		if lvJob.Queue != rvJob.Queue {
 			return ssn.VictimQueueOrderFn(ssn.Queues[lvJob.Queue], ssn.Queues[rvJob.Queue], ssn.Queues[preemptorJob.Queue])
 		}
 
