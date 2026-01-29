@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
@@ -2635,8 +2636,8 @@ func TestAllocateWithPVC(t *testing.T) {
 			PVs:                []*v1.PersistentVolume{pv1, pv2},
 			PVCs:               []*v1.PersistentVolumeClaim{pvc1, pvc2},
 			IgnoreProvisioners: ignoreProvisioners,
-			ExpectTaskStatusNums: map[api.JobID]map[api.TaskStatus]int{
-				"c1/pg1": {api.Binding: 2},
+			ExpectStatus: map[api.JobID]scheduling.PodGroupPhase{
+				"c1/pg1": scheduling.PodGroupInqueue,
 			},
 		},
 	}
@@ -2645,6 +2646,7 @@ func TestAllocateWithPVC(t *testing.T) {
 		t.Run(test.Name, func(t *testing.T) {
 			predicates.ResetVolumeBindingPluginForTest()
 			test.Plugins = plugins
+			test.CacheSyncTimeout = 5 * time.Second
 			test.RegisterSession(tiers, nil)
 			defer test.Close()
 			action := New()

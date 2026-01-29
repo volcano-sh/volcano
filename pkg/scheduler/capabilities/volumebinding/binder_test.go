@@ -1654,6 +1654,7 @@ func TestCheckBindings(t *testing.T) {
 			apiPVs:          []*v1.PersistentVolume{pvNode1a},
 			apiPVCs:         []*v1.PersistentVolumeClaim{boundPVCNode1a},
 			shouldFail:      true,
+			expectedBound:   false,
 		},
 		"binding-claimref-uid-empty": {
 			bindings:        []*BindingInfo{makeBinding(unboundPVC, pvNode1aBound)},
@@ -1663,6 +1664,7 @@ func TestCheckBindings(t *testing.T) {
 			apiPVs:          []*v1.PersistentVolume{pvRemoveClaimUID(pvNode1aBound)},
 			apiPVCs:         []*v1.PersistentVolumeClaim{boundPVCNode1a},
 			shouldFail:      true,
+			expectedBound:   false,
 		},
 		"binding-one-bound,one-unbound": {
 			bindings:        []*BindingInfo{makeBinding(unboundPVC, pvNode1aBound), makeBinding(unboundPVC2, pvNode1bBound)},
