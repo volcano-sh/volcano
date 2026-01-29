@@ -126,6 +126,51 @@ func TestPredicateNodes(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "soft sharding allows nodes outside shard",
+			task: &api.TaskInfo{
+				Job:       "job1",
+				TaskRole:  "worker",
+				Namespace: "ns",
+				Name:      "task",
+			},
+			nodes: []*api.NodeInfo{
+				{Name: "node2"},
+			},
+			nodesInShard:     sets.New[string]("node1"),
+			shardingMode:     commonutil.SoftShardingMode,
+			enableErrorCache: false,
+			predicateFn:      func(*api.TaskInfo, *api.NodeInfo) error { return nil },
+			expectedNodes:    []string{"node2"},
+			expectedErr:      "",
+			expectedErrCache: map[string]map[string]string{},
+		},
+		{
+			name: "hard sharding allows nodes inside shard",
+			task: &api.TaskInfo{
+				Job:       "job1",
+				TaskRole:  "worker",
+				Namespace: "ns",
+				Name:      "task",
+			},
+			nodes: []*api.NodeInfo{
+				{Name: "node1"},
+				{Name: "node2"},
+				{Name: "node3"},
+			},
+			nodesInShard:     sets.New[string]("node1"),
+			shardingMode:     commonutil.HardShardingMode,
+			enableErrorCache: false,
+			predicateFn:      func(*api.TaskInfo, *api.NodeInfo) error { return nil },
+			expectedNodes:    []string{"node1"},
+			expectedErr:      "",
+			expectedErrCache: map[string]map[string]string{
+				"job1/worker": {
+					"node2": "node isn't in scheduler node shard",
+					"node3": "node isn't in scheduler node shard",
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
