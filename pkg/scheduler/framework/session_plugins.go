@@ -22,6 +22,7 @@ package framework
 
 import (
 	"context"
+	"time"
 
 	fwk "k8s.io/kube-scheduler/framework"
 	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
@@ -255,6 +256,26 @@ func (ssn *Session) Reclaimable(reclaimer *api.TaskInfo, reclaimees []*api.TaskI
 	}
 
 	return victims
+}
+
+// getJobStartTime returns the earliest start time of any task in the job
+func getJobStartTime(job *api.JobInfo) time.Time {
+	var minStart time.Time
+	for _, task := range job.Tasks {
+		// Safely handle nil pointers
+		if task.Pod == nil || task.Pod.Status.StartTime == nil {
+			continue
+		}
+
+		// Get the actual start time
+		startTime := task.Pod.Status.StartTime.Time
+
+		// Find the earliest start time
+		if minStart.IsZero() || startTime.Before(minStart) {
+			minStart = startTime
+		}
+	}
+	return minStart
 }
 
 // Preemptable invoke preemptable function of the plugins
@@ -674,9 +695,28 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 		}
 	}
 
-	// If no job order funcs, order job by CreationTimestamp first, then by UID.
+	// Fallback logic when plugins don't decide
 	lv := l.(*api.JobInfo)
 	rv := r.(*api.JobInfo)
+
+	// Get actual job start times
+	startL := getJobStartTime(lv)
+	startR := getJobStartTime(rv)
+
+	// Fallback to creation time if no tasks have started yet
+	if startL.IsZero() {
+		startL = lv.CreationTimestamp.Time
+	}
+	if startR.IsZero() {
+		startR = rv.CreationTimestamp.Time
+	}
+
+	// Compare execution times - A job that started earlier is more important
+	if !startL.Equal(startR) {
+		return startL.Before(startR)
+	}
+
+	// Final tie-breaker
 	if lv.CreationTimestamp.Equal(&rv.CreationTimestamp) {
 		return lv.UID < rv.UID
 	}
@@ -1090,6 +1130,7 @@ func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNo
 // BuildVictimsPriorityQueue returns a priority queue with victims sorted by:
 // if victims has same job id, sorted by !ssn.TaskOrderFn
 // if victims has different job id, sorted by !ssn.JobOrderFn
+
 func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor *api.TaskInfo) *util.PriorityQueue {
 	victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
 		lv := l.(*api.TaskInfo)
