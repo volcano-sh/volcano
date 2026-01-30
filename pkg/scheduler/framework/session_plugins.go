@@ -1102,7 +1102,30 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor
 		rvJob, rvJobFound := ssn.Jobs[rv.Job]
 		preemptorJob, preemptorJobFound := ssn.Jobs[preemptor.Job]
 
-		if lvJobFound && rvJobFound && preemptorJobFound && lvJob.Queue != rvJob.Queue {
+		// Handle orphaned tasks whose PodGroups were deleted after the session
+		// snapshot was taken but before BuildVictimsPriorityQueue was called.
+		//
+		// Race condition scenario:
+		// 1. Session captures a snapshot of jobs/tasks at scheduling cycle start
+		// 2. PodGroup gets deleted concurrently, removing the job from ssn.Jobs
+		// 3. Here, ssn.Jobs[task.Job] returns nil for the orphaned task
+		//
+		// Sorting priority:
+		// - Both jobs missing: compare using TaskOrderFn (creation timestamp)
+		// - One job missing: evict orphaned task first (its PodGroup is gone anyway)
+		// - Both jobs present: use normal JobOrderFn comparison below
+		if !lvJobFound || !rvJobFound {
+			if !lvJobFound && !rvJobFound {
+				return !ssn.TaskOrderFn(l, r)
+			}
+			return !lvJobFound
+		}
+
+		if !preemptorJobFound {
+			return !ssn.JobOrderFn(lvJob, rvJob)
+		}
+
+		if lvJob.Queue != rvJob.Queue {
 			return ssn.VictimQueueOrderFn(ssn.Queues[lvJob.Queue], ssn.Queues[rvJob.Queue], ssn.Queues[preemptorJob.Queue])
 		}
 
