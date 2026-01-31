@@ -136,3 +136,15 @@ func MergeErrors(errs ...error) error {
 func JobTerminated(job *JobInfo) bool {
 	return job.PodGroup == nil && len(job.Tasks) == 0
 }
+
+// HasOnlyVolcanoSchedulingGate checks if a Pod has only the Volcano queue allocation gate
+func HasOnlyVolcanoSchedulingGate(pod *v1.Pod) bool {
+	return len(pod.Spec.SchedulingGates) == 1 &&
+		pod.Spec.SchedulingGates[0].Name == "volcano.sh/queue-allocation-gate"
+}
+
+// HasQueueAllocationGateAnnotation checks if a Pod has the queue allocation gate annotation
+func HasQueueAllocationGateAnnotation(pod *v1.Pod) bool {
+	return pod.Annotations != nil &&
+		pod.Annotations["volcano.sh/queue-allocation-gate"] == "true"
+}
