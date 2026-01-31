@@ -25,6 +25,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
@@ -110,6 +112,12 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 	config.ConfigData.Lock()
 	defer config.ConfigData.Unlock()
 
+	// Add scheduling gates if opted-in
+	patchGates := patchSchedulingGates(pod)
+	if patchGates != nil {
+		patch = append(patch, *patchGates)
+	}
+
 	for _, resourceGroup := range config.ConfigData.ResGroupsConfig {
 		klog.V(3).Infof("resourceGroup %s", resourceGroup.ResourceGroup)
 		group := GetResGroup(resourceGroup)
@@ -141,6 +149,34 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 	}
 
 	return json.Marshal(patch)
+}
+
+// patchSchedulingGates adds a scheduling gate for Volcano-managed pods
+// The gate prevents cluster autoscalers from seeing the pod until Volcano
+// determines it's ready (queue admission + gang scheduling satisfied)
+func patchSchedulingGates(pod *v1.Pod) *patchOperation {
+	// Check if opt-in annotation is present
+	if !api.HasQueueAllocationGateAnnotation(pod) {
+		klog.V(4).Infof("Pod %s/%s does not have opt-in annotation, skipping gate",
+			pod.Namespace, pod.Name)
+		return nil
+	}
+
+	gates := []v1.PodSchedulingGate{
+		{Name: schedulingv1beta1.QueueAllocationGateKey},
+	}
+	// Use "add" when the field is not set, and "replace" when it already exists.
+	// In both cases, preserve existing gates and append the new one.
+	value := append(pod.Spec.SchedulingGates, gates...)
+	op := "add"
+	if len(pod.Spec.SchedulingGates) > 0 {
+		op = "replace"
+	}
+	return &patchOperation{
+		Op:    op,
+		Path:  "/spec/schedulingGates",
+		Value: value,
+	}
 }
 
 // patchLabels patch label

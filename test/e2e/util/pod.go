@@ -24,6 +24,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 type PodSpec struct {
@@ -113,4 +115,11 @@ func WaitPodUnschedulable(ctx *TestContext, namespace, podName string, timeout t
 func DeletePod(ctx *TestContext, pod *v1.Pod) {
 	err := ctx.Kubeclient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to delete pod %s", pod.Name)
+}
+
+// PodHasOnlyVolcanoSchedulingGate fetches a pod and checks if it has only the Volcano queue allocation gate
+func PodHasOnlyVolcanoSchedulingGate(ctx *TestContext, podName string) bool {
+	pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Get(context.TODO(), podName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to get pod %s", podName)
+	return api.HasOnlyVolcanoSchedulingGate(pod)
 }
