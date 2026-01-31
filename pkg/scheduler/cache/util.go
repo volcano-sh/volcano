@@ -17,6 +17,7 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"slices"
@@ -24,6 +25,9 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"stathat.com/c/consistent"
 
@@ -131,4 +135,61 @@ func getHyperNodeEventSource(source string) []string {
 		return nil
 	}
 	return parts
+}
+
+// RemoveVolcanoGate removes the Volcano scheduling gate from a pod via JSON patch
+func RemoveVolcanoSchGate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+	// Find the Volcano gate index
+	gateIndex := -1
+	for i, gate := range pod.Spec.SchedulingGates {
+		if gate.Name == "volcano.sh/queue-allocation-gate" {
+			gateIndex = i
+			break
+		}
+	}
+
+	if gateIndex == -1 {
+		return nil // Gate already removed
+	}
+
+	// Build JSON patch to remove the gate
+	patch := fmt.Sprintf(`[{"op":"remove","path":"/spec/schedulingGates/%d"}]`, gateIndex)
+
+	_, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(
+		context.TODO(),
+		pod.Name,
+		types.JSONPatchType,
+		[]byte(patch),
+		metav1.PatchOptions{})
+
+	return err
+}
+
+// AddVolcanoSchGate adds the Volcano scheduling gate to a pod via JSON patch
+func AddVolcanoSchGate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+	// Check if gate already exists
+	for _, gate := range pod.Spec.SchedulingGates {
+		if gate.Name == "volcano.sh/queue-allocation-gate" {
+			return nil // Gate already present
+		}
+	}
+
+	// Build JSON patch to add the gate
+	var patch string
+	if len(pod.Spec.SchedulingGates) == 0 {
+		// No gates exist, create the array
+		patch = `[{"op":"add","path":"/spec/schedulingGates","value":[{"name":"volcano.sh/queue-allocation-gate"}]}]`
+	} else {
+		// Gates exist, append to array
+		patch = `[{"op":"add","path":"/spec/schedulingGates/-","value":{"name":"volcano.sh/queue-allocation-gate"}}]`
+	}
+
+	_, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(
+		context.TODO(),
+		pod.Name,
+		types.JSONPatchType,
+		[]byte(patch),
+		metav1.PatchOptions{})
+
+	return err
 }
