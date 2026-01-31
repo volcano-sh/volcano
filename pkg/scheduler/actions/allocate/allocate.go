@@ -17,17 +17,21 @@
 package allocate
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"slices"
+	"sync"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
@@ -97,11 +101,25 @@ type Action struct {
 	enablePredicateErrorCache bool
 
 	recorder *Recorder
+
+	// Async gate management infrastructure
+	schGateRemovalCh        chan schGateRemovalOperation
+	schGateRemovalWorkersWg sync.WaitGroup
+	schGateRemovalStopCh    chan struct{}
+
+	startedWorkers bool
+}
+
+type schGateRemovalOperation struct {
+	namespace string
+	name      string
 }
 
 func New() *Action {
 	return &Action{
 		enablePredicateErrorCache: true, // default to enable it
+		schGateRemovalCh:          make(chan schGateRemovalOperation, 1000),
+		schGateRemovalStopCh:      make(chan struct{}),
 	}
 }
 
@@ -109,7 +127,59 @@ func (alloc *Action) Name() string {
 	return "allocate"
 }
 
-func (alloc *Action) Initialize() {}
+func (alloc *Action) Initialize() {
+	// Start async gate operation workers
+	numWorkers := 5
+	for i := 0; i < numWorkers; i++ {
+		alloc.schGateRemovalWorkersWg.Add(1)
+		klog.V(3).Infof("Starting async gate operation worker %d", i)
+		go alloc.schGateRemovalWorker()
+	}
+	klog.V(3).Infof("Started %d async gate operation workers", numWorkers)
+}
+
+func (alloc *Action) UnInitialize() {
+	// Signal workers to shutdown
+	close(alloc.schGateRemovalStopCh)
+
+	// Wait for all workers to finish
+	alloc.schGateRemovalWorkersWg.Wait()
+
+	// Close the channel
+	close(alloc.schGateRemovalCh)
+
+	klog.V(3).Infof("Async gate removal workers shut down")
+}
+
+// schGateRemovalWorker processes async gate add/remove requests
+func (alloc *Action) schGateRemovalWorker() {
+	defer alloc.schGateRemovalWorkersWg.Done()
+	for {
+		select {
+		case <-alloc.schGateRemovalStopCh:
+			klog.V(4).Infof("Scheduling gate operation worker shutting down")
+			return
+		case op := <-alloc.schGateRemovalCh:
+			// Fetch fresh pod state from API server
+			pod, err := alloc.session.KubeClient().CoreV1().Pods(op.namespace).Get(
+				context.TODO(),
+				op.name,
+				metav1.GetOptions{})
+
+			if err != nil {
+				klog.Errorf("Failed to get pod %s/%s for gate operation: %v", op.namespace, op.name, err)
+				continue
+			}
+
+			// Perform the operation
+			if err := cache.RemoveVolcanoSchGate(alloc.session.KubeClient(), pod); err != nil {
+				klog.Errorf("Failed to remove gate from %s/%s: %v", op.namespace, op.name, err)
+			} else {
+				klog.V(3).Infof("Removed Volcano scheduling gate from pod %s/%s", op.namespace, op.name)
+			}
+		}
+	}
+}
 
 func (alloc *Action) parseArguments(ssn *framework.Session) {
 	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, alloc.Name())
@@ -119,6 +189,11 @@ func (alloc *Action) parseArguments(ssn *framework.Session) {
 func (alloc *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Allocate ...")
 	defer klog.V(5).Infof("Leaving Allocate ...")
+
+	if !alloc.startedWorkers {
+		alloc.startedWorkers = true
+		alloc.Initialize()
+	}
 
 	alloc.parseArguments(ssn)
 
@@ -307,6 +382,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
+				ssn.CleanupReservations(stmt)
 				stmt.Commit()
 				ssn.MarkJobDirty(job.UID)
 				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
@@ -323,6 +399,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 				klog.V(3).InfoS("Try to allocate resource", "queue", queue.Name, "job", job.UID, "taskNum", tasks.Len())
 				stmt := alloc.allocateResourcesForTasks(subJob, tasks, framework.ClusterTopHyperNode)
 				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
+					ssn.CleanupReservations(stmt)
 					stmt.Commit()
 
 					// There are still left tasks that need to be allocated when min available < replicas, put the job back
@@ -339,6 +416,27 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 		// Put back the queue to priority queue after job's resource allocating finished,
 		// To ensure that the priority of the queue is calculated based on the latest resource allocation situation.
 		queues.Push(queue)
+	}
+}
+
+// schedulingGateRemoval queues async gate removal if scheduling failed
+// This ensures CA can see the Unschedulable condition and trigger scale-up
+func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo, queueID api.QueueID) {
+	// Only enqueue gate removal if the task has only Volcano scheduling gate
+	if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+		op := schGateRemovalOperation{
+			namespace: task.Namespace,
+			name:      task.Name,
+		}
+
+		select {
+		case alloc.schGateRemovalCh <- op:
+			klog.V(4).Infof("Queued gate removal for %s/%s (scheduling failed)", task.Namespace, task.Name)
+			// Update task state immediately so it won't be queued again in this cycle
+			task.SchGated = false
+		default:
+			klog.Warningf("Gate operation queue full, skipping gate removal for %s/%s", task.Namespace, task.Name)
+		}
 	}
 }
 
@@ -568,8 +666,15 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
+
 		if !ssn.Allocatable(queue, task) {
 			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
+			continue
+		}
+
+		// Skip tasks with external (non-Volcano) scheduling gates
+		if task.SchGated && !task.RemoveGateDuringBind {
+			klog.V(4).Infof("Task %s/%s has non-Volcano gate, skipping", task.Namespace, task.Name)
 			continue
 		}
 
@@ -592,6 +697,13 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 				fitErrors.SetNodeError(ni.Name, err)
 			}
 			job.NodesFitErrors[task.UID] = fitErrors
+
+			// PrePredicate failed, enqueue gate removal
+			// Unschedulable will be set in the Pod Status reason
+			klog.V(3).Infof("PrePredicate failed for task %s/%s, removing gate", task.Namespace, task.Name)
+			alloc.schedulingGateRemoval(task, queue.UID)
+
+			// PrePredicate failed, break from continuously allocating
 			break
 		}
 
@@ -622,6 +734,12 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 				fitErrors.SetHyperNode(hyperNode)
 			}
 			job.NodesFitErrors[task.UID] = fitErrors
+
+			// No predicate nodes found, enqueue gate removal
+			// Unschedulable will be set in the Pod Status reason
+			klog.V(3).Infof("No predicate nodes found for task %s/%s, removing gate", task.Namespace, task.Name)
+			alloc.schedulingGateRemoval(task, queue.UID)
+
 			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
 			// so we should break from continuously allocating.
 			// otherwise, should continue to find other allocatable task
@@ -638,6 +756,13 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 		bestNode, _ := alloc.prioritizeNodes(ssn, task, predicateNodes)
 		if bestNode == nil {
+			klog.V(3).Infof("No best node found for task %s/%s after prioritization", task.Namespace, task.Name)
+
+			// No best node found after prioritization, enqueue gate removal
+			// Unschedulable will be set in the Pod Status reason
+			klog.V(3).Infof("No best node found for task %s/%s, removing gate", task.Namespace, task.Name)
+			alloc.schedulingGateRemoval(task, queue.UID)
+
 			continue
 		}
 
@@ -823,5 +948,3 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	}
 	return alloc.session.PredicateForAllocateAction(task, node)
 }
-
-func (alloc *Action) UnInitialize() {}

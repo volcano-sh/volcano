@@ -110,6 +110,12 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 	config.ConfigData.Lock()
 	defer config.ConfigData.Unlock()
 
+	// Add scheduling gates if opted-in
+	patchGates := patchSchedulingGates(pod)
+	if patchGates != nil {
+		patch = append(patch, *patchGates)
+	}
+
 	for _, resourceGroup := range config.ConfigData.ResGroupsConfig {
 		klog.V(3).Infof("resourceGroup %s", resourceGroup.ResourceGroup)
 		group := GetResGroup(resourceGroup)
@@ -141,6 +147,42 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 	}
 
 	return json.Marshal(patch)
+}
+
+// patchSchedulingGates adds a scheduling gate for Volcano-managed pods
+// The gate prevents cluster autoscalers from seeing the pod until Volcano
+// determines it's ready (queue admission + gang scheduling satisfied)
+func patchSchedulingGates(pod *v1.Pod) *patchOperation {
+	// Check if opt-in annotation is present
+	if pod.Annotations == nil || pod.Annotations["volcano.sh/queue-allocation-gate"] != "true" {
+		return nil
+	}
+
+	// Skip if pod doesn't belong to a PodGroup
+	if pod.Annotations["scheduling.k8s.io/group-name"] == "" {
+		klog.V(4).Infof("Pod %s/%s has scheduling gates enabled but no PodGroup, skipping",
+			pod.Namespace, pod.Name)
+		return nil
+	}
+
+	// Skip if gates already exist
+	if len(pod.Spec.SchedulingGates) > 0 {
+		klog.V(4).Infof("Pod %s/%s already has scheduling gates, skipping",
+			pod.Namespace, pod.Name)
+		return nil
+	}
+
+	gates := []v1.PodSchedulingGate{
+		{Name: "volcano.sh/queue-allocation-gate"},
+	}
+
+	klog.V(3).Infof("Adding Volcano scheduling gate to pod %s/%s", pod.Namespace, pod.Name)
+
+	return &patchOperation{
+		Op:    "add",
+		Path:  "/spec/schedulingGates",
+		Value: append(pod.Spec.SchedulingGates, gates...),
+	}
 }
 
 // patchLabels patch label

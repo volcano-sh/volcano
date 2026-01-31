@@ -137,6 +137,7 @@ type TaskInfo struct {
 	BestEffort                  bool
 	HasRestartableInitContainer bool
 	SchGated                    bool
+	RemoveGateDuringBind        bool
 
 	// RevocableZone supports setting volcano.sh/revocable-zone annotation or label for pod/podgroup
 	// we only support empty value or * value for this version and we will support specify revocable zone name for future releases
@@ -297,6 +298,7 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		RevocableZone:               ti.RevocableZone,
 		NumaInfo:                    ti.NumaInfo.Clone(),
 		SchGated:                    ti.SchGated,
+		RemoveGateDuringBind:        ti.RemoveGateDuringBind,
 		TransactionContext: TransactionContext{
 			NodeName: ti.NodeName,
 			Status:   ti.Status,
@@ -575,10 +577,17 @@ func (ji *JobInfo) GetMinResources() *Resource {
 
 // Get the total resources of tasks whose pod is scheduling gated
 // By definition, if a pod is scheduling gated, it's status is Pending
+// Note: Tasks that are only Volcano scheduling gated (volcano.sh/queue-allocation-gate)
+// are excluded from this calculation, as they should be counted in inqueue resources.
 func (ji *JobInfo) GetSchGatedPodResources() *Resource {
 	res := EmptyResource()
 	for _, task := range ji.Tasks {
 		if task.SchGated {
+			// Exclude tasks that are only Volcano scheduling gated
+			// These should be counted in inqueue resources, not deducted
+			if HasOnlyVolcanoSchedulingGate(task.Pod) {
+				continue
+			}
 			res.Add(task.Resreq)
 		}
 	}

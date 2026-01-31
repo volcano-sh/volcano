@@ -428,4 +428,149 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		err := e2eutil.WaitJobReady(ctx, createdJob)
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
+
+	ginkgo.It("Unschedulable pod with removed gate reserves queue capacity and blocks other pods", func() {
+		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			NodesNumLimit: 2,
+			NodesResourceLimit: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2000m"),
+				corev1.ResourceMemory: resource.MustParse("2048Mi"),
+			},
+		})
+		defer e2eutil.CleanupTestContext(ctx)
+
+		// Create queue with capacity for 1 pod (500m CPU, 512Mi memory)
+		queueName := "capacity-test-queue"
+		e2eutil.CreateQueue(ctx, queueName, corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("500m"),
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		}, "")
+
+		slot := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("500m"),
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		}
+
+		// Pod 1: Normal pod that will run and complete
+		job1 := &e2eutil.JobSpec{
+			Name:  "pod-1",
+			Queue: queueName,
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img:     "busybox:1.24",
+					Req:     slot,
+					Min:     1,
+					Rep:     1,
+					Command: "sleep 5",
+				},
+			},
+		}
+
+		// Create pod-1 and wait for it to run
+		vcJob1 := e2eutil.CreateJob(ctx, job1)
+		err := e2eutil.WaitJobReady(ctx, vcJob1)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred(), "pod-1 should be scheduled")
+
+		// Wait for pod-1 to complete
+		err = e2eutil.WaitTasksCompleted(ctx, vcJob1, 1)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred(), "pod-1 should complete")
+
+		// Pod 2: Has nodeSelector for non-existent node (will be Unschedulable)
+		// This pod will pass queue capacity check but fail node predicates
+		job2 := &e2eutil.JobSpec{
+			Name:     "pod-2-unschedulable",
+			Queue:    queueName,
+			NodeName: "non-existent-node-for-testing", // This will make pod unschedulable
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: 1,
+					Rep: 1,
+				},
+			},
+		}
+
+		// Create pod-2 - it should pass capacity but become Unschedulable
+		vcJob2 := e2eutil.CreateJob(ctx, job2)
+
+		// Wait for pod-2 to be marked as unschedulable (triggers autoscaler)
+		err = e2eutil.WaitJobUnschedulable(ctx, vcJob2)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred(), "pod-2 should be unschedulable")
+
+		// Verify pod-2 no longer has Volcano scheduling gate (it passed capacity)
+		tasks2 := e2eutil.GetTasksOfJob(ctx, vcJob2)
+		gomega.Expect(len(tasks2)).To(gomega.Equal(1), "pod-2 should have exactly one pod")
+		pod2 := tasks2[0]
+
+		hasVolcanoGate := false
+		for _, gate := range pod2.Spec.SchedulingGates {
+			if gate.Name == "volcano.sh/queue-allocation-gate" {
+				hasVolcanoGate = true
+				break
+			}
+		}
+		gomega.Expect(hasVolcanoGate).To(gomega.BeFalse(),
+			"pod-2 should not have Volcano gate (it passed capacity check)")
+
+		// Pod 3: Normal pod that should be blocked by pod-2's reservation
+		job3 := &e2eutil.JobSpec{
+			Name:  "pod-3-blocked",
+			Queue: queueName,
+			Tasks: []e2eutil.TaskSpec{
+				{
+					Img: e2eutil.DefaultNginxImage,
+					Req: slot,
+					Min: 1,
+					Rep: 1,
+				},
+			},
+		}
+
+		// Create pod-3
+		vcJob3 := e2eutil.CreateJob(ctx, job3)
+
+		// Wait for some scheduling attempts
+		time.Sleep(15 * time.Second)
+
+		// Verify pod-3 still has Volcano scheduling gate (blocked by pod-2's reservation)
+		tasks3 := e2eutil.GetTasksOfJob(ctx, vcJob3)
+		gomega.Expect(len(tasks3)).To(gomega.Equal(1), "pod-3 should have exactly one pod")
+		pod3 := tasks3[0]
+
+		hasVolcanoGate = false
+		for _, gate := range pod3.Spec.SchedulingGates {
+			if gate.Name == "volcano.sh/queue-allocation-gate" {
+				hasVolcanoGate = true
+				break
+			}
+		}
+		gomega.Expect(hasVolcanoGate).To(gomega.BeTrue(),
+			"pod-3 should still have Volcano gate (blocked by pod-2's capacity reservation)")
+
+		// Verify pod-3 is in Pending phase with SchedulingGated condition
+		gomega.Expect(pod3.Status.Phase).To(gomega.Equal(corev1.PodPending),
+			"pod-3 should be in Pending phase")
+
+		// Check for SchedulingGated condition
+		hasSchedulingGatedCondition := false
+		for _, cond := range pod3.Status.Conditions {
+			if cond.Type == corev1.PodScheduled &&
+				cond.Status == corev1.ConditionFalse &&
+				cond.Reason == "SchedulingGated" {
+				hasSchedulingGatedCondition = true
+				break
+			}
+		}
+		gomega.Expect(hasSchedulingGatedCondition).To(gomega.BeTrue(),
+			"pod-3 should have SchedulingGated condition")
+
+		// Cleanup: Delete pod-2 to free the reservation
+		e2eutil.DeleteJob(ctx, vcJob2)
+
+		// Now pod-3 should be able to schedule
+		err = e2eutil.WaitJobReady(ctx, vcJob3)
+		gomega.Expect(err).NotTo(gomega.HaveOccurred(),
+			"pod-3 should be scheduled after pod-2 is deleted")
+	})
 })

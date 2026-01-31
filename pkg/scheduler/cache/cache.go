@@ -218,6 +218,18 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	errMsg := make(map[schedulingapi.TaskID]string)
 	for _, task := range tasks {
 		p := task.Pod
+
+		// Remove Volcano gate before bind if needed
+		if task.RemoveGateDuringBind {
+			if err := RemoveVolcanoSchGate(kubeClient, p); err != nil {
+				klog.Errorf("Failed to remove gate for <%v/%v>: %v", p.Namespace, p.Name, err)
+				errMsg[task.UID] = fmt.Sprintf("gate removal failed: %v", err)
+				continue
+			}
+			klog.V(3).Infof("Removed Volcano gate from pod %s/%s before bind", p.Namespace, p.Name)
+		}
+
+		// Standard bind
 		if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
 			&v1.Binding{
 				ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: p.Annotations},
@@ -230,7 +242,7 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 			klog.Errorf("Failed to bind pod <%v/%v> to node %s : %#v", p.Namespace, p.Name, task.NodeName, err)
 			errMsg[task.UID] = err.Error()
 		} else {
-			metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time)) // update metrics as soon as pod is bind
+			metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time))
 		}
 	}
 
@@ -1615,6 +1627,8 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 
 			// The pod of a scheduling gated task is given
 			// the ScheduleGated condition by the api-server. Do not change it.
+			// SchGated reflects the desired state (gate should block scheduling)
+			// so we skip if SchGated=true, regardless of actual gate presence
 			if taskInfo.SchGated {
 				return
 			}

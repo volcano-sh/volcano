@@ -50,6 +50,16 @@ type operation struct {
 	reason string
 }
 
+// Name returns the operation name
+func (o operation) Name() Operation {
+	return o.name
+}
+
+// Task returns the task associated with the operation
+func (o operation) Task() *api.TaskInfo {
+	return o.task
+}
+
 // Statement structure
 type Statement struct {
 	operations []operation
