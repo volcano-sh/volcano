@@ -242,7 +242,7 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 			klog.Errorf("Failed to bind pod <%v/%v> to node %s : %#v", p.Namespace, p.Name, task.NodeName, err)
 			errMsg[task.UID] = err.Error()
 		} else {
-			metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time))
+			metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time)) // update metrics as soon as pod is bind
 		}
 	}
 

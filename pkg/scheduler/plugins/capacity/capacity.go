@@ -1032,7 +1032,7 @@ func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidat
 	allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, candidate.Resreq)
 
 	if !allocatable {
-		klog.V(3).Infof("Queue <%v>: capacity exceeded - realCapability <%v>, allocated <%v>, reserved <%v>, candidate <%v> req <%v>",
+		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
 			queue.Name, attr.realCapability, attr.allocated, reserved, candidate.Name, candidate.Resreq)
 	}
 
