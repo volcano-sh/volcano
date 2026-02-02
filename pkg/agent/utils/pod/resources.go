@@ -58,7 +58,7 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 	memoryLimitsDeclared := true
 	// TODO: support init containers.
 	for _, c := range pod.Spec.Containers {
-		id := findContainerIDByName(pod, c.Name)
+		id := FindContainerIDByName(pod, c.Name)
 		// set cpu share.
 		cpuReq, ok := c.Resources.Requests[apis.GetExtendResourceCPU()]
 		if ok && !cpuReq.IsZero() {
@@ -110,7 +110,7 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 	return containerRes
 }
 
-func findContainerIDByName(pod *v1.Pod, name string) string {
+func FindContainerIDByName(pod *v1.Pod, name string) string {
 	for _, status := range pod.Status.ContainerStatuses {
 		if status.Name == name {
 			// Return the full container ID with runtime prefix (e.g., "containerd://xxx")
@@ -160,7 +160,7 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 	memoryLimitsDeclared := true
 
 	for _, c := range pod.Spec.Containers {
-		id := findContainerIDByName(pod, c.Name)
+		id := FindContainerIDByName(pod, c.Name)
 		cpuReq, ok := c.Resources.Requests[apis.GetExtendResourceCPU()]
 		if ok && !cpuReq.IsZero() {
 			cpuWeight := int64(milliCPUToWeight(cpuReq.Value()))

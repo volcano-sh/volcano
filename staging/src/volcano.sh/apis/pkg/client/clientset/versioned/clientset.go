@@ -26,6 +26,7 @@ import (
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 	batchv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/bus/v1alpha1"
+	configv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/config/v1alpha1"
 	datadependencyv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/datadependency/v1alpha1"
 	flowv1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/flow/v1alpha1"
 	nodeinfov1alpha1 "volcano.sh/apis/pkg/client/clientset/versioned/typed/nodeinfo/v1alpha1"
@@ -39,6 +40,7 @@ type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface
 	BusV1alpha1() busv1alpha1.BusV1alpha1Interface
+	ConfigV1alpha1() configv1alpha1.ConfigV1alpha1Interface
 	DatadependencyV1alpha1() datadependencyv1alpha1.DatadependencyV1alpha1Interface
 	FlowV1alpha1() flowv1alpha1.FlowV1alpha1Interface
 	NodeinfoV1alpha1() nodeinfov1alpha1.NodeinfoV1alpha1Interface
@@ -53,6 +55,7 @@ type Clientset struct {
 	*discovery.DiscoveryClient
 	batchV1alpha1          *batchv1alpha1.BatchV1alpha1Client
 	busV1alpha1            *busv1alpha1.BusV1alpha1Client
+	configV1alpha1         *configv1alpha1.ConfigV1alpha1Client
 	datadependencyV1alpha1 *datadependencyv1alpha1.DatadependencyV1alpha1Client
 	flowV1alpha1           *flowv1alpha1.FlowV1alpha1Client
 	nodeinfoV1alpha1       *nodeinfov1alpha1.NodeinfoV1alpha1Client
@@ -70,6 +73,11 @@ func (c *Clientset) BatchV1alpha1() batchv1alpha1.BatchV1alpha1Interface {
 // BusV1alpha1 retrieves the BusV1alpha1Client
 func (c *Clientset) BusV1alpha1() busv1alpha1.BusV1alpha1Interface {
 	return c.busV1alpha1
+}
+
+// ConfigV1alpha1 retrieves the ConfigV1alpha1Client
+func (c *Clientset) ConfigV1alpha1() configv1alpha1.ConfigV1alpha1Interface {
+	return c.configV1alpha1
 }
 
 // DatadependencyV1alpha1 retrieves the DatadependencyV1alpha1Client
@@ -159,6 +167,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+	cs.configV1alpha1, err = configv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 	cs.datadependencyV1alpha1, err = datadependencyv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -210,6 +222,7 @@ func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.batchV1alpha1 = batchv1alpha1.New(c)
 	cs.busV1alpha1 = busv1alpha1.New(c)
+	cs.configV1alpha1 = configv1alpha1.New(c)
 	cs.datadependencyV1alpha1 = datadependencyv1alpha1.New(c)
 	cs.flowV1alpha1 = flowv1alpha1.New(c)
 	cs.nodeinfoV1alpha1 = nodeinfov1alpha1.New(c)

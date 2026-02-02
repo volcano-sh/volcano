@@ -48,7 +48,7 @@ rules:
     verbs: ["create", "list", "watch", "update", "patch"]
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["create", "get", "list", "watch", "delete", "patch"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch", "update"]
   - apiGroups: [""]
     resources: ["pods/finalizers"]
     verbs: ["update", "patch"]
@@ -100,6 +100,9 @@ rules:
   - apiGroups: ["shard.volcano.sh"]
     resources: ["nodeshards", "nodeshards/status"]
     verbs: ["list", "watch", "get", "create", "delete", "update", "patch"]
+  - apiGroups: ["config.volcano.sh"]
+    resources: ["colocationconfigurations"]
+    verbs: ["get", "list", "watch"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1

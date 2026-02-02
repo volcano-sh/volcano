@@ -74,7 +74,7 @@ func (h *NetworkQoSHandle) Handle(event interface{}) error {
 
 	pod, err := h.poLister.Pods(podEvent.Pod.Namespace).Get(podEvent.Pod.Name)
 	if err != nil {
-		if !errors.IsNotFound(err) {
+		if errors.IsNotFound(err) {
 			klog.V(4).InfoS("pod does not existed, skipped handling network qos", "namespace", podEvent.Pod.Namespace, "name", podEvent.Pod.Name)
 			return nil
 		}

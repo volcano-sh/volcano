@@ -142,6 +142,7 @@ func (c *ColocationConfig) Validate() []error {
 	errs = append(errs, c.CPUQosConfig.Validate()...)
 	errs = append(errs, c.CPUBurstConfig.Validate()...)
 	errs = append(errs, c.MemoryQosConfig.Validate()...)
+	errs = append(errs, c.MemoryQosV2Config.Validate()...)
 	errs = append(errs, c.NetworkQosConfig.Validate()...)
 	errs = append(errs, c.OverSubscriptionConfig.Validate()...)
 	errs = append(errs, c.EvictingConfig.Validate()...)

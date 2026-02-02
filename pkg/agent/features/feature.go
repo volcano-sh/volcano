@@ -19,12 +19,35 @@ package features
 type Feature string
 
 const (
-	CPUQoSFeature           Feature = "CPUQoS"
-	CPUBurstFeature         Feature = "CPUBurst"
-	MemoryQoSFeature        Feature = "MemoryQoS"
-	NetworkQoSFeature       Feature = "NetworkQoS"
+	// CPUQoSFeature is the feature gate for CPU Quality of Service.
+	// It only works on OpenEuler OS.
+	CPUQoSFeature Feature = "CPUQoS"
+
+	// CPUBurstFeature is the feature gate for CPU Burst.
+	// It requires Linux kernel 5.14+.
+	CPUBurstFeature Feature = "CPUBurst"
+
+	// CPUThrottleFeature is the feature gate for CPU throttling.
+	CPUThrottleFeature Feature = "CPUThrottle"
+
+	// MemoryQoSFeature is the feature gate for Memory Quality of Service.
+	// It only works on OpenEuler OS.
+	MemoryQoSFeature Feature = "MemoryQoS"
+
+	// MemoryQoSV2Feature is the feature gate for Memory Quality of Service for common Linux OS.
+	// It requires Linux kernel with cgroup v2 enabled.
+	MemoryQoSV2Feature Feature = "MemoryQoSV2"
+
+	// NetworkQoSFeature is the feature gate for Network Quality of Service.
+	// It only works on OpenEuler OS.
+	NetworkQoSFeature Feature = "NetworkQoS"
+
+	// OverSubscriptionFeature is the feature gate for resource oversubscription.
 	OverSubscriptionFeature Feature = "OverSubscription"
-	EvictionFeature         Feature = "Eviction"
-	ResourcesFeature        Feature = "Resources"
-	CPUThrottleFeature      Feature = "CPUThrottle"
+
+	// EvictionFeature is the feature gate for pod eviction.
+	EvictionFeature Feature = "Eviction"
+
+	// ResourcesFeature is the feature gate for extend resource management.
+	ResourcesFeature Feature = "Resources"
 )

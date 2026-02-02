@@ -57,6 +57,9 @@ type ColocationConfig struct {
 	// memory qos related config.
 	MemoryQosConfig *MemoryQos `json:"memoryQosConfig,omitempty" configKey:"MemoryQoS"`
 
+	// memory qos v2 related config.
+	MemoryQosV2Config *MemoryQos `json:"memoryQosV2Config,omitempty" configKey:"MemoryQoSV2"`
+
 	// network qos related config.
 	NetworkQosConfig *NetworkQos `json:"networkQosConfig,omitempty" configKey:"NetworkQoS"`
 

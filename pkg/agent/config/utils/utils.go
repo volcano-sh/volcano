@@ -71,6 +71,9 @@ const (
 		"memoryQosConfig":{
 			"enable":false
 		},
+		"memoryQosV2Config":{
+			"enable":false
+		},
         "networkQosConfig":{
             "enable":false,
             "onlineBandwidthWatermarkPercent":80,
@@ -107,9 +110,10 @@ func DefaultColocationConfig() *api.ColocationConfig {
 		},
 		// CPU/Memory/Network Qos are disabled by default, these features need a custom operating system.
 		// CPU burst is also disabled by default, CPU burst currently is integrated into Linux kernel, but requiring Linux kernel version >= 5.14.
-		CPUQosConfig:    &api.CPUQos{Enable: utilpointer.Bool(false)},
-		CPUBurstConfig:  &api.CPUBurst{Enable: utilpointer.Bool(false)},
-		MemoryQosConfig: &api.MemoryQos{Enable: utilpointer.Bool(false)},
+		CPUQosConfig:      &api.CPUQos{Enable: utilpointer.Bool(false)},
+		CPUBurstConfig:    &api.CPUBurst{Enable: utilpointer.Bool(false)},
+		MemoryQosConfig:   &api.MemoryQos{Enable: utilpointer.Bool(false)},
+		MemoryQosV2Config: &api.MemoryQos{Enable: utilpointer.Bool(false)},
 		NetworkQosConfig: &api.NetworkQos{
 			Enable:                          utilpointer.Bool(false),
 			OnlineBandwidthWatermarkPercent: utilpointer.Int(DefaultOnlineBandwidthWatermarkPercent),
