@@ -131,12 +131,16 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 	alloc.session = ssn
 	alloc.recorder = NewRecorder()
-	actx := alloc.buildAllocateContext()
+	actx, pipelineActx := alloc.buildAllocateContext()
+
+	klog.V(3).Infof("Try to allocate pipelined resource to %d Queues", pipelineActx.queues.Len())
+	alloc.allocateResources(pipelineActx)
 	klog.V(3).Infof("Try to allocate resource to %d Queues", actx.queues.Len())
 	alloc.allocateResources(actx)
 }
 
-func (alloc *Action) buildAllocateContext() *allocateContext {
+// buildAllocateContext builds 2 allocateContext from session's jobs and queues, one of them is for normal Jobs and the other is for pipelined Jobs.
+func (alloc *Action) buildAllocateContext() (*allocateContext, *allocateContext) {
 	ssn := alloc.session
 
 	actx := &allocateContext{
@@ -144,6 +148,30 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 		jobsByQueue:         make(map[api.QueueID]*util.PriorityQueue),
 		jobWorksheet:        make(map[api.JobID]*JobWorksheet),
 		tasksNoHardTopology: make(map[api.JobID]*util.PriorityQueue),
+	}
+
+	pipelineActx := &allocateContext{
+		queues:              util.NewPriorityQueue(ssn.QueueOrderFn),
+		jobsByQueue:         make(map[api.QueueID]*util.PriorityQueue),
+		jobWorksheet:        make(map[api.JobID]*JobWorksheet),
+		tasksNoHardTopology: make(map[api.JobID]*util.PriorityQueue),
+	}
+
+	// Inner helper to add a job to a context
+	addJobToContext := func(ctx *allocateContext, job *api.JobInfo, worksheet *JobWorksheet) {
+		if _, found := ctx.jobsByQueue[job.Queue]; !found {
+			ctx.jobsByQueue[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			ctx.queues.Push(ssn.Queues[job.Queue])
+		}
+		ctx.jobsByQueue[job.Queue].Push(job)
+		ctx.jobWorksheet[job.UID] = worksheet
+
+		// job without any hard network topology policy use actx.tasksNoHardTopology
+		if !job.ContainsHardTopology() {
+			if subJobWorksheet, exist := worksheet.subJobWorksheets[job.DefaultSubJobID()]; exist {
+				ctx.tasksNoHardTopology[job.UID] = subJobWorksheet.tasks
+			}
+		}
 	}
 
 	for _, job := range ssn.Jobs {
@@ -182,24 +210,16 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 			continue
 		}
 
-		if _, found := actx.jobsByQueue[job.Queue]; !found {
-			actx.jobsByQueue[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
-			actx.queues.Push(ssn.Queues[job.Queue])
-		}
-
-		klog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
-		actx.jobsByQueue[job.Queue].Push(job)
-		actx.jobWorksheet[job.UID] = worksheet
-
-		// job without any hard network topology policy use actx.tasksNoHardTopology
-		if !job.ContainsHardTopology() {
-			if subJobWorksheet, exist := worksheet.subJobWorksheets[job.DefaultSubJobID()]; exist {
-				actx.tasksNoHardTopology[job.UID] = subJobWorksheet.tasks
-			}
+		if ssn.JobPipelined(job) {
+			addJobToContext(pipelineActx, job, worksheet)
+			klog.V(4).Infof("Added Pipelined Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
+		} else {
+			addJobToContext(actx, job, worksheet)
+			klog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
 		}
 	}
 
-	return actx
+	return actx, pipelineActx
 }
 
 func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
