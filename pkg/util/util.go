@@ -17,11 +17,16 @@ limitations under the License.
 package util
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	clientset "k8s.io/client-go/kubernetes"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	basecompatibility "k8s.io/component-base/compatibility"
 	"k8s.io/component-base/config"
 	"k8s.io/component-base/metrics/legacyregistry"
 
@@ -78,4 +83,36 @@ func PromHandler() http.Handler {
 	prometheus.DefaultRegisterer.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	prometheus.DefaultRegisterer.Unregister(collectors.NewGoCollector())
 	return promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.Gatherers{prometheus.DefaultGatherer, legacyregistry.DefaultGatherer}, promhttp.HandlerOpts{}))
+}
+
+// SetupComponentGlobals discovers the API server version and sets
+// Volcano's effective version + feature gate defaults to match the cluster.
+// This makes defaults (like DRA) correct on older clusters.
+func SetupComponentGlobals(config *restclient.Config) error {
+	client, err := clientset.NewForConfig(config)
+	if err != nil {
+		return err
+	}
+
+	serverVersion, err := client.Discovery().ServerVersion()
+	if err != nil {
+		return err
+	}
+
+	kubeVersion := fmt.Sprintf("%s.%s", serverVersion.Major, serverVersion.Minor)
+	kubeEffectiveVersion := basecompatibility.NewEffectiveVersionFromString(kubeVersion, "", "")
+
+	componentGlobalsRegistry := basecompatibility.NewComponentGlobalsRegistry()
+	if componentGlobalsRegistry.EffectiveVersionFor(basecompatibility.DefaultKubeComponent) == nil {
+		err = componentGlobalsRegistry.Register(
+			basecompatibility.DefaultKubeComponent,
+			kubeEffectiveVersion,
+			utilfeature.DefaultMutableFeatureGate,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to register component globals: %w", err)
+		}
+	}
+
+	return componentGlobalsRegistry.Set()
 }

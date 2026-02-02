@@ -57,6 +57,12 @@ func Run(config *options.Config) error {
 		return fmt.Errorf("unable to build k8s config: %v", err)
 	}
 
+	// Align default feature-gates with the connected cluster's version.
+	if err := commonutil.SetupComponentGlobals(restConfig); err != nil {
+		klog.Errorf("failed to set component globals: %v", err)
+		return err
+	}
+
 	admissionConf := wkconfig.LoadAdmissionConf(config.ConfigPath)
 	if admissionConf == nil {
 		klog.Errorf("loadAdmissionConf failed.")
