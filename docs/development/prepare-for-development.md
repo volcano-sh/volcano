@@ -2,7 +2,7 @@ This document helps you get started developing code for Volcano.
 If you follow this guide and find some problem, please take
 a few minutes to update this file.
 
-Volcano components only have few external dependencies you
+Volcano components only have a few external dependencies you
 need to set up before being able to build and run the code.
 
 - [Setting up Go](#setting-up-go)
@@ -18,7 +18,7 @@ To build, you'll need a Go development environment. If you haven't set up a Go d
 environment, please follow [these instructions](https://golang.org/doc/install)
 to install the Go tools.
 
-Volcano currently builds with Go 1.14
+Volcano currently builds with Go 1.24 (see `go.mod`).
 
 ## Setting up Docker
 
@@ -31,7 +31,7 @@ To leverage that you will need:
 
 ## Setting up Kubernetes
 
-We require Kubernetes version 1.12 or higher with CRD support.
+We require Kubernetes version 1.27 or higher with CRD support.
 
 If you aren't sure which Kubernetes platform is right for you, see [Picking the Right Solution](https://kubernetes.io/docs/setup/).
 
@@ -48,10 +48,10 @@ You can make pull requests without two-factor authentication
 but the additional security is recommended for everyone.
 
 To be part of the Volcano organization, we require two-factor authentication, and
-you must setup a personal access token to enable push via HTTPS. Please follow
-[these instructions](https://help.github.com/articles/creating-a-personal-access-token-for-the-command-line/)
+You must set up a personal access token to enable push via HTTPS. Please follow
+[these instructions](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token)
 for how to create a token.
-Alternatively you can [add your SSH keys](https://help.github.com/articles/adding-a-new-ssh-key-to-your-github-account/).
+Alternatively you can [add your SSH keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account).
 
 ## What's next?
 

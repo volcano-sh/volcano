@@ -100,10 +100,9 @@ If upon reflection you wish to continue, bolster your case by supplementing your
   release you want to cherry pick to. Cherry picks should be applied to all
   active release branches where the fix is applicable.
 
-- If `GITHUB_TOKEN` is not set you will be asked for your github password:
-  provide the github [personal access token](https://github.com/settings/tokens) rather than your actual github
-  password. If you can securely set the environment variable `GITHUB_TOKEN`
-  to your personal access token then you can avoid an interactive prompt.
+- If `GITHUB_TOKEN` is not set you may be prompted for credentials. GitHub no longer accepts account passwords for Git operations; use a
+  [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token) instead.
+  If you can securely set the environment variable `GITHUB_TOKEN` to your personal access token then you can avoid an interactive prompt.
   Refer [https://github.com/github/hub/issues/2655#issuecomment-735836048](https://github.com/github/hub/issues/2655#issuecomment-735836048)
 
 ## Cherry Pick Review

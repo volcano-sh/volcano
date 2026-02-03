@@ -13,7 +13,7 @@ This document helps you get started using the Volcano code base. If you follow t
 
 ## Cloning the Code
 
-You will need to clone the main `volcano` repo to `$GOPATH/src/volcano.sh/volcano` for the below commands to work correctly.
+You can clone the `volcano` repo anywhere on your filesystem. If you still use a GOPATH-based workflow, clone to `$GOPATH/src/volcano.sh/volcano`.
 
 ## Building the Code
 
@@ -151,7 +151,7 @@ go mod tidy
 go mod vendor
 ```
 
-Note: Go's module system, introduced in Go 1.11, provides an official dependency management solution built into the `go` command. Make sure `GO111MODULE` env is not `off` before using it.
+Note: Go modules are the default in modern Go versions; you generally do not need to set `GO111MODULE` unless you are using a very old Go release.
 
 ## About Testing
 
