@@ -24,6 +24,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+
+	"volcano.sh/volcano/pkg/scheduler/api"
 )
 
 type PodSpec struct {
@@ -74,4 +76,25 @@ func WaitPodReady(ctx *TestContext, pod *v1.Pod) error {
 func DeletePod(ctx *TestContext, pod *v1.Pod) {
 	err := ctx.Kubeclient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to delete pod %s", pod.Name)
+}
+
+// HasOnlyVolcanoSchedulingGate checks if a pod has only the Volcano queue allocation gate
+func HasOnlyVolcanoSchedulingGate(ctx *TestContext, podName string) bool {
+	pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Get(context.TODO(), podName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to get pod %s", podName)
+	return api.HasOnlyVolcanoSchedulingGate(pod)
+}
+
+// HasSchedulingGatedCondition checks if a pod has the SchedulingGated condition
+func HasSchedulingGatedCondition(ctx *TestContext, podName string) bool {
+	pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Get(context.TODO(), podName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred(), "failed to get pod %s", podName)
+	for _, cond := range pod.Status.Conditions {
+		if cond.Type == v1.PodScheduled &&
+			cond.Status == v1.ConditionFalse &&
+			cond.Reason == "SchedulingGated" {
+			return true
+		}
+	}
+	return false
 }
