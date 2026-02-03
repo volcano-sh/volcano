@@ -132,10 +132,10 @@ func (alloc *Action) Initialize() {
 	numWorkers := 5
 	for i := 0; i < numWorkers; i++ {
 		alloc.schGateRemovalWorkersWg.Add(1)
-		klog.V(3).Infof("Starting async gate operation worker %d", i)
+		klog.Infof("Starting async gate operation worker %d", i)
 		go alloc.schGateRemovalWorker()
 	}
-	klog.V(3).Infof("Started %d async gate operation workers", numWorkers)
+	klog.Infof("Started %d async gate operation workers", numWorkers)
 }
 
 func (alloc *Action) UnInitialize() {
@@ -326,8 +326,11 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 		}
 
 		for _, task := range subJob.TaskStatusIndex[api.Pending] {
-			// Skip tasks whose pod are scheduling gated
-			if task.SchGated {
+			// Skip tasks with external (non-Volcano) scheduling gates
+			// Allow Volcano-managed gates (they'll be handled by capacity plugin)
+			if task.SchGated && !api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+				klog.V(4).Infof("Task <%v/%v> has external scheduling gate, skip it.",
+					task.Namespace, task.Name)
 				continue
 			}
 
