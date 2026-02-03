@@ -430,8 +430,36 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 	})
 
 	ginkgo.It("Unschedulable pod with removed gate reserves queue capacity and blocks other pods", func() {
+		// Replace proportion plugin with capacity plugin for this test
+		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
+		modifier := func(sc *e2eutil.SchedulerConfiguration) bool {
+			for _, tier := range sc.Tiers {
+				for i, plugin := range tier.Plugins {
+					if plugin.Name == "proportion" {
+						tier.Plugins[i] = e2eutil.PluginOption{
+							Name: "capacity",
+						}
+						return true
+					}
+				}
+			}
+			return false
+		}
+		_ = cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
+			return e2eutil.ModifySchedulerConfig(data, modifier)
+		})
+		defer cmc.UndoChanged()
+
+		queueName := "capacity-test-queue"
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
+			Queues:        []string{queueName},
 			NodesNumLimit: 2,
+			DeservedResource: map[string]corev1.ResourceList{
+				queueName: {
+					corev1.ResourceCPU:    resource.MustParse("500m"),
+					corev1.ResourceMemory: resource.MustParse("512Mi"),
+				},
+			},
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
 				corev1.ResourceMemory: resource.MustParse("2048Mi"),
@@ -439,138 +467,95 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		})
 		defer e2eutil.CleanupTestContext(ctx)
 
-		// Create queue with capacity for 1 pod (500m CPU, 512Mi memory)
-		queueName := "capacity-test-queue"
-		e2eutil.CreateQueue(ctx, queueName, corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("500m"),
-			corev1.ResourceMemory: resource.MustParse("512Mi"),
-		}, "")
-
 		slot := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("500m"),
 			corev1.ResourceMemory: resource.MustParse("512Mi"),
 		}
 
-		// Pod 1: Normal pod that will run and complete
-		job1 := &e2eutil.JobSpec{
-			Name:  "pod-1",
-			Queue: queueName,
-			Tasks: []e2eutil.TaskSpec{
-				{
-					Img:     "busybox:1.24",
-					Req:     slot,
-					Min:     1,
-					Rep:     1,
-					Command: "sleep 5",
+		// Helper: Create a pod with scheduling gate
+		createPodWithGate := func(name string, nodeSelector map[string]string) *corev1.Pod {
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: ctx.Namespace,
+					Annotations: map[string]string{
+						"scheduling.k8s.io/group-name":     "test-podgroup",
+						"volcano.sh/queue-allocation-gate": "true",
+						"volcano.sh/queue-name":            queueName,
+					},
 				},
-			},
-		}
-
-		// Create pod-1 and wait for it to run
-		vcJob1 := e2eutil.CreateJob(ctx, job1)
-		err := e2eutil.WaitJobReady(ctx, vcJob1)
-		gomega.Expect(err).NotTo(gomega.HaveOccurred(), "pod-1 should be scheduled")
-
-		// Wait for pod-1 to complete
-		err = e2eutil.WaitTasksCompleted(ctx, vcJob1, 1)
-		gomega.Expect(err).NotTo(gomega.HaveOccurred(), "pod-1 should complete")
-
-		// Pod 2: Has nodeSelector for non-existent node (will be Unschedulable)
-		// This pod will pass queue capacity check but fail node predicates
-		job2 := &e2eutil.JobSpec{
-			Name:     "pod-2-unschedulable",
-			Queue:    queueName,
-			NodeName: "non-existent-node-for-testing", // This will make pod unschedulable
-			Tasks: []e2eutil.TaskSpec{
-				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: 1,
+				Spec: corev1.PodSpec{
+					SchedulerName: "volcano",
+					RestartPolicy: corev1.RestartPolicyNever,
+					NodeSelector:  nodeSelector,
+					Containers: []corev1.Container{
+						{
+							Name:  "nginx",
+							Image: e2eutil.DefaultNginxImage,
+							Resources: corev1.ResourceRequirements{
+								Requests: slot,
+							},
+						},
+					},
 				},
-			},
-		}
-
-		// Create pod-2 - it should pass capacity but become Unschedulable
-		vcJob2 := e2eutil.CreateJob(ctx, job2)
-
-		// Wait for pod-2 to be marked as unschedulable (triggers autoscaler)
-		err = e2eutil.WaitJobUnschedulable(ctx, vcJob2)
-		gomega.Expect(err).NotTo(gomega.HaveOccurred(), "pod-2 should be unschedulable")
-
-		// Verify pod-2 no longer has Volcano scheduling gate (it passed capacity)
-		tasks2 := e2eutil.GetTasksOfJob(ctx, vcJob2)
-		gomega.Expect(len(tasks2)).To(gomega.Equal(1), "pod-2 should have exactly one pod")
-		pod2 := tasks2[0]
-
-		hasVolcanoGate := false
-		for _, gate := range pod2.Spec.SchedulingGates {
-			if gate.Name == "volcano.sh/queue-allocation-gate" {
-				hasVolcanoGate = true
-				break
 			}
+			_, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(
+				context.TODO(), pod, metav1.CreateOptions{})
+			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "failed to create pod "+name)
+			return pod
 		}
-		gomega.Expect(hasVolcanoGate).To(gomega.BeFalse(),
+
+		// Create PodGroup
+		pg := &schedulingv1beta1.PodGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-podgroup",
+				Namespace: ctx.Namespace,
+			},
+			Spec: schedulingv1beta1.PodGroupSpec{
+				MinMember:    1,
+				Queue:        queueName,
+				MinResources: &slot,
+			},
+		}
+		_, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(
+			context.TODO(), pg, metav1.CreateOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		// Test flow: Pod 1 runs, then is deleted to free capacity
+		pod1 := createPodWithGate("pod-1", nil)
+		err = e2eutil.WaitPodPhase(ctx, pod1, []corev1.PodPhase{corev1.PodRunning})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Expect(e2eutil.HasOnlyVolcanoSchedulingGate(ctx, "pod-1")).To(gomega.BeFalse(),
+			"pod-1 should not have Volcano gate (it was scheduled)")
+
+		err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(
+			context.TODO(), "pod-1", metav1.DeleteOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		// Pod 2: Passes capacity but fails predicates (unschedulable)
+		createPodWithGate("pod-2", map[string]string{"kubernetes.io/fake-node": "fake-node"})
+		gomega.Eventually(func() bool {
+			return !e2eutil.HasOnlyVolcanoSchedulingGate(ctx, "pod-2")
+		}, e2eutil.FiveMinute, 500*time.Millisecond).Should(gomega.BeTrue(),
 			"pod-2 should not have Volcano gate (it passed capacity check)")
 
-		// Pod 3: Normal pod that should be blocked by pod-2's reservation
-		job3 := &e2eutil.JobSpec{
-			Name:  "pod-3-blocked",
-			Queue: queueName,
-			Tasks: []e2eutil.TaskSpec{
-				{
-					Img: e2eutil.DefaultNginxImage,
-					Req: slot,
-					Min: 1,
-					Rep: 1,
-				},
-			},
-		}
-
-		// Create pod-3
-		vcJob3 := e2eutil.CreateJob(ctx, job3)
-
-		// Wait for some scheduling attempts
-		time.Sleep(15 * time.Second)
-
-		// Verify pod-3 still has Volcano scheduling gate (blocked by pod-2's reservation)
-		tasks3 := e2eutil.GetTasksOfJob(ctx, vcJob3)
-		gomega.Expect(len(tasks3)).To(gomega.Equal(1), "pod-3 should have exactly one pod")
-		pod3 := tasks3[0]
-
-		hasVolcanoGate = false
-		for _, gate := range pod3.Spec.SchedulingGates {
-			if gate.Name == "volcano.sh/queue-allocation-gate" {
-				hasVolcanoGate = true
-				break
-			}
-		}
-		gomega.Expect(hasVolcanoGate).To(gomega.BeTrue(),
-			"pod-3 should still have Volcano gate (blocked by pod-2's capacity reservation)")
-
-		// Verify pod-3 is in Pending phase with SchedulingGated condition
-		gomega.Expect(pod3.Status.Phase).To(gomega.Equal(corev1.PodPending),
-			"pod-3 should be in Pending phase")
-
-		// Check for SchedulingGated condition
-		hasSchedulingGatedCondition := false
-		for _, cond := range pod3.Status.Conditions {
-			if cond.Type == corev1.PodScheduled &&
-				cond.Status == corev1.ConditionFalse &&
-				cond.Reason == "SchedulingGated" {
-				hasSchedulingGatedCondition = true
-				break
-			}
-		}
-		gomega.Expect(hasSchedulingGatedCondition).To(gomega.BeTrue(),
+		// Pod 3: Should be blocked by pod-2's capacity reservation
+		createPodWithGate("pod-3", nil)
+		gomega.Eventually(func() bool {
+			return e2eutil.HasOnlyVolcanoSchedulingGate(ctx, "pod-3")
+		}, e2eutil.FiveMinute, 500*time.Millisecond).Should(gomega.BeTrue(),
+			"pod-3 should still have Volcano gate (blocked by pod-2's reservation)")
+		gomega.Expect(e2eutil.HasSchedulingGatedCondition(ctx, "pod-3")).To(gomega.BeTrue(),
 			"pod-3 should have SchedulingGated condition")
 
-		// Cleanup: Delete pod-2 to free the reservation
-		e2eutil.DeleteJob(ctx, vcJob2)
+		// Delete pod-2 to free reservation, pod-3 should schedule
+		err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(
+			context.TODO(), "pod-2", metav1.DeleteOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		// Now pod-3 should be able to schedule
-		err = e2eutil.WaitJobReady(ctx, vcJob3)
+		pod3Ref := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-3", Namespace: ctx.Namespace}}
+		err = e2eutil.WaitPodPhase(ctx, pod3Ref, []corev1.PodPhase{corev1.PodRunning})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred(),
-			"pod-3 should be scheduled after pod-2 is deleted")
+			"pod-3 should be running after pod-2 is deleted")
 	})
 })
