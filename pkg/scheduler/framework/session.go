@@ -26,7 +26,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"math"
 	"sort"
 	"sync"
 
@@ -415,7 +414,7 @@ func (ssn *Session) recoverAllocatedHyperNode(job *api.JobInfo, hyperNodeSet set
 				break
 			}
 		}
-		minimumHyperNode := getMinimumHyperNode(subJobAllocatedHyperNode, nodesByHyperNode)
+		minimumHyperNode := getLowestTierHyperNode(subJobAllocatedHyperNode, hyperNodes)
 
 		if subJob.AllocatedHyperNode != minimumHyperNode {
 			subJobUpdated = true
@@ -446,20 +445,26 @@ func (ssn *Session) recoverAllocatedHyperNode(job *api.JobInfo, hyperNodeSet set
 	}
 }
 
-func getMinimumHyperNode(hyperNodes sets.Set[string], nodesByHyperNode map[string]sets.Set[string]) string {
+func getLowestTierHyperNode(hyperNodes sets.Set[string], hyperNodeInfos api.HyperNodeInfoMap) string {
 	if hyperNodes == nil || hyperNodes.Len() == 0 {
 		return ""
 	}
 
-	minimumNodeSize := math.MaxInt
-	minimumHyperNode := ClusterTopHyperNode
+	var lowestTierHyperNode *api.HyperNodeInfo
 	for name := range hyperNodes {
-		if nodes, found := nodesByHyperNode[name]; found && nodes.Len() < minimumNodeSize {
-			minimumNodeSize = nodes.Len()
-			minimumHyperNode = name
+		if hn, found := hyperNodeInfos[name]; found {
+			if lowestTierHyperNode == nil || hn.Tier() < lowestTierHyperNode.Tier() {
+				lowestTierHyperNode = hn
+			}
 		}
 	}
-	return minimumHyperNode
+
+	if lowestTierHyperNode == nil {
+		klog.Warningf("No valid hypernodes found in hyperNodeInfos for the given set: %v", hyperNodes.UnsortedList())
+		return ""
+	}
+
+	return lowestTierHyperNode.Name
 }
 
 func (ssn *Session) parseHyperNodesTiers() {
