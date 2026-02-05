@@ -256,13 +256,13 @@ spec:
          nodeGroupAffinity:
            requiredDuringSchedulingIgnoredDuringExecution:
            - groupname1
-           - gropuname2
+           - groupname2
            preferredDuringSchedulingIgnoredDuringExecution:
            - groupname1
          nodeGroupAntiAffinity:
            requiredDuringSchedulingIgnoredDuringExecution:
            - groupname3
-           - gropuname4
+           - groupname4
            preferredDuringSchedulingIgnoredDuringExecution:
            - groupname3
    ```
@@ -280,12 +280,12 @@ spec:
        affinity:            # added field
          nodeGroupAffinity:
            requiredDuringSchedulingIgnoredDuringExecution:
-           - gropuname2
+           - groupname2
            preferredDuringSchedulingIgnoredDuringExecution:
            - groupname1
          nodeGroupAntiAffinity:
            requiredDuringSchedulingIgnoredDuringExecution:
-           - gropuname4
+           - groupname4
            preferredDuringSchedulingIgnoredDuringExecution:
            - groupname3
    ```
@@ -303,14 +303,14 @@ spec:
          nodeGroupAffinity:
            requiredDuringSchedulingIgnoredDuringExecution:
            - groupname1
-           - gropuname2
+           - groupname2
            preferredDuringSchedulingIgnoredDuringExecution:
            - groupname1
          nodeGroupAntiAffinity:
            requiredDuringSchedulingIgnoredDuringExecution:
            - groupname1
            preferredDuringSchedulingIgnoredDuringExecution:
-           - gropuname2
+           - groupname2
    ```
    This implies that tasks in the "default" queue can only run on "groupname2".
 
@@ -327,13 +327,13 @@ spec:
          nodeGroupAffinity:
            requiredDuringSchedulingIgnoredDuringExecution:
            - groupname1
-           - gropuname2
+           - groupname2
            preferredDuringSchedulingIgnoredDuringExecution:
            - groupname1
          nodeGroupAntiAffinity:
            requiredDuringSchedulingIgnoredDuringExecution:
            - groupname3
-           - gropuname4
+           - groupname4
            preferredDuringSchedulingIgnoredDuringExecution:
            - groupname3
    ```

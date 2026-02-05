@@ -28,13 +28,13 @@ case3: An organization has a hierarchical structure (like engineering -> backend
          nodeGroupAffinity:
            requiredDuringSchedulingIgnoredDuringExecution:
            - groupname1
-           - gropuname2
+           - groupname2
            preferredDuringSchedulingIgnoredDuringExecution:
            - groupname1
          nodeGroupAntiAffinity:
            requiredDuringSchedulingIgnoredDuringExecution:
            - groupname3
-           - gropuname4
+           - groupname4
            preferredDuringSchedulingIgnoredDuringExecution:
            - groupname3
    ```
