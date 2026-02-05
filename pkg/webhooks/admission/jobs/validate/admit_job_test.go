@@ -49,10 +49,42 @@ func TestValidateJobCreate(t *testing.T) {
 		ret            string
 	}{
 		{
-			Name: "validate valid-job",
+			Name: "simple-valid-job",
 			Job: v1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "valid-job",
+					Name:      "simple-valid-job",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "task-1",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "task-1",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		{
+			Name: "simple-valid-job-with-policy",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "simple-valid-job-with-policy",
 					Namespace: namespace,
 				},
 				Spec: v1alpha1.JobSpec{
@@ -1508,6 +1540,126 @@ func TestValidateJobCreate(t *testing.T) {
 			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
 			ret:            "",
 			ExpectErr:      false,
+		},
+		// Test MPI plugin validation
+		{
+			Name: "job-with-mpi-plugin-valid-master",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-mpi-plugin-valid-master",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "launcher",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "launcher",
+											Image: "mpi:latest",
+										},
+									},
+								},
+							},
+						},
+						{
+							Name:     "worker",
+							Replicas: 2,
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "worker",
+											Image: "mpi:latest",
+										},
+									},
+								},
+							},
+						},
+					},
+					Plugins: map[string][]string{
+						"mpi": {"--master=launcher"},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		{
+			Name: "job-with-mpi-plugin-valid-master-without-worker",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-mpi-plugin-valid-master",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "launcher",
+							Replicas: 1,
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "launcher",
+											Image: "mpi:latest",
+										},
+									},
+								},
+							},
+						},
+					},
+					Plugins: map[string][]string{
+						"mpi": {"--master=launcher"},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		{
+			Name: "job-with-mpi-plugin-invalid-master",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "job-with-mpi-plugin-invalid-master",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:     "worker",
+							Replicas: 2,
+							Template: v1.PodTemplateSpec{
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "worker",
+											Image: "mpi:latest",
+										},
+									},
+								},
+							},
+						},
+					},
+					Plugins: map[string][]string{
+						"mpi": {"--master=launcher"},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
+			ret:            "The specified mpi master task was not found",
+			ExpectErr:      true,
 		},
 	}
 
