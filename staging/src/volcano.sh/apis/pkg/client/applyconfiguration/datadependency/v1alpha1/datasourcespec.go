@@ -23,12 +23,26 @@ import (
 
 // DataSourceSpecApplyConfiguration represents a declarative configuration of the DataSourceSpec type for use
 // with apply.
+//
+// DataSourceSpec defines the desired state of DataSource.
 type DataSourceSpecApplyConfiguration struct {
-	System        *string                                         `json:"system,omitempty"`
-	Type          *string                                         `json:"type,omitempty"`
-	Name          *string                                         `json:"name,omitempty"`
-	Locality      *DataSourceLocalityApplyConfiguration           `json:"locality,omitempty"`
-	Attributes    map[string]string                               `json:"attributes,omitempty"`
+	// System specifies the underlying data system.
+	// This provides context for the 'name' and 'attributes' fields.
+	// e.g., "hive", "s3", "hdfs".
+	System *string `json:"system,omitempty"`
+	// Type specifies the category of the data source within the system.
+	// e.g., for system="hive", type could be "table", "view".
+	// e.g., for system="s3", type could be "bucket", "object", "prefix".
+	Type *string `json:"type,omitempty"`
+	// Name is the identifier of the data source, its format is interpreted
+	// in the context of the 'system' and 'type'.
+	Name *string `json:"name,omitempty"`
+	// Locality defines which clusters this data source is available on.
+	Locality *DataSourceLocalityApplyConfiguration `json:"locality,omitempty"`
+	// Attributes provides extra, non-identifying metadata.
+	Attributes map[string]string `json:"attributes,omitempty"`
+	// ReclaimPolicy defines what happens to this DataSource when its last bound DataSourceClaim is deleted.
+	// Defaults to "Retain".
 	ReclaimPolicy *datadependencyv1alpha1.DataSourceReclaimPolicy `json:"reclaimPolicy,omitempty"`
 }
 

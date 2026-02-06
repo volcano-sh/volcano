@@ -23,8 +23,16 @@ import (
 
 // DependsOnApplyConfiguration represents a declarative configuration of the DependsOn type for use
 // with apply.
+//
+// DependsOn represents the tasks that this task depends on and their dependencies
 type DependsOnApplyConfiguration struct {
-	Name      []string                 `json:"name,omitempty"`
+	// Indicates the name of the tasks that this task depends on,
+	// which can depend on multiple tasks
+	Name []string `json:"name,omitempty"`
+	// This field specifies that when there are multiple dependent tasks,
+	// as long as one task becomes the specified state,
+	// the task scheduling is triggered or
+	// all tasks must be changed to the specified state to trigger the task scheduling
 	Iteration *batchv1alpha1.Iteration `json:"iteration,omitempty"`
 }
 

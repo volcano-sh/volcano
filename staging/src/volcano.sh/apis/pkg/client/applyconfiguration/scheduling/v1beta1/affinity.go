@@ -19,8 +19,12 @@ package v1beta1
 
 // AffinityApplyConfiguration represents a declarative configuration of the Affinity type for use
 // with apply.
+//
+// Affinity is a group of affinity scheduling rules.
 type AffinityApplyConfiguration struct {
-	NodeGroupAffinity     *NodeGroupAffinityApplyConfiguration     `json:"nodeGroupAffinity,omitempty"`
+	// Describes nodegroup affinity scheduling rules for the queue(e.g. putting pods of the queue in the nodes of the nodegroup)
+	NodeGroupAffinity *NodeGroupAffinityApplyConfiguration `json:"nodeGroupAffinity,omitempty"`
+	// Describes nodegroup anti-affinity scheduling rules for the queue(e.g. avoid putting pods of the queue in the nodes of the nodegroup).
 	NodeGroupAntiAffinity *NodeGroupAntiAffinityApplyConfiguration `json:"nodeGroupAntiAffinity,omitempty"`
 }
 

@@ -26,7 +26,7 @@ import (
 	"sync"
 
 	"github.com/moby/sys/userns"
-	cgroupsystemd "github.com/opencontainers/runc/libcontainer/cgroups/systemd"
+	cgroupsystemd "github.com/opencontainers/cgroups/systemd"
 	"golang.org/x/sys/unix"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"

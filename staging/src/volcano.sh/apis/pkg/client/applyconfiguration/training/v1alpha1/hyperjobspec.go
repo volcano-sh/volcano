@@ -20,10 +20,15 @@ package v1alpha1
 // HyperJobSpecApplyConfiguration represents a declarative configuration of the HyperJobSpec type for use
 // with apply.
 type HyperJobSpecApplyConfiguration struct {
+	// ReplicatedJobs is a group of volcano jobs managed by the hyperjob.
 	ReplicatedJobs []ReplicatedJobApplyConfiguration `json:"replicatedJobs,omitempty"`
-	MinAvailable   *int32                            `json:"minAvailable,omitempty"`
-	MaxDomains     *int32                            `json:"maxDomains,omitempty"`
-	Plugins        map[string][]string               `json:"plugins,omitempty"`
+	// MinAvailable is the minimal available volcano jobs to run the hyperjob.
+	MinAvailable *int32 `json:"minAvailable,omitempty"`
+	// MaxDomains is the maximum number of domains to split the hyperjob, used in multi-cluster splitting.
+	MaxDomains *int32 `json:"maxDomains,omitempty"`
+	// Plugins specifies the plugins to be enabled for the hyperjob.
+	// Key is the plugin name, and value is the list of arguments for the plugin.
+	Plugins map[string][]string `json:"plugins,omitempty"`
 }
 
 // HyperJobSpecApplyConfiguration constructs a declarative configuration of the HyperJobSpec type for use with

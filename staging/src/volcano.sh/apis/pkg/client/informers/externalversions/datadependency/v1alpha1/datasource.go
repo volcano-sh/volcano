@@ -55,7 +55,7 @@ func NewDataSourceInformer(client versioned.Interface, resyncPeriod time.Duratio
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredDataSourceInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
-		&cache.ListWatch{
+		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
@@ -80,7 +80,7 @@ func NewFilteredDataSourceInformer(client versioned.Interface, resyncPeriod time
 				}
 				return client.DatadependencyV1alpha1().DataSources().Watch(ctx, options)
 			},
-		},
+		}, client),
 		&apisdatadependencyv1alpha1.DataSource{},
 		resyncPeriod,
 		indexers,

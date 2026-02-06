@@ -25,11 +25,15 @@ import (
 
 // JobApplyConfiguration represents a declarative configuration of the Job type for use
 // with apply.
+//
+// Job defines the volcano job.
 type JobApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Spec                             *JobSpecApplyConfiguration   `json:"spec,omitempty"`
-	Status                           *JobStatusApplyConfiguration `json:"status,omitempty"`
+	// Specification of the desired behavior of the volcano job, including the minAvailable
+	Spec *JobSpecApplyConfiguration `json:"spec,omitempty"`
+	// Current status of the volcano Job
+	Status *JobStatusApplyConfiguration `json:"status,omitempty"`
 }
 
 // Job constructs a declarative configuration of the Job type for use with
@@ -42,6 +46,7 @@ func Job(name, namespace string) *JobApplyConfiguration {
 	b.WithAPIVersion("batch.volcano.sh/v1alpha1")
 	return b
 }
+
 func (b JobApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

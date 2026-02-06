@@ -23,21 +23,37 @@ import (
 
 // JobStatusApplyConfiguration represents a declarative configuration of the JobStatus type for use
 // with apply.
+//
+// JobStatus represents the current status of a Job.
 type JobStatusApplyConfiguration struct {
-	State               *JobStateApplyConfiguration            `json:"state,omitempty"`
-	MinAvailable        *int32                                 `json:"minAvailable,omitempty"`
-	TaskStatusCount     map[string]TaskStateApplyConfiguration `json:"taskStatusCount,omitempty"`
-	Pending             *int32                                 `json:"pending,omitempty"`
-	Running             *int32                                 `json:"running,omitempty"`
-	Succeeded           *int32                                 `json:"succeeded,omitempty"`
-	Failed              *int32                                 `json:"failed,omitempty"`
-	Terminating         *int32                                 `json:"terminating,omitempty"`
-	Unknown             *int32                                 `json:"unknown,omitempty"`
-	Version             *int32                                 `json:"version,omitempty"`
-	RetryCount          *int32                                 `json:"retryCount,omitempty"`
-	RunningDuration     *v1.Duration                           `json:"runningDuration,omitempty"`
-	ControlledResources map[string]string                      `json:"controlledResources,omitempty"`
-	Conditions          []JobConditionApplyConfiguration       `json:"conditions,omitempty"`
+	// Current state of Job.
+	State *JobStateApplyConfiguration `json:"state,omitempty"`
+	// The minimal available pods to run for this Job
+	MinAvailable *int32 `json:"minAvailable,omitempty"`
+	// The status of pods for each task
+	TaskStatusCount map[string]TaskStateApplyConfiguration `json:"taskStatusCount,omitempty"`
+	// The number of pending pods.
+	Pending *int32 `json:"pending,omitempty"`
+	// The number of running pods.
+	Running *int32 `json:"running,omitempty"`
+	// The number of pods which reached phase Succeeded.
+	Succeeded *int32 `json:"succeeded,omitempty"`
+	// The number of pods which reached phase Failed.
+	Failed *int32 `json:"failed,omitempty"`
+	// The number of pods which reached phase Terminating.
+	Terminating *int32 `json:"terminating,omitempty"`
+	// The number of pods which reached phase Unknown.
+	Unknown *int32 `json:"unknown,omitempty"`
+	// Current version of job
+	Version *int32 `json:"version,omitempty"`
+	// The number of Job retries.
+	RetryCount *int32 `json:"retryCount,omitempty"`
+	// The job running duration is the length of time from job running to complete.
+	RunningDuration *v1.Duration `json:"runningDuration,omitempty"`
+	// The resources that controlled by this job, e.g. Service, ConfigMap
+	ControlledResources map[string]string `json:"controlledResources,omitempty"`
+	// Which conditions caused the current job state.
+	Conditions []JobConditionApplyConfiguration `json:"conditions,omitempty"`
 }
 
 // JobStatusApplyConfiguration constructs a declarative configuration of the JobStatus type for use with

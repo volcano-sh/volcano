@@ -24,10 +24,16 @@ import (
 
 // DataSourceClaimStatusApplyConfiguration represents a declarative configuration of the DataSourceClaimStatus type for use
 // with apply.
+//
+// DataSourceClaimStatus defines the observed state of DataSourceClaim.
 type DataSourceClaimStatusApplyConfiguration struct {
-	Phase           *datadependencyv1alpha1.DSCPhase `json:"phase,omitempty"`
-	BoundDataSource *string                          `json:"boundDataSource,omitempty"`
-	Conditions      []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
+	// Phase indicates the current lifecycle phase of the claim.
+	Phase *datadependencyv1alpha1.DSCPhase `json:"phase,omitempty"`
+	// BoundDataSource specifies the name of the DataSource object
+	// that is bound to this claim for scheduling.
+	BoundDataSource *string `json:"boundDataSource,omitempty"`
+	// Conditions store the available observations of the claim's state.
+	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
 
 // DataSourceClaimStatusApplyConfiguration constructs a declarative configuration of the DataSourceClaimStatus type for use with

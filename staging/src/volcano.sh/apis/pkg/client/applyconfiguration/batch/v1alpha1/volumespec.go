@@ -23,10 +23,16 @@ import (
 
 // VolumeSpecApplyConfiguration represents a declarative configuration of the VolumeSpec type for use
 // with apply.
+//
+// VolumeSpec defines the specification of Volume, e.g. PVC.
 type VolumeSpecApplyConfiguration struct {
-	MountPath       *string                       `json:"mountPath,omitempty"`
-	VolumeClaimName *string                       `json:"volumeClaimName,omitempty"`
-	VolumeClaim     *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty"`
+	// Path within the container at which the volume should be mounted.  Must
+	// not contain ':'.
+	MountPath *string `json:"mountPath,omitempty"`
+	// defined the PVC name
+	VolumeClaimName *string `json:"volumeClaimName,omitempty"`
+	// VolumeClaim defines the PVC used by the VolumeMount.
+	VolumeClaim *v1.PersistentVolumeClaimSpec `json:"volumeClaim,omitempty"`
 }
 
 // VolumeSpecApplyConfiguration constructs a declarative configuration of the VolumeSpec type for use with

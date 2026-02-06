@@ -23,7 +23,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 
 	"k8s.io/klog/v2"
-	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 )
@@ -121,7 +121,7 @@ func sraScore(task *api.TaskInfo, node *api.NodeInfo, sra sraWeight) float64 {
 		score /= float64(sra.ResourcesWeightSum)
 		score = 1.0 - score
 	}
-	score *= float64(k8sFramework.MaxNodeScore * int64(sra.Weight))
+	score *= float64(fwk.MaxNodeScore * int64(sra.Weight))
 
 	return score
 }

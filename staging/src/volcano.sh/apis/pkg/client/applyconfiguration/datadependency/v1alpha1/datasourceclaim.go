@@ -25,6 +25,10 @@ import (
 
 // DataSourceClaimApplyConfiguration represents a declarative configuration of the DataSourceClaim type for use
 // with apply.
+//
+// ==================================  DataSourceClaim  ==================================
+// DataSourceClaim is a request for a DataSource by a user.
+// It is a namespaced resource.
 type DataSourceClaimApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -42,6 +46,7 @@ func DataSourceClaim(name, namespace string) *DataSourceClaimApplyConfiguration 
 	b.WithAPIVersion("datadependency.volcano.sh/v1alpha1")
 	return b
 }
+
 func (b DataSourceClaimApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

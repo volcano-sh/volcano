@@ -24,7 +24,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
-	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/utils/set"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -739,7 +739,7 @@ func scoreHyperNodeWithTaskNum(taskNum int, allTaskNum int) float64 {
 func (nta *networkTopologyAwarePlugin) scaleFinalScore(scores map[string]float64) map[string]float64 {
 	scaledScores := make(map[string]float64)
 	for name, score := range scores {
-		scaledScores[name] = float64(k8sFramework.MaxNodeScore) * float64(nta.weight.GlobalWeight) * score
+		scaledScores[name] = float64(fwk.MaxNodeScore) * float64(nta.weight.GlobalWeight) * score
 	}
 	return scaledScores
 }

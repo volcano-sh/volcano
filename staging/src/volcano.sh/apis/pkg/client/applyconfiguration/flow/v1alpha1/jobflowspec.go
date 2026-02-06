@@ -23,6 +23,8 @@ import (
 
 // JobFlowSpecApplyConfiguration represents a declarative configuration of the JobFlowSpec type for use
 // with apply.
+//
+// JobFlowSpec defines the desired state of JobFlow
 type JobFlowSpecApplyConfiguration struct {
 	Flows           []FlowApplyConfiguration   `json:"flows,omitempty"`
 	JobRetainPolicy *flowv1alpha1.RetainPolicy `json:"jobRetainPolicy,omitempty"`

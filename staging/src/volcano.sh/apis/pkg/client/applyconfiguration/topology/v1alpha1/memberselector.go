@@ -23,9 +23,39 @@ import (
 
 // MemberSelectorApplyConfiguration represents a declarative configuration of the MemberSelector type for use
 // with apply.
+//
+// MemberSelector defines the criteria for selecting nodes.
+//
+// Example for Exact match:
+//
+// members:
+// - type: Node
+// selector:
+// exactMatch:
+// name: "node1"
+//
+// Example for Regex match:
+//
+// members:
+// - type: Node
+// selector:
+// regexMatch:
+// pattern: "^node-[0-9]+$"
+//
+// Example for Label match:
+//
+// members:
+// - type: Node
+// selector:
+// labelMatch:
+// matchLabels:
+// topology-rack: rack1
 type MemberSelectorApplyConfiguration struct {
-	ExactMatch *ExactMatchApplyConfiguration       `json:"exactMatch,omitempty"`
-	RegexMatch *RegexMatchApplyConfiguration       `json:"regexMatch,omitempty"`
+	// ExactMatch defines the exact match criteria.
+	ExactMatch *ExactMatchApplyConfiguration `json:"exactMatch,omitempty"`
+	// RegexMatch defines the regex match criteria.
+	RegexMatch *RegexMatchApplyConfiguration `json:"regexMatch,omitempty"`
+	// LabelMatch defines the labels match criteria (only take effect when Member Type is "Node").
 	LabelMatch *v1.LabelSelectorApplyConfiguration `json:"labelMatch,omitempty"`
 }
 

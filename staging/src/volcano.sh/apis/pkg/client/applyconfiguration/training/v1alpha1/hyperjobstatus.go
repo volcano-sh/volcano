@@ -24,10 +24,13 @@ import (
 // HyperJobStatusApplyConfiguration represents a declarative configuration of the HyperJobStatus type for use
 // with apply.
 type HyperJobStatusApplyConfiguration struct {
-	Conditions           []v1.ConditionApplyConfiguration        `json:"conditions,omitempty"`
+	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
+	// ReplicatedJobsStatus tracks the status of each replicated job.
 	ReplicatedJobsStatus []ReplicatedJobStatusApplyConfiguration `json:"replicatedJobsStatus,omitempty"`
-	SplitCount           *int32                                  `json:"splitCount,omitempty"`
-	ObservedGeneration   *int64                                  `json:"observedGeneration,omitempty"`
+	// SplitCount represents the total number of volcano jobs this hyperjob is split into by the controller.
+	SplitCount *int32 `json:"splitCount,omitempty"`
+	// The generation observed by the controller.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 }
 
 // HyperJobStatusApplyConfiguration constructs a declarative configuration of the HyperJobStatus type for use with

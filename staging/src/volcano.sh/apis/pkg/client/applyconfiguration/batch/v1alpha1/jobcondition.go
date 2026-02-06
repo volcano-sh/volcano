@@ -24,9 +24,13 @@ import (
 
 // JobConditionApplyConfiguration represents a declarative configuration of the JobCondition type for use
 // with apply.
+//
+// JobCondition contains details for the current condition of this job.
 type JobConditionApplyConfiguration struct {
-	Status             *batchv1alpha1.JobPhase `json:"status,omitempty"`
-	LastTransitionTime *v1.Time                `json:"lastTransitionTime,omitempty"`
+	// Status is the new phase of job after performing the state's action.
+	Status *batchv1alpha1.JobPhase `json:"status,omitempty"`
+	// Last time the condition transitioned from one phase to another.
+	LastTransitionTime *v1.Time `json:"lastTransitionTime,omitempty"`
 }
 
 // JobConditionApplyConfiguration constructs a declarative configuration of the JobCondition type for use with

@@ -19,6 +19,10 @@ package v1alpha1
 
 // ResourceInfoApplyConfiguration represents a declarative configuration of the ResourceInfo type for use
 // with apply.
+//
+// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+// ResourceInfo is the sets about resource capacity and allocatable
 type ResourceInfoApplyConfiguration struct {
 	Allocatable *string `json:"allocatable,omitempty"`
 	Capacity    *int    `json:"capacity,omitempty"`

@@ -24,15 +24,29 @@ import (
 
 // TaskSpecApplyConfiguration represents a declarative configuration of the TaskSpec type for use
 // with apply.
+//
+// TaskSpec specifies the task specification of Job.
 type TaskSpecApplyConfiguration struct {
-	Name            *string                                `json:"name,omitempty"`
-	Replicas        *int32                                 `json:"replicas,omitempty"`
-	MinAvailable    *int32                                 `json:"minAvailable,omitempty"`
-	Template        *v1.PodTemplateSpecApplyConfiguration  `json:"template,omitempty"`
-	Policies        []LifecyclePolicyApplyConfiguration    `json:"policies,omitempty"`
-	TopologyPolicy  *batchv1alpha1.NumaPolicy              `json:"topologyPolicy,omitempty"`
-	MaxRetry        *int32                                 `json:"maxRetry,omitempty"`
-	DependsOn       *DependsOnApplyConfiguration           `json:"dependsOn,omitempty"`
+	// Name specifies the name of tasks
+	Name *string `json:"name,omitempty"`
+	// Replicas specifies the replicas of this TaskSpec in Job
+	Replicas *int32 `json:"replicas,omitempty"`
+	// The minimal available pods to run for this Task
+	// Defaults to the task replicas
+	MinAvailable *int32 `json:"minAvailable,omitempty"`
+	// Specifies the pod that will be created for this TaskSpec
+	// when executing a Job
+	Template *v1.PodTemplateSpecApplyConfiguration `json:"template,omitempty"`
+	// Specifies the lifecycle of task
+	Policies []LifecyclePolicyApplyConfiguration `json:"policies,omitempty"`
+	// Specifies the topology policy of task
+	TopologyPolicy *batchv1alpha1.NumaPolicy `json:"topologyPolicy,omitempty"`
+	// Specifies the maximum number of retries before marking this Task failed.
+	// Defaults to 3.
+	MaxRetry *int32 `json:"maxRetry,omitempty"`
+	// Specifies the tasks that this task depends on.
+	DependsOn *DependsOnApplyConfiguration `json:"dependsOn,omitempty"`
+	// PartitionPolicy defines the partition policy of a task.
 	PartitionPolicy *PartitionPolicySpecApplyConfiguration `json:"partitionPolicy,omitempty"`
 }
 
