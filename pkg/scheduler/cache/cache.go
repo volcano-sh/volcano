@@ -448,56 +448,49 @@ func (sc *SchedulerCache) setBatchBindParallel() {
 
 // newDefaultAndRootQueue init default queue and root queue
 func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
-	reclaimable := false
-	rootQueue := vcv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "root",
-		},
-		Spec: vcv1beta1.QueueSpec{
-			Reclaimable: &reclaimable,
-			Weight:      1,
-		},
+	createIfNotExists := func(name string, reclaimable bool) error {
+		_, err := vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), name, metav1.GetOptions{})
+		if err == nil {
+			klog.V(2).Infof("Queue %s already exists, skip creating.", name)
+			return nil
+		}
+
+		if !apierrors.IsNotFound(err) {
+			// Other errors: network problems, permission problems, etc
+			klog.Errorf("failed to get queue %s: %v", name, err)
+		}
+
+		// If queue does not exist, start to create it
+		klog.V(2).Infof("Start to creat queue %s", name)
+		newQueue := vcv1beta1.Queue{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name,
+			},
+			Spec: vcv1beta1.QueueSpec{
+				Reclaimable: &reclaimable,
+				Weight:      1,
+			},
+		}
+
+		return retry.OnError(wait.Backoff{
+			Steps:    60,
+			Duration: time.Second,
+			Factor:   1,
+			Jitter:   0.1,
+		}, func(err error) bool {
+			return !apierrors.IsAlreadyExists(err)
+		}, func() error {
+			_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &newQueue, metav1.CreateOptions{})
+			return err
+		})
 	}
 
-	err := retry.OnError(wait.Backoff{
-		Steps:    60,
-		Duration: time.Second,
-		Factor:   1,
-		Jitter:   0.1,
-	}, func(err error) bool {
-		return !apierrors.IsAlreadyExists(err)
-	}, func() error {
-		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &rootQueue, metav1.CreateOptions{})
-		return err
-	})
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		panic(fmt.Errorf("failed init root queue, with err: %v", err))
+	if err := createIfNotExists("root", false); err != nil {
+		panic(fmt.Errorf("failed to init root queue: %v", err))
 	}
 
-	reclaimable = true
-	defaultQue := vcv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: defaultQueue,
-		},
-		Spec: vcv1beta1.QueueSpec{
-			Reclaimable: &reclaimable,
-			Weight:      1,
-		},
-	}
-
-	err = retry.OnError(wait.Backoff{
-		Steps:    60,
-		Duration: time.Second,
-		Factor:   1,
-		Jitter:   0.1,
-	}, func(err error) bool {
-		return !apierrors.IsAlreadyExists(err)
-	}, func() error {
-		_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &defaultQue, metav1.CreateOptions{})
-		return err
-	})
-	if err != nil && !apierrors.IsAlreadyExists(err) {
-		panic(fmt.Errorf("failed init default queue, with err: %v", err))
+	if err := createIfNotExists(defaultQueue, true); err != nil {
+		panic(fmt.Errorf("failed to init default queue: %v", err))
 	}
 }
 
