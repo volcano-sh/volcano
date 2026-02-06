@@ -1,0 +1,52 @@
+name: E2E Tests
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+  pull_request:
+
+jobs:
+  build-images:
+    uses: ./.github/workflows/images.yaml
+
+  e2e-admission:
+    needs: build-images
+    uses: ./.github/workflows/e2e_admission.yaml
+
+  e2e-cronjob:
+    needs: build-images
+    uses: ./.github/workflows/e2e_cronjob.yaml
+
+  e2e-dra:
+    needs: build-images
+    uses: ./.github/workflows/e2e_dra.yml
+
+  e2e-hypernode:
+    needs: build-images
+    uses: ./.github/workflows/e2e_hypernode.yaml
+
+  e2e-parallel-jobs:
+    needs: build-images
+    uses: ./.github/workflows/e2e_parallel_jobs.yaml
+
+  e2e-scheduling-actions:
+    needs: build-images
+    uses: ./.github/workflows/e2e_scheduling_actions.yaml
+
+  e2e-scheduling-basic:
+    needs: build-images
+    uses: ./.github/workflows/e2e_scheduling_basic.yaml
+
+  e2e-sequence:
+    needs: build-images
+    uses: ./.github/workflows/e2e_sequence.yaml
+
+  e2e-spark:
+    needs: build-images
+    uses: ./.github/workflows/e2e_spark.yaml
+
+  e2e-vcctl:
+    needs: build-images
+    uses: ./.github/workflows/e2e_vcctl.yaml
