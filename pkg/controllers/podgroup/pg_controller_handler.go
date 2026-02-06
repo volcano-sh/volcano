@@ -219,12 +219,14 @@ func (pg *pgcontroller) updatePodAnnotations(pod *v1.Pod, pgName string) error {
 	return nil
 }
 
-func (pg *pgcontroller) getAnnotationsFromUpperRes(pod *v1.Pod) map[string]string {
+func (pg *pgcontroller) getAnnotationsLabelsFromUpperRes(pod *v1.Pod) (map[string]string, map[string]string) {
 	var annotations = make(map[string]string)
+	var labels = make(map[string]string)
 
 	for _, reference := range pod.OwnerReferences {
 		if reference.Kind != "" && reference.Name != "" {
 			tmp := make(map[string]string)
+			tmpLabels := make(map[string]string)
 			switch reference.Kind {
 			case "ReplicaSet":
 				rs, err := pg.kubeClient.AppsV1().ReplicaSets(pod.Namespace).Get(context.TODO(), reference.Name, metav1.GetOptions{})
@@ -233,6 +235,7 @@ func (pg *pgcontroller) getAnnotationsFromUpperRes(pod *v1.Pod) map[string]strin
 					continue
 				}
 				tmp = rs.Annotations
+				tmpLabels = rs.Labels
 			case "DaemonSet":
 				ds, err := pg.kubeClient.AppsV1().DaemonSets(pod.Namespace).Get(context.TODO(), reference.Name, metav1.GetOptions{})
 				if err != nil {
@@ -240,6 +243,7 @@ func (pg *pgcontroller) getAnnotationsFromUpperRes(pod *v1.Pod) map[string]strin
 					continue
 				}
 				tmp = ds.Annotations
+				tmpLabels = ds.Labels
 			case "StatefulSet":
 				ss, err := pg.kubeClient.AppsV1().StatefulSets(pod.Namespace).Get(context.TODO(), reference.Name, metav1.GetOptions{})
 				if err != nil {
@@ -247,6 +251,7 @@ func (pg *pgcontroller) getAnnotationsFromUpperRes(pod *v1.Pod) map[string]strin
 					continue
 				}
 				tmp = ss.Annotations
+				tmpLabels = ss.Labels
 			case "Job":
 				job, err := pg.kubeClient.BatchV1().Jobs(pod.Namespace).Get(context.TODO(), reference.Name, metav1.GetOptions{})
 				if err != nil {
@@ -254,6 +259,7 @@ func (pg *pgcontroller) getAnnotationsFromUpperRes(pod *v1.Pod) map[string]strin
 					continue
 				}
 				tmp = job.Annotations
+				tmpLabels = job.Labels
 			}
 
 			for k, v := range tmp {
@@ -261,10 +267,15 @@ func (pg *pgcontroller) getAnnotationsFromUpperRes(pod *v1.Pod) map[string]strin
 					annotations[k] = v
 				}
 			}
+			for k, v := range tmpLabels {
+				if _, ok := labels[k]; !ok {
+					labels[k] = v
+				}
+			}
 		}
 	}
 
-	return annotations
+	return annotations, labels
 }
 
 func (pg *pgcontroller) getMinMemberFromUpperRes(upperAnnotations map[string]string, namespance, name string) int32 {
@@ -287,12 +298,51 @@ func (pg *pgcontroller) getMinMemberFromUpperRes(upperAnnotations map[string]str
 	return minMember
 }
 
+func matchPrefix(key string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // Inherit annotations from upper resources.
 func (pg *pgcontroller) inheritUpperAnnotations(upperAnnotations map[string]string, obj *scheduling.PodGroup) {
 	if pg.inheritOwnerAnnotations {
 		for k, v := range upperAnnotations {
-			if strings.HasPrefix(k, scheduling.AnnotationPrefix) {
+			if matchPrefix(k, pg.inheritOwnerAnnotationPrefixes) {
 				obj.Annotations[k] = v
+			}
+		}
+	}
+}
+
+func (pg *pgcontroller) inheritOriginPodAnnotations(podAnnotations map[string]string, obj *scheduling.PodGroup) {
+	if pg.inheritPodAnnotations {
+		for k, v := range podAnnotations {
+			if matchPrefix(k, pg.inheritPodAnnotationPrefixes) {
+				obj.Annotations[k] = v
+			}
+		}
+	}
+}
+
+func (pg *pgcontroller) inheritUpperPodLabels(labels map[string]string, obj *scheduling.PodGroup) {
+	if pg.inheritOwnerLabels {
+		for k, v := range labels {
+			if matchPrefix(k, pg.inheritOwnerLabelPrefixes) {
+				obj.Labels[k] = v
+			}
+		}
+	}
+}
+
+func (pg *pgcontroller) inheritOriginPodLabels(labels map[string]string, obj *scheduling.PodGroup) {
+	if pg.inheritPodLabels {
+		for k, v := range labels {
+			if matchPrefix(k, pg.inheritPodLabelPrefixes) {
+				obj.Labels[k] = v
 			}
 		}
 	}
@@ -372,10 +422,12 @@ func (pg *pgcontroller) createOrUpdateNormalPodPG(pod *v1.Pod) error {
 func (pg *pgcontroller) buildPodGroupFromPod(pod *v1.Pod, pgName string) *scheduling.PodGroup {
 	var minMember = int32(1)
 	var ownerAnnotations = make(map[string]string)
-	if pg.inheritOwnerAnnotations {
-		ownerAnnotations = pg.getAnnotationsFromUpperRes(pod)
+	var ownerLabels = make(map[string]string)
+	if pg.inheritOwnerAnnotations || pg.inheritOwnerLabels {
+		ownerAnnotations, ownerLabels = pg.getAnnotationsLabelsFromUpperRes(pod)
 		minMember = pg.getMinMemberFromUpperRes(ownerAnnotations, pod.Namespace, pod.Name)
 	}
+
 	minResources := util.CalTaskRequests(pod, minMember)
 	obj := &scheduling.PodGroup{
 		ObjectMeta: metav1.ObjectMeta{
@@ -396,32 +448,19 @@ func (pg *pgcontroller) buildPodGroupFromPod(pod *v1.Pod, pgName string) *schedu
 	}
 
 	pg.inheritUpperAnnotations(ownerAnnotations, obj)
+	pg.inheritOriginPodAnnotations(pod.Annotations, obj)
+
+	pg.inheritUpperPodLabels(ownerLabels, obj)
+	pg.inheritOriginPodLabels(pod.Labels, obj)
+
 	// Individual annotations on pods would overwrite annotations inherited from upper resources.
 	if queueName, ok := pod.Annotations[scheduling.QueueNameAnnotationKey]; ok {
 		obj.Spec.Queue = queueName
 	}
 
-	if value, ok := pod.Annotations[scheduling.PodPreemptable]; ok {
-		obj.Annotations[scheduling.PodPreemptable] = value
-	}
-	if value, ok := pod.Annotations[scheduling.CooldownTime]; ok {
-		obj.Annotations[scheduling.CooldownTime] = value
-	}
-	if value, ok := pod.Annotations[scheduling.RevocableZone]; ok {
-		obj.Annotations[scheduling.RevocableZone] = value
-	}
-	if value, ok := pod.Labels[scheduling.PodPreemptable]; ok {
-		obj.Labels[scheduling.PodPreemptable] = value
-	}
-	if value, ok := pod.Labels[scheduling.CooldownTime]; ok {
-		obj.Labels[scheduling.CooldownTime] = value
-	}
-
-	if value, found := pod.Annotations[scheduling.JDBMinAvailable]; found {
-		obj.Annotations[scheduling.JDBMinAvailable] = value
-	} else if value, found := pod.Annotations[scheduling.JDBMaxUnavailable]; found {
-		obj.Annotations[scheduling.JDBMaxUnavailable] = value
-	}
+	// NOTE: scheduling.PodPreemptable, scheduling.CooldownTime, scheduling.RevocableZone
+	// scheduling.JDBMinAvailable, scheduling.JDBMaxUnavailable are with volcano.sh/ prefix,
+	// and would be inherited from pod annotations/labels by default.
 
 	// Parse and set NetworkTopology from Pod annotations
 	if networkTopology := parseNetworkTopologyFromPod(pod); networkTopology != nil {

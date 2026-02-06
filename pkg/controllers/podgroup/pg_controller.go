@@ -69,6 +69,23 @@ type pgcontroller struct {
 
 	// To determine whether inherit owner's annotations for pods when create podgroup
 	inheritOwnerAnnotations bool
+	// To determine which owner's annotations will be inherited to PodGroup
+	inheritOwnerAnnotationPrefixes []string
+
+	// To determine whether inherit annotations of pods when create podgroup
+	inheritPodAnnotations bool
+	// To determine which pod's annotations which will be inherited to PodGroup
+	inheritPodAnnotationPrefixes []string
+
+	// To determine whether inherit owner's labes when create podgroup
+	inheritOwnerLabels bool
+	// To determine which owner's labels will be inherited to PodGroup
+	inheritOwnerLabelPrefixes []string
+
+	// To determine whether inherit labels of pods when create podgroup
+	inheritPodLabels bool
+	// To determine which pod's labels will be inherited to PodGroup
+	inheritPodLabelPrefixes []string
 }
 
 func (pg *pgcontroller) Name() string {
@@ -85,7 +102,21 @@ func (pg *pgcontroller) Initialize(opt *framework.ControllerOption) error {
 
 	pg.schedulerNames = make([]string, len(opt.SchedulerNames))
 	copy(pg.schedulerNames, opt.SchedulerNames)
+
 	pg.inheritOwnerAnnotations = opt.InheritOwnerAnnotations
+	pg.inheritOwnerAnnotationPrefixes = opt.InheritOwnerAnnotationPrefixes
+	pg.inheritPodAnnotations = opt.InheritPodAnnotations
+	pg.inheritPodAnnotationPrefixes = opt.InheritPodAnnotationPrefixes
+
+	pg.inheritOwnerLabels = opt.InheritOwnerLabels
+	pg.inheritOwnerLabelPrefixes = opt.InheritOwnerLabelPrefixes
+	pg.inheritPodLabels = opt.InheritPodLabels
+	pg.inheritPodLabelPrefixes = opt.InheritPodLabelPrefixes
+
+	klog.Infof("Podgroup Controller inheritOwnerAnnotations: %v, inheritOwnerAnnotationPrefixes: %v, inheritPodAnnotations: %v, inheritPodAnnotationPrefixes: %v",
+		pg.inheritOwnerAnnotations, pg.inheritOwnerAnnotationPrefixes, pg.inheritPodAnnotations, pg.inheritPodAnnotationPrefixes)
+	klog.Infof("Podgroup Controller inheritOwnerLabels: %v, inheritOwnerLabelsPrefixes: %v, inheritPodLabels: %v, inheritPodLabelsPrefixes: %v",
+		pg.inheritOwnerLabels, pg.inheritOwnerLabelPrefixes, pg.inheritPodLabels, pg.inheritPodLabelPrefixes)
 
 	pg.informerFactory = opt.SharedInformerFactory
 	pg.podInformer = opt.SharedInformerFactory.Core().V1().Pods()
