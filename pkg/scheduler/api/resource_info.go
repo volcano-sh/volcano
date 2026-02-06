@@ -393,14 +393,6 @@ func (r *Resource) Less(rr *Resource, defaultValue DimensionDefaultValue) bool {
 		return false
 	}
 
-	if defaultValue == Infinity {
-		for name := range rr.ScalarResources {
-			if _, ok := r.ScalarResources[name]; !ok {
-				return false
-			}
-		}
-	}
-
 	for resourceName, leftValue := range r.ScalarResources {
 		rightValue, ok := rr.ScalarResources[resourceName]
 		if !ok && defaultValue == Infinity {
@@ -430,14 +422,6 @@ func (r *Resource) LessEqual(rr *Resource, defaultValue DimensionDefaultValue) b
 	}
 	if !lessEqualFunc(r.Memory, rr.Memory, minResource) {
 		return false
-	}
-
-	if defaultValue == Infinity {
-		for name := range rr.ScalarResources {
-			if _, ok := r.ScalarResources[name]; !ok {
-				return false
-			}
-		}
 	}
 
 	for resourceName, leftValue := range r.ScalarResources {
