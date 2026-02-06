@@ -361,6 +361,11 @@ func (pmpt *Action) normalPreempt(
 		// Preempt victims for tasks, pick lowest priority task first.
 		preempted := api.EmptyResource()
 
+		// Track operation count before evictions so we can rollback on pipeline failure.
+		// This ensures victims are not evicted when the preemptor fails to be scheduled,
+		// which could otherwise violate gang scheduling constraints (MinAvailable).
+		opCountBeforeEvictions := stmt.OperationCount()
+
 		for !victimsQueue.Empty() {
 			// If reclaimed enough resources, break loop to avoid Sub panic.
 			// Preempt action is about preempt in same queue, which job is not allocatable in allocate action, due to:
@@ -404,12 +409,22 @@ func (pmpt *Action) normalPreempt(
 					klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
 						preemptor.UID, node.Name, ssn.UID, rollbackErr)
 				}
+				// CRITICAL FIX: Rollback evictions when pipeline fails.
+				// Without this, victims would be evicted even though the preemptor
+				// is not scheduled, potentially violating gang scheduling constraints.
+				stmt.RollbackOperationsFrom(opCountBeforeEvictions)
+				klog.V(3).Infof("Rolled back evictions for failed pipeline of Task <%s/%s>",
+					preemptor.Namespace, preemptor.Name)
+				continue
 			}
 
-			// Ignore pipeline error, will be corrected in next scheduling loop.
 			assigned = true
-
 			break
+		} else {
+			// Pipeline condition not met, rollback evictions made for this node attempt
+			stmt.RollbackOperationsFrom(opCountBeforeEvictions)
+			klog.V(3).Infof("Rolled back evictions for Task <%s/%s> - pipeline conditions not met on Node <%s>",
+				preemptor.Namespace, preemptor.Name, node.Name)
 		}
 	}
 
@@ -480,6 +495,11 @@ func (pmpt *Action) topologyAwarePreempt(
 		return false, fmt.Errorf("no candidate node for preemption")
 	}
 
+	// Track operation count before evictions so we can rollback on pipeline failure.
+	// This ensures victims are not evicted when the preemptor fails to be scheduled,
+	// which could otherwise violate gang scheduling constraints (MinAvailable).
+	opCountBeforeEvictions := stmt.OperationCount()
+
 	if status := prepareCandidate(bestCandidate, preemptor.Pod, stmt, ssn); !status.IsSuccess() {
 		return false, fmt.Errorf("failed to prepare candidate: %v", status)
 	}
@@ -491,6 +511,13 @@ func (pmpt *Action) topologyAwarePreempt(
 			klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
 				preemptor.UID, bestCandidate.Name(), ssn.UID, rollbackErr)
 		}
+		// CRITICAL FIX: Rollback evictions when pipeline fails.
+		// Without this, victims would be evicted even though the preemptor
+		// is not scheduled, potentially violating gang scheduling constraints.
+		stmt.RollbackOperationsFrom(opCountBeforeEvictions)
+		klog.V(3).Infof("Rolled back evictions for failed pipeline of Task <%s/%s>",
+			preemptor.Namespace, preemptor.Name)
+		return false, err
 	}
 
 	return true, nil

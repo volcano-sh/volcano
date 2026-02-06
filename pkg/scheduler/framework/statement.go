@@ -259,6 +259,54 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 	return nil
 }
 
+// Unevict reverts an eviction, restoring the task to Running status.
+// This is used to rollback evictions when a preemption attempt fails.
+func (s *Statement) Unevict(reclaimee *api.TaskInfo) error {
+	return s.unevict(reclaimee)
+}
+
+// OperationCount returns the current number of operations in the statement.
+// This can be used to track operations before a preemption attempt and
+// rollback only the new operations if the attempt fails.
+func (s *Statement) OperationCount() int {
+	return len(s.operations)
+}
+
+// RollbackOperationsFrom rolls back all operations from the given index onwards.
+// This is used to undo evictions when a preemption pipeline fails, without
+// affecting earlier successful operations in the same statement.
+func (s *Statement) RollbackOperationsFrom(fromIndex int) {
+	if fromIndex < 0 || fromIndex >= len(s.operations) {
+		return
+	}
+
+	// Rollback operations in reverse order (LIFO)
+	for i := len(s.operations) - 1; i >= fromIndex; i-- {
+		op := s.operations[i]
+		op.task.GenerateLastTxContext()
+		switch op.name {
+		case Evict:
+			if err := s.unevict(op.task); err != nil {
+				klog.Errorf("Failed to unevict task <%v/%v> during rollback: %v",
+					op.task.Namespace, op.task.Name, err)
+			}
+		case Pipeline:
+			if err := s.UnPipeline(op.task); err != nil {
+				klog.Errorf("Failed to unpipeline task <%v/%v> during rollback: %v",
+					op.task.Namespace, op.task.Name, err)
+			}
+		case Allocate:
+			if err := s.unallocate(op.task); err != nil {
+				klog.Errorf("Failed to unallocate task <%v/%v> during rollback: %v",
+					op.task.Namespace, op.task.Name, err)
+			}
+		}
+	}
+
+	// Truncate the operations list to remove the rolled-back operations
+	s.operations = s.operations[:fromIndex]
+}
+
 // Allocate the task to node
 func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
 	errInfos := make([]error, 0)
