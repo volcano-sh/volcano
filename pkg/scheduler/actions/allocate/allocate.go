@@ -39,6 +39,14 @@ import (
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
+const (
+	// GateRemovalWorkerNumKey is the configuration key for number of async gate removal workers
+	GateRemovalWorkerNumKey = "gateRemovalWorkerNum"
+
+	// Default buffer size per worker for the gate removal channel
+	gateRemovalBufferPerWorker = 200
+)
+
 type allocateContext struct {
 	queues              *util.PriorityQueue                 // queue of *api.QueueInfo
 	jobsByQueue         map[api.QueueID]*util.PriorityQueue // queue of *api.JobInfo
@@ -106,10 +114,12 @@ type Action struct {
 	schGateRemovalCh        chan schGateRemovalOperation
 	schGateRemovalWorkersWg sync.WaitGroup
 	schGateRemovalStopCh    chan struct{}
-
-	startedWorkers bool
+	gateRemovalWorkerNum    int // Number of async gate removal workers
+	startedWorkers          bool
 }
 
+// schGateRemovalOperation is a struct that contains the namespace
+// and name of the pod to remove the scheduling gate from.
 type schGateRemovalOperation struct {
 	namespace string
 	name      string
@@ -118,8 +128,8 @@ type schGateRemovalOperation struct {
 func New() *Action {
 	return &Action{
 		enablePredicateErrorCache: true, // default to enable it
-		schGateRemovalCh:          make(chan schGateRemovalOperation, 1000),
 		schGateRemovalStopCh:      make(chan struct{}),
+		gateRemovalWorkerNum:      5, // default value
 	}
 }
 
@@ -128,27 +138,16 @@ func (alloc *Action) Name() string {
 }
 
 func (alloc *Action) Initialize() {
+	// Create channel with buffer size based on worker count (200 operations per worker)
+	channelSize := alloc.gateRemovalWorkerNum * gateRemovalBufferPerWorker
+	alloc.schGateRemovalCh = make(chan schGateRemovalOperation, channelSize)
+
 	// Start async gate operation workers
-	numWorkers := 5
-	for i := 0; i < numWorkers; i++ {
+	for i := 0; i < alloc.gateRemovalWorkerNum; i++ {
 		alloc.schGateRemovalWorkersWg.Add(1)
-		klog.Infof("Starting async gate operation worker %d", i)
 		go alloc.schGateRemovalWorker()
 	}
-	klog.Infof("Started %d async gate operation workers", numWorkers)
-}
-
-func (alloc *Action) UnInitialize() {
-	// Signal workers to shutdown
-	close(alloc.schGateRemovalStopCh)
-
-	// Wait for all workers to finish
-	alloc.schGateRemovalWorkersWg.Wait()
-
-	// Close the channel
-	close(alloc.schGateRemovalCh)
-
-	klog.V(3).Infof("Async gate removal workers shut down")
+	klog.V(3).Infof("Started %d async workers for gate removal", alloc.gateRemovalWorkerNum)
 }
 
 // schGateRemovalWorker processes async gate add/remove requests
@@ -184,18 +183,26 @@ func (alloc *Action) schGateRemovalWorker() {
 func (alloc *Action) parseArguments(ssn *framework.Session) {
 	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, alloc.Name())
 	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+	arguments.GetInt(&alloc.gateRemovalWorkerNum, GateRemovalWorkerNumKey)
+
+	// Ensure at least 1 worker
+	if alloc.gateRemovalWorkerNum < 1 {
+		klog.Warningf("Invalid gateRemovalWorkerNum %d, using default value 5", alloc.gateRemovalWorkerNum)
+		alloc.gateRemovalWorkerNum = 5
+	}
 }
 
 func (alloc *Action) Execute(ssn *framework.Session) {
 	klog.V(5).Infof("Enter Allocate ...")
 	defer klog.V(5).Infof("Leaving Allocate ...")
 
+	alloc.parseArguments(ssn)
+
+	// Initialize workers once with the configured number
 	if !alloc.startedWorkers {
 		alloc.startedWorkers = true
 		alloc.Initialize()
 	}
-
-	alloc.parseArguments(ssn)
 
 	// the allocation for pod may have many stages
 	// 1. pick a queue named Q (using ssn.QueueOrderFn)
@@ -422,8 +429,8 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 	}
 }
 
-// schedulingGateRemoval queues async gate removal if scheduling failed
-// This ensures CA can see the Unschedulable condition and trigger scale-up
+// schedulingGateRemoval queues async gate removal if scheduling failed.
+// This ensures cluster autoscalers can see the Unschedulable condition and trigger scale-up
 func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo, queueID api.QueueID) {
 	// Only enqueue gate removal if the task has only Volcano scheduling gate
 	if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
@@ -434,7 +441,7 @@ func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo, queueID api.Queue
 
 		select {
 		case alloc.schGateRemovalCh <- op:
-			klog.V(4).Infof("Queued gate removal for %s/%s (scheduling failed)", task.Namespace, task.Name)
+			klog.V(4).Infof("Queued gate removal for %s/%s", task.Namespace, task.Name)
 			// Update task state immediately so it won't be queued again in this cycle
 			task.SchGated = false
 		default:
@@ -669,7 +676,6 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 	for !tasks.Empty() {
 		task := tasks.Pop().(*api.TaskInfo)
-
 		if !ssn.Allocatable(queue, task) {
 			klog.V(3).Infof("Queue <%s> is overused when considering task <%s>, ignore it.", queue.Name, task.Name)
 			continue
@@ -759,9 +765,7 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 		bestNode, _ := alloc.prioritizeNodes(ssn, task, predicateNodes)
 		if bestNode == nil {
-			klog.V(3).Infof("No best node found for task %s/%s after prioritization", task.Namespace, task.Name)
 
-			// No best node found after prioritization, enqueue gate removal
 			// Unschedulable will be set in the Pod Status reason
 			klog.V(3).Infof("No best node found for task %s/%s, removing gate", task.Namespace, task.Name)
 			alloc.schedulingGateRemoval(task, queue.UID)
@@ -950,4 +954,17 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}
 	return alloc.session.PredicateForAllocateAction(task, node)
+}
+
+func (alloc *Action) UnInitialize() {
+	// Signal workers to shutdown
+	close(alloc.schGateRemovalStopCh)
+
+	// Wait for all workers to finish
+	alloc.schGateRemovalWorkersWg.Wait()
+
+	// Close the channel
+	close(alloc.schGateRemovalCh)
+
+	klog.V(3).Infof("Async gate removal workers shut down")
 }
