@@ -78,8 +78,8 @@ func DeletePod(ctx *TestContext, pod *v1.Pod) {
 	Expect(err).NotTo(HaveOccurred(), "failed to delete pod %s", pod.Name)
 }
 
-// HasOnlyVolcanoSchedulingGate checks if a pod has only the Volcano queue allocation gate
-func HasOnlyVolcanoSchedulingGate(ctx *TestContext, podName string) bool {
+// PodHasOnlyVolcanoSchedulingGate fetches a pod and checks if it has only the Volcano queue allocation gate
+func PodHasOnlyVolcanoSchedulingGate(ctx *TestContext, podName string) bool {
 	pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Get(context.TODO(), podName, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to get pod %s", podName)
 	return api.HasOnlyVolcanoSchedulingGate(pod)
