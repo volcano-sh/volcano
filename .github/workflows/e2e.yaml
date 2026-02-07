@@ -1,0 +1,119 @@
+# Copyright 2025 The Volcano Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: E2E Tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: jobp
+            make-target: e2e-test-jobp
+            timeout: 40
+          - suite: jobseq
+            make-target: e2e-test-jobseq
+            timeout: 50
+          - suite: schedulingbase
+            make-target: e2e-test-schedulingbase
+            timeout: 50
+          - suite: schedulingaction
+            make-target: e2e-test-schedulingaction
+            timeout: 50
+          - suite: vcctl
+            make-target: e2e-test-vcctl
+            timeout: 50
+          - suite: cronjob
+            make-target: e2e-test-cronjob
+            timeout: 70
+          - suite: dra
+            make-target: e2e-test-dra
+            timeout: 40
+          - suite: hypernode
+            make-target: e2e-test-hypernode
+            timeout: 40
+          - suite: admission-policy
+            make-target: e2e-test-admission-policy
+            timeout: 50
+          - suite: admission-webhook
+            make-target: e2e-test-admission-webhook
+            timeout: 50
+          - suite: stress
+            make-target: e2e-test-stress
+            timeout: 40
+    name: E2E - ${{ matrix.suite }}
+    steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24.x
+
+      - name: Install musl
+        run: |
+          wget http://musl.libc.org/releases/musl-1.2.1.tar.gz
+          tar -xf musl-1.2.1.tar.gz && cd musl-1.2.1
+          ./configure
+          make && sudo make install
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: |
+          GO111MODULE="on" go install sigs.k8s.io/kind@v0.30.0
+          curl -LO https://dl.k8s.io/release/v1.34.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
+
+      - name: Run E2E Tests
+        run: |
+          export ARTIFACTS_PATH=${{ github.workspace }}/e2e-${{ matrix.suite }}-logs
+          make ${{ matrix.make-target }} CC=/usr/local/musl/bin/musl-gcc
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: volcano-e2e-${{ matrix.suite }}-logs
+          path: ${{ github.workspace }}/e2e-${{ matrix.suite }}-logs
