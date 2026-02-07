@@ -108,7 +108,7 @@ data:
     configurations:
     ...
     - name: init-params
-      arguments: {"grace-over-time":"900","presetVirtualDevice":"false"}  # to enable dynamic virtulization, presetVirtualDevice need to be set false
+      arguments: {"grace-over-time":"900","presetVirtualDevice":"false"}  # to enable dynamic virtualization, presetVirtualDevice need to be set false
 ```
 
 ---
@@ -278,7 +278,6 @@ spec:
         limits:
           huawei.com/Ascend310P: "1"
           huawei.com/Ascend310P-memory: "4096"
-
 ```
 
 The supported Ascend chips and their `ResourceNames` are shown in the following table:

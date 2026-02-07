@@ -349,10 +349,22 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 	// Register event handlers.
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
-			attr := drf.jobAttrs[event.Task.Job]
-			attr.allocated.Add(event.Task.Resreq)
+			// Handle orphaned tasks whose jobs were deleted after session snapshot.
+			// This can occur during rapid PodGroup deletion or controller restarts.
+			attr, attrFound := drf.jobAttrs[event.Task.Job]
+			if !attrFound {
+				klog.V(4).Infof("DRF AllocateFunc: job <%s> not found in jobAttrs, skipping orphaned task <%s/%s>",
+					event.Task.Job, event.Task.Namespace, event.Task.Name)
+				return
+			}
+			job, jobFound := ssn.Jobs[event.Task.Job]
+			if !jobFound {
+				klog.V(4).Infof("DRF AllocateFunc: job <%s> not found in session, skipping orphaned task <%s/%s>",
+					event.Task.Job, event.Task.Namespace, event.Task.Name)
+				return
+			}
 
-			job := ssn.Jobs[event.Task.Job]
+			attr.allocated.Add(event.Task.Resreq)
 			drf.updateShare(attr)
 			if !ssn.IsJobTerminated(job.UID) {
 				metrics.UpdateJobShare(job.Namespace, job.Name, attr.share)
@@ -360,34 +372,54 @@ func (drf *drfPlugin) OnSessionOpen(ssn *framework.Session) {
 
 			nsShare := -1.0
 			if hierarchyEnabled {
-				queue := ssn.Queues[job.Queue]
-
-				drf.totalAllocated.Add(event.Task.Resreq)
-				drf.UpdateHierarchicalShare(drf.hierarchicalRoot, drf.totalAllocated, job, attr, queue.Hierarchy, queue.Weights)
+				queue, queueFound := ssn.Queues[job.Queue]
+				if !queueFound {
+					klog.V(4).Infof("DRF AllocateFunc: queue <%s> not found for job <%s/%s>, skipping hierarchy update",
+						job.Queue, job.Namespace, job.Name)
+				} else {
+					drf.totalAllocated.Add(event.Task.Resreq)
+					drf.UpdateHierarchicalShare(drf.hierarchicalRoot, drf.totalAllocated, job, attr, queue.Hierarchy, queue.Weights)
+				}
 			}
 
 			klog.V(4).Infof("DRF AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>, namespace share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share, nsShare)
 		},
 		DeallocateFunc: func(event *framework.Event) {
-			attr := drf.jobAttrs[event.Task.Job]
-			attr.allocated.Sub(event.Task.Resreq)
+			// Handle orphaned tasks whose jobs were deleted after session snapshot.
+			// This can occur during rapid PodGroup deletion or controller restarts.
+			attr, attrFound := drf.jobAttrs[event.Task.Job]
+			if !attrFound {
+				klog.V(4).Infof("DRF DeallocateFunc: job <%s> not found in jobAttrs, skipping orphaned task <%s/%s>",
+					event.Task.Job, event.Task.Namespace, event.Task.Name)
+				return
+			}
+			job, jobFound := ssn.Jobs[event.Task.Job]
+			if !jobFound {
+				klog.V(4).Infof("DRF DeallocateFunc: job <%s> not found in session, skipping orphaned task <%s/%s>",
+					event.Task.Job, event.Task.Namespace, event.Task.Name)
+				return
+			}
 
-			job := ssn.Jobs[event.Task.Job]
+			attr.allocated.Sub(event.Task.Resreq)
 			drf.updateShare(attr)
 			if !ssn.IsJobTerminated(job.UID) {
 				metrics.UpdateJobShare(job.Namespace, job.Name, attr.share)
 			}
 
 			nsShare := -1.0
-
 			if hierarchyEnabled {
-				queue := ssn.Queues[job.Queue]
-				drf.totalAllocated.Sub(event.Task.Resreq)
-				drf.UpdateHierarchicalShare(drf.hierarchicalRoot, drf.totalAllocated, job, attr, queue.Hierarchy, queue.Weights)
+				queue, queueFound := ssn.Queues[job.Queue]
+				if !queueFound {
+					klog.V(4).Infof("DRF DeallocateFunc: queue <%s> not found for job <%s/%s>, skipping hierarchy update",
+						job.Queue, job.Namespace, job.Name)
+				} else {
+					drf.totalAllocated.Sub(event.Task.Resreq)
+					drf.UpdateHierarchicalShare(drf.hierarchicalRoot, drf.totalAllocated, job, attr, queue.Hierarchy, queue.Weights)
+				}
 			}
 
-			klog.V(4).Infof("DRF EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>, namespace share <%v>",
+			klog.V(4).Infof("DRF DeallocateFunc: task <%v/%v>, resreq <%v>,  share <%v>, namespace share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share, nsShare)
 		},
 	})

@@ -66,7 +66,14 @@ import (
 
 // GetPodResourceRequest returns all the resource required for that pod
 func GetPodResourceRequest(pod *v1.Pod) *Resource {
-	result := GetPodResourceWithoutInitContainers(pod)
+	result := aggregateAllContainerResourceRequests(pod)
+	amendResourceAccordingToPodFeatures(result, pod)
+	return result
+}
+
+// aggregateAllContainerResourceRequests returns the total resource requests of all the containers within the pod.
+func aggregateAllContainerResourceRequests(pod *v1.Pod) *Resource {
+	result := aggregateRegularContainerResourceRequests(pod)
 
 	inPlacePodVerticalScalingEnabled := utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling)
 	var initContainerStatuses map[string]*v1.ContainerStatus
@@ -188,6 +195,13 @@ func GetPodTopologyInfo(pod *v1.Pod) *TopologyInfo {
 // GetPodResourceWithoutInitContainers returns Pod's resource request, it does not contain
 // init containers' resource request.
 func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
+	result := aggregateRegularContainerResourceRequests(pod)
+	amendResourceAccordingToPodFeatures(result, pod)
+	return result
+}
+
+// aggregateRegularContainerResourceRequests returns the total resource requests of all the regular containers within the pod.
+func aggregateRegularContainerResourceRequests(pod *v1.Pod) *Resource {
 	result := EmptyResource()
 
 	inPlacePodVerticalScalingEnabled := utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScaling)
@@ -211,12 +225,39 @@ func GetPodResourceWithoutInitContainers(pod *v1.Pod) *Resource {
 		result.Add(NewResource(containerReqs))
 	}
 
-	// if PodOverhead feature is supported, add overhead for running a pod
-	if pod.Spec.Overhead != nil {
-		result.Add(NewResource(pod.Spec.Overhead))
+	return result
+}
+
+// amendResourceAccordingToPodFeatures amends the resource to the value that the pod actually requires, taking its pod-level resource and overhead settings into account.
+func amendResourceAccordingToPodFeatures(resource *Resource, pod *v1.Pod) {
+	if resource == nil || pod == nil {
+		return
 	}
 
-	return result
+	if resource.ScalarResources == nil {
+		resource.ScalarResources = make(map[v1.ResourceName]float64)
+	}
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.PodLevelResources) && helpers.IsPodLevelRequestsSet(pod) {
+		podLevelResource := NewResource(pod.Spec.Resources.Requests)
+		for rName := range pod.Spec.Resources.Requests {
+			if helpers.IsSupportedPodLevelResource(rName) {
+				switch rName {
+				case v1.ResourceCPU:
+					resource.MilliCPU = podLevelResource.MilliCPU
+				case v1.ResourceMemory:
+					resource.Memory = podLevelResource.Memory
+				default:
+					resource.ScalarResources[rName] = podLevelResource.ScalarResources[rName]
+				}
+			}
+		}
+	}
+
+	// if PodOverhead feature is supported, add overhead for running a pod
+	if pod.Spec.Overhead != nil {
+		resource.Add(NewResource(pod.Spec.Overhead))
+	}
 }
 
 // determineContainerReqs will return a copy of the container requests based on if resizing is feasible or not.
