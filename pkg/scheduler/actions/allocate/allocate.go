@@ -441,7 +441,7 @@ func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo, queueID api.Queue
 
 		select {
 		case alloc.schGateRemovalCh <- op:
-			klog.V(4).Infof("Queued gate removal for %s/%s", task.Namespace, task.Name)
+			klog.V(3).Infof("Queued gate removal for %s/%s", task.Namespace, task.Name)
 			// Update task state immediately so it won't be queued again in this cycle
 			task.SchGated = false
 		default:
@@ -712,7 +712,6 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 			klog.V(3).Infof("PrePredicate failed for task %s/%s, removing gate", task.Namespace, task.Name)
 			alloc.schedulingGateRemoval(task, queue.UID)
 
-			// PrePredicate failed, break from continuously allocating
 			break
 		}
 

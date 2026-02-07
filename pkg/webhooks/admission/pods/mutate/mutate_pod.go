@@ -25,6 +25,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
@@ -154,7 +155,9 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 // determines it's ready (queue admission + gang scheduling satisfied)
 func patchSchedulingGates(pod *v1.Pod) *patchOperation {
 	// Check if opt-in annotation is present
-	if pod.Annotations == nil || pod.Annotations["volcano.sh/queue-allocation-gate"] != "true" {
+	if pod.Annotations == nil || pod.Annotations[schedulingv1beta1.QueueAllocationGateKey] != "true" {
+		klog.Infof("[SCHEDULING-GATE-DEBUG] Pod %s/%s does not have opt-in annotation, skipping gate",
+			pod.Namespace, pod.Name)
 		return nil
 	}
 
@@ -173,10 +176,8 @@ func patchSchedulingGates(pod *v1.Pod) *patchOperation {
 	}
 
 	gates := []v1.PodSchedulingGate{
-		{Name: "volcano.sh/queue-allocation-gate"},
+		{Name: schedulingv1beta1.QueueAllocationGateKey},
 	}
-
-	klog.V(3).Infof("Adding Volcano scheduling gate to pod %s/%s", pod.Namespace, pod.Name)
 
 	return &patchOperation{
 		Op:    "add",

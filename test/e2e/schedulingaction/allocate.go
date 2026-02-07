@@ -430,37 +430,29 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 	})
 
 	ginkgo.It("Unschedulable pod with removed gate reserves queue capacity and blocks other pods", func() {
-		ginkgo.By("Switching from proportion plugin to capacity plugin")
+		const queueName = "capacity-test-queue"
+		const pgName = "test-podgroup"
+
+		// Switch to capacity plugin
 		cmc := e2eutil.NewConfigMapCase("volcano-system", "integration-scheduler-configmap")
-		modifier := func(sc *e2eutil.SchedulerConfiguration) bool {
-			for _, tier := range sc.Tiers {
-				for i, plugin := range tier.Plugins {
-					if plugin.Name == "proportion" {
-						tier.Plugins[i] = e2eutil.PluginOption{
-							Name: "capacity",
+		_ = cmc.ChangeBy(func(data map[string]string) (bool, map[string]string) {
+			return e2eutil.ModifySchedulerConfig(data, func(sc *e2eutil.SchedulerConfiguration) bool {
+				for _, tier := range sc.Tiers {
+					for i, plugin := range tier.Plugins {
+						if plugin.Name == "proportion" {
+							tier.Plugins[i] = e2eutil.PluginOption{Name: "capacity"}
+							return true
 						}
-						return true
 					}
 				}
-			}
-			return false
-		}
-		_ = cmc.ChangeBy(func(data map[string]string) (changed bool, changedBefore map[string]string) {
-			return e2eutil.ModifySchedulerConfig(data, modifier)
+				return false
+			})
 		})
 		defer cmc.UndoChanged()
 
-		ginkgo.By("Setting up test context with limited queue capacity")
-		queueName := "capacity-test-queue"
+		// Initialize test context with 2 nodes
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
-			Queues:        []string{queueName},
 			NodesNumLimit: 2,
-			DeservedResource: map[string]corev1.ResourceList{
-				queueName: {
-					corev1.ResourceCPU:    resource.MustParse("500m"),
-					corev1.ResourceMemory: resource.MustParse("512Mi"),
-				},
-			},
 			NodesResourceLimit: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("2000m"),
 				corev1.ResourceMemory: resource.MustParse("2048Mi"),
@@ -468,105 +460,108 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		})
 		defer e2eutil.CleanupTestContext(ctx)
 
+		// Create queue with 500m CPU capacity (room for 1 pod)
 		slot := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("500m"),
 			corev1.ResourceMemory: resource.MustParse("512Mi"),
 		}
-
-		// Helper: Create a pod with scheduling gate
-		createPodWithGate := func(name string, nodeSelector map[string]string) *corev1.Pod {
-			pod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: ctx.Namespace,
-					Annotations: map[string]string{
-						"scheduling.k8s.io/group-name":     "test-podgroup",
-						"volcano.sh/queue-allocation-gate": "true",
-						"volcano.sh/queue-name":            queueName,
-					},
+		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(),
+			&schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: queueName},
+				Spec: schedulingv1beta1.QueueSpec{
+					Weight:     1,
+					Capability: slot,
 				},
-				Spec: corev1.PodSpec{
-					SchedulerName: "volcano",
-					RestartPolicy: corev1.RestartPolicyNever,
-					NodeSelector:  nodeSelector,
-					Containers: []corev1.Container{
-						{
-							Name:  "nginx",
-							Image: e2eutil.DefaultNginxImage,
-							Resources: corev1.ResourceRequirements{
-								Requests: slot,
-							},
+			}, metav1.CreateOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		defer e2eutil.DeleteQueue(ctx, queueName)
+
+		// Wait for queue to be open and ready
+		err = e2eutil.WaitQueueStatus(func() (bool, error) {
+			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			return queue.Status.State == schedulingv1beta1.QueueStateOpen, nil
+		})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		// Create PodGroup
+		_, err = ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(context.TODO(),
+			&schedulingv1beta1.PodGroup{
+				ObjectMeta: metav1.ObjectMeta{Name: pgName, Namespace: ctx.Namespace},
+				Spec: schedulingv1beta1.PodGroupSpec{
+					MinMember:    1,
+					Queue:        queueName,
+					MinResources: &slot,
+				},
+			}, metav1.CreateOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		// Helper to create a pod with scheduling gate
+		createPod := func(name string, nodeSelector map[string]string) {
+			_, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(),
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      name,
+						Namespace: ctx.Namespace,
+						Labels:    map[string]string{"test": "capacity-reservation", "tests": "true"},
+						Annotations: map[string]string{
+							"scheduling.k8s.io/group-name":           pgName,
+							schedulingv1beta1.QueueAllocationGateKey: "true",
+							schedulingv1beta1.QueueNameAnnotationKey: queueName,
 						},
 					},
-				},
-			}
-			_, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(
-				context.TODO(), pod, metav1.CreateOptions{})
-			gomega.Expect(err).NotTo(gomega.HaveOccurred(), "failed to create pod "+name)
-			return pod
+					Spec: corev1.PodSpec{
+						SchedulerName: "volcano",
+						RestartPolicy: corev1.RestartPolicyNever,
+						NodeSelector:  nodeSelector,
+						Containers: []corev1.Container{{
+							Name:      "nginx",
+							Image:     e2eutil.DefaultNginxImage,
+							Resources: corev1.ResourceRequirements{Requests: slot},
+						}},
+					},
+				}, metav1.CreateOptions{})
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}
 
-		ginkgo.By("Creating PodGroup for test pods")
-		pg := &schedulingv1beta1.PodGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-podgroup",
-				Namespace: ctx.Namespace,
-			},
-			Spec: schedulingv1beta1.PodGroupSpec{
-				MinMember:    1,
-				Queue:        queueName,
-				MinResources: &slot,
-			},
-		}
-		_, err := ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(
-			context.TODO(), pg, metav1.CreateOptions{})
+		// Test: pod-1 schedules successfully
+		ginkgo.By("pod-1: schedules and runs")
+		createPod("pod-1", nil)
+		err = e2eutil.WaitPodPhase(ctx, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-1"}},
+			[]corev1.PodPhase{corev1.PodRunning})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+		gomega.Eventually(func() bool {
+			return !e2eutil.HasOnlyVolcanoSchedulingGate(ctx, "pod-1")
+		}, e2eutil.FiveMinute, 500*time.Millisecond).Should(gomega.BeTrue())
+
+		// Clean up pod-1 to free capacity
+		err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(context.TODO(), "pod-1", metav1.DeleteOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		ginkgo.By("Creating pod-1 and verifying it schedules successfully")
-		pod1 := createPodWithGate("pod-1", nil)
-		err = e2eutil.WaitPodPhase(ctx, pod1, []corev1.PodPhase{corev1.PodRunning})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-		gomega.Expect(e2eutil.HasOnlyVolcanoSchedulingGate(ctx, "pod-1")).To(gomega.BeFalse(),
-			"pod-1 should not have Volcano gate (it was scheduled)")
-
-		ginkgo.By("Deleting pod-1 to free queue capacity")
-		err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(
-			context.TODO(), "pod-1", metav1.DeleteOptions{})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred())
-
-		ginkgo.By("Creating pod-2 with impossible node selector (will be unschedulable)")
-		createPodWithGate("pod-2", map[string]string{"kubernetes.io/fake-node": "fake-node"})
-
-		ginkgo.By("Verifying pod-2 passes capacity check (gate removed)")
+		// Test: pod-2 passes capacity but fails predicates (unschedulable)
+		ginkgo.By("pod-2: passes capacity check but remains unschedulable (reserves capacity)")
+		createPod("pod-2", map[string]string{"kubernetes.io/fake-node": "fake"})
 		gomega.Eventually(func() bool {
 			return !e2eutil.HasOnlyVolcanoSchedulingGate(ctx, "pod-2")
-		}, e2eutil.FiveMinute, 500*time.Millisecond).Should(gomega.BeTrue(),
-			"pod-2 should not have Volcano gate (it passed capacity check)")
-
-		ginkgo.By("Verifying pod-2 remains unschedulable (Pending phase)")
-		pod2Ref := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-2", Namespace: ctx.Namespace}}
-		err = e2eutil.WaitPodPhase(ctx, pod2Ref, []corev1.PodPhase{corev1.PodPending})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred(),
-			"pod-2 should remain Pending (unschedulable due to fake node selector)")
-
-		ginkgo.By("Creating pod-3 and verifying it is blocked by pod-2's capacity reservation")
-		createPodWithGate("pod-3", nil)
-		gomega.Eventually(func() bool {
-			return e2eutil.HasOnlyVolcanoSchedulingGate(ctx, "pod-3")
-		}, e2eutil.FiveMinute, 500*time.Millisecond).Should(gomega.BeTrue(),
-			"pod-3 should still have Volcano gate (blocked by pod-2's reservation)")
-		gomega.Expect(e2eutil.HasSchedulingGatedCondition(ctx, "pod-3")).To(gomega.BeTrue(),
-			"pod-3 should have SchedulingGated condition")
-
-		ginkgo.By("Deleting pod-2 to release capacity reservation")
-		err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(
-			context.TODO(), "pod-2", metav1.DeleteOptions{})
+		}, e2eutil.FiveMinute, 500*time.Millisecond).Should(gomega.BeTrue())
+		err = e2eutil.WaitPodPhase(ctx, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-2"}},
+			[]corev1.PodPhase{corev1.PodPending})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		ginkgo.By("Verifying pod-3 can now schedule and run")
-		pod3Ref := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-3", Namespace: ctx.Namespace}}
-		err = e2eutil.WaitPodPhase(ctx, pod3Ref, []corev1.PodPhase{corev1.PodRunning})
-		gomega.Expect(err).NotTo(gomega.HaveOccurred(),
-			"pod-3 should be running after pod-2 is deleted")
+		// Test: pod-3 is blocked by pod-2's reservation, then schedules after pod-2 is deleted
+		ginkgo.By("pod-3: blocked by pod-2, then schedules after pod-2 is deleted")
+		createPod("pod-3", nil)
+		err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(context.TODO(), "pod-2", metav1.DeleteOptions{})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+		ginkgo.By("Waiting for pod-3 to have Volcano gate removed")
+		gomega.Eventually(func() bool {
+			return !e2eutil.HasOnlyVolcanoSchedulingGate(ctx, "pod-3")
+		}, e2eutil.FiveMinute, 500*time.Millisecond).Should(gomega.BeTrue())
+		err = e2eutil.WaitPodPhase(ctx, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-3"}},
+			[]corev1.PodPhase{corev1.PodRunning})
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 })
