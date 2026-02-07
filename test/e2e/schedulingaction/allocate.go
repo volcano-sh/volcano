@@ -533,7 +533,7 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			[]corev1.PodPhase{corev1.PodRunning})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		gomega.Eventually(func() bool {
-			return !e2eutil.HasOnlyVolcanoSchedulingGate(ctx, "pod-1")
+			return !e2eutil.PodHasOnlyVolcanoSchedulingGate(ctx, "pod-1")
 		}, e2eutil.FiveMinute, 500*time.Millisecond).Should(gomega.BeTrue())
 
 		// Clean up pod-1 to free capacity
@@ -544,7 +544,7 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		ginkgo.By("pod-2: passes capacity check but remains unschedulable (reserves capacity)")
 		createPod("pod-2", map[string]string{"kubernetes.io/fake-node": "fake"})
 		gomega.Eventually(func() bool {
-			return !e2eutil.HasOnlyVolcanoSchedulingGate(ctx, "pod-2")
+			return !e2eutil.PodHasOnlyVolcanoSchedulingGate(ctx, "pod-2")
 		}, e2eutil.FiveMinute, 500*time.Millisecond).Should(gomega.BeTrue())
 		err = e2eutil.WaitPodPhase(ctx, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-2"}},
 			[]corev1.PodPhase{corev1.PodPending})
@@ -558,7 +558,7 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 
 		ginkgo.By("Waiting for pod-3 to have Volcano gate removed")
 		gomega.Eventually(func() bool {
-			return !e2eutil.HasOnlyVolcanoSchedulingGate(ctx, "pod-3")
+			return !e2eutil.PodHasOnlyVolcanoSchedulingGate(ctx, "pod-3")
 		}, e2eutil.FiveMinute, 500*time.Millisecond).Should(gomega.BeTrue())
 		err = e2eutil.WaitPodPhase(ctx, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-3"}},
 			[]corev1.PodPhase{corev1.PodRunning})
