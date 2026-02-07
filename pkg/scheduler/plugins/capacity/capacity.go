@@ -250,7 +250,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		allocatable := cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
 
 		// If queue has capacity and task has volcano gate, add to reserved cache
-		if allocatable && candidate.SchGated && api.HasOnlyVolcanoSchedulingGate(candidate.Pod) {
+		// Check annotation (not gate presence) because gate may already be removed by async worker
+		if allocatable && candidate.SchGated && api.HasQueueAllocationGateAnnotation(candidate.Pod) {
 			// Mark task to have gate removed during bind
 			candidate.RemoveGateDuringBind = true
 			// Add to reserved cache immediately after passing capacity check
@@ -1003,12 +1004,13 @@ func (cp *capacityPlugin) buildQueueReservedTasksCache(ssn *framework.Session) {
 	// Scan all pending tasks and rebuild cache
 	for _, job := range ssn.Jobs {
 		for _, task := range job.TaskStatusIndex[api.Pending] {
+			// Tasks that passed capacity have: NO gate + HAS annotation + Pending status
 			if !task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
 				if cp.queueGateReservedTasks[job.Queue] == nil {
 					cp.queueGateReservedTasks[job.Queue] = make(map[api.TaskID]*api.TaskInfo)
 				}
 				cp.queueGateReservedTasks[job.Queue][task.UID] = task
-				klog.V(4).Infof("Reserved cache: task <%s/%s> reserves capacity in queue <%s>",
+				klog.V(4).Infof("Added task <%s/%s> to reserved cache for queue <%s>",
 					task.Namespace, task.Name, job.Queue)
 			}
 		}
@@ -1032,7 +1034,7 @@ func (cp *capacityPlugin) queueAllocatableWithReserved(attr *queueAttr, candidat
 	allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, candidate.Resreq)
 
 	if !allocatable {
-		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Candidate <%v>: resource request <%v>",
+		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>, reserved <%v>; Candidate <%v>: resource request <%v>",
 			queue.Name, attr.realCapability, attr.allocated, reserved, candidate.Name, candidate.Resreq)
 	}
 

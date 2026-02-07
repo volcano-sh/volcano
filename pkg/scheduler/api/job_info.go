@@ -577,7 +577,7 @@ func (ji *JobInfo) GetMinResources() *Resource {
 
 // Get the total resources of tasks whose pod is scheduling gated
 // By definition, if a pod is scheduling gated, it's status is Pending
-// Note: Tasks that are only Volcano scheduling gated (volcano.sh/queue-allocation-gate)
+// Note: Tasks that are only Volcano scheduling gated (scheduling.volcano.sh/queue-allocation-gate)
 // are excluded from this calculation, as they should be counted in inqueue resources.
 func (ji *JobInfo) GetSchGatedPodResources() *Resource {
 	res := EmptyResource()
