@@ -268,12 +268,14 @@ func (pmpt *Action) Execute(ssn *framework.Session) {
 				if err != nil {
 					klog.V(3).Infof("Preemptor <%s/%s> failed to preempt Task , err: %s", preemptor.Namespace, preemptor.Name, err)
 				}
-				stmt.Commit()
 
-				// If no preemption, next job.
+				// Only commit if preemption was successful, otherwise discard to rollback evictions.
+				// This is consistent with between-job preemption which checks JobPipelined before committing.
 				if !assigned {
+					stmt.Discard()
 					break
 				}
+				stmt.Commit()
 			}
 		}
 	}
