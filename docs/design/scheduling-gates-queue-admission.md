@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [Motivation](#motivation)
+  - [How Volcano Currently Sets Unschedulable](#how-volcano-currently-sets-unschedulable)
 - [Proposal](#proposal)
   - [Goals](#goals)
   - [Non-Goals](#non-goals)
@@ -140,12 +141,14 @@ func patchSchedulingGates(pod *v1.Pod) *patchOperation {
         return nil
     }
 
-    // ...
+    gates := []v1.PodSchedulingGate{
+        {Name: schedulingv1beta1.QueueAllocationGateKey},
+    }
 
     return &patchOperation{
         Op:    "add",
-        Path:  "/spec/schedulingGates/-",
-        Value: append(pod.Spec.SchedulingGates, v1.PodSchedulingGate{Name: schedulingv1beta1.QueueAllocationGateKey}),
+        Path:  "/spec/schedulingGates",
+        Value: append(pod.Spec.SchedulingGates, gates...),
     }
 }
 ```
@@ -293,7 +296,7 @@ type Action struct {
     session *framework.Session
     // ...
 
-    // Async gate removal channel
+    // Async gate management infrastructure
     schGateRemovalCh         chan schGateRemovalOperation
     schGateRemovalWorkersWg  sync.WaitGroup
     schGateRemovalStopCh     chan struct{}
@@ -309,10 +312,24 @@ func (alloc *Action) schGateRemovalWorker() {
     defer alloc.schGateRemovalWorkersWg.Done()
     for {
         select {
-        case op := <-alloc.schGateRemovalCh:
-            cache.RemoveVolcanoSchGate(kubeClient, op.namespace, op.name)
         case <-alloc.schGateRemovalStopCh:
             return
+        case op := <-alloc.schGateRemovalCh:
+            // Fetch fresh pod state from API server
+            pod, err := alloc.session.KubeClient().CoreV1().Pods(op.namespace).Get(
+                context.TODO(),
+                op.name,
+                metav1.GetOptions{})
+
+            if err != nil {
+                klog.Errorf("Failed to get pod %s/%s for gate operation: %v", op.namespace, op.name, err)
+                continue
+            }
+
+            // Remove the Volcano scheduling gate
+            if err := cache.RemoveVolcanoSchGate(alloc.session.KubeClient(), pod); err != nil {
+                klog.Errorf("Failed to remove gate from %s/%s: %v", op.namespace, op.name, err)
+            }
         }
     }
 }
@@ -339,21 +356,21 @@ follows:
 
   ```
   NAME    PHASE    CONDITION          GATES
-  pod-1   Pending  SchedulingGated    volcano.sh/queue-allocation-gate
-  pod-2   Pending  SchedulingGated    volcano.sh/queue-allocation-gate
-  pod-3   Pending  SchedulingGated    volcano.sh/queue-allocation-gate
+  pod-1   Pending  SchedulingGated    scheduling.volcano.sh/queue-allocation-gate
+  pod-2   Pending  SchedulingGated    scheduling.volcano.sh/queue-allocation-gate
+  pod-3   Pending  SchedulingGated    scheduling.volcano.sh/queue-allocation-gate
   ```
 
 - **After the 1st scheduling cycle**, `pod-1` passes the capacity check
-  ([`ssn.Allocatable(queue, task)`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L569)
-  returns `true`) and gets its gate removed. Since it does not have any node selector and there are nodes available, it
-  gets scheduled and eventually moves to the `Running` phase:
+([`ssn.Allocatable(queue, task)`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L569)
+returns `true`) and gets its gate removed. Since it does not have any node selector and there are nodes available, it
+gets scheduled and eventually moves to the `Running` phase:
 
   ```
   NAME    PHASE    CONDITION          GATES
   pod-1   Running
-  pod-2   Pending  SchedulingGated    volcano.sh/queue-allocation-gate
-  pod-3   Pending  SchedulingGated    volcano.sh/queue-allocation-gate
+  pod-2   Pending  SchedulingGated    scheduling.volcano.sh/queue-allocation-gate
+  pod-3   Pending  SchedulingGated    scheduling.volcano.sh/queue-allocation-gate
   ```
 
 - **After `pod-1` completes**, in the next cycle `pod-2` gets its gate removed (passes queue capacity check) but fails
@@ -385,7 +402,7 @@ Rather than modifying the `allocated` attribute (which semantically represents b
 method `queueAllocatableWithReserved` to the
 [capacity plugin](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/plugins/capacity/capacity.go). This
 new method extends the existing
-[`queueAllocatable`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/plugins/capacity/capacity.go#L890)
+[`queueAllocatable`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/plugins/capacity/capacity.go#L885)
 function by tracking reserved tasks in a per-task cache that is rebuilt at the start of each scheduling cycle and
 updated incrementally during allocation.
 
@@ -493,7 +510,8 @@ ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskIn
     allocatable := cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
 
     // If queue has capacity and task has volcano gate, add to reserved cache
-    if allocatable && candidate.SchGated && api.HasOnlyVolcanoSchedulingGate(candidate.Pod) {
+    // Check annotation because gate may already be removed by async worker
+    if allocatable && candidate.SchGated && api.HasQueueAllocationGateAnnotation(candidate.Pod) {
         // Mark task to have gate removed during bind
         candidate.RemoveGateDuringBind = true
         // Add to reserved cache immediately after passing capacity check
@@ -524,16 +542,24 @@ ssn.AddCleanupReservationsFn(cp.Name(), func(obj interface{}) {
 ```
 
 The `allocate` action calls the `CleanupReservations` method, which executes all registered reservation cleanup
-functions, before
-[committing the statement](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L324):
+functions, before committing the statement. There are two locations where this will be called:
 
 ```go
-// In allocateResources() of allocate action
-if stmt != nil {
-    // Clean up reservations for successfully allocated tasks
-    // This invokes all registered CleanupReservationsFn functions
+// Location 1: Jobs with hard topology (job.ContainsHardTopology())
+// https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L308
+if stmt != nil && ssn.JobReady(job) {
     ssn.CleanupReservations(stmt)
     stmt.Commit()
+    ssn.MarkJobDirty(job.UID)
+    // ...
+}
+
+// Location 2: Jobs without hard topology (else clause)
+// https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L324
+if stmt != nil && ssn.JobReady(job) {
+    ssn.CleanupReservations(stmt)
+    stmt.Commit()
+    // ...
 }
 ```
 
@@ -586,13 +612,17 @@ returns `true` and there's a node that can fit the pod), then the gate will only
 [`Bind(...)`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L218) operation:
 
 ```go
-func (db *DefaultBinder) Bind(...) map[schedulingapi.TaskID]string {
-    // ...
-
+func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) map[schedulingapi.TaskID]string {
+    errMsg := make(map[schedulingapi.TaskID]string)
     for _, task := range tasks {
+        p := task.Pod
+
+        // Remove Volcano gate before bind if needed
         if task.RemoveGateDuringBind {
-            if err := RemoveVolcanoSchGate(kubeClient, task.Pod); err != nil {
-                // ...
+            if err := RemoveVolcanoSchGate(kubeClient, p); err != nil {
+                klog.Errorf("Failed to remove gate for <%v/%v>: %v", p.Namespace, p.Name, err)
+                errMsg[task.UID] = fmt.Sprintf("gate removal failed: %v", err)
+                continue
             }
         }
 
@@ -602,7 +632,8 @@ func (db *DefaultBinder) Bind(...) map[schedulingapi.TaskID]string {
         }
         // ...
     }
-    // ...
+
+    return errMsg
 }
 ```
 
@@ -614,7 +645,7 @@ capacity, preventing pods from appearing as `Unschedulable` when they're simply 
 trigger cluster scale-ups.
 
 This implementation requires pods to opt in via the `schedulingv1beta1.QueueAllocationGateKey: "true"` annotation
-(defined as `volcano.sh/queue-allocation-gate`), making it a conservative approach ensuring backward compatibility
+(defined as `scheduling.volcano.sh/queue-allocation-gate`), making it a conservative approach ensuring backward compatibility
 whilst allowing users to adopt the feature gradually. Future iterations **could enable this behavior by default** once
 the feature maturity is validated in production environments.
 
