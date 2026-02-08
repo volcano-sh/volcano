@@ -18,6 +18,7 @@ package cache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"slices"
@@ -139,58 +140,34 @@ func getHyperNodeEventSource(source string) []string {
 
 // RemoveVolcanoSchGate removes the Volcano scheduling gate from a pod via JSON patch
 func RemoveVolcanoSchGate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	// Find the Volcano gate index
-	gateIndex := -1
-	for i, gate := range pod.Spec.SchedulingGates {
+	// Filter out the Volcano gate
+	var newGates []v1.PodSchedulingGate
+	found := false
+	for _, gate := range pod.Spec.SchedulingGates {
 		if gate.Name == scheduling.QueueAllocationGateKey {
-			gateIndex = i
-			break
+			found = true
+			continue // Skip this gate
 		}
+		newGates = append(newGates, gate)
 	}
 
-	if gateIndex == -1 {
+	if !found {
 		return nil // Gate already removed
 	}
 
-	// Build JSON patch to remove the gate
-	patch := fmt.Sprintf(`[{"op":"remove","path":"/spec/schedulingGates/%d"}]`, gateIndex)
+	// Strategic merge patch with the filtered gates array
+	patch := map[string]interface{}{
+		"spec": map[string]interface{}{
+			"schedulingGates": newGates,
+		},
+	}
+	patchBytes, _ := json.Marshal(patch)
 
 	_, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(
-		context.TODO(),
+		context.Background(),
 		pod.Name,
-		types.JSONPatchType,
-		[]byte(patch),
-		metav1.PatchOptions{})
-
-	return err
-}
-
-// AddVolcanoSchGate adds the Volcano scheduling gate to a pod via JSON patch
-func AddVolcanoSchGate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
-	// Check if gate already exists
-	for _, gate := range pod.Spec.SchedulingGates {
-		if gate.Name == scheduling.QueueAllocationGateKey {
-			return nil // Gate already present
-		}
-	}
-
-	// Build JSON patch to add the gate
-	var patch string
-	if len(pod.Spec.SchedulingGates) == 0 {
-		// No gates exist, create the array
-		patch = fmt.Sprintf(`[{"op":"add","path":"/spec/schedulingGates","value":[{"name":"%s"}]}]`,
-			scheduling.QueueAllocationGateKey)
-	} else {
-		// Gates exist, append to array
-		patch = fmt.Sprintf(`[{"op":"add","path":"/spec/schedulingGates/-","value":{"name":"%s"}}]`,
-			scheduling.QueueAllocationGateKey)
-	}
-
-	_, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(
-		context.TODO(),
-		pod.Name,
-		types.JSONPatchType,
-		[]byte(patch),
+		types.StrategicMergePatchType,
+		patchBytes,
 		metav1.PatchOptions{})
 
 	return err

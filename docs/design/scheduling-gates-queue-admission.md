@@ -25,7 +25,7 @@
 ## Motivation
 
 Cluster autoscalers such as [Cluster Autoscaler (CA)](https://github.com/kubernetes/autoscaler/tree/master) or
-[Karpenter](https://github.com/kubernetes-sigs/karpenter) is present in almost all Kubernetes environments to
+[Karpenter](https://github.com/kubernetes-sigs/karpenter) are present in almost all Kubernetes environments to
 dynamically adjust node capacity based on scheduler signals. Both systems monitor pod scheduling conditions,
 specifically looking for pods that match:
 
@@ -316,8 +316,9 @@ func (alloc *Action) schGateRemovalWorker() {
             return
         case op := <-alloc.schGateRemovalCh:
             // Fetch fresh pod state from API server
-            pod, err := alloc.session.KubeClient().CoreV1().Pods(op.namespace).Get(
-                context.TODO(),
+            // Use cached kubeClient to avoid data race with session updates
+            pod, err := alloc.kubeClient.CoreV1().Pods(op.namespace).Get(
+                context.Background(),
                 op.name,
                 metav1.GetOptions{})
 
@@ -327,7 +328,7 @@ func (alloc *Action) schGateRemovalWorker() {
             }
 
             // Remove the Volcano scheduling gate
-            if err := cache.RemoveVolcanoSchGate(alloc.session.KubeClient(), pod); err != nil {
+            if err := cache.RemoveVolcanoSchGate(alloc.kubeClient, pod); err != nil {
                 klog.Errorf("Failed to remove gate from %s/%s: %v", op.namespace, op.name, err)
             }
         }

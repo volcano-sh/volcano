@@ -26,6 +26,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
@@ -111,6 +112,7 @@ type Action struct {
 	recorder *Recorder
 
 	// Async gate management infrastructure
+	kubeClient              kubernetes.Interface // Cached client for worker goroutines
 	schGateRemovalCh        chan schGateRemovalOperation
 	schGateRemovalWorkersWg sync.WaitGroup
 	schGateRemovalStopCh    chan struct{}
@@ -160,8 +162,9 @@ func (alloc *Action) schGateRemovalWorker() {
 			return
 		case op := <-alloc.schGateRemovalCh:
 			// Fetch fresh pod state from API server
-			pod, err := alloc.session.KubeClient().CoreV1().Pods(op.namespace).Get(
-				context.TODO(),
+			// Use cached kubeClient to avoid data race with session updates
+			pod, err := alloc.kubeClient.CoreV1().Pods(op.namespace).Get(
+				context.Background(),
 				op.name,
 				metav1.GetOptions{})
 
@@ -170,8 +173,8 @@ func (alloc *Action) schGateRemovalWorker() {
 				continue
 			}
 
-			// Perform the operation
-			if err := cache.RemoveVolcanoSchGate(alloc.session.KubeClient(), pod); err != nil {
+			// Remove the Volcano scheduling gate
+			if err := cache.RemoveVolcanoSchGate(alloc.kubeClient, pod); err != nil {
 				klog.Errorf("Failed to remove gate from %s/%s: %v", op.namespace, op.name, err)
 			} else {
 				klog.V(3).Infof("Removed Volcano scheduling gate from pod %s/%s", op.namespace, op.name)
@@ -199,8 +202,10 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	alloc.parseArguments(ssn)
 
 	// Initialize workers once with the configured number
+	// Cache KubeClient for thread-safe access from workers
 	if !alloc.startedWorkers {
 		alloc.startedWorkers = true
+		alloc.kubeClient = ssn.KubeClient()
 		alloc.Initialize()
 	}
 
