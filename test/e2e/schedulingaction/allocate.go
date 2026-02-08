@@ -505,7 +505,7 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      name,
 						Namespace: ctx.Namespace,
-						Labels:    map[string]string{"test": "capacity-reservation", "tests": "true"},
+						Labels:    map[string]string{"test": "capacity-reservation"},
 						Annotations: map[string]string{
 							"scheduling.k8s.io/group-name":           pgName,
 							schedulingv1beta1.QueueAllocationGateKey: "true",
