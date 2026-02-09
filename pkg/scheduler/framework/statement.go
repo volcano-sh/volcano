@@ -439,6 +439,19 @@ func (s *Statement) Commit() {
 	}
 }
 
+// Merge transfers operations from the given statements into this statement.
+// The source statements share the same session, so their in-memory state changes
+// (evictions, pipelines) are already reflected in the session. Merge moves ownership
+// of those operation records so they will be committed or discarded with this statement.
+// After merging, source statements' operations are cleared to prevent double-commit or
+// double-discard.
+func (s *Statement) Merge(stmts ...*Statement) {
+	for _, stmt := range stmts {
+		s.operations = append(s.operations, stmt.operations...)
+		stmt.operations = nil
+	}
+}
+
 func SaveOperations(stmts ...*Statement) *Statement {
 	stmtTmp := &Statement{}
 	for _, stmt := range stmts {

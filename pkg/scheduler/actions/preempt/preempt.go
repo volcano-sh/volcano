@@ -343,6 +343,11 @@ func (pmpt *Action) normalPreempt(
 		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 			preemptor.Namespace, preemptor.Name, node.Name)
 
+		// Use a temporary statement per node attempt so that eviction side effects
+		// are isolated. On success the operations are merged into the caller's
+		// statement; on failure they are discarded, leaving the session clean.
+		nodeStmt := framework.NewStatement(ssn)
+
 		var preemptees []*api.TaskInfo
 		for _, task := range node.Tasks {
 			if filter == nil {
@@ -380,7 +385,7 @@ func (pmpt *Action) normalPreempt(
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
 			klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
-			if err := stmt.Evict(preemptee, "preempt"); err != nil {
+			if err := nodeStmt.Evict(preemptee, "preempt"); err != nil {
 				klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
 					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
 				continue
@@ -399,20 +404,26 @@ func (pmpt *Action) normalPreempt(
 
 		// If preemptor's queue is not allocatable, it means preemptor cannot be allocated. So no need care about the node idle resource
 		if ssn.Allocatable(currentQueue, preemptor) && preemptor.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
-			if err := stmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
+			if err := nodeStmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
-				if rollbackErr := stmt.UnPipeline(preemptor); rollbackErr != nil {
+				if rollbackErr := nodeStmt.UnPipeline(preemptor); rollbackErr != nil {
 					klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
 						preemptor.UID, node.Name, ssn.UID, rollbackErr)
 				}
+				// Pipeline failed: discard all evictions for this node and try the next one.
+				nodeStmt.Discard()
+				continue
 			}
 
-			// Ignore pipeline error, will be corrected in next scheduling loop.
+			// Pipeline succeeded: merge this node's operations into the caller's statement.
+			stmt.Merge(nodeStmt)
 			assigned = true
-
 			break
 		}
+
+		// Not enough resources on this node even after evictions: discard and try next node.
+		nodeStmt.Discard()
 	}
 
 	return assigned, nil
@@ -464,7 +475,7 @@ func (pmpt *Action) topologyAwarePreempt(
 	filter func(*api.TaskInfo) bool,
 	predicateNodes []*api.NodeInfo,
 ) (bool, error) {
-	// Find all preemption candidates.
+	// Find all preemption candidates (dry run, no side effects on stmt).
 	candidates, nodeToStatusMap, err := pmpt.findCandidates(preemptor, filter, predicateNodes, stmt)
 	if err != nil && len(candidates) == 0 {
 		return false, err
@@ -482,19 +493,29 @@ func (pmpt *Action) topologyAwarePreempt(
 		return false, fmt.Errorf("no candidate node for preemption")
 	}
 
-	if status := prepareCandidate(bestCandidate, preemptor.Pod, stmt, ssn); !status.IsSuccess() {
+	// Use a temporary statement so that eviction side effects are only applied
+	// after the entire preemption attempt (evictions + pipeline) succeeds.
+	tmpStmt := framework.NewStatement(ssn)
+
+	if status := prepareCandidate(bestCandidate, preemptor.Pod, tmpStmt, ssn); !status.IsSuccess() {
+		tmpStmt.Discard()
 		return false, fmt.Errorf("failed to prepare candidate: %v", status)
 	}
 
-	if err := stmt.Pipeline(preemptor, bestCandidate.Name(), true); err != nil {
+	if err := tmpStmt.Pipeline(preemptor, bestCandidate.Name(), true); err != nil {
 		klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 			preemptor.Namespace, preemptor.Name, bestCandidate.Name())
-		if rollbackErr := stmt.UnPipeline(preemptor); rollbackErr != nil {
+		if rollbackErr := tmpStmt.UnPipeline(preemptor); rollbackErr != nil {
 			klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
 				preemptor.UID, bestCandidate.Name(), ssn.UID, rollbackErr)
 		}
+		// Pipeline failed: discard all evictions to prevent side effects.
+		tmpStmt.Discard()
+		return false, err
 	}
 
+	// Success: merge temporary statement into the caller's statement.
+	stmt.Merge(tmpStmt)
 	return true, nil
 }
 
