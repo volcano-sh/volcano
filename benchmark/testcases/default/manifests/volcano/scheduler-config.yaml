@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-scheduler-configmap
+  namespace: volcano-system
+data:
+  volcano-scheduler.conf: |
+    actions: "enqueue, allocate, backfill"
+    tiers:
+      - plugins:
+          - name: priority
+          - name: conformance
+      - plugins:
+          - name: overcommit
+          - name: drf
+            enablePreemptable: false
+          - name: predicates
+          - name: proportion
+          - name: nodeorder
+          - name: binpack

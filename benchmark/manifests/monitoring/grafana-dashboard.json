@@ -1,0 +1,64 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Pod Scheduling Progress",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "pointSize": 5 },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Created" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Scheduled" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Deleted" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "targets": [
+        { "expr": "count(kube_pod_info{namespace=\"default\"})", "legendFormat": "Created", "refId": "A" },
+        { "expr": "count(kube_pod_status_scheduled{namespace=\"default\",condition=\"true\"})", "legendFormat": "Scheduled", "refId": "B" },
+        { "expr": "count(kube_pod_deletion_timestamp{namespace=\"default\"}) or vector(0)", "legendFormat": "Deleted", "refId": "C" }
+      ],
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
+    },
+    {
+      "id": 2,
+      "title": "Scheduling Latency (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, rate(volcano_e2e_scheduling_latency_milliseconds_bucket[1m]))", "legendFormat": "P50", "refId": "A" },
+        { "expr": "histogram_quantile(0.99, rate(volcano_e2e_scheduling_latency_milliseconds_bucket[1m]))", "legendFormat": "P99", "refId": "B" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Job E2E Scheduling Duration",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        { "expr": "volcano_e2e_job_scheduling_duration{job_namespace=\"default\"}", "format": "table", "instant": true, "refId": "A" }
+      ]
+    }
+  ],
+  "refresh": "1s",
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      { "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" }, "hide": 0, "includeAll": false, "name": "DS_PROMETHEUS", "query": "prometheus", "type": "datasource" }
+    ]
+  },
+  "time": { "from": "now-5m", "to": "now" },
+  "title": "Volcano Benchmark",
+  "uid": "volcano-benchmark"
+}

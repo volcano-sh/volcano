@@ -1,0 +1,34 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  kubeadmConfigPatches:
+  - |-
+    kind: ClusterConfiguration
+    controllerManager:
+      extraArgs:
+        node-monitor-grace-period: "7200s"
+        node-monitor-period: "3600s"
+        kube-api-qps: "1000"
+        kube-api-burst: "1000"
+    etcd:
+      local:
+        extraArgs:
+          quota-backend-bytes: "8589934592"
+          auto-compaction-mode: revision
+          auto-compaction-retention: "1000"
+    scheduler:
+      extraArgs:
+        kube-api-qps: "1000"
+        kube-api-burst: "1000"
+    apiServer:
+      extraArgs:
+        max-mutating-requests-inflight: "20000"
+        max-requests-inflight: "20000"
+  extraPortMappings:
+  - containerPort: 30090
+    hostPort: 30090
+    protocol: TCP
+  - containerPort: 30080
+    hostPort: 30080
+    protocol: TCP
