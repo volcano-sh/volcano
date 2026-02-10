@@ -119,6 +119,13 @@ func (s *Statement) evict(reclaimee *api.TaskInfo, reason string) error {
 	return nil
 }
 
+// UnEvict reverses a prior Evict call for a single task, restoring the task's
+// Running status and node resources. Use this to clean up session state after
+// an individual eviction attempt fails (where the operation was not recorded).
+func (s *Statement) UnEvict(reclaimee *api.TaskInfo) error {
+	return s.unevict(reclaimee)
+}
+
 func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 	// Update status in session
 	job, found := s.ssn.Jobs[reclaimee.Job]

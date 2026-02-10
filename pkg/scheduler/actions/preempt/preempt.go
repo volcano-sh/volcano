@@ -343,11 +343,6 @@ func (pmpt *Action) normalPreempt(
 		klog.V(3).Infof("Considering Task <%s/%s> on Node <%s>.",
 			preemptor.Namespace, preemptor.Name, node.Name)
 
-		// Use a temporary statement per node attempt so that eviction side effects
-		// are isolated. On success the operations are merged into the caller's
-		// statement; on failure they are discarded, leaving the session clean.
-		nodeStmt := framework.NewStatement(ssn)
-
 		var preemptees []*api.TaskInfo
 		for _, task := range node.Tasks {
 			if filter == nil {
@@ -363,6 +358,11 @@ func (pmpt *Action) normalPreempt(
 			klog.V(3).Infof("No validated victims on Node <%s>: %v", node.Name, err)
 			continue
 		}
+
+		// Use a temporary statement per node attempt so that eviction side effects
+		// are isolated. On success the operations are merged into the caller's
+		// statement; on failure they are discarded, leaving the session clean.
+		nodeStmt := framework.NewStatement(ssn)
 
 		victimsQueue := ssn.BuildVictimsPriorityQueue(victims, preemptor)
 		// Preempt victims for tasks, pick lowest priority task first.
@@ -388,6 +388,9 @@ func (pmpt *Action) normalPreempt(
 			if err := nodeStmt.Evict(preemptee, "preempt"); err != nil {
 				klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
 					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
+				if e := nodeStmt.UnEvict(preemptee); e != nil {
+					klog.Errorf("Failed to unevict task <%v/%v>: %v", preemptee.Namespace, preemptee.Name, e)
+				}
 				continue
 			}
 			preempted.Add(preemptee.Resreq)
@@ -546,6 +549,9 @@ func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement, ssn 
 		if err := stmt.Evict(victim, "preempt"); err != nil {
 			klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
 				victim.Namespace, victim.Name, pod.Namespace, pod.Name, err)
+			if e := stmt.UnEvict(victim); e != nil {
+				klog.Errorf("Failed to unevict task <%v/%v>: %v", victim.Namespace, victim.Name, e)
+			}
 			return api.AsStatus(err)
 		}
 	}
