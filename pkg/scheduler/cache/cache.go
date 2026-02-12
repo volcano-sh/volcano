@@ -461,7 +461,6 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 		}
 
 		// If queue does not exist, start to create it
-		klog.V(2).Infof("Start to creat queue %s", name)
 		newQueue := vcv1beta1.Queue{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name,
@@ -480,17 +479,24 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 		}, func(err error) bool {
 			return !apierrors.IsAlreadyExists(err)
 		}, func() error {
+			klog.V(2).Infof("Start to create queue %s", name)
 			_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &newQueue, metav1.CreateOptions{})
-			return err
+			if err != nil {
+				klog.V(2).Infof("Failed to create queue %s: %v, will retry", name, err)
+				return err
+			}
+
+			klog.V(2).Infof("Successfully created queue %s", name)
+			return nil
 		})
 	}
 
 	if err := createIfNotExists("root", false); err != nil {
-		panic(fmt.Errorf("failed to init root queue: %v", err))
+		klog.Fatalf("failed to init root queue: %v", err)
 	}
 
 	if err := createIfNotExists(defaultQueue, true); err != nil {
-		panic(fmt.Errorf("failed to init default queue: %v", err))
+		klog.Fatalf("failed to init default queue: %v", err)
 	}
 }
 

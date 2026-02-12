@@ -43,6 +43,7 @@ import (
 )
 
 func TestAdmitQueues(t *testing.T) {
+	config.MaxQueueDepth = 5
 
 	stateNotSet := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1091,6 +1092,7 @@ func TestAdmitQueues(t *testing.T) {
 }
 
 func TestAdmitHierarchicalQueues(t *testing.T) {
+	config.MaxQueueDepth = 5
 	config.EnableQueueAllocatedPodsCheck = true
 	defer func() {
 		config.EnableQueueAllocatedPodsCheck = false
@@ -2181,4 +2183,71 @@ func setupQueueInformerWithIndex(factory informers.SharedInformerFactory) cache.
 			)
 		})
 	return queueInformer
+}
+
+func TestValidateQueueDepthDynamic(t *testing.T) {
+	// Setup fake client and lister
+	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+	config.QueueLister = queueInformer.Lister()
+
+	// Create a chain of queues: root -> q1 -> q2 -> q3
+	q1 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "q1"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "root"},
+	}
+	q2 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "q2"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "q1"},
+	}
+	q3 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "q3"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "q2"},
+	}
+
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), q1, metav1.CreateOptions{})
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), q2, metav1.CreateOptions{})
+
+	// Sync informer
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	informerFactory.WaitForCacheSync(stopCh)
+
+	tests := []struct {
+		name          string
+		maxDepth      int
+		queue         *schedulingv1beta1.Queue
+		expectedError bool
+	}{
+		{
+			name:          "Depth 3 is allowed when maxDepth is 5",
+			maxDepth:      5,
+			queue:         q3,
+			expectedError: false,
+		},
+		{
+			name:          "Depth 3 is allowed when maxDepth is 3",
+			maxDepth:      3,
+			queue:         q3,
+			expectedError: false,
+		},
+		{
+			name:          "Depth 3 is rejected when maxDepth is 2",
+			maxDepth:      2,
+			queue:         q3,
+			expectedError: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config.MaxQueueDepth = test.maxDepth
+			err := validateQueueDepth(test.queue)
+			if (err != nil) != test.expectedError {
+				t.Errorf("expected error: %v, got: %v", test.expectedError, err)
+			}
+		})
+	}
 }

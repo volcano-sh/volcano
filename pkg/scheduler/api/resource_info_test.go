@@ -66,6 +66,19 @@ func TestNewResource(t *testing.T) {
 	}
 }
 
+func TestInfiniteResource(t *testing.T) {
+	expected := &Resource{
+		MilliCPU:   math.MaxFloat64,
+		Memory:     math.MaxFloat64,
+		MaxTaskNum: math.MaxInt,
+	}
+
+	r := InfiniteResource()
+	if !equality.Semantic.DeepEqual(expected, r) {
+		t.Errorf("expected: %#v, got: %#v", expected, r)
+	}
+}
+
 func TestResourceAddScalar(t *testing.T) {
 	tests := []struct {
 		resource       *Resource
