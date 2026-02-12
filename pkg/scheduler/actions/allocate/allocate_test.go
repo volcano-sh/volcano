@@ -5523,6 +5523,28 @@ func TestAllocateWithPartitionPolicyNetworkTopology(t *testing.T) {
 			ExpectBindsNum:   2,
 			MinimalBindCheck: true,
 		},
+		{
+			Name: "no network topology at job or subgroup level but has SubJobPolicy, can allocate job successfully",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "q1", 2, nil, schedulingv1.PodGroupInqueue, "", 0,
+					[]schedulingv1.SubGroupPolicySpec{
+						util.BuildSubGroupPolicyWithMinSubGroups("worker", []string{"volcano.sh/task-spec"}, "", 0, 1, 2),
+					}),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker-0"}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "4G"), "pg1", map[string]string{"volcano.sh/task-spec": "worker-1"}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+				util.BuildNode("n2", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			Queues: []*schedulingv1.Queue{
+				util.BuildQueue("q1", 1, nil),
+			},
+			ExpectBindsNum:   2,
+			MinimalBindCheck: true,
+		},
 	}
 
 	trueValue := true
