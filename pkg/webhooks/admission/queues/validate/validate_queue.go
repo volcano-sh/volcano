@@ -40,10 +40,6 @@ import (
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
-const (
-	maxQueueDepth int = 5
-)
-
 func init() {
 	router.RegisterAdmission(service)
 }
@@ -104,7 +100,7 @@ func AdmitQueues(ar admissionv1.AdmissionReview) *admissionv1.AdmissionResponse 
 		}
 
 		// Block attribute modifications to root queue on UPDATE
-		if ar.Request.Operation == admissionv1.Update && queue.Name == "root" && oldQueue != nil {
+		if config.EnableRootQueueProtection && ar.Request.Operation == admissionv1.Update && queue.Name == "root" && oldQueue != nil {
 			if !equality.Semantic.DeepEqual(queue.Spec.Capability, oldQueue.Spec.Capability) ||
 				!equality.Semantic.DeepEqual(queue.Spec.Deserved, oldQueue.Spec.Deserved) ||
 				!equality.Semantic.DeepEqual(queue.Spec.Guarantee.Resource, oldQueue.Spec.Guarantee.Resource) {
@@ -511,8 +507,8 @@ func validateQueueDepth(queue *schedulingv1beta1.Queue) error {
 
 	for parent != "" && parent != "root" {
 		depth++
-		if depth > maxQueueDepth {
-			return fmt.Errorf("queue %s exceeds the maximum allowed depth of %d", queue.Name, maxQueueDepth)
+		if depth > config.MaxQueueDepth {
+			return fmt.Errorf("queue %s exceeds the maximum allowed depth of %d", queue.Name, config.MaxQueueDepth)
 		}
 		p, err := config.QueueLister.Get(parent)
 		if err != nil {

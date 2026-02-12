@@ -43,6 +43,7 @@ import (
 )
 
 func TestAdmitQueues(t *testing.T) {
+	config.MaxQueueDepth = 5
 
 	stateNotSet := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1091,6 +1092,7 @@ func TestAdmitQueues(t *testing.T) {
 }
 
 func TestAdmitHierarchicalQueues(t *testing.T) {
+	config.MaxQueueDepth = 5
 	config.EnableQueueAllocatedPodsCheck = true
 	defer func() {
 		config.EnableQueueAllocatedPodsCheck = false
@@ -2181,4 +2183,508 @@ func setupQueueInformerWithIndex(factory informers.SharedInformerFactory) cache.
 			)
 		})
 	return queueInformer
+}
+
+func TestValidateQueueDepthDynamic(t *testing.T) {
+	// Setup fake client and lister
+	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+	config.QueueLister = queueInformer.Lister()
+
+	// Create a chain of queues: root -> q1 -> q2 -> q3
+	q1 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "q1"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "root"},
+	}
+	q2 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "q2"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "q1"},
+	}
+	q3 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "q3"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "q2"},
+	}
+
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), q1, metav1.CreateOptions{})
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), q2, metav1.CreateOptions{})
+
+	// Sync informer
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	informerFactory.WaitForCacheSync(stopCh)
+
+	tests := []struct {
+		name          string
+		maxDepth      int
+		queue         *schedulingv1beta1.Queue
+		expectedError bool
+	}{
+		{
+			name:          "Depth 3 is allowed when maxDepth is 5",
+			maxDepth:      5,
+			queue:         q3,
+			expectedError: false,
+		},
+		{
+			name:          "Depth 3 is allowed when maxDepth is 3",
+			maxDepth:      3,
+			queue:         q3,
+			expectedError: false,
+		},
+		{
+			name:          "Depth 3 is rejected when maxDepth is 2",
+			maxDepth:      2,
+			queue:         q3,
+			expectedError: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config.MaxQueueDepth = test.maxDepth
+			err := validateQueueDepth(test.queue)
+			if (err != nil) != test.expectedError {
+				t.Errorf("expected error: %v, got: %v", test.expectedError, err)
+			}
+		})
+	}
+}
+
+func TestValidateChildAgainstAncestorForCapability(t *testing.T) {
+	// Setup fake client and informer
+	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := setupQueueInformerWithIndex(informerFactory)
+	config.QueueInformer = queueInformer
+	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	// Build a 3-level hierarchy: root -> grandparent -> parent -> child
+	// grandparent: CPU=100, Memory=100Gi, GPU=8
+	grandparent := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "ancestor-gp"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:                    resource.MustParse("100"),
+				v1.ResourceMemory:                 resource.MustParse("100Gi"),
+				v1.ResourceName("nvidia.com/gpu"): resource.MustParse("8"),
+			},
+		},
+	}
+
+	// parent: CPU=50, Memory=50Gi (no GPU set)
+	parent := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "ancestor-p"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "ancestor-gp",
+			Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("50"),
+				v1.ResourceMemory: resource.MustParse("50Gi"),
+			},
+		},
+	}
+
+	// parent-no-cap: no capability set
+	parentNoCap := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "ancestor-p-nocap"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "ancestor-gp",
+			Weight: 1,
+		},
+	}
+
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), grandparent, metav1.CreateOptions{})
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), parent, metav1.CreateOptions{})
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), parentNoCap, metav1.CreateOptions{})
+
+	informerFactory.Start(stopCh)
+	informerFactory.WaitForCacheSync(stopCh)
+
+	tests := []struct {
+		name      string
+		child     *schedulingv1beta1.Queue
+		expectErr bool
+		errSubstr string
+	}{
+		{
+			name: "Child CPU exceeds direct parent capability",
+			child: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "child-exceed-cpu"},
+				Spec: schedulingv1beta1.QueueSpec{
+					Parent: "ancestor-p",
+					Weight: 1,
+					Capability: v1.ResourceList{
+						v1.ResourceCPU: resource.MustParse("60"), // parent=50
+					},
+				},
+			},
+			expectErr: true,
+			errSubstr: "exceeds its ancestor's capability",
+		},
+		{
+			name: "Child memory exceeds grandparent capability (skips parent with lower limit)",
+			child: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "child-exceed-mem"},
+				Spec: schedulingv1beta1.QueueSpec{
+					Parent: "ancestor-p",
+					Weight: 1,
+					Capability: v1.ResourceList{
+						v1.ResourceMemory: resource.MustParse("55Gi"), // parent=50Gi
+					},
+				},
+			},
+			expectErr: true,
+			errSubstr: "exceeds its ancestor's capability",
+		},
+		{
+			name: "Child GPU exceeds grandparent capability (parent has no GPU)",
+			child: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "child-exceed-gpu"},
+				Spec: schedulingv1beta1.QueueSpec{
+					Parent: "ancestor-p",
+					Weight: 1,
+					Capability: v1.ResourceList{
+						v1.ResourceName("nvidia.com/gpu"): resource.MustParse("10"), // grandparent=8
+					},
+				},
+			},
+			expectErr: true,
+			errSubstr: "exceeds its ancestor's capability",
+		},
+		{
+			name: "Child within all ancestor limits",
+			child: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "child-within-limits"},
+				Spec: schedulingv1beta1.QueueSpec{
+					Parent: "ancestor-p",
+					Weight: 1,
+					Capability: v1.ResourceList{
+						v1.ResourceCPU:                    resource.MustParse("40"),
+						v1.ResourceMemory:                 resource.MustParse("40Gi"),
+						v1.ResourceName("nvidia.com/gpu"): resource.MustParse("4"),
+					},
+				},
+			},
+			expectErr: false,
+		},
+		{
+			name: "Child without capability should pass",
+			child: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "child-no-cap"},
+				Spec: schedulingv1beta1.QueueSpec{
+					Parent: "ancestor-p",
+					Weight: 1,
+				},
+			},
+			expectErr: false,
+		},
+		{
+			name: "Child under parent without capability - checks grandparent",
+			child: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "child-under-nocap"},
+				Spec: schedulingv1beta1.QueueSpec{
+					Parent: "ancestor-p-nocap",
+					Weight: 1,
+					Capability: v1.ResourceList{
+						v1.ResourceCPU: resource.MustParse("200"), // grandparent=100
+					},
+				},
+			},
+			expectErr: true,
+			errSubstr: "exceeds its ancestor's capability",
+		},
+		{
+			name: "Child under parent without capability - within grandparent limits",
+			child: &schedulingv1beta1.Queue{
+				ObjectMeta: metav1.ObjectMeta{Name: "child-under-nocap-ok"},
+				Spec: schedulingv1beta1.QueueSpec{
+					Parent: "ancestor-p-nocap",
+					Weight: 1,
+					Capability: v1.ResourceList{
+						v1.ResourceCPU: resource.MustParse("80"), // grandparent=100
+					},
+				},
+			},
+			expectErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateChildAgainstAncestor(tt.child)
+			if tt.expectErr {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.errSubstr)
+				} else if tt.errSubstr != "" && !contains(err.Error(), tt.errSubstr) {
+					t.Errorf("expected error containing %q, got %q", tt.errSubstr, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("expected no error, got %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateChildrenConstraintsForCapability(t *testing.T) {
+	// Setup fake client and informer
+	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := setupQueueInformerWithIndex(informerFactory)
+	config.QueueInformer = queueInformer
+	config.QueueLister = informerFactory.Scheduling().V1beta1().Queues().Lister()
+
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+
+	// Build hierarchy for subtree tests:
+	// parent-a (CPU=20, Memory=20Gi, GPU=4)
+	//   ├── child-a1 (CPU=15, Memory=15Gi)
+	//   │     └── grandchild-a1-1 (CPU=25)  <- exceeds parent-a's CPU
+	//   └── child-a2 (CPU=10, Memory=10Gi, GPU=3)
+	//
+	// parent-b (CPU=50, Memory=50Gi)        <- no GPU
+	//   ├── child-b1 (CPU=30)
+	//   └── child-b2 (CPU=20)
+	//
+	// parent-c (no capability)
+	//   └── child-c1 (CPU=100)
+
+	parentA := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-parent-a"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root", Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:                    resource.MustParse("20"),
+				v1.ResourceMemory:                 resource.MustParse("20Gi"),
+				v1.ResourceName("nvidia.com/gpu"): resource.MustParse("4"),
+			},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("20"),
+					v1.ResourceMemory: resource.MustParse("20Gi"),
+				},
+			},
+			Deserved: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("20"),
+				v1.ResourceMemory: resource.MustParse("20Gi"),
+			},
+		},
+	}
+
+	// child-a1: only set Memory, NOT CPU, so findSubtreeMaxCapability will
+	// recurse to grandchild-a1-1 when checking CPU resource.
+	childA1 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-child-a1"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "vc-parent-a", Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceMemory: resource.MustParse("15Gi"),
+			},
+		},
+	}
+
+	// grandchild with CPU=25 > parent-a's CPU=20
+	grandchildA11 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-grandchild-a1-1"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "vc-child-a1", Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU: resource.MustParse("25"),
+			},
+		},
+	}
+
+	childA2 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-child-a2"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "vc-parent-a", Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:                    resource.MustParse("10"),
+				v1.ResourceMemory:                 resource.MustParse("10Gi"),
+				v1.ResourceName("nvidia.com/gpu"): resource.MustParse("3"),
+			},
+		},
+	}
+
+	parentB := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-parent-b"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root", Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("50"),
+				v1.ResourceMemory: resource.MustParse("50Gi"),
+			},
+			Guarantee: schedulingv1beta1.Guarantee{
+				Resource: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("50"),
+					v1.ResourceMemory: resource.MustParse("50Gi"),
+				},
+			},
+			Deserved: v1.ResourceList{
+				v1.ResourceCPU:    resource.MustParse("50"),
+				v1.ResourceMemory: resource.MustParse("50Gi"),
+			},
+		},
+	}
+
+	childB1 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-child-b1"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "vc-parent-b", Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU: resource.MustParse("30"),
+			},
+		},
+	}
+
+	childB2 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-child-b2"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "vc-parent-b", Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU: resource.MustParse("20"),
+			},
+		},
+	}
+
+	parentC := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-parent-c"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "root", Weight: 1,
+		},
+	}
+
+	childC1 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "vc-child-c1"},
+		Spec: schedulingv1beta1.QueueSpec{
+			Parent: "vc-parent-c", Weight: 1,
+			Capability: v1.ResourceList{
+				v1.ResourceCPU: resource.MustParse("100"),
+			},
+		},
+	}
+
+	for _, q := range []*schedulingv1beta1.Queue{
+		parentA, childA1, grandchildA11, childA2,
+		parentB, childB1, childB2,
+		parentC, childC1,
+	} {
+		_, err := config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), q, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Create queue %s failed: %v", q.Name, err)
+		}
+	}
+
+	informerFactory.Start(stopCh)
+	informerFactory.WaitForCacheSync(stopCh)
+
+	tests := []struct {
+		name      string
+		parent    *schedulingv1beta1.Queue
+		children  []*schedulingv1beta1.Queue
+		expectErr bool
+		errSubstr string
+	}{
+		{
+			name:   "Grandchild CPU exceeds parent capability via subtree (child has no CPU cap)",
+			parent: parentA,
+			// child-a1 has no CPU capability, so findSubtreeMaxCapability recurses
+			// to grandchild-a1-1 which has CPU=25 > parent-a CPU=20
+			children:  []*schedulingv1beta1.Queue{childA1, childA2},
+			expectErr: true,
+			errSubstr: "is smaller than its descendants' max capability",
+		},
+		{
+			name:      "All children within parent capability",
+			parent:    parentB,
+			children:  []*schedulingv1beta1.Queue{childB1, childB2},
+			expectErr: false,
+		},
+		{
+			name:      "Parent without capability skips capability check",
+			parent:    parentC,
+			children:  []*schedulingv1beta1.Queue{childC1},
+			expectErr: false,
+		},
+		{
+			name:      "Parent with no children",
+			parent:    parentB,
+			children:  []*schedulingv1beta1.Queue{},
+			expectErr: false,
+		},
+		{
+			name:   "Child GPU capability within parent GPU limit",
+			parent: parentA,
+			children: []*schedulingv1beta1.Queue{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "child-gpu-ok"},
+					Spec: schedulingv1beta1.QueueSpec{
+						Parent: "vc-parent-a", Weight: 1,
+						Capability: v1.ResourceList{
+							v1.ResourceName("nvidia.com/gpu"): resource.MustParse("3"),
+						},
+					},
+				},
+			},
+			expectErr: false,
+		},
+		{
+			name:   "Child GPU capability exceeds parent GPU limit via subtree",
+			parent: parentA,
+			children: []*schedulingv1beta1.Queue{
+				// This child itself has GPU=5 > parent GPU=4
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "child-gpu-exceed"},
+					Spec: schedulingv1beta1.QueueSpec{
+						Parent: "vc-parent-a", Weight: 1,
+						Capability: v1.ResourceList{
+							v1.ResourceName("nvidia.com/gpu"): resource.MustParse("5"),
+						},
+					},
+				},
+			},
+			expectErr: true,
+			errSubstr: "is smaller than its descendants' max capability",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateChildrenConstraints(tt.parent, tt.children)
+			if tt.expectErr {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.errSubstr)
+				} else if tt.errSubstr != "" && !contains(err.Error(), tt.errSubstr) {
+					t.Errorf("expected error containing %q, got %q", tt.errSubstr, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("expected no error, got %v", err)
+				}
+			}
+		})
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && searchSubstring(s, substr)))
+}
+
+func searchSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

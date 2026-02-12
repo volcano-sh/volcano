@@ -74,6 +74,15 @@ func EmptyResource() *Resource {
 	return &Resource{}
 }
 
+// InfiniteResource creates an infinite resource object and returns
+func InfiniteResource() *Resource {
+	return &Resource{
+		MilliCPU:   math.MaxFloat64,
+		Memory:     math.MaxFloat64,
+		MaxTaskNum: math.MaxInt,
+	}
+}
+
 // NewResource creates a new resource object from resource list
 func NewResource(rl v1.ResourceList) *Resource {
 	r := EmptyResource()

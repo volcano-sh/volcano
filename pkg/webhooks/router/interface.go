@@ -40,6 +40,8 @@ type AdmissionServiceConfig struct {
 	Recorder                      record.EventRecorder
 	ConfigData                    *config.AdmissionConfiguration
 	EnableQueueAllocatedPodsCheck bool
+	MaxQueueDepth                 int
+	EnableRootQueueProtection     bool
 }
 
 type AdmissionService struct {
