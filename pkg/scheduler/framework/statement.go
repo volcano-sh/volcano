@@ -217,7 +217,6 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 
 func (s *Statement) pipeline(task *api.TaskInfo) error {
 	if err := s.ssn.cache.Pipeline(task, task.NodeName); err != nil {
-		delete(s.lastOps, task.UID)
 		return err
 	}
 
@@ -225,9 +224,6 @@ func (s *Statement) pipeline(task *api.TaskInfo) error {
 }
 
 func (s *Statement) UnPipeline(task *api.TaskInfo) error {
-	if lastOp, exists := s.lastOps[task.UID]; exists && lastOp == Pipeline {
-		delete(s.lastOps, task.UID)
-	}
 	return s.unpipeline(task)
 }
 
@@ -277,10 +273,6 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 	errInfos := make([]error, 0)
 	hostname := nodeInfo.Name
 	task.Pod.Spec.NodeName = hostname
-	if lastOp, exists := s.lastOps[task.UID]; exists && lastOp == Allocate {
-		// Skip this eviction
-		return nil
-	}
 
 	// Only update status in session
 	job, found := s.ssn.Jobs[task.Job]
@@ -500,7 +492,7 @@ func (s *Statement) RecoverOperations(stmt *Statement) error {
 			node := s.ssn.Nodes[op.task.NodeName]
 			err := s.Allocate(op.task, node)
 			if err != nil {
-				if e := s.UnAllocate(op.task); e != nil {
+				if e := s.unallocate(op.task); e != nil {
 					klog.Errorf("Failed to unallocate task <%v/%v>: %v", op.task.Namespace, op.task.Name, e)
 				}
 				klog.Errorf("Failed to allocate task <%v/%v>: %v", op.task.Namespace, op.task.Name, err)

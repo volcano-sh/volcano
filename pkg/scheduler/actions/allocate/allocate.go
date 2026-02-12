@@ -321,14 +321,23 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 			klog.V(3).InfoS("Try to allocate resource for job contains hard topology or subjob policy", "queue", queue.Name, "job", job.UID,
 				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
-			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-				stmt.Commit()
-				ssn.MarkJobDirty(job.UID)
-				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
+			if stmt != nil {
+				if ssn.JobReady(job) {
+					// Job is ready, commit all allocations
+					stmt.Commit()
+					ssn.MarkJobDirty(job.UID)
+					alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
 
-				// There are still left tasks that need to be allocated when min available < replicas, put the job back
-				if !jobWorksheet.Empty() {
-					jobs.Push(job)
+					// There are still left tasks that need to be allocated when min available < replicas, put the job back
+					if !jobWorksheet.Empty() {
+						jobs.Push(job)
+					}
+				} else if ssn.JobPipelined(job) {
+					// Job is pipelined but not ready, commit the pipeline state
+					stmt.Commit()
+				} else {
+					// Job is not ready and not pipelined, discard the statement
+					stmt.Discard()
 				}
 			}
 		} else {
@@ -337,12 +346,21 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 			if sjExist && tasksExist {
 				klog.V(3).InfoS("Try to allocate resource", "queue", queue.Name, "job", job.UID, "taskNum", tasks.Len())
 				stmt := alloc.allocateResourcesForTasks(subJob, tasks, framework.ClusterTopHyperNode)
-				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-					stmt.Commit()
+				if stmt != nil {
+					if ssn.JobReady(job) {
+						// Job is ready, commit all allocations
+						stmt.Commit()
 
-					// There are still left tasks that need to be allocated when min available < replicas, put the job back
-					if tasks.Len() > 0 {
-						jobs.Push(job)
+						// There are still left tasks that need to be allocated when min available < replicas, put the job back
+						if tasks.Len() > 0 {
+							jobs.Push(job)
+						}
+					} else if ssn.JobPipelined(job) {
+						// Job is pipelined but not ready, commit the pipeline state
+						stmt.Commit()
+					} else {
+						// Job is not ready and not pipelined, discard the statement
+						stmt.Discard()
 					}
 				}
 			} else {
@@ -821,6 +839,10 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 		if err = stmt.Pipeline(task, node.Name, false); err != nil {
 			klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 				task.UID, node.Name, alloc.session.UID, err)
+			if rollbackErr := stmt.UnPipeline(task); rollbackErr != nil {
+				klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
+					task.UID, node.Name, alloc.session.UID, rollbackErr)
+			}
 		} else {
 			metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 			metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
