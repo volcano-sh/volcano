@@ -358,23 +358,34 @@ func BuildSubGroupPolicyWithSubGroupSize(name string, matchLabelKeys []string, m
 	return BuildSubGroupPolicyWithMinSubGroups(name, matchLabelKeys, mode, highestTierAllowed, subGroupSize, 0)
 }
 
+// BuildSubGroupPolicyWithMinSubGroups builds SubGroupPolicy with minSubGroups, if the mode is not empty, it will also set NetworkTopology for the subgroup
 func BuildSubGroupPolicyWithMinSubGroups(name string, matchLabelKeys []string, mode string, highestTierAllowed int, subGroupSize, minSubGroups int32) schedulingv1beta1.SubGroupPolicySpec {
 	subGroupPolicy := schedulingv1beta1.SubGroupPolicySpec{
-		Name: name,
-		NetworkTopology: &schedulingv1beta1.NetworkTopologySpec{
-			Mode:               schedulingv1beta1.NetworkTopologyMode(mode),
-			HighestTierAllowed: &highestTierAllowed,
-		},
+		Name:         name,
 		SubGroupSize: &subGroupSize,
 		MinSubGroups: &minSubGroups,
 	}
 	subGroupPolicy.MatchLabelKeys = matchLabelKeys
+
+	if mode != "" {
+		subGroupPolicy.NetworkTopology = &schedulingv1beta1.NetworkTopologySpec{
+			Mode:               schedulingv1beta1.NetworkTopologyMode(mode),
+			HighestTierAllowed: &highestTierAllowed,
+		}
+	}
+
 	return subGroupPolicy
 }
 
-// BuildPodGroupWithSubGroupPolicy builds podGroup with NetworkTopology and SubGroupPolicy.
+// BuildPodGroupWithSubGroupPolicy builds podGroup with SubGroupPolicy, if the mode is not empty, it will also set NetworkTopology for the podgroup
 func BuildPodGroupWithSubGroupPolicy(name, ns, hyperNodeName, queue string, minMember int32, taskMinMember map[string]int32, status schedulingv1beta1.PodGroupPhase, mode string, highestTierAllowed int, subGroupPolicy []schedulingv1beta1.SubGroupPolicySpec) *schedulingv1beta1.PodGroup {
-	pg := BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue, minMember, taskMinMember, status, mode, highestTierAllowed)
+	var pg *schedulingv1beta1.PodGroup
+	if mode != "" {
+		pg = BuildPodGroupWithNetWorkTopologies(name, ns, hyperNodeName, queue, minMember, taskMinMember, status, mode, highestTierAllowed)
+	} else {
+		pg = BuildPodGroup(name, ns, queue, minMember, taskMinMember, status)
+	}
+
 	pg.Spec.SubGroupPolicy = subGroupPolicy
 	return pg
 }

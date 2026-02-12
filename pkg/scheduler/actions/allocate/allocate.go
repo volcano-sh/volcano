@@ -298,10 +298,12 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 
 		job := jobs.Pop().(*api.JobInfo)
 		updateJobTier(ssn.HyperNodeTierNameMap, job)
-		if job.ContainsHardTopology() {
+		// Currently, both hard-mode network topology scheduling and subjob level scheduling use allocateForJob.
+		// TODO: In the future, we may need to unify the logic of network topology-aware scheduling and normal scheduling.
+		if job.ContainsHardTopology() || job.ContainsSubJobPolicy() {
 			jobWorksheet := actx.jobWorksheet[job.UID]
 
-			klog.V(3).InfoS("Try to allocate resource for job contains hard topology", "queue", queue.Name, "job", job.UID,
+			klog.V(3).InfoS("Try to allocate resource for job contains hard topology or subjob policy", "queue", queue.Name, "job", job.UID,
 				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
