@@ -169,7 +169,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: volcano-agent-scheduler
-          image: docker.io/volcanosh/vc-agent-scheduler:v1.14.0
+          image: docker.io/volcanosh/vc-agent-scheduler:v1.14.1
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/agent-scheduler.conf
