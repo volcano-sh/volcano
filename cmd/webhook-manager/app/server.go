@@ -92,6 +92,8 @@ func Run(config *options.Config) error {
 			service.Config.Recorder = recorder
 			service.Config.ConfigData = admissionConf
 			service.Config.EnableQueueAllocatedPodsCheck = config.EnableQueueAllocatedPodsCheck
+			service.Config.MaxQueueDepth = config.MaxQueueDepth
+			service.Config.EnableRootQueueProtection = config.EnableRootQueueProtection
 		}
 
 		klog.V(3).Infof("Registered '%s' as webhook.", service.Path)

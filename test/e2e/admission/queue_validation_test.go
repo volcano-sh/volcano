@@ -282,7 +282,7 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 		gomega.Expect(err.Error()).To(gomega.ContainSubstring("must be >= guarantee"))
 	})
 
-	// Test resource type validation - resources in deserved/guarantee must exist in capability
+	// Test resource type validation - resources in deserved/guarantee may include types not present in capability
 	ginkgo.It("Should allow queue creation with deserved resource type not in capability", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
