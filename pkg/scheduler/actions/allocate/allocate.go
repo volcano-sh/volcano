@@ -222,6 +222,7 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 		}
 		return -1
 	})
+
 	// Find the smallest set of subJobs that meets the requirements for job execution.
 	requireSubJobs := sets.Set[api.SubJobID]{}
 	for _, subJob := range subJobs {
@@ -247,22 +248,36 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 
 	for subJobID, subJob := range job.SubJobs {
 		sjWorksheet := &SubJobWorksheet{
-			tasks: util.NewPriorityQueue(ssn.TaskOrderFn),
+			tasks: util.NewPriorityQueue(func(l, r interface{}) bool {
+				lv := l.(*api.TaskInfo)
+				rv := r.(*api.TaskInfo)
+
+				// Pipelined tasks shall have higher priority than Pending tasks
+				if lv.Status != rv.Status {
+					return lv.Status == api.Pipelined
+				}
+
+				// If both have the same status, use the session's task order function
+				return ssn.TaskOrderFn(l, r)
+			}),
 		}
 
-		for _, task := range subJob.TaskStatusIndex[api.Pending] {
-			// Skip tasks whose pod are scheduling gated
-			if task.SchGated {
-				continue
-			}
+		// Include both Pipelined and Pending tasks
+		for _, status := range []api.TaskStatus{api.Pipelined, api.Pending} {
+			for _, task := range subJob.TaskStatusIndex[status] {
+				// Skip tasks whose pod are scheduling gated
+				if task.SchGated {
+					continue
+				}
 
-			// Skip BestEffort task in 'allocate' action.
-			if task.Resreq.IsEmpty() {
-				klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
-					task.Namespace, task.Name)
-				continue
+				// Skip BestEffort task in 'allocate' action.
+				if task.Resreq.IsEmpty() {
+					klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
+						task.Namespace, task.Name)
+					continue
+				}
+				sjWorksheet.tasks.Push(task)
 			}
-			sjWorksheet.tasks.Push(task)
 		}
 
 		if !sjWorksheet.Empty() {

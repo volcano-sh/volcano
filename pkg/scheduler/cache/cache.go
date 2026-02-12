@@ -930,6 +930,72 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	return nil
 }
 
+func (sc *SchedulerCache) Pipeline(taskInfo *schedulingapi.TaskInfo, nodeName string) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	job, task, err := sc.findJobAndTask(taskInfo)
+	if err != nil {
+		return err
+	}
+
+	node, found := sc.Nodes[nodeName]
+	if !found {
+		return fmt.Errorf("failed to pipeline Task %v to host %v, host does not exist",
+			task.UID, nodeName)
+	}
+
+	podgroup := &vcv1beta1.PodGroup{}
+	if job.PodGroup != nil {
+		err = schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil)
+	} else {
+		err = fmt.Errorf("the PodGroup of Job <%s/%s> is nil", job.Namespace, job.Name)
+	}
+
+	if err != nil {
+		klog.Errorf("Error while converting PodGroup to vcv1beta1.PodGroup with error: %v", err)
+		return err
+	}
+
+	// Set the nominated node name to persist the pipeline decision
+	pod := task.Pod.DeepCopy()
+	pod.Status.NominatedNodeName = nodeName
+
+	// Update the pod status with the default status updater
+	_, err = sc.StatusUpdater.UpdatePodStatus(pod)
+	if err != nil {
+		klog.Errorf("Failed to update nominated node for pipelined task %s/%s: %v",
+			task.Namespace, task.Name, err)
+		return err
+	}
+
+	// We mark the task as Pipelined
+	originalStatus := task.Status
+	if err := job.UpdateTaskStatus(task, schedulingapi.Pipelined); err != nil {
+		return err
+	}
+
+	// Add new task to node.
+	if err := node.UpdateTask(task); err != nil {
+		// After failing to update task to a node we need to revert task status from Pipelined,
+		// otherwise task might be stuck in the Pipelined state indefinitely.
+		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+				"from %s to %s after failing to update Task on Node <%s>: %v",
+				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+			sc.resyncTask(task)
+		}
+		return err
+	}
+
+	klog.V(4).Infof("Task <%s/%s> successfully pipelined to Node <%s>",
+		task.Namespace, task.Name, node.Name)
+
+	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Pipeline", "Task <%s/%s> is pipelined to Node <%s>",
+		task.Namespace, task.Name, node.Name)
+	return nil
+}
+
 // Bind binds task to the target host.
 func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext, preBinders map[string]PreBinder) {
 	readyToBindTasks := make([]*schedulingapi.TaskInfo, len(bindContexts))
