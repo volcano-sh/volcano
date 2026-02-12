@@ -887,6 +887,18 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 			task.UID, task.NodeName)
 	}
 
+	// Check PodGroup and prepare for event recording BEFORE any state changes.
+	// This ensures we don't start eviction if PodGroup is nil or conversion fails.
+	if job.PodGroup == nil {
+		return fmt.Errorf("cannot evict Task %v: PodGroup of Job <%s/%s> is nil",
+			task.UID, job.Namespace, job.Name)
+	}
+	podgroup := &vcv1beta1.PodGroup{}
+	if err = schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil); err != nil {
+		klog.Errorf("Error while converting PodGroup to v1beta1.PodGroup with error: %v", err)
+		return err
+	}
+
 	originalStatus := task.Status
 	if err := job.UpdateTaskStatus(task, schedulingapi.Releasing); err != nil {
 		return err
@@ -914,17 +926,6 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 		}
 	}()
 
-	podgroup := &vcv1beta1.PodGroup{}
-	if job.PodGroup != nil {
-		err = schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil)
-	} else {
-		err = fmt.Errorf("the PodGroup of Job <%s/%s> is nil", job.Namespace, job.Name)
-	}
-
-	if err != nil {
-		klog.Errorf("Error while converting PodGroup to v1alpha1.PodGroup with error: %v", err)
-		return err
-	}
 	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Evict", reason)
 	return nil
 }
@@ -1152,6 +1153,12 @@ func (sc *SchedulerCache) parseDeletedJobsKey(key string) (jobUID string, jobPgU
 
 func (sc *SchedulerCache) resyncTask(task *schedulingapi.TaskInfo) {
 	key := sc.generateErrTaskKey(task)
+	sc.errTasks.Add(key)
+}
+
+func (sc *SchedulerCache) retryResyncTask(task *schedulingapi.TaskInfo) {
+	klog.V(5).Infof("Retry to resync task <%s:%s/%s>", task.UID, task.Namespace, task.Name)
+	key := sc.generateErrTaskKey(task)
 	sc.errTasks.AddRateLimited(key)
 }
 
@@ -1207,7 +1214,7 @@ func (sc *SchedulerCache) processResyncTask() {
 	reSynced := false
 	if err := sc.syncTask(task); err != nil {
 		klog.ErrorS(err, "Failed to sync task, retry it", "namespace", task.Namespace, "name", task.Name)
-		sc.resyncTask(task)
+		sc.retryResyncTask(task)
 		reSynced = true
 	} else {
 		klog.V(4).Infof("Successfully synced task <%s/%s>", task.Namespace, task.Name)

@@ -25,7 +25,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/volcano/pkg/agent/apis"
@@ -49,21 +48,21 @@ type historicalUsageCalculator struct {
 	sync.Mutex
 	cfgLock sync.Mutex
 	policy.Interface
-	usages        workqueue.RateLimitingInterface
-	queue         *queue.SqQueue
-	resourceTypes sets.String
-	getNodeFunc   utilnode.ActiveNode
+	eventQueueFactory *framework.EventQueueFactory
+	queue             *queue.SqQueue
+	resourceTypes     sets.String
+	getNodeFunc       utilnode.ActiveNode
 }
 
 // NewCalculator return overSubscription reporter by algorithm
-func NewCalculator(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, workQueue workqueue.RateLimitingInterface) framework.Probe {
+func NewCalculator(config *config.Configuration, mgr *metriccollect.MetricCollectorManager, eventQueueFactory *framework.EventQueueFactory) framework.Probe {
 	sqQueue := queue.NewSqQueue()
 	return &historicalUsageCalculator{
-		Interface:     policy.GetPolicyFunc(config.GenericConfiguration.OverSubscriptionPolicy)(config, mgr, nil, sqQueue, local.CollectorName),
-		usages:        workQueue,
-		queue:         sqQueue,
-		resourceTypes: sets.NewString(),
-		getNodeFunc:   config.GetNode,
+		Interface:         policy.GetPolicyFunc(config.GenericConfiguration.OverSubscriptionPolicy)(config, mgr, nil, sqQueue, local.CollectorName),
+		eventQueueFactory: eventQueueFactory,
+		queue:             sqQueue,
+		resourceTypes:     sets.NewString(),
+		getNodeFunc:       config.GetNode,
 	}
 }
 
@@ -118,7 +117,8 @@ func (r *historicalUsageCalculator) preProcess() {
 			overSubRes[resType] = 0
 		}
 	}
-	r.usages.Add(framework.NodeResourceEvent{MillCPU: overSubRes[v1.ResourceCPU], MemoryBytes: overSubRes[v1.ResourceMemory]})
+	eventQueue := r.eventQueueFactory.EventQueue(string(framework.NodeResourcesEventName)).GetQueue()
+	eventQueue.Add(framework.NodeResourceEvent{MillCPU: overSubRes[v1.ResourceCPU], MemoryBytes: overSubRes[v1.ResourceMemory]})
 }
 
 // computeOverSubRes calculate overSubscription resources

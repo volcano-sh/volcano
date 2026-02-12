@@ -98,6 +98,7 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 	readyToSchedule := true
 	if hierarchyEnabled {
 		readyToSchedule = cp.buildHierarchicalQueueAttrs(ssn)
+		klog.V(4).Infof("Hierarchy is enabled in capacity plugin")
 	} else {
 		cp.buildQueueAttrs(ssn)
 	}
@@ -113,22 +114,52 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		for _, reclaimee := range reclaimees {
 			job := ssn.Jobs[reclaimee.Job]
 			attr := cp.queueOpts[job.Queue]
+			klog.V(5).Infof("[capacity] Considering reclaimee <%s/%s> from queue <%s> for reclaimer <%s/%s>.",
+				reclaimee.Namespace, reclaimee.Name, attr.queueID, reclaimer.Namespace, reclaimer.Name)
 
+			// If reclaimee doesn't have intersecting resource dimensions with reclaimer we can skip it.
+			if skip, reason := cp.shouldSkipReclaimee(reclaimee, reclaimer); skip {
+				klog.V(5).Infof("%s, skip it.", reason)
+				continue
+			}
+
+			// allocations maps each queue to its current allocated resources (cloned) and 'allocated' points to this resource object.
+			// As victims (reclaimees) are selected, their resource requests are subtracted from the corresponding queue's allocation via this pointer.
+			// This ensures that subsequent victim selection for the same queue uses the updated allocation state.
 			if _, found := allocations[job.Queue]; !found {
 				allocations[job.Queue] = attr.allocated.Clone()
 			}
 			allocated := allocations[job.Queue]
 
-			exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
-			// When scalar resource not specified in deserved such as "pods", we should skip it and consider it as infinity,
-			// so the following first condition will be true and the current queue will not be reclaimed.
-			if allocated.LessEqual(attr.deserved, api.Infinity) || !attr.guarantee.LessEqual(exceptReclaimee, api.Zero) {
+			// Check guarantee
+			if satisfies, _ := cp.checkGuaranteeConstraint(allocated, reclaimee, attr.guarantee); !satisfies {
 				continue
 			}
-			allocated.Sub(reclaimee.Resreq)
-			victims = append(victims, reclaimee)
+
+			// If the reclaimee has no intersecting resource dimensions with deserved, it is a victim.
+			if isVictim, reason := cp.isImmediateVictim(reclaimee, attr.deserved); isVictim {
+				allocated.Sub(reclaimee.Resreq)
+				victims = append(victims, reclaimee)
+				klog.V(5).Infof("%s. It's a victim. Current victims: %+v.", reason, victims)
+				continue
+			}
+
+			// Check deserved
+			if exceeds, dims, reason := cp.checkDeservedExceedance(
+				allocated, attr.deserved, reclaimee, reclaimer, attr.name); !exceeds {
+				klog.V(5).Infof("%s", reason)
+				continue
+			} else {
+				klog.V(5).Infof("[capacity] Reclaimee <%s/%s> is a victim from queue <%s> for reclaimer <%s/%s>. "+
+					"Allocated: <%v>, Deserved: <%v>, Reclaimee Resreq: <%v>, Reclaimable on dimensions: %v.",
+					reclaimee.Namespace, reclaimee.Name, attr.queueID, reclaimer.Namespace, reclaimer.Name,
+					allocated, attr.deserved, reclaimee.Resreq, dims)
+				allocated.Sub(reclaimee.Resreq)
+				victims = append(victims, reclaimee)
+				klog.V(5).Infof("[capacity] Current victims: %+v.", victims)
+			}
 		}
-		klog.V(4).Infof("Victims from capacity plugin, victims=%+v reclaimer=%s", victims, reclaimer)
+		klog.V(4).Infof("[capacity] Victims from capacity plugin: victims=%+v reclaimer=%s.", victims, reclaimer)
 		return victims, util.Permit
 	})
 
@@ -575,12 +606,16 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		}
 		attr.elastic.Add(job.GetElasticResources())
 
+		allocatedDelta := attr.allocated.Clone().Sub(oldAllocated)
+		requestDelta := attr.request.Clone().Sub(oldRequest)
+		inqueueDelta := attr.inqueue.Clone().Sub(oldInqueue)
+		elasticDelta := attr.elastic.Clone().Sub(oldElastic)
 		for _, ancestor := range attr.ancestors {
 			ancestorAttr := cp.queueOpts[ancestor]
-			ancestorAttr.allocated.Add(attr.allocated.Clone().Sub(oldAllocated))
-			ancestorAttr.request.Add(attr.request.Clone().Sub(oldRequest))
-			ancestorAttr.inqueue.Add(attr.inqueue.Clone().Sub(oldInqueue))
-			ancestorAttr.elastic.Add(attr.elastic.Clone().Sub(oldElastic))
+			ancestorAttr.allocated.Add(allocatedDelta)
+			ancestorAttr.request.Add(requestDelta)
+			ancestorAttr.inqueue.Add(inqueueDelta)
+			ancestorAttr.elastic.Add(elasticDelta)
 		}
 
 		klog.V(5).Infof("Queue %s allocated <%s> request <%s> inqueue <%s> elastic <%s>",
@@ -596,13 +631,9 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 		rootQueueAttr.deserved = cp.totalResource
 	}
 	rootQueueAttr.realCapability = cp.totalResource
-	// Check the hierarchical structure of queues
-	err := cp.checkHierarchicalQueue(rootQueueAttr)
-	if err != nil {
-		klog.Errorf("Failed to check queue's hierarchical structure, error: %v", err)
-		return false
-	}
-	klog.V(4).Infof("Successfully checked queue's hierarchical structure.")
+	// checkHierarchicalQueue only logs warnings and never returns errors
+	// to avoid aborting the entire scheduling cycle due to configuration issues
+	cp.checkHierarchicalQueue(rootQueueAttr)
 
 	// update session attributes
 	ssn.TotalGuarantee = cp.totalGuarantee
@@ -744,7 +775,7 @@ func (cp *capacityPlugin) updateAncestors(queue *api.QueueInfo, ssn *framework.S
 	return nil
 }
 
-func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
+func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 	totalGuarantee := api.EmptyResource()
 	totalDeserved := api.EmptyResource()
 	for _, childAttr := range attr.children {
@@ -772,8 +803,9 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 
 		// Check if the parent queue's capability is less than the child queue's capability
 		if attr.capability.LessPartly(childAttr.capability, api.Zero) {
-			return fmt.Errorf("queue <%s> capability <%s> is less than its child queue <%s> capability <%s>",
-				attr.name, attr.capability, childAttr.name, childAttr.capability)
+			klog.V(3).Infof("Child queue %s capability (%s) exceeds parent queue %s capability (%s). "+
+				"Child's effective capability will be limited by parent.",
+				childAttr.name, childAttr.capability, attr.name, attr.capability)
 		}
 	}
 
@@ -801,23 +833,22 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) error {
 
 	// Check if the parent queue's deserved resources are less than the total deserved resources of child queues
 	if attr.deserved.LessPartly(totalDeserved, api.Zero) {
-		return fmt.Errorf("queue <%s> deserved resources <%s> are less than the sum of its child queues' deserved resources <%s>",
-			attr.name, attr.deserved, totalDeserved)
+		klog.V(3).Infof("Sum of child queue deserved (%s) exceeds parent queue %s deserved (%s). "+
+			"This may affect resource distribution during scheduling.",
+			totalDeserved, attr.name, attr.deserved)
 	}
 
 	// Check if the parent queue's guarantee resources are less than the total guarantee resources of child queues
 	if attr.guarantee.LessPartly(totalGuarantee, api.Zero) {
-		return fmt.Errorf("queue <%s> guarantee resources <%s> are less than the sum of its child queues' guarantee resources <%s>",
-			attr.name, attr.guarantee, totalGuarantee)
+		klog.V(3).Infof("Sum of child queue guarantees (%s) exceeds parent queue %s guarantee (%s). "+
+			"Not all child guarantees can be satisfied simultaneously.",
+			totalGuarantee, attr.name, attr.guarantee)
 	}
 
+	// Recursively check child queues
 	for _, childAttr := range attr.children {
-		err := cp.checkHierarchicalQueue(childAttr)
-		if err != nil {
-			return err
-		}
+		cp.checkHierarchicalQueue(childAttr)
 	}
-	return nil
 }
 
 // compareShareWithDeserved compares two queueAttr by share; when shares are equal,
@@ -1025,4 +1056,65 @@ func updateQueueAttrShare(attr *queueAttr) {
 	}
 
 	attr.share = res
+}
+
+// shouldSkipReclaimee checks if a reclaimee should be skipped based on whether it has
+// intersecting resource dimensions with the reclaimer. Returns true if should skip, with a reason message.
+func (cp *capacityPlugin) shouldSkipReclaimee(reclaimee, reclaimer *api.TaskInfo) (bool, string) {
+	reclaimerIntersecting := len(api.IntersectionWithIgnoredScalarResources(reclaimee.Resreq, reclaimer.InitResreq)) > 0
+	if !reclaimerIntersecting {
+		return true, fmt.Sprintf("[capacity] Reclaimee <%s/%s>: <%v> does not have intersecting resource dimensions with reclaimer <%s/%s>: <%v>",
+			reclaimee.Namespace, reclaimee.Name, reclaimee.Resreq, reclaimer.Namespace, reclaimer.Name, reclaimer.InitResreq)
+	}
+	return false, ""
+}
+
+// checkGuaranteeConstraint checks if removing the reclaimee would violate the queue's guarantee.
+// Returns true if the guarantee constraint is satisfied (i.e., reclaim is allowed).
+func (cp *capacityPlugin) checkGuaranteeConstraint(
+	allocated *api.Resource,
+	reclaimee *api.TaskInfo,
+	guarantee *api.Resource,
+) (bool, *api.Resource) {
+	exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
+	reclaimable := guarantee.LessEqual(exceptReclaimee, api.Zero)
+	return reclaimable, exceptReclaimee
+}
+
+// isImmediateVictim checks if a reclaimee is an immediate victim because it has no
+// intersecting resource dimensions with the queue's deserved resources.
+// Returns true if it's an immediate victim, with a reason message.
+func (cp *capacityPlugin) isImmediateVictim(
+	reclaimee *api.TaskInfo,
+	deserved *api.Resource,
+) (bool, string) {
+	deservedIntersecting := len(api.Intersection(reclaimee.Resreq, deserved)) > 0
+	if !deservedIntersecting {
+		return true, fmt.Sprintf("[capacity] No intersection between deserved: <%v> and reclaimee <%s/%s>: <%v>",
+			deserved, reclaimee.Namespace, reclaimee.Name, reclaimee.Resreq)
+	}
+	return false, ""
+}
+
+// checkDeservedExceedance checks if the queue's allocated resources exceed its deserved resources
+// on dimensions relevant to the reclaimee, making the reclaimee a valid victim.
+// Returns true if exceeds, along with the relevant dimensions and a reason message.
+func (cp *capacityPlugin) checkDeservedExceedance(
+	allocated *api.Resource,
+	deserved *api.Resource,
+	reclaimee *api.TaskInfo,
+	reclaimer *api.TaskInfo,
+	queueName string,
+) (bool, []string, string) {
+	reclaimable, dims := allocated.GreaterPartlyWithRelevantDimensions(deserved, reclaimee.Resreq)
+	if !reclaimable {
+		reason := fmt.Sprintf(
+			"[capacity] Queue <%v> allocated resources are not greater than deserved on any relevant dimension of reclaimee. "+
+				"Hence reclaimee <%s/%s> cannot be reclaimed for reclaimer <%s/%s>. "+
+				"Deserved: <%v>, Allocated: <%v>, Reclaimee Resreq: <%v>",
+			queueName, reclaimee.Namespace, reclaimee.Name, reclaimer.Namespace, reclaimer.Name, deserved, allocated, reclaimee.Resreq,
+		)
+		return false, nil, reason
+	}
+	return true, dims, ""
 }

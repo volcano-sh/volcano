@@ -28,11 +28,13 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/klog/v2"
 	k8score "k8s.io/kubernetes/pkg/apis/core"
 	k8scorev1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	k8scorevalid "k8s.io/kubernetes/pkg/apis/core/validation"
 	"k8s.io/kubernetes/pkg/capabilities"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -133,14 +135,9 @@ func validateJobCreate(job *v1alpha1.Job, reviewResponse *admissionv1.AdmissionR
 	if _, ok := job.Spec.Plugins[controllerMpi.MPIPluginName]; ok {
 		mp := controllerMpi.NewInstance(job.Spec.Plugins[controllerMpi.MPIPluginName])
 		masterIndex := jobhelpers.GetTaskIndexUnderJob(mp.GetMasterName(), job)
-		workerIndex := jobhelpers.GetTaskIndexUnderJob(mp.GetWorkerName(), job)
 		if masterIndex == -1 {
 			reviewResponse.Allowed = false
 			return "The specified mpi master task was not found"
-		}
-		if workerIndex == -1 {
-			reviewResponse.Allowed = false
-			return "The specified mpi worker task was not found"
 		}
 	}
 
@@ -372,7 +369,9 @@ func validateTaskTemplate(task v1alpha1.TaskSpec, job *v1alpha1.Job, index int) 
 		Template: coreTemplateSpec,
 	}
 
-	opts := k8scorevalid.PodValidationOptions{}
+	opts := k8scorevalid.PodValidationOptions{
+		PodLevelResourcesEnabled: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.PodLevelResources),
+	}
 	if allErrs := k8scorevalid.ValidatePodTemplate(&corePodTemplate, opts); len(allErrs) > 0 {
 		msg := fmt.Sprintf("spec.task[%d].", index)
 		for index := range allErrs {

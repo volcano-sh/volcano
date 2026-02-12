@@ -18,6 +18,7 @@ package events
 
 import (
 	"context"
+	"reflect"
 
 	"k8s.io/klog/v2"
 
@@ -31,8 +32,10 @@ import (
 
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/cpuburst"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/cpuqos"
+	_ "volcano.sh/volcano/pkg/agent/events/handlers/cputhrottle"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/eviction"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/memoryqos"
+	_ "volcano.sh/volcano/pkg/agent/events/handlers/memoryqosv2"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/networkqos"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/oversubscription"
 	_ "volcano.sh/volcano/pkg/agent/events/handlers/resources"
@@ -58,10 +61,15 @@ func NewEventManager(config *config.Configuration, metricCollectManager *metricc
 		configMgr:            coloconfig.NewManager(config, []coloconfig.Listener{factory}),
 	}
 
+	probeInstances := make(map[uintptr]framework.Probe)
 	for eventName, newProbeFuncs := range probes.GetEventProbeFuncs() {
-		eventQueue := mgr.eventQueueFactory.EventQueue(eventName)
 		for _, newProbeFunc := range newProbeFuncs {
-			prob := newProbeFunc(config, metricCollectManager, eventQueue.GetQueue())
+			funcKey := reflect.ValueOf(newProbeFunc).Pointer()
+			prob, ok := probeInstances[funcKey]
+			if !ok {
+				prob = newProbeFunc(config, metricCollectManager, mgr.eventQueueFactory)
+				probeInstances[funcKey] = prob
+			}
 			klog.InfoS("Registering event probe", "eventName", eventName, "probeName", prob.ProbeName())
 			mgr.eventQueueFactory.RegistryEventProbe(eventName, prob)
 		}

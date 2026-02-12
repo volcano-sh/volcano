@@ -101,28 +101,60 @@ vcctl: init
 
 image_bins: vc-scheduler vc-agent-scheduler vc-controller-manager vc-webhook-manager vc-agent
 
-images:
-	for name in controller-manager scheduler agent-scheduler webhook-manager agent; do\
-		docker buildx build -t "${IMAGE_PREFIX}/vc-$$name:$(TAG)" . -f ./installer/dockerfile/$$name/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
-	done
+images: vc-scheduler-image vc-agent-scheduler-image vc-controller-manager-image vc-webhook-manager-image vc-agent-image
+
+# Define a reusable build function for individual component images
+define build_component_image
+	docker buildx build -t "${IMAGE_PREFIX}/vc-$(1):$(TAG)" . \
+		-f ./installer/dockerfile/$(1)/Dockerfile \
+		--output=type=${BUILDX_OUTPUT_TYPE} \
+		--platform ${DOCKER_PLATFORMS} \
+		--build-arg APK_MIRROR=${APK_MIRROR} \
+		--build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}
+endef
+
+vc-controller-manager-image:
+	$(call build_component_image,controller-manager)
+
+vc-scheduler-image:
+	$(call build_component_image,scheduler)
+
+vc-agent-scheduler-image:
+	$(call build_component_image,agent-scheduler)
+
+vc-webhook-manager-image:
+	$(call build_component_image,webhook-manager)
 
 vc-agent-image:
-	docker buildx build -t "${IMAGE_PREFIX}/vc-agent:$(TAG)" . -f ./installer/dockerfile/agent/Dockerfile --output=type=${BUILDX_OUTPUT_TYPE} --platform ${DOCKER_PLATFORMS} --build-arg APK_MIRROR=${APK_MIRROR} --build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}
+	$(call build_component_image,agent)
 
 generate-code:
 	./hack/update-gencode.sh
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: controller-gen
-	go mod vendor
 	# volcano crd base
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./vendor/volcano.sh/apis/pkg/apis/scheduling/v1beta1;./vendor/volcano.sh/apis/pkg/apis/batch/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/bus/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/topology/v1alpha1;./vendor/volcano.sh/apis/pkg/apis/shard/v1alpha1" output:crd:artifacts:config=config/crd/volcano/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) \
+		paths="./staging/src/volcano.sh/apis/pkg/apis/scheduling/v1beta1; \
+		./staging/src/volcano.sh/apis/pkg/apis/batch/v1alpha1; \
+		./staging/src/volcano.sh/apis/pkg/apis/bus/v1alpha1; \
+		./staging/src/volcano.sh/apis/pkg/apis/nodeinfo/v1alpha1; \
+		./staging/src/volcano.sh/apis/pkg/apis/topology/v1alpha1; \
+		./staging/src/volcano.sh/apis/pkg/apis/shard/v1alpha1; \
+		./staging/src/volcano.sh/apis/pkg/apis/config/v1alpha1" \
+		output:crd:artifacts:config=config/crd/volcano/bases
 	# generate volcano job crd yaml without description to avoid yaml size limit when using `kubectl apply`
-	$(CONTROLLER_GEN) $(CRD_OPTIONS_EXCLUDE_DESCRIPTION) paths="./vendor/volcano.sh/apis/pkg/apis/batch/v1alpha1" output:crd:artifacts:config=config/crd/volcano/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS_EXCLUDE_DESCRIPTION) \
+		paths="./staging/src/volcano.sh/apis/pkg/apis/batch/v1alpha1" \
+		output:crd:artifacts:config=config/crd/volcano/bases
 	# jobflow crd base
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths="./vendor/volcano.sh/apis/pkg/apis/flow/v1alpha1" output:crd:artifacts:config=config/crd/jobflow/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) \
+		paths="./staging/src/volcano.sh/apis/pkg/apis/flow/v1alpha1" \
+		output:crd:artifacts:config=config/crd/jobflow/bases
 	# generate volcano jobflow crd yaml without description to avoid yaml size limit when using `kubectl apply`
-	$(CONTROLLER_GEN) $(CRD_OPTIONS_EXCLUDE_DESCRIPTION) paths="./vendor/volcano.sh/apis/pkg/apis/flow/v1alpha1" output:crd:artifacts:config=config/crd/jobflow/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS_EXCLUDE_DESCRIPTION) \
+		paths="./staging/src/volcano.sh/apis/pkg/apis/flow/v1alpha1" \
+		output:crd:artifacts:config=config/crd/jobflow/bases
 
 unit-test:
 	go clean -testcache

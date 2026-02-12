@@ -107,6 +107,12 @@ type TestCommonStruct struct {
 	// MinimalBindCheck true will only check both bind num, false by default.
 	MinimalBindCheck bool
 
+	// Shard test configuration (optional). When NodesInShard is non-nil/non-empty,
+	// RegisterSession caller should set options.ServerOpts and ssn.NodesInShard after session is created.
+	ShardingMode string
+	ShardName    string
+	NodesInShard []string
+
 	// fake interface instance when check results need
 	stop       chan struct{}
 	binder     cache.Binder

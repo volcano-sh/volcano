@@ -772,7 +772,12 @@ func (ji *JobInfo) FitError() string {
 		reasons[status.String()] += len(taskMap)
 	}
 	reasons["minAvailable"] = int(ji.MinAvailable)
-	reasonMsg := fmt.Sprintf("%v, %v", scheduling.PodGroupNotReady, strings.Join(sortReasonsHistogram(reasons), ", "))
+
+	podGroupStatus := scheduling.PodGroupNotReady
+	if ji.IsReady() {
+		podGroupStatus = scheduling.PodGroupReady
+	}
+	reasonMsg := fmt.Sprintf("%v, %v", podGroupStatus, strings.Join(sortReasonsHistogram(reasons), ", "))
 
 	// Stat histogram for pending tasks only
 	reasons = make(map[string]int)

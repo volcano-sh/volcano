@@ -309,3 +309,15 @@ func (sji *SubJobInfo) LeafSubJobCount() int32 {
 	}
 	return count
 }
+
+// GetMinResources The current sub job is constrained to gang scheduling,
+// where the MinAvailable of a sub job equals the size of itself.
+// so the minimum required resource to run a sub job can be considered as
+// the total initResReq of each pending task in the sub job.
+func (sji *SubJobInfo) GetMinResources() *Resource {
+	totalResource := EmptyResource()
+	for _, task := range sji.TaskStatusIndex[Pending] {
+		totalResource.Add(task.InitResreq)
+	}
+	return totalResource
+}

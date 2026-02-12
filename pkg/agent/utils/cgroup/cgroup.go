@@ -59,10 +59,6 @@ const (
 	CPUQuotaBurstFile string = "cpu.cfs_burst_us"
 	CPUQuotaTotalFile string = "cpu.cfs_quota_us"
 
-	MemoryUsageFile    string = "memory.stat"
-	MemoryQoSLevelFile string = "memory.qos_level"
-	MemoryLimitFile    string = "memory.limit_in_bytes"
-
 	NetCLSFileName string = "net_cls.classid"
 
 	CPUShareFileName string = "cpu.shares"
@@ -74,12 +70,7 @@ const (
 	CPUQuotaBurstFileV2 string = "cpu.max.burst"
 	CPUQuotaTotalFileV2 string = "cpu.max"
 	CPUIdleFileV2       string = "cpu.idle"
-
-	MemoryUsageFileV2 string = "memory.stat"
-	MemoryHighFileV2  string = "memory.high"
-	MemoryLowFileV2   string = "memory.low"
-	MemoryMinFileV2   string = "memory.min"
-	MemoryMaxFileV2   string = "memory.max"
+	CPUQuotaMin         int64  = 1000
 
 	// Cgroup version constants
 	CgroupV1 string = "v1"
@@ -99,6 +90,10 @@ type CgroupManager interface {
 	GetQoSCgroupPath(qos corev1.PodQOSClass, cgroupSubsystem CgroupSubsystem) (string, error)
 	GetPodCgroupPath(qos corev1.PodQOSClass, cgroupSubsystem CgroupSubsystem, podUID types.UID) (string, error)
 	GetCgroupVersion() string
+	// BuildContainerCgroupName converts a container ID to the cgroup directory name
+	BuildContainerCgroupName(containerID string) string
+
+	Memory() MemorySubsystem
 }
 
 type CgroupManagerImpl struct {
@@ -113,6 +108,8 @@ type CgroupManagerImpl struct {
 
 	// cgroupVersion indicates the cgroup version (v1 or v2)
 	cgroupVersion string
+
+	memory MemorySubsystem
 }
 
 // GetCgroupDriver gets the cgroup driver from multiple sources in order of priority
@@ -440,6 +437,7 @@ func NewCgroupManager(cgroupDriver, cgroupRoot, kubeCgroupRoot string) CgroupMan
 		cgroupRoot:     cgroupRoot,
 		kubeCgroupRoot: kubeCgroupRoot,
 		cgroupVersion:  cgroupVersion,
+		memory:         NewMemorySubsystem(cgroupVersion),
 	}
 }
 
@@ -499,6 +497,45 @@ func (c *CgroupManagerImpl) GetPodCgroupPath(qos corev1.PodQOSClass, cgroupSubsy
 	}
 
 	return c.buildCgroupPath(cgroupSubsystem, cgroupPath), nil
+}
+
+// BuildContainerCgroupName converts a container ID (with runtime prefix) to the cgroup directory name
+// For cgroupfs driver: returns the pure container ID
+// For systemd driver: returns formatted scope name (e.g., "cri-containerd-{id}.scope")
+func (c *CgroupManagerImpl) BuildContainerCgroupName(containerID string) string {
+	// Parse runtime type and ID from "runtime://id" format
+	var runtime, id string
+	parts := strings.SplitN(containerID, "://", 2)
+	if len(parts) == 2 {
+		runtime = parts[0]
+		id = parts[1]
+	} else {
+		// If no runtime prefix, assume it's already a pure ID
+		id = containerID
+		runtime = ""
+	}
+
+	// For cgroupfs driver, return pure container ID
+	if c.cgroupDriver == CgroupDriverCgroupfs {
+		return id
+	}
+
+	// For systemd driver, format as scope name based on runtime
+	switch runtime {
+	case "containerd":
+		return fmt.Sprintf("cri-containerd-%s.scope", id)
+	case "docker":
+		return fmt.Sprintf("docker-%s.scope", id)
+	case "cri-o":
+		return fmt.Sprintf("crio-%s.scope", id)
+	default:
+		// Fallback: for unknown runtime, return pure container ID
+		return id
+	}
+}
+
+func (c *CgroupManagerImpl) Memory() MemorySubsystem {
+	return c.memory
 }
 
 // buildCgroupPath constructs the final cgroup path based on cgroup version

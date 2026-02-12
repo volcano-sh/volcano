@@ -19,13 +19,14 @@ package nodemonitor
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/util/workqueue"
-
 	"volcano.sh/volcano/pkg/agent/apis"
 	"volcano.sh/volcano/pkg/agent/events/framework"
 	"volcano.sh/volcano/pkg/agent/oversubscription/policy"
@@ -115,9 +116,10 @@ func Test_monitor_detect(t *testing.T) {
 					return false
 				},
 			}}
-			queue := workqueue.NewNamedRateLimitingQueue(nil, "test")
+			factory := &framework.EventQueueFactory{Queues: map[string]*framework.EventQueue{}}
+			queue := factory.EventQueue(string(framework.NodeMonitorEventName)).GetQueue()
 			m := &monitor{
-				queue:                   queue,
+				eventQueueFactory:       factory,
 				Configuration:           cfg,
 				Interface:               tt.policy(cfg, nil, nil),
 				highUsageCountByResName: tt.highUsageCountByResName,
@@ -126,7 +128,7 @@ func Test_monitor_detect(t *testing.T) {
 				getPodsFunc:             tt.getPodsFunc,
 				usageGetter:             tt.usageGetter,
 			}
-			m.detect()
+			m.detectEviction()
 			assert.Equalf(t, tt.expectedLen, queue.Len(), "detect()")
 			if queue.Len() != 0 {
 				key, shutdown := queue.Get()
@@ -148,4 +150,116 @@ func Test_monitor_detect(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_monitor_detectCPUQuota(t *testing.T) {
+	tests := []struct {
+		name                   string
+		cpuThrottlingThreshold int
+		cpuJitterLimitPercent  int
+		cpuRecoverLimitPercent int
+		initCPUQuotaMilli      int64
+		cpuUsageMilli          int64
+		expectedEventCount     int
+		expectedQuotaMilli     int64
+	}{
+		{
+			name:                   "emit quota on first sample",
+			cpuThrottlingThreshold: 80,
+			cpuJitterLimitPercent:  1,
+			cpuRecoverLimitPercent: 10,
+			initCPUQuotaMilli:      -1,
+			cpuUsageMilli:          200,
+			expectedEventCount:     1,
+			expectedQuotaMilli:     600,
+		},
+		{
+			name:                   "skip emit within jitter limit",
+			cpuThrottlingThreshold: 80,
+			cpuJitterLimitPercent:  10,
+			cpuRecoverLimitPercent: 10,
+			initCPUQuotaMilli:      600,
+			cpuUsageMilli:          210,
+			expectedEventCount:     0,
+		},
+		{
+			name:                   "quota floored at zero",
+			cpuThrottlingThreshold: 80,
+			cpuJitterLimitPercent:  1,
+			cpuRecoverLimitPercent: 10,
+			initCPUQuotaMilli:      -1,
+			cpuUsageMilli:          900,
+			expectedEventCount:     1,
+			expectedQuotaMilli:     0,
+		},
+		{
+			name:                   "limit quota recovery increase",
+			cpuThrottlingThreshold: 80,
+			cpuJitterLimitPercent:  1,
+			cpuRecoverLimitPercent: 10,
+			initCPUQuotaMilli:      400,
+			cpuUsageMilli:          100,
+			expectedEventCount:     1,
+			expectedQuotaMilli:     440,
+		},
+		{
+			name:                   "skip when throttling disabled",
+			cpuThrottlingThreshold: 0,
+			cpuUsageMilli:          200,
+			expectedEventCount:     0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeNode, err := makeNodeWithAllocatable("1000m")
+			assert.NoError(t, err)
+			fakeClient := fakeclientset.NewSimpleClientset(fakeNode)
+			cfg := &config.Configuration{GenericConfiguration: &config.VolcanoAgentConfiguration{
+				KubeClient:   fakeClient,
+				KubeNodeName: "test-node",
+				NodeHasSynced: func() bool {
+					return false
+				},
+			}}
+			factory := &framework.EventQueueFactory{Queues: map[string]*framework.EventQueue{}}
+			queue := factory.EventQueue(string(framework.NodeCPUThrottleEventName)).GetQueue()
+
+			m := &monitor{
+				Configuration:          cfg,
+				eventQueueFactory:      factory,
+				getNodeFunc:            func() (*v1.Node, error) { return fakeNode, nil },
+				usageGetter:            resourceusage.NewFakeResourceGetter(tt.cpuUsageMilli, 0, 0, 0),
+				cpuThrottlingThreshold: tt.cpuThrottlingThreshold,
+				cpuJitterLimitPercent:  tt.cpuJitterLimitPercent,
+				cpuRecoverLimitPercent: tt.cpuRecoverLimitPercent,
+				lastCPUQuotaMilli:      tt.initCPUQuotaMilli,
+			}
+
+			m.detectCPUQuota()
+
+			assert.Equal(t, tt.expectedEventCount, queue.Len(), "unexpected event count")
+			if tt.expectedEventCount > 0 {
+				key, shutdown := queue.Get()
+				assert.False(t, shutdown, "queue should not be shutdown")
+
+				event, ok := key.(framework.NodeCPUThrottleEvent)
+				assert.True(t, ok, "event should be NodeCPUThrottleEvent")
+				assert.Equal(t, v1.ResourceCPU, event.Resource, "unexpected event resource")
+				assert.Equal(t, tt.expectedQuotaMilli, event.CPUQuotaMilli, "unexpected event quota")
+				assert.True(t, time.Since(event.TimeStamp) < time.Second, "event timestamp should be recent")
+			}
+		})
+	}
+}
+
+func makeNodeWithAllocatable(cpu string) (*v1.Node, error) {
+	node, err := makeNode()
+	if err != nil {
+		return nil, err
+	}
+	node.Status.Allocatable = v1.ResourceList{
+		v1.ResourceCPU: resource.MustParse(cpu),
+	}
+	return node, nil
 }

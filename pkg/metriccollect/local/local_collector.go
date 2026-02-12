@@ -35,6 +35,7 @@ type LocalMetricInfo struct {
 	ResourceType          string
 	IncludeGuaranteedPods bool
 	IncludeSystemUsed     bool
+	IncludeBestEffortPods bool
 }
 
 type SubCollector interface {

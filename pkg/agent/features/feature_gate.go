@@ -71,6 +71,12 @@ func (f *featureGate) Enabled(key Feature, c *api.ColocationConfig) (bool, error
 		}
 		return (nodeColocationEnabled || nodeOverSubscriptionEnabled) && *c.MemoryQosConfig.Enable, nil
 
+	case MemoryQoSV2Feature:
+		if c.MemoryQosV2Config == nil || c.MemoryQosV2Config.Enable == nil {
+			return false, fmt.Errorf("nil memory qos v2 config")
+		}
+		return (nodeColocationEnabled || nodeOverSubscriptionEnabled) && *c.MemoryQosV2Config.Enable, nil
+
 	case NetworkQoSFeature:
 		if c.NetworkQosConfig == nil || c.NetworkQosConfig.Enable == nil {
 			return false, fmt.Errorf("nil memory qos config")
@@ -85,6 +91,11 @@ func (f *featureGate) Enabled(key Feature, c *api.ColocationConfig) (bool, error
 	case EvictionFeature, ResourcesFeature:
 		// Always return true because eviction manager need take care of all nodes.
 		return true, nil
+	case CPUThrottleFeature:
+		if c.CPUThrottlingConfig == nil || c.CPUThrottlingConfig.Enable == nil {
+			return false, fmt.Errorf("nil cpuThrottling config")
+		}
+		return nodeOverSubscriptionEnabled && *c.CPUThrottlingConfig.Enable, nil
 	default:
 		return false, fmt.Errorf("unsupported feature %s", string(key))
 	}

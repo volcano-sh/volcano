@@ -838,17 +838,21 @@ Used to score and rank multiple candidate HyperNodes for a SubJob, aiding the sc
 
 Computes a bin-packing score: the higher the HyperNode resource utilization, the higher the score.
 
-#### New Implementation For "NodeOrderFn"
+#### New Implementation For "BatchNodeOrderFn"
+
+Used to score and rank multiple candidate nodes for a task, aiding the scheduler in choosing the best placement.
 
 **Implementation In Plugin "network-topology-aware"**
 
-Closest tiers have higher score.
+For tasks with network topology constraints, nodes belonging to the same hypernode at the lower tier get higher scores. The implementation details are as follows:
 
 1. To score all nodes, we need to first obtain the HyperNode to which the node belongs and the `AllocatedHyperNode` of the SubJob to which the task belongs.
 2. If a SubJob is being scheduled for the very first time, candidate hypernodes that need to be scored will get a score of 0 and then return right away. The name of the HyperNode where the SubJob eventually gets scheduled successfully will be recorded at the `AllocatedHyperNode` field in `TaskInfo`.
 3. If it is not the first scheduling of a SubJob, calculate the LCAHyperNode (Lowest Common Ancestor HyperNode) between candidate hypernodes(In the Allocate process, the system will calculate whether the LCAHyperNode tier of the hyperNode meets the Hard limit. If it doesn't, the hyperNode will be filtered out.) that need to be scored and the `AllocatedHyperNode` of the SubJob. The lower the tier of the calculated LCAHyperNode, the higher the score. If there is only one highest score, return the scoring result.
 4. If there is more than one HyperNode with the highest score in the scoring result of step 2, calculate the distribution of the tasks that have been successfully scheduled for the SubJob among these HyperNodes. The greater the distribution quantity, the higher the score.
 5. The HyperNode that is successfully scheduled in the end in steps 3 and 4 will also be recorded as the `AllocatedHyperNode` attribute of the SubJob.
+
+For tasks without network topology constraints, nodes belonging to hypernodes with the higher comprehensive resource utilization get higher scores. Here, only the resources both requested by the task and watched by the plugin are considered to calculate the score, with different weights specified by the plugin arguments. Moreover, the tiers of hypernodes are also taken into account and the tier weights can be controlled by the plugin arguments.
 
 #### New Function "SubJobReadyFn" And "SubJobPipelinedFn"
 

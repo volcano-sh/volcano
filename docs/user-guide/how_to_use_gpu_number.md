@@ -160,6 +160,6 @@ annotations:
 
 ```yaml
 env:
-  NVIDIA_VISIBLE_DEVICES: “0” # GPU card index
-  VOLCANO_GPU_ALLOCATED: “1” # GPU number allocated
+  NVIDIA_VISIBLE_DEVICES: "0" # GPU card index
+  VOLCANO_GPU_ALLOCATED: "1" # GPU number allocated
 ```

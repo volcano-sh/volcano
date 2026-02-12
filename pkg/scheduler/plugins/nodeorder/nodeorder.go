@@ -273,21 +273,39 @@ func (pp *NodeOrderPlugin) InitPlugin() {
 		}
 	}
 
-	plArgs := &config.InterPodAffinityArgs{}
-	p, _ := interpodaffinity.New(context.TODO(), plArgs, pp.Handle, fts)
-	interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
-	scorePlugins[interpodaffinity.Name] = interPodAffinity
-
-	p, _ = tainttoleration.New(context.TODO(), nil, pp.Handle, fts)
-	taintToleration := p.(*tainttoleration.TaintToleration)
-	scorePlugins[tainttoleration.Name] = taintToleration
-
-	ptsArgs := &config.PodTopologySpreadArgs{
-		DefaultingType: config.SystemDefaulting,
+	// 6. InterPodAffinity
+	if pp.weight.podAffinityWeight != 0 {
+		plArgs := &config.InterPodAffinityArgs{}
+		if p, err := interpodaffinity.New(context.TODO(), plArgs, pp.Handle, fts); err == nil {
+			interPodAffinity := p.(*interpodaffinity.InterPodAffinity)
+			scorePlugins[interpodaffinity.Name] = interPodAffinity
+		} else {
+			klog.Errorf("Failed to init InterPodAffinity plugin %v", err)
+		}
 	}
-	p, _ = podtopologyspread.New(context.TODO(), ptsArgs, pp.Handle, fts)
-	podTopologySpread := p.(*podtopologyspread.PodTopologySpread)
-	scorePlugins[podtopologyspread.Name] = podTopologySpread
+
+	// 7. TaintToleration
+	if pp.weight.taintTolerationWeight != 0 {
+		if p, err := tainttoleration.New(context.TODO(), nil, pp.Handle, fts); err == nil {
+			taintToleration := p.(*tainttoleration.TaintToleration)
+			scorePlugins[tainttoleration.Name] = taintToleration
+		} else {
+			klog.Errorf("Failed to init TaintToleration plugin %v", err)
+		}
+	}
+
+	// 8. PodTopologySpread
+	if pp.weight.podTopologySpreadWeight != 0 {
+		ptsArgs := &config.PodTopologySpreadArgs{
+			DefaultingType: config.SystemDefaulting,
+		}
+		if p, err := podtopologyspread.New(context.TODO(), ptsArgs, pp.Handle, fts); err == nil {
+			podTopologySpread := p.(*podtopologyspread.PodTopologySpread)
+			scorePlugins[podtopologyspread.Name] = podTopologySpread
+		} else {
+			klog.Errorf("Failed to init PodTopologySpread plugin %v", err)
+		}
+	}
 
 	pp.NodeOrderScorePlugins = nodeOrderScorePlugins
 	pp.ScorePlugins = scorePlugins
@@ -322,23 +340,43 @@ func (pp *NodeOrderPlugin) BatchNodeOrderFn(task *api.TaskInfo, nodeInfo []*api.
 	}
 	nodeScores := make(map[string]float64, len(nodes))
 
-	podAffinityScores, podErr := interPodAffinityScore(pp.ScorePlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity), state, task.Pod, nodeInfos, pp.weight.podAffinityWeight)
-	if podErr != nil {
-		return nil, podErr
+	var podAffinityScores map[string]float64
+	var err error
+	if pp.ScorePlugins[interpodaffinity.Name] != nil {
+		podAffinityScores, err = interPodAffinityScore(pp.ScorePlugins[interpodaffinity.Name].(*interpodaffinity.InterPodAffinity), state, task.Pod, nodeInfos, pp.weight.podAffinityWeight)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	nodeTolerationScores, err := taintTolerationScore(pp.ScorePlugins[tainttoleration.Name].(*tainttoleration.TaintToleration), state, task.Pod, nodeInfos, pp.weight.taintTolerationWeight)
-	if err != nil {
-		return nil, err
+	var nodeTolerationScores map[string]float64
+	if pp.ScorePlugins[tainttoleration.Name] != nil {
+		nodeTolerationScores, err = taintTolerationScore(pp.ScorePlugins[tainttoleration.Name].(*tainttoleration.TaintToleration), state, task.Pod, nodeInfos, pp.weight.taintTolerationWeight)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	podTopologySpreadScores, err := podTopologySpreadScore(pp.ScorePlugins[podtopologyspread.Name].(*podtopologyspread.PodTopologySpread), state, task.Pod, nodeInfos, pp.weight.podTopologySpreadWeight)
-	if err != nil {
-		return nil, err
+	var podTopologySpreadScores map[string]float64
+	if pp.ScorePlugins[podtopologyspread.Name] != nil {
+		podTopologySpreadScores, err = podTopologySpreadScore(pp.ScorePlugins[podtopologyspread.Name].(*podtopologyspread.PodTopologySpread), state, task.Pod, nodeInfos, pp.weight.podTopologySpreadWeight)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	for _, node := range nodes {
-		nodeScores[node.Name] = podAffinityScores[node.Name] + nodeTolerationScores[node.Name] + podTopologySpreadScores[node.Name]
+		score := 0.0
+		if podAffinityScores != nil {
+			score += podAffinityScores[node.Name]
+		}
+		if nodeTolerationScores != nil {
+			score += nodeTolerationScores[node.Name]
+		}
+		if podTopologySpreadScores != nil {
+			score += podTopologySpreadScores[node.Name]
+		}
+		nodeScores[node.Name] = score
 	}
 
 	klog.V(4).Infof("Batch Total Score for task %s/%s is: %v", task.Namespace, task.Name, nodeScores)

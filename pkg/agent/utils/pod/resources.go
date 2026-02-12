@@ -19,7 +19,6 @@ package pod
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
@@ -59,7 +58,7 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 	memoryLimitsDeclared := true
 	// TODO: support init containers.
 	for _, c := range pod.Spec.Containers {
-		id := findContainerIDByName(pod, c.Name)
+		id := FindContainerIDByName(pod, c.Name)
 		// set cpu share.
 		cpuReq, ok := c.Resources.Requests[apis.GetExtendResourceCPU()]
 		if ok && !cpuReq.IsZero() {
@@ -88,38 +87,35 @@ func CalculateExtendResources(pod *v1.Pod) []Resources {
 		}
 	}
 
-	// set pod level cgroup, container id="".
-	if cpuSharesTotal == 0 {
-		cpuSharesTotal = minShares
+	// pod didn't request any extend resources, skip setting cgroup.
+	if len(containerRes) == 0 {
+		return containerRes
 	}
 
-	// pod didn't request any extend resources, skip setting cgroup.
-	if cpuLimitsTotal == 0 && !cpuLimitsDeclared && !memoryLimitsDeclared {
-		return containerRes
+	if cpuSharesTotal == 0 {
+		// Align with min cpu share value in kubelet.
+		cpuSharesTotal = minShares
 	}
 
 	containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUShareFileName, Value: cpuSharesTotal})
 
-	// pod level should not set limit when exits one container has no cpu limit.
+	// pod level should not set limit when exists one container has no cpu limit.
 	if cpuLimitsDeclared {
 		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupCpuSubsystem, SubPath: cgroup.CPUQuotaTotalFile, Value: cpuLimitsTotal})
 	}
-	// pod level should not set limit when exits one container has no memory limit.
+	// pod level should not set limit when exists one container has no memory limit.
 	if memoryLimitsDeclared {
 		containerRes = append(containerRes, Resources{CgroupSubSystem: cgroup.CgroupMemorySubsystem, SubPath: cgroup.MemoryLimitFile, Value: memoryLimitsTotal})
 	}
 	return containerRes
 }
 
-func findContainerIDByName(pod *v1.Pod, name string) string {
+func FindContainerIDByName(pod *v1.Pod, name string) string {
 	for _, status := range pod.Status.ContainerStatuses {
 		if status.Name == name {
-			parts := strings.Split(status.ContainerID, "://")
-			if len(parts) != 2 {
-				klog.ErrorS(nil, "Failed to get container id", "name", name)
-				return ""
-			}
-			return parts[1]
+			// Return the full container ID with runtime prefix (e.g., "containerd://xxx")
+			// This is needed for BuildContainerCgroupName to identify the runtime type
+			return status.ContainerID
 		}
 	}
 	return ""
@@ -164,7 +160,7 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 	memoryLimitsDeclared := true
 
 	for _, c := range pod.Spec.Containers {
-		id := findContainerIDByName(pod, c.Name)
+		id := FindContainerIDByName(pod, c.Name)
 		cpuReq, ok := c.Resources.Requests[apis.GetExtendResourceCPU()]
 		if ok && !cpuReq.IsZero() {
 			cpuWeight := int64(milliCPUToWeight(cpuReq.Value()))
@@ -258,7 +254,14 @@ func CalculateExtendResourcesV2(pod *v1.Pod) []Resources {
 			memoryLimitsDeclared = false
 		}
 	}
+
+	// pod didn't request any extend resources, skip setting cgroup.
+	if len(containerRes) == 0 {
+		return containerRes
+	}
+
 	if cpuWeightTotal == 0 {
+		// Align with min cpu share value in kubelet.
 		cpuWeightTotal = 100
 	}
 
