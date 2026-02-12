@@ -34,20 +34,16 @@ var (
 
 // PrintVersionAndExit prints versions from the array returned by Info() and exit.
 func PrintVersionAndExit() {
-	for _, line := range GetInfo() {
+	for _, line := range Info() {
 		fmt.Println(line)
 	}
 	os.Exit(0)
 }
 
 // Info returns an array of various service versions.
-func Info(apiVersion string) []string {
-	return GetInfo()
-}
-
-func GetInfo() []string {
+func Info() []string {
 	return []string{
-		fmt.Sprintf("API Version: %s", apiVersion), // 假设 apiVersion 已经在包级别定义了
+		fmt.Sprintf("API Version: %s", apiVersion),
 		fmt.Sprintf("Version: %s", Version),
 		fmt.Sprintf("Git SHA: %s", GitSHA),
 		fmt.Sprintf("Built At: %s", Built),
