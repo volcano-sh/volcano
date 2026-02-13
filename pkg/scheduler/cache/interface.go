@@ -58,6 +58,10 @@ type Cache interface {
 	// Evict evicts the task to release resources.
 	Evict(task *api.TaskInfo, reason string) error
 
+	// Pipeline pipelines Task to the target host, which means the task is expected to be scheduled
+	// to the target host in one of the next scheduling cycles.
+	Pipeline(task *api.TaskInfo, nodeName string) error
+
 	// RecordJobStatusEvent records related events according to job status.
 	// Deprecated: remove it after removed PDB support.
 	RecordJobStatusEvent(job *api.JobInfo, updatePG bool)
