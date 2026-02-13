@@ -69,7 +69,7 @@ func (s *Statement) Operations() []operation {
 }
 
 // Evict the pod
-func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
+func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) {
 	// Update status in session
 	if job, found := s.ssn.Jobs[reclaimee.Job]; found {
 		job.UpdateTaskStatus(reclaimee, api.Releasing)
@@ -97,7 +97,6 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 		reason: reason,
 	})
 
-	return nil
 }
 
 func (s *Statement) evict(reclaimee *api.TaskInfo, reason string) error {
@@ -422,11 +421,7 @@ func (s *Statement) RecoverOperations(stmt *Statement) error {
 	for _, op := range stmt.operations {
 		switch op.name {
 		case Evict:
-			err := s.Evict(op.task, op.reason)
-			if err != nil {
-				klog.Errorf("Failed to evict task: %s", err.Error())
-				return err
-			}
+			s.Evict(op.task, op.reason)
 		case Pipeline:
 			err := s.Pipeline(op.task, op.task.NodeName, false)
 			if err != nil {
