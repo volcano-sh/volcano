@@ -140,6 +140,71 @@ func TestColocationConfigValidate(t *testing.T) {
 			},
 			expectedErr: []error{errors.New(EvictingCPULowWatermarkHigherThanHighWatermark), errors.New(EvictingMemoryLowWatermarkHigherThanHighWatermark)},
 		},
+
+		{
+			name: "illegal EvictingConfig && negative monitorInterval",
+			colocationCfg: &ColocationConfig{
+				EvictingConfig: &Evicting{
+					MonitorInterval: utilpointer.Int(-10),
+				},
+			},
+			expectedErr: []error{errors.New(IllegalMonitorInterval)},
+		},
+
+		{
+			name: "illegal EvictingConfig && zero monitorInterval",
+			colocationCfg: &ColocationConfig{
+				EvictingConfig: &Evicting{
+					MonitorInterval: utilpointer.Int(0),
+				},
+			},
+			expectedErr: []error{errors.New(IllegalMonitorInterval)},
+		},
+
+		{
+			name: "illegal EvictingConfig && negative highUsageCountLimit",
+			colocationCfg: &ColocationConfig{
+				EvictingConfig: &Evicting{
+					HighUsageCountLimit: utilpointer.Int(-6),
+				},
+			},
+			expectedErr: []error{errors.New(IllegalHighUsageCountLimit)},
+		},
+
+		{
+			name: "illegal EvictingConfig && zero highUsageCountLimit",
+			colocationCfg: &ColocationConfig{
+				EvictingConfig: &Evicting{
+					HighUsageCountLimit: utilpointer.Int(0),
+				},
+			},
+			expectedErr: []error{errors.New(IllegalHighUsageCountLimit)},
+		},
+
+		{
+			name: "illegal EvictingConfig && both monitorInterval and highUsageCountLimit negative",
+			colocationCfg: &ColocationConfig{
+				EvictingConfig: &Evicting{
+					MonitorInterval:     utilpointer.Int(-10),
+					HighUsageCountLimit: utilpointer.Int(-6),
+				},
+			},
+			expectedErr: []error{errors.New(IllegalMonitorInterval), errors.New(IllegalHighUsageCountLimit)},
+		},
+
+		{
+			name: "legal EvictingConfig with valid monitorInterval and highUsageCountLimit",
+			colocationCfg: &ColocationConfig{
+				EvictingConfig: &Evicting{
+					EvictingCPUHighWatermark:    utilpointer.Int(80),
+					EvictingMemoryHighWatermark: utilpointer.Int(60),
+					EvictingCPULowWatermark:     utilpointer.Int(30),
+					EvictingMemoryLowWatermark:  utilpointer.Int(30),
+					MonitorInterval:             utilpointer.Int(10),
+					HighUsageCountLimit:         utilpointer.Int(6),
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
