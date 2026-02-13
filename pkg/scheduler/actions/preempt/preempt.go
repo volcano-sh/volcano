@@ -494,11 +494,7 @@ func (pmpt *Action) topologyAwarePreempt(
 	// after the entire preemption attempt (evictions + pipeline) succeeds.
 	tmpStmt := framework.NewStatement(ssn)
 
-	if status := prepareCandidate(bestCandidate, preemptor.Pod, tmpStmt, ssn); !status.IsSuccess() {
-		tmpStmt.Discard()
-		return false, fmt.Errorf("failed to prepare candidate: %v", status)
-	}
-
+	prepareCandidate(bestCandidate, preemptor.Pod, tmpStmt)
 	if err := tmpStmt.Pipeline(preemptor, bestCandidate.Name(), true); err != nil {
 		klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 			preemptor.Namespace, preemptor.Name, bestCandidate.Name())
@@ -536,7 +532,7 @@ func (pmpt *Action) findCandidates(preemptor *api.TaskInfo, filter func(*api.Tas
 }
 
 // prepareCandidate evicts the victim pods before nominating the selected candidate
-func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement, ssn *framework.Session) *api.Status {
+func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement) {
 	for _, victim := range c.Victims() {
 		klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
 			victim.Namespace, victim.Name, pod.Namespace, pod.Name)
@@ -544,8 +540,6 @@ func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement, ssn 
 	}
 
 	metrics.RegisterPreemptionAttempts()
-
-	return nil
 }
 
 // podTerminatingByPreemption returns true if the pod is in the termination state caused by preempt action.

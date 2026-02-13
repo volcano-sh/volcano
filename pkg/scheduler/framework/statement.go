@@ -96,7 +96,6 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) {
 		task:   reclaimee,
 		reason: reason,
 	})
-
 }
 
 func (s *Statement) evict(reclaimee *api.TaskInfo, reason string) error {

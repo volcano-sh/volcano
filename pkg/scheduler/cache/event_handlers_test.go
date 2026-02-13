@@ -17,6 +17,7 @@ limitations under the License.
 package cache
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"testing"
@@ -61,7 +62,7 @@ func TestSchedulerCache_updateTask(t *testing.T) {
 			Expected:    nil,
 		},
 		{
-			Name:   "No Error Case",
+			Name:   "Error Case",
 			OldPod: buildPod(namespace, "p1", "n1", v1.PodSucceeded, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			NewPod: buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "2G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
@@ -69,7 +70,7 @@ func TestSchedulerCache_updateTask(t *testing.T) {
 			},
 			OldTaskInfo: &api.TaskInfo{},
 			NewTaskInfo: &api.TaskInfo{},
-			Expected:    nil,
+			Expected:    fmt.Errorf("failed to find task <%s/%s> on host <%s>", namespace, "p1", "n1"),
 		},
 	}
 
@@ -117,13 +118,13 @@ func TestSchedulerCache_UpdatePod(t *testing.T) {
 			Expected: nil,
 		},
 		{
-			Name:   "No Error Case",
+			Name:   "Error Case",
 			OldPod: buildPod(namespace, "p1", "n1", v1.PodSucceeded, api.BuildResourceList("1000m", "1G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			NewPod: buildPod(namespace, "p1", "n1", v1.PodRunning, api.BuildResourceList("1000m", "2G"), []metav1.OwnerReference{owner}, make(map[string]string)),
 			Nodes: []*v1.Node{
 				buildNode("n1", api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...)),
 			},
-			Expected: nil,
+			Expected: fmt.Errorf("failed to find task <%s/%s> on host <%s>", namespace, "p1", "n1"),
 		},
 	}
 

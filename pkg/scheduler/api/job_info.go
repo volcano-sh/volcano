@@ -650,7 +650,6 @@ func (ji *JobInfo) UpdateTaskStatus(task *TaskInfo, status TaskStatus) {
 	// Update task's status to the target status once task addition is guaranteed to succeed.
 	task.Status = status
 	ji.AddTaskInfo(task)
-
 }
 
 func (ji *JobInfo) deleteTaskIndex(ti *TaskInfo) {
