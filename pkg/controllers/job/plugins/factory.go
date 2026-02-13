@@ -26,6 +26,7 @@ import (
 	"volcano.sh/volcano/pkg/controllers/job/plugins/distributed-framework/tensorflow"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/env"
 	pluginsinterface "volcano.sh/volcano/pkg/controllers/job/plugins/interface"
+	"volcano.sh/volcano/pkg/controllers/job/plugins/ringsconfigmap"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/ssh"
 	"volcano.sh/volcano/pkg/controllers/job/plugins/svc"
 )
@@ -39,6 +40,7 @@ func init() {
 	RegisterPluginBuilder("pytorch", pytorch.New)
 	RegisterPluginBuilder("hcclrank", hcclrank.New)
 	RegisterPluginBuilder("ray", ray.New)
+	RegisterPluginBuilder("ringsconfigmap", ringsconfigmap.New)
 }
 
 var pluginMutex sync.Mutex
