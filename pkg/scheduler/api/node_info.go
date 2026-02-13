@@ -486,16 +486,14 @@ func (ni *NodeInfo) AddTask(task *TaskInfo) error {
 }
 
 // RemoveTask used to remove a task from nodeInfo object.
-//
-// If error occurs both task and node are guaranteed to be in the original state.
-func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
+func (ni *NodeInfo) RemoveTask(ti *TaskInfo) {
 	key := PodKey(ti.Pod)
 
 	task, found := ni.Tasks[key]
 	if !found {
 		klog.Warningf("failed to find task <%v/%v> on host <%v>",
 			ti.Namespace, ti.Name, ni.Name)
-		return nil
+		return
 	}
 
 	if ni.Node != nil {
@@ -519,8 +517,6 @@ func (ni *NodeInfo) RemoveTask(ti *TaskInfo) error {
 	}
 
 	delete(ni.Tasks, key)
-
-	return nil
 }
 
 // addResource is used to add sharable devices
@@ -600,9 +596,7 @@ func (ni *NodeInfo) subResource(pod *v1.Pod) {
 //
 // If error occurs both task and node are guaranteed to be in the original state.
 func (ni *NodeInfo) UpdateTask(ti *TaskInfo) error {
-	if err := ni.RemoveTask(ti); err != nil {
-		return err
-	}
+	ni.RemoveTask(ti)
 
 	if err := ni.AddTask(ti); err != nil {
 		// This should never happen if task removal was successful,

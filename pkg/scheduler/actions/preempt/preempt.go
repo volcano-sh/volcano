@@ -735,10 +735,7 @@ func SelectVictimsOnNode(
 		if err != nil {
 			return err
 		}
-
-		if err := nodeInfo.RemoveTask(rti); err != nil {
-			return err
-		}
+		nodeInfo.RemoveTask(rti)
 		return nil
 	}
 
