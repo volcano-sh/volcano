@@ -476,9 +476,7 @@ func (pmpt *Action) topologyAwarePreempt(
 		return false, fmt.Errorf("no candidate node for preemption")
 	}
 
-	if status := prepareCandidate(bestCandidate, preemptor.Pod, stmt, ssn); !status.IsSuccess() {
-		return false, fmt.Errorf("failed to prepare candidate: %v", status)
-	}
+	prepareCandidate(bestCandidate, preemptor.Pod, stmt)
 
 	if err := stmt.Pipeline(preemptor, bestCandidate.Name(), true); err != nil {
 		klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
@@ -512,7 +510,7 @@ func (pmpt *Action) findCandidates(preemptor *api.TaskInfo, filter func(*api.Tas
 }
 
 // prepareCandidate evicts the victim pods before nominating the selected candidate
-func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement, ssn *framework.Session) *api.Status {
+func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement) {
 	for _, victim := range c.Victims() {
 		klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
 			victim.Namespace, victim.Name, pod.Namespace, pod.Name)
@@ -520,8 +518,6 @@ func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement, ssn 
 	}
 
 	metrics.RegisterPreemptionAttempts()
-
-	return nil
 }
 
 // podTerminatingByPreemption returns true if the pod is in the termination state caused by preempt action.
