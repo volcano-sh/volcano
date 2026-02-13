@@ -386,14 +386,7 @@ func (pmpt *Action) normalPreempt(
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
 			klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
-			if err := nodeStmt.Evict(preemptee, "preempt"); err != nil {
-				klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
-					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
-				if e := nodeStmt.UnEvict(preemptee); e != nil {
-					klog.Errorf("Failed to unevict task <%v/%v>: %v", preemptee.Namespace, preemptee.Name, e)
-				}
-				continue
-			}
+			nodeStmt.Evict(preemptee, "preempt")
 			preempted.Add(preemptee.Resreq)
 		}
 
@@ -547,14 +540,7 @@ func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement, ssn 
 	for _, victim := range c.Victims() {
 		klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
 			victim.Namespace, victim.Name, pod.Namespace, pod.Name)
-		if err := stmt.Evict(victim, "preempt"); err != nil {
-			klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
-				victim.Namespace, victim.Name, pod.Namespace, pod.Name, err)
-			if e := stmt.UnEvict(victim); e != nil {
-				klog.Errorf("Failed to unevict task <%v/%v>: %v", victim.Namespace, victim.Name, e)
-			}
-			return api.AsStatus(err)
-		}
+		stmt.Evict(victim, "preempt")
 	}
 
 	metrics.RegisterPreemptionAttempts()
