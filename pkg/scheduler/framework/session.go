@@ -753,11 +753,7 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	// Only update status in session
 	job, found := ssn.Jobs[task.Job]
 	if found {
-		if err := job.UpdateTaskStatus(task, api.Pipelined); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> status to %v when pipeline in Session <%v>: %v",
-				task.Namespace, task.Name, api.Pipelined, ssn.UID, err)
-			return err
-		}
+		job.UpdateTaskStatus(task, api.Pipelined)
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when pipeline.",
 			task.Job, ssn.UID)
@@ -799,11 +795,7 @@ func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 	// Only update status in session
 	job, found := ssn.Jobs[task.Job]
 	if found {
-		if err := job.UpdateTaskStatus(task, api.Allocated); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> status to %v when binding in Session <%v>: %v",
-				task.Namespace, task.Name, api.Allocated, ssn.UID, err)
-			return err
-		}
+		job.UpdateTaskStatus(task, api.Allocated)
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			task.Job, ssn.UID)
@@ -856,11 +848,7 @@ func (ssn *Session) dispatch(task *api.TaskInfo) error {
 
 	// Update status in session
 	if job, found := ssn.Jobs[task.Job]; found {
-		if err := job.UpdateTaskStatus(task, api.Binding); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> status to %v when binding in Session <%v>: %v",
-				task.Namespace, task.Name, api.Binding, ssn.UID, err)
-			return err
-		}
+		job.UpdateTaskStatus(task, api.Binding)
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			task.Job, ssn.UID)
@@ -932,11 +920,7 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session
 	job, found := ssn.Jobs[reclaimee.Job]
 	if found {
-		if err := job.UpdateTaskStatus(reclaimee, api.Releasing); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> status to %v when evicting in Session <%v>: %v",
-				reclaimee.Namespace, reclaimee.Name, api.Releasing, ssn.UID, err)
-			return err
-		}
+		job.UpdateTaskStatus(reclaimee, api.Releasing)
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when evicting.",
 			reclaimee.Job, ssn.UID)

@@ -900,20 +900,13 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	}
 
 	originalStatus := task.Status
-	if err := job.UpdateTaskStatus(task, schedulingapi.Releasing); err != nil {
-		return err
-	}
+	job.UpdateTaskStatus(task, schedulingapi.Releasing)
 
 	// Add new task to node.
 	if err := node.UpdateTask(task); err != nil {
 		// After failing to update task to a node we need to revert task status from Releasing,
 		// otherwise task might be stuck in the Releasing state indefinitely.
-		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
-			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
-				"from %s to %s after failing to update Task on Node <%s>: %v",
-				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
-			sc.resyncTask(task)
-		}
+		job.UpdateTaskStatus(task, originalStatus)
 		return err
 	}
 
@@ -1299,9 +1292,7 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	}
 
 	originalStatus := task.Status
-	if err := job.UpdateTaskStatus(task, schedulingapi.Binding); err != nil {
-		return err
-	}
+	job.UpdateTaskStatus(task, schedulingapi.Binding)
 
 	err = bindContext.TaskInfo.SetPodResourceDecision()
 	if err != nil {
@@ -1313,12 +1304,7 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	if err := node.AddTask(task); err != nil {
 		// After failing to update task to a node we need to revert task status from Releasing,
 		// otherwise task might be stuck in the Releasing state indefinitely.
-		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
-			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
-				"from %s to %s after failing to update Task on Node <%s>: %v",
-				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
-			sc.resyncTask(task)
-		}
+		job.UpdateTaskStatus(task, originalStatus)
 		return err
 	}
 

@@ -72,10 +72,7 @@ func (s *Statement) Operations() []operation {
 func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 	// Update status in session
 	if job, found := s.ssn.Jobs[reclaimee.Job]; found {
-		if err := job.UpdateTaskStatus(reclaimee, api.Releasing); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> status to %v when evicting in Session <%v>: %v",
-				reclaimee.Namespace, reclaimee.Name, api.Releasing, s.ssn.UID, err)
-		}
+		job.UpdateTaskStatus(reclaimee, api.Releasing)
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when evicting.",
 			reclaimee.Job, s.ssn.UID)
@@ -123,10 +120,7 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 	// Update status in session
 	job, found := s.ssn.Jobs[reclaimee.Job]
 	if found {
-		if err := job.UpdateTaskStatus(reclaimee, api.Running); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> status to %v when unevicting in Session <%v>: %v",
-				reclaimee.Namespace, reclaimee.Name, api.Running, s.ssn.UID, err)
-		}
+		job.UpdateTaskStatus(reclaimee, api.Running)
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when unevicting.",
 			reclaimee.Job, s.ssn.UID)
@@ -158,11 +152,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 	errInfos := make([]error, 0)
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
-		if err := job.UpdateTaskStatus(task, api.Pipelined); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> status to %v when pipeline in Session <%v>: %v",
-				task.Namespace, task.Name, api.Pipelined, s.ssn.UID, err)
-			errInfos = append(errInfos, err)
-		}
+		job.UpdateTaskStatus(task, api.Pipelined)
 	} else {
 		err := fmt.Errorf("Failed to find Job <%s> in Session <%s> index when pipeline.",
 			task.Job, s.ssn.UID)
@@ -221,10 +211,7 @@ func (s *Statement) pipeline(task *api.TaskInfo) {
 func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
-		if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> status to %v when unpipeline in Session <%v>: %v",
-				task.Namespace, task.Name, api.Pending, s.ssn.UID, err)
-		}
+		job.UpdateTaskStatus(task, api.Pending)
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when unpipeline.", task.Job, s.ssn.UID)
 	}
@@ -265,11 +252,7 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 	// Only update status in session
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
-		if err := job.UpdateTaskStatus(task, api.Allocated); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> status to %v when allocating in Session <%v>: %v",
-				task.Namespace, task.Name, api.Allocated, s.ssn.UID, err)
-			errInfos = append(errInfos, err)
-		}
+		job.UpdateTaskStatus(task, api.Allocated)
 	} else {
 		err := fmt.Errorf("Failed to find Job <%s> in Session <%s> index when allocating.",
 			task.Job, s.ssn.UID)
@@ -335,11 +318,7 @@ func (s *Statement) allocate(task *api.TaskInfo) error {
 	}
 
 	if job, found := s.ssn.Jobs[task.Job]; found {
-		if err := job.UpdateTaskStatus(task, api.Binding); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> status to %v when binding in Session <%v>: %v",
-				task.Namespace, task.Name, api.Binding, s.ssn.UID, err)
-			return err
-		}
+		job.UpdateTaskStatus(task, api.Binding)
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when binding.",
 			task.Job, s.ssn.UID)
@@ -355,10 +334,7 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 	// Update status in session
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
-		if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> status to %v when unallocating in Session <%v>: %v",
-				task.Namespace, task.Name, api.Pending, s.ssn.UID, err)
-		}
+		job.UpdateTaskStatus(task, api.Pending)
 	} else {
 		klog.Errorf("Failed to find Job <%s> in Session <%s> index when unallocating.",
 			task.Job, s.ssn.UID)
