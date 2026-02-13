@@ -24,10 +24,18 @@ import (
 
 // DataSourceStatusApplyConfiguration represents a declarative configuration of the DataSourceStatus type for use
 // with apply.
+//
+// DataSourceStatus defines the observed state of DataSource.
 type DataSourceStatusApplyConfiguration struct {
-	ClaimRefs   []v1.ObjectReference                 `json:"claimRefs,omitempty"`
-	BoundClaims *int32                               `json:"boundClaims,omitempty"`
-	Conditions  []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
+	// ClaimRefs is a list of references to DataSourceClaims that are bound to this DataSource.
+	// The presence of items in this list indicates the DataSource is in use.
+	ClaimRefs []v1.ObjectReference `json:"claimRefs,omitempty"`
+	// BoundClaims counts the number of DataSourceClaims currently bound to this DataSource.
+	// This provides a quick summary of its usage.
+	BoundClaims *int32 `json:"boundClaims,omitempty"`
+	// Conditions store the available observations of the DataSource's state.
+	// This is more flexible than a single phase.
+	Conditions []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
 
 // DataSourceStatusApplyConfiguration constructs a declarative configuration of the DataSourceStatus type for use with

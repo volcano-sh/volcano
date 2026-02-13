@@ -25,6 +25,9 @@ import (
 
 // DataSourceApplyConfiguration represents a declarative configuration of the DataSource type for use
 // with apply.
+//
+// DataSource represents a cached query result for data sources in the federated environment.
+// It is a cluster-scoped resource.
 type DataSourceApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -41,6 +44,7 @@ func DataSource(name string) *DataSourceApplyConfiguration {
 	b.WithAPIVersion("datadependency.volcano.sh/v1alpha1")
 	return b
 }
+
 func (b DataSourceApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

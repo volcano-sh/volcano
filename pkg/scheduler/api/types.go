@@ -27,7 +27,6 @@ import (
 	"strings"
 
 	fwk "k8s.io/kube-scheduler/framework"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 // TaskStatus defines the status of a task/pod.
@@ -342,7 +341,7 @@ type BatchNodeOrderFn func(*TaskInfo, []*NodeInfo) (map[string]float64, error)
 type NodeMapFn func(*TaskInfo, *NodeInfo) (float64, error)
 
 // NodeReduceFn is the func declaration used to reduce priority score for a node for a particular task.
-type NodeReduceFn func(*TaskInfo, k8sframework.NodeScoreList) error
+type NodeReduceFn func(*TaskInfo, fwk.NodeScoreList) error
 
 // NodeOrderMapFn is the func declaration used to get priority score of all plugins for a node for a particular task.
 type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, error)
@@ -351,7 +350,7 @@ type NodeOrderMapFn func(*TaskInfo, *NodeInfo) (map[string]float64, float64, err
 type HyperNodeOrderMapFn func(*SubJobInfo, map[string][]*NodeInfo) (map[string]map[string]float64, error)
 
 // NodeOrderReduceFn is the func declaration used to reduce priority score of all nodes for a plugin for a particular task.
-type NodeOrderReduceFn func(*TaskInfo, map[string]k8sframework.NodeScoreList) (map[string]float64, error)
+type NodeOrderReduceFn func(*TaskInfo, map[string]fwk.NodeScoreList) (map[string]float64, error)
 
 // TargetJobFn is the func declaration used to select the target job satisfies some conditions
 type TargetJobFn func([]*JobInfo) *JobInfo

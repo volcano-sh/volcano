@@ -23,11 +23,20 @@ import (
 
 // NumatopoSpecApplyConfiguration represents a declarative configuration of the NumatopoSpec type for use
 // with apply.
+//
+// NumatopoSpec defines the desired state of Numatopology
 type NumatopoSpecApplyConfiguration struct {
-	Policies    map[nodeinfov1alpha1.PolicyName]string    `json:"policies,omitempty"`
-	ResReserved map[string]string                         `json:"resReserved,omitempty"`
-	NumaResMap  map[string]ResourceInfoApplyConfiguration `json:"numares,omitempty"`
-	CPUDetail   map[string]CPUInfoApplyConfiguration      `json:"cpuDetail,omitempty"`
+	// Specifies the policy of the manager
+	Policies map[nodeinfov1alpha1.PolicyName]string `json:"policies,omitempty"`
+	// Specifies the reserved resource of the node
+	// Key is resource name
+	ResReserved map[string]string `json:"resReserved,omitempty"`
+	// Specifies the numa info for the resource
+	// Key is resource name
+	NumaResMap map[string]ResourceInfoApplyConfiguration `json:"numares,omitempty"`
+	// Specifies the cpu topology info
+	// Key is cpu id
+	CPUDetail map[string]CPUInfoApplyConfiguration `json:"cpuDetail,omitempty"`
 }
 
 // NumatopoSpecApplyConfiguration constructs a declarative configuration of the NumatopoSpec type for use with

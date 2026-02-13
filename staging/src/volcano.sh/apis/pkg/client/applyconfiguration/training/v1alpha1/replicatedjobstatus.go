@@ -24,14 +24,22 @@ import (
 // ReplicatedJobStatusApplyConfiguration represents a declarative configuration of the ReplicatedJobStatus type for use
 // with apply.
 type ReplicatedJobStatusApplyConfiguration struct {
-	Name        *string                                             `json:"name,omitempty"`
-	JobStates   map[string]batchv1alpha1.JobStateApplyConfiguration `json:"jobStates,omitempty"`
-	Pending     *int32                                              `json:"pending,omitempty"`
-	Running     *int32                                              `json:"running,omitempty"`
-	Succeeded   *int32                                              `json:"succeeded,omitempty"`
-	Failed      *int32                                              `json:"failed,omitempty"`
-	Terminating *int32                                              `json:"terminating,omitempty"`
-	Unknown     *int32                                              `json:"unknown,omitempty"`
+	// Name of the replicated job.
+	Name *string `json:"name,omitempty"`
+	// JobStates stores the state of each volcano job created by the replicated job.
+	JobStates map[string]batchv1alpha1.JobStateApplyConfiguration `json:"jobStates,omitempty"`
+	// Pending is the total number of pods under the replicated job in pending state.
+	Pending *int32 `json:"pending,omitempty"`
+	// Running is the total number of pods under the replicated job in running state.
+	Running *int32 `json:"running,omitempty"`
+	// Succeeded is the total number of pods under the replicated job in succeeded state.
+	Succeeded *int32 `json:"succeeded,omitempty"`
+	// Failed is the total number of pods under the replicated job in failed state.
+	Failed *int32 `json:"failed,omitempty"`
+	// Terminating is the total number of pods under the replicated job in terminating state.
+	Terminating *int32 `json:"terminating,omitempty"`
+	// Unknown is the total number of pods under the replicated job in unknown state.
+	Unknown *int32 `json:"unknown,omitempty"`
 }
 
 // ReplicatedJobStatusApplyConfiguration constructs a declarative configuration of the ReplicatedJobStatus type for use with

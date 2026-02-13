@@ -23,8 +23,12 @@ import (
 
 // ReservationApplyConfiguration represents a declarative configuration of the Reservation type for use
 // with apply.
+//
+// Reservation represents current condition about resource reservation
 type ReservationApplyConfiguration struct {
-	Nodes    []string         `json:"nodes,omitempty"`
+	// Nodes are Locked nodes for queue
+	Nodes []string `json:"nodes,omitempty"`
+	// Resource is a list of total idle resource in locked nodes.
 	Resource *v1.ResourceList `json:"resource,omitempty"`
 }
 

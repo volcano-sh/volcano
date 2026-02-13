@@ -25,13 +25,19 @@ import (
 
 // CommandApplyConfiguration represents a declarative configuration of the Command type for use
 // with apply.
+//
+// Command defines command structure.
 type CommandApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Action                           *string                              `json:"action,omitempty"`
-	TargetObject                     *v1.OwnerReferenceApplyConfiguration `json:"target,omitempty"`
-	Reason                           *string                              `json:"reason,omitempty"`
-	Message                          *string                              `json:"message,omitempty"`
+	// Action defines the action that will be took to the target object.
+	Action *string `json:"action,omitempty"`
+	// TargetObject defines the target object of this command.
+	TargetObject *v1.OwnerReferenceApplyConfiguration `json:"target,omitempty"`
+	// Unique, one-word, CamelCase reason for this command.
+	Reason *string `json:"reason,omitempty"`
+	// Human-readable message indicating details of this command.
+	Message *string `json:"message,omitempty"`
 }
 
 // Command constructs a declarative configuration of the Command type for use with
@@ -44,6 +50,7 @@ func Command(name, namespace string) *CommandApplyConfiguration {
 	b.WithAPIVersion("bus.volcano.sh/v1alpha1")
 	return b
 }
+
 func (b CommandApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

@@ -19,11 +19,21 @@ package v1alpha1
 
 // WorkloadRefApplyConfiguration represents a declarative configuration of the WorkloadRef type for use
 // with apply.
+//
+// WorkloadRef defines a reference to a workload resource that can be used with Dynamic Client.
+// It provides the minimal fields needed to precisely identify and retrieve a workload.
 type WorkloadRefApplyConfiguration struct {
+	// APIVersion is the API version of the workload resource.
+	// e.g., "apps/v1", "batch.volcano.sh/v1alpha1"
 	APIVersion *string `json:"apiVersion,omitempty"`
-	Kind       *string `json:"kind,omitempty"`
-	Name       *string `json:"name,omitempty"`
-	Namespace  *string `json:"namespace,omitempty"`
+	// Kind is the kind of the workload resource.
+	// e.g., "Deployment", "Job"
+	Kind *string `json:"kind,omitempty"`
+	// Name is the name of the workload resource.
+	Name *string `json:"name,omitempty"`
+	// Namespace is the namespace of the workload resource.
+	// If empty, defaults to the namespace of the DataSourceClaim.
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // WorkloadRefApplyConfiguration constructs a declarative configuration of the WorkloadRef type for use with

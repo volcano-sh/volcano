@@ -23,8 +23,8 @@ import (
 	"errors"
 )
 
-func (t *TCCmd) PreAddFilter(netns, ifName string) error {
-	return errors.New("not implemented")
+func (t *TCCmd) PreAddFilter(netns, ifName string) (bool, error) {
+	return false, errors.New("not implemented")
 }
 
 func (t *TCCmd) AddFilter(netns, ifName string) error {
