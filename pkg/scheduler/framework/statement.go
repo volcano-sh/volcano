@@ -119,6 +119,13 @@ func (s *Statement) evict(reclaimee *api.TaskInfo, reason string) error {
 	return nil
 }
 
+// UnEvict reverses a prior Evict call for a single task, restoring the task's
+// Running status and node resources. Use this to clean up session state after
+// an individual eviction attempt fails (where the operation was not recorded).
+func (s *Statement) UnEvict(reclaimee *api.TaskInfo) error {
+	return s.unevict(reclaimee)
+}
+
 func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 	// Update status in session
 	job, found := s.ssn.Jobs[reclaimee.Job]
@@ -436,6 +443,19 @@ func (s *Statement) Commit() {
 				klog.Errorf("Failed to allocate task <%v/%v>: %v.", op.task.Namespace, op.task.Name, err)
 			}
 		}
+	}
+}
+
+// Merge transfers operations from the given statements into this statement.
+// The source statements share the same session, so their in-memory state changes
+// (evictions, pipelines) are already reflected in the session. Merge moves ownership
+// of those operation records so they will be committed or discarded with this statement.
+// After merging, source statements' operations are cleared to prevent double-commit or
+// double-discard.
+func (s *Statement) Merge(stmts ...*Statement) {
+	for _, stmt := range stmts {
+		s.operations = append(s.operations, stmt.operations...)
+		stmt.operations = nil
 	}
 }
 
