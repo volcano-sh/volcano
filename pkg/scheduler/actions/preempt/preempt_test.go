@@ -267,6 +267,32 @@ func TestPreempt(t *testing.T) {
 			ExpectEvictNum: 0,
 			ExpectEvicted:  []string{}, // no victims should be reclaimed
 		},
+		{
+			// Verify that evictions are rolled back when the preemptor cannot be
+			// allocated due to queue capacity limits. The node has plenty of idle
+			// resources (10 CPU), and victims are preemptable, so evictions will be
+			// attempted inside a temporary nodeStmt. However the preemptor requests
+			// 4 CPU while the queue capacity is only 3 CPU, so the Allocatable
+			// check fails after all victims have been evicted. The temporary
+			// statement is discarded and none of the evictions are committed.
+			Name: "rollback evictions when preemptor exceeds queue capacity after evicting victims",
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg1", "c1", "q1", 1, map[string]int32{"": 2}, schedulingv1beta1.PodGroupInqueue, "low-priority"),
+				util.BuildPodGroupWithPrio("pg2", "c1", "q1", 1, map[string]int32{"": 1}, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				util.BuildPod("c1", "preemptee1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptee2", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg1", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor1", "", v1.PodPending, api.BuildResourceList("4", "4G"), "pg2", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("10", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, api.BuildResourceList("3", "3G")),
+			},
+			ExpectEvictNum: 0,
+		},
 	}
 
 	trueValue := true

@@ -359,9 +359,10 @@ func (pmpt *Action) normalPreempt(
 			continue
 		}
 
-		// Use a temporary statement per node attempt so that eviction side effects
+		// Use a temporary statement per node attempt so that eviction operations
 		// are isolated. On success the operations are merged into the caller's
-		// statement; on failure they are discarded, leaving the session clean.
+		// statement; on failure they are discarded, so evictions are only committed
+		// when preemption succeeds.
 		nodeStmt := framework.NewStatement(ssn)
 
 		victimsQueue := ssn.BuildVictimsPriorityQueue(victims, preemptor)
