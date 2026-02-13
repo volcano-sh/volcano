@@ -113,11 +113,6 @@ func (np NodePhase) String() string {
 	return "Unknown"
 }
 
-// validateStatusUpdate validates whether the status transfer is valid.
-func validateStatusUpdate(oldStatus, newStatus TaskStatus) error {
-	return nil
-}
-
 // LessFn is the func declaration used by sort or priority queue.
 type LessFn func(interface{}, interface{}) bool
 

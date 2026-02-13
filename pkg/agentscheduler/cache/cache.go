@@ -748,10 +748,7 @@ func (sc *SchedulerCache) resyncTask(schedCtx *agentapi.SchedulingContext) {
 	if !ok {
 		klog.Warningf("Node %s not found for task %s/%s during resync", task.NodeName, task.Namespace, task.Name)
 	} else {
-		if err := node.info.RemoveTask(task); err != nil {
-			klog.ErrorS(err, "Failed to remove task from node during resync",
-				"task", klog.KRef(task.Namespace, task.Name), "node", task.NodeName)
-		}
+		node.info.RemoveTask(task)
 	}
 	sc.Mutex.Unlock()
 

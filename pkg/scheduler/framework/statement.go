@@ -230,10 +230,7 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 	}
 
 	if node, found := s.ssn.Nodes[task.NodeName]; found {
-		if err := node.RemoveTask(task); err != nil {
-			klog.Errorf("Failed to remove task <%v/%v> to node <%v> when unpipeline in Session <%v>: %v",
-				task.Namespace, task.Name, task.NodeName, s.ssn.UID, err)
-		}
+		node.RemoveTask(task)
 		klog.V(3).Infof("After unpipelined Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
@@ -260,7 +257,7 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 }
 
 // Allocate the task to node
-func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
+func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 	errInfos := make([]error, 0)
 	hostname := nodeInfo.Name
 	task.Pod.Spec.NodeName = hostname
@@ -369,10 +366,7 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 
 	if node, found := s.ssn.Nodes[task.NodeName]; found {
 		klog.V(3).Infof("Remove Task <%v> on node <%v>", task.Name, task.NodeName)
-		err := node.RemoveTask(task)
-		if err != nil {
-			klog.Errorf("Failed to remove Task <%v> on node <%v> when unallocating: %s", task.Name, task.NodeName, err.Error())
-		}
+		node.RemoveTask(task)
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
