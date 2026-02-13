@@ -37,7 +37,6 @@ import (
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/kubernetes/pkg/features"
 	"k8s.io/utils/ptr"
-
 	"volcano.sh/apis/pkg/apis/scheduling"
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	topologyv1alpha1 "volcano.sh/apis/pkg/apis/topology/v1alpha1"
@@ -51,6 +50,7 @@ import (
 	networktopologyaware "volcano.sh/volcano/pkg/scheduler/plugins/network-topology-aware"
 	"volcano.sh/volcano/pkg/scheduler/plugins/nodeorder"
 	"volcano.sh/volcano/pkg/scheduler/plugins/predicates"
+	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
 	"volcano.sh/volcano/pkg/scheduler/plugins/proportion"
 	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
@@ -2800,6 +2800,7 @@ func drain(q *util.PriorityQueue) []interface{} {
 }
 
 func TestWorksheetShallowCopy(t *testing.T) {
+	// Test JobWorksheet shallow copy
 	w1 := &JobWorksheet{
 		subJobs:          util.NewPriorityQueue(lessFn),
 		subJobWorksheets: make(map[api.SubJobID]*SubJobWorksheet),
@@ -2814,37 +2815,165 @@ func TestWorksheetShallowCopy(t *testing.T) {
 		t.Errorf("Expected w1 to be equal to w2 after shallow copy, but they are not.")
 	}
 
-	p1 := &SubJobWorksheet{
-		tasks: util.NewPriorityQueue(lessFn),
+	// Test SubJobWorksheet shallow copy for leaf node
+	leafWorksheet1 := &SubJobWorksheet{
+		isLeaf: true,
+		tasks:  util.NewPriorityQueue(lessFn),
 	}
-	p2 := &SubJobWorksheet{
-		tasks: util.NewPriorityQueue(lessFn),
+	leafWorksheet2 := &SubJobWorksheet{
+		isLeaf: true,
+		tasks:  util.NewPriorityQueue(lessFn),
 	}
-	p2.tasks.Push(2)
-	p1.ShallowCopyFrom(p2)
-	if diff := cmp.Diff(drain(p1.tasks.Clone()), drain(p2.tasks.Clone())); diff != "" {
-		t.Errorf("Expected p1 to be equal to p2 after shallow copy, but they are not.")
+	leafWorksheet2.tasks.Push(2)
+	leafWorksheet1.ShallowCopyFrom(leafWorksheet2)
+
+	if leafWorksheet1.isLeaf != leafWorksheet2.isLeaf {
+		t.Errorf("Expected leafWorksheet1.isLeaf to be %v, got %v", leafWorksheet2.isLeaf, leafWorksheet1.isLeaf)
+	}
+	if diff := cmp.Diff(drain(leafWorksheet1.tasks.Clone()), drain(leafWorksheet2.tasks.Clone())); diff != "" {
+		t.Errorf("Expected leafWorksheet1.tasks to be equal to leafWorksheet2.tasks after shallow copy, but they are not.")
+	}
+
+	// Test SubJobWorksheet shallow copy for non-leaf node
+	childWorksheet := &SubJobWorksheet{
+		isLeaf: true,
+		tasks:  util.NewPriorityQueue(lessFn),
+	}
+	childWorksheet.tasks.Push(100)
+
+	nonLeafWorksheet1 := &SubJobWorksheet{
+		isLeaf:           false,
+		subJobs:          util.NewPriorityQueue(lessFn),
+		subJobWorksheets: make(map[api.SubJobID]*SubJobWorksheet),
+	}
+	nonLeafWorksheet2 := &SubJobWorksheet{
+		isLeaf:  false,
+		subJobs: util.NewPriorityQueue(lessFn),
+		subJobWorksheets: map[api.SubJobID]*SubJobWorksheet{
+			"child1": childWorksheet,
+		},
+	}
+	nonLeafWorksheet2.subJobs.Push(3)
+	nonLeafWorksheet1.ShallowCopyFrom(nonLeafWorksheet2)
+
+	if nonLeafWorksheet1.isLeaf != nonLeafWorksheet2.isLeaf {
+		t.Errorf("Expected nonLeafWorksheet1.isLeaf to be %v, got %v", nonLeafWorksheet2.isLeaf, nonLeafWorksheet1.isLeaf)
+	}
+	if diff := cmp.Diff(drain(nonLeafWorksheet1.subJobs.Clone()), drain(nonLeafWorksheet2.subJobs.Clone())); diff != "" {
+		t.Errorf("Expected nonLeafWorksheet1.subJobs to be equal to nonLeafWorksheet2.subJobs after shallow copy, but they are not.")
+	}
+	if len(nonLeafWorksheet1.subJobWorksheets) != len(nonLeafWorksheet2.subJobWorksheets) {
+		t.Errorf("Expected nonLeafWorksheet1.subJobWorksheets to have %d entries, got %d", len(nonLeafWorksheet2.subJobWorksheets), len(nonLeafWorksheet1.subJobWorksheets))
+	}
+	if nonLeafWorksheet1.subJobWorksheets["child1"] != nonLeafWorksheet2.subJobWorksheets["child1"] {
+		t.Errorf("Expected nonLeafWorksheet1.subJobWorksheets to point to same child worksheet (shallow copy)")
+	}
+
+	// Test shallow copy from nil
+	nilTestWorksheet := &SubJobWorksheet{
+		isLeaf: true,
+		tasks:  util.NewPriorityQueue(lessFn),
+	}
+	nilTestWorksheet.tasks.Push(999)
+	nilTestWorksheet.ShallowCopyFrom(nil)
+	if nilTestWorksheet.tasks.Len() != 1 {
+		t.Errorf("ShallowCopyFrom(nil) should not modify worksheet, but tasks changed")
 	}
 }
 
 func TestWorksheetEmpty(t *testing.T) {
+	// Test JobWorksheet.Empty() with nil subJobs
 	w := &JobWorksheet{
 		subJobs:          nil,
 		subJobWorksheets: make(map[api.SubJobID]*SubJobWorksheet),
 	}
 	if !w.Empty() {
-		t.Errorf("Expected w to be empty, but it is not.")
+		t.Errorf("Expected w to be empty when subJobs is nil, but it is not.")
 	}
 
-	p := &SubJobWorksheet{
-		tasks: nil,
+	// Test JobWorksheet.Empty() with empty subJobs queue
+	w2 := &JobWorksheet{
+		subJobs:          util.NewPriorityQueue(lessFn),
+		subJobWorksheets: make(map[api.SubJobID]*SubJobWorksheet),
 	}
-	if !p.Empty() {
-		t.Errorf("Expected p to be empty, but it is not.")
+	if !w2.Empty() {
+		t.Errorf("Expected w2 to be empty when subJobs queue is empty, but it is not.")
+	}
+
+	// Test JobWorksheet.Empty() with non-empty subJobs
+	w3 := &JobWorksheet{
+		subJobs:          util.NewPriorityQueue(lessFn),
+		subJobWorksheets: make(map[api.SubJobID]*SubJobWorksheet),
+	}
+	w3.subJobs.Push(1)
+	if w3.Empty() {
+		t.Errorf("Expected w3 to be non-empty when subJobs has items, but Empty() returned true.")
+	}
+
+	// Test SubJobWorksheet.Empty() for leaf node with nil tasks
+	leafEmpty := &SubJobWorksheet{
+		isLeaf: true,
+		tasks:  nil,
+	}
+	if !leafEmpty.Empty() {
+		t.Errorf("Expected leafEmpty to be empty when isLeaf=true and tasks is nil, but it is not.")
+	}
+
+	// Test SubJobWorksheet.Empty() for leaf node with empty tasks queue
+	leafEmpty2 := &SubJobWorksheet{
+		isLeaf: true,
+		tasks:  util.NewPriorityQueue(lessFn),
+	}
+	if !leafEmpty2.Empty() {
+		t.Errorf("Expected leafEmpty2 to be empty when isLeaf=true and tasks queue is empty, but it is not.")
+	}
+
+	// Test SubJobWorksheet.Empty() for leaf node with non-empty tasks
+	leafNonEmpty := &SubJobWorksheet{
+		isLeaf: true,
+		tasks:  util.NewPriorityQueue(lessFn),
+	}
+	leafNonEmpty.tasks.Push(100)
+	if leafNonEmpty.Empty() {
+		t.Errorf("Expected leafNonEmpty to be non-empty when isLeaf=true and tasks has items, but Empty() returned true.")
+	}
+
+	// Test SubJobWorksheet.Empty() for non-leaf node with nil subJobs
+	nonLeafEmpty := &SubJobWorksheet{
+		isLeaf:           false,
+		subJobs:          nil,
+		subJobWorksheets: make(map[api.SubJobID]*SubJobWorksheet),
+	}
+	if !nonLeafEmpty.Empty() {
+		t.Errorf("Expected nonLeafEmpty to be empty when isLeaf=false and subJobs is nil, but it is not.")
+	}
+
+	// Test SubJobWorksheet.Empty() for non-leaf node with empty subJobs queue
+	nonLeafEmpty2 := &SubJobWorksheet{
+		isLeaf:           false,
+		subJobs:          util.NewPriorityQueue(lessFn),
+		subJobWorksheets: make(map[api.SubJobID]*SubJobWorksheet),
+	}
+	if !nonLeafEmpty2.Empty() {
+		t.Errorf("Expected nonLeafEmpty2 to be empty when isLeaf=false and subJobs queue is empty, but it is not.")
+	}
+
+	// Test SubJobWorksheet.Empty() for non-leaf node with non-empty subJobs
+	nonLeafNonEmpty := &SubJobWorksheet{
+		isLeaf:  false,
+		subJobs: util.NewPriorityQueue(lessFn),
+		subJobWorksheets: map[api.SubJobID]*SubJobWorksheet{
+			"child": {isLeaf: true, tasks: util.NewPriorityQueue(lessFn)},
+		},
+	}
+	nonLeafNonEmpty.subJobs.Push(1)
+	if nonLeafNonEmpty.Empty() {
+		t.Errorf("Expected nonLeafNonEmpty to be non-empty when isLeaf=false and subJobs has items, but Empty() returned true.")
 	}
 }
 
 func TestWorksheetClone(t *testing.T) {
+	// Test JobWorksheet.Clone() with basic structure
 	w := &JobWorksheet{
 		subJobs:          util.NewPriorityQueue(lessFn),
 		subJobWorksheets: make(map[api.SubJobID]*SubJobWorksheet),
@@ -2855,11 +2984,13 @@ func TestWorksheetClone(t *testing.T) {
 		t.Errorf("Cloned subJobs queue mismatch (-want +got): %s", diff)
 	}
 
+	// Test JobWorksheet.Clone() with SubJobWorksheets
 	w2 := &JobWorksheet{
 		subJobs: util.NewPriorityQueue(lessFn),
 		subJobWorksheets: map[api.SubJobID]*SubJobWorksheet{
 			"subJobID": {
-				tasks: util.NewPriorityQueue(lessFn),
+				isLeaf: true,
+				tasks:  util.NewPriorityQueue(lessFn),
 			},
 		},
 	}
@@ -2872,14 +3003,128 @@ func TestWorksheetClone(t *testing.T) {
 	if diff := cmp.Diff(drain(w2.subJobWorksheets["subJobID"].Clone().tasks), drain(w2Clone.subJobWorksheets["subJobID"].tasks)); diff != "" {
 		t.Errorf("Cloned w2.subJobWorksheets tasks queue mismatch (-want +got): %s", diff)
 	}
-
-	p := &SubJobWorksheet{
-		tasks: util.NewPriorityQueue(lessFn),
+	// Verify it's a deep clone (not sharing the same worksheet)
+	if w2.subJobWorksheets["subJobID"] == w2Clone.subJobWorksheets["subJobID"] {
+		t.Errorf("Clone should create deep copy, but subJobWorksheet points to same memory")
 	}
-	p.tasks.Push(200)
-	pClone := p.Clone()
-	if diff := cmp.Diff(drain(p.Clone().tasks), drain(pClone.tasks)); diff != "" {
-		t.Errorf("Cloned p.tasks queue mismatch (-want +got): %s", diff)
+
+	// Test SubJobWorksheet.Clone() for leaf node
+	leafWorksheet := &SubJobWorksheet{
+		isLeaf: true,
+		tasks:  util.NewPriorityQueue(lessFn),
+	}
+	leafWorksheet.tasks.Push(200)
+	leafClone := leafWorksheet.Clone()
+	if leafClone.isLeaf != leafWorksheet.isLeaf {
+		t.Errorf("Expected cloned isLeaf to be %v, got %v", leafWorksheet.isLeaf, leafClone.isLeaf)
+	}
+	if diff := cmp.Diff(drain(leafWorksheet.Clone().tasks), drain(leafClone.tasks)); diff != "" {
+		t.Errorf("Cloned leaf worksheet tasks queue mismatch (-want +got): %s", diff)
+	}
+	// Verify it's a deep clone (not sharing the same PriorityQueue)
+	if leafWorksheet.tasks == leafClone.tasks {
+		t.Errorf("Clone should create deep copy, but tasks queue points to same memory")
+	}
+
+	// Test SubJobWorksheet.Clone() for non-leaf node with children
+	child1 := &SubJobWorksheet{
+		isLeaf: true,
+		tasks:  util.NewPriorityQueue(lessFn),
+	}
+	child1.tasks.Push(11)
+	child2 := &SubJobWorksheet{
+		isLeaf: true,
+		tasks:  util.NewPriorityQueue(lessFn),
+	}
+	child2.tasks.Push(22)
+
+	nonLeafWorksheet := &SubJobWorksheet{
+		isLeaf:  false,
+		subJobs: util.NewPriorityQueue(lessFn),
+		subJobWorksheets: map[api.SubJobID]*SubJobWorksheet{
+			"child1": child1,
+			"child2": child2,
+		},
+	}
+	nonLeafWorksheet.subJobs.Push(1)
+	nonLeafWorksheet.subJobs.Push(2)
+	nonLeafClone := nonLeafWorksheet.Clone()
+
+	if nonLeafClone.isLeaf != nonLeafWorksheet.isLeaf {
+		t.Errorf("Expected cloned isLeaf to be %v, got %v", nonLeafWorksheet.isLeaf, nonLeafClone.isLeaf)
+	}
+	if diff := cmp.Diff(drain(nonLeafWorksheet.Clone().subJobs), drain(nonLeafClone.subJobs)); diff != "" {
+		t.Errorf("Cloned non-leaf worksheet subJobs queue mismatch (-want +got): %s", diff)
+	}
+	if len(nonLeafWorksheet.subJobWorksheets) != len(nonLeafClone.subJobWorksheets) {
+		t.Errorf("Expected cloned subJobWorksheets to have %d entries, got %d",
+			len(nonLeafWorksheet.subJobWorksheets), len(nonLeafClone.subJobWorksheets))
+	}
+	// Verify it's a deep clone (children are cloned, not referenced)
+	if nonLeafWorksheet.subJobWorksheets["child1"] == nonLeafClone.subJobWorksheets["child1"] {
+		t.Errorf("Clone should create deep copy, but child1 points to same memory")
+	}
+	if nonLeafWorksheet.subJobWorksheets["child2"] == nonLeafClone.subJobWorksheets["child2"] {
+		t.Errorf("Clone should create deep copy, but child2 points to same memory")
+	}
+
+	// Test multi-level hierarchical cloning (grandchild structure)
+	grandchild := &SubJobWorksheet{
+		isLeaf: true,
+		tasks:  util.NewPriorityQueue(lessFn),
+	}
+	grandchild.tasks.Push(999)
+
+	childNonLeaf := &SubJobWorksheet{
+		isLeaf:  false,
+		subJobs: util.NewPriorityQueue(lessFn),
+		subJobWorksheets: map[api.SubJobID]*SubJobWorksheet{
+			"grandchild": grandchild,
+		},
+	}
+	childNonLeaf.subJobs.Push(99)
+
+	multiLevelWorksheet := &SubJobWorksheet{
+		isLeaf:  false,
+		subJobs: util.NewPriorityQueue(lessFn),
+		subJobWorksheets: map[api.SubJobID]*SubJobWorksheet{
+			"childNonLeaf": childNonLeaf,
+		},
+	}
+	multiLevelWorksheet.subJobs.Push(9)
+	multiLevelClone := multiLevelWorksheet.Clone()
+
+	// Verify all levels are cloned independently
+	if multiLevelWorksheet.subJobWorksheets["childNonLeaf"] == multiLevelClone.subJobWorksheets["childNonLeaf"] {
+		t.Errorf("Multi-level clone should create deep copy, but childNonLeaf points to same memory")
+	}
+	if multiLevelWorksheet.subJobWorksheets["childNonLeaf"].subJobWorksheets["grandchild"] ==
+		multiLevelClone.subJobWorksheets["childNonLeaf"].subJobWorksheets["grandchild"] {
+		t.Errorf("Multi-level clone should create deep copy, but grandchild points to same memory")
+	}
+	// Verify content is identical
+	originalGrandchildTasks := drain(multiLevelWorksheet.subJobWorksheets["childNonLeaf"].subJobWorksheets["grandchild"].Clone().tasks)
+	clonedGrandchildTasks := drain(multiLevelClone.subJobWorksheets["childNonLeaf"].subJobWorksheets["grandchild"].tasks)
+	if diff := cmp.Diff(originalGrandchildTasks, clonedGrandchildTasks); diff != "" {
+		t.Errorf("Multi-level cloned grandchild tasks mismatch (-want +got): %s", diff)
+	}
+
+	// Test Clone with nil fields
+	nilWorksheet := &SubJobWorksheet{
+		isLeaf:           true,
+		tasks:            nil,
+		subJobs:          nil,
+		subJobWorksheets: nil,
+	}
+	nilClone := nilWorksheet.Clone()
+	if nilClone.tasks != nil {
+		t.Errorf("Expected cloned tasks to be nil, got non-nil")
+	}
+	if nilClone.subJobs != nil {
+		t.Errorf("Expected cloned subJobs to be nil, got non-nil")
+	}
+	if nilClone.subJobWorksheets != nil {
+		t.Errorf("Expected cloned subJobWorksheets to be nil, got non-nil")
 	}
 }
 
@@ -5733,5 +5978,668 @@ func BenchmarkHyperNodeGradientFnPerformance(b *testing.B) {
 		action := New()
 		testStruct.Run([]framework.Action{action})
 		testStruct.Close()
+	}
+}
+
+// TestAllocateWithMultiLevelSubJob tests allocation with multi-level SubJob structures
+func TestAllocateWithMultiLevelSubJob(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		gang.PluginName:       gang.New,
+		priority.PluginName:   priority.New,
+		predicates.PluginName: predicates.New,
+		drf.PluginName:        drf.New,
+		proportion.PluginName: proportion.New,
+	}
+	networkTopologySpec := &schedulingv1.NetworkTopologySpec{
+		Mode:               schedulingv1.HardNetworkTopologyMode,
+		HighestTierAllowed: ptr.To(1),
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               gang.PluginName,
+					EnabledPredicate:   &trueValue,
+					EnabledSubJobReady: &trueValue,
+				},
+				{
+					Name:            priority.PluginName,
+					EnabledJobOrder: &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:            drf.PluginName,
+					EnabledJobOrder: &trueValue,
+				},
+				{
+					Name:              proportion.PluginName,
+					EnabledQueueOrder: &trueValue,
+				},
+				{
+					Name:                     networktopologyaware.PluginName,
+					EnabledHyperNodeGradient: &trueValue,
+				},
+			},
+		},
+	}
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			Name: "Scenario 1: All children succeed - allocate all",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "c1", 4, nil,
+					schedulingv1.PodGroupInqueue, "soft", 1,
+					[]schedulingv1.SubGroupPolicySpec{
+						{
+							Name:            "partition-policy",
+							MatchLabelKeys:  []string{"volcano.sh/task-partition-group-id", "volcano.sh/task-partition-id"},
+							NetworkTopology: networkTopologySpec,
+							SubGroupSize:    ptr.To[int32](2),
+							// The minAvailable of the task partition group 0 is 4, so all the children succeed.
+							MinAvailableSubGroup: [][]int32{{4}},
+						},
+					}),
+			},
+			Pods: []*v1.Pod{
+				// Group 0, Partition 0
+				util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "0",
+					}, nil),
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "0",
+					}, nil),
+				// Group 0, Partition 1
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "1",
+					}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "1",
+					}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			HyperNodesSetByTier: map[int]sets.Set[string]{1: sets.New[string]("cluster")},
+			HyperNodesMap: map[string]*api.HyperNodeInfo{
+				"cluster": api.NewHyperNodeInfo(api.BuildHyperNode("cluster", 1, []api.MemberConfig{
+					{
+						Name:     "n1",
+						Type:     topologyv1alpha1.MemberTypeNode,
+						Selector: "exact",
+					},
+				})),
+			},
+			Queues: []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			ExpectBindMap: map[string]string{
+				"c1/p0": "n1",
+				"c1/p1": "n1",
+				"c1/p2": "n1",
+				"c1/p3": "n1",
+			},
+			ExpectBindsNum: 4,
+		},
+		{
+			Name: "Scenario 2: One partition fails - entire group fails",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "c1", 4, nil,
+					schedulingv1.PodGroupInqueue, "", 0,
+					[]schedulingv1.SubGroupPolicySpec{
+						{
+							Name:            "partition-policy",
+							MatchLabelKeys:  []string{"volcano.sh/task-partition-group-id", "volcano.sh/task-partition-id"},
+							NetworkTopology: networkTopologySpec,
+							SubGroupSize:    ptr.To[int32](2),
+							// The minAvailable of the task partition group 0 is 4, but the queue is only 3, so the entire group fails.
+							MinAvailableSubGroup: [][]int32{{4}},
+						},
+					}),
+			},
+			Pods: []*v1.Pod{
+				// Group 0, Partition 0
+				util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "0",
+					}, nil),
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "0",
+					}, nil),
+				// Group 0, Partition 1 - requires 4 CPU (will fail)
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("2", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "1",
+					}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("2", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "1",
+					}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("3", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			Queues:         []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			ExpectBindMap:  map[string]string{},
+			ExpectBindsNum: 0,
+		},
+		{
+			Name: "Scenario 3: Multiple groups, partial success",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "c1", 8, nil,
+					schedulingv1.PodGroupInqueue, "", 0,
+					[]schedulingv1.SubGroupPolicySpec{
+						{
+							Name:                 "partition-policy",
+							MatchLabelKeys:       []string{"volcano.sh/task-partition-group-id", "volcano.sh/task-partition-id"},
+							NetworkTopology:      networkTopologySpec,
+							SubGroupSize:         ptr.To[int32](2),
+							MinAvailableSubGroup: [][]int32{{4, 4}},
+						},
+					}),
+			},
+			Pods: []*v1.Pod{
+				// Group 0, Partition 0
+				util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "0",
+					}, nil),
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "0",
+					}, nil),
+				// Group 0, Partition 1
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "1",
+					}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "1",
+					}, nil),
+				// Group 1, Partition 0
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "1",
+						"volcano.sh/task-partition-id":       "0",
+					}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "1",
+						"volcano.sh/task-partition-id":       "0",
+					}, nil),
+				// Group 1, Partition 1 - requires 10 CPU (will fail)
+				util.BuildPod("c1", "p6", "", v1.PodPending, api.BuildResourceList("5", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "1",
+						"volcano.sh/task-partition-id":       "1",
+					}, nil),
+				util.BuildPod("c1", "p7", "", v1.PodPending, api.BuildResourceList("5", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "1",
+						"volcano.sh/task-partition-id":       "1",
+					}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("6", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			Queues:              []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("cluster")},
+			HyperNodes: map[string]sets.Set[string]{
+				"cluster": sets.New[string]("n1"),
+			},
+			ExpectBindMap: map[string]string{
+				// Group 0 succeeds (all partitions allocated)
+				"c1/p0": "n1",
+				"c1/p1": "n1",
+				"c1/p2": "n1",
+				"c1/p3": "n1",
+			},
+			ExpectBindsNum: 4,
+		},
+		{
+			Name: "Scenario 4: allow partial partition success",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "c1", 4, nil,
+					schedulingv1.PodGroupInqueue, "", 0,
+					[]schedulingv1.SubGroupPolicySpec{
+						{
+							Name:                 "partition-policy",
+							MatchLabelKeys:       []string{"volcano.sh/task-partition-group-id", "volcano.sh/task-partition-id"},
+							NetworkTopology:      networkTopologySpec,
+							SubGroupSize:         ptr.To[int32](2),
+							MinAvailableSubGroup: [][]int32{{2}},
+						},
+					}),
+			},
+			Pods: []*v1.Pod{
+				// Group 0, Partition 0
+				util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "0",
+					}, nil),
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "0",
+					}, nil),
+				// Group 0, Partition 1 - requires too much resources
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("5", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "1",
+					}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("5", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-group-id": "0",
+						"volcano.sh/task-partition-id":       "1",
+					}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("2", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			Queues:              []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("cluster")},
+			HyperNodes: map[string]sets.Set[string]{
+				"cluster": sets.New[string]("n1"),
+			},
+			ExpectBindMap: map[string]string{
+				"c1/p0": "n1",
+				"c1/p1": "n1",
+			},
+			ExpectBindsNum: 2,
+		},
+		{
+			Name: "Scenario 5.1: ExpectedPartition=[1, 2, 4], resources for 1 partition (2 CPU available)",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "c1", 1, nil,
+					schedulingv1.PodGroupInqueue, "", 0,
+					[]schedulingv1.SubGroupPolicySpec{
+						{
+							Name:                 "partition-policy",
+							MatchLabelKeys:       []string{"volcano.sh/task-partition-group-id", "volcano.sh/task-partition-id"},
+							NetworkTopology:      networkTopologySpec,
+							SubGroupSize:         ptr.To[int32](2),
+							MinAvailableSubGroup: [][]int32{{2, 2, 4}},
+						},
+					}),
+			},
+			Pods: []*v1.Pod{util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+				map[string]string{
+					"volcano.sh/task-partition-id":       "0",
+					"volcano.sh/task-partition-group-id": "0",
+				}, nil),
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "0",
+						"volcano.sh/task-partition-group-id": "0",
+					}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "1",
+						"volcano.sh/task-partition-group-id": "1",
+					}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "1",
+						"volcano.sh/task-partition-group-id": "1",
+					}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "2",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "2",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p6", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "3",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p7", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "3",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("2", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			Queues:              []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("cluster")},
+			HyperNodes: map[string]sets.Set[string]{
+				"cluster": sets.New[string]("n1"),
+			},
+			ExpectBindMap: map[string]string{
+				"c1/p0": "n1",
+				"c1/p1": "n1",
+			},
+			ExpectBindsNum: 2,
+		},
+		{
+			Name: "Scenario 5.2: ExpectedPartition=[1, 2, 4], resources for 1.5 partitions (3 CPU available, allocate only 1 partition)",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "c1", 1, nil,
+					schedulingv1.PodGroupInqueue, "", 0,
+					[]schedulingv1.SubGroupPolicySpec{
+						{
+							Name:                 "partition-policy",
+							MatchLabelKeys:       []string{"volcano.sh/task-partition-group-id", "volcano.sh/task-partition-id"},
+							NetworkTopology:      networkTopologySpec,
+							SubGroupSize:         ptr.To[int32](2),
+							MinAvailableSubGroup: [][]int32{{2, 2, 4}},
+						},
+					}),
+			},
+			Pods: []*v1.Pod{util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+				map[string]string{
+					"volcano.sh/task-partition-id":       "0",
+					"volcano.sh/task-partition-group-id": "0",
+				}, nil),
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "0",
+						"volcano.sh/task-partition-group-id": "0",
+					}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "1",
+						"volcano.sh/task-partition-group-id": "1",
+					}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "1",
+						"volcano.sh/task-partition-group-id": "1",
+					}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "2",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "2",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p6", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "3",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p7", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "3",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("3", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			Queues:              []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("cluster")},
+			HyperNodes: map[string]sets.Set[string]{
+				"cluster": sets.New[string]("n1"),
+			},
+			ExpectBindMap: map[string]string{
+				"c1/p0": "n1",
+				"c1/p1": "n1",
+			},
+			ExpectBindsNum: 2,
+		},
+		{
+			Name: "Scenario 5.3: ExpectedPartition=[1, 2, 4], resources for 2 partitions (4 CPU available)",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "c1", 1, nil,
+					schedulingv1.PodGroupInqueue, "", 0,
+					[]schedulingv1.SubGroupPolicySpec{
+						{
+							Name:                 "partition-policy",
+							MatchLabelKeys:       []string{"volcano.sh/task-partition-group-id", "volcano.sh/task-partition-id"},
+							NetworkTopology:      networkTopologySpec,
+							SubGroupSize:         ptr.To[int32](2),
+							MinAvailableSubGroup: [][]int32{{2, 2, 4}},
+						},
+					}),
+			},
+			Pods: []*v1.Pod{util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+				map[string]string{
+					"volcano.sh/task-partition-id":       "0",
+					"volcano.sh/task-partition-group-id": "0",
+				}, nil),
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "0",
+						"volcano.sh/task-partition-group-id": "0",
+					}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "1",
+						"volcano.sh/task-partition-group-id": "1",
+					}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "1",
+						"volcano.sh/task-partition-group-id": "1",
+					}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "2",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "2",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p6", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "3",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p7", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "3",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			Queues:              []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("cluster")},
+			HyperNodes: map[string]sets.Set[string]{
+				"cluster": sets.New[string]("n1"),
+			},
+			ExpectBindMap: map[string]string{
+				"c1/p0": "n1",
+				"c1/p1": "n1",
+				"c1/p2": "n1",
+				"c1/p3": "n1",
+			},
+			ExpectBindsNum: 4,
+		},
+		{
+			Name: "Scenario 5.4: ExpectedPartition=[1, 2, 4], resources for 3 partitions (6 CPU available, allocate only 2)",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "c1", 1, nil,
+					schedulingv1.PodGroupInqueue, "", 0,
+					[]schedulingv1.SubGroupPolicySpec{
+						{
+							Name:                 "partition-policy",
+							MatchLabelKeys:       []string{"volcano.sh/task-partition-group-id", "volcano.sh/task-partition-id"},
+							NetworkTopology:      networkTopologySpec,
+							SubGroupSize:         ptr.To[int32](2),
+							MinAvailableSubGroup: [][]int32{{2, 2, 4}},
+						},
+					}),
+			},
+			Pods: []*v1.Pod{util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+				map[string]string{
+					"volcano.sh/task-partition-id":       "0",
+					"volcano.sh/task-partition-group-id": "0",
+				}, nil),
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "0",
+						"volcano.sh/task-partition-group-id": "0",
+					}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "1",
+						"volcano.sh/task-partition-group-id": "1",
+					}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "1",
+						"volcano.sh/task-partition-group-id": "1",
+					}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "2",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "2",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p6", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "3",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p7", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "3",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("6", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			Queues:              []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("cluster")},
+			HyperNodes: map[string]sets.Set[string]{
+				"cluster": sets.New[string]("n1"),
+			},
+			ExpectBindMap: map[string]string{
+				"c1/p0": "n1",
+				"c1/p1": "n1",
+				"c1/p2": "n1",
+				"c1/p3": "n1",
+			},
+			ExpectBindsNum: 4,
+		},
+		{
+			Name: "Scenario 5.5: ExpectedPartition=[1, 2, 4], resources for 4 partitions (8 CPU available)",
+			PodGroups: []*schedulingv1.PodGroup{
+				util.BuildPodGroupWithSubGroupPolicy("pg1", "c1", "", "c1", 1, nil,
+					schedulingv1.PodGroupInqueue, "", 0,
+					[]schedulingv1.SubGroupPolicySpec{
+						{
+							Name:                 "partition-policy",
+							MatchLabelKeys:       []string{"volcano.sh/task-partition-group-id", "volcano.sh/task-partition-id"},
+							NetworkTopology:      networkTopologySpec,
+							SubGroupSize:         ptr.To[int32](2),
+							MinAvailableSubGroup: [][]int32{{2, 2, 4}},
+						},
+					}),
+			},
+			Pods: []*v1.Pod{util.BuildPod("c1", "p0", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+				map[string]string{
+					"volcano.sh/task-partition-id":       "0",
+					"volcano.sh/task-partition-group-id": "0",
+				}, nil),
+				util.BuildPod("c1", "p1", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "0",
+						"volcano.sh/task-partition-group-id": "0",
+					}, nil),
+				util.BuildPod("c1", "p2", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "1",
+						"volcano.sh/task-partition-group-id": "1",
+					}, nil),
+				util.BuildPod("c1", "p3", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "1",
+						"volcano.sh/task-partition-group-id": "1",
+					}, nil),
+				util.BuildPod("c1", "p4", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "2",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p5", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "2",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p6", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "3",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+				util.BuildPod("c1", "p7", "", v1.PodPending, api.BuildResourceList("1", "1G"), "pg1",
+					map[string]string{
+						"volcano.sh/task-partition-id":       "3",
+						"volcano.sh/task-partition-group-id": "2",
+					}, nil),
+			},
+			Nodes: []*v1.Node{
+				util.BuildNode("n1", api.BuildResourceList("8", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil),
+			},
+			Queues:              []*schedulingv1.Queue{util.BuildQueue("c1", 1, nil)},
+			HyperNodesSetByTier: map[int]sets.Set[string]{0: sets.New[string]("cluster")},
+			HyperNodes: map[string]sets.Set[string]{
+				"cluster": sets.New[string]("n1"),
+			},
+			ExpectBindMap: map[string]string{
+				"c1/p0": "n1",
+				"c1/p1": "n1",
+				"c1/p2": "n1",
+				"c1/p3": "n1",
+				"c1/p4": "n1",
+				"c1/p5": "n1",
+				"c1/p6": "n1",
+				"c1/p7": "n1",
+			},
+			ExpectBindsNum: 8,
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.Plugins = plugins
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			test.Run([]framework.Action{New()})
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

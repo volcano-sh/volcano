@@ -28,6 +28,7 @@ import (
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/kubernetes/pkg/features"
+	"k8s.io/utils/ptr"
 
 	"volcano.sh/apis/pkg/apis/batch/v1alpha1"
 	busv1alpha1 "volcano.sh/apis/pkg/apis/bus/v1alpha1"
@@ -1976,6 +1977,343 @@ func TestValidateJobCreate(t *testing.T) {
 			reviewResponse: admissionv1.AdmissionResponse{Allowed: false},
 			ret:            "spec.task[0].template.spec.resources.requests: Invalid value: \"6\": must be less than or equal to cpu limit of 4",
 			ExpectErr:      true,
+		},
+		// ExpectedPartitions validation tests
+		{
+			Name: "Valid-ExpectedPartitions",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "valid-expected-partitions",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							Replicas:     8,
+							MinAvailable: ptr.To(int32(2)),
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions:    4,
+								PartitionSize:      2,
+								MinPartitions:      1,
+								ExpectedPartitions: []int32{1, 2, 4},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		{
+			Name: "ExpectedPartitions[0]-zero",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "expected-partitions-zero",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							Replicas:     8,
+							MinAvailable: ptr.To(int32(0)),
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions:    4,
+								PartitionSize:      2,
+								MinPartitions:      0,
+								ExpectedPartitions: []int32{0, 2, 4},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "'ExpectedPartitions[0]' must be greater than 0",
+			ExpectErr:      true,
+		},
+		{
+			Name: "ExpectedPartitions[0]-not-equal-MinPartitions",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "expected-partitions-not-equal",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							Replicas:     8,
+							MinAvailable: ptr.To(int32(2)),
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions:    4,
+								PartitionSize:      2,
+								MinPartitions:      1,
+								ExpectedPartitions: []int32{2, 3, 4},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "'ExpectedPartitions[0]' must equal 'MinPartitions'",
+			ExpectErr:      true,
+		},
+		{
+			Name: "ExpectedPartitions[last]-not-equal-TotalPartitions",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "expected-partitions-last-not-equal",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							Replicas:     8,
+							MinAvailable: ptr.To(int32(2)),
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions:    4,
+								PartitionSize:      2,
+								MinPartitions:      1,
+								ExpectedPartitions: []int32{1, 2, 3},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "'ExpectedPartitions[last]' must equal 'TotalPartitions'",
+			ExpectErr:      true,
+		},
+		{
+			Name: "ExpectedPartitions-not-monotonically-increasing",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "expected-partitions-not-monotonic",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							Replicas:     8,
+							MinAvailable: ptr.To(int32(2)),
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions:    4,
+								PartitionSize:      2,
+								MinPartitions:      1,
+								ExpectedPartitions: []int32{1, 3, 2, 4},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "'ExpectedPartitions' must be monotonically increasing",
+			ExpectErr:      true,
+		},
+		{
+			Name: "ExpectedPartitions-with-duplicate-values",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "expected-partitions-duplicates",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							Replicas:     8,
+							MinAvailable: ptr.To(int32(2)),
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions:    4,
+								PartitionSize:      2,
+								MinPartitions:      1,
+								ExpectedPartitions: []int32{1, 2, 2, 4},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "'ExpectedPartitions' must be monotonically increasing",
+			ExpectErr:      true,
+		},
+		{
+			Name: "Empty-ExpectedPartitions-valid",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "empty-expected-partitions",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							Replicas:     8,
+							MinAvailable: ptr.To(int32(4)),
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions:    4,
+								PartitionSize:      2,
+								MinPartitions:      2,
+								ExpectedPartitions: nil,
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
+		},
+		{
+			Name: "Single-element-ExpectedPartitions-valid",
+			Job: v1alpha1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "single-expected-partition",
+					Namespace: namespace,
+				},
+				Spec: v1alpha1.JobSpec{
+					MinAvailable: 1,
+					Queue:        "default",
+					Tasks: []v1alpha1.TaskSpec{
+						{
+							Name:         "task-1",
+							Replicas:     4,
+							MinAvailable: ptr.To(int32(4)),
+							PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+								TotalPartitions:    2,
+								PartitionSize:      2,
+								MinPartitions:      2,
+								ExpectedPartitions: []int32{2},
+							},
+							Template: v1.PodTemplateSpec{
+								ObjectMeta: metav1.ObjectMeta{
+									Labels: map[string]string{"name": "test"},
+								},
+								Spec: v1.PodSpec{
+									Containers: []v1.Container{
+										{
+											Name:  "fake-name",
+											Image: "busybox:1.24",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			reviewResponse: admissionv1.AdmissionResponse{Allowed: true},
+			ret:            "",
+			ExpectErr:      false,
 		},
 	}
 

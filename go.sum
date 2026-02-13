@@ -281,6 +281,8 @@ github.com/xlab/treeprint v1.2.0/go.mod h1:gj5Gd3gPdKtR1ikdDK6fnFLdmIS0X30kTTuNd
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
+github.com/zhengchenyu/apis v0.0.0-20260104014708-298b52150877 h1:YDm2jIOOZ2YgYT3jTuHnnFX4gbVNDQugSkkslQW8hIQ=
+github.com/zhengchenyu/apis v0.0.0-20260104014708-298b52150877/go.mod h1:CKQbxVt0o4lTKisC0MonoXWruGFC0S8KU+UuzaZ5E7k=
 go.etcd.io/etcd/client/pkg/v3 v3.6.4 h1:9HBYrjppeOfFjBjaMTRxT3R7xT0GLK8EJMVC4xg6ok0=
 go.etcd.io/etcd/client/pkg/v3 v3.6.4/go.mod h1:sbdzr2cl3HzVmxNw//PH7aLGVtY4QySjQFuaCgcRFAI=
 go.opentelemetry.io/auto/sdk v1.1.0 h1:cH53jehLUN6UFLY71z+NDOiNJqDdPRaXzTel0sJySYA=

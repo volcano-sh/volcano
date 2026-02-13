@@ -1258,14 +1258,54 @@ func (ji *JobInfo) getOrCreateSubJob(ti *TaskInfo) *SubJobInfo {
 	}
 
 	for _, policy := range ji.PodGroup.Spec.SubGroupPolicy {
-		if matchValues := getSubJobMatchValues(policy, ti.Pod); len(matchValues) > 0 {
-			groupID := getSubJobGID(ji.UID, policy.Name)
-			subJobID := getSubJobID(ji.UID, policy.Name, matchValues)
-			if _, found := ji.SubJobs[subJobID]; !found {
-				ji.SubJobs[subJobID] = NewSubJobInfo(groupID, subJobID, ji.UID, &policy, matchValues)
-			}
-			return ji.SubJobs[subJobID]
+		matchValues := getSubJobMatchValues(policy, ti.Pod)
+		if len(matchValues) == 0 {
+			continue
 		}
+
+		groupID := getSubJobGID(ji.UID, policy.Name)
+
+		// Build multi-level SubJob tree structure based on MatchLabelKeys
+		// Each level in MatchLabelKeys creates a SubJob level
+		// The last level is always a leaf node (contains tasks)
+		// Example: MatchLabelKeys=[TaskPartitionGroupID, TaskPartitionID]
+		//   - Level 0: SubJob(group=0) -> non-leaf (contains children SubJobs of Level 1)
+		//   - Level 1: SubJob(group=0, partition=0) -> leaf (contains tasks)
+		// This creates a uniform tree structure for all SubJobs.
+
+		var parentSubJobContainer = ji.SubJobs
+		var currentSubJob *SubJobInfo
+		// Iterate through each level to build the SubJob tree
+		for level := 0; level < len(matchValues); level++ {
+			// Build matchValues up to current level
+			currentMatchValues := make([]string, level+1)
+			copy(currentMatchValues, matchValues[:level+1])
+
+			var found bool
+			currentSubJobID := getSubJobID(ji.UID, policy.Name, currentMatchValues)
+			currentSubJob, found = parentSubJobContainer[currentSubJobID]
+			if !found {
+				currentSubJob = NewSubJobInfo(groupID, currentSubJobID, ji.UID, &policy, currentMatchValues)
+				currentSubJob.IsLeaf = (level == len(matchValues)-1)
+				parentSubJobContainer[currentSubJobID] = currentSubJob
+
+				if matchIndex, err := strconv.Atoi(currentMatchValues[level]); err == nil {
+					// Set MatchIndex based on the last value in currentMatchValues
+					currentSubJob.MatchIndex = matchIndex
+					// Set MinAvailable from controller if specified in MinAvailableSubGroup
+					if len(policy.MinAvailableSubGroup) > level {
+						if len(policy.MinAvailableSubGroup[level]) > currentSubJob.MatchIndex {
+							currentSubJob.MinAvailable = policy.MinAvailableSubGroup[level][currentSubJob.MatchIndex]
+							currentSubJob.MinLeafSubJobs = currentSubJob.MinAvailable / *policy.SubGroupSize
+						}
+					}
+				}
+			}
+			// Move to next level
+			parentSubJobContainer = currentSubJob.Children
+		}
+
+		return currentSubJob
 	}
 
 	return ji.getOrCreateDefaultSubJob()

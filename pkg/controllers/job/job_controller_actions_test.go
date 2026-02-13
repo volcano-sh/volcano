@@ -1366,11 +1366,13 @@ func TestGetSubGroupPolicy(t *testing.T) {
 	highestTierAllowed := 1
 
 	testCases := []struct {
-		Name                 string
-		TaskSpec             v1alpha1.TaskSpec
-		ExpectedMinSubGroups *int32
-		ExpectedSubGroupSize *int32
-		Description          string
+		Name                       string
+		TaskSpec                   v1alpha1.TaskSpec
+		ExpectedMinSubGroups       *int32
+		ExpectedSubGroupSize       *int32
+		ExpectedMatchLabelKeys     []string
+		ExpectedMinAvailableSubGrp [][]int32
+		Description                string
 	}{
 		{
 			Name: "SubGroupPolicy with MinPartitions set",
@@ -1387,9 +1389,11 @@ func TestGetSubGroupPolicy(t *testing.T) {
 					},
 				},
 			},
-			ExpectedMinSubGroups: ptr.To(int32(1)),
-			ExpectedSubGroupSize: ptr.To(int32(3)),
-			Description:          "MinSubGroups should be set to MinPartitions when MinPartitions > 0",
+			ExpectedMinSubGroups:       ptr.To(int32(1)),
+			ExpectedSubGroupSize:       ptr.To(int32(3)),
+			ExpectedMatchLabelKeys:     []string{v1alpha1.TaskPartitionID},
+			ExpectedMinAvailableSubGrp: nil,
+			Description:                "MinSubGroups should be set to MinPartitions when MinPartitions > 0",
 		},
 		{
 			Name: "SubGroupPolicy with MinPartitions equal to TotalPartitions",
@@ -1402,9 +1406,11 @@ func TestGetSubGroupPolicy(t *testing.T) {
 					PartitionSize:   3,
 				},
 			},
-			ExpectedMinSubGroups: ptr.To(int32(3)),
-			ExpectedSubGroupSize: ptr.To(int32(3)),
-			Description:          "MinSubGroups should equal TotalPartitions when MinPartitions equals TotalPartitions",
+			ExpectedMinSubGroups:       ptr.To(int32(3)),
+			ExpectedSubGroupSize:       ptr.To(int32(3)),
+			ExpectedMatchLabelKeys:     []string{v1alpha1.TaskPartitionID},
+			ExpectedMinAvailableSubGrp: nil,
+			Description:                "MinSubGroups should equal TotalPartitions when MinPartitions equals TotalPartitions",
 		},
 		{
 			Name: "SubGroupPolicy with MinPartitions not set",
@@ -1417,9 +1423,69 @@ func TestGetSubGroupPolicy(t *testing.T) {
 					PartitionSize:   3,
 				},
 			},
-			ExpectedMinSubGroups: ptr.To(int32(0)),
-			ExpectedSubGroupSize: ptr.To(int32(3)),
-			Description:          "MinSubGroups should be nil when MinPartitions is 0",
+			ExpectedMinSubGroups:       ptr.To(int32(0)),
+			ExpectedSubGroupSize:       ptr.To(int32(3)),
+			ExpectedMatchLabelKeys:     []string{v1alpha1.TaskPartitionID},
+			ExpectedMinAvailableSubGrp: nil,
+			Description:                "MinSubGroups should be nil when MinPartitions is 0",
+		},
+		{
+			Name: "SubGroupPolicy with ExpectedPartitions - single element",
+			TaskSpec: v1alpha1.TaskSpec{
+				Name:     "task1",
+				Replicas: 3,
+				PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+					TotalPartitions:    1,
+					MinPartitions:      1,
+					PartitionSize:      3,
+					ExpectedPartitions: []int32{1},
+				},
+			},
+			ExpectedMinSubGroups:       ptr.To(int32(1)),
+			ExpectedSubGroupSize:       ptr.To(int32(3)),
+			ExpectedMatchLabelKeys:     []string{v1alpha1.TaskPartitionID},
+			ExpectedMinAvailableSubGrp: nil,
+			Description:                "Single element ExpectedPartitions should use single-level label",
+		},
+		{
+			Name: "SubGroupPolicy with ExpectedPartitions - multiple elements",
+			TaskSpec: v1alpha1.TaskSpec{
+				Name:     "task1",
+				Replicas: 12,
+				PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+					TotalPartitions:    4,
+					MinPartitions:      1,
+					PartitionSize:      3,
+					ExpectedPartitions: []int32{1, 2, 4},
+				},
+			},
+			ExpectedMinSubGroups:   ptr.To(int32(1)),
+			ExpectedSubGroupSize:   ptr.To(int32(3)),
+			ExpectedMatchLabelKeys: []string{v1alpha1.TaskPartitionGroupID, v1alpha1.TaskPartitionID},
+			ExpectedMinAvailableSubGrp: [][]int32{
+				{3, 3, 6}, // (1-0)*3=3, (2-1)*3=3, (4-2)*3=6
+			},
+			Description: "Multiple ExpectedPartitions should use dual-level labels and set MinAvailableSubGroup",
+		},
+		{
+			Name: "SubGroupPolicy with ExpectedPartitions - different partition sizes",
+			TaskSpec: v1alpha1.TaskSpec{
+				Name:     "task1",
+				Replicas: 20,
+				PartitionPolicy: &v1alpha1.PartitionPolicySpec{
+					TotalPartitions:    5,
+					MinPartitions:      2,
+					PartitionSize:      4,
+					ExpectedPartitions: []int32{2, 3, 5},
+				},
+			},
+			ExpectedMinSubGroups:   ptr.To(int32(2)),
+			ExpectedSubGroupSize:   ptr.To(int32(4)),
+			ExpectedMatchLabelKeys: []string{v1alpha1.TaskPartitionGroupID, v1alpha1.TaskPartitionID},
+			ExpectedMinAvailableSubGrp: [][]int32{
+				{8, 4, 8}, // (2-0)*4=8, (3-2)*4=4, (5-3)*4=8
+			},
+			Description: "ExpectedPartitions with different group sizes should calculate MinAvailableSubGroup correctly",
 		},
 	}
 
@@ -1455,6 +1521,59 @@ func TestGetSubGroupPolicy(t *testing.T) {
 				if result.MinSubGroups != nil {
 					t.Errorf("%s: Expected MinSubGroups to be nil, got %d",
 						tc.Description, *result.MinSubGroups)
+				}
+			}
+
+			// Check MatchLabelKeys
+			if tc.ExpectedMatchLabelKeys != nil {
+				if len(result.MatchLabelKeys) != len(tc.ExpectedMatchLabelKeys) {
+					t.Errorf("%s: Expected MatchLabelKeys length=%d, got %d",
+						tc.Description, len(tc.ExpectedMatchLabelKeys), len(result.MatchLabelKeys))
+				} else {
+					for i, expectedKey := range tc.ExpectedMatchLabelKeys {
+						if result.MatchLabelKeys[i] != expectedKey {
+							t.Errorf("%s: Expected MatchLabelKeys[%d]=%s, got %s",
+								tc.Description, i, expectedKey, result.MatchLabelKeys[i])
+						}
+					}
+				}
+			}
+
+			// Check MinAvailableSubGroup
+			if tc.ExpectedMinAvailableSubGrp != nil {
+				if result.MinAvailableSubGroup == nil {
+					t.Errorf("%s: Expected MinAvailableSubGroup to be set, got nil",
+						tc.Description)
+				} else {
+					// Check dimensions
+					if len(result.MinAvailableSubGroup) != len(tc.ExpectedMinAvailableSubGrp) {
+						t.Errorf("%s: Expected MinAvailableSubGroup length=%d, got %d",
+							tc.Description, len(tc.ExpectedMinAvailableSubGrp), len(result.MinAvailableSubGroup))
+					} else {
+						// Check each level
+						for level := 0; level < len(tc.ExpectedMinAvailableSubGrp); level++ {
+							if len(result.MinAvailableSubGroup[level]) != len(tc.ExpectedMinAvailableSubGrp[level]) {
+								t.Errorf("%s: Expected MinAvailableSubGroup[%d] length=%d, got %d",
+									tc.Description, level, len(tc.ExpectedMinAvailableSubGrp[level]),
+									len(result.MinAvailableSubGroup[level]))
+							} else {
+								// Check each partition group
+								for groupID := 0; groupID < len(tc.ExpectedMinAvailableSubGrp[level]); groupID++ {
+									if result.MinAvailableSubGroup[level][groupID] != tc.ExpectedMinAvailableSubGrp[level][groupID] {
+										t.Errorf("%s: Expected MinAvailableSubGroup[%d][%d]=%d, got %d",
+											tc.Description, level, groupID,
+											tc.ExpectedMinAvailableSubGrp[level][groupID],
+											result.MinAvailableSubGroup[level][groupID])
+									}
+								}
+							}
+						}
+					}
+				}
+			} else {
+				if result.MinAvailableSubGroup != nil {
+					t.Errorf("%s: Expected MinAvailableSubGroup to be nil, got %v",
+						tc.Description, result.MinAvailableSubGroup)
 				}
 			}
 

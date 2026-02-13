@@ -213,7 +213,5 @@ replace (
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.1
 	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.34.1
 	k8s.io/sample-controller => k8s.io/sample-controller v0.34.1
-	// Use local staging directory for APIs development
-	// This allows API changes to be made and reviewed in the same PR as implementation changes
-	volcano.sh/apis => ./staging/src/volcano.sh/apis
+	volcano.sh/apis => github.com/zhengchenyu/apis v0.0.0-20260104014708-298b52150877
 )
