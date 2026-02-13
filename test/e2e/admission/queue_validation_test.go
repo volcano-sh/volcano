@@ -197,7 +197,7 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("guarantee should less equal than deserved"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("must be >= guarantee"))
 	})
 
 	ginkgo.It("Should reject queue creation with capability less than deserved", func() {
@@ -223,7 +223,7 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("deserved should less equal than capability"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("must be <= capability"))
 	})
 
 	ginkgo.It("Should reject queue creation with capability less than guarantee", func() {
@@ -251,7 +251,7 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("guarantee should less equal than capability"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("must be >= guarantee"))
 	})
 
 	ginkgo.It("Should reject queue creation with deserved less than guarantee", func() {
@@ -279,11 +279,11 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("guarantee should less equal than deserved"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("must be >= guarantee"))
 	})
 
-	// Test resource type validation - resources in deserved/guarantee must exist in capability
-	ginkgo.It("Should reject queue creation with deserved resource type not in capability", func() {
+	// Test resource type validation - resources in deserved/guarantee may include types not present in capability
+	ginkgo.It("Should allow queue creation with deserved resource type not in capability", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
 
@@ -304,11 +304,10 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 		}
 
 		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("deserved should less equal than capability"))
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Should reject queue creation with guarantee resource type not in capability", func() {
+	ginkgo.It("Should allow queue creation with guarantee resource type not in capability", func() {
 		testCtx := util.InitTestContext(util.Options{})
 		defer util.CleanupTestContext(testCtx)
 
@@ -321,6 +320,10 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 				Capability: v1.ResourceList{
 					v1.ResourceCPU: resource.MustParse("10"),
 				},
+				Deserved: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse("5"),
+					v1.ResourceMemory: resource.MustParse("8Gi"),
+				},
 				Guarantee: schedulingv1beta1.Guarantee{
 					Resource: v1.ResourceList{
 						v1.ResourceCPU:    resource.MustParse("5"),
@@ -331,8 +334,7 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 		}
 
 		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
-		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("guarantee should less equal than capability"))
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
 	ginkgo.It("Should reject queue creation with guarantee resource type not in deserved", func() {
@@ -359,7 +361,7 @@ var _ = ginkgo.Describe("Queue Validating E2E Test", func() {
 
 		_, err := testCtx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		gomega.Expect(err).To(gomega.HaveOccurred())
-		gomega.Expect(err.Error()).To(gomega.ContainSubstring("guarantee should less equal than deserved"))
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("must be >= guarantee"))
 	})
 
 	// Test hierarchical queue annotations

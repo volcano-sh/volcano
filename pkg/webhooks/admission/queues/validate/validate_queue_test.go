@@ -30,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+
 	"k8s.io/client-go/tools/cache"
 
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
@@ -37,12 +38,12 @@ import (
 	fakeclient "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	informers "volcano.sh/apis/pkg/client/informers/externalversions"
 	schedulingv1beta1informers "volcano.sh/apis/pkg/client/informers/externalversions/scheduling/v1beta1"
-	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/util"
 )
 
 func TestAdmitQueues(t *testing.T) {
+	config.MaxQueueDepth = 5
 
 	stateNotSet := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
@@ -196,8 +197,7 @@ func TestAdmitQueues(t *testing.T) {
 			Weight: 1,
 			Guarantee: schedulingv1beta1.Guarantee{
 				Resource: map[v1.ResourceName]resource.Quantity{
-					v1.ResourceCPU:    resource.MustParse("1"),
-					v1.ResourceMemory: resource.MustParse("1Gi"),
+					v1.ResourceCPU: resource.MustParse("1"),
 				},
 			},
 		},
@@ -252,30 +252,6 @@ func TestAdmitQueues(t *testing.T) {
 	deservedLessGuaranteeJSON, err := json.Marshal(deservedLessGuarantee)
 	if err != nil {
 		t.Errorf("Marshal deservedLessGuarantee failed for %v.", err)
-	}
-
-	capabilityLessGuarantee := schedulingv1beta1.Queue{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "capability-less-guarantee",
-		},
-		Spec: schedulingv1beta1.QueueSpec{
-			Weight: 1,
-			Capability: map[v1.ResourceName]resource.Quantity{
-				v1.ResourceCPU:    resource.MustParse("1"),
-				v1.ResourceMemory: resource.MustParse("1Gi"),
-			},
-			Guarantee: schedulingv1beta1.Guarantee{
-				Resource: map[v1.ResourceName]resource.Quantity{
-					v1.ResourceCPU:    resource.MustParse("2"),
-					v1.ResourceMemory: resource.MustParse("3Gi"),
-				},
-			},
-		},
-	}
-
-	capabilityLessGuaranteeJSON, err := json.Marshal(capabilityLessGuarantee)
-	if err != nil {
-		t.Errorf("Marshal capabilityLessGuarantee failed for %v.", err)
 	}
 
 	hierarchyWeightsDontMatch := schedulingv1beta1.Queue{
@@ -889,13 +865,7 @@ func TestAdmitQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("guarantee"),
-						api.NewResource(
-							v1.ResourceList{
-								v1.ResourceCPU:    resource.MustParse("1"),
-								v1.ResourceMemory: resource.MustParse("1Gi"),
-							}).String(),
-						"guarantee should less equal than deserved").Error(),
+					Message: "requestBody.spec.deserved.cpu: Invalid value: \"<nil>\": deserved[cpu] must be >= guarantee[cpu]=1",
 				},
 			},
 		},
@@ -927,51 +897,7 @@ func TestAdmitQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("deserved"),
-						api.NewResource(
-							v1.ResourceList{
-								v1.ResourceCPU:    resource.MustParse("2"),
-								v1.ResourceMemory: resource.MustParse("1Gi"),
-							}).String(),
-						"deserved should less equal than capability").Error(),
-				},
-			},
-		},
-		{
-			Name: "Create queue with capability less guarantee",
-			AR: admissionv1.AdmissionReview{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "AdmissionReview",
-					APIVersion: "admission.k8s.io/v1beta1",
-				},
-				Request: &admissionv1.AdmissionRequest{
-					Kind: metav1.GroupVersionKind{
-						Group:   "scheduling.volcano.sh",
-						Version: "v1beta1",
-						Kind:    "Queue",
-					},
-					Resource: metav1.GroupVersionResource{
-						Group:    "scheduling.volcano.sh",
-						Version:  "v1beta1",
-						Resource: "queues",
-					},
-					Name:      "default",
-					Operation: "CREATE",
-					Object: runtime.RawExtension{
-						Raw: capabilityLessGuaranteeJSON,
-					},
-				},
-			},
-			reviewResponse: &admissionv1.AdmissionResponse{
-				Allowed: false,
-				Result: &metav1.Status{
-					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("guarantee"),
-						api.NewResource(
-							v1.ResourceList{
-								v1.ResourceCPU:    resource.MustParse("2"),
-								v1.ResourceMemory: resource.MustParse("3Gi"),
-							}).String(),
-						"guarantee should less equal than capability").Error(),
+					Message: "requestBody.spec.deserved.cpu: Invalid value: \"2\": deserved[cpu]=2 must be <= capability[cpu]=1",
 				},
 			},
 		},
@@ -1003,13 +929,7 @@ func TestAdmitQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: field.Invalid(field.NewPath("requestBody").Child("spec").Child("guarantee"),
-						api.NewResource(
-							v1.ResourceList{
-								v1.ResourceCPU:    resource.MustParse("2"),
-								v1.ResourceMemory: resource.MustParse("3Gi"),
-							}).String(),
-						"guarantee should less equal than deserved").Error(),
+					Message: "requestBody.spec.deserved.memory: Invalid value: \"1Gi\": deserved[memory]=1Gi must be >= guarantee[memory]=3Gi",
 				},
 			},
 		},
@@ -1172,6 +1092,11 @@ func TestAdmitQueues(t *testing.T) {
 }
 
 func TestAdmitHierarchicalQueues(t *testing.T) {
+	config.MaxQueueDepth = 5
+	config.EnableQueueAllocatedPodsCheck = true
+	defer func() {
+		config.EnableQueueAllocatedPodsCheck = false
+	}()
 	parentQueueWithJobs := schedulingv1beta1.Queue{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "parent-queue-with-jobs",
@@ -1323,6 +1248,11 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 	childQueueBJSON, err := json.Marshal(childQueueB)
 	if err != nil {
 		t.Errorf("Marshal queue with parent queue failed for %v.", err)
+	}
+
+	queueWithJobsJSON, err := json.Marshal(queueWithJobs)
+	if err != nil {
+		t.Errorf("Marshal queue with child queue failed for %v.", err)
 	}
 
 	_, err = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), &queueWithJobs, metav1.CreateOptions{})
@@ -1900,6 +1830,38 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			},
 		},
 		{
+			Name: "Delete queue with allocated pods",
+			AR: admissionv1.AdmissionReview{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "AdmissionReview",
+					APIVersion: "admission.k8s.io/v1beta1",
+				},
+				Request: &admissionv1.AdmissionRequest{
+					Kind: metav1.GroupVersionKind{
+						Group:   "scheduling.volcano.sh",
+						Version: "v1beta1",
+						Kind:    "Queue",
+					},
+					Resource: metav1.GroupVersionResource{
+						Group:    "scheduling.volcano.sh",
+						Version:  "v1beta1",
+						Resource: "queues",
+					},
+					Name:      "queue-with-jobs",
+					Operation: "DELETE",
+					Object: runtime.RawExtension{
+						Raw: queueWithJobsJSON,
+					},
+				},
+			},
+			reviewResponse: &admissionv1.AdmissionResponse{
+				Allowed: false,
+				Result: &metav1.Status{
+					Message: "queue queue-with-jobs cannot be deleted because it has allocated Pods: 1",
+				},
+			},
+		},
+		{
 			Name: "Delete queue without child queue",
 			AR: admissionv1.AdmissionReview{
 				TypeMeta: metav1.TypeMeta{
@@ -1956,7 +1918,7 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: "queue child-capability-exceeds-parent capability (cpu 20000.00, memory 42949672960.00) exceeds parent queue parent-queue-resource-test capability (cpu 10000.00, memory 21474836480.00)",
+					Message: "queue child-capability-exceeds-parent capability[cpu]=20 exceeds its ancestor's capability=10",
 				},
 			},
 		},
@@ -2023,7 +1985,7 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: "queue parent-queue-to-update capability (cpu 10000.00, memory 21474836480.00) is less than child queue child-queue-a capability (cpu 12000.00, memory 25769803776.00)",
+					Message: "queue parent-queue-to-update capability[cpu]=10 is smaller than its descendants' max capability=12",
 				},
 			},
 		},
@@ -2093,7 +2055,7 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: "queue parent-queue-empty-parent capability (cpu 30000.00, memory 32212254720.00) is less than child queue child-of-empty-parent capability (cpu 50000.00, memory 53687091200.00)",
+					Message: "queue parent-queue-empty-parent capability[cpu]=30 is smaller than its descendants' max capability=50",
 				},
 			},
 		},
@@ -2125,7 +2087,7 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: "[requestBody.spec.capability.cpu: Invalid value: \"-10\": must be greater than or equal to 0, requestBody.spec.deserved: Invalid value: \"cpu 0.00, memory 0.00\": deserved should less equal than capability]",
+					Message: "requestBody.spec.capability.cpu: Invalid value: \"-10\": must be greater than or equal to 0",
 				},
 			},
 		},
@@ -2189,7 +2151,7 @@ func TestAdmitHierarchicalQueues(t *testing.T) {
 			reviewResponse: &admissionv1.AdmissionResponse{
 				Allowed: false,
 				Result: &metav1.Status{
-					Message: "requestBody.spec.guarantee.resource.cpu: Invalid value: \"-2\": must be greater than or equal to 0",
+					Message: "[requestBody.spec.guarantee.resource.cpu: Invalid value: \"-2\": must be greater than or equal to 0, requestBody.spec.deserved.cpu: Invalid value: \"<nil>\": deserved[cpu] must be >= guarantee[cpu]=-2]",
 				},
 			},
 		},
@@ -2221,4 +2183,71 @@ func setupQueueInformerWithIndex(factory informers.SharedInformerFactory) cache.
 			)
 		})
 	return queueInformer
+}
+
+func TestValidateQueueDepthDynamic(t *testing.T) {
+	// Setup fake client and lister
+	config.VolcanoClient = fakeclient.NewSimpleClientset()
+	informerFactory := informers.NewSharedInformerFactory(config.VolcanoClient, 0)
+	queueInformer := informerFactory.Scheduling().V1beta1().Queues()
+	config.QueueLister = queueInformer.Lister()
+
+	// Create a chain of queues: root -> q1 -> q2 -> q3
+	q1 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "q1"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "root"},
+	}
+	q2 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "q2"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "q1"},
+	}
+	q3 := &schedulingv1beta1.Queue{
+		ObjectMeta: metav1.ObjectMeta{Name: "q3"},
+		Spec:       schedulingv1beta1.QueueSpec{Parent: "q2"},
+	}
+
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), q1, metav1.CreateOptions{})
+	_, _ = config.VolcanoClient.SchedulingV1beta1().Queues().Create(context.TODO(), q2, metav1.CreateOptions{})
+
+	// Sync informer
+	stopCh := make(chan struct{})
+	defer close(stopCh)
+	informerFactory.Start(stopCh)
+	informerFactory.WaitForCacheSync(stopCh)
+
+	tests := []struct {
+		name          string
+		maxDepth      int
+		queue         *schedulingv1beta1.Queue
+		expectedError bool
+	}{
+		{
+			name:          "Depth 3 is allowed when maxDepth is 5",
+			maxDepth:      5,
+			queue:         q3,
+			expectedError: false,
+		},
+		{
+			name:          "Depth 3 is allowed when maxDepth is 3",
+			maxDepth:      3,
+			queue:         q3,
+			expectedError: false,
+		},
+		{
+			name:          "Depth 3 is rejected when maxDepth is 2",
+			maxDepth:      2,
+			queue:         q3,
+			expectedError: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config.MaxQueueDepth = test.maxDepth
+			err := validateQueueDepth(test.queue)
+			if (err != nil) != test.expectedError {
+				t.Errorf("expected error: %v, got: %v", test.expectedError, err)
+			}
+		})
+	}
 }
