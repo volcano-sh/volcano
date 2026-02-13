@@ -929,11 +929,7 @@ func (ssn *Session) Evict(reclaimee *api.TaskInfo, reason string) error {
 
 	// Update task in node.
 	if node, found := ssn.Nodes[reclaimee.NodeName]; found {
-		if err := node.UpdateTask(reclaimee); err != nil {
-			klog.Errorf("Failed to update task <%v/%v> in Session <%v>: %v",
-				reclaimee.Namespace, reclaimee.Name, ssn.UID, err)
-			return err
-		}
+		node.UpdateTask(reclaimee)
 	}
 
 	for _, eh := range ssn.eventHandlers {

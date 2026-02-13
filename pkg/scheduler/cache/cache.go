@@ -899,16 +899,10 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 		return err
 	}
 
-	originalStatus := task.Status
 	job.UpdateTaskStatus(task, schedulingapi.Releasing)
 
 	// Add new task to node.
-	if err := node.UpdateTask(task); err != nil {
-		// After failing to update task to a node we need to revert task status from Releasing,
-		// otherwise task might be stuck in the Releasing state indefinitely.
-		job.UpdateTaskStatus(task, originalStatus)
-		return err
-	}
+	node.UpdateTask(task)
 
 	p := task.Pod
 

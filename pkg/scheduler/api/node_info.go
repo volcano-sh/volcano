@@ -593,18 +593,14 @@ func (ni *NodeInfo) subResource(pod *v1.Pod) {
 }
 
 // UpdateTask is used to update a task in nodeInfo object.
-//
-// If error occurs both task and node are guaranteed to be in the original state.
-func (ni *NodeInfo) UpdateTask(ti *TaskInfo) error {
+func (ni *NodeInfo) UpdateTask(ti *TaskInfo) {
 	ni.RemoveTask(ti)
-
 	if err := ni.AddTask(ti); err != nil {
 		// This should never happen if task removal was successful,
 		// because only possible error during task addition is when task is still on a node.
 		klog.Fatalf("Failed to add Task <%s,%s> to Node <%s> during task update",
 			ti.Namespace, ti.Name, ni.Name)
 	}
-	return nil
 }
 
 // String returns nodeInfo details in string format

@@ -80,12 +80,7 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) error {
 
 	// Update task in node.
 	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
-		err := node.UpdateTask(reclaimee)
-		if err != nil {
-			klog.Errorf("Failed to update task <%v/%v> in node %v for: %s",
-				reclaimee.Namespace, reclaimee.Name, reclaimee.NodeName, err.Error())
-			return err
-		}
+		node.UpdateTask(reclaimee)
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
@@ -128,12 +123,7 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 
 	// Update task in node.
 	if node, found := s.ssn.Nodes[reclaimee.NodeName]; found {
-		err := node.UpdateTask(reclaimee)
-		if err != nil {
-			klog.Errorf("Failed to update task <%v/%v> in node %v for: %s",
-				reclaimee.Namespace, reclaimee.Name, reclaimee.NodeName, err.Error())
-			return err
-		}
+		node.UpdateTask(reclaimee)
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
