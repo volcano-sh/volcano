@@ -28,6 +28,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -190,20 +191,21 @@ func TestSchedulerCache_Bind_NodeWithInsufficientResources(t *testing.T) {
 	}
 
 	task.NodeName = "n1"
+	taskBeforeBind := task.Clone()
 	nodeBeforeBind := cache.Nodes["n1"].Clone()
 
 	bindContext := &BindContext{TaskInfo: task}
 	err := cache.AddBindTask(bindContext)
-	if err != nil {
-		t.Errorf("expected bind to succeed even when node is oversubscribed: %v", err)
+	if err == nil {
+		t.Errorf("expected bind to fail for node with insufficient resources")
 	}
 
 	_, taskAfterBind, err := cache.findJobAndTask(task)
 	if err != nil {
 		t.Errorf("expected to find task after failed bind")
 	}
-	if taskAfterBind.Status != api.Binding {
-		t.Errorf("expected task status to be Binding after bind attempt, got %v", taskAfterBind.Status)
+	if !equality.Semantic.DeepEqual(taskBeforeBind, taskAfterBind) {
+		t.Errorf("expected task to remain the same after failed bind: \n %#v\n %#v", taskBeforeBind, taskAfterBind)
 	}
 
 	nodeAfterBind := cache.Nodes["n1"].Clone()
