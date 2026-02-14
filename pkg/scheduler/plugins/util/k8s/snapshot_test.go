@@ -204,10 +204,7 @@ func TestSnapshot_AddOrUpdateNodes(t *testing.T) {
 					},
 				}
 				ti := api.NewTaskInfo(pod)
-				err := node1Updated.AddTask(ti)
-				if err != nil {
-					return nil, nil
-				}
+				node1Updated.AddTask(ti)
 
 				return snapshot, []*api.NodeInfo{node1Updated}
 			},
@@ -327,10 +324,7 @@ func TestSnapshot_AddOrUpdateNodes(t *testing.T) {
 					},
 				})
 				ti := api.NewTaskInfo(pod)
-				err := node.AddTask(ti)
-				if err != nil {
-					return nil, nil
-				}
+				node.AddTask(ti)
 
 				return snapshot, []*api.NodeInfo{node}
 			},
@@ -444,10 +438,7 @@ func TestSnapshot_DeleteNode(t *testing.T) {
 				})
 
 				ti := api.NewTaskInfo(pod)
-				err := node.AddTask(ti)
-				if err != nil {
-					return nil, ""
-				}
+				node.AddTask(ti)
 
 				snapshot.addOrUpdateNode(node)
 				return snapshot, "node-1"
@@ -666,10 +657,7 @@ func TestSnapshot_RemoveDeletedNodesFromSnapshot(t *testing.T) {
 					})
 
 					ti := api.NewTaskInfo(pod)
-					err := node.AddTask(ti)
-					if err != nil {
-						return nil, nil
-					}
+					node.AddTask(ti)
 
 					snapshot.addOrUpdateNode(node)
 				}
