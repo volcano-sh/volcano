@@ -118,6 +118,7 @@ type Action struct {
 	schGateRemovalStopCh    chan struct{}
 	gateRemovalWorkerNum    int // Number of async gate removal workers
 	initOnce                sync.Once
+	shutdownOnce            sync.Once
 }
 
 // schGateRemovalOperation is a struct that contains the namespace
@@ -953,14 +954,15 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 }
 
 func (alloc *Action) UnInitialize() {
-	// Signal workers to shutdown
-	close(alloc.schGateRemovalStopCh)
-
-	// Wait for all workers to finish
-	alloc.schGateRemovalWorkersWg.Wait()
-
-	// Close the channel
-	close(alloc.schGateRemovalCh)
-
-	klog.V(3).Infof("Async gate removal workers shut down")
+	alloc.shutdownOnce.Do(func() {
+		// Signal workers to shutdown
+		close(alloc.schGateRemovalStopCh)
+		// Wait for all workers to finish
+		alloc.schGateRemovalWorkersWg.Wait()
+		// Close the channel (only if Initialize was ever called)
+		if alloc.schGateRemovalCh != nil {
+			close(alloc.schGateRemovalCh)
+		}
+		klog.V(3).Infof("Async gate removal workers shut down")
+	})
 }
