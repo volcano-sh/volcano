@@ -686,8 +686,17 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 			continue
 		}
 
+		// If task passed allocation check and has the QueueAllocationGate, initiate async gate removal.
+		// Gate will be removed by the background worker (best effort). During the bind operation, we need
+		// to ensure the gate is not present, otherwise the bind will fail.
+		if task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
+			klog.V(3).Infof("Task %s/%s has the QueueAllocationGate, queue async gate removal", task.Namespace, task.Name)
+			alloc.schedulingGateRemoval(task, queue.UID)
+		}
+
 		// Skip tasks with external (non-Volcano) scheduling gates
-		if task.SchGated && !task.RemoveGateDuringBind {
+		if task.SchGated {
+			// Tasks that contain the QueueAllocationGate have SchGated set to false by schedulingGateRemoval() above.
 			klog.V(4).Infof("Task %s/%s has non-Volcano gate, skipping", task.Namespace, task.Name)
 			continue
 		}
@@ -711,12 +720,6 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 				fitErrors.SetNodeError(ni.Name, err)
 			}
 			job.NodesFitErrors[task.UID] = fitErrors
-
-			// PrePredicate failed, enqueue gate removal
-			// Unschedulable will be set in the Pod Status reason
-			klog.V(3).Infof("PrePredicate failed for task %s/%s, removing gate", task.Namespace, task.Name)
-			alloc.schedulingGateRemoval(task, queue.UID)
-
 			break
 		}
 
@@ -748,11 +751,6 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 			}
 			job.NodesFitErrors[task.UID] = fitErrors
 
-			// No predicate nodes found, enqueue gate removal
-			// Unschedulable will be set in the Pod Status reason
-			klog.V(3).Infof("No predicate nodes found for task %s/%s, removing gate", task.Namespace, task.Name)
-			alloc.schedulingGateRemoval(task, queue.UID)
-
 			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
 			// so we should break from continuously allocating.
 			// otherwise, should continue to find other allocatable task
@@ -769,11 +767,6 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 		bestNode, _ := alloc.prioritizeNodes(ssn, task, predicateNodes)
 		if bestNode == nil {
-
-			// Unschedulable will be set in the Pod Status reason
-			klog.V(3).Infof("No best node found for task %s/%s, removing gate", task.Namespace, task.Name)
-			alloc.schedulingGateRemoval(task, queue.UID)
-
 			continue
 		}
 

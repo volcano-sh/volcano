@@ -138,21 +138,15 @@ func getHyperNodeEventSource(source string) []string {
 	return parts
 }
 
-// RemoveVolcanoSchGate removes the Volcano scheduling gate from a pod via JSON patch
+// RemoveVolcanoSchGate removes the Volcano scheduling gate from a pod via strategic merge patch.
+// Returns nil if gate is successfully removed or already removed (idempotent).
 func RemoveVolcanoSchGate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
 	// Filter out the Volcano gate
 	var newGates []v1.PodSchedulingGate
-	found := false
 	for _, gate := range pod.Spec.SchedulingGates {
-		if gate.Name == scheduling.QueueAllocationGateKey {
-			found = true
-			continue // Skip this gate
+		if gate.Name != scheduling.QueueAllocationGateKey {
+			newGates = append(newGates, gate)
 		}
-		newGates = append(newGates, gate)
-	}
-
-	if !found {
-		return nil // Gate already removed
 	}
 
 	// Strategic merge patch with the filtered gates array
