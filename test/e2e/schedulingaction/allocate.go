@@ -450,7 +450,6 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		})
 		defer cmc.UndoChanged()
 
-		// Initialize test context with 2 nodes
 		ctx := e2eutil.InitTestContext(e2eutil.Options{
 			NodesNumLimit: 2,
 			NodesResourceLimit: corev1.ResourceList{
@@ -460,7 +459,6 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		})
 		defer e2eutil.CleanupTestContext(ctx)
 
-		// Create queue with 500m CPU capacity (room for 1 pod)
 		slot := corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("500m"),
 			corev1.ResourceMemory: resource.MustParse("512Mi"),
@@ -476,7 +474,6 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		defer e2eutil.DeleteQueue(ctx, queueName)
 
-		// Wait for queue to be open and ready
 		err = e2eutil.WaitQueueStatus(func() (bool, error) {
 			queue, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), queueName, metav1.GetOptions{})
 			if err != nil {
@@ -486,7 +483,6 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		// Create PodGroup
 		_, err = ctx.Vcclient.SchedulingV1beta1().PodGroups(ctx.Namespace).Create(context.TODO(),
 			&schedulingv1beta1.PodGroup{
 				ObjectMeta: metav1.ObjectMeta{Name: pgName, Namespace: ctx.Namespace},
@@ -498,7 +494,6 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			}, metav1.CreateOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		// Helper to create a pod with scheduling gate
 		createPod := func(name string, nodeSelector map[string]string) {
 			_, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(),
 				&corev1.Pod{
@@ -526,7 +521,6 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}
 
-		// Test: pod-1 schedules successfully
 		ginkgo.By("pod-1: schedules and runs")
 		createPod("pod-1", nil)
 		err = e2eutil.WaitPodPhase(ctx, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod-1"}},
@@ -536,11 +530,10 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			return !e2eutil.PodHasOnlyVolcanoSchedulingGate(ctx, "pod-1")
 		}, e2eutil.FiveMinute, 500*time.Millisecond).Should(gomega.BeTrue())
 
-		// Clean up pod-1 to free capacity
+		ginkgo.By("Deleting pod-1 to free capacity")
 		err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(context.TODO(), "pod-1", metav1.DeleteOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		// Test: pod-2 passes capacity but fails predicates (unschedulable)
 		ginkgo.By("pod-2: passes capacity check but remains unschedulable (reserves capacity)")
 		createPod("pod-2", map[string]string{"kubernetes.io/fake-node": "fake"})
 		gomega.Eventually(func() bool {
@@ -550,9 +543,9 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 			[]corev1.PodPhase{corev1.PodPending})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-		// Test: pod-3 is blocked by pod-2's reservation, then schedules after pod-2 is deleted
 		ginkgo.By("pod-3: blocked by pod-2, then schedules after pod-2 is deleted")
 		createPod("pod-3", nil)
+		ginkgo.By("Deleting pod-2 to free capacity for pod-3")
 		err = ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Delete(context.TODO(), "pod-2", metav1.DeleteOptions{})
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
