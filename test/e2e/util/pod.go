@@ -84,17 +84,3 @@ func PodHasOnlyVolcanoSchedulingGate(ctx *TestContext, podName string) bool {
 	Expect(err).NotTo(HaveOccurred(), "failed to get pod %s", podName)
 	return api.HasOnlyVolcanoSchedulingGate(pod)
 }
-
-// HasSchedulingGatedCondition checks if a pod has the SchedulingGated condition
-func HasSchedulingGatedCondition(ctx *TestContext, podName string) bool {
-	pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Get(context.TODO(), podName, metav1.GetOptions{})
-	Expect(err).NotTo(HaveOccurred(), "failed to get pod %s", podName)
-	for _, cond := range pod.Status.Conditions {
-		if cond.Type == v1.PodScheduled &&
-			cond.Status == v1.ConditionFalse &&
-			cond.Reason == "SchedulingGated" {
-			return true
-		}
-	}
-	return false
-}
