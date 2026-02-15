@@ -18,14 +18,15 @@
         - [Capacity Check with Reserved Resources](#capacity-check-with-reserved-resources)
         - [Cache Initialization](#cache-initialization)
         - [Cache Updates During Allocation](#cache-updates-during-allocation)
-      - [Gate Removal During Successful Bind](#gate-removal-during-successful-bind)
+- [Limitations](#limitations)
+- [Feature gate](#feature-gate)
 - [Conclusions](#conclusions)
 - [Related Issues](#related-issues)
 
 ## Motivation
 
 Cluster autoscalers such as [Cluster Autoscaler (CA)](https://github.com/kubernetes/autoscaler/tree/master) or
-[Karpenter](https://github.com/kubernetes-sigs/karpenter) is present in almost all Kubernetes environments to
+[Karpenter](https://github.com/kubernetes-sigs/karpenter) are present in almost all Kubernetes environments to
 dynamically adjust node capacity based on scheduler signals. Both systems monitor pod scheduling conditions,
 specifically looking for pods that match:
 
@@ -133,36 +134,52 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
     // ...
 }
 
-// patchSchedulingGates adds a scheduling gate for Volcano-managed pods that opted-in
+// patchSchedulingGates adds a scheduling gate for Volcano-managed pods.
+// The gate prevents cluster autoscalers from seeing the pod until Volcano
+// determines it's ready (queue admission + gang scheduling satisfied).
 func patchSchedulingGates(pod *v1.Pod) *patchOperation {
+	// Check if opt-in annotation is present
+	if !api.HasQueueAllocationGateAnnotation(pod) {
+		klog.V(4).Infof("Pod %s/%s does not have opt-in annotation, skipping gate",
+			pod.Namespace, pod.Name)
+		return nil
+	}
 
-    // Check if opt-in annotation is present
-    if !api.HasQueueAllocationGateAnnotation(pod) {
-        return nil
-    }
+	gate := v1.PodSchedulingGate{Name: schedulingv1beta1.QueueAllocationGateKey}
 
-    gates := []v1.PodSchedulingGate{
-        {Name: schedulingv1beta1.QueueAllocationGateKey},
-    }
+	// Idempotent: do not add a duplicate Volcano gate.
+	// This prevents appending the same gate multiple times if the mutation is retried.
+	for _, g := range pod.Spec.SchedulingGates {
+		if g.Name == gate.Name {
+			return nil
+		}
+	}
 
-    return &patchOperation{
-        Op:    "add",
-        Path:  "/spec/schedulingGates",
-        Value: append(pod.Spec.SchedulingGates, gates...),
-    }
+	// Parent missing: The schedulingGates slice hasn't been initialized yet.
+	// We must use "add" on the base path with an array containing our gate.
+	if pod.Spec.SchedulingGates == nil {
+		return &patchOperation{
+			Op:    "add",
+			Path:  "/spec/schedulingGates",
+			Value: []v1.PodSchedulingGate{gate},
+		}
+	}
+
+	// Parent exists: We can safely append to the existing array.
+	// Using the "-" path operator tells JSON Patch to append to the end of the array,
+	// preventing us from overwriting gates added by parallel webhooks.
+	return &patchOperation{
+		Op:    "add",
+		Path:  "/spec/schedulingGates/-",
+		Value: gate,
+	}
 }
 ```
 
 **`schedulingGates` Field Immutability**
 
 Kubernetes `schedulingGates` can only be removed and **not added after pod creation**
-([see PodSpec documentation](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#scheduling)).
-The gates will then be gradually removed in the scheduler side, since the latter contains the actions and plugins that
-determine if the Pod can be allocated to a queue and eventually a node:
-
-- **During bind**: For successfully allocated pods, gates **should be** removed atomically with binding.
-- **For lack of cluster capacity**: When queue has capacity but no node can fit the pod, gates are removed to signal the
-  `Unschedulable` condition to autoscalers and trigger a scale-up.
+([see PodSpec documentation](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#scheduling)). As such, removing the gate can result in setting the `Unschedulable` condition on the pod if no node can fit it or actually binding it to a node.
 
 #### Changes to the Volcano Scheduler
 
@@ -208,16 +225,29 @@ action while still being prevented from allocation until the gate is removed.
 
 ##### Queue Allocation and Gate Removal
 
-Each time the `Allocate` action is executed,
+In the current Volcano implementation, tasks with external (non-Volcano) scheduling gates are skipped when building the job worksheet, so they never enter the allocation loop (please refer to [`organizeJobWorksheet()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L255)). However, in this proposal, we must ensure that Pods with the new proposed Volcano scheduling gate are also included in the job worksheet, so they can be accounted for in the queue capacity check:
+
+```go
+// In organizeJobWorksheet(), when building the worksheet for each subJob:
+for _, task := range subJob.TaskStatusIndex[api.Pending] {
+    // Skip tasks with external (non-Volcano) scheduling gates
+    if task.SchGated && !api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+        klog.V(4).Infof("Task <%v/%v> has external scheduling gate, skip it.",
+            task.Namespace, task.Name)
+        continue
+    }
+    // ... push task into worksheet ...
+}
+```
+
+Afterwards, each time the `Allocate` action is executed,
 [`allocateResourcesForTasks(...)`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L551)
 tries to allocate resources for each Task in a given Queue and
 [`ssn.Allocatable(queue, task)`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L569)
 gives us the needed signal (by running every plugin check) for eventually removing the gate added previously by the
-**MutatingAdmissionWebhook**. Gates should be removed for signaling the `Unschedulable` condition to autoscalers when no
-node fits the pod, otherwise, the pod will be allocated to a node and gates are removed during the bind operation.
+**MutatingAdmissionWebhook**. 
 
-To avoid blocking the scheduler, gate removals for lack of cluster capacity are queued to background workers and
-processed asynchronously. The following code snippet showcases the possible high-level changes to the function
+The implementation proposes to remove gates at two points: first asynchronously after the capacity check passes (performance optimization), then synchronously before binding if needed (safety guarantee). The async removal is handled by background workers to avoid blocking the scheduler. The following code snippet showcases the high-level changes to the function
 [`allocateResourcesForTasks(...)`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L551):
 
 ```go
@@ -230,60 +260,62 @@ func (alloc *Action) allocateResourcesForTasks(...) {
         task := tasks.Pop().(*api.TaskInfo)
 
         // Check queue capacity (enhanced to account for reserved ungated pods)
-        // The capacity plugin's AddAllocatableFn sets task.RemoveGateDuringBind=true
-        // and adds task to reserved cache if it passes capacity checks
         if !ssn.Allocatable(queue, task) {
             // ...
             continue
         }
 
-        // Skip tasks with external (non-Volcano) scheduling gates
-        if task.SchGated && !task.RemoveGateDuringBind {
-            continue
+		// If task passed allocation check and has the QueueAllocationGate, initiate async gate removal.
+		// Gate will be removed by the background worker (best effort). During the bind operation, we need
+		// to ensure the gate is not present, otherwise the bind will fail.
+        if task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
+            klog.V(3).Infof("Task %s/%s has the QueueAllocationGate, queue async gate removal", task.Namespace, task.Name)
+            alloc.schedulingGateRemoval(task, queue.UID)
         }
+
+		// Skip tasks with external (non-Volcano) scheduling gates
+		if task.SchGated {
+			if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+				klog.Warningf("Task %s/%s has Volcano scheduling gate but missing annotation %q, gate will not be removed automatically; add the annotation or remove the gate manually",
+					task.Namespace, task.Name, schedulingv1beta1.QueueAllocationGateKey)
+			} else {
+				klog.V(4).Infof("Task %s/%s has non-Volcano scheduling gate, skipping", task.Namespace, task.Name)
+			}
+			continue
+		}
 
         // ... predicate checks ...
+        // PrePredicate, node filtering, prioritization:
+        // If any fail, pod is marked Unschedulable (gate was already queued for removal above)
 
-        // Handle PrePredicate failure (e.g., topology constraints)
-        // Remove gate so pod becomes Unschedulable - signals autoscaler
-        if err := ssn.PrePredicateFn(task); err != nil {
-            // ...
-            alloc.schedulingGateRemoval(task, queue.UID)
-            // ...
-        }
-
-        // Handle no predicate nodes (no nodes fit the pod)
-        // Remove gate so pod becomes Unschedulable - signals autoscaler
-        if len(predicateNodes) == 0 {
-            // ...
-            alloc.schedulingGateRemoval(task, queue.UID)
-            // ...
-        }
-
-        // Handle no best node after prioritization
-        // Remove gate so pod becomes Unschedulable - signals autoscaler
-        if bestNode == nil {
-            // ...
-            alloc.schedulingGateRemoval(task, queue.UID)
-            // ...
-        }
-
-        // Allocate task to best node
+        // Allocate task to best node if found
         if err := alloc.allocateResourcesForTask(stmt, task, bestNode, job); err == nil {
-            // ... allocation successful ...
+            // ... allocation successful, will proceed to bind ...
         }
     }
 
     // ...
 }
 
-// schedulingGateRemoval queues async gate removal for node-fit failures
+// schedulingGateRemoval queues async gate removal if scheduling failed.
+// This ensures cluster autoscalers can see the Unschedulable condition and trigger scale-up
 func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo, queueID api.QueueID) {
-    if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
-        op := schGateRemovalOperation{namespace: task.Namespace, name: task.Name}
-        alloc.schGateRemovalCh <- op
-        task.SchGated = false  // Mark as ungated in cache
-    }
+	// Only enqueue gate removal if the task has only Volcano scheduling gate
+	if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+		op := schGateRemovalOperation{
+			namespace: task.Namespace,
+			name:      task.Name,
+		}
+
+		select {
+		case alloc.schGateRemovalCh <- op:
+			klog.V(3).Infof("Queued gate removal for %s/%s", task.Namespace, task.Name)
+			// Update task state immediately so it won't be queued again in this cycle
+			task.SchGated = false
+		default:
+			klog.Warningf("Gate operation queue full, skipping gate removal for %s/%s", task.Namespace, task.Name)
+		}
+	}
 }
 ```
 
@@ -316,8 +348,9 @@ func (alloc *Action) schGateRemovalWorker() {
             return
         case op := <-alloc.schGateRemovalCh:
             // Fetch fresh pod state from API server
-            pod, err := alloc.session.KubeClient().CoreV1().Pods(op.namespace).Get(
-                context.TODO(),
+            // Use cached kubeClient to avoid data race with session updates
+            pod, err := alloc.kubeClient.CoreV1().Pods(op.namespace).Get(
+                context.Background(),
                 op.name,
                 metav1.GetOptions{})
 
@@ -327,7 +360,7 @@ func (alloc *Action) schGateRemovalWorker() {
             }
 
             // Remove the Volcano scheduling gate
-            if err := cache.RemoveVolcanoSchGate(alloc.session.KubeClient(), pod); err != nil {
+            if err := cache.RemoveVolcanoSchGate(alloc.kubeClient, pod); err != nil {
                 klog.Errorf("Failed to remove gate from %s/%s: %v", op.namespace, op.name, err)
             }
         }
@@ -336,6 +369,44 @@ func (alloc *Action) schGateRemovalWorker() {
 
 // Note: When starting the worker routine (e.g., in Action initialization), we should
 // call alloc.schGateRemovalWorkersWg.Add(1) before launching the goroutine.
+```
+
+**Synchronous Gate Removal Before Bind**
+
+While the async worker provides best-effort gate removal, the [`Bind()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L218) operation includes a synchronous gate removal step to guarantee that Kubernetes will accept the bind request:
+
+```go
+// In DefaultBinder.Bind()
+func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) map[schedulingapi.TaskID]string {
+    errMsg := make(map[schedulingapi.TaskID]string)
+    for _, task := range tasks {
+        p := task.Pod
+
+		// Ensure Volcano QueueAllocationGate is removed before bind, otherwise the bind will fail.
+		// This is a safety guarantee as the async worker may have already removed it.
+		if schedulingapi.HasQueueAllocationGateAnnotation(p) && schedulingapi.HasOnlyVolcanoSchedulingGate(p) {
+			klog.V(3).Infof("Ensuring gate is removed for pod %s/%s before bind", p.Namespace, p.Name)
+			err := RemoveVolcanoSchGate(kubeClient, p)
+
+			// On conflict, verify gates are gone
+			if apierrors.IsConflict(err) {
+				freshPod, _ := kubeClient.CoreV1().Pods(p.Namespace).Get(context.TODO(), p.Name, metav1.GetOptions{})
+				if freshPod != nil && len(freshPod.Spec.SchedulingGates) == 0 {
+					err = nil
+				}
+			}
+
+			if err != nil {
+				klog.Errorf("Failed to remove gate for <%v/%v>: %v", p.Namespace, p.Name, err)
+				errMsg[task.UID] = fmt.Sprintf("gate removal failed: %v", err)
+				continue
+			}
+		}
+
+        // Standard bind operation
+        // ...
+    }
+}
 ```
 
 ##### Queue Capacity Accounting for Ungated Pods
@@ -373,7 +444,7 @@ gets scheduled and eventually moves to the `Running` phase:
   pod-3   Pending  SchedulingGated    scheduling.volcano.sh/queue-allocation-gate
   ```
 
-- **After `pod-1` completes**, in the next cycle `pod-2` gets its gate removed (passes queue capacity check) but fails
+- **After `pod-1` is deleted or terminates**, in the next cycle `pod-2` gets its gate removed (passes queue capacity check) but fails
   to find matching nodes due to its `nodeSelector`. It transitions to `Unschedulable`, in order to trigger the cluster
   autoscaler. However, **without capacity reservation** for `pod-2`, the queue will appear empty. If `pod-3` is created,
   it will pass the capacity check and get scheduled:
@@ -509,12 +580,8 @@ ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskIn
 
     allocatable := cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
 
-    // If queue has capacity and task has volcano gate, add to reserved cache
-    // Check annotation because gate may already be removed by async worker
-    if allocatable && candidate.SchGated && api.HasQueueAllocationGateAnnotation(candidate.Pod) {
-        // Mark task to have gate removed during bind
-        candidate.RemoveGateDuringBind = true
-        // Add to reserved cache immediately after passing capacity check
+    // If queue has capacity and task has the QueueAllocationGate annotation.
+    if allocatable && api.HasQueueAllocationGateAnnotation(candidate.Pod) {
         cp.addTaskToReservedCache(queue.UID, candidate)
     }
 
@@ -604,38 +671,13 @@ enabling other plugins like
 [`tdm`](https://github.com/volcano-sh/volcano/tree/v1.14.0/pkg/scheduler/plugins/tdm) to implement similar reservation
 cleanup logic in the future without modifying the framework.
 
-##### Gate Removal During Successful Bind
+## Feature gate
 
-Finally, the last case is when a task successfully passes **all allocation checks** (i.e.,
-[`ssn.Allocatable(queue, task)`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L569)
-returns `true` and there's a node that can fit the pod), then the gate will only be removed during the
-[`Bind(...)`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L218) operation:
+The entire scheduling-gates queue-admission flow is controlled by a [feature gate](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/features/volcano_features.go), for example, `SchedulingGatesQueueAdmission` (Alpha, default off). When the gate is enabled, all of the behavior described in this document applies. This keeps existing clusters and configurations unchanged unless the feature is explicitly enabled (*e.g.* `--feature-gates=SchedulingGatesQueueAdmission=true`).
 
-```go
-func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*schedulingapi.TaskInfo) map[schedulingapi.TaskID]string {
-    errMsg := make(map[schedulingapi.TaskID]string)
-    for _, task := range tasks {
-        p := task.Pod
+## Limitations
 
-        // Remove Volcano gate before bind if needed
-        if task.RemoveGateDuringBind {
-            if err := RemoveVolcanoSchGate(kubeClient, p); err != nil {
-                klog.Errorf("Failed to remove gate for <%v/%v>: %v", p.Namespace, p.Name, err)
-                errMsg[task.UID] = fmt.Sprintf("gate removal failed: %v", err)
-                continue
-            }
-        }
-
-        // Standard bind
-        if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(), &v1.Binding{...}); err != nil {
-            // ...
-        }
-        // ...
-    }
-
-    return errMsg
-}
-```
+Once a pod's gate is removed (*i.e.*, because it has passed the queue capacity check), the pod is accounted for in the queue's reserved capacity until it is scheduled or the reservation is cleaned up. If that pod remains unschedulable (*e.g.*, no node matches, or the cluster is waiting for the autoscaler to add nodes), it continues to hold queue capacity. The scheduler cannot distinguish an ungated pod that will never become schedulable from one that will become schedulable after the autoscaler expands the cluster. As a result, other pods that could schedule may be blocked by this reserved capacity indefinitely. In this version of the design, reservations are not released for long-unschedulable pods (*e.g.*, via a timeout) to avoid over-committing the queue when those pods eventually get nodes. Operators should be aware that in such scenarios, queue capacity can be held by ungated-but-unschedulable pods and may delay scheduling of other workloads.
 
 ## Conclusions
 
