@@ -117,7 +117,7 @@ type Action struct {
 	schGateRemovalWorkersWg sync.WaitGroup
 	schGateRemovalStopCh    chan struct{}
 	gateRemovalWorkerNum    int // Number of async gate removal workers
-	startedWorkers          bool
+	initOnce                sync.Once
 }
 
 // schGateRemovalOperation is a struct that contains the namespace
@@ -201,13 +201,12 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 	alloc.parseArguments(ssn)
 
-	// Initialize workers once with the configured number
-	// Cache KubeClient for thread-safe access from workers
-	if !alloc.startedWorkers {
-		alloc.startedWorkers = true
+	// Initialize workers once with the configured number.
+	// Cache KubeClient for thread-safe access from workers.
+	alloc.initOnce.Do(func() {
 		alloc.kubeClient = ssn.KubeClient()
 		alloc.Initialize()
-	}
+	})
 
 	// the allocation for pod may have many stages
 	// 1. pick a queue named Q (using ssn.QueueOrderFn)
