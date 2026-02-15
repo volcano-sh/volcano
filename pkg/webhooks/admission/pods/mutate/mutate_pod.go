@@ -157,7 +157,7 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 func patchSchedulingGates(pod *v1.Pod) *patchOperation {
 	// Check if opt-in annotation is present
 	if !api.HasQueueAllocationGateAnnotation(pod) {
-		klog.Infof("Pod %s/%s does not have opt-in annotation, skipping gate",
+		klog.V(4).Infof("Pod %s/%s does not have opt-in annotation, skipping gate",
 			pod.Namespace, pod.Name)
 		return nil
 	}
