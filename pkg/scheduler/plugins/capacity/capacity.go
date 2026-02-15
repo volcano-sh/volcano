@@ -249,8 +249,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		allocatable := cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
 
-		// If queue has capacity and task has the QueueAllocationGate, add to reserved cache.
-		if allocatable && candidate.SchGated && api.HasQueueAllocationGateAnnotation(candidate.Pod) {
+		// If queue has capacity and task has the QueueAllocationGate annotation.
+		if allocatable && api.HasQueueAllocationGateAnnotation(candidate.Pod) {
 			cp.addTaskToReservedCache(queue.UID, candidate)
 		}
 
