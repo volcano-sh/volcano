@@ -143,11 +143,17 @@ func patchSchedulingGates(pod *v1.Pod) *patchOperation {
     gates := []v1.PodSchedulingGate{
         {Name: schedulingv1beta1.QueueAllocationGateKey},
     }
-
+    // Use "add" when the field is not set, and "replace" when it already exists.
+    // In both cases, preserve existing gates and append the new one.
+    value := append(pod.Spec.SchedulingGates, gates...)
+    op := "add"
+    if len(pod.Spec.SchedulingGates) > 0 {
+        op = "replace"
+    }
     return &patchOperation{
-        Op:    "add",
+        Op:    op,
         Path:  "/spec/schedulingGates",
-        Value: append(pod.Spec.SchedulingGates, gates...),
+        Value: value,
     }
 }
 ```
@@ -390,7 +396,7 @@ gets scheduled and eventually moves to the `Running` phase:
   pod-3   Pending  SchedulingGated    scheduling.volcano.sh/queue-allocation-gate
   ```
 
-- **After `pod-1` completes**, in the next cycle `pod-2` gets its gate removed (passes queue capacity check) but fails
+- **After `pod-1` is deleted or terminates**, in the next cycle `pod-2` gets its gate removed (passes queue capacity check) but fails
   to find matching nodes due to its `nodeSelector`. It transitions to `Unschedulable`, in order to trigger the cluster
   autoscaler. However, **without capacity reservation** for `pod-2`, the queue will appear empty. If `pod-3` is created,
   it will pass the capacity check and get scheduled:
