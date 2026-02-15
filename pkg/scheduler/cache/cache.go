@@ -225,10 +225,12 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 			klog.V(3).Infof("Ensuring gate is removed for pod %s/%s before bind", p.Namespace, p.Name)
 			err := RemoveVolcanoSchGate(kubeClient, p)
 
-			// On conflict, verify gates are gone
+			// On conflict, verify gates are gone (e.g. another writer removed them)
 			if apierrors.IsConflict(err) {
-				freshPod, _ := kubeClient.CoreV1().Pods(p.Namespace).Get(context.TODO(), p.Name, metav1.GetOptions{})
-				if freshPod != nil && len(freshPod.Spec.SchedulingGates) == 0 {
+				freshPod, getErr := kubeClient.CoreV1().Pods(p.Namespace).Get(context.TODO(), p.Name, metav1.GetOptions{})
+				if getErr != nil {
+					klog.V(4).Infof("Failed to get pod %s/%s after conflict: %v", p.Namespace, p.Name, getErr)
+				} else if freshPod != nil && len(freshPod.Spec.SchedulingGates) == 0 {
 					err = nil
 				}
 			}

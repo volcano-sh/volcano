@@ -155,9 +155,12 @@ func RemoveVolcanoSchGate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
 			"schedulingGates": newGates,
 		},
 	}
-	patchBytes, _ := json.Marshal(patch)
+	patchBytes, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
 
-	_, err := kubeClient.CoreV1().Pods(pod.Namespace).Patch(
+	_, err = kubeClient.CoreV1().Pods(pod.Namespace).Patch(
 		context.Background(),
 		pod.Name,
 		types.StrategicMergePatchType,
