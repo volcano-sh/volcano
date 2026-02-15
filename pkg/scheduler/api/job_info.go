@@ -137,7 +137,6 @@ type TaskInfo struct {
 	BestEffort                  bool
 	HasRestartableInitContainer bool
 	SchGated                    bool
-	RemoveGateDuringBind        bool
 
 	// RevocableZone supports setting volcano.sh/revocable-zone annotation or label for pod/podgroup
 	// we only support empty value or * value for this version and we will support specify revocable zone name for future releases
@@ -298,7 +297,6 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		RevocableZone:               ti.RevocableZone,
 		NumaInfo:                    ti.NumaInfo.Clone(),
 		SchGated:                    ti.SchGated,
-		RemoveGateDuringBind:        ti.RemoveGateDuringBind,
 		TransactionContext: TransactionContext{
 			NodeName: ti.NodeName,
 			Status:   ti.Status,

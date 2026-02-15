@@ -249,15 +249,9 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		allocatable := cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
 
-		// If queue has capacity and task has volcano gate, add to reserved cache
-		// Check annotation (not gate presence) because gate may already be removed by async worker
+		// If queue has capacity and task has the QueueAllocationGate, add to reserved cache.
 		if allocatable && candidate.SchGated && api.HasQueueAllocationGateAnnotation(candidate.Pod) {
-			// Mark task to have gate removed during bind
-			candidate.RemoveGateDuringBind = true
-			// Add to reserved cache immediately after passing capacity check
 			cp.addTaskToReservedCache(queue.UID, candidate)
-			klog.V(4).Infof("Task %s/%s will have gate removed during bind (queue %s has capacity)",
-				candidate.Namespace, candidate.Name, queue.Name)
 		}
 
 		return allocatable
