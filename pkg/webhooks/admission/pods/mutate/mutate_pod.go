@@ -165,11 +165,17 @@ func patchSchedulingGates(pod *v1.Pod) *patchOperation {
 	gates := []v1.PodSchedulingGate{
 		{Name: schedulingv1beta1.QueueAllocationGateKey},
 	}
-
+	// Use "add" when the field is not set, and "replace" when it already exists.
+	// In both cases, preserve existing gates and append the new one.
+	value := append(pod.Spec.SchedulingGates, gates...)
+	op := "add"
+	if len(pod.Spec.SchedulingGates) > 0 {
+		op = "replace"
+	}
 	return &patchOperation{
-		Op:    "add",
+		Op:    op,
 		Path:  "/spec/schedulingGates",
-		Value: append(pod.Spec.SchedulingGates, gates...),
+		Value: value,
 	}
 }
 
