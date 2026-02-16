@@ -957,19 +957,6 @@ func (sc *SchedulerCache) Pipeline(taskInfo *schedulingapi.TaskInfo, nodeName st
 		return err
 	}
 
-	// Set the nominated node name to persist the pipeline decision
-	pod := task.Pod.DeepCopy()
-	pod.Status.NominatedNodeName = nodeName
-
-	// Update the pod status with the default status updater
-	_, err = sc.StatusUpdater.UpdatePodStatus(pod)
-	if err != nil {
-		klog.Errorf("Failed to update nominated node for pipelined task %s/%s: %v",
-			task.Namespace, task.Name, err)
-		return err
-	}
-
-	// We mark the task as Pipelined
 	originalStatus := task.Status
 	if err := job.UpdateTaskStatus(task, schedulingapi.Pipelined); err != nil {
 		return err
@@ -987,6 +974,17 @@ func (sc *SchedulerCache) Pipeline(taskInfo *schedulingapi.TaskInfo, nodeName st
 		}
 		return err
 	}
+
+	p := task.Pod
+	go func() {
+		pod := p.DeepCopy()
+		pod.Status.NominatedNodeName = nodeName
+		if _, err := sc.StatusUpdater.UpdatePodStatus(pod); err != nil {
+			klog.Errorf("Failed to update NominatedNodeName for pipelined task %s/%s: %v",
+				pod.Namespace, pod.Name, err)
+			sc.resyncTask(task)
+		}
+	}()
 
 	klog.V(4).Infof("Task <%s/%s> successfully pipelined to Node <%s>",
 		task.Namespace, task.Name, node.Name)
