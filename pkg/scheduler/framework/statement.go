@@ -154,7 +154,13 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 }
 
 // Pipeline the task for the node
-func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurred bool) error {
+func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
+	if task.Status == api.Pipelined && task.NodeName == hostname {
+		klog.V(4).Infof("Task <%v/%v> already pipelined on node <%v>, skipping",
+			task.Namespace, task.Name, hostname)
+		return nil
+	}
+
 	errInfos := make([]error, 0)
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
@@ -171,7 +177,6 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 	}
 
 	task.NodeName = hostname
-	task.EvictionOccurred = evictionOccurred
 
 	if node, found := s.ssn.Nodes[hostname]; found {
 		if err := node.AddTask(task); err != nil {
@@ -483,7 +488,7 @@ func (s *Statement) RecoverOperations(stmt *Statement) error {
 				return err
 			}
 		case Pipeline:
-			err := s.Pipeline(op.task, op.task.NodeName, false)
+			err := s.Pipeline(op.task, op.task.NodeName)
 			if err != nil {
 				klog.Errorf("Failed to pipeline task: %s", err.Error())
 				return err

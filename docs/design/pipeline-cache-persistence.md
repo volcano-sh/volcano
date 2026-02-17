@@ -265,7 +265,6 @@ clones stale cache state — the task appears as `Pending` again.
 ```go
 type TransactionContext struct {
     NodeName              string
-    EvictionOccurred      bool
     JobAllocatedHyperNode string
     Status                TaskStatus
 }
@@ -288,7 +287,7 @@ resets everything.
 
 1. **Session-level pipeline**
    ([`Statement.Pipeline()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/framework/statement.go#L157)):
-   Sets session task's `NodeName`, `EvictionOccurred`, status to `Pipelined`, reserves node resources
+   Sets session task's `NodeName` and status to `Pipelined`, reserves node resources
    in the session view.
 
 2. **Commit path**
@@ -309,7 +308,7 @@ resets everything.
    [`RecordJobStatusEvent()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L1582)
    → iterates Pipelined tasks →
    [`TaskSchedulingReason()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/api/job_info.go#L810)
-   → reports conditions and (sometimes) `NominatedNodeName` to the API server.
+   → reports conditions and `NominatedNodeName` to the API server.
 
 ## Current Volcano NominatedNodeName Handling
 
@@ -326,7 +325,7 @@ closeSession(ssn)
         -> for each Pipelined task:
             job.TaskSchedulingReason(taskInfo.UID)  // job_info.go:810
               -> reads TransactionContext (or LastTransaction if discarded)
-              -> if ctx.Status == Pipelined && ctx.EvictionOccurred:
+              -> if ctx.Status == Pipelined:
                     nominatedNodeName = ctx.NodeName
             taskUnschedulable(task, reason, msg, nominatedNodeName)  // cache.go:1027
               -> if len(nominatedNodeName) > 0 && needsUpdate:
@@ -336,24 +335,19 @@ closeSession(ssn)
 
 ### Limitations
 
-1. **Eviction-only**:
-   [`TaskSchedulingReason()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/api/job_info.go#L810)
-   only returns `nominatedNodeName` when `EvictionOccurred == true`. Non-eviction pipelining
-   (waiting for resources without preemption) never triggers nomination.
-
-2. **API-only, not cached**:
+1. **API-only, not cached**:
    [`taskUnschedulable()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L1027)
    patches the pod in the API server via `UpdatePodStatus()`. It does **not** update the cache's
    `TaskStatusIndex`, node resource accounting, or `TransactionContext` fields.
 
-3. **Ephemeral**: Even when `NominatedNodeName` is set on the pod, the cache still shows the task
+2. **Ephemeral**: Even when `NominatedNodeName` is set on the pod, the cache still shows the task
    as `Pending`. The next cycle's
    [`Snapshot()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L1423)
    starts from stale state.
 
 ## Proposed Solution
 
-The fix spans three changes:
+The fix spans five changes:
 
 ### 1. Add `Cache.Pipeline()` Interface and Implementation
 
@@ -474,23 +468,63 @@ if lv.Status != rv.Status {
 This ensures pipelined tasks are re-evaluated on their nominated nodes first, before any new
 pending tasks are considered.
 
+### 4. Remove `EvictionOccurred` from `TransactionContext`
+
+The `EvictionOccurred` field is removed from
+[`TransactionContext`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/api/job_info.go#L82)
+and the `evictionOccurred` parameter is removed from
+[`Statement.Pipeline()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/framework/statement.go#L157).
+
+Previously, `EvictionOccurred` was the only signal that controlled whether
+[`TaskSchedulingReason()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/api/job_info.go#L810)
+returned a `nominatedNodeName` for pipelined tasks. Non-eviction pipelining (waiting for resources
+without preemption) never triggered nomination. With `Cache.Pipeline()` now unconditionally setting
+`NominatedNodeName` on the pod via the API server at commit time, this distinction is no longer
+needed. `TaskSchedulingReason()` now always returns `ctx.NodeName` as `nominatedNodeName` for
+`Pipelined` tasks, ensuring consistent nomination regardless of how the task was pipelined.
+
+The `evictionOccurred` parameter is removed from all callers:
+[`allocate`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go),
+[`reclaim`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/reclaim/reclaim.go),
+and [`preempt`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/preempt/preempt.go).
+
+### 5. Prevent Duplicate Re-Pipelining
+
+A guard is added at the top of
+[`Statement.Pipeline()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/framework/statement.go#L157)
+to skip re-pipelining when a task is already `Pipelined` on the same node:
+
+```go
+if task.Status == api.Pipelined && task.NodeName == hostname {
+    return nil
+}
+```
+
+This is placed in `Statement.Pipeline()` rather than in individual action code so that all callers
+(`allocate`, `reclaim`, `preempt`) are protected uniformly. Without this guard,
+`organizeJobWorksheet()` includes both `Pipelined` and `Pending` tasks, and already-pipelined tasks
+flow through `allocateResourcesForTask()` which calls `stmt.Pipeline()` again. On commit,
+`Cache.Pipeline()` fires again, emitting a duplicate "Pipeline" event on the podgroup every
+scheduling session. The guard ensures that tasks already pipelined on their target node are left in
+place without re-processing.
+
 ## NominatedNodeName: Dual Update Safety
 
-With the proposed `Cache.Pipeline()`, `NominatedNodeName` would be set in two places:
+With the proposed `Cache.Pipeline()`, `NominatedNodeName` is set in two places:
 1. **Cache.Pipeline() goroutine** — at commit time, for all pipelined tasks
 2. **[`RecordJobStatusEvent`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L1582)
-   at session end** — for pipelined tasks with `EvictionOccurred == true`
+   at session end** — for all pipelined tasks (since `EvictionOccurred` has been removed,
+   `TaskSchedulingReason()` now always returns `nominatedNodeName` for pipelined tasks)
 
 These two paths are complementary and safe:
 
 | Scenario | Cache.Pipeline() goroutine | RecordJobStatusEvent |
 |----------|---------------------------|----------------------|
-| Pipelined WITH eviction | Sets `NominatedNodeName = X` | Also sets same value (idempotent — `podNominatedNodeNameNeedUpdate` returns false) |
-| Pipelined WITHOUT eviction | Sets `NominatedNodeName = X` | Returns empty `nominatedNodeName`, skips update |
-| Pipelined then DISCARDED | Already set before discard | Uses `LastTransaction`, idempotent if eviction occurred |
+| Pipelined (committed) | Sets `NominatedNodeName = X` | Also sets same value (idempotent — `podNominatedNodeNameNeedUpdate` returns false) |
+| Pipelined then DISCARDED | Already set before discard | Uses `LastTransaction`, sets same value (idempotent) |
 
 The goroutine fires first (at commit time). By the time session close runs, the pod already has the
-correct `NominatedNodeName`. The session-end path either confirms it (no-op) or skips it.
+correct `NominatedNodeName`. The session-end path confirms it (no-op due to idempotency check).
 
 ### Current vs Proposed Comparison
 
@@ -499,13 +533,13 @@ correct `NominatedNodeName`. The session-end path either confirms it (no-op) or 
 | Cache task status | Stays `Pending` forever | Updated to `Pipelined` |
 | Cache node resource accounting | Not tracked | Resources properly reserved |
 | Next cycle sees pipeline decision | No — snapshot shows `Pending` | Yes — shows `Pipelined` on correct node |
-| `NominatedNodeName` (eviction case) | Set at session end | Set immediately + confirmed at session end |
-| `NominatedNodeName` (no eviction) | **Never set** | Set by `Cache.Pipeline()` goroutine |
+| `NominatedNodeName` | Set at session end only for eviction cases | Set immediately by `Cache.Pipeline()` for all cases + confirmed at session end |
 | Pod condition (Unschedulable) | Set at session end | Set at session end (unchanged) |
+| Duplicate events | Pipelined tasks re-pipelined every session | Skipped when already pipelined on same node |
 
 [`RecordJobStatusEvent`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L1582)
 is the **reporting** mechanism — it tells the API server about pod conditions
-and (for eviction cases) `NominatedNodeName`. `Cache.Pipeline()` is the **persistence** mechanism —
+and `NominatedNodeName`. `Cache.Pipeline()` is the **persistence** mechanism —
 it records the scheduling decision in the cache so it survives to the next cycle. This mirrors the
 existing pattern:
 [`Cache.Bind()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L933)
@@ -531,8 +565,11 @@ triggers eviction + `RecordJobStatusEvent` reports status.
 |------|---------|
 | `pkg/scheduler/cache/cache.go` | Add `Pipeline()` implementation with async NominatedNodeName update |
 | `pkg/scheduler/cache/interface.go` | Add `Pipeline()` method to `Cache` interface |
-| `pkg/scheduler/framework/statement.go` | `pipeline()` delegates to `Cache.Pipeline()`, rename `UnPipeline` to `unpipeline()`, add `Commit()` rollback on pipeline failure |
+| `pkg/scheduler/framework/statement.go` | `pipeline()` delegates to `Cache.Pipeline()`, rename `UnPipeline` to `unpipeline()`, add `Commit()` rollback on pipeline failure, remove `evictionOccurred` parameter from `Pipeline()`, add duplicate re-pipelining guard (skip when task already `Pipelined` on same node) |
 | `pkg/scheduler/actions/allocate/allocate.go` | `buildAllocateContext()` returns two contexts, three-way commit/discard, `addJobToContext` helper, pipelined task priority in `organizeJobWorksheet()` |
+| `pkg/scheduler/api/job_info.go` | Remove `EvictionOccurred` from `TransactionContext`, simplify `TaskSchedulingReason()` to always return `nominatedNodeName` for `Pipelined` tasks |
+| `pkg/scheduler/actions/reclaim/reclaim.go` | Remove `evictionOccurred` variable and parameter from `Pipeline()` call |
+| `pkg/scheduler/actions/preempt/preempt.go` | Remove `evictionOccurred` variable and parameter from `Pipeline()` calls |
 
 ## Related Issues and PRs
 
