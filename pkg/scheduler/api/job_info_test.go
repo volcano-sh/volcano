@@ -21,6 +21,7 @@ limitations under the License.
 package api
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -388,12 +389,41 @@ func TestTaskSchedulingReason(t *testing.T) {
 		for uid, exp := range test.expected {
 			msg := job.JobFitErrors
 			if uid != "pg" {
-				_, msg, _ = job.TaskSchedulingReason(TaskID(uid))
+				_, msg = job.TaskSchedulingReason(TaskID(uid))
 			}
 			if msg != exp {
 				t.Errorf("[x] case #%d, task %v\nwant: %s\n got: %s", i, uid, exp, msg)
 			}
 		}
+	}
+}
+
+// TestTaskSchedulingReason_PipelinedReturnsCorrectReason verifies that TaskSchedulingReason
+// returns PodReasonUnschedulable for Pipelined tasks with the correct message.
+func TestTaskSchedulingReason_PipelinedReturnsCorrectReason(t *testing.T) {
+	pod := buildPod("ns1", "task-p", "", v1.PodPending,
+		BuildResourceList("1", "1G"), nil, make(map[string]string))
+	pod.Annotations = map[string]string{
+		schedulingv2.KubeGroupNameAnnotationKey: "pg1",
+	}
+
+	job := NewJobInfo("ns1/pg1")
+	ti := NewTaskInfo(pod)
+	job.AddTaskInfo(ti)
+
+	ti.LastTransaction = &TransactionContext{
+		NodeName: "node1",
+		Status:   Pipelined,
+	}
+
+	reason, msg := job.TaskSchedulingReason(TaskID(pod.UID))
+
+	if reason != PodReasonUnschedulable {
+		t.Errorf("Expected reason %q, got %q", PodReasonUnschedulable, reason)
+	}
+	expectedSubstr := "can possibly be assigned to node1"
+	if !strings.Contains(msg, expectedSubstr) {
+		t.Errorf("Expected msg to contain %q, got %q", expectedSubstr, msg)
 	}
 }
 
