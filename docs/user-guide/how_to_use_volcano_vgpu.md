@@ -75,6 +75,7 @@ data:
         arguments:
           deviceshare.VGPUEnable: true   # enable vgpu plugin
           deviceshare.SchedulePolicy: binpack  # scheduling policy. binpack / spread
+          deviceshare.VGPUPodGroupDeviceSpread: true  # (optional) prevent two pods from the same PodGroup from sharing the same vGPU device
 ```
 
 Check with:
