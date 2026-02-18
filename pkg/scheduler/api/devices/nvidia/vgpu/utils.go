@@ -156,6 +156,44 @@ func decodePodDevices(str string) []ContainerDevices {
 	return pd
 }
 
+// PodGroup annotation keys (avoid importing apis in this package).
+const (
+	podGroupAnnotationKey     = "scheduling.k8s.io/group-name"
+	volcanoPodGroupAnnotation = "volcano.sh/group-name"
+)
+
+// getPodGroupKey returns a unique key for the pod's group (namespace/name of PodGroup),
+// or "" if the pod has no group annotation. Used to avoid placing two pods from the same
+// PodGroup on the same vGPU device.
+func getPodGroupKey(pod *v1.Pod) string {
+	if pod == nil || pod.Annotations == nil {
+		return ""
+	}
+	groupName := pod.Annotations[podGroupAnnotationKey]
+	if groupName == "" {
+		groupName = pod.Annotations[volcanoPodGroupAnnotation]
+	}
+	if groupName == "" {
+		return ""
+	}
+	return pod.Namespace + "/" + groupName
+}
+
+// deviceHasPodFromSameGroup returns true if the device already has a pod from the same
+// PodGroup as currentKey (and that pod has non-zero usage), so we should not place
+// another pod from the same group on this device.
+func deviceHasPodFromSameGroup(gd *GPUDevice, currentKey string) bool {
+	if currentKey == "" {
+		return false
+	}
+	for _, usage := range gd.PodMap {
+		if usage.PodGroupKey == currentKey && (usage.UsedMem > 0 || usage.UsedCore > 0) {
+			return true
+		}
+	}
+	return false
+}
+
 func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 	for _, container := range pod.Spec.Containers {
 		_, ok := container.Resources.Limits[v1.ResourceName(getConfig().ResourceMemoryName)]
@@ -311,6 +349,7 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 	} else {
 		gs = gssnap
 	}
+	currentPodGroupKey := getPodGroupKey(pod)
 	ctrdevs := []ContainerDevices{}
 	for _, val := range ctrReq {
 		devs := []ContainerDevice{}
@@ -323,6 +362,10 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 			klog.V(3).InfoS("Scoring pod request", "memReq", val.Memreq, "memPercentageReq", val.MemPercentagereq, "coresReq", val.Coresreq, "Nums", val.Nums, "Index", i, "ID", gs.Device[i].ID)
 			klog.V(3).InfoS("Current Device", "Index", i, "TotalMemory", gs.Device[i].Memory, "UsedMemory", gs.Device[i].UsedMem, "UsedCores", gs.Device[i].UsedCore, "replicate", replicate)
 			if gs.Device[i].Number <= uint(gs.Device[i].UsedNum) {
+				continue
+			}
+			// Do not place another pod from the same PodGroup on this device.
+			if deviceHasPodFromSameGroup(gs.Device[i], currentPodGroupKey) {
 				continue
 			}
 			memreqForCard := uint(0)
