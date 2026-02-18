@@ -10,7 +10,7 @@
 * [Volcano Architecture: Session vs Cache](#volcano-architecture-session-vs-cache)
 * [Current NominatedNodeName Handling](#current-nominatednodename-handling)
 * [Proposed Solution](#proposed-solution)
-* [NominatedNodeName: Dual Update Safety](#nominatednodename-dual-update-safety)
+* [NominatedNodeName: Single Update Path](#nominatednodename-single-update-path)
 * [Expected Impact](#expected-impact)
 * [Affected Code](#affected-code)
 * [Related Issues and PRs](#related-issues-and-prs)
@@ -265,6 +265,7 @@ clones stale cache state — the task appears as `Pending` again.
 ```go
 type TransactionContext struct {
     NodeName              string
+    EvictionOccurred      bool
     JobAllocatedHyperNode string
     Status                TaskStatus
 }
@@ -333,7 +334,7 @@ closeSession(ssn)
                     UpdatePodStatus(pod)
 ```
 
-### Limitations
+### Limitations, Consequences
 
 1. **API-only, not cached**:
    [`taskUnschedulable()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L1027)
@@ -345,9 +346,26 @@ closeSession(ssn)
    [`Snapshot()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L1423)
    starts from stale state.
 
+3. **`NominatedNodeName` potentially not visible to the next scheduling cycle**:
+   [`taskUnschedulable()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L1027)
+   calls `UpdatePodStatus()` to patch `NominatedNodeName` on the API server. This is an async
+   call — the cache does not wait for it to complete. For the updated `NominatedNodeName` to be
+   visible in the cache, the full round-trip must complete before the next
+   [`Snapshot()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L1423):
+   the API server must process the update, the informer watch must deliver the event, and the
+   cache's `updatePod()` must process it. If any part of this chain is slow (API server churn,
+   informer lag, scheduling cycle running faster than the round-trip), the next cycle's
+   `Snapshot()` clones the cache task whose `Pod` pointer still references the old pod object —
+   `pod.Status.NominatedNodeName` is empty. The `allocate` action in that cycle has no knowledge
+   that the task was nominated to a node in the previous cycle. As a consequence, the task goes
+   through the full scheduling cycle again — predicate evaluation, node scoring, and placement —
+   with no affinity toward its previously nominated node. This can cause **allocation drift**:
+   the task may be placed on a different node than the one it was nominated to, wasting the
+   eviction or resource reservation that justified the original nomination.
+
 ## Proposed Solution
 
-The fix spans five changes:
+The fix spans six changes:
 
 ### 1. Add `Cache.Pipeline()` Interface and Implementation
 
@@ -480,8 +498,14 @@ Previously, `EvictionOccurred` was the only signal that controlled whether
 returned a `nominatedNodeName` for pipelined tasks. Non-eviction pipelining (waiting for resources
 without preemption) never triggered nomination. With `Cache.Pipeline()` now unconditionally setting
 `NominatedNodeName` on the pod via the API server at commit time, this distinction is no longer
-needed. `TaskSchedulingReason()` now always returns `ctx.NodeName` as `nominatedNodeName` for
-`Pipelined` tasks, ensuring consistent nomination regardless of how the task was pipelined.
+needed.
+
+Additionally, the `nominatedNodeName` return value is removed from `TaskSchedulingReason()`
+entirely — it now returns `(reason, msg string)` only. The `nominatedNodeName` parameter is also
+removed from `taskUnschedulable()`, simplifying it to `(task, reason, message string)`. The helper
+function `podNominatedNodeNameNeedUpdate()` becomes dead code and is deleted. `NominatedNodeName`
+is now set exclusively by the `Cache.Pipeline()` async goroutine at commit time — the session-end
+`RecordJobStatusEvent` path no longer touches it.
 
 The `evictionOccurred` parameter is removed from all callers:
 [`allocate`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go),
@@ -508,23 +532,54 @@ flow through `allocateResourcesForTask()` which calls `stmt.Pipeline()` again. O
 scheduling session. The guard ensures that tasks already pipelined on their target node are left in
 place without re-processing.
 
-## NominatedNodeName: Dual Update Safety
+### 6. Guard `allocatedPodInCache()` Against Informer Overwrites
 
-With the proposed `Cache.Pipeline()`, `NominatedNodeName` is set in two places:
-1. **Cache.Pipeline() goroutine** — at commit time, for all pipelined tasks
-2. **[`RecordJobStatusEvent`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L1582)
-   at session end** — for all pipelined tasks (since `EvictionOccurred` has been removed,
-   `TaskSchedulingReason()` now always returns `nominatedNodeName` for pipelined tasks)
+The `Cache.Pipeline()` async goroutine calls `UpdatePodStatus()` to set `NominatedNodeName` on the
+pod in the API server. This triggers an informer `updatePod` event back into the cache. The
+existing [`updatePod()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/event_handlers.go#L316)
+handler calls `deletePod()` + `addPod()`, which reconstructs the task from pod fields — but since
+the pod is not yet bound to a node (`Spec.NodeName == ""`), the reconstructed task gets
+`Status = Pending`, overwriting the `Pipelined` status that `Cache.Pipeline()` just set.
 
-These two paths are complementary and safe:
+The existing guard
+[`allocatedPodInCache()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/event_handlers.go#L303)
+protects against this by short-circuiting `updatePod()` when the cache already has the task in an
+allocated state. However, it only checked `AllocatedStatus()` (which covers `Allocated`, `Binding`,
+`Bound`), not `Pipelined`. Adding `Pipelined` to `AllocatedStatus()` itself is wrong because 25+
+call sites use `AllocatedStatus()` for resource accounting, and `Pipelined` tasks have different
+resource semantics.
 
-| Scenario | Cache.Pipeline() goroutine | RecordJobStatusEvent |
-|----------|---------------------------|----------------------|
-| Pipelined (committed) | Sets `NominatedNodeName = X` | Also sets same value (idempotent — `podNominatedNodeNameNeedUpdate` returns false) |
-| Pipelined then DISCARDED | Already set before discard | Uses `LastTransaction`, sets same value (idempotent) |
+The fix extends `allocatedPodInCache()` with an explicit `Pipelined` check:
 
-The goroutine fires first (at commit time). By the time session close runs, the pod already has the
-correct `NominatedNodeName`. The session-end path confirms it (no-op due to idempotency check).
+```go
+func (sc *SchedulerCache) allocatedPodInCache(pod *v1.Pod) bool {
+    pi := schedulingapi.NewTaskInfo(pod)
+    if job, found := sc.Jobs[pi.Job]; found {
+        if t, found := job.Tasks[pi.UID]; found {
+            return schedulingapi.AllocatedStatus(t.Status) || t.Status == schedulingapi.Pipelined
+        }
+    }
+    return false
+}
+```
+
+This ensures that when the informer fires `updatePod()` after `Cache.Pipeline()` sets
+`NominatedNodeName`, the cache task's `Pipelined` status and node reservation are preserved.
+
+## NominatedNodeName: Single Update Path
+
+With the removal of `nominatedNodeName` from `TaskSchedulingReason()` and `taskUnschedulable()`,
+`NominatedNodeName` is now set in exactly one place:
+
+1. **`Cache.Pipeline()` async goroutine** — at commit time, for all pipelined tasks
+
+The session-end `RecordJobStatusEvent` path no longer touches `NominatedNodeName`. It only reports
+pod conditions (`PodScheduled=False` with reason and message) via `taskUnschedulable()`.
+
+This is a simplification from the v1.14.0 baseline where `RecordJobStatusEvent` attempted to set
+`NominatedNodeName` through `taskUnschedulable()` (gated by `EvictionOccurred`). With
+`Cache.Pipeline()` setting `NominatedNodeName` unconditionally at commit time, the session-end
+path became redundant for nomination and was removed entirely.
 
 ### Current vs Proposed Comparison
 
@@ -533,15 +588,16 @@ correct `NominatedNodeName`. The session-end path confirms it (no-op due to idem
 | Cache task status | Stays `Pending` forever | Updated to `Pipelined` |
 | Cache node resource accounting | Not tracked | Resources properly reserved |
 | Next cycle sees pipeline decision | No — snapshot shows `Pending` | Yes — shows `Pipelined` on correct node |
-| `NominatedNodeName` | Set at session end only for eviction cases | Set immediately by `Cache.Pipeline()` for all cases + confirmed at session end |
+| `NominatedNodeName` | Set at session end only for eviction cases | Set by `Cache.Pipeline()` goroutine only — session-end path no longer touches it |
 | Pod condition (Unschedulable) | Set at session end | Set at session end (unchanged) |
 | Duplicate events | Pipelined tasks re-pipelined every session | Skipped when already pipelined on same node |
+| Informer overwrite risk | `updatePod()` overwrites `Pipelined` → `Pending` | `allocatedPodInCache()` guards against overwrite for `Pipelined` tasks |
 
 [`RecordJobStatusEvent`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L1582)
 is the **reporting** mechanism — it tells the API server about pod conditions
-and `NominatedNodeName`. `Cache.Pipeline()` is the **persistence** mechanism —
-it records the scheduling decision in the cache so it survives to the next cycle. This mirrors the
-existing pattern:
+(scheduling reason and message). `Cache.Pipeline()` is the **persistence** mechanism —
+it records the scheduling decision in the cache so it survives to the next cycle, and sets
+`NominatedNodeName` on the pod via an async API server call. This mirrors the existing pattern:
 [`Cache.Bind()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L933)
 persists binding + `RecordJobStatusEvent` reports status;
 [`Cache.Evict()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/cache/cache.go#L875)
@@ -563,11 +619,12 @@ triggers eviction + `RecordJobStatusEvent` reports status.
 
 | File | Changes |
 |------|---------|
-| `pkg/scheduler/cache/cache.go` | Add `Pipeline()` implementation with async NominatedNodeName update |
+| `pkg/scheduler/cache/cache.go` | Add `Pipeline()` implementation with async NominatedNodeName update, simplify `taskUnschedulable()` to 3 params (remove `nominatedNodeName`), delete `podNominatedNodeNameNeedUpdate()` |
 | `pkg/scheduler/cache/interface.go` | Add `Pipeline()` method to `Cache` interface |
+| `pkg/scheduler/cache/event_handlers.go` | Extend `allocatedPodInCache()` guard to include `Pipelined` status, preventing informer-triggered cache overwrites |
 | `pkg/scheduler/framework/statement.go` | `pipeline()` delegates to `Cache.Pipeline()`, rename `UnPipeline` to `unpipeline()`, add `Commit()` rollback on pipeline failure, remove `evictionOccurred` parameter from `Pipeline()`, add duplicate re-pipelining guard (skip when task already `Pipelined` on same node) |
 | `pkg/scheduler/actions/allocate/allocate.go` | `buildAllocateContext()` returns two contexts, three-way commit/discard, `addJobToContext` helper, pipelined task priority in `organizeJobWorksheet()` |
-| `pkg/scheduler/api/job_info.go` | Remove `EvictionOccurred` from `TransactionContext`, simplify `TaskSchedulingReason()` to always return `nominatedNodeName` for `Pipelined` tasks |
+| `pkg/scheduler/api/job_info.go` | Remove `EvictionOccurred` from `TransactionContext`, simplify `TaskSchedulingReason()` to return `(reason, msg string)` only (remove `nominatedNodeName` return value) |
 | `pkg/scheduler/actions/reclaim/reclaim.go` | Remove `evictionOccurred` variable and parameter from `Pipeline()` call |
 | `pkg/scheduler/actions/preempt/preempt.go` | Remove `evictionOccurred` variable and parameter from `Pipeline()` calls |
 
