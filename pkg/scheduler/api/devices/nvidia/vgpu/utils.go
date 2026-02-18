@@ -179,10 +179,13 @@ func getPodGroupKey(pod *v1.Pod) string {
 // PodGroup as currentKey (and that pod has non-zero usage), so we should not place
 // another pod from the same group on this device.
 func deviceHasPodFromSameGroup(gd *GPUDevice, currentKey string) bool {
-	if currentKey == "" {
+	if gd == nil || currentKey == "" {
 		return false
 	}
 	for _, usage := range gd.PodMap {
+		if usage == nil {
+			continue
+		}
 		if usage.PodGroupKey == currentKey && (usage.UsedMem > 0 || usage.UsedCore > 0) {
 			return true
 		}
@@ -268,11 +271,18 @@ func getGPUDeviceSnapShot(snap *GPUDevices) *GPUDevices {
 	}
 	for index, val := range snap.Device {
 		if val != nil {
+			podMapCopy := make(map[string]*GPUUsage, len(val.PodMap))
+			for uid, usage := range val.PodMap {
+				if usage != nil {
+					u := *usage
+					podMapCopy[uid] = &u
+				}
+			}
 			ret.Device[index] = &GPUDevice{
 				ID:          val.ID,
 				Node:        val.Node,
 				UUID:        val.UUID,
-				PodMap:      val.PodMap,
+				PodMap:      podMapCopy,
 				Memory:      val.Memory,
 				Number:      val.Number,
 				Type:        val.Type,
