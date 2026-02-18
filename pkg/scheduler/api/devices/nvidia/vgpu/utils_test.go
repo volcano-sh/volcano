@@ -16,7 +16,12 @@ limitations under the License.
 
 package vgpu
 
-import "testing"
+import (
+	"testing"
+
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 func TestCheckGPUtype(t *testing.T) {
 	tests := []struct {
@@ -107,6 +112,118 @@ func TestCheckGPUtype(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := checkGPUtype(tt.annos, tt.cardtype); got != tt.want {
 				t.Errorf("checkGPUtype() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetPodGroupKey(t *testing.T) {
+	tests := []struct {
+		name string
+		pod  *v1.Pod
+		want string
+	}{
+		{
+			name: "nil pod",
+			pod:  nil,
+			want: "",
+		},
+		{
+			name: "nil annotations",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "pod"},
+			},
+			want: "",
+		},
+		{
+			name: "scheduling.k8s.io/group-name",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Annotations: map[string]string{
+						podGroupAnnotationKey: "my-pg",
+					},
+				},
+			},
+			want: "default/my-pg",
+		},
+		{
+			name: "volcano.sh/group-name",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "ns1",
+					Annotations: map[string]string{
+						volcanoPodGroupAnnotation: "job-pg",
+					},
+				},
+			},
+			want: "ns1/job-pg",
+		},
+		{
+			name: "k8s annotation takes precedence over volcano",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "ns",
+					Annotations: map[string]string{
+						podGroupAnnotationKey:     "k8s-pg",
+						volcanoPodGroupAnnotation: "volcano-pg",
+					},
+				},
+			},
+			want: "ns/k8s-pg",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := getPodGroupKey(tt.pod); got != tt.want {
+				t.Errorf("getPodGroupKey() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDeviceHasPodFromSameGroup(t *testing.T) {
+	tests := []struct {
+		name       string
+		gd         *GPUDevice
+		currentKey string
+		want       bool
+	}{
+		{
+			name:       "empty currentKey",
+			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": {PodGroupKey: "ns/pg", UsedMem: 1000}}},
+			currentKey: "",
+			want:       false,
+		},
+		{
+			name:       "no pod from same group",
+			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": {PodGroupKey: "ns/other", UsedMem: 1000}}},
+			currentKey: "ns/my-pg",
+			want:       false,
+		},
+		{
+			name:       "same group with non-zero usage",
+			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": {PodGroupKey: "ns/my-pg", UsedMem: 1000, UsedCore: 50}}},
+			currentKey: "ns/my-pg",
+			want:       true,
+		},
+		{
+			name:       "same group but zero usage (released)",
+			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": {PodGroupKey: "ns/my-pg", UsedMem: 0, UsedCore: 0}}},
+			currentKey: "ns/my-pg",
+			want:       false,
+		},
+		{
+			name:       "empty PodMap",
+			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{}},
+			currentKey: "ns/pg",
+			want:       false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := deviceHasPodFromSameGroup(tt.gd, tt.currentKey); got != tt.want {
+				t.Errorf("deviceHasPodFromSameGroup() = %v, want %v", got, tt.want)
 			}
 		})
 	}
