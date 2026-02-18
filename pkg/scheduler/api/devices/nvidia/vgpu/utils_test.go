@@ -193,25 +193,25 @@ func TestDeviceHasPodFromSameGroup(t *testing.T) {
 	}{
 		{
 			name:       "empty currentKey",
-			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": {PodGroupKey: "ns/pg", UsedMem: 1000}}},
+			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": &GPUUsage{PodGroupKey: "ns/pg", UsedMem: 1000}}},
 			currentKey: "",
 			want:       false,
 		},
 		{
 			name:       "no pod from same group",
-			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": {PodGroupKey: "ns/other", UsedMem: 1000}}},
+			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": &GPUUsage{PodGroupKey: "ns/other", UsedMem: 1000}}},
 			currentKey: "ns/my-pg",
 			want:       false,
 		},
 		{
 			name:       "same group with non-zero usage",
-			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": {PodGroupKey: "ns/my-pg", UsedMem: 1000, UsedCore: 50}}},
+			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": &GPUUsage{PodGroupKey: "ns/my-pg", UsedMem: 1000, UsedCore: 50}}},
 			currentKey: "ns/my-pg",
 			want:       true,
 		},
 		{
 			name:       "same group but zero usage (released)",
-			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": {PodGroupKey: "ns/my-pg", UsedMem: 0, UsedCore: 0}}},
+			gd:         &GPUDevice{PodMap: map[string]*GPUUsage{"uid1": &GPUUsage{PodGroupKey: "ns/my-pg", UsedMem: 0, UsedCore: 0}}},
 			currentKey: "ns/my-pg",
 			want:       false,
 		},
