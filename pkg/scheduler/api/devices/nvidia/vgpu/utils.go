@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 )
@@ -156,22 +157,17 @@ func decodePodDevices(str string) []ContainerDevices {
 	return pd
 }
 
-// PodGroup annotation keys (avoid importing apis in this package).
-const (
-	podGroupAnnotationKey     = "scheduling.k8s.io/group-name"
-	volcanoPodGroupAnnotation = "volcano.sh/group-name"
-)
-
 // getPodGroupKey returns a unique key for the pod's group (namespace/name of PodGroup),
 // or "" if the pod has no group annotation. Used to avoid placing two pods from the same
-// PodGroup on the same vGPU device.
+// PodGroup on the same vGPU device. Uses the same annotation keys as the job/podgroup
+// controllers (KubeGroupNameAnnotationKey and VolcanoGroupNameAnnotationKey).
 func getPodGroupKey(pod *v1.Pod) string {
 	if pod == nil || pod.Annotations == nil {
 		return ""
 	}
-	groupName := pod.Annotations[podGroupAnnotationKey]
+	groupName := pod.Annotations[v1beta1.KubeGroupNameAnnotationKey]
 	if groupName == "" {
-		groupName = pod.Annotations[volcanoPodGroupAnnotation]
+		groupName = pod.Annotations[v1beta1.VolcanoGroupNameAnnotationKey]
 	}
 	if groupName == "" {
 		return ""

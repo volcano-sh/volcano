@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 )
 
@@ -180,8 +181,8 @@ func TestAddResourceSetsPodGroupKey(t *testing.T) {
 			UID:       types.UID("pod-with-group"),
 			Namespace: "default",
 			Annotations: map[string]string{
-				AssignedIDsAnnotations: "GPU-1234,NVIDIA,4096,0",
-				podGroupAnnotationKey:  "my-job-pg",
+				AssignedIDsAnnotations:             "GPU-1234,NVIDIA,4096,0",
+				v1beta1.KubeGroupNameAnnotationKey: "my-job-pg",
 			},
 		},
 	}
