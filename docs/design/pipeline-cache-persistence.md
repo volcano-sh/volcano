@@ -13,6 +13,13 @@
 * [NominatedNodeName: Single Update Path](#nominatednodename-single-update-path)
 * [Expected Impact](#expected-impact)
 * [Affected Code](#affected-code)
+* [Pipeline-to-Allocate Transition Fixes](#pipeline-to-allocate-transition-fixes)
+  * [Problem 1: Pipelined task cannot transition to Allocated](#problem-1-pipelined-task-cannot-transition-to-allocated)
+  * [Problem 2: FutureIdle self-competition on nominated node](#problem-2-futureidle-self-competition-on-nominated-node)
+  * [Problem 3: NominatedNodeName async race condition](#problem-3-nominatednodename-async-race-condition)
+  * [Problem 4: HA cache coherence](#problem-4-ha-cache-coherence)
+  * [Problem 5: Pipelined task cannot transition to Binding](#problem-5-pipelined-task-cannot-transition-to-binding)
+  * [Affected Code (Pipeline-to-Allocate Fixes)](#affected-code-pipeline-to-allocate-fixes)
 * [Related Issues and PRs](#related-issues-and-prs)
 
 ## Introduction
@@ -631,7 +638,7 @@ triggers eviction + `RecordJobStatusEvent` reports status.
 ## Pipeline-to-Allocate Transition Fixes
 
 The initial six changes above establish cache-level pipeline persistence. However, the transition
-from Pipelined to Allocated (and Binding) reveals four additional interconnected problems that
+from Pipelined to Allocated (and Binding) reveals five additional interconnected problems that
 must be fixed together.
 
 ### Problem 1: Pipelined task cannot transition to Allocated
@@ -686,7 +693,12 @@ This method is used in all allocate action FutureIdle checks:
 - `predicate()` resource check
 
 When the nominated-node fast-path determines the task no longer fits (even excluding itself),
-the task is un-pipelined from the node so it can be rescheduled elsewhere:
+the task is un-pipelined from the node so it can be rescheduled elsewhere. This happens when
+other pods have been scheduled to the node since the pipeline decision was made, consuming
+resources that were previously in `Releasing` or `Idle` state. At this point the pipelined
+reservation is stale — even after all currently releasing pods finish, there will not be
+enough resources for this task on this node. Un-pipelining frees the reservation and allows
+the task to fall through to the normal full-node-scan path where it may find a better fit:
 
 ```go
 if len(task.NominatedNodeName) > 0 {
