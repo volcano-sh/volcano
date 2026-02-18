@@ -546,7 +546,7 @@ var _ = ginkgo.Describe("Job E2E Test", func() {
 		gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	})
 
-	ginkgo.It("Pod with multiple scheduling gates: Volcano removes only its gate, other gates remain", func() {
+	ginkgo.It("Multiple scheduling gates: scheduler skips until only Volcano gate remains, then removes it", func() {
 		const (
 			queueName     = "capacity-multigate-queue"
 			pgName        = "test-pg-multigate"
