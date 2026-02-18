@@ -177,6 +177,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
 	}
 
 	task.NodeName = hostname
+	task.NominatedNodeName = hostname
 
 	if node, found := s.ssn.Nodes[hostname]; found {
 		if err := node.AddTask(task); err != nil {
@@ -268,6 +269,7 @@ func (s *Statement) unpipeline(task *api.TaskInfo) error {
 		}
 	}
 	task.NodeName = ""
+	task.NominatedNodeName = ""
 	task.JobAllocatedHyperNode = ""
 
 	return nil
@@ -296,10 +298,19 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 
 	task.NodeName = hostname
 	if node, found := s.ssn.Nodes[hostname]; found {
-		if err := node.AddTask(task); err != nil {
-			klog.Errorf("Failed to add task <%v/%v> to node <%v> when allocating in Session <%v>: %v",
-				task.Namespace, task.Name, hostname, s.ssn.UID, err)
-			errInfos = append(errInfos, err)
+		key := api.PodKey(task.Pod)
+		if _, taskOnNode := node.Tasks[key]; taskOnNode {
+			if err := node.UpdateTask(task); err != nil {
+				klog.Errorf("Failed to update task <%v/%v> on node <%v> when allocating in Session <%v>: %v",
+					task.Namespace, task.Name, hostname, s.ssn.UID, err)
+				errInfos = append(errInfos, err)
+			}
+		} else {
+			if err := node.AddTask(task); err != nil {
+				klog.Errorf("Failed to add task <%v/%v> to node <%v> when allocating in Session <%v>: %v",
+					task.Namespace, task.Name, hostname, s.ssn.UID, err)
+				errInfos = append(errInfos, err)
+			}
 		}
 		klog.V(3).Infof("After allocated Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
@@ -397,6 +408,7 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 		}
 	}
 	task.NodeName = ""
+	task.NominatedNodeName = ""
 	task.JobAllocatedHyperNode = ""
 
 	return nil

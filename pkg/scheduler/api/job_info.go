@@ -81,6 +81,7 @@ type TaskID types.UID
 // TransactionContext holds all the fields that needed by scheduling transaction
 type TransactionContext struct {
 	NodeName              string
+	NominatedNodeName     string
 	JobAllocatedHyperNode string
 	Status                TaskStatus
 }
@@ -193,6 +194,16 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	schGated := calSchedulingGated(pod)
 	jobID := getJobID(pod)
 
+	taskStatus := getTaskStatus(pod)
+	nodeName := pod.Spec.NodeName
+	nominatedNodeName := pod.Status.NominatedNodeName
+
+	// For Pipelined tasks (status derived by getTaskStatus from NominatedNodeName),
+	// set nodeName to the nominated node so the task is placed on the correct NodeInfo.
+	if taskStatus == Pipelined && nodeName == "" {
+		nodeName = nominatedNodeName
+	}
+
 	ti := &TaskInfo{
 		UID:                         TaskID(pod.UID),
 		Job:                         jobID,
@@ -210,8 +221,9 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		NumaInfo:                    topologyInfo,
 		SchGated:                    schGated,
 		TransactionContext: TransactionContext{
-			NodeName: pod.Spec.NodeName,
-			Status:   getTaskStatus(pod),
+			NodeName:          nodeName,
+			NominatedNodeName: nominatedNodeName,
+			Status:            taskStatus,
 		},
 	}
 
@@ -297,8 +309,9 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		NumaInfo:                    ti.NumaInfo.Clone(),
 		SchGated:                    ti.SchGated,
 		TransactionContext: TransactionContext{
-			NodeName: ti.NodeName,
-			Status:   ti.Status,
+			NodeName:          ti.NodeName,
+			NominatedNodeName: ti.NominatedNodeName,
+			Status:            ti.Status,
 		},
 		LastTransaction: ti.LastTransaction.Clone(),
 	}

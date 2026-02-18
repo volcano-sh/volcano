@@ -971,6 +971,10 @@ func (sc *SchedulerCache) Pipeline(taskInfo *schedulingapi.TaskInfo, nodeName st
 		return err
 	}
 
+	// Set NominatedNodeName synchronously so it is immediately visible
+	// in the next Snapshot() without waiting for the async Pod status round-trip.
+	task.NominatedNodeName = nodeName
+
 	p := task.Pod
 	go func() {
 		pod := p.DeepCopy()
@@ -1353,17 +1357,29 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	}
 	task.NumaInfo = bindContext.TaskInfo.NumaInfo.Clone()
 
-	// Add task to the node.
-	if err := node.AddTask(task); err != nil {
-		// After failing to update task to a node we need to revert task status from Releasing,
-		// otherwise task might be stuck in the Releasing state indefinitely.
-		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
-			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
-				"from %s to %s after failing to update Task on Node <%s>: %v",
-				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
-			sc.resyncTask(task)
+	// Add task to the node. Use UpdateTask if the task is already present
+	// (e.g. from a prior Pipelined state) to correctly transition resource accounting.
+	key := schedulingapi.PodKey(task.Pod)
+	if _, taskOnNode := node.Tasks[key]; taskOnNode {
+		if err := node.UpdateTask(task); err != nil {
+			if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+				klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+					"from %s to %s after failing to update Task on Node <%s>: %v",
+					task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+				sc.resyncTask(task)
+			}
+			return err
 		}
-		return err
+	} else {
+		if err := node.AddTask(task); err != nil {
+			if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+				klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+					"from %s to %s after failing to update Task on Node <%s>: %v",
+					task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+				sc.resyncTask(task)
+			}
+			return err
+		}
 	}
 
 	sc.BindFlowChannel <- bindContext

@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fwk "k8s.io/kube-scheduler/framework"
@@ -289,4 +290,105 @@ func TestNodeInfo_SetNode(t *testing.T) {
 				i, test.expected2, ni)
 		}
 	}
+}
+
+func TestNodeInfo_AddPipelinedTask(t *testing.T) {
+	node := buildNode("n1", nil, BuildResourceList("8000m", "10G", []ScalarResource{{Name: "pods", Value: "20"}}...))
+	pod := buildPod("c1", "p1", "", v1.PodPending,
+		BuildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+
+	task := NewTaskInfo(pod)
+	task.Status = Pipelined
+
+	ni := NewNodeInfo(node)
+	idleBefore := ni.Idle.Clone()
+
+	err := ni.AddTask(task)
+	assert.NoError(t, err)
+
+	expectedPipelined := buildResource("1000m", "1G", map[string]string{"pods": "1"}, 0)
+	assert.True(t, ni.Pipelined.Equal(expectedPipelined, Zero), "Pipelined should reflect task resources; got %s", ni.Pipelined)
+	assert.True(t, ni.Used.Equal(EmptyResource(), Zero), "Used should remain empty; got %s", ni.Used)
+	assert.True(t, ni.Idle.Equal(idleBefore, Zero), "Idle should remain unchanged; got %s", ni.Idle)
+}
+
+func TestNodeInfo_UpdateTask_PipelinedToAllocated(t *testing.T) {
+	node := buildNode("n1", nil, BuildResourceList("8000m", "10G", []ScalarResource{{Name: "pods", Value: "20"}}...))
+	pod := buildPod("c1", "p1", "", v1.PodPending,
+		BuildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+
+	task := NewTaskInfo(pod)
+	task.Status = Pipelined
+
+	ni := NewNodeInfo(node)
+	err := ni.AddTask(task)
+	assert.NoError(t, err)
+
+	pipelinedBefore := ni.Pipelined.Clone()
+	expectedPipelined := buildResource("1000m", "1G", map[string]string{"pods": "1"}, 0)
+	assert.True(t, pipelinedBefore.Equal(expectedPipelined, Zero), "precondition: Pipelined should have task resources")
+
+	task.Status = Allocated
+	err = ni.UpdateTask(task)
+	assert.NoError(t, err)
+
+	assert.True(t, ni.Pipelined.Equal(EmptyResource(), Zero),
+		"Pipelined should be empty after transition to Allocated; got %s", ni.Pipelined)
+
+	expectedUsed := buildResource("1000m", "1G", map[string]string{"pods": "1"}, 0)
+	assert.True(t, ni.Used.Equal(expectedUsed, Zero),
+		"Used should reflect task resources after Allocated; got %s", ni.Used)
+
+	allocatable := buildResource("8000m", "10G", map[string]string{"pods": "20"}, 20)
+	expectedIdle := allocatable.Clone()
+	expectedIdle.Sub(expectedUsed)
+	assert.True(t, ni.Idle.Equal(expectedIdle, Zero),
+		"Idle should decrease by task resources; got %s", ni.Idle)
+}
+
+func TestNodeInfo_FutureIdleExcluding(t *testing.T) {
+	node := buildNode("n1", nil, BuildResourceList("8000m", "10G", []ScalarResource{{Name: "pods", Value: "20"}}...))
+	pod := buildPod("c1", "p1", "", v1.PodPending,
+		BuildResourceList("2000m", "2G"), []metav1.OwnerReference{}, make(map[string]string))
+
+	task := NewTaskInfo(pod)
+	task.Status = Pipelined
+
+	ni := NewNodeInfo(node)
+	err := ni.AddTask(task)
+	assert.NoError(t, err)
+
+	futureIdle := ni.FutureIdle()
+	futureIdleExcluding := ni.FutureIdleExcluding(task)
+
+	assert.True(t, futureIdleExcluding.MilliCPU > futureIdle.MilliCPU,
+		"FutureIdleExcluding should add back the pipelined task's CPU; got excluding=%v, regular=%v",
+		futureIdleExcluding.MilliCPU, futureIdle.MilliCPU)
+
+	allocatable := buildResource("8000m", "10G", map[string]string{"pods": "20"}, 20)
+	assert.True(t, futureIdleExcluding.Equal(allocatable, Zero),
+		"FutureIdleExcluding should equal full allocatable when only this task is pipelined; got %s", futureIdleExcluding)
+
+	otherPod := buildPod("c1", "p2", "", v1.PodPending,
+		BuildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	otherTask := NewTaskInfo(otherPod)
+	otherTask.Status = Pipelined
+	err = ni.AddTask(otherTask)
+	assert.NoError(t, err)
+
+	futureIdleExcluding = ni.FutureIdleExcluding(task)
+	expectedExcluding := allocatable.Clone()
+	expectedExcluding.Sub(otherTask.InitResreq)
+	assert.True(t, futureIdleExcluding.Equal(expectedExcluding, Zero),
+		"FutureIdleExcluding should still count other pipelined tasks; got %s, expected %s",
+		futureIdleExcluding, expectedExcluding)
+
+	nonPipelinedPod := buildPod("c1", "p3", "n1", v1.PodRunning,
+		BuildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+	nonPipelinedTask := NewTaskInfo(nonPipelinedPod)
+	futureIdleNonPipelined := ni.FutureIdleExcluding(nonPipelinedTask)
+	futureIdle = ni.FutureIdle()
+	assert.True(t, futureIdleNonPipelined.Equal(futureIdle, Zero),
+		"FutureIdleExcluding for non-pipelined task should equal FutureIdle; got %s vs %s",
+		futureIdleNonPipelined, futureIdle)
 }

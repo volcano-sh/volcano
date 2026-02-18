@@ -628,6 +628,153 @@ triggers eviction + `RecordJobStatusEvent` reports status.
 | `pkg/scheduler/actions/reclaim/reclaim.go` | Remove `evictionOccurred` variable and parameter from `Pipeline()` call |
 | `pkg/scheduler/actions/preempt/preempt.go` | Remove `evictionOccurred` variable and parameter from `Pipeline()` calls |
 
+## Pipeline-to-Allocate Transition Fixes
+
+The initial six changes above establish cache-level pipeline persistence. However, the transition
+from Pipelined to Allocated (and Binding) reveals four additional interconnected problems that
+must be fixed together.
+
+### Problem 1: Pipelined task cannot transition to Allocated
+
+When `Statement.Allocate()` processes a task that was previously pipelined on the same node,
+`node.AddTask(task)` fails with "task already on node" because the task is already in `ni.Tasks`
+from the pipeline step. The error path calls `stmt.UnAllocate()` but `job.UpdateTaskStatus(task,
+Allocated)` was already called, leaving job state inconsistent.
+
+**Fix**: `Statement.Allocate()` checks whether the task is already present on the node. If so,
+it uses `node.UpdateTask(task)` (which does `RemoveTask` + `AddTask` internally, correctly
+transitioning resource accounting from `ni.Pipelined` to `ni.Used`). If the task is not on the
+node, the original `node.AddTask(task)` path is used.
+
+```go
+key := api.PodKey(task.Pod)
+if _, taskOnNode := node.Tasks[key]; taskOnNode {
+    node.UpdateTask(task)  // Pipelined -> Allocated
+} else {
+    node.AddTask(task)     // Fresh allocation
+}
+```
+
+### Problem 2: FutureIdle self-competition on nominated node
+
+The nominated-node fast-path in `allocate.go` checks whether the task fits on its nominated node
+using `nominatedNodeInfo.FutureIdle()`. However, `FutureIdle() = Idle + Releasing - Pipelined`,
+and the task's own pipelined reservation is included in the `Pipelined` subtraction. The task
+competes with itself, potentially failing the fit check even when the node has sufficient
+resources.
+
+**Fix**: Add `FutureIdleExcluding(task)` method to `NodeInfo` that excludes the given task's
+own contribution to `ni.Pipelined`. If the task is Pipelined and present on the node, its
+`InitResreq` is added back to the result:
+
+```go
+func (ni *NodeInfo) FutureIdleExcluding(task *TaskInfo) *Resource {
+    futureIdle := ni.FutureIdle()
+    if task.Status == Pipelined {
+        if _, found := ni.Tasks[PodKey(task.Pod)]; found {
+            futureIdle.Add(task.InitResreq)
+        }
+    }
+    return futureIdle
+}
+```
+
+This method is used in all allocate action FutureIdle checks:
+- Nominated-node fast-path fit check
+- Candidate node categorization (idle vs future-idle)
+- Pipeline decision in `allocateResourcesForTask`
+- `predicate()` resource check
+
+When the nominated-node fast-path determines the task no longer fits (even excluding itself),
+the task is un-pipelined from the node so it can be rescheduled elsewhere:
+
+```go
+if len(task.NominatedNodeName) > 0 {
+    if nominatedNodeInfo, ok := ssn.Nodes[task.NominatedNodeName]; ok {
+        futureIdle := nominatedNodeInfo.FutureIdleExcluding(task)
+        if task.InitResreq.LessEqual(futureIdle, api.Zero) {
+            predicateNodes, fitErrors = ph.PredicateNodes(...)
+        } else if task.Status == api.Pipelined && task.NodeName == nominatedNodeInfo.Name {
+            stmt.UnPipeline(task)
+        }
+    }
+}
+```
+
+### Problem 3: NominatedNodeName async race condition
+
+`Cache.Pipeline()` sets `NominatedNodeName` on the pod via an async `UpdatePodStatus()` goroutine.
+The round-trip (API server -> informer -> cache) may not complete before the next `Snapshot()`.
+The next cycle's task has an empty `Pod.Status.NominatedNodeName`, defeating the nominated-node
+fast-path.
+
+**Fix**: Add `NominatedNodeName` to `TransactionContext` and set it synchronously:
+
+```go
+type TransactionContext struct {
+    NodeName              string
+    NominatedNodeName     string
+    JobAllocatedHyperNode string
+    Status                TaskStatus
+}
+```
+
+- `Statement.Pipeline()` sets `task.NominatedNodeName = hostname` synchronously
+- `Cache.Pipeline()` sets `task.NominatedNodeName = nodeName` on the cache task synchronously
+- `NewTaskInfo()` initializes `NominatedNodeName` from `pod.Status.NominatedNodeName`
+- `TaskInfo.Clone()` preserves `NominatedNodeName`
+- The nominated-node fast-path reads `task.NominatedNodeName` instead of
+  `task.Pod.Status.NominatedNodeName`
+- `unpipeline()` and `unallocate()` clear `task.NominatedNodeName`
+
+### Problem 4: HA cache coherence
+
+In HA mode, each scheduler instance maintains its own cache. When Instance A pipelines a task,
+Instance B never learns about it from informer events alone because `getTaskStatus()` derives
+status from pod fields only: `Phase=Pending, NodeName=""` maps to `Pending`, not `Pipelined`.
+
+**Fix**: `getTaskStatus()` in `helpers.go` reconstructs `Pipelined` status from pod metadata.
+When a pod has `Phase=Pending`, `Spec.NodeName=""`, and `Status.NominatedNodeName!=""`, the
+function returns `Pipelined` directly:
+
+```go
+case v1.PodPending:
+    if pod.DeletionTimestamp != nil { return Releasing }
+    if len(pod.Spec.NodeName) == 0 {
+        if len(pod.Status.NominatedNodeName) > 0 { return Pipelined }
+        return Pending
+    }
+    return Bound
+```
+
+`NewTaskInfo()` then assigns `nodeName = nominatedNodeName` for Pipelined tasks so the task
+is placed on the correct `NodeInfo`.
+
+This flows through all informer paths (`addPod`, `updatePod` via `deletePod` + `addPod`,
+`syncTask`) because they all call `NewTaskInfo()`. The local scheduler instance is protected by
+`allocatedPodInCache()` which already returns `true` for `Pipelined` tasks, causing `updatePod()`
+to skip the update.
+
+### Problem 5: Pipelined task cannot transition to Binding
+
+`Cache.AddBindTask()` uses `node.AddTask(task)` to place the task on a node during binding. Like
+`Statement.Allocate()`, this fails with "task already on node" for previously pipelined tasks.
+
+**Fix**: Same pattern as Statement.Allocate() — check task existence on node, use `UpdateTask()`
+for existing tasks and `AddTask()` for fresh ones. The original rollback semantics are preserved
+for both paths.
+
+### Affected Code (Pipeline-to-Allocate Fixes)
+
+| File | Changes |
+|------|---------|
+| `pkg/scheduler/api/helpers.go` | `getTaskStatus()` returns `Pipelined` for `Phase=Pending, NodeName="", NominatedNodeName!=""` |
+| `pkg/scheduler/api/job_info.go` | Add `NominatedNodeName` to `TransactionContext`, update `Clone()`, `NewTaskInfo()` assigns `nodeName = nominatedNodeName` for Pipelined tasks |
+| `pkg/scheduler/api/node_info.go` | Add `FutureIdleExcluding(task)` method for self-competition-free resource checks |
+| `pkg/scheduler/framework/statement.go` | `Pipeline()` sets `NominatedNodeName`, `Allocate()` uses `UpdateTask()` for existing tasks, `unpipeline()` and `unallocate()` clear `NominatedNodeName` |
+| `pkg/scheduler/cache/cache.go` | `Pipeline()` sets `task.NominatedNodeName` synchronously, `AddBindTask()` uses `UpdateTask()` for existing tasks |
+| `pkg/scheduler/actions/allocate/allocate.go` | Nominated-node fast-path uses `FutureIdleExcluding`, un-pipelines tasks that no longer fit; `predicate()`, candidate categorization, and pipeline decision all use `FutureIdleExcluding` |
+
 ## Related Issues and PRs
 
 - [#5044](https://github.com/volcano-sh/volcano/issues/5044) — Issue describing the pipelined statement handling bugs
