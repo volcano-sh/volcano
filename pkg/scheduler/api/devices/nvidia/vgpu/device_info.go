@@ -31,9 +31,6 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/plugins/util/nodelock"
 )
 
-// GPUUsage tracks per-pod usage on a GPU device.
-// PodGroupKey identifies the pod's group (namespace/name) so we can avoid
-// scheduling multiple pods from the same PodGroup onto the same device.
 type GPUUsage struct {
 	UsedMem     uint
 	UsedCore    uint

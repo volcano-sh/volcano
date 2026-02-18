@@ -21,6 +21,8 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 func TestCheckGPUtype(t *testing.T) {
@@ -141,19 +143,19 @@ func TestGetPodGroupKey(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "default",
 					Annotations: map[string]string{
-						podGroupAnnotationKey: "my-pg",
+						v1beta1.KubeGroupNameAnnotationKey: "my-pg",
 					},
 				},
 			},
 			want: "default/my-pg",
 		},
 		{
-			name: "volcano.sh/group-name",
+			name: "scheduling.volcano.sh/group-name (Volcano API)",
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "ns1",
 					Annotations: map[string]string{
-						volcanoPodGroupAnnotation: "job-pg",
+						v1beta1.VolcanoGroupNameAnnotationKey: "job-pg",
 					},
 				},
 			},
@@ -165,8 +167,8 @@ func TestGetPodGroupKey(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "ns",
 					Annotations: map[string]string{
-						podGroupAnnotationKey:     "k8s-pg",
-						volcanoPodGroupAnnotation: "volcano-pg",
+						v1beta1.KubeGroupNameAnnotationKey:    "k8s-pg",
+						v1beta1.VolcanoGroupNameAnnotationKey: "volcano-pg",
 					},
 				},
 			},
