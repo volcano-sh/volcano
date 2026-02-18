@@ -48,6 +48,16 @@ type sshPlugin struct {
 
 	// public key string
 	sshPublicKey string
+
+	// custom port
+	sshPort int
+}
+
+func (sp *sshPlugin) validateSSHPort() {
+	if sp.sshPort <= 0 || sp.sshPort > 65535 {
+		klog.Warningf("invalid ssh port %d, falling back to default port 22 ...", sp.sshPort)
+		sp.sshPort = 22
+	}
 }
 
 // New creates ssh plugin
@@ -56,6 +66,7 @@ func New(client pluginsinterface.PluginClientset, arguments []string) pluginsint
 		pluginArguments: arguments,
 		client:          client,
 		sshKeyFilePath:  SSHAbsolutePath,
+		sshPort:         22,
 	}
 
 	p.addFlags()
@@ -74,6 +85,8 @@ func (sp *sshPlugin) OnPodCreate(pod *v1.Pod, job *batch.Job) error {
 }
 
 func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
+	sp.validateSSHPort()
+
 	if job.Status.ControlledResources["plugin-"+sp.Name()] == sp.Name() {
 		return nil
 	}
@@ -81,9 +94,9 @@ func (sp *sshPlugin) OnJobAdd(job *batch.Job) error {
 	var data map[string][]byte
 	var err error
 	if len(sp.sshPrivateKey) > 0 {
-		data, err = withUserProvidedRsaKey(job, sp.sshPrivateKey, sp.sshPublicKey)
+		data, err = withUserProvidedRsaKey(job, sp.sshPrivateKey, sp.sshPublicKey, sp.sshPort)
 	} else {
-		data, err = generateRsaKey(job)
+		data, err = generateRsaKey(job, sp.sshPort)
 	}
 	if err != nil {
 		return err
@@ -186,7 +199,7 @@ func (sp *sshPlugin) mountRsaKey(pod *v1.Pod, job *batch.Job) {
 	}
 }
 
-func generateRsaKey(job *batch.Job) (map[string][]byte, error) {
+func generateRsaKey(job *batch.Job, port int) (map[string][]byte, error) {
 	bitSize := 2048
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, bitSize)
@@ -214,17 +227,17 @@ func generateRsaKey(job *batch.Job) (map[string][]byte, error) {
 	data[SSHPrivateKey] = privateKeyBytes
 	data[SSHPublicKey] = publicKeyBytes
 	data[SSHAuthorizedKeys] = publicKeyBytes
-	data[SSHConfig] = []byte(generateSSHConfig(job))
+	data[SSHConfig] = []byte(generateSSHConfig(job, port))
 
 	return data, nil
 }
 
-func withUserProvidedRsaKey(job *batch.Job, sshPrivateKey string, sshPublicKey string) (map[string][]byte, error) {
+func withUserProvidedRsaKey(job *batch.Job, sshPrivateKey string, sshPublicKey string, port int) (map[string][]byte, error) {
 	data := make(map[string][]byte)
 	data[SSHPrivateKey] = []byte(sshPrivateKey)
 	data[SSHPublicKey] = []byte(sshPublicKey)
 	data[SSHAuthorizedKeys] = []byte(sshPublicKey)
-	data[SSHConfig] = []byte(generateSSHConfig(job))
+	data[SSHConfig] = []byte(generateSSHConfig(job, port))
 
 	return data, nil
 }
@@ -239,13 +252,14 @@ func (sp *sshPlugin) addFlags() {
 		"ssh private and public keys, it is `/root/.ssh` by default.")
 	flagSet.StringVar(&sp.sshPrivateKey, "ssh-private-key", sp.sshPrivateKey, "The input string of the private key")
 	flagSet.StringVar(&sp.sshPublicKey, "ssh-public-key", sp.sshPublicKey, "The input string of the public key")
+	flagSet.IntVar(&sp.sshPort, "ssh-port", sp.sshPort, "SSH port used in ssh config. Default Port: 22")
 
 	if err := flagSet.Parse(sp.pluginArguments); err != nil {
 		klog.Errorf("plugin %s flagset parse failed, err: %v", sp.Name(), err)
 	}
 }
 
-func generateSSHConfig(job *batch.Job) string {
+func generateSSHConfig(job *batch.Job, port int) string {
 	config := "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null\n"
 
 	for _, ts := range job.Spec.Tasks {
@@ -261,6 +275,7 @@ func generateSSHConfig(job *batch.Job) string {
 
 			config += "Host " + hostName + "\n"
 			config += "  HostName " + hostName + "." + subdomain + "\n"
+			config += fmt.Sprintf("  Port %d\n", port)
 			if len(ts.Template.Spec.Hostname) != 0 {
 				break
 			}
