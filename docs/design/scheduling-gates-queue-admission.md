@@ -242,11 +242,14 @@ func (alloc *Action) allocateResourcesForTasks(...) {
 
 		// Skip tasks with external (non-Volcano) scheduling gates
 		if task.SchGated {
-			// Tasks that contain the QueueAllocationGate have SchGated set to false by schedulingGateRemoval() above.
-			klog.V(4).Infof("Task %s/%s has non-Volcano gate, skipping", task.Namespace, task.Name)
+			if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+				klog.Warningf("Task %s/%s has Volcano scheduling gate but missing annotation %q, gate will not be removed automatically; add the annotation or remove the gate manually",
+					task.Namespace, task.Name, schedulingv1beta1.QueueAllocationGateKey)
+			} else {
+				klog.V(4).Infof("Task %s/%s has non-Volcano scheduling gate, skipping", task.Namespace, task.Name)
+			}
 			continue
 		}
-
 
         // ... predicate checks ...
         // PrePredicate, node filtering, prioritization:
