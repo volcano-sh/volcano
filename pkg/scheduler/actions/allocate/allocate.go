@@ -113,13 +113,14 @@ type Action struct {
 	recorder *Recorder
 
 	// Async gate management infrastructure
-	kubeClient              kubernetes.Interface // Cached client for worker goroutines
-	schGateRemovalCh        chan schGateRemovalOperation
-	schGateRemovalWorkersWg sync.WaitGroup
-	schGateRemovalStopCh    chan struct{}
-	gateRemovalWorkerNum    int // Number of async gate removal workers
-	initOnce                sync.Once
-	shutdownOnce            sync.Once
+	kubeClient                    kubernetes.Interface // Cached client for worker goroutines
+	schGateRemovalCh              chan schGateRemovalOperation
+	schGateRemovalWorkersWg       sync.WaitGroup
+	schGateRemovalStopCh          chan struct{}
+	gateRemovalWorkerNum          int       // Number of async gate removal workers
+	initSchGateRemovalWorkersOnce sync.Once // guards channel and worker startup so Initialize() is idempotent
+	initOnce                      sync.Once
+	shutdownOnce                  sync.Once
 }
 
 // schGateRemovalOperation is a struct that contains the namespace
@@ -142,16 +143,18 @@ func (alloc *Action) Name() string {
 }
 
 func (alloc *Action) Initialize() {
-	// Create channel with buffer size based on worker count (200 operations per worker)
-	channelSize := alloc.gateRemovalWorkerNum * gateRemovalBufferPerWorker
-	alloc.schGateRemovalCh = make(chan schGateRemovalOperation, channelSize)
+	alloc.initSchGateRemovalWorkersOnce.Do(func() {
+		// Create channel with buffer size based on worker count (200 operations per worker)
+		channelSize := alloc.gateRemovalWorkerNum * gateRemovalBufferPerWorker
+		alloc.schGateRemovalCh = make(chan schGateRemovalOperation, channelSize)
 
-	// Start async gate operation workers
-	for i := 0; i < alloc.gateRemovalWorkerNum; i++ {
-		alloc.schGateRemovalWorkersWg.Add(1)
-		go alloc.schGateRemovalWorker()
-	}
-	klog.V(3).Infof("Started %d async workers for gate removal", alloc.gateRemovalWorkerNum)
+		// Start async gate operation workers
+		for i := 0; i < alloc.gateRemovalWorkerNum; i++ {
+			alloc.schGateRemovalWorkersWg.Add(1)
+			go alloc.schGateRemovalWorker()
+		}
+		klog.V(3).Infof("Started %d async workers for gate removal", alloc.gateRemovalWorkerNum)
+	})
 }
 
 // schGateRemovalWorker processes async gate add/remove requests
