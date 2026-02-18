@@ -193,6 +193,10 @@ spec:
       containers:
         - name: {{ .Release.Name }}-scheduler
           image: {{ .Values.basic.image_registry }}/{{.Values.basic.scheduler_image_name}}:{{.Values.basic.image_tag_version}}
+          livenessProbe:
+            {{- include "volcano.liveness.probe" (dict "port" ( .Values.basic.healthz_port | default 11251 ) "scheme" "HTTP" "values" .Values.custom.scheduler_livenessProbe) | nindent 12 }}
+          readinessProbe:
+            {{- include "volcano.readiness.probe" (dict "port" ( .Values.basic.healthz_port | default 11251 ) "scheme" "HTTP" "values" .Values.custom.scheduler_readinessProbe) | nindent 12 }}
           {{- if .Values.custom.scheduler_resources }}
           resources:
           {{- toYaml .Values.custom.scheduler_resources | nindent 12 }}
