@@ -120,4 +120,3 @@ func PodHasSchedulingGates(pod *v1.Pod, gateNames ...string) bool {
 	}
 	return true
 }
-
