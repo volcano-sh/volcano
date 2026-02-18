@@ -56,8 +56,9 @@ const (
 )
 
 var (
-	VGPUEnable     bool
-	NodeLockEnable bool
+	VGPUEnable               bool
+	NodeLockEnable           bool
+	VGPUPodGroupDeviceSpread bool // when true, prevent two pods from the same PodGroup from sharing the same vGPU device
 )
 
 type ContainerDevice struct {
