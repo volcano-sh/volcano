@@ -115,21 +115,6 @@ func (ni *NodeInfo) FutureIdle() *Resource {
 	return ni.Idle.Clone().Add(ni.Releasing).SubWithoutAssert(ni.Pipelined)
 }
 
-// FutureIdleExcluding returns FutureIdle resources excluding the given task's own
-// contribution to ni.Pipelined. When a Pipelined task is being evaluated against
-// its nominated node, its resources are already counted in ni.Pipelined which
-// reduces FutureIdle — causing the task to compete with itself. This method adds
-// back the task's resources if it is Pipelined and present on this node.
-func (ni *NodeInfo) FutureIdleExcluding(task *TaskInfo) *Resource {
-	futureIdle := ni.FutureIdle()
-	if task.Status == Pipelined {
-		if _, found := ni.Tasks[PodKey(task.Pod)]; found {
-			futureIdle.Add(task.InitResreq)
-		}
-	}
-	return futureIdle
-}
-
 // GetNodeAllocatable return node Allocatable without OversubscriptionResource resource
 func (ni *NodeInfo) GetNodeAllocatable() *Resource {
 	return NewResource(ni.Node.Status.Allocatable)

@@ -655,7 +655,7 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 		// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
 		if len(task.NominatedNodeName) > 0 {
 			if nominatedNodeInfo, ok := ssn.Nodes[task.NominatedNodeName]; ok {
-				futureIdle := nominatedNodeInfo.FutureIdleExcluding(task)
+				futureIdle := nominatedNodeInfo.FutureIdle()
 				if task.InitResreq.LessEqual(futureIdle, api.Zero) {
 					predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
 				} else if task.Status == api.Pipelined && task.NodeName == nominatedNodeInfo.Name {
@@ -786,7 +786,7 @@ func (alloc *Action) prioritizeNodes(ssn *framework.Session, task *api.TaskInfo,
 			} else {
 				idleCandidateNodes = append(idleCandidateNodes, n)
 			}
-		} else if task.InitResreq.LessEqual(n.FutureIdleExcluding(task), api.Zero) {
+		} else if task.InitResreq.LessEqual(n.FutureIdle(), api.Zero) {
 			if shardingMode == commonutil.SoftShardingMode && !ssn.NodesInShard.Has(n.Name) {
 				futureIdleCandidateNodesInOtherShards = append(futureIdleCandidateNodesInOtherShards, n)
 			} else {
@@ -860,7 +860,7 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 		task.Namespace, task.Name, node.Name)
 
 	// Allocate releasing resource to the task if any.
-	if task.InitResreq.LessEqual(node.FutureIdleExcluding(task), api.Zero) {
+	if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 		klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 			task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
 		if err = stmt.Pipeline(task, node.Name); err != nil {
@@ -881,7 +881,7 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	// Check for Resource Predicate
 	var statusSets api.StatusSets
-	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdleExcluding(task), api.Zero); !ok {
+	if ok, resources := task.InitResreq.LessEqualWithResourcesName(node.FutureIdle(), api.Zero); !ok {
 		statusSets = append(statusSets, &api.Status{Code: api.Unschedulable, Reason: api.WrapInsufficientResourceReason(resources)})
 		return api.NewFitErrWithStatus(task, node, statusSets...)
 	}

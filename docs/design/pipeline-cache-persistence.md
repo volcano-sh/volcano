@@ -670,27 +670,11 @@ and the task's own pipelined reservation is included in the `Pipelined` subtract
 competes with itself, potentially failing the fit check even when the node has sufficient
 resources.
 
-**Fix**: Add `FutureIdleExcluding(task)` method to `NodeInfo` that excludes the given task's
-own contribution to `ni.Pipelined`. If the task is Pipelined and present on the node, its
-`InitResreq` is added back to the result:
-
-```go
-func (ni *NodeInfo) FutureIdleExcluding(task *TaskInfo) *Resource {
-    futureIdle := ni.FutureIdle()
-    if task.Status == Pipelined {
-        if _, found := ni.Tasks[PodKey(task.Pod)]; found {
-            futureIdle.Add(task.InitResreq)
-        }
-    }
-    return futureIdle
-}
-```
-
-This method is used in all allocate action FutureIdle checks:
-- Nominated-node fast-path fit check
-- Candidate node categorization (idle vs future-idle)
-- Pipeline decision in `allocateResourcesForTask`
-- `predicate()` resource check
+**Fix**: Keep using plain `FutureIdle()` in allocation checks and do not add the task's own
+resource request back to the calculated value. Adding it back can over-admit and make the fit
+check pass too easily. Instead, when nominated-node fast-path fails the `FutureIdle()` check
+for a currently pipelined task on that nominated node, explicitly `UnPipeline` it so the stale
+reservation is removed and the task can be reconsidered through the normal node scan.
 
 When the nominated-node fast-path determines the task no longer fits (even excluding itself),
 the task is un-pipelined from the node so it can be rescheduled elsewhere. This happens when
@@ -703,7 +687,7 @@ the task to fall through to the normal full-node-scan path where it may find a b
 ```go
 if len(task.NominatedNodeName) > 0 {
     if nominatedNodeInfo, ok := ssn.Nodes[task.NominatedNodeName]; ok {
-        futureIdle := nominatedNodeInfo.FutureIdleExcluding(task)
+        futureIdle := nominatedNodeInfo.FutureIdle()
         if task.InitResreq.LessEqual(futureIdle, api.Zero) {
             predicateNodes, fitErrors = ph.PredicateNodes(...)
         } else if task.Status == api.Pipelined && task.NodeName == nominatedNodeInfo.Name {
@@ -782,10 +766,9 @@ for both paths.
 |------|---------|
 | `pkg/scheduler/api/helpers.go` | `getTaskStatus()` returns `Pipelined` for `Phase=Pending, NodeName="", NominatedNodeName!=""` |
 | `pkg/scheduler/api/job_info.go` | Add `NominatedNodeName` to `TransactionContext`, update `Clone()`, `NewTaskInfo()` assigns `nodeName = nominatedNodeName` for Pipelined tasks |
-| `pkg/scheduler/api/node_info.go` | Add `FutureIdleExcluding(task)` method for self-competition-free resource checks |
 | `pkg/scheduler/framework/statement.go` | `Pipeline()` sets `NominatedNodeName`, `Allocate()` uses `UpdateTask()` for existing tasks, `unpipeline()` and `unallocate()` clear `NominatedNodeName` |
 | `pkg/scheduler/cache/cache.go` | `Pipeline()` sets `task.NominatedNodeName` synchronously, `AddBindTask()` uses `UpdateTask()` for existing tasks |
-| `pkg/scheduler/actions/allocate/allocate.go` | Nominated-node fast-path uses `FutureIdleExcluding`, un-pipelines tasks that no longer fit; `predicate()`, candidate categorization, and pipeline decision all use `FutureIdleExcluding` |
+| `pkg/scheduler/actions/allocate/allocate.go` | Nominated-node fast-path uses `FutureIdle()` and un-pipelines tasks that no longer fit; `predicate()`, candidate categorization, and pipeline decision use `FutureIdle()` |
 
 ## Related Issues and PRs
 
