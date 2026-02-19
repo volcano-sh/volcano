@@ -200,6 +200,9 @@ spec:
               {{- if .Values.custom.controller_worker_threads_for_podgroup }}
             - --worker-threads-for-podgroup={{.Values.custom.controller_worker_threads_for_podgroup}}
               {{- end }}
+              {{- if .Values.custom.controller_controllers }}
+            - --controllers={{.Values.custom.controller_controllers}}
+              {{- end }}
             - -v={{.Values.custom.controller_log_level}}
             - 2>&1
           imagePullPolicy: {{ .Values.basic.image_pull_policy }}
