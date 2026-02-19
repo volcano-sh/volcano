@@ -37,6 +37,15 @@ const (
 	hyperNodeEventSourceHyperNode hyperNodeEventSource = "hyperNode"
 )
 
+// isSingleSchedulerScenario checks if it's a single scheduler scenario and logs it.
+func isSingleSchedulerScenario(mySchedulerPodName, objectType, objectName string) bool {
+	if mySchedulerPodName == "" {
+		klog.V(5).Infof("No schedulerPodName specified for %s %s (not a multi-scheduler scenario)", objectType, objectName)
+		return true
+	}
+	return false
+}
+
 // responsibleForPod returns false at following conditions:
 // 1. The current scheduler is not specified scheduler in Pod's spec.
 // 2. The Job which the Pod belongs is not assigned to current scheduler based on the hash algorithm in multi-schedulers scenario
@@ -44,6 +53,11 @@ func responsibleForPod(pod *v1.Pod, schedulerNames []string, mySchedulerPodName 
 	if !slices.Contains(schedulerNames, pod.Spec.SchedulerName) {
 		return false
 	}
+
+	if isSingleSchedulerScenario(mySchedulerPodName, "pod", fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)) {
+		return true
+	}
+
 	if c != nil {
 		var key string
 		if len(pod.OwnerReferences) != 0 {
@@ -66,6 +80,10 @@ func responsibleForPod(pod *v1.Pod, schedulerNames []string, mySchedulerPodName 
 
 // responsibleForNode returns true if the Node is assigned to current scheduler in multi-scheduler scenario
 func responsibleForNode(nodeName string, mySchedulerPodName string, c *consistent.Consistent) bool {
+	if isSingleSchedulerScenario(mySchedulerPodName, "node", nodeName) {
+		return true
+	}
+
 	if c != nil {
 		schedulerPodName, err := c.Get(nodeName)
 		if err != nil {
@@ -82,6 +100,10 @@ func responsibleForNode(nodeName string, mySchedulerPodName string, c *consisten
 
 // responsibleForPodGroup returns true if Job which PodGroup belongs is assigned to current scheduler in multi-schedulers scenario
 func responsibleForPodGroup(pg *scheduling.PodGroup, mySchedulerPodName string, c *consistent.Consistent) bool {
+	if isSingleSchedulerScenario(mySchedulerPodName, "podGroup", fmt.Sprintf("%s/%s", pg.Namespace, pg.Name)) {
+		return true
+	}
+
 	if c != nil {
 		var key string
 		if len(pg.OwnerReferences) != 0 {
