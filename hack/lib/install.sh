@@ -92,6 +92,10 @@ function install-helm {
 
 function install-ginkgo-if-not-exist {
   echo "Checking ginkgo"
+  GOPATH_BIN="$(go env GOPATH)/bin"
+  if [[ ":$PATH:" != *":$GOPATH_BIN:"* ]]; then
+    export PATH="$PATH:$GOPATH_BIN"
+  fi
   which ginkgo >/dev/null 2>&1
   if [[ $? -ne 0 ]]; then
     echo "Installing ginkgo ..."
