@@ -203,6 +203,21 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 	pg32 := util.BuildPodGroup("pg32", "ns1", "queue20", 1, nil, schedulingv1beta1.PodGroupInqueue)
 	queue20 := util.BuildQueueWithResourcesQuantity("queue20", api.BuildResourceList("2", "2Gi"), nil)
 
+	// case10: PreemptiveFn respects capability — do not reclaim when futureUsed would exceed capability (even if below deserved on some dimensions).
+	// Simulating: https://github.com/volcano-sh/volcano/issues/5048
+	//   - Bug 3 preemptiveFn does not check queue capability which allows reclaim above capability/realCapability
+	//     Queue q-cap has capability=deserved=8 CPU 100Gi, allocated 7 CPU 90Gi; pending task 2 CPU 5Gi → futureUsed 9 CPU 95Gi exceeds capability on CPU.
+	n9 := util.BuildNode("n9", api.BuildResourceList("8", "100Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+	n10 := util.BuildNode("n10", api.BuildResourceList("8", "100Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+	p33 := util.BuildPod("ns1", "p33", "n9", corev1.PodRunning, api.BuildResourceList("7", "90Gi"), "pg33", make(map[string]string), nil)
+	p34 := util.BuildPod("ns1", "p34", "", corev1.PodPending, api.BuildResourceList("2", "5Gi"), "pg34", make(map[string]string), nil)
+	p35 := util.BuildPod("ns1", "p35", "n10", corev1.PodRunning, api.BuildResourceList("2", "5Gi"), "pg35", make(map[string]string), nil)
+	pg33 := util.BuildPodGroup("pg33", "ns1", "queue21", 1, nil, schedulingv1beta1.PodGroupRunning)
+	pg34 := util.BuildPodGroup("pg34", "ns1", "queue21", 1, nil, schedulingv1beta1.PodGroupInqueue)
+	pg35 := util.BuildPodGroup("pg35", "ns1", "queue22", 1, nil, schedulingv1beta1.PodGroupRunning)
+	queue21 := util.BuildQueueWithResourcesQuantity("queue21", api.BuildResourceList("8", "100Gi"), api.BuildResourceList("8", "100Gi"))
+	queue22 := util.BuildQueueWithResourcesQuantity("queue22", nil, api.BuildResourceList("2", "5Gi"))
+
 	tests := []uthelper.TestCommonStruct{
 		{
 			Name:      "case0: Pod allocatable when queue has not exceed capability",
@@ -321,6 +336,17 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 			Nodes:           []*corev1.Node{n8},
 			PodGroups:       []*schedulingv1beta1.PodGroup{pg31, pg32},
 			Queues:          []*schedulingv1beta1.Queue{queue19, queue20},
+			ExpectPipeLined: map[string][]string{},
+			ExpectEvicted:   []string{},
+			ExpectEvictNum:  0,
+		},
+		{
+			Name:            "case10: PreemptiveFn respects capability — no reclaim when futureUsed would exceed capability",
+			Plugins:         plugins,
+			Pods:            []*corev1.Pod{p33, p34, p35},
+			Nodes:           []*corev1.Node{n9, n10},
+			PodGroups:       []*schedulingv1beta1.PodGroup{pg33, pg34, pg35},
+			Queues:          []*schedulingv1beta1.Queue{queue21, queue22},
 			ExpectPipeLined: map[string][]string{},
 			ExpectEvicted:   []string{},
 			ExpectEvictNum:  0,
