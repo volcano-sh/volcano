@@ -148,6 +148,69 @@ func TestSchedulerCache_UpdatePod(t *testing.T) {
 	}
 }
 
+// TestPipelinedTaskSurvivesInformerUpdate simulates the informer delivering an UpdatePod event
+// after Cache.Pipeline() has set the task to Pipelined. Without the allocatedPodInCache guard
+// covering Pipelined, updatePod() would call deletePod+addPod which reconstructs the task via
+// NewTaskInfo(), reverting it from Pipelined to Pending.
+func TestPipelinedTaskSurvivesInformerUpdate(t *testing.T) {
+	namespace := "test"
+	owner := buildOwnerReference("j1")
+
+	pod := buildPod(namespace, "p1", "", v1.PodPending,
+		api.BuildResourceList("1000m", "1G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+
+	pod.Annotations = map[string]string{
+		"scheduling.k8s.io/group-name": "j1",
+	}
+
+	node := buildNode("target-node",
+		api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
+
+	cache := &SchedulerCache{
+		Jobs:  make(map[api.JobID]*api.JobInfo),
+		Nodes: make(map[string]*api.NodeInfo),
+	}
+	cache.AddOrUpdateNode(node)
+	cache.AddPod(pod)
+
+	jobID := api.JobID("test/j1")
+	taskUID := api.TaskID(pod.UID)
+	job, found := cache.Jobs[jobID]
+	if !found {
+		t.Fatalf("Job %s not found in cache after AddPod", jobID)
+	}
+	task, found := job.Tasks[taskUID]
+	if !found {
+		t.Fatalf("Task %s not found in job after AddPod", taskUID)
+	}
+	if task.Status != schedulingapi.Pending {
+		t.Fatalf("Expected task status Pending after AddPod, got %s", task.Status)
+	}
+
+	// Simulate Cache.Pipeline(): set the task to Pipelined with a target node.
+	task.Status = schedulingapi.Pipelined
+	task.NodeName = "target-node"
+
+	// Simulate the informer delivering an UpdatePod event for the same unchanged pod.
+	// This triggers the race: the informer sees NominatedNodeName changed and fires update.
+	err := cache.updatePod(pod, pod)
+	if err != nil {
+		t.Fatalf("updatePod returned unexpected error: %v", err)
+	}
+
+	task, found = cache.Jobs[jobID].Tasks[taskUID]
+	if !found {
+		t.Fatalf("Task %s disappeared from job after updatePod", taskUID)
+	}
+	if task.Status != schedulingapi.Pipelined {
+		t.Errorf("Expected task status Pipelined after updatePod, got %s — informer overwrote the pipelined state", task.Status)
+	}
+	if task.NodeName != "target-node" {
+		t.Errorf("Expected task NodeName 'target-node' after updatePod, got %q — TransactionContext was wiped", task.NodeName)
+	}
+}
+
 func TestSchedulerCache_AddPodGroupV1beta1(t *testing.T) {
 	namespace := "test"
 	owner := buildOwnerReference("j1")

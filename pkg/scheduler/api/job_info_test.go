@@ -21,6 +21,7 @@ limitations under the License.
 package api
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -388,12 +389,41 @@ func TestTaskSchedulingReason(t *testing.T) {
 		for uid, exp := range test.expected {
 			msg := job.JobFitErrors
 			if uid != "pg" {
-				_, msg, _ = job.TaskSchedulingReason(TaskID(uid))
+				_, msg = job.TaskSchedulingReason(TaskID(uid))
 			}
 			if msg != exp {
 				t.Errorf("[x] case #%d, task %v\nwant: %s\n got: %s", i, uid, exp, msg)
 			}
 		}
+	}
+}
+
+// TestTaskSchedulingReason_PipelinedReturnsCorrectReason verifies that TaskSchedulingReason
+// returns PodReasonUnschedulable for Pipelined tasks with the correct message.
+func TestTaskSchedulingReason_PipelinedReturnsCorrectReason(t *testing.T) {
+	pod := buildPod("ns1", "task-p", "", v1.PodPending,
+		BuildResourceList("1", "1G"), nil, make(map[string]string))
+	pod.Annotations = map[string]string{
+		schedulingv2.KubeGroupNameAnnotationKey: "pg1",
+	}
+
+	job := NewJobInfo("ns1/pg1")
+	ti := NewTaskInfo(pod)
+	job.AddTaskInfo(ti)
+
+	ti.LastTransaction = &TransactionContext{
+		NodeName: "node1",
+		Status:   Pipelined,
+	}
+
+	reason, msg := job.TaskSchedulingReason(TaskID(pod.UID))
+
+	if reason != PodReasonUnschedulable {
+		t.Errorf("Expected reason %q, got %q", PodReasonUnschedulable, reason)
+	}
+	expectedSubstr := "can possibly be assigned to node1"
+	if !strings.Contains(msg, expectedSubstr) {
+		t.Errorf("Expected msg to contain %q, got %q", expectedSubstr, msg)
 	}
 }
 
@@ -484,6 +514,116 @@ func TestJobInfo(t *testing.T) {
 			t.Errorf("unexpected IsStarving; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedIsStarving, actualIsStarving)
 		}
 	}
+}
+
+func TestNewTaskInfo_PipelinedReconstruction(t *testing.T) {
+	tests := []struct {
+		name                  string
+		phase                 v1.PodPhase
+		nodeName              string
+		nominatedNodeName     string
+		expectedStatus        TaskStatus
+		expectedNodeName      string
+		expectedNominatedNode string
+	}{
+		{
+			name:                  "pending pod with NominatedNodeName reconstructs as Pipelined",
+			phase:                 v1.PodPending,
+			nodeName:              "",
+			nominatedNodeName:     "node-1",
+			expectedStatus:        Pipelined,
+			expectedNodeName:      "node-1",
+			expectedNominatedNode: "node-1",
+		},
+		{
+			name:                  "pending pod without NominatedNodeName stays Pending",
+			phase:                 v1.PodPending,
+			nodeName:              "",
+			nominatedNodeName:     "",
+			expectedStatus:        Pending,
+			expectedNodeName:      "",
+			expectedNominatedNode: "",
+		},
+		{
+			name:                  "pending pod with NodeName is Bound, not reconstructed",
+			phase:                 v1.PodPending,
+			nodeName:              "node-1",
+			nominatedNodeName:     "",
+			expectedStatus:        Bound,
+			expectedNodeName:      "node-1",
+			expectedNominatedNode: "",
+		},
+		{
+			name:                  "running pod with NominatedNodeName is not reconstructed",
+			phase:                 v1.PodRunning,
+			nodeName:              "node-1",
+			nominatedNodeName:     "node-1",
+			expectedStatus:        Running,
+			expectedNodeName:      "node-1",
+			expectedNominatedNode: "node-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := buildPod("ns1", "p1", tt.nodeName, tt.phase,
+				BuildResourceList("1000m", "1G"), nil, make(map[string]string))
+			pod.Status.NominatedNodeName = tt.nominatedNodeName
+
+			task := NewTaskInfo(pod)
+
+			assert.Equal(t, tt.expectedStatus, task.Status, "task status")
+			assert.Equal(t, tt.expectedNodeName, task.NodeName, "task node name")
+			assert.Equal(t, tt.expectedNominatedNode, task.NominatedNodeName, "task nominated node name")
+		})
+	}
+}
+
+func TestTaskInfoClone_NominatedNodeName(t *testing.T) {
+	pod := buildPod("ns1", "p1", "", v1.PodPending,
+		BuildResourceList("1000m", "1G"), nil, make(map[string]string))
+	pod.Status.NominatedNodeName = "node-1"
+
+	original := NewTaskInfo(pod)
+	assert.Equal(t, "node-1", original.NominatedNodeName)
+
+	cloned := original.Clone()
+	assert.Equal(t, "node-1", cloned.NominatedNodeName, "clone should carry NominatedNodeName")
+
+	// Mutate original — clone must be independent.
+	original.NominatedNodeName = "node-2"
+	assert.Equal(t, "node-1", cloned.NominatedNodeName, "clone must be independent of original mutation")
+	assert.Equal(t, "node-2", original.NominatedNodeName, "original mutation must take effect")
+}
+
+func TestTransactionContext_Clone(t *testing.T) {
+	original := &TransactionContext{
+		NodeName:              "node-1",
+		NominatedNodeName:     "node-2",
+		JobAllocatedHyperNode: "hypernode-1",
+		Status:                Pipelined,
+	}
+
+	cloned := original.Clone()
+
+	assert.Equal(t, original.NodeName, cloned.NodeName)
+	assert.Equal(t, original.NominatedNodeName, cloned.NominatedNodeName)
+	assert.Equal(t, original.JobAllocatedHyperNode, cloned.JobAllocatedHyperNode)
+	assert.Equal(t, original.Status, cloned.Status)
+
+	// Mutate original — clone must be independent.
+	original.NodeName = "node-X"
+	original.NominatedNodeName = "node-Y"
+	original.Status = Allocated
+
+	assert.Equal(t, "node-1", cloned.NodeName, "clone NodeName must be independent")
+	assert.Equal(t, "node-2", cloned.NominatedNodeName, "clone NominatedNodeName must be independent")
+	assert.Equal(t, Pipelined, cloned.Status, "clone Status must be independent")
+}
+
+func TestTransactionContext_Clone_Nil(t *testing.T) {
+	var ctx *TransactionContext
+	assert.Nil(t, ctx.Clone(), "nil TransactionContext Clone should return nil")
 }
 
 func TestGetElasticResources(t *testing.T) {

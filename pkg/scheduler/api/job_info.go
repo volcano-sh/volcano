@@ -81,7 +81,7 @@ type TaskID types.UID
 // TransactionContext holds all the fields that needed by scheduling transaction
 type TransactionContext struct {
 	NodeName              string
-	EvictionOccurred      bool
+	NominatedNodeName     string
 	JobAllocatedHyperNode string
 	Status                TaskStatus
 }
@@ -194,6 +194,16 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 	schGated := calSchedulingGated(pod)
 	jobID := getJobID(pod)
 
+	taskStatus := getTaskStatus(pod)
+	nodeName := pod.Spec.NodeName
+	nominatedNodeName := pod.Status.NominatedNodeName
+
+	// For Pipelined tasks (status derived by getTaskStatus from NominatedNodeName),
+	// set nodeName to the nominated node so the task is placed on the correct NodeInfo.
+	if taskStatus == Pipelined && nodeName == "" {
+		nodeName = nominatedNodeName
+	}
+
 	ti := &TaskInfo{
 		UID:                         TaskID(pod.UID),
 		Job:                         jobID,
@@ -211,8 +221,9 @@ func NewTaskInfo(pod *v1.Pod) *TaskInfo {
 		NumaInfo:                    topologyInfo,
 		SchGated:                    schGated,
 		TransactionContext: TransactionContext{
-			NodeName: pod.Spec.NodeName,
-			Status:   getTaskStatus(pod),
+			NodeName:          nodeName,
+			NominatedNodeName: nominatedNodeName,
+			Status:            taskStatus,
 		},
 	}
 
@@ -298,8 +309,9 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		NumaInfo:                    ti.NumaInfo.Clone(),
 		SchGated:                    ti.SchGated,
 		TransactionContext: TransactionContext{
-			NodeName: ti.NodeName,
-			Status:   ti.Status,
+			NodeName:          ti.NodeName,
+			NominatedNodeName: ti.NominatedNodeName,
+			Status:            ti.Status,
 		},
 		LastTransaction: ti.LastTransaction.Clone(),
 	}
@@ -782,7 +794,7 @@ func (ji *JobInfo) FitError() string {
 	// Stat histogram for pending tasks only
 	reasons = make(map[string]int)
 	for uid := range ji.TaskStatusIndex[Pending] {
-		reason, _, _ := ji.TaskSchedulingReason(uid)
+		reason, _ := ji.TaskSchedulingReason(uid)
 		reasons[reason]++
 	}
 	if len(reasons) > 0 {
@@ -807,10 +819,10 @@ func (ji *JobInfo) FitError() string {
 
 // TaskSchedulingReason get detailed reason and message of the given task
 // It returns detailed reason and message for tasks based on last scheduling transaction.
-func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason, msg, nominatedNodeName string) {
+func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason, msg string) {
 	taskInfo, exists := ji.Tasks[tid]
 	if !exists {
-		return "", "", ""
+		return "", ""
 	}
 
 	// Get detailed scheduling reason based on LastTransaction
@@ -824,22 +836,19 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason, msg, nominatedNodeN
 	case Allocated:
 		// Pod is schedulable
 		msg = fmt.Sprintf("Pod %s/%s can possibly be assigned to %s, once minAvailable is satisfied", taskInfo.Namespace, taskInfo.Name, ctx.NodeName)
-		return PodReasonSchedulable, msg, ""
+		return PodReasonSchedulable, msg
 	case Pipelined:
 		msg = fmt.Sprintf("Pod %s/%s can possibly be assigned to %s, once resource is released and minAvailable is satisfied", taskInfo.Namespace, taskInfo.Name, ctx.NodeName)
-		if ctx.EvictionOccurred {
-			nominatedNodeName = ctx.NodeName
-		}
-		return PodReasonUnschedulable, msg, nominatedNodeName
+		return PodReasonUnschedulable, msg
 	case Pending:
 		if fe := ji.NodesFitErrors[tid]; fe != nil {
 			// Pod is unschedulable
-			return PodReasonUnschedulable, fe.Error(), ""
+			return PodReasonUnschedulable, fe.Error()
 		}
 		// Pod is not scheduled yet, keep UNSCHEDULABLE as the reason to support cluster autoscaler
-		return PodReasonUnschedulable, msg, ""
+		return PodReasonUnschedulable, msg
 	default:
-		return status.String(), msg, ""
+		return status.String(), msg
 	}
 }
 

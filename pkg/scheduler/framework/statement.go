@@ -154,7 +154,13 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 }
 
 // Pipeline the task for the node
-func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurred bool) error {
+func (s *Statement) Pipeline(task *api.TaskInfo, hostname string) error {
+	if task.Status == api.Pipelined && task.NodeName == hostname {
+		klog.V(4).Infof("Task <%v/%v> already pipelined on node <%v>, skipping",
+			task.Namespace, task.Name, hostname)
+		return nil
+	}
+
 	errInfos := make([]error, 0)
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
@@ -171,7 +177,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 	}
 
 	task.NodeName = hostname
-	task.EvictionOccurred = evictionOccurred
+	task.NominatedNodeName = hostname
 
 	if node, found := s.ssn.Nodes[hostname]; found {
 		if err := node.AddTask(task); err != nil {
@@ -215,10 +221,19 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 	return nil
 }
 
-func (s *Statement) pipeline(task *api.TaskInfo) {
+func (s *Statement) pipeline(task *api.TaskInfo) error {
+	if err := s.ssn.cache.Pipeline(task, task.NodeName); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *Statement) UnPipeline(task *api.TaskInfo) error {
+	return s.unpipeline(task)
+}
+
+func (s *Statement) unpipeline(task *api.TaskInfo) error {
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
 		if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
@@ -254,6 +269,7 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 		}
 	}
 	task.NodeName = ""
+	task.NominatedNodeName = ""
 	task.JobAllocatedHyperNode = ""
 
 	return nil
@@ -282,10 +298,19 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err er
 
 	task.NodeName = hostname
 	if node, found := s.ssn.Nodes[hostname]; found {
-		if err := node.AddTask(task); err != nil {
-			klog.Errorf("Failed to add task <%v/%v> to node <%v> when allocating in Session <%v>: %v",
-				task.Namespace, task.Name, hostname, s.ssn.UID, err)
-			errInfos = append(errInfos, err)
+		key := api.PodKey(task.Pod)
+		if _, taskOnNode := node.Tasks[key]; taskOnNode {
+			if err := node.UpdateTask(task); err != nil {
+				klog.Errorf("Failed to update task <%v/%v> on node <%v> when allocating in Session <%v>: %v",
+					task.Namespace, task.Name, hostname, s.ssn.UID, err)
+				errInfos = append(errInfos, err)
+			}
+		} else {
+			if err := node.AddTask(task); err != nil {
+				klog.Errorf("Failed to add task <%v/%v> to node <%v> when allocating in Session <%v>: %v",
+					task.Namespace, task.Name, hostname, s.ssn.UID, err)
+				errInfos = append(errInfos, err)
+			}
 		}
 		klog.V(3).Infof("After allocated Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
@@ -383,6 +408,7 @@ func (s *Statement) unallocate(task *api.TaskInfo) error {
 		}
 	}
 	task.NodeName = ""
+	task.NominatedNodeName = ""
 	task.JobAllocatedHyperNode = ""
 
 	return nil
@@ -401,7 +427,7 @@ func (s *Statement) Discard() {
 				klog.Errorf("Failed to unevict task: %s", err.Error())
 			}
 		case Pipeline:
-			err := s.UnPipeline(op.task)
+			err := s.unpipeline(op.task)
 			if err != nil {
 				klog.Errorf("Failed to unpipeline task: %s", err.Error())
 			}
@@ -426,7 +452,13 @@ func (s *Statement) Commit() {
 				klog.Errorf("Failed to evict task: %s", err.Error())
 			}
 		case Pipeline:
-			s.pipeline(op.task)
+			err := s.pipeline(op.task)
+			if err != nil {
+				if e := s.unpipeline(op.task); e != nil {
+					klog.Errorf("Failed to unpipeline task <%v/%v>: %v.", op.task.Namespace, op.task.Name, e)
+				}
+				klog.Errorf("Failed to pipeline task <%v/%v>: %s", op.task.Namespace, op.task.Name, err.Error())
+			}
 		case Allocate:
 			err := s.allocate(op.task)
 			if err != nil {
@@ -468,7 +500,7 @@ func (s *Statement) RecoverOperations(stmt *Statement) error {
 				return err
 			}
 		case Pipeline:
-			err := s.Pipeline(op.task, op.task.NodeName, false)
+			err := s.Pipeline(op.task, op.task.NodeName)
 			if err != nil {
 				klog.Errorf("Failed to pipeline task: %s", err.Error())
 				return err

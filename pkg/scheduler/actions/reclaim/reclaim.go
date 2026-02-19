@@ -219,7 +219,6 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		// The reclaimed resources should be added to the remaining available resources of the nodes to avoid over-reclaiming.
 		availableResources := n.FutureIdle()
 
-		evictionOccurred := false
 		for !victimsQueue.Empty() {
 			reclaimee := victimsQueue.Pop().(*api.TaskInfo)
 			klog.V(3).Infof("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
@@ -231,7 +230,6 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			}
 			reclaimed.Add(reclaimee.Resreq)
 			availableResources.Add(reclaimee.Resreq)
-			evictionOccurred = true
 			if resreq.LessEqual(availableResources, api.Zero) {
 				break
 			}
@@ -240,7 +238,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>, and Node <%s> availableResources <%v>.", reclaimed, task.Namespace, task.Name, task.InitResreq, n.Name, availableResources)
 
 		if task.InitResreq.LessEqual(availableResources, api.Zero) {
-			if err := stmt.Pipeline(task, n.Name, evictionOccurred); err != nil {
+			if err := stmt.Pipeline(task, n.Name); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					task.Namespace, task.Name, n.Name)
 				if rollbackErr := stmt.UnPipeline(task); rollbackErr != nil {

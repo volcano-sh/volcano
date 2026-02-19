@@ -50,6 +50,13 @@ func getTaskStatus(pod *v1.Pod) TaskStatus {
 		}
 
 		if len(pod.Spec.NodeName) == 0 {
+			// A pod with no NodeName but a NominatedNodeName was pipelined by a scheduler instance.
+			// In HA mode, each scheduler maintains its own cache — remote instances learn about
+			// the pipeline decision only through informer events carrying NominatedNodeName.
+			// Reconstruct the task as Pipelined so the node's FutureIdle accounting is correct.
+			if len(pod.Status.NominatedNodeName) > 0 {
+				return Pipelined
+			}
 			return Pending
 		}
 		return Bound

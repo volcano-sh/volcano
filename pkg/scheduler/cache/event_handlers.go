@@ -305,7 +305,7 @@ func (sc *SchedulerCache) allocatedPodInCache(pod *v1.Pod) bool {
 
 	if job, found := sc.Jobs[pi.Job]; found {
 		if t, found := job.Tasks[pi.UID]; found {
-			return schedulingapi.AllocatedStatus(t.Status)
+			return schedulingapi.AllocatedStatus(t.Status) || t.Status == schedulingapi.Pipelined
 		}
 	}
 

@@ -131,12 +131,16 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 	alloc.session = ssn
 	alloc.recorder = NewRecorder()
-	actx := alloc.buildAllocateContext()
+	actx, pipelineActx := alloc.buildAllocateContext()
+
+	klog.V(3).Infof("Try to allocate pipelined resource to %d Queues", pipelineActx.queues.Len())
+	alloc.allocateResources(pipelineActx)
 	klog.V(3).Infof("Try to allocate resource to %d Queues", actx.queues.Len())
 	alloc.allocateResources(actx)
 }
 
-func (alloc *Action) buildAllocateContext() *allocateContext {
+// buildAllocateContext builds 2 allocateContext from session's jobs and queues, one of them is for normal Jobs and the other is for pipelined Jobs.
+func (alloc *Action) buildAllocateContext() (*allocateContext, *allocateContext) {
 	ssn := alloc.session
 
 	actx := &allocateContext{
@@ -144,6 +148,30 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 		jobsByQueue:         make(map[api.QueueID]*util.PriorityQueue),
 		jobWorksheet:        make(map[api.JobID]*JobWorksheet),
 		tasksNoHardTopology: make(map[api.JobID]*util.PriorityQueue),
+	}
+
+	pipelineActx := &allocateContext{
+		queues:              util.NewPriorityQueue(ssn.QueueOrderFn),
+		jobsByQueue:         make(map[api.QueueID]*util.PriorityQueue),
+		jobWorksheet:        make(map[api.JobID]*JobWorksheet),
+		tasksNoHardTopology: make(map[api.JobID]*util.PriorityQueue),
+	}
+
+	// Inner helper to add a job to a context
+	addJobToContext := func(ctx *allocateContext, job *api.JobInfo, worksheet *JobWorksheet) {
+		if _, found := ctx.jobsByQueue[job.Queue]; !found {
+			ctx.jobsByQueue[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
+			ctx.queues.Push(ssn.Queues[job.Queue])
+		}
+		ctx.jobsByQueue[job.Queue].Push(job)
+		ctx.jobWorksheet[job.UID] = worksheet
+
+		// job without any hard network topology policy use actx.tasksNoHardTopology
+		if !job.ContainsHardTopology() {
+			if subJobWorksheet, exist := worksheet.subJobWorksheets[job.DefaultSubJobID()]; exist {
+				ctx.tasksNoHardTopology[job.UID] = subJobWorksheet.tasks
+			}
+		}
 	}
 
 	for _, job := range ssn.Jobs {
@@ -182,24 +210,16 @@ func (alloc *Action) buildAllocateContext() *allocateContext {
 			continue
 		}
 
-		if _, found := actx.jobsByQueue[job.Queue]; !found {
-			actx.jobsByQueue[job.Queue] = util.NewPriorityQueue(ssn.JobOrderFn)
-			actx.queues.Push(ssn.Queues[job.Queue])
-		}
-
-		klog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
-		actx.jobsByQueue[job.Queue].Push(job)
-		actx.jobWorksheet[job.UID] = worksheet
-
-		// job without any hard network topology policy use actx.tasksNoHardTopology
-		if !job.ContainsHardTopology() {
-			if subJobWorksheet, exist := worksheet.subJobWorksheets[job.DefaultSubJobID()]; exist {
-				actx.tasksNoHardTopology[job.UID] = subJobWorksheet.tasks
-			}
+		if ssn.JobPipelined(job) {
+			addJobToContext(pipelineActx, job, worksheet)
+			klog.V(4).Infof("Added Pipelined Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
+		} else {
+			addJobToContext(actx, job, worksheet)
+			klog.V(4).Infof("Added Job <%s/%s> into Queue <%s>", job.Namespace, job.Name, job.Queue)
 		}
 	}
 
-	return actx
+	return actx, pipelineActx
 }
 
 func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
@@ -222,6 +242,7 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 		}
 		return -1
 	})
+
 	// Find the smallest set of subJobs that meets the requirements for job execution.
 	requireSubJobs := sets.Set[api.SubJobID]{}
 	for _, subJob := range subJobs {
@@ -247,22 +268,36 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 
 	for subJobID, subJob := range job.SubJobs {
 		sjWorksheet := &SubJobWorksheet{
-			tasks: util.NewPriorityQueue(ssn.TaskOrderFn),
+			tasks: util.NewPriorityQueue(func(l, r interface{}) bool {
+				lv := l.(*api.TaskInfo)
+				rv := r.(*api.TaskInfo)
+
+				// Pipelined tasks shall have higher priority than Pending tasks
+				if lv.Status != rv.Status {
+					return lv.Status == api.Pipelined
+				}
+
+				// If both have the same status, use the session's task order function
+				return ssn.TaskOrderFn(l, r)
+			}),
 		}
 
-		for _, task := range subJob.TaskStatusIndex[api.Pending] {
-			// Skip tasks whose pod are scheduling gated
-			if task.SchGated {
-				continue
-			}
+		// Include both Pipelined and Pending tasks
+		for _, status := range []api.TaskStatus{api.Pipelined, api.Pending} {
+			for _, task := range subJob.TaskStatusIndex[status] {
+				// Skip tasks whose pod are scheduling gated
+				if task.SchGated {
+					continue
+				}
 
-			// Skip BestEffort task in 'allocate' action.
-			if task.Resreq.IsEmpty() {
-				klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
-					task.Namespace, task.Name)
-				continue
+				// Skip BestEffort task in 'allocate' action.
+				if task.Resreq.IsEmpty() {
+					klog.V(4).Infof("Task <%v/%v> is BestEffort task, skip it.",
+						task.Namespace, task.Name)
+					continue
+				}
+				sjWorksheet.tasks.Push(task)
 			}
-			sjWorksheet.tasks.Push(task)
 		}
 
 		if !sjWorksheet.Empty() {
@@ -306,14 +341,23 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 			klog.V(3).InfoS("Try to allocate resource for job contains hard topology or subjob policy", "queue", queue.Name, "job", job.UID,
 				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
-			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-				stmt.Commit()
-				ssn.MarkJobDirty(job.UID)
-				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
+			if stmt != nil {
+				if ssn.JobReady(job) {
+					// Job is ready, commit all allocations
+					stmt.Commit()
+					ssn.MarkJobDirty(job.UID)
+					alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
 
-				// There are still left tasks that need to be allocated when min available < replicas, put the job back
-				if !jobWorksheet.Empty() {
-					jobs.Push(job)
+					// There are still left tasks that need to be allocated when min available < replicas, put the job back
+					if !jobWorksheet.Empty() {
+						jobs.Push(job)
+					}
+				} else if ssn.JobPipelined(job) {
+					// Job is pipelined but not ready, commit the pipeline state
+					stmt.Commit()
+				} else {
+					// Job is not ready and not pipelined, discard the statement
+					stmt.Discard()
 				}
 			}
 		} else {
@@ -322,12 +366,21 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 			if sjExist && tasksExist {
 				klog.V(3).InfoS("Try to allocate resource", "queue", queue.Name, "job", job.UID, "taskNum", tasks.Len())
 				stmt := alloc.allocateResourcesForTasks(subJob, tasks, framework.ClusterTopHyperNode)
-				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
-					stmt.Commit()
+				if stmt != nil {
+					if ssn.JobReady(job) {
+						// Job is ready, commit all allocations
+						stmt.Commit()
 
-					// There are still left tasks that need to be allocated when min available < replicas, put the job back
-					if tasks.Len() > 0 {
-						jobs.Push(job)
+						// There are still left tasks that need to be allocated when min available < replicas, put the job back
+						if tasks.Len() > 0 {
+							jobs.Push(job)
+						}
+					} else if ssn.JobPipelined(job) {
+						// Job is pipelined but not ready, commit the pipeline state
+						stmt.Commit()
+					} else {
+						// Job is not ready and not pipelined, discard the statement
+						stmt.Discard()
 					}
 				}
 			} else {
@@ -600,9 +653,16 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 		// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
 		// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
-		if len(task.Pod.Status.NominatedNodeName) > 0 {
-			if nominatedNodeInfo, ok := ssn.Nodes[task.Pod.Status.NominatedNodeName]; ok && task.InitResreq.LessEqual(nominatedNodeInfo.FutureIdle(), api.Zero) {
-				predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
+		if len(task.NominatedNodeName) > 0 {
+			if nominatedNodeInfo, ok := ssn.Nodes[task.NominatedNodeName]; ok {
+				futureIdle := nominatedNodeInfo.FutureIdle()
+				if task.InitResreq.LessEqual(futureIdle, api.Zero) {
+					predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
+				} else if task.Status == api.Pipelined && task.NodeName == nominatedNodeInfo.Name {
+					if err := stmt.UnPipeline(task); err != nil {
+						klog.Errorf("Failed to unpipeline Task %v from nominated node %v: %v", task.UID, nominatedNodeInfo.Name, err)
+					}
+				}
 			}
 		}
 
@@ -803,9 +863,13 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 	if task.InitResreq.LessEqual(node.FutureIdle(), api.Zero) {
 		klog.V(3).Infof("Pipelining Task <%v/%v> to node <%v> for <%v> on <%v>",
 			task.Namespace, task.Name, node.Name, task.InitResreq, node.Releasing)
-		if err = stmt.Pipeline(task, node.Name, false); err != nil {
+		if err = stmt.Pipeline(task, node.Name); err != nil {
 			klog.Errorf("Failed to pipeline Task %v on %v in Session %v for %v.",
 				task.UID, node.Name, alloc.session.UID, err)
+			if rollbackErr := stmt.UnPipeline(task); rollbackErr != nil {
+				klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
+					task.UID, node.Name, alloc.session.UID, rollbackErr)
+			}
 		} else {
 			metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 			metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())

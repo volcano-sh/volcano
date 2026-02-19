@@ -161,7 +161,7 @@ func TestPickUpPendingTasks(t *testing.T) {
 			stmt := framework.NewStatement(ssn)
 			task, found := ssn.Jobs[jobID].Tasks[api.PodKey(pod)]
 			if found {
-				stmt.Pipeline(task, "node1", false)
+				stmt.Pipeline(task, "node1")
 			}
 		}
 
