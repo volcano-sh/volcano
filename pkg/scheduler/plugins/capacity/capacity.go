@@ -491,8 +491,8 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 
 		attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
 		cp.updateShare(attr)
-		klog.V(4).Infof("The attributes of queue <%s> in capacity: deserved <%v>, realCapability <%v>, allocate <%v>, request <%v>, elastic <%v>, share <%0.2f>",
-			attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
+		klog.V(4).Infof("The attributes of queue <%s> in capacity: deserved <%v>, capability <%v>, realCapability <%v>, allocate <%v>, request <%v>, elastic <%v>, share <%0.2f>",
+			attr.name, attr.deserved, attr.capability, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
 	}
 
 	// Record metrics
@@ -642,8 +642,8 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	// Update share
 	for _, attr := range cp.queueOpts {
 		cp.updateShare(attr)
-		klog.V(4).Infof("The attributes of queue <%s> in capacity: deserved <%v>, realCapability <%v>, allocate <%v>, request <%v>, elastic <%v>, share <%0.2f>",
-			attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
+		klog.V(4).Infof("The attributes of hierarchical queue <%s> in capacity: deserved <%v>, capability <%v>, realCapability <%v>, allocate <%v>, request <%v>, elastic <%v>, share <%0.2f>",
+			attr.name, attr.deserved, attr.capability, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
 	}
 
 	// Record metrics
