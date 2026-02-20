@@ -25,6 +25,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"volcano.sh/volcano/pkg/scheduler/api"
 	wkconfig "volcano.sh/volcano/pkg/webhooks/config"
 	"volcano.sh/volcano/pkg/webhooks/router"
 	"volcano.sh/volcano/pkg/webhooks/schema"
@@ -110,6 +112,12 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 	config.ConfigData.Lock()
 	defer config.ConfigData.Unlock()
 
+	// Add scheduling gates if opted-in
+	patchGates := patchSchedulingGates(pod)
+	if patchGates != nil {
+		patch = append(patch, *patchGates)
+	}
+
 	for _, resourceGroup := range config.ConfigData.ResGroupsConfig {
 		klog.V(3).Infof("resourceGroup %s", resourceGroup.ResourceGroup)
 		group := GetResGroup(resourceGroup)
@@ -141,6 +149,47 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 	}
 
 	return json.Marshal(patch)
+}
+
+// patchSchedulingGates adds a scheduling gate for Volcano-managed pods.
+// The gate prevents cluster autoscalers from seeing the pod until Volcano
+// determines it's ready (queue admission + gang scheduling satisfied).
+func patchSchedulingGates(pod *v1.Pod) *patchOperation {
+	// Check if opt-in annotation is present
+	if !api.HasQueueAllocationGateAnnotation(pod) {
+		klog.V(4).Infof("Pod %s/%s does not have opt-in annotation, skipping gate",
+			pod.Namespace, pod.Name)
+		return nil
+	}
+
+	gate := v1.PodSchedulingGate{Name: schedulingv1beta1.QueueAllocationGateKey}
+
+	// Idempotent: do not add a duplicate Volcano gate.
+	// This prevents appending the same gate multiple times if the mutation is retried.
+	for _, g := range pod.Spec.SchedulingGates {
+		if g.Name == gate.Name {
+			return nil
+		}
+	}
+
+	// Parent missing: The schedulingGates slice hasn't been initialized yet.
+	// We must use "add" on the base path with an array containing our gate.
+	if pod.Spec.SchedulingGates == nil {
+		return &patchOperation{
+			Op:    "add",
+			Path:  "/spec/schedulingGates",
+			Value: []v1.PodSchedulingGate{gate},
+		}
+	}
+
+	// Parent exists: We can safely append to the existing array.
+	// Using the "-" path operator tells JSON Patch to append to the end of the array,
+	// preventing us from overwriting gates added by parallel webhooks.
+	return &patchOperation{
+		Op:    "add",
+		Path:  "/spec/schedulingGates/-",
+		Value: gate,
+	}
 }
 
 // patchLabels patch label

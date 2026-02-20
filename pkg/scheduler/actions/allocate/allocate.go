@@ -17,22 +17,36 @@
 package allocate
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"slices"
+	"sync"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 	commonutil "volcano.sh/volcano/pkg/util"
+)
+
+const (
+	// GateRemovalWorkerNumKey is the configuration key for number of async gate removal workers
+	GateRemovalWorkerNumKey = "gateRemovalWorkerNum"
+
+	// Default buffer size per worker for the gate removal channel
+	gateRemovalBufferPerWorker = 200
 )
 
 type allocateContext struct {
@@ -97,11 +111,30 @@ type Action struct {
 	enablePredicateErrorCache bool
 
 	recorder *Recorder
+
+	// Async gate management infrastructure
+	kubeClient                    kubernetes.Interface // Cached client for worker goroutines
+	schGateRemovalCh              chan schGateRemovalOperation
+	schGateRemovalWorkersWg       sync.WaitGroup
+	schGateRemovalStopCh          chan struct{}
+	gateRemovalWorkerNum          int       // Number of async gate removal workers
+	initSchGateRemovalWorkersOnce sync.Once // guards channel and worker startup so Initialize() is idempotent
+	initOnce                      sync.Once
+	shutdownOnce                  sync.Once
+}
+
+// schGateRemovalOperation is a struct that contains the namespace
+// and name of the pod to remove the scheduling gate from.
+type schGateRemovalOperation struct {
+	namespace string
+	name      string
 }
 
 func New() *Action {
 	return &Action{
 		enablePredicateErrorCache: true, // default to enable it
+		schGateRemovalStopCh:      make(chan struct{}),
+		gateRemovalWorkerNum:      5, // default value
 	}
 }
 
@@ -109,11 +142,62 @@ func (alloc *Action) Name() string {
 	return "allocate"
 }
 
-func (alloc *Action) Initialize() {}
+func (alloc *Action) Initialize() {
+	alloc.initSchGateRemovalWorkersOnce.Do(func() {
+		// Create channel with buffer size based on worker count (200 operations per worker)
+		channelSize := alloc.gateRemovalWorkerNum * gateRemovalBufferPerWorker
+		alloc.schGateRemovalCh = make(chan schGateRemovalOperation, channelSize)
+
+		// Start async gate operation workers
+		for i := 0; i < alloc.gateRemovalWorkerNum; i++ {
+			alloc.schGateRemovalWorkersWg.Add(1)
+			go alloc.schGateRemovalWorker()
+		}
+		klog.V(3).Infof("Started %d async workers for gate removal", alloc.gateRemovalWorkerNum)
+	})
+}
+
+// schGateRemovalWorker processes async gate add/remove requests
+func (alloc *Action) schGateRemovalWorker() {
+	defer alloc.schGateRemovalWorkersWg.Done()
+	for {
+		select {
+		case <-alloc.schGateRemovalStopCh:
+			klog.V(4).Infof("Scheduling gate operation worker shutting down")
+			return
+		case op := <-alloc.schGateRemovalCh:
+			// Fetch fresh pod state from API server
+			// Use cached kubeClient to avoid data race with session updates
+			pod, err := alloc.kubeClient.CoreV1().Pods(op.namespace).Get(
+				context.Background(),
+				op.name,
+				metav1.GetOptions{})
+
+			if err != nil {
+				klog.Errorf("Failed to get pod %s/%s for gate operation: %v", op.namespace, op.name, err)
+				continue
+			}
+
+			// Remove the Volcano scheduling gate
+			if err := cache.RemoveVolcanoSchGate(alloc.kubeClient, pod); err != nil {
+				klog.Errorf("Failed to remove gate from %s/%s: %v", op.namespace, op.name, err)
+			} else {
+				klog.V(3).Infof("Removed Volcano scheduling gate from pod %s/%s", op.namespace, op.name)
+			}
+		}
+	}
+}
 
 func (alloc *Action) parseArguments(ssn *framework.Session) {
 	arguments := framework.GetArgOfActionFromConf(ssn.Configurations, alloc.Name())
 	arguments.GetBool(&alloc.enablePredicateErrorCache, conf.EnablePredicateErrCacheKey)
+	arguments.GetInt(&alloc.gateRemovalWorkerNum, GateRemovalWorkerNumKey)
+
+	// Ensure at least 1 worker
+	if alloc.gateRemovalWorkerNum < 1 {
+		klog.Warningf("Invalid gateRemovalWorkerNum %d, using default value 5", alloc.gateRemovalWorkerNum)
+		alloc.gateRemovalWorkerNum = 5
+	}
 }
 
 func (alloc *Action) Execute(ssn *framework.Session) {
@@ -121,6 +205,13 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 	defer klog.V(5).Infof("Leaving Allocate ...")
 
 	alloc.parseArguments(ssn)
+
+	// Initialize workers once with the configured number.
+	// Cache KubeClient for thread-safe access from workers.
+	alloc.initOnce.Do(func() {
+		alloc.kubeClient = ssn.KubeClient()
+		alloc.Initialize()
+	})
 
 	// the allocation for pod may have many stages
 	// 1. pick a queue named Q (using ssn.QueueOrderFn)
@@ -251,8 +342,11 @@ func (alloc *Action) organizeJobWorksheet(job *api.JobInfo) *JobWorksheet {
 		}
 
 		for _, task := range subJob.TaskStatusIndex[api.Pending] {
-			// Skip tasks whose pod are scheduling gated
-			if task.SchGated {
+			// Skip tasks with external (non-Volcano) scheduling gates
+			// Allow Volcano-managed gates (they'll be handled by capacity plugin)
+			if task.SchGated && !api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+				klog.V(4).Infof("Task <%v/%v> has external scheduling gate, skip it.",
+					task.Namespace, task.Name)
 				continue
 			}
 
@@ -307,6 +401,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 				"allocatedHyperNode", job.AllocatedHyperNode, "subJobNum", jobWorksheet.subJobs.Len())
 			stmt := alloc.allocateForJob(job, jobWorksheet, ssn.HyperNodes[framework.ClusterTopHyperNode])
 			if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
+				ssn.CleanupReservations(stmt)
 				stmt.Commit()
 				ssn.MarkJobDirty(job.UID)
 				alloc.recorder.UpdateDecisionToJob(job, ssn.HyperNodes)
@@ -323,6 +418,7 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 				klog.V(3).InfoS("Try to allocate resource", "queue", queue.Name, "job", job.UID, "taskNum", tasks.Len())
 				stmt := alloc.allocateResourcesForTasks(subJob, tasks, framework.ClusterTopHyperNode)
 				if stmt != nil && ssn.JobReady(job) { // do not commit stmt when job is pipelined
+					ssn.CleanupReservations(stmt)
 					stmt.Commit()
 
 					// There are still left tasks that need to be allocated when min available < replicas, put the job back
@@ -339,6 +435,27 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 		// Put back the queue to priority queue after job's resource allocating finished,
 		// To ensure that the priority of the queue is calculated based on the latest resource allocation situation.
 		queues.Push(queue)
+	}
+}
+
+// schedulingGateRemoval queues async gate removal if scheduling failed.
+// This ensures cluster autoscalers can see the Unschedulable condition and trigger scale-up
+func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo, queueID api.QueueID) {
+	// Only enqueue gate removal if the task has only Volcano scheduling gate
+	if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+		op := schGateRemovalOperation{
+			namespace: task.Namespace,
+			name:      task.Name,
+		}
+
+		select {
+		case alloc.schGateRemovalCh <- op:
+			klog.V(3).Infof("Queued gate removal for %s/%s", task.Namespace, task.Name)
+			// Update task state immediately so it won't be queued again in this cycle
+			task.SchGated = false
+		default:
+			klog.Warningf("Gate operation queue full, skipping gate removal for %s/%s", task.Namespace, task.Name)
+		}
 	}
 }
 
@@ -573,6 +690,25 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 			continue
 		}
 
+		// If task passed allocation check and has the QueueAllocationGate, initiate async gate removal.
+		// Gate will be removed by the background worker (best effort). During the bind operation, we need
+		// to ensure the gate is not present, otherwise the bind will fail.
+		if task.SchGated && api.HasQueueAllocationGateAnnotation(task.Pod) {
+			klog.V(3).Infof("Task %s/%s has the QueueAllocationGate, queue async gate removal", task.Namespace, task.Name)
+			alloc.schedulingGateRemoval(task, queue.UID)
+		}
+
+		// Skip tasks with external (non-Volcano) scheduling gates
+		if task.SchGated {
+			if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+				klog.Warningf("Task %s/%s has Volcano scheduling gate but missing annotation %q, gate will not be removed automatically; add the annotation or remove the gate manually",
+					task.Namespace, task.Name, schedulingv1beta1.QueueAllocationGateKey)
+			} else {
+				klog.V(4).Infof("Task %s/%s has non-Volcano scheduling gate, skipping", task.Namespace, task.Name)
+			}
+			continue
+		}
+
 		// check if the task with its spec has already predicates failed
 		if job.TaskHasFitErrors(subJob.UID, task) {
 			msg := fmt.Sprintf("Task %s with role spec %s has already predicated failed, skip", task.Name, task.TaskRole)
@@ -622,6 +758,7 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 				fitErrors.SetHyperNode(hyperNode)
 			}
 			job.NodesFitErrors[task.UID] = fitErrors
+
 			// Assume that all left tasks are allocatable, but can not meet gang-scheduling min member,
 			// so we should break from continuously allocating.
 			// otherwise, should continue to find other allocatable task
@@ -824,4 +961,16 @@ func (alloc *Action) predicate(task *api.TaskInfo, node *api.NodeInfo) error {
 	return alloc.session.PredicateForAllocateAction(task, node)
 }
 
-func (alloc *Action) UnInitialize() {}
+func (alloc *Action) UnInitialize() {
+	alloc.shutdownOnce.Do(func() {
+		// Signal workers to shutdown
+		close(alloc.schGateRemovalStopCh)
+		// Wait for all workers to finish
+		alloc.schGateRemovalWorkersWg.Wait()
+		// Close the channel (only if Initialize was ever called)
+		if alloc.schGateRemovalCh != nil {
+			close(alloc.schGateRemovalCh)
+		}
+		klog.V(3).Infof("Async gate removal workers shut down")
+	})
+}
