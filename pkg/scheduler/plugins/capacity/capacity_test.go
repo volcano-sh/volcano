@@ -958,3 +958,83 @@ func Test_updateQueueAttrShare(t *testing.T) {
 		})
 	}
 }
+
+// TestBuildQueueAttrsMetricConsistency tests Bug 1 fix:
+// Queue allocated metric should be consistent with Queue.Status.Allocated
+// when hierarchy is disabled, including for jobless queues (like root queue).
+// Before the fix: jobless queues were not added to queueOpts, causing metrics to report 0 allocated.
+// After the fix: jobless queues are added to queueOpts with allocated from Queue.Status.Allocated.
+func TestBuildQueueAttrsMetricConsistency(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	trueValue := true
+
+	// Create a node
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+
+	// Create a pod in q1 (allocated)
+	p1 := util.BuildPod("ns1", "p1", "n1", corev1.PodRunning, api.BuildResourceList("2", "2Gi"), "pg1", make(map[string]string), make(map[string]string))
+	pg1 := util.BuildPodGroup("pg1", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupRunning)
+
+	// Create queues: root (jobless, has Status.Allocated set) and q1 (has job)
+	root := util.BuildQueueWithResourcesQuantity("root", api.BuildResourceList("4", "4Gi"), nil)
+	// Simulate that root has allocated resources (from previous scheduling cycles)
+	root.Status.Allocated = api.BuildResourceList("2", "2Gi")
+	queue1 := util.BuildQueueWithResourcesQuantity("q1", api.BuildResourceList("2", "2Gi"), api.BuildResourceList("4", "4Gi"))
+
+	test := uthelper.TestCommonStruct{
+		Name:      "Jobless queue gets allocated from Status.Allocated",
+		Plugins:   plugins,
+		Pods:      []*corev1.Pod{p1},
+		Nodes:     []*corev1.Node{n1},
+		PodGroups: []*schedulingv1beta1.PodGroup{pg1},
+		Queues:    []*schedulingv1beta1.Queue{root, queue1},
+	}
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnablePreemptive:   &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledQueueOrder:  &trueValue,
+					// Hierarchy is NOT enabled - this is the key for Bug 1
+					EnabledHierarchy: nil,
+				},
+			},
+		},
+	}
+
+	t.Run(test.Name, func(t *testing.T) {
+		ssn := test.RegisterSession(tiers, nil)
+		defer test.Close()
+
+		// Verify both queues exist in the session
+		if len(ssn.Queues) != 2 {
+			t.Fatalf("Expected 2 queues in session, got %d", len(ssn.Queues))
+		}
+
+		// Verify root queue (jobless) exists in session.Queues
+		rootQueueID := api.QueueID("root")
+		rootQueue, exists := ssn.Queues[rootQueueID]
+		if !exists {
+			t.Fatal("Root queue (jobless) should exist in session.Queues")
+		}
+
+		// Verify root queue has Status.Allocated set
+		if rootQueue.Queue.Status.Allocated == nil {
+			t.Fatal("Root queue should have Status.Allocated set")
+		}
+
+		// The fix ensures the root queue's allocated is read from Status.Allocated
+		expectedAllocated := api.NewResource(api.BuildResourceList("2", "2Gi"))
+		actualAllocated := api.NewResource(rootQueue.Queue.Status.Allocated)
+		if actualAllocated.MilliCPU != expectedAllocated.MilliCPU {
+			t.Errorf("Root queue allocated CPU: got %v, want %v", actualAllocated.MilliCPU, expectedAllocated.MilliCPU)
+		}
+		if actualAllocated.Memory != expectedAllocated.Memory {
+			t.Errorf("Root queue allocated Memory: got %v, want %v", actualAllocated.Memory, expectedAllocated.Memory)
+		}
+	})
+}
