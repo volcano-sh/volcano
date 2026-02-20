@@ -151,9 +151,9 @@ func createPatch(pod *v1.Pod) ([]byte, error) {
 	return json.Marshal(patch)
 }
 
-// patchSchedulingGates adds a scheduling gate for Volcano-managed pods
+// patchSchedulingGates adds a scheduling gate for Volcano-managed pods.
 // The gate prevents cluster autoscalers from seeing the pod until Volcano
-// determines it's ready (queue admission + gang scheduling satisfied)
+// determines it's ready (queue admission + gang scheduling satisfied).
 func patchSchedulingGates(pod *v1.Pod) *patchOperation {
 	// Check if opt-in annotation is present
 	if !api.HasQueueAllocationGateAnnotation(pod) {
@@ -162,20 +162,33 @@ func patchSchedulingGates(pod *v1.Pod) *patchOperation {
 		return nil
 	}
 
-	gates := []v1.PodSchedulingGate{
-		{Name: schedulingv1beta1.QueueAllocationGateKey},
+	gate := v1.PodSchedulingGate{Name: schedulingv1beta1.QueueAllocationGateKey}
+
+	// Idempotent: do not add a duplicate Volcano gate.
+	// This prevents appending the same gate multiple times if the mutation is retried.
+	for _, g := range pod.Spec.SchedulingGates {
+		if g.Name == gate.Name {
+			return nil
+		}
 	}
-	// Use "add" when the field is not set, and "replace" when it already exists.
-	// In both cases, preserve existing gates and append the new one.
-	value := append(pod.Spec.SchedulingGates, gates...)
-	op := "add"
-	if len(pod.Spec.SchedulingGates) > 0 {
-		op = "replace"
+
+	// Parent missing: The schedulingGates slice hasn't been initialized yet.
+	// We must use "add" on the base path with an array containing our gate.
+	if pod.Spec.SchedulingGates == nil {
+		return &patchOperation{
+			Op:    "add",
+			Path:  "/spec/schedulingGates",
+			Value: []v1.PodSchedulingGate{gate},
+		}
 	}
+
+	// Parent exists: We can safely append to the existing array.
+	// Using the "-" path operator tells JSON Patch to append to the end of the array,
+	// preventing us from overwriting gates added by parallel webhooks.
 	return &patchOperation{
-		Op:    op,
-		Path:  "/spec/schedulingGates",
-		Value: value,
+		Op:    "add",
+		Path:  "/spec/schedulingGates/-",
+		Value: gate,
 	}
 }
 
