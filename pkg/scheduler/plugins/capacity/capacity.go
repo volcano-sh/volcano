@@ -191,9 +191,6 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				queue.Name, futureUsed, attr.deserved, task.Resreq)
 		}
 
-		overused := !isPreemptive
-		metrics.UpdateQueueOverused(attr.name, overused)
-
 		// PreemptiveFn is the opposite of OverusedFn in proportion plugin cause as long as there is a one-dimensional
 		// resource whose deserved is greater than allocated, current task can reclaim by preempt others.
 		return isPreemptive
@@ -396,6 +393,10 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 }
 
 func (cp *capacityPlugin) OnSessionClose(ssn *framework.Session) {
+	for _, attr := range cp.queueOpts {
+		overused := attr.share > 1
+		metrics.UpdateQueueOverused(attr.name, overused)
+	}
 	cp.totalResource = nil
 	cp.totalGuarantee = nil
 	cp.queueOpts = nil
