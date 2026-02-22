@@ -29,14 +29,16 @@ import (
 var _ = Describe("MPI E2E Test", func() {
 	var testCtx *e2eutil.TestContext
 
+	BeforeEach(func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
+	})
+
 	JustAfterEach(func() {
 		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
 	})
 
 	It("will run and complete finally", func() {
-		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(testCtx)
-
 		slot := e2eutil.OneCPU
 
 		spec := &e2eutil.JobSpec{
