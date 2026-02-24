@@ -25,11 +25,19 @@ import (
 
 // CronJobApplyConfiguration represents a declarative configuration of the CronJob type for use
 // with apply.
+//
+// CronJob is the Schema for the cronjobs API
 type CronJobApplyConfiguration struct {
-	v1.TypeMetaApplyConfiguration    `json:",inline"`
+	v1.TypeMetaApplyConfiguration `json:",inline"`
+	// Standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Spec                             *CronJobSpecApplyConfiguration   `json:"spec,omitempty"`
-	Status                           *CronJobStatusApplyConfiguration `json:"status,omitempty"`
+	// Specification of the desired behavior of a cron job, including the schedule.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
+	Spec *CronJobSpecApplyConfiguration `json:"spec,omitempty"`
+	// Current status of a cron job.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
+	Status *CronJobStatusApplyConfiguration `json:"status,omitempty"`
 }
 
 // CronJob constructs a declarative configuration of the CronJob type for use with
@@ -42,6 +50,7 @@ func CronJob(name, namespace string) *CronJobApplyConfiguration {
 	b.WithAPIVersion("batch.volcano.sh/v1alpha1")
 	return b
 }
+
 func (b CronJobApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

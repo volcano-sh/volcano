@@ -136,13 +136,13 @@ func (sc *SchedulerCache) initMockInformers() {
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
 		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
-			EnableDeviceTaints: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
-			SliceInformer:      informerFactory.Resource().V1().ResourceSlices(),
-			KubeClient:         sc.kubeClient,
+			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
+			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
+			KubeClient:             sc.kubeClient,
 		}
 		// If device taints are disabled, the additional informers are not needed and
 		// the tracker turns into a simple wrapper around the slice informer.
-		if resourceSliceTrackerOpts.EnableDeviceTaints {
+		if resourceSliceTrackerOpts.EnableDeviceTaintRules {
 			resourceSliceTrackerOpts.TaintInformer = informerFactory.Resource().V1alpha3().DeviceTaintRules()
 			resourceSliceTrackerOpts.ClassInformer = informerFactory.Resource().V1().DeviceClasses()
 		}

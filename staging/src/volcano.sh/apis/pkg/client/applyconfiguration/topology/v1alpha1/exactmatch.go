@@ -19,7 +19,10 @@ package v1alpha1
 
 // ExactMatchApplyConfiguration represents a declarative configuration of the ExactMatch type for use
 // with apply.
+//
+// ExactMatch represents the criteria for exact name matching.
 type ExactMatchApplyConfiguration struct {
+	// Name specifies the exact name of the node to match.
 	Name *string `json:"name,omitempty"`
 }
 

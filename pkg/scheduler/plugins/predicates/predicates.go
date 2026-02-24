@@ -102,15 +102,15 @@ type PredicatesPlugin struct {
 
 	features feature.Features
 
-	FilterPlugins       map[string]k8sframework.FilterPlugin
-	StableFilterPlugins map[string]k8sframework.FilterPlugin // Subset of FilterPlugins for cache-stable filters
-	PrefilterPlugins    map[string]k8sframework.PreFilterPlugin
-	ReservePlugins      map[string]k8sframework.ReservePlugin
-	PreBindPlugins      map[string]k8sframework.PreBindPlugin
+	FilterPlugins       map[string]fwk.FilterPlugin
+	StableFilterPlugins map[string]fwk.FilterPlugin // Subset of FilterPlugins for cache-stable filters
+	PrefilterPlugins    map[string]fwk.PreFilterPlugin
+	ReservePlugins      map[string]fwk.ReservePlugin
+	PreBindPlugins      map[string]fwk.PreBindPlugin
 	ScorePlugins        map[string]nodescore.BaseScorePlugin
 	ScoreWeights        map[string]int // Weight for each score plugin
 	PredicateCache      *predicateCache
-	Handle              k8sframework.Handle
+	Handle              fwk.Handle
 }
 
 // New return predicate plugin
@@ -152,12 +152,12 @@ func New(arguments framework.Arguments) framework.Plugin {
 		EnableCSIMigrationPortworx:                   utilFeature.DefaultFeatureGate.Enabled(features.CSIMigrationPortworx),
 		EnableDRAExtendedResource:                    utilFeature.DefaultFeatureGate.Enabled(features.DRAExtendedResource),
 		EnableDRAPrioritizedList:                     utilFeature.DefaultFeatureGate.Enabled(features.DRAPrioritizedList),
-		EnableConsumableCapacity:                     utilFeature.DefaultFeatureGate.Enabled(features.DRAConsumableCapacity),
+		EnableDRAConsumableCapacity:                  utilFeature.DefaultFeatureGate.Enabled(features.DRAConsumableCapacity),
 		EnableDRADeviceTaints:                        utilFeature.DefaultFeatureGate.Enabled(features.DRADeviceTaints),
 		EnableDRASchedulerFilterTimeout:              utilFeature.DefaultFeatureGate.Enabled(features.DRASchedulerFilterTimeout),
 		EnableDRAResourceClaimDeviceStatus:           utilFeature.DefaultFeatureGate.Enabled(features.DRAResourceClaimDeviceStatus),
 		EnableDRADeviceBindingConditions:             utilFeature.DefaultFeatureGate.Enabled(features.DRADeviceBindingConditions),
-		EnablePartitionableDevices:                   utilFeature.DefaultFeatureGate.Enabled(features.DRAPartitionableDevices),
+		EnableDRAPartitionableDevices:                utilFeature.DefaultFeatureGate.Enabled(features.DRAPartitionableDevices),
 	}
 	return &PredicatesPlugin{pluginArguments: arguments, enabledPredicates: predicate, features: features}
 }
@@ -190,6 +190,7 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	nodeMap := ssn.NodeMap
 	handle := k8s.NewFramework(nodeMap,
 		k8s.WithSharedDRAManager(ssn.SharedDRAManager()),
+		k8s.WithSharedCSIManager(nodevolumelimits.NewCSIManager(ssn.InformerFactory().Storage().V1().CSINodes().Lister())),
 		k8s.WithClientSet(ssn.KubeClient()),
 		k8s.WithInformerFactory(ssn.InformerFactory()),
 	)
@@ -420,12 +421,12 @@ func (pp *PredicatesPlugin) PrePredicate(task *api.TaskInfo, state *k8sframework
 }
 
 func (pp *PredicatesPlugin) InitPlugin() {
-	filterPlugins := map[string]k8sframework.FilterPlugin{}
-	stableFilterPlugins := map[string]k8sframework.FilterPlugin{} // Subset for cache-stable filters
-	prefilterPlugins := map[string]k8sframework.PreFilterPlugin{}
-	reservePlugins := map[string]k8sframework.ReservePlugin{}
+	filterPlugins := map[string]fwk.FilterPlugin{}
+	stableFilterPlugins := map[string]fwk.FilterPlugin{} // Subset for cache-stable filters
+	prefilterPlugins := map[string]fwk.PreFilterPlugin{}
+	reservePlugins := map[string]fwk.ReservePlugin{}
 	scorePlugins := map[string]nodescore.BaseScorePlugin{}
-	preBindPlugins := map[string]k8sframework.PreBindPlugin{}
+	preBindPlugins := map[string]fwk.PreBindPlugin{}
 	scoreWeights := map[string]int{} // Weight for each score plugin
 
 	// Initialize k8s plugins

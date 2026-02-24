@@ -24,15 +24,25 @@ import (
 
 // QueueStatusApplyConfiguration represents a declarative configuration of the QueueStatus type for use
 // with apply.
+//
+// QueueStatus represents the status of Queue.
 type QueueStatusApplyConfiguration struct {
-	State       *schedulingv1beta1.QueueState  `json:"state,omitempty"`
-	Unknown     *int32                         `json:"unknown,omitempty"`
-	Pending     *int32                         `json:"pending,omitempty"`
-	Running     *int32                         `json:"running,omitempty"`
-	Inqueue     *int32                         `json:"inqueue,omitempty"`
-	Completed   *int32                         `json:"completed,omitempty"`
+	// State is state of queue
+	State *schedulingv1beta1.QueueState `json:"state,omitempty"`
+	// The number of 'Unknown' PodGroup in this queue.
+	Unknown *int32 `json:"unknown,omitempty"`
+	// The number of 'Pending' PodGroup in this queue.
+	Pending *int32 `json:"pending,omitempty"`
+	// The number of 'Running' PodGroup in this queue.
+	Running *int32 `json:"running,omitempty"`
+	// The number of `Inqueue` PodGroup in this queue.
+	Inqueue *int32 `json:"inqueue,omitempty"`
+	// The number of `Completed` PodGroup in this queue.
+	Completed *int32 `json:"completed,omitempty"`
+	// Reservation is the profile of resource reservation for queue
 	Reservation *ReservationApplyConfiguration `json:"reservation,omitempty"`
-	Allocated   *v1.ResourceList               `json:"allocated,omitempty"`
+	// Allocated is allocated resources in queue
+	Allocated *v1.ResourceList `json:"allocated,omitempty"`
 }
 
 // QueueStatusApplyConfiguration constructs a declarative configuration of the QueueStatus type for use with

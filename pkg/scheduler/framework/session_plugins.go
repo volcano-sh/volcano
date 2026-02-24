@@ -24,7 +24,6 @@ import (
 	"context"
 
 	fwk "k8s.io/kube-scheduler/framework"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
@@ -1023,7 +1022,7 @@ func (ssn *Session) HyperNodeOrderMapFn(subJob *api.SubJobInfo, hyperNodes map[s
 }
 
 // NodeOrderReduceFn invoke node order function of the plugins
-func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map[string]k8sframework.NodeScoreList) (map[string]float64, error) {
+func (ssn *Session) NodeOrderReduceFn(task *api.TaskInfo, pluginNodeScoreMap map[string]fwk.NodeScoreList) (map[string]float64, error) {
 	nodeScoreMap := map[string]float64{}
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {

@@ -19,7 +19,7 @@ package framework
 import (
 	"sync"
 
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	k8sframework "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	volcanofwk "volcano.sh/volcano/pkg/scheduler/framework"

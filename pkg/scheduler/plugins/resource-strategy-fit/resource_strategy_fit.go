@@ -23,8 +23,8 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
+	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
-	k8sFramework "k8s.io/kubernetes/pkg/scheduler/framework"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/framework"
@@ -395,7 +395,7 @@ func Score(task *api.TaskInfo, node *api.NodeInfo, weight ResourceStrategyFit) f
 	if weightSum > 0 {
 		score /= float64(weightSum)
 	}
-	score *= float64(k8sFramework.MaxNodeScore) * float64(weight.Weight)
+	score *= float64(fwk.MaxNodeScore) * float64(weight.Weight)
 	return score
 }
 

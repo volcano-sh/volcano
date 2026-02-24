@@ -42,6 +42,7 @@ func HyperJob(name, namespace string) *HyperJobApplyConfiguration {
 	b.WithAPIVersion("training.volcano.sh/v1alpha1")
 	return b
 }
+
 func (b HyperJobApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

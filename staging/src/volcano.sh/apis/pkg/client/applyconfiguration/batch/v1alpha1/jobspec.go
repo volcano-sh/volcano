@@ -23,20 +23,44 @@ import (
 
 // JobSpecApplyConfiguration represents a declarative configuration of the JobSpec type for use
 // with apply.
+//
+// JobSpec describes how the job execution will look like and when it will actually run.
 type JobSpecApplyConfiguration struct {
-	SchedulerName           *string                                `json:"schedulerName,omitempty"`
-	MinAvailable            *int32                                 `json:"minAvailable,omitempty"`
-	Volumes                 []VolumeSpecApplyConfiguration         `json:"volumes,omitempty"`
-	Tasks                   []TaskSpecApplyConfiguration           `json:"tasks,omitempty"`
-	Policies                []LifecyclePolicyApplyConfiguration    `json:"policies,omitempty"`
-	Plugins                 map[string][]string                    `json:"plugins,omitempty"`
-	RunningEstimate         *v1.Duration                           `json:"runningEstimate,omitempty"`
-	Queue                   *string                                `json:"queue,omitempty"`
-	MaxRetry                *int32                                 `json:"maxRetry,omitempty"`
-	TTLSecondsAfterFinished *int32                                 `json:"ttlSecondsAfterFinished,omitempty"`
-	PriorityClassName       *string                                `json:"priorityClassName,omitempty"`
-	MinSuccess              *int32                                 `json:"minSuccess,omitempty"`
-	NetworkTopology         *NetworkTopologySpecApplyConfiguration `json:"networkTopology,omitempty"`
+	// SchedulerName is the default value of `tasks.template.spec.schedulerName`.
+	SchedulerName *string `json:"schedulerName,omitempty"`
+	// The minimal available pods to run for this Job
+	// Defaults to the summary of tasks' replicas
+	MinAvailable *int32 `json:"minAvailable,omitempty"`
+	// The volumes mount on Job
+	Volumes []VolumeSpecApplyConfiguration `json:"volumes,omitempty"`
+	// Tasks specifies the task specification of Job
+	Tasks []TaskSpecApplyConfiguration `json:"tasks,omitempty"`
+	// Specifies the default lifecycle of tasks
+	Policies []LifecyclePolicyApplyConfiguration `json:"policies,omitempty"`
+	// Specifies the plugin of job
+	// Key is plugin name, value is the arguments of the plugin
+	Plugins map[string][]string `json:"plugins,omitempty"`
+	// Running Estimate is a user running duration estimate for the job
+	// Default to nil
+	RunningEstimate *v1.Duration `json:"runningEstimate,omitempty"`
+	// Specifies the queue that will be used in the scheduler, "default" queue is used this leaves empty.
+	Queue *string `json:"queue,omitempty"`
+	// Specifies the maximum number of retries before marking this Job failed.
+	// Defaults to 3.
+	MaxRetry *int32 `json:"maxRetry,omitempty"`
+	// ttlSecondsAfterFinished limits the lifetime of a Job that has finished
+	// execution (either Completed or Failed). If this field is set,
+	// ttlSecondsAfterFinished after the Job finishes, it is eligible to be
+	// automatically deleted. If this field is unset,
+	// the Job won't be automatically deleted. If this field is set to zero,
+	// the Job becomes eligible to be deleted immediately after it finishes.
+	TTLSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
+	// If specified, indicates the job's priority.
+	PriorityClassName *string `json:"priorityClassName,omitempty"`
+	// The minimal success pods to run for this Job
+	MinSuccess *int32 `json:"minSuccess,omitempty"`
+	// NetworkTopology defines the NetworkTopology config, this field works in conjunction with network topology feature and hyperNode CRD.
+	NetworkTopology *NetworkTopologySpecApplyConfiguration `json:"networkTopology,omitempty"`
 }
 
 // JobSpecApplyConfiguration constructs a declarative configuration of the JobSpec type for use with

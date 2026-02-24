@@ -24,9 +24,13 @@ import (
 // NetworkTopologySpecApplyConfiguration represents a declarative configuration of the NetworkTopologySpec type for use
 // with apply.
 type NetworkTopologySpecApplyConfiguration struct {
-	Mode               *schedulingv1beta1.NetworkTopologyMode `json:"mode,omitempty"`
-	HighestTierAllowed *int                                   `json:"highestTierAllowed,omitempty"`
-	HighestTierName    *string                                `json:"highestTierName,omitempty"`
+	// Mode specifies the mode of the network topology constrain.
+	Mode *schedulingv1beta1.NetworkTopologyMode `json:"mode,omitempty"`
+	// HighestTierAllowed specifies the highest tier that a job allowed to cross when scheduling.
+	HighestTierAllowed *int `json:"highestTierAllowed,omitempty"`
+	// HighestTierName specifies the highest tier name that a job allowed to cross when scheduling.
+	// HighestTierName and HighestTierAllowed cannot be set simultaneously.
+	HighestTierName *string `json:"highestTierName,omitempty"`
 }
 
 // NetworkTopologySpecApplyConfiguration constructs a declarative configuration of the NetworkTopologySpec type for use with

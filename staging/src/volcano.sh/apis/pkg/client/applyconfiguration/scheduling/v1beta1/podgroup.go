@@ -25,11 +25,17 @@ import (
 
 // PodGroupApplyConfiguration represents a declarative configuration of the PodGroup type for use
 // with apply.
+//
+// PodGroup is a collection of Pod; used for batch workload.
 type PodGroupApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Spec                             *PodGroupSpecApplyConfiguration   `json:"spec,omitempty"`
-	Status                           *PodGroupStatusApplyConfiguration `json:"status,omitempty"`
+	// Specification of the desired behavior of the pod group.
+	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status
+	Spec *PodGroupSpecApplyConfiguration `json:"spec,omitempty"`
+	// Status represents the current information about a pod group.
+	// This data may not be up to date.
+	Status *PodGroupStatusApplyConfiguration `json:"status,omitempty"`
 }
 
 // PodGroup constructs a declarative configuration of the PodGroup type for use with
@@ -42,6 +48,7 @@ func PodGroup(name, namespace string) *PodGroupApplyConfiguration {
 	b.WithAPIVersion("scheduling.volcano.sh/v1beta1")
 	return b
 }
+
 func (b PodGroupApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

@@ -19,7 +19,10 @@ package v1alpha1
 
 // NodeShardSpecApplyConfiguration represents a declarative configuration of the NodeShardSpec type for use
 // with apply.
+//
+// NodeShardSpec represents the template of a NodeShard.
 type NodeShardSpecApplyConfiguration struct {
+	// NodesDesired defines the list of nodes desired to be included in this NodeShard.
 	NodesDesired []string `json:"nodesDesired,omitempty"`
 }
 

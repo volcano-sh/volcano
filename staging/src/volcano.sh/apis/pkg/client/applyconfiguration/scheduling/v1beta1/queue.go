@@ -25,11 +25,16 @@ import (
 
 // QueueApplyConfiguration represents a declarative configuration of the Queue type for use
 // with apply.
+//
+// Queue is a queue of PodGroup.
 type QueueApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Spec                             *QueueSpecApplyConfiguration   `json:"spec,omitempty"`
-	Status                           *QueueStatusApplyConfiguration `json:"status,omitempty"`
+	// Specification of the desired behavior of the queue.
+	// More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status
+	Spec *QueueSpecApplyConfiguration `json:"spec,omitempty"`
+	// The status of queue.
+	Status *QueueStatusApplyConfiguration `json:"status,omitempty"`
 }
 
 // Queue constructs a declarative configuration of the Queue type for use with
@@ -41,6 +46,7 @@ func Queue(name string) *QueueApplyConfiguration {
 	b.WithAPIVersion("scheduling.volcano.sh/v1beta1")
 	return b
 }
+
 func (b QueueApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

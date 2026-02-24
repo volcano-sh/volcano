@@ -34,7 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
+	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/volcano/cmd/scheduler/app/options"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -73,7 +73,7 @@ func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
 func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.BatchNodeOrderFn, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
-	pluginNodeScoreMap := map[string]k8sframework.NodeScoreList{}
+	pluginNodeScoreMap := map[string]fwk.NodeScoreList{}
 	nodeOrderScoreMap := map[string]float64{}
 	nodeScores := map[float64][]*api.NodeInfo{}
 	var workerLock sync.Mutex
@@ -89,9 +89,9 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 		for plugin, score := range mapScores {
 			nodeScoreList, ok := pluginNodeScoreMap[plugin]
 			if !ok {
-				nodeScoreList = k8sframework.NodeScoreList{}
+				nodeScoreList = fwk.NodeScoreList{}
 			}
-			hp := k8sframework.NodeScore{}
+			hp := fwk.NodeScore{}
 			hp.Name = node.Name
 			hp.Score = int64(math.Floor(score))
 			pluginNodeScoreMap[plugin] = append(nodeScoreList, hp)

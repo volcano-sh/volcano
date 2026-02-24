@@ -23,14 +23,38 @@ import (
 
 // PodGroupSpecApplyConfiguration represents a declarative configuration of the PodGroupSpec type for use
 // with apply.
+//
+// PodGroupSpec represents the template of a pod group.
 type PodGroupSpecApplyConfiguration struct {
-	MinMember         *int32                                 `json:"minMember,omitempty"`
-	MinTaskMember     map[string]int32                       `json:"minTaskMember,omitempty"`
-	Queue             *string                                `json:"queue,omitempty"`
-	PriorityClassName *string                                `json:"priorityClassName,omitempty"`
-	MinResources      *v1.ResourceList                       `json:"minResources,omitempty"`
-	NetworkTopology   *NetworkTopologySpecApplyConfiguration `json:"networkTopology,omitempty"`
-	SubGroupPolicy    []SubGroupPolicySpecApplyConfiguration `json:"subGroupPolicy,omitempty"`
+	// MinMember defines the minimal number of members/tasks to run the pod group;
+	// if there's not enough resources to start all tasks, the scheduler
+	// will not start anyone.
+	MinMember *int32 `json:"minMember,omitempty"`
+	// MinTaskMember defines the minimal number of pods to run for each task in the pod group;
+	// if there's not enough resources to start each task, the scheduler
+	// will not start anyone.
+	// SubGroupPolicy covers all capabilities of minTaskMember, while providing richer network topology and Gang scheduling management capabilities.
+	// Recommend using SubGroupPolicy to uniformly manage Gang scheduling for each Task group.
+	MinTaskMember map[string]int32 `json:"minTaskMember,omitempty"`
+	// Queue defines the queue to allocate resource for PodGroup; if queue does not exist,
+	// the PodGroup will not be scheduled. Defaults to `default` Queue with the lowest weight.
+	Queue *string `json:"queue,omitempty"`
+	// If specified, indicates the PodGroup's priority. "system-node-critical" and
+	// "system-cluster-critical" are two special keywords which indicate the
+	// highest priorities with the former being the highest priority. Any other
+	// name must be defined by creating a PriorityClass object with that name.
+	// If not specified, the PodGroup priority will be default or zero if there is no
+	// default.
+	PriorityClassName *string `json:"priorityClassName,omitempty"`
+	// MinResources defines the minimal resource of members/tasks to run the pod group;
+	// if there's not enough resources to start all tasks, the scheduler
+	// will not start anyone.
+	MinResources *v1.ResourceList `json:"minResources,omitempty"`
+	// NetworkTopology defines the NetworkTopology config, this field works in conjunction with network topology feature and hyperNode CRD.
+	NetworkTopology *NetworkTopologySpecApplyConfiguration `json:"networkTopology,omitempty"`
+	// Compared with minTaskMember, it offers more comprehensive topology scheduling and Gang scheduling management capabilities.
+	// Concurrent use with minTaskMember is not recommended, and SubGroupPolicy is the long-term evolution direction.
+	SubGroupPolicy []SubGroupPolicySpecApplyConfiguration `json:"subGroupPolicy,omitempty"`
 }
 
 // PodGroupSpecApplyConfiguration constructs a declarative configuration of the PodGroupSpec type for use with

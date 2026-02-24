@@ -28,7 +28,6 @@ import (
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
-	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/parallelize"
 
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -41,17 +40,25 @@ type Framework struct {
 	snapshot         *Snapshot
 	kubeClient       kubernetes.Interface
 	informerFactory  informers.SharedInformerFactory
-	sharedDRAManager framework.SharedDRAManager
+	sharedDRAManager fwk.SharedDRAManager
+	sharedCSIManager fwk.CSIManager
 }
 
-var _ framework.Handle = &Framework{}
+var _ fwk.Handle = &Framework{}
 
 type Option func(*Framework)
 
 // WithSharedDRAManager sets the shared DRAManager for the framework
-func WithSharedDRAManager(sharedDRAManager framework.SharedDRAManager) Option {
+func WithSharedDRAManager(sharedDRAManager fwk.SharedDRAManager) Option {
 	return func(f *Framework) {
 		f.sharedDRAManager = sharedDRAManager
+	}
+}
+
+// WithSharedCSIManager sets the shared CSIManager for the framework
+func WithSharedCSIManager(sharedCSIManager fwk.CSIManager) Option {
+	return func(f *Framework) {
+		f.sharedCSIManager = sharedCSIManager
 	}
 }
 
@@ -80,17 +87,17 @@ func WithInformerFactory(informerFactory informers.SharedInformerFactory) Option
 // snapshot. The snapshot is taken at the beginning of a scheduling cycle and remains
 // unchanged until a pod finishes "Reserve". There is no guarantee that the information
 // remains unchanged after "Reserve".
-func (f *Framework) SnapshotSharedLister() framework.SharedLister {
+func (f *Framework) SnapshotSharedLister() fwk.SharedLister {
 	return f.snapshot
 }
 
 // IterateOverWaitingPods acquires a read lock and iterates over the WaitingPods map.
-func (f *Framework) IterateOverWaitingPods(callback func(framework.WaitingPod)) {
+func (f *Framework) IterateOverWaitingPods(callback func(fwk.WaitingPod)) {
 	panic("not implemented")
 }
 
 // GetWaitingPod returns a reference to a WaitingPod given its UID.
-func (f *Framework) GetWaitingPod(uid types.UID) framework.WaitingPod {
+func (f *Framework) GetWaitingPod(uid types.UID) fwk.WaitingPod {
 	panic("not implemented")
 }
 
@@ -130,7 +137,7 @@ func (f *Framework) EventRecorder() events.EventRecorder {
 	return nil
 }
 
-func (f *Framework) AddNominatedPod(logger klog.Logger, pod fwk.PodInfo, nominatingInfo *framework.NominatingInfo) {
+func (f *Framework) AddNominatedPod(logger klog.Logger, pod fwk.PodInfo, nominatingInfo *fwk.NominatingInfo) {
 	panic("implement me")
 }
 
@@ -150,7 +157,7 @@ func (f *Framework) RunPreScorePlugins(ctx context.Context, state fwk.CycleState
 	panic("implement me")
 }
 
-func (f *Framework) RunScorePlugins(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeinfos []fwk.NodeInfo) ([]framework.NodePluginScores, *fwk.Status) {
+func (f *Framework) RunScorePlugins(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeinfos []fwk.NodeInfo) ([]fwk.NodePluginScores, *fwk.Status) {
 	panic("implement me")
 }
 
@@ -178,11 +185,11 @@ func (f *Framework) RunFilterPluginsWithNominatedPods(ctx context.Context, state
 	panic("implement me")
 }
 
-func (f *Framework) Extenders() []framework.Extender {
+func (f *Framework) Extenders() []fwk.Extender {
 	panic("implement me")
 }
 
-func (f *Framework) Parallelizer() parallelize.Parallelizer {
+func (f *Framework) Parallelizer() fwk.Parallelizer {
 	return parallelize.NewParallelizer(16)
 }
 
@@ -190,15 +197,31 @@ func (f *Framework) Activate(logger klog.Logger, pods map[string]*v1.Pod) {
 	panic("implement me")
 }
 
-func (f *Framework) SharedDRAManager() framework.SharedDRAManager {
+func (f *Framework) SharedDRAManager() fwk.SharedDRAManager {
 	return f.sharedDRAManager
 }
 
-func (f *Framework) APICacher() framework.APICacher {
+func (f *Framework) APICacher() fwk.APICacher {
 	return nil
 }
 
 func (f *Framework) APIDispatcher() fwk.APIDispatcher {
+	return nil
+}
+
+func (f *Framework) ProfileName() string {
+	return ""
+}
+
+func (f *Framework) SharedCSIManager() fwk.CSIManager {
+	return f.sharedCSIManager
+}
+
+func (f *Framework) WorkloadManager() fwk.WorkloadManager {
+	return nil
+}
+
+func (f *Framework) SignPod(ctx context.Context, pod *v1.Pod, recordPluginStats bool) fwk.PodSignature {
 	return nil
 }
 

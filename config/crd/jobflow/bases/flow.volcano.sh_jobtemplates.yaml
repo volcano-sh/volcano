@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.0
   name: jobtemplates.flow.volcano.sh
 spec:
   group: flow.volcano.sh
@@ -3835,6 +3835,10 @@ spec:
                                                   type: integer
                                                 signerName:
                                                   type: string
+                                                userAnnotations:
+                                                  additionalProperties:
+                                                    type: string
+                                                  type: object
                                               required:
                                               - keyType
                                               - signerName
@@ -4029,6 +4033,18 @@ spec:
                               x-kubernetes-list-map-keys:
                               - name
                               x-kubernetes-list-type: map
+                            workloadRef:
+                              properties:
+                                name:
+                                  type: string
+                                podGroup:
+                                  type: string
+                                podGroupReplicaKey:
+                                  type: string
+                              required:
+                              - name
+                              - podGroup
+                              type: object
                           required:
                           - containers
                           type: object

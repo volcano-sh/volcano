@@ -56,7 +56,7 @@ func NewColocationConfigurationInformer(client versioned.Interface, namespace st
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredColocationConfigurationInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
-		&cache.ListWatch{
+		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
@@ -81,7 +81,7 @@ func NewFilteredColocationConfigurationInformer(client versioned.Interface, name
 				}
 				return client.ConfigV1alpha1().ColocationConfigurations(namespace).Watch(ctx, options)
 			},
-		},
+		}, client),
 		&apisconfigv1alpha1.ColocationConfiguration{},
 		resyncPeriod,
 		indexers,

@@ -26,6 +26,8 @@ import (
 
 // JobTemplateApplyConfiguration represents a declarative configuration of the JobTemplate type for use
 // with apply.
+//
+// JobTemplate is the Schema for the jobtemplates API
 type JobTemplateApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
@@ -43,6 +45,7 @@ func JobTemplate(name, namespace string) *JobTemplateApplyConfiguration {
 	b.WithAPIVersion("flow.volcano.sh/v1alpha1")
 	return b
 }
+
 func (b JobTemplateApplyConfiguration) IsApplyConfiguration() {}
 
 // WithKind sets the Kind field in the declarative configuration to the given value

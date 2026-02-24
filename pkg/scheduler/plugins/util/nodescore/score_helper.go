@@ -24,26 +24,25 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
-	k8sframework "k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
 type BaseScorePlugin interface {
-	k8sframework.PreScorePlugin
-	k8sframework.ScorePlugin
+	fwk.PreScorePlugin
+	fwk.ScorePlugin
 }
 
 // EmptyNormalizer is a no-op normalizer that does nothing. For plugins that do not implement the ScoreExtensions interface,
 // such as VolumeBinding, ExampleNormalizer can be used, indicating that there is no need to normalize the score
 type EmptyNormalizer struct{}
 
-func (e *EmptyNormalizer) NormalizeScore(ctx context.Context, state fwk.CycleState, p *v1.Pod, scores k8sframework.NodeScoreList) *fwk.Status {
+func (e *EmptyNormalizer) NormalizeScore(ctx context.Context, state fwk.CycleState, p *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
 	return nil
 }
 
 func CalculatePluginScore(
 	pluginName string,
 	plugin BaseScorePlugin,
-	normalizer k8sframework.ScoreExtensions,
+	normalizer fwk.ScoreExtensions,
 	cycleState fwk.CycleState,
 	pod *v1.Pod,
 	nodeInfos []fwk.NodeInfo,
@@ -58,7 +57,7 @@ func CalculatePluginScore(
 		return nil, preScoreStatus.AsError()
 	}
 
-	nodeScoreList := make(k8sframework.NodeScoreList, len(nodeInfos))
+	nodeScoreList := make(fwk.NodeScoreList, len(nodeInfos))
 	// the default parallelization worker number is 16.
 	// the whole scoring will fail if one of the processes failed.
 	// so just create a parallelizeContext to control the whole ParallelizeUntil process.
@@ -80,7 +79,7 @@ func CalculatePluginScore(
 			errCh <- fmt.Errorf("calculate %s priority failed %v", pluginName, status.Message())
 			return
 		}
-		nodeScoreList[index] = k8sframework.NodeScore{
+		nodeScoreList[index] = fwk.NodeScore{
 			Name:  nodeInfo.Node().Name,
 			Score: s,
 		}
@@ -97,7 +96,7 @@ func CalculatePluginScore(
 	nodeScores := make(map[string]float64, len(nodeInfos))
 	for i, nodeScore := range nodeScoreList {
 		// return error if score plugin returns invalid score.
-		if nodeScore.Score > k8sframework.MaxNodeScore || nodeScore.Score < k8sframework.MinNodeScore {
+		if nodeScore.Score > fwk.MaxNodeScore || nodeScore.Score < fwk.MinNodeScore {
 			return nil, fmt.Errorf("%s returns an invalid score %v for node %s", pluginName, nodeScore.Score, nodeScore.Name)
 		}
 		nodeScore.Score *= int64(weight)
