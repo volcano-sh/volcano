@@ -47,7 +47,7 @@ jobs:
           curl -LO https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl && sudo install kubectl /usr/local/bin/kubectl
 
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
       
       - name: Run E2E Tests
         run: |
