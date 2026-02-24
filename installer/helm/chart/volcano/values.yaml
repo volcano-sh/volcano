@@ -3,6 +3,7 @@ basic:
   scheduler_image_name: "volcanosh/vc-scheduler"
   agent_scheduler_image_name: "volcanosh/vc-agent-scheduler"
   admission_image_name: "volcanosh/vc-webhook-manager"
+  admission_init_image_name: "volcanosh/vc-webhook-manager"
   agent_image_name: "volcanosh/vc-agent"
   admission_secret_name: "volcano-admission-secret"
   admission_config_file: "config/volcano-admission.conf"

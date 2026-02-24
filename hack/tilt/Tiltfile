@@ -1,0 +1,319 @@
+# Tiltfile for Volcano
+
+# Copyright 2025 The Volcano Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Ensure Kind cluster exists for local dev
+kind_cluster_name = 'kind-volcano-dev'
+kind_k8s_context = kind_cluster_name
+allow_k8s_contexts([kind_k8s_context])
+e2e_local_cluster_env = 'CLUSTER_NAME=${CLUSTER_NAME:-' + kind_cluster_name + '} '
+
+# Set the default namespace for all resources
+k8s_namespace('volcano-system')
+
+# Apply namespace manifest
+root_dir = '../../'
+k8s_yaml(root_dir + 'installer/namespace.yaml')
+
+# Helm-based installation (using helm() pattern)
+volcano_yaml = helm(
+    root_dir + 'installer/helm/chart/volcano',
+    name='volcano',
+    namespace='volcano-system',
+    values=[root_dir + 'installer/helm/chart/volcano/values.yaml', 'values-tilt-override.yaml'],
+    set=[
+        'basic.admission_init_image_name=volcanosh/vc-admission-init',
+    ]
+)
+k8s_yaml(volcano_yaml)
+
+k8s_yaml(root_dir + 'installer/volcano-monitoring.yaml')
+
+# Build all images for local registry
+images = [
+    ('volcanosh/vc-scheduler', root_dir, 'scheduler'),
+    ('volcanosh/vc-controller-manager', root_dir, 'controller-manager'),
+    ('volcanosh/vc-webhook-manager', root_dir, 'webhook-manager'),
+]
+for name, path, component in images:
+    docker_build(
+        name,
+        path,
+        build_args=dict(COMPONENT=component),
+        dockerfile='Dockerfile.tilt',
+        only=['pkg/', 'third_party/', 'cmd/'+ component + '/', 'staging/', 'hack/tilt/entrypoint.sh', 'go.mod', 'go.sum'],
+        live_update=[
+            sync(root_dir + 'pkg', '/go/src/volcano.sh/volcano/pkg'),
+            sync(root_dir + 'third_party', '/go/src/volcano.sh/volcano/third_party'),
+            sync(root_dir + 'cmd/' + component, '/go/src/volcano.sh/volcano/cmd/' + component),
+            sync(root_dir + 'hack/tilt/entrypoint.sh', '/go/src/volcano.sh/volcano/entrypoint.sh'),
+            run('touch /tmp/reload')
+        ]
+    )
+
+docker_build(
+    'volcanosh/vc-admission-init',
+    root_dir,
+    dockerfile='Dockerfile.admission-init.tilt',
+    only=["installer/dockerfile/webhook-manager/gen-admission-secret.sh"],
+)
+
+
+# Group all namespaces
+k8s_resource(
+    new_name='volcano-namespaces',
+    objects=[
+        'volcano-system:namespace',
+        'volcano-monitoring:namespace',
+    ],
+    labels=["volcano"]
+)
+
+k8s_resource(
+    new_name='volcano-crds',
+    objects=[
+        'jobtemplates.flow.volcano.sh:customresourcedefinition',
+        'jobflows.flow.volcano.sh:customresourcedefinition',
+        'jobs.batch.volcano.sh:customresourcedefinition',
+        'commands.bus.volcano.sh:customresourcedefinition',
+        'numatopologies.nodeinfo.volcano.sh:customresourcedefinition',
+        'podgroups.scheduling.volcano.sh:customresourcedefinition',
+        'queues.scheduling.volcano.sh:customresourcedefinition',
+        'hypernodes.topology.volcano.sh:customresourcedefinition',
+        'cronjobs.batch.volcano.sh:customresourcedefinition',
+        'nodeshards.shard.volcano.sh:customresourcedefinition',
+        'colocationconfigurations.config.volcano.sh:customresourcedefinition'
+    ],
+    labels=["volcano"]
+)
+
+
+# Group all admission-related resources
+k8s_resource(
+    'volcano-admission',
+    objects=[
+        'volcano-admission:serviceaccount',
+        'volcano-admission:clusterrole',
+        'volcano-admission-role:clusterrolebinding',
+        'volcano-admission-configmap:configmap',
+        'volcano-admission-service-queues-mutate:mutatingwebhookconfiguration',
+        'volcano-admission-service-jobs-mutate:mutatingwebhookconfiguration',
+        'volcano-admission-service-jobs-validate:validatingwebhookconfiguration',
+        'volcano-admission-service-queues-validate:validatingwebhookconfiguration',
+        'volcano-admission-service-podgroups-validate:validatingwebhookconfiguration',
+        'volcano-admission-service-hypernodes-validate:validatingwebhookconfiguration',
+        'volcano-admission-service-cronjobs-validate:validatingwebhookconfiguration'
+    ],
+    resource_deps=['volcano-namespaces', 'volcano-crds', 'volcano-admission-init'],
+    labels=["volcano"]
+)
+
+# Group scheduler resources
+k8s_resource(
+    'volcano-scheduler',
+    objects=[
+        'volcano-scheduler:serviceaccount',
+        'volcano-scheduler:clusterrole',
+        'volcano-scheduler-role:clusterrolebinding',
+        'volcano-scheduler-configmap:configmap',
+    ],
+    resource_deps=['volcano-namespaces'],
+    labels=["volcano"]
+)
+
+# Group controller resources
+k8s_resource(
+    'volcano-controllers',
+    objects=[
+        'volcano-controllers:serviceaccount',
+        'volcano-controllers:clusterrole',
+        'volcano-controllers-role:clusterrolebinding',
+        'volcano-controller-configmap:configmap'
+    ],
+    resource_deps=['volcano-namespaces'],
+    labels=["volcano"]
+)
+
+k8s_resource(
+    new_name='volcano-vcjob-roles',
+    objects=[
+        'vcjob-editor-role:clusterrole',
+        'vcjob-viewer-role:clusterrole'
+    ],
+    labels=["volcano"]
+)
+
+k8s_resource(
+    'volcano-admission-init',
+    extra_pod_selectors=[{'job-name': 'volcano-admission-init'}],
+    objects=[
+        'volcano-admission-init:serviceaccount',
+        'volcano-admission-init:role',
+        'volcano-admission-init-role:rolebinding',
+    ],
+    resource_deps=['volcano-namespaces'],
+    labels=["volcano"]
+)
+
+k8s_resource(
+    'prometheus-deployment',
+    objects=[
+        'prometheus-volcano:clusterrolebinding',
+        'prometheus-volcano:clusterrole',
+        'prometheus-server-conf:configmap'
+    ],
+    resource_deps=['volcano-namespaces'],
+    port_forwards=3001,
+    labels=["monitoring"]    
+)
+
+k8s_resource(
+    'kube-state-metrics',
+    objects=[
+        'kube-state-metrics:serviceaccount',
+        'kube-state-metrics:clusterrole',
+        'kube-state-metrics:clusterrolebinding',
+    ],
+    resource_deps=['volcano-namespaces'],
+    labels=["monitoring"]
+)
+
+k8s_resource(
+    'grafana',
+    objects=[
+        'grafana-datasources:configmap',
+        'grafana-volcano-dashboard-config:configmap',
+        'grafana-volcano-dashboard:configmap',
+    ],
+    resource_deps=['volcano-namespaces'],
+    port_forwards=3000,
+    labels=["monitoring"]
+)
+
+local_resource(
+    'install-kwok',
+    'bash -c "source ' + root_dir + 'hack/lib/install.sh && install-kwok-with-helm"',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests-install"]
+)
+
+local_resource(
+    'install-ginkgo',
+    'bash -c "source ' + root_dir + 'hack/lib/install.sh && install-ginkgo-if-not-exist"',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests-install"]
+)
+
+# Optionally, run e2e tests (using local_resource)
+local_resource(
+    'unit-tests',
+    'make unit-test',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests"]
+)
+
+local_resource(
+    'e2e-tests-all',
+    e2e_local_cluster_env + 'E2E_LOCAL_ONLY=1 E2E_TYPE=ALL KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config} ' + root_dir + 'hack/run-e2e-kind.sh',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests"],
+    resource_deps=['install-kwok', 'install-ginkgo']
+)
+
+local_resource(
+    'e2e-tests-jobp',
+    e2e_local_cluster_env + 'E2E_LOCAL_ONLY=1 E2E_TYPE=JOBP KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config} ' + root_dir + 'hack/run-e2e-kind.sh',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests"],
+    resource_deps=['install-ginkgo']
+)
+
+local_resource(
+    'e2e-tests-jobseq',
+    e2e_local_cluster_env + 'E2E_LOCAL_ONLY=1 E2E_TYPE=JOBSEQ KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config} ' + root_dir + 'hack/run-e2e-kind.sh',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests"],
+    resource_deps=['install-ginkgo']
+)
+
+local_resource(
+    'e2e-tests-schedulingbase',
+    e2e_local_cluster_env + 'E2E_LOCAL_ONLY=1 E2E_TYPE=SCHEDULINGBASE KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config} ' + root_dir + 'hack/run-e2e-kind.sh',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests"],
+    resource_deps=['install-ginkgo']
+)
+
+local_resource(
+    'e2e-tests-schedulingaction',
+    e2e_local_cluster_env + 'E2E_LOCAL_ONLY=1 E2E_TYPE=SCHEDULINGACTION KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config} ' + root_dir + 'hack/run-e2e-kind.sh',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests"],
+    resource_deps=['install-ginkgo']
+)
+
+local_resource(
+    'e2e-tests-vcctl',
+    e2e_local_cluster_env + 'E2E_LOCAL_ONLY=1 E2E_TYPE=VCCTL KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config} ' + root_dir + 'hack/run-e2e-kind.sh',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests"],
+    resource_deps=['install-ginkgo']
+)
+
+local_resource(
+    'e2e-tests-dra',
+    e2e_local_cluster_env + 'E2E_LOCAL_ONLY=1 E2E_TYPE=DRA KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config} ' + root_dir + 'hack/run-e2e-kind.sh',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests"],
+    resource_deps=['install-ginkgo']
+)
+
+local_resource(
+    'e2e-tests-hypernode',
+    e2e_local_cluster_env + 'E2E_LOCAL_ONLY=1 E2E_TYPE=HYPERNODE KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config} ' + root_dir + 'hack/run-e2e-kind.sh',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests"],
+    resource_deps=['install-ginkgo']
+)
+
+local_resource(
+    'e2e-tests-cronjob',
+    e2e_local_cluster_env + 'E2E_LOCAL_ONLY=1 E2E_TYPE=CRONJOB KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config} ' + root_dir + 'hack/run-e2e-kind.sh',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests"],
+    resource_deps=['install-ginkgo']
+)
+
+# Focused example (single-test run)
+local_resource(
+    'e2e-tests-schedulingbase-focused-example',
+    e2e_local_cluster_env + 'E2E_LOCAL_ONLY=1 E2E_TYPE=SCHEDULINGBASE E2E_FOCUS="${E2E_FOCUS:-Gang scheduling}" E2E_SKIP="${E2E_SKIP:-\\[sig-.*\\]|Full Occupied}" KUBECONFIG=${KUBECONFIG:-$HOME/.kube/config} ' + root_dir + 'hack/run-e2e-kind.sh',
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    labels=["tests"],
+    resource_deps=['install-ginkgo']
+)

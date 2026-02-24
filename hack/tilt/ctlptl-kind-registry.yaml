@@ -1,0 +1,10 @@
+apiVersion: ctlptl.dev/v1alpha1
+kind: Registry
+name: volcano-registry
+port: 5005
+---
+apiVersion: ctlptl.dev/v1alpha1
+kind: Cluster
+name: kind-volcano-dev
+product: kind
+registry: volcano-registry
