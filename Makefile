@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-BIN_DIR=_output/bin
-RELEASE_DIR=_output/release
+OUTPUT_DIR ?= _output
+BIN_DIR=${OUTPUT_DIR}/bin
+RELEASE_DIR=${OUTPUT_DIR}/release
 REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh
 CRD_OPTIONS ?= "crd:crdVersions=v1,generateEmbeddedObjectMeta=true"
@@ -61,10 +62,16 @@ endif
 DOCKER_PLATFORMS ?= "linux/${GOARCH}"
 
 GOOS ?= linux
+KIND_VERSION ?= v0.31.0
 
 include Makefile.def
+include hack/tilt/Makefile
 
 .EXPORT_ALL_VARIABLES:
+
+.PHONY: print-kind-version
+print-kind-version:
+	@printf "%s\n" "${KIND_VERSION}"
 
 all: vc-scheduler vc-agent-scheduler vc-controller-manager vc-webhook-manager vc-agent vcctl command-lines
 
@@ -186,7 +193,7 @@ e2e-test-vcctl: vcctl images
 e2e-test-stress: images
 	E2E_TYPE=STRESS ./hack/run-e2e-kind.sh
 
-e2e-test-cronjob: images  
+e2e-test-cronjob: images
 	E2E_TYPE=CRONJOB ./hack/run-e2e-kind.sh
 
 e2e-test-dra: images
@@ -217,7 +224,7 @@ release: images generate-yaml
 	./hack/publish.sh
 
 clean:
-	rm -rf _output/
+	rm -rf ${OUTPUT_DIR}/
 	rm -f *.log
 
 verify:
