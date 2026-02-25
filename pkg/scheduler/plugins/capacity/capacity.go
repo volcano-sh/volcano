@@ -120,6 +120,11 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			attr := cp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[capacity] Skip reclaimee <%s/%s>: queue <%s> not found in queueOpts",
+					reclaimee.Namespace, reclaimee.Name, job.Queue)
+				continue
+			}
 
 			klog.V(5).Infof("[capacity] Considering reclaimee <%s/%s> from queue <%s> for reclaimer <%s/%s>.",
 				reclaimee.Namespace, reclaimee.Name, attr.queueID, reclaimer.Namespace, reclaimer.Name)
@@ -376,6 +381,11 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			attr := cp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[capacity] Skip allocate event for task <%s/%s>: queue <%s> not found in queueOpts",
+					event.Task.Namespace, event.Task.Name, job.Queue)
+				return
+			}
 			attr.allocated.Add(event.Task.Resreq)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
@@ -398,6 +408,11 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			attr := cp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[capacity] Skip deallocate event for task <%s/%s>: queue <%s> not found in queueOpts",
+					event.Task.Namespace, event.Task.Name, job.Queue)
+				return
+			}
 			attr.allocated.Sub(event.Task.Resreq)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 

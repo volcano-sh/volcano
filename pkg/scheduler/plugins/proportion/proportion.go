@@ -288,6 +288,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 
 			attr := pp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[proportion] Skip reclaimee <%s/%s>: queue <%s> not found in queueOpts",
+					reclaimee.Namespace, reclaimee.Name, job.Queue)
+				continue
+			}
 
 			if _, found := allocations[job.Queue]; !found {
 				allocations[job.Queue] = attr.allocated.Clone()
@@ -468,6 +473,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			attr := pp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[proportion] Skip allocate event for task <%s/%s>: queue <%s> not found in queueOpts",
+					event.Task.Namespace, event.Task.Name, job.Queue)
+				return
+			}
 			attr.allocated.Add(event.Task.Resreq)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
@@ -484,6 +494,11 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 				return
 			}
 			attr := pp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[proportion] Skip deallocate event for task <%s/%s>: queue <%s> not found in queueOpts",
+					event.Task.Namespace, event.Task.Name, job.Queue)
+				return
+			}
 			attr.allocated.Sub(event.Task.Resreq)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
