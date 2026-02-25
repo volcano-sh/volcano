@@ -38,6 +38,11 @@ import (
 var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 	var testCtx *e2eutil.TestContext
 
+	BeforeEach(func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
+	})
+
 	JustAfterEach(func() {
 		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
 	})
@@ -46,8 +51,6 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		jobName := "job-with-svc-plugin"
 		taskName := "task"
 		foundVolume := false
-		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(testCtx)
 
 		nodeName, rep := e2eutil.ComputeNode(testCtx, e2eutil.OneCPU)
 		Expect(rep).NotTo(Equal(0))
@@ -117,8 +120,6 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		jobName := "job-with-ssh-plugin"
 		taskName := "task"
 		foundVolume := false
-		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(testCtx)
 
 		_, rep := e2eutil.ComputeNode(testCtx, e2eutil.OneCPU)
 		Expect(rep).NotTo(Equal(0))
@@ -187,8 +188,6 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 	It("Test SVC Plugin with disableNetworkPolicy", func() {
 		jobName := "svc-with-disable-network-policy"
 		taskName := "task"
-		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(testCtx)
 
 		_, rep := e2eutil.ComputeNode(testCtx, e2eutil.OneCPU)
 		Expect(rep).NotTo(Equal(0))
@@ -225,8 +224,6 @@ var _ = Describe("Job E2E Test: Test Job Plugins", func() {
 		taskName := "task"
 		foundVolume := false
 		foundEnv := false
-		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(testCtx)
 
 		_, rep := e2eutil.ComputeNode(testCtx, e2eutil.OneCPU)
 		Expect(rep).NotTo(Equal(0))

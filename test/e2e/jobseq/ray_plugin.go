@@ -39,14 +39,16 @@ var _ = Describe("Ray Plugin E2E Test", func() {
 		PruneUnusedImagesOnAllNodes(e2eutil.KubeClient)
 	})
 
+	BeforeEach(func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
+	})
+
 	JustAfterEach(func() {
 		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
 	})
 
 	It("Will Start in pending state and  get running phase", func() {
-		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(testCtx)
-
 		slot := e2eutil.OneCPU
 
 		spec := &e2eutil.JobSpec{

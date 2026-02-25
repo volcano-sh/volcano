@@ -34,14 +34,16 @@ import (
 var _ = Describe("TensorFlow Plugin E2E Test", func() {
 	var testCtx *e2eutil.TestContext
 
+	BeforeEach(func() {
+		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
+		DeferCleanup(e2eutil.CleanupTestContext, testCtx)
+	})
+
 	JustAfterEach(func() {
 		e2eutil.DumpTestContextIfFailed(testCtx, CurrentSpecReport())
 	})
 
 	It("Will Start in pending state and goes through other phases to get complete phase", func() {
-		testCtx = e2eutil.InitTestContext(e2eutil.Options{})
-		defer e2eutil.CleanupTestContext(testCtx)
-
 		jobName := "tensorflow-dist-mnist"
 
 		job := &vcbatch.Job{
