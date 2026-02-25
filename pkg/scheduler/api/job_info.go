@@ -34,6 +34,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
@@ -126,6 +127,8 @@ type TaskInfo struct {
 	Resreq *Resource
 	// InitResreq is the resource that used to launch a task.
 	InitResreq *Resource
+	// DRAResreq aggregates DRA resource requests per DeviceClass
+	DRAResreq map[string]*DRAResource
 
 	TransactionContext
 	// LastTransaction holds the context of last scheduling transaction
@@ -280,7 +283,7 @@ func (ti *TaskInfo) UnsetPodResourceDecision() {
 
 // Clone is used for cloning a task
 func (ti *TaskInfo) Clone() *TaskInfo {
-	return &TaskInfo{
+	res := &TaskInfo{
 		UID:                         ti.UID,
 		Job:                         ti.Job,
 		Name:                        ti.Name,
@@ -303,6 +306,15 @@ func (ti *TaskInfo) Clone() *TaskInfo {
 		},
 		LastTransaction: ti.LastTransaction.Clone(),
 	}
+
+	if ti.DRAResreq != nil {
+		res.DRAResreq = make(map[string]*DRAResource, len(ti.DRAResreq))
+		for k, v := range ti.DRAResreq {
+			res.DRAResreq[k] = v.Clone()
+		}
+	}
+
+	return res
 }
 
 // hasRestartableInitContainer returns whether pod has restartable container.
@@ -1335,4 +1347,135 @@ func (ji *JobInfo) ContainsNetworkTopologyInSubJob() bool {
 // ContainsNetworkTopology returns whether the job and the subJobs in the job contain network topology
 func (ji *JobInfo) ContainsNetworkTopology() bool {
 	return ji.WithNetworkTopology() || ji.ContainsNetworkTopologyInSubJob()
+}
+
+// DRAResource represents aggregated DRA resource request for a single DeviceClass
+type DRAResource struct {
+	// Count is the total number of devices requested
+	Count int64
+	// Capacity maps dimension name to total requested quantity
+	Capacity map[string]resource.Quantity
+}
+
+// Clone returns a deep copy of DRAResource
+func (d *DRAResource) Clone() *DRAResource {
+	if d == nil {
+		return nil
+	}
+	out := &DRAResource{
+		Count: d.Count,
+	}
+	if d.Capacity != nil {
+		out.Capacity = make(map[string]resource.Quantity, len(d.Capacity))
+		for k, v := range d.Capacity {
+			out.Capacity[k] = v.DeepCopy()
+		}
+	}
+	return out
+}
+
+// Add adds another DRAResource into this one
+func (d *DRAResource) Add(other *DRAResource) {
+	if other == nil {
+		return
+	}
+	d.Count += other.Count
+	if other.Capacity != nil {
+		if d.Capacity == nil {
+			d.Capacity = make(map[string]resource.Quantity)
+		}
+		for k, v := range other.Capacity {
+			if existing, ok := d.Capacity[k]; ok {
+				existing.Add(v)
+				d.Capacity[k] = existing
+			} else {
+				d.Capacity[k] = v.DeepCopy()
+			}
+		}
+	}
+}
+
+// Sub subtracts another DRAResource from this one, ensuring values do not drop below zero
+func (d *DRAResource) Sub(other *DRAResource) {
+	if other == nil {
+		return
+	}
+	d.Count -= other.Count
+	if d.Count < 0 {
+		d.Count = 0
+	}
+	if other.Capacity != nil && d.Capacity != nil {
+		zeroQuantity := resource.MustParse("0")
+		for k, v := range other.Capacity {
+			if existing, ok := d.Capacity[k]; ok {
+				existing.Sub(v)
+				if existing.Cmp(zeroQuantity) < 0 {
+					existing = zeroQuantity.DeepCopy()
+				}
+				d.Capacity[k] = existing
+			}
+		}
+	}
+}
+
+// GetMinDRAResources returns the minimum DRA resources required by the job based on TaskMinAvailable
+func (ji *JobInfo) GetMinDRAResources() map[string]*DRAResource {
+	if len(ji.Tasks) == 0 {
+		return nil
+	}
+
+	result := make(map[string]*DRAResource)
+
+	// Since DRA requests can vary per task/pod, we aggregate them based on TaskMinAvailable
+	for _, task := range ji.Tasks {
+		if task.DRAResreq == nil {
+			continue
+		}
+
+		// Calculate how many times this task type needs to run
+		taskType := task.TaskRole
+		minNum, ok := ji.TaskMinAvailable[taskType]
+		if !ok || minNum <= 0 {
+			// If TaskMinAvailable is not set, default to 1 for this task if it is part of the job's minAvailable
+			// However, for precise minimum calculation, we only count the first occurrence for each TaskRole
+			// and multiply it by minNum
+			continue
+		}
+
+		// Only process one sample task per TaskRole to represent that type
+		// Set minNum to 0 so we don't process it again
+		ji.TaskMinAvailable[taskType] = 0
+
+		for deviceClass, res := range task.DRAResreq {
+			if _, exists := result[deviceClass]; !exists {
+				result[deviceClass] = &DRAResource{
+					Count:    0,
+					Capacity: make(map[string]resource.Quantity),
+				}
+			}
+
+			result[deviceClass].Count += res.Count * int64(minNum)
+			for dim, cap := range res.Capacity {
+				totalCap := cap.DeepCopy()
+				// resource.Quantity has no Multiply func, so we parse memory/cpu as MilliValues
+				// For exact values we can just use set
+				// Since Quantity can represent fractional, we will loop to add
+				for i := int32(0); i < minNum-1; i++ {
+					totalCap.Add(cap)
+				}
+
+				if existing, exists := result[deviceClass].Capacity[dim]; exists {
+					existing.Add(totalCap)
+					result[deviceClass].Capacity[dim] = existing
+				} else {
+					result[deviceClass].Capacity[dim] = totalCap
+				}
+			}
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }

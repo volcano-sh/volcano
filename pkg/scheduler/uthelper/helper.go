@@ -164,6 +164,7 @@ func (test *TestCommonStruct) createSchedulerCache() *cache.SchedulerCache {
 	}
 	// need to immediately run the cache to make sure the resources are added
 	schedulerCache.Run(test.stop)
+	schedulerCache.WaitForCacheSync(test.stop)
 
 	for _, node := range test.Nodes {
 		schedulerCache.AddOrUpdateNode(node)

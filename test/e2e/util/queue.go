@@ -35,6 +35,7 @@ type QueueSpec struct {
 	Weight            int32
 	GuaranteeResource v1.ResourceList
 	DeservedResource  v1.ResourceList
+	DRA               *schedulingv1beta1.DRAQuota
 }
 
 func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
@@ -60,6 +61,10 @@ func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
 		} else if len(queueSpec.DeservedResource) != 0 {
 			queue.Spec.Deserved = queueSpec.DeservedResource
 		}
+
+		if queueSpec.DRA != nil {
+			queue.Spec.DRA = queueSpec.DRA
+		}
 		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), queue, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", queueSpec.Name)
 	}
@@ -69,7 +74,7 @@ func CreateQueueWithQueueSpec(ctx *TestContext, queueSpec *QueueSpec) {
 }
 
 // CreateQueue creates Queue with the specified name
-func CreateQueue(ctx *TestContext, q string, deservedResource v1.ResourceList, parent string) {
+func CreateQueue(ctx *TestContext, q string, deservedResource v1.ResourceList, parent string, draQuota *schedulingv1beta1.DRAQuota) {
 	_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Get(context.TODO(), q, metav1.GetOptions{})
 	if err != nil {
 		_, err := ctx.Vcclient.SchedulingV1beta1().Queues().Create(context.TODO(), &schedulingv1beta1.Queue{
@@ -80,6 +85,7 @@ func CreateQueue(ctx *TestContext, q string, deservedResource v1.ResourceList, p
 				Weight:   1,
 				Parent:   parent,
 				Deserved: deservedResource,
+				DRA:      draQuota,
 			},
 		}, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "failed to create queue %s", q)
@@ -91,7 +97,7 @@ func CreateQueues(ctx *TestContext) {
 	By("Creating Queues")
 
 	for _, queue := range ctx.Queues {
-		CreateQueue(ctx, queue, ctx.DeservedResource[queue], ctx.QueueParent[queue])
+		CreateQueue(ctx, queue, ctx.DeservedResource[queue], ctx.QueueParent[queue], ctx.DRAQuota[queue])
 	}
 
 	// wait for all queues state open

@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	v1 "k8s.io/api/core/v1"
+	resource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -503,6 +504,37 @@ type QueueSpec struct {
 	// +kubebuilder:default:=traverse
 	// +kubebuilder:validation:Enum=fifo;traverse
 	DequeueStrategy DequeueStrategy `json:"dequeueStrategy,omitempty" protobuf:"bytes,11,opt,name=dequeueStrategy"`
+
+	// DRA defines DRA resource quotas for the queue
+	// +optional
+	DRA *DRAQuota `json:"dra,omitempty" protobuf:"bytes,12,opt,name=dra"`
+}
+
+// DRAQuota defines DRA resource quotas per DeviceClass
+type DRAQuota struct {
+	// Capability defines hard limit per DeviceClass
+	// Key: DeviceClass name (e.g., "nvidia-h100", "hami-core-gpu.project-hami.io")
+	// +optional
+	Capability map[string]DRAResourceQuota `json:"capability,omitempty" protobuf:"bytes,1,rep,name=capability"`
+
+	// Deserved defines deserved quota per DeviceClass, excess can be preempted
+	// +optional
+	Deserved map[string]DRAResourceQuota `json:"deserved,omitempty" protobuf:"bytes,2,rep,name=deserved"`
+
+	// Guarantee defines minimum guaranteed quota per DeviceClass
+	// +optional
+	Guarantee map[string]DRAResourceQuota `json:"guarantee,omitempty" protobuf:"bytes,3,rep,name=guarantee"`
+}
+
+// DRAResourceQuota defines quota values for a specific DeviceClass
+type DRAResourceQuota struct {
+	// Count is the device count limit (required)
+	Count int64 `json:"count" protobuf:"varint,1,opt,name=count"`
+
+	// Capacity defines consumable capacity limits
+	// Key: capacity dimension (e.g., "cores", "memory")
+	// +optional
+	Capacity map[string]resource.Quantity `json:"capacity,omitempty" protobuf:"bytes,2,rep,name=capacity"`
 }
 
 type DequeueStrategy string
