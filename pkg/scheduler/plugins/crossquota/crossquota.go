@@ -334,7 +334,7 @@ func (cq *crossQuotaPlugin) matchesLabelSelector(task *api.TaskInfo) bool {
 func (cq *crossQuotaPlugin) calculateCurrentUsage(node *api.NodeInfo) *api.Resource {
 	currentUsage := &api.Resource{}
 	for _, existingTask := range node.Tasks {
-		if cq.isCPUPod(existingTask) && existingTask.Status == api.Allocated && cq.matchesLabelSelector(existingTask) {
+		if cq.isCPUPod(existingTask) && api.AllocatedStatus(existingTask.Status) && cq.matchesLabelSelector(existingTask) {
 			// Add this task's resource usage to current usage
 			for _, rn := range cq.quotaResourceNames {
 				req := getTaskRequest(existingTask, rn)
