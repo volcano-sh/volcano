@@ -378,11 +378,7 @@ func (pmpt *Action) normalPreempt(
 			preemptee := victimsQueue.Pop().(*api.TaskInfo)
 			klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
 				preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name)
-			if err := stmt.Evict(preemptee, "preempt"); err != nil {
-				klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
-					preemptee.Namespace, preemptee.Name, preemptor.Namespace, preemptor.Name, err)
-				continue
-			}
+			stmt.Evict(preemptee, "preempt")
 			preempted.Add(preemptee.Resreq)
 		}
 
@@ -480,9 +476,7 @@ func (pmpt *Action) topologyAwarePreempt(
 		return false, fmt.Errorf("no candidate node for preemption")
 	}
 
-	if status := prepareCandidate(bestCandidate, preemptor.Pod, stmt, ssn); !status.IsSuccess() {
-		return false, fmt.Errorf("failed to prepare candidate: %v", status)
-	}
+	prepareCandidate(bestCandidate, preemptor.Pod, stmt)
 
 	if err := stmt.Pipeline(preemptor, bestCandidate.Name(), true); err != nil {
 		klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
@@ -516,20 +510,14 @@ func (pmpt *Action) findCandidates(preemptor *api.TaskInfo, filter func(*api.Tas
 }
 
 // prepareCandidate evicts the victim pods before nominating the selected candidate
-func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement, ssn *framework.Session) *api.Status {
+func prepareCandidate(c *candidate, pod *v1.Pod, stmt *framework.Statement) {
 	for _, victim := range c.Victims() {
 		klog.V(3).Infof("Try to preempt Task <%s/%s> for Task <%s/%s>",
 			victim.Namespace, victim.Name, pod.Namespace, pod.Name)
-		if err := stmt.Evict(victim, "preempt"); err != nil {
-			klog.Errorf("Failed to preempt Task <%s/%s> for Task <%s/%s>: %v",
-				victim.Namespace, victim.Name, pod.Namespace, pod.Name, err)
-			return api.AsStatus(err)
-		}
+		stmt.Evict(victim, "preempt")
 	}
 
 	metrics.RegisterPreemptionAttempts()
-
-	return nil
 }
 
 // podTerminatingByPreemption returns true if the pod is in the termination state caused by preempt action.
@@ -705,10 +693,7 @@ func SelectVictimsOnNode(
 		if err != nil {
 			return err
 		}
-
-		if err := nodeInfo.RemoveTask(rti); err != nil {
-			return err
-		}
+		nodeInfo.RemoveTask(rti)
 		return nil
 	}
 
