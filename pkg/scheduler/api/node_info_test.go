@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fwk "k8s.io/kube-scheduler/framework"
@@ -289,4 +290,58 @@ func TestNodeInfo_SetNode(t *testing.T) {
 				i, test.expected2, ni)
 		}
 	}
+}
+
+func TestNodeInfo_AddPipelinedTask(t *testing.T) {
+	node := buildNode("n1", nil, BuildResourceList("8000m", "10G", []ScalarResource{{Name: "pods", Value: "20"}}...))
+	pod := buildPod("c1", "p1", "", v1.PodPending,
+		BuildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+
+	task := NewTaskInfo(pod)
+	task.Status = Pipelined
+
+	ni := NewNodeInfo(node)
+	idleBefore := ni.Idle.Clone()
+
+	err := ni.AddTask(task)
+	assert.NoError(t, err)
+
+	expectedPipelined := buildResource("1000m", "1G", map[string]string{"pods": "1"}, 0)
+	assert.True(t, ni.Pipelined.Equal(expectedPipelined, Zero), "Pipelined should reflect task resources; got %s", ni.Pipelined)
+	assert.True(t, ni.Used.Equal(EmptyResource(), Zero), "Used should remain empty; got %s", ni.Used)
+	assert.True(t, ni.Idle.Equal(idleBefore, Zero), "Idle should remain unchanged; got %s", ni.Idle)
+}
+
+func TestNodeInfo_UpdateTask_PipelinedToAllocated(t *testing.T) {
+	node := buildNode("n1", nil, BuildResourceList("8000m", "10G", []ScalarResource{{Name: "pods", Value: "20"}}...))
+	pod := buildPod("c1", "p1", "", v1.PodPending,
+		BuildResourceList("1000m", "1G"), []metav1.OwnerReference{}, make(map[string]string))
+
+	task := NewTaskInfo(pod)
+	task.Status = Pipelined
+
+	ni := NewNodeInfo(node)
+	err := ni.AddTask(task)
+	assert.NoError(t, err)
+
+	pipelinedBefore := ni.Pipelined.Clone()
+	expectedPipelined := buildResource("1000m", "1G", map[string]string{"pods": "1"}, 0)
+	assert.True(t, pipelinedBefore.Equal(expectedPipelined, Zero), "precondition: Pipelined should have task resources")
+
+	task.Status = Allocated
+	err = ni.UpdateTask(task)
+	assert.NoError(t, err)
+
+	assert.True(t, ni.Pipelined.Equal(EmptyResource(), Zero),
+		"Pipelined should be empty after transition to Allocated; got %s", ni.Pipelined)
+
+	expectedUsed := buildResource("1000m", "1G", map[string]string{"pods": "1"}, 0)
+	assert.True(t, ni.Used.Equal(expectedUsed, Zero),
+		"Used should reflect task resources after Allocated; got %s", ni.Used)
+
+	allocatable := buildResource("8000m", "10G", map[string]string{"pods": "20"}, 20)
+	expectedIdle := allocatable.Clone()
+	expectedIdle.Sub(expectedUsed)
+	assert.True(t, ni.Idle.Equal(expectedIdle, Zero),
+		"Idle should decrease by task resources; got %s", ni.Idle)
 }

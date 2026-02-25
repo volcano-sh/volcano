@@ -327,10 +327,6 @@ func podConditionHaveUpdate(status *v1.PodStatus, condition *v1.PodCondition) bo
 	return !isEqual
 }
 
-func podNominatedNodeNameNeedUpdate(status *v1.PodStatus, nodeName string) bool {
-	return status.NominatedNodeName != nodeName
-}
-
 // UpdatePodStatus will Update pod status
 func (su *defaultStatusUpdater) UpdatePodStatus(pod *v1.Pod) (*v1.Pod, error) {
 	return su.kubeclient.CoreV1().Pods(pod.Namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
@@ -929,6 +925,74 @@ func (sc *SchedulerCache) Evict(taskInfo *schedulingapi.TaskInfo, reason string)
 	return nil
 }
 
+func (sc *SchedulerCache) Pipeline(taskInfo *schedulingapi.TaskInfo, nodeName string) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	job, task, err := sc.findJobAndTask(taskInfo)
+	if err != nil {
+		return err
+	}
+
+	node, found := sc.Nodes[nodeName]
+	if !found {
+		return fmt.Errorf("failed to pipeline Task %v to host %v, host does not exist",
+			task.UID, nodeName)
+	}
+
+	podgroup := &vcv1beta1.PodGroup{}
+	if job.PodGroup != nil {
+		err = schedulingscheme.Scheme.Convert(&job.PodGroup.PodGroup, podgroup, nil)
+	} else {
+		err = fmt.Errorf("the PodGroup of Job <%s/%s> is nil", job.Namespace, job.Name)
+	}
+
+	if err != nil {
+		klog.Errorf("Error while converting PodGroup to vcv1beta1.PodGroup with error: %v", err)
+		return err
+	}
+
+	originalStatus := task.Status
+	if err := job.UpdateTaskStatus(task, schedulingapi.Pipelined); err != nil {
+		return err
+	}
+
+	// Add new task to node.
+	if err := node.UpdateTask(task); err != nil {
+		// After failing to update task to a node we need to revert task status from Pipelined,
+		// otherwise task might be stuck in the Pipelined state indefinitely.
+		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+				"from %s to %s after failing to update Task on Node <%s>: %v",
+				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+			sc.resyncTask(task)
+		}
+		return err
+	}
+
+	// Set NominatedNodeName synchronously so it is immediately visible
+	// in the next Snapshot() without waiting for the async Pod status round-trip.
+	task.NominatedNodeName = nodeName
+
+	p := task.Pod
+	go func() {
+		pod := p.DeepCopy()
+		pod.Status.NominatedNodeName = nodeName
+		if _, err := sc.StatusUpdater.UpdatePodStatus(pod); err != nil {
+			klog.Errorf("Failed to update NominatedNodeName for pipelined task %s/%s: %v",
+				pod.Namespace, pod.Name, err)
+			sc.resyncTask(task)
+		}
+	}()
+
+	klog.V(4).Infof("Task <%s/%s> successfully pipelined to Node <%s>",
+		task.Namespace, task.Name, node.Name)
+
+	sc.Recorder.Eventf(podgroup, v1.EventTypeNormal, "Pipeline", "Task <%s/%s> is pipelined to Node <%s>",
+		task.Namespace, task.Name, node.Name)
+	return nil
+}
+
 // Bind binds task to the target host.
 func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext, preBinders map[string]PreBinder) {
 	readyToBindTasks := make([]*schedulingapi.TaskInfo, len(bindContexts))
@@ -948,7 +1012,7 @@ func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext,
 			sc.Recorder.Eventf(bindContext.TaskInfo.Pod, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", bindContext.TaskInfo.Namespace, bindContext.TaskInfo.Name, bindContext.TaskInfo.NodeName)
 		} else {
 			unschedulableMsg := fmt.Sprintf("failed to bind to node %s: %s", bindContext.TaskInfo.NodeName, reason)
-			if err := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, unschedulableMsg, ""); err != nil {
+			if err := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, unschedulableMsg); err != nil {
 				klog.ErrorS(err, "Failed to update pod status when bind task error", "task", bindContext.TaskInfo.Name)
 			}
 
@@ -1024,7 +1088,7 @@ func (sc *SchedulerCache) EventRecorder() record.EventRecorder {
 }
 
 // taskUnschedulable updates pod status of pending task
-func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason, message, nominatedNodeName string) error {
+func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason, message string) error {
 	pod := task.Pod
 
 	condition := &v1.PodCondition{
@@ -1034,27 +1098,11 @@ func (sc *SchedulerCache) taskUnschedulable(task *schedulingapi.TaskInfo, reason
 		Message: message,
 	}
 
-	updateCond := podConditionHaveUpdate(&pod.Status, condition)
-
-	// only update pod's nominatedNodeName when nominatedNodeName is not empty
-	// consider this situation:
-	// 1. at session 1, the pod A preempt another lower priority pod B, and we updated A's nominatedNodeName
-	// 2. at session 2, the pod B is still terminating, so the pod A is still pipelined, but it preempt none, so
-	// the nominatedNodeName is empty, but we should not override the A's nominatedNodeName to empty
-	updateNomiNode := len(nominatedNodeName) > 0 && podNominatedNodeNameNeedUpdate(&pod.Status, nominatedNodeName)
-
-	if updateCond || updateNomiNode {
+	if podConditionHaveUpdate(&pod.Status, condition) {
 		pod = pod.DeepCopy()
 
-		if updateCond && podutil.UpdatePodCondition(&pod.Status, condition) {
+		if podutil.UpdatePodCondition(&pod.Status, condition) {
 			klog.V(3).Infof("Updating pod condition for %s/%s to (%s==%s)", pod.Namespace, pod.Name, condition.Type, condition.Status)
-		}
-
-		// if nominatedNode field changed, we should update it to the pod status, for k8s
-		// autoscaler will check this field and ignore this pod when scale up.
-		if updateNomiNode {
-			klog.V(3).Infof("Updating pod nominatedNodeName for %s/%s from (%s) to (%s)", pod.Namespace, pod.Name, pod.Status.NominatedNodeName, nominatedNodeName)
-			pod.Status.NominatedNodeName = nominatedNodeName
 		}
 
 		// The reason field in 'Events' should be "FailedScheduling", there is not constants defined for this in
@@ -1308,17 +1356,29 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	}
 	task.NumaInfo = bindContext.TaskInfo.NumaInfo.Clone()
 
-	// Add task to the node.
-	if err := node.AddTask(task); err != nil {
-		// After failing to update task to a node we need to revert task status from Releasing,
-		// otherwise task might be stuck in the Releasing state indefinitely.
-		if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
-			klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
-				"from %s to %s after failing to update Task on Node <%s>: %v",
-				task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
-			sc.resyncTask(task)
+	// Add task to the node. Use UpdateTask if the task is already present
+	// (e.g. from a prior Pipelined state) to correctly transition resource accounting.
+	key := schedulingapi.PodKey(task.Pod)
+	if _, taskOnNode := node.Tasks[key]; taskOnNode {
+		if err := node.UpdateTask(task); err != nil {
+			if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+				klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+					"from %s to %s after failing to update Task on Node <%s>: %v",
+					task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+				sc.resyncTask(task)
+			}
+			return err
 		}
-		return err
+	} else {
+		if err := node.AddTask(task); err != nil {
+			if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+				klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+					"from %s to %s after failing to update Task on Node <%s>: %v",
+					task.Namespace, task.Name, task.Status, originalStatus, node.Name, err)
+				sc.resyncTask(task)
+			}
+			return err
+		}
 	}
 
 	sc.BindFlowChannel <- bindContext
@@ -1385,7 +1445,7 @@ func (sc *SchedulerCache) executePreBinds(ctx context.Context, bindContexts []*B
 			reason := fmt.Sprintf("execute preBind for pod %s failed: %v, resync the task", klog.KObj(bindContext.TaskInfo.Pod), err)
 			klog.Error(reason)
 			sc.resyncTask(bindContext.TaskInfo)
-			if updateErr := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, reason, ""); updateErr != nil {
+			if updateErr := sc.taskUnschedulable(bindContext.TaskInfo, schedulingapi.PodReasonSchedulerError, reason); updateErr != nil {
 				logger.Error(updateErr, "Failed to update pod status", "pod", klog.KObj(bindContext.TaskInfo.Pod))
 			}
 			continue
@@ -1619,12 +1679,12 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 				return
 			}
 
-			reason, msg, nominatedNodeName := job.TaskSchedulingReason(taskInfo.UID)
+			reason, msg := job.TaskSchedulingReason(taskInfo.UID)
 			if len(msg) == 0 {
 				msg = baseErrorMessage
 			}
 
-			if err := sc.taskUnschedulable(taskInfo, reason, msg, nominatedNodeName); err != nil {
+			if err := sc.taskUnschedulable(taskInfo, reason, msg); err != nil {
 				klog.ErrorS(err, "Failed to update unschedulable task status", "task", klog.KRef(taskInfo.Namespace, taskInfo.Name),
 					"reason", reason, "message", msg)
 			}
