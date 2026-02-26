@@ -28,15 +28,21 @@ GOLANGCI_LINT_PKG="github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
 # -----------------------------------
 
 # install_golangci_lint installs the required version of golangci-lint via
-# 'go install' and ensures $GOPATH/bin is on PATH.
+# 'go install' and ensures the Go binary directory ($GOBIN or $GOPATH/bin) is on PATH.
 install_golangci_lint() {
   echo "Installing golangci-lint ${REQUIRED_VERSION} ..."
-  GOOS="${OS:-$(go env GOOS)}" go install "${GOLANGCI_LINT_PKG}@${REQUIRED_VERSION}"
-  if [[ $? -ne 0 ]]; then
+  local ret=0
+  GOOS="${OS:-$(go env GOOS)}" go install "${GOLANGCI_LINT_PKG}@${REQUIRED_VERSION}" || ret=$?
+  if [[ ${ret} -ne 0 ]]; then
     echo "ERROR: golangci-lint installation failed."
     exit 1
   fi
-  export PATH="${GOPATH}/bin:${PATH}"
+  local go_install_path="${GOBIN:-${GOPATH}/bin}"
+  if [[ -z "${go_install_path}" ]]; then
+    echo "ERROR: GOPATH and GOBIN are not set. Cannot determine Go binary install path." >&2
+    exit 1
+  fi
+  export PATH="${go_install_path}:${PATH}"
   echo "golangci-lint ${REQUIRED_VERSION} installed successfully."
 }
 
@@ -57,10 +63,19 @@ check_golangci_lint() {
   # while v1 prints e.g.
   #   golangci-lint has version 1.64.8 built with ...
   local raw_version
-  raw_version="$(golangci-lint --version 2>/dev/null | head -1)"
+  if ! raw_version="$(golangci-lint --version 2>/dev/null | head -1)"; then
+    # If version detection fails (e.g., corrupted binary), treat as unknown
+    # so that the mismatch/reinstall logic below is triggered.
+    raw_version=""
+  fi
   # Grab the semver token right after "version".
   local installed_version
-  installed_version="$(echo "${raw_version}" | grep -oP 'version\s+\Kv?\d+\.\d+\.\d+')"
+  installed_version="$(echo "${raw_version}" | sed -n -E 's/.*version[[:space:]]+(v?[0-9]+\.[0-9]+\.[0-9]+).*/\1/p')"
+  if [[ -z "${installed_version}" ]]; then
+    echo "WARNING: Could not parse golangci-lint version from: ${raw_version}"
+    install_golangci_lint
+    return
+  fi
   # Normalise: ensure leading 'v'
   installed_version="v${installed_version#v}"
 
@@ -83,6 +98,7 @@ check_golangci_lint() {
   fi
 
   # Interactive: ask the user.
+  local answer
   read -r -p "Install golangci-lint ${REQUIRED_VERSION} now? [Y/n] " answer
   case "${answer}" in
     [nN][oO]|[nN])
