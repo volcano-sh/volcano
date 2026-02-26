@@ -183,7 +183,6 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		if allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, task.Resreq); !allocatable {
 			klog.V(3).Infof("Queue <%v> cannot reclaim for <%s/%s> because futureUsed <%v> exceeds realCapability <%v>.",
 				queue.Name, task.Namespace, task.Name, futureUsed, attr.realCapability)
-			metrics.UpdateQueueOverused(attr.name, true)
 			return false
 		}
 
