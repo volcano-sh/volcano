@@ -281,13 +281,25 @@ func (alloc *Action) allocateResourcesForTasks(...) {
     // ...
 }
 
-// schedulingGateRemoval queues async gate removal.
+// schedulingGateRemoval queues async gate removal if scheduling failed.
+// This ensures cluster autoscalers can see the Unschedulable condition and trigger scale-up
 func (alloc *Action) schedulingGateRemoval(task *api.TaskInfo, queueID api.QueueID) {
-    if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
-        op := schGateRemovalOperation{namespace: task.Namespace, name: task.Name}
-        alloc.schGateRemovalCh <- op
-        task.SchGated = false  // Mark as ungated in cache
-    }
+	// Only enqueue gate removal if the task has only Volcano scheduling gate
+	if api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+		op := schGateRemovalOperation{
+			namespace: task.Namespace,
+			name:      task.Name,
+		}
+
+		select {
+		case alloc.schGateRemovalCh <- op:
+			klog.V(3).Infof("Queued gate removal for %s/%s", task.Namespace, task.Name)
+			// Update task state immediately so it won't be queued again in this cycle
+			task.SchGated = false
+		default:
+			klog.Warningf("Gate operation queue full, skipping gate removal for %s/%s", task.Namespace, task.Name)
+		}
+	}
 }
 ```
 
