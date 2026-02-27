@@ -18,6 +18,7 @@
         - [Capacity Check with Reserved Resources](#capacity-check-with-reserved-resources)
         - [Cache Initialization](#cache-initialization)
         - [Cache Updates During Allocation](#cache-updates-during-allocation)
+- [Limitations](#limitations)
 - [Conclusions](#conclusions)
 - [Related Issues](#related-issues)
 
@@ -641,6 +642,10 @@ enabling other plugins like
 [`proportion`](https://github.com/volcano-sh/volcano/tree/v1.14.0/pkg/scheduler/plugins/proportion) or
 [`tdm`](https://github.com/volcano-sh/volcano/tree/v1.14.0/pkg/scheduler/plugins/tdm) to implement similar reservation
 cleanup logic in the future without modifying the framework.
+
+## Limitations
+
+Once a pod's gate is removed (*i.e.*, because it has passed the queue capacity check), the pod is accounted for in the queue's reserved capacity until it is scheduled or the reservation is cleaned up. If that pod remains unschedulable (*e.g.*, no node matches, or the cluster is waiting for the autoscaler to add nodes), it continues to hold queue capacity. The scheduler cannot distinguish an ungated pod that will never become schedulable from one that will become schedulable after the autoscaler expands the cluster. As a result, other pods that could schedule may be blocked by this reserved capacity indefinitely. In this version of the design, reservations are not released for long-unschedulable pods (*e.g.*, via a timeout) to avoid over-committing the queue when those pods eventually get nodes. Operators should be aware that in such scenarios, queue capacity can be held by ungated-but-unschedulable pods and may delay scheduling of other workloads.
 
 ## Conclusions
 
