@@ -18,8 +18,12 @@ package util
 
 import (
 	"testing"
-
 	"time"
+
+	version "k8s.io/apimachinery/pkg/version"
+	fakediscovery "k8s.io/client-go/discovery/fake"
+	"k8s.io/client-go/kubernetes"
+	fake "k8s.io/client-go/kubernetes/fake"
 )
 
 func TestJobUtil(t *testing.T) {
@@ -102,6 +106,48 @@ func TestJobUtil(t *testing.T) {
 
 	for i, testcase := range testCases {
 		answer := HumanDuration(testcase.Duration)
+		if answer != testcase.ExpectValue {
+			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, answer)
+		}
+	}
+}
+
+func TestSupportsCustomResourceFieldSelectors(t *testing.T) {
+	// mock kubernetes client
+	fakeClient_v131 := fake.NewSimpleClientset()
+	fakeClient_v131.Discovery().(*fakediscovery.FakeDiscovery).FakedServerVersion = &version.Info{
+		Major: "1",
+		Minor: "31",
+	}
+
+	fakeClient_v130 := fake.NewSimpleClientset()
+	fakeClient_v130.Discovery().(*fakediscovery.FakeDiscovery).FakedServerVersion = &version.Info{
+		Major: "1",
+		Minor: "30",
+	}
+
+	testCases := []struct {
+		Name        string
+		clientset   kubernetes.Interface
+		ExpectValue bool
+	}{
+		{
+			Name:        "v1.31",
+			clientset:   fakeClient_v131,
+			ExpectValue: true,
+		},
+		{
+			Name:        "v1.30",
+			clientset:   fakeClient_v130,
+			ExpectValue: false,
+		},
+	}
+
+	for i, testcase := range testCases {
+		answer, err := SupportsCustomResourceFieldSelectors(testcase.clientset)
+		if err != nil {
+			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, answer)
+		}
 		if answer != testcase.ExpectValue {
 			t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectValue, answer)
 		}
