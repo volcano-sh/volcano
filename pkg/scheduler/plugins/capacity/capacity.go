@@ -180,6 +180,12 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		attr := cp.queueOpts[queue.UID]
 		futureUsed := attr.allocated.Clone().Add(task.Resreq)
 
+		if allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, task.Resreq); !allocatable {
+			klog.V(3).Infof("Queue <%v> cannot reclaim for <%s/%s> because futureUsed <%v> exceeds realCapability <%v>.",
+				queue.Name, task.Namespace, task.Name, futureUsed, attr.realCapability)
+			return false
+		}
+
 		// If there is a single dimension whose deserved is greater than allocated, current task can reclaim by preempt others.
 		isPreemptive, resourceNames := futureUsed.LessEqualPartlyWithDimensionZeroFiltered(attr.deserved, task.Resreq)
 		if isPreemptive {
