@@ -718,3 +718,167 @@ func TestParseMinMemberInfoChanged(t *testing.T) {
 		})
 	}
 }
+
+// TestReadyTaskNum verifies that ReadyTaskNum only counts tasks with live
+// scheduler allocations (Allocated, Binding, Bound, Running) and explicitly
+// excludes Succeeded tasks, which hold no resources and must not ghost-satisfy
+// the gang scheduling commit gate.
+func TestReadyTaskNum(t *testing.T) {
+	tests := []struct {
+		name     string
+		ji       *JobInfo
+		expected int32
+	}{
+		{
+			name: "only Succeeded tasks do not count",
+			ji: &JobInfo{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Succeeded: {
+						"task1": &TaskInfo{},
+						"task2": &TaskInfo{},
+					},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name: "Succeeded mixed with active tasks - only active counted",
+			ji: &JobInfo{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Succeeded: {"task1": &TaskInfo{}},
+					Running:   {"task2": &TaskInfo{}},
+					Allocated: {"task3": &TaskInfo{}},
+				},
+			},
+			expected: 2,
+		},
+		{
+			name: "all active statuses are counted",
+			ji: &JobInfo{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Bound:     {"task1": &TaskInfo{}},
+					Binding:   {"task2": &TaskInfo{}},
+					Running:   {"task3": &TaskInfo{}},
+					Allocated: {"task4": &TaskInfo{}},
+				},
+			},
+			expected: 4,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.ji.ReadyTaskNum())
+		})
+	}
+}
+
+// TestIsReady_SucceededDoesNotSatisfyGangGate is a regression test for the gang
+// scheduling commit gate. A Succeeded pod holds no live resources and must not
+// count toward IsReady(); otherwise fewer than MinAvailable simultaneously-active
+// pods would be dispatched, violating the gang contract and causing restart loops.
+func TestIsReady_SucceededDoesNotSatisfyGangGate(t *testing.T) {
+	tests := []struct {
+		name         string
+		minAvailable int32
+		ji           *JobInfo
+		expected     bool
+	}{
+		{
+			// Regression: old code returned true here, violating gang atomicity.
+			// One Succeeded (dead) pod + one newly Allocated pod must NOT satisfy
+			// MinAvailable=2 — the Succeeded pod is not an active co-scheduler.
+			name:         "Succeeded + Allocated does not reach MinAvailable",
+			minAvailable: 2,
+			ji: &JobInfo{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Succeeded: {"driver":  &TaskInfo{}},
+					Allocated: {"worker0": &TaskInfo{}},
+				},
+			},
+			expected: false,
+		},
+		{
+			// Sanity check: two active pods correctly satisfy MinAvailable=2.
+			name:         "Running + Allocated satisfies MinAvailable",
+			minAvailable: 2,
+			ji: &JobInfo{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Running:   {"driver":  &TaskInfo{}},
+					Allocated: {"worker0": &TaskInfo{}},
+				},
+			},
+			expected: true,
+		},
+		{
+			// Even many Succeeded tasks cannot satisfy the gate on their own.
+			name:         "all Succeeded tasks cannot satisfy MinAvailable",
+			minAvailable: 3,
+			ji: &JobInfo{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Succeeded: {
+						"task1": &TaskInfo{},
+						"task2": &TaskInfo{},
+						"task3": &TaskInfo{},
+					},
+				},
+			},
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.ji.MinAvailable = tt.minAvailable
+			assert.Equal(t, tt.expected, tt.ji.IsReady())
+		})
+	}
+}
+
+// TestCheckTaskReady_SucceededDoesNotSatisfyRoleGang is a regression test for
+// the role-level gang gate. getJobAllocatedRoles() previously counted Succeeded
+// tasks per role, allowing CheckTaskReady() to return true even when a required
+// role had zero live pods — causing jobs with asymmetric task completion to
+// dispatch workers without their co-required peers.
+func TestCheckTaskReady_SucceededDoesNotSatisfyRoleGang(t *testing.T) {
+	tests := []struct {
+		name     string
+		ji       *JobInfo
+		expected bool
+	}{
+		{
+			// Regression: old code returned true here because the Succeeded driver
+			// pod satisfied TaskMinAvailable["driver"]=1 in getJobAllocatedRoles.
+			name: "role satisfied only by Succeeded pod is not ready",
+			ji: &JobInfo{
+				MinAvailable:          2,
+				TaskMinAvailableTotal: 2,
+				TaskMinAvailable:      map[string]int32{"driver": 1, "worker": 1},
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Succeeded: {"driver-0": &TaskInfo{TaskRole: "driver"}},
+					Running:   {"worker-0": &TaskInfo{TaskRole: "worker"}},
+				},
+			},
+			expected: false,
+		},
+		{
+			// Sanity: both roles have active pods.
+			name: "both roles satisfied by active pods",
+			ji: &JobInfo{
+				MinAvailable:          2,
+				TaskMinAvailableTotal: 2,
+				TaskMinAvailable:      map[string]int32{"driver": 1, "worker": 1},
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Running: {
+						"driver-0": &TaskInfo{TaskRole: "driver"},
+						"worker-0": &TaskInfo{TaskRole: "worker"},
+					},
+				},
+			},
+			expected: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.ji.CheckTaskReady())
+		})
+	}
+}

@@ -561,8 +561,10 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 					Pipelined: {"task2": &TaskInfo{}},
 					Binding:   {"task3": &TaskInfo{}},
 					Bound:     {"task4": &TaskInfo{}},
-					Running:   {"task5": &TaskInfo{}},
-					Succeeded: {"task6": &TaskInfo{}},
+					// task5 and task6 are both actively Running; Succeeded pods must
+					// not be counted — only live (Allocated/Binding/Bound/Running) pods
+					// satisfy the gang commit gate.
+					Running: {"task5": &TaskInfo{}, "task6": &TaskInfo{}},
 				},
 			},
 			expected: true,
@@ -611,8 +613,9 @@ func TestSubJobInfo_IsPipelined(t *testing.T) {
 					Pipelined: {"task4": &TaskInfo{}},
 					Binding:   {"task5": &TaskInfo{}},
 					Bound:     {"task6": &TaskInfo{}},
-					Running:   {"task7": &TaskInfo{}},
-					Succeeded: {"task8": &TaskInfo{}},
+					// task7 and task8 are both actively Running; Succeeded pods must
+					// not be counted toward the pipelined gate.
+					Running: {"task7": &TaskInfo{}, "task8": &TaskInfo{}},
 				},
 			},
 			expected: true,
@@ -749,7 +752,7 @@ func TestSubJobInfo_IsReady(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "Some tasks are pending best-effort and some are waiting",
+			name: "Some tasks are pending best-effort and some are active",
 			sji: &SubJobInfo{
 				MinAvailable: 6,
 				Tasks: map[TaskID]*TaskInfo{
@@ -767,8 +770,9 @@ func TestSubJobInfo_IsReady(t *testing.T) {
 					Allocated: {"task2": &TaskInfo{}},
 					Binding:   {"task3": &TaskInfo{}},
 					Bound:     {"task4": &TaskInfo{}},
-					Running:   {"task5": &TaskInfo{}},
-					Succeeded: {"task6": &TaskInfo{}},
+					// task5 and task6 are both actively Running; Succeeded pods must
+					// not be counted toward ReadyTaskNum for the IsReady gang gate.
+					Running: {"task5": &TaskInfo{}, "task6": &TaskInfo{}},
 				},
 			},
 			expected: true,
@@ -858,4 +862,113 @@ func TestSubJobInfo_getTaskHighestPriority(t *testing.T) {
 		},
 	}
 	assert.Equal(t, int32(0), sji.getTaskHighestPriority(), "Expected -1 when taskPriorities has multiple negative elements")
+}
+
+// TestSubJobInfo_ReadyTaskNum verifies that SubJobInfo.ReadyTaskNum only counts
+// tasks with live scheduler allocations and excludes Succeeded tasks, which hold
+// no resources and must not ghost-satisfy the sub-job gang commit gate.
+func TestSubJobInfo_ReadyTaskNum(t *testing.T) {
+	tests := []struct {
+		name     string
+		sji      *SubJobInfo
+		expected int32
+	}{
+		{
+			name: "only Succeeded tasks do not count",
+			sji: &SubJobInfo{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Succeeded: {
+						"task1": &TaskInfo{},
+						"task2": &TaskInfo{},
+					},
+				},
+			},
+			expected: 0,
+		},
+		{
+			name: "Succeeded mixed with active tasks - only active counted",
+			sji: &SubJobInfo{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Succeeded: {"task1": &TaskInfo{}},
+					Running:   {"task2": &TaskInfo{}},
+					Allocated: {"task3": &TaskInfo{}},
+				},
+			},
+			expected: 2,
+		},
+		{
+			name: "all active statuses counted",
+			sji: &SubJobInfo{
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Bound:     {"task1": &TaskInfo{}},
+					Binding:   {"task2": &TaskInfo{}},
+					Running:   {"task3": &TaskInfo{}},
+					Allocated: {"task4": &TaskInfo{}},
+				},
+			},
+			expected: 4,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.sji.ReadyTaskNum())
+		})
+	}
+}
+
+// TestSubJobInfo_IsReady_SucceededDoesNotSatisfyGangGate is a regression test:
+// Succeeded pods in a SubJob must not ghost-satisfy its IsReady() gang gate.
+// Before the fix, a Succeeded pod counted as an active slot, letting a single
+// newly-Allocated pod satisfy MinAvailable=2 and trigger a premature commit.
+func TestSubJobInfo_IsReady_SucceededDoesNotSatisfyGangGate(t *testing.T) {
+	tests := []struct {
+		name     string
+		sji      *SubJobInfo
+		expected bool
+	}{
+		{
+			// Regression: old code returned true here.
+			name: "Succeeded + Allocated does not reach MinAvailable",
+			sji: &SubJobInfo{
+				MinAvailable: 2,
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Succeeded: {"task1": &TaskInfo{}},
+					Allocated: {"task2": &TaskInfo{}},
+				},
+			},
+			expected: false,
+		},
+		{
+			// Sanity: two live pods satisfy MinAvailable=2.
+			name: "Running + Allocated satisfies MinAvailable",
+			sji: &SubJobInfo{
+				MinAvailable: 2,
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Running:   {"task1": &TaskInfo{}},
+					Allocated: {"task2": &TaskInfo{}},
+				},
+			},
+			expected: true,
+		},
+		{
+			// N Succeeded tasks alone can never satisfy the gate.
+			name: "all Succeeded tasks cannot satisfy MinAvailable",
+			sji: &SubJobInfo{
+				MinAvailable: 3,
+				TaskStatusIndex: map[TaskStatus]TasksMap{
+					Succeeded: {
+						"task1": &TaskInfo{},
+						"task2": &TaskInfo{},
+						"task3": &TaskInfo{},
+					},
+				},
+			},
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.sji.IsReady())
+		})
+	}
 }
