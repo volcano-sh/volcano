@@ -27,18 +27,31 @@ import (
 )
 
 type PodSpec struct {
-	Name        string
-	Node        string
-	Req         v1.ResourceList
-	Tolerations []v1.Toleration
+	Name            string
+	Node            string
+	Req             v1.ResourceList
+	Tolerations     []v1.Toleration
+	Annotations     map[string]string
+	Labels          map[string]string
+	SchedulerName   string
+	RestartPolicy   v1.RestartPolicy
+	NodeSelector    map[string]string
+	SchedulingGates []v1.PodSchedulingGate
 }
 
 func CreatePod(ctx *TestContext, spec PodSpec) *v1.Pod {
+	meta := metav1.ObjectMeta{Name: spec.Name, Namespace: ctx.Namespace}
+
+	if len(spec.Annotations) > 0 {
+		meta.Annotations = spec.Annotations
+	}
+
+	if len(spec.Labels) > 0 {
+		meta.Labels = spec.Labels
+	}
+
 	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      spec.Name,
-			Namespace: ctx.Namespace,
-		},
+		ObjectMeta: meta,
 		Spec: v1.PodSpec{
 			NodeName: spec.Node,
 			Containers: []v1.Container{
@@ -53,6 +66,21 @@ func CreatePod(ctx *TestContext, spec PodSpec) *v1.Pod {
 			},
 			Tolerations: spec.Tolerations,
 		},
+	}
+
+	if spec.SchedulerName != "" {
+		pod.Spec.SchedulerName = spec.SchedulerName
+	}
+	if spec.RestartPolicy != "" {
+		pod.Spec.RestartPolicy = spec.RestartPolicy
+	}
+
+	if len(spec.NodeSelector) > 0 {
+		pod.Spec.NodeSelector = spec.NodeSelector
+	}
+
+	if len(spec.SchedulingGates) > 0 {
+		pod.Spec.SchedulingGates = spec.SchedulingGates
 	}
 
 	pod, err := ctx.Kubeclient.CoreV1().Pods(ctx.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
@@ -74,4 +102,21 @@ func WaitPodReady(ctx *TestContext, pod *v1.Pod) error {
 func DeletePod(ctx *TestContext, pod *v1.Pod) {
 	err := ctx.Kubeclient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 	Expect(err).NotTo(HaveOccurred(), "failed to delete pod %s", pod.Name)
+}
+
+// PodHasSchedulingGates returns true if the pod's scheduling gates exactly match the given list of gate names (order-independent).
+func PodHasSchedulingGates(pod *v1.Pod, gateNames ...string) bool {
+	if len(pod.Spec.SchedulingGates) != len(gateNames) {
+		return false
+	}
+	nameSet := make(map[string]bool)
+	for _, n := range gateNames {
+		nameSet[n] = true
+	}
+	for _, g := range pod.Spec.SchedulingGates {
+		if !nameSet[g.Name] {
+			return false
+		}
+	}
+	return true
 }

@@ -364,6 +364,11 @@ type VictimTasksFn func([]*TaskInfo) []*TaskInfo
 // AllocatableFn is the func declaration used to check whether the task can be allocated
 type AllocatableFn func(*QueueInfo, *TaskInfo) bool
 
+// CleanupReservationsFn is the func declaration used to clean up reservations
+// before committing a statement. Plugins can use this to remove reserved resources for
+// successfully allocated tasks.
+type CleanupReservationsFn func(interface{})
+
 // SimulateRemoveTaskFn is the func declaration used to simulate the result of removing a task from a node.
 type SimulateRemoveTaskFn func(ctx context.Context, state fwk.CycleState, taskToSchedule *TaskInfo, taskInfoToRemove *TaskInfo, nodeInfo *NodeInfo) error
 

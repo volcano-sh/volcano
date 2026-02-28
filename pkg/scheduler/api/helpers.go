@@ -25,6 +25,8 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	clientcache "k8s.io/client-go/tools/cache"
+
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 )
 
 // PodKey returns the string key of a pod.
@@ -135,4 +137,16 @@ func MergeErrors(errs ...error) error {
 // JobTerminated checks whether job was terminated.
 func JobTerminated(job *JobInfo) bool {
 	return job.PodGroup == nil && len(job.Tasks) == 0
+}
+
+// HasOnlyVolcanoSchedulingGate checks if a Pod has only the Volcano queue allocation gate
+func HasOnlyVolcanoSchedulingGate(pod *v1.Pod) bool {
+	return len(pod.Spec.SchedulingGates) == 1 &&
+		pod.Spec.SchedulingGates[0].Name == schedulingv1beta1.QueueAllocationGateKey
+}
+
+// HasQueueAllocationGateAnnotation checks if a Pod has the queue allocation gate annotation
+func HasQueueAllocationGateAnnotation(pod *v1.Pod) bool {
+	return pod.Annotations != nil &&
+		pod.Annotations[schedulingv1beta1.QueueAllocationGateKey] == "true"
 }

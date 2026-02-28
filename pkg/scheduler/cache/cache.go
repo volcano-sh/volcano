@@ -218,6 +218,31 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	errMsg := make(map[schedulingapi.TaskID]string)
 	for _, task := range tasks {
 		p := task.Pod
+
+		// Ensure Volcano QueueAllocationGate is removed before bind, otherwise the bind will fail.
+		// This is a safety guarantee as the async worker may have already removed it.
+		if schedulingapi.HasQueueAllocationGateAnnotation(p) && schedulingapi.HasOnlyVolcanoSchedulingGate(p) {
+			klog.V(3).Infof("Ensuring gate is removed for pod %s/%s before bind", p.Namespace, p.Name)
+			err := RemoveVolcanoSchGate(kubeClient, p)
+
+			// On conflict, verify gates are gone (e.g. another writer removed them)
+			if apierrors.IsConflict(err) {
+				freshPod, getErr := kubeClient.CoreV1().Pods(p.Namespace).Get(context.TODO(), p.Name, metav1.GetOptions{})
+				if getErr != nil {
+					klog.V(4).Infof("Failed to get pod %s/%s after conflict: %v", p.Namespace, p.Name, getErr)
+				} else if freshPod != nil && len(freshPod.Spec.SchedulingGates) == 0 {
+					err = nil
+				}
+			}
+
+			if err != nil {
+				klog.Errorf("Failed to remove gate for <%v/%v>: %v", p.Namespace, p.Name, err)
+				errMsg[task.UID] = fmt.Sprintf("gate removal failed: %v", err)
+				continue
+			}
+		}
+
+		// Standard bind
 		if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
 			&v1.Binding{
 				ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: p.Annotations},
@@ -1615,6 +1640,8 @@ func (sc *SchedulerCache) RecordJobStatusEvent(job *schedulingapi.JobInfo, updat
 
 			// The pod of a scheduling gated task is given
 			// the ScheduleGated condition by the api-server. Do not change it.
+			// SchGated reflects the desired state (gate should block scheduling)
+			// so we skip if SchGated=true, regardless of actual gate presence
 			if taskInfo.SchGated {
 				return
 			}

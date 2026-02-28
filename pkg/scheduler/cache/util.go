@@ -17,6 +17,8 @@ limitations under the License.
 package cache
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"slices"
@@ -24,6 +26,9 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"stathat.com/c/consistent"
 
@@ -131,4 +136,35 @@ func getHyperNodeEventSource(source string) []string {
 		return nil
 	}
 	return parts
+}
+
+// Returns nil if gate is successfully removed or already removed (idempotent).
+func RemoveVolcanoSchGate(kubeClient kubernetes.Interface, pod *v1.Pod) error {
+	// We only need to specify the gate we want to remove.
+	// The "$patch": "delete" directive tells the Strategic Merge Patcher
+	// to find the gate with this name and remove it.
+	patch := map[string]interface{}{
+		"spec": map[string]interface{}{
+			"schedulingGates": []map[string]interface{}{
+				{
+					"name":   scheduling.QueueAllocationGateKey,
+					"$patch": "delete",
+				},
+			},
+		},
+	}
+
+	patchBytes, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
+
+	_, err = kubeClient.CoreV1().Pods(pod.Namespace).Patch(
+		context.Background(),
+		pod.Name,
+		types.StrategicMergePatchType,
+		patchBytes,
+		metav1.PatchOptions{})
+
+	return err
 }
