@@ -110,13 +110,23 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 
 	preemptableFn := func(preemptor *api.TaskInfo, preemptees []*api.TaskInfo) ([]*api.TaskInfo, int) {
 		preemptorJob := ssn.Jobs[preemptor.Job]
+		if preemptorJob == nil {
+			klog.Warningf("[priority] Skip preemption: preemptor job <%s> not found in session (orphaned task from deleted PodGroup)",
+				preemptor.Job)
+			return nil, util.Permit
+		}
 
 		var victims []*api.TaskInfo
 		for _, preemptee := range preemptees {
 			preempteeJob := ssn.Jobs[preemptee.Job]
+			if preempteeJob == nil {
+				klog.Warningf("[priority] Skip preemptee <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+					preemptee.Namespace, preemptee.Name, preemptee.Job)
+				continue
+			}
 			if preempteeJob.UID != preemptorJob.UID {
 				if preempteeJob.Priority >= preemptorJob.Priority { // Preemption between Jobs within Queue
-					klog.V(4).Infof("Can not preempt task <%v/%v>"+
+					klog.V(4).Infof("[priority] Can not preempt task <%v/%v> "+
 						"because preemptee job has greater or equal job priority (%d) than preemptor (%d)",
 						preemptee.Namespace, preemptee.Name, preempteeJob.Priority, preemptorJob.Priority)
 				} else {
@@ -124,7 +134,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 				}
 			} else { // same job's different tasks should compare task's priority
 				if preemptee.Priority >= preemptor.Priority {
-					klog.V(4).Infof("Can not preempt task <%v/%v>"+
+					klog.V(4).Infof("[priority] Can not preempt task <%v/%v> "+
 						"because preemptee task has greater or equal task priority (%d) than preemptor (%d)",
 						preemptee.Namespace, preemptee.Name, preemptee.Priority, preemptor.Priority)
 				} else {
@@ -133,7 +143,7 @@ func (pp *priorityPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 		}
 
-		klog.V(4).Infof("Victims from Priority plugins are %+v", victims)
+		klog.V(4).Infof("[priority] Victims from Priority plugin are %+v", victims)
 		return victims, util.Permit
 	}
 	ssn.AddPreemptableFn(pp.Name(), preemptableFn)

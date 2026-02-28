@@ -281,7 +281,18 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 
 		for _, reclaimee := range reclaimees {
 			job := ssn.Jobs[reclaimee.Job]
+			if job == nil {
+				klog.Warningf("[proportion] Skip reclaimee <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+					reclaimee.Namespace, reclaimee.Name, reclaimee.Job)
+				continue
+			}
+
 			attr := pp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[proportion] Skip reclaimee <%s/%s>: queue <%s> not found in queueOpts",
+					reclaimee.Namespace, reclaimee.Name, job.Queue)
+				continue
+			}
 
 			if _, found := allocations[job.Queue]; !found {
 				allocations[job.Queue] = attr.allocated.Clone()
@@ -421,9 +432,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		job := ssn.Jobs[taskToAdd.Job]
+		if job == nil {
+			return fmt.Errorf("[proportion] job %s not found in session (orphaned task from deleted PodGroup)", taskToAdd.Job)
+		}
 		attr := state.queueAttrs[job.Queue]
 		if attr == nil {
-			return fmt.Errorf("queue %s not found", job.Queue)
+			return fmt.Errorf("[proportion] queue %s not found", job.Queue)
 		}
 		attr.allocated.Add(taskToAdd.Resreq)
 		updateQueueAttrShare(attr)
@@ -437,9 +451,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		}
 
 		job := ssn.Jobs[taskToRemove.Job]
+		if job == nil {
+			return fmt.Errorf("[proportion] job %s not found in session (orphaned task from deleted PodGroup)", taskToRemove.Job)
+		}
 		attr := state.queueAttrs[job.Queue]
 		if attr == nil {
-			return fmt.Errorf("queue %s not found", job.Queue)
+			return fmt.Errorf("[proportion] queue %s not found", job.Queue)
 		}
 		attr.allocated.Sub(taskToRemove.Resreq)
 		updateQueueAttrShare(attr)
@@ -450,24 +467,44 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	ssn.AddEventHandler(&framework.EventHandler{
 		AllocateFunc: func(event *framework.Event) {
 			job := ssn.Jobs[event.Task.Job]
+			if job == nil {
+				klog.Warningf("[proportion] Skip allocate event for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+					event.Task.Namespace, event.Task.Name, event.Task.Job)
+				return
+			}
 			attr := pp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[proportion] Skip allocate event for task <%s/%s>: queue <%s> not found in queueOpts",
+					event.Task.Namespace, event.Task.Name, job.Queue)
+				return
+			}
 			attr.allocated.Add(event.Task.Resreq)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			pp.updateShare(attr)
 
-			klog.V(4).Infof("Proportion AllocateFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			klog.V(4).Infof("[proportion] AllocateFunc: task <%v/%v>, resreq <%v>, share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 		DeallocateFunc: func(event *framework.Event) {
 			job := ssn.Jobs[event.Task.Job]
+			if job == nil {
+				klog.Warningf("[proportion] Skip deallocate event for task <%s/%s>: job <%s> not found in session (orphaned task from deleted PodGroup)",
+					event.Task.Namespace, event.Task.Name, event.Task.Job)
+				return
+			}
 			attr := pp.queueOpts[job.Queue]
+			if attr == nil {
+				klog.Warningf("[proportion] Skip deallocate event for task <%s/%s>: queue <%s> not found in queueOpts",
+					event.Task.Namespace, event.Task.Name, job.Queue)
+				return
+			}
 			attr.allocated.Sub(event.Task.Resreq)
 			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 
 			pp.updateShare(attr)
 
-			klog.V(4).Infof("Proportion EvictFunc: task <%v/%v>, resreq <%v>,  share <%v>",
+			klog.V(4).Infof("[proportion] DeallocateFunc: task <%v/%v>, resreq <%v>, share <%v>",
 				event.Task.Namespace, event.Task.Name, event.Task.Resreq, attr.share)
 		},
 	})
