@@ -143,6 +143,8 @@ func (m *ConfigManager) updateConfigMap(cm *corev1.ConfigMap) error {
 			EvictingMemoryHighWatermark: utilpointer.Int(utils.DefaultEvictingMemoryHighWatermark),
 			EvictingCPULowWatermark:     utilpointer.Int(utils.DefaultEvictingCPULowWatermark),
 			EvictingMemoryLowWatermark:  utilpointer.Int(utils.DefaultEvictingMemoryLowWatermark),
+			MonitorInterval:             utilpointer.Int(utils.DefaultMonitorInterval),
+			HighUsageCountLimit:         utilpointer.Int(utils.DefaultHighUsageCountLimit),
 		}
 	}
 	if !changed {
