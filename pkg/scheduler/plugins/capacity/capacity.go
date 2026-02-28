@@ -47,7 +47,6 @@ type capacityPlugin struct {
 	rootQueue      string
 	totalResource  *api.Resource
 	totalGuarantee *api.Resource
-	totalDeserved  *api.Resource
 
 	queueOpts map[api.QueueID]*queueAttr
 	// Arguments given for the plugin
@@ -629,22 +628,23 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 			attr.name, attr.allocated.String(), attr.request.String(), attr.inqueue.String(), attr.elastic.String())
 	}
 
-	// init root queue: realCapability is set to total resource, and capability/deserved are also set if empty.
+	// init root queue: realCapability is and capability is set to ininity if capability is not set.  deserved are also set if empty.
+	// root queue is default queue and users are not aware of it. User is allowed to sumbit jobs which exceed current cluster total resources,
+	// so root queue should not restrict by current total resources. User need to restrict resource through creating queue manually
 	rootQueueAttr := cp.queueOpts[api.QueueID(cp.rootQueue)]
+	infinityResource := api.InfiniteResource()
+	if cp.totalResource.ScalarResources != nil {
+		for k := range cp.totalResource.ScalarResources {
+			infinityResource.SetScalar(k, math.MaxInt64)
+		}
+	}
 	if rootQueueAttr.capability.IsEmpty() {
-		rootQueueAttr.capability = cp.totalResource
+		rootQueueAttr.capability = infinityResource
 	}
-	if rootQueueAttr.deserved.IsEmpty() {
-		rootQueueAttr.deserved = cp.totalResource
-	}
-	rootQueueAttr.realCapability = cp.totalResource
+	rootQueueAttr.realCapability = rootQueueAttr.capability
 	// checkHierarchicalQueue only logs warnings and never returns errors
 	// to avoid aborting the entire scheduling cycle due to configuration issues
 	cp.checkHierarchicalQueue(rootQueueAttr)
-
-	// update session attributes
-	ssn.TotalGuarantee = cp.totalGuarantee
-	ssn.TotalDeserved = cp.totalDeserved
 
 	// Update share
 	for _, attr := range cp.queueOpts {
@@ -786,6 +786,7 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 	totalGuarantee := api.EmptyResource()
 	totalDeserved := api.EmptyResource()
 	for _, childAttr := range attr.children {
+		childAttr.deserved = helpers.Max(childAttr.deserved, childAttr.guarantee)
 		totalDeserved.Add(childAttr.deserved)
 		totalGuarantee.Add(childAttr.guarantee)
 		// if the user does not set CPU or memory in capability, we set the value to be the same as parent(we do not consider the situation where the user sets CPU or memory<=0)
@@ -810,21 +811,15 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 
 		// Check if the parent queue's capability is less than the child queue's capability
 		if attr.capability.LessPartly(childAttr.capability, api.Zero) {
-			klog.V(3).Infof("Child queue %s capability (%s) exceeds parent queue %s capability (%s). "+
+			klog.Errorf("Child queue %s capability (%s) exceeds parent queue %s capability (%s). "+
 				"Child's effective capability will be limited by parent.",
 				childAttr.name, childAttr.capability, attr.name, attr.capability)
 		}
 	}
 
 	if attr.name == cp.rootQueue {
-		if attr.guarantee.IsEmpty() {
-			attr.guarantee = totalGuarantee
-		}
-		if attr.deserved.IsEmpty() {
-			attr.deserved = totalDeserved
-		}
-		cp.totalGuarantee = attr.guarantee
-		cp.totalDeserved = attr.deserved
+		attr.guarantee = totalGuarantee
+		attr.deserved = totalDeserved
 	}
 
 	for _, childAttr := range attr.children {
@@ -840,14 +835,14 @@ func (cp *capacityPlugin) checkHierarchicalQueue(attr *queueAttr) {
 
 	// Check if the parent queue's deserved resources are less than the total deserved resources of child queues
 	if attr.deserved.LessPartly(totalDeserved, api.Zero) {
-		klog.V(3).Infof("Sum of child queue deserved (%s) exceeds parent queue %s deserved (%s). "+
+		klog.Errorf("Sum of child queue deserved (%s) exceeds parent queue %s deserved (%s). "+
 			"This may affect resource distribution during scheduling.",
 			totalDeserved, attr.name, attr.deserved)
 	}
 
 	// Check if the parent queue's guarantee resources are less than the total guarantee resources of child queues
 	if attr.guarantee.LessPartly(totalGuarantee, api.Zero) {
-		klog.V(3).Infof("Sum of child queue guarantees (%s) exceeds parent queue %s guarantee (%s). "+
+		klog.Errorf("Sum of child queue guarantees (%s) exceeds parent queue %s guarantee (%s). "+
 			"Not all child guarantees can be satisfied simultaneously.",
 			totalGuarantee, attr.name, attr.guarantee)
 	}

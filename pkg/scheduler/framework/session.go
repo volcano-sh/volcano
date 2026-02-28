@@ -23,7 +23,6 @@ limitations under the License.
 package framework
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"sort"
@@ -31,7 +30,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -74,9 +72,7 @@ type Session struct {
 	restConfig      *rest.Config
 	informerFactory informers.SharedInformerFactory
 
-	TotalResource  *api.Resource
-	TotalGuarantee *api.Resource
-	TotalDeserved  *api.Resource
+	TotalResource *api.Resource
 	// PodGroupOldState contains podgroup status and annotations during schedule
 	// This should not be mutated after initiated
 	PodGroupOldState *api.PodGroupOldState
@@ -173,9 +169,7 @@ func openSession(cache cache.Cache) *Session {
 		cache:           cache,
 		informerFactory: cache.SharedInformerFactory(),
 
-		TotalResource:  api.EmptyResource(),
-		TotalGuarantee: api.EmptyResource(),
-		TotalDeserved:  api.EmptyResource(),
+		TotalResource: api.EmptyResource(),
 		PodGroupOldState: &api.PodGroupOldState{
 			Status:      map[api.JobID]scheduling.PodGroupStatus{},
 			Annotations: map[api.JobID]map[string]string{},
@@ -534,10 +528,6 @@ func updateQueueStatus(ssn *Session) {
 	for queueID := range ssn.Queues {
 		// convert api.Resource to v1.ResourceList
 		var queueStatus = util.ConvertRes2ResList(allocatedResources[queueID]).DeepCopy()
-		if queueID == rootQueue {
-			updateRootQueueResources(ssn, queueStatus)
-			continue
-		}
 
 		if equality.Semantic.DeepEqual(ssn.Queues[queueID].Queue.Status.Allocated, queueStatus) {
 			klog.V(5).Infof("Queue <%s> allocated resource keeps equal, no need to update queue status <%v>.",
@@ -549,47 +539,6 @@ func updateQueueStatus(ssn *Session) {
 
 		if err := ssn.cache.UpdateQueueStatus(ssn.Queues[queueID]); err != nil {
 			klog.Errorf("failed to update queue <%s> status: %s", ssn.Queues[queueID].Name, err.Error())
-		}
-	}
-}
-
-// updateRootQueueResources updates the deserved/guaranteed resource and allocated resource of the root queue
-func updateRootQueueResources(ssn *Session, allocated v1.ResourceList) {
-	rootQueue := api.QueueID("root")
-	totalDeserved := util.ConvertRes2ResList(ssn.TotalDeserved).DeepCopy()
-	totalGuarantee := util.ConvertRes2ResList(ssn.TotalGuarantee).DeepCopy()
-
-	if equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Spec.Deserved, totalDeserved) &&
-		equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Spec.Guarantee.Resource, totalGuarantee) &&
-		equality.Semantic.DeepEqual(ssn.Queues[rootQueue].Queue.Status.Allocated, allocated) {
-		klog.V(5).Infof("Root queue deserved/guaranteed resource and allocated resource remains the same, no need to update the queue.")
-		return
-	}
-
-	queue := &vcv1beta1.Queue{}
-	err := schedulingscheme.Scheme.Convert(ssn.Queues[rootQueue].Queue, queue, nil)
-	if err != nil {
-		klog.Errorf("failed to convert scheduling.Queue to v1beta1.Queue: %s", err.Error())
-		return
-	}
-
-	if !equality.Semantic.DeepEqual(queue.Spec.Deserved, totalDeserved) ||
-		!equality.Semantic.DeepEqual(queue.Spec.Guarantee.Resource, totalGuarantee) {
-		queue.Spec.Deserved = totalDeserved
-		queue.Spec.Guarantee.Resource = totalGuarantee
-		queue, err = ssn.VCClient().SchedulingV1beta1().Queues().Update(context.TODO(), queue, metav1.UpdateOptions{})
-		if err != nil {
-			klog.Errorf("failed to update root queue: %s", err.Error())
-			return
-		}
-	}
-
-	if !equality.Semantic.DeepEqual(queue.Status.Allocated, allocated) {
-		queue.Status.Allocated = allocated
-		_, err = ssn.VCClient().SchedulingV1beta1().Queues().UpdateStatus(context.TODO(), queue, metav1.UpdateOptions{})
-		if err != nil {
-			klog.Errorf("failed to update root queue status: %s", err.Error())
-			return
 		}
 	}
 }
