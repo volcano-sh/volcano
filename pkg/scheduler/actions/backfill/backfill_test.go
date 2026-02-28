@@ -25,20 +25,24 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
-	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	"k8s.io/klog/v2"
 
+	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/cache"
 	"volcano.sh/volcano/pkg/scheduler/conf"
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/drf"
+	"volcano.sh/volcano/pkg/scheduler/plugins/gang"
 	"volcano.sh/volcano/pkg/scheduler/plugins/priority"
+	"volcano.sh/volcano/pkg/scheduler/uthelper"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
-func TestPickUpPendingTasks(t *testing.T) {
+func TestBuildBackfillContext(t *testing.T) {
 	framework.RegisterPluginBuilder("priority", priority.New)
 	framework.RegisterPluginBuilder("drf", drf.New)
+	defer framework.CleanupPluginBuilders()
 	trueValue := true
 	tilers := []conf.Tier{
 		{
@@ -155,24 +159,183 @@ func TestPickUpPendingTasks(t *testing.T) {
 			schedulerCache.AddPod(pod)
 		}
 
+		schedulerCache.AddOrUpdateNode(
+			util.BuildNode("node1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+		)
+
 		ssn := framework.OpenSession(schedulerCache, tilers, []conf.Configuration{})
 		for _, pod := range tc.pipelinedPods {
 			jobID := api.NewTaskInfo(pod).Job
 			stmt := framework.NewStatement(ssn)
-			task, found := ssn.Jobs[jobID].Tasks[api.PodKey(pod)]
+			taskUID := api.TaskID(pod.UID)
+			task, found := ssn.Jobs[jobID].Tasks[taskUID]
 			if found {
-				stmt.Pipeline(task, "node1", false)
+				err := stmt.Pipeline(task, "node1", false)
+				if err != nil {
+					klog.Errorf("Failed to pipeline task: %s", err.Error())
+					stmt.Discard()
+				} else {
+					stmt.Commit()
+				}
 			}
 		}
 
-		tasks := New().pickUpPendingTasks(ssn)
+		action := New()
+		action.session = ssn
+
+		actx := action.buildBackfillContext()
+		assert.NotNil(t, actx)
+
 		var actualResult []string
-		for _, task := range tasks {
-			actualResult = append(actualResult, task.Name)
+		for !actx.queues.Empty() {
+			queue := actx.queues.Pop().(*api.QueueInfo)
+
+			jobs, found := actx.jobsByQueue[queue.UID]
+			if !found || jobs.Empty() {
+				continue
+			}
+			job := jobs.Pop().(*api.JobInfo)
+
+			tasks, found := actx.tasksByJob[job.UID]
+			if !found || tasks.Empty() {
+				actx.queues.Push(queue)
+				continue
+			}
+			for !tasks.Empty() {
+				task := tasks.Pop().(*api.TaskInfo)
+				actualResult = append(actualResult, task.Name)
+			}
+			actx.queues.Push(queue)
 		}
+		framework.CloseSession(ssn)
 
 		if !assert.Equal(t, tc.expectedResult, actualResult) {
 			t.Errorf("unexpected test; name: %s, expected result: %v, actual result: %v", tc.name, tc.expectedResult, actualResult)
 		}
+	}
+}
+
+func TestBackfillReallocateBestEffortTask(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{
+		gang.PluginName: gang.New,
+	}
+
+	trueValue := true
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:            gang.PluginName,
+					EnabledJobReady: &trueValue,
+				},
+			},
+		},
+	}
+
+	type testCase struct {
+		uthelper.TestCommonStruct
+		podsToPipeline []string
+	}
+
+	tests := []testCase{
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "backfill allocates pending best-effort tasks and skips non-best-effort tasks",
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroup("pg1", "default", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("default", "besteffort-task-1", "", v1.PodPending, api.BuildResourceList("0", "0"), "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("default", "normal-task-1", "", v1.PodPending, api.BuildResourceList("500m", "1Gi"), "pg1", make(map[string]string), make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("node1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				},
+				Queues: []*schedulingv1beta1.Queue{
+					util.BuildQueue("q1", 1, nil),
+				},
+				ExpectBindsNum: 1,
+				ExpectBindMap: map[string]string{
+					"default/besteffort-task-1": "node1",
+				},
+			},
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "backfill reallocates pipelined best-effort tasks",
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroup("pg1", "default", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("default", "besteffort-task-1", "", v1.PodPending, api.BuildResourceList("0", "0"), "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("default", "besteffort-task-2", "", v1.PodPending, api.BuildResourceList("0", "0"), "pg1", make(map[string]string), make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("node1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				},
+				Queues: []*schedulingv1beta1.Queue{
+					util.BuildQueue("q1", 1, nil),
+				},
+				ExpectBindsNum: 2,
+				ExpectBindMap: map[string]string{
+					"default/besteffort-task-1": "node1",
+					"default/besteffort-task-2": "node1",
+				},
+			},
+			podsToPipeline: []string{"besteffort-task-1"},
+		},
+		{
+			TestCommonStruct: uthelper.TestCommonStruct{
+				Name: "backfill handles multiple jobs across same queue",
+				PodGroups: []*schedulingv1beta1.PodGroup{
+					util.BuildPodGroup("pg1", "default", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue),
+					util.BuildPodGroup("pg2", "default", "q1", 0, nil, schedulingv1beta1.PodGroupInqueue),
+				},
+				Pods: []*v1.Pod{
+					util.BuildPod("default", "p1-besteffort", "", v1.PodPending, api.BuildResourceList("0", "0"), "pg1", make(map[string]string), make(map[string]string)),
+					util.BuildPod("default", "p2-besteffort", "", v1.PodPending, api.BuildResourceList("0", "0"), "pg2", make(map[string]string), make(map[string]string)),
+				},
+				Nodes: []*v1.Node{
+					util.BuildNode("node1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				},
+				Queues: []*schedulingv1beta1.Queue{
+					util.BuildQueue("q1", 1, nil),
+				},
+				ExpectBindsNum: 2,
+				ExpectBindMap: map[string]string{
+					"default/p1-besteffort": "node1",
+					"default/p2-besteffort": "node1",
+				},
+			},
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.Plugins = plugins
+			ssn := test.RegisterSession(tiers, nil)
+			defer test.Close()
+
+			for _, podName := range test.podsToPipeline {
+				for _, job := range ssn.Jobs {
+					for _, task := range job.Tasks {
+						if task.Name == podName {
+							stmt := framework.NewStatement(ssn)
+							if err := stmt.Pipeline(task, "node1", false); err != nil {
+								t.Fatalf("Failed to pipeline task %s: %v", podName, err)
+							}
+							stmt.Commit()
+						}
+					}
+				}
+			}
+
+			action := New()
+			test.Run([]framework.Action{action})
+
+			if err := test.CheckAll(i); err != nil {
+				t.Fatalf("Test %s failed: %v", test.Name, err)
+			}
+		})
 	}
 }

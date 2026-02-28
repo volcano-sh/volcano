@@ -225,27 +225,37 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 func (s *Statement) pipeline(task *api.TaskInfo) {
 }
 
+// UnPipeline the task from the node in the session, and update the task status to pending
 func (s *Statement) UnPipeline(task *api.TaskInfo) error {
+	// Only update status in session
+	errInfos := make([]error, 0)
+	nodeName := task.NodeName
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
 		if err := job.UpdateTaskStatus(task, api.Pending); err != nil {
 			klog.Errorf("Failed to update task <%v/%v> status to %v when unpipeline in Session <%v>: %v",
 				task.Namespace, task.Name, api.Pending, s.ssn.UID, err)
+			errInfos = append(errInfos, err)
 		}
 	} else {
-		klog.Errorf("Failed to find Job <%s> in Session <%s> index when unpipeline.", task.Job, s.ssn.UID)
+		err := fmt.Errorf("Failed to find Job <%s> in Session <%s> index when unpipeline.", task.Job, s.ssn.UID)
+		klog.Errorf("%v", err)
+		errInfos = append(errInfos, err)
 	}
 
-	if node, found := s.ssn.Nodes[task.NodeName]; found {
+	if node, found := s.ssn.Nodes[nodeName]; found {
 		if err := node.RemoveTask(task); err != nil {
 			klog.Errorf("Failed to remove task <%v/%v> to node <%v> when unpipeline in Session <%v>: %v",
-				task.Namespace, task.Name, task.NodeName, s.ssn.UID, err)
+				task.Namespace, task.Name, nodeName, s.ssn.UID, err)
+			errInfos = append(errInfos, err)
 		}
 		klog.V(3).Infof("After unpipelined Task <%v/%v> to Node <%v>: idle <%v>, used <%v>, releasing <%v>",
 			task.Namespace, task.Name, node.Name, node.Idle, node.Used, node.Releasing)
 	} else {
-		klog.Errorf("Failed to find Node <%s> in Session <%s> index when unpipeline.",
-			task.NodeName, s.ssn.UID)
+		err := fmt.Errorf("Failed to find Node <%s> in Session <%s> index when unpipeline.",
+			nodeName, s.ssn.UID)
+		klog.Errorf("%v", err)
+		errInfos = append(errInfos, err)
 	}
 
 	for _, eh := range s.ssn.eventHandlers {
@@ -255,13 +265,19 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 			}
 			eh.DeallocateFunc(eventInfo)
 			if eventInfo.Err != nil {
-				klog.Errorf("Failed to exec deallocate callback functions for task <%v/%v> to node <%v> when pipeline in Session <%v>: %v",
-					task.Namespace, task.Name, task.NodeName, s.ssn.UID, eventInfo.Err)
+				klog.Errorf("Failed to exec deallocate callback functions for task <%v/%v> to node <%v> when unpipeline in Session <%v>: %v",
+					task.Namespace, task.Name, nodeName, s.ssn.UID, eventInfo.Err)
+				errInfos = append(errInfos, eventInfo.Err)
 			}
 		}
 	}
 	task.NodeName = ""
 	task.JobAllocatedHyperNode = ""
+
+	if len(errInfos) != 0 {
+		return fmt.Errorf("Task(%s/%s) unpipeline from node(%s) failed with %d error(s)",
+			task.Namespace, task.Name, nodeName, len(errInfos))
+	}
 
 	return nil
 }
