@@ -224,7 +224,22 @@ action while still being prevented from allocation until the gate is removed.
 
 ##### Queue Allocation and Gate Removal
 
-Each time the `Allocate` action is executed,
+In the current Volcano implementation, tasks with external (non-Volcano) scheduling gates are skipped when building the job worksheet, so they never enter the allocation loop (please refer to [`organizeJobWorksheet()`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L255)). However, in this proposal, we must ensure that Pods with the new proposed Volcano scheduling gate are also included in the job worksheet, so they can be accounted for in the queue capacity check:
+
+```go
+// In organizeJobWorksheet(), when building the worksheet for each subJob:
+for _, task := range subJob.TaskStatusIndex[api.Pending] {
+    // Skip tasks with external (non-Volcano) scheduling gates
+    if task.SchGated && !api.HasOnlyVolcanoSchedulingGate(task.Pod) {
+        klog.V(4).Infof("Task <%v/%v> has external scheduling gate, skip it.",
+            task.Namespace, task.Name)
+        continue
+    }
+    // ... push task into worksheet ...
+}
+```
+
+Afterwards, each time the `Allocate` action is executed,
 [`allocateResourcesForTasks(...)`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L551)
 tries to allocate resources for each Task in a given Queue and
 [`ssn.Allocatable(queue, task)`](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/scheduler/actions/allocate/allocate.go#L569)
