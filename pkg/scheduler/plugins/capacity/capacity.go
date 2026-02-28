@@ -446,6 +446,42 @@ func (cp *capacityPlugin) OnSessionClose(ssn *framework.Session) {
 	cp.queueOpts = nil
 }
 
+// initQueueAttr initializes a queueAttr from queueInfo.
+// This helper method ensures consistent initialization for both queues with jobs and jobless queues.
+func (cp *capacityPlugin) initQueueAttr(queueInfo *api.QueueInfo) *queueAttr {
+	attr := &queueAttr{
+		queueID:   queueInfo.UID,
+		name:      queueInfo.Name,
+		deserved:  api.NewResource(queueInfo.Queue.Spec.Deserved),
+		allocated: api.EmptyResource(),
+		request:   api.EmptyResource(),
+		elastic:   api.EmptyResource(),
+		inqueue:   api.EmptyResource(),
+		guarantee: api.EmptyResource(),
+	}
+	if len(queueInfo.Queue.Spec.Capability) != 0 {
+		attr.capability = api.NewResource(queueInfo.Queue.Spec.Capability)
+		if attr.capability.MilliCPU <= 0 {
+			attr.capability.MilliCPU = math.MaxFloat64
+		}
+		if attr.capability.Memory <= 0 {
+			attr.capability.Memory = math.MaxFloat64
+		}
+	}
+	if len(queueInfo.Queue.Spec.Guarantee.Resource) != 0 {
+		attr.guarantee = api.NewResource(queueInfo.Queue.Spec.Guarantee.Resource)
+	}
+	realCapability := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(attr.guarantee)
+	if attr.capability == nil {
+		attr.capability = api.EmptyResource()
+		attr.realCapability = realCapability
+	} else {
+		realCapability.MinDimensionResource(attr.capability, api.Infinity)
+		attr.realCapability = realCapability
+	}
+	return attr
+}
+
 func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 	for _, queue := range ssn.Queues {
 		if len(queue.Queue.Spec.Guarantee.Resource) == 0 {
@@ -460,37 +496,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
 		if _, found := cp.queueOpts[job.Queue]; !found {
 			queue := ssn.Queues[job.Queue]
-			attr := &queueAttr{
-				queueID: queue.UID,
-				name:    queue.Name,
-
-				deserved:  api.NewResource(queue.Queue.Spec.Deserved),
-				allocated: api.EmptyResource(),
-				request:   api.EmptyResource(),
-				elastic:   api.EmptyResource(),
-				inqueue:   api.EmptyResource(),
-				guarantee: api.EmptyResource(),
-			}
-			if len(queue.Queue.Spec.Capability) != 0 {
-				attr.capability = api.NewResource(queue.Queue.Spec.Capability)
-				if attr.capability.MilliCPU <= 0 {
-					attr.capability.MilliCPU = math.MaxFloat64
-				}
-				if attr.capability.Memory <= 0 {
-					attr.capability.Memory = math.MaxFloat64
-				}
-			}
-			if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
-				attr.guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
-			}
-			realCapability := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(attr.guarantee)
-			if attr.capability == nil {
-				attr.capability = api.EmptyResource()
-				attr.realCapability = realCapability
-			} else {
-				realCapability.MinDimensionResource(attr.capability, api.Infinity)
-				attr.realCapability = realCapability
-			}
+			attr := cp.initQueueAttr(queue)
 			cp.queueOpts[job.Queue] = attr
 			klog.V(4).Infof("Added Queue <%s> attributes.", job.Queue)
 		}
@@ -529,6 +535,20 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			attr.name, attr.allocated.String(), attr.request.String(), attr.inqueue.String(), attr.elastic.String())
 	}
 
+	// Populate queueAttr for jobless queues using Queue.Status.Allocated
+	// This ensures metrics are consistent with Queue.Status.Allocated when hierarchy is disabled
+	for queueID, queueInfo := range ssn.Queues {
+		if _, exists := cp.queueOpts[queueID]; !exists {
+			attr := cp.initQueueAttr(queueInfo)
+			// Use Queue.Status.Allocated for jobless queues to ensure metric consistency
+			if queueInfo.Queue.Status.Allocated != nil {
+				attr.allocated = api.NewResource(queueInfo.Queue.Status.Allocated)
+			}
+			cp.queueOpts[queueID] = attr
+			klog.V(4).Infof("Added jobless Queue <%s> attributes with allocated from status: <%v>", queueInfo.Name, attr.allocated)
+		}
+	}
+
 	for _, attr := range cp.queueOpts {
 		if attr.realCapability != nil {
 			attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
@@ -540,40 +560,15 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 			attr.name, attr.deserved, attr.realCapability, attr.allocated, attr.request, attr.elastic, attr.share)
 	}
 
-	// Record metrics
-	for queueID, queueInfo := range ssn.Queues {
-		queue := ssn.Queues[queueID]
-		if attr, ok := cp.queueOpts[queueID]; ok {
-			metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
-			metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
-			metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
-			if attr.capability != nil {
-				metrics.UpdateQueueCapacity(attr.name, attr.capability.MilliCPU, attr.capability.Memory, attr.capability.ScalarResources)
-			}
-			metrics.UpdateQueueRealCapacity(attr.name, attr.realCapability.MilliCPU, attr.realCapability.Memory, attr.realCapability.ScalarResources)
-			continue
+	// Record metrics - all queues are now guaranteed to be in queueOpts
+	for _, attr := range cp.queueOpts {
+		metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
+		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
+		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
+		if attr.capability != nil {
+			metrics.UpdateQueueCapacity(attr.name, attr.capability.MilliCPU, attr.capability.Memory, attr.capability.ScalarResources)
 		}
-		deservedCPU, deservedMem, scalarResources := 0.0, 0.0, map[v1.ResourceName]float64{}
-		if queue.Queue.Spec.Deserved != nil {
-			attr := api.NewResource(queue.Queue.Spec.Deserved)
-			deservedCPU = attr.MilliCPU
-			deservedMem = attr.Memory
-			scalarResources = attr.ScalarResources
-		}
-		metrics.UpdateQueueDeserved(queueInfo.Name, deservedCPU, deservedMem, scalarResources)
-		metrics.UpdateQueueAllocated(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
-		metrics.UpdateQueueRequest(queueInfo.Name, 0, 0, map[v1.ResourceName]float64{})
-		guarantee := api.EmptyResource()
-		if len(queue.Queue.Spec.Guarantee.Resource) != 0 {
-			guarantee = api.NewResource(queue.Queue.Spec.Guarantee.Resource)
-		}
-		realCapacity := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(guarantee)
-		if len(queue.Queue.Spec.Capability) > 0 {
-			capacity := api.NewResource(queue.Queue.Spec.Capability)
-			realCapacity.MinDimensionResource(capacity, api.Infinity)
-			metrics.UpdateQueueCapacity(queueInfo.Name, capacity.MilliCPU, capacity.Memory, capacity.ScalarResources)
-		}
-		metrics.UpdateQueueRealCapacity(queueInfo.Name, realCapacity.MilliCPU, realCapacity.Memory, realCapacity.ScalarResources)
+		metrics.UpdateQueueRealCapacity(attr.name, attr.realCapability.MilliCPU, attr.realCapability.Memory, attr.realCapability.ScalarResources)
 	}
 
 	ssn.AddQueueOrderFn(cp.Name(), func(l, r interface{}) int {
