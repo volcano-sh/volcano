@@ -843,14 +843,16 @@ func (ji *JobInfo) TaskSchedulingReason(tid TaskID) (reason, msg, nominatedNodeN
 	}
 }
 
-// ReadyTaskNum returns the number of tasks that are ready or that is best-effort.
+// ReadyTaskNum returns the number of tasks that are actively occupying scheduler
+// resources (Bound, Binding, Running, or Allocated). Succeeded tasks are excluded
+// because they hold no live resources and must not ghost-satisfy the gang commit
+// gate — preventing a commit with fewer than MinAvailable simultaneously-active pods.
 func (ji *JobInfo) ReadyTaskNum() int32 {
 	occupied := 0
 	occupied += len(ji.TaskStatusIndex[Bound])
 	occupied += len(ji.TaskStatusIndex[Binding])
 	occupied += len(ji.TaskStatusIndex[Running])
 	occupied += len(ji.TaskStatusIndex[Allocated])
-	occupied += len(ji.TaskStatusIndex[Succeeded])
 
 	return int32(occupied)
 }
@@ -972,8 +974,7 @@ func (ji *JobInfo) NeedContinueAllocating(subJobID SubJobID) bool {
 func (ji *JobInfo) getJobAllocatedRoles() map[string]int32 {
 	occupiedMap := map[string]int32{}
 	for status, tasks := range ji.TaskStatusIndex {
-		if AllocatedStatus(status) ||
-			status == Succeeded {
+		if AllocatedStatus(status) {
 			for _, task := range tasks {
 				occupiedMap[task.TaskRole]++
 			}

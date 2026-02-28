@@ -221,14 +221,16 @@ func (sji *SubJobInfo) IsPipelined() bool {
 	return sji.WaitingTaskNum()+sji.ReadyTaskNum()+sji.PendingBestEffortTaskNum() >= sji.MinAvailable
 }
 
-// ReadyTaskNum returns the number of tasks that are ready or that is best-effort.
+// ReadyTaskNum returns the number of tasks that are actively occupying scheduler
+// resources (Bound, Binding, Running, or Allocated). Succeeded tasks are excluded
+// because they hold no live resources and must not ghost-satisfy the gang commit
+// gate, thereby preventing a commit with fewer than MinAvailable simultaneously-active pods.
 func (sji *SubJobInfo) ReadyTaskNum() int32 {
 	occupied := 0
 	occupied += len(sji.TaskStatusIndex[Bound])
 	occupied += len(sji.TaskStatusIndex[Binding])
 	occupied += len(sji.TaskStatusIndex[Running])
 	occupied += len(sji.TaskStatusIndex[Allocated])
-	occupied += len(sji.TaskStatusIndex[Succeeded])
 
 	return int32(occupied)
 }
