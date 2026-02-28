@@ -15,11 +15,26 @@
 # limitations under the License.
 
 # spin up cluster with kind command
-function kind-up-cluster {
+function kind-create-cluster {
+  local kind_cmd=${KIND_BIN:-kind}
+
   check-kind
 
-  echo "Running kind: [kind create cluster ${CLUSTER_CONTEXT[*]} ${KIND_OPT}]"
-  kind create cluster "${CLUSTER_CONTEXT[@]}" ${KIND_OPT}
+  local cluster_name=${CLUSTER_CONTEXT[1]}
+
+  if ${kind_cmd} get clusters 2>/dev/null | grep -qw "${cluster_name}"; then
+    echo "Kind cluster ${cluster_name} already exists"
+  else
+    echo "Running kind: [${kind_cmd} create cluster ${CLUSTER_CONTEXT[*]} ${KIND_OPT}]"
+    ${kind_cmd} create cluster "${CLUSTER_CONTEXT[@]}" ${KIND_OPT}
+  fi
+
+  echo "Exporting kubeconfig for kind cluster ${cluster_name}"
+  ${kind_cmd} export kubeconfig --name "${cluster_name}" >/dev/null
+}
+
+function kind-up-cluster {
+  kind-create-cluster
 
   echo
   check-images
@@ -27,9 +42,9 @@ function kind-up-cluster {
   echo
   echo "Loading docker images into kind cluster"
   # only need to load images into control-plane node because volcano components are deployed on control-plane node.
-  kind load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
-  kind load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG}          "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
-  kind load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG}    "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
+  ${KIND_BIN:-kind} load docker-image ${IMAGE_PREFIX}/vc-controller-manager:${TAG} "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
+  ${KIND_BIN:-kind} load docker-image ${IMAGE_PREFIX}/vc-scheduler:${TAG}          "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
+  ${KIND_BIN:-kind} load docker-image ${IMAGE_PREFIX}/vc-webhook-manager:${TAG}    "${CLUSTER_CONTEXT[@]}" --nodes ${CLUSTER_CONTEXT[1]}-control-plane
 }
 
 # check if the required images exist
@@ -66,13 +81,51 @@ function check-prerequisites {
 
 # check if kind installed
 function check-kind {
+  local kind_cmd=${KIND_BIN:-kind}
+  local required_version=${KIND_VERSION}
+
+  # If KIND_VERSION is not set, try to resolve it from Makefile in VK_ROOT
+  if [[ -z "${required_version}" ]] && [[ -n "${VK_ROOT}" ]] && [[ -f "${VK_ROOT}/Makefile" ]]; then
+    required_version=$(make -s -C "${VK_ROOT}" print-kind-version 2>/dev/null)
+  fi
+
+  if [[ -z "${required_version}" ]]; then
+    echo "ERROR: KIND_VERSION is not set and could not be resolved from Makefile"
+    return 1
+  fi
+
   echo "Checking kind"
-  which kind >/dev/null 2>&1
-  if [[ $? -ne 0 ]]; then
-    echo "Installing kind ..."
-    GOOS=${OS} go install sigs.k8s.io/kind@v0.31.0
+  if command -v "${kind_cmd}" >/dev/null 2>&1; then
+    local found_version
+    found_version=$("${kind_cmd}" version | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    if [[ "${found_version}" == "${required_version}" ]]; then
+      echo "Found kind at ${kind_cmd}, version: ${found_version}"
+      return
+    fi
+
+    echo "Kind version mismatch at ${kind_cmd} (found ${found_version}, required ${required_version})"
   else
-    echo -n "Found kind, version: " && kind version
+    echo "Kind not found at ${kind_cmd}"
+  fi
+
+  if [[ -n "${KIND_BIN}" ]]; then
+    local os arch
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    arch=$(uname -m)
+    case "${arch}" in
+      x86_64) arch=amd64 ;;
+      aarch64|arm64) arch=arm64 ;;
+    esac
+
+    echo "Installing kind ${required_version} to ${KIND_BIN} ..."
+    mkdir -p "$(dirname "${KIND_BIN}")"
+    curl -fsSL "https://github.com/kubernetes-sigs/kind/releases/download/${required_version}/kind-${os}-${arch}" -o "${KIND_BIN}"
+    chmod +x "${KIND_BIN}"
+    echo "Installed kind at ${KIND_BIN}"
+  else
+    echo "Installing kind ${required_version} via go install ..."
+    GOOS=${OS} go install sigs.k8s.io/kind@${required_version}
+    echo -n "Installed kind, version: " && kind version
   fi
 }
 
