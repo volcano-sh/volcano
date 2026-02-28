@@ -32,8 +32,9 @@ import (
 )
 
 type GPUUsage struct {
-	UsedMem  uint
-	UsedCore uint
+	UsedMem     uint
+	UsedCore    uint
+	PodGroupKey string // namespace/name of PodGroup, or "" if pod has no group
 }
 
 // GPUDevice include gpu id, memory and the pods that are sharing it.
@@ -195,6 +196,9 @@ func (gs *GPUDevices) addResource(annotations map[string]string, pod *v1.Pod) {
 				if strings.Contains(deviceused.UUID, gsdevice.UUID) {
 					err := gs.Sharing.AddPod(gsdevice, deviceused.Usedmem, deviceused.Usedcores, string(pod.UID), deviceused.UUID)
 					if err == nil {
+						if u := gsdevice.PodMap[string(pod.UID)]; u != nil {
+							u.PodGroupKey = getPodGroupKey(pod)
+						}
 						gs.AddPodMetrics(index, string(pod.UID), pod.Name)
 					} else {
 						klog.ErrorS(err, "add resource failed")
@@ -221,13 +225,15 @@ func (gs *GPUDevices) addToPodMap(annotations map[string]string, pod *v1.Pod) {
 					_, ok := gsdevice.PodMap[podUID]
 					if !ok {
 						gsdevice.PodMap[podUID] = &GPUUsage{
-							UsedMem:  0,
-							UsedCore: 0,
+							UsedMem:     0,
+							UsedCore:    0,
+							PodGroupKey: getPodGroupKey(pod),
 						}
 					}
 
 					gsdevice.PodMap[podUID].UsedMem += deviceused.Usedmem
 					gsdevice.PodMap[podUID].UsedCore += deviceused.Usedcores
+					gsdevice.PodMap[podUID].PodGroupKey = getPodGroupKey(pod)
 				}
 			}
 		}

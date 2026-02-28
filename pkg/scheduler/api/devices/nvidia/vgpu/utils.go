@@ -30,6 +30,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api/devices"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 )
@@ -156,6 +157,42 @@ func decodePodDevices(str string) []ContainerDevices {
 	return pd
 }
 
+// getPodGroupKey returns a unique key for the pod's group (namespace/name of PodGroup),
+// or "" if the pod has no group annotation. Used to avoid placing two pods from the same
+// PodGroup on the same vGPU device. Uses the same annotation keys as the job/podgroup
+// controllers (KubeGroupNameAnnotationKey and VolcanoGroupNameAnnotationKey).
+func getPodGroupKey(pod *v1.Pod) string {
+	if pod == nil || pod.Annotations == nil {
+		return ""
+	}
+	groupName := pod.Annotations[v1beta1.KubeGroupNameAnnotationKey]
+	if groupName == "" {
+		groupName = pod.Annotations[v1beta1.VolcanoGroupNameAnnotationKey]
+	}
+	if groupName == "" {
+		return ""
+	}
+	return pod.Namespace + "/" + groupName
+}
+
+// deviceHasPodFromSameGroup returns true if the device already has a pod from the same
+// PodGroup as currentKey (and that pod has non-zero usage), so we should not place
+// another pod from the same group on this device.
+func deviceHasPodFromSameGroup(gd *GPUDevice, currentKey string) bool {
+	if gd == nil || currentKey == "" {
+		return false
+	}
+	for _, usage := range gd.PodMap {
+		if usage == nil {
+			continue
+		}
+		if usage.PodGroupKey == currentKey && (usage.UsedMem > 0 || usage.UsedCore > 0) {
+			return true
+		}
+	}
+	return false
+}
+
 func checkVGPUResourcesInPod(pod *v1.Pod) bool {
 	for _, container := range pod.Spec.Containers {
 		_, ok := container.Resources.Limits[v1.ResourceName(getConfig().ResourceMemoryName)]
@@ -234,11 +271,18 @@ func getGPUDeviceSnapShot(snap *GPUDevices) *GPUDevices {
 	}
 	for index, val := range snap.Device {
 		if val != nil {
+			podMapCopy := make(map[string]*GPUUsage, len(val.PodMap))
+			for uid, usage := range val.PodMap {
+				if usage != nil {
+					u := *usage
+					podMapCopy[uid] = &u
+				}
+			}
 			ret.Device[index] = &GPUDevice{
 				ID:          val.ID,
 				Node:        val.Node,
 				UUID:        val.UUID,
-				PodMap:      val.PodMap,
+				PodMap:      podMapCopy,
 				Memory:      val.Memory,
 				Number:      val.Number,
 				Type:        val.Type,
@@ -311,6 +355,10 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 	} else {
 		gs = gssnap
 	}
+	var currentPodGroupKey string
+	if VGPUPodGroupDeviceSpread {
+		currentPodGroupKey = getPodGroupKey(pod)
+	}
 	ctrdevs := []ContainerDevices{}
 	for _, val := range ctrReq {
 		devs := []ContainerDevice{}
@@ -323,6 +371,9 @@ func checkNodeGPUSharingPredicateAndScore(pod *v1.Pod, gssnap *GPUDevices, repli
 			klog.V(3).InfoS("Scoring pod request", "memReq", val.Memreq, "memPercentageReq", val.MemPercentagereq, "coresReq", val.Coresreq, "Nums", val.Nums, "Index", i, "ID", gs.Device[i].ID)
 			klog.V(3).InfoS("Current Device", "Index", i, "TotalMemory", gs.Device[i].Memory, "UsedMemory", gs.Device[i].UsedMem, "UsedCores", gs.Device[i].UsedCore, "replicate", replicate)
 			if gs.Device[i].Number <= uint(gs.Device[i].UsedNum) {
+				continue
+			}
+			if VGPUPodGroupDeviceSpread && deviceHasPodFromSameGroup(gs.Device[i], currentPodGroupKey) {
 				continue
 			}
 			memreqForCard := uint(0)
