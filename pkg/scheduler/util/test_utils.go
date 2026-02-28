@@ -741,6 +741,12 @@ func (q *QueueWrapper) Affinity(affinity *schedulingv1beta1.Affinity) *QueueWrap
 	return q
 }
 
+// DRA sets the DRA quota of the queue.
+func (q *QueueWrapper) DRA(dra *schedulingv1beta1.DRAQuota) *QueueWrapper {
+	q.Spec.DRA = dra
+	return q
+}
+
 // Obj returns the raw Queue object.
 func (q *QueueWrapper) Obj() *schedulingv1beta1.Queue {
 	return q.Queue

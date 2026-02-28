@@ -169,6 +169,7 @@ func (sc *SchedulerCache) initMockInformers() {
 		logger := klog.FromContext(ctx)
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
 		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+		sc.resourceClaimCache = resourceClaimCache
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
 			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
 			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),

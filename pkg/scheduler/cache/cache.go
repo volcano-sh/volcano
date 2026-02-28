@@ -27,8 +27,10 @@ import (
 
 	"golang.org/x/time/rate"
 	v1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -73,7 +75,6 @@ import (
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/metrics/source"
-	"volcano.sh/volcano/pkg/util"
 	commonutil "volcano.sh/volcano/pkg/util"
 )
 
@@ -185,6 +186,9 @@ type SchedulerCache struct {
 	sharedDRAManager fwk.SharedDRAManager
 
 	shardUpdateCoordinator *ShardUpdateCoordinator
+
+	// resourceClaimCache is a cache for ResourceClaims, used for DRA
+	resourceClaimCache *assumecache.AssumeCache
 }
 
 type multiSchedulerInfo struct {
@@ -552,7 +556,7 @@ func newSchedulerCache(config *rest.Config, schedulerNames []string, defaultQueu
 		nodeWorkers: nodeWorkers,
 	}
 
-	if options.ServerOpts.ShardingMode == util.HardShardingMode || options.ServerOpts.ShardingMode == util.SoftShardingMode {
+	if options.ServerOpts.ShardingMode == commonutil.HardShardingMode || options.ServerOpts.ShardingMode == commonutil.SoftShardingMode {
 		sc.shardUpdateCoordinator = NewShardUpdateCoordinator()
 	}
 
@@ -795,7 +799,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		ctx := context.TODO()
 		logger := klog.FromContext(ctx)
 		resourceClaimInformer := informerFactory.Resource().V1().ResourceClaims().Informer()
-		resourceClaimCache := assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+		sc.resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
 		resourceSliceTrackerOpts := resourceslicetracker.Options{
 			EnableDeviceTaintRules: utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRADeviceTaints),
 			SliceInformer:          informerFactory.Resource().V1().ResourceSlices(),
@@ -811,7 +815,7 @@ func (sc *SchedulerCache) addEventHandler() {
 		if err != nil {
 			klog.V(3).Infof("couldn't start resource slice tracker: %v", err)
 		}
-		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, resourceClaimCache, resourceSliceTracker, informerFactory)
+		sc.sharedDRAManager = dynamicresources.NewDRAManager(ctx, sc.resourceClaimCache, resourceSliceTracker, informerFactory)
 	}
 }
 
@@ -1778,4 +1782,69 @@ func (sc *SchedulerCache) OnSessionClose() {
 		sc.shardUpdateCoordinator.IsSessionRunning.Store(false)
 		sc.notifySessionEnd()
 	}
+}
+
+// buildTaskDRAResreq builds aggregated DRA resource requests from Pod's ResourceClaims
+func (sc *SchedulerCache) buildTaskDRAResreq(pod *v1.Pod) map[string]*schedulingapi.DRAResource {
+	if !utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DynamicResourceAllocation) || len(pod.Spec.ResourceClaims) == 0 {
+		return nil
+	}
+
+	result := make(map[string]*schedulingapi.DRAResource)
+	consumableCapacityEnabled := utilfeature.DefaultFeatureGate.Enabled(kubefeatures.DRAConsumableCapacity)
+
+	for _, podClaim := range pod.Spec.ResourceClaims {
+		if podClaim.ResourceClaimName == nil {
+			continue
+		}
+		claimName := *podClaim.ResourceClaimName
+		obj, err := sc.resourceClaimCache.Get(pod.Namespace + "/" + claimName)
+		if err != nil || obj == nil {
+			klog.V(4).Infof("Failed to get ResourceClaim %s/%s: %v", pod.Namespace, claimName, err)
+			continue
+		}
+		claim, ok := obj.(*resourcev1.ResourceClaim)
+		if !ok {
+			continue
+		}
+
+		for _, req := range claim.Spec.Devices.Requests {
+			// Check Exactly field
+			if req.Exactly == nil {
+				continue
+			}
+			deviceClass := req.Exactly.DeviceClassName
+			if deviceClass == "" {
+				continue
+			}
+
+			// We aggregate by DeviceClass
+			if result[deviceClass] == nil {
+				result[deviceClass] = &schedulingapi.DRAResource{}
+				if consumableCapacityEnabled {
+					result[deviceClass].Capacity = make(map[string]resource.Quantity)
+				}
+			}
+
+			count := req.Exactly.Count
+			// If AllocationMode is ExactCount and this field is not specified, the default is one.
+			if count == 0 {
+				count = 1
+			}
+
+			result[deviceClass].Count += count
+			if consumableCapacityEnabled && req.Exactly.Capacity != nil && len(req.Exactly.Capacity.Requests) > 0 {
+				for dim, reqQty := range req.Exactly.Capacity.Requests {
+					capQty := result[deviceClass].Capacity[string(dim)]
+					capQty.Add(reqQty)
+					result[deviceClass].Capacity[string(dim)] = capQty
+				}
+			}
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
