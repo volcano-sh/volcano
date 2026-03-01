@@ -40,6 +40,8 @@ custom:
   controller_worker_threads: 3
   controller_worker_threads_for_gc: 5
   controller_worker_threads_for_podgroup: 5
+  # Default: "*,-sharding-controller" (sharding-controller disabled by default)
+  controller_controllers: ~
   scheduler_kube_api_qps: 2000
   scheduler_kube_api_burst: 2000
   scheduler_schedule_period: 1s
