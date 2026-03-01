@@ -89,7 +89,6 @@ func (alloc *Action) allocateTask(schedCtx *agentapi.SchedulingContext) error {
 
 	nodes := alloc.fwk.VolcanoNodeInfos()
 
-	// TODO: check is pod allocatable
 	klog.V(3).Infof("There are <%d> nodes for task <%v/%v>", len(nodes), task.Namespace, task.Name)
 
 	if err := alloc.fwk.PrePredicateFn(task); err != nil {
