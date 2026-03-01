@@ -25,6 +25,7 @@ package framework
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"k8s.io/klog/v2"
 
@@ -43,6 +44,19 @@ const (
 	// Allocate op
 	Allocate
 )
+
+func (o Operation) String() string {
+	switch o {
+	case Evict:
+		return "evict"
+	case Pipeline:
+		return "pipeline"
+	case Allocate:
+		return "allocate"
+	default:
+		return "Unknown"
+	}
+}
 
 type operation struct {
 	name   Operation
@@ -356,7 +370,6 @@ func (s *Statement) allocate(task *api.TaskInfo) error {
 		return fmt.Errorf("failed to find job %s", task.Job)
 	}
 
-	metrics.UpdateTaskScheduleDuration(metrics.Duration(task.Pod.CreationTimestamp.Time))
 	return nil
 }
 
@@ -425,23 +438,28 @@ func (s *Statement) Discard() {
 func (s *Statement) Commit() {
 	klog.V(3).Info("Committing operations ...")
 	for _, op := range s.operations {
+		now := time.Now()
 		op.task.ClearLastTxContext()
+		var err error
 		switch op.name {
 		case Evict:
-			err := s.evict(op.task, op.reason)
-			if err != nil {
+			if err = s.evict(op.task, op.reason); err != nil {
 				klog.Errorf("Failed to evict task: %s", err.Error())
 			}
 		case Pipeline:
 			s.pipeline(op.task)
 		case Allocate:
-			err := s.allocate(op.task)
-			if err != nil {
+			if err = s.allocate(op.task); err != nil {
 				if e := s.unallocate(op.task); e != nil {
 					klog.Errorf("Failed to unallocate task <%v/%v>: %v.", op.task.Namespace, op.task.Name, e)
 				}
 				klog.Errorf("Failed to allocate task <%v/%v>: %v.", op.task.Namespace, op.task.Name, err)
 			}
+		}
+		if err != nil {
+			metrics.UpdateTaskOperationErrLatency(op.name.String(), metrics.Duration(now))
+		} else {
+			metrics.UpdateTaskOperationSuccessLatency(op.name.String(), metrics.Duration(now))
 		}
 	}
 }

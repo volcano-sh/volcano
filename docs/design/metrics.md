@@ -21,7 +21,7 @@ This metrics track execution of plugins and actions of volcano loop.
 | `e2e_job_scheduling_start_time`           | Gauge           | `job_name`=&lt;job_name&gt;, `queue`=&lt;queue&gt;, `job_namespace`=&lt;job_namespace&gt; | End-to-end job scheduling start time                                           |
 | `plugin_scheduling_latency_milliseconds`  | Histogram       | `plugin`=&lt;plugin_name&gt;, `OnSession`=&lt;OnSession&gt;                               | Plugin scheduling latency in milliseconds                                      |
 | `action_scheduling_latency_milliseconds`  | Histogram       | `action`=&lt;action_name&gt;                                                              | Action scheduling latency in milliseconds                                      |
-| `task_scheduling_latency_milliseconds`    | Histogram       | None                                                                                      | Task scheduling latency in milliseconds                                        |
+| `task_scheduling_latency_milliseconds`    | Histogram       | None                                                                                      | Task scheduling latency in milliseconds (task create to task bound to a node)  |
 
 
 ### volcano operations
@@ -61,6 +61,17 @@ This metrics describe internal state of volcano.
 | `job_retry_counts`                     | Counter         | `job_id`=&lt;job_id&gt;                                           | The number of retry counts for one job        |
 | `job_completed_phase_count`            | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job completed phase             |
 | `job_failed_phase_count`               | Counter         | `job_name`=&lt;job_name&gt; `queue_name`=&lt;queue_name&gt;       | The number of job failed phase                |
+| `task_pending_count`                   | Gauge           | None                                                              | The number of pending task in scheduler       |
+| `task_allocated_count`                 | Gauge           | None                                                              | The number of allocated task in scheduler     |
+| `task_pipelined_count`                 | Gauge           | None                                                              | The number of pipelined task in scheduler     |
+| `task_binding_count`                   | Gauge           | None                                                              | The number of binding task in scheduler       |
+| `task_bound_count`                     | Gauge           | None                                                              | The number of bound task in scheduler         |
+| `task_running_count`                   | Gauge           | None                                                              | The number of running task in scheduler       |
+| `task_releasing_count`                 | Gauge           | None                                                              | The number of releasing task in scheduler     |
+| `task_succeeded_count`                 | Gauge           | None                                                              | The number of succeeded task in scheduler     |
+| `task_failed_count`                    | Gauge           | None                                                              | The number of failed task in scheduler        |
+| `task_unknown_count`                   | Gauge           | None                                                              | The number of unknown task in scheduler       |
+| `task_operation_latency_milliseconds`  | Histogram       | `operation`=&lt;operation_name&gt; `result`=&lt;result&gt;        | Task task operation latency in milliseconds   |
 
 ### volcano Liveness
 Healthcheck last time of volcano activity and timeout
