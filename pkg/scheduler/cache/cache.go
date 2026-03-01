@@ -1657,7 +1657,16 @@ func (sc *SchedulerCache) updateJobAnnotations(job *schedulingapi.JobInfo) {
 	defer sc.Mutex.Unlock()
 
 	if jobInCache, ok := sc.Jobs[job.UID]; ok {
-		jobInCache.PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode] = job.PodGroup.GetAnnotations()[schedulingapi.JobAllocatedHyperNode]
+		if jobInCache.PodGroup == nil {
+			klog.V(3).Infof("Skip updating annotations for job <%s/%s>: PodGroup was deleted",
+				job.Namespace, job.Name)
+			return
+		}
+		var annotationValue string
+		if annotations := job.PodGroup.GetAnnotations(); annotations != nil {
+			annotationValue = annotations[schedulingapi.JobAllocatedHyperNode]
+		}
+		metav1.SetMetaDataAnnotation(&jobInCache.PodGroup.ObjectMeta, schedulingapi.JobAllocatedHyperNode, annotationValue)
 	}
 }
 
