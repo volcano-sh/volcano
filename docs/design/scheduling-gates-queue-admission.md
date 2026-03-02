@@ -19,6 +19,7 @@
         - [Cache Initialization](#cache-initialization)
         - [Cache Updates During Allocation](#cache-updates-during-allocation)
 - [Limitations](#limitations)
+- [Feature gate](#feature-gate)
 - [Conclusions](#conclusions)
 - [Related Issues](#related-issues)
 
@@ -669,6 +670,10 @@ enabling other plugins like
 [`proportion`](https://github.com/volcano-sh/volcano/tree/v1.14.0/pkg/scheduler/plugins/proportion) or
 [`tdm`](https://github.com/volcano-sh/volcano/tree/v1.14.0/pkg/scheduler/plugins/tdm) to implement similar reservation
 cleanup logic in the future without modifying the framework.
+
+## Feature gate
+
+The entire scheduling-gates queue-admission flow is controlled by a [feature gate](https://github.com/volcano-sh/volcano/blob/v1.14.0/pkg/features/volcano_features.go), for example, `SchedulingGatesQueueAdmission` (Alpha, default off). When the gate is enabled, all of the behavior described in this document applies. This keeps existing clusters and configurations unchanged unless the feature is explicitly enabled (*e.g.* `--feature-gates=SchedulingGatesQueueAdmission=true`).
 
 ## Limitations
 
