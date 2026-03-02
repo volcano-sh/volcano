@@ -404,36 +404,21 @@ func (cp *capacityPlugin) OnSessionClose(ssn *framework.Session) {
 // initQueueAttr initializes a queueAttr from queueInfo.
 // This helper method ensures consistent initialization for both queues with jobs and jobless queues.
 func (cp *capacityPlugin) initQueueAttr(queueInfo *api.QueueInfo) *queueAttr {
-	attr := &queueAttr{
-		queueID:   queueInfo.UID,
-		name:      queueInfo.Name,
-		deserved:  api.NewResource(queueInfo.Queue.Spec.Deserved),
-		allocated: api.EmptyResource(),
-		request:   api.EmptyResource(),
-		elastic:   api.EmptyResource(),
-		inqueue:   api.EmptyResource(),
-		guarantee: api.EmptyResource(),
+	attr := cp.newQueueAttr(queueInfo)
+
+	// Set MaxFloat64 for CPU/Memory if <= 0 (defensive measure for unlimited capacity)
+	if attr.capability.MilliCPU <= 0 {
+		attr.capability.MilliCPU = math.MaxFloat64
 	}
-	if len(queueInfo.Queue.Spec.Capability) != 0 {
-		attr.capability = api.NewResource(queueInfo.Queue.Spec.Capability)
-		if attr.capability.MilliCPU <= 0 {
-			attr.capability.MilliCPU = math.MaxFloat64
-		}
-		if attr.capability.Memory <= 0 {
-			attr.capability.Memory = math.MaxFloat64
-		}
+	if attr.capability.Memory <= 0 {
+		attr.capability.Memory = math.MaxFloat64
 	}
-	if len(queueInfo.Queue.Spec.Guarantee.Resource) != 0 {
-		attr.guarantee = api.NewResource(queueInfo.Queue.Spec.Guarantee.Resource)
-	}
+
+	// Calculate realCapability: the effective resource limit for this queue
 	realCapability := api.ExceededPart(cp.totalResource, cp.totalGuarantee).Add(attr.guarantee)
-	if attr.capability == nil {
-		attr.capability = api.EmptyResource()
-		attr.realCapability = realCapability
-	} else {
-		realCapability.MinDimensionResource(attr.capability, api.Infinity)
-		attr.realCapability = realCapability
-	}
+	realCapability.MinDimensionResource(attr.capability, api.Infinity)
+	attr.realCapability = realCapability
+
 	return attr
 }
 
@@ -505,9 +490,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 	}
 
 	for _, attr := range cp.queueOpts {
-		if attr.realCapability != nil {
-			attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
-		}
+		attr.deserved.MinDimensionResource(attr.realCapability, api.Infinity)
 
 		attr.deserved = helpers.Max(attr.deserved, attr.guarantee)
 		cp.updateShare(attr)
@@ -520,9 +503,7 @@ func (cp *capacityPlugin) buildQueueAttrs(ssn *framework.Session) {
 		metrics.UpdateQueueDeserved(attr.name, attr.deserved.MilliCPU, attr.deserved.Memory, attr.deserved.ScalarResources)
 		metrics.UpdateQueueAllocated(attr.name, attr.allocated.MilliCPU, attr.allocated.Memory, attr.allocated.ScalarResources)
 		metrics.UpdateQueueRequest(attr.name, attr.request.MilliCPU, attr.request.Memory, attr.request.ScalarResources)
-		if attr.capability != nil {
-			metrics.UpdateQueueCapacity(attr.name, attr.capability.MilliCPU, attr.capability.Memory, attr.capability.ScalarResources)
-		}
+		metrics.UpdateQueueCapacity(attr.name, attr.capability.MilliCPU, attr.capability.Memory, attr.capability.ScalarResources)
 		metrics.UpdateQueueRealCapacity(attr.name, attr.realCapability.MilliCPU, attr.realCapability.Memory, attr.realCapability.ScalarResources)
 	}
 
