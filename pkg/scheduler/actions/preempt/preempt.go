@@ -404,10 +404,6 @@ func (pmpt *Action) normalPreempt(
 			if err := nodeStmt.Pipeline(preemptor, node.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					preemptor.Namespace, preemptor.Name, node.Name)
-				if rollbackErr := nodeStmt.UnPipeline(preemptor); rollbackErr != nil {
-					klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
-						preemptor.UID, node.Name, ssn.UID, rollbackErr)
-				}
 				// Pipeline failed: discard all evictions for this node and try the next one.
 				nodeStmt.Discard()
 				continue
@@ -498,10 +494,6 @@ func (pmpt *Action) topologyAwarePreempt(
 	if err := tmpStmt.Pipeline(preemptor, bestCandidate.Name(), true); err != nil {
 		klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 			preemptor.Namespace, preemptor.Name, bestCandidate.Name())
-		if rollbackErr := tmpStmt.UnPipeline(preemptor); rollbackErr != nil {
-			klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
-				preemptor.UID, bestCandidate.Name(), ssn.UID, rollbackErr)
-		}
 		// Pipeline failed: discard all evictions to prevent side effects.
 		tmpStmt.Discard()
 		return false, err
