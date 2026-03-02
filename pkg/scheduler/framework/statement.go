@@ -85,9 +85,10 @@ func (s *Statement) Evict(reclaimee *api.TaskInfo, reason string) {
 
 	for _, eh := range s.ssn.eventHandlers {
 		if eh.DeallocateFunc != nil {
-			eh.DeallocateFunc(&Event{
+			eventInfo := &Event{
 				Task: reclaimee,
-			})
+			}
+			eh.DeallocateFunc(eventInfo)
 		}
 	}
 
@@ -107,13 +108,6 @@ func (s *Statement) evict(reclaimee *api.TaskInfo, reason string) error {
 	}
 
 	return nil
-}
-
-// UnEvict reverses a prior Evict call for a single task, restoring the task's
-// Running status and node resources. Use this to clean up session state after
-// an individual eviction attempt fails (where the operation was not recorded).
-func (s *Statement) UnEvict(reclaimee *api.TaskInfo) error {
-	return s.unevict(reclaimee)
 }
 
 func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
@@ -143,7 +137,17 @@ func (s *Statement) unevict(reclaimee *api.TaskInfo) error {
 }
 
 // Pipeline the task for the node
-func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurred bool) error {
+func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurred bool) (err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		if rollbackErr := s.unPipeline(task); rollbackErr != nil {
+			klog.Errorf("Failed to rollback pipeline for task <%v/%v> on node <%v> in Session <%v>: %v",
+				task.Namespace, task.Name, hostname, s.ssn.UID, rollbackErr)
+		}
+	}()
+
 	errInfos := make([]error, 0)
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
@@ -188,7 +192,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 	}
 
 	if len(errInfos) != 0 {
-		return fmt.Errorf("Task(%s/%s) pipeline to node(%s) error and errInfos num is %d, UnPipeline will be called later to roll back the resources and status of the task.",
+		return fmt.Errorf("Task(%s/%s) pipeline to node(%s) error and errInfos num is %d, pipeline has been rolled back",
 			task.Namespace, task.Name, hostname, len(errInfos))
 	} else {
 		s.operations = append(s.operations, operation{
@@ -203,7 +207,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 func (s *Statement) pipeline(task *api.TaskInfo) {
 }
 
-func (s *Statement) UnPipeline(task *api.TaskInfo) error {
+func (s *Statement) unPipeline(task *api.TaskInfo) error {
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
 		job.UpdateTaskStatus(task, api.Pending)
@@ -226,10 +230,6 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 				Task: task,
 			}
 			eh.DeallocateFunc(eventInfo)
-			if eventInfo.Err != nil {
-				klog.Errorf("Failed to exec deallocate callback functions for task <%v/%v> to node <%v> when pipeline in Session <%v>: %v",
-					task.Namespace, task.Name, task.NodeName, s.ssn.UID, eventInfo.Err)
-			}
 		}
 	}
 	task.NodeName = ""
@@ -287,7 +287,11 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 	}
 
 	if len(errInfos) != 0 {
-		return fmt.Errorf("Task %s/%s allocate to node %s error and errInfos num is %d, UnAllocate will be called later to roll back the resources and status of the task.",
+		if rollbackErr := s.unallocate(task); rollbackErr != nil {
+			klog.Errorf("Failed to rollback allocation for Task <%v/%v> on node <%v> in Session <%v>: %v",
+				task.Namespace, task.Name, hostname, s.ssn.UID, rollbackErr)
+		}
+		return fmt.Errorf("Task %s/%s allocate to node %s error and errInfos num is %d, allocation has been rolled back",
 			task.Namespace, task.Name, hostname, len(errInfos))
 	} else {
 		// Update status in session
@@ -299,11 +303,6 @@ func (s *Statement) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 	}
 
 	return nil
-}
-
-// UnAllocate the pod for task
-func (s *Statement) UnAllocate(task *api.TaskInfo) error {
-	return s.unallocate(task)
 }
 
 func (s *Statement) allocate(task *api.TaskInfo) error {
@@ -366,7 +365,7 @@ func (s *Statement) Discard() {
 				klog.Errorf("Failed to unevict task: %s", err.Error())
 			}
 		case Pipeline:
-			err := s.UnPipeline(op.task)
+			err := s.unPipeline(op.task)
 			if err != nil {
 				klog.Errorf("Failed to unpipeline task: %s", err.Error())
 			}
