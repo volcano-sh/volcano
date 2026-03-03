@@ -142,8 +142,8 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			allocated := allocations[job.Queue]
 
-			// Check guarantee
-			if satisfies, _ := cp.checkGuaranteeConstraint(allocated, reclaimee, attr.guarantee); !satisfies {
+			// Check if removing the reclaimee would violate the queue's deserved.
+			if satisfies, _ := cp.checkDeservedConstraint(allocated, reclaimee, reclaimer, attr.deserved); !satisfies {
 				continue
 			}
 
@@ -1109,15 +1109,16 @@ func (cp *capacityPlugin) shouldSkipReclaimee(reclaimee, reclaimer *api.TaskInfo
 	return false, ""
 }
 
-// checkGuaranteeConstraint checks if removing the reclaimee would violate the queue's guarantee.
-// Returns true if the guarantee constraint is satisfied (i.e., reclaim is allowed).
-func (cp *capacityPlugin) checkGuaranteeConstraint(
+// checkDeservedConstraint checks if removing the reclaimee would violate the queue's deserved.
+// Returns true if the deserved constraint is satisfied (i.e., reclaim is allowed).
+func (cp *capacityPlugin) checkDeservedConstraint(
 	allocated *api.Resource,
 	reclaimee *api.TaskInfo,
-	guarantee *api.Resource,
+	reclaimer *api.TaskInfo,
+	deserved *api.Resource,
 ) (bool, *api.Resource) {
 	exceptReclaimee := allocated.Clone().Sub(reclaimee.Resreq)
-	reclaimable := guarantee.LessEqual(exceptReclaimee, api.Zero)
+	reclaimable, _ := deserved.LessEqualWithDimensionAndResourcesName(exceptReclaimee, reclaimer.Resreq)
 	return reclaimable, exceptReclaimee
 }
 
