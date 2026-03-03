@@ -112,10 +112,8 @@ func (backfill *Action) buildBackfillContext() *backfillContext {
 			stmt := framework.NewStatement(ssn)
 			if err := stmt.UnPipeline(task); err != nil {
 				klog.Warningf("Failed to unpipeline task: %s", err.Error())
-				stmt.Discard()
 				continue
 			}
-			stmt.Commit()
 			tasks.Push(task)
 		}
 
