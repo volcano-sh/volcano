@@ -224,11 +224,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			reclaimee := victimsQueue.Pop().(*api.TaskInfo)
 			klog.V(3).Infof("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
 				reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
-			if err := stmt.Evict(reclaimee, "reclaim"); err != nil {
-				klog.Errorf("Failed to reclaim Task <%s/%s> for Tasks <%s/%s>: %v",
-					reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name, err)
-				continue
-			}
+			stmt.Evict(reclaimee, "reclaim")
 			reclaimed.Add(reclaimee.Resreq)
 			availableResources.Add(reclaimee.Resreq)
 			evictionOccurred = true
