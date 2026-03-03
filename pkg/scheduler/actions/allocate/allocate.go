@@ -19,6 +19,7 @@ package allocate
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"slices"
 	"time"
 
@@ -131,12 +132,90 @@ func (alloc *Action) Execute(ssn *framework.Session) {
 
 	alloc.session = ssn
 	alloc.recorder = NewRecorder()
+	alloc.unpipelineOverflowedPipelinedTasks()
 	actx, pipelineActx := alloc.buildAllocateContext()
 
 	klog.V(3).Infof("Try to allocate pipelined resource to %d Queues", pipelineActx.queues.Len())
 	alloc.allocateResources(pipelineActx)
 	klog.V(3).Infof("Try to allocate resource to %d Queues", actx.queues.Len())
 	alloc.allocateResources(actx)
+}
+
+func (alloc *Action) unpipelineOverflowedPipelinedTasks() {
+	ssn := alloc.session
+	reverseTaskOrderFn := func(l, r interface{}) bool {
+		return !ssn.TaskOrderFn(l, r)
+	}
+	// Shuffle node iteration each cycle to avoid consistently preferring the same
+	// nodes when releasing pipelined reservations under overflow.
+	nodes := append([]*api.NodeInfo(nil), ssn.NodeList...)
+	rand.Shuffle(len(nodes), func(i, j int) {
+		nodes[i], nodes[j] = nodes[j], nodes[i]
+	})
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		nodeName := node.Name
+		// Overflow means pipelined reservations exceed what idle+releasing can
+		// cover on this node. We unpipeline lowest-priority tasks first.
+		if !node.HasPipelinedOverflow() {
+			continue
+		}
+
+		tasks := util.NewPriorityQueue(reverseTaskOrderFn)
+		for _, nodeTask := range node.Tasks {
+			if nodeTask.Status != api.Pipelined {
+				continue
+			}
+			job, ok := ssn.Jobs[nodeTask.Job]
+			if !ok {
+				continue
+			}
+			task, ok := job.Tasks[nodeTask.UID]
+			if !ok {
+				continue
+			}
+			tasks.Push(task)
+		}
+
+		for !tasks.Empty() {
+			task := tasks.Pop().(*api.TaskInfo)
+			if task.Status != api.Pipelined || task.NodeName != nodeName {
+				continue
+			}
+			currentNode, ok := ssn.Nodes[nodeName]
+			if !ok || !currentNode.HasPipelinedOverflow() {
+				break
+			}
+
+			if err := ssn.UnPipeline(task); err != nil {
+				klog.Errorf("Failed to unpipeline Task %v from node %v in pre-allocation pass: %v", task.UID, nodeName, err)
+				continue
+			}
+
+			job := ssn.Jobs[task.Job]
+			if job != nil && ssn.JobStarving(job) {
+				alloc.denominateJob(job)
+			}
+		}
+	}
+}
+
+func (alloc *Action) denominateJob(job *api.JobInfo) {
+	ssn := alloc.session
+	tasks := make([]*api.TaskInfo, 0, len(job.TaskStatusIndex[api.Pipelined]))
+	for _, task := range job.TaskStatusIndex[api.Pipelined] {
+		tasks = append(tasks, task)
+	}
+	for _, task := range tasks {
+		if task.Status != api.Pipelined {
+			continue
+		}
+		if err := ssn.UnPipeline(task); err != nil {
+			klog.Errorf("Failed to denominate Task %v in Job %v: %v", task.UID, job.UID, err)
+		}
+	}
 }
 
 // buildAllocateContext builds 2 allocateContext from session's jobs and queues, one of them is for normal Jobs and the other is for pipelined Jobs.
@@ -653,15 +732,11 @@ func (alloc *Action) allocateResourcesForTasks(subJob *api.SubJobInfo, tasks *ut
 
 		// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
 		// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
-		if len(task.NominatedNodeName) > 0 {
+		if task.Status == api.Pipelined && len(task.NominatedNodeName) > 0 {
 			if nominatedNodeInfo, ok := ssn.Nodes[task.NominatedNodeName]; ok {
 				futureIdle := nominatedNodeInfo.FutureIdle()
 				if task.InitResreq.LessEqual(futureIdle, api.Zero) {
 					predicateNodes, fitErrors = ph.PredicateNodes(task, []*api.NodeInfo{nominatedNodeInfo}, alloc.predicate, alloc.enablePredicateErrorCache, ssn.NodesInShard)
-				} else if task.Status == api.Pipelined && task.NodeName == nominatedNodeInfo.Name {
-					if err := stmt.UnPipeline(task); err != nil {
-						klog.Errorf("Failed to unpipeline Task %v from nominated node %v: %v", task.UID, nominatedNodeInfo.Name, err)
-					}
 				}
 			}
 		}

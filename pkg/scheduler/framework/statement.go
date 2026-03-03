@@ -40,6 +40,7 @@ const (
 	Evict = iota
 	// Pipeline op
 	Pipeline
+	UnPipeline
 	// Allocate op
 	Allocate
 )
@@ -230,7 +231,16 @@ func (s *Statement) pipeline(task *api.TaskInfo) error {
 }
 
 func (s *Statement) UnPipeline(task *api.TaskInfo) error {
-	return s.unpipeline(task)
+	originalNodeName := task.NodeName
+	if err := s.unpipeline(task); err != nil {
+		return err
+	}
+	s.operations = append(s.operations, operation{
+		name:   UnPipeline,
+		task:   task,
+		reason: originalNodeName,
+	})
+	return nil
 }
 
 func (s *Statement) unpipeline(task *api.TaskInfo) error {
@@ -431,6 +441,11 @@ func (s *Statement) Discard() {
 			if err != nil {
 				klog.Errorf("Failed to unpipeline task: %s", err.Error())
 			}
+		case UnPipeline:
+			err := s.Pipeline(op.task, op.reason)
+			if err != nil {
+				klog.Errorf("Failed to repipeline task: %s", err.Error())
+			}
 		case Allocate:
 			err := s.unallocate(op.task)
 			if err != nil {
@@ -458,6 +473,14 @@ func (s *Statement) Commit() {
 					klog.Errorf("Failed to unpipeline task <%v/%v>: %v.", op.task.Namespace, op.task.Name, e)
 				}
 				klog.Errorf("Failed to pipeline task <%v/%v>: %s", op.task.Namespace, op.task.Name, err.Error())
+			}
+		case UnPipeline:
+			err := s.ssn.cache.UnPipeline(op.task)
+			if err != nil {
+				if e := s.Pipeline(op.task, op.reason); e != nil {
+					klog.Errorf("Failed to repipeline task <%v/%v>: %v.", op.task.Namespace, op.task.Name, e)
+				}
+				klog.Errorf("Failed to unpipeline task <%v/%v>: %s", op.task.Namespace, op.task.Name, err.Error())
 			}
 		case Allocate:
 			err := s.allocate(op.task)
@@ -505,6 +528,12 @@ func (s *Statement) RecoverOperations(stmt *Statement) error {
 				klog.Errorf("Failed to pipeline task: %s", err.Error())
 				return err
 			}
+		case UnPipeline:
+			err := s.UnPipeline(op.task)
+			if err != nil {
+				klog.Errorf("Failed to unpipeline task: %s", err.Error())
+				return err
+			}
 		case Allocate:
 			node := s.ssn.Nodes[op.task.NodeName]
 			err := s.Allocate(op.task, node)
@@ -532,6 +561,8 @@ func (s *Statement) outputOperations(msg string, level klog.Level) {
 			buffer += fmt.Sprintf("task %s evict from node %s ", op.task.Name, op.task.NodeName)
 		case Pipeline:
 			buffer += fmt.Sprintf("task %s pipeline from node %s ", op.task.Name, op.task.NodeName)
+		case UnPipeline:
+			buffer += fmt.Sprintf("task %s unpipeline from node %s ", op.task.Name, op.reason)
 		case Allocate:
 			buffer += fmt.Sprintf("task %s allocate from node %s ", op.task.Name, op.task.NodeName)
 		}

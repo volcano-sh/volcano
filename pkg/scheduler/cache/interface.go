@@ -62,6 +62,8 @@ type Cache interface {
 	// to the target host in one of the next scheduling cycles.
 	Pipeline(task *api.TaskInfo, nodeName string) error
 
+	UnPipeline(task *api.TaskInfo) error
+
 	// RecordJobStatusEvent records related events according to job status.
 	// Deprecated: remove it after removed PDB support.
 	RecordJobStatusEvent(job *api.JobInfo, updatePG bool)

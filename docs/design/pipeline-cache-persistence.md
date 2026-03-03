@@ -770,9 +770,46 @@ for both paths.
 | `pkg/scheduler/cache/cache.go` | `Pipeline()` sets `task.NominatedNodeName` synchronously, `AddBindTask()` uses `UpdateTask()` for existing tasks |
 | `pkg/scheduler/actions/allocate/allocate.go` | Nominated-node fast-path uses `FutureIdle()` and un-pipelines tasks that no longer fit; `predicate()`, candidate categorization, and pipeline decision use `FutureIdle()` |
 
+## Follow-up: Denomination and nomination clearing
+
+The next scheduler-only iteration extends the pipelined flow with explicit denomination and
+additional nomination lifecycle handling:
+
+- Add a pre-allocation unpipeline pass for pipelined tasks.
+- Process node-first and unpipeline lower-priority pipelined tasks first when a nominated node
+  can no longer satisfy the task.
+- Apply hybrid denomination: if a job drops below `minAvailable`, unpipeline all remaining
+  pipelined tasks in that job.
+- Clear `NominatedNodeName` both when unpipelining and when a task transitions into binding.
+
+### Kubernetes and autoscaler compatibility notes
+
+Kubernetes has changed ownership and clearing semantics of `pod.Status.NominatedNodeName` in
+recent releases and KEP work:
+
+- KEP-5278 (`NominatedNodeNameForExpectation`) and follow-up changes move nomination lifecycle
+  control to the scheduler.
+- Recent changes clarify clearing behavior on bind and avoid broad, implicit clearing in other
+  components.
+
+Volcano should align with this by explicitly managing nomination state at scheduler boundaries
+(pipeline, unpipeline, bind).
+
+There is also a known cluster-autoscaler limitation with DRA and nominated pods:
+
+- `kubernetes/autoscaler#7683`: DRA handling with nominated pods is not fully clear/compatible.
+
+This is documented as a known compatibility caveat; no autoscaler-side behavior changes are part
+of this scheduler PR.
+
 ## Related Issues and PRs
 
 - [#5044](https://github.com/volcano-sh/volcano/issues/5044) — Issue describing the pipelined statement handling bugs
 - [#5045](https://github.com/volcano-sh/volcano/pull/5045) — PR implementing the fix
 - [#4947](https://github.com/volcano-sh/volcano/issues/4947) — Cyclic eviction issue caused by lost pipeline state
 - [#4936](https://github.com/volcano-sh/volcano/pull/4936) — Earlier attempted fix that did not address the root cause
+- [autoscaler#7683](https://github.com/kubernetes/autoscaler/issues/7683) — DRA and nominated pods
+- [KEP-5278](https://github.com/kubernetes/enhancements/pull/5618) — Stop clearing `NominatedNodeName` in all cases
+- [kubernetes#132384](https://github.com/kubernetes/kubernetes/issues/132384) — nomination clearing behavior
+- [kubernetes#133276](https://github.com/kubernetes/kubernetes/pull/133276) — clear `NominatedNodeName` when pod is bound
+- [kubernetes#132443](https://github.com/kubernetes/kubernetes/pull/132443) — nomination lifecycle update

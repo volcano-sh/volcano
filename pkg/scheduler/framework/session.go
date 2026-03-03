@@ -791,6 +791,30 @@ func (ssn *Session) Pipeline(task *api.TaskInfo, hostname string) error {
 	return nil
 }
 
+func (ssn *Session) UnPipeline(task *api.TaskInfo) error {
+	originalNodeName := task.NodeName
+	originalNominatedNodeName := task.NominatedNodeName
+	originalAllocatedHyperNode := task.JobAllocatedHyperNode
+
+	stmt := ssn.Statement()
+	if err := stmt.UnPipeline(task); err != nil {
+		return err
+	}
+
+	if err := ssn.cache.UnPipeline(task); err != nil {
+		if len(originalNodeName) > 0 {
+			if rollbackErr := stmt.Pipeline(task, originalNodeName); rollbackErr != nil {
+				klog.Errorf("Failed to rollback unpipeline for task <%v/%v>: %v", task.Namespace, task.Name, rollbackErr)
+			}
+			task.NominatedNodeName = originalNominatedNodeName
+			task.JobAllocatedHyperNode = originalAllocatedHyperNode
+		}
+		return err
+	}
+
+	return nil
+}
+
 // Allocate the task to the node in the session
 func (ssn *Session) Allocate(task *api.TaskInfo, nodeInfo *api.NodeInfo) (err error) {
 	hostname := nodeInfo.Name

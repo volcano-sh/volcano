@@ -994,6 +994,86 @@ func (sc *SchedulerCache) Pipeline(taskInfo *schedulingapi.TaskInfo, nodeName st
 	return nil
 }
 
+func (sc *SchedulerCache) UnPipeline(taskInfo *schedulingapi.TaskInfo) error {
+	sc.Mutex.Lock()
+	defer sc.Mutex.Unlock()
+
+	job, task, err := sc.findJobAndTask(taskInfo)
+	if err != nil {
+		return err
+	}
+	if task.Status != schedulingapi.Pipelined {
+		return nil
+	}
+
+	originalStatus := task.Status
+	originalNodeName := task.NodeName
+	originalNominatedNodeName := task.NominatedNodeName
+	originalAllocatedHyperNode := task.JobAllocatedHyperNode
+
+	if err := job.UpdateTaskStatus(task, schedulingapi.Pending); err != nil {
+		return err
+	}
+
+	if len(originalNodeName) > 0 {
+		node, found := sc.Nodes[originalNodeName]
+		if !found {
+			if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
+				klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+					"from %s to %s after not finding Node <%s> during unpipeline: %v",
+					task.Namespace, task.Name, task.Status, originalStatus, originalNodeName, err)
+				sc.resyncTask(task)
+			}
+			return fmt.Errorf("failed to unpipeline Task %v, host %v does not exist", task.UID, originalNodeName)
+		}
+
+		if err := node.RemoveTask(task); err != nil {
+			if revertErr := job.UpdateTaskStatus(task, originalStatus); revertErr != nil {
+				klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
+					"from %s to %s after failing to remove Task on Node <%s>: %v",
+					task.Namespace, task.Name, task.Status, originalStatus, originalNodeName, revertErr)
+				sc.resyncTask(task)
+			}
+			return err
+		}
+	}
+
+	task.NodeName = ""
+	task.NominatedNodeName = ""
+	task.JobAllocatedHyperNode = ""
+
+	p := task.Pod
+	if sc.StatusUpdater != nil && (len(originalNominatedNodeName) > 0 || len(p.Status.NominatedNodeName) > 0) {
+		go func() {
+			pod := p.DeepCopy()
+			pod.Status.NominatedNodeName = ""
+			if _, err := sc.StatusUpdater.UpdatePodStatus(pod); err != nil {
+				klog.Errorf("Failed to clear NominatedNodeName for unpipelined task %s/%s: %v",
+					pod.Namespace, pod.Name, err)
+				sc.resyncTask(task)
+			}
+		}()
+	}
+
+	klog.V(4).Infof("Task <%s/%s> successfully unpipelined from Node <%s>",
+		task.Namespace, task.Name, originalNodeName)
+
+	if len(originalNodeName) == 0 && originalStatus == schedulingapi.Pipelined {
+		klog.V(4).Infof("Task <%s/%s> had empty NodeName while unpipelining; status updated to Pending", task.Namespace, task.Name)
+	}
+
+	if originalStatus != schedulingapi.Pipelined {
+		klog.V(5).Infof("Task <%s/%s> unpipelined from status <%s>", task.Namespace, task.Name, originalStatus)
+	}
+
+	if originalAllocatedHyperNode != "" {
+		klog.V(5).Infof("Task <%s/%s> cleared JobAllocatedHyperNode <%s> when unpipelining",
+			task.Namespace, task.Name, originalAllocatedHyperNode)
+	}
+
+	return nil
+}
+
 // Bind binds task to the target host.
 func (sc *SchedulerCache) Bind(ctx context.Context, bindContexts []*BindContext, preBinders map[string]PreBinder) {
 	readyToBindTasks := make([]*schedulingapi.TaskInfo, len(bindContexts))
@@ -1347,8 +1427,13 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	}
 
 	originalStatus := task.Status
+	originalNominatedNodeName := task.NominatedNodeName
 	if err := job.UpdateTaskStatus(task, schedulingapi.Binding); err != nil {
 		return err
+	}
+	task.NominatedNodeName = ""
+	if bindContext.TaskInfo != nil {
+		bindContext.TaskInfo.NominatedNodeName = ""
 	}
 
 	err = bindContext.TaskInfo.SetPodResourceDecision()
@@ -1362,6 +1447,10 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 	key := schedulingapi.PodKey(task.Pod)
 	if _, taskOnNode := node.Tasks[key]; taskOnNode {
 		if err := node.UpdateTask(task); err != nil {
+			task.NominatedNodeName = originalNominatedNodeName
+			if bindContext.TaskInfo != nil {
+				bindContext.TaskInfo.NominatedNodeName = originalNominatedNodeName
+			}
 			if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
 				klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
 					"from %s to %s after failing to update Task on Node <%s>: %v",
@@ -1372,6 +1461,10 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 		}
 	} else {
 		if err := node.AddTask(task); err != nil {
+			task.NominatedNodeName = originalNominatedNodeName
+			if bindContext.TaskInfo != nil {
+				bindContext.TaskInfo.NominatedNodeName = originalNominatedNodeName
+			}
 			if err := job.UpdateTaskStatus(task, originalStatus); err != nil {
 				klog.Errorf("Task <%s/%s> will be resynchronized after failing to revert status "+
 					"from %s to %s after failing to update Task on Node <%s>: %v",
@@ -1379,6 +1472,16 @@ func (sc *SchedulerCache) AddBindTask(bindContext *BindContext) error {
 				sc.resyncTask(task)
 			}
 			return err
+		}
+	}
+
+	if sc.StatusUpdater != nil && (len(originalNominatedNodeName) > 0 || len(task.Pod.Status.NominatedNodeName) > 0) {
+		pod := task.Pod.DeepCopy()
+		pod.Status.NominatedNodeName = ""
+		if _, err := sc.StatusUpdater.UpdatePodStatus(pod); err != nil {
+			klog.Errorf("Failed to clear NominatedNodeName while binding task %s/%s: %v",
+				task.Namespace, task.Name, err)
+			sc.resyncTask(task)
 		}
 	}
 

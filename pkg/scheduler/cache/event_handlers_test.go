@@ -211,6 +211,106 @@ func TestPipelinedTaskSurvivesInformerUpdate(t *testing.T) {
 	}
 }
 
+func TestSchedulerCache_UnPipeline(t *testing.T) {
+	namespace := "test"
+	owner := buildOwnerReference("j1")
+
+	pod := buildPod(namespace, "p1", "", v1.PodPending,
+		api.BuildResourceList("1000m", "1G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	pod.Annotations = map[string]string{"scheduling.k8s.io/group-name": "j1"}
+
+	node := buildNode("target-node",
+		api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
+
+	cache := &SchedulerCache{
+		Jobs:  make(map[api.JobID]*api.JobInfo),
+		Nodes: make(map[string]*api.NodeInfo),
+	}
+	cache.AddOrUpdateNode(node)
+	cache.AddPod(pod)
+
+	jobID := api.JobID("test/j1")
+	taskUID := api.TaskID(pod.UID)
+	job := cache.Jobs[jobID]
+	task := job.Tasks[taskUID]
+
+	if err := job.UpdateTaskStatus(task, schedulingapi.Pipelined); err != nil {
+		t.Fatalf("failed to set task status pipelined: %v", err)
+	}
+	task.NodeName = "target-node"
+	task.NominatedNodeName = "target-node"
+	if err := cache.Nodes["target-node"].AddTask(task); err != nil {
+		t.Fatalf("failed to add task on node: %v", err)
+	}
+
+	if err := cache.UnPipeline(task); err != nil {
+		t.Fatalf("UnPipeline failed: %v", err)
+	}
+
+	task = cache.Jobs[jobID].Tasks[taskUID]
+	if task.Status != schedulingapi.Pending {
+		t.Fatalf("expected task status Pending, got %s", task.Status)
+	}
+	if task.NodeName != "" {
+		t.Fatalf("expected cleared NodeName, got %q", task.NodeName)
+	}
+	if task.NominatedNodeName != "" {
+		t.Fatalf("expected cleared NominatedNodeName, got %q", task.NominatedNodeName)
+	}
+}
+
+func TestSchedulerCache_AddBindTaskClearsNominatedNodeName(t *testing.T) {
+	namespace := "test"
+	owner := buildOwnerReference("j1")
+
+	pod := buildPod(namespace, "p1", "", v1.PodPending,
+		api.BuildResourceList("1000m", "1G"),
+		[]metav1.OwnerReference{owner}, make(map[string]string))
+	pod.Annotations = map[string]string{"scheduling.k8s.io/group-name": "j1"}
+
+	node := buildNode("target-node",
+		api.BuildResourceList("2000m", "10G", []api.ScalarResource{{Name: "pods", Value: "10"}}...))
+
+	cache := &SchedulerCache{
+		Jobs:            make(map[api.JobID]*api.JobInfo),
+		Nodes:           make(map[string]*api.NodeInfo),
+		BindFlowChannel: make(chan *BindContext, 1),
+	}
+	cache.AddOrUpdateNode(node)
+	cache.AddPod(pod)
+
+	jobID := api.JobID("test/j1")
+	taskUID := api.TaskID(pod.UID)
+	job := cache.Jobs[jobID]
+	task := job.Tasks[taskUID]
+
+	if err := job.UpdateTaskStatus(task, schedulingapi.Pipelined); err != nil {
+		t.Fatalf("failed to set task status pipelined: %v", err)
+	}
+	task.NodeName = "target-node"
+	task.NominatedNodeName = "target-node"
+	if err := cache.Nodes["target-node"].AddTask(task); err != nil {
+		t.Fatalf("failed to add task on node: %v", err)
+	}
+
+	bindCtx := &BindContext{TaskInfo: task}
+	if err := cache.AddBindTask(bindCtx); err != nil {
+		t.Fatalf("AddBindTask failed: %v", err)
+	}
+
+	task = cache.Jobs[jobID].Tasks[taskUID]
+	if task.Status != schedulingapi.Binding {
+		t.Fatalf("expected task status Binding, got %s", task.Status)
+	}
+	if task.NominatedNodeName != "" {
+		t.Fatalf("expected cleared NominatedNodeName on cache task, got %q", task.NominatedNodeName)
+	}
+	if bindCtx.TaskInfo.NominatedNodeName != "" {
+		t.Fatalf("expected cleared NominatedNodeName on bind context task, got %q", bindCtx.TaskInfo.NominatedNodeName)
+	}
+}
+
 func TestSchedulerCache_AddPodGroupV1beta1(t *testing.T) {
 	namespace := "test"
 	owner := buildOwnerReference("j1")

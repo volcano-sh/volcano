@@ -115,6 +115,14 @@ func (ni *NodeInfo) FutureIdle() *Resource {
 	return ni.Idle.Clone().Add(ni.Releasing).SubWithoutAssert(ni.Pipelined)
 }
 
+func (ni *NodeInfo) HasPipelinedOverflow() bool {
+	if ni == nil {
+		return false
+	}
+	available := ni.Idle.Clone().Add(ni.Releasing)
+	return !ni.Pipelined.LessEqual(available, Zero)
+}
+
 // GetNodeAllocatable return node Allocatable without OversubscriptionResource resource
 func (ni *NodeInfo) GetNodeAllocatable() *Resource {
 	return NewResource(ni.Node.Status.Allocatable)
