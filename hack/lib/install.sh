@@ -92,13 +92,40 @@ function install-helm {
 
 function install-ginkgo-if-not-exist {
   echo "Checking ginkgo"
-  which ginkgo >/dev/null 2>&1
-  if [[ $? -ne 0 ]]; then
-    echo "Installing ginkgo ..."
-    GOOS=${OS} go install github.com/onsi/ginkgo/v2/ginkgo
-  else
-    echo -n "Found ginkgo, version: " && ginkgo version
+  local required_version
+  required_version=$(go list -m -f '{{.Version}}' github.com/onsi/ginkgo/v2 2>/dev/null)
+  if [[ -z "${required_version}" ]]; then
+    echo -e "\033[31mERROR\033[0m: failed to resolve required ginkgo version from go.mod"
+    exit 1
   fi
+
+  if command -v ginkgo >/dev/null 2>&1; then
+    local found_version
+    found_version=$(ginkgo version 2>/dev/null | awk '{print $3}')
+    found_version=${found_version#v}
+    local normalized_required=${required_version#v}
+    if [[ -z "${found_version}" ]]; then
+      echo "Unable to determine installed ginkgo version, reinstalling..."
+    elif [[ "${found_version}" == "${normalized_required}" ]]; then
+      echo "Found ginkgo, version: ${found_version}"
+      return
+    else
+      echo "Ginkgo version mismatch (found ${found_version}, required ${normalized_required}), reinstalling..."
+    fi
+  else
+    echo "Installing ginkgo ..."
+  fi
+
+  GOOS=${OS} go install github.com/onsi/ginkgo/v2/ginkgo@${required_version}
+  # This file is sourced (e.g. from hack/run-e2e-kind.sh), so updating PATH here
+  # ensures subsequent ginkgo invocations in the calling script use the installed binary.
+  local bin_path
+  bin_path=$(go env GOBIN)
+  if [[ -z "${bin_path}" ]]; then
+    bin_path="$(go env GOPATH)/bin"
+  fi
+  export PATH="${bin_path}:${PATH}"
+  echo -n "Using ginkgo, version: " && ginkgo version
 }
 
 function install-kwok-with-helm {
