@@ -42,7 +42,6 @@ const (
 
 	// Polling intervals
 	pollInterval = 500 * time.Millisecond
-	pollTimeout  = 2 * time.Minute
 
 	// Wait time for sharding controller to create NodeShards after startup
 	shardCreationTimeout = 3 * time.Minute
@@ -120,7 +119,7 @@ var _ = Describe("ShardingController E2E Test", func() {
 				"NodeShard for agent-scheduler should exist")
 		})
 
-		It("NodeShards should have nodes assigned based on CPU utilization ranges", func() {
+		It("NodeShards should have worker nodes assigned after controller startup", func() {
 			waitForNodeShardsCreated()
 
 			By("Getting cluster nodes")
