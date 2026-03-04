@@ -476,17 +476,21 @@ func newDefaultAndRootQueue(vcClient vcclient.Interface, defaultQueue string) {
 			Factor:   1,
 			Jitter:   0.1,
 		}, func(err error) bool {
-			return !apierrors.IsAlreadyExists(err)
+			return true
 		}, func() error {
 			klog.V(2).Infof("Start to create queue %s", name)
 			_, err := vcClient.SchedulingV1beta1().Queues().Create(context.TODO(), &newQueue, metav1.CreateOptions{})
-			if err != nil {
-				klog.V(2).Infof("Failed to create queue %s: %v, will retry", name, err)
-				return err
+			if err == nil {
+				klog.V(2).Infof("Successfully created queue %s", name)
+				return nil
 			}
-
-			klog.V(2).Infof("Successfully created queue %s", name)
-			return nil
+			// If this queue has just been created by others and already exists, skip creating it.
+			if apierrors.IsAlreadyExists(err) {
+				klog.V(2).Infof("Queue %s already exists, skip creating.", name)
+				return nil
+			}
+			klog.V(2).Infof("Failed to create queue %s: %v, will retry", name, err)
+			return err
 		})
 	}
 
