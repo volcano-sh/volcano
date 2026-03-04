@@ -25,7 +25,6 @@ jobs:
         swap-storage: true
 
     - name: Checkout current Volcano repository
-      if: github.event.inputs.volcano-branch==''
       uses: actions/checkout@v3
 
     - name: Checkout Spark repository
