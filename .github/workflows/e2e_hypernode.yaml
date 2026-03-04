@@ -51,7 +51,7 @@ jobs:
       - name: Run E2E Tests
         run: |
           export ARTIFACTS_PATH=${{ github.workspace }}/e2e-hypernode-logs
-          make e2e-test-hypernode
+          make e2e-test-hypernode FORCE_REBUILD=false
 
       - name: Upload e2e hypernode logs
         if: '!success()'

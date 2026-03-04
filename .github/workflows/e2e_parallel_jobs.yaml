@@ -54,7 +54,7 @@ jobs:
       - name: Run E2E Tests
         run: |
           export ARTIFACTS_PATH=${{ github.workspace }}/e2e-parallel-jobs-logs
-          make e2e-test-jobp
+          make e2e-test-jobp FORCE_REBUILD=false
 
       - name: Upload e2e parallel jobs logs
         if: '!success()'

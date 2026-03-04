@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-OUTPUT_DIR=${PWD}/_output
+OUTPUT_DIR ?= _output
 BIN_DIR=${OUTPUT_DIR}/bin
 RELEASE_DIR=${OUTPUT_DIR}/release
 IMAGES_DIR=${OUTPUT_DIR}/images
@@ -25,6 +25,7 @@ MUSL_CC ?= "/usr/local/musl/bin/musl-gcc"
 SUPPORT_PLUGINS ?= "no"
 CRD_VERSION ?= v1
 BUILDX_OUTPUT_TYPE ?= "docker"
+FORCE_REBUILD ?= true
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -107,12 +108,17 @@ images: vc-scheduler-image vc-agent-scheduler-image vc-controller-manager-image 
 
 # Define a reusable build function for individual component images
 define build_component_image
-	docker buildx build -t "${IMAGE_PREFIX}/vc-$(1):$(TAG)" . \
-		-f ./installer/dockerfile/$(1)/Dockerfile \
-		--output=type=${BUILDX_OUTPUT_TYPE} \
-		--platform ${DOCKER_PLATFORMS} \
-		--build-arg APK_MIRROR=${APK_MIRROR} \
-		--build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}
+	@if [ "$(FORCE_REBUILD)" = "true" ] || ! docker image inspect "${IMAGE_PREFIX}/vc-$(1):$(TAG)" >/dev/null 2>&1; then \
+		echo "Building image ${IMAGE_PREFIX}/vc-$(1):$(TAG)..."; \
+		docker buildx build -t "${IMAGE_PREFIX}/vc-$(1):$(TAG)" . \
+			-f ./installer/dockerfile/$(1)/Dockerfile \
+			--output=type=${BUILDX_OUTPUT_TYPE} \
+			--platform ${DOCKER_PLATFORMS} \
+			--build-arg APK_MIRROR=${APK_MIRROR} \
+			--build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
+	else \
+		echo "Image ${IMAGE_PREFIX}/vc-$(1):$(TAG) already exists, skipping (use FORCE_REBUILD=true to rebuild)"; \
+	fi
 endef
 
 vc-controller-manager-image:
@@ -127,11 +133,15 @@ vc-agent-scheduler-image:
 vc-webhook-manager-image:
 	$(call build_component_image,webhook-manager)
 
+vc-agent-image:
+	$(call build_component_image,agent)
+
 save-images:
 	@mkdir -p ${IMAGES_DIR}
 	@echo "Saving images with gzip compression..."
 	docker save ${IMAGE_PREFIX}/vc-controller-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-controller-manager-$(TAG).tar.gz
 	docker save ${IMAGE_PREFIX}/vc-scheduler:$(TAG) | gzip > ${IMAGES_DIR}/vc-scheduler-$(TAG).tar.gz
+	docker save ${IMAGE_PREFIX}/vc-agent-scheduler:$(TAG) | gzip > ${IMAGES_DIR}/vc-agent-scheduler-$(TAG).tar.gz
 	docker save ${IMAGE_PREFIX}/vc-webhook-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-webhook-manager-$(TAG).tar.gz
 	docker save ${IMAGE_PREFIX}/vc-agent:$(TAG) | gzip > ${IMAGES_DIR}/vc-agent-$(TAG).tar.gz
 	@echo "Images saved to ${IMAGES_DIR}"
@@ -143,9 +153,6 @@ load-images:
 		gunzip -c $$image | docker load; \
 	done
 	@echo "All images loaded successfully"
-
-vc-agent-image:
-	$(call build_component_image,agent)
 
 generate-code:
 	./hack/update-gencode.sh

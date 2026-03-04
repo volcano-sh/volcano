@@ -51,7 +51,7 @@ jobs:
         run: |
           export ARTIFACTS_PATH=${{ github.workspace }}/e2e-vcctl-logs
           make vcctl
-          make e2e-test-vcctl
+          make e2e-test-vcctl FORCE_REBUILD=false
 
       - name: Upload e2e vcctl logs
         if: '!success()'

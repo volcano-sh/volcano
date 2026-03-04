@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-images:
-    uses: ./.github/workflows/images.yaml
+    uses: ./.github/workflows/docker_images.yaml
 
   e2e-admission:
     needs: build-images

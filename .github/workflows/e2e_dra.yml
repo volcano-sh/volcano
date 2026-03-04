@@ -50,7 +50,7 @@ jobs:
       - name: Run E2E Tests
         run: |
           export ARTIFACTS_PATH=${{ github.workspace }}/e2e-dra-logs
-          make e2e-test-dra
+          make e2e-test-dra FORCE_REBUILD=false
 
       - name: Upload e2e dra logs
         if: '!success()'
