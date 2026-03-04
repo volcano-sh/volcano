@@ -198,7 +198,7 @@ func filterWorkerNodes(nodes []corev1.Node) []corev1.Node {
 				break
 			}
 		}
-		if !isControlPlane && node.Spec.Unschedulable == false {
+		if !isControlPlane && !node.Spec.Unschedulable {
 			workers = append(workers, node)
 		}
 	}

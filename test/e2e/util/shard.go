@@ -23,6 +23,7 @@ import (
 
 	. "github.com/onsi/gomega"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
@@ -115,7 +116,11 @@ func WaitNodeShardDeleted(ctx *TestContext, name string) error {
 		func(c context.Context) (bool, error) {
 			_, err := GetNodeShard(ctx, name)
 			if err != nil {
-				return true, nil
+				if errors.IsNotFound(err) {
+					return true, nil
+				}
+				// transient error, keep polling
+				return false, nil
 			}
 			return false, nil
 		})
