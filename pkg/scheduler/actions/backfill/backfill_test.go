@@ -196,7 +196,7 @@ func TestBuildBackfillContext(t *testing.T) {
 			}
 			job := jobs.Pop().(*api.JobInfo)
 
-			tasks, found := actx.tasksByJob[job.UID]
+			tasks, found := actx.taskQueueByJob[job.UID]
 			if !found || tasks.Empty() {
 				actx.queues.Push(queue)
 				continue

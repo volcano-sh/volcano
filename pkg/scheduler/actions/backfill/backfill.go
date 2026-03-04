@@ -35,9 +35,9 @@ import (
 )
 
 type backfillContext struct {
-	queues      *util.PriorityQueue                 // queue of *api.QueueInfo
-	jobsByQueue map[api.QueueID]*util.PriorityQueue // queue of *api.JobInfo
-	tasksByJob  map[api.JobID]*util.PriorityQueue   // queue of *api.TaskInfo
+	queues         *util.PriorityQueue                 // queue of *api.QueueInfo
+	jobsByQueue    map[api.QueueID]*util.PriorityQueue // queue of *api.JobInfo
+	taskQueueByJob map[api.JobID]*util.PriorityQueue   // queue of *api.TaskInfo
 }
 
 type Action struct {
@@ -77,9 +77,9 @@ func (backfill *Action) buildBackfillContext() *backfillContext {
 	ssn := backfill.session
 
 	actx := &backfillContext{
-		queues:      util.NewPriorityQueue(ssn.QueueOrderFn),
-		jobsByQueue: map[api.QueueID]*util.PriorityQueue{},
-		tasksByJob:  map[api.JobID]*util.PriorityQueue{},
+		queues:         util.NewPriorityQueue(ssn.QueueOrderFn),
+		jobsByQueue:    map[api.QueueID]*util.PriorityQueue{},
+		taskQueueByJob: map[api.JobID]*util.PriorityQueue{},
 	}
 
 	for _, job := range ssn.Jobs {
@@ -97,12 +97,12 @@ func (backfill *Action) buildBackfillContext() *backfillContext {
 			continue
 		}
 
-		tasks := util.NewPriorityQueue(ssn.TaskOrderFn)
+		taskQueue := util.NewPriorityQueue(ssn.TaskOrderFn)
 		for _, task := range job.TaskStatusIndex[api.Pending] {
 			if !task.BestEffort || task.SchGated {
 				continue
 			}
-			tasks.Push(task)
+			taskQueue.Push(task)
 		}
 
 		for _, task := range job.TaskStatusIndex[api.Pipelined] {
@@ -114,10 +114,10 @@ func (backfill *Action) buildBackfillContext() *backfillContext {
 				klog.Warningf("Failed to unpipeline task: %s", err.Error())
 				continue
 			}
-			tasks.Push(task)
+			taskQueue.Push(task)
 		}
 
-		if tasks.Empty() {
+		if taskQueue.Empty() {
 			continue
 		}
 
@@ -126,7 +126,7 @@ func (backfill *Action) buildBackfillContext() *backfillContext {
 			actx.queues.Push(queue)
 		}
 		actx.jobsByQueue[queue.UID].Push(job)
-		actx.tasksByJob[job.UID] = tasks
+		actx.taskQueueByJob[job.UID] = taskQueue
 	}
 
 	return actx
@@ -139,25 +139,25 @@ func (backfill *Action) allocateResources(actx *backfillContext) {
 	for !queues.Empty() {
 		queue := queues.Pop().(*api.QueueInfo)
 
-		jobs, found := actx.jobsByQueue[queue.UID]
-		if !found || jobs.Empty() {
+		jobQueue, found := actx.jobsByQueue[queue.UID]
+		if !found || jobQueue.Empty() {
 			continue
 		}
 
-		job := jobs.Pop().(*api.JobInfo)
-		tasks, found := actx.tasksByJob[job.UID]
-		if !found || tasks.Empty() {
+		job := jobQueue.Pop().(*api.JobInfo)
+		taskQueue, found := actx.taskQueueByJob[job.UID]
+		if !found || taskQueue.Empty() {
 			queues.Push(queue)
 			continue
 		}
 
 		stmt := framework.NewStatement(ssn)
-		backfill.allocateTasksForJob(stmt, job, tasks)
+		backfill.allocateTasksForJob(stmt, job, taskQueue)
 
 		if len(stmt.Operations()) > 0 && ssn.JobReady(job) {
 			stmt.Commit()
-			if !tasks.Empty() {
-				jobs.Push(job)
+			if !taskQueue.Empty() {
+				jobQueue.Push(job)
 			}
 		} else {
 			stmt.Discard()
@@ -167,13 +167,13 @@ func (backfill *Action) allocateResources(actx *backfillContext) {
 	}
 }
 
-func (backfill *Action) allocateTasksForJob(stmt *framework.Statement, job *api.JobInfo, tasks *util.PriorityQueue) {
+func (backfill *Action) allocateTasksForJob(stmt *framework.Statement, job *api.JobInfo, taskQueue *util.PriorityQueue) {
 	ssn := backfill.session
 	predicateFunc := ssn.PredicateForAllocateAction
 	ph := util.NewPredicateHelper()
 
-	for !tasks.Empty() {
-		task := tasks.Pop().(*api.TaskInfo)
+	for !taskQueue.Empty() {
+		task := taskQueue.Pop().(*api.TaskInfo)
 
 		fe := api.NewFitErrors()
 		if err := ssn.PrePredicateFn(task); err != nil {
