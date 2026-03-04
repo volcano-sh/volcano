@@ -24,15 +24,20 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
+	vcv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
+	vcclient "volcano.sh/apis/pkg/client/clientset/versioned"
+	vcclientfake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
 	"volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
@@ -426,4 +431,51 @@ func (m *mockPreBinder) PreBind(ctx context.Context, bindCtx *BindContext) error
 
 func (m *mockPreBinder) PreBindRollBack(ctx context.Context, bindCtx *BindContext) {
 	// do nothing
+}
+
+func TestNewDefaultAndRootQueue(t *testing.T) {
+	rootQueue := "root"
+	defaultQueue := "default"
+
+	tests := []struct {
+		name             string
+		vcClient         vcclient.Interface
+		concurrentNumber int
+	}{
+		{
+			name:             "successfully create the both queues",
+			vcClient:         vcclientfake.NewSimpleClientset(),
+			concurrentNumber: 2,
+		}, {
+			name:             "successfully create the default queue, skip the root queue",
+			vcClient:         vcclientfake.NewSimpleClientset(&vcv1beta1.Queue{ObjectMeta: metav1.ObjectMeta{Name: rootQueue}}),
+			concurrentNumber: 2,
+		}, {
+			name:             "successfully create the root queue, skip the default queue",
+			vcClient:         vcclientfake.NewSimpleClientset(&vcv1beta1.Queue{ObjectMeta: metav1.ObjectMeta{Name: defaultQueue}}),
+			concurrentNumber: 2,
+		}, {
+			name: "skip the both queues",
+			vcClient: vcclientfake.NewSimpleClientset(&vcv1beta1.Queue{ObjectMeta: metav1.ObjectMeta{Name: rootQueue}},
+				&vcv1beta1.Queue{ObjectMeta: metav1.ObjectMeta{Name: defaultQueue}}),
+			concurrentNumber: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var wg sync.WaitGroup
+			wg.Add(tt.concurrentNumber)
+			for i := 0; i < tt.concurrentNumber; i++ {
+				go func() {
+					defer wg.Done()
+					newDefaultAndRootQueue(tt.vcClient, defaultQueue)
+				}()
+			}
+			wg.Wait()
+			_, rootErr := tt.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), rootQueue, metav1.GetOptions{})
+			assert.NoError(t, rootErr)
+			_, defaultErr := tt.vcClient.SchedulingV1beta1().Queues().Get(context.TODO(), defaultQueue, metav1.GetOptions{})
+			assert.NoError(t, defaultErr)
+		})
+	}
 }
