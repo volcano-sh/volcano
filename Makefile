@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-BIN_DIR=_output/bin
-RELEASE_DIR=_output/release
+OUTPUT_DIR=${PWD}/_output
+BIN_DIR=${OUTPUT_DIR}/bin
+RELEASE_DIR=${OUTPUT_DIR}/release
+IMAGES_DIR=${OUTPUT_DIR}/images
 REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh
 CRD_OPTIONS ?= "crd:crdVersions=v1,generateEmbeddedObjectMeta=true"
@@ -124,6 +126,23 @@ vc-agent-scheduler-image:
 
 vc-webhook-manager-image:
 	$(call build_component_image,webhook-manager)
+
+save-images:
+	@mkdir -p ${IMAGES_DIR}
+	@echo "Saving images with gzip compression..."
+	docker save ${IMAGE_PREFIX}/vc-controller-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-controller-manager-$(TAG).tar.gz
+	docker save ${IMAGE_PREFIX}/vc-scheduler:$(TAG) | gzip > ${IMAGES_DIR}/vc-scheduler-$(TAG).tar.gz
+	docker save ${IMAGE_PREFIX}/vc-webhook-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-webhook-manager-$(TAG).tar.gz
+	docker save ${IMAGE_PREFIX}/vc-agent:$(TAG) | gzip > ${IMAGES_DIR}/vc-agent-$(TAG).tar.gz
+	@echo "Images saved to ${IMAGES_DIR}"
+
+load-images:
+	@echo "Loading images from ${IMAGES_DIR}..."
+	@for image in ${IMAGES_DIR}/*.tar.gz; do \
+		echo "Loading $$image..."; \
+		gunzip -c $$image | docker load; \
+	done
+	@echo "All images loaded successfully"
 
 vc-agent-image:
 	$(call build_component_image,agent)
