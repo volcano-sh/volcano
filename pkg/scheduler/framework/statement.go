@@ -207,6 +207,10 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 func (s *Statement) pipeline(task *api.TaskInfo) {
 }
 
+func (s *Statement) UnPipeline(task *api.TaskInfo) error {
+	return s.unPipeline(task)
+}
+
 func (s *Statement) unPipeline(task *api.TaskInfo) error {
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
