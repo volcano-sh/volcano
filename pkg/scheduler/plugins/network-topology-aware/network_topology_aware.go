@@ -17,12 +17,14 @@ limitations under the License.
 package networktopologyaware
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/utils/set"
@@ -479,7 +481,12 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFnForNormalPods(ssn *framew
 		return nodeScores, nil
 	}
 
-	for _, node := range nodes {
+	// Use parallel execution for node scoring to improve performance
+	numNodes := len(nodes)
+	scores := make([]float64, numNodes)
+	
+	scoreNode := func(index int) {
+		node := nodes[index]
 		totalScore := 0.0
 		for tier := nta.hyperNodesTier.minTier; tier <= nta.hyperNodesTier.maxTier; tier++ {
 			// If no hypernode is found at this tier, this tierScore is FullScore finally, because we prefer to schedule pods to nodes that do not belong to any hypernode.
@@ -492,8 +499,16 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFnForNormalPods(ssn *framew
 			}
 			totalScore += tierWeights[tier] * tierScore
 		}
-		nodeScores[node.Name] = totalScore / totalTierWeight
+		scores[index] = totalScore / totalTierWeight
 	}
+	
+	workqueue.ParallelizeUntil(context.TODO(), 16, numNodes, scoreNode)
+	
+	// Aggregate results into nodeScores map
+	for i, node := range nodes {
+		nodeScores[node.Name] = scores[i]
+	}
+	
 	return nodeScores, nil
 }
 
