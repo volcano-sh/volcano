@@ -21,7 +21,8 @@ This metrics track execution of plugins and actions of volcano loop.
 | `e2e_job_scheduling_start_time`           | Gauge           | `job_name`=&lt;job_name&gt;, `queue`=&lt;queue&gt;, `job_namespace`=&lt;job_namespace&gt; | End-to-end job scheduling start time                                           |
 | `plugin_scheduling_latency_milliseconds`  | Histogram       | `plugin`=&lt;plugin_name&gt;, `OnSession`=&lt;OnSession&gt;                               | Plugin scheduling latency in milliseconds                                      |
 | `action_scheduling_latency_milliseconds`  | Histogram       | `action`=&lt;action_name&gt;                                                              | Action scheduling latency in milliseconds                                      |
-| `task_scheduling_latency_milliseconds`    | Histogram       | None                                                                                      | Task scheduling latency in milliseconds                                        |
+| `task_scheduling_latency_milliseconds`    | HistogramVector | `stage`=&lt;stage&gt;                                                                      | Task scheduling latency from creation to various stages in milliseconds        |
+| `plugin_stage_execution_duration_milliseconds` | HistogramVector | `stage`=&lt;stage&gt;, `plugin`=&lt;plugin_name&gt;                                        | Plugin execution duration in various stages in milliseconds                    |
 
 
 ### volcano operations

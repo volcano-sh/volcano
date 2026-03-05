@@ -22,12 +22,14 @@ package framework
 
 import (
 	"context"
+	"time"
 
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"volcano.sh/apis/pkg/apis/scheduling"
 	"volcano.sh/volcano/pkg/controllers/job/helpers"
 	"volcano.sh/volcano/pkg/scheduler/api"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
@@ -791,7 +793,9 @@ func (ssn *Session) PredicateFn(task *api.TaskInfo, node *api.NodeInfo) error {
 			if !found {
 				continue
 			}
+			start := time.Now()
 			err := pfn(task, node)
+			metrics.UpdatePluginStageExecutionDuration(metrics.PluginStagePredicate, plugin.Name, time.Since(start))
 			if err != nil {
 				return err
 			}
@@ -932,7 +936,9 @@ func (ssn *Session) NodeOrderFn(task *api.TaskInfo, node *api.NodeInfo) (float64
 			if !found {
 				continue
 			}
+			start := time.Now()
 			score, err := pfn(task, node)
+			metrics.UpdatePluginStageExecutionDuration(metrics.PluginStageNodeOrder, plugin.Name, time.Since(start))
 			if err != nil {
 				return 0, err
 			}

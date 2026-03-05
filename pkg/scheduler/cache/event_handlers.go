@@ -399,6 +399,7 @@ func (sc *SchedulerCache) AddPod(obj interface{}) {
 			pod.Namespace, pod.Name, err)
 		return
 	}
+	metrics.UpdateTaskScheduleDuration(metrics.TaskStageWatched, metrics.Duration(pod.CreationTimestamp.Time))
 	klog.V(3).Infof("Added pod <%s/%v> into cache.", pod.Namespace, pod.Name)
 }
 

@@ -228,6 +228,7 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 	errMsg := make(map[schedulingapi.TaskID]string)
 	for _, task := range tasks {
 		p := task.Pod
+		startTime := time.Now()
 		if err := db.kubeclient.CoreV1().Pods(p.Namespace).Bind(context.TODO(),
 			&v1.Binding{
 				ObjectMeta: metav1.ObjectMeta{Namespace: p.Namespace, Name: p.Name, UID: p.UID, Annotations: p.Annotations},
@@ -240,7 +241,8 @@ func (db *DefaultBinder) Bind(kubeClient kubernetes.Interface, tasks []*scheduli
 			klog.Errorf("Failed to bind pod <%v/%v> to node %s : %#v", p.Namespace, p.Name, task.NodeName, err)
 			errMsg[task.UID] = err.Error()
 		} else {
-			metrics.UpdateTaskScheduleDuration(metrics.Duration(p.CreationTimestamp.Time)) // update metrics as soon as pod is bind
+			metrics.UpdatePluginStageExecutionDuration(metrics.PluginStageBind, "internal", metrics.Duration(startTime))
+			metrics.UpdateTaskScheduleDuration(metrics.TaskStageBound, metrics.Duration(p.CreationTimestamp.Time)) // update metrics as soon as pod is bound
 		}
 	}
 
@@ -1399,11 +1401,12 @@ func (sc *SchedulerCache) processBindTask() {
 // executePreBind executes PreBind for one bindContext
 func (sc *SchedulerCache) executePreBind(ctx context.Context, bindContext *BindContext, preBinders map[string]PreBinder) error {
 	executedPreBinders := make([]PreBinder, 0, len(preBinders))
-	for _, preBinder := range preBinders {
+	for name, preBinder := range preBinders {
 		if preBinder == nil {
 			continue
 		}
 
+		start := time.Now()
 		if err := preBinder.PreBind(ctx, bindContext); err != nil {
 			// If PreBind fails, rollback the executed PreBinders
 			for i := len(executedPreBinders) - 1; i >= 0; i-- {
@@ -1412,6 +1415,10 @@ func (sc *SchedulerCache) executePreBind(ctx context.Context, bindContext *BindC
 				}
 			}
 			return err
+		}
+		metrics.UpdatePluginStageExecutionDuration(metrics.PluginStagePreBind, name, time.Since(start))
+		if bindContext.TaskInfo != nil && bindContext.TaskInfo.Pod != nil {
+			metrics.UpdateTaskScheduleDuration(metrics.TaskStagePreBound, metrics.Duration(bindContext.TaskInfo.Pod.CreationTimestamp.Time))
 		}
 		executedPreBinders = append(executedPreBinders, preBinder)
 	}
