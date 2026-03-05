@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api/devices/config"
 )
 
@@ -161,5 +162,37 @@ func TestAddResource(t *testing.T) {
 				t.Errorf("expected pod added: %v, got: %v", tc.wantAdded, found)
 			}
 		})
+	}
+}
+
+func TestAddResourceSetsPodGroupKey(t *testing.T) {
+	// When a pod with a PodGroup annotation is added, the GPUUsage should have PodGroupKey set.
+	gs := &GPUDevices{
+		Device: map[int]*GPUDevice{
+			0: {
+				UUID:   "GPU-1234",
+				PodMap: map[string]*GPUUsage{},
+			},
+		},
+		Sharing: sharingRegistry["hami-core"],
+	}
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			UID:       types.UID("pod-with-group"),
+			Namespace: "default",
+			Annotations: map[string]string{
+				AssignedIDsAnnotations:             "GPU-1234,NVIDIA,4096,0",
+				v1beta1.KubeGroupNameAnnotationKey: "my-job-pg",
+			},
+		},
+	}
+	gs.addResource(pod.Annotations, pod)
+
+	usage, ok := gs.Device[0].PodMap[string(pod.UID)]
+	if !ok {
+		t.Fatal("expected pod to be in PodMap")
+	}
+	if usage.PodGroupKey != "default/my-job-pg" {
+		t.Errorf("expected PodGroupKey %q, got %q", "default/my-job-pg", usage.PodGroupKey)
 	}
 }
