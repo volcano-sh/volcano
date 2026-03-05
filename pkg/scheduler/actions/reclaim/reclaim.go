@@ -212,6 +212,12 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			continue
 		}
 
+		// Use a temporary statement per node attempt so that eviction operations
+		// are isolated. On success the operations are merged into the caller's
+		// statement; on failure they are discarded, so evictions are only committed
+		// when reclaim succeeds on this node.
+		nodeStmt := framework.NewStatement(ssn)
+
 		victimsQueue := ssn.BuildVictimsPriorityQueue(victims, task)
 		resreq := task.InitResreq.Clone()
 		reclaimed := api.EmptyResource()
@@ -224,7 +230,7 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 			reclaimee := victimsQueue.Pop().(*api.TaskInfo)
 			klog.V(3).Infof("Try to reclaim Task <%s/%s> for Tasks <%s/%s>",
 				reclaimee.Namespace, reclaimee.Name, task.Namespace, task.Name)
-			stmt.Evict(reclaimee, "reclaim")
+			nodeStmt.Evict(reclaimee, "reclaim")
 			reclaimed.Add(reclaimee.Resreq)
 			availableResources.Add(reclaimee.Resreq)
 			evictionOccurred = true
@@ -236,16 +242,24 @@ func (ra *Action) reclaimForTask(ssn *framework.Session, stmt *framework.Stateme
 		klog.V(3).Infof("Reclaimed <%v> for task <%s/%s> requested <%v>, and Node <%s> availableResources <%v>.", reclaimed, task.Namespace, task.Name, task.InitResreq, n.Name, availableResources)
 
 		if task.InitResreq.LessEqual(availableResources, api.Zero) {
-			if err := stmt.Pipeline(task, n.Name, evictionOccurred); err != nil {
+			if err := nodeStmt.Pipeline(task, n.Name, evictionOccurred); err != nil {
 				klog.Errorf("Failed to pipeline Task <%s/%s> on Node <%s>",
 					task.Namespace, task.Name, n.Name)
-				if rollbackErr := stmt.UnPipeline(task); rollbackErr != nil {
+				if rollbackErr := nodeStmt.UnPipeline(task); rollbackErr != nil {
 					klog.Errorf("Failed to unpipeline Task %v on %v in Session %v for %v.",
 						task.UID, n.Name, ssn.UID, rollbackErr)
 				}
+				// Pipeline failed: discard all evictions for this node and try the next one.
+				nodeStmt.Discard()
+				continue
 			}
+			// Pipeline succeeded: merge this node's operations into the caller's statement.
+			stmt.Merge(nodeStmt)
 			break
 		}
+
+		// Not enough resources on this node even after evictions: discard and try next node.
+		nodeStmt.Discard()
 	}
 }
 

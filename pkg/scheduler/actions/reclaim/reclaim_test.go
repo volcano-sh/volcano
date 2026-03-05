@@ -259,6 +259,56 @@ func TestReclaim(t *testing.T) {
 			ExpectEvicted: []string{"c1/preemptee1-1"},
 		},
 		{
+			// Regression test for the per-node nodeStmt isolation introduced to fix
+			// ghost evictions in reclaimForTask.
+			//
+			// Setup: two nodes; preemptor (q2) needs 2 CPU.
+			//   Cluster total = 4 CPU → each queue deserves 2 CPU (equal weight).
+			//   q1 allocated = 3 CPU (overusing by 1 CPU); q2 allocated = 0 CPU.
+			//   Proportion Preemptive check: 0 + 2 = 2 ≤ 2 (q2.deserved) → passes.
+			//
+			//   n1: 1 CPU total, fully used by victim-n1 (1 CPU, q1, preemptable).
+			//       FutureIdle=0; 0+1=1 < 2 → ValidateVictims fails → n1 skipped entirely.
+			//   n2: 3 CPU total, 1 CPU idle + victim-n2 (2 CPU, q1, preemptable).
+			//       FutureIdle=1; 1+2=3 ≥ 2 → ValidateVictims passes → reclaim succeeds.
+			//
+			// Expected: only victim-n2 is evicted. victim-n1 must NOT be evicted.
+			//
+			// Before the nodeStmt fix, evictions went directly into the outer Statement
+			// without per-node isolation, so evictions from nodes that are later skipped
+			// or fail could leak into stmt.Commit(). The nodeStmt pattern prevents this.
+			Name: "only evict victims from the node where reclaim actually succeeds",
+			Plugins: map[string]framework.PluginBuilder{
+				conformance.PluginName: conformance.New,
+				gang.PluginName:        gang.New,
+				proportion.PluginName:  proportion.New,
+			},
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				util.BuildPodGroupWithPrio("pg-victim", "c1", "q1", 0, nil, schedulingv1beta1.PodGroupRunning, "low-priority"),
+				util.BuildPodGroupWithPrio("pg-preemptor", "c1", "q2", 1, nil, schedulingv1beta1.PodGroupInqueue, "high-priority"),
+			},
+			Pods: []*v1.Pod{
+				// n1 victim: only 1 CPU freed — insufficient for 2 CPU preemptor;
+				// ValidateVictims (0 idle + 1 CPU = 1 < 2) rejects n1 before any eviction.
+				util.BuildPod("c1", "victim-n1", "n1", v1.PodRunning, api.BuildResourceList("1", "1G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				// n2 victim: 2 CPU freed; n2 has 1 CPU idle, so 1+2=3 ≥ 2; reclaim succeeds.
+				util.BuildPod("c1", "victim-n2", "n2", v1.PodRunning, api.BuildResourceList("2", "2G"), "pg-victim", map[string]string{schedulingv1beta1.PodPreemptable: "true"}, make(map[string]string)),
+				util.BuildPod("c1", "preemptor", "", v1.PodPending, api.BuildResourceList("2", "2G"), "pg-preemptor", make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*v1.Node{
+				// n1: 1 CPU total, fully used by victim-n1.
+				util.BuildNode("n1", api.BuildResourceList("1", "1G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+				// n2: 3 CPU total; victim-n2 uses 2 CPU leaving 1 CPU idle.
+				util.BuildNode("n2", api.BuildResourceList("3", "3G", []api.ScalarResource{{Name: "pods", Value: "10"}}...), make(map[string]string)),
+			},
+			Queues: []*schedulingv1beta1.Queue{
+				util.BuildQueue("q1", 1, nil),
+				util.BuildQueue("q2", 1, nil),
+			},
+			ExpectEvictNum: 1,
+			ExpectEvicted:  []string{"c1/victim-n2"},
+		},
+		{
 			Name: "Reclaim succeeds for second task when first task has PreemptionPolicy=Never",
 			Plugins: map[string]framework.PluginBuilder{
 				conformance.PluginName: conformance.New,
