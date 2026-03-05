@@ -102,6 +102,20 @@ func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	go runSchedulerSocket()
 }
 
+// executeAction runs a single scheduler action with its full lifecycle,
+// ensuring Initialize() is called before Execute() and UnInitialize()
+// is deferred for guaranteed cleanup after execution.
+func (pc *Scheduler) executeAction(action framework.Action, ssn *framework.Session) {
+	func() {
+		action.Initialize()
+		defer action.UnInitialize()
+
+		actionStartTime := time.Now()
+		action.Execute(ssn)
+		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
+	}()
+}
+
 // runOnce executes a single scheduling cycle. This function is called periodically
 // as defined by the Scheduler's schedule period.
 func (pc *Scheduler) runOnce() {
@@ -128,9 +142,7 @@ func (pc *Scheduler) runOnce() {
 	}()
 
 	for _, action := range actions {
-		actionStartTime := time.Now()
-		action.Execute(ssn)
-		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
+		pc.executeAction(action, ssn)
 	}
 }
 
