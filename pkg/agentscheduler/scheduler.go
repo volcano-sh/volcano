@@ -197,6 +197,7 @@ func (worker *Worker) generateNextSchedulingContext() (*agentapi.SchedulingConte
 		klog.Warningf("Task %s/%s not found in cache, skip scheduling", podInfo.Pod.Namespace, podInfo.Pod.Name)
 		return nil, nil
 	}
+	metrics.UpdateTaskScheduleDuration(metrics.TaskStageDequeued, metrics.Duration(podInfo.Pod.CreationTimestamp.Time))
 
 	return &agentapi.SchedulingContext{
 		Task:          task,

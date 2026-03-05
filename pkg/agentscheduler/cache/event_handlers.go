@@ -35,6 +35,7 @@ import (
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	schedutil "k8s.io/kubernetes/pkg/scheduler/util"
+	"volcano.sh/volcano/pkg/scheduler/metrics"
 
 	nodeshardv1alpha1 "volcano.sh/apis/pkg/apis/shard/v1alpha1"
 	"volcano.sh/apis/pkg/apis/utils"
@@ -157,6 +158,7 @@ func (sc *SchedulerCache) AddPodToCache(obj interface{}) {
 		return
 	}
 	klog.V(3).Infof("Added pod <%s/%v> into cache.", pod.Namespace, pod.Name)
+	metrics.UpdateTaskScheduleDuration(metrics.TaskStageWatched, metrics.Duration(pod.CreationTimestamp.Time))
 
 	// Currently we still use AssignedPodAdded and only care about pod affinity and pod topology spread,
 	// directly using MoveAllToActiveOrBackoffQueue may lead to a decrease in throughput.
