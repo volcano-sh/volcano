@@ -72,7 +72,7 @@ func (q *QueueInfo) Clone() *QueueInfo {
 		Weight:    q.Weight,
 		Hierarchy: q.Hierarchy,
 		Weights:   q.Weights,
-		Queue:     q.Queue,
+		Queue:     q.Queue.DeepCopy(),
 	}
 }
 
