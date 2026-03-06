@@ -264,7 +264,7 @@ When selecting victims within a Domain, we categorize the "footprint" of each ca
     - **Cost**: Zero (Free to evict).
 
 2.  **Whole Bundle**:
-    - **Core**: Tasks required to maintain `MinAvailable`.
+    - **Core Tasks**: Tasks required to maintain `MinAvailable`.
     - **Cost**: High (Requires restarting the whole gang).
     
 **Sorting Logic (The "Sound" Strategy)**:
@@ -366,7 +366,7 @@ flowchart TB
 Bundles = List()
 
 # --- PHASE 1: Split & Bundle ---
-# Try to split tasks of each job to 2 bundles. One is Safe, and the other is Core.
+# Try to split tasks of each job into 2 bundles: Safe and Whole.
 FOR EACH Job IN Candidates:
     # 1. Identify tasks IN THE DOMAIN
     LocalTasks = Job.Tasks.Where(task => Domain.Contains(task.Node))
@@ -409,7 +409,7 @@ FOR EACH Job IN Candidates:
         # CASE B: Healthy
         # Identify SAFE tasks (must satisfy BOTH Global AND Role constraints)
         SafeTasks = List()
-        CoreTasks = List()
+        WholeTasks = List()
 
         FOR task IN LocalTasks:
             Role = task.Role
@@ -422,13 +422,13 @@ FOR EACH Job IN Candidates:
                 GlobalSurplus--      # Decrement available budget
                 IF EnforceRoles: RoleSurplus[Role]--  # Decrement role budget
             ELSE:
-                CoreTasks.Add(task)
+                WholeTasks.Add(task)
 
         IF SafeTasks Is Not Empty:
             Bundles.Add(NewBundle(Type: SAFE, Tasks: SafeTasks, Job: Job))
 
-        IF CoreTasks Is Not Empty:
-            Bundles.Add(NewBundle(Type: WHOLE, Tasks: CoreTasks, Job: Job))
+        IF WholeTasks Is Not Empty:
+            Bundles.Add(NewBundle(Type: WHOLE, Tasks: WholeTasks, Job: Job))
 
 
 # --- PHASE 2: Initial Sort (Fed to plugins) ---
