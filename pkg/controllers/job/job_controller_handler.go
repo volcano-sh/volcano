@@ -287,15 +287,13 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 	case v1.PodRunning:
 		if cc.cache.TaskFailed(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
 			event = bus.TaskFailedEvent
-		}
-		if oldPod.Status.Phase != v1.PodRunning {
+		} else if oldPod.Status.Phase != v1.PodRunning {
 			event = bus.PodRunningEvent
 		}
 	case v1.PodPending:
 		if cc.cache.TaskFailed(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
 			event = bus.TaskFailedEvent
-		}
-		if oldPod.Status.Phase != v1.PodPending {
+		} else if oldPod.Status.Phase != v1.PodPending {
 			event = bus.PodPendingEvent
 		}
 	}
