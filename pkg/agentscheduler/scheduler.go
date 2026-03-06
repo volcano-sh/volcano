@@ -40,7 +40,9 @@ import (
 	"volcano.sh/volcano/pkg/filewatcher"
 	schedulingapi "volcano.sh/volcano/pkg/scheduler/api"
 	"volcano.sh/volcano/pkg/scheduler/conf"
-	"volcano.sh/volcano/pkg/scheduler/metrics"
+	schedulermetrics "volcano.sh/volcano/pkg/scheduler/metrics"
+
+	agentmetrics "volcano.sh/volcano/pkg/agentscheduler/metrics"
 )
 
 // Scheduler represents a "Volcano Agent Scheduler".
@@ -159,7 +161,7 @@ func (worker *Worker) runOnce() {
 	// worker.framework.OnCycleStart()
 
 	defer func() {
-		metrics.UpdateE2eDuration(metrics.Duration(scheduleStartTime))
+		agentmetrics.UpdateWorkerSchedulingCycleDuration(schedulermetrics.Duration(scheduleStartTime))
 		// TODO: Call OnCycleEnd for all plugins
 		// worker.framework.OnCycleEnd()
 		worker.framework.Cache.OnWorkerEndSchedulingCycle(worker.index)
@@ -169,7 +171,7 @@ func (worker *Worker) runOnce() {
 	for _, action := range worker.framework.Actions {
 		actionStartTime := time.Now()
 		action.Execute(worker.framework, schedCtx)
-		metrics.UpdateActionDuration(action.Name(), metrics.Duration(actionStartTime))
+		schedulermetrics.UpdateActionDuration(action.Name(), schedulermetrics.Duration(actionStartTime))
 	}
 }
 
@@ -197,7 +199,7 @@ func (worker *Worker) generateNextSchedulingContext() (*agentapi.SchedulingConte
 		klog.Warningf("Task %s/%s not found in cache, skip scheduling", podInfo.Pod.Namespace, podInfo.Pod.Name)
 		return nil, nil
 	}
-	metrics.UpdateTaskScheduleDuration(metrics.TaskStageDequeued, metrics.Duration(podInfo.Pod.CreationTimestamp.Time))
+	schedulermetrics.UpdateTaskScheduleDuration(schedulermetrics.TaskStageDequeued, schedulermetrics.Duration(podInfo.Pod.CreationTimestamp.Time))
 
 	return &agentapi.SchedulingContext{
 		Task:          task,

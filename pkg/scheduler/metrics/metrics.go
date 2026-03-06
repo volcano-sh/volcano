@@ -43,18 +43,23 @@ const (
 	TaskStageBound    = "Bound"    // The time when a task is successfully bound to a node
 
 	// Plugin Execution Stages (used for pluginStageExecutionDuration)
-	PluginStagePredicate = "Predicate"
-	PluginStageNodeOrder = "NodeOrder"
-	PluginStagePreBind   = "PreBind"
-	PluginStageBind      = "Bind"
+	PluginStagePredicate      = "Predicate"
+	PluginStagePrePredicate   = "PrePredicate"
+	PluginStageNodeOrder      = "NodeOrder"
+	PluginStageBatchNodeOrder = "BatchNodeOrder"
+	PluginStagePreBind        = "PreBind"
+	PluginStageBind           = "Bind"
+	PluginStageReclaimable    = "Reclaimable"
+	PluginStagePreemptable    = "Preemptable"
+	PluginStageAllocatable    = "Allocatable"
 )
 
 var (
-	e2eSchedulingLatency = promauto.NewHistogram(
+	sessionExecutionDuration = promauto.NewHistogram(
 		prometheus.HistogramOpts{
 			Subsystem: VolcanoSubSystemName,
-			Name:      "e2e_scheduling_latency_milliseconds",
-			Help:      "E2e scheduling latency in milliseconds (scheduling algorithm + binding)",
+			Name:      "session_execution_duration_milliseconds",
+			Help:      "Duration of a single scheduling session execution in milliseconds. It covers the entire cycle from session open, action executions to session close.",
 			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
 		},
 	)
@@ -195,9 +200,9 @@ func UpdateActionDuration(actionName string, duration time.Duration) {
 	actionSchedulingLatency.WithLabelValues(actionName).Observe(DurationInMilliseconds(duration))
 }
 
-// UpdateE2eDuration updates entire end to end scheduling latency
-func UpdateE2eDuration(duration time.Duration) {
-	e2eSchedulingLatency.Observe(DurationInMilliseconds(duration))
+// UpdateSessionExecutionDuration updates entire session execution duration
+func UpdateSessionExecutionDuration(duration time.Duration) {
+	sessionExecutionDuration.Observe(DurationInMilliseconds(duration))
 }
 
 // UpdateE2eSchedulingDurationByJob updates entire end to end scheduling duration

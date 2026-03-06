@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The Volcano Authors.
+Copyright 2024 The Volcano Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,42 +19,21 @@ package metrics
 import (
 	"time"
 
-	vmetrics "volcano.sh/volcano/pkg/scheduler/metrics"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"k8s.io/component-base/metrics"
 	k8smetrics "k8s.io/kubernetes/pkg/scheduler/metrics"
-)
 
-const (
-	// VolcanoSubSystemName - subsystem name in prometheus used by volcano
-	VolcanoSubSystemName = "volcano-agent-scheduler"
-
-	// OnSchedulingSycleOpen label
-	OnSchedulingSycleOpen = "OnSessionOpen"
-
-	// OnSchedulingSycleClose label
-	OnSchedulingSycleClose = "OnSessionClose"
+	schedulermetrics "volcano.sh/volcano/pkg/scheduler/metrics"
 )
 
 var (
-	e2ePodSchedulingDuration = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Subsystem: VolcanoSubSystemName,
-			Name:      "e2e_pod_scheduling_duration",
-			Help:      "E2E pod scheduling duration",
-		},
-		[]string{"pod_name", "pod_namespace"},
-	)
-
-	e2ePodSchedulingLatency = promauto.NewHistogram(
+	workerSchedulingCycleDuration = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Subsystem: VolcanoSubSystemName,
-			Name:      "e2e_pod_scheduling_latency_milliseconds",
-			Help:      "E2e pod scheduling latency in milliseconds",
-			Buckets:   prometheus.ExponentialBuckets(32, 2, 10),
+			Subsystem: schedulermetrics.VolcanoSubSystemName,
+			Name:      "worker_scheduling_cycle_duration_milliseconds",
+			Help:      "Duration of a single scheduling cycle execution in agent worker.",
+			Buckets:   prometheus.ExponentialBuckets(5, 2, 15),
 		},
 	)
 )
@@ -65,7 +44,7 @@ var (
 func InitKubeSchedulerRelatedMetrics() {
 	k8smetrics.Goroutines = metrics.NewGaugeVec(
 		&metrics.GaugeOpts{
-			Subsystem:      VolcanoSubSystemName,
+			Subsystem:      schedulermetrics.VolcanoSubSystemName,
 			Name:           "goroutines",
 			Help:           "Number of running goroutines split by the work they do such as binding.",
 			StabilityLevel: metrics.ALPHA,
@@ -75,8 +54,7 @@ func InitKubeSchedulerRelatedMetrics() {
 	k8smetrics.InitMetrics()
 }
 
-// UpdateE2eSchedulingDurationByPod updates entire end to end scheduling duration
-func UpdateE2eSchedulingDurationByPod(podName string, namespace string, duration time.Duration) {
-	e2ePodSchedulingDuration.WithLabelValues(podName, namespace).Set(vmetrics.DurationInMilliseconds(duration))
-	e2ePodSchedulingLatency.Observe(vmetrics.DurationInMilliseconds(duration))
+// UpdateWorkerSchedulingCycleDuration updates worker scheduling cycle duration
+func UpdateWorkerSchedulingCycleDuration(duration time.Duration) {
+	workerSchedulingCycleDuration.Observe(schedulermetrics.DurationInMilliseconds(duration))
 }
