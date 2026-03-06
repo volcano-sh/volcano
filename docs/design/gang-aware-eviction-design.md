@@ -2,6 +2,11 @@
 
 [@vzhou-p](https://github.com/vzhou-p); Dec 3, 2025
 
+> **Update (Mar 2026)**: Since this doc was written, Volcano gained an explicit topology-domain abstraction based on **HyperNodes** and a plugin-driven
+> **winner-takes-all** domain generator via `Session.HyperNodeGradientForJobFn/SubJobFn`. This revision updates the design to build on those
+> existing mechanisms (instead of introducing a parallel `GangSearchSpaceFn` API), corrects reclaim nomination behavior, and documents the current
+> limitation that `preempt` skips NetworkTopology jobs today.
+
 ## 1. Problem Statement
 
 ### 1.1 Current Limitation
@@ -13,13 +18,15 @@ The Volcano scheduler's existing actions (`allocate`, `preempt`, `reclaim`) suff
     - Global cost (total resources of the broken gang) is ignored.
 
 2.  **Topology Coupling (Allocate)**:
-    - The `allocate` action contains **hardcoded logic** for "HyperNode Tiers" and "LCA Checks".
-    - This violates the plugin architecture; `allocate.go` should not know about network topology details.
-    - This makes it impossible to reuse the topology logic in `preempt` or `reclaim` without duplicating code.
+    - Volcano now has a topology-domain abstraction (**HyperNodes**) and an in-tree plugin (`network-topology-aware`) that computes ordered
+      HyperNode gradients for allocate.
+    - The domain generator is reusable, but the **eviction actions do not yet consume it**, so topology-aware eviction remains incomplete.
 
 3.  **Topology Blindness (Preempt/Reclaim)**:
-    - Because the topology logic is trapped in `allocate.go`, the `preempt` and `reclaim` actions simply ignore it.
-    - They might evict tasks on nodes that are technically valid for the pod but invalid for the Job's Hard Topology constraints.
+    - `preempt` currently **skips** jobs that contain `NetworkTopology` entirely (explicit guard).
+    - `reclaim` does not explicitly scope its search to a topology domain; it searches per-node candidates that pass predicates.
+    - Result: topology-constrained jobs cannot rely on preempt, and reclaim may “spray” victims across domains instead of clearing a coherent domain
+      for a gang.
 
 ### 1.2 Optimization Goal
 1.  **Decouple Topology Logic**: Move strict topology constraints out of `allocate.go` and into the plugin layer.
@@ -30,71 +37,94 @@ The Volcano scheduler's existing actions (`allocate`, `preempt`, `reclaim`) suff
 
 ## 2. Architectural Change: The Gang-Level Pipeline
 
-To resolve these issues, we introduce two new extension points that allow plugins to control the "Where", and "Who" of Gang Scheduling.
+To resolve these issues, we introduce a gang-level pipeline that is **domain-scoped** and **bundle-aware**.
 
-### 2.1 New Plugin Extension Points
+**Key change vs the original doc**: Volcano already has an explicit “Where” extension point implemented around **HyperNodes**.
+We should reuse it (and extend it if needed) rather than creating a new parallel `GangSearchSpaceFn` API.
+
+### 2.1 Extension Points (Updated: HyperNode Domains)
+
+#### 2.1.1 The “Where” (Constraint): HyperNode Gradients (Existing, Extended with SearchPurpose)
+Volcano already exposes a plugin-driven domain generator. **For this design, we will extend that existing API with an explicit `SearchPurpose`** so plugins can:
+- return broader gradients for allocation, and
+- return a truncated Top-K set for eviction (to cap latency).
+
+> Decision:
+> The `SearchPurpose` API shown below is **not present in the codebase today**. Implementing this design requires updating:
+> - `pkg/scheduler/api/types.go`: define `SearchPurpose` + extend the gradient function type signatures.
+> - `pkg/scheduler/framework/session.go` / `pkg/scheduler/framework/session_plugins.go`: store and invoke the updated signatures.
+> - Call sites: `pkg/scheduler/actions/allocate/allocate.go` (allocation uses `PurposeAllocate`) and the gang-aware paths in `pkg/scheduler/actions/preempt/preempt.go` + `pkg/scheduler/actions/reclaim/reclaim.go` (eviction uses `PurposeEvict`).
+> - Plugins that register gradients (e.g. `pkg/scheduler/plugins/network-topology-aware/network_topology_aware.go`).
 
 ```go
-// pkg/scheduler/api/interface.go
-
-// 1. The "Where" (Constraint)
-// GangSearchSpaceFn returns a list of "Feasible Domains"
-// The Gang must be scheduled entirely within ONE of these sets.
-// IMPORTANT: Domains must be returned in preference order (Best to Worst).
-// - Purpose: Allows the plugin to optimize sorting/pruning for the specific action.
-//   - Allocate: Plugin should return ALL valid domains (or a wide set). The 'allocate' action
-//     will simulate ALL of them, accumulate scores, and pick the global best.
-//   - Preempt/Reclaim: Plugin MUST return a TRUNCATED list (Top-K) sorted by feasibility.
-//     The action will greedily try them in order and stop at the first success to avoid
-//     performance explosion (exhaustively simulating preemption on all domains is too expensive).
-type GangSearchSpaceFn func(job *JobInfo, clusterSnapshot *ClusterSnapshot, purpose SearchPurpose) ([][]*NodeInfo, error)
+// pkg/scheduler/api/types.go
 
 type SearchPurpose int
+
 const (
+    // PurposeAllocate indicates the caller is performing placement/allocation search.
+    // Plugins may return a wider (potentially exhaustive) set of domains/gradients.
     PurposeAllocate SearchPurpose = iota
+
+    // PurposeEvict indicates the caller is performing eviction search (preempt/reclaim).
+    // Plugins SHOULD return a truncated Top-K set of domains/gradients ordered by feasibility
+    // to cap scheduler latency.
     PurposeEvict
 )
 
-// 2. The "Who" (Policy)
-// GangVictimSelectorFn selects specific victim gangs to satisfy a resource requirement.
-// Returns: A map with JobID as key and a list of taskIDs as value
-// Used to override default "Least Global Waste" logic.
-type GangVictimSelectorFn func(preemptor *JobInfo, neededResources *Resource, candidates []*JobInfo) (map[JobId][]TaskID, error)
+// HyperNodeGradientForJobFn groups HyperNodes into ordered gradients and discards HyperNodes
+// that violate the job's topology requirements. The first enabled plugin that registers this
+// function determines the result (winner-takes-all).
+type HyperNodeGradientForJobFn func(job *JobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) [][]*HyperNodeInfo
+
+// HyperNodeGradientForSubJobFn is the same but evaluated against a SubJob (subGroupPolicy).
+type HyperNodeGradientForSubJobFn func(subJob *SubJobInfo, hyperNode *HyperNodeInfo, purpose SearchPurpose) [][]*HyperNodeInfo
 ```
 
-> **Note**: The purpose parameter of GangSearchSpaceFn decides different results for different actions.
->    *   **Allocate**: Plugin returns **ALL** feasible domains. The `allocate` action performs an exhaustive simulation + scoring to find the optimal placement.
->    *   **Evict**: Plugin returns **Top-K** domains sorted by feasibility (Cost to Enter). The `reclaim`/`preempt` action uses a greedy "First Fit" approach to minimize scheduler latency.
+**Interpretation for this design**:
+- A **Domain** is a **HyperNode** (a topology subtree).
+- The node set in a domain is `ssn.RealNodesList[hyperNode.Name]`.
+- Gradients are **preference order**; the scheduler should try earlier gradients first.
+
+This maps directly to the original “GangSearchSpace” concept and already implements the doc’s “winner-takes-all” plugin semantics.
+
+#### 2.1.2 The “Who” (Policy): Gang-Aware Victim Selection (New, Optional)
+We still need a hook/strategy to select victims **as bundles/gangs**. This can be implemented:
+- **In the action layer** (recommended initially for less API churn), or
+- As a new plugin extension point if we need out-of-tree policies.
+
+If/when we formalize it, the selector should operate on **Jobs** and **Bundles**, not raw tasks, but must still be able to consult existing
+task-oriented policy plugins via an adapter (see Section 3.4.2).
 
 ### 2.2 Execution Pipeline (Composable Search)
 
 The Session executes a 2-stage pipeline for Gang operations:
 
-#### Phase 1: Search Space Reduction (GangSearchSpace)
-*   Call `GangSearchSpaceFn(job)` on plugins ordered by Priority (Config order).
-*   **Logic (Primary Driver)**: The **First Plugin** that returns a non-empty result defines the Search Space. Subsequent plugins are ignored for domain generation.
-*   **Reasoning**: This "Winner-Takes-All" approach avoids complex intersection logic and ordering conflicts. The highest-priority plugin (e.g., `network-topology-aware`) drives the structural constraint.
-*   **Result**: A list of `OrderedValidDomains` (`[][]*NodeInfo`).
+#### Phase 1: Search Space Reduction (HyperNodeGradient)
+*   Call `ssn.HyperNodeGradientForJobFn(job, rootHyperNode, purpose)` (or the SubJob version).
+*   **Logic (Primary Driver)**: The **first enabled plugin** that registered the gradient function defines the search space.
+*   **Result**: An ordered list of gradients `[][]*HyperNodeInfo`. Each HyperNode is a domain; its nodes are `ssn.RealNodesList[hyperNode]`.
 
 #### Phase 2: Assignment or Eviction
 
 The execution logic diverges based on the action type:
 
-*   **Allocate Action (Exhaustive Search)**:
-    *   Iterate through **ALL** `OrderedValidDomains`.
-    *   Simulate allocation on each domain to calculate a score.
-    *   Select the **Global Best** domain, Commit, and Return.
+*   **Allocate Action (Gradient-First Exhaustive Within Gradient)**:
+    * Use `purpose = PurposeAllocate`.
+    * Iterate through gradients in order (G1, G2, ...).
+    * For a given gradient, simulate allocation in **all HyperNodes** inside the gradient, pick the best solution within that gradient.
+    * **Stop at the first gradient that yields any solution**, commit that solution, and return.
+    * Rationale: this matches current `allocate` behavior and keeps latency predictable while still exploring multiple domains.
 *   **Preempt/Reclaim Action (Greedy First-Fit)**:
-    *   Iterate through `OrderedValidDomains` (D1, D2, ...) in the returned order.
-    *   **Try D1**: Search victims in D1. If valid victims found & simulation passes, **Evict & Return Immediately**.
-    *   If D1 fails, try D2.
+    * Use `purpose = PurposeEvict`.
+    * Plugins SHOULD return a truncated (Top-K) ordered set of HyperNodes/gradients for eviction.
+    *   **Try domain D**: select victims considering the *domain-wide footprint* of gangs inside D; simulate; if success, **evict + pipeline** and return.
+    *   If D fails, try next domain.
 
 ```mermaid
 graph TD
-    Start[Start Gang Action] --> P1{Plugin 1: SearchSpace?}
-    P1 -- Returns Domains --> Domains[Ordered Valid Domains]
-    P1 -- Empty --> P2{Plugin 2: SearchSpace?}
-    P2 -- Returns Domains --> Domains
+    Start[Start Gang Action] --> P1{Plugin: HyperNodeGradient?}
+    P1 -- Returns Gradients --> Domains[Ordered HyperNode Domains]
     
     Domains --> Loop{Iterate Domain D}
     Loop -- Next D --> Select[SelectGangVictimsInDomain]
@@ -116,7 +146,11 @@ Instead of creating new actions (`gang-preempt`, `gang-reclaim`), we will enhanc
 
 ### 3.1 Configuration
 
-Both actions will support a new argument: `gangAwareEnable`.
+Both actions will support a new argument: `gangAwareEnable` (new; not present today).
+
+**Note on current code**:
+- `preempt` currently has `enableTopologyAwarePreemption` (kube-style dry-run selection), but it still **skips** NetworkTopology jobs entirely.
+- `reclaim` already pipelines tasks (sets nomination) when it succeeds.
 
 ```yaml
 actions: "allocate, backfill, preempt, reclaim"
@@ -137,7 +171,7 @@ tiers:
 
 The `Execute` method in both actions will detect the flag and branch into the Gang-Aware pipeline if enabled.
 
-The gang-aware logic is a completely independent execution path. If `gangAwareEnable` is true, the action does **NOT** execute any of the legacy task-centric logic (e.g. `nornalPreempt` or `normalReclaim`). It calls `executeGangPath` and returns immediately. This prevents any interference or complexity from mixing the two models.
+The gang-aware logic is a completely independent execution path. If `gangAwareEnable` is true, the action does **NOT** execute any of the legacy task-centric logic (e.g. `normalPreempt` or `normalReclaim`). It calls `executeGangPath` and returns immediately. This prevents any interference or complexity from mixing the two models.
 
 ```go
 func (a *Action) Execute(ssn *framework.Session) {
@@ -155,15 +189,16 @@ func (a *Action) Execute(ssn *framework.Session) {
 }
 ```
 
-### 3.3 Gang-Aware Eviction Alogorithm (Shared by reclaim and preempt)
+### 3.3 Gang-Aware Eviction Algorithm (Shared by reclaim and preempt)
 
 
 1.  **Identify Need**: Preemptor Job P needs resources.
 2.  **Determine Search Space**:
-    - Call `ssn.GetGangValidDomains(P)` (Phase 1 above).
-    - We receive `[PreferredDomain, SecondaryDomain, ...]`.
+    - Call `ssn.HyperNodeGradientForJobFn(P, <cluster-top-hypernode>, PurposeEvict)` (Phase 1 above).
+    - Flatten gradients into an ordered list of HyperNode domains: `[PreferredHyperNode, SecondaryHyperNode, ...]`.
+    - The plugin SHOULD already have truncated to **Top-K** HyperNodes for eviction to cap worst-case latency.
 3.  **Process Domains (Greedy)**:
-    - **For each Domain** (set of nodes):
+    - **For each Domain** (a HyperNode; set of real nodes under it):
         - **Select Victims (Domain-Wide)**: Call `SelectGangVictimsInDomain(Preemptor, Domain)`.
             - This differs from legacy preemption by considering the *entire footprint* of victim gangs within the domain, rather than iterating node-by-node for each task of the gang.
         - **Simulate & Execute**:
@@ -176,40 +211,52 @@ func (a *Action) Execute(ssn *framework.Session) {
                 - Continue to next domain.
 
 #### 3.3.1 Why NominatedNodeName is Critical (Gang vs. Task)
-Unlike the legacy `reclaim` action, `gang-reclaim` **MUST** set the `.status.nominatedNodeName` (via `Pipeline`).
+Gang-aware reclaim/preempt **MUST** pipeline (set `.status.nominatedNodeName`) for the tasks it is trying to unblock.
 
 *   **The Risk**: If we only evict victims without reserving the nodes, the resources become "Free" in the next scheduling cycle. A smaller job (or a higher-priority single-task job) could "steal" one of the freed nodes.
 *   **The Gang Consequence**: For a single task, losing a node is an inconvenience. For a Gang requiring 5 specific nodes (topology domain), losing **one** node means the **entire Gang fails** to start. The eviction of the other 4 nodes becomes "wasted waste." By setting `nominatedNodeName`, the `allocate` action in the next cycle will prioritize these specific nodes for the Gang's tasks, guaranteeing the "Domain" remains intact.
 
+> **Reality check (current Volcano)**:
+> - `reclaim` already calls `stmt.Pipeline(task, node, evictionOccurred)` and commits when the job becomes pipelined.
+> - `allocate` already tries `NominatedNodeName` first.
+> This design keeps that behavior and extends it to topology-domain gang eviction.
+
 ### 3.3.2 Task-to-Node Nomination Strategy
-A critical challenge in `gang-reclaim` is determining **which task** in the gang should be nominated to **which node** in the cleared domain.
+A critical challenge in the gang-aware reclaim path is determining **which task** in the gang should be nominated to **which node** in the cleared domain.
 
 **Strategy: Reuse Allocate Logic (Dry-Run)**
 
-Instead of inventing a new matching algorithm, we reuse the existing `allocate` action logic to determine the best placement. This ensures consistency between the *Nomination* (in `gang-reclaim`) and the eventual *Binding* (in `allocate`).
+Instead of inventing a new matching algorithm, we reuse the existing `allocate` action logic to determine the best placement. This ensures consistency between the *Nomination* (in gang-aware reclaim) and the eventual *Binding* (in `allocate`).
 
-1.  **Snapshot & Filter**:
-    *   Create a temporary `Session` snapshot.
-    *   Restrict the available nodes to **only** the nodes in the Cleared Domain
+> **Decision (reuse the existing allocate code path for now)**:
+> The initial implementation will reuse the **existing `allocate` code path** (predicates + scoring + HyperNode gradients + worksheet mechanics) for dry-run simulation inside a domain, even though it introduces some coupling between actions.
+>
+> In the future, we may extract a shared “placement simulator” helper to reduce coupling and improve performance, but that is explicitly out of scope for the first rollout.
 
-2.  **Simulate Allocation**:
-    *   Call the standard `allocate.allocateResourcesForTasks()` function.
-    *   This function already handles:
-        *   Iterating tasks.
-        *   Running Predicates (Fit Check).
-        *   Running Priorities (Scoring).
-        *   Topology constraints are already respected by `GangSearchSpaceFn`
+1.  **Domain Filter (HyperNode)**:
+    * Restrict the candidate nodes to `ssn.RealNodesList[hyperNode]`.
+    * For NetworkTopology jobs, keep `AllocatedHyperNode` consistent during simulation (same concept as allocate).
 
-3.  **Apply Nomination**:
-    *   The simulation returns a `Statement` containing `Allocate` operations.
-    *   Convert these `Allocate` operations into `Pipeline` operations.
-    *   Execute `stmt.Pipeline(Task, Node)` to update the `.status.nominatedNodeName`.
+2.  **Dry-Run Placement (Reuse Allocate Mechanics)**:
+    * Reuse the same predicate + node scoring logic that allocate uses, but restricted to the domain nodes.
+    * Goal: produce a deterministic Task→Node nomination plan that allocate will likely bind in the next cycle.
 
-> **Note**: While the standard `reclaim` action in Volcano does *not* use nomination, the `preempt` action *does*. For `gang-reclaim`, we align with the `preempt` pattern because locking the specific topology domain is essential for the Gang's atomicity. A Gang cannot rely on general queue priority to secure a specific set of nodes.
+3.  **Apply Nomination via Statement**:
+    * Record evictions with `stmt.Evict(...)`.
+    * Nominate chosen placements with `stmt.Pipeline(task, node, evictionOccurred)`.
+
+> **Note**: In current Volcano, both `preempt` and `reclaim` already pipeline tasks on success; this design reuses that behavior but makes it
+> **domain-scoped** and **gang-consistent**.
 
 ### 3.4 Victim Selection (Bundles)
 
-When selecting victims within a Domain, we categorize the "footprint" of each candidate gang into "Bundles":
+When selecting victims within a Domain, we categorize the "footprint" of each candidate **Job** into "Bundles".
+
+> **Decision (Job-level bundles)**:
+> Eviction bundling is defined at the **Job** level (not `SubJobInfo`) in this design.
+>
+> - **Why**: existing eviction policy plugins operate on `TaskInfo` and (when they reason about gang constraints) typically reason about the Job via `task.Job`/`JobInfo` (e.g. `MinAvailable`, queue membership, priority/fairness).
+> - **Topology/subGroupPolicy implication**: Job-level bundling means we may evict tasks from multiple subgroups of the same Job when clearing a domain. This is intentional: the unit of disruption accounting is the Job. The **domain-scoped simulation** (Section 3.3.2) is responsible for ensuring the *preemptor* Job can be (re-)placed coherently in one domain after eviction.
 
 1.  **Safe Bundle**:
     - **Surplus**: Tasks above `MinAvailable` (Ready > Min).
@@ -478,12 +525,39 @@ RETURN Victims
 ```
 
 #### 3.4.2 Plugin Compatibility (Adapter Layer)
-To support existing plugins (which operate on `TaskInfo`), the new gang-aware logic should perform the following steps:
-1.  **Flattening**: When calling `ReclaimableFn` or `PreemptableFn`, the framework presents the constituent tasks of a Bundle.
-2.  **Atomic Enforcement**: 
-    -   If a plugin rejects *any* task in a **Whole Bundle**, the framework rejects the **entire bundle**.
-    -   If a plugin rejects tasks in a **Safe Bundle**, the framework accepts the partial result (evicting only the approved tasks).
-This ensures legacy plugins control *policy* (quotas, priorities) while the framework enforces *mechanism* (gang integrity).
+To support existing plugins (which operate on `TaskInfo`), the new gang-aware logic must adapt to **how Volcano eviction plugins actually work today**:
+
+**Current Volcano framework**:
+- Plugins register `EvictableFn` for both reclaim and preempt:
+  - `ReclaimableFn`: `func(reclaimer *TaskInfo, reclaimees []*TaskInfo) ([]*TaskInfo, int)`
+  - `PreemptableFn`: `func(preemptor *TaskInfo, preemptees []*TaskInfo) ([]*TaskInfo, int)`
+- The returned `int` is treated as **abstain vs participate**:
+  - `0` means **abstain** (framework ignores this plugin for this call).
+  - non-zero means **participate** (framework uses the returned candidate list).
+- The framework combines multiple plugins using **tier short-circuit + intersection**:
+  - Within a tier, participating plugins' returned candidate sets are **intersected**.
+  - If any participating plugin returns an **empty** list, that tier is effectively a **veto** (victims become nil for that tier).
+  - The **first tier** that yields a non-nil victim set determines the result (later tiers are not consulted).
+
+**Adapter Strategy (Bundle->Task, Policy->Mechanism split)**:
+1. **Flattening (Bundle -> ordered `[]*TaskInfo`)**:
+   - After we produce an ordered list of Bundles (Safe before Whole; then queue/job ordering), we flatten to a single `OrderedCandidates [](*TaskInfo)`.
+   - **Important**: we pass tasks in this exact order into `ssn.Reclaimable(...)` / `ssn.Preemptable(...)`. Some in-tree plugins (e.g. `capacity`) are stateful during a single call and make decisions while iterating the provided slice; preserving a deterministic order is part of correctness.
+   - We call `Reclaimable/Preemptable` **once per domain** with the full ordered list, not job-by-job and not node-by-node. This preserves plugin state within the call and avoids resetting a plugin's internal accounting multiple times.
+
+2. **Policy Gate (framework plugins decide the allowed task set)**:
+   - Let `AllowedTasks = ssn.Reclaimable(reclaimer, OrderedCandidates)` (or `Preemptable` for preemption).
+   - Interpret `AllowedTasks` as the **policy-approved** subset of tasks that are eligible to be evicted under current tier/plugin constraints (queue deserved/guarantee, job minAvailable, etc.).
+
+3. **Atomic Enforcement (Mechanism: bundle integrity on top of policy)**:
+   - For each Bundle `B` produced in Section 3.4.1:
+     - **Whole Bundle**: keep `B` only if **all** tasks in `B` are present in `AllowedTasks`. Otherwise discard the entire Whole bundle.
+     - **Safe Bundle**: shrink `B.Tasks` to tasks also present in `AllowedTasks`. If empty after shrinking, discard the Safe bundle.
+   - This ensures legacy plugins control **policy**, while the gang-aware pipeline enforces **job-level disruption accounting** and avoids "break 5 gangs by 1 task each" patterns.
+
+4. **Selection remains action-owned**:
+   - As in current Volcano, plugins return **eligible victims**, but the action remains responsible for selecting how many victims to evict to satisfy the preemptor's needs (and for dry-run simulation and nomination).
+   - The gang-aware path in `preempt`/`reclaim` selects **Bundles** (not raw tasks) after the adapter step above.
 
 ### 3.4.3 Bundle Scoring (ROI)
 
@@ -551,7 +625,7 @@ To handle heterogeneous resources (CPU, Memory, GPU), we define **Local Gain** a
 
 #### 3.5.1 Shared Utility (Mechanism)
 Both actions utilize the same underlying mechanisms provided by the `Session` or helper packages:
-1.  **Search Space**: `ssn.GetGangValidDomains(job)`
+1.  **Search Space**: `ssn.HyperNodeGradientForJobFn/SubJobFn` (domain generator) + `ssn.RealNodesList` (nodes in domain)
 2.  **Bundle Logic**: `util.CreateBundles(candidates)` (Categorizes tasks into Safe/Whole bundles)
 3.  **Efficiency Check**: `util.CalculateROI(bundle, needed)`
 
@@ -609,16 +683,17 @@ Migrating to the Unified Pipeline immediately is risky due to:
 Instead of a "Big Bang" rewrite, we can **retrofit** the existing legacy actions (`preempt` and `reclaim`) with the new Gang Capabilities. This allows us to fix critical bugs (like Topology Blindness) immediately while keeping the stable core loop.
 
 #### 4.3.1 The "Plugin Injection" Strategy
-We inject the new `GangSearchSpace` interface into the legacy control loop to act as a **Smart Filter**.
+We inject the existing **HyperNodeGradient** domain generator into the legacy control loop to act as a **Smart Filter**.
 
 *   **Before**: The legacy loop iterates over *all* nodes to find victims. It asks: *"Does the victim fit on this node?"*
-*   **After**: The legacy loop first asks the new plugin: *"Which nodes are topologically valid for this Gang?"*. It then restricts the victim search *only* to those nodes.
+*   **After**: The legacy loop first asks: *"Which HyperNodes/domains are valid for this job?"*, then restricts victim search *only* to nodes
+    inside the chosen HyperNode domain.
 
 #### 4.3.2 Solving "Split Domains" (The Sticky Domain Fix)
 A major flaw in the legacy "Task-by-Task" loop is that different tasks of the same Gang might be scheduled on incompatible domains (e.g., Task A on Rack 1, Task B on Rack 2).
 
 To fix this **without** a rewrite, we introduce **Job-Level State** (`Sticky Domain`):
-1.  **Lazy Pinning**: The first task of a job that needs preemption triggers a topology search (`GetGangValidDomains`). The scheduler selects the best domain and **pins** it for the job.
+1.  **Lazy Pinning**: The first task of a job that needs eviction triggers a HyperNode gradient query. The scheduler selects the best HyperNode and **pins** it for the job (for this scheduling cycle).
 2.  **Strict Enforcement**: All subsequent tasks of that job are forced to search *only* within the pinned domain.
 3.  **Fail-Fast Safety**: If a subsequent task cannot find space in the pinned domain, the job **fails** for the current cycle. This prevents the "Split Gang" corruption, prioritizing correctness over partial progress.
 4. **Soft Topology Constraint**: For soft topology constraint, we'll keep the current behavior to return all nodes in the cluster for victim searching.
@@ -629,7 +704,7 @@ While the Retrofit solves the critical "Topology Blindness" issue, it still has 
 
 1.  **Sub-Optimal Domain Selection (Greedy Commit)**: The "Sticky Domain" logic commits to a domain based on the *first* task processed. If `Rack A` (chosen for Task 1) runs out of capacity later, the entire job fails for this cycle, even if `Rack B` had enough capacity for the whole gang. The legacy loop cannot "look ahead" to see which domain is globally best for the *entire* gang.
 2.  **Task-Centric Cost**: The legacy actions still view victims as individual tasks. They cannot calculate the "Global Cost" of breaking a gang (e.g., evicting 1 task might kill a 100-task job). The "Bundle" and "ROI" logic from the Unified Design is **not** applied here.
-3.  **No "Nomination" in Reclaim**: Legacy Reclaim does not use `.status.nominatedNodeName`. This means there is still a race condition where a small job might "steal" the resources freed by a Gang Reclaim before the Gang can bind to them. May need to fix this before the implementation of this design.
+3.  **Domain Consistency vs Global Optimality**: Pinning to the first feasible HyperNode can still be sub-optimal if another HyperNode could fit the whole gang with fewer evictions. This is a deliberate tradeoff for correctness + bounded latency.
 
 ---
 
@@ -642,26 +717,31 @@ This section outlines the step-by-step plan to implement the Gang-Aware Eviction
 This phase introduces the new execution path and necessary plugin interfaces.
 
 1.  **Core API & Framework**:
-    *   **Interface Definition**: Add `GangSearchSpaceFn` and `GangVictimSelectorFn` to `pkg/scheduler/api/interface.go`.
-    *   **Session Support**: Update `Session` struct to manage these new function maps. Add helper method `GetGangValidDomains`.
+    *   **Search Space**: Reuse `HyperNodeGradientForJobFn/SubJobFn` as the domain generator for allocate *and* eviction actions, and extend it with `SearchPurpose`.
+    *   **Action Helper**: Add a helper to flatten gradients into an ordered HyperNode list and optionally truncate to Top-K for eviction actions.
     *   **Bundle Utilities**: Create `pkg/scheduler/util/gang_utils.go` to implement:
         *   `CreateBundles(candidates)`: Logic to split tasks into Safe/Whole bundles.
         *   `CalculateROI(bundle)`: Logic for scoring bundles.
 
 2.  **Plugin Updates**:
     *   **`network-topology-aware` Plugin**:
-        *   Implement `GangSearchSpaceFn`.
-        *   **Logic**: Calculate valid HyperNodes based on the job's topology constraints. Return `[][]*NodeInfo` representing valid domains (e.g., nodes in a specific Rack or Switch).
+        *   Provide/maintain `HyperNodeGradientForJobFn/SubJobFn`.
+        *   **Logic**: Calculate valid HyperNodes based on the job's topology constraints and return ordered gradients.
+        *   **Purpose behavior**:
+            - `PurposeAllocate`: return a wider (potentially exhaustive) set of feasible HyperNodes/gradients.
+            - `PurposeEvict`: return a truncated Top-K list ordered by feasibility (cost-to-enter) to bound eviction latency.
     *   **`gang` Plugin**:
-        *   **Relax Constraints**: Update `ReclaimableFn` and `PreemptableFn` logic. Currently, it strictly blocks eviction if `Ready < MinAvailable`. For the new Gang-Aware path (handling "Whole Bundles"), this check needs to be context-aware or bypassed, as the framework intentionally manages gang breakage based on Global Cost.
-        *   **Selector**: Add `GangVictimSelectorFn` to implement the viction selection logic.
+        *   **Compatibility Note**: Current `gang` plugin `Preemptable/Reclaimable` forbids evicting below `MinAvailable` (surplus-only).
+        *   For Whole-bundle eviction, the gang-aware path must either:
+            - bypass the gang plugin’s eviction filter (while still respecting fairness/priority plugins), or
+            - add a mode/flag so the gang plugin can participate without blocking intended whole-bundle behavior.
 
 3.  **Action Updates (New Path)**:
     *   **`preempt` & `reclaim` Actions**:
         *   Add configuration flag parsing for `gangAwareEnable`.
         *   Implement `executeGangPath` method in both actions.
         *   **Workflow**:
-            1.  Trigger `GetGangValidDomains` (driven by `network-topology-aware`).
+            1.  Trigger HyperNode gradients and select an ordered list of candidate HyperNode domains.
             2.  Call `SelectGangVictimsInDomain` (driven by `gang` utilities).
             3.  Simulate eviction and allocation.
             4.  Execute eviction and nomination.
@@ -671,7 +751,7 @@ This phase introduces the new execution path and necessary plugin interfaces.
 This phase improves the existing "Task-Centric" logic by injecting Topology Awareness via the new interfaces.
 
 1.  **Refactor Legacy Preempt/Reclaim Loops**:
-    *   **Injection Point**: Before iterating over nodes or victims, call `ssn.GetGangValidDomains(job)` to get nodes for victim searching.
+    *   **Injection Point**: Before iterating over nodes or victims, use HyperNode gradients to select a domain and restrict victim search to its nodes.
     *   **Filtering**:
         *   Restrict victim search *strictly* to these valid domains.
         *   Implement the sticky domain logic to ensure domain constraint is honored when iterating through tasks
