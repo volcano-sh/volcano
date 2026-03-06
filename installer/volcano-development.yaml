@@ -157,6 +157,26 @@ spec:
           image: docker.io/volcanosh/vc-webhook-manager:latest
           imagePullPolicy: Always
           name: admission
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 11251
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 11251
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
           volumeMounts:
             - mountPath: /admission.local.config/certificates
               name: admission-certs
@@ -9068,6 +9088,26 @@ spec:
       containers:
         - name: volcano-controllers
           image: docker.io/volcanosh/vc-controller-manager:latest
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 11251
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 11251
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
           args:
             - --logtostderr
             - --enable-healthz=true
@@ -9285,6 +9325,26 @@ spec:
       containers:
         - name: volcano-scheduler
           image: docker.io/volcanosh/vc-scheduler:latest
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 11251
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 11251
+              scheme: HTTP
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+            successThreshold: 1
           args:
             - --logtostderr
             - --scheduler-conf=/volcano.scheduler/volcano-scheduler.conf
