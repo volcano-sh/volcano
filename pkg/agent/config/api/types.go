@@ -117,6 +117,10 @@ type Evicting struct {
 	EvictingCPULowWatermark *int `json:"evictingCPULowWatermark,omitempty"`
 	// EvictingMemoryLowWatermark defines the low watermark percent of memory usage when the node could recover schedule pods.
 	EvictingMemoryLowWatermark *int `json:"evictingMemoryLowWatermark,omitempty"`
+	// MonitorInterval defines the interval (in seconds) for monitoring node resource usage.
+	MonitorInterval *int `json:"monitorInterval,omitempty"`
+	// HighUsageCountLimit defines how many consecutive high usage detections trigger eviction.
+	HighUsageCountLimit *int `json:"highUsageCountLimit,omitempty"`
 }
 
 type CPUThrottling struct {
