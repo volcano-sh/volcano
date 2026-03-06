@@ -100,6 +100,23 @@ You can try Volcano by one of the following two ways.
 > * For Kubernetes v1.17 and above, use CRDs under config/crd/bases (recommended)
 > * For Kubernetes v1.16 and below, use CRDs under config/crd/v1beta1 (deprecated)
 
+### Development with Tilt (Recommended for contributors)
+
+The fastest way to get a full development environment is with the Tilt-based workflow.
+It provisions a Kind cluster with a local registry and deploys all Volcano components
+with live-reload — edit any Go file and the running component rebuilds automatically:
+
+```bash
+make dev-up    # Provisions cluster + starts Tilt (first run ~20-25 min)
+```
+
+**Prerequisites:** Docker and Make. No local Go toolchain is required for building — builds
+happen inside containers. However, installing Go locally is recommended for running unit
+tests and working with the project long-term.
+
+For the full workflow reference, see the [development guide](docs/development/development.md).
+For architecture and design rationale, see the [design proposal](docs/design/tilt-based-development.md).
+
 ### Install with YAML files
 
 Install Volcano on an existing Kubernetes cluster. This way is both available for x86_64 and arm64 architecture.
@@ -155,7 +172,7 @@ helm list -n volcano-system
 
 ### Install from code
 
-If you don't have a kubernetes cluster, try one-click install from code base:
+If you don't have a kubernetes cluster, and you don't want the live-reload tilt environment, you can try the legacy one-click install from code base:
 
 ```bash
 ./hack/local-up-volcano.sh

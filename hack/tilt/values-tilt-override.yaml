@@ -1,0 +1,33 @@
+basic:
+  image_pull_policy: IfNotPresent
+  scheduler_config_file: config/volcano-scheduler-ci.conf
+
+custom:
+  controller_log_level: 5
+  scheduler_log_level: 5
+  scheduler_schedule_period: 1s
+  admission_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  controller_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  scheduler_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  default_ns:
+    node-role.kubernetes.io/control-plane: ""
+  # scheduler_feature_gates: ${FEATURE_GATES}
+  # ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
