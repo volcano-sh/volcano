@@ -249,6 +249,7 @@ func (sc *SchedulerCache) NewTaskInfo(pod *v1.Pod) (*schedulingapi.TaskInfo, err
 	}
 	// Update BestEffort because the InitResreq maybe changes
 	taskInfo.BestEffort = taskInfo.InitResreq.IsEmpty()
+	taskInfo.DRAResreq = sc.buildTaskDRAResreq(pod)
 	return taskInfo, nil
 }
 

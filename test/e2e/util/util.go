@@ -135,6 +135,7 @@ type TestContext struct {
 	QueueParent      map[string]string
 	PriorityClasses  map[string]int32
 	UsingPlaceHolder bool
+	DRAQuota         map[string]*schedulingv1beta1.DRAQuota
 }
 
 type Options struct {
@@ -145,6 +146,7 @@ type Options struct {
 	PriorityClasses    map[string]int32
 	NodesNumLimit      int
 	NodesResourceLimit v1.ResourceList
+	DRAQuota           map[string]*schedulingv1beta1.DRAQuota
 }
 
 var VcClient *vcclient.Clientset
@@ -162,6 +164,7 @@ func InitTestContext(o Options) *TestContext {
 		DeservedResource: o.DeservedResource,
 		QueueParent:      o.QueueParent,
 		PriorityClasses:  o.PriorityClasses,
+		DRAQuota:         o.DRAQuota,
 		Vcclient:         VcClient,
 		Kubeclient:       KubeClient,
 		UsingPlaceHolder: false,
