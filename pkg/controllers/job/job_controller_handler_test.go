@@ -35,6 +35,7 @@ import (
 	scheduling "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	vcclientset "volcano.sh/apis/pkg/client/clientset/versioned"
 	informerfactory "volcano.sh/apis/pkg/client/informers/externalversions"
+	"volcano.sh/volcano/pkg/controllers/apis"
 	"volcano.sh/volcano/pkg/controllers/framework"
 )
 
@@ -564,6 +565,105 @@ func TestDeletePodFunc(t *testing.T) {
 
 			if totalPods != testcase.ExpectedValue {
 				t.Errorf("case %d (%s): expected: %v, got %v ", i, testcase.Name, testcase.ExpectedValue, totalPods)
+			}
+		})
+	}
+}
+
+// TestUpdatePodFuncTaskFailedEvent verifies that when a task has exceeded its
+// maxRetry threshold, updatePod enqueues TaskFailedEvent even if the pod is
+// simultaneously undergoing a phase transition (Pending→Running or Failed→Pending).
+// Without the else-if fix both events would fire and PodRunningEvent/PodPendingEvent
+// would silently overwrite TaskFailedEvent, causing failure policies to never trigger.
+func TestUpdatePodFuncTaskFailedEvent(t *testing.T) {
+	namespace := "test"
+	maxRetry := int32(3)
+	replicas := int32(1)
+
+	jobWithTask := func() *batch.Job {
+		return &batch.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "job1",
+				Namespace: namespace,
+			},
+			Spec: batch.JobSpec{
+				Tasks: []batch.TaskSpec{
+					{
+						Name:     "task1",
+						Replicas: replicas,
+						MaxRetry: maxRetry,
+					},
+				},
+			},
+		}
+	}
+
+	annotation := map[string]string{
+		batch.JobNameKey:  "job1",
+		batch.JobVersion:  "0",
+		batch.TaskSpecKey: "task1",
+	}
+
+	testcases := []struct {
+		name          string
+		oldPod        *v1.Pod
+		newPod        *v1.Pod
+		expectedEvent bus.Event
+	}{
+		{
+			name:   "Pending to Running with restartCount >= maxRetry emits TaskFailedEvent",
+			oldPod: buildPod(namespace, "pod1", v1.PodPending, nil),
+			newPod: func() *v1.Pod {
+				p := buildPod(namespace, "pod1", v1.PodRunning, nil)
+				p.Status.ContainerStatuses = []v1.ContainerStatus{
+					{RestartCount: 3},
+				}
+				return p
+			}(),
+			expectedEvent: bus.TaskFailedEvent,
+		},
+		{
+			name:   "Failed to Pending with restartCount >= maxRetry emits TaskFailedEvent",
+			oldPod: buildPod(namespace, "pod1", v1.PodFailed, nil),
+			newPod: func() *v1.Pod {
+				p := buildPod(namespace, "pod1", v1.PodPending, nil)
+				p.Status.ContainerStatuses = []v1.ContainerStatus{
+					{RestartCount: 3},
+				}
+				return p
+			}(),
+			expectedEvent: bus.TaskFailedEvent,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			controller := newController()
+			controller.addJob(jobWithTask())
+			addPodAnnotation(tc.oldPod, annotation)
+			addPodAnnotation(tc.newPod, annotation)
+			controller.addPod(tc.oldPod)
+
+			// drain items queued by addJob and addPod so only updatePod's item remains
+			key := fmt.Sprintf("%s/%s", namespace, "job1")
+			queue := controller.getWorkerQueue(key)
+			for queue.Len() > 0 {
+				item, _ := queue.Get()
+				queue.Done(item)
+			}
+
+			controller.updatePod(tc.oldPod, tc.newPod)
+
+			if queue.Len() != 1 {
+				t.Fatalf("%s: expected 1 item in queue after updatePod, got %d", tc.name, queue.Len())
+			}
+			item, _ := queue.Get()
+			req, ok := item.(apis.Request)
+			if !ok {
+				t.Fatalf("%s: queue item is not apis.Request", tc.name)
+			}
+			if req.Event != tc.expectedEvent {
+				t.Errorf("%s: expected event %v, got %v", tc.name, tc.expectedEvent, req.Event)
 			}
 		})
 	}
