@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-BIN_DIR=_output/bin
-RELEASE_DIR=_output/release
+OUTPUT_DIR ?= _output
+BIN_DIR=${OUTPUT_DIR}/bin
+RELEASE_DIR=${OUTPUT_DIR}/release
+IMAGES_DIR=${OUTPUT_DIR}/images
 REPO_PATH=volcano.sh/volcano
 IMAGE_PREFIX=volcanosh
 CRD_OPTIONS ?= "crd:crdVersions=v1,generateEmbeddedObjectMeta=true"
@@ -23,6 +25,7 @@ MUSL_CC ?= "/usr/local/musl/bin/musl-gcc"
 SUPPORT_PLUGINS ?= "no"
 CRD_VERSION ?= v1
 BUILDX_OUTPUT_TYPE ?= "docker"
+FORCE_REBUILD ?= true
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -105,12 +108,17 @@ images: vc-scheduler-image vc-agent-scheduler-image vc-controller-manager-image 
 
 # Define a reusable build function for individual component images
 define build_component_image
-	docker buildx build -t "${IMAGE_PREFIX}/vc-$(1):$(TAG)" . \
-		-f ./installer/dockerfile/$(1)/Dockerfile \
-		--output=type=${BUILDX_OUTPUT_TYPE} \
-		--platform ${DOCKER_PLATFORMS} \
-		--build-arg APK_MIRROR=${APK_MIRROR} \
-		--build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}
+	@if [ "$(FORCE_REBUILD)" = "true" ] || [ "$(BUILDX_OUTPUT_TYPE)" = "registry" ] || ! docker image inspect "${IMAGE_PREFIX}/vc-$(1):$(TAG)" >/dev/null 2>&1; then \
+		echo "Building image ${IMAGE_PREFIX}/vc-$(1):$(TAG)..."; \
+		docker buildx build -t "${IMAGE_PREFIX}/vc-$(1):$(TAG)" . \
+			-f ./installer/dockerfile/$(1)/Dockerfile \
+			--output=type=${BUILDX_OUTPUT_TYPE} \
+			--platform ${DOCKER_PLATFORMS} \
+			--build-arg APK_MIRROR=${APK_MIRROR} \
+			--build-arg OPEN_EULER_IMAGE_TAG=${OPEN_EULER_IMAGE_TAG}; \
+	else \
+		echo "Image ${IMAGE_PREFIX}/vc-$(1):$(TAG) already exists, skipping (use FORCE_REBUILD=true to rebuild)"; \
+	fi
 endef
 
 vc-controller-manager-image:
@@ -127,6 +135,29 @@ vc-webhook-manager-image:
 
 vc-agent-image:
 	$(call build_component_image,agent)
+
+save-images:
+	@mkdir -p ${IMAGES_DIR}
+	@echo "Saving images with gzip compression..."
+	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-controller-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-controller-manager-$(TAG).tar.gz'
+	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-scheduler:$(TAG) | gzip > ${IMAGES_DIR}/vc-scheduler-$(TAG).tar.gz'
+	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-agent-scheduler:$(TAG) | gzip > ${IMAGES_DIR}/vc-agent-scheduler-$(TAG).tar.gz'
+	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-webhook-manager:$(TAG) | gzip > ${IMAGES_DIR}/vc-webhook-manager-$(TAG).tar.gz'
+	bash -o pipefail -c 'docker save ${IMAGE_PREFIX}/vc-agent:$(TAG) | gzip > ${IMAGES_DIR}/vc-agent-$(TAG).tar.gz'
+	@echo "Images saved to ${IMAGES_DIR}"
+
+load-images:
+	@echo "Loading images from ${IMAGES_DIR}..."
+	@set -- ${IMAGES_DIR}/*.tar.gz; \
+	if [ ! -e "$$1" ]; then \
+		echo "No image archives (*.tar.gz) found in ${IMAGES_DIR}"; \
+		exit 1; \
+	fi; \
+	for image in "$$@"; do \
+		echo "Loading $$image..."; \
+		gunzip -c "$$image" | docker load; \
+	done
+	@echo "All images loaded successfully"
 
 generate-code:
 	./hack/update-gencode.sh
