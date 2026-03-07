@@ -131,6 +131,11 @@ func (ssn *Session) AddAllocatableFn(name string, fn api.AllocatableFn) {
 	ssn.allocatableFns[name] = fn
 }
 
+// AddJobAllocatableFn add job allocatable function
+func (ssn *Session) AddJobAllocatableFn(name string, fn api.JobAllocatableFn) {
+	ssn.jobAllocatableFns[name] = fn
+}
+
 // AddJobValidFn add jobvalid function
 func (ssn *Session) AddJobValidFn(name string, fn api.ValidateExFn) {
 	ssn.jobValidFns[name] = fn
@@ -358,6 +363,27 @@ func (ssn *Session) Allocatable(queue *api.QueueInfo, candidate *api.TaskInfo) b
 				continue
 			}
 			if !af(queue, candidate) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// JobAllocatable invoke jobAllocatable function of the plugins to check
+// whether the job's min resources can be allocated in the queue.
+func (ssn *Session) JobAllocatable(queue *api.QueueInfo, job *api.JobInfo) bool {
+	for _, tier := range ssn.Tiers {
+		for _, plugin := range tier.Plugins {
+			if !isEnabled(plugin.EnabledJobAllocatable) {
+				continue
+			}
+			fn, found := ssn.jobAllocatableFns[plugin.Name]
+			if !found {
+				continue
+			}
+			if !fn(queue, job) {
 				return false
 			}
 		}
