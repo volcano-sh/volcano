@@ -92,6 +92,8 @@ type PluginOption struct {
 	EnabledOverused *bool `yaml:"enabledOverused"`
 	// EnabledAllocatable defines whether allocatable is enabled
 	EnabledAllocatable *bool `yaml:"enabledAllocatable"`
+	// EnabledJobAllocatable defines whether jobAllocatable is enabled
+	EnabledJobAllocatable *bool `yaml:"enabledJobAllocatable"`
 	// EnabledHyperNodeOrder defines whether hyperNode is enabled
 	EnabledHyperNodeOrder *bool `yaml:"enabledHyperNodeOrder"`
 	// EnabledSubJobReady defines whether subJobReadyFn is enabled
