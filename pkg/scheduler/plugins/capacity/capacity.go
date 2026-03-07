@@ -230,6 +230,23 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
 	})
 
+	ssn.AddJobAllocatableFn(cp.Name(), func(queue *api.QueueInfo, job *api.JobInfo) bool {
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, cannot allocate job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+			return false
+		}
+		if !readyToSchedule {
+			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
+			return false
+		}
+		if hierarchyEnabled && !cp.isLeafQueue(queue.UID) {
+			klog.V(3).Infof("Queue <%s> is not a leaf queue, can not allocate job <%s/%s>.", queue.Name, job.Namespace, job.Name)
+			return false
+		}
+
+		return cp.checkJobAllocatableHierarchically(ssn, queue, job)
+	})
+
 	ssn.AddJobEnqueueableFn(cp.Name(), func(obj interface{}) int {
 		if !readyToSchedule {
 			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
@@ -948,6 +965,37 @@ func (cp *capacityPlugin) checkQueueAllocatableHierarchically(ssn *framework.Ses
 			if klog.V(5).Enabled() {
 				for j := i - 1; j >= 0; j-- {
 					cp.queueAllocatable(ssn.Queues[list[j]], candidate)
+				}
+			}
+			return false
+		}
+	}
+	return true
+}
+
+func (cp *capacityPlugin) jobAllocatable(queue *api.QueueInfo, job *api.JobInfo) bool {
+	attr := cp.queueOpts[queue.UID]
+	minRes := job.GetMinResources()
+	if minRes.IsEmpty() {
+		return true
+	}
+	futureUsed := attr.allocated.Clone().Add(minRes)
+	allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, minRes)
+	if !allocatable {
+		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Job <%v/%v>: min resources <%v>",
+			queue.Name, attr.realCapability, attr.allocated, job.Namespace, job.Name, minRes)
+	}
+	return allocatable
+}
+
+func (cp *capacityPlugin) checkJobAllocatableHierarchically(ssn *framework.Session, queue *api.QueueInfo, job *api.JobInfo) bool {
+	// If hierarchical queue is not enabled, list will only contain the queue itself.
+	list := append(cp.queueOpts[queue.UID].ancestors, queue.UID)
+	for i := len(list) - 1; i >= 0; i-- {
+		if !cp.jobAllocatable(ssn.Queues[list[i]], job) {
+			if klog.V(5).Enabled() {
+				for j := i - 1; j >= 0; j-- {
+					cp.jobAllocatable(ssn.Queues[list[j]], job)
 				}
 			}
 			return false
