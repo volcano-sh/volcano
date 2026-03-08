@@ -612,6 +612,11 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	for _, job := range ssn.Jobs {
 		klog.V(4).Infof("Considering Job <%s/%s>.", job.Namespace, job.Name)
 		attr := cp.queueOpts[job.Queue]
+		if attr == nil {
+			klog.Warningf("Job <%s/%s> references queue %s which is not found in session queues, skipping",
+				job.Namespace, job.Name, job.Queue)
+			continue
+		}
 		if len(attr.children) > 0 {
 			klog.Errorf("The Queue <%s> of Job <%s/%s> is not leaf queue", attr.name, job.Namespace, job.Name)
 			return false
@@ -670,6 +675,10 @@ func (cp *capacityPlugin) buildHierarchicalQueueAttrs(ssn *framework.Session) bo
 	// root queue is default queue and users are not aware of it. User is allowed to sumbit jobs which exceed current cluster total resources,
 	// so root queue should not restrict by current total resources. User need to restrict resource through creating queue manually
 	rootQueueAttr := cp.queueOpts[api.QueueID(cp.rootQueue)]
+	if rootQueueAttr == nil {
+		klog.Warningf("Root queue %q not found in session queues, skipping hierarchy initialization", cp.rootQueue)
+		return false
+	}
 	infinityResource := api.InfiniteResource()
 	if cp.totalResource.ScalarResources != nil {
 		for k := range cp.totalResource.ScalarResources {

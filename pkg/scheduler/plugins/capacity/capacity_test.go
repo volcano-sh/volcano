@@ -984,3 +984,90 @@ func Test_updateQueueAttrShare(t *testing.T) {
 		})
 	}
 }
+
+// Test_buildHierarchicalQueueAttrs_nilSafety is a regression test for nil pointer
+// dereferences in buildHierarchicalQueueAttrs when the root queue or a job's queue
+// is absent from the session snapshot.
+func Test_buildHierarchicalQueueAttrs_nilSafety(t *testing.T) {
+	plugins := map[string]framework.PluginBuilder{PluginName: New, predicates.PluginName: predicates.New, gang.PluginName: gang.New}
+	trueValue := true
+	actions := []framework.Action{allocate.New()}
+
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "4Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), map[string]string{})
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledReclaimable: &trueValue,
+					EnabledQueueOrder:  &trueValue,
+					EnabledHierarchy:   &trueValue,
+					EnabledJobEnqueued: &trueValue,
+				},
+				{
+					Name:             predicates.PluginName,
+					EnabledPredicate: &trueValue,
+				},
+				{
+					Name:               gang.PluginName,
+					EnabledJobStarving: &trueValue,
+				},
+			},
+		},
+	}
+
+	tests := []uthelper.TestCommonStruct{
+		{
+			// Regression: root queue absent from ssn.Queues caused nil pointer dereference
+			// at buildHierarchicalQueueAttrs:679 (rootQueueAttr.capability.IsEmpty()).
+			// With the fix, buildHierarchicalQueueAttrs returns false and the session
+			// completes gracefully without scheduling any pods.
+			Name:           "no-panic when root queue is absent (empty ssn.Queues)",
+			Plugins:        plugins,
+			Pods:           []*corev1.Pod{},
+			Nodes:          []*corev1.Node{n1},
+			PodGroups:      []*schedulingv1beta1.PodGroup{},
+			Queues:         []*schedulingv1beta1.Queue{}, // no Queue CRs at all
+			ExpectBindMap:  map[string]string{},
+			ExpectBindsNum: 0,
+		},
+		{
+			// Regression: a job whose queue was deleted between scheduling sessions caused
+			// nil pointer dereference at buildHierarchicalQueueAttrs:615 (attr.children).
+			// The root queue IS present so the queues loop succeeds, but the job's queue
+			// is missing from ssn.Queues. With the fix the job is skipped with a warning
+			// and scheduling continues for all other work.
+			Name:    "no-panic when job references a deleted queue",
+			Plugins: plugins,
+			Pods: []*corev1.Pod{
+				util.BuildPod("ns1", "orphan", "", corev1.PodPending,
+					api.BuildResourceList("1", "1Gi"), "pg-orphan",
+					make(map[string]string), make(map[string]string)),
+			},
+			Nodes: []*corev1.Node{n1},
+			PodGroups: []*schedulingv1beta1.PodGroup{
+				// pg-orphan belongs to "deleted-queue" which is NOT in Queues below
+				util.BuildPodGroup("pg-orphan", "ns1", "deleted-queue", 1, nil,
+					schedulingv1beta1.PodGroupInqueue),
+			},
+			// Only the root queue exists; "deleted-queue" has been removed
+			Queues:         []*schedulingv1beta1.Queue{buildQueueWithParents("root", "", nil, nil)},
+			ExpectBindMap:  map[string]string{},
+			ExpectBindsNum: 0,
+		},
+	}
+
+	for i, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.RegisterSession(tiers, nil)
+			defer test.Close()
+			// Must not panic; any panic will surface as a test failure via t.Fatal.
+			test.Run(actions)
+			if err := test.CheckAll(i); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
