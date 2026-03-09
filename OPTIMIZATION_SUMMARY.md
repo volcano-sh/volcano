@@ -252,15 +252,15 @@ Before merging, consider running these benchmarks:
 
 ## References
 
-- Original Issue: [Link to GitHub issue]
-- Design Document: `docs/development/node-scoring-extension-points-best-practices.md`
-- Related PRs: [Any related PRs]
+- Original Issue: https://github.com/volcano-sh/volcano/issues/5082
+- Development Guide: `docs/development/node-scoring-extension-points-best-practices.md`
+- Volcano Repository: https://github.com/volcano-sh/volcano
 
 ## Author
 
 **Shashank Goel**
 - Email: goelshashank13@gmail.com
-- GitHub: [Your GitHub username]
+- GitHub: [@RepoRonin](https://github.com/RepoRonin)
 
 ## Acknowledgments
 
