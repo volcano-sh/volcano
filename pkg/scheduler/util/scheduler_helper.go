@@ -73,6 +73,11 @@ func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
 func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.BatchNodeOrderFn, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
+	const (
+		// nodeScoreWorker is the number of parallel workers for node scoring
+		nodeScoreWorker = 16
+	)
+
 	nodeScores := map[float64][]*api.NodeInfo{}
 	numNodes := len(nodes)
 
@@ -114,7 +119,7 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 		results[index].orderScore = orderScore
 		results[index].nodeName = node.Name
 	}
-	workqueue.ParallelizeUntil(context.TODO(), 16, numNodes, scoreNode)
+	workqueue.ParallelizeUntil(context.TODO(), nodeScoreWorker, numNodes, scoreNode)
 
 	// Aggregate map scores into pluginNodeScoreMap after parallel execution
 	pluginNodeScoreMap := map[string]fwk.NodeScoreList{}
