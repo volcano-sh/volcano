@@ -437,9 +437,9 @@ func BenchmarkNodeScoring(b *testing.B) {
 
 ## References
 
-- [Custom Plugin Development](custom-plugin.md)
+- [Custom Plugin Development](../design/custom-plugin.md)
 - [Scheduler Configuration](../user-guide/how_to_configure_scheduler.md)
-- [Network Topology Aware Scheduling](Network%20Topology%20Aware%20Scheduling.md)
+- [Network Topology Aware Scheduling](../design/Network%20Topology%20Aware%20Scheduling.md)
 
 ## Changelog
 
