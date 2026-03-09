@@ -1,11 +1,6 @@
 # Gang-Aware Preemption & Reclaim Design Document
 
-[@vzhou-p](https://github.com/vzhou-p); Dec 3, 2025
-
-> **Update (Mar 2026)**: Since this doc was written, Volcano gained an explicit topology-domain abstraction based on **HyperNodes** and a plugin-driven
-> **winner-takes-all** domain generator via `Session.HyperNodeGradientForJobFn/SubJobFn`. This revision updates the design to build on those
-> existing mechanisms (instead of introducing a parallel `GangSearchSpaceFn` API), corrects reclaim nomination behavior, and documents the current
-> limitation that `preempt` skips NetworkTopology jobs today.
+[@vzhou-p](https://github.com/vzhou-p); Mar 9, 2026
 
 ## 1. Problem Statement
 
@@ -38,9 +33,6 @@ The Volcano scheduler's existing actions (`allocate`, `preempt`, `reclaim`) suff
 ## 2. Architectural Change: The Gang-Level Pipeline
 
 To resolve these issues, we introduce a gang-level pipeline that is **domain-scoped** and **bundle-aware**.
-
-**Key change vs the original doc**: Volcano already has an explicit “Where” extension point implemented around **HyperNodes**.
-We should reuse it (and extend it if needed) rather than creating a new parallel `GangSearchSpaceFn` API.
 
 ### 2.1 Extension Points (Updated: HyperNode Domains)
 
