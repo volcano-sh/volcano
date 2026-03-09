@@ -152,6 +152,12 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 	// Wait for BatchNodeOrderFn to complete
 	wg.Wait()
 
+	// Explicitly discard potentially partial results if BatchNodeOrderFn failed
+	if batchErr != nil {
+		klog.Warningf("BatchNodeOrderFn failed, proceeding with reduce+order scores only: %v", batchErr)
+		batchNodeScore = nil
+	}
+
 	// Aggregate final scores
 	nodeScoreMap := map[string]float64{}
 	for _, node := range nodes {
