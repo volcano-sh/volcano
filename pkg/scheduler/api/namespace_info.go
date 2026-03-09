@@ -58,8 +58,12 @@ func (n *NamespaceCollection) Delete(quota *v1.ResourceQuota) {
 
 // Snapshot will clone a NamespaceInfo without Heap according NamespaceCollection
 func (n *NamespaceCollection) Snapshot() *NamespaceInfo {
+	copiedQuotaStatus := make(map[string]v1.ResourceQuotaStatus, len(n.QuotaStatus))
+	for k, v := range n.QuotaStatus {
+		copiedQuotaStatus[k] = *v.DeepCopy()
+	}
 	return &NamespaceInfo{
 		Name:        NamespaceName(n.Name),
-		QuotaStatus: n.QuotaStatus,
+		QuotaStatus: copiedQuotaStatus,
 	}
 }
