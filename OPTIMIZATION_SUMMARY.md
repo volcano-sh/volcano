@@ -139,7 +139,7 @@ for i, node := range nodes {
 
 ### 4. Comprehensive Developer Documentation
 
-**New File:** `docs/design/node-scoring-extension-points-best-practices.md`
+**New File:** `docs/development/node-scoring-extension-points-best-practices.md`
 
 **Contents:**
 - Detailed explanation of all node scoring extension points
@@ -202,7 +202,7 @@ Signed-off-by: Shashank Goel <goelshashank13@gmail.com>
 ## Files Changed
 
 ```
- docs/design/node-scoring-extension-points-best-practices.md   | 447 +++++++++++++++
+ docs/development/node-scoring-extension-points-best-practices.md   | 447 +++++++++++++++
  pkg/scheduler/plugins/network-topology-aware/network_topology_aware.go  |  19 +-
  pkg/scheduler/util/scheduler_helper.go                |  76 ++-
  3 files changed, 521 insertions(+), 21 deletions(-)
@@ -253,7 +253,7 @@ Before merging, consider running these benchmarks:
 ## References
 
 - Original Issue: [Link to GitHub issue]
-- Design Document: `docs/design/node-scoring-extension-points-best-practices.md`
+- Design Document: `docs/development/node-scoring-extension-points-best-practices.md`
 - Related PRs: [Any related PRs]
 
 ## Author
