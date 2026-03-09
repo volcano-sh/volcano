@@ -305,9 +305,9 @@ When implementing a scoring plugin, verify:
 - [ ] Tested with large node counts (1000+ nodes) to verify performance
 - [ ] Profiled to identify any unexpected bottlenecks
 
-## Framework Optimizations (v1.11+)
+## Framework Optimizations (v1.15+)
 
-As of Volcano v1.11, the following optimizations have been implemented in the scheduler framework:
+As of Volcano v1.15, the following optimizations have been implemented in the scheduler framework:
 
 1. **Lock-Free Score Aggregation:** The `PrioritizeNodes` function now uses pre-allocated slices instead of mutex-protected maps, eliminating lock contention during parallel score collection.
 
@@ -446,5 +446,5 @@ func BenchmarkNodeScoring(b *testing.B) {
 
 ## Changelog
 
-- **v1.11.0**: Added lock-free score aggregation and concurrent batch/map execution
-- **v1.11.0**: Initial documentation for node scoring best practices
+- **v1.15.0**: Added lock-free score aggregation and concurrent batch/map execution
+- **v1.15.0**: Initial documentation for node scoring best practices
