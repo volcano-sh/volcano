@@ -52,6 +52,8 @@ const (
 	HyperNodeBinPackNormalPodEnable = "hypernode.binpack.normal-pod.enable"
 	// HyperNodeBinPackNormalPodFading is the key for tier weight fading parameter for pods without network topology
 	HyperNodeBinPackNormalPodFading = "hypernode.binpack.normal-pod.fading"
+	// nodeScoreWorker is the number of parallel workers for node scoring
+	nodeScoreWorker = 16
 )
 
 const (
@@ -502,7 +504,7 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFnForNormalPods(ssn *framew
 		scores[index] = totalScore / totalTierWeight
 	}
 	
-	workqueue.ParallelizeUntil(context.TODO(), 16, numNodes, scoreNode)
+	workqueue.ParallelizeUntil(context.TODO(), nodeScoreWorker, numNodes, scoreNode)
 	
 	// Aggregate results into nodeScores map
 	for i, node := range nodes {
