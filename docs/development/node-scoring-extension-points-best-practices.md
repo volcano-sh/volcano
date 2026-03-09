@@ -338,6 +338,9 @@ func (p *resourceScorePlugin) Name() string {
 func (p *resourceScorePlugin) OnSessionOpen(ssn *framework.Session) {
     ssn.AddNodeOrderFn(p.Name(), func(task *api.TaskInfo, node *api.NodeInfo) (float64, error) {
         // Simple CPU utilization scoring
+        if node.Allocatable.MilliCPU == 0 {
+            return 0, nil
+        }
         cpuUsage := node.ResourceUsage.MilliCPU / node.Allocatable.MilliCPU
         return 1.0 - cpuUsage, nil
     })
