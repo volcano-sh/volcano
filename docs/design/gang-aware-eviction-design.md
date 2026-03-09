@@ -34,7 +34,7 @@ The Volcano scheduler's existing actions (`allocate`, `preempt`, `reclaim`) suff
 
 To resolve these issues, we introduce a gang-level pipeline that is **domain-scoped** and **bundle-aware**.
 
-### 2.1 Extension Points (Updated: HyperNode Domains)
+### 2.1 Extension Points
 
 #### 2.1.1 The “Where” (Constraint): HyperNode Gradients (Existing, Extended with SearchPurpose)
 Volcano already exposes a plugin-driven domain generator. **For this design, we will extend that existing API with an explicit `SearchPurpose`** so plugins can:
