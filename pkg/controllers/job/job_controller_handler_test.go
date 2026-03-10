@@ -572,9 +572,12 @@ func TestDeletePodFunc(t *testing.T) {
 
 // TestUpdatePodFuncTaskFailedEvent verifies that when a task has exceeded its
 // maxRetry threshold, updatePod enqueues TaskFailedEvent even if the pod is
-// simultaneously undergoing a phase transition (Pending→Running or Failed→Pending).
-// Without the else-if fix both events would fire and PodRunningEvent/PodPendingEvent
-// would silently overwrite TaskFailedEvent, causing failure policies to never trigger.
+// simultaneously undergoing a phase transition (Pending→Running).
+// The Failed→Pending case is a defensive test: pod phases are terminal in
+// Kubernetes, so that transition cannot happen via updatePod in practice.
+// Without the fix in https://github.com/volcano-sh/volcano/pull/5089,
+// PodRunningEvent/PodPendingEvent would silently overwrite TaskFailedEvent,
+// causing failure policies to never trigger.
 func TestUpdatePodFuncTaskFailedEvent(t *testing.T) {
 	namespace := "test"
 	maxRetry := int32(3)

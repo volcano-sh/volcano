@@ -285,12 +285,18 @@ func (cc *jobcontroller) updatePod(oldObj, newObj interface{}) {
 			event = bus.TaskCompletedEvent
 		}
 	case v1.PodRunning:
+		// TaskFailedEvent takes precedence over phase-transition events:
+		// when maxRetry is exceeded, the failure must propagate even if
+		// the pod is restarting.
 		if cc.cache.TaskFailed(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
 			event = bus.TaskFailedEvent
 		} else if oldPod.Status.Phase != v1.PodRunning {
 			event = bus.PodRunningEvent
 		}
 	case v1.PodPending:
+		// TaskFailedEvent takes precedence over phase-transition events:
+		// when maxRetry is exceeded, the failure must propagate even if
+		// the pod is restarting.
 		if cc.cache.TaskFailed(jobcache.JobKeyByName(newPod.Namespace, jobName), taskName) {
 			event = bus.TaskFailedEvent
 		} else if oldPod.Status.Phase != v1.PodPending {
