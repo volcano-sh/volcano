@@ -55,6 +55,35 @@ type ResourceInfo struct {
 	UsedPerNuma        map[int]float64 // key: NUMA ID
 }
 
+// GPUInfo contains the NUMA topology information for a single GPU device.
+type GPUInfo struct {
+	NUMANodeID int
+}
+
+// GPUDetails is a map of GPU index to its topology information.
+type GPUDetails map[int]GPUInfo
+
+// NUMANodes returns the set of NUMA node IDs associated with the GPUs.
+func (d GPUDetails) NUMANodes() cpuset.CPUSet {
+	numaNodes := cpuset.New()
+	for _, info := range d {
+		numaNodes = numaNodes.Union(cpuset.New(info.NUMANodeID))
+	}
+	return numaNodes
+}
+
+// GPUsInNUMANodes returns the set of GPU indices in the given NUMA nodes.
+func (d GPUDetails) GPUsInNUMANodes(numaNodeIDs ...int) cpuset.CPUSet {
+	numaSet := cpuset.New(numaNodeIDs...)
+	result := cpuset.New()
+	for gpuIdx, info := range d {
+		if numaSet.Contains(info.NUMANodeID) {
+			result = result.Union(cpuset.New(gpuIdx))
+		}
+	}
+	return result
+}
+
 // NumatopoInfo is the information about topology manager on the node
 type NumatopoInfo struct {
 	Namespace   string
@@ -62,6 +91,7 @@ type NumatopoInfo struct {
 	Policies    map[nodeinfov1alpha1.PolicyName]string
 	NumaResMap  map[string]*ResourceInfo
 	CPUDetail   topology.CPUDetails
+	GPUDetail   GPUDetails
 	ResReserved v1.ResourceList
 }
 
@@ -73,6 +103,7 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 		Policies:    make(map[nodeinfov1alpha1.PolicyName]string),
 		NumaResMap:  make(map[string]*ResourceInfo),
 		CPUDetail:   topology.CPUDetails{},
+		GPUDetail:   GPUDetails{},
 		ResReserved: make(v1.ResourceList),
 	}
 
@@ -103,6 +134,10 @@ func (info *NumatopoInfo) DeepCopy() *NumatopoInfo {
 	cpuDetail := info.CPUDetail
 	for cpuID, detail := range cpuDetail {
 		numaInfo.CPUDetail[cpuID] = detail
+	}
+
+	for gpuIdx, gpuInfo := range info.GPUDetail {
+		numaInfo.GPUDetail[gpuIdx] = gpuInfo
 	}
 
 	resReserved := info.ResReserved
