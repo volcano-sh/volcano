@@ -203,6 +203,7 @@ func (s *Statement) Pipeline(task *api.TaskInfo, hostname string, evictionOccurr
 func (s *Statement) pipeline(task *api.TaskInfo) {
 }
 
+// UnPipeline the task from the node in the session, and update the task status to pending
 func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 	job, found := s.ssn.Jobs[task.Job]
 	if found {
@@ -227,7 +228,7 @@ func (s *Statement) UnPipeline(task *api.TaskInfo) error {
 			}
 			eh.DeallocateFunc(eventInfo)
 			if eventInfo.Err != nil {
-				klog.Errorf("Failed to exec deallocate callback functions for task <%v/%v> to node <%v> when pipeline in Session <%v>: %v",
+				klog.Errorf("Failed to exec deallocate callback functions for task <%v/%v> to node <%v> when unpipeline in Session <%v>: %v",
 					task.Namespace, task.Name, task.NodeName, s.ssn.UID, eventInfo.Err)
 			}
 		}
