@@ -191,6 +191,51 @@ custom:
   ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
 EOF
   ;;
+"SHARDINGCONTROLLER")
+  echo "Install volcano chart with crd version $crd_version and sharding controller enabled"
+  cat <<EOF | helm install ${CLUSTER_NAME} installer/helm/chart/volcano \
+  --namespace ${NAMESPACE} \
+  --kubeconfig ${KUBECONFIG} \
+  --values - \
+  --wait
+basic:
+  image_pull_policy: IfNotPresent
+  image_tag_version: ${TAG}
+  scheduler_config_file: config/volcano-scheduler-ci.conf
+  crd_version: ${crd_version}
+
+custom:
+  scheduler_log_level: 5
+  controller_log_level: 5
+  controller_controllers: "*"
+  admission_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  controller_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  scheduler_tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+  default_ns:
+    node-role.kubernetes.io/control-plane: ""
+  scheduler_feature_gates: ${FEATURE_GATES}
+  enabled_admissions: "/pods/mutate,/queues/mutate,/podgroups/mutate,/jobs/mutate,/jobs/validate,/jobflows/validate,/pods/validate,/queues/validate,/podgroups/validate,/hypernodes/validate,/cronjobs/validate"
+  ignored_provisioners: ${IGNORED_PROVISIONERS:-""}
+EOF
+  ;;
 *)
   echo "Install volcano chart with crd version $crd_version"
   cat <<EOF | helm install ${CLUSTER_NAME} installer/helm/chart/volcano \
@@ -352,6 +397,10 @@ case ${E2E_TYPE} in
 "CRONJOB")  
     echo "Running cronjob e2e suite..."  
     KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/cronjob/  
+    ;;
+"SHARDINGCONTROLLER")
+    echo "Running sharding controller e2e suite..."
+    KUBECONFIG=${KUBECONFIG} GOOS=${OS} ginkgo -v -r --slow-spec-threshold='30s' --progress ./test/e2e/shardingcontroller/
     ;;
 esac
 
