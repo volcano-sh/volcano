@@ -238,46 +238,42 @@ func getNodeNumaNumForTask(nodeInfo []*api.NodeInfo, resAssignMap map[string]api
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodeInfo), func(index int) {
 		node := nodeInfo[index]
 		assignCpus := resAssignMap[node.Name][string(v1.ResourceCPU)]
-		cpuNumaCnt := getNumaNodeCntForCPUID(assignCpus, node.NumaSchedulerInfo.CPUDetail)
+		cpuNumaMask := getNumaMaskForCPUID(assignCpus, node.NumaSchedulerInfo.CPUDetail)
 
-		// Include GPU NUMA node count in scoring if GPU assignments exist.
-		gpuNumaCnt := 0
+		// Build a unified NUMA mask across CPU and GPU assignments.
+		// Using the union ensures that shared NUMA nodes are counted once,
+		// so co-located CPU+GPU on the same NUMA node scores better.
 		assignGPUs := resAssignMap[node.Name][string(gpumanager.NvidiaGPUResource)]
 		if assignGPUs.Size() > 0 && node.NumaSchedulerInfo.GPUDetail != nil {
-			gpuNumaCnt = getNumaNodeCntForGPUID(assignGPUs, node.NumaSchedulerInfo.GPUDetail)
+			gpuNumaMask := getNumaMaskForGPUID(assignGPUs, node.NumaSchedulerInfo.GPUDetail)
+			cpuNumaMask.Or(gpuNumaMask)
 		}
 
-		// Total NUMA node count: prefer nodes where both CPU and GPU
-		// assignments span fewer NUMA nodes.
-		totalNumaCnt := cpuNumaCnt + gpuNumaCnt
 		nodeNumaCnts[index] = api.ScoredNode{
 			NodeName: node.Name,
-			Score:    int64(totalNumaCnt),
+			Score:    int64(cpuNumaMask.Count()),
 		}
 	})
 
 	return nodeNumaCnts
 }
 
-func getNumaNodeCntForGPUID(gpus cpuset.CPUSet, gpuDetails api.GPUDetails) int {
+func getNumaMaskForGPUID(gpus cpuset.CPUSet, gpuDetails api.GPUDetails) bitmask.BitMask {
 	mask, _ := bitmask.NewBitMask()
 	for _, gpuIdx := range gpus.List() {
 		if info, ok := gpuDetails[gpuIdx]; ok {
 			mask.Add(info.NUMANodeID)
 		}
 	}
-	return mask.Count()
+	return mask
 }
 
-func getNumaNodeCntForCPUID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) int {
+func getNumaMaskForCPUID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) bitmask.BitMask {
 	mask, _ := bitmask.NewBitMask()
-	s := cpus.List()
-
-	for _, cpuID := range s {
+	for _, cpuID := range cpus.List() {
 		mask.Add(cpuDetails[cpuID].NUMANodeID)
 	}
-
-	return mask.Count()
+	return mask
 }
 
 func (pp *numaPlugin) OnSessionClose(ssn *framework.Session) {
