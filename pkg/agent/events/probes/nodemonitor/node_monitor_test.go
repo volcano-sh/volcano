@@ -127,6 +127,7 @@ func Test_monitor_detect(t *testing.T) {
 				getNodeFunc:             tt.getNodeFunc,
 				getPodsFunc:             tt.getPodsFunc,
 				usageGetter:             tt.usageGetter,
+				highUsageCountLimit:     6,
 			}
 			m.detectEviction()
 			assert.Equalf(t, tt.expectedLen, queue.Len(), "detect()")
