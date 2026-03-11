@@ -35,6 +35,7 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/framework"
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware/policy"
 	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware/provider/cpumanager"
+	"volcano.sh/volcano/pkg/scheduler/plugins/numaaware/provider/gpumanager"
 	"volcano.sh/volcano/pkg/scheduler/plugins/util"
 )
 
@@ -64,6 +65,7 @@ func New(arguments framework.Arguments) framework.Plugin {
 	}
 
 	plugin.hintProviders = append(plugin.hintProviders, cpumanager.NewProvider())
+	plugin.hintProviders = append(plugin.hintProviders, gpumanager.NewProvider())
 	return plugin
 }
 
@@ -236,24 +238,42 @@ func getNodeNumaNumForTask(nodeInfo []*api.NodeInfo, resAssignMap map[string]api
 	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodeInfo), func(index int) {
 		node := nodeInfo[index]
 		assignCpus := resAssignMap[node.Name][string(v1.ResourceCPU)]
+		cpuNumaMask := getNumaMaskForCPUID(assignCpus, node.NumaSchedulerInfo.CPUDetail)
+
+		// Build a unified NUMA mask across CPU and GPU assignments.
+		// Using the union ensures that shared NUMA nodes are counted once,
+		// so co-located CPU+GPU on the same NUMA node scores better.
+		assignGPUs := resAssignMap[node.Name][string(gpumanager.NvidiaGPUResource)]
+		if assignGPUs.Size() > 0 && node.NumaSchedulerInfo.GPUDetail != nil {
+			gpuNumaMask := getNumaMaskForGPUID(assignGPUs, node.NumaSchedulerInfo.GPUDetail)
+			cpuNumaMask.Or(gpuNumaMask)
+		}
+
 		nodeNumaCnts[index] = api.ScoredNode{
 			NodeName: node.Name,
-			Score:    int64(getNumaNodeCntForCPUID(assignCpus, node.NumaSchedulerInfo.CPUDetail)),
+			Score:    int64(cpuNumaMask.Count()),
 		}
 	})
 
 	return nodeNumaCnts
 }
 
-func getNumaNodeCntForCPUID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) int {
+func getNumaMaskForGPUID(gpus cpuset.CPUSet, gpuDetails api.GPUDetails) bitmask.BitMask {
 	mask, _ := bitmask.NewBitMask()
-	s := cpus.List()
+	for _, gpuIdx := range gpus.List() {
+		if info, ok := gpuDetails[gpuIdx]; ok {
+			mask.Add(info.NUMANodeID)
+		}
+	}
+	return mask
+}
 
-	for _, cpuID := range s {
+func getNumaMaskForCPUID(cpus cpuset.CPUSet, cpuDetails topology.CPUDetails) bitmask.BitMask {
+	mask, _ := bitmask.NewBitMask()
+	for _, cpuID := range cpus.List() {
 		mask.Add(cpuDetails[cpuID].NUMANodeID)
 	}
-
-	return mask.Count()
+	return mask
 }
 
 func (pp *numaPlugin) OnSessionClose(ssn *framework.Session) {
