@@ -109,7 +109,7 @@ func (mng *gpuMng) GetTopologyHints(container *v1.Container,
 		return nil
 	}
 
-	if topoInfo.GPUDetail == nil || len(topoInfo.GPUDetail) == 0 {
+	if len(topoInfo.GPUDetail) == 0 {
 		klog.V(4).Infof("[gpumanager] no GPU topology info available on node %s/%s", topoInfo.Namespace, topoInfo.Name)
 		return nil
 	}
