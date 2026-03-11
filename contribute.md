@@ -94,6 +94,16 @@ The bot may also make some helpful suggestions for commands to run in your PR to
 These `/command` options can be entered in comments to trigger auto-labeling and notifications.
 Refer to its [command reference documentation](https://go.k8s.io/bot-commands).
 
+## AI Guidance
+
+Using AI tools to help write your PR is acceptable, but as the author, you are responsible for understanding every change. 
+Do not leave the first review of AI generated changes to the reviewers, verify the changes (code review, testing, etc.) before submitting your PR.
+Reviewers may ask questions about your AI-assisted code, and if you cannot explain why a change was made, the PR will be closed.
+When responding to review comments, please do so without relying on AI tools. Reviewers want to engage directly with you, not with generated responses.
+If you used AI tools in preparing your PR, please disclose this in the "Special notes for your reviewer" section.
+All contributions must follow the contributions policies and use commit messages that align with [the policy](#format-of-the-commit-message). 
+[Large AI generated](https://github.com/kubernetes/community/blob/master/contributors/guide/pull-requests.md#large-or-automatic-edits) PRs and AI generated commit messages are discouraged.
+
 ## Code Review
 
 To make it easier for your PR to receive reviews, consider the reviewers will need you to:
