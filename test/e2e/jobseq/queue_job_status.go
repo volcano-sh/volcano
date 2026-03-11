@@ -156,7 +156,6 @@ var _ = Describe("Queue Job Status Transition", func() {
 
 		podNamespace = testCtx.Namespace
 		slot := e2eutil.HalfCPU
-		rep = e2eutil.ClusterSize(testCtx, slot)
 
 		if rep < 4 {
 			err := fmt.Errorf("You need at least 2 logical cpu for this test case, please skip 'Queue Job Status Transition' when you see this message")
