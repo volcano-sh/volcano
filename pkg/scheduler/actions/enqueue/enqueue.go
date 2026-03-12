@@ -19,6 +19,7 @@ package enqueue
 import (
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -76,6 +77,18 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		}
 	}
 
+	// Dequeue timed-out Inqueue jobs, releasing reserved queue resources
+	for _, job := range ssn.Jobs {
+		if job.PodGroup != nil && job.PodGroup.Status.Phase == scheduling.PodGroupInqueue {
+			if ssn.JobDequeueable(job) {
+				ssn.JobDequeued(job)
+				job.PodGroup.Status.Phase = scheduling.PodGroupPending
+				ssn.Jobs[job.UID] = job
+				klog.V(3).Infof("Job <%s/%s> dequeued due to inqueue timeout", job.Namespace, job.Name)
+			}
+		}
+	}
+
 	klog.V(3).Infof("Try to enqueue PodGroup to %d Queues", len(jobsMap))
 
 	for {
@@ -95,6 +108,14 @@ func (enqueue *Action) Execute(ssn *framework.Session) {
 		if job.PodGroup.Spec.MinResources == nil || ssn.JobEnqueueable(job) {
 			ssn.JobEnqueued(job)
 			job.PodGroup.Status.Phase = scheduling.PodGroupInqueue
+			// Record Inqueued condition with timestamp for inqueue timeout tracking
+			job.PodGroup.Status.Conditions = append(job.PodGroup.Status.Conditions, scheduling.PodGroupCondition{
+				Type:               scheduling.PodGroupInqueuedType,
+				Status:             v1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				Reason:             "Enqueued",
+				Message:            "PodGroup moved to Inqueue state",
+			})
 			ssn.Jobs[job.UID] = job
 		}
 
