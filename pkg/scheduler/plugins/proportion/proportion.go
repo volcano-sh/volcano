@@ -343,6 +343,21 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return queueAllocatable(queue, candidate)
 	})
 
+	ssn.AddJobAllocatableFn(pp.Name(), func(queue *api.QueueInfo, job *api.JobInfo) bool {
+		attr := pp.queueOpts[queue.UID]
+		minRes := job.GetMinResources()
+		if minRes.IsEmpty() {
+			return true
+		}
+		futureUsed := attr.allocated.Clone().Add(minRes)
+		allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.deserved, minRes)
+		if !allocatable {
+			klog.V(3).Infof("%s: Queue <%v>: deserved <%v>, allocated <%v>; Job <%v/%v>: min resources <%v>",
+				pp.Name(), queue.Name, attr.deserved, attr.allocated, job.Namespace, job.Name, minRes)
+		}
+		return allocatable
+	})
+
 	ssn.AddSimulateAllocatableFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, queue *api.QueueInfo, candidate *api.TaskInfo) bool {
 		state, err := getProportionState(cycleState)
 		if err != nil {

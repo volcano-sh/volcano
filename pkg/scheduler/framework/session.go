@@ -129,6 +129,7 @@ type Session struct {
 	// while reclaimableFns means whether current queue's resources can be reclaimed.
 	preemptiveFns                 map[string]api.ValidateWithCandidateFn
 	allocatableFns                map[string]api.AllocatableFn
+	jobAllocatableFns             map[string]api.JobAllocatableFn
 	jobReadyFns                   map[string]api.ValidateFn
 	jobPipelinedFns               map[string]api.VoteFn
 	jobValidFns                   map[string]api.ValidateExFn
@@ -200,6 +201,7 @@ func openSession(cache cache.Cache) *Session {
 		overusedFns:                   map[string]api.ValidateFn{},
 		preemptiveFns:                 map[string]api.ValidateWithCandidateFn{},
 		allocatableFns:                map[string]api.AllocatableFn{},
+		jobAllocatableFns:             map[string]api.JobAllocatableFn{},
 		jobReadyFns:                   map[string]api.ValidateFn{},
 		jobPipelinedFns:               map[string]api.VoteFn{},
 		jobValidFns:                   map[string]api.ValidateExFn{},
