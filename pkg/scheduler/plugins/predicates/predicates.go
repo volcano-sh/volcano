@@ -196,6 +196,14 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 	)
 	pp.Handle = handle
 
+	// Clean up any stale DRA inFlightAllocations from previous scheduling sessions before initializing plugins.
+	// This prevents the "resource claim is in the process of being allocated" error
+	// and "cannot allocate all claims" errors that occur when a previous session's
+	// Reserve was not properly cleaned up via Unreserve.
+	if pp.enabledPredicates.dynamicResourceAllocationEnable {
+		cleanupStaleDRAPendingAllocations(ssn.SharedDRAManager(), ssn.Jobs)
+	}
+
 	pp.InitPlugin()
 
 	// Initialize PredicateCache if enabled
