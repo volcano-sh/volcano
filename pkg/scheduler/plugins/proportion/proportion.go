@@ -425,6 +425,20 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 		return util.Reject
 	})
 
+	ssn.AddJobDequeuedFn(pp.Name(), func(obj interface{}) {
+		job := obj.(*api.JobInfo)
+		attr := pp.queueOpts[api.QueueID(job.Queue)]
+		if attr == nil {
+			return
+		}
+		if job.PodGroup.Spec.MinResources == nil {
+			return
+		}
+		deductedResources := job.DeductSchGatedResources(job.GetMinResources())
+		attr.inqueue.SubWithoutAssert(deductedResources)
+		klog.V(5).Infof("job <%s/%s> dequeued, released inqueue resources", job.Namespace, job.Name)
+	})
+
 	ssn.AddSimulateAddTaskFn(pp.Name(), func(ctx context.Context, cycleState fwk.CycleState, taskToSchedule *api.TaskInfo, taskToAdd *api.TaskInfo, nodeInfo *api.NodeInfo) error {
 		state, err := getProportionState(cycleState)
 		if err != nil {
