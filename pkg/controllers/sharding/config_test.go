@@ -20,9 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// boolPtr is a helper to get a pointer to a bool literal.
-func boolPtr(v bool) *bool { return &v }
-
 func TestParseShardingConfig_Valid(t *testing.T) {
 	yaml := `
 schedulerConfigs:

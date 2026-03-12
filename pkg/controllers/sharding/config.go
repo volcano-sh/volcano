@@ -171,7 +171,7 @@ func (opts *ShardingControllerOptions) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringSliceVar(&opts.SchedulerConfigsRaw, "scheduler-configs", defaultConfigs,
 		"Scheduler configurations in format: name:type:min_util:max_util:prefer_warmup:min_nodes:max_nodes. "+
-			"Ignored when --sharding-config-map is set.")
+			"Used when no valid sharding ConfigMap is available; if a valid ConfigMap is provided via --sharding-config-map, it overrides these flags.")
 
 	fs.DurationVar(&opts.ShardSyncPeriod, "shard-sync-period", 60*time.Second,
 		"Period for shard synchronization")
@@ -181,7 +181,7 @@ func (opts *ShardingControllerOptions) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringVar(&opts.ConfigMapName, "sharding-config-map", DefaultConfigMapName,
 		"Name of the ConfigMap that contains sharding configuration (key: "+ConfigMapDataKey+"). "+
-			"When set, ConfigMap-based config takes precedence over --scheduler-configs flags and "+
+			"When a valid ConfigMap is available, ConfigMap-based config takes precedence over --scheduler-configs flags and "+
 			"the controller watches the ConfigMap for live updates.")
 
 	fs.StringVar(&opts.ConfigMapNamespace, "sharding-config-map-namespace", DefaultConfigMapNamespace,

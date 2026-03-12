@@ -93,6 +93,9 @@ type ShardingController struct {
 	configMapNamespace string
 	// configMu guards scheduler config updates triggered by ConfigMap changes.
 	configMu sync.RWMutex
+	// shardSyncPeriodUpdateCh tells the periodic sync loop to reset its timer
+	// after a live config update.
+	shardSyncPeriodUpdateCh chan struct{}
 }
 
 // Return the name of the controller
@@ -121,7 +124,8 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 	sc.podInformer = sc.kubeInformerFactory.Core().V1().Pods()
 	sc.shardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
 
-	// Create a ConfigMap informer scoped to the sharding config namespace.
+	// Create a cluster-wide ConfigMap informer; use a namespaced lister and
+	// event filter to act only on the sharding config ConfigMap.
 	sc.configMapInformer = sc.kubeInformerFactory.Core().V1().ConfigMaps()
 	sc.configMapLister = sc.configMapInformer.Lister().ConfigMaps(sc.configMapNamespace)
 
@@ -146,6 +150,7 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 	sc.assignmentCache = &AssignmentCache{
 		Assignments: make(map[string]*ShardAssignment),
 	}
+	sc.shardSyncPeriodUpdateCh = make(chan struct{}, 1)
 
 	// Parse scheduler configs from options (flag-based fallback).
 	sc.parseSchedulerConfigsFromOptions()
@@ -235,7 +240,7 @@ func (sc *ShardingController) Run(stopCh <-chan struct{}) {
 	go wait.Until(sc.nodeEventWorker, time.Second, stopCh)
 
 	// Start periodic sync
-	go wait.Until(sc.syncShards, sc.shardSyncPeriod, stopCh)
+	go sc.periodicShardSync(stopCh)
 
 	// Start periodic metrics refresh
 	go wait.Until(sc.refreshNodeMetrics, nodeRefreshPeriod, stopCh)
@@ -815,7 +820,10 @@ func (sc *ShardingController) loadConfigFromConfigMap() error {
 	}
 	cm, err := sc.configMapLister.Get(sc.configMapName)
 	if err != nil {
-		return err // caller handles "not found" gracefully
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
 	}
 	sc.reloadFromConfigMap(cm)
 	return nil
@@ -845,13 +853,17 @@ func (sc *ShardingController) applyShardingConfig(cfg *ShardingConfig) {
 		})
 	}
 
+	periodChanged := false
+	newPeriod := time.Duration(0)
 	sc.configMu.Lock()
 	sc.schedulerConfigs = newConfigs
 	sc.shardingManager = NewShardingManager(newConfigs, sc)
-	sc.configMu.Unlock()
-
 	if cfg.ShardSyncPeriod != "" {
 		if d, err := time.ParseDuration(cfg.ShardSyncPeriod); err == nil {
+			if sc.shardSyncPeriod != d {
+				periodChanged = true
+				newPeriod = d
+			}
 			sc.shardSyncPeriod = d
 			klog.Infof("ShardingController: shardSyncPeriod updated to %v from ConfigMap", d)
 		} else {
@@ -860,6 +872,15 @@ func (sc *ShardingController) applyShardingConfig(cfg *ShardingConfig) {
 	}
 	if cfg.EnableNodeEventTrigger != nil {
 		sc.controllerOptions.EnableNodeEventTrigger = *cfg.EnableNodeEventTrigger
+	}
+	sc.configMu.Unlock()
+
+	if periodChanged {
+		select {
+		case sc.shardSyncPeriodUpdateCh <- struct{}{}:
+		default:
+		}
+		klog.V(4).Infof("ShardingController: notified periodic sync loop of new shardSyncPeriod %v", newPeriod)
 	}
 
 	klog.Infof("ShardingController: applied %d scheduler configs from ConfigMap:", len(newConfigs))
@@ -871,6 +892,38 @@ func (sc *ShardingController) applyShardingConfig(cfg *ShardingConfig) {
 			c.ShardStrategy.PreferWarmupNodes,
 			c.ShardStrategy.MinNodes,
 			c.ShardStrategy.MaxNodes)
+	}
+}
+
+func (sc *ShardingController) getShardSyncPeriod() time.Duration {
+	sc.configMu.RLock()
+	defer sc.configMu.RUnlock()
+	if sc.shardSyncPeriod <= 0 {
+		return defaultShardSyncPeriod
+	}
+	return sc.shardSyncPeriod
+}
+
+func (sc *ShardingController) periodicShardSync(stopCh <-chan struct{}) {
+	timer := time.NewTimer(sc.getShardSyncPeriod())
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-sc.shardSyncPeriodUpdateCh:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(sc.getShardSyncPeriod())
+		case <-timer.C:
+			sc.syncShards()
+			timer.Reset(sc.getShardSyncPeriod())
+		}
 	}
 }
 
