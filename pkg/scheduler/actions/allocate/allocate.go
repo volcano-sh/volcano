@@ -785,10 +785,6 @@ func (alloc *Action) allocateResourcesForTask(stmt *framework.Statement, task *a
 		if err = stmt.Allocate(task, node); err != nil {
 			klog.Errorf("Failed to bind Task %v on %v in Session %v, err: %v",
 				task.UID, node.Name, alloc.session.UID, err)
-			if rollbackErr := stmt.UnAllocate(task); rollbackErr != nil {
-				klog.Errorf("Failed to unallocate Task %v on %v in Session %v for %v.",
-					task.UID, node.Name, alloc.session.UID, rollbackErr)
-			}
 		} else {
 			metrics.UpdateE2eSchedulingDurationByJob(job.Name, string(job.Queue), job.Namespace, metrics.Duration(job.CreationTimestamp.Time))
 			metrics.UpdateE2eSchedulingLastTimeByJob(job.Name, string(job.Queue), job.Namespace, time.Now())
