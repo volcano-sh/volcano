@@ -140,3 +140,4 @@ vendor
 
 # helm dependency files
 installer/helm/chart/volcano/requirements.lock
+volcano.sh/
