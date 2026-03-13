@@ -486,7 +486,7 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFnForNormalPods(ssn *framew
 	// Use parallel execution for node scoring to improve performance
 	numNodes := len(nodes)
 	scores := make([]float64, numNodes)
-	
+
 	scoreNode := func(index int) {
 		node := nodes[index]
 		totalScore := 0.0
@@ -503,14 +503,14 @@ func (nta *networkTopologyAwarePlugin) batchNodeOrderFnForNormalPods(ssn *framew
 		}
 		scores[index] = totalScore / totalTierWeight
 	}
-	
+
 	workqueue.ParallelizeUntil(context.TODO(), nodeScoreWorker, numNodes, scoreNode)
-	
+
 	// Aggregate results into nodeScores map
 	for i, node := range nodes {
 		nodeScores[node.Name] = scores[i]
 	}
-	
+
 	return nodeScores, nil
 }
 
