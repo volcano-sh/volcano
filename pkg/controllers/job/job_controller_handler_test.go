@@ -570,14 +570,12 @@ func TestDeletePodFunc(t *testing.T) {
 	}
 }
 
-// TestUpdatePodFuncTaskFailedEvent verifies that when a task has exceeded its
-// maxRetry threshold, updatePod enqueues TaskFailedEvent even if the pod is
-// simultaneously undergoing a phase transition (Pending→Running).
-// The Failed→Pending case is a defensive test: pod phases are terminal in
-// Kubernetes, so that transition cannot happen via updatePod in practice.
-// Without the fix in https://github.com/volcano-sh/volcano/pull/5089,
-// PodRunningEvent/PodPendingEvent would silently overwrite TaskFailedEvent,
-// causing failure policies to never trigger.
+// TestUpdatePodFuncTaskFailedEvent verifies the event priority logic in updatePod
+// for the PodRunning and PodPending cases. Specifically:
+//   - When a task has exceeded maxRetry, TaskFailedEvent must be enqueued
+//     regardless of whether a phase transition is happening simultaneously.
+//   - When a task has NOT exceeded maxRetry, a phase transition (e.g. Pending→Running)
+//     must still correctly enqueue PodRunningEvent / PodPendingEvent.
 func TestUpdatePodFuncTaskFailedEvent(t *testing.T) {
 	namespace := "test"
 	maxRetry := int32(3)
@@ -636,6 +634,27 @@ func TestUpdatePodFuncTaskFailedEvent(t *testing.T) {
 				return p
 			}(),
 			expectedEvent: bus.TaskFailedEvent,
+		},
+		{
+			// normal startup: pod hasn't failed yet, phase transition should still emit PodRunningEvent
+			name:          "Pending to Running with restartCount < maxRetry emits PodRunningEvent",
+			oldPod:        buildPod(namespace, "pod1", v1.PodPending, nil),
+			newPod:        buildPod(namespace, "pod1", v1.PodRunning, nil),
+			expectedEvent: bus.PodRunningEvent,
+		},
+		{
+			// normal startup: pod hasn't failed yet, phase transition should still emit PodPendingEvent
+			name:          "Running to Pending with restartCount < maxRetry emits PodPendingEvent",
+			oldPod:        buildPod(namespace, "pod1", v1.PodRunning, nil),
+			newPod:        buildPod(namespace, "pod1", v1.PodPending, nil),
+			expectedEvent: bus.PodPendingEvent,
+		},
+		{
+			// same-phase update while running (e.g. annotation change): should not re-emit PodRunningEvent
+			name:          "Running to Running with restartCount < maxRetry emits OutOfSyncEvent",
+			oldPod:        buildPod(namespace, "pod1", v1.PodRunning, nil),
+			newPod:        buildPod(namespace, "pod1", v1.PodRunning, nil),
+			expectedEvent: bus.OutOfSyncEvent,
 		},
 	}
 
