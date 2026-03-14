@@ -111,8 +111,6 @@ func (pc *Scheduler) cleanupActions() {
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	pc.loadSchedulerConf()
 
-	pc.initActions()
-
 	// Cleanup on scheduler shutdown.
 	go func() {
 		<-stopCh
@@ -208,11 +206,22 @@ func (pc *Scheduler) loadSchedulerConf() {
 	}
 
 	pc.mutex.Lock()
+	oldActions := pc.actions
 	pc.actions = actions
 	pc.plugins = plugins
 	pc.configurations = configurations
 	pc.metricsConf = metricsConf
 	pc.mutex.Unlock()
+
+	// Cleanup old actions
+	for _, action := range oldActions {
+		action.UnInitialize()
+	}
+
+	// Initialize new actions
+	for _, action := range actions {
+		action.Initialize()
+	}
 }
 
 func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
