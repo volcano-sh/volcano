@@ -86,10 +86,37 @@ func NewScheduler(config *rest.Config, opt *options.ServerOption) (*Scheduler, e
 	return scheduler, nil
 }
 
+// Initialize all configured actions once.
+func (pc *Scheduler) initActions() {
+	pc.mutex.Lock()
+	actions := pc.actions
+	pc.mutex.Unlock()
+	for _, action := range actions {
+		action.Initialize()
+	}
+}
+
+// Uninitialize all configured actions.
+func (pc *Scheduler) cleanupActions() {
+	pc.mutex.Lock()
+	actions := pc.actions
+	pc.mutex.Unlock()
+	for _, action := range actions {
+		action.UnInitialize()
+	}
+}
+
 // Run initializes and starts the Scheduler. It loads the configuration,
 // initializes the cache, and begins the scheduling process.
 func (pc *Scheduler) Run(stopCh <-chan struct{}) {
 	pc.loadSchedulerConf()
+
+	// Cleanup on scheduler shutdown.
+	go func() {
+		<-stopCh
+		pc.cleanupActions()
+	}()
+
 	go pc.watchSchedulerConf(stopCh)
 	// Start cache for policy.
 	pc.cache.SetMetricsConf(pc.metricsConf)
@@ -179,11 +206,22 @@ func (pc *Scheduler) loadSchedulerConf() {
 	}
 
 	pc.mutex.Lock()
+	oldActions := pc.actions
 	pc.actions = actions
 	pc.plugins = plugins
 	pc.configurations = configurations
 	pc.metricsConf = metricsConf
 	pc.mutex.Unlock()
+
+	// Cleanup old actions
+	for _, action := range oldActions {
+		action.UnInitialize()
+	}
+
+	// Initialize new actions
+	for _, action := range actions {
+		action.Initialize()
+	}
 }
 
 func (pc *Scheduler) getSchedulerConf() (actions []string, plugins []string) {
