@@ -344,6 +344,12 @@ func (pp *proportionPlugin) OnSessionOpen(ssn *framework.Session) {
 	})
 
 	ssn.AddJobAllocatableFn(pp.Name(), func(queue *api.QueueInfo, job *api.JobInfo) bool {
+		if queue.Queue.Status.State != scheduling.QueueStateOpen {
+			klog.V(3).Infof("Queue <%s> current state: %s, is not in open state, can not allocate job <%s/%s>.",
+				queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+			return false
+		}
+
 		attr := pp.queueOpts[queue.UID]
 		minRes := job.GetMinResources()
 		if minRes.IsEmpty() {

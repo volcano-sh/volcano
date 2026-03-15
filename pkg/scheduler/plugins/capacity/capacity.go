@@ -213,37 +213,32 @@ func (cp *capacityPlugin) OnSessionOpen(ssn *framework.Session) {
 		return isPreemptive
 	})
 
-	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+	preAllocatableCheck := func(queue *api.QueueInfo) (bool, string) {
 		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, cannot allocate task <%s>.", queue.Name, queue.Queue.Status.State, candidate.Name)
-			return false
+			return false, fmt.Sprintf("Queue <%s> current state: %s, is not open", queue.Name, queue.Queue.Status.State)
 		}
 		if !readyToSchedule {
-			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
-			return false
+			return false, "Capacity plugin failed to check queue's hierarchical structure!"
 		}
 		if hierarchyEnabled && !cp.isLeafQueue(queue.UID) {
-			klog.V(3).Infof("Queue <%s> is not a leaf queue, can not allocate task <%s>.", queue.Name, candidate.Name)
+			return false, fmt.Sprintf("Queue <%s> is not a leaf queue", queue.Name)
+		}
+		return true, ""
+	}
+
+	ssn.AddAllocatableFn(cp.Name(), func(queue *api.QueueInfo, candidate *api.TaskInfo) bool {
+		if ok, reason := preAllocatableCheck(queue); !ok {
+			klog.V(3).Infof("%s, cannot allocate task <%s>.", reason, candidate.Name)
 			return false
 		}
-
 		return cp.checkQueueAllocatableHierarchically(ssn, queue, candidate)
 	})
 
 	ssn.AddJobAllocatableFn(cp.Name(), func(queue *api.QueueInfo, job *api.JobInfo) bool {
-		if queue.Queue.Status.State != scheduling.QueueStateOpen {
-			klog.V(3).Infof("Queue <%s> current state: %s, cannot allocate job <%s/%s>.", queue.Name, queue.Queue.Status.State, job.Namespace, job.Name)
+		if ok, reason := preAllocatableCheck(queue); !ok {
+			klog.V(3).Infof("%s, cannot allocate job <%s/%s>.", reason, job.Namespace, job.Name)
 			return false
 		}
-		if !readyToSchedule {
-			klog.V(3).Infof("Capacity plugin failed to check queue's hierarchical structure!")
-			return false
-		}
-		if hierarchyEnabled && !cp.isLeafQueue(queue.UID) {
-			klog.V(3).Infof("Queue <%s> is not a leaf queue, can not allocate job <%s/%s>.", queue.Name, job.Namespace, job.Name)
-			return false
-		}
-
 		return cp.checkJobAllocatableHierarchically(ssn, queue, job)
 	})
 
@@ -988,7 +983,7 @@ func (cp *capacityPlugin) jobAllocatable(queue *api.QueueInfo, job *api.JobInfo)
 	if minRes.IsEmpty() {
 		return true
 	}
-	futureUsed := attr.allocated.Clone().Add(minRes)
+	futureUsed := attr.allocated.Clone().SubWithoutAssert(job.Allocated).Add(minRes)
 	allocatable, _ := futureUsed.LessEqualWithDimensionAndResourcesName(attr.realCapability, minRes)
 	if !allocatable {
 		klog.V(3).Infof("Queue <%v>: realCapability <%v>, allocated <%v>; Job <%v/%v>: min resources <%v>",

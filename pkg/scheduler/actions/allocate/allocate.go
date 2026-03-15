@@ -303,6 +303,8 @@ func (alloc *Action) allocateResources(actx *allocateContext) {
 		if !ssn.JobAllocatable(queue, job) {
 			klog.V(3).Infof("Queue <%s> can not allocate min resources for Job <%s/%s>, skip it.",
 				queue.Name, job.Namespace, job.Name)
+			// Reinsert the queue so remaining jobs in this queue can still be considered.
+			queues.Push(queue)
 			continue
 		}
 
