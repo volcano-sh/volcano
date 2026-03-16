@@ -69,9 +69,9 @@ type BatchNodeOrderFn func(*TaskInfo, []*NodeInfo) (map[string]float64, error)
 
 **Performance Characteristics:**
 - ⚠️ Runs concurrently with map/reduce pipeline (as of optimization)
-- ⚠️ Plugin developer must implement parallelization
-- ⚠️ Serial implementation will bottleneck the entire scoring phase
 - ✅ Useful for I/O batching and reducing external API calls
+
+> **Note:** If a plugin developer needs to use `BatchNodeOrderFn` to score a batch of nodes, it's important to use parallelism to improve efficiency and avoid performance degradation in large-scale clusters. For best practices, please refer to the [Performance Best Practices](#performance-best-practices) section.
 
 ### 3. NodeOrderMapFn / NodeOrderReduceFn
 
