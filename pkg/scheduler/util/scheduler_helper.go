@@ -51,6 +51,14 @@ const (
 
 var lastProcessedNodeIndex int
 
+// nodeScoreResult holds the per-node scoring output collected by parallel workers.
+type nodeScoreResult struct {
+	mapScores  map[string]float64
+	orderScore float64
+	nodeName   string
+	err        error
+}
+
 // CalculateNumOfFeasibleNodesToFind returns the number of feasible nodes that once found,
 // the scheduler stops its search for more feasible nodes.
 func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
@@ -80,12 +88,6 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 	numNodes := len(nodes)
 
 	// Pre-allocate lock-free slices for collecting scores from parallel workers
-	type nodeScoreResult struct {
-		mapScores  map[string]float64
-		orderScore float64
-		nodeName   string
-		err        error
-	}
 	results := make([]nodeScoreResult, numNodes)
 
 	// Use WaitGroup to execute BatchNodeOrderFn concurrently with map/reduce operations
