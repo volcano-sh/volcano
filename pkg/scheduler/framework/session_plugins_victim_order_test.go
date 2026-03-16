@@ -18,9 +18,11 @@ package framework_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	schedulingv1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	"volcano.sh/volcano/pkg/scheduler/api"
@@ -39,6 +41,8 @@ func TestBuildVictimsPriorityQueueJobTieBreaksWithTaskOrder(t *testing.T) {
 	nodeN1 := util.BuildNode("n1", api.BuildResourceList("10", "10Gi", []api.ScalarResource{{Name: "pods", Value: "20"}}...), nil)
 	pgHigh := util.BuildPodGroup("pg-high", "ns1", "q1", 1, nil, schedulingv1.PodGroupRunning)
 	pgLow := util.BuildPodGroup("pg-low", "ns1", "q1", 1, nil, schedulingv1.PodGroupRunning)
+	pgHigh.CreationTimestamp = metav1.NewTime(time.Unix(20, 0))
+	pgLow.CreationTimestamp = metav1.NewTime(time.Unix(10, 0))
 	pgPreemptor := util.BuildPodGroup("pg-preemptor", "ns1", "q1", 1, nil, schedulingv1.PodGroupPending)
 	pHigh := util.BuildPodWithPriority("ns1", "p-high", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg-high", nil, nil, &highPri)
 	pLow := util.BuildPodWithPriority("ns1", "p-low", "n1", v1.PodRunning, api.BuildResourceList("1", "1Gi"), "pg-low", nil, nil, &lowPri)
@@ -92,6 +96,9 @@ func TestBuildVictimsPriorityQueueJobTieBreaksWithTaskOrder(t *testing.T) {
 		assert.NotNil(t, high)
 		assert.NotNil(t, low)
 		assert.NotNil(t, preemptor)
+		highJob := ssn.Jobs[high.Job]
+		lowJob := ssn.Jobs[low.Job]
+		assert.Equal(t, 0, ssn.JobOrderCompareFn(highJob, lowJob))
 
 		victims := []*api.TaskInfo{high, low}
 		pq := ssn.BuildVictimsPriorityQueue(victims, preemptor)
@@ -108,6 +115,9 @@ func TestBuildVictimsPriorityQueueJobTieBreaksWithTaskOrder(t *testing.T) {
 		low := findTask(ssn, "p-low")
 		assert.NotNil(t, high)
 		assert.NotNil(t, low)
+		highJob := ssn.Jobs[high.Job]
+		lowJob := ssn.Jobs[low.Job]
+		assert.Equal(t, 0, ssn.JobOrderCompareFn(highJob, lowJob))
 
 		victims := []*api.TaskInfo{high, low}
 		pq := ssn.BuildVictimsPriorityQueue(victims, &api.TaskInfo{Job: api.JobID("missing")})

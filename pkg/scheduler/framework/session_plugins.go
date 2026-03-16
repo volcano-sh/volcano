@@ -656,6 +656,9 @@ func (ssn *Session) SubJobOrderFn(l, r interface{}) bool {
 	return lv.UID < rv.UID
 }
 
+// JobOrderCompareFn compares l and r by running enabled JobOrder plugins in
+// order and returning the first non-zero comparison result. It returns 0 if
+// all plugins consider l and r equal.
 func (ssn *Session) JobOrderCompareFn(l, r interface{}) int {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
@@ -1095,8 +1098,13 @@ func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNo
 }
 
 // BuildVictimsPriorityQueue returns a priority queue with victims sorted by:
-// if victims has same job id, sorted by !ssn.TaskOrderFn
-// if victims has different job id, sorted by !ssn.JobOrderFn
+//  1. If victims belong to the same job, use !ssn.TaskOrderFn.
+//  2. If either victim's job is missing, evict orphaned tasks first; if both
+//     are orphaned, use !ssn.TaskOrderFn.
+//  3. If the preemptor job is missing or victims are in the same queue, compare
+//     jobs with JobOrderCompareFn and use !ssn.TaskOrderFn as a tie-break.
+//  4. If victims are in different queues and preemptor job exists, use
+//     ssn.VictimQueueOrderFn.
 func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor *api.TaskInfo) *util.PriorityQueue {
 	jobThenTaskOrder := func(lvJob, rvJob *api.JobInfo, l, r interface{}) bool {
 		if cmp := ssn.JobOrderCompareFn(lvJob, rvJob); cmp != 0 {
