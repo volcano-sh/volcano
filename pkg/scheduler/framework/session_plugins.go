@@ -656,8 +656,7 @@ func (ssn *Session) SubJobOrderFn(l, r interface{}) bool {
 	return lv.UID < rv.UID
 }
 
-// JobOrderFn invoke joborder function of the plugins
-func (ssn *Session) JobOrderFn(l, r interface{}) bool {
+func (ssn *Session) JobOrderCompareFn(l, r interface{}) int {
 	for _, tier := range ssn.Tiers {
 		for _, plugin := range tier.Plugins {
 			if !isEnabled(plugin.EnabledJobOrder) {
@@ -668,9 +667,18 @@ func (ssn *Session) JobOrderFn(l, r interface{}) bool {
 				continue
 			}
 			if j := jof(l, r); j != 0 {
-				return j < 0
+				return j
 			}
 		}
+	}
+
+	return 0
+}
+
+// JobOrderFn invoke joborder function of the plugins
+func (ssn *Session) JobOrderFn(l, r interface{}) bool {
+	if res := ssn.JobOrderCompareFn(l, r); res != 0 {
+		return res < 0
 	}
 
 	// If no job order funcs, order job by CreationTimestamp first, then by UID.
@@ -1090,6 +1098,13 @@ func (ssn *Session) HyperNodeGradientForSubJobFn(subJob *api.SubJobInfo, hyperNo
 // if victims has same job id, sorted by !ssn.TaskOrderFn
 // if victims has different job id, sorted by !ssn.JobOrderFn
 func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor *api.TaskInfo) *util.PriorityQueue {
+	jobThenTaskOrder := func(lvJob, rvJob *api.JobInfo, l, r interface{}) bool {
+		if cmp := ssn.JobOrderCompareFn(lvJob, rvJob); cmp != 0 {
+			return cmp > 0
+		}
+		return !ssn.TaskOrderFn(l, r)
+	}
+
 	victimsQueue := util.NewPriorityQueue(func(l, r interface{}) bool {
 		lv := l.(*api.TaskInfo)
 		rv := r.(*api.TaskInfo)
@@ -1121,14 +1136,14 @@ func (ssn *Session) BuildVictimsPriorityQueue(victims []*api.TaskInfo, preemptor
 		}
 
 		if !preemptorJobFound {
-			return !ssn.JobOrderFn(lvJob, rvJob)
+			return jobThenTaskOrder(lvJob, rvJob, l, r)
 		}
 
 		if lvJob.Queue != rvJob.Queue {
 			return ssn.VictimQueueOrderFn(ssn.Queues[lvJob.Queue], ssn.Queues[rvJob.Queue], ssn.Queues[preemptorJob.Queue])
 		}
 
-		return !ssn.JobOrderFn(lvJob, rvJob)
+		return jobThenTaskOrder(lvJob, rvJob, l, r)
 	})
 	for _, victim := range victims {
 		victimsQueue.Push(victim)
