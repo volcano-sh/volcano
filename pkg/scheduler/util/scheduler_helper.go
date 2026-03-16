@@ -44,6 +44,9 @@ const (
 	baselinePercentageOfNodesToFind = 50
 
 	DefaultComponentName = "vc-scheduler"
+
+	// nodeScoreWorker is the number of parallel workers for node scoring
+	nodeScoreWorker = 16
 )
 
 var lastProcessedNodeIndex int
@@ -73,11 +76,6 @@ func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
 func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.BatchNodeOrderFn, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
-	const (
-		// nodeScoreWorker is the number of parallel workers for node scoring
-		nodeScoreWorker = 16
-	)
-
 	nodeScores := map[float64][]*api.NodeInfo{}
 	numNodes := len(nodes)
 
