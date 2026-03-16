@@ -105,7 +105,7 @@ spec:
 
 affinity configure:
 1. affinity.nodeGroupAffinity.requiredDuringSchedulingIgnoredDuringExecution, hard constraints, such as `nlp = nodegroup1,nodegroup2`, it means that task in queue=nlp can ony run on the nodes in nodegroup1 or nodegroup2.
-2. affinity.nodeGroupAffinity.preferredDuringSchedulingIgnoredDuringExecution, soft constraints, such as `nlp = nodegroup1`, it means that task in queue=nlp runs on nodegroup1 first, but if the resources of nodegroup1 is insufficient, it can also run on other nodegroups. Combine rule1 and rule2, task in queue=nlp runs on nodegroup1 first,  but if the resources of nodegroup1 is insufficient, it can also run on nodegroup2.
+2. affinity.nodeGroupAffinity.preferredDuringSchedulingIgnoredDuringExecution, soft constraints, such as `nlp = nodegroup1`, it means that task in queue=nlp runs on nodegroup1 first, but if the resources of nodegroup1 is insufficient, it can also run on other nodegroups. Combine rule1 and rule2, task in queue=nlp runs on nodegroup1 first,  but if the resources of nodegroup1 is insufficient, it can also run on nodegroup2. When `enablePreferredOrder` is enabled in plugin arguments, the order of the list determines priority — earlier entries get higher scores (score formula: `0.5 * BaseScore * (N - i) / N`). By default, all preferred nodegroups receive the same score.
 3. affinity.nodeGroupAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution, hard constraints, such as `nlp = nodegroup1`, it means that task in queue=nlp can run on any nodegroups but nodegroup1.
 4. affinity.nodeGroupAntiAffinity.preferredDuringSchedulingIgnoredDuringExecution, soft constraints, such as `nlp = nodegroup1`, it means that task in queue=nlp runs on any other nodegroups, but if the resources of other nodegroup is insufficient, it can also run on nodegroup1.
 
@@ -124,6 +124,8 @@ tiers:
   - name: proportion
   - name: nodegroup
     enableHierarchy: true  # Enable hierarchical support
+    arguments:
+      enablePreferredOrder: true  # Optional: enable position-based preferred scoring
 ```
 
 risk: The resources of the queue can not be too different from the resources of the nodegroup(such as queue.capability.memory = 1024G,but all the memory of binding nodegroup is 512G), otherwise it may cause that task can be scheduled to run from the queue's point of view, but cannot find a suitable node.
