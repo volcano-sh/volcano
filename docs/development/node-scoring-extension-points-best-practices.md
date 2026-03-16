@@ -305,18 +305,6 @@ When implementing a scoring plugin, verify:
 - [ ] Tested with large node counts (1000+ nodes) to verify performance
 - [ ] Profiled to identify any unexpected bottlenecks
 
-## Framework Optimizations (v1.15+)
-
-As of Volcano v1.15, the following optimizations have been implemented in the scheduler framework:
-
-1. **Lock-Free Score Aggregation:** The `PrioritizeNodes` function now uses pre-allocated slices instead of mutex-protected maps, eliminating lock contention during parallel score collection.
-
-2. **Concurrent Batch and Map Execution:** `BatchNodeOrderFn` now executes concurrently with the `NodeOrderMapFn`/`NodeOrderReduceFn` pipeline, reducing overall latency.
-
-3. **Optimized Memory Allocation:** Pre-allocated result structures reduce GC pressure during high-throughput scheduling.
-
-These optimizations are transparent to plugin developers but significantly improve performance in large-scale clusters.
-
 ## Examples
 
 ### Example 1: Simple Resource-Based Scoring (NodeOrderFn)
@@ -443,8 +431,3 @@ func BenchmarkNodeScoring(b *testing.B) {
 - [Custom Plugin Development](../design/custom-plugin.md)
 - [Scheduler Configuration](../user-guide/how_to_configure_scheduler.md)
 - [Network Topology Aware Scheduling](../design/Network%20Topology%20Aware%20Scheduling.md)
-
-## Changelog
-
-- **v1.15.0**: Added lock-free score aggregation and concurrent batch/map execution
-- **v1.15.0**: Initial documentation for node scoring best practices
