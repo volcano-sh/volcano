@@ -226,6 +226,9 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 			}
 			// run reserve plugins
 			pp.runReservePlugins(ssn, event)
+			if event.Err != nil {
+				return
+			}
 			//predicate gpu sharing
 			for _, val := range api.RegisteredDevices {
 				if devices, ok := nodeInfo.Others[val].(api.Devices); ok {
@@ -236,6 +239,7 @@ func (pp *PredicatesPlugin) OnSessionOpen(ssn *framework.Session) {
 					err := devices.Allocate(ssn.KubeClient(), pod)
 					if err != nil {
 						klog.Errorf("AllocateToPod failed %s", err.Error())
+						event.Err = err
 						return
 					}
 				} else {
