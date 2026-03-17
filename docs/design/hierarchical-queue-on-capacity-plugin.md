@@ -36,6 +36,16 @@ For example, consider the following hierarchical queue structure and jobs:
 
 When job A performs reclaim or preempt actions, the system should first consider job B (belonging to the same parent queue a), and then consider job C (belonging to the same parent queue root).
 
+### Story 5
+
+When `parentBasedReclaimEnabled` is enabled for the capacity plugin and hierarchy is enabled, cross-parent reclaim should respect parent-level deserved resources.
+
+If a child queue is over its own deserved but its parent queue is still below parent deserved, the child's extra usage is treated as intra-parent borrowing and should not be reclaimed by other parent trees.
+
+Reclaim from that child becomes eligible only when both the child queue and the relevant parent queue are over deserved on reclaim-relevant dimensions.
+
+For sibling reclaim under the same direct parent, existing child-level reclaim checks remain in effect.
+
 ## Design detail
 
 ### Webhook
@@ -102,6 +112,28 @@ When job A performs reclaim or preempt actions, the system should first consider
   - For example, in the case of `AddJobEnqueueableFn`, it should directly return `util.Reject`, preventing the job from being enqueued. No scheduling should be performed in situations that do not align with the previously described conditions. Users need to adjust the queues based on the printed error information until normal scheduling can be resumed.
 - `AddQueueOrderFn`: Prioritize leaf queues (queues without child queues) when considering queue ordering. For two leaf queues, the ordering will be determined by considering their parent queues layer by layer, starting from the root queue.
 - `AddAllocatableFn`: Ensure that only leaf queues can schedule jobs/podgroups.
+- `AddReclaimableFn` (capacity):
+  - Keep existing queue-level reclaim eligibility checks.
+  - Keep sibling reclaim behavior under the same direct parent based on child-level reclaim eligibility.
+  - When `parentBasedReclaimEnabled=true` and hierarchy is enabled, add parent-level deserved checks during victim selection for cross-parent reclaim.
+  - For cross-parent reclaim, a reclaimee from a child queue is selected only if both child-level and parent-level reclaim constraints are satisfied.
+  - This prevents reclaiming borrowed capacity that is still within the parent queue's deserved quota.
+
+#### Configuration example
+
+Enable hierarchy and parent-based reclaim in scheduler configuration:
+
+```yaml
+actions: "enqueue, allocate, backfill"
+tiers:
+  - plugins:
+      - name: capacity
+        enableHierarchy: true
+        arguments:
+          parentBasedReclaimEnabled: true
+      - name: gang
+      - name: priority
+```
 - `BuildVictimsPriorityQueue`: The current implementation of this function relies on `TaskOrderFn` and `JobOrderFn` for sorting victims. Two new functions, `VictimTaskOrderFn` and `VictimJobOrderFn`, will be introduced specifically for sorting victims in the context of hierarchical queues. 
   
   ```go
