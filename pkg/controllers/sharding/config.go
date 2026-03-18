@@ -25,10 +25,6 @@ import (
 )
 
 const (
-	// DefaultConfigMapName is the default name of the ConfigMap holding sharding configurations.
-	DefaultConfigMapName = "volcano-sharding-config"
-	// DefaultConfigMapNamespace is the default namespace of the sharding ConfigMap.
-	DefaultConfigMapNamespace = "volcano-system"
 	// ConfigMapDataKey is the key inside the ConfigMap that holds the YAML configuration.
 	ConfigMapDataKey = "sharding.yaml"
 )
@@ -57,26 +53,7 @@ type SchedulerConfigSpec struct {
 
 // ShardingConfig is the top-level structure that is serialised as YAML into
 // the sharding ConfigMap (key: sharding.yaml).
-//
-// Example ConfigMap data:
-//
-//	schedulerConfigs:
-//	  - name: agent-scheduler
-//	    type: agent
-//	    cpuUtilizationMin: 0.7
-//	    cpuUtilizationMax: 1.0
-//	    preferWarmupNodes: true
-//	    minNodes: 1
-//	    maxNodes: 100
-//	  - name: volcano
-//	    type: volcano
-//	    cpuUtilizationMin: 0.0
-//	    cpuUtilizationMax: 0.69
-//	    preferWarmupNodes: false
-//	    minNodes: 1
-//	    maxNodes: 100
-//	shardSyncPeriod: 60s
-//	enableNodeEventTrigger: true
+// See example/sharding/sharding-config-configmap.yaml for the full format.
 type ShardingConfig struct {
 	// SchedulerConfigs holds the per-scheduler shard specifications.
 	SchedulerConfigs []SchedulerConfigSpec `json:"schedulerConfigs"`
@@ -153,8 +130,8 @@ func NewShardingControllerOptions() ShardingControllerOptions {
 			"volcano:volcano:0.0:0.6:false:2:100",
 			"agent-scheduler:agent:0.7:1.0:true:2:100",
 		},
-		ConfigMapName:      DefaultConfigMapName,
-		ConfigMapNamespace: DefaultConfigMapNamespace,
+		ConfigMapName:      "",
+		ConfigMapNamespace: "",
 	}
 	if err := controllerOptions.ParseConfig(); err != nil {
 		klog.V(4).Infof("cannot parse scheduler configurations: %s correctly, please check and fix it correctly!", strings.Join(controllerOptions.SchedulerConfigsRaw, ", "))
@@ -170,8 +147,9 @@ func (opts *ShardingControllerOptions) AddFlags(fs *pflag.FlagSet) {
 	}
 
 	fs.StringSliceVar(&opts.SchedulerConfigsRaw, "scheduler-configs", defaultConfigs,
-		"Scheduler configurations in format: name:type:min_util:max_util:prefer_warmup:min_nodes:max_nodes. "+
-			"Used when no valid sharding ConfigMap is available; if a valid ConfigMap is provided via --sharding-config-map, it overrides these flags.")
+		"Deprecated: use a sharding ConfigMap (--sharding-configmap) instead. "+
+			"Scheduler configurations in format: name:type:min_util:max_util:prefer_warmup:min_nodes:max_nodes. "+
+			"Used only when no valid sharding ConfigMap is available.")
 
 	fs.DurationVar(&opts.ShardSyncPeriod, "shard-sync-period", 60*time.Second,
 		"Period for shard synchronization")
@@ -179,13 +157,13 @@ func (opts *ShardingControllerOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&opts.EnableNodeEventTrigger, "enable-node-event-trigger", true,
 		"Enable node event trigger for shard updates")
 
-	fs.StringVar(&opts.ConfigMapName, "sharding-config-map", DefaultConfigMapName,
+	fs.StringVar(&opts.ConfigMapName, "sharding-configmap", "",
 		"Name of the ConfigMap that contains sharding configuration (key: "+ConfigMapDataKey+"). "+
-			"When a valid ConfigMap is available, ConfigMap-based config takes precedence over --scheduler-configs flags and "+
+			"When set, ConfigMap-based config takes precedence over --scheduler-configs flags and "+
 			"the controller watches the ConfigMap for live updates.")
 
-	fs.StringVar(&opts.ConfigMapNamespace, "sharding-config-map-namespace", DefaultConfigMapNamespace,
-		"Namespace of the sharding configuration ConfigMap.")
+	fs.StringVar(&opts.ConfigMapNamespace, "sharding-configmap-namespace", "",
+		"Namespace of the sharding configuration ConfigMap. Required when --sharding-configmap is set.")
 }
 
 // ParseConfig parses the raw colon-separated config strings into SchedulerConfigs.
