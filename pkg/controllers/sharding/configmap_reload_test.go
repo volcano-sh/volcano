@@ -14,14 +14,21 @@ limitations under the License.
 package sharding
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+)
+
+const (
+	testConfigMapName      = "test-sharding-configmap"
+	testConfigMapNamespace = "test-namespace"
 )
 
 func TestReloadFromConfigMap_UpdatesSchedulerConfigs(t *testing.T) {
@@ -43,8 +50,8 @@ func TestReloadFromConfigMap_UpdatesSchedulerConfigs(t *testing.T) {
 	// Simulate a ConfigMap update with 3 schedulers
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DefaultConfigMapName,
-			Namespace: DefaultConfigMapNamespace,
+			Name:      testConfigMapName,
+			Namespace: testConfigMapNamespace,
 		},
 		Data: map[string]string{
 			ConfigMapDataKey: `
@@ -106,8 +113,8 @@ func TestReloadFromConfigMap_UpdatesShardSyncPeriod(t *testing.T) {
 
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DefaultConfigMapName,
-			Namespace: DefaultConfigMapNamespace,
+			Name:      testConfigMapName,
+			Namespace: testConfigMapNamespace,
 		},
 		Data: map[string]string{
 			ConfigMapDataKey: `
@@ -149,8 +156,8 @@ func TestReloadFromConfigMap_UpdatesEnableNodeEventTrigger(t *testing.T) {
 
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DefaultConfigMapName,
-			Namespace: DefaultConfigMapNamespace,
+			Name:      testConfigMapName,
+			Namespace: testConfigMapNamespace,
 		},
 		Data: map[string]string{
 			ConfigMapDataKey: `
@@ -194,8 +201,8 @@ func TestReloadFromConfigMap_InvalidYAMLKeepsPreviousConfig(t *testing.T) {
 	// Send invalid YAML
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DefaultConfigMapName,
-			Namespace: DefaultConfigMapNamespace,
+			Name:      testConfigMapName,
+			Namespace: testConfigMapNamespace,
 		},
 		Data: map[string]string{
 			ConfigMapDataKey: `{invalid yaml{{`,
@@ -233,8 +240,8 @@ func TestReloadFromConfigMap_MissingKeySkipsReload(t *testing.T) {
 	// ConfigMap without the expected key
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DefaultConfigMapName,
-			Namespace: DefaultConfigMapNamespace,
+			Name:      testConfigMapName,
+			Namespace: testConfigMapNamespace,
 		},
 		Data: map[string]string{
 			"wrong-key.yaml": `schedulerConfigs: []`,
@@ -269,8 +276,8 @@ func TestReloadFromConfigMap_InvalidatesAssignmentCache(t *testing.T) {
 
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DefaultConfigMapName,
-			Namespace: DefaultConfigMapNamespace,
+			Name:      testConfigMapName,
+			Namespace: testConfigMapNamespace,
 		},
 		Data: map[string]string{
 			ConfigMapDataKey: `
@@ -313,8 +320,8 @@ func TestReloadFromConfigMap_RecreatesShardingManager(t *testing.T) {
 
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DefaultConfigMapName,
-			Namespace: DefaultConfigMapNamespace,
+			Name:      testConfigMapName,
+			Namespace: testConfigMapNamespace,
 		},
 		Data: map[string]string{
 			ConfigMapDataKey: `
@@ -355,8 +362,8 @@ func TestReloadFromConfigMap_ValidationRejectsEmptySchedulerList(t *testing.T) {
 	// Empty scheduler list should fail validation
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DefaultConfigMapName,
-			Namespace: DefaultConfigMapNamespace,
+			Name:      testConfigMapName,
+			Namespace: testConfigMapNamespace,
 		},
 		Data: map[string]string{
 			ConfigMapDataKey: `schedulerConfigs: []`,
@@ -370,4 +377,69 @@ func TestReloadFromConfigMap_ValidationRejectsEmptySchedulerList(t *testing.T) {
 	currentCount := len(controller.schedulerConfigs)
 	controller.configMu.RUnlock()
 	assert.Equal(t, initialCount, currentCount, "config should not change on validation failure")
+}
+
+// TestSyncShards_CleansUpStaleNodeShardsAfterSchedulerRemoved verifies that
+// when a scheduler is removed from the ConfigMap, its NodeShard is deleted
+// during the next syncShards run rather than left behind indefinitely.
+func TestSyncShards_CleansUpStaleNodeShardsAfterSchedulerRemoved(t *testing.T) {
+	opt := &TestControllerOption{
+		InitialObjects: []runtime.Object{
+			CreateTestNode("node-1", "8", false, nil),
+		},
+	}
+	testCtrl := newTestShardingController(t, opt)
+	defer closeTestShardingController(testCtrl)
+	controller := testCtrl.Controller
+
+	// The controller creates NodeShards during startup. Run an explicit sync
+	// and process the queue to ensure both shards exist before we continue.
+	ForceSyncShards(t, controller, 2*time.Second)
+
+	_, err := controller.vcClient.ShardV1alpha1().NodeShards().Get(
+		context.TODO(), "volcano", metav1.GetOptions{})
+	require.NoError(t, err, "volcano NodeShard should exist after initial sync")
+
+	_, err = controller.vcClient.ShardV1alpha1().NodeShards().Get(
+		context.TODO(), "agent-scheduler", metav1.GetOptions{})
+	require.NoError(t, err, "agent-scheduler NodeShard should exist after initial sync")
+
+	// Wait for the shard informer cache to reflect the created NodeShards so
+	// that the next shardLister.List call sees them.
+	time.Sleep(600 * time.Millisecond)
+
+	// Reload config with only one scheduler — "agent-scheduler" is removed.
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testConfigMapName,
+			Namespace: testConfigMapNamespace,
+		},
+		Data: map[string]string{
+			ConfigMapDataKey: `
+schedulerConfigs:
+  - name: volcano
+    type: volcano
+    cpuUtilizationMin: 0.0
+    cpuUtilizationMax: 1.0
+    preferWarmupNodes: false
+    minNodes: 1
+    maxNodes: 100
+`,
+		},
+	}
+	controller.reloadFromConfigMap(cm)
+
+	// syncShards calls cleanupStaleNodeShards after calculating assignments.
+	controller.syncShards()
+
+	// The removed scheduler's NodeShard must be deleted.
+	_, err = controller.vcClient.ShardV1alpha1().NodeShards().Get(
+		context.TODO(), "agent-scheduler", metav1.GetOptions{})
+	assert.True(t, k8serrors.IsNotFound(err),
+		"agent-scheduler NodeShard should be deleted after scheduler was removed from config")
+
+	// The retained scheduler's NodeShard must still exist.
+	_, err = controller.vcClient.ShardV1alpha1().NodeShards().Get(
+		context.TODO(), "volcano", metav1.GetOptions{})
+	assert.NoError(t, err, "volcano NodeShard should still exist")
 }

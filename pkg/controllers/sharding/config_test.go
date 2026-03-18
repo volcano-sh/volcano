@@ -176,8 +176,8 @@ func TestParseShardingConfig_InvalidYAML(t *testing.T) {
 // parse without error and produce sensible scheduler configs.
 func TestNewShardingControllerOptions_Defaults(t *testing.T) {
 	opts := NewShardingControllerOptions()
-	assert.Equal(t, DefaultConfigMapName, opts.ConfigMapName)
-	assert.Equal(t, DefaultConfigMapNamespace, opts.ConfigMapNamespace)
+	assert.Empty(t, opts.ConfigMapName, "ConfigMapName should be empty by default (set via flags/helm)")
+	assert.Empty(t, opts.ConfigMapNamespace, "ConfigMapNamespace should be empty by default (set via flags/helm)")
 	require.Len(t, opts.SchedulerConfigs, 2)
 
 	// volcano entry

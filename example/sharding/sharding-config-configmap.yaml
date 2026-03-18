@@ -8,33 +8,19 @@
 #   kubectl apply -f sharding-config-configmap.yaml
 #
 # The controller is told which ConfigMap to watch via:
-#   --sharding-config-map=<name>  (default: volcano-sharding-config)
-#   --sharding-config-map-namespace=<namespace>  (default: volcano-system)
+#   --sharding-configmap=<name>
+#   --sharding-configmap-namespace=<namespace>
+#
+# When deployed with Helm the ConfigMap name is {{ .Release.Name }}-sharding-configmap
+# and is automatically wired via values.yaml (sharding_configmap_enable: true).
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: volcano-sharding-config
+  name: volcano-sharding-configmap
   namespace: volcano-system
 data:
-  # sharding.yaml is the well-known key inside the ConfigMap.
-  # All fields follow standard YAML / JSON naming conventions.
   sharding.yaml: |
-    # schedulerConfigs defines one entry per scheduler that participates in
-    # node sharding.  Each entry specifies:
-    #
-    #   name               – must match the scheduler's name in NodeShard CRDs
-    #   type               – workload class, e.g. "volcano" or "agent"
-    #   cpuUtilizationMin  – lower bound (inclusive) of the CPU utilisation
-    #                        range [0.0, 1.0] for eligible nodes
-    #   cpuUtilizationMax  – upper bound (inclusive) of the range
-    #   preferWarmupNodes  – when true, warmup nodes are sorted first in the
-    #                        candidate list (label: node.volcano.sh/warmup=true)
-    #   minNodes           – minimum shard size (0 = unconstrained)
-    #   maxNodes           – maximum shard size
     schedulerConfigs:
-      # agent-scheduler handles short-lived Agentic AI workloads.
-      # It targets highly-utilised nodes (≥ 70 %) to exploit fragmented
-      # resources, and prefers pre-warmed nodes to reduce cold-start latency.
       - name: agent-scheduler
         type: agent
         cpuUtilizationMin: 0.7
@@ -42,9 +28,6 @@ data:
         preferWarmupNodes: true
         minNodes: 1
         maxNodes: 100
-
-      # volcano (batch scheduler) targets nodes with moderate utilisation
-      # (0 – 69 %) where there is enough headroom for gang-scheduled jobs.
       - name: volcano
         type: volcano
         cpuUtilizationMin: 0.0
@@ -52,13 +35,5 @@ data:
         preferWarmupNodes: false
         minNodes: 1
         maxNodes: 100
-
-    # shardSyncPeriod sets the interval between periodic full shard
-    # reconciliations.  Accepts Go duration strings ("30s", "2m", "1h").
-    # If omitted the value from --shard-sync-period flag is used (default 60s).
     shardSyncPeriod: "60s"
-
-    # enableNodeEventTrigger controls whether node / pod events immediately
-    # trigger shard reconciliation in addition to the periodic sync.
-    # If omitted the value from --enable-node-event-trigger flag is used.
     enableNodeEventTrigger: true

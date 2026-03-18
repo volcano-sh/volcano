@@ -130,16 +130,19 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 
 	// Create a namespace+name-scoped informer factory so only the single
 	// sharding ConfigMap is cached, not all ConfigMaps cluster-wide.
-	sc.configMapInformerFactory = informers.NewSharedInformerFactoryWithOptions(
-		sc.kubeClient,
-		0,
-		informers.WithNamespace(sc.configMapNamespace),
-		informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-			opts.FieldSelector = fields.OneTermEqualSelector("metadata.name", sc.configMapName).String()
-		}),
-	)
-	sc.configMapInformer = sc.configMapInformerFactory.Core().V1().ConfigMaps()
-	sc.configMapLister = sc.configMapInformer.Lister().ConfigMaps(sc.configMapNamespace)
+	// Only set up ConfigMap watching when both name and namespace are provided.
+	if sc.configMapName != "" && sc.configMapNamespace != "" {
+		sc.configMapInformerFactory = informers.NewSharedInformerFactoryWithOptions(
+			sc.kubeClient,
+			0,
+			informers.WithNamespace(sc.configMapNamespace),
+			informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+				opts.FieldSelector = fields.OneTermEqualSelector("metadata.name", sc.configMapName).String()
+			}),
+		)
+		sc.configMapInformer = sc.configMapInformerFactory.Core().V1().ConfigMaps()
+		sc.configMapLister = sc.configMapInformer.Lister().ConfigMaps(sc.configMapNamespace)
+	}
 
 	sc.nodeLister = sc.nodeInformer.Lister()
 	sc.podLister = sc.podInformer.Lister()
@@ -194,14 +197,16 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 	})
 
 	// Watch the sharding ConfigMap for live configuration updates.
-	sc.configMapInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: sc.isShardingConfigMap,
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc:    sc.onConfigMapAdd,
-			UpdateFunc: sc.onConfigMapUpdate,
-			DeleteFunc: sc.onConfigMapDelete,
-		},
-	})
+	if sc.configMapInformer != nil {
+		sc.configMapInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+			FilterFunc: sc.isShardingConfigMap,
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    sc.onConfigMapAdd,
+				UpdateFunc: sc.onConfigMapUpdate,
+				DeleteFunc: sc.onConfigMapDelete,
+			},
+		})
+	}
 
 	klog.V(6).Infof("ShardingController initialized successfully")
 
@@ -219,17 +224,21 @@ func (sc *ShardingController) Run(stopCh <-chan struct{}) {
 	// Start informer factories
 	sc.kubeInformerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
-	sc.configMapInformerFactory.Start(stopCh)
 
-	// Add specific sync checks with detailed logging
-	klog.Infof("Waiting for cache synchronization...")
-	if !cache.WaitForCacheSync(
-		stopCh,
+	cacheSyncs := []cache.InformerSynced{
 		sc.nodeInformer.Informer().HasSynced,
 		sc.shardInformer.Informer().HasSynced,
 		sc.podInformer.Informer().HasSynced,
-		sc.configMapInformer.Informer().HasSynced,
-	) {
+	}
+
+	if sc.configMapInformerFactory != nil {
+		sc.configMapInformerFactory.Start(stopCh)
+		cacheSyncs = append(cacheSyncs, sc.configMapInformer.Informer().HasSynced)
+	}
+
+	// Add specific sync checks with detailed logging
+	klog.Infof("Waiting for cache synchronization...")
+	if !cache.WaitForCacheSync(stopCh, cacheSyncs...) {
 		klog.Errorf("cache sync failed")
 	}
 	klog.Infof("Cache synchronization completed successfully")
@@ -237,9 +246,11 @@ func (sc *ShardingController) Run(stopCh <-chan struct{}) {
 	// Attempt to load scheduler configs from the ConfigMap now that the cache
 	// is populated.  If the ConfigMap exists its settings take precedence over
 	// the flag-based defaults.
-	if err := sc.loadConfigFromConfigMap(); err != nil {
-		klog.Warningf("Could not load sharding config from ConfigMap %s/%s: %v – using flag defaults",
-			sc.configMapNamespace, sc.configMapName, err)
+	if sc.configMapName != "" {
+		if err := sc.loadConfigFromConfigMap(); err != nil {
+			klog.Warningf("Could not load sharding config from ConfigMap %s/%s: %v – using flag defaults",
+				sc.configMapNamespace, sc.configMapName, err)
+		}
 	}
 
 	// Initialize node metrics
@@ -398,8 +409,27 @@ func (sc *ShardingController) syncShards() {
 		sc.enqueueShard(schedulerName)
 	}
 
+	// Clean up stale NodeShards for schedulers that are no longer configured.
+	sc.cleanupStaleNodeShards(currentShards, newAssignments)
+
 	klog.Infof("Global shard sync completed: %d schedulers, %d nodes",
 		len(newAssignments), len(nodes))
+}
+
+// cleanupStaleNodeShards deletes NodeShards that belong to schedulers no longer
+// present in the current configuration.
+func (sc *ShardingController) cleanupStaleNodeShards(currentShards []*shardv1alpha1.NodeShard, activeAssignments map[string]*ShardAssignment) {
+	for _, shard := range currentShards {
+		if _, active := activeAssignments[shard.Name]; active {
+			continue
+		}
+		klog.Infof("Deleting stale NodeShard %s (scheduler no longer configured)", shard.Name)
+		if err := sc.vcClient.ShardV1alpha1().NodeShards().Delete(sc.ctx, shard.Name, metav1.DeleteOptions{}); err != nil {
+			if !errors.IsNotFound(err) {
+				klog.Errorf("Failed to delete stale NodeShard %s: %v", shard.Name, err)
+			}
+		}
+	}
 }
 
 // syncHandler handles synchronization of a single shard
@@ -749,8 +779,6 @@ func (sc *ShardingController) InitializeWithConfigs(opt *framework.ControllerOpt
 
 	return nil
 }
-
-// ─── ConfigMap hot-reload helpers ────────────────────────────────────────────
 
 // isShardingConfigMap returns true when the object is the sharding ConfigMap
 // that this controller watches.
