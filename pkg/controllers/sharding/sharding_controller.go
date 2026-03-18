@@ -22,6 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -72,6 +73,9 @@ type ShardingController struct {
 	podLister       k8slisterv1.PodLister
 	shardLister     shardlisters.NodeShardLister
 	configMapLister k8slisterv1.ConfigMapNamespaceLister
+	// configMapInformerFactory is a dedicated namespace+name-scoped factory so
+	// only the single sharding ConfigMap is cached, not all ConfigMaps cluster-wide.
+	configMapInformerFactory informers.SharedInformerFactory
 
 	nodeMetricsCache map[string]*NodeMetrics
 	metricsMutex     sync.RWMutex
@@ -124,9 +128,17 @@ func (sc *ShardingController) Initialize(opt *framework.ControllerOption) error 
 	sc.podInformer = sc.kubeInformerFactory.Core().V1().Pods()
 	sc.shardInformer = sc.vcInformerFactory.Shard().V1alpha1().NodeShards()
 
-	// Create a cluster-wide ConfigMap informer; use a namespaced lister and
-	// event filter to act only on the sharding config ConfigMap.
-	sc.configMapInformer = sc.kubeInformerFactory.Core().V1().ConfigMaps()
+	// Create a namespace+name-scoped informer factory so only the single
+	// sharding ConfigMap is cached, not all ConfigMaps cluster-wide.
+	sc.configMapInformerFactory = informers.NewSharedInformerFactoryWithOptions(
+		sc.kubeClient,
+		0,
+		informers.WithNamespace(sc.configMapNamespace),
+		informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
+			opts.FieldSelector = fields.OneTermEqualSelector("metadata.name", sc.configMapName).String()
+		}),
+	)
+	sc.configMapInformer = sc.configMapInformerFactory.Core().V1().ConfigMaps()
 	sc.configMapLister = sc.configMapInformer.Lister().ConfigMaps(sc.configMapNamespace)
 
 	sc.nodeLister = sc.nodeInformer.Lister()
@@ -207,6 +219,7 @@ func (sc *ShardingController) Run(stopCh <-chan struct{}) {
 	// Start informer factories
 	sc.kubeInformerFactory.Start(stopCh)
 	sc.vcInformerFactory.Start(stopCh)
+	sc.configMapInformerFactory.Start(stopCh)
 
 	// Add specific sync checks with detailed logging
 	klog.Infof("Waiting for cache synchronization...")
@@ -624,7 +637,8 @@ func (sc *ShardingController) calculateAndApplyAssignment(schedulerName string) 
 	}
 
 	ctx := &AssignmentContext{
-		AllNodes: nodes,
+		AllNodes:      nodes,
+		AssignedNodes: make(map[string]string),
 	}
 
 	// Snapshot manager under RLock.
@@ -804,11 +818,19 @@ func (sc *ShardingController) reloadFromConfigMap(cm *corev1.ConfigMap) {
 		return
 	}
 	sc.applyShardingConfig(cfg)
-	// Invalidate assignment cache and trigger a full reconciliation.
+	// Invalidate assignment cache.
 	sc.cacheMutex.Lock()
 	sc.assignmentCache = &AssignmentCache{Assignments: make(map[string]*ShardAssignment)}
 	sc.cacheMutex.Unlock()
-	sc.syncShards()
+	// Enqueue all scheduler shards for resync via the work queue (non-blocking,
+	// avoids holding up the informer event handler goroutine).
+	sc.configMu.RLock()
+	configs := make([]SchedulerConfig, len(sc.schedulerConfigs))
+	copy(configs, sc.schedulerConfigs)
+	sc.configMu.RUnlock()
+	for _, c := range configs {
+		sc.enqueueShard(c.Name)
+	}
 }
 
 // loadConfigFromConfigMap fetches the sharding ConfigMap from the lister cache
@@ -854,7 +876,6 @@ func (sc *ShardingController) applyShardingConfig(cfg *ShardingConfig) {
 	}
 
 	periodChanged := false
-	newPeriod := time.Duration(0)
 	sc.configMu.Lock()
 	sc.schedulerConfigs = newConfigs
 	sc.shardingManager = NewShardingManager(newConfigs, sc)
@@ -862,7 +883,6 @@ func (sc *ShardingController) applyShardingConfig(cfg *ShardingConfig) {
 		if d, err := time.ParseDuration(cfg.ShardSyncPeriod); err == nil {
 			if sc.shardSyncPeriod != d {
 				periodChanged = true
-				newPeriod = d
 			}
 			sc.shardSyncPeriod = d
 			klog.Infof("ShardingController: shardSyncPeriod updated to %v from ConfigMap", d)
@@ -880,7 +900,7 @@ func (sc *ShardingController) applyShardingConfig(cfg *ShardingConfig) {
 		case sc.shardSyncPeriodUpdateCh <- struct{}{}:
 		default:
 		}
-		klog.V(4).Infof("ShardingController: notified periodic sync loop of new shardSyncPeriod %v", newPeriod)
+		klog.V(4).Infof("ShardingController: notified periodic sync loop of new shardSyncPeriod %v", sc.getShardSyncPeriod())
 	}
 
 	klog.Infof("ShardingController: applied %d scheduler configs from ConfigMap:", len(newConfigs))
