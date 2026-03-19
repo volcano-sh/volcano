@@ -45,6 +45,7 @@ func ApplyPluginConfDefaults(option *conf.PluginOption) {
 	setDefaultIfNil(&option.EnabledJobStarving)
 	setDefaultIfNil(&option.EnabledOverused)
 	setDefaultIfNil(&option.EnabledAllocatable)
+	setDefaultIfNil(&option.EnabledJobAllocatable)
 	setDefaultIfNil(&option.EnabledHyperNodeOrder)
 	setDefaultIfNil(&option.EnabledSubJobReady)
 	setDefaultIfNil(&option.EnabledSubJobPipelined)
