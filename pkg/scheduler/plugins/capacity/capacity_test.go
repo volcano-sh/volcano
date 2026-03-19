@@ -183,7 +183,7 @@ func Test_capacityPlugin_OnSessionOpenWithoutHierarchy(t *testing.T) {
 	pg26 := util.BuildPodGroup("pg26", "ns1", "queue17", 1, nil, schedulingv1beta1.PodGroupRunning)
 	pg27 := util.BuildPodGroup("pg27", "ns1", "queue17", 1, nil, schedulingv1beta1.PodGroupRunning)
 	pg28 := util.BuildPodGroup("pg28", "ns1", "queue17", 1, nil, schedulingv1beta1.PodGroupRunning)
-	queue17 := util.BuildQueueWithResourcesQuantity("queue17", api.BuildResourceList("2", "2Gi"), nil)
+	queue17 := util.BuildQueueWithResourcesQuantity("queue17", api.BuildResourceList("1", "2Gi"), nil)
 	p29 := util.BuildPod("ns1", "p29", "n8", corev1.PodRunning, api.BuildResourceList("2", "4Gi"), "pg29", nil, nil)
 	pg29 := util.BuildPodGroup("pg29", "ns1", "queue18", 1, nil, schedulingv1beta1.PodGroupRunning)
 	p30 := util.BuildPod("ns1", "p30", "", corev1.PodPending, api.BuildResourceList("1", "0Gi", []api.ScalarResource{{Name: "nvidia.com/gpu", Value: "1"}}...), "pg30", nil, nil)
