@@ -1,0 +1,39 @@
+# Example ConfigMap for Volcano Sharding Controller configuration.
+#
+# The ShardingController watches this ConfigMap at runtime and reloads
+# the scheduler shard specifications whenever the data changes, without
+# requiring a controller restart.
+#
+# Deploy with:
+#   kubectl apply -f sharding-config-configmap.yaml
+#
+# The controller is told which ConfigMap to watch via:
+#   --sharding-configmap=<name>
+#   --sharding-configmap-namespace=<namespace>
+#
+# When deployed with Helm the ConfigMap name is {{ .Release.Name }}-sharding-configmap
+# and is automatically wired via values.yaml (sharding_configmap_enable: true).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volcano-sharding-configmap
+  namespace: volcano-system
+data:
+  sharding.yaml: |
+    schedulerConfigs:
+      - name: agent-scheduler
+        type: agent
+        cpuUtilizationMin: 0.7
+        cpuUtilizationMax: 1.0
+        preferWarmupNodes: true
+        minNodes: 1
+        maxNodes: 100
+      - name: volcano
+        type: volcano
+        cpuUtilizationMin: 0.0
+        cpuUtilizationMax: 0.69
+        preferWarmupNodes: false
+        minNodes: 1
+        maxNodes: 100
+    shardSyncPeriod: "60s"
+    enableNodeEventTrigger: true
