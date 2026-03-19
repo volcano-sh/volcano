@@ -56,6 +56,7 @@ type TaskSpec struct {
 	MaxRetry              int32
 	SchGates              []v1.PodSchedulingGate
 	PartitionPolicy       *batchv1alpha1.PartitionPolicySpec
+	ResourceClaims        []v1.PodResourceClaim
 }
 
 type JobSpec struct {
@@ -140,6 +141,7 @@ func CreateJobWithPodGroup(ctx *TestContext, jobSpec *JobSpec,
 					Affinity:          task.Affinity,
 					Tolerations:       task.Tolerations,
 					PriorityClassName: task.Taskpriority,
+					ResourceClaims:    task.ResourceClaims,
 				},
 			},
 		}
@@ -248,6 +250,7 @@ func CreateJobInner(ctx *TestContext, jobSpec *JobSpec) (*batchv1alpha1.Job, err
 					Tolerations:       task.Tolerations,
 					PriorityClassName: task.Taskpriority,
 					SchedulingGates:   task.SchGates,
+					ResourceClaims:    task.ResourceClaims,
 				},
 			},
 		}
