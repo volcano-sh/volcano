@@ -12,33 +12,6 @@ metadata:
   labels:
     kubernetes.io/metadata.name: volcano-monitoring
 ---
-# Source: volcano/templates/controllers.yaml
-# Sharding ConfigMap for live-reloadable scheduler shard configuration.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: volcano-sharding-configmap
-  namespace: volcano-system
-data:
-  sharding.yaml: |
-    schedulerConfigs:
-      - name: agent-scheduler
-        type: agent
-        cpuUtilizationMin: 0.7
-        cpuUtilizationMax: 1.0
-        preferWarmupNodes: true
-        minNodes: 1
-        maxNodes: 100
-      - name: volcano
-        type: volcano
-        cpuUtilizationMin: 0.0
-        cpuUtilizationMax: 0.69
-        preferWarmupNodes: false
-        minNodes: 1
-        maxNodes: 100
-    shardSyncPeriod: "60s"
-    enableNodeEventTrigger: true
----
 # Source: volcano/templates/agent_scheduler.yaml
 apiVersion: v1
 kind: ServiceAccount
