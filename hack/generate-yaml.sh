@@ -171,6 +171,7 @@ cat ${VK_ROOT}/installer/namespace.yaml > ${AGENT_SCHEDULER_DEPLOYMENT_YAML_FILE
 HELM_CMD="${HELM_BIN_DIR}/helm template ${VK_ROOT}/installer/helm/chart/volcano --namespace volcano-system \
       --name-template volcano --set basic.image_tag_version=${VOLCANO_IMAGE_TAG} --set basic.crd_version=${CRD_VERSION}\
       --set custom.vap_enable=${ENABLE_VAP} --set custom.map_enable=${ENABLE_MAP}\
+      --set custom.sharding_configmap_enable=true\
       --set basic.image_registry=${IMAGE_REGISTRY} \
       --set basic.controller_image_name=${IMAGE_REPOSITORY}/vc-controller-manager \
       --set basic.scheduler_image_name=${IMAGE_REPOSITORY}/vc-scheduler \
