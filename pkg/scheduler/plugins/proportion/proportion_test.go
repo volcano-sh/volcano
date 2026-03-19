@@ -47,6 +47,24 @@ import (
 	"volcano.sh/volcano/pkg/scheduler/util"
 )
 
+// waitForBinds reads exactly n items from ch within deadline and returns them.
+// It fails the test if fewer than n items arrive within the timeout.
+func waitForBinds(t *testing.T, ch <-chan string, n int, timeout time.Duration) map[string]bool {
+	t.Helper()
+	got := make(map[string]bool, n)
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for i := 0; i < n; i++ {
+		select {
+		case bind := <-ch:
+			got[bind] = true
+		case <-timer.C:
+			t.Fatalf("timeout waiting for bind #%d/%d (got so far: %v)", i+1, n, got)
+		}
+	}
+	return got
+}
+
 func TestMain(m *testing.M) {
 	options.Default()
 	os.Exit(m.Run())
@@ -505,5 +523,125 @@ func TestAllocate(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// TestNoDoubleCountingForInqueueJobWithBindingTasks is a regression test for the bug where
+// the proportion plugin double-counts queue resources for jobs whose tasks are in Allocated/Binding
+// state while their PodGroup is still in Inqueue phase.
+//
+// Root cause: tasks in Allocated/Binding state are counted in attr.allocated (via AllocatedStatus),
+// but ScheduledStatus excludes Allocated/Binding, so getPodGroupPhase keeps the PodGroup as
+// Inqueue. The Inqueue branch then adds the full minResources to attr.inqueue unconditionally,
+// causing the same CPU to appear in both attr.allocated and attr.inqueue.
+//
+// Fix: use GetInqueueResource(job, job.Allocated) for the Inqueue branch, matching the Running
+// branch's deduction logic, so already-allocated resources are not double-counted.
+func TestNoDoubleCountingForInqueueJobWithBindingTasks(t *testing.T) {
+	options.Default()
+
+	// Tell the allocate action that the enqueue action is active, so it will
+	// not bypass the queue-capacity check by promoting Pending→Inqueue itself.
+	prevEnabledActionMap := conf.EnabledActionMap
+	conf.EnabledActionMap = map[string]bool{"enqueue": true}
+	defer func() { conf.EnabledActionMap = prevEnabledActionMap }()
+
+	trueValue := true
+	plugins := map[string]framework.PluginBuilder{PluginName: New}
+	uthelper.RegisterPlugins(plugins)
+	defer framework.CleanupPluginBuilders()
+
+	tiers := []conf.Tier{
+		{
+			Plugins: []conf.PluginOption{
+				{
+					Name:               PluginName,
+					EnabledAllocatable: &trueValue,
+					EnabledOverused:    &trueValue,
+					EnabledJobEnqueued: &trueValue,
+				},
+			},
+		},
+	}
+
+	// Node with 4 CPU — enough for jobA (3 CPU) + jobB (1 CPU).
+	n1 := util.BuildNode("n1", api.BuildResourceList("4", "8Gi", []api.ScalarResource{{Name: "pods", Value: "10"}}...), nil)
+
+	res1cpu := api.BuildResourceList("1", "1Gi")
+	minRes3cpu := api.BuildResourceList("3", "3Gi")
+	minRes1cpu := api.BuildResourceList("1", "1Gi")
+
+	// jobA: 3 tasks × 1 CPU, PodGroup already Inqueue with minResources=3CPU.
+	// After cycle 1 allocates these, they move to Binding in the cache while the
+	// PodGroup stays Inqueue (Binding ∉ ScheduledStatus).
+	pgA := util.BuildPodGroup("pgA", "ns1", "q1", 3, nil, schedulingv1beta1.PodGroupInqueue)
+	pgA.Spec.MinResources = &minRes3cpu
+	pA1 := util.BuildPod("ns1", "pA1", "", apiv1.PodPending, res1cpu, "pgA", nil, nil)
+	pA2 := util.BuildPod("ns1", "pA2", "", apiv1.PodPending, res1cpu, "pgA", nil, nil)
+	pA3 := util.BuildPod("ns1", "pA3", "", apiv1.PodPending, res1cpu, "pgA", nil, nil)
+
+	// jobB: 1 task × 1 CPU, PodGroup Pending.
+	// With correct accounting (queue used=3CPU, cap=4CPU) this should be enqueued and bound.
+	// With the double-counting bug (queue appears used=6CPU > cap=4CPU) it is rejected.
+	pgB := util.BuildPodGroup("pgB", "ns1", "q1", 1, nil, schedulingv1beta1.PodGroupPending)
+	pgB.Spec.MinResources = &minRes1cpu
+	pB1 := util.BuildPod("ns1", "pB1", "", apiv1.PodPending, res1cpu, "pgB", nil, nil)
+
+	// Queue with 4 CPU capacity.
+	q1 := util.BuildQueue("q1", 1, api.BuildResourceList("4", "8Gi"))
+
+	binder := util.NewFakeBinder(10)
+	evictor := util.NewFakeEvictor(0)
+	statusUpdater := &util.FakeStatusUpdater{}
+	stop := make(chan struct{})
+	defer close(stop)
+
+	sc := cache.NewCustomMockSchedulerCache("test-proportion", binder, evictor, statusUpdater, nil, nil)
+	sc.Run(stop)
+	sc.AddOrUpdateNode(n1)
+	// Only add jobA to the cache for cycle 1. jobB is intentionally omitted so the
+	// allocate action (which auto-promotes Pending→Inqueue when no enqueue action is
+	// configured) cannot accidentally schedule pB1 in cycle 1.
+	sc.AddPod(pA1)
+	sc.AddPod(pA2)
+	sc.AddPod(pA3)
+	sc.AddPodGroupV1beta1(pgA)
+	sc.AddQueueV1beta1(q1)
+
+	// Cycle 1: allocate jobA's tasks.
+	// After this cycle, pA1/pA2/pA3 are in Binding state in the scheduler cache.
+	// pgA remains Inqueue because Binding ∉ ScheduledStatus.
+	ssn1 := framework.OpenSession(sc, tiers, nil)
+	allocate.New().Execute(ssn1)
+	framework.CloseSession(ssn1)
+
+	// Wait for all 3 cycle-1 bind notifications and verify they are for jobA.
+	cycle1 := waitForBinds(t, binder.Channel, 3, 5*time.Second)
+	for _, pod := range []string{"ns1/pA1", "ns1/pA2", "ns1/pA3"} {
+		if !cycle1[pod] {
+			t.Errorf("expected %s to be bound in cycle 1, got %v", pod, cycle1)
+		}
+	}
+
+	// Add jobB to the cache now that cycle 1 is complete.
+	// The cache now has: pA1/pA2/pA3 in Binding + pgA Inqueue + n1 with 1 CPU free.
+	sc.AddPod(pB1)
+	sc.AddPodGroupV1beta1(pgB)
+
+	// Cycle 2: enqueue + allocate for jobB.
+	// The scheduler cache now has jobA's tasks as Binding + pgA still Inqueue.
+	// Correct behaviour (fix applied): attr.allocated=3CPU, attr.inqueue=max(0,3-3)=0CPU
+	//   → jobB.minReq(1CPU) + 3CPU + 0CPU = 4CPU ≤ capacity(4CPU) → jobB enqueued & bound.
+	// Buggy behaviour (pre-fix): attr.allocated=3CPU, attr.inqueue=3CPU (full minResources)
+	//   → jobB.minReq(1CPU) + 3CPU + 3CPU = 7CPU > capacity(4CPU) → jobB rejected.
+	ssn2 := framework.OpenSession(sc, tiers, nil)
+	enqueue.New().Execute(ssn2)
+	allocate.New().Execute(ssn2)
+	framework.CloseSession(ssn2)
+
+	cycle2 := waitForBinds(t, binder.Channel, 1, 5*time.Second)
+	if !cycle2["ns1/pB1"] {
+		t.Errorf("regression: pB1 was not bound in cycle 2 (got %v) — proportion plugin "+
+			"is double-counting inqueue resources for pgA whose tasks are in Binding state", cycle2)
 	}
 }
