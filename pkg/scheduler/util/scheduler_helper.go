@@ -44,9 +44,20 @@ const (
 	baselinePercentageOfNodesToFind = 50
 
 	DefaultComponentName = "vc-scheduler"
+
+	// nodeScoreWorker is the number of parallel workers for node scoring
+	nodeScoreWorker = 16
 )
 
 var lastProcessedNodeIndex int
+
+// nodeScoreResult holds the per-node scoring output collected by parallel workers.
+type nodeScoreResult struct {
+	mapScores  map[string]float64
+	orderScore float64
+	nodeName   string
+	err        error
+}
 
 // CalculateNumOfFeasibleNodesToFind returns the number of feasible nodes that once found,
 // the scheduler stops its search for more feasible nodes.
@@ -73,45 +84,81 @@ func CalculateNumOfFeasibleNodesToFind(numAllNodes int32) (numNodes int32) {
 
 // PrioritizeNodes returns a map whose key is node's score and value are corresponding nodes
 func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.BatchNodeOrderFn, mapFn api.NodeOrderMapFn, reduceFn api.NodeOrderReduceFn) map[float64][]*api.NodeInfo {
-	pluginNodeScoreMap := map[string]fwk.NodeScoreList{}
-	nodeOrderScoreMap := map[string]float64{}
 	nodeScores := map[float64][]*api.NodeInfo{}
-	var workerLock sync.Mutex
+	numNodes := len(nodes)
+
+	// Pre-allocate lock-free slices for collecting scores from parallel workers
+	results := make([]nodeScoreResult, numNodes)
+
+	// Use WaitGroup to execute BatchNodeOrderFn concurrently with map/reduce operations
+	var wg sync.WaitGroup
+	var batchNodeScore map[string]float64
+	var batchErr error
+
+	// Start BatchNodeOrderFn in a separate goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		batchNodeScore, batchErr = batchFn(task, nodes)
+		if batchErr != nil {
+			klog.Errorf("Error in Calculating batch Priority for the node, err %v", batchErr)
+		}
+	}()
+
+	// Execute map phase in parallel using lock-free slice writes
 	scoreNode := func(index int) {
 		node := nodes[index]
 		mapScores, orderScore, err := mapFn(task, node)
 		if err != nil {
 			klog.Errorf("Error in Calculating Priority for the node:%v", err)
+			results[index].err = err
 			return
 		}
+		// Lock-free write to pre-allocated slice at unique index
+		results[index].mapScores = mapScores
+		results[index].orderScore = orderScore
+		results[index].nodeName = node.Name
+	}
+	workqueue.ParallelizeUntil(context.TODO(), nodeScoreWorker, numNodes, scoreNode)
 
-		workerLock.Lock()
-		for plugin, score := range mapScores {
+	// Aggregate map scores into pluginNodeScoreMap after parallel execution
+	pluginNodeScoreMap := map[string]fwk.NodeScoreList{}
+	nodeOrderScoreMap := map[string]float64{}
+	for i := 0; i < numNodes; i++ {
+		if results[i].err != nil {
+			continue
+		}
+		for plugin, score := range results[i].mapScores {
 			nodeScoreList, ok := pluginNodeScoreMap[plugin]
 			if !ok {
-				nodeScoreList = fwk.NodeScoreList{}
+				nodeScoreList = make(fwk.NodeScoreList, 0, numNodes)
 			}
-			hp := fwk.NodeScore{}
-			hp.Name = node.Name
-			hp.Score = int64(math.Floor(score))
+			hp := fwk.NodeScore{
+				Name:  results[i].nodeName,
+				Score: int64(math.Floor(score)),
+			}
 			pluginNodeScoreMap[plugin] = append(nodeScoreList, hp)
 		}
-		nodeOrderScoreMap[node.Name] = orderScore
-		workerLock.Unlock()
+		nodeOrderScoreMap[results[i].nodeName] = results[i].orderScore
 	}
-	workqueue.ParallelizeUntil(context.TODO(), 16, len(nodes), scoreNode)
+
+	// Execute reduce phase
 	reduceScores, err := reduceFn(task, pluginNodeScoreMap)
 	if err != nil {
 		klog.Errorf("Error in Calculating Priority for the node:%v", err)
 		return nodeScores
 	}
 
-	batchNodeScore, err := batchFn(task, nodes)
-	if err != nil {
-		klog.Errorf("Error in Calculating batch Priority for the node, err %v", err)
-		return nodeScores
+	// Wait for BatchNodeOrderFn to complete
+	wg.Wait()
+
+	// Explicitly discard potentially partial results if BatchNodeOrderFn failed
+	if batchErr != nil {
+		klog.Warningf("BatchNodeOrderFn failed, proceeding with reduce+order scores only: %v", batchErr)
+		batchNodeScore = nil
 	}
 
+	// Aggregate final scores
 	nodeScoreMap := map[string]float64{}
 	for _, node := range nodes {
 		// If no plugin is applied to this node, the default is 0.0
@@ -122,8 +169,10 @@ func PrioritizeNodes(task *api.TaskInfo, nodes []*api.NodeInfo, batchFn api.Batc
 		if orderScore, ok := nodeOrderScoreMap[node.Name]; ok {
 			score += orderScore
 		}
-		if batchScore, ok := batchNodeScore[node.Name]; ok {
-			score += batchScore
+		if batchNodeScore != nil {
+			if batchScore, ok := batchNodeScore[node.Name]; ok {
+				score += batchScore
+			}
 		}
 		nodeScores[score] = append(nodeScores[score], node)
 
