@@ -68,10 +68,13 @@ spec:
           tasks:
           - name: mpimaster
             replicas: 1
-            # Not yet supported due to minAvailable limitation - https://github.com/volcano-sh/volcano/pull/5117#discussion_r2958066859
-            #dependsOn:
-            #  name: 
-            #  - "mpiworker"
+            # Optional: use dependsOn to start master after workers exist.
+            # If dependsOn is enabled in this example, set minAvailable to 2
+            # (worker replica count). Also bear in mind that master is then
+            # not gang-scheduled together with workers.
+            # dependsOn:
+            #   name:
+            #   - mpiworker
             policies:
               - event: TaskCompleted
                 action: CompleteJob

@@ -3,8 +3,18 @@ If installing via the Quick Start [guide](https://argo-workflows.readthedocs.io/
 kubectl create namespace argo
 kubectl apply -n argo -f "https://github.com/argoproj/argo-workflows/releases/download/v3.7.10/quick-start-minimal.yaml"
 kubectl apply -f rbac.yaml
+kubectl apply -f hello-world.yaml
+WF_NAME=volcano-mpi-hello-$(date +%s)
+argo submit --from workflowtemplate/volcano-mpi-hello -n argo --name "$WF_NAME"
+argo watch "$WF_NAME" -n argo
 ```
-Then submit `hello-world.yaml` via kubectl or the Argo Workflows UI.  
+
+Cleanup:  
+```
+argo delete "$WF_NAME" -n argo
+kubectl delete -f hello-world.yaml
+kubectl delete -f rbac.yaml
+```
 
 Notes:  
 - These steps may be incompatible with Argo Workflows version 4.0+.
@@ -24,4 +34,3 @@ Warning: Permanently added 'mpi-hello-job-mpiworker-1.mpi-hello-job' (ED25519) t
 Hello world from processor mpi-hello-job-mpiworker-0, rank 0 out of 2 processors
 Hello world from processor mpi-hello-job-mpiworker-1, rank 1 out of 2 processors
 ```
-
