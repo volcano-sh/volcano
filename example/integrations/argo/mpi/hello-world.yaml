@@ -1,0 +1,149 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: volcano-mpi-hello
+  namespace: argo
+spec:
+  serviceAccountName: argo
+  entrypoint: main
+  arguments:
+    parameters:
+      - name: job-name
+        value: mpi-hello-job
+  templates:
+  - name: main
+    dag:
+      tasks:
+        - name: submit-job
+          template: submit-volcano-job
+        - name: follow-logs
+          template: follow-master-logs
+  - name: follow-master-logs
+    serviceAccountName: argo
+    activeDeadlineSeconds: 300 
+    container:
+      image: mcr.microsoft.com/oss/kubernetes/kubectl:v1.26.3
+      command: [bash, -c]
+      args:
+        - |
+          NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+          echo "Waiting for MPI master pod..."
+          POD=""
+          until [ -n "$POD" ]; do
+            POD=$(kubectl get pods \
+              -n $NS \
+              -l volcano.sh/job-name={{workflow.parameters.job-name}},volcano.sh/task-spec=mpimaster \
+              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+            sleep 2
+          done
+          echo "Found pod $POD"
+          echo "Waiting for pod to start or fail..."
+          while true; do
+            PHASE=$(kubectl get pod $POD -n $NS -o jsonpath='{.status.phase}' 2>/dev/null)
+            if [[ "$PHASE" == "Running" || "$PHASE" == "Succeeded" || "$PHASE" == "Failed" ]]; then
+              echo "Pod phase: $PHASE"
+              break
+            fi
+            sleep 2
+          done
+          echo "Streaming logs..."
+          kubectl logs -f -n $NS -c mpimaster $POD || true
+  - name: submit-volcano-job
+    resource:
+      action: create
+      setOwnerReference: true
+      successCondition: status.state.phase == Completed
+      failureCondition: status.state.phase == Failed
+      manifest: |
+        apiVersion: batch.volcano.sh/v1alpha1
+        kind: Job
+        metadata:
+          name: {{workflow.parameters.job-name}}
+        spec:
+          minAvailable: 3
+          schedulerName: volcano
+          plugins:
+            ssh: []
+            svc: []
+          tasks:
+          - name: mpimaster
+            replicas: 1
+            # Optional: use dependsOn to start master after workers exist.
+            # If dependsOn is enabled in this example, set minAvailable to 2
+            # (worker replica count). Also bear in mind that master is then
+            # not gang-scheduled together with workers.
+            # dependsOn:
+            #   name:
+            #   - mpiworker
+            policies:
+              - event: TaskCompleted
+                action: CompleteJob
+            template:
+              spec:
+                serviceAccountName: argo
+                initContainers:
+                - name: wait-for-workers
+                  image: mcr.microsoft.com/oss/kubernetes/kubectl:v1.26.3
+                  command:
+                  - /bin/bash
+                  - -c
+                  - |
+                    echo "Waiting for MPI worker pods to be ready..."
+                    kubectl wait pod \
+                      -l volcano.sh/job-name={{workflow.parameters.job-name}},volcano.sh/task-spec=mpiworker \
+                      --for=condition=Ready --timeout=600s
+                containers:
+                  - name: mpimaster
+                    image: volcanosh/example-mpi:0.0.3
+                    workingDir: /home
+                    ports:
+                      - containerPort: 22
+                        name: mpijob-port
+                    command:
+                      - /bin/sh
+                      - -c
+                      - |
+                        MPI_HOST=$(cat /etc/volcano/mpiworker.host | tr "\n" ",")
+                        mkdir -p /var/run/sshd
+                        /usr/sbin/sshd
+                        echo "Running MPI hello world..."
+                        mpiexec --allow-run-as-root --host ${MPI_HOST} -np 2 mpi_hello_world
+                    resources:
+                      requests:
+                        nvidia.com/gpu: 0
+                        rdma/ib: 0  
+                      limits:
+                        nvidia.com/gpu: 0
+                        rdma/ib: 0
+                restartPolicy: OnFailure
+          - name: mpiworker
+            replicas: 2
+            template:
+              spec:
+                containers:
+                  - name: mpiworker
+                    image: volcanosh/example-mpi:0.0.3
+                    workingDir: /home
+                    ports:
+                      - containerPort: 22
+                        name: mpijob-port
+                    readinessProbe:
+                      tcpSocket:
+                        port: 22 
+                      initialDelaySeconds: 5 
+                      periodSeconds: 10 
+                      failureThreshold: 5 
+                    command:
+                      - /bin/sh
+                      - -c
+                      - |
+                        mkdir -p /var/run/sshd
+                        /usr/sbin/sshd -D
+                    resources:
+                      requests:
+                        nvidia.com/gpu: 0
+                        rdma/ib: 0  
+                      limits:
+                        nvidia.com/gpu: 0
+                        rdma/ib: 0
+                restartPolicy: OnFailure
